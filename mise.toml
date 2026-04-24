@@ -1,0 +1,30 @@
+[tools]
+node = "24"
+gitleaks = "latest"
+
+[tools."npm:markdownlint-cli2"]
+version = "0.18"
+
+[tasks.lint]
+description = "Run all linters"
+depends = ["lint:md", "lint:manifests"]
+
+[tasks."lint:md"]
+description = "Lint markdown files"
+run = "npx markdownlint-cli2 '**/*.md' '#node_modules'"
+
+[tasks."lint:manifests"]
+description = "Validate all manifests and skill frontmatter"
+run = "python3 tools/validate.py"
+
+[tasks.validate]
+description = "Run all validation"
+depends = ["lint:manifests"]
+
+[tasks.security]
+description = "Run security scans"
+run = "gitleaks detect --source . --verbose"
+
+[tasks.build]
+description = "Full build: lint + validate + security"
+depends = ["lint", "validate", "security"]

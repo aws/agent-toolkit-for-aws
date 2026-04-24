@@ -1,0 +1,21 @@
+{
+  "name": "agent-plugin-for-aws",
+  "version": "0.1.0",
+  "description": "AWS agent plugin with skills and MCP server connections.",
+  "author": {
+    "name": "Amazon Web Services"
+  },
+  "license": "Apache-2.0",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Agent Plugin for AWS",
+    "shortDescription": "AWS agent plugin with skills and MCP servers",
+    "longDescription": "AWS agent plugin with skills and MCP server connections.",
+    "developerName": "Amazon Web Services",
+    "category": "Cloud",
+    "capabilities": [
+      "Read"
+    ]
+  }
+}

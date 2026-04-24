@@ -1,0 +1,26 @@
+name: Build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
+
+      - name: Lint markdown
+        run: mise run lint:md
+
+      - name: Validate manifests and skills
+        run: mise run lint:manifests
+
+      - name: Security scan (gitleaks)
+        run: mise run security

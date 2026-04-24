@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.dprint/
+.ruff_cache/
+.mise/
+.tmp/
+.DS_Store
+.idea/
+.vscode/
+.env
+.claude/settings.local.json

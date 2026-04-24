@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "description": "A plugin marketplace hosting installable agent plugins for AWS.",
+    "version": "0.1.0"
+  },
+  "name": "agent-toolkit-for-aws",
+  "owner": {
+    "name": "Amazon Web Services"
+  },
+  "plugins": [
+    {
+      "category": "cloud",
+      "description": "AWS agent plugin with skills and MCP server connections.",
+      "keywords": [
+        "aws"
+      ],
+      "name": "agent-plugin-for-aws",
+      "source": "./plugins/agent-plugin-for-aws",
+      "version": "0.1.0"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+---
+name: "Bug Report"
+description: Report a bug
+title: "(plugin name): (short issue description)"
+labels: [bug, needs-triage]
+assignees: []
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: What is the problem? A clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Behavior
+      description: |
+        What actually happened?
+
+        Please include full errors, uncaught exceptions, stack traces, and relevant logs.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: |
+        Provide a self-contained, concise snippet of code that can be used to reproduce the issue.
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin Version
+    validations:
+      required: true
+  - type: input
+    id: ai-assistant
+    attributes:
+      label: AI Assistant
+      description: E.g. Claude Code | Codex | Kiro | Cursor
+    validations:
+      required: true
+  - type: input
+    id: ai-assistant-version
+    attributes:
+      label: AI Assistant Version
+    validations:
+      required: true
+  - type: input
+    id: operating-system
+    attributes:
+      label: OS
+    validations:
+      required: true
+  - type: textarea
+    id: other
+    attributes:
+      label: Other information
+      description: |
+        e.g. detailed explanation, related issues, suggestions how to fix, links for context
+    validations:
+      required: false

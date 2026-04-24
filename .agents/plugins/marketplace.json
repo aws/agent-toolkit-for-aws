@@ -1,0 +1,20 @@
+{
+  "name": "agent-toolkit-for-aws",
+  "interface": {
+    "displayName": "Agent Toolkit for AWS"
+  },
+  "plugins": [
+    {
+      "name": "agent-plugin-for-aws",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-plugin-for-aws"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Cloud"
+    }
+  ]
+}
