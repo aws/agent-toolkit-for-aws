@@ -15,6 +15,30 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Cloud"
+    },
+    {
+      "name": "aws-agent-building",
+      "source": {
+        "source": "local",
+        "path": "./plugins/aws-agent-building"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Cloud"
+    },
+    {
+      "name": "aws-data-analytics",
+      "source": {
+        "source": "local",
+        "path": "./plugins/aws-data-analytics"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Cloud"
     }
   ]
 }

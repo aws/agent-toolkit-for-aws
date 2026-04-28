@@ -17,6 +17,27 @@
       "name": "aws-core",
       "source": "./plugins/aws-core",
       "version": "0.1.0"
+    },
+    {
+      "category": "cloud",
+      "description": "AWS agent plugin with skills and MCP server connections.",
+      "keywords": [
+        "aws"
+      ],
+      "name": "aws-agent-building",
+      "source": "./plugins/aws-agent-building",
+      "version": "0.1.0"
+    },
+    {
+      "category": "cloud",
+      "description": "AWS agent plugin with skills and MCP server connections.",
+      "keywords": [
+        "aws",
+        "analytics"
+      ],
+      "name": "aws-data-analytics",
+      "source": "./plugins/aws-data-analytics",
+      "version": "0.1.0"
     }
   ]
 }
