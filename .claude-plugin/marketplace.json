@@ -14,8 +14,8 @@
       "keywords": [
         "aws"
       ],
-      "name": "agent-plugin-for-aws",
-      "source": "./plugins/agent-plugin-for-aws",
+      "name": "aws-core",
+      "source": "./plugins/aws-core",
       "version": "0.1.0"
     }
   ]

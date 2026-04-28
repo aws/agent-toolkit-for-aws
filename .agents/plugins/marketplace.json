@@ -5,10 +5,10 @@
   },
   "plugins": [
     {
-      "name": "agent-plugin-for-aws",
+      "name": "aws-core",
       "source": {
         "source": "local",
-        "path": "./plugins/agent-plugin-for-aws"
+        "path": "./plugins/aws-core"
       },
       "policy": {
         "installation": "AVAILABLE",

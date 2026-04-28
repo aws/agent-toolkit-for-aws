@@ -1,12 +1,12 @@
 # Agent Toolkit for AWS
 
-A plugin marketplace hosting installable agent plugins for AWS. Ships with the `agent-plugin-for-aws` plugin and supports Claude Code, Codex, and Kiro.
+A plugin marketplace hosting installable agent plugins for AWS. Ships with the `aws-core` plugin and supports Claude Code, Codex, and Kiro.
 
 ## Plugins
 
 | Plugin | Description | Skills | MCP Servers |
 |--------|-------------|--------|-------------|
-| [agent-plugin-for-aws](plugins/agent-plugin-for-aws/) | AWS agent plugin with skills and MCP server connections | [find-aws-skills](skills/find-aws-skills/) | [aws-mcp](https://aws-mcp.us-east-1.api.aws/mcp) |
+| [aws-core](plugins/aws-core/) | AWS agent plugin with skills and MCP server connections | [find-aws-skills](skills/find-aws-skills/) | [aws-mcp](https://aws-mcp.us-east-1.api.aws/mcp) |
 
 ## Installation
 
@@ -17,7 +17,7 @@ A plugin marketplace hosting installable agent plugins for AWS. Ships with the `
 /plugin marketplace add aws/agent-toolkit-for-aws
 
 # Install a plugin
-/plugin install agent-plugin-for-aws@agent-toolkit-for-aws
+/plugin install aws-core@agent-toolkit-for-aws
 ```
 
 ### Codex
@@ -30,7 +30,7 @@ Kiro support is provided via the `@every-env/compound-plugin` converter, which r
 
 ## Skills
 
-All skills live in the top-level [`skills/`](skills/) directory. This is the canonical source. The `agent-plugin-for-aws` plugin bundles a default subset for out-of-the-box use.
+All skills live in the top-level [`skills/`](skills/) directory. This is the canonical source. The `aws-core` plugin bundles a default subset for out-of-the-box use.
 
 | Skill | Description |
 |-------|-------------|
@@ -52,7 +52,7 @@ mise run build
 python3 tools/validate.py
 
 # Validate a single plugin
-python3 tools/validate.py --plugin agent-plugin-for-aws
+python3 tools/validate.py --plugin aws-core
 ```
 
 ## Contributing

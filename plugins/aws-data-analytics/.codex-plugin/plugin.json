@@ -1,5 +1,5 @@
 {
-  "name": "agent-plugin-for-aws",
+  "name": "aws-data-analytics",
   "version": "0.1.0",
   "description": "AWS agent plugin with skills and MCP server connections.",
   "author": {

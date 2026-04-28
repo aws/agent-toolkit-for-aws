@@ -20,7 +20,7 @@ AWS agent plugin with skills and MCP server connections.
 
 ```bash
 /plugin marketplace add aws/agent-toolkit-for-aws
-/plugin install agent-plugin-for-aws@agent-toolkit-for-aws
+/plugin install aws-agent-building@agent-toolkit-for-aws
 ```
 
 ### Codex
