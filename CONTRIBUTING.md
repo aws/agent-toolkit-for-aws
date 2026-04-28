@@ -6,6 +6,7 @@ Thank you for your interest in this project! This project is not accepting exter
 
 - [Reporting Bugs](#reporting-bugs)
 - [Feature Requests](#feature-requests)
+- [Skill Authoring](#skill-authoring)
 - [Local Development](#local-development)
 - [Publishing your Change](#publishing-your-change)
 - [Security](#security)
@@ -21,6 +22,30 @@ Thank you for your interest in this project! This project is not accepting exter
 - Before submitting a feature request, please make sure you are on the latest version.
 - Go through existing issues and check no users have requested the same feature.
 - Submit a [GitHub Issue](https://github.com/aws/agent-toolkit-for-aws/issues/new?template=feature_request.yml) with a clear description of the feature and your use case.
+
+## Skill Authoring
+
+Skills live in two places and must be added to both:
+
+- `skills/<skill-name>/` — the canonical source for all skills in the repository.
+- `plugins/<plugin-name>/skills/<skill-name>/` — bundled inside the plugin that ships the skill.
+
+Each skill directory must contain a `SKILL.md` with YAML frontmatter:
+
+```yaml
+---
+name: my-skill-name
+description: >
+  A description of what this skill does (minimum 20 characters).
+---
+```
+
+Validation rules enforced by `tools/validate.py`:
+
+- `name` must be kebab-case, at most 64 characters, and match the directory name.
+- `description` must be at least 20 characters.
+
+Run `mise run build` to validate before submitting.
 
 ## Local Development
 
