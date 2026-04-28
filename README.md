@@ -2,6 +2,12 @@
 
 A plugin marketplace hosting installable agent plugins for AWS. Ships with the `agent-plugin-for-aws` plugin and supports Claude Code, Codex, and Kiro.
 
+## Scope
+
+This project provides agent skills, plugin configurations, and MCP server connections for AWS services. It covers operational tasks, best-practice workflows, and service-specific guidance.
+
+Out of scope: non-AWS content, executable applications, infrastructure deployment tools, and standalone CLI utilities.
+
 ## Plugins
 
 | Plugin | Description | Skills | MCP Servers |
