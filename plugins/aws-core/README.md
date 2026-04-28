@@ -1,32 +1,65 @@
-# Agent Plugin for AWS
+# aws-core
 
-AWS agent plugin with skills and MCP server connections.
+The primary plugin for the Agent Toolkit for AWS. This plugin gives your AI coding agent the AWS MCP Server configuration and a curated set of agent skills — everything it needs to build, deploy, and manage applications on AWS.
 
-## Skills
-
-| Skill | Description |
-|-------|-------------|
-| [find-aws-skills](skills/find-aws-skills/) | Discover and load AWS skills at runtime |
-
-## MCP Servers
-
-| Server | Transport | Description |
-|--------|-----------|-------------|
-| aws-mcp | stdio | AWS MCP server via `mcp-proxy-for-aws` |
-
-## Installation
+## Install
 
 ### Claude Code
 
-```bash
+```
 /plugin marketplace add aws/agent-toolkit-for-aws
-/plugin install aws-core@agent-toolkit-for-aws
+/plugin install aws-core@aws-agent-toolkit-for-aws
+/reload-plugins
 ```
 
 ### Codex
 
-Discovered automatically from the marketplace manifest.
+In your terminal:
 
-## License
+```
+codex plugin marketplace add aws/agent-toolkit-for-aws
+```
 
-Apache-2.0
+Then launch Codex and run `/plugins` to browse and install the **aws-core** plugin.
+
+## What's included
+
+### AWS MCP Server
+
+This plugin configures the [AWS MCP Server](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/understanding-mcp-server-tools.html), a managed server that gives your agent:
+
+- Real-time AWS documentation search through `search_documentation` (no authentication required)
+- On-demand skill discovery and retrieval through `retrieve_skill` (no authentication required)
+- Authenticated access to any of the 300+ AWS services through `call_aws`
+- Sandboxed Python script execution through `run_script`
+
+### Skills
+
+This plugin includes the following default skills:
+
+| Skill | Description |
+|-------|-------------|
+| billing-and-cost-management | Analyze, monitor, and optimize AWS costs |
+| aws-sdk-js-v3-usage | Best practices for the AWS SDK for JavaScript v3 |
+| aws-sdk-python-usage | Best practices for the AWS SDK for Python (boto3) |
+| aws-sdk-swift-usage | Best practices for the AWS SDK for Swift |
+| find-aws-skills | Discover additional AWS skills |
+| aws-serverless | Build serverless applications on AWS |
+| bedrock | Build with Amazon Bedrock foundation models |
+| cdk | Define and manage AWS infrastructure with CDK and CloudFormation |
+| cloudformation | CloudFormation deployment, validation, and troubleshooting |
+| observability | Monitor applications with CloudWatch |
+| containers | Run containerized workloads on AWS |
+| storage | Store and manage data with AWS storage services |
+| amplify | Build full-stack web and mobile applications with AWS Amplify |
+
+<!-- [TODO] Confirm final skill list matches what ships in the plugin. deploy-to-aws status is RED in tracker. -->
+
+### Rules files
+
+Recommended AWS rules files are available separately in the [`rules/`](../rules/) directory of this repository. See the [rules README](../rules/README.md) for details.
+
+## Documentation
+
+- [User guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/)
+- [AWS MCP Server tools reference](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/understanding-mcp-server-tools.html)
