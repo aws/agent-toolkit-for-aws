@@ -1,35 +1,15 @@
-# AWS Agent Rules
+# AWS Guidance
 
-Platform-agnostic agent configuration snippets for working with AWS. Copy the relevant sections into your `AGENTS.md`, `CLAUDE.md`, or `.kiro/steering/` files.
-
-## Recommended Rules
-
-### Use MCP servers for AWS documentation
-
-```markdown
-When answering questions about AWS services, always use the AWS Knowledge MCP server
-for documentation lookups and recommendations before relying on training data.
-```
-
-### Search for skills before building from scratch
-
-```markdown
-Before attempting an AWS task from scratch, search for existing skills in the
-agent-toolkit-for-aws plugin that may already solve the problem. Use the skill's
-references and scripts when available.
-```
-
-### Confirm before deploying
-
-```markdown
-Always confirm with the user before deploying AWS resources. Show estimated costs
-and the resources that will be created before proceeding.
-```
-
-### Use least-privilege IAM
-
-```markdown
-When creating IAM roles or policies, always follow the principle of least privilege.
-Never create policies with wildcard (*) actions or resources unless explicitly
-requested by the user.
-```
+- Prefer the AWS MCP Server for AWS interactions — it provides sandboxed
+  execution, observability, and audit logging. If unavailable, use the
+  AWS CLI directly.
+- Before starting a task, check whether a relevant AWS skill is available.
+  Load the skill with `retrieve_skill` and prefer its guidance over
+  general knowledge.
+- When uncertain about specific AWS details (API parameters, permissions,
+  limits, error codes), verify against documentation rather than guessing.
+  State uncertainty explicitly if you cannot confirm.
+- When creating infrastructure, prefer infrastructure-as-code (AWS CDK or
+  CloudFormation) over direct CLI commands.
+- When working with infrastructure, follow AWS Well-Architected Framework
+  principles.
