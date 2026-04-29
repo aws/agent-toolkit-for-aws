@@ -2,7 +2,7 @@
 
 Help AI coding agents build, deploy, and manage applications on AWS.
 
-The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Cursor, and Codex.
+The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code and Codex.
 
 ## Quick start
 
@@ -10,7 +10,7 @@ The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guard
 
 ```
 /plugin marketplace add aws/agent-toolkit-for-aws
-/plugin install aws-core@aws-agent-toolkit-for-aws
+/plugin install aws-core@agent-toolkit-for-aws
 /reload-plugins
 ```
 
@@ -86,10 +86,6 @@ The [AWS MCP Server](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/
 
 - [User guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) — Setup, configuration, and reference documentation.
 - [AWS MCP Server tools](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/understanding-mcp-server-tools.html) — Reference for all available MCP tools.
-
-## Security
-
-If you discover a potential security issue, please follow the [AWS Vulnerability Reporting](https://aws.amazon.com/security/vulnerability-reporting/) process. Do not create a public GitHub issue.
 
 ## License
 

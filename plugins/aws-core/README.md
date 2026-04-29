@@ -8,7 +8,7 @@ The primary plugin for the Agent Toolkit for AWS. This plugin gives your AI codi
 
 ```
 /plugin marketplace add aws/agent-toolkit-for-aws
-/plugin install aws-core@aws-agent-toolkit-for-aws
+/plugin install aws-core@agent-toolkit-for-aws
 /reload-plugins
 ```
 
@@ -51,7 +51,7 @@ This plugin includes the following default skills:
 | observability | Monitor applications with CloudWatch |
 | containers | Run containerized workloads on AWS |
 | storage | Store and manage data with AWS storage services |
-| amplify | Build full-stack web and mobile applications with AWS Amplify |
+| amplify-gen2 | Build full-stack web and mobile applications with AWS Amplify Gen2 |
 
 <!-- [TODO] Confirm final skill list matches what ships in the plugin. deploy-to-aws status is RED in tracker. -->
 
