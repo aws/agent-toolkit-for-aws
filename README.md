@@ -28,7 +28,12 @@ Out of scope: non-AWS content, executable applications, infrastructure deploymen
 
 ### Codex
 
-The Codex marketplace manifest is at `.agents/plugins/marketplace.json`. Codex discovers plugins from the repository automatically.
+```bash
+# Add the marketplace
+codex plugin marketplace add aws/agent-toolkit-for-aws
+```
+
+Then open the plugin directory in Codex and install the desired plugin. When working inside a clone of this repository, Codex discovers plugins automatically from the repo marketplace at `.agents/plugins/marketplace.json`.
 
 ### Kiro
 

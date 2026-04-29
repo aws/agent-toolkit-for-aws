@@ -5,7 +5,13 @@
   "author": {
     "name": "Amazon Web Services"
   },
+  "homepage": "https://github.com/aws/agent-toolkit-for-aws",
+  "repository": "https://github.com/aws/agent-toolkit-for-aws",
   "license": "Apache-2.0",
+  "keywords": [
+    "aws",
+    "agents"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -16,6 +22,11 @@
     "category": "Cloud",
     "capabilities": [
       "Read"
+    ],
+    "websiteURL": "https://github.com/aws/agent-toolkit-for-aws",
+    "defaultPrompt": [
+      "Use find-aws-skills to discover available AWS skills.",
+      "Help me build an AI agent on AWS."
     ]
   }
 }
