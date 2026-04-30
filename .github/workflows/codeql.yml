@@ -1,0 +1,60 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly on Wednesday at 14:23 UTC (arbitrary off-peak time)
+    - cron: "23 14 * * 3"
+  workflow_dispatch: {}
+
+# Default to no permissions; grant minimally at the job level.
+permissions:
+  actions: none
+  attestations: none
+  checks: none
+  contents: none
+  deployments: none
+  discussions: none
+  id-token: none
+  issues: none
+  models: none
+  packages: none
+  pages: none
+  pull-requests: none
+  repository-projects: none
+  security-events: none
+  statuses: none
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload SARIF to code scanning
+      packages: read # fetch internal CodeQL packs (no-op for public repos)
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Scans workflow YAML for GitHub Actions security pitfalls
+          # (script injection, untrusted checkout patterns, over-broad tokens).
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@5e7a52feb2a3dfb87f88be2af33b9e2275f48de6 # v4.32.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@5e7a52feb2a3dfb87f88be2af33b9e2275f48de6 # v4.32.2
+        with:
+          category: "/language:${{ matrix.language }}"

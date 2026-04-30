@@ -1,0 +1,28 @@
+# Dependabot configuration.
+#
+# Covers the only automated dependency surface in this repo: the pinned
+# action SHAs in .github/workflows/. Mise-managed tools (node, gitleaks,
+# markdownlint-cli2) are bumped manually via `mise upgrade`.
+#
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      # Group all action SHA bumps into a single PR per week to reduce noise.
+      actions:
+        patterns:
+          - "*"

@@ -1,9 +1,8 @@
-name: Build
+name: Dependency Review
 
 on:
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 # Default to no permissions; grant minimally at the job level.
 permissions:
@@ -24,20 +23,13 @@ permissions:
   statuses: none
 
 jobs:
-  build:
+  dependency-review:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
-
-      - name: Lint markdown
-        run: mise run lint:md
-
-      - name: Validate manifests and skills
-        run: mise run lint:manifests
-
-      - name: Security scan (gitleaks)
-        run: mise run security
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          # Shared Amazon OSPO dependency-review config used across awslabs/aws repos.
+          config-file: amazon-ospo/dependency-review-config/default/dependency-review-config.yml@8e4c9fdde54d2b7c6a3a28b97eddd26c4cd90a66 # main
