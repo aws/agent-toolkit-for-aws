@@ -1,32 +1,187 @@
-# Agent Plugin for AWS
+# aws-data-analytics
 
-AWS agent plugin with skills and MCP server connections.
+## Overview
 
-## Skills
+This plugin brings AWS data engineering expertise directly into your coding assistant, covering the full data lifecycle across [AWS Analytics](https://aws.amazon.com/big-data/datalakes-and-analytics/) services; currently, skills are provided to assist with the following capability areas:
 
-| Skill | Description |
-|-------|-------------|
-| [find-aws-skills](skills/find-aws-skills/) | Discover and load AWS skills at runtime |
+- **Data Lake Operations** — Create managed Iceberg tables on Amazon S3 Tables, ingest data from S3, JDBC databases, Snowflake, BigQuery, DynamoDB, and existing Glue catalog tables, and query across default and federated catalogs with Amazon Athena.
+- **Data Discovery** — Inventory and audit your AWS Glue Data Catalog across S3 Tables, Redshift-federated, and remote Iceberg catalogs. Resolve data asset references by name, keyword, column, or S3 path.
+- **Vector Storage** — Store and query vector embeddings using Amazon S3 Vectors for cost-effective semantic search and RAG workloads.
+- **External Connectivity** — Create and troubleshoot AWS Glue connections to JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift, Snowflake, and BigQuery.
+
+## Agent Skills
+
+| # | Skill | Description | Documentation |
+| -- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| 1 | `create-data-lake-table` | Create managed Iceberg tables using Amazon S3 Tables with automatic compaction, Glue catalog registration, and partitioning | [SKILL.md](skills/create-data-lake-table/SKILL.md) |
+| 2 | `ingest-into-data-lake` | Import data from S3 files, JDBC databases, Snowflake, BigQuery, DynamoDB, or existing Glue catalog tables into S3 Tables or standard Iceberg | [SKILL.md](skills/ingest-into-data-lake/SKILL.md) |
+| 3 | `query-data-lake` | Execute and manage Athena SQL queries across default and federated catalogs (Glue, S3 Tables, Redshift) | [SKILL.md](skills/query-data-lake/SKILL.md) |
+| 4 | `find-data-lake-assets` | Resolve data lake asset references across Glue Data Catalog, S3, S3 Tables, and Redshift by name, keyword, column, or S3 path | [SKILL.md](skills/find-data-lake-assets/SKILL.md) |
+| 5 | `exploring-data-catalog` | Full inventory and audit of AWS Glue Data Catalog assets across S3 Tables, Redshift-federated, and remote Iceberg catalogs | [SKILL.md](skills/exploring-data-catalog/SKILL.md) |
+| 6 | `store-and-query-vectors` | Store and query vector embeddings using Amazon S3 Vectors for semantic search and RAG workloads | [SKILL.md](skills/store-and-query-vectors/SKILL.md) |
+| 7 | `connect-to-data-source` | Create and troubleshoot AWS Glue connections to JDBC databases, Redshift, Snowflake, and BigQuery | [SKILL.md](skills/connect-to-data-source/SKILL.md) |
 
 ## MCP Servers
 
-| Server | Transport | Description |
-|--------|-----------|-------------|
-| aws-mcp | stdio | AWS MCP server via `mcp-proxy-for-aws` |
+| # | Server | Description |
+| - | --------- | ----------------------------------------------------------- |
+| 1 | `aws-mcp` | AWS documentation, SOP retrieval, and AWS API access via `mcp-proxy-for-aws` |
 
 ## Installation
 
+**Prerequisite:** [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
+
+### Kiro
+
+Install the skills and MCP server using the [Skills CLI](https://github.com/vercel-labs/skills):
+
+```
+npx skills add https://github.com/aws/agent-toolkit-for-aws/tree/main/plugins/aws-data-analytics/skills --all --agent kiro-cli --copy
+```
+
+Then copy the MCP server configuration to your project:
+
+```
+cp .mcp.json .kiro/settings/mcp.json
+```
+
+The skills and MCP server are installed into the `.kiro/` directory in your current project. Kiro loads them automatically when launched from that directory.
+
 ### Claude Code
 
-```bash
-/plugin marketplace add aws/agent-toolkit-for-aws
+Run in your terminal:
+
+```
+claude plugin install aws-data-analytics@agent-toolkit-for-aws
+```
+
+Or if you're already inside Claude Code, run:
+
+```
 /plugin install aws-data-analytics@agent-toolkit-for-aws
 ```
 
-### Codex
+### Cursor
 
-Discovered automatically from the marketplace manifest.
+Install from the [Cursor Marketplace](https://cursor.com/marketplace/aws/aws-data-analytics) by selecting **Add to Cursor**, or run within Cursor:
+
+```
+/add-plugin aws-data-analytics
+```
+
+### Other Agents
+
+For other agents, install the skills and MCP server manually.
+
+**Install skills** using the [Skills CLI](https://github.com/vercel-labs/skills):
+
+```
+npx skills add https://github.com/aws/agent-toolkit-for-aws/tree/main/plugins/aws-data-analytics/skills --all --agent <AGENT> --copy
+```
+
+Replace `<AGENT>` with your agent name. See [Skills supported agents](https://github.com/vercel-labs/skills#supported-agents).
+
+**Add the MCP server** by copying `.mcp.json` to your agent's configuration path.
+
+## Data Lake Operations
+
+The data lake skills cover the jobs-to-be-done for building and operating a data lake on AWS. They encode AWS best practices into agent-readable instruction packages, guiding you from table creation through ingestion and querying.
+
+### How It Works
+
+- **Create tables** — The `create-data-lake-table` skill sets up managed Iceberg tables on Amazon S3 Tables with automatic compaction, snapshot management, Glue catalog registration, partitioning, and IAM access control.
+- **Ingest data** — The `ingest-into-data-lake` skill moves data from local files, S3, JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora, Redshift), Snowflake, BigQuery, DynamoDB, or existing Glue catalog tables into your data lake. Supports one-time loads, recurring pipelines, and migrations.
+- **Query data** — The `query-data-lake` skill executes Athena SQL queries across default and federated catalogs, with workgroup selection, statement classification, cost tracking, and error recovery.
+
+### Examples
+
+- "Create an Iceberg table for our order events with daily partitioning"
+- "Import our PostgreSQL sales data into the data lake"
+- "Query the top 10 customers by revenue from our analytics table"
+- "Migrate our existing Hive tables to Iceberg on S3 Tables"
+
+## Data Discovery
+
+The discovery skills help you understand what data exists in your AWS account and find specific assets quickly.
+
+- **`exploring-data-catalog`** — Full inventory and audit across Glue Data Catalog, S3 Tables, Redshift-federated, and remote Iceberg catalogs. Maps your data landscape, flags stale tables, and suggests improvements.
+- **`find-data-lake-assets`** — Resolves fuzzy data references ("our orders table", "the sales dataset") to concrete catalog entries using layered search across Glue, S3, S3 Tables, and Redshift.
+
+### Examples
+
+- "What data do we have in our account?"
+- "Inventory all catalogs and databases"
+- "Find the table that has customer_id"
+- "Where is our quarterly revenue data?"
+
+## Vector Storage
+
+The `store-and-query-vectors` skill provides cost-effective vector embedding storage and retrieval using Amazon S3 Vectors, optimized for long-term storage with subsecond query latency.
+
+### Examples
+
+- "Create a vector index for our product embeddings"
+- "Store these document embeddings for RAG"
+- "Find the most similar items to this query vector"
+
+## External Connectivity
+
+The `connect-to-data-source` skill creates and troubleshoots AWS Glue connections to external databases. It discovers existing connections and candidate sources in your account, registers credentials securely via Secrets Manager or IAM DB auth, configures VPC networking, and tests end-to-end connectivity.
+
+### Examples
+
+- "Connect to our Oracle production database"
+- "Set up a Glue connection to Snowflake"
+- "Test my existing BigQuery connection"
+- "Troubleshoot the connection timeout on my RDS connection"
+
+## Supported Environments
+
+### Using the plugin in your local compute
+
+In your local environment, configure AWS credentials and set your target region to get started.
+
+#### Prerequisites
+
+- An AWS account with access to AWS Analytics services (Glue, Athena, S3 Tables, S3 Vectors)
+- Local AWS credentials and config
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for MCP server)
+
+#### Authentication and Authorization
+
+Configure AWS credentials using one of the following methods:
+
+- **AWS CLI** — Run [`aws configure`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html) (IAM credentials) or [`aws sso login`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html) (IAM Identity Center)
+- **Environment variables** — Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN`. See [Configuring environment variables](https://docs.aws.amazon.com/cli/v1/userguide/cli-configure-envvars.html) for details.
+
+Your IAM role needs permissions for the AWS services used by the skills you install. The relevant IAM action namespaces are:
+
+- `athena` - Query execution and workgroup management
+- `glue` - Data Catalog operations and ETL jobs
+- `s3` - Object storage operations
+- `s3tables` - Managed Iceberg table operations (separate from `s3`)
+- `s3vectors` - Vector storage operations (separate from `s3`)
+
+Scope permissions to the resources your workload uses.
+
+#### Configuration
+
+- Set `AWS_DEFAULT_REGION` to your preferred AWS region (e.g., `us-east-1`). See [Configuring environment variables](https://docs.aws.amazon.com/cli/v1/userguide/cli-configure-envvars.html) for details.
+
+## Customizing Skills for Your Organization
+
+The skills in this plugin encode AWS best practices, but they are fully customizable. You can fork the repository and modify any `SKILL.md` to reflect your organization's standards, naming conventions, approved data formats, or internal tooling. Workspace-level skills take precedence over global skills, so teams can maintain their own versions without affecting other users.
+
+## Related Resources
+
+- [AWS Analytics Services](https://aws.amazon.com/big-data/datalakes-and-analytics/)
+- [Amazon S3 Tables](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables.html)
+- [Amazon S3 Vectors](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors.html)
+- [Amazon Athena User Guide](https://docs.aws.amazon.com/athena/latest/ug/what-is.html)
+- [AWS Glue Developer Guide](https://docs.aws.amazon.com/glue/latest/dg/what-is-glue.html)
+- [Agent Skills open standard — Anthropic](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
+- [AWS Agent Toolkit for AWS](https://github.com/aws/agent-toolkit-for-aws)
 
 ## License
 
-Apache-2.0
+This project is licensed under the Apache 2.0 License.
