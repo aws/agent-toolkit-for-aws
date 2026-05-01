@@ -56,7 +56,7 @@ Plugins bundle the AWS MCP Server configuration and agent skills into a single i
 | Plugin | Description |
 |--------|-------------|
 | [aws-core](plugins/aws-core/) | Core AWS skills and MCP Server configuration. Covers service selection, CDK/CloudFormation, serverless, containers, storage, observability, billing, SDK usage, and deployment. **Start here.** |
-| [aws-agent-building](plugins/aws-agent-building/) | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore. |
+| [aws-agents](plugins/aws-agents/) | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore. |
 | [aws-data-analytics](plugins/aws-data-analytics/) | Skills for data lake, analytics, and ETL workflows with S3 Tables, Glue, and Athena. |
 
 Plugins are currently available for Claude Code and Codex. For other agents, configure the AWS MCP Server directly and install skills from this repository.

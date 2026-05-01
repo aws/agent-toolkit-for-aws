@@ -1,5 +1,5 @@
 {
-  "name": "aws-agent-building",
+  "name": "aws-agents",
   "version": "0.1.0",
   "description": "AWS agent plugin with skills and MCP server connections.",
   "author": {
