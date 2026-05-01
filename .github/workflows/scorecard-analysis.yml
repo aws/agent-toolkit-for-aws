@@ -1,0 +1,49 @@
+name: Scorecard Analysis
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly on Mondays at 11:00 UTC (03:00 Pacific)
+    - cron: "0 11 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload SARIF to code scanning
+      id-token: write # publish results to OSSF
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
+        with:
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          # Scorecard team runs a weekly scan of public GitHub repos
+          # (https://github.com/ossf/scorecard#public-data). Setting
+          # `publish_results: true` lets the OSSF reuse our workflow output
+          # instead of scanning us independently.
+          publish_results: true
+
+      - name: Upload SARIF artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SARIF file
+          path: scorecard-results.sarif
+          retention-days: 14
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@5e7a52feb2a3dfb87f88be2af33b9e2275f48de6 # v4.32.2
+        with:
+          sarif_file: scorecard-results.sarif
