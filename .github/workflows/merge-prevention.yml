@@ -1,0 +1,116 @@
+---
+# Prevents unintentional merges beyond what branch rulesets can express.
+#
+# Two independent gates:
+#   1. Label gate  — a PR labelled with `do-not-merge` (or `vars.DO_NOT_MERGE_LABEL`)
+#      is blocked until the label is removed.
+#   2. Global gate — the `HALT_MERGES` repo variable blocks all merges when set:
+#        HALT_MERGES=0       → gate disabled (default)
+#        HALT_MERGES=<N>     → only PR #N is allowed to merge
+#        HALT_MERGES=-1      → all merges blocked
+#
+# Both gates are cheap escape hatches for incident response; they are not a
+# replacement for branch protection rules.
+name: Merge Prevention
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - labeled
+      - unlabeled
+  merge_group:
+    types:
+      - checks_requested
+
+# Default to no permissions; grant minimally at the job level.
+permissions:
+  actions: none
+  attestations: none
+  checks: none
+  contents: none
+  deployments: none
+  discussions: none
+  id-token: none
+  issues: none
+  models: none
+  packages: none
+  pages: none
+  pull-requests: none
+  repository-projects: none
+  security-events: none
+  statuses: none
+
+env:
+  DO_NOT_MERGE_LABEL: ${{ vars.DO_NOT_MERGE_LABEL || 'do-not-merge' }}
+  HALT_MERGES: ${{ vars.HALT_MERGES || '0' }}
+
+jobs:
+  get-pr-info:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.get-pr.outputs.pr-number }}
+      pr_labels: ${{ steps.get-pr.outputs.pr-labels }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+    steps:
+      - name: Get PR info
+        id: get-pr
+        run: |
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            PR_NUMBER=$(echo "${{ github.ref }}" | grep -oP '(?<=/pr-)\d+' || echo "")
+            PR_LABELS=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" | jq -c '[.labels[].name] // []')
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            PR_LABELS=$(echo "$PR_LABELS_JSON" | jq -c '.')
+          fi
+
+          echo "pr-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "pr-labels=$PR_LABELS" >> "$GITHUB_OUTPUT"
+
+  check-halt-merges:
+    runs-on: ubuntu-latest
+    needs: get-pr-info
+    if: always()
+    steps:
+      - name: Enforce HALT_MERGES gate
+        env:
+          PR_NUMBER: ${{ needs.get-pr-info.outputs.pr_number }}
+        run: |
+          # Default to 0 (allow all) if not set
+          if [ -z "$HALT_MERGES" ]; then
+            HALT_MERGES=0
+          fi
+
+          if [ "$HALT_MERGES" = "0" ]; then
+            echo "::debug::All merges allowed (HALT_MERGES=0)"
+            exit 0
+          elif [ "$HALT_MERGES" = "$PR_NUMBER" ]; then
+            echo "::debug::PR #$PR_NUMBER is explicitly allowed"
+            exit 0
+          else
+            if [ "$HALT_MERGES" -lt 0 ] 2>/dev/null; then
+              echo "::error::All merges are blocked (HALT_MERGES=$HALT_MERGES)"
+            else
+              echo "::warning::Only PR #$HALT_MERGES is allowed to merge"
+            fi
+            exit 1
+          fi
+
+  check-do-not-merge-label:
+    runs-on: ubuntu-latest
+    needs: get-pr-info
+    if: always()
+    steps:
+      - name: Block when PR has the "${{ env.DO_NOT_MERGE_LABEL }}" label
+        if: contains(needs.get-pr-info.outputs.pr_labels, env.DO_NOT_MERGE_LABEL)
+        run: |
+          echo "::error::The label \"${{ env.DO_NOT_MERGE_LABEL }}\" is used to prevent merging."
+          exit 1
