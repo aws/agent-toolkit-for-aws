@@ -2,7 +2,7 @@
   "author": {
     "name": "Amazon Web Services"
   },
-  "description": "Data lake, analytics, and ETL workflows with S3 Tables, Glue, and Athena.",
+  "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena.",
   "homepage": "https://github.com/aws/agent-toolkit-for-aws",
   "keywords": [
     "aws",
