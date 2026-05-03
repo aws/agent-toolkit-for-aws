@@ -1,7 +1,7 @@
 {
   "name": "aws-data-analytics",
   "version": "0.1.0",
-  "description": "AWS agent plugin with skills and MCP server connections.",
+  "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena.",
   "author": {
     "name": "Amazon Web Services"
   },
@@ -9,9 +9,9 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Agent Plugin for AWS",
-    "shortDescription": "AWS agent plugin with skills and MCP servers",
-    "longDescription": "AWS agent plugin with skills and MCP server connections.",
+    "displayName": "AWS Data Analytics",
+    "shortDescription": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena",
+    "longDescription": "Skills for building and operating data lakes on AWS. Covers table creation, data ingestion, querying, discovery, vector storage, and external connectivity across S3 Tables, AWS Glue, Athena, and more.",
     "developerName": "Amazon Web Services",
     "category": "Cloud",
     "capabilities": [

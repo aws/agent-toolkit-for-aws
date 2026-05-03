@@ -2,10 +2,18 @@
   "author": {
     "name": "Amazon Web Services"
   },
-  "description": "AWS agent plugin with skills and MCP server connections.",
+  "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena.",
   "homepage": "https://github.com/aws/agent-toolkit-for-aws",
   "keywords": [
-    "aws"
+    "aws",
+    "analytics",
+    "data-lake",
+    "athena",
+    "glue",
+    "s3-tables",
+    "s3-vectors",
+    "iceberg",
+    "etl"
   ],
   "license": "Apache-2.0",
   "name": "aws-data-analytics",
