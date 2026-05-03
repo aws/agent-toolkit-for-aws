@@ -4,8 +4,8 @@
 
 This plugin brings AWS data engineering expertise directly into your coding assistant, covering the full data lifecycle across [AWS Analytics](https://aws.amazon.com/big-data/datalakes-and-analytics/) services; currently, skills are provided to assist with the following capability areas:
 
-- **Data Lake Operations** — Create managed Iceberg tables on Amazon S3 Tables, ingest data from S3, JDBC databases, Snowflake, BigQuery, DynamoDB, and existing Glue catalog tables, and query across default and federated catalogs with Amazon Athena.
-- **Data Discovery** — Inventory and audit your AWS Glue Data Catalog across S3 Tables, Redshift-federated, and remote Iceberg catalogs. Resolve data asset references by name, keyword, column, or S3 path.
+- **Data Lake Operations** — Build and operate a data lake on AWS: create managed Iceberg tables on Amazon S3 Tables, ingest data from diverse sources (S3, JDBC databases, Snowflake, BigQuery, DynamoDB, Glue catalog tables), and query across default and federated catalogs with Amazon Athena.
+- **Data Discovery** — Inventory and audit your AWS Glue Data Catalog across S3 Tables, Redshift-federated, and remote Iceberg catalogs. Resolve data asset references by name, keyword, column, or reverse-lookup from S3 location metadata in the catalog.
 - **Vector Storage** — Store and query vector embeddings using Amazon S3 Vectors for cost-effective semantic search and RAG workloads.
 - **External Connectivity** — Create and troubleshoot AWS Glue connections to JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift, Snowflake, and BigQuery.
 
@@ -25,63 +25,50 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 
 | # | Server | Description |
 | - | --------- | ----------------------------------------------------------- |
-| 1 | `aws-mcp` | AWS documentation, SOP retrieval, and AWS API access via `mcp-proxy-for-aws` |
+| 1 | `aws-mcp` | AWS API access, documentation search, and SOP retrieval via [AWS MCP Server](https://docs.aws.amazon.com/aws-mcp/latest/userguide/understanding-mcp-server-tools.html) |
 
 ## Installation
 
 **Prerequisite:** [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
 
-### Kiro
-
-Install the skills and MCP server using the [Skills CLI](https://github.com/vercel-labs/skills):
-
-```
-npx skills add https://github.com/aws/agent-toolkit-for-aws/tree/main/plugins/aws-data-analytics/skills --all --agent kiro-cli --copy
-```
-
-Then copy the MCP server configuration to your project:
-
-```
-cp .mcp.json .kiro/settings/mcp.json
-```
-
-The skills and MCP server are installed into the `.kiro/` directory in your current project. Kiro loads them automatically when launched from that directory.
-
 ### Claude Code
 
-Run in your terminal:
-
 ```
-claude plugin install aws-data-analytics@agent-toolkit-for-aws
-```
-
-Or if you're already inside Claude Code, run:
-
-```
+/plugin marketplace add aws/agent-toolkit-for-aws
 /plugin install aws-data-analytics@agent-toolkit-for-aws
+/reload-plugins
 ```
 
-### Cursor
+### Codex
 
-Install from the [Cursor Marketplace](https://cursor.com/marketplace/aws/aws-data-analytics) by selecting **Add to Cursor**, or run within Cursor:
+In your terminal:
 
 ```
-/add-plugin aws-data-analytics
+codex plugin marketplace add aws/agent-toolkit-for-aws
 ```
+
+Then launch Codex and run `/plugins` to browse and install the **aws-data-analytics** plugin.
 
 ### Other Agents
 
-For other agents, install the skills and MCP server manually.
+Add the AWS MCP Server to your agent's MCP configuration:
 
-**Install skills** using the [Skills CLI](https://github.com/vercel-labs/skills):
-
+```json
+{
+  "mcpServers": {
+    "aws": {
+      "command": "uvx",
+      "args": [
+        "mcp-proxy-for-aws@latest",
+        "https://aws-mcp.us-east-1.api.aws/mcp",
+        "--metadata", "AWS_REGION=us-west-2"
+      ]
+    }
+  }
+}
 ```
-npx skills add https://github.com/aws/agent-toolkit-for-aws/tree/main/plugins/aws-data-analytics/skills --all --agent <AGENT> --copy
-```
 
-Replace `<AGENT>` with your agent name. See [Skills supported agents](https://github.com/vercel-labs/skills#supported-agents).
-
-**Add the MCP server** by copying `.mcp.json` to your agent's configuration path.
+Then copy skills from the [`skills/`](skills/) directory to your agent's skills directory.
 
 ## Data Lake Operations
 
@@ -170,7 +157,7 @@ Scope permissions to the resources your workload uses.
 
 ## Customizing Skills for Your Organization
 
-The skills in this plugin encode AWS best practices, but they are fully customizable. You can fork the repository and modify any `SKILL.md` to reflect your organization's standards, naming conventions, approved data formats, or internal tooling. Workspace-level skills take precedence over global skills, so teams can maintain their own versions without affecting other users.
+The skills in this plugin follow AWS best practices, but they are fully customizable. You can fork the repository and modify any `SKILL.md` to reflect your organization's standards, naming conventions, approved data formats, or internal tooling. Workspace-level skills take precedence over global skills, so teams can maintain their own versions without affecting other users.
 
 ## Related Resources
 
