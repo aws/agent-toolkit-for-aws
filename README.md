@@ -15,6 +15,8 @@ The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guard
 ```
 /plugin marketplace add aws/agent-toolkit-for-aws
 /plugin install aws-core@agent-toolkit-for-aws
+/plugin install aws-agents@agent-toolkit-for-aws
+/plugin install aws-data-analytics@agent-toolkit-for-aws
 /reload-plugins
 ```
 
@@ -68,6 +70,10 @@ Plugins are currently available for Claude Code and Codex. For other agents, con
 ### Skills
 
 Agent skills are curated packages of instructions and reference materials that help agents complete specific AWS tasks. Skills are loaded on demand — agents discover and retrieve only what's relevant to the current task.
+
+```
+npx skills add aws/agent-toolkit-for-aws
+```
 
 Browse the [`skills/`](skills/) directory to see all available skills.
 
