@@ -1,27 +1,32 @@
 ---
 name: connect-to-data-source
-description: >
-  Create and troubleshoot AWS Glue connections to JDBC databases (Oracle,
-  SQL Server, PostgreSQL, MySQL, RDS), Redshift, Snowflake, and BigQuery.
-  Gathers connection hints from user, discovers existing connections and
-  RDS/Redshift candidates, registers credentials in Secrets Manager or IAM
-  DB auth, configures VPC, and tests. Triggers on: connect to database,
-  set up Glue connection, register data source, connect to
-  Snowflake/BigQuery/RDS, connection timeout, test connection, troubleshoot
-  connection. Do NOT use for moving data (use ingest-into-data-lake),
-  creating tables (use create-data-lake-table), queries
-  (use query-data-lake), catalog exploration (use exploring-data-catalog),
-  or SaaS (Salesforce, ServiceNow, SAP, MongoDB, Kafka).
-argument-hint: "[source-type|connection-name|hostname]"
-owner_team: AWS Analytics
-owner_cti: AWS/Analytics/Agent Skills
-stages: [preprod]
+description: 'Create and troubleshoot AWS Glue connections to JDBC databases (Oracle,
+  SQL Server, PostgreSQL, MySQL, RDS), Redshift, Snowflake, and BigQuery. Gathers
+  connection hints from user, discovers existing connections and RDS/Redshift candidates,
+  registers credentials in Secrets Manager or IAM DB auth, configures VPC, and tests.
+  Triggers on: connect to database, set up Glue connection, register data source,
+  connect to Snowflake/BigQuery/RDS, connection timeout, test connection, troubleshoot
+  connection. Do NOT use for moving data (use ingest-into-data-lake), creating tables
+  (use create-data-lake-table), queries (use query-data-lake), catalog exploration
+  (use exploring-data-catalog), or SaaS (Salesforce, ServiceNow, SAP, MongoDB, Kafka).
+
+  '
 version: 1
 metadata:
-  service: [glue, secretsmanager, rds, redshift]
-  task: [deploy, debug]
-  persona: [developer, data-engineer]
-  workload: [data-analytics]
+  service:
+  - glue
+  - secretsmanager
+  - rds
+  - redshift
+  task:
+  - deploy
+  - debug
+  persona:
+  - developer
+  - data-engineer
+  workload:
+  - data-analytics
+argument-hint: '[source-type|connection-name|hostname]'
 ---
 
 # Connect to Data Source
@@ -49,7 +54,7 @@ Ask the user which source type they want to connect to, or infer from hints:
 
 | User says... | Source type | Connection type | Reference |
 |---|---|---|---|
-| "Oracle", "SQL Server", "Postgres", "MySQL", "RDS \<engine\>" | JDBC database | `JDBC` | [jdbc-setup.md](references/jdbc-setup.md) |
+| "Oracle", "SQL Server", "Postgres", "MySQL", "RDS <engine>" | JDBC database | `JDBC` | [jdbc-setup.md](references/jdbc-setup.md) |
 | "Redshift", "my cluster", "my data warehouse on AWS" | Redshift | `JDBC` | [jdbc-setup.md](references/jdbc-setup.md) (Redshift section) |
 | "Snowflake" | Snowflake | `SNOWFLAKE` | [snowflake-setup.md](references/snowflake-setup.md) |
 | "BigQuery", "Google analytics warehouse" | BigQuery | `BIGQUERY` | [bigquery-setup.md](references/bigquery-setup.md) |
@@ -61,7 +66,6 @@ If the user names DynamoDB or a local file, stop and tell them: DynamoDB is read
 You MUST ask for hints the user can provide -- do not guess.
 
 **For all sources:**
-
 - Desired connection name (lowercase, hyphens: `oracle-prod-sales`, `snowflake-analytics`)
 - Existing Secrets Manager secret, or create one
 - Is source reachable from a Glue VPC (same, peered, VPN, Direct Connect)
@@ -77,15 +81,12 @@ You MUST ask for hints the user can provide -- do not guess.
 Check what exists before creating.
 
 **Existing Glue connections:**
-
 ```bash
 aws glue get-connections --filter ConnectionType=<TYPE> --region <REGION>
 ```
-
 If a suitable one exists, confirm and skip to Step 7.
 
 **Candidate sources in account** (JDBC/Redshift only):
-
 - RDS: `aws rds describe-db-instances`
 - Aurora: `aws rds describe-db-clusters`
 - Redshift: `aws redshift describe-clusters`
@@ -114,7 +115,7 @@ Private sources require `PhysicalConnectionRequirements` (SubnetId, SecurityGrou
 
 You MUST test before handing off. Testing is two-phase: a quick API check, then an engine-level verification.
 
-#### Phase A: Glue TestConnection (network and credential sanity check)
+**Phase A: Glue TestConnection (network and credential sanity check)**
 
 ```bash
 aws glue test-connection --connection-name <NAME> --region <REGION>
@@ -122,11 +123,11 @@ aws glue test-connection --connection-name <NAME> --region <REGION>
 
 This validates that Glue can reach the source and authenticate. It does NOT prove the connection works end-to-end with the query engine the user plans to use.
 
-#### Phase B: Engine-level verification
+**Phase B: Engine-level verification**
 
 After TestConnection passes, verify the connection works with the user's intended engine by running a minimal query through it:
 
-- **Glue ETL (default):** Run a smoke-test Glue job that reads one row via the connection. See [troubleshooting.md](references/troubleshooting.md#smoke-test-glue-job-template).
+- **Glue ETL (default):** Run a smoke-test Glue job that reads one row via the connection. See [troubleshooting.md](references/troubleshooting.md).
 - **Athena:** If the user plans to query via Athena with a federated connector, run a `SELECT 1` through the Athena connection to confirm the Lambda-based connector can reach the source.
 - **Glue Crawler:** If the user plans to crawl the source, run a test crawl on a single table.
 
@@ -139,7 +140,6 @@ On success in both phases, tell user the connection name is ready for `ingest-in
 Diagnose in order: network, credentials, driver. See [troubleshooting.md](references/troubleshooting.md).
 
 **Constraints:**
-
 - You MUST check VPC routing, security groups, and S3 VPC endpoint before blaming credentials
 - You MUST verify Glue role can read the Secrets Manager secret
 - You MUST NOT rotate credentials without user confirmation
@@ -163,10 +163,10 @@ Diagnose in order: network, credentials, driver. See [troubleshooting.md](refere
 
 | Error | Likely cause | Fix |
 |---|---|---|
-| `Connect timed out` | VPC routing, SG rule, or NAT gateway missing | See [troubleshooting.md](references/troubleshooting.md#network) |
-| `Access denied for user` / `ORA-01017` | Credentials wrong, Secrets Manager access missing, or IAM DB auth misconfigured | See [troubleshooting.md](references/troubleshooting.md#credentials) |
-| `No suitable driver found` | Custom driver JAR not set or wrong class name | See [troubleshooting.md](references/troubleshooting.md#driver) |
-| `SSL handshake failed` | `JDBC_ENFORCE_SSL` mismatch between Glue and source | See [troubleshooting.md](references/troubleshooting.md#ssl) |
+| `Connect timed out` | VPC routing, SG rule, or NAT gateway missing | See [troubleshooting.md](references/troubleshooting.md) |
+| `Access denied for user` / `ORA-01017` | Credentials wrong, Secrets Manager access missing, or IAM DB auth misconfigured | See [troubleshooting.md](references/troubleshooting.md) |
+| `No suitable driver found` | Custom driver JAR not set or wrong class name | See [troubleshooting.md](references/troubleshooting.md) |
+| `SSL handshake failed` | `JDBC_ENFORCE_SSL` mismatch between Glue and source | See [troubleshooting.md](references/troubleshooting.md) |
 | `UnableToFindVpcEndpoint` | S3 VPC endpoint missing | Create S3 gateway endpoint in the connection's VPC |
 
 ## References

@@ -3,7 +3,6 @@
 AWS Glue JDBC connections for Oracle, SQL Server, PostgreSQL, MySQL, MariaDB, Amazon RDS, Amazon Aurora, and Amazon Redshift.
 
 ## Contents
-
 - [URL Formats and Drivers](#url-formats-and-drivers)
 - [Built-in Drivers](#built-in-drivers)
 - [Custom Driver Upload](#custom-driver-upload)
@@ -36,7 +35,6 @@ aws s3 cp ojdbc8-21.jar s3://<scripts-bucket>/jdbc-drivers/
 ```
 
 Add to connection properties:
-
 ```json
 "JDBC_DRIVER_JAR_URI": "s3://<scripts-bucket>/jdbc-drivers/ojdbc8-21.jar",
 "JDBC_DRIVER_CLASS_NAME": "oracle.jdbc.OracleDriver"
@@ -81,7 +79,6 @@ For Redshift Serverless, use the workgroup endpoint and `redshift-serverless:Get
 - Aurora custom endpoints: target a subset of instances, useful for dedicated ETL reader pools
 
 **IAM database authentication** (Aurora MySQL, Aurora PostgreSQL, RDS MySQL, RDS PostgreSQL):
-
 - Enable on the DB cluster/instance: `--enable-iam-database-authentication`
 - Create a DB user `CREATE USER etl_user IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS'`
 - No Secrets Manager secret needed; the Glue role calls `rds-db:connect` at runtime to get a 15-minute token

@@ -3,7 +3,6 @@
 AWS Glue native BigQuery connection (type `BIGQUERY`). Authentication is via a GCP service account; credentials flow through AWS Secrets Manager.
 
 ## Contents
-
 - [Prerequisites](#prerequisites)
 - [Service Account Setup](#service-account-setup)
 - [Secrets Manager Storage](#secrets-manager-storage)
@@ -22,7 +21,6 @@ AWS Glue native BigQuery connection (type `BIGQUERY`). Authentication is via a G
 Service account and key generation happen in GCP, not AWS. For current steps see [GCP service account docs](https://cloud.google.com/iam/docs/service-accounts-create) and [BigQuery access control](https://cloud.google.com/bigquery/docs/access-control).
 
 Minimum GCP IAM roles for read-only ingestion:
-
 - `roles/bigquery.dataViewer` on the target dataset
 - `roles/bigquery.jobUser` on the project (to run queries)
 

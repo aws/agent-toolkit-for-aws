@@ -3,7 +3,6 @@
 Import DynamoDB tables into the data lake. DynamoDB is unique among sources: no Glue connection needed, schemaless items, and no natural watermark column.
 
 ## Contents
-
 - [Method Selection](#method-selection)
 - [Native Export (Path A)](#native-export-path-a)
 - [Glue Direct Read (Path B)](#glue-direct-read-path-b)
@@ -15,7 +14,6 @@ Import DynamoDB tables into the data lake. DynamoDB is unique among sources: no 
 ## Method Selection
 
 Assess the table:
-
 ```bash
 aws dynamodb describe-table --table-name <TABLE>
 ```
@@ -44,7 +42,6 @@ aws dynamodb export-table-to-point-in-time \
 ```
 
 Export formats:
-
 - `DYNAMODB_JSON` (default) -- each item as JSON with type descriptors like `{"S": "value"}`
 - `ION` -- Amazon Ion, more compact, handles binary natively
 
@@ -139,7 +136,6 @@ DynamoDB type to Iceberg:
 ### Strategy options
 
 **Top-level only (simplest):**
-
 ```python
 flat_df = dynamodb_df.select(
     col("pk").alias("partition_key"),
@@ -149,7 +145,6 @@ flat_df = dynamodb_df.select(
 ```
 
 **Flatten one level:**
-
 ```python
 flat_df = dynamodb_df.select(
     col("pk").alias("user_id"),
@@ -159,13 +154,11 @@ flat_df = dynamodb_df.select(
 ```
 
 **Preserve as STRUCT:**
-
 ```python
 flat_df = dynamodb_df.select(col("pk"), col("profile"), col("tags"))
 ```
 
 **Serialize complex types to JSON:**
-
 ```python
 from pyspark.sql.functions import to_json
 flat_df = dynamodb_df.select(col("pk"), to_json(col("metadata")).alias("metadata_json"))
@@ -178,7 +171,6 @@ aws dynamodb scan --table-name <TABLE> --limit 10 --output json
 ```
 
 Or in Spark:
-
 ```python
 sample = dynamodb_df.limit(100).toPandas()
 all_columns = set()

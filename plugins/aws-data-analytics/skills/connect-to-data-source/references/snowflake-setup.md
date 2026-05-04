@@ -3,7 +3,6 @@
 AWS Glue native Snowflake connection (type `SNOWFLAKE`, not `JDBC`). Required for Glue for Spark ETL jobs reading from or writing to Snowflake.
 
 ## Contents
-
 - [Connection Type](#connection-type)
 - [Authentication Modes](#authentication-modes)
 - [Connection JSON Template](#connection-json-template)

@@ -16,7 +16,6 @@ Managed Iceberg tables with automatic compaction, snapshot management, and multi
 Two access methods exist. Use Analytics Integration when the table needs to be visible to Athena, Redshift, or EMR. Use REST Endpoint when only Glue Spark jobs access the table.
 
 **Analytics Integration (recommended for multi-engine access):**
-
 ```
 spark.sql.catalog.s3tablescatalog=org.apache.iceberg.spark.SparkCatalog
 spark.sql.catalog.s3tablescatalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog
@@ -27,7 +26,6 @@ spark.sql.catalog.s3tablescatalog.warehouse=<table-bucket-arn>
 The `warehouse` parameter is required. Without it Spark fails with "Cannot derive default warehouse location".
 
 **REST Endpoint (Glue-only access):**
-
 ```
 spark.sql.catalog.s3tables=org.apache.iceberg.spark.SparkCatalog
 spark.sql.catalog.s3tables.type=rest
@@ -42,7 +40,6 @@ spark.sql.catalog.s3tables.io-impl=org.apache.iceberg.aws.s3.S3FileIO
 Tables created via REST are NOT visible in Athena or Redshift.
 
 **`--conf` format in Glue DefaultArguments:** Pass as a single string. First pair has no `--conf` prefix; subsequent pairs are space-separated with `--conf` prefix:
-
 ```json
 "--conf": "spark.sql.catalog.s3tablescatalog=org.apache.iceberg.spark.SparkCatalog --conf spark.sql.catalog.s3tablescatalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog --conf spark.sql.catalog.s3tablescatalog.glue.id=<account-id>:s3tablescatalog/<table-bucket-name> --conf spark.sql.catalog.s3tablescatalog.warehouse=<table-bucket-arn>"
 ```
@@ -50,7 +47,6 @@ Tables created via REST are NOT visible in Athena or Redshift.
 Use `--cli-input-json file://config.json` to avoid shell escaping issues.
 
 **Write path (PySpark):**
-
 ```python
 df.writeTo("s3tablescatalog.<namespace>.<table>").append()
 ```
@@ -66,7 +62,6 @@ Self-managed Iceberg tables on regular S3 buckets. User handles compaction and s
 - All `spark.sql.catalog.*` config goes in `--conf` job arguments, never in `spark.conf.set()`
 
 **Glue job catalog config:**
-
 ```
 spark.sql.catalog.glue_catalog=org.apache.iceberg.spark.SparkCatalog
 spark.sql.catalog.glue_catalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog
@@ -76,13 +71,11 @@ spark.sql.catalog.glue_catalog.warehouse=s3://<bucket>/<warehouse-prefix>/
 The `warehouse` parameter sets the default base path for new tables.
 
 **Write path (PySpark):**
-
 ```python
 df.writeTo("glue_catalog.<database>.<table>").append()
 ```
 
 **Athena DDL:**
-
 ```sql
 CREATE TABLE <database>.<table> (
   col1 STRING,
@@ -101,7 +94,6 @@ Raw files written to S3 with no Iceberg table metadata. Queryable via external t
 - Suitable when the user explicitly wants raw files, not a managed table
 
 **Write path (PySpark):**
-
 ```python
 # Parquet
 df.write.format("parquet").mode("overwrite").save("s3://<bucket>/<prefix>/")
@@ -114,7 +106,6 @@ df.write.format("csv").option("header", "true").mode("overwrite").save("s3://<bu
 ```
 
 **External table for querying:**
-
 ```sql
 CREATE EXTERNAL TABLE <database>.<table> (
   col1 STRING,

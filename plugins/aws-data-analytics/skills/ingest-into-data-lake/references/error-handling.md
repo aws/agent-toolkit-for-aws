@@ -13,14 +13,12 @@ This reference covers errors encountered during the data import workflow. Errors
 ### Schema Mismatch Errors
 
 **Symptoms**:
-
 - Type conversion failures during load
 - Column count mismatches between source and target
 - Data truncation warnings
 - Null values where not expected
 
 **Root Causes**:
-
 - Source data types don't match target Iceberg types
 - New columns in source not present in target table
 - Missing columns in source that exist in target
@@ -54,7 +52,6 @@ This reference covers errors encountered during the data import workflow. Errors
      - Fail the load (if columns are critical)
 
 **Example Error Message to Present**:
-
 ```
 Schema Mismatch Detected:
 - Column "age": Source type STRING, Target type INT
@@ -72,14 +69,12 @@ Which approach would you prefer?
 ### Permission Errors
 
 **Symptoms**:
-
 - Access Denied errors from AWS services
 - IAM role assumption failures
 - S3 bucket access errors
 - Glue job fails with permission errors
 
 **Root Causes**:
-
 - Missing IAM policies on Glue service role
 - S3 bucket policies blocking access
 - S3 Tables permissions not configured
@@ -114,7 +109,6 @@ Which approach would you prefer?
    - Verify IAM has s3:PutObject on results bucket
 
 **Example Error Message to Present**:
-
 ```
 Permission Error Detected:
 Glue job failed with: "Access Denied" when writing to table
@@ -131,14 +125,12 @@ Would you like me to add this policy to the role?
 ### Data Quality Failures
 
 **Symptoms**:
-
 - Glue Data Quality rules fail
 - Row counts don't match expected
 - High null percentages in critical columns
 - Duplicate primary keys detected
 
 **Root Causes**:
-
 - Source data quality issues
 - Incorrect transformation logic
 - Schema inference errors
@@ -176,7 +168,6 @@ Would you like me to add this policy to the role?
    - See [data-quality-validation.md](data-quality-validation.md)
 
 **Example Error Message to Present**:
-
 ```
 Data Quality Check Failed:
 - Rule: IsPrimaryKey "order_id"
@@ -199,13 +190,11 @@ How would you like to proceed?
 ### Large Dataset Timeouts (Athena)
 
 **Symptoms**:
-
 - Athena query exceeds 30-minute timeout
 - Query runs out of memory
 - S3 read throttling errors
 
 **Root Causes**:
-
 - Dataset too large for single Athena query
 - Insufficient Athena engine size
 - Too many small files causing S3 throttling
@@ -235,7 +224,6 @@ How would you like to proceed?
    - Partition large datasets by date/region
 
 **Example Error Message to Present**:
-
 ```
 Athena Query Timeout:
 Query exceeded 30-minute limit loading 5.2GB of data
@@ -259,13 +247,11 @@ B) Set up batched Athena queries by month
 #### CSV Parsing Errors
 
 **Symptoms**:
-
 - Columns shifted or misaligned
 - Quoted values not parsed correctly
 - Extra or missing columns
 
 **Solutions**:
-
 - Verify delimiter matches file (comma, tab, pipe)
 - Set `.option("quote", "\"")` for quoted fields
 - Set `.option("escape", "\\")` for escaped characters
@@ -275,13 +261,11 @@ B) Set up batched Athena queries by month
 #### JSON Parsing Errors
 
 **Symptoms**:
-
 - Multi-line JSON not parsing
 - Nested structures flattened incorrectly
 - Malformed JSON records causing failures
 
 **Solutions**:
-
 - Set `.option("multiLine", "true")` for multi-line objects
 - Use `.option("mode", "PERMISSIVE")` to handle malformed records
 - Check JSON schema matches expected structure
@@ -291,13 +275,11 @@ B) Set up batched Athena queries by month
 #### Parquet Partition Issues
 
 **Symptoms**:
-
 - Partition columns not detected
 - Schema evolution errors
 - Missing partitions in results
 
 **Solutions**:
-
 - Verify Hive-style partitioning (key=value/)
 - Use `.option("mergeSchema", "true")` for schema evolution
 - Check partition column names match across files
@@ -307,13 +289,11 @@ B) Set up batched Athena queries by month
 #### Avro Library Errors
 
 **Symptoms**:
-
 - "Avro library not found" error
 - Complex union types failing
 - Schema registry connection errors
 
 **Solutions**:
-
 - Add `--datalake-formats: iceberg,avro` to Glue job arguments
 - Or provide spark-avro JAR via `--extra-jars`
 - Convert complex unions to STRING or handle with conditional logic
@@ -324,7 +304,6 @@ B) Set up batched Athena queries by month
 ### Critical (Fail Immediately)
 
 These errors should stop the workflow:
-
 - IAM role doesn't exist or can't be assumed
 - Source S3 path doesn't exist or is empty
 - Target table exists with incompatible schema (cannot evolve)
@@ -335,7 +314,6 @@ These errors should stop the workflow:
 ### Warnings (Proceed with Caution)
 
 These issues should be flagged but allow continuation:
-
 - High null percentage in optional columns
 - Data quality warnings (not critical rules)
 - Schema evolution needed (user approval required)
@@ -346,7 +324,6 @@ These issues should be flagged but allow continuation:
 ### Informational
 
 These are expected and don't require action:
-
 - Using CLI fallback because MCP unavailable
 - Sampling large files for schema inference
 - Automatically inferring schema from source

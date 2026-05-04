@@ -7,7 +7,6 @@ You MUST use least-privilege permissions when configuring access to S3 Tables.
 Actions: `s3tables:GetTableBucket`, `s3tables:GetNamespace`, `s3tables:GetTable`, `s3tables:GetTableMetadataLocation`, `s3tables:GetTableData`
 
 Resources:
-
 - `arn:aws:s3tables:{region}:{account_id}:bucket/{bucket_name}`
 - `arn:aws:s3tables:{region}:{account_id}:bucket/{bucket_name}/table/*`
 
@@ -18,7 +17,6 @@ Set with `aws s3tables put-table-bucket-policy --table-bucket-arn <ARN> --resour
 Actions: `glue:GetCatalog`, `glue:GetDatabase`, `glue:GetTable`
 
 Resources (all three actions on each):
-
 - `arn:aws:glue:{region}:{account_id}:catalog` (root -- required for federated catalog resolution)
 - `arn:aws:glue:{region}:{account_id}:catalog/s3tablescatalog`
 - `arn:aws:glue:{region}:{account_id}:catalog/s3tablescatalog/*`

@@ -26,21 +26,17 @@ If ambiguous and the file is structured (CSV, JSON, Parquet, TSV, Avro, ORC), as
    - Parquet/Avro/ORC: note format, skip content peek
 
 **Encoding check** (CSV/TSV/JSON only):
-
 ```bash
 file --mime-encoding <path>
 ```
-
 If not UTF-8 or ASCII, warn the user before upload. Non-UTF-8 files can cause downstream parsing failures.
 
 ### 3. Choose S3 Destination
 
 1. **Ask for target bucket** or list available buckets:
-
    ```bash
    aws s3 ls
    ```
-
 2. **Suggest prefix structure**: `s3://<bucket>/<domain>/<dataset>/<filename>`
 3. **Confirm with user** before uploading
 
@@ -49,29 +45,23 @@ Default: preserve original filename. Override: user specifies a different key.
 ### 4. Upload
 
 **Single file -- check for existing objects** before uploading (`aws s3 cp` silently overwrites):
-
 ```bash
 aws s3 ls s3://<bucket>/<prefix>/<filename>
 ```
-
 If the object exists, warn the user and get explicit confirmation before proceeding.
 
 **Directory -- check for existing objects** before syncing. Use a bounded existence check to avoid enumerating every object under the prefix (which can be very slow on large prefixes):
-
 ```bash
 aws s3api list-objects-v2 --bucket <bucket> --prefix <prefix>/ --max-items 1
 ```
-
 If the result contains any `Contents`, objects exist and the user should be warned before proceeding. `aws s3 sync` skips unchanged files but overwrites modified ones without prompting.
 
 **Single file upload**:
-
 ```bash
 aws s3 cp <local-path> s3://<bucket>/<prefix>/<filename>
 ```
 
 **Directory upload**:
-
 ```bash
 aws s3 sync <local-dir> s3://<bucket>/<prefix>/
 ```
@@ -79,7 +69,6 @@ aws s3 sync <local-dir> s3://<bucket>/<prefix>/
 For files over 8 MB, `aws s3 cp` uses multipart upload automatically. No special flags needed.
 
 **Verify upload**:
-
 ```bash
 aws s3 ls s3://<bucket>/<prefix>/<filename>
 ```
@@ -89,7 +78,6 @@ aws s3 ls s3://<bucket>/<prefix>/<filename>
 #### Path A: Upload Only
 
 Report results and stop:
-
 - S3 URI of uploaded file(s)
 - File size and format
 - Example command to download: `aws s3 cp s3://... .`
@@ -97,7 +85,6 @@ Report results and stop:
 #### Path B: Upload + Table Ingestion
 
 After upload completes, continue with the [s3-files.md](s3-files.md) workflow using:
-
 - S3 path where data was uploaded
 - Detected file format
 - Row/size estimate

@@ -32,7 +32,6 @@ Do NOT compress Parquet, Avro, or ORC — they have built-in compression.
 ## Overwrite Protection
 
 Check if target exists before uploading:
-
 ```bash
 aws s3 ls s3://<bucket>/<prefix>/<filename>
 ```

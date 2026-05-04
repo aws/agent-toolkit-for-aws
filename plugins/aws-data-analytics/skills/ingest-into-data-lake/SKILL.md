@@ -1,30 +1,36 @@
 ---
 name: ingest-into-data-lake
-description: >
-  Import data into the AWS data lake from S3 files, local uploads, JDBC
-  databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon
-  Redshift, Snowflake, BigQuery, DynamoDB, or existing Glue catalog tables
-  (migration). Default target is S3 Tables; standard Iceberg on a general
-  purpose bucket is supported where S3 Tables is not adopted. Handles
-  one-time loads, recurring pipelines, migrations. Triggers on: import
-  data, load data, ingest, sync database, migrate table, move data to AWS,
-  set up pipeline, ETL, pull from Snowflake, query BigQuery into S3,
-  export DynamoDB, CTAS, convert to Iceberg. Do NOT use for setting up or
-  troubleshooting Glue connections (use connect-to-data-source), creating
-  empty tables (use create-data-lake-table), running queries
-  (use query-data-lake), finding tables by fuzzy name
-  (use find-data-lake-assets), catalog audit (use exploring-data-catalog), or
-  SaaS platforms like Salesforce, ServiceNow, SAP, MongoDB, Kafka.
-argument-hint: "[source-path|connection-name|table-name] [--target s3-tables|iceberg|parquet]"
-owner_team: AWS Analytics
-owner_cti: AWS/Analytics/Agent Skills
-stages: [preprod]
+description: 'Import data into the AWS data lake from S3 files, local uploads, JDBC
+  databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift,
+  Snowflake, BigQuery, DynamoDB, or existing Glue catalog tables (migration). Default
+  target is S3 Tables; standard Iceberg on a general purpose bucket is supported where
+  S3 Tables is not adopted. Handles one-time loads, recurring pipelines, migrations.
+  Triggers on: import data, load data, ingest, sync database, migrate table, move
+  data to AWS, set up pipeline, ETL, pull from Snowflake, query BigQuery into S3,
+  export DynamoDB, CTAS, convert to Iceberg. Do NOT use for setting up or troubleshooting
+  Glue connections (use connect-to-data-source), creating empty tables (use create-data-lake-table),
+  running queries (use query-data-lake), finding tables by fuzzy name (use find-data-lake-assets),
+  catalog audit (use exploring-data-catalog), or SaaS platforms like Salesforce, ServiceNow,
+  SAP, MongoDB, Kafka.
+
+  '
 version: 1
 metadata:
-  service: [glue, s3, s3tables, athena, dynamodb]
-  task: [deploy, migrate]
-  persona: [developer, data-engineer]
-  workload: [data-analytics]
+  service:
+  - glue
+  - s3
+  - s3tables
+  - athena
+  - dynamodb
+  task:
+  - deploy
+  - migrate
+  persona:
+  - developer
+  - data-engineer
+  workload:
+  - data-analytics
+argument-hint: '[source-path|connection-name|table-name] [--target s3-tables|iceberg|parquet]'
 ---
 
 # Ingest into Data Lake
@@ -86,7 +92,6 @@ You MUST ask the user (or suggest based on catalog inventory) before creating or
 **Inventory-aware defaults:**
 
 If you have already run `exploring-data-catalog` or can quickly check, use what exists:
-
 - Account has an `s3tablescatalog` federated catalog and active table buckets: recommend S3 Tables
 - Account has general-purpose buckets with Iceberg tables and no S3 Tables usage: recommend standard Iceberg on their existing bucket
 - Account uses Parquet/ORC on S3 without Iceberg metadata: ask whether to adopt Iceberg now (recommend yes) or continue with raw files
@@ -94,7 +99,6 @@ If you have already run `exploring-data-catalog` or can quickly check, use what 
 Do not force S3 Tables on customers who haven't adopted it. See [iceberg-catalog-config-and-usage.md](references/iceberg-catalog-config-and-usage.md).
 
 **Delegations from this step:**
-
 - Target table doesn't exist -> `create-data-lake-table`
 - Target database named by fuzzy term -> `find-data-lake-assets`
 - User doesn't know what exists -> `exploring-data-catalog`
@@ -156,7 +160,6 @@ See [error-handling.md](references/error-handling.md) for the full catalog.
 ## References
 
 ### Source-specific
-
 - [local-upload.md](references/local-upload.md) -- Local files
 - [s3-files.md](references/s3-files.md) -- S3 files (CSV, JSON, Parquet, Avro, ORC)
 - [jdbc-ingest.md](references/jdbc-ingest.md) -- Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora, Redshift
@@ -166,7 +169,6 @@ See [error-handling.md](references/error-handling.md) for the full catalog.
 - [catalog-migration.md](references/catalog-migration.md) -- Existing Glue catalog tables (Hive, self-managed Iceberg)
 
 ### Cross-cutting
-
 - [iceberg-catalog-config-and-usage.md](references/iceberg-catalog-config-and-usage.md) -- S3 Tables, standard Iceberg, raw files: catalog config, engine access patterns
 - [glue-job-config.md](references/glue-job-config.md) -- Job sizing, monitoring, retry
 - [glue-job-scripts.md](references/glue-job-scripts.md) -- PySpark templates (append, upsert, custom SQL, full refresh)
@@ -181,13 +183,11 @@ See [error-handling.md](references/error-handling.md) for the full catalog.
 - [upload-options.md](references/upload-options.md) -- aws s3 cp vs sync, multipart
 
 ### Migration-specific
-
 - [ctas-patterns.md](references/ctas-patterns.md) -- Athena CTAS syntax and partition transforms
 - [glue-etl-migration.md](references/glue-etl-migration.md) -- Large-table migration via Glue 5.1 or higher PySpark
 - [migration-validation.md](references/migration-validation.md) -- Full validation checklist
 - [migration-troubleshooting.md](references/migration-troubleshooting.md) -- CTAS failures, visibility, partitions
 
 ### JDBC-specific
-
 - [jdbc-schema-discovery.md](references/jdbc-schema-discovery.md) -- Crawler, direct inspection, custom SQL
 - [jdbc-performance.md](references/jdbc-performance.md) -- Parallel reads, partitioning

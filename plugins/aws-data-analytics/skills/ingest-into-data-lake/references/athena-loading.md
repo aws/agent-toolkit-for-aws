@@ -7,7 +7,6 @@ Fallback approach for simple one-time data loads when Glue ETL is unavailable or
 Create a temporary external table pointing to source files in S3.
 
 ### CSV
-
 ```sql
 CREATE EXTERNAL TABLE temp_source_<timestamp> (
   customer_id INT,
@@ -24,7 +23,6 @@ TBLPROPERTIES ('skip.header.line.count'='1');
 ```
 
 ### JSON
-
 ```sql
 CREATE EXTERNAL TABLE temp_source_<timestamp> (
   order_id BIGINT,
@@ -37,7 +35,6 @@ LOCATION 's3://<bucket>/<prefix>/';
 ```
 
 ### Parquet / ORC
-
 ```sql
 CREATE EXTERNAL TABLE temp_source_<timestamp> (
   event_id BIGINT,
@@ -65,7 +62,6 @@ WHERE customer_id IS NOT NULL
 For detailed type casting, date parsing, null handling, and boolean conversion patterns, see [type-transformations.md](type-transformations.md).
 
 ### Execute via CLI
-
 ```bash
 QUERY_ID=$(aws athena start-query-execution \
   --query-string "<INSERT INTO query>" \

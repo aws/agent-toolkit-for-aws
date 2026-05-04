@@ -13,20 +13,17 @@ Schema discovery identifies what data is available in the source system and maps
 Gather information about what to import:
 
 **Which table(s) or view(s)** to import:
-
 - Single table: `CUSTOMERS`, `SALES_ORDERS`, `INVENTORY`
 - Multiple tables: List of tables to import
 - Views: Database views are treated like tables
 
 **Schema/database name** (if system supports multiple databases):
-
 - Oracle: Schema name (e.g., `SALES_SCHEMA`)
 - SQL Server: Database and schema (e.g., `SalesDB.dbo`)
 - PostgreSQL: Schema within database (e.g., `public`, `analytics`)
 - MySQL: Database name (e.g., `sales_db`)
 
 **Custom SQL query** (optional):
-
 - If user wants to filter or transform at source
 - Useful for reducing data volume before transfer
 - Example: `SELECT * FROM CUSTOMERS WHERE status = 'ACTIVE' AND created_date >= CURRENT_DATE - 90`
@@ -83,7 +80,6 @@ aws glue get-tables --database-name "temp_discovery_db" --region <region>
 ```
 
 Present the list to the user:
-
 ```
 I found these tables in your database:
 1. CUSTOMERS (45 columns, ~1.2M rows)
@@ -120,7 +116,6 @@ aws glue get-table \
 ```
 
 This returns:
-
 - Column names and data types
 - Table statistics (row count estimate, data size)
 - Partition information (if partitioned)
@@ -171,7 +166,6 @@ If the user wants to filter or transform at source, support custom SQL:
 ### Example Queries
 
 **Filter by date**:
-
 ```sql
 SELECT *
 FROM CUSTOMERS
@@ -179,7 +173,6 @@ WHERE created_date >= CURRENT_DATE - 90
 ```
 
 **Filter by status**:
-
 ```sql
 SELECT *
 FROM ORDERS
@@ -187,7 +180,6 @@ WHERE status IN ('COMPLETED', 'SHIPPED')
 ```
 
 **Join multiple tables**:
-
 ```sql
 SELECT
   o.order_id,
@@ -203,7 +195,6 @@ GROUP BY o.order_id, o.order_date, c.customer_name, c.email
 ```
 
 **Select specific columns**:
-
 ```sql
 SELECT
   customer_id,
@@ -221,13 +212,11 @@ WHERE status = 'ACTIVE'
 Store the query for use in the Glue ETL script:
 
 **Option 1: As job parameter**:
-
 ```python
 '--source_query': 'SELECT * FROM CUSTOMERS WHERE status = \'ACTIVE\''
 ```
 
 **Option 2: In S3 file**:
-
 ```python
 # Read query from S3
 import boto3
@@ -258,8 +247,8 @@ Map source database types to Iceberg types for the target S3 Table.
 | CLOB, TEXT | STRING | Large text |
 | UUID | STRING | Store as string |
 | JSON, JSONB | STRING | Store as JSON string |
-| ARRAY | ARRAY\<T\> | If database supports arrays |
-| MAP, HSTORE | MAP\<K,V\> | If database supports maps |
+| ARRAY | ARRAY<T> | If database supports arrays |
+| MAP, HSTORE | MAP<K,V> | If database supports maps |
 
 ### Oracle-Specific Types
 
@@ -310,7 +299,7 @@ Map source database types to Iceberg types for the target S3 Table.
 | JSON, JSONB | STRING | Store as JSON string |
 | UUID | STRING | UUID as string |
 | BYTEA | BINARY | Binary data |
-| ARRAY | ARRAY\<T\> | PostgreSQL arrays supported |
+| ARRAY | ARRAY<T> | PostgreSQL arrays supported |
 
 ### MySQL-Specific Types
 
@@ -338,7 +327,6 @@ Based on the source schema, propose the target S3 Table schema to the user.
 ### Example Schema Proposal
 
 **Source table**: `CUSTOMERS` in Oracle database
-
 - CUSTOMER_ID: NUMBER(10) → BIGINT
 - CUSTOMER_NAME: VARCHAR2(200) → STRING
 - EMAIL: VARCHAR2(255) → STRING
@@ -349,7 +337,6 @@ Based on the source schema, propose the target S3 Table schema to the user.
 - LAST_PURCHASE_DATE: DATE → TIMESTAMP
 
 **Proposed S3 Table schema**:
-
 ```sql
 CREATE TABLE "glue_catalog"."sales"."customers" (
   customer_id BIGINT,
@@ -368,7 +355,6 @@ TBLPROPERTIES ('table_type' = 'ICEBERG')
 ```
 
 **Present to user**:
-
 ```
 I've mapped the Oracle CUSTOMERS table to this Iceberg schema:
 
@@ -394,13 +380,11 @@ Does this look correct? Any adjustments needed?
 ### JSON Columns
 
 **Option 1**: Store as STRING (simplest)
-
 ```sql
 json_data STRING
 ```
 
 **Option 2**: Parse and flatten to STRUCT
-
 ```sql
 metadata STRUCT<
   key1: STRING,
@@ -416,13 +400,11 @@ Recommend Option 1 unless user specifically wants to query nested fields.
 If source database supports arrays (PostgreSQL, Oracle VARRAY):
 
 **Option 1**: Keep as ARRAY
-
 ```sql
 tags ARRAY<STRING>
 ```
 
 **Option 2**: Convert to STRING (comma-separated)
-
 ```sql
 tags STRING  -- "tag1,tag2,tag3"
 ```
@@ -434,13 +416,11 @@ tags STRING  -- "tag1,tag2,tag3"
 **Recommendation**: Only import if truly needed (increases storage costs)
 
 If importing:
-
 ```sql
 document BINARY
 ```
 
 Consider storing large binaries in S3 and storing S3 key in table instead:
-
 ```sql
 document_s3_key STRING  -- "s3://docs-bucket/doc123.pdf"
 ```

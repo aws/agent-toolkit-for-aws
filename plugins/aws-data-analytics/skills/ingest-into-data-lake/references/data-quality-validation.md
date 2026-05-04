@@ -5,7 +5,6 @@ Complete guide for validating data quality during and after import into S3 Table
 ## Overview
 
 Data quality validation ensures that loaded data meets expected standards for completeness, accuracy, and consistency. This reference covers:
-
 - Glue Data Quality rules integration
 - Basic post-load validation queries
 - Common validation patterns
@@ -208,7 +207,6 @@ LIMIT 100
 ```
 
 Look for:
-
 - Dates that look like strings (e.g., "2024-01-15" instead of DATE)
 - Numbers that are actually strings
 - Truncated decimals
@@ -372,13 +370,11 @@ else:
 
 **Symptoms**: More nulls than expected in columns
 **Possible causes**:
-
 - Source data quality issues
 - Type conversion failures (strings that can't be parsed as numbers)
 - Column mapping errors
 
 **Solutions**:
-
 1. Check source data for null values
 2. Verify type conversions are correct
 3. Add explicit null handling in transformation
@@ -387,13 +383,11 @@ else:
 
 **Symptoms**: Primary key column has duplicates
 **Possible causes**:
-
 - Source data has duplicates
 - Multiple loads without deduplication
 - Partition keys included in data
 
 **Solutions**:
-
 1. Add deduplication logic to Glue job
 2. Use window functions to keep only latest record
 3. Investigate source data quality
@@ -402,13 +396,11 @@ else:
 
 **Symptoms**: Values outside expected ranges
 **Possible causes**:
-
 - Source data contains outliers
 - Type conversion errors
 - Unit mismatches (e.g., dollars vs cents)
 
 **Solutions**:
-
 1. Add filtering or capping in transformation
 2. Verify unit conversions
 3. Add validation rules to reject bad data

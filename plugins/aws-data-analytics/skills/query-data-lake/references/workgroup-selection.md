@@ -30,37 +30,27 @@ When running as a SageMaker project role (`AmazonDataZone-*` or `SageMakerUnifie
    ```
 
 2. Extract the project ID from the role ARN. Split the role name on `-`.
-
    The first segment is the prefix (e.g., `AmazonDataZone`), the second
    segment is the project ID (e.g., `abc123def`), and subsequent segments
    form the suffix (e.g., `DataLakeAccess`). Take the second segment.
    The project ID is an **alphanumeric string (no hyphens)**.
    Known suffixes that follow the project ID: `DataLakeAccess`, `SparkAccess`,
    `QueryAccess`, `IngestionAccess`. Example:
-
    ```
    arn:aws:sts::123456789012:assumed-role/AmazonDataZone-abc123def-DataLakeAccess/session
                                                          ^^^^^^^^^
                                                          project ID = abc123def
    ```
-
 3. Match the workgroup to the project. Project workgroups follow the pattern
-
    `sagemaker-studio-workgroup-<project-id>` or contain the project ID.
-
 4. If exactly one `sagemaker-studio-workgroup-*` exists, verify its suffix
-
    contains the project ID extracted in step 2. If it matches, use it.
    If it does not match, fall through to step 6.
-
 5. If multiple exist, pick the one whose suffix matches the project ID
-
    extracted from the role ARN. Optionally check environment variables
    `SAGEMAKER_PROJECT_ID` or `SAGEMAKER_PROJECT_NAME` if the ARN extraction
    is ambiguous.
-
 6. If no `sagemaker-studio-workgroup-*` exists, **do not fall back** to other
-
    workgroups. Inform the user that no project-scoped workgroup was found and
    ask them to verify their project configuration or IAM permissions.
 

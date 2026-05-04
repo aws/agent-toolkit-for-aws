@@ -1,24 +1,30 @@
 ---
 name: create-data-lake-table
-description: >
-  Create managed Iceberg tables using Amazon S3 Tables (s3tables API namespace)
-  with automatic compaction and snapshot management. Sets up table bucket,
-  namespace, table, schema, Glue catalog registration, partitioning, IAM access control.
-  Triggers on: create table, data lake table, analytics table, structured data storage,
-  S3 Tables, Iceberg, Athena table, partitioning strategy, access permissions. Do NOT use
-  for: importing files (use ingest-into-data-lake), vector storage (use store-and-query-vectors),
-  querying existing tables (use query-data-lake), or locating existing table
-  (use find-data-lake-assets).
-argument-hint: "[table-description|schema-spec]"
-owner_team: Amazon S3
-owner_cti: AWS/S3 Tables/Tools
-stages: [preprod, prod]
+description: 'Create managed Iceberg tables using Amazon S3 Tables (s3tables API namespace)
+  with automatic compaction and snapshot management. Sets up table bucket, namespace,
+  table, schema, Glue catalog registration, partitioning, IAM access control. Triggers
+  on: create table, data lake table, analytics table, structured data storage, S3
+  Tables, Iceberg, Athena table, partitioning strategy, access permissions. Do NOT
+  use  for: importing files (use ingest-into-data-lake), vector storage (use store-and-query-vectors),
+  querying existing tables (use query-data-lake), or locating existing table (use
+  find-data-lake-assets).
+
+  '
 version: 1
 metadata:
-  service: [s3tables, glue, athena]
-  task: [deploy, debug]
-  persona: [developer, data-engineer]
-  workload: [data-analytics]
+  service:
+  - s3tables
+  - glue
+  - athena
+  task:
+  - deploy
+  - debug
+  persona:
+  - developer
+  - data-engineer
+  workload:
+  - data-analytics
+argument-hint: '[table-description|schema-spec]'
 ---
 
 # Create Data Lake Tables with Amazon S3 Tables
@@ -54,9 +60,8 @@ You MUST run `aws glue get-tables --database-name <NAME>` when user mentions a d
 ### 1. Verify Dependencies
 
 **Constraints:**
-
 - You MUST check whether AWS MCP server tools or AWS CLI are available and inform user if missing
-- You MUST confirm target AWS region and verify credentials with `aws sts get-caller-identity`
+- You MUST confirm target AWS region and verify credentials with `aws sts get-caller-identity` 
 
 ### 2. Understand the Schema
 
@@ -65,7 +70,6 @@ You MUST run `aws glue get-tables --database-name <NAME>` when user mentions a d
 - **Existing S3 data**: Infer schema from file headers only. Create empty table first, then use `ingest-into-data-lake` skill.
 
 **Constraints:**
-
 - You MUST read `references/best-practices.md` for Iceberg type mapping, partitions, and naming.
 - You MUST ask for all required parameters upfront: table name, columns, types, partition strategy. For schema evolution, see `references/athena-ddl-path.md`.
 - You MUST use all lowercase names -- Glue rejects mixed case with `GENERIC_INTERNAL_ERROR`. Namespace and table names MUST NOT contain hyphens.
@@ -82,7 +86,6 @@ aws s3tables create-table-bucket --name <BUCKET_NAME> --region <REGION>
 Capture `table-bucket-arn`. Encryption (SSE-S3 default, SSE-KMS) and storage class (STANDARD, INTELLIGENT_TIERING) set at creation. See `references/best-practices.md`.
 
 **Constraints:**
-
 - You MUST check existing buckets with `aws s3tables list-table-buckets` and ask user to select or create new.
 - If using SSE-KMS, KMS key policy MUST allow S3 Tables maintenance service principal to read data. Search AWS docs for `"S3 Tables KMS key policy"` for required policy.
 - If bucket creation fails, see `references/best-practices.md` for common errors.
@@ -94,7 +97,6 @@ aws s3tables create-namespace --table-bucket-arn <ARN> --namespace <NAMESPACE>
 ```
 
 **Constraints:**
-
 - You MUST list existing namespaces first and suggest reusing if relevant
 - You MUST use lowercase names with no hyphens
 
@@ -127,17 +129,14 @@ Verify with `aws glue get-catalogs --parent-catalog-id s3tablescatalog`.
 S3 Tables uses `s3tables:*` IAM namespace (not `s3:*`).
 
 **Querying principal permissions (bucket policy):**
-
 - `s3tables:GetTableBucket`, `s3tables:GetNamespace`, `s3tables:GetTable`, `s3tables:GetTableMetadataLocation`, `s3tables:GetTableData`
 
 **Querying principal permissions (IAM policy):**
-
 - `glue:GetCatalog`, `glue:GetDatabase`, `glue:GetTable`
 
 You MUST scope to correct ARN patterns. You MUST read `references/access-control.md` for exact resource ARNs.
 
 **Constraints:**
-
 - You MUST ask user for querying principal ARN
 - You MUST NOT grant broader permissions than necessary
 - You MUST NOT create IAM roles automatically, verify existing and guide user
@@ -175,7 +174,6 @@ Metadata JSON MUST nest under `"iceberg"` key:
 ```
 
 **Constraints:**
-
 - `partitionSpec.sourceId` MUST reference a valid schema field ID
 - For schema evolution after creation, use Athena DDL. See `references/athena-ddl-path.md`
 - You MUST use `schemaV2` for complex types (list, map, struct) with explicit field IDs. See `references/best-practices.md`.

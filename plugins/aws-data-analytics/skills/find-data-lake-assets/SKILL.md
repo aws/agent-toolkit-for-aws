@@ -1,23 +1,29 @@
 ---
 name: find-data-lake-assets
-description: >
-  Resolve data lake and lakehouse asset references across Glue Data Catalog,
-  S3, S3 Tables, and Redshift. Triggers on: find the table, where
-  is our data, which table has, locate dataset, find data for, search catalog,
-  what tables match, Redshift table, lakehouse table, data lake table,
-  warehouse table, reverse lookup S3 path. Do NOT use for: full catalog
-  audits (use exploring-data-catalog), running queries (use query-data-lake),
-  creating tables (use create-data-lake-table).
-argument-hint: "[table-name|keyword|column-name|s3://path]"
-owner_team: AWS Analytics
-owner_cti: AWS/Analytics/Agent Skills
-stages: [preprod]
+description: 'Resolve data lake and lakehouse asset references across Glue Data Catalog,
+  S3, S3 Tables, and Redshift. Triggers on: find the table, where is our data, which
+  table has, locate dataset, find data for, search catalog, what tables match, Redshift
+  table, lakehouse table, data lake table, warehouse table, reverse lookup S3 path.
+  Do NOT use for: full catalog audits (use exploring-data-catalog), running queries
+  (use query-data-lake), creating tables (use create-data-lake-table).
+
+  '
 version: 1
 metadata:
-  service: [glue, s3, s3tables, redshift]
-  task: [debug]
-  persona: [developer, data-engineer, architect]
-  workload: [data-analytics]
+  service:
+  - glue
+  - s3
+  - s3tables
+  - redshift
+  task:
+  - debug
+  persona:
+  - developer
+  - data-engineer
+  - architect
+  workload:
+  - data-analytics
+argument-hint: '[table-name|keyword|column-name|s3://path]'
 ---
 
 # Find Data Lake Assets
@@ -30,7 +36,6 @@ S3, S3 Tables, and Redshift. Optimized for low token usage — return the
 answer fast and get out of the way.
 
 **Constraints for parameter acquisition:**
-
 - You MUST accept a single argument: table name, keyword, column name, or S3 path
 - You MUST accept the argument as direct input or a pointer to a file containing the spec
 - You MUST ask for the target AWS region if not already set
@@ -49,7 +54,6 @@ executing.
 Check for required tools and AWS access before searching.
 
 **Constraints:**
-
 - You MUST verify AWS MCP server tools (`aws___call_aws`) are available; fall back to AWS CLI if not
 - You MUST confirm credentials with `aws sts get-caller-identity`
 - You MUST inform the user about any missing tools and ask whether to proceed
@@ -59,13 +63,10 @@ Check for required tools and AWS access before searching.
 Determine the mode:
 
 - **Resolve** (most common): User/skill references something specific.
-
   Signals: possessive/definite articles ("our X table", "the Y
   dataset") imply the asset exists. Goal: find it, return the
   reference, done.
-
 - **Search**: User is exploring. Signals: "find tables with", "what
-
   has customer_id". Goal: rank candidates, present top matches.
 
 You SHOULD default to Resolve mode when ambiguous.
@@ -130,12 +131,9 @@ short Python script using boto3 paginators that does the full scan in
 one execution. Write the script to a file and run it with `python3`.
 
 The script MUST:
-
 - Paginate `get_databases()` to collect all database names
 - For each database, paginate `get_tables()` with an `Expression`
-
   filter matching the search term
-
 - Print only matching results as structured output (JSON or table)
 - Accept the region and search term as arguments or variables
 
@@ -174,15 +172,10 @@ a first choice.
 ### 5. Apply the Confidence Gate
 
 - **High confidence** (exact name match, single result): Return the resolved
-
   reference immediately. No summary, no options.
-
 - **Medium confidence** (fuzzy match, 2-3 results): Present top matches with
-
   one line each: name, why it matched, format. Let the user pick.
-
 - **Low confidence** (many weak matches or none): Report what was searched
-
   and what was skipped, suggest refining the query or running
   `exploring-data-catalog`.
 

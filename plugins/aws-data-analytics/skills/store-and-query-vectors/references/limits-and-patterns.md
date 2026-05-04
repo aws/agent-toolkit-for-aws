@@ -17,14 +17,12 @@ for more frequent queries.
 ## Multi-Tenant Patterns
 
 **Per-tenant index** (recommended for isolation):
-
 - Each tenant gets their own index within a shared vector bucket
 - Queries naturally scoped to one tenant
 - Easy to delete a tenant's data (delete the index)
 - Use when: tenants need strict isolation, different schemas, or independent scaling
 
 **Single index with metadata filtering** (simpler):
-
 - All tenants share one index, filter by `tenant_id` metadata
 - Simpler to manage, single query endpoint
 - Use when: tenants have identical schemas and moderate scale
@@ -64,5 +62,4 @@ When migrating from another vector DB (pgVector, AOSS, etc.):
 3. Batch PutVectors into S3 Vectors
 4. Verify with QueryVectors using known test vectors
 5. S3 Vectors only supports `cosine` and `euclidean` — if source used dotProduct,
-
    use `cosine` on normalized vectors as equivalent

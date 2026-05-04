@@ -3,7 +3,6 @@
 Before creating a new Glue connection, check what exists and what the user has available in their account. Users often forget about previously registered connections or don't realize they already have running databases that can be registered.
 
 ## Contents
-
 - [Existing Glue Connections](#existing-glue-connections)
 - [RDS and Aurora Candidates](#rds-and-aurora-candidates)
 - [Redshift Candidates](#redshift-candidates)
@@ -34,7 +33,6 @@ If a connection matching the user's intent already exists, confirm with the user
 ## RDS and Aurora Candidates
 
 **RDS instances:**
-
 ```bash
 aws rds describe-db-instances \
   --query 'DBInstances[].{Id:DBInstanceIdentifier,Endpoint:Endpoint.Address,Port:Endpoint.Port,Engine:Engine,DBName:DBName,VpcId:DBSubnetGroup.VpcId,Status:DBInstanceStatus,IAMAuth:IAMDatabaseAuthenticationEnabled}' \
@@ -42,7 +40,6 @@ aws rds describe-db-instances \
 ```
 
 **Aurora clusters:**
-
 ```bash
 aws rds describe-db-clusters \
   --query 'DBClusters[].{Id:DBClusterIdentifier,Endpoint:Endpoint,ReaderEndpoint:ReaderEndpoint,Port:Port,Engine:Engine,DatabaseName:DatabaseName,IAMAuth:IAMDatabaseAuthenticationEnabled}' \
@@ -56,7 +53,6 @@ Note `IAMDatabaseAuthenticationEnabled: true` -- if set, recommend IAM DB auth o
 ## Redshift Candidates
 
 **Provisioned clusters:**
-
 ```bash
 aws redshift describe-clusters \
   --query 'Clusters[].{Id:ClusterIdentifier,Endpoint:Endpoint.Address,Port:Endpoint.Port,DBName:DBName,VpcId:VpcId,IAMRoles:IamRoles[*].IamRoleArn,Status:ClusterStatus}' \
@@ -64,7 +60,6 @@ aws redshift describe-clusters \
 ```
 
 **Serverless workgroups:**
-
 ```bash
 aws redshift-serverless list-workgroups \
   --query 'workgroups[].{Name:workgroupName,Endpoint:endpoint.address,Port:endpoint.port,Status:status}' \

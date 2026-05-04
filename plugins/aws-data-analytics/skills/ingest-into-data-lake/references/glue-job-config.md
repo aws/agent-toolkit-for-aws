@@ -77,7 +77,6 @@ Configure retries for transient failures:
 ```
 
 For production pipelines, consider:
-
 - Setting `MaxRetries` to 1-2 for transient network issues
 - Using Glue job bookmarks to avoid duplicate processing
 - Implementing idempotent logic (upsert instead of append)
@@ -85,7 +84,6 @@ For production pipelines, consider:
 ### Important Job Arguments
 
 **Required arguments:**
-
 - `--datalake-formats iceberg`: Required for S3 Tables and standard Iceberg targets
 - `--enable-glue-datacatalog`: Enable Glue Data Catalog integration for Iceberg
 - `--conf`: Spark catalog configuration. See [iceberg-catalog-config-and-usage.md](iceberg-catalog-config-and-usage.md) for the exact keys per target type.
@@ -93,7 +91,6 @@ For production pipelines, consider:
 - `--enable-continuous-cloudwatch-log`: Stream logs to CloudWatch
 
 **Optional arguments:**
-
 - `--enable-spark-ui`: Enable Spark UI for debugging (requires S3 bucket)
 - `--spark-event-logs-path`: Where to store Spark UI logs
 - `--conf spark.sql.adaptive.enabled=true`: Enable adaptive query execution
@@ -110,7 +107,6 @@ If the source database is in a VPC, ensure the Glue job has network access:
 ```
 
 The connection specifies:
-
 - VPC
 - Subnet
 - Security groups
@@ -137,14 +133,12 @@ source_df = spark.read.format("jdbc").options(
 ```
 
 This creates 10 parallel queries:
-
 - Partition 1: `WHERE id >= 1 AND id < 1000000`
 - Partition 2: `WHERE id >= 1000000 AND id < 2000000`
 - ...
 - Partition 10: `WHERE id >= 9000000 AND id <= 10000000`
 
 **Best practices:**
-
 - Use a numeric column with even distribution
 - Set `numPartitions` = number of workers × cores per worker
 - Choose `lowerBound` and `upperBound` based on actual data range
@@ -210,12 +204,10 @@ filtered_df = source_df.filter(
 ### CloudWatch Logs
 
 Glue streams job logs to CloudWatch Logs under:
-
 - Log group: `/aws-glue/jobs/output`
 - Log stream: `<job-name>-<job-run-id>`
 
 **Key log patterns to monitor:**
-
 - `Last watermark: <value>` - Starting point for incremental load
 - `Loading X new/updated records` - How many records found
 - `Updated watermark to: <value>` - New watermark after load
@@ -224,14 +216,12 @@ Glue streams job logs to CloudWatch Logs under:
 ### CloudWatch Metrics
 
 With `--enable-metrics`, Glue publishes:
-
 - `glue.driver.aggregate.numCompletedTasks` - Tasks completed
 - `glue.driver.aggregate.elapsedTime` - Job duration
 - `glue.driver.aggregate.recordsRead` - Records read from source
 - `glue.driver.aggregate.bytesRead` - Bytes read from source
 
 Set up CloudWatch alarms for:
-
 - Job failures (state = FAILED)
 - Long-running jobs (duration > threshold)
 - No records loaded (might indicate source issue)
@@ -250,7 +240,6 @@ Enable Spark UI for detailed execution metrics:
 Access via Glue console → Job runs → View Spark UI
 
 Use Spark UI to:
-
 - Identify slow stages (data skew, shuffle issues)
 - Analyze task distribution across workers
 - Debug memory issues (GC time, spills to disk)
@@ -265,7 +254,6 @@ Use Spark UI to:
 4. **Use Git**: Maintain scripts in Git, deploy to S3 via CI/CD
 
 **Example structure:**
-
 ```
 s3://my-glue-scripts/
   prod/
@@ -296,7 +284,6 @@ python external-import-customers.py \
 ```
 
 For full local testing, use AWS Glue Docker images:
-
 ```bash
 docker pull amazon/aws-glue-libs:glue_libs_5.0.0_image_01
 ```

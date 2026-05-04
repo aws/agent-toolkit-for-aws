@@ -3,7 +3,6 @@
 Move data from Snowflake into the data lake. Assumes a Glue `SNOWFLAKE` connection exists. If not, delegate to `connect-to-data-source`.
 
 ## Contents
-
 - [Prerequisites](#prerequisites)
 - [Read Pattern](#read-pattern)
 - [Incremental Loading](#incremental-loading)
@@ -35,7 +34,6 @@ snowflake_df = glueContext.create_dynamic_frame.from_options(
 ```
 
 For custom SQL, use `query` instead of `dbtable`:
-
 ```python
 connection_options={
     "connectionName": args['connection_name'],
@@ -46,18 +44,15 @@ connection_options={
 ## Incremental Loading
 
 Snowflake has reliable timestamps on most tables. Common watermark columns:
-
 - Application-maintained `updated_at` / `modified_at`
 - Snowflake-maintained `_FIVETRAN_SYNCED` if sourced via Fivetran
 - `INFORMATION_SCHEMA.TABLES.LAST_ALTERED` for schema-level freshness (not row-level)
 
 For tables without an `updated_at`, options:
-
 - Query `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY` or `TABLE_STORAGE_METRICS` to identify changed tables for full refresh scheduling
 - Use Snowflake Streams to capture CDC (advanced; requires Snowflake-side setup -- see [Snowflake Streams docs](https://docs.snowflake.com/en/user-guide/streams-intro))
 
 Standard watermark filter in the custom query:
-
 ```python
 connection_options={
     "connectionName": args['connection_name'],
@@ -72,7 +67,6 @@ See [incremental-loading.md](incremental-loading.md) for watermark storage and t
 Snowflake tables are automatically micro-partitioned. Push down filters via the `query` option -- do not pull full tables and filter in Spark.
 
 Clustered tables benefit most from filter push-down. Check cluster keys:
-
 ```sql
 SHOW TABLES LIKE '<table>' IN SCHEMA <db>.<schema>;
 -- Look at CLUSTER_BY column

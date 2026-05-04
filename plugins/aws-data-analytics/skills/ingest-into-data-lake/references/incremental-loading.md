@@ -10,29 +10,25 @@ Incremental loading imports only new or changed records instead of the entire da
 
 A watermark column tracks which records have been loaded. The Glue job queries for records where watermark > last_loaded_value.
 
-### Common Watermark Patterns
+###Common Watermark Patterns
 
 **Timestamp column** (preferred):
-
 - `updated_at`, `modified_date`, `last_changed`, `etl_timestamp`
 - Query: `WHERE timestamp_col > '2024-03-12 10:30:00'`
 - Best for: Mutable data that gets updated
 
 **Monotonic ID column**:
-
 - `id`, `order_id`, `transaction_id` (auto-incrementing)
 - Query: `WHERE id > 1234567`
 - Best for: Immutable data with sequential IDs
 
 **Both timestamp and ID**:
-
 - Use timestamp for recent changes, ID as fallback for historical data
 - Query: `WHERE timestamp_col > '...' OR (timestamp_col IS NULL AND id > ...)`
 
 ### Ask the User
 
 Present candidates from the source schema:
-
 ```
 I found these potential watermark columns:
 1. CREATED_DATE (TIMESTAMP) - Never changes once set
@@ -43,7 +39,6 @@ Which should I use to track new/updated records?
 ```
 
 **Recommendation logic**:
-
 - If `updated_at` or `modified_date` exists → Recommend this (captures updates)
 - Else if timestamp column exists → Use creation timestamp
 - Else if auto-incrementing ID → Use ID
@@ -54,14 +49,12 @@ Which should I use to track new/updated records?
 ### Incremental Append (New Records Only)
 
 **Best for**: Immutable data
-
 - Transaction logs
 - Event streams
 - Historical orders
 - Audit trails
 
 **How it works**:
-
 1. Query source for records where `watermark > last_watermark`
 2. Append new records to target table
 3. Update watermark to max value from current batch
@@ -70,7 +63,6 @@ Which should I use to track new/updated records?
 **Cons**: Doesn't capture updates to existing records
 
 **PySpark example**:
-
 ```python
 # Filter for new records
 new_records_df = source_df.filter(
@@ -84,14 +76,12 @@ new_records_df.writeTo(target_table).append()
 ### Incremental Upsert (New + Updated Records)
 
 **Best for**: Mutable data
-
 - Customer profiles
 - Product catalogs
 - Employee records
 - Account balances
 
 **How it works**:
-
 1. Query source for records where `watermark > last_watermark`
 2. Merge into target table using primary key
 3. Update existing records, insert new ones
@@ -101,7 +91,6 @@ new_records_df.writeTo(target_table).append()
 **Cons**: More complex, requires MERGE operation
 
 **PySpark example**:
-
 ```python
 # Get new/updated records
 changed_records_df = source_df.filter(
@@ -121,13 +110,11 @@ WHEN NOT MATCHED THEN INSERT *
 ### Full Refresh
 
 **Best for**:
-
 - Small dimension tables (< 10K rows)
 - Data without watermark columns
 - When source doesn't support incremental queries
 
 **How it works**:
-
 1. Truncate or drop target table
 2. Load all records from source
 3. No watermark needed
@@ -136,7 +123,6 @@ WHEN NOT MATCHED THEN INSERT *
 **Cons**: Inefficient for large tables, higher data transfer costs
 
 **PySpark example**:
-
 ```python
 # Read all records
 all_records_df = source_df.select("*")
@@ -154,13 +140,11 @@ The Glue job needs to persist the last loaded watermark value between runs.
 Store watermark in a text file in S3.
 
 **Advantages**:
-
 - Simple to implement
 - No additional AWS services
 - Easy to inspect and debug
 
 **Implementation**:
-
 ```python
 import boto3
 
@@ -189,7 +173,6 @@ print(f"Updated watermark to: {new_watermark}")
 ```
 
 **S3 path structure**:
-
 ```
 s3://my-glue-watermarks/
   customers.txt          → "2024-03-12 14:30:00"
@@ -202,13 +185,11 @@ s3://my-glue-watermarks/
 Store watermarks in a DynamoDB table with one item per job.
 
 **Advantages**:
-
 - Atomic updates
 - Query watermarks programmatically
 - Can store additional metadata (last run time, row count, etc.)
 
 **Create table**:
-
 ```bash
 aws dynamodb create-table \
   --table-name glue-job-watermarks \
@@ -221,7 +202,6 @@ aws dynamodb create-table \
 ```
 
 **Implementation**:
-
 ```python
 import boto3
 from datetime import datetime
@@ -256,17 +236,14 @@ print(f"Updated watermark to: {new_watermark}")
 Query the target S3 Table to determine the max watermark value.
 
 **Advantages**:
-
 - No external storage needed
 - Watermark always matches actual data
 
 **Disadvantages**:
-
 - Requires target table scan (can be slow)
 - Doesn't work for first run (empty table)
 
 **Implementation**:
-
 ```python
 # Query target table for max watermark
 try:
@@ -307,13 +284,11 @@ df_utc = source_df.withColumn(
 **Scenario**: Need to load historical data before starting incremental loads
 
 **Approach**:
-
 1. Set watermark to earliest desired date: `1900-01-01 00:00:00`
 2. Run job once to load all historical data
 3. Subsequent runs will be incremental from that point forward
 
 **OR** load in batches:
-
 ```python
 # Batch 1: Load 2020 data
 WHERE timestamp >= '2020-01-01' AND timestamp < '2021-01-01'
@@ -332,7 +307,6 @@ WHERE timestamp >= '2022-01-01'
 **Problem**: Records arrive after their timestamp (e.g., event from yesterday arrives today)
 
 **Solution 1**: Add buffer window
-
 ```python
 # Load data from 1 day before last watermark to catch late arrivals
 buffer_watermark = last_watermark - timedelta(days=1)
@@ -340,7 +314,6 @@ WHERE timestamp > buffer_watermark
 ```
 
 **Solution 2**: Use separate updated_at column
-
 ```python
 # Use updated_at instead of event_timestamp
 WHERE updated_at > last_watermark
@@ -353,17 +326,14 @@ WHERE updated_at > last_watermark
 **Solutions**:
 
 **Option 1**: Periodic full refresh
-
 - Run incremental loads daily
 - Run full refresh weekly to remove deleted records
 
 **Option 2**: Soft deletes
-
 - Source system marks records as deleted instead of removing them
 - Filter: `WHERE updated_at > last_watermark OR deleted_at > last_watermark`
 
 **Option 3**: Compare and prune
-
 - Periodically query source for all IDs
 - Find IDs in target that don't exist in source
 - Delete those records from target
@@ -373,7 +343,6 @@ WHERE updated_at > last_watermark
 **Problem**: Same record loaded multiple times due to job retries or watermark issues
 
 **Prevention**:
-
 1. Use upsert instead of append for mutable data
 2. Add deduplication logic:
 

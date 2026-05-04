@@ -7,7 +7,6 @@ This document describes expected approaches for handling schema evolution and ne
 ### What is Schema Evolution?
 
 Schema evolution occurs when source data has columns that don't exist in the target table. This is common when:
-
 - Source data schema changes over time (new fields added)
 - Importing from multiple sources with different schemas
 - Business requirements evolve and new data points are captured
@@ -45,7 +44,6 @@ missing_columns = set(existing_columns.keys()) - set(source_columns.keys())
 ```
 
 Expected output to user:
-
 ```
 Schema Comparison:
 
@@ -61,7 +59,6 @@ Schema evolution will automatically add new columns to the table.
 ### 2. Add New Columns via ALTER TABLE
 
 **With AWS CLI**:
-
 ```bash
 aws athena start-query-execution \
   --query-string "ALTER TABLE \"catalog\".\"namespace\".\"table\" ADD COLUMNS (phone STRING)" \
@@ -101,7 +98,6 @@ When source data has nested structures:
 ### Flattening Implementation
 
 **PySpark - Flatten Struct**:
-
 ```python
 from pyspark.sql.functions import col
 
@@ -116,7 +112,6 @@ flattened_df = source_df.select(
 ```
 
 **PySpark - Explode Array**:
-
 ```python
 from pyspark.sql.functions import explode, col
 
@@ -135,7 +130,6 @@ exploded_df = source_df.select(
 ```
 
 **Athena SQL - Flatten with UNNEST**:
-
 ```sql
 -- Create external table with nested types
 CREATE EXTERNAL TABLE orders_nested (
@@ -166,7 +160,6 @@ CROSS JOIN UNNEST(items) AS t(item);
 ### Preserving Nested Structures
 
 **S3 Tables DDL with Nested Types**:
-
 ```sql
 CREATE TABLE "catalog"."namespace"."orders_nested" (
   order_id BIGINT,
@@ -187,7 +180,6 @@ USING ICEBERG
 ```
 
 **Querying Nested Data**:
-
 ```sql
 -- Access struct fields
 SELECT
@@ -209,7 +201,6 @@ CROSS JOIN UNNEST(items) AS t(item);
 ```
 
 **PySpark - Write with Nested Types**:
-
 ```python
 # Preserve nested structure
 source_df.writeTo(args['target_table']).append()
@@ -238,7 +229,6 @@ Store items in separate table (e.g., `order_items`). Link via foreign key. Norma
 ### Example 1: Schema Evolution
 
 **Before** (existing table):
-
 ```sql
 CREATE TABLE customers (
   customer_id INT,
@@ -250,7 +240,6 @@ CREATE TABLE customers (
 **New Source Data** adds columns: `phone STRING`, `address STRING`
 
 **After Evolution**:
-
 ```sql
 ALTER TABLE customers ADD COLUMNS (
   phone STRING,
@@ -259,14 +248,12 @@ ALTER TABLE customers ADD COLUMNS (
 ```
 
 **Result**:
-
 - Existing rows: `customer_id=1, name="Alice", email="alice@example.com", phone=NULL, address=NULL`
 - New rows: `customer_id=2, name="Bob", email="bob@example.com", phone="555-1234", address="123 Main St"`
 
 ### Example 2: Nested JSON with Flattening
 
 **Source JSON**:
-
 ```json
 {
   "user_id": 100,
@@ -282,7 +269,6 @@ ALTER TABLE customers ADD COLUMNS (
 ```
 
 **Flattened Table**:
-
 ```
 user_id | age | city    | item   | amount
 --------|-----|---------|--------|-------
@@ -291,7 +277,6 @@ user_id | age | city    | item   | amount
 ```
 
 **PySpark Code**:
-
 ```python
 from pyspark.sql.functions import explode, col
 
@@ -316,7 +301,6 @@ flattened = df.select(
 **Same Source**, but preserved as nested:
 
 **Table Schema**:
-
 ```sql
 CREATE TABLE user_purchases (
   user_id BIGINT,
@@ -326,7 +310,6 @@ CREATE TABLE user_purchases (
 ```
 
 **Query Example**:
-
 ```sql
 -- Get users from Seattle who bought laptops
 SELECT
@@ -345,19 +328,16 @@ WHERE profile.city = 'Seattle'
 ### Schema Evolution
 
 **Detection**:
-
 - Compares source schema to existing table schema
 - Identifies new, missing, and changed columns
 - Reports differences clearly to user
 
 **Automatic Handling**:
-
 - New columns: Automatically executes ALTER TABLE ADD COLUMNS
 - Missing columns: Uses NULL or asks user
 - Type changes: Routes to type conflict resolution
 
 **Execution**:
-
 - ALTER TABLE commands are syntactically correct
 - Uses appropriate Iceberg/S3 Tables syntax
 - Verifies changes applied successfully
@@ -365,25 +345,21 @@ WHERE profile.city = 'Seattle'
 ### Nested JSON
 
 **Detection**:
-
 - Identifies STRUCT and ARRAY types in source
 - Determines nesting depth
 - Lists all nested fields clearly
 
 **User Choice**:
-
 - Presents flatten vs preserve options
 - Explains pros/cons of each approach
 - Waits for user decision
 
 **Implementation**:
-
 - Flatten: Provides complete PySpark/SQL with explode for arrays
 - Preserve: Creates correct DDL with nested types
 - Validates nested schema is correct
 
 **Query Examples**:
-
 - Shows how to query nested data
 - Demonstrates struct field access (e.g., `customer.name`)
 - Shows UNNEST/explode for arrays

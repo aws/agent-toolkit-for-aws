@@ -1,16 +1,27 @@
 ---
 name: query-data-lake
-description: "Execute and manage Athena SQL queries across default and federated catalogs (Glue, S3 Tables, Redshift). Triggers on phrases like: query data, run SQL, athena query, analyze table, SQL query, workgroup status, profile table, query Redshift catalog, query S3 Tables. Do NOT use for finding specific data assets (use find-data-lake-assets), full catalog audits (use exploring-data-catalog), importing data (use ingest-into-data-lake)."
-argument-hint: "[SQL-query|query-name|workgroup-name|catalog-name|'profile TABLE_NAME']"
-owner_team: AWS Analytics
-owner_cti: AWS/Analytics/Agent Skills
-stages: [preprod]
+description: 'Execute and manage Athena SQL queries across default and federated catalogs
+  (Glue, S3 Tables, Redshift). Triggers on phrases like: query data, run SQL, athena
+  query, analyze table, SQL query, workgroup status, profile table, query Redshift
+  catalog, query S3 Tables. Do NOT use for finding specific data assets (use find-data-lake-assets),
+  full catalog audits (use exploring-data-catalog), importing data (use ingest-into-data-lake).'
 version: 1
 metadata:
-  service: [athena, glue, s3tables, redshift]
-  task: [debug, audit]
-  persona: [developer, data-engineer, architect]
-  workload: [data-analytics]
+  service:
+  - athena
+  - glue
+  - s3tables
+  - redshift
+  task:
+  - debug
+  - audit
+  persona:
+  - developer
+  - data-engineer
+  - architect
+  workload:
+  - data-analytics
+argument-hint: '[SQL-query|query-name|workgroup-name|catalog-name|''profile TABLE_NAME'']'
 ---
 
 # Query Data Lake
@@ -22,7 +33,6 @@ Execute SQL queries on Amazon Athena across default and federated catalogs (Glue
 Executes and manages Athena SQL queries across default and federated catalogs. Selects a workgroup, resolves target assets (delegating fuzzy references to `find-data-lake-assets`), classifies statements for safety, and reports cost and data scanned. Use the AWS MCP server for sandboxed execution and audit logging; the same AWS CLI commands work directly when the MCP server is not available.
 
 **Constraints for parameter acquisition:**
-
 - You MUST accept a single optional argument: SQL text, a named-query name, a workgroup name, a catalog name, or `profile TABLE_NAME`
 - You MUST accept the argument as direct text or a pointer to a file containing SQL
 - You MUST ask the user for the target AWS region if not already set
@@ -36,7 +46,6 @@ Executes and manages Athena SQL queries across default and federated catalogs. S
 Check for required tools and AWS access before running queries.
 
 **Constraints:**
-
 - You MUST verify AWS MCP server tools are available (`aws___call_aws`) and run queries through them when present; fall back to AWS CLI only if the MCP server is unavailable
 - You MUST NOT fall back to shell or Bash for query execution — results must be captured via the MCP tool or `aws athena` CLI so output location and cost are tracked
 - You MUST confirm credentials with `aws sts get-caller-identity` and inform the user about any missing tools
@@ -46,7 +55,6 @@ Check for required tools and AWS access before running queries.
 Check caller identity, list workgroups, auto-select the best one (see [workgroup-selection.md](references/workgroup-selection.md)).
 
 **Constraints:**
-
 - You MUST select a workgroup before submitting any query (prevents output-location errors)
 - You MUST present the selected workgroup and its output location to the user
 - You MUST NOT auto-escalate to a different workgroup on failure without user confirmation
@@ -56,7 +64,6 @@ Check caller identity, list workgroups, auto-select the best one (see [workgroup
 If the user refers to a table by name, by business concept ("our quarterly report", "the sales data"), by S3 path, or by catalog without specifying the table, delegate to `find-data-lake-assets` to return the concrete `database.table` (and catalog if non-default).
 
 **Constraints:**
-
 - You MUST NOT attempt to resolve fuzzy asset references with `athena list-data-catalogs` or by iterating `get-tables` — those miss federated catalogs and waste tokens
 - You SHOULD skip this step only when the user provides a fully-qualified reference (exact `database.table`) or raw SQL they want executed as-is
 - You MUST state the resolved asset explicitly before building the query: "Found [table] in [catalog]. Using this for the query."
@@ -93,7 +100,6 @@ aws___call_aws(command="aws athena start-query-execution --work-group <WORKGROUP
 For federated or S3 Tables catalogs, also set `Catalog=<CATALOG_PATH>` in the execution context (e.g. `Catalog=s3tablescatalog/<BUCKET_NAME>`).
 
 **Constraints:**
-
 - You MUST warn the user before executing when the target is Redshift-federated ("No partition pruning — every query scans the full table")
 - You MUST warn the user before executing a cross-catalog join ("Cross-catalog joins incur network overhead and may be slow")
 - You MUST confirm the output S3 location before executing

@@ -7,7 +7,6 @@ This document describes expected approaches for handling type conflicts and tran
 ### What is a Type Conflict?
 
 A type conflict occurs when:
-
 1. **Target table exists** with a defined schema
 2. **Source data** has a column with a **different type**
 3. **Direct load would fail** without transformation
@@ -70,7 +69,6 @@ Do NOT silently apply a transformation without user confirmation.
 ### STRING → Numeric (INT/DECIMAL)
 
 **PySpark**:
-
 ```python
 from pyspark.sql.functions import regexp_replace, col
 
@@ -93,7 +91,6 @@ transformed_df = source_df.withColumn(
 ```
 
 **Athena SQL**:
-
 ```sql
 SELECT
   CAST(regexp_replace(price, '[^0-9.]', '') AS DECIMAL(10,2)) AS price
@@ -104,7 +101,6 @@ WHERE regexp_replace(price, '[^0-9.]', '') <> ''
 ### STRING → DATE/TIMESTAMP
 
 **PySpark**:
-
 ```python
 from pyspark.sql.functions import to_date, to_timestamp
 
@@ -134,7 +130,6 @@ transformed_df = source_df.withColumn(
 ```
 
 **Athena SQL**:
-
 ```sql
 SELECT
   DATE_PARSE(date_string, '%Y-%m-%d') AS parsed_date,
@@ -145,7 +140,6 @@ FROM source_table
 ### STRING → BOOLEAN
 
 **PySpark**:
-
 ```python
 from pyspark.sql.functions import when, upper
 
@@ -158,7 +152,6 @@ transformed_df = source_df.withColumn(
 ```
 
 **Athena SQL**:
-
 ```sql
 SELECT
   CASE
@@ -172,7 +165,6 @@ FROM source_table
 ### Numeric → STRING
 
 **PySpark**:
-
 ```python
 # Simple cast
 transformed_df = source_df.withColumn(
@@ -192,7 +184,6 @@ transformed_df = source_df.withColumn(
 ### Handling NULL Values
 
 **PySpark**:
-
 ```python
 from pyspark.sql.functions import coalesce, lit
 
@@ -213,13 +204,11 @@ transformed_df = source_df.filter(
 
 ### Scenario
 Source CSV has:
-
 - `price` as STRING with "$" prefix
 - `signup_date` as STRING "YYYY-MM-DD"
 - `is_active` as STRING "true"/"false"
 
 Target table expects:
-
 - `price` as DECIMAL(10,2)
 - `signup_date` as DATE
 - `is_active` as BOOLEAN
@@ -289,27 +278,23 @@ job.commit()
 When evaluating type conflict resolution:
 
 **Detection**:
-
 - Skill compares source schema to target schema
 - Identifies specific columns with type mismatches
 - Clearly communicates the conflict to user
 
 **User Interaction**:
-
 - Presents at least 2-3 options for handling the conflict
 - Explains pros/cons of each option
 - Waits for user decision before proceeding
 - Does NOT silently transform without confirmation
 
 **Transformation Code**:
-
 - Provides complete PySpark or SQL code for transformation
 - Handles edge cases (null values, invalid formats)
 - Includes data quality filters if "skip invalid" chosen
 - Logs row counts (original vs transformed)
 
 **Validation**:
-
 - Tests transformation on sample data first
 - Validates that transformed types match target schema
 - Reports success/failure clearly
