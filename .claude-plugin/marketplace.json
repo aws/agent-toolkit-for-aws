@@ -20,7 +20,7 @@
     },
     {
       "category": "cloud",
-      "description": "AWS agent plugin with skills and MCP server connections.",
+      "description": "Build, deploy, and operate AI agents on AWS. Skills for scaffolding agents with Amazon Bedrock AgentCore, connecting tools, memory, policies, evaluation, debugging, and production hardening.",
       "keywords": [
         "aws"
       ],
