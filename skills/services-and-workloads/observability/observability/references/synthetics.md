@@ -3,8 +3,9 @@
 Runtime constraints, blueprint compatibility, and common pitfalls for CloudWatch Synthetics canaries.
 
 ## Contents
+
 - [Runtime and blueprint compatibility](#runtime-and-blueprint-compatibility)
-- [CDK pattern](#cdk-pattern)
+- [CDK pattern](#key-flags)
 - [VPC canaries](#vpc-canaries)
 - [Common failures](#common-failures)
 - [Limits](#limits)
@@ -41,6 +42,7 @@ Deprecated runtimes continue running but you **cannot update code or config** wi
 ## Key flags
 
 CDK:
+
 ```typescript
 const canary = new synthetics.Canary(this, 'ApiCanary', {
   // ... standard props ...
@@ -62,6 +64,7 @@ canary.metricSuccessPercent().createAlarm(this, 'CanaryAlarm', {
 `maxRetries` (via `Schedule.RetryConfig`) and `dryRunAndUpdate` are not exposed in the CDK L2 construct — use `CfnCanary` escape hatch or CLI.
 
 CLI — alarm on canary success rate:
+
 ```bash
 aws cloudwatch put-metric-alarm \
   --alarm-name my-api-canary-success \
@@ -75,6 +78,7 @@ aws cloudwatch put-metric-alarm \
 ```
 
 CLI — safe update via dry run:
+
 ```bash
 aws synthetics start-canary-dry-run --name my-api-canary --runtime-version syn-nodejs-puppeteer-15.0
 aws synthetics get-canary --name my-api-canary --dry-run-id $DRY_RUN_ID
@@ -82,6 +86,7 @@ aws synthetics update-canary --name my-api-canary --dry-run-id $DRY_RUN_ID
 ```
 
 Key CDK/CloudFormation constraints:
+
 - `ExecutionRoleArn` is **required** — CloudFormation does not auto-create roles (unlike the console)
 - Changing `Name` triggers **replacement** (delete + create), causing monitoring gaps
 - Without `provisionedResourceCleanup: true`, deleting the stack orphans Lambda functions and layers
@@ -94,11 +99,12 @@ Key CDK/CloudFormation constraints:
 Canaries in VPCs must run in **private subnets** (Lambda ENIs don't get public IPs, even in public subnets).
 
 **Internet access** (required for uploading metrics to CloudWatch and artifacts to S3):
+
 - Option A: NAT Gateway in a public subnet + route from private subnet
 - Option B: VPC endpoints — Interface endpoint for `monitoring`, Gateway endpoint for `s3`
 
 **VPC endpoint policy constraint**: The S3 gateway endpoint policy must include `s3:ListAllMyBuckets`, `s3:GetBucketLocation`, and `s3:PutObject` — separate from the IAM role policy.
- 
+
 **DNS**: Both DNS Resolution and DNS Hostnames must be enabled on the VPC.
 
 **Silent failure mode**: If the VPC has no internet access and no VPC endpoints, the canary runs but cannot upload metrics or artifacts — it appears as if it never ran.

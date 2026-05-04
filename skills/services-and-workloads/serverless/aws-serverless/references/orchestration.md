@@ -29,6 +29,7 @@ AWS Step Functions, Amazon EventBridge, and Lambda Durable Functions patterns an
 | Idempotency | Automatic (execution name unique for 90 days) | Not managed |
 
 Express sub-types:
+
 - **Asynchronous**: Fire-and-forget. Results via CloudWatch Logs.
 - **Synchronous**: Blocks until completion. Invokable from API Gateway, Lambda, or `StartSyncExecution`. 5-min max.
 
@@ -284,6 +285,7 @@ Available on `Task`, `Parallel`, and `Map` states. Retries are attempted before 
 | `JitterStrategy` | `"NONE"` | `"FULL"` randomizes wait between 0 and computed interval |
 
 Rules:
+
 - `States.ALL` must be **last** in the Retry array
 - Retries count as state transitions (billed in Standard workflows)
 - `States.Runtime` and `States.DataLimitExceeded` **cannot be retried**

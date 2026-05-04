@@ -3,6 +3,7 @@
 Using CloudTrail for operational debugging: who changed what, when. Not for security threat detection.
 
 ## Contents
+
 - [Event types](#event-types)
 - [Event history](#event-history)
 - [Common operational queries](#common-operational-queries)
@@ -31,6 +32,7 @@ Using CloudTrail for operational debugging: who changed what, when. Not for secu
 - Cannot view data events, Insights events, or network activity events
 
 ### Common lookups
+
 ```bash
 # Who deleted an S3 bucket?
 aws cloudtrail lookup-events \
@@ -51,21 +53,25 @@ aws cloudtrail lookup-events \
 ## Common operational queries
 
 ### "Who deleted my resource?"
+
 1. Check Event History (90 days) for `Delete*` events
 2. Filter by resource name or resource type
 3. Look at `userIdentity.arn` for the actor and `sourceIPAddress` for origin
 
 ### "Who changed this configuration?"
+
 1. Search for `Update*`, `Modify*`, `Put*` events on the resource
 2. Compare `requestParameters` across events to see what changed
 
 ### "What happened during the incident?"
+
 1. Filter by time range of the incident
 2. Look for `errorCode` fields (AccessDenied, ThrottlingException)
 3. Correlate with CloudWatch metrics/logs for the same time window
 
 ### "Who accessed my data?" (requires data events)
 Data events must be explicitly enabled on the trail:
+
 ```bash
 aws cloudtrail put-event-selectors --trail-name my-trail \
   --advanced-event-selectors '[{
@@ -101,6 +107,7 @@ This is the long-term supported approach — works with standard SQL, scales to 
 ## CloudTrail → CloudWatch integration
 
 ### Alert on specific API calls
+
 ```
 CloudTrail → Trail → CloudWatch Logs → Metric Filter → CloudWatch Alarm → SNS
 ```
@@ -111,6 +118,7 @@ CloudTrail → Trail → CloudWatch Logs → Metric Filter → CloudWatch Alarm 
 4. Configure SNS notification
 
 ### Event selectors
+
 - **Basic**: simple include/exclude for management and data events
 - **Advanced**: fine-grained filtering by event source, resource type, resource ARN
 - Exclude high-volume management event sources on trails: AWS KMS, RDS Data API

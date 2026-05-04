@@ -10,7 +10,7 @@ Actionable error lookup tables: exact error string → cause → fix with CLI co
 - [Step Functions Error Lookup](#step-functions-error-lookup)
 - [SAM/CDK Error Lookup](#samcdk-error-lookup)
 - [Timeout Debugging](#timeout-debugging)
-- [OOM Debugging](#oom-debugging)
+- [OOM Debugging](#out-of-memory-oom-debugging)
 - [Throttling Diagnosis](#throttling-diagnosis)
 - [CloudWatch Logs Insights Queries](#cloudwatch-logs-insights-queries)
 - [X-Ray Tracing](#x-ray-tracing)
@@ -43,6 +43,7 @@ Handler path doesn't match file structure, or dependencies weren't bundled. Lamb
 
 **Error:** `Runtime.ImportModuleError: Unable to import module 'lambda_function': No module named 'lambda_function'`
 **Cause:** Handler references a module missing from the deployment package.
+
 ```bash
 pip install -r requirements.txt -t ./package
 cd package && zip -r ../deployment.zip . && cd .. && zip deployment.zip lambda_function.py
@@ -53,6 +54,7 @@ cd package && zip -r ../deployment.zip . && cd .. && zip deployment.zip lambda_f
 
 **Error:** `Runtime.HandlerNotFound: Handler 'handler' missing on module 'function'`
 **Cause:** File exists but function/method name doesn't match handler setting.
+
 ```bash
 aws lambda update-function-configuration --function-name my-func --handler app.lambda_handler
 # Python: file.function  Node: file.export  Java: package.Class::method
@@ -62,6 +64,7 @@ aws lambda update-function-configuration --function-name my-func --handler app.l
 
 **Error:** `Task timed out after 3.00 seconds`
 **Cause:** Execution exceeded configured timeout. Slow downstream calls, low memory/CPU, or VPC delays.
+
 ```bash
 aws lambda update-function-configuration --function-name my-func --timeout 30
 aws lambda update-function-configuration --function-name my-func --memory-size 512
@@ -72,6 +75,7 @@ aws lambda update-function-configuration --function-name my-func --memory-size 5
 
 **Error:** `Runtime.OutOfMemory: ... signal: killed` or `Runtime exited without providing a reason`
 **Cause:** Function exceeded allocated memory — kernel sent SIGKILL.
+
 ```bash
 # Check REPORT lines: Max Memory Used vs Memory Size
 aws lambda update-function-configuration --function-name my-func --memory-size 1024
@@ -82,6 +86,7 @@ aws lambda update-function-configuration --function-name my-func --memory-size 1
 
 **Error:** `AccessDeniedException: ... not authorized to perform: lambda:InvokeFunction`
 **Cause:** Calling IAM principal lacks `lambda:InvokeFunction` permission.
+
 ```bash
 aws lambda add-permission --function-name my-func \
   --statement-id AllowInvoke --action lambda:InvokeFunction \
@@ -92,6 +97,7 @@ aws lambda add-permission --function-name my-func \
 
 **Error:** `TooManyRequestsException: Rate Exceeded.`
 **Cause:** Function exceeded account concurrency limit (default 1,000).
+
 ```bash
 aws lambda get-account-settings
 aws service-quotas request-service-quota-increase \
@@ -103,6 +109,7 @@ aws lambda put-function-concurrency --function-name my-func --reserved-concurren
 
 **Error:** `Unzipped size must be smaller than 262144000 bytes`
 **Cause:** Package exceeds 50 MB zipped / 250 MB unzipped.
+
 ```bash
 find ./package -name "*.pyc" -delete && find ./package -name "*.dist-info" -type d -exec rm -rf {} +
 aws lambda publish-layer-version --layer-name my-deps --zip-file fileb://layer.zip --compatible-runtimes python3.13
@@ -113,6 +120,7 @@ aws lambda publish-layer-version --layer-name my-deps --zip-file fileb://layer.z
 
 **Error:** `Error: connect ETIMEDOUT 176.32.98.189:443`
 **Cause:** VPC Lambda can't reach internet — missing NAT Gateway or VPC Endpoint.
+
 ```bash
 aws ec2 describe-route-tables --filters "Name=association.subnet-id,Values=subnet-xxx"
 aws ec2 create-route --route-table-id rtb-xxx --destination-cidr-block 0.0.0.0/0 --nat-gateway-id nat-xxx
@@ -124,6 +132,7 @@ aws ec2 create-vpc-endpoint --vpc-id vpc-xxx --service-name com.amazonaws.us-eas
 
 **Error:** `Error: Cannot find module 'my-module'`
 **Cause:** Node.js dependency missing — not bundled or built on incompatible platform.
+
 ```bash
 npm install --production
 sam build --use-container  # for native modules
@@ -134,6 +143,7 @@ unzip -l deployment.zip | grep my-module  # verify inclusion
 
 **Error:** `RecursiveInvocationException: Recursive invocation detected`
 **Cause:** Function writes to a resource that triggers itself again (~16 invocations before halt).
+
 ```bash
 # Emergency stop
 aws lambda put-function-concurrency --function-name my-func --reserved-concurrent-executions 0
@@ -144,6 +154,7 @@ aws lambda put-function-concurrency --function-name my-func --reserved-concurren
 
 **Error:** `SnapStartException` / `SnapStartNotReadyException` / `SnapStartTimeoutException`
 **Cause:** SnapStart failed during snapshot — init threw exception or uses non-snapshottable resources (e.g., open network connections).
+
 ```bash
 aws lambda get-function --function-name my-func --query 'Configuration.SnapStart'
 # Java: Use CRaC hooks — beforeCheckpoint() to close connections, afterRestore() to reopen
@@ -155,6 +166,7 @@ aws lambda get-function --function-name my-func --query 'Configuration.SnapStart
 
 **Error:** `Sandbox.Timedout`
 **Cause:** Function exceeded its timeout. In newer runtimes, this covers both init-phase and invoke-phase timeouts. A suppressed init failure consumes the invoke timeout.
+
 ```bash
 aws lambda update-function-configuration --function-name my-func --timeout 60 --memory-size 1024
 # Move heavy initialization to lazy loading inside the handler
@@ -164,6 +176,7 @@ aws lambda update-function-configuration --function-name my-func --timeout 60 --
 
 **Error:** `ENILimitReachedException`
 **Cause:** VPC reached network interface quota. Lambda Hyperplane ENIs have a default quota of 500 per VPC (see lambda.md); the overall VPC ENI quota is 5,000 per region. Check which limit applies.
+
 ```bash
 aws service-quotas request-service-quota-increase --service-code vpc --quota-code L-DF5E4CA3 --desired-value 10000
 # Consolidate functions to use same subnet + security group combinations
@@ -173,6 +186,7 @@ aws service-quotas request-service-quota-increase --service-code vpc --quota-cod
 
 **Error:** `InvalidZipFileException: Could not unzip uploaded file.`
 **Cause:** Invalid ZIP or handler nested in subdirectory instead of at root.
+
 ```bash
 unzip -t deployment.zip  # verify integrity
 cd my-folder && zip -r ../deployment.zip . && cd ..  # files at root, not nested
@@ -182,6 +196,7 @@ cd my-folder && zip -r ../deployment.zip . && cd ..  # files at root, not nested
 
 **Error:** `CodeStorageExceededException: Code storage limit exceeded.`
 **Cause:** Account exceeded 75 GB code storage per region (all versions + layers).
+
 ```bash
 aws lambda list-versions-by-function --function-name my-func
 aws lambda delete-function --function-name my-func --qualifier 1
@@ -196,9 +211,11 @@ aws lambda list-layers  # delete unused layers too
 
 **Error:** `Malformed Lambda proxy response` → 502
 **Cause:** Lambda response missing required format — `body` must be a string, response must be a JSON object (not a plain string or array).
+
 ```python
 return {"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": json.dumps({"msg": "ok"})}
 ```
+
 ```javascript
 return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ msg: "ok" }) };
 ```
@@ -207,6 +224,7 @@ return { statusCode: 200, headers: { "Content-Type": "application/json" }, body:
 
 **Error:** `403 Forbidden: Missing Authentication Token`
 **Cause:** URL doesn't match any resource/method, or API not deployed to stage. Usually routing, not auth.
+
 ```bash
 aws apigateway create-deployment --rest-api-id abc123 --stage-name prod
 # Verify: https://{api-id}.execute-api.{region}.amazonaws.com/{stage}/{resource}
@@ -216,6 +234,7 @@ aws apigateway create-deployment --rest-api-id abc123 --stage-name prod
 
 **Error:** `Invalid permissions on Lambda function`
 **Cause:** API Gateway lacks `lambda:InvokeFunction` permission on the target function.
+
 ```bash
 aws lambda add-permission --function-name my-func --statement-id apigw-invoke \
   --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
@@ -226,6 +245,7 @@ aws lambda add-permission --function-name my-func --statement-id apigw-invoke \
 
 **Error:** `Endpoint request timed out` → 504
 **Cause:** Lambda didn't respond within 29s (REST) / 30s (HTTP) integration timeout.
+
 ```bash
 aws lambda update-function-configuration --function-name my-func --memory-size 1024
 # For long operations: return 202 immediately, process async, poll for results
@@ -235,6 +255,7 @@ aws lambda update-function-configuration --function-name my-func --memory-size 1
 
 **Error:** `Unauthorized` (401)
 **Cause:** Lambda authorizer returned deny, threw error, or timed out.
+
 ```bash
 aws logs tail /aws/lambda/my-authorizer --since 1h --filter-pattern ERROR
 # Verify authorizer returns: { principalId, policyDocument: { Statement: [{ Effect: "Allow" }] } }
@@ -244,6 +265,7 @@ aws logs tail /aws/lambda/my-authorizer --since 1h --filter-pattern ERROR
 
 **Error:** `403 Forbidden` with `x-amzn-errortype: ForbiddenException`
 **Cause:** AWS WAF rule matched — IP denylist, rate limit, or injection detection.
+
 ```bash
 # Check WAF sampled requests in console to identify blocking rule
 # Test rules in Count mode before switching to Block
@@ -253,6 +275,7 @@ aws logs tail /aws/lambda/my-authorizer --since 1h --filter-pattern ERROR
 
 **Error:** `blocked by CORS policy: No 'Access-Control-Allow-Origin' header`
 **Cause:** Lambda proxy integration must return CORS headers; HTTP APIs can configure at API level.
+
 ```yaml
 # SAM Globals
 Globals:
@@ -262,6 +285,7 @@ Globals:
       AllowMethods: "'GET,POST,OPTIONS'"
       AllowHeaders: "'Content-Type,Authorization'"
 ```
+
 ```bash
 # HTTP API
 aws apigatewayv2 update-api --api-id abc123 \
@@ -272,6 +296,7 @@ aws apigatewayv2 update-api --api-id abc123 \
 
 **Error:** 500 with CloudWatch log `Lambda invocation failed with status 429`
 **Cause:** Lambda throttled but API Gateway surfaces as 500.
+
 ```bash
 # Increase Lambda concurrency (see TooManyRequestsException above)
 aws apigateway update-stage --rest-api-id abc123 --stage-name prod \
@@ -286,6 +311,7 @@ aws apigateway update-stage --rest-api-id abc123 --stage-name prod \
 
 **Error:** `States.TaskFailed`
 **Cause:** Task failed — unhandled Lambda exception, service error, or missing permissions.
+
 ```json
 "Retry": [{"ErrorEquals": ["States.TaskFailed","Lambda.ServiceException","Lambda.SdkClientException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2.0}],
 "Catch": [{"ErrorEquals": ["States.TaskFailed"], "Next": "HandleError", "ResultPath": "$.error"}]
@@ -295,6 +321,7 @@ aws apigateway update-stage --rest-api-id abc123 --stage-name prod \
 
 **Error:** `States.Timeout`
 **Cause:** Task exceeded `TimeoutSeconds` or missed `HeartbeatSeconds` deadline.
+
 ```json
 {"Type": "Task", "Resource": "arn:aws:lambda:...", "TimeoutSeconds": 300, "HeartbeatSeconds": 60, "Next": "NextState"}
 ```
@@ -310,6 +337,7 @@ aws apigateway update-stage --rest-api-id abc123 --stage-name prod \
 
 **Error:** `ExecutionAlreadyExists`
 **Cause:** Execution name must be unique per state machine for 90 days.
+
 ```bash
 aws stepfunctions start-execution --state-machine-arn arn:aws:states:... \
   --name "exec-$(date +%s)" --input '{}'
@@ -320,6 +348,7 @@ aws stepfunctions start-execution --state-machine-arn arn:aws:states:... \
 
 **Error:** `States.Permissions: insufficient privileges`
 **Cause:** Execution role lacks permission to invoke target service.
+
 ```bash
 aws iam list-attached-role-policies --role-name StepFunctionsRole
 # Add lambda:InvokeFunction, dynamodb:PutItem, etc. to the execution role
@@ -333,6 +362,7 @@ aws iam list-attached-role-policies --role-name StepFunctionsRole
 
 **Error:** `sam build` uses old dependencies after updating requirements.txt, or `--clear-cache` flag unrecognized.
 **Cause:** SAM caches build artifacts. There is no `--clear-cache` flag.
+
 ```bash
 sam build --no-cached              # Force clean build (correct flag)
 rm -rf .aws-sam/cache              # Or manually delete cache directory
@@ -342,6 +372,7 @@ rm -rf .aws-sam/cache              # Or manually delete cache directory
 
 **Error:** `PythonPipBuilder:ResolveDependencies - pip install returned a non-zero exit code`
 **Cause:** Dependency version conflicts or missing native libraries.
+
 ```bash
 sam build --use-container --no-cached
 # Use binary wheels: psycopg2-binary instead of psycopg2
@@ -351,6 +382,7 @@ sam build --use-container --no-cached
 
 **Error:** `DockerBuildFailed: Docker build failed.`
 **Cause:** Docker not running or Dockerfile errors.
+
 ```bash
 docker info  # verify running
 sudo systemctl start docker  # start if needed
@@ -360,6 +392,7 @@ sudo systemctl start docker  # start if needed
 
 **Error:** `Cannot find module 'esbuild'`
 **Cause:** CDK `NodejsFunction` needs esbuild for bundling.
+
 ```bash
 npm install --save-dev esbuild
 ```
@@ -368,6 +401,7 @@ npm install --save-dev esbuild
 
 **Error:** `CREATE_FAILED: AWS::Lambda::Function`
 **Cause:** Invalid runtime, missing S3 code, role not ready, or package too large.
+
 ```bash
 aws cloudformation describe-stack-events --stack-name my-stack \
   --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].[LogicalResourceId,ResourceStatusReason]" --output table
@@ -377,6 +411,7 @@ aws cloudformation describe-stack-events --stack-name my-stack \
 
 **Error:** `UPDATE_ROLLBACK_FAILED`
 **Cause:** Update failed and rollback also failed — resource manually deleted or permissions changed.
+
 ```bash
 aws cloudformation continue-update-rollback --stack-name my-stack
 aws cloudformation continue-update-rollback --stack-name my-stack --resources-to-skip MyFunction
@@ -386,6 +421,7 @@ aws cloudformation continue-update-rollback --stack-name my-stack --resources-to
 
 **Error:** `Security Constraints Not Satisfied`
 **Cause:** SAM template missing required properties (Handler, Runtime, CodeUri).
+
 ```bash
 sam validate --lint
 ```
@@ -394,6 +430,7 @@ sam validate --lint
 
 **Error:** `This stack uses assets, so the toolkit stack must be deployed`
 **Cause:** Target account/region not bootstrapped.
+
 ```bash
 cdk bootstrap aws://123456789012/us-east-1
 ```
@@ -402,6 +439,7 @@ cdk bootstrap aws://123456789012/us-east-1
 
 **Error:** `Circular dependency between resources: [MyFunction, MyRole, ...]`
 **Cause:** Resources reference each other in a cycle.
+
 ```yaml
 # Break cycle: give the function an explicit name and hardcode the ARN
 MyFunction:
@@ -499,18 +537,21 @@ aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Thrott
 Run against `/aws/lambda/FUNCTION_NAME`. For API Gateway, use the access log group.
 
 ### Cold Starts
+
 ```
 filter @type = "REPORT" | filter ispresent(@initDuration)
 | stats count() as coldStarts, avg(@initDuration) as avgInitMs, max(@initDuration) as maxInitMs, pct(@initDuration, 99) as p99InitMs by bin(1h)
 ```
 
 ### Cold Start Percentage
+
 ```
 filter @type = "REPORT"
 | stats count() as total, sum(ispresent(@initDuration)) as coldStarts, sum(ispresent(@initDuration)) * 100.0 / count() as pct by bin(1h)
 ```
 
 ### Errors by Type
+
 ```
 filter @message like /(?i)error|exception/
 | parse @message /(?<errorType>[A-Za-z]+Error|[A-Za-z]+Exception)/
@@ -518,23 +559,27 @@ filter @message like /(?i)error|exception/
 ```
 
 ### Timeouts
+
 ```
 filter @message like /Task timed out/ | stats count() as timeouts by bin(1h) | sort bin desc
 ```
 
 ### Memory Utilization
+
 ```
 filter @type = "REPORT"
 | stats max(@memorySize/1e6) as provisionedMB, avg(@maxMemoryUsed/1e6) as avgUsedMB, max(@maxMemoryUsed/1e6) as maxUsedMB, pct(@maxMemoryUsed/1e6, 99) as p99UsedMB
 ```
 
 ### Out-of-Memory Detection (>90% memory)
+
 ```
 filter @type = "REPORT" | filter @maxMemoryUsed / @memorySize > 0.9
 | fields @timestamp, @requestId, @maxMemoryUsed/1e6 as usedMB, @memorySize/1e6 as allocatedMB | sort @timestamp desc | limit 50
 ```
 
 ### Overprovisioned Memory (<50% used)
+
 ```
 filter @type = "REPORT"
 | stats max(@memorySize/1e6) as provMB, max(@maxMemoryUsed/1e6) as peakMB, max(@maxMemoryUsed)*100.0/max(@memorySize) as pct
@@ -542,17 +587,20 @@ filter @type = "REPORT"
 ```
 
 ### Memory Growth (Leak Detection)
+
 ```
 filter @type = "REPORT" | stats avg(@maxMemoryUsed/1e6) as avgMemMB by bin(5m) | sort bin asc
 ```
 
 ### Latency Percentiles
+
 ```
 filter @type = "REPORT"
 | stats avg(@duration) as avg, pct(@duration,50) as p50, pct(@duration,90) as p90, pct(@duration,95) as p95, pct(@duration,99) as p99, max(@duration) as max by bin(1h)
 ```
 
 ### Slowest Invocations
+
 ```
 filter @type = "REPORT"
 | fields @timestamp, @requestId, @duration, @maxMemoryUsed/1000000 as memMB, ispresent(@initDuration) as coldStart
@@ -560,28 +608,33 @@ filter @type = "REPORT"
 ```
 
 ### API Gateway 5xx
+
 ```
 filter status >= 500 | stats count() as errors by status, path, httpMethod | sort errors desc
 ```
 
 ### API Gateway 5xx Over Time
+
 ```
 filter status >= 500 | stats count() by bin(5m) | sort bin desc
 ```
 
 ### Throttle Events
+
 ```
 filter @message like /Rate Exceeded|TooManyRequestsException|Throttl/
 | fields @timestamp, @requestId, @message | sort @timestamp desc | limit 50
 ```
 
 ### Billed Duration
+
 ```
 filter @type = "REPORT"
 | stats count() as invocations, sum(@billedDuration)/1000 as totalBilledSec, avg(@billedDuration) as avgBilledMs by bin(1d)
 ```
 
 ### Error Messages with Request IDs
+
 ```
 filter @message like /(?i)error|exception|fail/
 | fields @timestamp, @requestId, @message | sort @timestamp desc | limit 50
@@ -592,6 +645,7 @@ filter @message like /(?i)error|exception|fail/
 ## X-Ray Tracing
 
 ### Enable in SAM
+
 ```yaml
 Globals:
   Function:
@@ -599,6 +653,7 @@ Globals:
 ```
 
 ### Enable in CDK
+
 ```typescript
 new lambda.Function(this, 'Fn', {
   tracing: lambda.Tracing.ACTIVE,  // adds AWSXRayDaemonWriteAccess automatically
@@ -612,10 +667,12 @@ new lambda.Function(this, 'Fn', {
 1 request/second (reservoir) + 5% of additional requests.
 
 ### Instrument SDK Calls
+
 ```python
 from aws_xray_sdk.core import patch_all
 patch_all()
 ```
+
 ```javascript
 // SDK v3 (Node.js 18+)
 const { captureAWSv3Client } = require('aws-xray-sdk-core');
@@ -624,6 +681,7 @@ const ddb = captureAWSv3Client(new DynamoDBClient({}));
 ```
 
 ### Query Traces
+
 ```bash
 aws xray get-trace-summaries --start-time $(date -u -d '1 hour ago' +%s) --end-time $(date -u +%s) \
   --filter-expression 'service("my-func") AND fault'
@@ -631,6 +689,7 @@ aws xray batch-get-traces --trace-ids "1-xxx-yyy"
 ```
 
 ### Enable for API Gateway
+
 ```yaml
 Resources:
   MyApi:
@@ -641,6 +700,7 @@ Resources:
 ```
 
 ### Enable for Step Functions
+
 ```yaml
 Resources:
   MyStateMachine:

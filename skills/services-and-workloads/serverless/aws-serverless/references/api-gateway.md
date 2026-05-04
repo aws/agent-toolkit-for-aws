@@ -546,6 +546,7 @@ fields @timestamp, integrationLatency, status, resourcePath
 ### Automated Troubleshooting
 
 **AWSSupport-TroubleshootAPIGatewayHttpErrors** — Systems Manager runbook:
+
 - Validates API, resource, operation, and stage
 - Analyzes CloudWatch logs automatically
 - Requires: `apigateway:GET`, `logs:GetQueryResults`, `logs:StartQuery`, `ssm:*`

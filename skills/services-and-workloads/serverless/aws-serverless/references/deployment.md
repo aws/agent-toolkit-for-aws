@@ -3,6 +3,7 @@
 Serverless-specific deployment patterns, resource types, and fast iteration tools.
 
 ## Contents
+
 - [SAM resource types](#sam-resource-types)
 - [SAM Globals section](#sam-globals-section)
 - [CDK serverless constructs](#cdk-serverless-constructs)

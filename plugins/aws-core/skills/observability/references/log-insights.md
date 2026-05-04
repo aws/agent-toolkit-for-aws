@@ -3,6 +3,7 @@
 Complete query syntax reference, performance tips, and reusable query library.
 
 ## Contents
+
 - [Commands](#commands)
 - [Filter syntax](#filter-syntax)
 - [Parse command](#parse-command)
@@ -71,16 +72,19 @@ filter @message not like "DEBUG"
 ## Parse command
 
 ### Glob mode (wildcards)
+
 ```
 parse @message "User * performed * on *" as user, action, resource
 ```
 
 ### Regex mode (named groups)
+
 ```
 parse @message /User (?<user>\w+) performed (?<action>\w+)/
 ```
 
 ### Chaining for complex logs
+
 ```
 # XML parsing
 parse @message "<EventData>*</EventData>" as @EventData
@@ -118,6 +122,7 @@ stats avg(duration) as avg_ms, pct(duration, 99) as p99 by serviceName, bin(1h)
 - `now()` — time query processing was started, in epoch seconds
 
 **bin() caps**:
+
 - ms → max 1000, s → max 60, m → max 60, h → max 24
 - Use `bin(5m)` **NOT** `bin(300s)` — 300 exceeds the s→60 cap
 
@@ -127,6 +132,7 @@ stats avg(duration) as avg_ms, pct(duration, 99) as p99 by serviceName, bin(1h)
 
 ### JOIN
 Correlate events across log groups by a shared key:
+
 ```
 filter status >= 500
 | join type=inner left=api right=infra
@@ -136,6 +142,7 @@ filter status >= 500
 
 ### Subqueries
 Use nested queries to filter the outer query:
+
 ```
 filter requestId in (
     SOURCE '/aws/lambda/database-service'
@@ -145,6 +152,7 @@ filter requestId in (
 ```
 
 ### Anomaly detection
+
 ```
 fields @timestamp, @message
 | filter @message like /ERROR/
@@ -184,6 +192,7 @@ Recurring queries with results delivered to S3 and EventBridge. Configure via co
 ## Reusable query library
 
 ### Error analysis
+
 ```
 # Recent errors with context
 fields @timestamp, @message, @logStream
@@ -204,6 +213,7 @@ fields @timestamp, @message
 ```
 
 ### Lambda-specific
+
 ```
 # Cold start analysis
 filter @type = "REPORT"
@@ -227,6 +237,7 @@ filter @message like /Task timed out/
 ```
 
 ### API Gateway
+
 ```
 # 5xx errors by endpoint
 fields @timestamp, httpMethod, resourcePath, status
@@ -244,6 +255,7 @@ fields @timestamp, resourcePath, responseLatency
 ```
 
 ### Cross-service correlation
+
 ```
 # Multi-log-group error correlation (using SOURCE)
 SOURCE logGroups(namePrefix: ['/app-logs', '/api-gateway-logs'])

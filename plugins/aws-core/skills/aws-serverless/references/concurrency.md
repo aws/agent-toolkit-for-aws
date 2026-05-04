@@ -3,13 +3,14 @@
 Four concurrency controls operate at different levels, solve different problems, and have complex interactions.
 
 ## Contents
+
 - [The 4 concurrency types](#the-4-concurrency-types)
 - [Interaction matrix](#interaction-matrix)
 - [Decision scenarios](#decision-scenarios)
 - [Account limits and scaling](#account-limits-and-scaling)
 - [Common mistakes](#common-mistakes)
 - [SnapStart interaction](#snapstart-interaction)
-- [SAM/CDK examples](#samcdk-examples)
+- [SAM/CDK examples](#samcdk-property-reference)
 
 ---
 

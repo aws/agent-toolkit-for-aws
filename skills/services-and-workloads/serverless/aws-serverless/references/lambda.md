@@ -3,6 +3,7 @@
 Specific values, limits, constraints, and code that complement general Lambda knowledge.
 
 ## Contents
+
 - [Cold Start Optimization](#cold-start-optimization)
 - [Packaging](#packaging)
 - [Memory and Timeout Tuning](#memory-and-timeout-tuning)
@@ -23,6 +24,7 @@ Snapshots the initialized execution environment (Firecracker microVM memory + di
 **NOT supported:** Node.js, Ruby, container images, OS-only runtimes
 
 **Constraints:**
+
 - Mutually exclusive with Provisioned Concurrency
 - Mutually exclusive with Amazon EFS
 - Ephemeral storage must be ≤ 512 MB
@@ -31,11 +33,13 @@ Snapshots the initialized execution environment (Firecracker microVM memory + di
 - Python/.NET: caching charge (based on memory, minimum 3 hours) + per-restore charge
 
 **Restoration considerations:**
+
 - Generate unique IDs/secrets in the handler, not during init (snapshot reuse)
 - Re-establish network connections in the handler (connections are stale after restore)
 - Refresh cached timestamps/credentials in the handler
 
 **CDK example (Python):**
+
 ```python
 from aws_cdk import aws_lambda as lambda_
 
@@ -126,6 +130,7 @@ Need > 250 MB uncompressed?
 | All runtimes | `bin/` (PATH), `lib/` (LD_LIBRARY_PATH) |
 
 **Layer constraints:**
+
 - Layers count toward the 250 MB unzipped limit
 - Layers only work with .zip deployments, NOT container images
 - Not recommended for Go/Rust — bundle deps in the deployment package
@@ -151,11 +156,13 @@ CMD ["app.handler"]
 ### Python Build Tips
 
 Use `uv` for dependency installation — **10-100x faster than pip**:
+
 ```bash
 uv pip install -r requirements.txt --target ./package
 ```
 
 Cross-platform build flags (when building on non-Linux):
+
 ```bash
 pip install -r requirements.txt \
   --target ./package \
@@ -183,6 +190,7 @@ Use `manylinux2014_aarch64` for arm64. Exclude `__pycache__`, `.pyc`, tests, doc
 CPU scales linearly with memory. Doubling memory doubles CPU. **Over-provisioning memory can improve performance** — faster execution = less total duration.
 
 **Tuning process:**
+
 1. Start at 256–512 MB (128 MB only for trivial event routers)
 2. Monitor `Max Memory Used` in CloudWatch REPORT lines
 3. Use **AWS Lambda Power Tuning** (open-source Step Functions tool):
@@ -219,6 +227,7 @@ aws stepfunctions start-execution \
 | Default | 3 seconds |
 
 **Critical integration limits:**
+
 - API Gateway REST API: **29s default** (adjustable for Regional/private APIs since June 2024; edge-optimized remains 29s max)
 - API Gateway HTTP API: **30-second hard limit**
 - SQS visibility timeout must be **≥ 6× function timeout** (AWS recommendation)
@@ -244,6 +253,7 @@ aws stepfunctions start-execution \
 ### Hyperplane ENI
 
 Lambda uses **Hyperplane Elastic Network Interfaces** (shared, not per-function):
+
 - Shared across functions using the same subnet + security group combination
 - Each ENI supports **65,000 connections/ports**
 - First-time ENI creation: **several minutes** (function stays in `Pending`)
@@ -256,23 +266,29 @@ Lambda uses **Hyperplane Elastic Network Interfaces** (shared, not per-function)
 **Lambda in a VPC NEVER gets a public IP**, even in a public subnet.
 
 **Pattern 1: Private Subnet + NAT Gateway** (most common)
+
 ```
 Lambda → Private Subnet → Route Table → NAT Gateway → IGW → Internet
 ```
+
 - Deploy in each AZ for HA
 
 **Pattern 2: VPC Endpoints** (for AWS services)
+
 ```
 Lambda → Private Subnet → VPC Endpoint → AWS Service
 ```
+
 - **Gateway endpoints:** S3, DynamoDB
 - **Interface endpoints:** STS, Secrets Manager, SQS, etc.
 - Traffic stays on AWS network — lower latency
 
-**Pattern 3: IPv6 Egress-Only Internet Gateway**
+#### Pattern 3: IPv6 Egress-Only Internet Gateway
+
 ```
 Lambda → Dual-Stack Subnet → Egress-Only IGW → Internet (IPv6)
 ```
+
 - Eliminates NAT Gateway for IPv6 traffic
 - Requires dual-stack subnets and IPv6-capable endpoints
 - Set `Ipv6AllowedForDualStack=true` in function config
@@ -316,25 +332,30 @@ One execution role per function. Key Lambda-specific managed policies:
 ```
 
 **Init Phase** (3 sub-phases: extension init → runtime init → function init):
+
 - On-demand timeout: **10 seconds**
 - Provisioned/SnapStart timeout: **up to 15 minutes**
 - If init exceeds 10s on-demand, Lambda retries at first invocation using the function's configured timeout
 
 **Invoke Phase:**
+
 - Limited by function timeout (max 900s)
 - Each environment handles **one concurrent invocation** at a time
 
 **Shutdown Phase:**
+
 - 0 ms (no extensions), 500 ms (internal only), 2,000 ms (external extensions)
 - SIGKILL if extensions don't respond in time
 
 **Restore Phase** (SnapStart only):
+
 - Resumes from cached snapshot
 - 10-second timeout for restore + after-restore hooks
 
 ### Execution Environment Reuse (Warm Starts)
 
 Objects initialized outside the handler persist across invocations:
+
 - SDK clients, DB connections, cached data all survive
 - `/tmp` content persists (512 MB–10 GB)
 - Background processes resume on next invocation
@@ -356,6 +377,7 @@ Objects initialized outside the handler persist across invocations:
 Official AWS toolkit for Lambda best practices. Available for Python, TypeScript, Java, .NET.
 
 **Performance note:** Powertools adds cold start overhead. Use selective imports when cold start matters:
+
 ```python
 # Instead of: from aws_lambda_powertools import Logger, Tracer, Metrics
 # Import only what you need if cold start is critical
