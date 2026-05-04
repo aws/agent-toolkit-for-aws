@@ -24,8 +24,8 @@
       "keywords": [
         "aws"
       ],
-      "name": "aws-agent-building",
-      "source": "./plugins/aws-agent-building",
+      "name": "aws-agents",
+      "source": "./plugins/aws-agents",
       "version": "0.1.0"
     },
     {

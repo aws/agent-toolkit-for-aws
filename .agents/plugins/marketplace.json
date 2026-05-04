@@ -17,10 +17,10 @@
       "category": "Cloud"
     },
     {
-      "name": "aws-agent-building",
+      "name": "aws-agents",
       "source": {
         "source": "local",
-        "path": "./plugins/aws-agent-building"
+        "path": "./plugins/aws-agents"
       },
       "policy": {
         "installation": "AVAILABLE",
