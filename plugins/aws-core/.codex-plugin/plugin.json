@@ -1,6 +1,6 @@
 {
   "name": "aws-core",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "AWS agent plugin with skills and MCP server connections.",
   "author": {
     "name": "Amazon Web Services"

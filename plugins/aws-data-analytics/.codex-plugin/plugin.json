@@ -1,6 +1,6 @@
 {
   "name": "aws-data-analytics",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena.",
   "author": {
     "name": "Amazon Web Services"
