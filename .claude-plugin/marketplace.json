@@ -10,7 +10,7 @@
   "plugins": [
     {
       "category": "cloud",
-      "description": "AWS agent plugin with skills and MCP server connections.",
+      "description": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code, use core services, and complete common tasks.",
       "keywords": [
         "aws"
       ],
