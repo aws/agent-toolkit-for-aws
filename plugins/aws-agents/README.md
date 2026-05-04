@@ -10,26 +10,26 @@ This plugin provides 7 skills covering the full agent lifecycle — from scaffol
 
 | Skill | When to use | References |
 |---|---|---|
-| `agentcore-get-started` | "build an agent", "create an agent", "get started", "which framework" | example-support-agent |
-| `agentcore-build` | "add memory", "remember across sessions", "call agent from app", "VPC", "multi-agent", "migrate from Bedrock" | memory, integrate, vpc, multi-agent, migrate, local-vs-deployed |
-| `agentcore-connect` | "connect to API", "add gateway", "give my agent tools", "Cedar policy", "restrict tools" | policy |
-| `agentcore-deploy` | "deploy my agent", "deploy failed", "CDK error", "rollback", "canary" | versioning |
-| `agentcore-debug` | "agent not working", "check logs", "command not found", "check my setup" | doctor |
-| `agentcore-optimize` | "evaluate my agent", "measure quality", "quality gate", "observability", "traces", "cost" | evals, observability, cost |
-| `agentcore-harden` | "production checklist", "go to production", "secure agent", "before launch", "cold start" | limits |
+| `agents-get-started` | "build an agent", "create an agent", "get started", "which framework" | example-support-agent |
+| `agents-build` | "add memory", "remember across sessions", "call agent from app", "VPC", "multi-agent", "migrate from Bedrock" | memory, integrate, vpc, multi-agent, migrate, local-vs-deployed |
+| `agents-connect` | "connect to API", "add gateway", "give my agent tools", "Cedar policy", "restrict tools" | policy |
+| `agents-deploy` | "deploy my agent", "deploy failed", "CDK error", "rollback", "canary" | versioning |
+| `agents-debug` | "agent not working", "check logs", "command not found", "check my setup" | doctor |
+| `agents-optimize` | "evaluate my agent", "measure quality", "quality gate", "observability", "traces", "cost" | evals, observability, cost |
+| `agents-harden` | "production checklist", "go to production", "secure agent", "before launch", "cold start" | limits |
 
 ## Routing guide
 
 When in doubt about which skill to reach for:
 
-- **Starting from nothing?** → `agentcore-get-started`
-- **Environment/CLI broken?** → `agentcore-debug` (loads `references/doctor.md`)
-- **Adding new capabilities to a working project?** → `agentcore-build`
-- **Connecting to external tools/APIs or restricting access?** → `agentcore-connect`
-- **Ready to ship?** → `agentcore-deploy`
-- **Agent is broken?** → `agentcore-debug`
-- **Measuring quality, observability, or cost?** → `agentcore-optimize`
-- **Going to production?** → `agentcore-harden`
+- **Starting from nothing?** → `agents-get-started`
+- **Environment/CLI broken?** → `agents-debug` (loads `references/doctor.md`)
+- **Adding new capabilities to a working project?** → `agents-build`
+- **Connecting to external tools/APIs or restricting access?** → `agents-connect`
+- **Ready to ship?** → `agents-deploy`
+- **Agent is broken?** → `agents-debug`
+- **Measuring quality, observability, or cost?** → `agents-optimize`
+- **Going to production?** → `agents-harden`
 
 ## MCP Servers
 
