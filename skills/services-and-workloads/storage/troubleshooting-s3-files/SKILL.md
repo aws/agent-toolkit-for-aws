@@ -1,5 +1,5 @@
 ---
-name: troubleshoot-s3-files
+name: troubleshooting-s3-files
 description: >
   Diagnoses and resolves Amazon S3 Files issues including mount failures,
   permission errors, synchronization problems, and performance issues. Use when
