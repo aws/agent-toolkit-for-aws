@@ -2,7 +2,6 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Build](https://github.com/aws/agent-toolkit-for-aws/actions/workflows/build.yml/badge.svg)](https://github.com/aws/agent-toolkit-for-aws/actions/workflows/build.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/aws/agent-toolkit-for-aws/badge)](https://scorecard.dev/viewer/?uri=github.com/aws/agent-toolkit-for-aws)
 [![Status](https://img.shields.io/badge/status-GA-green.svg)](https://github.com/aws/agent-toolkit-for-aws)
 
 Help AI coding agents build, deploy, and manage applications on AWS.

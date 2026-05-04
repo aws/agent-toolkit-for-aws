@@ -1,5 +1,5 @@
 ---
-name: troubleshoot-efs
+name: troubleshooting-efs
 description: >
   Diagnoses and resolves Amazon EFS issues including mount failures, NFS timeouts,
   permission errors, throughput problems, and burst credit exhaustion. Use when
