@@ -29,46 +29,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 
 ## Installation
 
-**Prerequisite:** [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
-
-### Claude Code
-
-```
-/plugin marketplace add aws/agent-toolkit-for-aws
-/plugin install aws-data-analytics@agent-toolkit-for-aws
-/reload-plugins
-```
-
-### Codex
-
-In your terminal:
-
-```
-codex plugin marketplace add aws/agent-toolkit-for-aws
-```
-
-Then launch Codex and run `/plugins` to browse and install the **aws-data-analytics** plugin.
-
-### Other Agents
-
-Add the AWS MCP Server to your agent's MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "aws": {
-      "command": "uvx",
-      "args": [
-        "mcp-proxy-for-aws@latest",
-        "https://aws-mcp.us-east-1.api.aws/mcp",
-        "--metadata", "AWS_REGION=us-west-2"
-      ]
-    }
-  }
-}
-```
-
-Then copy skills from the [`skills/`](skills/) directory to your agent's skills directory.
+See [Quick Start](../../README.md#quick-start).
 
 ## Data Lake Operations
 
