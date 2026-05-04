@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://aws.amazon.com/security/vulnerability-reporting/
+    about: Please report security vulnerabilities through AWS Security, not as a public GitHub issue.
+  - name: Documentation
+    url: https://docs.aws.amazon.com/agent-toolkit/latest/userguide/
+    about: Setup, configuration, and reference documentation for the Agent Toolkit for AWS.
