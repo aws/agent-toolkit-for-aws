@@ -7,6 +7,7 @@ Order of preference for authenticating Glue connections to data sources:
 3. Plaintext `USERNAME`/`PASSWORD` in connection properties (not recommended)
 
 ## Contents
+
 - [IAM Database Authentication](#iam-database-authentication)
 - [AWS Secrets Manager](#aws-secrets-manager)
 - [Plaintext Credentials](#plaintext-credentials)
@@ -15,11 +16,13 @@ Order of preference for authenticating Glue connections to data sources:
 ## IAM Database Authentication
 
 Supported sources:
+
 - Aurora MySQL, Aurora PostgreSQL
 - RDS MySQL, RDS PostgreSQL
 - Amazon Redshift (via `GetClusterCredentials` / `GetCredentials`)
 
 Benefits:
+
 - No long-lived database passwords
 - No secret to rotate
 - Database access controlled by IAM policies
@@ -28,24 +31,31 @@ Benefits:
 ### RDS / Aurora Setup
 
 1. Enable IAM DB auth on the cluster or instance:
+
    ```bash
    aws rds modify-db-instance \
      --db-instance-identifier <ID> \
      --enable-iam-database-authentication \
      --apply-immediately
    ```
+
 2. Create a DB user that authenticates via IAM (MySQL):
+
    ```sql
    CREATE USER 'etl_user'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
    GRANT SELECT ON app_db.* TO 'etl_user'@'%';
    ```
+
    PostgreSQL:
+
    ```sql
    CREATE USER etl_user;
    GRANT rds_iam TO etl_user;
    GRANT SELECT ON ALL TABLES IN SCHEMA public TO etl_user;
    ```
+
 3. Grant the Glue job role the `rds-db:connect` action:
+
    ```json
    {
      "Effect": "Allow",
@@ -53,6 +63,7 @@ Benefits:
      "Resource": "arn:aws:rds-db:<region>:<account>:dbuser:<resource-id>/etl_user"
    }
    ```
+
 4. In the Glue connection, omit `SECRET_ID`, `USERNAME`, and `PASSWORD`. Glue generates an auth token on each connection.
 
 ### Redshift Setup
@@ -68,6 +79,7 @@ When IAM DB auth is not available (Oracle, SQL Server, Snowflake, BigQuery, self
 ### Create Secret
 
 JDBC sources:
+
 ```bash
 aws secretsmanager create-secret \
   --name glue/<connection-name>/credentials \
@@ -76,6 +88,7 @@ aws secretsmanager create-secret \
 ```
 
 Snowflake (key names are Glue-specific):
+
 ```bash
 aws secretsmanager create-secret \
   --name glue/snowflake-analytics/credentials \
@@ -84,6 +97,7 @@ aws secretsmanager create-secret \
 ```
 
 BigQuery (base64 of service account JSON, stored as the secret string directly):
+
 ```bash
 base64 -i <sa>.json | tr -d '\n' | \
 aws secretsmanager create-secret \
@@ -118,6 +132,7 @@ Omit `USERNAME` and `PASSWORD`. Glue reads them from the secret at job runtime.
 ## Plaintext Credentials
 
 Not recommended. Use only for:
+
 - Disposable developer sandboxes
 - Sources where Secrets Manager integration is not supported by the Glue connector
 
@@ -126,6 +141,7 @@ If you must, use `USERNAME` and `PASSWORD` in `ConnectionProperties`. The passwo
 ## Rotation
 
 Secrets Manager rotation:
+
 - Enable automatic rotation on the secret (7, 30, 60, or 90 days)
 - Rotation Lambda updates the password in the source database and writes the new value to the secret
 - Glue picks up the new value on the next job run; no connection update needed

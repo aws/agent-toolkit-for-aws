@@ -3,6 +3,7 @@
 Move data from a JDBC source (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora, Redshift) into the data lake. Assumes a Glue connection exists. If it doesn't, delegate to the `connect-to-data-source` skill first.
 
 ## Contents
+
 - [Prerequisites](#prerequisites)
 - [Workflow](#workflow)
 - [Parallel Reads](#parallel-reads)
@@ -48,11 +49,13 @@ If the target table doesn't exist, delegate to `create-data-lake-table`. Never c
 Use the PySpark templates in [glue-job-scripts.md](glue-job-scripts.md) and the job config guidance in [glue-job-config.md](glue-job-config.md).
 
 Reference the Glue connection via job `Connections` property:
+
 ```json
 "Connections": {"Connections": ["<CONNECTION_NAME>"]}
 ```
 
 In the script, read via connection name -- no credentials in code:
+
 ```python
 source_df = glueContext.create_dynamic_frame.from_options(
     connection_type="jdbc",
@@ -90,6 +93,7 @@ source_df = spark.read.format("jdbc").options(
 ```
 
 Best practices:
+
 - Use a numeric column with even distribution for `partitionColumn`
 - Set `numPartitions` = number of Glue workers × 2
 - Ensure `lowerBound`/`upperBound` cover actual data range
@@ -159,6 +163,7 @@ Source-to-Iceberg type mappings for ingest. Apply via `.cast()` or column aliase
 ### Redshift
 
 Same as PostgreSQL mappings. Redshift-specific additions:
+
 - `SUPER` -> STRING (serialize) or STRUCT (parse)
 - `GEOMETRY` / `GEOGRAPHY` -> BINARY or STRING
 

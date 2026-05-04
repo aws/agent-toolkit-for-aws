@@ -18,6 +18,7 @@ For the full list of supported Iceberg data types and their mappings to query en
 Key: top-level must have `"type":"struct"`, all fields need explicit `"id"`, nested struct uses `"type":{"type":"struct","fields":[...]}`.
 
 **Default choices when ambiguous:**
+
 - IDs: use `long` (safer than `int` for growth)
 - Text: use `string` (no need to specify length in Iceberg)
 - Timestamps: use `timestamp` unless timezone awareness is needed, then `timestamptz`
@@ -28,6 +29,7 @@ Key: top-level must have `"type":"struct"`, all fields need explicit `"id"`, nes
 Choose partitions based on query access patterns, not data structure.
 
 **Time-series** (events, logs, metrics):
+
 - High/medium-volume (≥100K rows/day): `PARTITIONED BY (event_date)` with identity transform
 - Low-volume (<100K rows/day): partition by month transform
 
@@ -36,6 +38,7 @@ Choose partitions based on query access patterns, not data structure.
 **No clear pattern**: Start without partitions. Iceberg supports adding partitions later without rewriting data.
 
 **Partition guidelines:**
+
 - Use columns with low cardinality (10-10,000 unique values) frequently in WHERE clauses
 - Limit to 2-3 partition levels
 - Do NOT partition by high-cardinality columns (user_id, transaction_id)

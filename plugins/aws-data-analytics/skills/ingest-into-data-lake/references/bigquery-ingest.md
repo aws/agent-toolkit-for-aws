@@ -3,6 +3,7 @@
 Move data from Google BigQuery into the data lake. Assumes a Glue `BIGQUERY` connection exists. If not, delegate to `connect-to-data-source`.
 
 ## Contents
+
 - [Prerequisites](#prerequisites)
 - [Read Pattern](#read-pattern)
 - [Incremental Loading](#incremental-loading)
@@ -32,6 +33,7 @@ bigquery_df = glueContext.create_dynamic_frame.from_options(
 ```
 
 For custom SQL:
+
 ```python
 connection_options={
     "connectionName": args['connection_name'],
@@ -46,11 +48,13 @@ BigQuery billing note: the query reads bytes from table storage. Filter aggressi
 ## Incremental Loading
 
 BigQuery has strong timestamp semantics. Watermark columns commonly used:
+
 - Application-maintained `updated_at` / `last_modified`
 - BigQuery-maintained `_PARTITIONTIME` / `_PARTITIONDATE` on partitioned tables
 - `INFORMATION_SCHEMA.PARTITIONS.last_modified_time` for partition-level freshness
 
 Example incremental read with watermark filter:
+
 ```python
 query = f"""
 SELECT *
@@ -75,6 +79,7 @@ WHERE _PARTITIONTIME BETWEEN TIMESTAMP('2026-04-01') AND TIMESTAMP('2026-04-30')
 ```
 
 Clustered tables benefit similarly from filter push-down on clustering columns. Check clustering:
+
 ```sql
 SELECT clustering_fields FROM `<project>.<dataset>.INFORMATION_SCHEMA.TABLES` WHERE table_name = '<table>';
 ```

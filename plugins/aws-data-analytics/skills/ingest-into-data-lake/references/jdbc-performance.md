@@ -15,10 +15,12 @@ Guide for diagnosing and resolving performance issues, incremental loading probl
 ### Slow Query Execution
 
 **Symptom:**
+
 - Job runs for hours
 - CloudWatch logs show: "Executing query..." but no progress
 
 **Root causes:**
+
 1. **Missing indexes** - Source query does full table scan
 2. **Too much data** - Loading entire table instead of incremental
 3. **Network bandwidth** - Limited throughput between database and Glue
@@ -27,6 +29,7 @@ Guide for diagnosing and resolving performance issues, incremental loading probl
 **Troubleshooting:**
 
 1. **Check query execution plan in source database:**
+
    ```sql
    -- Oracle
    EXPLAIN PLAN FOR
@@ -58,6 +61,7 @@ Guide for diagnosing and resolving performance issues, incremental loading probl
 **Solutions:**
 
 1. **Add index on watermark column:**
+
    ```sql
    -- Oracle
    CREATE INDEX idx_updated_at ON large_table(updated_at);
@@ -73,6 +77,7 @@ Guide for diagnosing and resolving performance issues, incremental loading probl
    ```
 
 2. **Use parallel reads:**
+
    ```python
    source_df = spark.read.format("jdbc").options(
        url=jdbc_url,
@@ -85,12 +90,14 @@ Guide for diagnosing and resolving performance issues, incremental loading probl
    ```
 
 3. **Reduce batch size:**
+
    ```python
    # Load 1 day at a time instead of full month
    WHERE updated_at >= '2024-01-01' AND updated_at < '2024-01-02'
    ```
 
 4. **Increase Glue workers:**
+
    ```python
    'NumberOfWorkers': 20,  # Up from 5
    'WorkerType': 'G.2X'    # Larger workers
@@ -99,18 +106,21 @@ Guide for diagnosing and resolving performance issues, incremental loading probl
 ### Job Timeout
 
 **Symptom:**
+
 ```
 ERROR: Job exceeded timeout of 60 minutes
 JobRunState: TIMEOUT
 ```
 
 **Root causes:**
+
 1. **Timeout too short** - Data volume requires more time
 2. **Performance issues** - See "Slow Query Execution" above
 
 **Solution:**
 
 Increase job timeout:
+
 ```bash
 aws glue update-job \
   --job-name external-import-customers \
@@ -122,10 +132,12 @@ aws glue update-job \
 ### Watermark Not Advancing
 
 **Symptom:**
+
 - Job runs successfully but loads 0 records every time
 - Watermark file contains same value after each run
 
 **Root causes:**
+
 1. **No new data in source** - Actually no changes
 2. **Timezone mismatch** - Source uses local time, watermark uses UTC
 3. **Watermark filter logic incorrect** - Using `>=` instead of `>`
@@ -133,11 +145,13 @@ aws glue update-job \
 **Troubleshooting:**
 
 1. **Check source for new data:**
+
    ```sql
    SELECT COUNT(*) FROM table WHERE updated_at > '<last-watermark>';
    ```
 
 2. **Check timezone:**
+
    ```python
    print(f"Last watermark: {last_watermark}")
    print(f"Last watermark timezone: {last_watermark_tz}")
@@ -152,6 +166,7 @@ aws glue update-job \
    ```
 
 3. **Check filter logic:**
+
    ```python
    # Correct: > (strictly greater than)
    filtered_df = source_df.filter(f"{watermark_column} > '{last_watermark}'")
@@ -163,6 +178,7 @@ aws glue update-job \
 **Solution:**
 
 Normalize all timestamps to UTC:
+
 ```python
 from pyspark.sql.functions import to_utc_timestamp
 
@@ -179,9 +195,11 @@ filtered_df = df_utc.filter(f"updated_at_utc > '{last_watermark_utc}'")
 ### Duplicate Records
 
 **Symptom:**
+
 - Target table contains duplicate records (same primary key multiple times)
 
 **Root causes:**
+
 1. **Using append instead of upsert** - For mutable data
 2. **Job retry** - Job failed mid-run, reran from same watermark
 3. **Late-arriving data** - Records arrive after their event timestamp
@@ -189,6 +207,7 @@ filtered_df = df_utc.filter(f"updated_at_utc > '{last_watermark_utc}'")
 **Solution:**
 
 1. **Use upsert for mutable data:**
+
    ```python
    # MERGE INTO instead of append
    spark.sql(f"""
@@ -201,6 +220,7 @@ filtered_df = df_utc.filter(f"updated_at_utc > '{last_watermark_utc}'")
    ```
 
 2. **Add deduplication logic:**
+
    ```python
    from pyspark.sql.window import Window
    from pyspark.sql.functions import row_number
@@ -212,6 +232,7 @@ filtered_df = df_utc.filter(f"updated_at_utc > '{last_watermark_utc}'")
    ```
 
 3. **Handle late arrivals with buffer:**
+
    ```python
    # Load from 1 day before watermark
    buffer_watermark = last_watermark - timedelta(days=1)
@@ -225,6 +246,7 @@ filtered_df = df_utc.filter(f"updated_at_utc > '{last_watermark_utc}'")
 ### S3 Access Denied
 
 **Symptom:**
+
 ```
 ERROR: Access Denied (Service: Amazon S3; Status Code: 403)
 ```
@@ -235,6 +257,7 @@ Glue job IAM role lacks S3 permissions
 **Solution:**
 
 Add S3 permissions to Glue role:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -268,6 +291,7 @@ Add S3 permissions to Glue role:
 ### Glue Data Catalog Access Denied
 
 **Symptom:**
+
 ```
 ERROR: User is not authorized to perform glue:GetTable
 ```
@@ -278,6 +302,7 @@ Glue job role lacks Glue Data Catalog permissions
 **Solution:**
 
 Add Glue permissions:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -307,6 +332,7 @@ Add Glue permissions:
 ### Set Up CloudWatch Alarms
 
 **Job failure alarm:**
+
 ```bash
 aws cloudwatch put-metric-alarm \
   --alarm-name "glue-job-failure-customers" \
@@ -322,6 +348,7 @@ aws cloudwatch put-metric-alarm \
 ```
 
 **Long-running job alarm:**
+
 ```bash
 aws cloudwatch put-metric-alarm \
   --alarm-name "glue-job-long-running-customers" \
@@ -349,6 +376,7 @@ aws cloudwatch put-metric-alarm \
 When a job fails, follow this systematic approach:
 
 ### 1. Check Job Run Status
+
 ```bash
 aws glue get-job-run \
   --job-name <job-name> \
@@ -357,17 +385,20 @@ aws glue get-job-run \
 ```
 
 ### 2. Review CloudWatch Logs
+
 ```bash
 aws logs tail /aws-glue/jobs/output --follow \
   --log-stream-names "<job-name>-<run-id>"
 ```
 
 Look for:
+
 - `ERROR` messages
 - Exception stack traces
 - Last successful log message before failure
 
 ### 3. Test Connection
+
 ```bash
 # Test Glue connection
 aws glue get-connection --name <connection-name>
@@ -377,6 +408,7 @@ telnet <db-host> <db-port>
 ```
 
 ### 4. Verify Permissions
+
 ```bash
 # Check IAM role policies
 aws iam get-role --role-name <glue-role-name>
@@ -384,12 +416,14 @@ aws iam list-attached-role-policies --role-name <glue-role-name>
 ```
 
 ### 5. Validate Source Data
+
 ```sql
 -- Run query in source database
 SELECT COUNT(*) FROM table WHERE updated_at > '<watermark>';
 ```
 
 ### 6. Check Watermark
+
 ```bash
 # Read watermark file
 aws s3 cp s3://<bucket>/watermarks/<table>.txt -

@@ -46,6 +46,7 @@ Note: The target for catalog migration is always S3 Tables -- that is the purpos
 Single SQL statement that creates the S3 Table and populates it in one step. See [ctas-patterns.md](ctas-patterns.md) for full syntax and examples.
 
 Key points:
+
 - Target path: `"s3tablescatalog/<table_bucket_name>"."<namespace>"."<new_table_name>"`
 - Default format: `PARQUET`. Also supports `AVRO`, `ORC`.
 - Use Iceberg partition transforms (`day()`, `month()`, `bucket()`) instead of Hive-style explicit partition columns.
@@ -69,6 +70,7 @@ See [glue-etl-migration.md](glue-etl-migration.md) for job configuration, PySpar
 Run all of these checks -- do not skip any:
 
 1. **Row count comparison**:
+
    ```sql
    SELECT 'source' AS tbl, COUNT(*) AS cnt FROM "<source_catalog>"."<source_db>"."<source_table>"
    UNION ALL
@@ -83,6 +85,7 @@ Run all of these checks -- do not skip any:
    - Distinct counts on key columns
 
 4. **Partition verification** (if partitioned):
+
    ```sql
    SELECT <partition_column>, COUNT(*) FROM "s3tablescatalog/<bucket>"."<namespace>"."<new_table>"
    GROUP BY 1 ORDER BY 1

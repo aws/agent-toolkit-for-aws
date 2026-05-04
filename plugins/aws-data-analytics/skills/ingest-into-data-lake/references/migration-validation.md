@@ -25,6 +25,7 @@ DESCRIBE "s3tablescatalog/<bucket>"."<namespace>"."<target_table>"
 ```
 
 Check:
+
 - All expected columns are present
 - Column order matches (or is acceptable if reordered)
 - Types are compatible (minor promotions like int->bigint are OK)

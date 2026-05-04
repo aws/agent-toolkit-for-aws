@@ -3,6 +3,7 @@
 Diagnose Glue connection failures. Run checks in order: network → credentials → driver → SSL. Most failures are network.
 
 ## Contents
+
 - [Test Decision Tree](#test-decision-tree)
 - [Network](#network)
 - [Credentials](#credentials)
@@ -31,6 +32,7 @@ aws glue get-connection --name <NAME> \
 ```
 
 Note the SubnetId. Check its route table:
+
 ```bash
 aws ec2 describe-route-tables \
   --filters Name=association.subnet-id,Values=<SUBNET_ID>
@@ -41,11 +43,13 @@ Verify: route to source's VPC CIDR exists.
 ### 2. Security groups
 
 Verify Glue SG allows outbound to source port AND has self-referencing rule:
+
 ```bash
 aws ec2 describe-security-groups --group-ids <GLUE_SG>
 ```
 
 Verify source SG allows inbound from Glue SG:
+
 ```bash
 aws ec2 describe-security-groups --group-ids <SOURCE_SG>
 ```
@@ -62,6 +66,7 @@ If missing and subnet has no NAT gateway, create the endpoint. See [network-setu
 ### 4. Test from EC2 in the same subnet
 
 Launch or use an existing EC2 in the Glue subnet with the Glue SG attached:
+
 ```bash
 telnet <source-host> <source-port>
 nc -zv <source-host> <source-port>
@@ -72,6 +77,7 @@ If EC2 can't reach the source, fix routing/SG/NACL before blaming Glue.
 ### 5. Database firewall
 
 Source-side ACLs beyond AWS SGs:
+
 - Oracle: `listener.ora` restricts connecting hosts
 - SQL Server: Windows Firewall on the host
 - PostgreSQL: `pg_hba.conf`
@@ -109,6 +115,7 @@ Verify the DB user exists with `IDENTIFIED WITH AWSAuthenticationPlugin` (MySQL)
 ### 4. Direct credential test
 
 From EC2 in the Glue subnet:
+
 ```bash
 # Oracle
 sqlplus <user>/<password>@//host:1521/service
@@ -133,6 +140,7 @@ For custom drivers:
 ### 1. JAR accessible
 
 Verify the Glue role can read the JAR:
+
 ```bash
 aws s3 head-object --bucket <SCRIPTS_BUCKET> --key jdbc-drivers/<driver>.jar
 ```
@@ -157,6 +165,7 @@ Driver major version must match or exceed the database major version. Downgradin
 ### 1. Enforcement mismatch
 
 Source requires SSL but connection doesn't enable it:
+
 ```json
 "JDBC_ENFORCE_SSL": "true"
 ```
@@ -164,6 +173,7 @@ Source requires SSL but connection doesn't enable it:
 ### 2. Self-signed certificates
 
 Source uses a cert not in the default Java truststore:
+
 - Import the cert into a custom truststore
 - Upload truststore to S3
 - Add to Glue job args: `--extra-jars s3://...` and JVM args pointing at the truststore
@@ -222,6 +232,7 @@ except Exception as e:
 ```
 
 Create and run the job:
+
 ```bash
 aws glue create-job \
   --name test-connection-smoke \

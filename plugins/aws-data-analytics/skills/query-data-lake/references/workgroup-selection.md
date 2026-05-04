@@ -36,11 +36,13 @@ When running as a SageMaker project role (`AmazonDataZone-*` or `SageMakerUnifie
    The project ID is an **alphanumeric string (no hyphens)**.
    Known suffixes that follow the project ID: `DataLakeAccess`, `SparkAccess`,
    `QueryAccess`, `IngestionAccess`. Example:
+
    ```
    arn:aws:sts::123456789012:assumed-role/AmazonDataZone-abc123def-DataLakeAccess/session
                                                          ^^^^^^^^^
                                                          project ID = abc123def
    ```
+
 3. Match the workgroup to the project. Project workgroups follow the pattern
    `sagemaker-studio-workgroup-<project-id>` or contain the project ID.
 4. If exactly one `sagemaker-studio-workgroup-*` exists, verify its suffix

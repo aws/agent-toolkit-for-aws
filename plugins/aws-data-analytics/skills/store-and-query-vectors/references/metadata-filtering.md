@@ -31,26 +31,31 @@ For full docs: search AWS docs for `"S3 Vectors metadata filtering"`
 ## Filter Examples
 
 Simple equality (implicit `$eq`):
+
 ```json
 {"genre": "documentary"}
 ```
 
 Numeric range:
+
 ```json
 {"year": {"$gte": 2020, "$lte": 2024}}
 ```
 
 Array match:
+
 ```json
 {"category": {"$in": ["science", "technology"]}}
 ```
 
 Compound filter:
+
 ```json
 {"$and": [{"genre": {"$eq": "drama"}}, {"year": {"$gte": 2020}}]}
 ```
 
 Existence check:
+
 ```json
 {"genre": {"$exists": true}}
 ```

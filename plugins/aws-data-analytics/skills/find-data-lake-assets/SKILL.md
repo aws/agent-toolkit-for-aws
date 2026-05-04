@@ -5,24 +5,13 @@ description: 'Resolve data lake and lakehouse asset references across Glue Data 
   table has, locate dataset, find data for, search catalog, what tables match, Redshift
   table, lakehouse table, data lake table, warehouse table, reverse lookup S3 path.
   Do NOT use for: full catalog audits (use exploring-data-catalog), running queries
-  (use query-data-lake), creating tables (use create-data-lake-table).
-
-  '
+  (use query-data-lake), creating tables (use create-data-lake-table).'
 version: 1
 metadata:
-  service:
-  - glue
-  - s3
-  - s3tables
-  - redshift
-  task:
-  - debug
-  persona:
-  - developer
-  - data-engineer
-  - architect
-  workload:
-  - data-analytics
+  service: [glue, s3, s3tables, redshift]
+  task: [debug]
+  persona: [developer, data-engineer, architect]
+  workload: [data-analytics]
 argument-hint: '[table-name|keyword|column-name|s3://path]'
 ---
 
@@ -36,6 +25,7 @@ S3, S3 Tables, and Redshift. Optimized for low token usage — return the
 answer fast and get out of the way.
 
 **Constraints for parameter acquisition:**
+
 - You MUST accept a single argument: table name, keyword, column name, or S3 path
 - You MUST accept the argument as direct input or a pointer to a file containing the spec
 - You MUST ask for the target AWS region if not already set
@@ -54,6 +44,7 @@ executing.
 Check for required tools and AWS access before searching.
 
 **Constraints:**
+
 - You MUST verify AWS MCP server tools (`aws___call_aws`) are available; fall back to AWS CLI if not
 - You MUST confirm credentials with `aws sts get-caller-identity`
 - You MUST inform the user about any missing tools and ask whether to proceed
@@ -131,6 +122,7 @@ short Python script using boto3 paginators that does the full scan in
 one execution. Write the script to a file and run it with `python3`.
 
 The script MUST:
+
 - Paginate `get_databases()` to collect all database names
 - For each database, paginate `get_tables()` with an `Expression`
   filter matching the search term

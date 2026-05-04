@@ -5,6 +5,7 @@ Complete guide for reading and processing different file formats in Glue ETL job
 ## Overview
 
 This reference covers format-specific configuration and code examples for loading data from various file formats into S3 Tables:
+
 - CSV/TSV (delimited text files)
 - JSON/JSONL (JavaScript Object Notation)
 - Parquet (columnar format with embedded schema)
@@ -39,7 +40,7 @@ source_df = spark.read.format("csv") \
 | Option | Value | Description |
 |--------|-------|-------------|
 | `header` | `true`/`false` | First row contains column names |
-| `delimiter` | `,`, `\t`, `|`, etc. | Field separator character |
+| `delimiter` | `,`, `\t`, `\|`, etc. | Field separator character |
 | `inferSchema` | `true`/`false` | Automatically detect column types |
 | `quote` | `"` (default) | Character for quoting fields |
 | `escape` | `\` (default) | Escape character |
@@ -299,6 +300,7 @@ df_with_union = source_df.withColumn(
 ```
 
 **Options for complex unions**:
+
 - **Option A**: Convert to JSON string and store as STRING
 - **Option B**: Flatten union types into separate columns (age_int, age_string)
 - **Option C**: Fail and ask user how to handle

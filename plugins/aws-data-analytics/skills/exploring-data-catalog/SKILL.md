@@ -4,24 +4,13 @@ description: 'Full inventory and audit of AWS Glue Data Catalog assets across S3
   Redshift-federated, and remote Iceberg catalogs. Triggers on: inventory the catalog,
   audit databases, list all tables, catalog overview, data landscape, enumerate catalogs,
   data inventory, search the catalog. Do NOT use for finding specific data (use find-data-lake-assets),
-  running queries (use query-data-lake), or creating tables (use create-data-lake-table).
-
-  '
+  running queries (use query-data-lake), or creating tables (use create-data-lake-table).'
 version: 1
 metadata:
-  service:
-  - glue
-  - s3
-  - s3tables
-  task:
-  - debug
-  - audit
-  persona:
-  - developer
-  - data-engineer
-  - architect
-  workload:
-  - data-analytics
+  service: [glue, s3, s3tables]
+  task: [debug, audit]
+  persona: [developer, data-engineer, architect]
+  workload: [data-analytics]
 argument-hint: '[search-term|catalog-name|database-name|s3://bucket-path|table-name]'
 ---
 
@@ -32,6 +21,7 @@ Structured inventory and cataloging across your AWS data landscape: Glue Data Ca
 Maps data in an AWS account. Starts with catalog landscape (Glue, S3 Tables, federated), then drills into databases and tables. Read-only — no query execution.
 
 **Constraints for parameter acquisition:**
+
 - You MUST ask for the target AWS region upfront if not provided
 - You MUST support a single optional argument: search term, catalog name, database name, S3 path, or table name
 - You MUST accept the argument as direct input or a pointer to a file containing the spec
@@ -47,6 +37,7 @@ Maps data in an AWS account. Starts with catalog landscape (Glue, S3 Tables, fed
 Check for required tools and AWS access before discovery.
 
 **Constraints:**
+
 - You MUST verify AWS MCP server tools are available (`aws___call_aws`, `aws___search_documentation`) and fall back to AWS CLI if not
 - You MUST confirm credentials are valid: `aws sts get-caller-identity`
 - You MUST inform the user about any missing tools and ask whether to proceed
@@ -69,6 +60,7 @@ Classify each catalog by type:
 | `FederatedCatalog` with `ConnectionName` ≠ `aws:s3tables` | **Remote Iceberg** | External catalogs (Snowflake, Databricks, Iceberg REST) |
 
 **Constraints:**
+
 - You MUST include `--include-root` to capture default account catalog
 - You MUST present summary of catalog counts by type
 - If only default catalog exists, You SHOULD skip catalog overview and go to step 3
@@ -91,6 +83,7 @@ aws s3tables list-tables --table-bucket-arn <arn> --namespace <ns>
 ```
 
 **Constraints:**
+
 - You MUST flag S3 Tables not registered in Glue; You SHOULD suggest registration
 - For sub-catalogs, `--catalog-id` accepts the catalog name (not the ARN)
 - For the default catalog, omit `--catalog-id` or pass the account ID

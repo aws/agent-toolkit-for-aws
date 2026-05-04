@@ -5,6 +5,7 @@ Complete guide for testing Glue ETL jobs, validating data loads, and setting up 
 ## Overview
 
 After creating a Glue ETL job, you must:
+
 1. **Test the job** - Run manually to verify it works
 2. **Validate data** - Confirm data loaded correctly into target table
 3. **Schedule the job** - Set up recurring execution (for ongoing pipelines)
@@ -47,6 +48,7 @@ echo "Job status: $STATUS"
 ```
 
 **Job states:**
+
 - `STARTING` - Job is initializing
 - `RUNNING` - Job is executing
 - `SUCCEEDED` - Job completed successfully
@@ -73,6 +75,7 @@ aws logs tail /aws-glue/jobs/output --follow \
 ```
 
 **Key log messages to look for:**
+
 - `Last watermark: <value>` - Starting point for incremental load
 - `Loading X new/updated records` - Number of records found
 - `Updated watermark to: <value>` - New watermark after successful load
@@ -86,12 +89,14 @@ aws logs tail /aws-glue/jobs/output --follow \
 **Symptom**: Job fails with "Connection timeout" or "Unable to connect to database"
 
 **Causes:**
+
 - VPC/subnet configuration incorrect
 - Security groups blocking traffic
 - Database firewall rules
 - Network ACLs blocking Glue's IP ranges
 
 **Solution:**
+
 1. Test connection in Glue console: Connections → Select connection → Test
 2. Verify security groups allow inbound from Glue's security group
 3. Check database firewall allows connections from Glue subnet CIDR
@@ -102,12 +107,14 @@ aws logs tail /aws-glue/jobs/output --follow \
 **Symptom**: "Access denied" or "Invalid username/password"
 
 **Causes:**
+
 - Incorrect credentials in connection
 - Password expired
 - Database user lacks required permissions
 - IP-based restrictions on database user
 
 **Solution:**
+
 1. Verify credentials by connecting manually (e.g., via SQL client)
 2. Check database user has SELECT permission on source tables
 3. Ensure user is allowed from Glue's IP/subnet
@@ -118,11 +125,13 @@ aws logs tail /aws-glue/jobs/output --follow \
 **Symptom**: "Type mismatch" or "Cannot cast X to Y"
 
 **Causes:**
+
 - Source column type incompatible with target schema
 - Source column is NULL but target doesn't allow NULL
 - Decimal precision/scale mismatch
 
 **Solution:**
+
 1. Add explicit type casting in PySpark script
 2. Use `.cast("string")` as fallback for problematic columns
 3. Add NULL handling: `when(col("x").isNotNull(), col("x")).otherwise(default_value)`
@@ -133,12 +142,14 @@ aws logs tail /aws-glue/jobs/output --follow \
 **Symptom**: Job runs slowly or times out
 
 **Causes:**
+
 - Source database query is slow (no indexes, full table scan)
 - Too few Glue workers
 - Network bandwidth limitations
 - Reading too much data in single batch
 
 **Solution:**
+
 1. Add indexes on watermark column in source database
 2. Increase number of Glue workers
 3. Use parallel reads with `numPartitions` option
@@ -150,12 +161,14 @@ aws logs tail /aws-glue/jobs/output --follow \
 **Symptom**: Job runs but no new records loaded, watermark stays same
 
 **Causes:**
+
 - No new data in source
 - Watermark column comparison incorrect (timezone issue)
 - Watermark file not updating due to S3 permissions
 - Filter logic incorrect
 
 **Solution:**
+
 1. Verify new data exists in source: Query source directly
 2. Check timezone handling: Convert all timestamps to UTC
 3. Verify Glue job role has S3 write permissions for watermark bucket
@@ -189,6 +202,7 @@ LIMIT 10;
 ```
 
 Verify:
+
 - Columns match expected schema
 - Data types are correct
 - Values look reasonable
@@ -210,6 +224,7 @@ aws s3 cp s3://<bucket>/watermarks/<table-name>.txt -
 For critical tables, compare aggregations between source and target:
 
 **Source (via Glue connection):**
+
 ```sql
 SELECT COUNT(*), SUM(amount), MAX(updated_at)
 FROM <schema>.<table>
@@ -217,6 +232,7 @@ WHERE updated_at > '<last-watermark>';
 ```
 
 **Target (S3 Table):**
+
 ```sql
 SELECT COUNT(*), SUM(amount), MAX(load_timestamp)
 FROM "<catalog>"."<namespace>"."<table>"
@@ -256,30 +272,37 @@ Once testing is complete, set up scheduling for ongoing data syncs.
 Choose schedule based on data freshness requirements:
 
 **Real-time (<1 minute latency):**
+
 - Don't use Glue batch jobs - use AWS DMS, Glue Streaming, or Kinesis instead
 
 **Near real-time (5-15 minute latency):**
+
 - Schedule: Every 15 minutes: `cron(0/15 * * * ? *)`
 - Consider costs - Glue jobs have minimum 1-minute billing
 
 **Hourly:**
+
 - Schedule: Top of each hour: `cron(0 * * * ? *)`
 - Good for: Transaction logs, event streams
 
 **Every 6 hours:**
+
 - Schedule: `cron(0 */6 * * ? *)`
 - Good for: Slowly changing data, reporting tables
 
 **Daily:**
+
 - Schedule: 2 AM UTC: `cron(0 2 * * ? *)`
 - Good for: Dimension tables, reference data
 - Choose off-peak hours to avoid source database load
 
 **Weekly:**
+
 - Schedule: Monday at 2 AM: `cron(0 2 ? * MON *)`
 - Good for: Historical archives, full refreshes
 
 **Coordinate with source system:**
+
 - Avoid peak hours when source database is under load
 - Schedule after batch processes complete (if applicable)
 - Consider maintenance windows
@@ -300,11 +323,13 @@ aws glue create-trigger \
 ```
 
 **Cron expression format:**
+
 ```
 cron(Minutes Hours Day-of-month Month Day-of-week Year)
 ```
 
 **Examples:**
+
 - Every 15 minutes: `cron(0/15 * * * ? *)`
 - Hourly: `cron(0 * * * ? *)`
 - Every 6 hours: `cron(0 */6 * * ? *)`
@@ -363,6 +388,7 @@ aws cloudwatch put-metric-alarm \
 ```
 
 **Metrics to monitor:**
+
 - `glue.driver.aggregate.recordsRead` - Records read from source
 - `glue.driver.aggregate.elapsedTime` - Job duration
 - Job state (SUCCEEDED, FAILED, TIMEOUT)
@@ -415,6 +441,7 @@ aws glue create-trigger \
 ```
 
 Use for:
+
 - Loading dimension tables before fact tables
 - Ensuring dependencies load in correct order
 - Chaining transformations
@@ -455,24 +482,28 @@ aws glue start-job-run \
 ## Best Practices
 
 ### Testing
+
 1. **Test connection first** - Use Glue console's "Test connection" before creating job
 2. **Start small** - Test with small data subset or short time window first
 3. **Validate thoroughly** - Check row counts, data quality, watermark progression
 4. **Test failure scenarios** - Kill job mid-run to verify watermark isn't corrupted
 
 ### Scheduling
+
 1. **Start conservatively** - Begin with less frequent schedule, increase if needed
 2. **Avoid peak hours** - Schedule during off-peak times for source database
 3. **Set appropriate timeouts** - Allow buffer for larger-than-expected data volumes
 4. **Use conditional triggers** - For dependent jobs, use conditional triggers instead of fixed time delays
 
 ### Monitoring
+
 1. **Set up CloudWatch alarms** - Alert on failures, long durations, no records loaded
 2. **Track watermark progression** - Ensure watermark advances on each run
 3. **Monitor source lag** - Compare source max timestamp vs loaded max timestamp
 4. **Review logs regularly** - Check for warnings, performance issues
 
 ### Maintenance
+
 1. **Review and adjust schedules** - As data volumes change, adjust frequency or worker count
 2. **Update scripts in Git** - Version control all job scripts
 3. **Test script changes in dev** - Before deploying to production

@@ -57,6 +57,7 @@ For boolean columns: true/false/null distribution
 ## Format Detection
 
 Map SerDe libraries to human-readable format names:
+
 - `org.apache.hadoop.hive.ql.io.parquet` = Parquet
 - `org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe` = CSV/TSV
 - `org.openx.data.jsonserde.JsonSerDe` = JSON
