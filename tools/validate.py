@@ -149,19 +149,14 @@ def validate_plugin(plugin_dir: Path) -> None:
 
 
 def validate_top_level_skills() -> None:
-    """Validate all skills in the top-level skills/ directory."""
+    """Validate all skills in the top-level skills/ directory (recursive)."""
     skills_dir = REPO_ROOT / "skills"
     if not skills_dir.is_dir():
         return
-    for skill_dir in sorted(skills_dir.iterdir()):
-        if not skill_dir.is_dir():
-            continue
-        skill_md = skill_dir / "SKILL.md"
-        if skill_md.exists():
-            print(f"Validating skill: {skill_dir.name}")
-            validate_skill_frontmatter(skill_md)
-        else:
-            error(f"Skill directory missing SKILL.md: {skill_dir.relative_to(REPO_ROOT)}")
+    for skill_md in sorted(skills_dir.rglob("SKILL.md")):
+        skill_dir = skill_md.parent
+        print(f"Validating skill: {skill_dir.relative_to(REPO_ROOT)}")
+        validate_skill_frontmatter(skill_md)
 
 
 def main() -> None:
