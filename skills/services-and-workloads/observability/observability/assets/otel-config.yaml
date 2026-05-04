@@ -1,0 +1,57 @@
+# ADOT collector configuration — traces to X-Ray, metrics to CloudWatch via EMF
+#
+# Deployment options:
+# - EC2: daemon/agent
+# - ECS: sidecar container
+# - EKS: DaemonSet (resources: 200Mi memory, 250m CPU)
+# - Lambda: managed layer (auto-instrumentation)
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 30s
+    send_batch_size: 8192
+
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 160
+    spike_limit_mib: 40
+
+  # Cardinality defense layer 2 of 3:
+  #   1. OTel SDK: don't emit high-cardinality attributes
+  #   2. Collector: filter processor (this)
+  #   3. Backend: dimension_rollup_option + metric_declarations
+  filter:
+    error_mode: ignore
+    metric_conditions:
+      - 'IsMatch(metric.name, ".*_bucket$")'  # Histogram bucket metrics can explode cardinality
+
+exporters:
+  awsxray:
+    region: us-east-1  # TODO: Replace with your target region
+
+  awsemf:
+    namespace: MyApplication
+    region: us-east-1  # TODO: Replace with your target region
+    dimension_rollup_option: NoDimensionRollup
+    resource_to_telemetry_conversion:
+      enabled: false
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [awsxray]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, filter, batch]
+      exporters: [awsemf]
