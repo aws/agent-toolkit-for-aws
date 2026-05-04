@@ -25,7 +25,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 
 | # | Server | Description |
 | - | --------- | ----------------------------------------------------------- |
-| 1 | `aws-mcp` | AWS API access, documentation search, and SOP retrieval via [AWS MCP Server](https://docs.aws.amazon.com/aws-mcp/latest/userguide/understanding-mcp-server-tools.html) |
+| 1 | `aws-mcp` | AWS API access, documentation search, and SOP retrieval via [AWS MCP Server](https://docs.aws.amazon.com/aws-mcp/latest/userguide/what-is-mcp-server.html) |
 
 ## Installation
 
