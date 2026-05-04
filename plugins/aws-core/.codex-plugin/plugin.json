@@ -5,7 +5,7 @@
   "author": {
     "name": "Amazon Web Services"
   },
-  "homepage": "https://github.com/aws/agent-toolkit-for-aws",
+  "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
   "repository": "https://github.com/aws/agent-toolkit-for-aws",
   "license": "Apache-2.0",
   "skills": "./skills/",
@@ -19,7 +19,7 @@
     "capabilities": [
       "Read"
     ],
-    "websiteURL": "https://github.com/aws/agent-toolkit-for-aws",
+    "websiteURL": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
     "privacyPolicyURL": "https://aws.amazon.com/privacy/",
     "termsOfServiceURL": "https://aws.amazon.com/service-terms/"
   }
