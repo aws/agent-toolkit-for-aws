@@ -2,12 +2,6 @@
 
 AWS agent plugin with skills and MCP server connections.
 
-## Skills
-
-| Skill | Description |
-|-------|-------------|
-| [find-aws-skills](skills/find-aws-skills/) | Discover and load AWS skills at runtime |
-
 ## MCP Servers
 
 | Server | Transport | Description |
