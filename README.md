@@ -1,5 +1,10 @@
 # Agent Toolkit for AWS
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Build](https://github.com/aws/agent-toolkit-for-aws/actions/workflows/build.yml/badge.svg)](https://github.com/aws/agent-toolkit-for-aws/actions/workflows/build.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/aws/agent-toolkit-for-aws/badge)](https://scorecard.dev/viewer/?uri=github.com/aws/agent-toolkit-for-aws)
+[![Status](https://img.shields.io/badge/status-GA-green.svg)](https://github.com/aws/agent-toolkit-for-aws)
+
 Help AI coding agents build, deploy, and manage applications on AWS.
 
 The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code and Codex.
@@ -81,6 +86,8 @@ The [AWS MCP Server](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/
 - **Sandboxed script execution** — Agents can run Python scripts in an isolated environment for complex multi-step operations.
 - **Real-time documentation access** — Search and retrieve current AWS documentation, API references, and service capabilities without authentication.
 - **Enterprise controls** — Amazon CloudWatch metrics, IAM context keys for agent-specific policies, and AWS CloudTrail audit logging.
+
+For details on operation, available tools, authentication, and supported Regions, see the [AWS MCP Server documentation](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/understanding-mcp-server-tools.html).
 
 ## Documentation
 
