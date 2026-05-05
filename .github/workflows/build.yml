@@ -1,10 +1,17 @@
 name: Build
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   merge_group:
   workflow_dispatch:
+
+# Cancel superseded PR runs; let push/merge_group runs complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to no permissions; grant minimally at the job level.
 permissions:
@@ -27,6 +34,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:

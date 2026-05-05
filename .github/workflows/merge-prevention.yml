@@ -26,6 +26,11 @@ on:
     types:
       - checks_requested
 
+# Cancel superseded PR runs; never cancel merge_group runs (they gate a queued merge).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Default to no permissions; grant minimally at the job level.
 permissions:
   actions: none
@@ -51,6 +56,7 @@ env:
 jobs:
   get-pr-info:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -77,6 +83,7 @@ jobs:
 
   check-halt-merges:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: get-pr-info
     if: always()
     steps:
@@ -106,6 +113,7 @@ jobs:
 
   check-do-not-merge-label:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: get-pr-info
     if: always()
     steps:

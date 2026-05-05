@@ -32,6 +32,7 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write # upload SARIF to code scanning
       packages: read # fetch internal CodeQL packs (no-op for public repos)
@@ -44,6 +45,9 @@ jobs:
           # Scans workflow YAML for GitHub Actions security pitfalls
           # (script injection, untrusted checkout patterns, over-broad tokens).
           - language: actions
+            build-mode: none
+          # Scans Python helpers (e.g. tools/validate.py).
+          - language: python
             build-mode: none
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

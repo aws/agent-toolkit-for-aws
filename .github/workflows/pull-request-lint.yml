@@ -5,6 +5,11 @@ on:
     types: [opened, edited, synchronize, reopened]
     branches: [main]
 
+# Key on PR number because pull_request_target's github.ref is the base branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 # Default to no permissions; grant minimally at the job level.
 permissions:
   actions: none
@@ -26,6 +31,7 @@ permissions:
 jobs:
   pr-title:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: read
     steps:
