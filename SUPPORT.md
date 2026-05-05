@@ -17,7 +17,7 @@ Please open a [feature request](https://github.com/aws/agent-toolkit-for-aws/iss
 
 ## Security vulnerabilities
 
-Do **not** open a public GitHub issue for security concerns. Report vulnerabilities through the [AWS vulnerability reporting page](https://aws.amazon.com/security/vulnerability-reporting/) or email aws-security@amazon.com. See [SECURITY.md](.github/SECURITY.md) for details.
+Do **not** open a public GitHub issue for security concerns. Report vulnerabilities through the [AWS vulnerability reporting page](https://aws.amazon.com/security/vulnerability-reporting/) or email aws-security@amazon.com. See [SECURITY.md](https://github.com/aws/agent-toolkit-for-aws/security/policy) for details.
 
 ## AWS support
 

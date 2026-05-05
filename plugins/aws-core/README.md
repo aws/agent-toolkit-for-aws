@@ -43,7 +43,6 @@ This plugin includes the following default skills:
 | aws-sdk-js-v3-usage | Best practices for the AWS SDK for JavaScript v3 |
 | aws-sdk-python-usage | Best practices for the AWS SDK for Python (boto3) |
 | aws-sdk-swift-usage | Best practices for the AWS SDK for Swift |
-| find-aws-skills | Discover additional AWS skills |
 | aws-serverless | Build serverless applications on AWS |
 | bedrock | Build with Amazon Bedrock foundation models |
 | cdk | Define and manage AWS infrastructure with CDK and CloudFormation |

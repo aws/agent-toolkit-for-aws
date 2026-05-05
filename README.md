@@ -2,7 +2,6 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Build](https://github.com/aws/agent-toolkit-for-aws/actions/workflows/build.yml/badge.svg)](https://github.com/aws/agent-toolkit-for-aws/actions/workflows/build.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/aws/agent-toolkit-for-aws/badge)](https://scorecard.dev/viewer/?uri=github.com/aws/agent-toolkit-for-aws)
 [![Status](https://img.shields.io/badge/status-GA-green.svg)](https://github.com/aws/agent-toolkit-for-aws)
 
 Help AI coding agents build, deploy, and manage applications on AWS.
@@ -15,8 +14,26 @@ The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guard
 
 ```
 /plugin marketplace add aws/agent-toolkit-for-aws
+```
+
+This allows you to install any supported plugins from the toolkit:
+
+For `aws-core` that covers service selection, CDK/CloudFormation, serverless, containers, storage, observability, billing, SDK usage, and deployment:
+
+```
 /plugin install aws-core@agent-toolkit-for-aws
-/reload-plugins
+```
+
+For `aws-agents` that covers building AI agents on AWS with Amazon Bedrock and AgentCore:
+
+```
+/plugin install aws-agents@agent-toolkit-for-aws
+```
+
+For `aws-data-analytics` that covers data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena:
+
+```
+/plugin install aws-data-analytics@agent-toolkit-for-aws
 ```
 
 ### Codex
@@ -62,13 +79,17 @@ Plugins bundle the AWS MCP Server configuration and agent skills into a single i
 |--------|-------------|
 | [aws-core](plugins/aws-core/) | Core AWS skills and MCP Server configuration. Covers service selection, CDK/CloudFormation, serverless, containers, storage, observability, billing, SDK usage, and deployment. **Start here.** |
 | [aws-agents](plugins/aws-agents/) | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore. |
-| [aws-data-analytics](plugins/aws-data-analytics/) | Skills for data lake, analytics, and ETL workflows with S3 Tables, Glue, and Athena. |
+| [aws-data-analytics](plugins/aws-data-analytics/) | Skills for data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. |
 
 Plugins are currently available for Claude Code and Codex. For other agents, configure the AWS MCP Server directly and install skills from this repository.
 
 ### Skills
 
 Agent skills are curated packages of instructions and reference materials that help agents complete specific AWS tasks. Skills are loaded on demand — agents discover and retrieve only what's relevant to the current task.
+
+```
+npx skills add aws/agent-toolkit-for-aws
+```
 
 Browse the [`skills/`](skills/) directory to see all available skills.
 

@@ -17,7 +17,7 @@ This means having many skills installed doesn't slow your agent down or consume 
 
 There are three ways to get skills:
 
-- **Install a plugin** — If you installed a plugin (aws-core, aws-agent-building, or aws-data-analytics), the skills bundled with that plugin are already available to your agent.
+- **Install a plugin** — If you installed a plugin (aws-core, aws-agents, or aws-data-analytics), the skills bundled with that plugin are already available to your agent.
 
 - **Install locally** — Copy skill directories from this repository to your agent's skills location, or use `npx skills add aws/agent-toolkit-for-aws`.
 

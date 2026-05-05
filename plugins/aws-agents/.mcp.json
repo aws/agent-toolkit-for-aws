@@ -1,11 +1,8 @@
 {
   "mcpServers": {
-    "aws-mcp": {
-      "command": "uvx",
-      "args": [
-        "mcp-proxy-for-aws@latest",
-        "https://aws-mcp.us-east-1.api.aws/mcp"
-      ]
+    "awsknowledge": {
+      "type": "http",
+      "url": "https://knowledge-mcp.global.api.aws"
     }
   }
 }

@@ -7,6 +7,10 @@ config:
     allowed_elements:
       - details
       - summary
+      - Resource
+      - model-id
+      - region
+      - Name
   MD024:
     siblings_only: true
   MD026: false

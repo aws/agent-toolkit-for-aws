@@ -1,21 +1,49 @@
 {
   "name": "aws-agents",
-  "version": "0.1.0",
-  "description": "AWS agent plugin with skills and MCP server connections.",
+  "version": "1.0.0",
+  "description": "Build, deploy, and operate AI agents on AWS. Skills for scaffolding agents with Amazon Bedrock AgentCore, connecting tools, memory, policies, evaluation, debugging, and production hardening.",
   "author": {
-    "name": "Amazon Web Services"
+    "name": "Amazon Web Services",
+    "email": "aws-agent-plugins@amazon.com",
+    "url": "https://github.com/aws/agent-toolkit-for-aws"
   },
+  "homepage": "https://github.com/aws/agent-toolkit-for-aws",
+  "repository": "https://github.com/aws/agent-toolkit-for-aws",
   "license": "Apache-2.0",
+  "keywords": [
+    "aws",
+    "agentcore",
+    "bedrock",
+    "agents",
+    "deploy",
+    "debug",
+    "memory",
+    "gateway",
+    "policy",
+    "evaluation",
+    "strands",
+    "langgraph"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Agent Plugin for AWS",
-    "shortDescription": "AWS agent plugin with skills and MCP servers",
-    "longDescription": "AWS agent plugin with skills and MCP server connections.",
+    "displayName": "AI Agents on AWS",
+    "shortDescription": "Build, deploy, and operate AI agents on AWS.",
+    "longDescription": "Complete developer workflow for building AI agents on AWS — scaffolding with Amazon Bedrock AgentCore, tool integration, memory, policies, evaluation, debugging, VPC networking, and production hardening.",
+    "defaultPrompt": [
+      "How do I build an agent on AWS?",
+      "Deploy my agent to AgentCore.",
+      "My agent isn't working, help me debug it."
+    ],
     "developerName": "Amazon Web Services",
-    "category": "Cloud",
+    "category": "Development",
     "capabilities": [
-      "Read"
-    ]
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/aws/agent-toolkit-for-aws",
+    "privacyPolicyURL": "https://aws.amazon.com/privacy/",
+    "termsOfServiceURL": "https://aws.amazon.com/service-terms/",
+    "brandColor": "#FF9900"
   }
 }
