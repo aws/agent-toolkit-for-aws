@@ -6,7 +6,7 @@
 
 Help AI coding agents build, deploy, and manage applications on AWS.
 
-The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code and Codex.
+The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, and Kiro.
 
 ## Quick start
 
@@ -46,9 +46,9 @@ codex plugin marketplace add aws/agent-toolkit-for-aws
 
 Then launch Codex and run `/plugins` to browse and install the **aws-core** plugin.
 
-### Agents that do not support plugins
+### Kiro
 
-Add the AWS MCP Server to your agent's MCP configuration:
+Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`):
 
 ```json
 {
@@ -65,7 +65,23 @@ Add the AWS MCP Server to your agent's MCP configuration:
 }
 ```
 
-Then copy skills from this repository to your agent's skills directory.
+Then install skills from this repository:
+
+```
+npx skills add aws/agent-toolkit-for-aws
+```
+
+> **Prerequisites:** You need [uv](https://docs.astral.sh/uv/) installed. An AWS account with credentials configured locally is required for API calls and script execution, but not for documentation search or skill discovery. See the [user guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) for detailed setup instructions.
+
+### Other agents
+
+See the [AWS MCP Server getting started guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/getting-started-aws-mcp-server.html) for instructions on configuring the AWS MCP Server with your agent.
+
+Then install skills from this repository:
+
+```
+npx skills add aws/agent-toolkit-for-aws
+```
 
 > **Prerequisites:** You need [uv](https://docs.astral.sh/uv/) installed. An AWS account with credentials configured locally is required for API calls and script execution, but not for documentation search or skill discovery. See the [user guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) for detailed setup instructions.
 
