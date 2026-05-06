@@ -115,6 +115,15 @@ For details on operation, available tools, authentication, and supported Regions
 - [User guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) — Setup, configuration, and reference documentation.
 - [AWS MCP Server tools](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/understanding-mcp-server-tools.html) — Reference for all available MCP tools.
 
+## How the Agent Toolkit relates to the MCP servers, skills, and plugins in AWS Labs
+In 2025, AWS began releasing MCP servers, skills, and plugins as part of [AWS Labs](https://github.com/awslabs). The Agent Toolkit for AWS is the successor to those tools. We recommend using the Agent Toolkit for AWS, because it offers key features including:
+
+- IAM condition keys that distinguish between agent actions and human actions, so you can write policies that apply only to agents. For example, you can write policies that only allow read-only actions through the MCP server, even if the user’s underlying IAM role can take write actions).
+- CloudWatch metrics and CloudTrail audit logging for every request, so you can monitor and audit coding agent activity.
+- Agent skills that have undergone thorough end-to-end evaluations, so you can be confident that workflows will complete successfully.
+
+[AWS Labs](https://github.com/awslabs) MCP servers, skills, and plugins will continue to work and accept contributions, and over time the best of AWS Labs will be transitioned to the Agent Toolkit for AWS to ensure that customers can access the broadest array of tooling and guidance for their agents.
+
 ## License
 
 This project is licensed under the Apache-2.0 License. See [LICENSE](LICENSE) for details.
