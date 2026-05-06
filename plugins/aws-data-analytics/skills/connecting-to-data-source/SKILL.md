@@ -1,14 +1,15 @@
 ---
 name: connecting-to-data-source
-description: 'Create and troubleshoot AWS Glue connections to JDBC databases (Oracle,
-  SQL Server, PostgreSQL, MySQL, RDS), Redshift, Snowflake, and BigQuery. Gathers
-  connection hints from user, discovers existing connections and RDS/Redshift candidates,
-  registers credentials in Secrets Manager or IAM DB auth, configures VPC, and tests.
-  Triggers on: connect to database, set up Glue connection, register data source,
-  connect to Snowflake/BigQuery/RDS, connection timeout, test connection, troubleshoot
-  connection. Do NOT use for moving data (use ingesting-into-data-lake), creating tables
-  (use creating-data-lake-table), queries (use querying-data-lake), catalog exploration
-  (use exploring-data-catalog), or SaaS (Salesforce, ServiceNow, SAP, MongoDB, Kafka).'
+description: >-
+  Create and troubleshoot AWS Glue connections to JDBC databases (Oracle, SQL Server,
+  PostgreSQL, MySQL, RDS), Redshift, Snowflake, and BigQuery. Gathers connection hints
+  from user, discovers existing connections and RDS/Redshift candidates, registers
+  credentials in Secrets Manager or IAM DB auth, configures VPC, and tests. Triggers
+  on: connect to database, set up Glue connection, register data source, connect to
+  Snowflake/BigQuery/RDS, connection timeout, test connection, troubleshoot connection.
+  Do NOT use for moving data (use ingesting-into-data-lake), creating tables (use
+  creating-data-lake-table), queries (use querying-data-lake), catalog exploration
+  (use exploring-data-catalog), or SaaS (Salesforce, ServiceNow, SAP, MongoDB, Kafka).
 version: 1
 metadata:
   service: [glue, secretsmanager, rds, redshift]

@@ -1,17 +1,18 @@
 ---
 name: ingesting-into-data-lake
-description: 'Import data into the AWS data lake from S3 files, local uploads, JDBC
-  databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift,
-  Snowflake, BigQuery, DynamoDB, or existing Glue catalog tables (migration). Default
-  target is S3 Tables; standard Iceberg on a general purpose bucket is supported where
-  S3 Tables is not adopted. Handles one-time loads, recurring pipelines, migrations.
+description: >-
+  Import data into the AWS data lake from S3 files, local uploads, JDBC databases
+  (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift, Snowflake,
+  BigQuery, DynamoDB, or existing Glue catalog tables (migration). Default target
+  is S3 Tables; standard Iceberg on a general purpose bucket is supported where S3
+  Tables is not adopted. Handles one-time loads, recurring pipelines, migrations.
   Triggers on: import data, load data, ingest, sync database, migrate table, move
   data to AWS, set up pipeline, ETL, pull from Snowflake, query BigQuery into S3,
   export DynamoDB, CTAS, convert to Iceberg. Do NOT use for setting up or troubleshooting
   Glue connections (use connecting-to-data-source), creating empty tables (use creating-data-lake-table),
   running queries (use querying-data-lake), finding tables by fuzzy name (use finding-data-lake-assets),
   catalog audit (use exploring-data-catalog), or SaaS platforms like Salesforce, ServiceNow,
-  SAP, MongoDB, Kafka.'
+  SAP, MongoDB, Kafka.
 version: 1
 metadata:
   service: [glue, s3, s3tables, athena, dynamodb]
