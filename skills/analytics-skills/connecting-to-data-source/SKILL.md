@@ -1,13 +1,13 @@
 ---
-name: connect-to-data-source
+name: connecting-to-data-source
 description: 'Create and troubleshoot AWS Glue connections to JDBC databases (Oracle,
   SQL Server, PostgreSQL, MySQL, RDS), Redshift, Snowflake, and BigQuery. Gathers
   connection hints from user, discovers existing connections and RDS/Redshift candidates,
   registers credentials in Secrets Manager or IAM DB auth, configures VPC, and tests.
   Triggers on: connect to database, set up Glue connection, register data source,
   connect to Snowflake/BigQuery/RDS, connection timeout, test connection, troubleshoot
-  connection. Do NOT use for moving data (use ingest-into-data-lake), creating tables
-  (use create-data-lake-table), queries (use query-data-lake), catalog exploration
+  connection. Do NOT use for moving data (use ingesting-into-data-lake), creating tables
+  (use creating-data-lake-table), queries (use querying-data-lake), catalog exploration
   (use exploring-data-catalog), or SaaS (Salesforce, ServiceNow, SAP, MongoDB, Kafka).'
 version: 1
 metadata:
@@ -20,7 +20,7 @@ argument-hint: '[source-type|connection-name|hostname]'
 
 # Connect to Data Source
 
-Register an external data source with AWS Glue so downstream skills (ingest-into-data-lake) can move data from it. A Glue connection stores the network config, driver, and credential reference for one source. Create once per source, reuse across jobs.
+Register an external data source with AWS Glue so downstream skills (ingesting-into-data-lake) can move data from it. A Glue connection stores the network config, driver, and credential reference for one source. Create once per source, reuse across jobs.
 
 ## Philosophy
 
@@ -48,7 +48,7 @@ Ask the user which source type they want to connect to, or infer from hints:
 | "Snowflake" | Snowflake | `SNOWFLAKE` | [snowflake-setup.md](references/snowflake-setup.md) |
 | "BigQuery", "Google analytics warehouse" | BigQuery | `BIGQUERY` | [bigquery-setup.md](references/bigquery-setup.md) |
 
-If the user names DynamoDB or a local file, stop and tell them: DynamoDB is read directly by Glue without a connection, and local files belong in the ingest-into-data-lake skill's local-upload workflow.
+If the user names DynamoDB or a local file, stop and tell them: DynamoDB is read directly by Glue without a connection, and local files belong in the ingesting-into-data-lake skill's local-upload workflow.
 
 ### 3. Gather Connection Hints from the User
 
@@ -126,7 +126,7 @@ After TestConnection passes, verify the connection works with the user's intende
 
 Phase B catches issues that TestConnection misses: driver compatibility at job runtime, catalog configuration, Spark-level serialization, and engine-specific auth flows (e.g., Snowflake SNOWFLAKE type works in ETL but not via JDBC crawlers).
 
-On success in both phases, tell user the connection name is ready for `ingest-into-data-lake`. On failure in either phase, Step 8.
+On success in both phases, tell user the connection name is ready for `ingesting-into-data-lake`. On failure in either phase, Step 8.
 
 ### 8. Troubleshoot (only if test failed)
 

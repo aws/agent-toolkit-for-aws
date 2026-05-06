@@ -1,11 +1,11 @@
 ---
-name: find-data-lake-assets
+name: finding-data-lake-assets
 description: 'Resolve data lake and lakehouse asset references across Glue Data Catalog,
   S3, S3 Tables, and Redshift. Triggers on: find the table, where is our data, which
   table has, locate dataset, find data for, search catalog, what tables match, Redshift
   table, lakehouse table, data lake table, warehouse table, reverse lookup S3 path.
   Do NOT use for: full catalog audits (use exploring-data-catalog), running queries
-  (use query-data-lake), creating tables (use create-data-lake-table).'
+  (use querying-data-lake), creating tables (use creating-data-lake-table).'
 version: 1
 metadata:
   service: [glue, s3, s3tables, redshift]

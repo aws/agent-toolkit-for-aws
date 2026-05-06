@@ -19,7 +19,7 @@ Note: The target for catalog migration is always S3 Tables -- that is the purpos
 
 ### Phase 1: Understand the Source
 
-1. **Identify the source table**: Get the fully qualified name (`database.table` or `catalog.database.table`). If the user gives a fuzzy or business name ("our orders table", "the sales data"), delegate to the `find-data-lake-assets` skill to resolve it before continuing -- the rest of this workflow assumes a concrete reference.
+1. **Identify the source table**: Get the fully qualified name (`database.table` or `catalog.database.table`). If the user gives a fuzzy or business name ("our orders table", "the sales data"), delegate to the `finding-data-lake-assets` skill to resolve it before continuing -- the rest of this workflow assumes a concrete reference.
 2. **Inspect the source**:
    - **With MCP**: Use `aws-mcp` to get table metadata (format, location, schema, partitions)
    - **Without MCP**: `aws glue get-table --database-name <db> --name <table>`
@@ -34,8 +34,8 @@ Note: The target for catalog migration is always S3 Tables -- that is the purpos
 
 ### Phase 2: Prepare the Target
 
-1. **Ensure table bucket exists**: Check with `aws s3tables list-table-buckets`. If none, delegate to [create-data-lake-table](../../create-data-lake-table/SKILL.md) Phase 2.
-2. **Ensure analytics integration is enabled**: Verify `s3tablescatalog` exists. Delegate to [create-data-lake-table](../../create-data-lake-table/SKILL.md) Phase 2, step 4 if not set up.
+1. **Ensure table bucket exists**: Check with `aws s3tables list-table-buckets`. If none, delegate to [creating-data-lake-table](../../creating-data-lake-table/SKILL.md) Phase 2.
+2. **Ensure analytics integration is enabled**: Verify `s3tablescatalog` exists. Delegate to [creating-data-lake-table](../../creating-data-lake-table/SKILL.md) Phase 2, step 4 if not set up.
 3. **Create or select namespace**: Use existing or create new via `aws s3tables create-namespace`.
 4. **Plan partition strategy**: Iceberg supports hidden partition transforms (`day()`, `month()`, `year()`, `hour()`, `bucket()`). Recommend converting Hive-style explicit partition columns to Iceberg transforms where possible.
 

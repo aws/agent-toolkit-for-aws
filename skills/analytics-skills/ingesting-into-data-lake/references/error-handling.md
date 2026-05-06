@@ -6,7 +6,7 @@ Complete guide for handling common errors and issues during data import into S3 
 
 This reference covers errors encountered during the data import workflow. Errors are organized by workflow phase and severity.
 
-**Connection errors are out of scope for this skill.** JDBC/Snowflake/BigQuery connection failures (timeouts, auth failures, driver not found, SSL errors) belong to `connect-to-data-source`. When a Glue job fails with a connection-level error, delegate to that skill's troubleshooting rather than debugging here.
+**Connection errors are out of scope for this skill.** JDBC/Snowflake/BigQuery connection failures (timeouts, auth failures, driver not found, SSL errors) belong to `connecting-to-data-source`. When a Glue job fails with a connection-level error, delegate to that skill's troubleshooting rather than debugging here.
 
 ## Common Issues by Category
 

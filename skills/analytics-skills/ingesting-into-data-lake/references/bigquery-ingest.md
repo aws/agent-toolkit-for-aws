@@ -1,6 +1,6 @@
 # BigQuery Ingest
 
-Move data from Google BigQuery into the data lake. Assumes a Glue `BIGQUERY` connection exists. If not, delegate to `connect-to-data-source`.
+Move data from Google BigQuery into the data lake. Assumes a Glue `BIGQUERY` connection exists. If not, delegate to `connecting-to-data-source`.
 
 ## Contents
 

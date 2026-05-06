@@ -1,6 +1,6 @@
 # JDBC Database Ingest
 
-Move data from a JDBC source (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora, Redshift) into the data lake. Assumes a Glue connection exists. If it doesn't, delegate to the `connect-to-data-source` skill first.
+Move data from a JDBC source (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora, Redshift) into the data lake. Assumes a Glue connection exists. If it doesn't, delegate to the `connecting-to-data-source` skill first.
 
 ## Contents
 
@@ -12,9 +12,9 @@ Move data from a JDBC source (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora
 
 ## Prerequisites
 
-- A tested Glue connection (created via `connect-to-data-source` skill)
+- A tested Glue connection (created via `connecting-to-data-source` skill)
 - Source table name, schema, and optional filter SQL
-- Target table (existing or to be created via `create-data-lake-table` skill)
+- Target table (existing or to be created via `creating-data-lake-table` skill)
 - Target format decided (default S3 Tables; see [iceberg-catalog-config-and-usage.md](iceberg-catalog-config-and-usage.md))
 
 ## Workflow
@@ -25,7 +25,7 @@ Move data from a JDBC source (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora
 aws glue get-connection --name <CONNECTION_NAME> --region <REGION>
 ```
 
-If the connection does not exist, stop and delegate to `connect-to-data-source`.
+If the connection does not exist, stop and delegate to `connecting-to-data-source`.
 
 ### 2. Identify source scope
 
@@ -42,7 +42,7 @@ Ask the user which tables, views, or custom SQL query. See [jdbc-schema-discover
 
 ### 4. Create target table if needed
 
-If the target table doesn't exist, delegate to `create-data-lake-table`. Never create it inline.
+If the target table doesn't exist, delegate to `creating-data-lake-table`. Never create it inline.
 
 ### 5. Build the Glue 5.1 or higher job
 
@@ -99,7 +99,7 @@ Best practices:
 - Ensure `lowerBound`/`upperBound` cover actual data range
 - Source database must handle concurrent connections
 
-Retrieve credentials from the connection at runtime rather than hardcoding. See [connect-to-data-source credential-security.md](../../connect-to-data-source/references/credential-security.md) for IAM DB auth and Secrets Manager patterns.
+Retrieve credentials from the connection at runtime rather than hardcoding. See [connecting-to-data-source credential-security.md](../../connecting-to-data-source/references/credential-security.md) for IAM DB auth and Secrets Manager patterns.
 
 ## Type Mapping
 
@@ -169,6 +169,6 @@ Same as PostgreSQL mappings. Redshift-specific additions:
 
 ## Connection Errors
 
-If the Glue job fails with a connection-related error (timeout, auth failure, driver not found, SSL handshake), delegate to `connect-to-data-source` for troubleshooting. Do not attempt network or credential fixes in this skill.
+If the Glue job fails with a connection-related error (timeout, auth failure, driver not found, SSL handshake), delegate to `connecting-to-data-source` for troubleshooting. Do not attempt network or credential fixes in this skill.
 
-See [connect-to-data-source troubleshooting.md](../../connect-to-data-source/references/troubleshooting.md).
+See [connecting-to-data-source troubleshooting.md](../../connecting-to-data-source/references/troubleshooting.md).
