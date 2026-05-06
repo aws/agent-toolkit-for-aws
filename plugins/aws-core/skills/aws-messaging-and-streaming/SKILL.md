@@ -1,5 +1,5 @@
 ---
-name: messaging-and-streaming
+name: aws-messaging-and-streaming
 description: >
   Guides use of AWS messaging and streaming services. Covers Amazon SQS,
   Amazon SNS, Amazon EventBridge, Amazon MQ, Amazon Kinesis Data Streams,
