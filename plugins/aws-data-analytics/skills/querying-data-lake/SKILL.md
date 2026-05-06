@@ -1,10 +1,10 @@
 ---
-name: query-data-lake
+name: querying-data-lake
 description: 'Execute and manage Athena SQL queries across default and federated catalogs
   (Glue, S3 Tables, Redshift). Triggers on phrases like: query data, run SQL, athena
   query, analyze table, SQL query, workgroup status, profile table, query Redshift
-  catalog, query S3 Tables. Do NOT use for finding specific data assets (use find-data-lake-assets),
-  full catalog audits (use exploring-data-catalog), importing data (use ingest-into-data-lake).'
+  catalog, query S3 Tables. Do NOT use for finding specific data assets (use finding-data-lake-assets),
+  full catalog audits (use exploring-data-catalog), importing data (use ingesting-into-data-lake).'
 version: 1
 metadata:
   service: [athena, glue, s3tables, redshift]
@@ -20,7 +20,7 @@ Execute SQL queries on Amazon Athena across default and federated catalogs (Glue
 
 ## Overview
 
-Executes and manages Athena SQL queries across default and federated catalogs. Selects a workgroup, resolves target assets (delegating fuzzy references to `find-data-lake-assets`), classifies statements for safety, and reports cost and data scanned. Use the AWS MCP server for sandboxed execution and audit logging; the same AWS CLI commands work directly when the MCP server is not available.
+Executes and manages Athena SQL queries across default and federated catalogs. Selects a workgroup, resolves target assets (delegating fuzzy references to `finding-data-lake-assets`), classifies statements for safety, and reports cost and data scanned. Use the AWS MCP server for sandboxed execution and audit logging; the same AWS CLI commands work directly when the MCP server is not available.
 
 **Constraints for parameter acquisition:**
 
@@ -54,14 +54,14 @@ Check caller identity, list workgroups, auto-select the best one (see [workgroup
 
 ### 3. Resolve the Target Asset
 
-If the user refers to a table by name, by business concept ("our quarterly report", "the sales data"), by S3 path, or by catalog without specifying the table, delegate to `find-data-lake-assets` to return the concrete `database.table` (and catalog if non-default).
+If the user refers to a table by name, by business concept ("our quarterly report", "the sales data"), by S3 path, or by catalog without specifying the table, delegate to `finding-data-lake-assets` to return the concrete `database.table` (and catalog if non-default).
 
 **Constraints:**
 
 - You MUST NOT attempt to resolve fuzzy asset references with `athena list-data-catalogs` or by iterating `get-tables` — those miss federated catalogs and waste tokens
 - You SHOULD skip this step only when the user provides a fully-qualified reference (exact `database.table`) or raw SQL they want executed as-is
 - You MUST state the resolved asset explicitly before building the query: "Found [table] in [catalog]. Using this for the query."
-- You SHOULD default to the default Glue catalog unless the user mentions "federated", "Redshift", "S3 Tables", or `find-data-lake-assets` returns a different catalog
+- You SHOULD default to the default Glue catalog unless the user mentions "federated", "Redshift", "S3 Tables", or `finding-data-lake-assets` returns a different catalog
 
 ### 4. Discover Schema
 

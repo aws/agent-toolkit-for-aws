@@ -1,6 +1,6 @@
 # Snowflake Ingest
 
-Move data from Snowflake into the data lake. Assumes a Glue `SNOWFLAKE` connection exists. If not, delegate to `connect-to-data-source`.
+Move data from Snowflake into the data lake. Assumes a Glue `SNOWFLAKE` connection exists. If not, delegate to `connecting-to-data-source`.
 
 ## Contents
 

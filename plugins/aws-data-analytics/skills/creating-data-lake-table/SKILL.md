@@ -1,13 +1,13 @@
 ---
-name: create-data-lake-table
+name: creating-data-lake-table
 description: 'Create managed Iceberg tables using Amazon S3 Tables (s3tables API namespace)
   with automatic compaction and snapshot management. Sets up table bucket, namespace,
   table, schema, Glue catalog registration, partitioning, IAM access control. Triggers
   on: create table, data lake table, analytics table, structured data storage, S3
   Tables, Iceberg, Athena table, partitioning strategy, access permissions. Do NOT
-  use  for: importing files (use ingest-into-data-lake), vector storage (use store-and-query-vectors),
-  querying existing tables (use query-data-lake), or locating existing table (use
-  find-data-lake-assets).'
+  use  for: importing files (use ingesting-into-data-lake), vector storage (use storing-and-querying-vectors),
+  querying existing tables (use querying-data-lake), or locating existing table (use
+  finding-data-lake-assets).'
 version: 1
 metadata:
   service: [s3tables, glue, athena]
@@ -35,15 +35,15 @@ You MUST run `aws glue get-tables --database-name <NAME>` when user mentions a d
 
 | What you find | Action |
 |---------------|--------|
-| Fuzzy database name ("our analytics db") | You MUST STOP. Delegate to `find-data-lake-assets` to resolve. |
-| Non-S3-Tables table with matching name | You MUST STOP. Delegate to `find-data-lake-assets`. You MUST NOT create until user confirms. |
+| Fuzzy database name ("our analytics db") | You MUST STOP. Delegate to `finding-data-lake-assets` to resolve. |
+| Non-S3-Tables table with matching name | You MUST STOP. Delegate to `finding-data-lake-assets`. You MUST NOT create until user confirms. |
 | Existing S3 Tables table with matching name | You MUST check schema match. Reuse if compatible, recreate only if user confirms. |
 | No matching tables | Proceed with creation (Steps 1-8). |
 | User explicitly requests new S3 Tables table | Skip checks, proceed with creation. |
 
 **Creation paths:**
 
-- **Existing data in S3**: Create empty table (Steps 1-8), then use `ingest-into-data-lake` skill.
+- **Existing data in S3**: Create empty table (Steps 1-8), then use `ingesting-into-data-lake` skill.
 - **Glue ETL pipeline**: Read `references/table-creation-glue-etl.md` first, then Steps 1-6.
 - **Lake Formation access control**: Search AWS docs for `"S3 Tables integration with Lake Formation"`.
 
@@ -58,7 +58,7 @@ You MUST run `aws glue get-tables --database-name <NAME>` when user mentions a d
 
 - **Explicit schema**: Validate Iceberg types.
 - **Loose description**: Ask columns, types, grain. Propose and confirm.
-- **Existing S3 data**: Infer schema from file headers only. Create empty table first, then use `ingest-into-data-lake` skill.
+- **Existing S3 data**: Infer schema from file headers only. Create empty table first, then use `ingesting-into-data-lake` skill.
 
 **Constraints:**
 
@@ -194,4 +194,4 @@ You MUST verify with `aws s3tables get-table` and confirm queryability with `DES
 - [best-practices.md](references/best-practices.md) -- Iceberg types, partitions, naming, common errors
 - [athena-ddl-path.md](references/athena-ddl-path.md) -- Athena DDL, schema evolution
 - [table-creation-glue-etl.md](references/table-creation-glue-etl.md) -- Spark DDL via Glue ETL
-- Loading data: `ingest-into-data-lake` skill
+- Loading data: `ingesting-into-data-lake` skill

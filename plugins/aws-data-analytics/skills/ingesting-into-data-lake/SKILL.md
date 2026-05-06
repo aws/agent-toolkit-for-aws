@@ -1,5 +1,5 @@
 ---
-name: ingest-into-data-lake
+name: ingesting-into-data-lake
 description: 'Import data into the AWS data lake from S3 files, local uploads, JDBC
   databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift,
   Snowflake, BigQuery, DynamoDB, or existing Glue catalog tables (migration). Default
@@ -8,8 +8,8 @@ description: 'Import data into the AWS data lake from S3 files, local uploads, J
   Triggers on: import data, load data, ingest, sync database, migrate table, move
   data to AWS, set up pipeline, ETL, pull from Snowflake, query BigQuery into S3,
   export DynamoDB, CTAS, convert to Iceberg. Do NOT use for setting up or troubleshooting
-  Glue connections (use connect-to-data-source), creating empty tables (use create-data-lake-table),
-  running queries (use query-data-lake), finding tables by fuzzy name (use find-data-lake-assets),
+  Glue connections (use connecting-to-data-source), creating empty tables (use creating-data-lake-table),
+  running queries (use querying-data-lake), finding tables by fuzzy name (use finding-data-lake-assets),
   catalog audit (use exploring-data-catalog), or SaaS platforms like Salesforce, ServiceNow,
   SAP, MongoDB, Kafka.'
 version: 1
@@ -23,7 +23,7 @@ argument-hint: '[source-path|connection-name|table-name] [--target s3-tables|ice
 
 # Ingest into Data Lake
 
-Move data from a source into a queryable table in the data lake. This skill assumes the source connection (if one is needed) already exists. For Glue connection setup or troubleshooting, delegate to `connect-to-data-source`.
+Move data from a source into a queryable table in the data lake. This skill assumes the source connection (if one is needed) already exists. For Glue connection setup or troubleshooting, delegate to `connecting-to-data-source`.
 
 ## Philosophy
 
@@ -39,7 +39,7 @@ You MUST execute commands using AWS MCP server tools when connected -- they prov
 
 - You MUST check whether AWS MCP tools or AWS CLI are available and inform the user if missing
 - You MUST confirm target AWS region and verify credentials with `aws sts get-caller-identity`
-- For SageMaker Unified Studio project roles, note that target tables and connections may be scoped to the project. See the caller ARN detection pattern in `query-data-lake`.
+- For SageMaker Unified Studio project roles, note that target tables and connections may be scoped to the project. See the caller ARN detection pattern in `querying-data-lake`.
 
 ### 2. Classify the Source
 
@@ -55,7 +55,7 @@ You MUST execute commands using AWS MCP server tools when connected -- they prov
 
 If the user names Salesforce, ServiceNow, SAP, MongoDB, Kafka, or another SaaS/streaming source, decline -- these are not supported in this release.
 
-If the source table is referenced by a fuzzy or business name ("migrate our orders table", "pull from the sales warehouse"), delegate to `find-data-lake-assets` to resolve before proceeding.
+If the source table is referenced by a fuzzy or business name ("migrate our orders table", "pull from the sales warehouse"), delegate to `finding-data-lake-assets` to resolve before proceeding.
 
 ### 3. Confirm Connection Exists (if applicable)
 
@@ -65,7 +65,7 @@ For JDBC, Snowflake, and BigQuery sources, a Glue connection is required. Check:
 aws glue get-connection --name <CONNECTION_NAME> --region <REGION>
 ```
 
-If the connection does not exist, stop and delegate to `connect-to-data-source` to create and test it. Do not proceed with ingest until the connection is verified.
+If the connection does not exist, stop and delegate to `connecting-to-data-source` to create and test it. Do not proceed with ingest until the connection is verified.
 
 Local files, S3 files, DynamoDB, and catalog migration do not need a Glue connection.
 
@@ -74,7 +74,7 @@ Local files, S3 files, DynamoDB, and catalog migration do not need a Glue connec
 You MUST ask the user (or suggest based on catalog inventory) before creating or writing to any table:
 
 - **Database/namespace**: Does a specific target database exist? Or should one be created?
-- **Table**: Existing table (append/merge) or new table (delegate to `create-data-lake-table`)?
+- **Table**: Existing table (append/merge) or new table (delegate to `creating-data-lake-table`)?
 - **Format**: S3 Tables (default), standard Iceberg, or raw Parquet?
 
 **Inventory-aware defaults:**
@@ -89,8 +89,8 @@ Do not force S3 Tables on customers who haven't adopted it. See [iceberg-catalog
 
 **Delegations from this step:**
 
-- Target table doesn't exist -> `create-data-lake-table`
-- Target database named by fuzzy term -> `find-data-lake-assets`
+- Target table doesn't exist -> `creating-data-lake-table`
+- Target database named by fuzzy term -> `finding-data-lake-assets`
 - User doesn't know what exists -> `exploring-data-catalog`
 
 ### 5. Execute Source Workflow
@@ -132,7 +132,7 @@ For recurring pipelines, create a Glue Trigger with a cron schedule. See [testin
 - `overwritePartitions()` only replaces partitions present in the DataFrame -- for full refresh with deletes, use `createOrReplace()`
 - Standard Iceberg targets MUST include a LOCATION clause; S3 Tables MUST NOT
 - DynamoDB does not need a Glue connection -- do not attempt to create one
-- Connection failures during ingest delegate back to `connect-to-data-source`; do not debug network/credentials in this skill
+- Connection failures during ingest delegate back to `connecting-to-data-source`; do not debug network/credentials in this skill
 - For target tables in SageMaker Unified Studio projects, ensure the project role has write access to the target namespace before the Glue job runs
 
 ## Troubleshooting
@@ -142,7 +142,7 @@ For recurring pipelines, create a Glue Trigger with a cron schedule. See [testin
 | Access Denied on S3 | Missing IAM permissions | Check Glue role has s3:GetObject, s3:PutObject |
 | Access Denied on S3 Tables | Missing s3tables:* permissions | Add S3 Tables inline policy to Glue role |
 | CTAS timeout | Dataset too large for Athena | Switch to Glue ETL or batch with WHERE filters |
-| JDBC connection timeout/auth failure | Connection-level issue | Delegate to `connect-to-data-source` |
+| JDBC connection timeout/auth failure | Connection-level issue | Delegate to `connecting-to-data-source` |
 | Throughput exceeded (DynamoDB) | Read percent too high | Lower `read.percent` or use native export |
 
 See [error-handling.md](references/error-handling.md) for the full catalog.
@@ -171,7 +171,7 @@ See [error-handling.md](references/error-handling.md) for the full catalog.
 - [type-transformations.md](references/type-transformations.md) -- Type conflict resolution
 - [format-specific-loading.md](references/format-specific-loading.md) -- CSV/JSON/Parquet/Avro/ORC specifics
 - [athena-loading.md](references/athena-loading.md) -- Athena INSERT INTO as simple-load fallback
-- [error-handling.md](references/error-handling.md) -- Ingest errors (connection errors delegate to connect-to-data-source)
+- [error-handling.md](references/error-handling.md) -- Ingest errors (connection errors delegate to connecting-to-data-source)
 - [upload-options.md](references/upload-options.md) -- aws s3 cp vs sync, multipart
 
 ### Migration-specific

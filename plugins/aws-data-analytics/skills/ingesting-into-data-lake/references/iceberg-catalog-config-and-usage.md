@@ -11,7 +11,7 @@ Managed Iceberg tables with automatic compaction, snapshot management, and multi
 - Table and column names must be lowercase
 - Requires Glue 5.1 or higher and `--datalake-formats iceberg` job argument
 - All `spark.sql.catalog.*` config goes in `--conf` job arguments, never in `spark.conf.set()` (Glue 5.x static config restriction)
-- Delegate table creation to [create-data-lake-table](../../create-data-lake-table/SKILL.md)
+- Delegate table creation to [creating-data-lake-table](../../creating-data-lake-table/SKILL.md)
 
 Two access methods exist. Use Analytics Integration when the table needs to be visible to Athena, Redshift, or EMR. Use REST Endpoint when only Glue Spark jobs access the table.
 

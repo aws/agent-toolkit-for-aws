@@ -36,7 +36,7 @@ Schema evolution and nested data: See [schema-evolution.md](schema-evolution.md)
 ### Phase 3: Set Up or Verify Target Table
 
 1. **Check if table exists** using MCP or CLI
-2. **Create table if needed**: Delegate to [create-data-lake-table](../../create-data-lake-table/SKILL.md) for all target types. Pass the target format (S3 Tables, standard Iceberg, or raw files) and schema. See [iceberg-catalog-config-and-usage.md](iceberg-catalog-config-and-usage.md) for target-specific catalog configuration used in the subsequent Glue job.
+2. **Create table if needed**: Delegate to [creating-data-lake-table](../../creating-data-lake-table/SKILL.md) for all target types. Pass the target format (S3 Tables, standard Iceberg, or raw files) and schema. See [iceberg-catalog-config-and-usage.md](iceberg-catalog-config-and-usage.md) for target-specific catalog configuration used in the subsequent Glue job.
 3. **Evolve schema if needed**: Compare schemas, generate ALTER TABLE ADD COLUMNS, execute via Athena
 
 ### Phase 3.5: Verify or Create IAM Role for Glue
@@ -45,7 +45,7 @@ Schema evolution and nested data: See [schema-evolution.md](schema-evolution.md)
 2. **Verify permissions**: AWSGlueServiceRole managed policy, S3 access, S3 Tables inline policy (if S3 Tables target)
 3. **Create role if needed**: Trust policy for `glue.amazonaws.com`, attach policies, capture role ARN
 
-Complete IAM setup: Handled by [create-data-lake-table](../../create-data-lake-table/SKILL.md).
+Complete IAM setup: Handled by [creating-data-lake-table](../../creating-data-lake-table/SKILL.md).
 
 ### Phase 4: Execute Data Load
 
@@ -103,7 +103,7 @@ Present summary: what was loaded, how to query, any issues, next steps.
 
 - S3 Tables requires Glue 5.1 or higher. Standard Iceberg also requires Glue 5.1 or higher for proper Iceberg compatibility.
 - S3 Tables CREATE TABLE must NOT include a LOCATION clause. Standard Iceberg MUST include one.
-- When creating tables for S3 Tables import, use the Spark DDL path (Path B) in create-data-lake-table to ensure the Glue catalog is configured.
+- When creating tables for S3 Tables import, use the Spark DDL path (Path B) in creating-data-lake-table to ensure the Glue catalog is configured.
 - Target-specific catalog configuration and Glue version requirements are defined in [iceberg-catalog-config-and-usage.md](iceberg-catalog-config-and-usage.md).
 
 ## References

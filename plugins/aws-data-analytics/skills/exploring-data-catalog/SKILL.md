@@ -3,8 +3,8 @@ name: exploring-data-catalog
 description: 'Full inventory and audit of AWS Glue Data Catalog assets across S3 Tables,
   Redshift-federated, and remote Iceberg catalogs. Triggers on: inventory the catalog,
   audit databases, list all tables, catalog overview, data landscape, enumerate catalogs,
-  data inventory, search the catalog. Do NOT use for finding specific data (use find-data-lake-assets),
-  running queries (use query-data-lake), or creating tables (use create-data-lake-table).'
+  data inventory, search the catalog. Do NOT use for finding specific data (use finding-data-lake-assets),
+  running queries (use querying-data-lake), or creating tables (use creating-data-lake-table).'
 version: 1
 metadata:
   service: [glue, s3, s3tables]
@@ -115,7 +115,7 @@ Resolve the argument in this order; stop at the first match:
 - Flag stale tables and missing descriptions
 - Suggest partitioning for large unpartitioned tables
 - Summary first, details on request
-- You MUST NOT execute Athena queries (`start-query-execution`) during discovery; query execution belongs to `query-data-lake`
+- You MUST NOT execute Athena queries (`start-query-execution`) during discovery; query execution belongs to `querying-data-lake`
 
 ## Troubleshooting
 
