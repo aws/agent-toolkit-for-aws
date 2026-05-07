@@ -68,7 +68,7 @@ Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`
 Then install skills from this repository:
 
 ```
-npx skills add aws/agent-toolkit-for-aws
+npx skills add aws/agent-toolkit-for-aws/skills
 ```
 
 > **Prerequisites:** You need [uv](https://docs.astral.sh/uv/) installed. An AWS account with credentials configured locally is required for API calls and script execution, but not for documentation search or skill discovery. See the [user guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) for detailed setup instructions.
@@ -80,7 +80,7 @@ See the [AWS MCP Server getting started guide](https://docs.aws.amazon.com/agent
 Then install skills from this repository:
 
 ```
-npx skills add aws/agent-toolkit-for-aws
+npx skills add aws/agent-toolkit-for-aws/skills
 ```
 
 > **Prerequisites:** You need [uv](https://docs.astral.sh/uv/) installed. An AWS account with credentials configured locally is required for API calls and script execution, but not for documentation search or skill discovery. See the [user guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) for detailed setup instructions.
@@ -104,7 +104,7 @@ Plugins are currently available for Claude Code and Codex. For other agents, con
 Agent skills are curated packages of instructions and reference materials that help agents complete specific AWS tasks. Skills are loaded on demand — agents discover and retrieve only what's relevant to the current task.
 
 ```
-npx skills add aws/agent-toolkit-for-aws
+npx skills add aws/agent-toolkit-for-aws/skills
 ```
 
 Browse the [`skills/`](skills/) directory to see all available skills.
