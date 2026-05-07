@@ -5,11 +5,11 @@
 
 ## Authenticator Component
 
-| Framework | Package | Tag | CSS (MUST import) |
-|---|---|---|---|
-| React / Next.js | `@aws-amplify/ui-react` | `<Authenticator>` | `@aws-amplify/ui-react/styles.css` |
-| Vue | `@aws-amplify/ui-vue` | `<Authenticator>` | `@aws-amplify/ui-vue/styles.css` |
-| Angular | `@aws-amplify/ui-angular` | `<amplify-authenticator>` + `AmplifyAuthenticatorModule` | `@aws-amplify/ui-angular/theme.css` |
+| Framework       | Package                   | Tag                                                      | CSS (MUST import)                   |
+| --------------- | ------------------------- | -------------------------------------------------------- | ----------------------------------- |
+| React / Next.js | `@aws-amplify/ui-react`   | `<Authenticator>`                                        | `@aws-amplify/ui-react/styles.css`  |
+| Vue             | `@aws-amplify/ui-vue`     | `<Authenticator>`                                        | `@aws-amplify/ui-vue/styles.css`    |
+| Angular         | `@aws-amplify/ui-angular` | `<amplify-authenticator>` + `AmplifyAuthenticatorModule` | `@aws-amplify/ui-angular/theme.css` |
 
 Props: `loginMechanisms={['email']}`, `socialProviders={['google']}`.
 Slot: `{({ signOut, user }) => ...}` — access `user?.signInDetails?.loginId`.
@@ -21,32 +21,32 @@ Imports from `aws-amplify/auth`: `signIn`, `signUp`, `confirmSignUp`, `confirmSi
 
 After `signIn()`, you **MUST** switch on `result.nextStep.signInStep`:
 
-| signInStep value | Action |
-|---|---|
-| `DONE` | Authenticated |
-| `CONFIRM_SIGN_UP` | Call `confirmSignUp()` |
-| `CONFIRM_SIGN_IN_WITH_TOTP_CODE` | Prompt TOTP, call `confirmSignIn({ challengeResponse })` |
-| `CONFIRM_SIGN_IN_WITH_SMS_CODE` | Prompt SMS code, same |
-| `CONFIRM_SIGN_IN_WITH_EMAIL_CODE` | Prompt email code, same |
-| `CONTINUE_SIGN_IN_WITH_TOTP_SETUP` | Show QR URI, call `confirmSignIn()` |
-| `CONTINUE_SIGN_IN_WITH_MFA_SELECTION` | `confirmSignIn({ challengeResponse: 'TOTP'\|'SMS'\|'EMAIL' })` |
-| `RESET_PASSWORD` | Call `resetPassword()` |
-| `CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED` | `confirmSignIn({ challengeResponse: newPassword })` |
-| `CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE` | `confirmSignIn({ challengeResponse })` |
-| `CONFIRM_SIGN_IN_WITH_PASSWORD` | `confirmSignIn({ challengeResponse: password })` |
-| `CONTINUE_SIGN_IN_WITH_MFA_SETUP_SELECTION` | `confirmSignIn({ challengeResponse: 'TOTP'\|'EMAIL' })` |
-| `CONTINUE_SIGN_IN_WITH_EMAIL_SETUP` | Prompt email, call `confirmSignIn()` |
-| `CONTINUE_SIGN_IN_WITH_FIRST_FACTOR_SELECTION` | `confirmSignIn({ challengeResponse: selectedFactor })` |
+| signInStep value                               | Action                                                             |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
+| `DONE`                                         | Authenticated                                                      |
+| `CONFIRM_SIGN_UP`                              | Call `confirmSignUp()`                                             |
+| `CONFIRM_SIGN_IN_WITH_TOTP_CODE`               | Prompt TOTP, call `confirmSignIn({ challengeResponse })`           |
+| `CONFIRM_SIGN_IN_WITH_SMS_CODE`                | Prompt SMS code, same                                              |
+| `CONFIRM_SIGN_IN_WITH_EMAIL_CODE`              | Prompt email code, same                                            |
+| `CONTINUE_SIGN_IN_WITH_TOTP_SETUP`             | Show QR URI, call `confirmSignIn()`                                |
+| `CONTINUE_SIGN_IN_WITH_MFA_SELECTION`          | `confirmSignIn({ challengeResponse: 'TOTP' \| 'SMS' \| 'EMAIL' })` |
+| `RESET_PASSWORD`                               | Call `resetPassword()`                                             |
+| `CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED`   | `confirmSignIn({ challengeResponse: newPassword })`                |
+| `CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE`        | `confirmSignIn({ challengeResponse })`                             |
+| `CONFIRM_SIGN_IN_WITH_PASSWORD`                | `confirmSignIn({ challengeResponse: password })`                   |
+| `CONTINUE_SIGN_IN_WITH_MFA_SETUP_SELECTION`    | `confirmSignIn({ challengeResponse: 'TOTP' \| 'EMAIL' })`          |
+| `CONTINUE_SIGN_IN_WITH_EMAIL_SETUP`            | Prompt email, call `confirmSignIn()`                               |
+| `CONTINUE_SIGN_IN_WITH_FIRST_FACTOR_SELECTION` | `confirmSignIn({ challengeResponse: selectedFactor })`             |
 
 OAuth/social: `signInWithRedirect({ provider: 'Google' })`.
 
 ## Session Management
 
-| API (from `aws-amplify/auth`) | Returns |
-|---|---|
-| `getCurrentUser()` | `{ userId, username, signInDetails? }` |
-| `fetchAuthSession()` | `{ tokens?, credentials?, identityId?, userSub? }` — access `.tokens?.idToken`, `.tokens?.accessToken` |
-| `fetchUserAttributes()` | `{ email, phone_number, ... }` |
+| API (from `aws-amplify/auth`) | Returns                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `getCurrentUser()`            | `{ userId, username, signInDetails? }`                                                                 |
+| `fetchAuthSession()`          | `{ tokens?, credentials?, identityId?, userSub? }` — access `.tokens?.idToken`, `.tokens?.accessToken` |
+| `fetchUserAttributes()`       | `{ email, phone_number, ... }`                                                                         |
 
 Tokens refresh automatically.
 

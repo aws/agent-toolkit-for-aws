@@ -7,13 +7,15 @@
 
 Imports: `amplify_flutter` + `amplify_storage_s3`. All paths wrapped with `StoragePath.fromString()`.
 
-| Operation | Call |
-|---|---|
-| Upload file | `Amplify.Storage.uploadFile(localFile: AWSFile.fromPath(path), path: const StoragePath.fromString('public/photo.jpg'))` |
-| Download file | `Amplify.Storage.downloadFile(path: const StoragePath.fromString('public/photo.jpg'), localFile: localFile)` |
-| List | `Amplify.Storage.list(path: const StoragePath.fromString('public/'))` → `.result.items` |
-| Presigned URL | `Amplify.Storage.getUrl(path: const StoragePath.fromString('public/file.jpg'))` |
-| Remove | `Amplify.Storage.remove(path: const StoragePath.fromString('public/file.jpg'))` |
+| Operation     | Call                                                                                                                    |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Upload file   | `Amplify.Storage.uploadFile(localFile: AWSFile.fromPath(path), path: const StoragePath.fromString('public/photo.jpg'))` |
+| Download file | `Amplify.Storage.downloadFile(path: const StoragePath.fromString('public/photo.jpg'), localFile: localFile)`            |
+| List          | `Amplify.Storage.list(path: const StoragePath.fromString('public/'))` → `.result.items`                                 |
+| Presigned URL | `Amplify.Storage.getUrl(path: const StoragePath.fromString('public/file.jpg'))`                                         |
+| Remove        | `Amplify.Storage.remove(path: const StoragePath.fromString('public/file.jpg'))`                                         |
+
+> **Security:** Amplify Gen2 enables S3 server-side encryption (SSE-S3) by default. All transfers use HTTPS (TLS in transit). For sensitive data, configure SSE-KMS with a customer-managed key via CDK overrides.
 
 Upload progress — use the `onProgress` callback parameter:
 
@@ -34,15 +36,15 @@ final result = await op.result;
 
 Uses `Amplify.Storage` with async/await. Import: `Amplify`.
 
-| Operation | Call |
-|---|---|
-| Upload data | `Amplify.Storage.uploadData(path: .fromString("public/file.txt"), data: data)` → `try await task.value` |
-| Upload file | `Amplify.Storage.uploadFile(path: .fromString("public/file.txt"), local: fileUrl)` → `try await task.value` |
-| Download data | `Amplify.Storage.downloadData(path: .fromString("public/file.txt"))` → `.value` returns `Data` |
-| Download file | `Amplify.Storage.downloadFile(path: .fromString("public/path"), local: fileUrl)` → `try await task.value` |
-| List | `try await Amplify.Storage.list(path: .fromString("public/"))` → `.items` |
-| Presigned URL | `try await Amplify.Storage.getURL(path: .fromString("public/file.jpg"))` |
-| Remove | `try await Amplify.Storage.remove(path: .fromString("public/file.jpg"))` |
+| Operation     | Call                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| Upload data   | `Amplify.Storage.uploadData(path: .fromString("public/file.txt"), data: data)` → `try await task.value`     |
+| Upload file   | `Amplify.Storage.uploadFile(path: .fromString("public/file.txt"), local: fileUrl)` → `try await task.value` |
+| Download data | `Amplify.Storage.downloadData(path: .fromString("public/file.txt"))` → `.value` returns `Data`              |
+| Download file | `Amplify.Storage.downloadFile(path: .fromString("public/path"), local: fileUrl)` → `try await task.value`   |
+| List          | `try await Amplify.Storage.list(path: .fromString("public/"))` → `.items`                                   |
+| Presigned URL | `try await Amplify.Storage.getURL(path: .fromString("public/file.jpg"))`                                    |
+| Remove        | `try await Amplify.Storage.remove(path: .fromString("public/file.jpg"))`                                    |
 
 **Download with progress tracking:**
 
@@ -113,14 +115,14 @@ private suspend fun downloadFile() {
 }
 ```
 
-| Operation (coroutine) | Call |
-|---|---|
-| Upload file | `Amplify.Storage.uploadFile(StoragePath.fromString("public/photo.jpg"), file)` → `.result()` |
-| Upload stream | `Amplify.Storage.uploadInputStream(StoragePath.fromString("public/example"), stream)` → `.result()` |
-| Download file | `Amplify.Storage.downloadFile(StoragePath.fromString("public/photo.jpg"), localFile)` → `.result()` |
-| List | `Amplify.Storage.list(StoragePath.fromString("public/"))` → `.items` |
-| Presigned URL | `Amplify.Storage.getUrl(StoragePath.fromString("public/file.jpg"))` → `.url` |
-| Remove | `Amplify.Storage.remove(StoragePath.fromString("public/file.jpg"))` |
+| Operation (coroutine) | Call                                                                                                |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| Upload file           | `Amplify.Storage.uploadFile(StoragePath.fromString("public/photo.jpg"), file)` → `.result()`        |
+| Upload stream         | `Amplify.Storage.uploadInputStream(StoragePath.fromString("public/example"), stream)` → `.result()` |
+| Download file         | `Amplify.Storage.downloadFile(StoragePath.fromString("public/photo.jpg"), localFile)` → `.result()` |
+| List                  | `Amplify.Storage.list(StoragePath.fromString("public/"))` → `.items`                                |
+| Presigned URL         | `Amplify.Storage.getUrl(StoragePath.fromString("public/file.jpg"))` → `.url`                        |
+| Remove                | `Amplify.Storage.remove(StoragePath.fromString("public/file.jpg"))`                                 |
 
 **Callback alternative:** all operations also accept `onSuccess`/`onError` lambdas — e.g.
 `Amplify.Storage.uploadFile(StoragePath.fromString("public/photo.jpg"), file, { result -> ... }, { error -> ... })`.

@@ -142,14 +142,14 @@ existing Android Studio project.
 1. In the project root, run: `npm create amplify@latest -y`
 2. Add dependencies to `app/build.gradle.kts`:
 
-```kotlin
-dependencies {
-    implementation("com.amplifyframework:core:2.+")
-    implementation("com.amplifyframework:aws-auth-cognito:2.+")
-}
-```
+   ```kotlin
+   dependencies {
+       implementation("com.amplifyframework:core:2.+")
+       implementation("com.amplifyframework:aws-auth-cognito:2.+")
+   }
+   ```
 
-1. Copy `amplify_outputs.json` into `app/src/main/res/raw/`.
+3. Copy `amplify_outputs.json` into `app/src/main/res/raw/`.
 
 ## Generate amplify_outputs
 
@@ -166,6 +166,9 @@ Without it, the app fails to compile because
 # After npm install:
 npx ampx sandbox --once # generates amplify_outputs.json
 npm run dev # NOW the app can compile
+
+# Flutter requires the Dart output format (see core-mobile.md):
+npx ampx sandbox --once --outputs-format dart --outputs-out-dir lib
 ```
 
 `amplify_outputs.json` is gitignored — see [deployment.md](deployment.md) for generation details.

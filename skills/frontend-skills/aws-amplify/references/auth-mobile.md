@@ -76,10 +76,10 @@ class _MyAppState extends State<MyApp> {
 
 **Dependencies** — add both SPM packages in Xcode (**File > Add Packages…**):
 
-| Package | URL | Libraries |
-|---|---|---|
-| Amplify Library for Swift | `https://github.com/aws-amplify/amplify-swift` | `Amplify`, `AWSCognitoAuthPlugin` |
-| Amplify UI Swift Authenticator | `https://github.com/aws-amplify/amplify-ui-swift-authenticator` | `Authenticator` |
+| Package                        | URL                                                             | Libraries                         |
+| ------------------------------ | --------------------------------------------------------------- | --------------------------------- |
+| Amplify Library for Swift      | `https://github.com/aws-amplify/amplify-swift`                  | `Amplify`, `AWSCognitoAuthPlugin` |
+| Amplify UI Swift Authenticator | `https://github.com/aws-amplify/amplify-ui-swift-authenticator` | `Authenticator`                   |
 
 > **SPM versioning:** For both packages, select **"Up to Next Major Version"** in Xcode's dependency rule. Do NOT pin to a specific branch (e.g., `main`) — use "Up to Next Major Version" to get compatible updates automatically.
 
@@ -96,7 +96,7 @@ struct MyApp: App {
     init() {
         do {
             try Amplify.add(plugin: AWSCognitoAuthPlugin())
-            try Amplify.configure()
+            try Amplify.configure(with: .amplifyOutputs)
         } catch {
             print("Unable to configure Amplify \(error)")
         }
@@ -160,7 +160,7 @@ dependencies {
 ```kotlin
 try {
     Amplify.addPlugin(AWSCognitoAuthPlugin())
-    Amplify.configure(applicationContext)
+    Amplify.configure(AmplifyOutputs(R.raw.amplify_outputs), applicationContext)
 } catch (error: AmplifyException) {
     Log.e("MyApp", "Could not initialize Amplify", error)
 }

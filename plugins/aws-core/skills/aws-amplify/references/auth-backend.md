@@ -182,7 +182,7 @@ import { defineFunction } from '@aws-amplify/backend';
 export const preSignUp = defineFunction({ name: 'pre-sign-up' });
 ```
 
-### Guest (Unauthenticated) Access
+## Guest (Unauthenticated) Access
 
 Guest access is **enabled by default** in Amplify Gen2 — the Cognito Identity Pool is created with `allowUnauthenticatedIdentities: true` automatically.
 
@@ -196,6 +196,8 @@ export const data = defineData({
   },
 });
 ```
+
+> **Security:** Guest access grants unauthenticated users IAM-authorized access. For production, explicitly evaluate whether guest access is needed and prefer `allow.authenticated()` as the default. If guest access is required, scope it to read-only on non-sensitive models only.
 
 To **disable** guest access, use a CDK override in `backend.ts`:
 

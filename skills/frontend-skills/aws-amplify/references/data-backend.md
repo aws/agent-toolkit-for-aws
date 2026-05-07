@@ -54,13 +54,15 @@ call** (with parentheses). In storage access rules, `allow.guest` is a
 ```typescript
 a.model({ /* fields */ }).authorization(allow => [
   allow.publicApiKey().to(['read']), // API key: public read
-  allow.guest().to(['read']), // Requires defaultAuthorizationMode: 'iam' — NOTE: method call ()
+  allow.guest().to(['read']), // Requires defaultAuthorizationMode: 'iam'
   allow.owner(), // Creator has full CRUD
   allow.authenticated().to(['read']), // Any signed-in user can read
   allow.group('Admins'), // Named Cognito group
   allow.custom(), // Lambda authorizer
 ])
 ```
+
+> **Security note:** `allow.guest()` and `allow.publicApiKey()` both permit unauthenticated access. Only use for intentionally public, non-sensitive data. Prefer `allow.authenticated()` or `allow.owner()` for sensitive resources. See [Amplify authorization best practices](https://docs.amplify.aws/react/build-a-backend/data/customize-authz/) and [Amazon Cognito Identity Pool security](https://docs.aws.amazon.com/cognito/latest/developerguide/identity-pools.html) for guidance on choosing the right authorization strategy.
 
 Per-field authorization overrides model-level rules:
 

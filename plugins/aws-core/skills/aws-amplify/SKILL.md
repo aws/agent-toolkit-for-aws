@@ -11,12 +11,6 @@ description: 'Build and deploy full-stack web and mobile apps with AWS Amplify G
   packages; user asks about defineBackend, defineAuth, defineData, defineStorage,
   or npx ampx. SKIP: Amplify Gen1 (amplify CLI v6), standalone SAM/CDK without Amplify
   (use aws-serverless), direct Bedrock without Amplify AI Kit (use bedrock).'
-version: 1
-metadata:
-  service: [amplify, appsync, dynamodb, cognito, s3]
-  task: [build, deploy, configure]
-  persona: [developer]
-  workload: [full-stack, mobile]
 ---
 
 # AWS Amplify Gen2
@@ -54,8 +48,8 @@ When the user does not specify tooling or strategy:
   specifies Pages Router.
 - **React Native:** Ask the user whether they use **Expo** or **bare
   React Native CLI**.
-- **Auth:** You **SHOULD** default to **email/password** as the login method
-  unless the user specifies social login, SAML, or another provider.
+- **Auth:** You **MUST** ask which login method the user wants
+  (email/password, social login, SAML, passwordless, etc.). Do not assume a default.
 - **Data authorization:** default to **`publicApiKey`**
   (`allow.publicApiKey()`) — this is the starter template default. When
   auth is added, switch to **owner-based** (`allow.owner()`) with
@@ -79,24 +73,24 @@ not just new projects.
 
 ### Step 1: Identify the Task Type
 
-| Task | Go To |
-|------|-------|
-| **Create a new project** | → [scaffolding.md](references/scaffolding.md), then Step 2 and/or Step 3 |
-| **Add or modify a backend feature** | → Step 2 (Backend Features) |
-| **Connect frontend to existing backend** | → Step 3 (Frontend Integration) |
-| **Deploy the application** | → [deployment.md](references/deployment.md) |
+| Task                                     | Go To                                                                    |
+| ---------------------------------------- | ------------------------------------------------------------------------ |
+| **Create a new project**                 | → [scaffolding.md](references/scaffolding.md), then Step 2 and/or Step 3 |
+| **Add or modify a backend feature**      | → Step 2 (Backend Features)                                              |
+| **Connect frontend to existing backend** | → Step 3 (Frontend Integration)                                          |
+| **Deploy the application**               | → [deployment.md](references/deployment.md)                              |
 
 ### Step 2: Backend Features
 
 You **MUST** read the corresponding reference for each backend feature:
 
-| Feature | Reference | When to Use |
-|---------|-----------|-------------|
-| Authentication | [auth-backend.md](references/auth-backend.md) | Email/password, social login, MFA, SAML/OIDC |
-| Data Models | [data-backend.md](references/data-backend.md) | GraphQL schema, DynamoDB, relationships, auth rules |
-| File Storage | [storage-backend.md](references/storage-backend.md) | S3 uploads/downloads, access rules |
-| Functions & API | [functions-and-api.md](references/functions-and-api.md) | Lambda, custom resolvers, REST/HTTP APIs, calling from client |
-| AI Features | [ai.md](references/ai.md) | Conversation, generation, AI tools via Bedrock *(backend config + React/Next.js frontend)* |
+| Feature          | Reference                                               | When to Use                                                                                                |
+| ---------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Authentication   | [auth-backend.md](references/auth-backend.md)           | Email/password, social login, MFA, SAML/OIDC                                                               |
+| Data Models      | [data-backend.md](references/data-backend.md)           | GraphQL schema, DynamoDB, relationships, auth rules                                                        |
+| File Storage     | [storage-backend.md](references/storage-backend.md)     | S3 uploads/downloads, access rules                                                                         |
+| Functions & API  | [functions-and-api.md](references/functions-and-api.md) | Lambda, custom resolvers, REST/HTTP APIs, calling from client                                              |
+| AI Features      | [ai.md](references/ai.md)                               | Conversation, generation, AI tools via Bedrock _(backend config + React/Next.js frontend)_                 |
 | Geo, PubSub, CDK | [advanced-features.md](references/advanced-features.md) | Backend-only: custom CDK stacks, overrides, custom outputs. Backend + frontend: Geo, PubSub, Face Liveness |
 
 Each backend feature file is self-contained. Load only what you need.
@@ -112,19 +106,19 @@ platform and feature:
 
 **Web** (React, Next.js, Vue, Angular, React Native):
 
-| Feature | Reference |
-|---------|-----------|
-| Auth UI & flows | [auth-web.md](references/auth-web.md) |
-| Data CRUD & subscriptions | [data-web.md](references/data-web.md) |
-| Storage upload/download | [storage-web.md](references/storage-web.md) |
+| Feature                   | Reference                                   |
+| ------------------------- | ------------------------------------------- |
+| Auth UI & flows           | [auth-web.md](references/auth-web.md)       |
+| Data CRUD & subscriptions | [data-web.md](references/data-web.md)       |
+| Storage upload/download   | [storage-web.md](references/storage-web.md) |
 
 **Mobile** (Flutter, Swift, Android):
 
-| Feature | Reference |
-|---------|-----------|
-| Auth UI & flows | [auth-mobile.md](references/auth-mobile.md) |
-| Data CRUD & subscriptions | [data-mobile.md](references/data-mobile.md) |
-| Storage upload/download | [storage-mobile.md](references/storage-mobile.md) |
+| Feature                   | Reference                                         |
+| ------------------------- | ------------------------------------------------- |
+| Auth UI & flows           | [auth-mobile.md](references/auth-mobile.md)       |
+| Data CRUD & subscriptions | [data-mobile.md](references/data-mobile.md)       |
+| Storage upload/download   | [storage-mobile.md](references/storage-mobile.md) |
 
 > **Note:** AI and Functions frontend patterns are included in
 > [ai.md](references/ai.md) and
@@ -164,12 +158,12 @@ project-root/
 
 ### Key APIs
 
-| Package | Purpose |
-|---------|---------|
-| `@aws-amplify/backend` | `defineAuth`, `defineData`, `defineStorage`, `defineFunction`, `defineBackend` |
-| `aws-amplify` | Frontend: `Amplify.configure()`, `generateClient()`, auth/data/storage APIs |
-| `@aws-amplify/ui-react` | Pre-built UI: `<Authenticator>`, `<StorageBrowser>` |
-| `@aws-amplify/ui-react-ai` | AI UI: `<AIConversation>`, `useAIConversation` |
+| Package                    | Purpose                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| `@aws-amplify/backend`     | `defineAuth`, `defineData`, `defineStorage`, `defineFunction`, `defineBackend` |
+| `aws-amplify`              | Frontend: `Amplify.configure()`, `generateClient()`, auth/data/storage APIs    |
+| `@aws-amplify/ui-react`    | Pre-built UI: `<Authenticator>`, `<StorageBrowser>`                            |
+| `@aws-amplify/ui-react-ai` | AI UI: `<AIConversation>`, `useAIConversation`                                 |
 
 ## Documentation & Resource Verification
 
@@ -191,21 +185,29 @@ provider-specific auth config):
 - Review `allow.guest()` exposure carefully — guest access is enabled by default and grants unauthenticated users access to IAM-authorized resources
 - Scope IAM policies to specific resource ARNs — avoid `resources: ['*']` in production
 - Never log secrets or include them in error messages
+- Enable CloudTrail and CloudWatch alarms for monitoring Amplify-deployed resources; enable access logging on S3, AppSync, and API Gateway
+- Configure security headers for web apps — set CSP, HSTS, X-Frame-Options, and X-Content-Type-Options via `customHeaders` in `amplify.yml`
+- Attach AWS WAF to public-facing AppSync APIs and API Gateway endpoints for defense in depth
+- Enable throttling and rate limiting on API Gateway and AppSync APIs to prevent abuse
+- Use IAM roles with ephemeral credentials for CI/CD pipelines and Lambda execution roles — never long-lived access keys
+- Encrypt CloudWatch Logs groups with KMS (aws:kms) when they may contain PII, tokens, or secrets; enable log retention policies
+- Enable AppSync schema validation and API Gateway request validators to reject malformed input at the edge
+- Use ACM-managed TLS certificates for custom domains on Amplify Hosting — configure via `customDomain` in deployment config
 
 ## Links
 
 > All documentation links use `react` as the default platform slug. Replace `/react/` in any URL with your target framework:
 
-| Framework | Slug |
-|-----------|------|
-| React | `react` |
-| Next.js | `nextjs` |
-| Vue | `vue` |
-| Angular | `angular` |
+| Framework    | Slug           |
+| ------------ | -------------- |
+| React        | `react`        |
+| Next.js      | `nextjs`       |
+| Vue          | `vue`          |
+| Angular      | `angular`      |
 | React Native | `react-native` |
-| Flutter | `flutter` |
-| Swift | `swift` |
-| Android | `android` |
+| Flutter      | `flutter`      |
+| Swift        | `swift`        |
+| Android      | `android`      |
 
 - [Amplify Docs for LLMs](https://docs.amplify.aws/ai/llms.txt)
 - [Amplify Docs](https://docs.amplify.aws/)

@@ -111,6 +111,7 @@ No plugin registration needed — configure only.
 
 ```typescript
 import 'react-native-get-random-values';  // MUST be first
+import '@aws-amplify/react-native';       // MUST come before aws-amplify
 import { Amplify } from 'aws-amplify';
 import outputs from './amplify_outputs.json';
 Amplify.configure(outputs);
@@ -120,6 +121,7 @@ Amplify.configure(outputs);
 
 ```typescript
 import 'react-native-get-random-values';  // MUST be first
+import '@aws-amplify/react-native';       // MUST come before aws-amplify
 import { Amplify } from 'aws-amplify';
 import outputs from './amplify_outputs.json';
 Amplify.configure(outputs);
@@ -133,8 +135,8 @@ Same as web — check for `amplify/` directory with `backend.ts` and
 ### React Native Pitfalls
 
 - **Import order:** `react-native-get-random-values` **MUST** be the FIRST
-  import in the entry file, before `aws-amplify`. Reversing the order causes
-  cryptographic failures at runtime.
+  import in the entry file, `@aws-amplify/react-native` **MUST** come before
+  `aws-amplify`. Reversing the order causes cryptographic failures at runtime.
 - **Missing AsyncStorage:** Without
   `@react-native-async-storage/async-storage`, auth tokens are not persisted
   and users must re-authenticate on every app restart.

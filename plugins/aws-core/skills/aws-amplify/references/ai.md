@@ -67,6 +67,8 @@ const schema = a.schema({
 These constraints are asymmetric and frequently confused. Getting them wrong
 causes the CDK synthesis to fail with a non-obvious TypeError.
 
+> **Security:** Conversation history sent to Amazon Bedrock may contain PII. Do not log full request/response payloads in production. Enable CloudWatch Logs encryption (KMS) and set appropriate retention policies for any logs that may capture inference data.
+
 ### Backend Integration
 
 AI conversation and generation routes are part of your data schema. Import into `amplify/backend.ts`:
