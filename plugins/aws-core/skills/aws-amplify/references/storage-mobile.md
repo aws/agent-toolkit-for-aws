@@ -1,5 +1,38 @@
 # Storage — Mobile
 
+## Prerequisites
+
+Initialize Amplify with Auth and Storage plugins before using this feature:
+
+**Flutter** — `lib/main.dart`:
+
+```dart
+await Amplify.addPlugins([AmplifyAuthCognito(), AmplifyStorageS3()]);
+await Amplify.configure(amplifyConfig);
+```
+
+> Generate dart outputs: `npx ampx sandbox --outputs-format dart --outputs-out-dir lib`
+
+**Swift (Apple platforms):**
+
+```swift
+try Amplify.add(plugin: AWSCognitoAuthPlugin())
+try Amplify.add(plugin: AWSS3StoragePlugin())
+try Amplify.configure(with: .amplifyOutputs)
+```
+
+> Drag `amplify_outputs.json` into the Xcode project navigator so it is included in the app bundle.
+
+**Android:**
+
+```kotlin
+Amplify.addPlugin(AWSCognitoAuthPlugin())
+Amplify.addPlugin(AWSS3StoragePlugin())
+Amplify.configure(AmplifyOutputs(R.raw.amplify_outputs), applicationContext)
+```
+
+> Place `amplify_outputs.json` in `app/src/main/res/raw/`. Enable core library desugaring for API level < 26.
+
 > **Backend required:** Storage must be defined in `amplify/storage/resource.ts`
 > using `defineStorage` — see [storage-backend.md](storage-backend.md).
 
@@ -28,7 +61,7 @@ final op = Amplify.Storage.uploadFile(
 final result = await op.result;
 ```
 
-**MUST** use `const` with `StoragePath.fromString()` for compile-time constant paths.
+Use `const` with `StoragePath.fromString()` for compile-time constant paths.
 
 ## Swift (Apple platforms)
 

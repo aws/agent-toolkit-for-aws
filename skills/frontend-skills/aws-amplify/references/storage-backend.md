@@ -1,5 +1,7 @@
 # Storage — Backend
 
+> **Prerequisites:** Backend defined in `amplify/backend.ts` with `defineBackend({ auth, data })`.
+
 ## Basic Setup
 
 Define storage in `amplify/storage/resource.ts`:
@@ -43,7 +45,7 @@ gets an isolated directory.
 Actions: `'read'`, `'write'`, `'delete'` (granular: `'get'` and `'list'`
 instead of `'read'`). Subjects: `allow.guest.to([...])`,
 `allow.authenticated.to([...])`, `allow.groups(['Admins']).to([...])`,
-`allow.entity('identity').to([...])`. Every rule **MUST** end with `.to()`
+`allow.entity('identity').to([...])`. Every rule must end with `.to()`
 specifying the permitted actions — omitting `.to()` means NO permissions
 are granted.
 
@@ -52,12 +54,36 @@ parentheses) and `allow.authenticated` (PROPERTY). Data authorization
 rules use `allow.guest()` (METHOD, with parentheses). Mixing these up
 causes TypeScript errors.
 
-**WARNING:** `{entity_id}` **MUST** be paired with
+**WARNING:** `{entity_id}` must be paired with
 `allow.entity('identity')`. Using `{entity_id}` in a path without
 `allow.entity('identity')` in that path's rules has no effect.
 
-Paths **MUST** end with `/*` to match all objects under that prefix.
-Paths **MUST NOT** start with `/`.
+> `{entity_id}` must be the last path segment before `/*` — you cannot add path segments after it.
+>
+> ✅ `'avatar/{entity_id}/*'`
+> ✅ `'documents/{entity_id}/*'`
+> ❌ `'protected/{entity_id}/avatar/*'` — fails with `InvalidStorageAccessPathError`
+
+Paths must end with `/*` to match all objects under that prefix.
+Paths must not start with `/`.
+
+### Resource-Scoped vs User-Scoped Paths
+
+`{entity_id}` resolves to the **current user's identity ID**, not a resource ID. For files tied to a resource (poll, post, project) rather than a user:
+
+```typescript
+access: (allow) => ({
+  'public/polls/*': [
+    allow.guest.to(['read']),
+    allow.authenticated.to(['read', 'write', 'delete']),
+  ],
+})
+
+// Upload with resource ID in path
+await uploadData({ path: `public/polls/${pollId}/cover.jpg`, data: file });
+```
+
+Access control is at the path-prefix level, not per-resource. The frontend must enforce which users can write to which resource paths.
 
 ## Multiple Buckets
 
@@ -66,8 +92,8 @@ export const primaryStorage = defineStorage({ name: 'primaryFiles', isDefault: t
 export const secondaryStorage = defineStorage({ name: 'secondaryFiles', access: (allow) => ({ /* rules */ }) });
 ```
 
-You **MUST** set `isDefault: true` on exactly one bucket when defining
-multiple. Each bucket **MUST** have a unique `name` property. The `name`
+Set `isDefault: true` on exactly one bucket when defining
+multiple. Each bucket must have a unique `name` property. The `name`
 is what clients reference when targeting a non-default bucket.
 
 ## Event Triggers
@@ -85,7 +111,8 @@ export const storage = defineStorage({
 ```
 
 The trigger handler receives an `S3Handler` event with bucket name and
-object key. You **MUST** import the trigger function into `backend.ts`.
+object key. Import the trigger function into `backend.ts` or it won't
+be deployed.
 
 Typed handler example:
 
@@ -101,19 +128,17 @@ export const handler: S3Handler = async (event) => {
 ## Pitfalls
 
 - **Paths without `/*`:** A path like `'public'` matches nothing — you
-  **MUST** use `'public/*'` to match files under that prefix.
-- **Missing `.to([])`:** Omitting `.to(['read', 'write'])` from an access
-  rule grants NO permissions — the rule is silently ignored.
+  use `'public/*'` to match files under that prefix.
 - **Missing `{entity_id}`:** Using `'private/*'` instead of
   `'private/{entity_id}/*'` exposes every user's private files to all
   authenticated users.
-- **Leading slash:** Paths **MUST NOT** start with `/` — use `'public/*'`,
-  not `'/public/*'`.
 - **Forgetting `isDefault`:** With multiple buckets and no `isDefault: true`,
   client operations fail because no default bucket is resolved.
 - **`grantReadWrite()` path argument:** Do NOT pass a path argument to
   `grantReadWrite(lambda)` — it operates on the whole bucket. There is no
   per-path grant API.
+- **Missing `.to([])`:** `allow.authenticated` without `.to(['read', 'write'])` causes a silent failure — no access is granted.
+- **Leading slash:** Paths must NOT start with `/`. Use `'photos/*'` not `'/photos/*'`.
 
 ## Links
 
