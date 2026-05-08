@@ -1,0 +1,16 @@
+{
+  "name": "hello-world-workflows",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "start": "wrangler dev",
+    "dev": "wrangler dev",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "typescript": "^5.0.4",
+    "wrangler": "^4.90.0"
+  }
+}
