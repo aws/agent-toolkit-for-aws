@@ -1,7 +1,7 @@
 # Storage — Web
 
 > **Prerequisites:** Project initialized, `amplify_outputs.json` exists (from `npx ampx sandbox`), and `Amplify.configure(outputs)` called in app entry point.
-
+>
 > **Backend required:** Storage must be defined in `amplify/storage/resource.ts`
 > using `defineStorage` — see [storage-backend.md](storage-backend.md).
 

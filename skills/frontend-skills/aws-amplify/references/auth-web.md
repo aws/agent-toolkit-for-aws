@@ -1,7 +1,7 @@
 # Auth — Web
 
 > **Prerequisites:** Project initialized, `amplify_outputs.json` exists (from `npx ampx sandbox`), and `Amplify.configure(outputs)` called in app entry point.
-
+>
 > **Backend required:** Auth must be defined in `amplify/auth/resource.ts`
 > using `defineAuth` — see [auth-backend.md](auth-backend.md).
 

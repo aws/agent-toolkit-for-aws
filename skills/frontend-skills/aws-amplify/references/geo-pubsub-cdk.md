@@ -46,7 +46,7 @@ const results = await Geo.searchByText('Seattle');
 ```
 
 > **Note:** Gen2 uses `import { Geo } from '@aws-amplify/geo'` — NOT `Amplify.Geo.*` (that namespace doesn't exist).
-
+>
 > **Constraint:** Location Service resource names have a 100-character limit. Use short static names — avoid dynamic names like `${stack.stackName}-index`.
 
 For rendering maps, also install `maplibre-gl-js-amplify`. See

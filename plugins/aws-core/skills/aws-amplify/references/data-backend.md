@@ -120,7 +120,7 @@ When multiple rules are applied, the **most permissive wins**. You cannot use `d
 ```
 
 > **Pitfall:** `groupsDefinedIn('fieldName')` automatically creates an implicit field on the model. Do NOT also declare that field explicitly — this causes: `"Implicit field conflicts with explicit field definition."`
-
+>
 > **Type system gap:** The implicit field from `groupsDefinedIn('fieldName')` is NOT exposed in generated TypeScript client types. To set the field programmatically, use an untyped approach:
 >
 > ```typescript
@@ -238,7 +238,7 @@ Todo: a.model({
 ```
 
 > ⚠️ **Pitfall:** `.default()` does not work on `a.enum()` fields — default values are only supported on scalar types (`a.string()`, `a.integer()`, etc.). Applying `.default()` to an enum field silently fails at deployment.
-
+>
 > **`.required()` on enums:** `a.enum(['A','B']).required()` does NOT work — `.required()` doesn't exist on EnumType. Define the enum separately and use `a.ref()`:
 >
 > ```typescript

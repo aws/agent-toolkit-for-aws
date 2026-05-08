@@ -88,7 +88,7 @@ export const myFunc = defineFunction({
 Set secrets via CLI: `echo -n "<value>" | npx ampx sandbox secret set MY_API_KEY`.
 
 > **Important:** Use `echo -n` (no trailing newline) when piping values to `secret set`.
-
+>
 > **Important:** The `ampx sandbox secret set` command is for **local/sandbox development only**. For apps deployed to **Amplify Hosting**, secrets must be created via the Amplify console (NOT `ampx sandbox secret` — that's local only) — sandbox secrets are NOT available in hosted environments. See: https://docs.amplify.aws/react/deploy-and-host/fullstack-branching/secrets-and-vars/#set-secrets
 
 ### Environment Variables in Lambda
@@ -200,12 +200,12 @@ const schema = a.schema({
 > const myFn = defineFunction({ name: 'my-fn', resourceGroupName: 'data' });
 > // Then in the schema: allow.resource(myFn) on the model
 > ```
-
+>
 > **Gap:** The Lambda resolver receives the GraphQL event but does NOT automatically get `TABLE_NAME` as an environment variable. Your Lambda must either:
 >
 > 1. Use the Amplify data client (`generateClient()`) which discovers tables automatically
 > 2. Explicitly set env vars: `myFunction.addEnvironment('TABLE_NAME', backend.data.resources.tables['Todo'].tableName)`
-
+>
 > **When to use which:**
 >
 > - `a.query()` / `a.mutation()` with `.handler()` — AppSync-native, type-safe, uses the data schema. **Preferred for most custom logic.**

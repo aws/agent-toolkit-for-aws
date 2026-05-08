@@ -32,7 +32,7 @@ Amplify.configure(AmplifyOutputs(R.raw.amplify_outputs), applicationContext)
 ```
 
 > Place `amplify_outputs.json` in `app/src/main/res/raw/`. Enable core library desugaring for API level < 26.
-
+>
 > **Backend required:** Data must be defined in `amplify/data/resource.ts`
 > using `defineData` — see [data-backend.md](data-backend.md).
 

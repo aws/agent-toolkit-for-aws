@@ -1,7 +1,7 @@
 # Data — Web
 
 > **Prerequisites:** Project initialized, `amplify_outputs.json` exists (from `npx ampx sandbox`), and `Amplify.configure(outputs)` called in app entry point.
-
+>
 > **Backend required:** Data must be defined in `amplify/data/resource.ts`
 > using `defineData` — see [data-backend.md](data-backend.md).
 
