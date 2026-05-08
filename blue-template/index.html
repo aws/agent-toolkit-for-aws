@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Motorola Solutions Brand Book — Solving for safer</title>
+<meta name="viewport" content="width=1920, initial-scale=1" />
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<symbol id="logo-m" viewBox="0 0 100 100">
+<circle cx="50" cy="50" r="50" fill="#1f7ac9"/>
+<path d="M22 70 L22 30 L40 50 L50 38 L60 50 L78 30 L78 70 L70 70 L70 47 L60 60 L50 50 L40 60 L30 47 L30 70 Z" fill="#fff"/>
+</symbol>
+<symbol id="icon-star" viewBox="0 0 64 64">
+<path d="M32 6 L38 24 L57 24 L42 36 L47 55 L32 44 L17 55 L22 36 L7 24 L26 24 Z" fill="none" stroke="#222" stroke-width="2"/>
+</symbol>
+<symbol id="icon-bulb" viewBox="0 0 64 64">
+<path d="M32 8 C22 8 16 16 16 24 C16 32 24 36 24 44 L40 44 C40 36 48 32 48 24 C48 16 42 8 32 8 Z M24 50 L40 50 M26 56 L38 56" fill="none" stroke="#222" stroke-width="2"/>
+</symbol>
+<symbol id="icon-rocket" viewBox="0 0 64 64">
+<path d="M32 6 C24 16 20 26 20 36 L20 46 L26 46 L26 56 L38 56 L38 46 L44 46 L44 36 C44 26 40 16 32 6 Z M28 28 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0" fill="none" stroke="#222" stroke-width="2"/>
+<path d="M20 40 L10 50 L18 50 L18 56 M44 40 L54 50 L46 50 L46 56" fill="none" stroke="#222" stroke-width="2"/>
+</symbol>
+</defs>
+</svg>
+<div class="stage"><div class="deck" id="deck"></div></div>
+<div class="nav" role="toolbar" aria-label="Slide navigation">
+<button id="prev">&lsaquo;</button>
+<span class="count"><span id="cur">1</span> / <span id="total">68</span></span>
+<button id="next">&rsaquo;</button>
+</div>
+<script>
+Promise.all([
+  fetch('slides-a.html').then(r=>r.text()),
+  fetch('slides-b.html').then(r=>r.text())
+]).then(parts => {
+  document.getElementById('deck').innerHTML = parts.join('\n');
+  document.querySelector('.slide').classList.add('is-active');
+  var s = document.createElement('script');
+  s.src = 'deck.js';
+  document.body.appendChild(s);
+});
+</script>
+</body>
+</html>
