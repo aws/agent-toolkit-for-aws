@@ -8,10 +8,10 @@ description: >
   operations, S3 Tables setup, or discovering existing data assets.
 version: 1
 metadata:
-  service: [s3, kms, cloudtrail, guardduty, config, accessanalyzer]
-  task: [secure, audit, remediate, encrypt, monitor]
-  persona: [developer, security-engineer]
-  workload: [storage, compliance]
+  service: s3, kms, cloudtrail, guardduty, config, accessanalyzer
+  task: secure, audit, remediate, encrypt, monitor
+  persona: developer, security-engineer
+  workload: storage, compliance
 ---
 
 ## Overview

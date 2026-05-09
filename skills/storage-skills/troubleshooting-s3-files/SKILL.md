@@ -8,10 +8,10 @@ description: >
   than expected.
 version: 1
 metadata:
-  service: [s3, s3files, efs, iam, kms, cloudwatch]
-  task: [debug, troubleshoot, diagnose]
-  persona: [developer, devops]
-  workload: [storage]
+  service: s3, s3files, efs, iam, kms, cloudwatch
+  task: debug, troubleshoot, diagnose
+  persona: developer, devops
+  workload: storage
 ---
 
 # Troubleshooting S3 Files

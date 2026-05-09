@@ -7,10 +7,10 @@ description: >
   slowly, or showing access denied.
 version: 1
 metadata:
-  service: [efs, ec2, iam, kms, vpc, cloudwatch]
-  task: [debug, troubleshoot, diagnose]
-  persona: [developer, devops]
-  workload: [storage]
+  service: efs, ec2, iam, kms, vpc, cloudwatch
+  task: debug, troubleshoot, diagnose
+  persona: developer, devops
+  workload: storage
 ---
 
 # Troubleshooting EFS

@@ -7,10 +7,10 @@ description: >
   Use when implementing messaging and streaming patterns.
 version: 1
 metadata:
-  service: [sqs, sns, eventbridge, mq, kinesis, kds, firehose, flink, msf, msk, kafka]
-  task: [learn, architect, debug, deploy]
-  persona: [developer, architect, devops]
-  workload: [serverless, event-driven, streaming, data-analytics]
+  service: sqs, sns, eventbridge, mq, kinesis, kds, firehose, flink, msf, msk, kafka
+  task: learn, architect, debug, deploy
+  persona: developer, architect, devops
+  workload: serverless, event-driven, streaming, data-analytics
 ---
 
 # AWS Messaging & Streaming Services

@@ -8,10 +8,10 @@ description: >-
   running queries (use querying-data-lake), or creating tables (use creating-data-lake-table).
 version: 1
 metadata:
-  service: [glue, s3, s3tables]
-  task: [debug, audit]
-  persona: [developer, data-engineer, architect]
-  workload: [data-analytics]
+  service: glue, s3, s3tables
+  task: debug, audit
+  persona: developer, data-engineer, architect
+  workload: data-analytics
 argument-hint: '[search-term|catalog-name|database-name|s3://bucket-path|table-name]'
 ---
 
