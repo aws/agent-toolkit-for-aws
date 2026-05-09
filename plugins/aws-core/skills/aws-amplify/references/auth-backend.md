@@ -1,5 +1,7 @@
 # Auth — Backend
 
+> **Prerequisites:** Backend defined in `amplify/backend.ts` with `defineBackend({ auth, data })`.
+
 ## Basic Auth Setup
 
 Define authentication in `amplify/auth/resource.ts`:
@@ -88,8 +90,8 @@ password-based login in the same `defineAuth` configuration.
 
 ## Social Login
 
-You **MUST** use `secret()` for OAuth client secrets — never hardcode
-credentials.
+Use `secret()` for OAuth client secrets — hardcoding credentials exposes
+them in source control.
 
 ```typescript
 import { defineAuth, secret } from '@aws-amplify/backend';
@@ -122,27 +124,34 @@ export const auth = defineAuth({
 });
 ```
 
-Set secrets via CLI: `echo "<value>" | npx ampx sandbox secret set GOOGLE_CLIENT_ID`.
-For provider-specific OAuth setup guides, **SHOULD** consult AWS
-documentation via available tools; when unavailable, **MUST** use web
+Set secrets via CLI: `echo -n "<value>" | npx ampx sandbox secret set MY_OAUTH_CLIENT_ID`. (The documented approach uses an interactive prompt; piping with `echo -n` is a practical alternative for scripts.)
+For provider-specific OAuth setup guides, consult AWS
+documentation via available tools; when unavailable, use web
 search or AWS CLI.
 
 ## SAML / OIDC (Enterprise)
 
-OIDC providers are configured directly in `externalProviders`:
+OIDC providers are configured inside `loginWith.externalProviders`:
 
 ```typescript
-externalProviders: {
-  oidc: [{
-    name: 'MyOIDC',
-    clientId: secret('OIDC_CLIENT_ID'),
-    clientSecret: secret('OIDC_CLIENT_SECRET'),
-    issuerUrl: 'https://idp.example.com',
-    attributeMapping: { email: 'email' },
-  }],
-  callbackUrls: ['http://localhost:3000/'],
-  logoutUrls: ['http://localhost:3000/'],
-}
+import { defineAuth, secret } from '@aws-amplify/backend';
+
+export const auth = defineAuth({
+  loginWith: {
+    email: true,
+    externalProviders: {
+      oidc: [{
+        name: 'MyOIDC',
+        clientId: secret('OIDC_CLIENT_ID'),
+        clientSecret: secret('OIDC_CLIENT_SECRET'),
+        issuerUrl: 'https://idp.example.com',
+        attributeMapping: { email: 'email' },
+      }],
+      callbackUrls: ['http://localhost:3000/'],
+      logoutUrls: ['http://localhost:3000/'],
+    },
+  },
+});
 ```
 
 **SAML** is NOT supported in `defineAuth` — the `ExternalProviderSpecificFactoryProps` type has no `saml` property. The lower-level `auth-construct` package supports SAML, but it was never wired up to the high-level API. Use CDK escape hatches via `backend.auth.resources` to configure SAML providers:
@@ -182,20 +191,50 @@ import { defineFunction } from '@aws-amplify/backend';
 export const preSignUp = defineFunction({ name: 'pre-sign-up' });
 ```
 
-### Guest (Unauthenticated) Access
+> **Tip:** Auth trigger handlers need `@types/aws-lambda` for TypeScript types.
+
+### Trigger Lambda + Data Table Access
+
+If a trigger Lambda (e.g., `postConfirmation`) needs to write to a `defineData` table, this can create a circular dependency. Workarounds:
+
+1. **Access via `backend.auth.resources`** (avoids cycle when trigger is in auth stack):
+
+```typescript
+// backend.ts
+const postConfirmFn = backend.auth.resources.userPool.triggers?.postConfirmation;
+const table = backend.data.resources.tables['UserProfile'];
+table.grantWriteData(postConfirmFn);
+postConfirmFn.addEnvironment('TABLE_NAME', table.tableName);
+```
+
+1. **Separate DynamoDB table** — create via CDK (not `defineData`) to avoid stack coupling.
+
+## Guest (Unauthenticated) Access
 
 Guest access is **enabled by default** in Amplify Gen2 — the Cognito Identity Pool is created with `allowUnauthenticatedIdentities: true` automatically.
 
-To use guest access in your data models, set `defaultAuthorizationMode` to `'iam'`:
+To use guest access in your data models, set `defaultAuthorizationMode` to `'iam'` and add `allow.guest()` authorization rules:
 
 ```typescript
+const schema = a.schema({
+  Todo: a.model({
+    content: a.string(),
+  }).authorization(allow => [
+    allow.guest().to(['read']),   // unauthenticated users can read
+    allow.owner(),                // owners can CRUD
+  ]),
+});
+
 export const data = defineData({
   schema,
   authorizationModes: {
-    defaultAuthorizationMode: 'iam',
+    defaultAuthorizationMode: 'iam',   // required for guest access
+    apiKeyAuthorizationMode: { expiresInDays: 7 }, // optional alternative
   },
 });
 ```
+
+> **Security:** Guest access grants unauthenticated users IAM-authorized access. For production, explicitly evaluate whether guest access is needed and prefer `allow.authenticated()` as the default. If guest access is required, scope it to read-only on non-sensitive models only.
 
 To **disable** guest access, use a CDK override in `backend.ts`:
 
@@ -208,8 +247,8 @@ cfnIdentityPool.allowUnauthenticatedIdentities = false;
 
 - **Trigger not registered (silent no-op):** Defining a trigger function
   with `defineFunction` but NOT adding it to `triggers: {}` in `defineAuth`
-  causes a **silent no-op** — the function deploys but never fires. You
-  **MUST** both define AND register: `triggers: { preSignUp, postConfirmation }`.
+  causes a **silent no-op** — the function deploys but never fires.
+  Both define AND register: `triggers: { preSignUp, postConfirmation }`.
 - **Hardcoded secrets:** Using string literals instead of `secret()` for
   OAuth credentials exposes them in source control.
 - **Missing scopes:** Social providers default to minimal scopes — add
@@ -220,8 +259,9 @@ cfnIdentityPool.allowUnauthenticatedIdentities = false;
 - **MFA method mismatch:** Enabling `sms: true` in MFA requires a phone
   number attribute on the user pool — add `phone_number` to user attributes.
   Similarly, `email: true` in MFA requires an email attribute on the user pool.
-- **Secrets in CI/CD:** For branch environments, use:
-  `npx ampx secret set KEY_NAME --branch main --app-id APP_ID`.
+- **Secrets in CI/CD:** For branch environments, manage secrets through the
+  **Amplify console** (App settings → Environment variables → Secrets).
+  The `ampx sandbox secret` command only works for local sandbox environments.
 
 ## Links
 

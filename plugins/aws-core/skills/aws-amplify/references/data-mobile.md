@@ -1,5 +1,38 @@
 # Data — Mobile
 
+## Prerequisites
+
+Initialize Amplify with Auth and API plugins before using this feature:
+
+**Flutter** — `lib/main.dart`:
+
+```dart
+await Amplify.addPlugins([AmplifyAuthCognito(), AmplifyAPI()]);
+await Amplify.configure(amplifyConfig);
+```
+
+> Generate dart outputs: `npx ampx sandbox --outputs-format dart --outputs-out-dir lib`
+
+**Swift (Apple platforms):**
+
+```swift
+try Amplify.add(plugin: AWSCognitoAuthPlugin())
+try Amplify.add(plugin: AWSAPIPlugin())
+try Amplify.configure(with: .amplifyOutputs)
+```
+
+> Drag `amplify_outputs.json` into the Xcode project navigator so it is included in the app bundle.
+
+**Android:**
+
+```kotlin
+Amplify.addPlugin(AWSCognitoAuthPlugin())
+Amplify.addPlugin(AWSApiPlugin())
+Amplify.configure(AmplifyOutputs(R.raw.amplify_outputs), applicationContext)
+```
+
+> Place `amplify_outputs.json` in `app/src/main/res/raw/`. Enable core library desugaring for API level < 26.
+>
 > **Backend required:** Data must be defined in `amplify/data/resource.ts`
 > using `defineData` — see [data-backend.md](data-backend.md).
 
@@ -20,7 +53,7 @@ Build updated models with `todo.copyWith(done: true)`.
 > Supported: iOS 13+, macOS 12+, tvOS 13+, watchOS 9+, visionOS 1+ (preview).
 
 Uses `Amplify.API.query/mutate` with async/await.
-Swift uses `ModelQueries`, `ModelMutations`, and `ModelSubscriptions` (plural, like Flutter).
+Swift uses shorthand request builders (`.list()`, `.create()`, `.subscription(of:type:)`) via `GraphQLRequest` extensions, unlike Flutter's explicit `ModelQueries`/`ModelMutations` classes.
 
 **Queries:** `try await Amplify.API.query(request: .list(Todo.self))` — result is `.success(let todos)`.
 
@@ -86,16 +119,15 @@ job.cancel()
 ## Pitfalls
 
 - **Missing codegen for native platforms:** Flutter, Swift, and Android
-  **MUST** run `npx ampx generate graphql-client-code` to produce typed model
-  classes. Without this step, model types do not exist. You **SHOULD** use
-  typed model classes for compile-time safety.
+  run `npx ampx generate graphql-client-code` to produce typed model
+  classes. Without this step, model types do not exist.
 - **GraphQL vs REST confusion:** All data operations use the GraphQL API
   (`Amplify.API.query`/`mutate`), not REST. Using REST methods for model
   CRUD returns errors.
-- **Subscription cleanup:** Every platform **MUST** perform explicit
+- **Subscription cleanup:** Every platform requires explicit
   subscription cleanup (`.cancel()` on Swift tasks, `job.cancel()` for
   Kotlin coroutines, `subscription.cancel()` for callbacks, or
-  `sub.cancel()` for Flutter). Missing cleanup causes connection leaks and
+  `sub.cancel()` for Flutter) — missing cleanup causes connection leaks and
   stale data.
 - **Offline sync (Flutter/Swift/Android):** DataStore is a separate API
   from direct API operations. Do not mix `DataStore.query()` with

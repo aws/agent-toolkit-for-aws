@@ -1,52 +1,23 @@
 # Scaffolding
 
-## Web — Greenfield
+> **Prerequisites:** Node.js ^18.19.0 || ^20.6.0 || >=22, npm, and AWS credentials configured.
 
-You **MUST** use official starter templates. You **MUST NOT** manually
-scaffold the project structure — hand-crafted structures **MAY** break
+## Starter Templates
+
+Use official starter templates — hand-crafted structures can break
 Amplify Hosting deployment detection.
 
-### React (Vite)
-
 ```bash
-git clone https://github.com/aws-samples/amplify-vite-react-template.git my-app
-cd my-app && rm -rf .git && git init
-npm install
+git clone <TEMPLATE_URL> my-app && cd my-app && rm -rf .git && git init && npm install
 ```
 
-### Next.js
-
-App Router (default):
-
-```bash
-git clone https://github.com/aws-samples/amplify-next-template.git my-app
-cd my-app && rm -rf .git && git init
-npm install
-```
-
-Pages Router:
-
-```bash
-git clone https://github.com/aws-samples/amplify-next-pages-template.git my-app
-cd my-app && rm -rf .git && git init
-npm install
-```
-
-### Vue
-
-```bash
-git clone https://github.com/aws-samples/amplify-vue-template.git my-app
-cd my-app && rm -rf .git && git init
-npm install
-```
-
-### Angular
-
-```bash
-git clone https://github.com/aws-samples/amplify-angular-template.git my-app
-cd my-app && rm -rf .git && git init
-npm install
-```
+| Framework | Template URL |
+|-----------|-------------|
+| React (Vite) | `https://github.com/aws-samples/amplify-vite-react-template` |
+| Next.js (App Router) | `https://github.com/aws-samples/amplify-next-template` |
+| Next.js (Pages Router) | `https://github.com/aws-samples/amplify-next-pages-template` |
+| Vue | `https://github.com/aws-samples/amplify-vue-template` |
+| Angular | `https://github.com/aws-samples/amplify-angular-template` |
 
 ## Web — Brownfield
 
@@ -57,7 +28,8 @@ code. You **SHOULD** use the create command for automatic setup:
 npm create amplify@latest -y
 ```
 
-You **MUST** use the `-y` flag for non-interactive execution. This
+Use the `-y` flag for non-interactive execution — without it, the command
+prompts interactively and hangs in agent/CI environments. This
 scaffolds the `amplify/` directory and installs backend dependencies.
 
 For monorepos or custom build pipelines where the create command conflicts,
@@ -66,6 +38,8 @@ install manually:
 ```bash
 npm install --save-dev @aws-amplify/backend@latest @aws-amplify/backend-cli@latest typescript
 ```
+
+> **Note:** `aws-cdk-lib` and `constructs` are peer dependencies — npm 7+ installs them automatically. If using `--legacy-peer-deps`, install them explicitly.
 
 Then create `amplify/backend.ts`:
 
@@ -79,6 +53,12 @@ Install the frontend library:
 ```bash
 npm install aws-amplify
 ```
+
+> **Next.js SSR:** `npm create amplify@latest` does NOT install `@aws-amplify/adapter-nextjs`. Add manually for server-side rendering:
+>
+> ```bash
+> npm install @aws-amplify/adapter-nextjs
+> ```
 
 ## Web — React Native
 
@@ -101,9 +81,6 @@ npm install aws-amplify @aws-amplify/react-native @react-native-async-storage/as
 npx --yes pod-install # iOS only
 ```
 
-You **MUST** use the `-y` flag with `npm create amplify@latest` for
-non-interactive execution.
-
 ## Mobile — Flutter
 
 ```bash
@@ -124,7 +101,7 @@ Then run `flutter pub get`.
 
 ## Mobile — Swift (Apple platforms)
 
-You **MUST NOT** create the Xcode project from the CLI — assume an existing
+Do not create the Xcode project from the CLI — assume an existing
 Xcode project is open in Xcode.
 
 1. In the project root (where `.xcodeproj` lives), run:
@@ -136,39 +113,60 @@ Xcode project is open in Xcode.
 
 ## Mobile — Android
 
-You **MUST NOT** create the Android project from the CLI — assume an
+Do not create the Android project from the CLI — assume an
 existing Android Studio project.
 
 1. In the project root, run: `npm create amplify@latest -y`
 2. Add dependencies to `app/build.gradle.kts`:
 
-```kotlin
-dependencies {
-    implementation("com.amplifyframework:core:2.+")
-    implementation("com.amplifyframework:aws-auth-cognito:2.+")
-}
-```
+   ```kotlin
+   dependencies {
+       implementation("com.amplifyframework:core:2.+")
+       implementation("com.amplifyframework:aws-auth-cognito:2.+")
+   }
+   ```
 
-1. Copy `amplify_outputs.json` into `app/src/main/res/raw/`.
+3. Copy `amplify_outputs.json` into `app/src/main/res/raw/`.
 
 ## Generate amplify_outputs
 
 > For mobile projects, this step must be completed before the app can build.
 > Run the sandbox before opening the mobile project.
 
-**WARNING:** After scaffolding, you **MUST** run `npx ampx sandbox --once`
+**WARNING:** After scaffolding, run `npx ampx sandbox --once`
 (or `npx ampx sandbox` for local dev) **before** `npm run dev`. This
 generates `amplify_outputs.json`, which the frontend imports at build time.
 Without it, the app fails to compile because
 `import outputs from '../amplify_outputs.json'` resolves to nothing.
 
+### Development Workflow
+
 ```bash
-# After npm install:
-npx ampx sandbox --once # generates amplify_outputs.json
-npm run dev # NOW the app can compile
+# Terminal 1 — Start sandbox (watch mode, auto-deploys on changes)
+npx ampx sandbox
+
+# Terminal 2 — Start dev server (requires amplify_outputs.json from sandbox)
+npm run dev
 ```
 
+**Sandbox modes:**
+
+- `npx ampx sandbox` — Watch mode, continuously deploys changes (recommended for development)
+- `npx ampx sandbox --once` — Single deployment then exits (for CI/CD or initial setup)
+
+> **First time:** Run `npx ampx sandbox` and wait for it to generate `amplify_outputs.json` before starting your dev server.
+
 `amplify_outputs.json` is gitignored — see [deployment.md](deployment.md) for generation details.
+
+### Sandbox Stack Naming
+
+The sandbox stack name is derived from your project's root `package.json` name. If you clone a template, change the name to avoid collisions:
+
+```json
+{ "name": "my-unique-app-name" }
+```
+
+Running multiple projects with the same `name` simultaneously causes one sandbox to overwrite another.
 
 ## Pitfalls
 
@@ -176,11 +174,8 @@ npm run dev # NOW the app can compile
   Always match template to framework exactly.
 - Forgetting `npm create amplify@latest -y` after the framework scaffold
   is the most common mistake — without it, there is no `amplify/` directory.
-- **Running `npm run dev` before `npx ampx sandbox`:** The app cannot
-  compile without `amplify_outputs.json` — always run sandbox first.
 - React Native requires `@react-native-async-storage/async-storage` — the
   Amplify SDK uses it for token persistence and will fail at runtime without it.
-- For Android, `amplify_outputs.json` goes in `app/src/main/res/raw/` — see [core-mobile.md](core-mobile.md).
 
 ## Links
 

@@ -1,5 +1,7 @@
 # Deployment
 
+> **Prerequisites:** Backend defined in `amplify/backend.ts` with `defineBackend({ auth, data })`.
+
 ## Prerequisites
 
 Before deploying, verify:
@@ -17,10 +19,7 @@ time, NOT committed to source control:
 - **CI/CD:** `npx ampx pipeline-deploy` generates it during the build phase
 - **Other frontend apps in a monorepo:** Use
   `npx ampx generate outputs --app-id <backend-app-id>` to generate it
-- Project is a Gen2 project — see
-  [core-web.md](core-web.md) or
-  [core-mobile.md](core-mobile.md) for detection
-  logic (Gen2 uses `amplify/backend.ts` + `defineBackend()`)
+- Project is a Gen2 project (Gen2 uses `amplify/backend.ts` + `defineBackend()`)
 
 ## Sandbox Deployment
 
@@ -30,7 +29,7 @@ Deploy a personal development environment:
 AWS_REGION=us-east-1 npx ampx sandbox --once
 ```
 
-You **MUST** use the `--once` flag in agent and CI environments — without
+Use the `--once` flag in agent and CI environments — without
 it, the command starts a file watcher that never exits. If prompted to
 bootstrap, run `npx ampx sandbox --once` again after bootstrapping
 completes.
@@ -50,7 +49,7 @@ APP_ID=$(aws amplify create-app \
   --query 'app.appId' --output text)
 ```
 
-You **MUST** use `github.com/user/repo` format — **not** `https://`.
+Use `github.com/user/repo` format — **not** `https://`.
 
 ### IAM Service Role
 
@@ -92,13 +91,13 @@ aws amplify create-branch --app-id "$APP_ID" --branch-name main
 Create `amplify.yml` in the project root. Set `baseDirectory` per
 framework:
 
-| Framework | baseDirectory |
-|-----------|---------------|
-| Vite (React/Vue) | `dist` |
-| CRA | `build` |
-| Next.js (export) | `out` |
-| Next.js (SSR) | `.next` |
-| Angular | `dist/<project-name>/browser` |
+| Framework        | baseDirectory                 |
+| ---------------- | ----------------------------- |
+| Vite (React/Vue) | `dist`                        |
+| CRA              | `build`                       |
+| Next.js (export) | `out`                         |
+| Next.js (SSR)    | `.next`                       |
+| Angular          | `dist/<project-name>/browser` |
 
 **Wrong `baseDirectory` = blank page in production** (silent failure).
 Always match the framework table above.
@@ -115,6 +114,7 @@ frontend:
   phases:
     build:
       commands:
+        - npm ci
         - npm run build
   artifacts:
     baseDirectory: dist # Change per framework (see table above)
@@ -125,6 +125,8 @@ frontend:
       - .npm/**/*
       - node_modules/**/*
 ```
+
+> **Note:** `$AWS_BRANCH` and `$AWS_APP_ID` are automatically set by Amplify Hosting. For custom CI/CD pipelines (GitHub Actions, CodePipeline), set these manually or use your pipeline's equivalent variables.
 
 ### Monorepo Configuration
 
@@ -152,24 +154,24 @@ aws amplify start-job --app-id "$APP_ID" --branch-name main --job-type RELEASE
 ```
 
 ## Secrets Management
+
 **Sandbox:** Set secrets via CLI:
 
 ```bash
-echo "<value>" | npx ampx sandbox secret set MY_API_KEY
+echo -n "<value>" | npx ampx sandbox secret set MY_API_KEY
 ```
 
-You **MUST** pipe the value via stdin — without the pipe, the command
+> **Security:** Avoid passing secret values as CLI arguments or via `echo` — these appear in shell history and `/proc`. Instead, use `npx ampx sandbox secret set MY_SECRET` which prompts for input interactively, or pipe from a secure source: `aws ssm get-parameter --name /path/to/secret --with-decryption --query Parameter.Value --output text | npx ampx sandbox secret set MY_SECRET --from-stdin`
+
+Pipe the value via stdin — without the pipe, the command
 prompts interactively.
 
+> **Important:** Use `echo -n` (no trailing newline) when piping values to `secret set`. (The documented approach uses an interactive prompt; piping with `echo -n` is a practical alternative for scripts.)
+
 This stores the secret for your personal sandbox environment.
-**Branch environments (production):** Set secrets via the `ampx` CLI:
+**Branch environments (production):** Secrets are managed through the **Amplify console** (App settings → Environment variables → Secrets), NOT via CLI. The `ampx sandbox secret` command only works for local sandbox environments.
 
-```bash
-npx ampx secret set MY_API_KEY --branch main --app-id $APP_ID
-```
-
-Or via the Amplify console under App settings → Environment variables, or
-via the AWS CLI:
+Alternatively, use the AWS CLI for non-secret environment variables:
 
 ```bash
 aws amplify update-app --app-id "$APP_ID" \
@@ -180,6 +182,8 @@ aws amplify update-app --app-id "$APP_ID" \
 > For sensitive values (API keys, tokens), use `npx ampx sandbox secret set`
 > (sandbox) or `npx ampx secret set --branch` (production) which stores in
 > SSM SecureString.
+>
+> **Note:** Under the hood, Amplify Gen2 `secret()` references are backed by AWS Systems Manager Parameter Store (SecureString parameters). Review access policies on the `/amplify/` parameter path in your account to ensure only authorized roles can read production secrets.
 
 Reference secrets in functions using `secret()` — see
 [functions-and-api.md](functions-and-api.md) for the pattern.
@@ -213,7 +217,7 @@ aws amplify create-domain-association \
   ]'
 ```
 
-Amplify auto-provisions an SSL certificate. You **MUST** add the
+Amplify auto-provisions an SSL certificate. Add the
 provided CNAME records to your DNS for verification. Check status:
 
 ```bash
@@ -234,6 +238,7 @@ Production URL format: `https://<branch>.<app-id>.amplifyapp.com`
 After deployment, check job status with `aws amplify list-jobs --app-id "$APP_ID" --branch-name main --query 'jobSummaries[0].status'` and verify `amplify_outputs.json` endpoints match expected values.
 
 ## Post-Deployment
+
 **Rollback:** Revert via Git and redeploy:
 
 ```bash
@@ -245,27 +250,20 @@ git push origin main
 For CI/CD, manually trigger: `aws amplify start-job --app-id "$APP_ID"
 --branch-name main --job-type RELEASE`.
 
-## Pitfalls
+### `InvalidCredentialError: Failed to load default AWS region`
 
-- **Missing `--once` flag:** Without `--once`, sandbox starts a file
-  watcher that never exits — agent sessions and CI pipelines hang
-  indefinitely. **MUST** use `npx ampx sandbox --once` in any
-  non-interactive environment.
-- **Repo format:** You **MUST** use `github.com/user/repo` — the
-  `https://` prefix causes `create-app` to fail silently.
-- **Missing IAM service role:** Skipping role creation causes
-  `AccessDeniedException` on every backend deployment.
-- **Wrong `baseDirectory`:** Using `build` for a Vite app (which outputs
-  to `dist`) causes a blank page in production — match the framework table
-  above. This is a silent failure with no error message.
-- **Monorepo `appRoot` leading slash:** `appRoot: packages/web` vs
-  `appRoot: /packages/web` — leading slash breaks path resolution.
-- **`amplify_outputs.json` not committed:** This file is gitignored and
-  generated at build time. CI uses `pipeline-deploy` to generate it;
-  local dev uses `sandbox`.
-- **Not bootstrapping:** First sandbox run in a new account/region
-  requires CDK bootstrapping — follow prompts or run
-  `npx ampx sandbox --once` again after bootstrap.
+Despite the error name, this is a missing **region**, not a credential issue:
+
+```bash
+export AWS_REGION=us-east-1
+```
+
+### AppSync API Limit (25 per account)
+
+Each sandbox creates an AppSync API. Frequent sandbox creation/deletion can leave orphaned APIs. If deployment fails with "LimitExceededException":
+
+1. Check: AWS Console → AppSync → APIs → delete unused
+2. Request limit increase via Service Quotas
 
 ## Links
 

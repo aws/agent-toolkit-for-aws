@@ -1,26 +1,28 @@
 # AI
 
+> **Prerequisites:** Backend defined in `amplify/backend.ts` with `defineBackend({ auth, data })`.
+
 ## Model Selection
 
 Use `a.ai.model()` to select an AI model in both `a.conversation()` and `a.generation()` routes. Pass a human-readable model name string:
 
 ```typescript
-aiModel: a.ai.model('Claude 3.5 Sonnet v2')
+aiModel: a.ai.model('Claude Sonnet 4.5')
 ```
 
-`a.ai.model()` accepts any supported model name:
+For the full list of supported models, see [AI Concepts: Models](https://docs.amplify.aws/react/ai/concepts/models/).
 
-- **Anthropic**: `'Claude 3 Haiku'`, `'Claude 3 Sonnet'`, `'Claude 3 Opus'`, `'Claude 3.5 Haiku'`, `'Claude 3.5 Sonnet'`, `'Claude 3.5 Sonnet v2'`, `'Claude 3.7 Sonnet'`, `'Claude Opus 4'`, `'Claude Sonnet 4'`, `'Claude Haiku 4.5'`, `'Claude Sonnet 4.5'`, `'Claude Opus 4.5'`, `'Claude Sonnet 4.6'`, `'Claude Opus 4.6'`
-- **Amazon**: `'Amazon Nova Pro'`, `'Amazon Nova Lite'`, `'Amazon Nova Micro'`
-- **Meta**: `'Llama 3.1 405B Instruct'`, `'Llama 3.1 70B Instruct'`, `'Llama 3.1 8B Instruct'`
-- **Cohere**: `'Cohere Command R+'`, `'Cohere Command R'`
-- **Mistral**: `'Mistral Large 2'`, `'Mistral Large'`, `'Mistral Small'`
+Key constraint: `a.generation()` routes only support Anthropic (Claude) models. `a.conversation()` routes work with any supported model.
 
 For models not in the supported list, use the raw escape hatch: `aiModel: { resourcePath: '<bedrock-model-id>' }`.
 
 Availability depends on the AWS region and Bedrock model access enablement.
 
-> **Note:** `a.generation()` routes only support Anthropic (Claude) models. `a.conversation()` routes work with any supported model.
+### Bedrock Model Access
+
+Some older or restricted models require explicit enablement in the AWS Bedrock console (Model access). On-demand foundation models (Claude Sonnet 4+, Nova) are available immediately. Amplify uses global inference profiles for cross-region model access.
+
+If you get `AccessDeniedException: Could not access the model with the specified model ID`, check **Bedrock → Model access** in your region.
 
 ## Backend: Conversation Routes
 
@@ -33,7 +35,7 @@ import { a, type ClientSchema } from '@aws-amplify/backend';
 
 const schema = a.schema({
   chat: a.conversation({
-    aiModel: a.ai.model('Claude 3.5 Sonnet v2'),
+    aiModel: a.ai.model('Claude Sonnet 4.5'),
     systemPrompt: 'You are a helpful assistant.',
   })
   .authorization(allow => allow.owner()),
@@ -44,12 +46,10 @@ const schema = a.schema({
 
 Use `a.generation()` for single-turn (stateless) inference.
 
-> **MUST:** Only Anthropic (Claude) models support `a.generation()` routes. Non-Anthropic models (Amazon Nova, Meta Llama, Cohere, Mistral) work with `a.conversation()` only.
-
 ```typescript
 const schema = a.schema({
   summarize: a.generation({
-    aiModel: a.ai.model('Claude 3.5 Sonnet v2'),
+    aiModel: a.ai.model('Claude Sonnet 4.5'),
     systemPrompt: 'Summarize the provided text concisely.',
     inferenceConfiguration: { maxTokens: 500, temperature: 0.3 },
   })
@@ -59,13 +59,15 @@ const schema = a.schema({
 });
 ```
 
-**CRITICAL — Authorization Constraints:**
+**Authorization constraints (these cause TypeError at CDK assembly if violated):**
 
-- **Conversation routes** (`a.conversation()`) **MUST** use `allow.owner()` authorization — `allow.authenticated()` and other non-owner strategies throw a TypeError at CDK assembly time (before deployment even begins).
-- **Generation routes** (`a.generation()`) **MUST** use non-owner authorization (`allow.authenticated()`, `allow.guest()`, `allow.group()`, or `allow.publicApiKey()`) — `allow.owner()` throws a TypeError at CDK assembly time (before deployment even begins).
+- **Conversation routes** (`a.conversation()`) require `allow.owner()` authorization — `allow.authenticated()` and other non-owner strategies throw a TypeError at CDK assembly time.
+- **Generation routes** (`a.generation()`) require non-owner authorization (`allow.authenticated()`, `allow.guest()`, `allow.group()`, or `allow.publicApiKey()`) — `allow.owner()` throws a TypeError at CDK assembly time.
 
 These constraints are asymmetric and frequently confused. Getting them wrong
 causes the CDK synthesis to fail with a non-obvious TypeError.
+
+> **Security:** Conversation history sent to Amazon Bedrock may contain PII. Do not log full request/response payloads in production. Enable CloudWatch Logs encryption (KMS) and set appropriate retention policies for any logs that may capture inference data.
 
 ### Backend Integration
 
@@ -88,7 +90,7 @@ import { myToolFunc } from '../functions/my-tool/resource';
 
 const schema = a.schema({
   chat: a.conversation({
-    aiModel: a.ai.model('Claude 3.5 Sonnet v2'),
+    aiModel: a.ai.model('Claude Sonnet 4.5'),
     systemPrompt: 'You are a helpful assistant with tool access.',
     tools: [
       {
@@ -170,7 +172,7 @@ Pagination: use `limit` and `nextToken` parameters on `.list()`.
 
 Subscribe to streaming responses for real-time token delivery:
 
-In React, **MUST** wrap in `useEffect` and return the cleanup function:
+In React, wrap in `useEffect` and return the cleanup function:
 
 ```tsx
 useEffect(() => {
@@ -189,18 +191,6 @@ useEffect(() => {
 
 ## Pitfalls
 
-- **Conversation auth MUST be `allow.owner()`:** Using
-  `allow.authenticated()` or any other non-owner strategy on
-  `a.conversation()` throws a TypeError at CDK assembly time.
-- **Generation auth MUST NOT be `allow.owner()`:** Using
-  `allow.owner()` on `a.generation()` throws a TypeError at CDK assembly
-  time. Use `allow.authenticated()`, `allow.guest()`, or `allow.group()`.
-- **Missing AI route in data schema:** The conversation or generation
-  route **MUST** be defined in your `a.schema()` — without it, the
-  frontend client has no AI endpoint to call.
-- **Model availability:** Not all Bedrock models are enabled by default —
-  you **MUST** enable model access in the AWS console (Bedrock → Model
-  access) before using a model in `a.ai.model()`.
 - **Message content structure:** Both `sendMessage('Hello')` (string) and
   `sendMessage({ content: [{ text: 'Hello' }] })` (object) are valid. Use
   the object form when sending images or tool results.

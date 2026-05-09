@@ -1,5 +1,7 @@
 # Functions & API
 
+> **Prerequisites:** Backend defined in `amplify/backend.ts` with `defineBackend({ auth, data })`.
+
 ## Lambda Functions
 
 Define a function in `amplify/functions/<name>/resource.ts`:
@@ -41,6 +43,26 @@ import { myFunc } from './functions/my-func/resource';
 defineBackend({ auth, myFunc });
 ```
 
+### Sharing Code Between Functions
+
+Each Lambda function is bundled independently from its own directory. Importing from a shared directory (`amplify/shared/utils.ts`) fails at build time.
+
+**Options:**
+
+1. **Duplicate** the shared code in each function directory
+2. **Symlink:** `ln -s ../../shared/utils.ts amplify/functions/my-fn/utils.ts`
+3. **Package:** Create a local npm package and install it in each function's `package.json`
+
+## Handler Return Types
+
+| Handler Type | Import | Returns |
+|-------------|--------|---------|
+| `S3Handler` | `@types/aws-lambda` | `void` — async event, no response expected |
+| `APIGatewayProxyHandler` | `@types/aws-lambda` | `{ statusCode, headers?, body }` |
+| `APIGatewayProxyHandlerV2` | `@types/aws-lambda` | `{ statusCode, headers?, body }` |
+
+> **Common mistake:** Writing an S3 handler like an API handler. S3Handler returns `void`, not a response object.
+
 ## Environment Variables & Secrets
 
 You **SHOULD** import environment variables from `$amplify/env/<function-name>`
@@ -63,9 +85,26 @@ export const myFunc = defineFunction({
 });
 ```
 
-Set secrets via CLI: `echo "<value>" | npx ampx sandbox secret set MY_API_KEY`.
+Set secrets via CLI: `echo -n "<value>" | npx ampx sandbox secret set MY_API_KEY`.
 
-> **IMPORTANT:** The `ampx sandbox secret set` command is for **local/sandbox development only**. For apps deployed to **Amplify Hosting**, secrets **MUST** be created via the Hosting console or CLI — sandbox secrets are NOT available in hosted environments. See: https://docs.amplify.aws/react/deploy-and-host/fullstack-branching/secrets-and-vars/#set-secrets
+> **Important:** Use `echo -n` (no trailing newline) when piping values to `secret set`.
+>
+> **Important:** The `ampx sandbox secret set` command is for **local/sandbox development only**. For apps deployed to **Amplify Hosting**, secrets must be created via the Amplify console (NOT `ampx sandbox secret` — that's local only) — sandbox secrets are NOT available in hosted environments. See: https://docs.amplify.aws/react/deploy-and-host/fullstack-branching/secrets-and-vars/#set-secrets
+
+### Environment Variables in Lambda
+
+**Recommended (type-safe):**
+
+```typescript
+import { env } from '$amplify/env/my-function';
+const tableName = env.TABLE_NAME;
+```
+
+**Fallback (if `$amplify/env` causes esbuild bundling errors):**
+
+```typescript
+const tableName = process.env.TABLE_NAME!;
+```
 
 ## Scheduled Functions
 
@@ -78,12 +117,12 @@ export const cronJob = defineFunction({
   name: 'cron-job',
   entry: './handler.ts',
   schedule: 'every 1h', // natural-language shorthand
-  // Valid shorthands: 'every 5m', 'every 1h', 'every 6h', 'every 1d'
+  // Valid shorthands: 'every 5m', 'every 1h', 'every day', 'every week', 'every month', 'every year'
   // OR: schedule: '0 */1 * * ? *', // cron expression — same property
 });
 ```
 
-The handler **MUST** use `EventBridgeHandler` type:
+The handler must use `EventBridgeHandler` type:
 
 ```typescript
 import type { EventBridgeHandler } from 'aws-lambda';
@@ -117,6 +156,17 @@ const schema = a.schema({
 });
 ```
 
+### Lambda + API Gateway + Data Access
+
+When a Lambda both accesses data tables AND is exposed via API Gateway, use `resourceGroupName` to avoid circular dependencies:
+
+```typescript
+export const myFunction = defineFunction({
+  name: 'my-function',
+  resourceGroupName: 'data', // Places in data stack to avoid circular dep
+});
+```
+
 ## Custom Queries and Mutations
 
 Use `a.query()` and `a.mutation()` with `.handler()` to add custom server-side logic through AppSync (no API Gateway needed):
@@ -140,6 +190,22 @@ const schema = a.schema({
 });
 ```
 
+> **How `.handler()` works:** `.handler()` grants AppSync the permission to **invoke** the Lambda (AppSync→Lambda). The Lambda IS the resolver — it receives the GraphQL event directly. If the Lambda also needs to call the Data API or access DynamoDB tables for side effects, add `allow.resource(fn)` to the model with `resourceGroupName: 'data'` on the function to avoid circular dependencies.
+>
+> ```typescript
+> // ❌ CIRCULAR DEPENDENCY — manual table grant in backend.ts
+> backend.data.resources.tables["Model"].grantReadData(backend.myFn.resources.lambda);
+>
+> // ✅ Use resourceGroupName to co-locate the function in the data stack
+> const myFn = defineFunction({ name: 'my-fn', resourceGroupName: 'data' });
+> // Then in the schema: allow.resource(myFn) on the model
+> ```
+>
+> **Gap:** The Lambda resolver receives the GraphQL event but does NOT automatically get `TABLE_NAME` as an environment variable. Your Lambda must either:
+>
+> 1. Use the Amplify data client (`generateClient()`) which discovers tables automatically
+> 2. Explicitly set env vars: `myFunction.addEnvironment('TABLE_NAME', backend.data.resources.tables['Todo'].tableName)`
+>
 > **When to use which:**
 >
 > - `a.query()` / `a.mutation()` with `.handler()` — AppSync-native, type-safe, uses the data schema. **Preferred for most custom logic.**
@@ -168,7 +234,7 @@ api.root.addResource('items').addMethod(
 backend.addOutput({ custom: { restApiUrl: api.url } });
 ```
 
-The handler **MUST** use `APIGatewayProxyHandler` type for REST API (v1):
+The handler must use `APIGatewayProxyHandler` type for REST API (v1):
 
 ```typescript
 import type { APIGatewayProxyHandler } from 'aws-lambda';
@@ -195,7 +261,7 @@ httpApi.addRoutes({
 backend.addOutput({ custom: { httpApiUrl: httpApi.url! } });
 ```
 
-The handler **MUST** use `APIGatewayProxyHandlerV2` type for HTTP API (v2).
+The handler must use `APIGatewayProxyHandlerV2` type for HTTP API (v2).
 
 ## Backend Outputs
 
@@ -228,11 +294,23 @@ For REST/HTTP API outputs added via `backend.addOutput()`, read the endpoint URL
   responses. Both return `{ statusCode, body }`.
 - **Missing resource access:** A function without explicit grants cannot
   access auth, data, or storage resources — add grants in `backend.ts`.
-- **Secrets in plain `environment`:** Sensitive values **MUST** use
+- **Secrets in plain `environment`:** Sensitive values must use
   `secret()`, not string literals.
 - **`createStack` name collision:** Stack names passed to
-  `backend.createStack()` **MUST** be unique across the backend.
+  `backend.createStack()` must be unique across the backend.
   Duplicate names cause deployment failures.
+- **Missing `@types/node`:** Lambda functions require `@types/node` in devDependencies. Without it, `process.env` and Node.js globals cause TypeScript errors. Install: `npm install --save-dev @types/node`
+- **`@types/aws-lambda`:** Lambda handlers (`S3Handler`, `PreSignUpTriggerHandler`, etc.) need this package for TypeScript types. Install at project root or in the function's directory if it has its own `package.json`.
+- **AppSync identity typing:** `event.identity` in custom handlers has varying types depending on auth mode. Use type assertion:
+
+  ```typescript
+  const identity = event.identity as { username?: string; sub?: string };
+  const userId = identity?.username || identity?.sub || 'unknown';
+  ```
+
+- **`dataSource: 'NONE'`:** Using `a.handler.custom({ dataSource: 'NONE' })` causes "Data source not found" during deployment. Use a Lambda handler instead, or create the NONE data source explicitly via CDK.
+
+- **Lambda error types lost:** Custom error classes thrown in Lambda arrive at the frontend as generic `Error` with only the `message` preserved. Error name, stack, and custom properties are stripped by AppSync. Return structured error data in the response instead.
 
 ## Links
 
