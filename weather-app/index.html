@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Logistics Weather Board</title>
+<meta name="description" content="At-a-glance global weather board for logistics teams. Track current conditions and 3-day outlook across your sites." />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand__mark" aria-hidden="true"></span>
+    <span class="brand__name">Logistics <em>Weather</em> Board</span>
+  </div>
+  <div class="topbar__controls">
+    <form id="add-form" class="add" autocomplete="off">
+      <label for="city-input" class="sr-only">Add a site</label>
+      <input id="city-input" type="text" placeholder="Add a site (e.g. Rotterdam, Chicago O'Hare, Singapore)" />
+      <button type="submit">Add</button>
+      <ul id="suggestions" class="suggestions" hidden></ul>
+    </form>
+    <div class="units" role="group" aria-label="Units">
+      <button type="button" class="unit is-active" data-units="metric">&deg;C &middot; km/h</button>
+      <button type="button" class="unit" data-units="imperial">&deg;F &middot; mph</button>
+    </div>
+    <button type="button" id="refresh" class="ghost" title="Refresh all sites">Refresh</button>
+  </div>
+</header>
+
+<main>
+  <section id="status" class="status" hidden></section>
+  <section id="grid" class="grid" aria-live="polite"></section>
+  <section id="empty" class="empty" hidden>
+    <h2>No sites yet</h2>
+    <p>Add the cities or facilities your teams operate from. Suggestions to get you started:</p>
+    <ul class="chips">
+      <li><button type="button" data-quickadd>Rotterdam</button></li>
+      <li><button type="button" data-quickadd>Chicago</button></li>
+      <li><button type="button" data-quickadd>Singapore</button></li>
+      <li><button type="button" data-quickadd>S&atilde;o Paulo</button></li>
+      <li><button type="button" data-quickadd>Dubai</button></li>
+      <li><button type="button" data-quickadd>Sydney</button></li>
+    </ul>
+  </section>
+</main>
+
+<footer class="footer">
+  <span>Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> &middot; no API key required</span>
+  <span id="updated"></span>
+</footer>
+
+<template id="card-tpl">
+  <article class="card" data-site>
+    <header class="card__head">
+      <div>
+        <h2 class="card__city"></h2>
+        <p class="card__region"></p>
+      </div>
+      <button type="button" class="card__remove" aria-label="Remove site">&times;</button>
+    </header>
+    <div class="card__now">
+      <div class="card__icon" aria-hidden="true"></div>
+      <div class="card__temp">
+        <span class="card__temp-value">--</span>
+        <span class="card__temp-unit"></span>
+      </div>
+      <div class="card__meta">
+        <p class="card__cond"></p>
+        <p class="card__feels"></p>
+      </div>
+    </div>
+    <dl class="card__stats">
+      <div><dt>Wind</dt><dd class="card__wind"></dd></div>
+      <div><dt>Humidity</dt><dd class="card__hum"></dd></div>
+      <div><dt>Precip</dt><dd class="card__precip"></dd></div>
+      <div><dt>Local time</dt><dd class="card__time"></dd></div>
+    </dl>
+    <ol class="card__forecast"></ol>
+    <p class="card__alert" hidden></p>
+  </article>
+</template>
+
+<script src="app.js" type="module"></script>
+</body>
+</html>
