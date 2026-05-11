@@ -1,17 +1,6 @@
 # Agent Skills for AWS
 
-This directory contains agent skills — curated packages of instructions and reference materials that help AI coding agents complete AWS tasks effectively.
-
-## How skills work
-
-Each skill is a directory containing a `SKILL.md` file with a description and instructions, plus optional reference files and scripts. Skills use progressive disclosure:
-
-1. At startup, your agent reads only the skill name and description (~50-100 tokens per skill).
-2. When a task matches a skill's description, the agent loads the full instructions.
-3. The agent follows the skill's procedures, loading reference files only as needed.
-4. When the task is complete, the skill context is released.
-
-This means having many skills installed doesn't slow your agent down or consume your context window.
+This directory contains agent skills — curated packages of instructions and reference materials that help AI coding agents complete AWS tasks effectively. We plan to release new and updated skills on a regular cadence.
 
 ## Using skills
 
@@ -30,19 +19,52 @@ To install skills locally, copy the skill directory to your agent's skills locat
 | Claude Code | `~/.claude/skills/` | `.claude/skills/` |
 | Codex | `~/.codex/skills/` | `.agents/skills/` |
 | Cursor | `~/.cursor/skills/` | `.cursor/skills/` |
+| Kiro | `~/.kiro/skills/` | `.kiro/skills/` |
 
-## Skill format
+## Skill categories
 
-Each skill follows this structure:
+Skills are organized into two categories: **core** and **specialized**.
 
-```
-skill-name/
-├── SKILL.md              # Required: description + instructions
-├── references/           # Optional: detailed guidance for subtasks
-│   ├── topic-a.md
-│   └── topic-b.md
-└── scripts/              # Optional: code scripts for deterministic operations
-    └── validate.sh
-```
+### Core skills
 
-The `SKILL.md` file includes YAML frontmatter with a `name` and `description`, followed by the skill's instructions in markdown. Skills can also include slash commands that let you invoke them directly.
+Core skills are bundled with the [aws-core plugin](../plugins/aws-core/) and provide
+broad guidance across the most commonly used AWS services and development patterns.
+We recommend installing the aws-core plugin as your starting point if you're building
+and operating applications on AWS. It gives your agent foundational knowledge about
+service selection, architecture decisions, SDK usage, infrastructure-as-code, security,
+observability, and cost management.
+
+Core skills cover:
+
+- AWS SDK usage patterns (Python, JavaScript, Swift)
+- Infrastructure as code (CDK, CloudFormation)
+- Compute (serverless, containers)
+- Security and identity (IAM)
+- Observability (CloudWatch, X-Ray, CloudTrail)
+- Application integration (messaging, streaming)
+- Cost management (Billing and Cost Management)
+- Web & mobile development (Amplify)
+- Generative AI (Bedrock)
+
+### Specialized skills
+
+Specialized skills offer service-specific guidance and detailed workflows for common
+tasks that agents struggle with. These go deeper than core skills — providing
+step-by-step procedures for specific operations like creating a data lake table,
+launching an EC2 instance with best practices, or troubleshooting EFS connectivity.
+
+Install specialized skills when you're working in a specific domain and want your
+agent to follow AWS-recommended procedures rather than improvising from general
+knowledge.
+
+Specialized skills are organized by AWS service category:
+
+- **[Analytics](specialized-skills/analytics-skills/)**
+- **[Database](specialized-skills/database-skills/)**
+- **[EC2](specialized-skills/ec2-skills/)**
+- **[Migration & Modernization](specialized-skills/migration-and-modernization-skills/)**
+- **[Networking & Content Delivery](specialized-skills/networking-and-content-delivery-skills/)**
+- **[Operations](specialized-skills/operations-skills/)**
+- **[Security & Identity](specialized-skills/security-and-identity-skills/)**
+- **[Serverless](specialized-skills/serverless-skills/)**
+- **[Storage](specialized-skills/storage-skills/)**
