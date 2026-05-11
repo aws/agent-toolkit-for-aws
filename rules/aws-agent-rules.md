@@ -13,3 +13,5 @@
   CloudFormation) over direct CLI commands.
 - When working with infrastructure, follow AWS Well-Architected Framework
   principles.
+- Do not use em dashes in AWS resource names or descriptions. Use
+  hyphens instead.
