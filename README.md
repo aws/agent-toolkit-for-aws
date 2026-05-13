@@ -12,28 +12,25 @@ The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guard
 
 ### Claude Code
 
-```
-/plugin marketplace add aws/agent-toolkit-for-aws
-```
-
-This allows you to install any supported plugins from the toolkit:
+The plugins are available on the official Anthropic marketplace (`claude-plugins-official`) which is added to your Claude Code installation by default.
+Use the following commands to install supported plugins from the toolkit:
 
 For `aws-core` that covers service selection, CDK/CloudFormation, serverless, containers, storage, observability, billing, SDK usage, and deployment:
 
 ```
-/plugin install aws-core@agent-toolkit-for-aws
+/plugin install aws-core@claude-plugins-official
 ```
 
 For `aws-agents` that covers building AI agents on AWS with Amazon Bedrock and AgentCore:
 
 ```
-/plugin install aws-agents@agent-toolkit-for-aws
+/plugin install aws-agents@claude-plugins-official
 ```
 
 For `aws-data-analytics` that covers data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena:
 
 ```
-/plugin install aws-data-analytics@agent-toolkit-for-aws
+/plugin install aws-data-analytics@claude-plugins-official
 ```
 
 ### Codex
