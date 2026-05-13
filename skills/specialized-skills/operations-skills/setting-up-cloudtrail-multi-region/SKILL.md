@@ -2,11 +2,6 @@
 name: setting-up-cloudtrail-multi-region
 description: Enables a multi-region AWS CloudTrail trail with S3 log storage, CloudWatch Logs integration, and CloudWatch Logs Insights queries for security monitoring and compliance auditing. Use when setting up centralized API activity logging across all AWS regions.
 version: 1
-metadata:
-  service: [cloudtrail, s3, cloudwatch, iam, kms]
-  task: [configure, secure, monitor]
-  persona: [developer, devops]
-  workload: [security, monitoring]
 ---
 
 # Setting Up CloudTrail Multi-Region

@@ -14,11 +14,6 @@ description: >-
   catalog audit (use exploring-data-catalog), or SaaS platforms like Salesforce, ServiceNow,
   SAP, MongoDB, Kafka.
 version: 1
-metadata:
-  service: [glue, s3, s3tables, athena, dynamodb]
-  task: [deploy, migrate]
-  persona: [developer, data-engineer]
-  workload: [data-analytics]
 argument-hint: '[source-path|connection-name|table-name] [--target s3-tables|iceberg|parquet]'
 ---
 

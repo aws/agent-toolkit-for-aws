@@ -8,11 +8,6 @@ description: >-
   Do NOT use for: full catalog audits (use exploring-data-catalog), running queries
   (use querying-data-lake), creating tables (use creating-data-lake-table).
 version: 1
-metadata:
-  service: [glue, s3, s3tables, redshift]
-  task: [debug]
-  persona: [developer, data-engineer, architect]
-  workload: [data-analytics]
 argument-hint: '[table-name|keyword|column-name|s3://path]'
 ---
 

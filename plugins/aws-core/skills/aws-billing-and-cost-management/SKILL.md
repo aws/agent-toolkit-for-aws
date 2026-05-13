@@ -9,11 +9,6 @@ description: |
   right-size, budget alert, cost optimization, pricing, free tier, cost
   anomaly, CUR, cost audit, billing view, billing view ARN.
 version: 1
-metadata:
-  service: [cost-explorer, budgets, compute-optimizer, cost-optimization-hub, pricing, savings-plans, cur]
-  task: [analyze-cost, optimize, budget, right-size, pricing-lookup, audit]
-  persona: [developer, finops-practitioner, cloud-engineer]
-  workload: [cost-management]
 ---
 
 # Billing and Cost Management

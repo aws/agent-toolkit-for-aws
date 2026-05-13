@@ -2,11 +2,6 @@
 name: aws-cdk
 description: Authors, deploys, and troubleshoots AWS infrastructure using CDK with TypeScript or Python. Covers best practices, stack architecture, and construct patterns. Always use when writing CDK constructs, bootstrapping environments, running cdk deploy/synth/diff, fixing CDK or CloudFormation errors, planning stack structure, importing existing resources, resolving drift, or refactoring stacks without resource replacement.
 version: 1
-metadata:
-  service: [cloudformation, cdk]
-  task: [deploy, debug, optimize, migrate, refactor]
-  persona: [developer, devops, architect]
-  workload: [serverless, containers]
 ---
 
 # AWS CDK

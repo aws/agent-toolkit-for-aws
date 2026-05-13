@@ -11,11 +11,6 @@ description: >-
   creating-data-lake-table), queries (use querying-data-lake), catalog exploration
   (use exploring-data-catalog), or SaaS (Salesforce, ServiceNow, SAP, MongoDB, Kafka).
 version: 1
-metadata:
-  service: [glue, secretsmanager, rds, redshift]
-  task: [deploy, debug]
-  persona: [developer, data-engineer]
-  workload: [data-analytics]
 argument-hint: '[source-type|connection-name|hostname]'
 ---
 

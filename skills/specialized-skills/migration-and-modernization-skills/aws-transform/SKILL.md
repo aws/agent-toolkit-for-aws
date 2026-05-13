@@ -4,10 +4,6 @@ description: Performs code upgrades, migrations, and transformations using the A
 metadata:
   author: AWS
   version: 1.0.0
-  service: [transform]
-  task: [migrate, upgrade, refactor, analyze]
-  persona: [developer, devops, architect]
-  workload: [ai, migration, modernization]
 ---
 
 # AWS Transform (ATX)

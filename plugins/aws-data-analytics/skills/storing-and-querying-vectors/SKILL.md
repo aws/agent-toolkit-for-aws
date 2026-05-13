@@ -8,11 +8,6 @@ description: >-
   use for: querying tabular data (use querying-data-lake), S3 object storage, or hundreds/thousands
   of sustained QPS (use OpenSearch).
 version: 1
-metadata:
-  service: [s3vectors, bedrock]
-  task: [deploy, debug, migrate]
-  persona: [developer, architect]
-  workload: [data-analytics]
 ---
 
 # Store and Query Vectors with Amazon S3 Vectors

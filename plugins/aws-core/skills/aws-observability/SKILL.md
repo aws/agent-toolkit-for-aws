@@ -2,11 +2,6 @@
 name: aws-observability
 description: Builds, configures, debugs, and optimizes AWS observability using CloudWatch (Logs Insights, Metrics, Alarms, Dashboards, EMF), X-Ray, CloudTrail, and ADOT. Covers Log Insights query syntax (fields, filter, stats, parse, pattern, join, subqueries), alarm configuration (metric, composite, anomaly detection, missing data treatment), dashboard design, custom metrics (PutMetricData, EMF, metric filters), X-Ray tracing (ADOT, sampling rules, annotations vs metadata), ADOT collector config, and CloudTrail auditing. Use when the user mentions CloudWatch, Log Insights, alarms, INSUFFICIENT_DATA, dashboards, custom metrics, EMF, X-Ray, traces, sampling, CloudTrail, who deleted, ADOT, OpenTelemetry, observability, monitoring, synthetics, canaries, or troubleshooting alarm behavior. Do NOT use for application logging setup, container log drivers, or security threat detection.
 version: 1
-metadata:
-  service: [cloudwatch, xray, cloudtrail, synthetics]
-  task: [build, deploy, debug, optimize, configure]
-  persona: [developer, devops]
-  workload: [observability]
 ---
 
 # AWS Observability

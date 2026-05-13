@@ -2,11 +2,6 @@
 name: creating-api-gateway-stage
 description: Creates an API Gateway stage with CloudWatch logging, X-Ray tracing, throttling, WAF integration, and IAM roles following AWS best practices. Use when deploying a REST API to different environments such as dev, test, or production.
 version: 1
-metadata:
-  service: [api-gateway, iam, cloudwatch, wafv2]
-  task: [create, configure, secure]
-  persona: [developer, devops]
-  workload: [serverless]
 ---
 
 # Creating an API Gateway Stage

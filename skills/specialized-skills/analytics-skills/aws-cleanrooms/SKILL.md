@@ -2,11 +2,6 @@
 name: aws-cleanrooms
 description: Troubleshoots and debugs AWS Clean Rooms collaboration issues related to IAM roles, S3 bucket policies, KMS keys, Lake Formation permissions, and CloudWatch logging for custom ML model training and inference jobs. Use when a customer reports permission failures, access errors, or log publishing issues in Clean Rooms.
 version: 1
-metadata:
-  service: [cleanrooms, cleanrooms-ml, iam, s3, kms, lakeformation, cloudwatch]
-  task: [debug, troubleshoot, configure]
-  persona: [developer, data-engineer, analyst]
-  workload: [data-collaboration, ml]
 ---
 # AWS Clean Rooms
 

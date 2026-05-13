@@ -7,11 +7,6 @@ description: >
   not syncing changes to S3, showing files in lost+found, or performing slower
   than expected.
 version: 1
-metadata:
-  service: [s3, s3files, efs, iam, kms, cloudwatch]
-  task: [debug, troubleshoot, diagnose]
-  persona: [developer, devops]
-  workload: [storage]
 ---
 
 # Troubleshooting S3 Files

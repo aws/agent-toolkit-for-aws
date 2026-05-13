@@ -10,11 +10,6 @@ description: >-
   querying existing tables (use querying-data-lake), or locating existing table (use
   finding-data-lake-assets).
 version: 1
-metadata:
-  service: [s3tables, glue, athena]
-  task: [deploy, debug]
-  persona: [developer, data-engineer]
-  workload: [data-analytics]
 argument-hint: '[table-description|schema-spec]'
 ---
 

@@ -7,11 +7,6 @@ description: >-
   query S3 Tables. Do NOT use for finding specific data assets (use finding-data-lake-assets),
   full catalog audits (use exploring-data-catalog), importing data (use ingesting-into-data-lake).
 version: 1
-metadata:
-  service: [athena, glue, s3tables, redshift]
-  task: [debug, audit]
-  persona: [developer, data-engineer, architect]
-  workload: [data-analytics]
 argument-hint: '[SQL-query|query-name|workgroup-name|catalog-name|''profile TABLE_NAME'']'
 ---
 

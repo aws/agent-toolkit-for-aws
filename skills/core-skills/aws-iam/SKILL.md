@@ -6,11 +6,6 @@ description: "Verified corrections for IAM behaviors that AI agents frequently g
   \ working with IAM roles, policies, STS, or Organizations. Do NOT use for non-IAM\
   \ authorization like Cognito user-pool policies or app-level RBAC."
 version: 1
-metadata:
-  service: [iam, sts, organizations]
-  task: [configure, secure, audit, debug]
-  persona: [developer, security-engineer, devops]
-  workload: [security]
 ---
 
 # AWS IAM — Common Pitfalls

@@ -2,11 +2,6 @@
 name: enabling-lambda-vpc-internet-access
 description: Enables internet access for AWS Lambda functions deployed in VPC subnets by creating NAT Gateway infrastructure, configuring public/private subnet routing, and updating security groups. Use when a VPC-attached Lambda function cannot reach the internet.
 version: 1
-metadata:
-  service: [lambda, vpc, ec2]
-  task: [configure, deploy]
-  persona: [developer, devops]
-  workload: [serverless, networking]
 ---
 
 # Enabling Lambda VPC Internet Access
