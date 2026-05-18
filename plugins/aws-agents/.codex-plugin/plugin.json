@@ -7,7 +7,7 @@
     "email": "aws-agent-plugins@amazon.com",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
   },
-  "homepage": "https://github.com/aws/agent-toolkit-for-aws",
+  "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
   "repository": "https://github.com/aws/agent-toolkit-for-aws",
   "license": "Apache-2.0",
   "keywords": [

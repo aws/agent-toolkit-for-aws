@@ -3,24 +3,46 @@
   "version": "1.0.0",
   "description": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code, use core services, and complete common tasks.",
   "author": {
-    "name": "Amazon Web Services"
+    "name": "Amazon Web Services",
+    "url": "https://github.com/aws/agent-toolkit-for-aws"
   },
   "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
   "repository": "https://github.com/aws/agent-toolkit-for-aws",
   "license": "Apache-2.0",
+  "keywords": [
+    "aws",
+    "cdk",
+    "cloudformation",
+    "iam",
+    "serverless",
+    "containers",
+    "bedrock",
+    "amplify",
+    "observability",
+    "sdk",
+    "billing",
+    "messaging"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "AWS Core",
     "shortDescription": "AWS agent plugin with skills and MCP servers",
     "longDescription": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code, use core services, and complete common tasks.",
+    "defaultPrompt": [
+      "Scaffold a CDK stack for this app.",
+      "Add IAM least-privilege policies for these resources.",
+      "Wire up CloudWatch logs and alarms for this service."
+    ],
     "developerName": "Amazon Web Services",
     "category": "Cloud",
     "capabilities": [
-      "Read"
+      "Read",
+      "Write"
     ],
-    "websiteURL": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
+    "websiteURL": "https://github.com/aws/agent-toolkit-for-aws",
     "privacyPolicyURL": "https://aws.amazon.com/privacy/",
-    "termsOfServiceURL": "https://aws.amazon.com/service-terms/"
+    "termsOfServiceURL": "https://aws.amazon.com/service-terms/",
+    "brandColor": "#FF9900"
   }
 }
