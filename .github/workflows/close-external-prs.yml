@@ -1,0 +1,47 @@
+name: Close External PRs
+
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-membership:
+    if: vars.DISABLE_EXTERNAL_PR_CHECK != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if author has write access
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const author = context.payload.pull_request.user.login;
+
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: author
+            });
+
+            if (['admin', 'write'].includes(data.permission)) {
+              console.log(`${author} has ${data.permission} access, allowing PR`);
+              return;
+            }
+
+            console.log(`${author} has ${data.permission} access, closing PR`);
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `Thanks for your interest! This repo only accepts contributions from AWS team members. If you've found a bug or have a feature request, please feel free to [open an issue](https://github.com/aws/agent-toolkit-for-aws/issues/new/choose).`
+            });
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              state: 'closed'
+            });
