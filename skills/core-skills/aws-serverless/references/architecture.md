@@ -3,7 +3,6 @@
 Reference architectures, pattern selection flowcharts, and service selection tables for common serverless workloads.
 
 ## Contents
-
 - [Pattern selection flowchart](#pattern-selection-flowchart)
 - [REST/HTTP API pattern](#resthttp-api-pattern)
 - [Event processing pattern](#event-processing-pattern)
@@ -51,7 +50,6 @@ Client → API Gateway (HTTP API) → Lambda → DynamoDB
 **When:** CRUD APIs, mobile/web backends, microservices.
 
 **Service selection:**
-
 | Decision | Default | Alternative |
 |---|---|---|
 | API type | HTTP API (simpler) | REST API if you need WAF, caching, request validation, API keys |
@@ -61,7 +59,6 @@ Client → API Gateway (HTTP API) → Lambda → DynamoDB
 | Function pattern | One function per route | Lambdalith if team prefers Express/FastAPI style |
 
 **Key constraints:**
-
 - HTTP API: 30s hard timeout, no WAF, no caching, 10 MB payload
 - REST API: 29s default timeout (adjustable for Regional/private APIs), 10 MB payload
 
@@ -78,7 +75,6 @@ Event source → SQS → Lambda → DynamoDB / S3
 **When:** Async workloads, decoupled producers/consumers, batch processing, file processing.
 
 **Service selection:**
-
 | Decision | Default | Alternative |
 |---|---|---|
 | Buffer | SQS standard queue | SQS FIFO if ordering matters (10 msg batch limit) |
@@ -90,21 +86,18 @@ Event source → SQS → Lambda → DynamoDB / S3
 | Batch processing | ReportBatchItemFailures | Powertools Batch Processor utility |
 
 **Key constraints:**
-
 - SQS visibility timeout ≥ 6× function timeout
 - MaximumConcurrency and Provisioned Mode are mutually exclusive on same ESM
 - Enable partial batch failure reporting to avoid reprocessing successful messages
 - SQS event filtering automatically deletes unmatched messages (permanently — not sent to DLQ)
 
 **S3 trigger constraints:**
-
 - Recursive invocation risk: never write output to the same bucket/prefix that triggers the function
 - No native DLQ on S3 notifications — use Lambda async invocation DLQ instead
 - Use prefix/suffix filtering to limit which objects trigger the function
 - Consider EventBridge for S3 instead of S3 notifications (richer filtering, multiple targets)
 
 **DynamoDB Streams constraints:**
-
 - Max 2 Lambda consumers per stream shard (use EventBridge Pipes for more)
 - 24-hour stream retention — records expire and cannot be replayed after that
 - Ordering guaranteed per partition key, not globally
@@ -123,18 +116,16 @@ Trigger → Step Functions → Lambda (validate)
 **When:** Multi-step workflows, saga transactions, approval chains, data pipelines, AI agent loops.
 
 **Service selection:**
-
 | Decision | Default | Alternative |
 |---|---|---|
 | Workflow type | Standard (exactly-once, up to 1 year) | Express (<5 min, high-volume; async=at-least-once, sync=at-most-once) |
 | Simple data transforms | JSONata (inline, no Lambda needed) | Lambda task (complex logic) |
 | Service calls | Direct SDK integration (200+ services) | Lambda intermediary (only if business logic needed) |
-| Human approval | .waitForTaskToken | Durable Functions waitForCallback |
-| AI agent loops | Step Functions + Bedrock | Durable Functions (code-first, checkpointed) |
-| Error handling | Retry + Catch in ASL | Durable Functions try/catch in code |
+| Human approval | .waitForTaskToken | Lambda durable functions waitForCallback |
+| AI agent loops | Step Functions + Bedrock | Lambda durable functions (code-first, checkpointed) |
+| Error handling | Retry + Catch in ASL | Lambda durable functions try/catch in code |
 
 **Key constraints:**
-
 - 256 KB payload limit between states — use S3 for large data
 - Express: no .sync, no .waitForTaskToken, no Distributed Map, no Activities
 - 25,000 execution history entries (Standard) — split long workflows into child executions
@@ -158,19 +149,17 @@ Client → Lambda Function URL (streaming) → Bedrock ConverseStream
 **When:** Chat apps, live dashboards, notifications, LLM token streaming, multiplayer games.
 
 **Service selection:**
-
 | Decision | Default | Alternative |
 |---|---|---|
 | Bidirectional | API Gateway WebSocket | AppSync subscriptions (GraphQL) |
 | LLM streaming | Lambda Function URL + ConverseStream | REST API proxy with STREAM mode |
-| Connection state | DynamoDB (connectionId → metadata) | ElastiCache (higher throughput) |
+| Connection state | DynamoDB (connectionId → metadata, enable TTL to clean up stale connections after 2-hour max duration) | ElastiCache (higher throughput) |
 | Auth | $connect route authorizer | Cognito + custom auth in Lambda |
 
 **Key constraints:**
-
 - WebSocket: 10 min idle timeout, 2 hour max connection, 128 KB message (hard limit)
 - Function URL streaming: 200 MB limit, 2 MBps after first 6 MB, Node.js native support
-- Function URLs support `AWS_IAM` or `NONE` (public) — no native JWT/Cognito. Add CloudFront + Lambda@Edge for JWT/Cognito auth.
+- Function URLs **MUST** use `AWS_IAM` auth type. For CloudFront integration, use Origin Access Control (OAC) to sign requests — do not set auth to `NONE`. If `NONE` is unavoidable for other reasons, authentication **MUST** be enforced at the edge (e.g., CloudFront + Lambda@Edge). No native JWT/Cognito support.
 
 ---
 
@@ -185,7 +174,6 @@ Producer → EventBridge → Rule A → Lambda (process)
 **When:** One event triggers multiple independent actions, event-driven microservices, cross-service communication.
 
 **Service selection:**
-
 | Decision | Default | Alternative |
 |---|---|---|
 | Event router | EventBridge (content-based routing) | SNS (simpler fan-out, attribute/body filtering) |
@@ -195,7 +183,6 @@ Producer → EventBridge → Rule A → Lambda (process)
 | Scheduling | EventBridge Scheduler (cron/rate) | EventBridge rules (simpler but less flexible) |
 
 **Key constraints:**
-
 - Use dedicated event bus per application domain (not the default bus)
 - EventBridge Pipes eliminates Lambda intermediary functions for source→target integrations
 - Be precise with event patterns — overly broad patterns risk loops
@@ -213,16 +200,14 @@ EventBridge Scheduler → Lambda (task)
 **When:** Cron jobs, periodic data sync, report generation, cleanup tasks.
 
 **Service selection:**
-
 | Decision | Default | Alternative |
 |---|---|---|
 | Scheduler | EventBridge Scheduler (flexible, one-time + recurring) | EventBridge rules with schedule expression (simpler) |
 | Short task (<15 min) | Lambda directly | — |
-| Long task (>15 min) | Step Functions (up to 1 year) | Durable Functions |
+| Long task (>15 min) | Step Functions (up to 1 year) | Lambda durable functions |
 | High frequency (<1 min) | Not supported natively | SQS delay queue + Lambda |
 
 **Key constraints:**
-
 - Minimum schedule interval: 1 minute
 - Lambda max timeout: 15 minutes — use Step Functions for longer
 - Always make scheduled Lambda idempotent (scheduler guarantees at-least-once)
@@ -250,7 +235,6 @@ Client ─── CloudFront ─┤
 ```
 
 **Common combinations:**
-
 | Application | Patterns used |
 |---|---|
 | SaaS API backend | REST API + Event processing + Scheduled jobs |

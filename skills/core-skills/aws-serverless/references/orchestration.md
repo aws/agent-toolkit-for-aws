@@ -1,6 +1,6 @@
 # Orchestration Reference
 
-AWS Step Functions, Amazon EventBridge, and Lambda Durable Functions patterns and configuration.
+AWS Step Functions and Amazon EventBridge patterns and configuration.
 
 ## Contents
 
@@ -9,7 +9,7 @@ AWS Step Functions, Amazon EventBridge, and Lambda Durable Functions patterns an
 - [Error handling](#error-handling)
 - [EventBridge rules and patterns](#eventbridge-rules-and-patterns)
 - [EventBridge Pipes](#eventbridge-pipes)
-- [Lambda Durable Functions](#lambda-durable-functions)
+
 
 ---
 
@@ -29,7 +29,6 @@ AWS Step Functions, Amazon EventBridge, and Lambda Durable Functions patterns an
 | Idempotency | Automatic (execution name unique for 90 days) | Not managed |
 
 Express sub-types:
-
 - **Asynchronous**: Fire-and-forget. Results via CloudWatch Logs.
 - **Synchronous**: Blocks until completion. Invokable from API Gateway, Lambda, or `StartSyncExecution`. 5-min max.
 
@@ -285,7 +284,6 @@ Available on `Task`, `Parallel`, and `Map` states. Retries are attempted before 
 | `JitterStrategy` | `"NONE"` | `"FULL"` randomizes wait between 0 and computed interval |
 
 Rules:
-
 - `States.ALL` must be **last** in the Retry array
 - Retries count as state transitions (billed in Standard workflows)
 - `States.Runtime` and `States.DataLimitExceeded` **cannot be retried**
@@ -435,75 +433,17 @@ Lambda, API Gateway, EventBridge API Destinations, Step Functions (Synchronous E
 | Enrichment | Built-in | Not built-in |
 | Use case | Replace Lambda glue | Event routing and distribution |
 
+
 ---
 
-## Lambda Durable Functions
+## Lambda durable functions vs Step Functions
 
-### Core Mechanism: Checkpoint-and-Replay
+Lambda durable functions let you write reliable multi-step workflows as plain code (TypeScript, Python, Java) with automatic checkpointing — the SDK persists each step's result and replays from the checkpoint on interruption, enabling executions up to 1 year with zero compute during waits. Use the **aws-lambda-durable-functions** skill for full guidance.
 
-1. **Checkpoint**: As your function executes durable operations, the SDK persists each result to a checkpoint log
-2. **Suspend**: On `wait` or interruption, Lambda saves the checkpoint and terminates — **zero compute during suspension**
-3. **Replay**: On resume, Lambda invokes from the beginning. The SDK replays the log — completed operations return stored results without re-executing
-
-### SDK Availability
-
-| Language | Package | Handler Pattern |
-|---|---|---|
-| JavaScript/TypeScript | `@aws/durable-execution-sdk-js` | `withDurableExecution(async (event, ctx) => ...)` |
-| Python | `aws-durable-execution-sdk-python` | `@durable_execution` decorator |
-| Java | `software.amazon.lambda.durable:aws-durable-execution-sdk-java` | Extends `DurableHandler` |
-
-Go, Rust, and .NET are **not supported**.
-
-### DurableContext Operations
-
-| Operation | Description |
-|---|---|
-| `step(name, fn)` | Execute a named step; result is checkpointed |
-| `wait(name, seconds)` | Suspend execution for a duration (zero compute during wait) |
-| `parallel(steps)` | Execute multiple steps concurrently |
-| `map(items, fn)` | Iterate over items with checkpointing |
-| `waitForCallback(name)` | Suspend until external callback resumes execution |
-| `invoke(name, fn, arn)` | Invoke another Lambda and checkpoint the result |
-
-### Example: Distributed Transaction
-
-```typescript
-import { DurableContext, withDurableExecution } from "@aws/durable-execution-sdk-js";
-
-export const handler = withDurableExecution(
-  async (event: any, context: DurableContext) => {
-    const inventory = await context.step("reserve-inventory", async () => {
-      return await inventoryService.reserve(event.items);
-    });
-    const payment = await context.step("process-payment", async () => {
-      return await paymentService.charge(event.amount);
-    });
-    const shipment = await context.step("create-shipment", async () => {
-      return await shippingService.createShipment(event.orderId, inventory);
-    });
-    return { orderId: event.orderId, status: "completed", shipment };
-  }
-);
-```
-
-### Limitations
-
-- Must enable durable execution **at function creation time** (cannot retrofit)
-- Max checkpoint size per child context result: **256 KB** (cumulative storage limit: 100 MB per execution)
-- Code outside durable steps must be **deterministic** (replay re-executes it)
-- **No nested steps** (steps cannot contain other steps)
-- No Go, Rust, or .NET SDK
-- Durable execution timeout: up to 1 year
-
-### Decision Matrix: Durable Functions vs Step Functions
-
-| Question | Durable Functions | Step Functions |
+| Question | Lambda durable functions | Step Functions |
 |---|---|---|
 | Primary focus? | Application logic in Lambda | Orchestration across AWS services |
 | Programming model? | Standard code (TS/Python/Java) | Amazon States Language (ASL) or visual designer |
 | AWS service integrations? | Primarily Lambda | 200+ native integrations |
 | Who reads the workflow? | Developers | Non-technical stakeholders |
 | Best for? | Distributed transactions, stateful logic, AI agent loops | Business process automation, multi-service orchestration |
-
-**Hybrid pattern**: Durable functions for application-level logic within Lambda, Step Functions for high-level orchestration across multiple AWS services.
