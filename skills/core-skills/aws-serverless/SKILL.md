@@ -26,6 +26,7 @@ Domain expertise for building serverless applications on AWS. Covers Lambda conf
 | API Gateway setup | Read [api-gateway.md](references/api-gateway.md) |
 | Common anti-patterns | Read the anti-patterns section in [production.md](references/production.md) |
 | Starting with Powertools | Use [powertools-handler.py](assets/powertools-handler.py) as a template |
+| Lambda Managed Instances, LMI, capacity providers, EC2-backed Lambda, PerExecutionEnvironmentMaxConcurrency | Use the **aws-lambda-managed-instances** skill instead |
 | Spans multiple areas | Read the most specific reference first, then consult others as needed |
 
 ## Files
