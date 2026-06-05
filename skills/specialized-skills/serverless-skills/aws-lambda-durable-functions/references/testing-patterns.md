@@ -555,7 +555,6 @@ await callbackOp.sendCallbackSuccess(JSON.stringify({}));
 | Callback result parsing error         | Result is JSON string                 | Parse result: `JSON.parse(result.value)`          |
 | Operation not found by name           | Missing operation name                | Always name operations in handler                 |
 
-
 ## Jest Configuration
 
 **jest.config.js:**

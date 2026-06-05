@@ -119,7 +119,6 @@ When implementing or modifying tests for durable functions, ALWAYS verify:
 3. Replay behavior is tested with multiple invocations
 4. Use `LocalDurableTestRunner` for local testing
 
-
 ## Security Considerations
 
 - **Checkpoint data encryption**: Execution state is persisted automatically. Enable KMS encryption on associated CloudWatch Log Groups to protect checkpointed data at rest.
@@ -128,6 +127,7 @@ When implementing or modifying tests for durable functions, ALWAYS verify:
 - **Credential management**: Retrieve secrets from AWS Secrets Manager or SSM Parameter Store within steps.
 - **Callback payload validation**: Data received via `waitForCallback` originates from external systems — validate and sanitize before processing.
 - **Logging**: Avoid `DEBUG` log level in non-development environments as it may expose step results and execution state. Enable CloudWatch Logs encryption with KMS.
+
 ## Resources
 
 - [AWS Lambda durable functions Documentation](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html)

@@ -470,4 +470,3 @@ When starting a new durable function project:
 - Explore **step-operations.md** for retry strategies
 - Learn **wait-operations.md** for external integrations
 - Check **testing-patterns.md** for comprehensive testing
-
