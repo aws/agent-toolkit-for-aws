@@ -6,7 +6,7 @@
 
 Help AI coding agents build, deploy, and manage applications on AWS.
 
-The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, and Kiro.
+The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, Cursor, and Kiro.
 
 ## Quick start
 
@@ -48,6 +48,12 @@ codex plugin marketplace add aws/agent-toolkit-for-aws
 ```
 
 Then launch Codex and run `/plugins` to browse and install the **aws-core** plugin.
+
+### Cursor
+
+Add this repository as a team marketplace from **Settings → Plugins → Team Marketplaces → Add Marketplace → Import from Repo**, pointing it at `aws/agent-toolkit-for-aws`. Cursor indexes the plugins listed in [`.cursor-plugin/marketplace.json`](.cursor-plugin/marketplace.json) on import.
+
+Then open the **Plugins** panel and install the **aws-core** plugin (start here), or **aws-agents** and **aws-data-analytics** as needed. Each plugin bundles the AWS MCP Server configuration and agent skills.
 
 ### Kiro
 
@@ -102,7 +108,7 @@ Plugins bundle the AWS MCP Server configuration and agent skills into a single i
 | [aws-agents](plugins/aws-agents/) | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore. |
 | [aws-data-analytics](plugins/aws-data-analytics/) | Skills for data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. |
 
-Plugins are currently available for Claude Code and Codex. For other agents, configure the AWS MCP Server directly and install skills from this repository.
+Plugins are currently available for Claude Code, Codex, and Cursor. For other agents, configure the AWS MCP Server directly and install skills from this repository.
 
 ### Skills
 
