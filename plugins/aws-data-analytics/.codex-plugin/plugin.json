@@ -1,7 +1,7 @@
 {
   "name": "aws-data-analytics",
   "version": "1.0.0",
-  "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena.",
+  "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. Covers managed Iceberg tables on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, and vector storage and semantic search on Amazon S3 Vectors.",
   "author": {
     "name": "Amazon Web Services",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
@@ -11,22 +11,42 @@
   "license": "Apache-2.0",
   "keywords": [
     "aws",
+    "amazon",
+    "amazon-web-services",
+    "iam",
     "analytics",
     "data-lake",
+    "lakehouse",
     "athena",
     "glue",
+    "aws-glue",
+    "data-catalog",
+    "s3",
     "s3-tables",
     "s3-vectors",
     "iceberg",
+    "apache-iceberg",
     "etl",
-    "data-catalog"
+    "redshift",
+    "snowflake",
+    "bigquery",
+    "rds",
+    "dynamodb",
+    "jdbc",
+    "secrets-manager",
+    "vector-search",
+    "semantic-search",
+    "rag",
+    "embeddings",
+    "vector-database",
+    "aurora"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "AWS Data Analytics",
     "shortDescription": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena",
-    "longDescription": "Skills for building and operating data lakes on AWS. Covers table creation, data ingestion, querying, discovery, vector storage, and external connectivity across S3 Tables, AWS Glue, Athena, and more.",
+    "longDescription": "Skills for building and operating data lakes on AWS. Covers managed Iceberg table creation on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, and vector storage and semantic search on Amazon S3 Vectors.",
     "defaultPrompt": [
       "Create a data lake table backed by S3 Tables.",
       "Ingest this dataset into the data lake.",
