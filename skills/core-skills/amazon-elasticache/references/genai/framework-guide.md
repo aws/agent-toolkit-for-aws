@@ -25,8 +25,10 @@ Strands does not include a built-in semantic cache. Wrap the agent call with cac
 Native Valkey vector store provider (`provider: "valkey"`). Handles index creation, embedding storage, and similarity search internally. Requires node-based Valkey 8.2 or later (recommend 9.0).
 
 Key wiring points:
+
 * Use `valkeys://` URL scheme (the `s` enables TLS). Port 6379 for node-based.
 * The `llm` block is required for mem0's fact extraction. Use Bedrock:
+
   ```python
   "llm": {
       "provider": "aws_bedrock",
@@ -36,6 +38,7 @@ Key wiring points:
       }
   }
   ```
+
 * Always pass a `user_id` to `memory.add()` and `memory.search()` for user-scoped memory isolation.
 * Key config fields: `embedding_model_dims` (e.g., `1024` for Titan V2) and `index_type` (`flat` or `hnsw`).
 

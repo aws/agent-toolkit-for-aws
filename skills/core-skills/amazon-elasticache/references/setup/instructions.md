@@ -42,6 +42,7 @@ If all checks pass, proceed. If any fail, surface the specific error and suggest
 After the cache is created and connectivity is validated, update `.elasticache/requirements.json`. Setup owns the `infrastructure` section and top-level infra fields. Read the existing file first, merge your updates, then write it back. Do not overwrite fields owned by requirements (use_case, patterns, runtime, data_source, etc.).
 
 Update these top-level fields:
+
 - `deployment_model`: "serverless" or "node-based"
 - `vpc_id`, `subnet_ids`, `security_group_ids`
 
@@ -103,6 +104,7 @@ When the user's workspace does not contain expected files (e.g., no `requirement
 ## Additional references
 
 These files are not part of the main workflow but load on demand when the situation requires them:
+
 - `references/shared-ux/production-readiness.md` -- when the user asks "is my cache ready for production?" or wants a pre-production gate checklist
 - `references/setup/connectivity-diagnostics.md` -- when connection validation fails
 - `references/setup/iac-best-practices.md` -- when the user asks about CloudFormation, Terraform, CDK, IaC deployment issues, stack failures, or deploying multiple caches

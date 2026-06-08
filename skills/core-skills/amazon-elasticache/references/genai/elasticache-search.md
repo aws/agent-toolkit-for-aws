@@ -211,6 +211,7 @@ If you need `decode_responses=True` for non-vector operations (session store, co
 HASH vectors must be stored as binary little-endian IEEE 754 FLOAT32.
 
 **Python encoding:**
+
 ```python
 import struct
 binary = struct.pack(f"{len(vec)}f", *vec)
@@ -252,6 +253,7 @@ FT.CREATE idx ON HASH PREFIX 1 prefix:
 ```
 
 Key details:
+
 * `6` after HNSW means 3 key-value pairs follow (TYPE, DIM, DISTANCE_METRIC). The number is the total count of arguments, not the number of pairs.
 * `PREFIX 1 prefix:` scopes which hashes get indexed. The `1` is the number of prefixes.
 * `TAG SEPARATOR ,` is optional. The default separator is `,`. Only specify SEPARATOR if you need a different delimiter character.
@@ -420,6 +422,7 @@ Replace `numpy.array(...).tobytes()` with `struct.pack(f"{len(vec)}f", *vec)`. N
 Verify the command matches the exact syntax: `FT.CREATE <name> ON HASH PREFIX 1 <prefix> SCHEMA <fields>`. The most common mistakes: missing `SCHEMA` keyword, wrong argument count after `HNSW` (must be `6` for 3 key-value pairs: TYPE, DIM, DISTANCE_METRIC), or using `INDEX` instead of `CREATE`.
 
 **`FT.SEARCH` returns 0 results when data exists:**
+
 1. Check index state: `FT.INFO <index_name>`, look for `state: ready`. If backfill is in progress, wait.
 2. Check `DIALECT 2` is present in the query. KNN queries require it.
 3. Check the query vector is FLOAT32 bytes (struct.pack), not a string or list.
@@ -430,4 +433,3 @@ Do not use the high-level Python search wrapper. Replace with `client.execute_co
 
 **Score/similarity values seem inverted:**
 COSINE distance is 0 (identical) to 2 (opposite). Convert with `similarity = 1.0 - (distance / 2.0)`. If your thresholds aren't working, verify you're comparing similarity (not distance) against the threshold.
-

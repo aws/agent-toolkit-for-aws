@@ -11,12 +11,14 @@
 | Node-based | Full playbook. Slow-log delivery must be enabled (to CloudWatch Logs or Amazon Data Firehose). This playbook assumes CloudWatch Logs as the destination; if using Firehose, adapt the log-query steps accordingly. |
 
 Verify slow-log delivery is configured (the log group name is user-specified, not a fixed path):
+
 ```bash
 aws elasticache describe-replication-groups \
   --replication-group-id <replication-group-id> \
   --region <region> \
   --query 'ReplicationGroups[0].LogDeliveryConfigurations'
 ```
+
 Look for an entry with `LogType: slow-log` and note the `DestinationDetails` (CloudWatch Logs log group name or Firehose stream name). If the destination is Firehose rather than CloudWatch Logs, the `aws logs filter-log-events` commands in Tier B will not apply; query your Firehose destination (e.g., S3, OpenSearch) instead.
 
 **TLS note:** All `valkey-cli` examples in this playbook include `--tls`. Omit `--tls` if your cluster does not have transit encryption enabled.
@@ -37,9 +39,10 @@ Look for an entry with `LogType: slow-log` and note the `DestinationDetails` (Cl
 
 Pin the incident window before pulling logs. CloudWatch only, zero cluster impact.
 
-**Step 1: Confirm the spike window**
+### Step 1: Confirm the spike window
 
 Query `EngineCPUUtilization` per node at 1-minute resolution:
+
 ```bash
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache --metric-name EngineCPUUtilization \
@@ -52,9 +55,10 @@ Identify the node and exact 5-minute window where CPU peaked.
 
 **Stop condition:** If no node shows a CPU peak during the reported time range, the latency is not engine-thread-bound. Route to troubleshooting.md High Latency or Connection Spikes.
 
-**Step 2: Confirm latency correlation**
+### Step 2: Confirm latency correlation
 
 Query `SuccessfulReadRequestLatency` at p99 over the same window:
+
 ```bash
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache --metric-name SuccessfulReadRequestLatency \
@@ -65,7 +69,7 @@ aws cloudwatch get-metric-statistics \
 
 P99 spike aligned with CPU spike confirms engine-bound nature.
 
-**Step 3: Identify command-family signature**
+### Step 3: Identify command-family signature
 
 ```bash
 for family in StringBasedCmds HashBasedCmds ListBasedCmds SetBasedCmds SortedSetBasedCmds StreamBasedCmds; do
@@ -83,7 +87,7 @@ The family that spiked most sharply points to the data type of the slow command.
 
 ## Tier B: Narrow with slow-log correlation
 
-**Step 1: Pull slow-log entries for the window**
+### Step 1: Pull slow-log entries for the window
 
 ```bash
 aws logs filter-log-events \
@@ -97,7 +101,7 @@ Replace `<your-log-group-name>` with the log group from the precondition check. 
 
 Each entry includes: timestamp, duration (microseconds), client address (`ClientAddress`), and command name. Note: in delivered logs (CloudWatch Logs / Firehose), ElastiCache redacts key names and values, replacing them with `(N more arguments)` to avoid exposing sensitive data. To see full command arguments including keys, use `SLOWLOG GET` directly on the node. Sort by duration descending.
 
-**Step 2: Cross-reference with INFO commandstats**
+### Step 2: Cross-reference with INFO commandstats
 
 ```bash
 valkey-cli -h <node-endpoint> -p 6379 --tls INFO commandstats
@@ -107,7 +111,7 @@ A command that appears repeatedly in the slow-log window AND has high usec_per_c
 
 **Stop condition:** If no command exceeds both signals, the spike is not from a recurring slow command. Route to hot-key-detection.md (single-key spike) or troubleshooting.md High Latency.
 
-**Step 3: Identify the key pattern**
+### Step 3: Identify the key pattern
 
 In delivered logs (CloudWatch Logs / Firehose), key names are redacted. To identify key patterns, use `SLOWLOG GET` directly on the node, which returns full command arguments including keys:
 
@@ -117,7 +121,7 @@ valkey-cli -h <node-endpoint> -p 6379 --tls SLOWLOG GET 128
 
 The first argument of most entries is the key. Group by first-argument prefix. A key or prefix appearing repeatedly is the target.
 
-**Step 4: COMMANDLOG (Valkey 8.1+ only)**
+### Step 4: COMMANDLOG (Valkey 8.1+ only)
 
 Check engine version first. COMMANDLOG is Valkey 8.1+ only. On older engines, skip this step.
 
@@ -135,7 +139,7 @@ All Tier B operations are read-only and subsecond. 2-5 minutes of active queryin
 
 ## Tier C: Verify with CLIENT LIST and key inspection
 
-**Step 1: Identify the client**
+### Step 1: Identify the client
 
 Slow-log entries include a `ClientAddress` field (e.g., `"ClientAddress": "10.0.1.42:50234"`). Match against CLIENT LIST:
 
@@ -147,7 +151,7 @@ Parse for matching `addr=`. The `name=` field identifies the app instance if CLI
 
 **Stop condition:** If no matching connection (already closed), fall back to VPC flow logs keyed to source IP:port. Do not spend more than 10 minutes on CLIENT LIST attribution alone.
 
-**Step 2: Inspect the target key**
+### Step 2: Inspect the target key
 
 ```bash
 valkey-cli -h <node-endpoint> -p 6379 --tls TYPE <key>
@@ -156,7 +160,7 @@ valkey-cli -h <node-endpoint> -p 6379 --tls MEMORY USAGE <key>
 
 Cross-reference with big-key-hunter.md if the key is large.
 
-**Step 3: Classify the root cause**
+### Step 3: Classify the root cause
 
 | Slow-log signature | Tier C findings | Root cause |
 |---|---|---|

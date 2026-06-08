@@ -38,6 +38,7 @@ aws elasticache create-user \
 ```
 
 For IAM auth instead of passwords:
+
 ```bash
 aws elasticache create-user \
   --user-id myapp-appuser \
@@ -49,6 +50,7 @@ aws elasticache create-user \
 ```
 
 Store RBAC passwords in Secrets Manager:
+
 ```bash
 aws secretsmanager create-secret \
   --name elasticache/myapp/appuser \
@@ -82,11 +84,13 @@ aws elasticache modify-replication-group \
 Update application code to pass `username` and `password` (or IAM token) instead of just the AUTH token.
 
 Before (AUTH token):
+
 ```python
 client = valkey.Valkey(host=endpoint, port=6379, ssl=True, password=auth_token)
 ```
 
 After (RBAC):
+
 ```python
 client = valkey.Valkey(host=endpoint, port=6379, ssl=True,
                        username="appuser", password=rbac_password)
@@ -141,6 +145,7 @@ aws elasticache describe-replication-groups \
 The `default` user is always present in RBAC user groups. Disable it or restrict its access to prevent unauthenticated connections:
 
 **For Valkey clusters:** The default user can be removed from the user group entirely, or disabled:
+
 ```bash
 # Option A: Remove default user from the user group (Valkey only)
 aws elasticache modify-user-group \
@@ -156,6 +161,7 @@ aws elasticache modify-user \
 ```
 
 **For Redis OSS clusters:** The default user **must** remain in the user group (Redis OSS requires it), but should be disabled:
+
 ```bash
 # Disable the default user (required approach for Redis OSS)
 aws elasticache modify-user \
@@ -169,9 +175,11 @@ aws elasticache modify-user \
 ### Rollback Plan
 
 If issues arise during migration:
+
 1. **Before Step 5:** The AUTH token is still active. Simply revert application code to use AUTH token authentication and deploy. Both auth methods work simultaneously, so rollback is safe at any point before Step 5
 2. **After Step 5:** The AUTH token has been removed. To roll back, re-set the AUTH token on the replication group, revert application code, and deploy
 3. Remove the user group association if needed:
+
    ```bash
    aws elasticache modify-replication-group \
      --replication-group-id <cluster-id> \
@@ -217,6 +225,7 @@ Verify that all client applications can handle cluster mode:
 | CLI | `valkey-cli -c` |
 
 Check for multi-key commands that span keys without hash tags:
+
 - `MGET key1 key2` -- keys must be on the same shard
 - `SUNION set1 set2` -- sets must be on the same shard
 - Lua scripts accessing multiple keys -- all keys must be in the same slot
@@ -272,6 +281,7 @@ aws elasticache create-replication-group \
 ### Step 3: Migrate Data
 
 Option A: Snapshot and restore (brief downtime acceptable)
+
 ```bash
 # Snapshot the old cluster
 aws elasticache create-snapshot \
@@ -285,6 +295,7 @@ aws elasticache create-snapshot \
 ```
 
 Option B: Dual-write migration (zero downtime)
+
 1. Configure the application to write to both old and new clusters
 2. Run a backfill to copy existing data from old to new (application-level copy)
 3. Gradually shift reads to the new cluster
@@ -292,10 +303,10 @@ Option B: Dual-write migration (zero downtime)
 5. Decommission the old cluster
 
 > **Warning:** Do NOT use DUMP/RESTORE for data migration between clusters. The serialization format is engine-version-specific and may produce corrupted data on version mismatches. Use application-level copy (read from source, write to target) or the ElastiCache online migration tools instead.
-
 > **Note:** The ElastiCache online migration tool (`start-migration` / `complete-migration`) is designed exclusively for migrating data from self-hosted open-source Valkey or Redis OSS on Amazon EC2 to ElastiCache. It is **not** for moving data between ElastiCache clusters. Additionally, the target cluster must **not** have encryption in-transit enabled, must have Multi-AZ enabled, must not be part of a global datastore, must have data tiering disabled, and the number of shards in source and target must match. Online migration is not supported for ElastiCache serverless caches or clusters running on the r6gd node type. See the [Online Migration documentation](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/OnlineMigration.html) for details.
 
 Option C: Online migration via ElastiCache (only if source is self-hosted Valkey/Redis on EC2, not an ElastiCache cluster)
+
 ```bash
 # Ensure the target cluster does NOT have TLS enabled and meets all prerequisites above
 aws elasticache start-migration \
@@ -312,11 +323,13 @@ aws elasticache complete-migration \
 The new cluster uses a configuration endpoint that resolves to all shards. Update connection strings:
 
 Before:
+
 ```python
 client = valkey.Valkey(host="old-primary-endpoint", port=6379, ssl=True, ...)
 ```
 
 After:
+
 ```python
 client = valkey.cluster.ValkeyCluster(
     host="new-configuration-endpoint", port=6379, ssl=True, ...
@@ -335,6 +348,7 @@ client = valkey.cluster.ValkeyCluster(
 **For the in-place migration path (Valkey 7.2+/Redis OSS 7.0+):** Once cluster mode is set to `enabled`, the change is **irreversible** — you cannot convert back to cluster-mode disabled. You can only revert from `compatible` back to `disabled` before completing the final step. Take a snapshot before setting `enabled`.
 
 **For the new-cluster migration path:** The old cluster remains running throughout the migration:
+
 1. Revert application endpoints to the old cluster
 2. Deploy the reverted application
 3. Delete the new cluster-mode enabled cluster
@@ -343,6 +357,7 @@ client = valkey.cluster.ValkeyCluster(
 ### Note on Endpoint Model Change
 
 This migration changes the endpoint model:
+
 - Cluster-mode disabled: single primary endpoint + single reader endpoint
 - Cluster-mode enabled: configuration endpoint that the client uses to discover all shards
 

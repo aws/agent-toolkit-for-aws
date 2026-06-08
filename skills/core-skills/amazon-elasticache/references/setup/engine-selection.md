@@ -16,19 +16,22 @@
 
 ## When to recommend each
 
-**Valkey (default for all new workloads)**
+### Valkey (default for all new workloads)
+
 - Open source, backed by Linux Foundation and 40+ companies
 - API-compatible with Redis OSS 7.2
 - Best price-performance ratio across both serverless and node-based
 - Cheapest engine option on ElastiCache for every deployment model
 - Zero-downtime upgrade path from existing Redis OSS clusters
 
-**Redis OSS**
+### Redis OSS
+
 - Only when the user has a hard dependency on a Redis OSS feature not yet in Valkey
 - Or when they have existing Redis OSS clusters and don't want to migrate yet
 - Redis OSS 7.1 is the highest Redis OSS version available on ElastiCache. Recommend Valkey 9.0 for new builds. Verify the latest available versions at https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/.
 - In-place upgrade to Valkey is zero-downtime and reduces cost immediately
 
-**Memcached**
+### Memcached
+
 - Only when the user explicitly wants Memcached or has an existing Memcached client they cannot change
 - No persistence for node-based clusters (serverless supports backup/restore), no replication for node-based clusters (serverless stores data redundantly across 3 AZs), no IAM/RBAC auth (TLS supported from 1.6.12; always enabled on serverless), simple data types (strings and objects)

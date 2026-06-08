@@ -21,6 +21,7 @@ Node-based clusters emit operational events via SNS and the DescribeEvents API. 
 ElastiCache publishes cluster events directly to an SNS topic. This is the fastest way to get notified about operational events.
 
 **SNS topic constraints:**
+
 - Only **one** SNS topic can be configured per cluster for ElastiCache notifications.
 - The SNS topic **cannot be encrypted** (at-rest). Attaching an encrypted topic will cause its status to show as "inactive", effectively disassociating it from the cluster.
 - The SNS topic must be in the **same Region** as the ElastiCache cluster.
@@ -29,6 +30,7 @@ ElastiCache publishes cluster events directly to an SNS topic. This is the faste
 > **Security note:** Because at-rest encryption is not supported on this topic, event data (cluster names, failover and maintenance details) is stored unencrypted in SNS. Restrict the topic access policy to authorized principals only, and use HTTPS-only subscription protocols to protect events in transit.
 
 For Valkey/Redis OSS replication groups:
+
 ```bash
 aws elasticache modify-replication-group \
   --replication-group-id my-cluster \
@@ -39,6 +41,7 @@ aws elasticache modify-replication-group \
 ```
 
 For Memcached clusters (which use cache clusters, not replication groups):
+
 ```bash
 aws elasticache modify-cache-cluster \
   --cache-cluster-id my-memcached-cluster \

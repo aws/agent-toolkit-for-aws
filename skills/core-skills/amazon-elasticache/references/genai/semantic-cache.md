@@ -221,8 +221,8 @@ result = client.execute_command(
 ```
 
 Filter patterns:
+
 * `@scope:{model_v2}` filters TAG field to exact token
 * `@timestamp:[{cutoff} +inf]` filters NUMERIC to recent entries only
 * Multiple filters combine with implicit AND inside parentheses
 * Escape hyphens in TAG values: `my\\-value`
-

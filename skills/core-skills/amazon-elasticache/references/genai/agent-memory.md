@@ -108,6 +108,7 @@ Key differences from the generic patterns there:
 * **Schema fields:** `user_id` TAG (isolation), `memory_type` TAG (short/long), `created_at` NUMERIC, `memory` TAG.
 
 > **Note:** ElastiCache supports three field types for FT.CREATE: TAG, NUMERIC, and VECTOR. TAG fields support exact-match filtering. The TEXT field type (which supports full-text search) is only available on MemoryDB, not ElastiCache.
+
 * **Query pattern:** always pre-filter by `user_id` before KNN: `(@user_id:{user123})=>[KNN 5 @embedding $vec AS score]`
 * **TTL:** 90 days for long-term, 30 days for short-term, applied via EXPIRE after HSET
 

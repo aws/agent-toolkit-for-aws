@@ -92,4 +92,3 @@ Switch to Valkey (or Redis OSS) if you need any of the following:
 - No pub/sub, no Lua scripting, no server-side logic
 - No RBAC or IAM authentication
 - Data model limited to string key-value pairs
-

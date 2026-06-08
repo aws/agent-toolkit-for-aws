@@ -92,19 +92,25 @@ For node-based, replace `--serverless <name>` with `--replication-group <id>` in
 1. Identify what the user needs: current metrics, cost data, security posture, or optimization advice
 2. Use the AWS CLI or SDK to gather data
 3. For collecting raw metrics from a running cache:
+
    ```bash
    ./scripts/collect_metrics.sh <endpoint> [port] [output_prefix]
    ```
+
 4. If the user doesn't have dashboards/alarms yet, generate them:
+
    ```bash
    python3 scripts/generate_dashboards.py --serverless <name> --output observability.json
    python3 scripts/generate_dashboards.py --replication-group <name> --output observability.json
    ```
+
 5. For security and operational posture, run the audit:
+
    ```bash
    python3 scripts/security_audit.py --serverless <name>
    python3 scripts/security_audit.py --replication-group <name>
    ```
+
 6. Present results in a clean summary
 7. Recommend optimizations if applicable
 
@@ -117,6 +123,7 @@ When your response includes pricing, version constraints, or feature availabilit
 ## Cost Analysis
 
 Top 4 optimizations (highest impact first):
+
 1. **Redis OSS to Valkey**: 33% cheaper serverless, 20% cheaper node-based. Zero-downtime in-place upgrade.
 2. **Right-size nodes**: If CPU < 20% and memory < 30% sustained, scale down or switch to serverless.
 3. **Reserved instances**: Reserved nodes save approximately 30-55% depending on term length and payment option (run `python3 scripts/price_calculator.py --mode node --node-type <type> --nodes <N> --show-ri-options` for current estimates). Node-based only; not applicable to serverless.

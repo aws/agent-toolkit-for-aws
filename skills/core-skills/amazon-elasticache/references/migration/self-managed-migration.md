@@ -105,6 +105,7 @@ aws elasticache create-replication-group \
 **Downtime:** Equals the time from final snapshot to application cutover. For large datasets, this can be minutes to hours.
 
 **Limitations:**
+
 - Requires a downtime window
 - Any writes during migration are lost
 - RDB format must be compatible with the target engine version
@@ -177,6 +178,7 @@ aws elasticache complete-migration \
 **Replication lag convergence:** "Minimal" means ReplicationLag < 1 second for 5 consecutive checks (1 minute apart). If lag does not converge below 1s within 30 minutes, check source write rate and network bandwidth between source and target. Do not proceed with `complete-migration` until lag is stable.
 
 **Monitoring replication health:** In addition to the CLI command above, verify replication status using:
+
 - Run `INFO replication` on the ElastiCache primary node and confirm `master_link_status` is `up`
 - Monitor the **Primary Link Health Status** CloudWatch metric (value of 1 means data is in sync)
 - Verify low client output buffer by running `CLIENT LIST` on your source Redis instances
@@ -188,6 +190,7 @@ aws elasticache complete-migration \
 **Requirements:**
 
 *Target requirements:*
+
 - Target must NOT have encryption in-transit enabled (TLS must be disabled during migration; you can enable it after migration completes) (verify against current online migration prerequisites documentation)
 - Target must have Multi-AZ enabled (`--automatic-failover-enabled`)
 - Target must be using Valkey, or Redis OSS 5.0.6 or higher
@@ -198,6 +201,7 @@ aws elasticache complete-migration \
 - Target must have sufficient memory available to fit the data from the source cluster. See `sizing-assessment.md` for memory sizing guidance.
 
 *Source requirements:*
+
 - Source Redis must be accessible from the ElastiCache VPC (security groups, VPC peering, VPN, or Direct Connect)
 - The security group attached to source Redis instances must allow inbound traffic from ElastiCache nodes
 - Source must NOT have AUTH enabled
@@ -262,6 +266,7 @@ def cache_get(key: str) -> str | None:
 **Downtime:** Zero, if the application handles the dual-write correctly.
 
 **Trade-offs:**
+
 - Requires application code changes
 - Double write latency during the migration period
 - Must handle failures on either cache gracefully
@@ -312,6 +317,7 @@ After cutover, verify the migration was successful:
 4. **Hit rate:** Monitor cache hit rate -- expect it to ramp up over the warm-up period
 5. **Error rate:** Monitor application logs for connection errors or unexpected responses
 6. **Run security audit:**
+
    ```bash
    python3 scripts/security_audit.py --serverless <name>
    # or

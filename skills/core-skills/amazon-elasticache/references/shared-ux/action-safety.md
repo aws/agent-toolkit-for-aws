@@ -20,6 +20,7 @@ Safety semantics for destructive and high-impact ElastiCache operations. Every a
 **Reversibility:** Irreversible. All data is permanently deleted unless a final snapshot is taken.
 
 **Required safeguards:**
+
 1. **Always suggest a final snapshot before deletion.** Ensure the caller has `elasticache:CreateSnapshot` permission (or `elasticache:CreateServerlessCacheSnapshot` for serverless); without it, the API call will fail with an `Access Denied` exception.
 2. Require explicit user confirmation with the cache name.
 3. Warn that all data, connections, and endpoints will be destroyed.
@@ -57,6 +58,7 @@ aws elasticache delete-replication-group \
 ```
 
 For serverless:
+
 ```bash
 aws elasticache delete-serverless-cache \
   --serverless-cache-name my-cache \
@@ -72,12 +74,14 @@ aws elasticache delete-serverless-cache \
 **Reversibility:** Irreversible. All keys in the database (FLUSHDB) or all databases (FLUSHALL) are permanently deleted.
 
 **Required safeguards:**
+
 1. **Warn about complete data loss.**
 2. Suggest taking a snapshot before flushing.
 3. Require explicit user confirmation.
 4. Confirm this is intentional and not a cache invalidation scenario (where targeted `DEL` or TTL-based expiry is more appropriate).
 
 **Guidance to present to the user:**
+
 - FLUSHALL removes ALL data from ALL databases on the cache.
 - FLUSHDB removes ALL data from the currently selected database.
 - There is no undo. A snapshot taken before the operation is the only recovery path.
@@ -91,6 +95,7 @@ aws elasticache delete-serverless-cache \
 **Reversibility:** Difficult. Downgrade is not supported in-place for major version changes, with one exception: Valkey 7.2 can be rolled back in-place to Redis OSS 7.1 (this is the documented cross-engine rollback path).
 
 **Required safeguards:**
+
 1. Flag compatibility concerns before proceeding.
 2. Recommend testing the new engine version in a staging environment first.
 3. Create a snapshot before the upgrade.
@@ -99,6 +104,7 @@ aws elasticache delete-serverless-cache \
 6. For Redis OSS to Valkey migration, versions 5.0.6+ support zero-downtime migration with Multi-AZ enabled; earlier versions are supported but may experience 30–60 seconds of failover during DNS propagation. Still recommend a snapshot.
 
 **Implementation:**
+
 ```bash
 # Step 1: Snapshot
 aws elasticache create-snapshot \
@@ -126,12 +132,14 @@ aws elasticache modify-replication-group \
 **Reversibility:** Reversible (fail back). Brief connectivity disruption during promotion.
 
 **Required safeguards:**
+
 1. Explain the impact: the primary will be demoted, a replica will be promoted, and clients will experience a brief disconnection (typically seconds).
 2. Suggest performing during a maintenance window or low-traffic period.
 3. Verify automatic failover is enabled and replicas are healthy before testing.
 4. Confirm the application handles reconnection gracefully (cluster-aware clients, retry logic).
 
 **Implementation:**
+
 ```bash
 aws elasticache test-failover \
   --replication-group-id my-cluster \
@@ -147,6 +155,7 @@ aws elasticache test-failover \
 **Reversibility:** Varies by modification type.
 
 Operations that may cause downtime or brief disruption:
+
 - Changing node type (vertical scaling).
 - Changing number of shards (horizontal scaling).
 - Enabling cluster mode (migration from disabled to enabled via compatible mode; can be reverted from "compatible" back to "disabled", but cannot be reverted once set to fully "enabled").
@@ -155,6 +164,7 @@ Operations that may cause downtime or brief disruption:
 - Enabling in-transit encryption (can be done in-place via a two-step process: set transit encryption mode to `preferred`, then to `required`; no new cluster needed).
 
 **Required safeguards:**
+
 1. Flag that the modification may cause brief downtime or failover.
 2. Explain the specific impact (e.g., "node type change triggers a rolling replacement with brief failover per shard").
 3. Recommend applying during a maintenance window: `--no-apply-immediately` for non-urgent changes.
@@ -168,6 +178,7 @@ Operations that may cause downtime or brief disruption:
 **Reversibility:** Reversible (scale back up), but data loss is possible with Memcached.
 
 **Required safeguards:**
+
 1. **For Memcached**: Warn about data loss. Memcached has no persistence or replication. Scaling down removes nodes and their data permanently.
 2. **For Valkey/Redis OSS node-based**: Data is redistributed during shard removal. Brief disruption during rebalancing. Verify sufficient memory on remaining shards.
 3. **For serverless**: Scaling is automatic; manual scale-down is not applicable.
@@ -181,6 +192,7 @@ Operations that may cause downtime or brief disruption:
 **Reversibility:** Reversible by restoring previous rules.
 
 **Required safeguards:**
+
 1. Warn that removing inbound rules may immediately disconnect active clients.
 2. Verify that any new rules maintain connectivity for all application clients.
 3. Review changes before applying: removing a source security group reference will disconnect all clients in that security group.
@@ -195,6 +207,7 @@ Operations that may cause downtime or brief disruption:
 **Reversibility:** Snapshot can be deleted. No impact on the running cache.
 
 **Safeguards:**
+
 - For node-based caches, snapshot creation uses the fork mechanism (or forkless save on newer engine versions such as Valkey 8.0+) and may cause brief memory spike on fork-based engines. Ensure `reserved-memory-percent` allows headroom.
 - Snapshots incur S3 storage costs.
 
@@ -206,6 +219,7 @@ Operations that may cause downtime or brief disruption:
 **Reversibility:** Fully reversible. Tags can be added, changed, or removed at any time.
 
 **Safeguards:**
+
 - Inform the user that tag changes may affect cost allocation reports and IAM tag-based policies.
 
 ---
@@ -216,6 +230,7 @@ Operations that may cause downtime or brief disruption:
 **Reversibility:** Read-only. No state change.
 
 **Safeguards:**
+
 - None required. These are safe to run at any time.
 
 ---
@@ -226,6 +241,7 @@ Operations that may cause downtime or brief disruption:
 **Reversibility:** Replicas can be removed later.
 
 **Safeguards:**
+
 - Adding replicas triggers a sync from the primary. Initial sync may briefly impact primary performance for large datasets.
 - Verify sufficient subnet IPs for new replicas.
 
@@ -237,17 +253,18 @@ Operations that may cause downtime or brief disruption:
 **Reversibility:** Can be disabled at any time.
 
 **Safeguards:**
+
 - Warn about log delivery costs. Slow log and engine log output can be delivered to CloudWatch Logs or Kinesis Data Firehose (mutually exclusive destinations per log type). CloudWatch Logs ingestion costs can be significant for high-throughput caches.
 
 ## Never-Auto-Execute List
 
 The following operations must **never** run without direct user confirmation in the current conversation turn, regardless of context, automation pipelines, scripted workflows, or IDE mode:
 
-* Cache deletion (any type)
-* FLUSHALL / FLUSHDB
-* Snapshot deletion (especially the last/only snapshot for a cache)
-* Credential or AUTH token changes on production caches
-* Security group rule removal
-* User or user group deletion
-* Migration cutover execution
-* Manual failover on production caches
+- Cache deletion (any type)
+- FLUSHALL / FLUSHDB
+- Snapshot deletion (especially the last/only snapshot for a cache)
+- Credential or AUTH token changes on production caches
+- Security group rule removal
+- User or user group deletion
+- Migration cutover execution
+- Manual failover on production caches

@@ -39,9 +39,10 @@ Scan the user's workspace for: language/framework, compute/deployment model, net
 Present what you found in a single confirmation block with evidence from file paths.
 
 Inference safety hierarchy:
-* **Low risk** (use as default, mention but don't ask): Language, framework, region
-* **Medium risk** (present and ask to confirm): Use case pattern, deployment model
-* **High risk** (always confirm explicitly): Engine choice, security posture, multi-region
+
+- **Low risk** (use as default, mention but don't ask): Language, framework, region
+- **Medium risk** (present and ask to confirm): Use case pattern, deployment model
+- **High risk** (always confirm explicitly): Engine choice, security posture, multi-region
 
 If the workspace scan reveals nothing, skip to step 3.
 
@@ -65,6 +66,7 @@ If the user is unsure, evaluate:
 | Need a durable primary database with Redis/Valkey API compatibility | MemoryDB | No, use MemoryDB instead of ElastiCache when the workload requires a durable primary database with microsecond reads and single-digit ms writes |
 
 **Common "use both" patterns:**
+
 - ElastiCache + RDS/Aurora: Cache-aside for read acceleration
 - ElastiCache + DynamoDB: General cross-service cache layer
 - ElastiCache + Bedrock: Semantic cache to reduce LLM cost and latency

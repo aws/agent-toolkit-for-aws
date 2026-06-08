@@ -5,6 +5,7 @@
 Lambda must be deployed in the same VPC as the ElastiCache cache. Without VPC attachment, Lambda cannot reach ElastiCache endpoints.
 
 Configure VPC in the Lambda function:
+
 - Assign at least two private subnets (same ones the cache uses, or subnets that can route to them)
 - Assign a security group that allows outbound traffic to the cache security group on port 6379 (and 6380 for serverless reader endpoint)
 
@@ -166,6 +167,7 @@ def handler(event, context):
 ```
 
 Key patterns in this snippet:
+
 - **Module-level `_client`**: Connection persists across warm Lambda invocations, avoiding cold-start reconnection overhead
 - **Lazy init with health check**: `ping()` validates the connection; recreates on failure
 - **IAM auth token**: Generated fresh on each new connection (tokens valid 15 minutes, connections are automatically disconnected after 12 hours unless prolonged by re-authenticating with a new token). For long-lived connections, consider using a Valkey or Redis OSS client that supports a credentials provider interface to auto-generate tokens.

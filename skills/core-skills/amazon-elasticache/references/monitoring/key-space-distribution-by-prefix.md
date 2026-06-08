@@ -1,6 +1,6 @@
 # Key-Space Distribution by Prefix
 
-**When to use:** User wants to understand what is in their cache grouped by key prefix. Typical questions: "which prefix is using the most memory?", "how many keys per tenant?", "is session:* growing faster than cache:*?", "who owns orphan keys?". Also used for cost attribution, tenant onboarding/offboarding, and pre-migration audits.
+**When to use:** User wants to understand what is in their cache grouped by key prefix. Typical questions: "which prefix is using the most memory?", "how many keys per tenant?", "is session:*growing faster than cache:*?", "who owns orphan keys?". Also used for cost attribution, tenant onboarding/offboarding, and pre-migration audits.
 **When not needed:** Already knows which specific keys are big or hot (use big-key-hunter.md or hot-key-detection.md). Wants a full memory map including overhead (requires MEMORY USAGE, node-based only).
 
 ## Preconditions
@@ -26,13 +26,13 @@
 
 ## Tier A: Triage with CloudWatch and scope the scan
 
-**Step 1: CloudWatch signal check**
+### Step 1: CloudWatch signal check
 
 Query `BytesUsedForCache` and `CurrItems` trend. If both flat and within range, analysis may not be urgent. If memory-per-key is rising or both climbing together, proceed.
 
 **Stop condition:** If CloudWatch shows no growth and concern is theoretical, consider a sampled scan only.
 
-**Step 2: Get a size estimate**
+### Step 2: Get a size estimate
 
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls DBSIZE
@@ -40,7 +40,7 @@ valkey-cli -h <endpoint> -p 6379 --tls DBSIZE
 
 Node-based cluster mode: run DBSIZE against each primary, sum results.
 
-**Step 3: Decide scan strategy**
+### Step 3: Decide scan strategy
 
 | Total DBSIZE | Strategy |
 |---|---|
@@ -48,7 +48,7 @@ Node-based cluster mode: run DBSIZE against each primary, sum results.
 | 1M-10M keys | Full scan with COUNT 500, off-peak or against replica |
 | > 10M keys | Sampled scan (stop after 100k keys) or offline RDB analysis |
 
-**Step 4: Identify delimiter and prefix depth**
+### Step 4: Identify delimiter and prefix depth
 
 Common conventions: `:` (app:module:id), `/` (URL-shaped), `|` (legacy). Start with depth 1.
 
@@ -101,17 +101,19 @@ Same safety class as `valkey-cli --bigkeys`: cursor-bounded, read-only, stoppabl
 
 ## Tier C: Verify with MEMORY USAGE (node-based only)
 
-**Step 1: Sample keys from the hot prefix**
+### Step 1: Sample keys from the hot prefix
+
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls --scan --pattern '<prefix>*' | head -100 > keys-sample.txt
 ```
 
-**Step 2: Measure byte footprint**
+### Step 2: Measure byte footprint
+
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls MEMORY USAGE <key>
 ```
 
-**Step 3: Extrapolate**
+### Step 3: Extrapolate
 
 If 100 sampled keys from a 1,245,000-key prefix average 4,200 bytes, the prefix uses ~5GB. Validate against the `BytesUsedForCacheItems` CloudWatch metric (node-based).
 

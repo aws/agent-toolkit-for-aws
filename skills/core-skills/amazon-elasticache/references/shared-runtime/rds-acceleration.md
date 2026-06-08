@@ -47,7 +47,6 @@ Read path:  App -> Cache -> always a hit (for previously written keys)
 If you are using ElastiCache Serverless or have provisioned read replicas (node-based clusters), direct reads to replicas to achieve better scalability and/or lower latency. Reads from replicas are eventually consistent with the primary. In ElastiCache Serverless, reading from the replica port (6380) will direct reads to the client's local availability zone when possible, reducing retrieval latency.
 
 > **Security group / NACL note:** If using the serverless reader port (6380), ensure your security groups and NACLs allow traffic on both port 6379 (primary) and port 6380 (reader). Missing rules for 6380 will cause reader-port connections to fail silently.
-
 > **Best practice:** For node-based clusters with multiple read replicas, distribute read traffic across replicas rather than pinning all reads to a single replica. Cluster-aware clients handle this automatically; for non-clustered (CMD) deployments, use the reader endpoint, which DNS-load-balances across replicas.
 
 ## Invalidation Strategies
@@ -204,6 +203,7 @@ def get_user_orders(user_id: str, limit: int = 20) -> list:
 ```
 
 Key patterns in this example:
+
 - **Cache failures are non-fatal**: Every cache operation is wrapped in try/except. The application falls back to RDS if cache is unavailable.
 - **TTL on every key**: Prevents unbounded cache growth and limits stale data window.
 - **Invalidate on write**: `update_user` deletes the cache entry after a successful database write.

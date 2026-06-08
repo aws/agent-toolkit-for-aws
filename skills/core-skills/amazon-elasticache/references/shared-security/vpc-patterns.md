@@ -37,6 +37,5 @@ ElastiCache-specific networking rules. Generic VPC knowledge is omitted (the mod
 
 ## PrivateLink and Cross-VPC Access
 
-* **PrivateLink (VPC Endpoints)** covers ElastiCache control-plane APIs only (e.g., `CreateCacheCluster`, `DescribeReplicationGroups`). It does not provide data-plane connectivity to cache endpoints.
-* **Cross-VPC data access** requires VPC Peering, Transit Gateway (TGW), AWS Direct Connect, or site-to-site VPN. Use security group references (preferred, when peering supports it) or CIDR-based rules to allow traffic between the application VPC and the cache VPC.
-
+- **PrivateLink (VPC Endpoints)** covers ElastiCache control-plane APIs only (e.g., `CreateCacheCluster`, `DescribeReplicationGroups`). It does not provide data-plane connectivity to cache endpoints.
+- **Cross-VPC data access** requires VPC Peering, Transit Gateway (TGW), AWS Direct Connect, or site-to-site VPN. Use security group references (preferred, when peering supports it) or CIDR-based rules to allow traffic between the application VPC and the cache VPC.

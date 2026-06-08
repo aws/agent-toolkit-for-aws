@@ -19,7 +19,8 @@ Poorly tuned timeouts cause two failure modes: too low triggers false failures d
 
 ### Per-Library Configuration
 
-**Python (redis-py / valkey-py)**
+#### Python (redis-py / valkey-py)
+
 ```python
 import redis
 
@@ -35,7 +36,8 @@ pool = redis.ConnectionPool(
 r = redis.Redis(connection_pool=pool)
 ```
 
-**Node.js (ioredis)**
+#### Node.js (ioredis)
+
 ```javascript
 const Redis = require("ioredis");
 
@@ -52,7 +54,8 @@ const client = new Redis({
 });
 ```
 
-**Java (Lettuce)**
+#### Java (Lettuce)
+
 ```java
 // Socket connect timeout should be lower than command timeout for Lettuce.
 // Set JVM DNS cache TTL to support failover DNS changes.
@@ -88,7 +91,8 @@ RedisClient client = RedisClient.create(clientResources, uri);
 client.setOptions(options);
 ```
 
-**Go (go-redis)**
+#### Go (go-redis)
+
 ```go
 client := redis.NewClient(&redis.Options{
     Addr:         "endpoint.cache.amazonaws.com:6379",
@@ -124,7 +128,8 @@ Signs the pool is too large: `CurrConnections` is high, `NewConnections` is high
 
 ### Per-Library Configuration
 
-**Python (redis-py / valkey-py)**
+#### Python (redis-py / valkey-py)
+
 ```python
 pool = redis.ConnectionPool(
     host="endpoint.cache.amazonaws.com",
@@ -136,7 +141,8 @@ r = redis.Redis(connection_pool=pool)
 # In async frameworks (FastAPI, aiohttp), use redis.asyncio.ConnectionPool instead.
 ```
 
-**Node.js (ioredis)**
+#### Node.js (ioredis)
+
 ```javascript
 // ioredis manages a single persistent connection by default.
 // For cluster mode, it opens one connection per node.
@@ -153,7 +159,8 @@ const cluster = new Redis.Cluster(
 );
 ```
 
-**Java (Lettuce)**
+#### Java (Lettuce)
+
 ```java
 // Lettuce uses a single connection with pipelining by default.
 // For thread-safe concurrent access, use StatefulRedisConnection (thread-safe)
@@ -166,9 +173,10 @@ poolConfig.setMinIdle(5);
 poolConfig.setTestOnBorrow(true);
 ```
 
-**Java (Lettuce) -- Cluster Mode Enabled**
+#### Java (Lettuce) -- Cluster Mode Enabled
 
 For cluster mode enabled, configure `ClusterTopologyRefreshOptions` and node filtering to handle topology changes during failovers:
+
 ```java
 ClusterTopologyRefreshOptions topologyOptions = ClusterTopologyRefreshOptions.builder()
     .enableAllAdaptiveRefreshTriggers()
@@ -189,7 +197,8 @@ RedisClusterClient clusterClient = RedisClusterClient.create(clientResources, re
 clusterClient.setOptions(clusterOptions);
 ```
 
-**Go (go-redis)**
+#### Go (go-redis)
+
 ```go
 client := redis.NewClient(&redis.Options{
     Addr:         "endpoint.cache.amazonaws.com:6379",
@@ -204,6 +213,7 @@ client := redis.NewClient(&redis.Options{
 ### Monitoring Pool Health
 
 Check these CloudWatch metrics at the cache level:
+
 - `CurrConnections` (Maximum): total open connections across all clients. Compare against expected (pool size x number of app instances).
 - `NewConnections` (Sum, per minute): should be low after initial ramp-up. Sustained high values indicate connections are not being reused.
 
@@ -249,6 +259,7 @@ Dimension reference:
 | Node-based (per-node) | `CacheClusterId` | The individual node ID (e.g., `my-cluster-001`) |
 
 Common mistakes:
+
 - Using `CacheClusterId` when the metric only publishes at the `ReplicationGroupId` level, or vice versa. For node-based caches, most metrics including `CacheHits` and `CacheMisses` are per-node (`CacheClusterId`). For serverless caches, `CacheHitRate` uses the `ServerlessCacheName` dimension.
 - Using `ReplicationGroupId` for per-node metrics like `EngineCPUUtilization` when you need per-shard visibility.
 - Using the cache name as the dimension value for a node-based cache instead of the replication group ID.
@@ -274,6 +285,7 @@ If the list is empty: confirm the cache exists and is in `available` status, con
 ### 4. Console vs. CLI Mismatch
 
 When metrics appear in the CLI but not in the CloudWatch console:
+
 - Check the time range in the console. The default view may be too narrow to include the metric's retention period.
 - Check the statistic selected. Some metrics only make sense with specific statistics (e.g., `ElastiCacheProcessingUnits` should use Sum, not Average).
 - Check the region selector in the console matches the cache's region.
@@ -281,6 +293,7 @@ When metrics appear in the CLI but not in the CloudWatch console:
 ### 5. Metric Retention
 
 CloudWatch retains ElastiCache metrics at these resolutions:
+
 - 1-minute datapoints: 15 days
 - 5-minute datapoints: 63 days
 - 1-hour datapoints: 455 days

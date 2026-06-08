@@ -38,7 +38,7 @@ Tune up for workloads that legitimately use large collections (event sourcing, l
 
 ## Tier A: Triage with CloudWatch
 
-**Step 1: Memory-to-key-count ratio**
+### Step 1: Memory-to-key-count ratio
 
 Big-key: memory grows faster than key count. Volume: both grow together.
 
@@ -54,11 +54,11 @@ Query both `BytesUsedForCache` and `CurrItems`. Compute bytes-per-key trend.
 
 **Stop condition:** If bytes-per-key is flat and below 10KB, this is not a big-key problem. Route to troubleshooting.md Memory Pressure.
 
-**Step 2: Network bandwidth correlation (node-based)**
+### Step 2: Network bandwidth correlation (node-based)
 
 Big keys on read-heavy workloads show as `NetworkBytesOut` spikes on one node while peers are flat, correlated with elevated `EngineCPUUtilization`. Use `CacheClusterId` dimension (not `ReplicationGroupId` which hides imbalance).
 
-**Step 3: Slow-log fingerprint (node-based only)**
+### Step 3: Slow-log fingerprint (node-based only)
 
 ```bash
 aws logs filter-log-events \
@@ -88,17 +88,17 @@ First argument of each entry is the key. Keys appearing repeatedly with O(N) com
 
 Run against a replica on node-based. Run off-peak on serverless (every sampled key consumes ECPUs). Stop if EngineCPU rises >10 percentage points.
 
-**Step 1: Run the sampler**
+### Step 1: Run the sampler
 
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls --bigkeys
 ```
 
-**Step 2: Interpret**
+### Step 2: Interpret
 
 `--bigkeys` reports logical size (bytes for strings, element count for aggregates), not memory footprint. A hash with 50000 small fields may use less memory than a 2MB string.
 
-**Step 3: Cross-reference with Tier A**
+### Step 3: Cross-reference with Tier A
 
 If the big-key matches a slow-log fingerprint or is on the shard with elevated NetworkBytesOut, it is the root cause.
 
@@ -121,7 +121,7 @@ Download and analyze with RDB tools offline. Not available on serverless.
 
 ## Tier C: Verify with MEMORY USAGE (node-based only)
 
-**Step 1: Measure candidates**
+### Step 1: Measure candidates
 
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls MEMORY USAGE <key>
@@ -129,7 +129,7 @@ valkey-cli -h <endpoint> -p 6379 --tls MEMORY USAGE <key>
 
 Default sampling (5 nested elements) is fast and good enough for ranking. Use `SAMPLES 0` only for the final top-1 or top-2 candidates (O(N) in value size).
 
-**Step 2: Rank and confirm**
+### Step 2: Rank and confirm
 
 Note the hash slot via `CLUSTER KEYSLOT <key>` if cluster mode. A big-key on a hot slot (cross-reference hot-key-detection.md Tier B) is the worst case.
 

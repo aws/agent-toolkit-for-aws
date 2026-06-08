@@ -67,6 +67,7 @@ Determine which migration path applies (see "Migration Paths" below). This deter
 ### Step 2: Run preflight validation (MANDATORY, blocks all subsequent steps)
 
 Run the preflight check against the source:
+
 ```bash
 python3 scripts/migration_preflight.py --host <source-host> --port 6379
 python3 scripts/migration_preflight.py --host <source-host> --port 6379 --tls  # if TLS
@@ -75,21 +76,24 @@ python3 scripts/migration_preflight.py --host <source-host> --port 6379 --tls  #
 This checks version compatibility, module usage, key count, memory, cluster mode, and sizing.
 
 **Gate enforcement rules:**
-* If the preflight script exits with a non-zero status (any FAIL finding), the skill MUST stop here.
-* The skill MUST NOT proceed to Step 3 or any subsequent step.
-* The skill MUST present each FAIL finding to the user with remediation guidance.
-* The skill MUST ask the user to resolve all failures and re-run preflight before continuing.
-* WARN findings should be presented to the user but do not block the migration.
+
+- If the preflight script exits with a non-zero status (any FAIL finding), the skill MUST stop here.
+- The skill MUST NOT proceed to Step 3 or any subsequent step.
+- The skill MUST present each FAIL finding to the user with remediation guidance.
+- The skill MUST ask the user to resolve all failures and re-run preflight before continuing.
+- WARN findings should be presented to the user but do not block the migration.
 
 ### Topology and Sizing
 
 After preflight passes, validate topology and sizing:
+
 - Topology validation (AZ, subnet, security group compatibility): see `topology-validation.md`
 - Sizing assessment (memory, CPU, connections, cost estimation): see `sizing-assessment.md`
 
 ### Step 3: Create pre-cutover snapshot
 
 Before executing any migration command, create a snapshot of the source (if ElastiCache) or confirm a backup exists (if self-managed):
+
 ```bash
 # For ElastiCache source
 aws elasticache create-snapshot \
@@ -97,6 +101,7 @@ aws elasticache create-snapshot \
   --snapshot-name pre-migration-$(date +%Y%m%d-%H%M%S) \
   --region <region>
 ```
+
 The skill MUST confirm the snapshot is in `available` status before proceeding.
 
 ### Step 4: Execute migration with AWS CLI or SDK
@@ -106,10 +111,11 @@ Only after Steps 2, 3, and topology/sizing validation pass. Use the migration co
 ### Step 5: Validate and cut over
 
 Before cutover, the skill must follow this approval gate:
-* Show before/after configuration diff
-* Confirm timing window with the user
-* Require explicit "proceed" from the user
-* Suggest snapshot before cutover (already done in Step 3)
+
+- Show before/after configuration diff
+- Confirm timing window with the user
+- Require explicit "proceed" from the user
+- Suggest snapshot before cutover (already done in Step 3)
 
 **Connection draining:** Before switching endpoints, drain existing connections to the old cache. Stop sending new requests to the old endpoint, wait for in-flight operations to complete (typically 5-10 seconds), then switch. If using connection pools, close the old pool after all borrowed connections are returned. Do not kill active connections mid-operation.
 
@@ -152,6 +158,7 @@ aws elasticache test-migration \
 **Online migration prerequisites (test-migration / start-migration / complete-migration):**
 
 *Target requirements:*
+
 - Target must NOT have encryption in-transit enabled (you can enable TLS after migration completes)
 - Target must have Multi-AZ enabled with automatic failover
 - Target must be using Valkey, or Redis OSS 5.0.6 or higher
@@ -161,6 +168,7 @@ aws elasticache test-migration \
 - Number of logical databases must be the same on source and target
 
 *Source requirements:*
+
 - Source must NOT have AUTH enabled
 - Source `protected-mode` must be set to `no`
 - Data-modification commands must not be renamed (e.g., `sync`, `psync`, `info`, `config`, `command`, `cluster`)
@@ -180,6 +188,7 @@ aws elasticache modify-replication-group \
 ```
 
 Key facts:
+
 - Valkey is designed as a drop-in replacement for Redis OSS 7. You can upgrade from Redis OSS 5.x, 6.x, or 7.x directly to Valkey
 - No application code changes needed for default parameter groups. If you have a custom cache parameter group, you must pass a custom Valkey parameter group with the same static parameter values
 - To upgrade a single-node Redis OSS (cluster mode disabled) cluster, you must first add it to a replication group before performing the cross-engine upgrade
@@ -193,6 +202,7 @@ Key facts:
 No in-place conversion. Requires creating a new serverless cache and migrating data.
 
 Steps:
+
 1. Create new Valkey serverless cache (use `setup` sub-skill)
 2. Dual-write: application writes to both old and new cache
 3. Warm up: let reads gradually shift to new cache
@@ -213,6 +223,7 @@ Alternative: snapshot-restore if brief downtime is acceptable. Note: ElastiCache
 Rare, but needed when workload outgrows serverless cost-efficiency or requires vector search (Valkey 8.2 or above, node-based only).
 
 Steps:
+
 1. Create new node-based replication group
 2. Dual-write pattern (same as above)
 3. Cut over and decommission serverless cache: `delete-serverless-cache`

@@ -7,6 +7,7 @@ Guide for understanding, monitoring, and optimizing ElastiCache costs across ser
 When a user reports unexpected cost increase, follow this sequence:
 
 1. **Identify which component spiked.** Check Cost Explorer grouped by usage type:
+
    ```bash
    aws ce get-cost-and-usage \
      --time-period Start=<spike-start>,End=<today> \
@@ -15,6 +16,7 @@ When a user reports unexpected cost increase, follow this sequence:
      --metrics "UnblendedCost" \
      --group-by Type=DIMENSION,Key=USAGE_TYPE
    ```
+
 2. **Map the usage type to the cause:**
    - `ElastiCache:ECPU` spiked: check `ElastiCacheProcessingUnits` metric (serverless only) for traffic increase or inefficient commands. For node-based clusters, use command-level metrics such as `GetTypeCmds`, `SetTypeCmds`, etc.
    - `ElastiCache:DataStorage` spiked: check `BytesUsedForCache` for data growth without TTLs
@@ -78,6 +80,7 @@ These costs are easy to overlook during initial planning:
 ## Serverless vs Node-Based Cost Decision
 
 Use actual usage data to decide:
+
 - **Switch to node-based when:** ECPU consumption is steady and predictable, and `scripts/price_calculator.py --mode node --node-type <type> --nodes <N> --show-ri-options` shows node-based with 1-year reservation is 30%+ cheaper than current serverless spend.
 - **Stay on serverless when:** Traffic is bursty or growing unpredictably, utilization swings by more than 3x between peak and trough, or the team cannot commit to capacity planning.
 - **Switch to serverless when:** Node-based CPU is below 20% and memory below 30% sustained (over-provisioned), or traffic has become highly variable after an initially steady workload.

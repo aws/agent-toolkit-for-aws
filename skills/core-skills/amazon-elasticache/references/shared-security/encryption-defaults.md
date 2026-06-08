@@ -42,7 +42,7 @@ Wait for the modification to complete. During this phase, both encrypted and une
 
 > **Important**: DNS endpoints change during TLS migration. When switching to `preferred`, new TLS endpoints are generated. When switching to `required`, old non-TLS endpoints are deleted. Do not hardcode endpoints in your application. After each migration step completes, use `describe-replication-group` to retrieve the current endpoints.
 
-**Step 2: Update all clients to use TLS connections**
+#### Step 2: Update all clients to use TLS connections
 
 Verify all application clients are configured with TLS before proceeding.
 
@@ -74,8 +74,8 @@ At-rest encryption cannot be enabled on an existing cluster. The migration path 
 5. Delete the old cluster.
 
 This requires a brief cutover window. Plan for:
+
 - Snapshot creation time (depends on data size).
 - New cluster creation time from snapshot.
 - DNS or application configuration update.
 - Validation period before decommissioning the old cluster.
-

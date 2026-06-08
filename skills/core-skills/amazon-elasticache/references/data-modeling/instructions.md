@@ -90,11 +90,13 @@ In multi-tenant systems, prefix every key with the tenant identifier to prevent 
 Example: `tenant42:session:abc123`, `tenant42:cart:user7`
 
 Benefits of consistent tenant prefixing:
+
 - Prevents data leaks between tenants; each tenant's keys are isolated by prefix.
 - Enables per-tenant SCAN. Use `SCAN 0 MATCH tenant42:*` to enumerate only one tenant's keys.
 - Supports per-tenant eviction or cleanup by scanning and deleting a single prefix.
 
 **Hash tags for multi-key operations:** If you use MGET, pipelines, or transactions across multiple keys for the same tenant on cluster-mode-enabled caches (including serverless), wrap the tenant ID in curly braces to ensure all keys hash to the same slot: `{tenant42}:session:abc123`. Without hash tags, multi-key operations across different slots will fail with CROSSSLOT errors. **Hot-slot risk:** Hash tags concentrate all keys for a tenant onto a single shard. For large tenants with high key counts or throughput, this can create a hot slot that overloads one shard while others remain idle. Monitor per-shard CPU and memory metrics, and consider splitting very large tenants across multiple hash tags if hot-spotting occurs.
+
 - Simplifies capacity analysis; count keys per tenant with `SCAN` + prefix match.
 
 ## Dangerous Commands -- Never Use KEYS in Production
@@ -138,6 +140,7 @@ If a team member or external reference suggests using `KEYS`, always redirect to
 ## Code Generation
 
 When generating application code:
+
 - Always use TLS (ssl=True / tls:{}) for ElastiCache endpoints
 - Prefer connection pooling; avoid creating a new connection per request. Use a module-level singleton pattern (initialize on first use via a `get_client()` function) to reuse connections across requests.
 - Use pipelining for multi-command operations (reduces round trips)

@@ -20,6 +20,7 @@ ElastiCache control-plane APIs enforce throttle limits. Deploying multiple cache
 A stack can get stuck when a rollback itself fails (for example, a resource that was modified outside of CFN).
 
 **Resolution:**
+
 1. Open the CloudFormation console or run `aws cloudformation describe-stack-events` to identify the failed resource.
 2. Run `aws cloudformation continue-update-rollback --stack-name <name>` to retry.
 3. If a specific resource cannot roll back, skip it: `aws cloudformation continue-update-rollback --stack-name <name> --resources-to-skip <logical-id>`.
@@ -30,6 +31,7 @@ A stack can get stuck when a rollback itself fails (for example, a resource that
 Serverless caches create VPC endpoints in the associated subnets. If these endpoints still exist when the stack tries to delete the cache or its networking resources, deletion fails.
 
 **Resolution:**
+
 1. List endpoints: `aws ec2 describe-vpc-endpoints --filters Name=vpc-id,Values=<vpc-id>` and identify ElastiCache-related endpoints.
 2. Delete them: `aws ec2 delete-vpc-endpoints --vpc-endpoint-ids <id1> <id2>`.
 3. Retry the stack deletion.
@@ -39,6 +41,7 @@ Serverless caches create VPC endpoints in the associated subnets. If these endpo
 ### CREATE_FAILED on ReplicationGroup
 
 Common causes:
+
 * Subnet group references subnets in a single AZ (Multi-AZ requires at least 2 AZs).
 * Security group does not allow inbound on port 6379.
 * Insufficient IP addresses in the subnet for the requested node count.

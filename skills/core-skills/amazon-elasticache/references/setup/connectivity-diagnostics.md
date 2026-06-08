@@ -13,6 +13,7 @@ ElastiCache has no public endpoints. Determine where the client runs before diag
 | Local laptop / CI runner | Set up SSM tunnel first, then diagnose against `127.0.0.1` with `--tunnel-mode` |
 
 Tunnel setup:
+
 ```bash
 python3 scripts/find_tunnel_host.py --vpc-id <vpc-id> --region <region>
 python3 scripts/start_tunnel.py --instance-id <id> --cache-host <endpoint> --region <region>
@@ -24,6 +25,7 @@ If tunnel fails: check SSM agent status, `AmazonSSMManagedInstanceCore` policy, 
 ## Step 1: DNS Resolution
 
 Retrieve the correct endpoint:
+
 ```bash
 # Serverless
 aws elasticache describe-serverless-caches --serverless-cache-name <name> \
@@ -41,6 +43,7 @@ aws elasticache describe-replication-groups --replication-group-id <name> \
 Note: `ConfigurationEndpoint` is null for cluster-mode-disabled clusters. Use `PrimaryEndpoint` and `ReaderEndpoint` from `NodeGroups[0]` instead.
 
 Common mistakes:
+
 * Using `ConfigurationEndpoint` for cluster-mode-disabled clusters (it will be null)
 * Using a node endpoint instead of the configuration endpoint for cluster-mode-enabled caches
 * Including the port in the hostname (`endpoint:6379` instead of just `endpoint`)
@@ -52,6 +55,7 @@ If DNS times out: verify VPC has `enableDnsSupport` and `enableDnsHostnames` set
 **Serverless caches need both ports open**: 6379 (primary) AND 6380 (reader) in the security group.
 
 Find the cache's security group:
+
 ```bash
 aws elasticache describe-serverless-caches \
   --serverless-cache-name <name> \
@@ -59,6 +63,7 @@ aws elasticache describe-serverless-caches \
 ```
 
 Failure causes:
+
 * **Timeout**: security group inbound rule missing for TCP 6379 (and 6380 for serverless) from client's SG or CIDR
 * **Refused**: cache not in `available` status, or wrong port
 * **Lambda**: must have VPC attachment. Verify with `aws lambda get-function-configuration --function-name <name> --query 'VpcConfig'`
@@ -79,6 +84,7 @@ ElastiCache-specific failures:
 ## Step 4: Authentication
 
 Test with CLI:
+
 ```bash
 # RBAC with password
 valkey-cli -h <endpoint> -p 6379 --tls --user <username> --pass <password> PING
@@ -110,6 +116,7 @@ ElastiCache-specific auth failures:
 | `WRONGPASS` (user disabled) | Access string starts with `off` | Change to `on` via `modify-user` |
 
 IAM permission check:
+
 ```bash
 aws iam simulate-principal-policy --policy-source-arn <role-arn> \
   --action-names elasticache:Connect \

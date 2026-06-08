@@ -32,6 +32,7 @@ Load this reference when the user needs to choose or configure an embedding prov
 ### B. Generate a reusable embedding utility in the user's project
 
 Create a file (default: `utils/embeddings.py`, or wherever fits the user's project structure) that exports:
+
 * `generate_embedding(text: str) -> list[float]`
 * `embedding_to_bytes(embedding: list[float]) -> bytes`
 * `VECTOR_DIM: int`
@@ -101,6 +102,7 @@ If `infrastructure.embedding_module` is set in `requirements.json`, read that fi
 Use these in the `embedder` block of mem0's config dict. See `agent-memory.md` for the full mem0 configuration.
 
 **Bedrock Titan:**
+
 ```json
 {
   "embedder": {
@@ -114,6 +116,7 @@ Use these in the `embedder` block of mem0's config dict. See `agent-memory.md` f
 ```
 
 **Bedrock Cohere:**
+
 ```json
 {
   "embedder": {
@@ -127,6 +130,7 @@ Use these in the `embedder` block of mem0's config dict. See `agent-memory.md` f
 ```
 
 **fastembed / sentence-transformers:**
+
 ```json
 {
   "embedder": {
@@ -145,6 +149,7 @@ Use these in the `embedder` block of mem0's config dict. See `agent-memory.md` f
 These are the canonical implementations for the reusable embedding utility file. Use the one matching the user's chosen provider.
 
 **Bedrock Titan:**
+
 ```python
 import boto3, json, struct
 
@@ -165,6 +170,7 @@ def embedding_to_bytes(embedding: list[float]) -> bytes:
 ```
 
 **Bedrock Cohere:**
+
 ```python
 import boto3, json, struct
 
@@ -189,6 +195,7 @@ def embedding_to_bytes(embedding: list[float]) -> bytes:
 **Cohere note:** Pass `query=True` when embedding a search query (retrieval), `query=False` (default) when embedding documents for storage. Other providers ignore this parameter.
 
 **fastembed:**
+
 ```python
 import struct
 from fastembed import TextEmbedding
@@ -204,6 +211,7 @@ def embedding_to_bytes(embedding: list[float]) -> bytes:
 ```
 
 **sentence-transformers:**
+
 ```python
 import struct
 from sentence_transformers import SentenceTransformer

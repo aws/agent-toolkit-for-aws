@@ -4,7 +4,7 @@
 
 Before migrating, assess the source workload to determine appropriate target sizing. Undersizing causes performance degradation; oversizing wastes cost.
 
-### Memory Utilization and Peak Usage
+## Memory Utilization and Peak Usage
 
 Collect current and peak memory from the source:
 
@@ -25,6 +25,7 @@ aws cloudwatch get-metric-statistics \
 ```
 
 **Sizing rules:**
+
 * **Node-based:** choose a node whose `maxmemory` is at least 2x current peak usage to account for growth, fragmentation, and the default 25% `reserved-memory-percent` (which leaves only 75% of `maxmemory` for data). Account for `reserved-memory-percent` (default 25% for accounts created on or after March 16, 2017; accounts created before that date default to `reserved-memory` with 0 bytes reserved). For burstable instance types, increase `reserved-memory-percent` up to 50% on micro instances and up to 30% on small instances to avoid swap usage during backup and replication.
 * **Serverless:** set `DataStorage.Maximum` to at least 2x current usage. The higher multiplier accounts for auto-scaling buffer and the fact that you cannot manually tune memory allocation.
 * If `mem_fragmentation_ratio` is above 1.5, the actual memory needed may be lower after migration (ElastiCache manages memory more efficiently).
@@ -53,6 +54,7 @@ aws cloudwatch get-metric-statistics \
 ```
 
 **Sizing rules:**
+
 * If source CPU consistently exceeds 70%, consider adding shards (horizontal scaling) on the target rather than just matching the source topology.
 * Heavy `KEYS`, `SORT`, or Lua script usage drives CPU. These patterns may need optimization regardless of migration.
 * For serverless targets, CPU is managed automatically, but high-CPU command patterns will increase ECPU consumption and cost.
@@ -77,6 +79,7 @@ aws cloudwatch get-metric-statistics \
 ```
 
 **Sizing rules:**
+
 * Both serverless caches and individual ElastiCache node-based nodes support up to 65,000 concurrent client connections (`maxclients`). Verify the peak connection count is within this limit.
 * For serverless, connections scale automatically. ECPU consumption is per-request, not per-connection; idle connections do not consume ECPUs. However, use connection pooling to reduce overhead from connection setup.
 * If connection count is high, recommend connection pooling in the application (most client libraries support this).
@@ -99,10 +102,12 @@ aws cloudwatch get-metric-statistics \
 | Connections > 10,000 | Default (but review ECPU cost) | cache.r7g.xlarge+ with connection pooling |
 
 **Migration method constraints:**
+
 * Online migration is **not supported** to ElastiCache serverless caches or clusters running on the r6gd (data tiering) node type. If you plan to use online migration, choose a non-r6gd node-based target. For serverless or r6gd targets, use backup/restore or another migration strategy.
 * Online migration additionally requires: the target must have transit encryption (TLS) disabled, Multi-AZ enabled, and not be part of a Global Datastore. The source must not have AUTH enabled and must have `protected-mode` set to `no`. Shard counts should match between source and target. See `topology-validation.md` for the full prerequisites checklist.
 
 Run cost estimation to compare current spend vs target:
+
 ```bash
 # For node-based to serverless migrations (uses actual cluster metrics)
 python3 scripts/serverless_estimator.py --input clusters.csv --commandstats stats.csv
@@ -114,6 +119,7 @@ python3 scripts/price_calculator.py --mode node --node-type <type> --nodes <N> -
 ```
 
 To collect metrics from a running cluster for the estimator:
+
 ```bash
 ./scripts/collect_metrics.sh <endpoint> <port> [output_prefix]
 ```

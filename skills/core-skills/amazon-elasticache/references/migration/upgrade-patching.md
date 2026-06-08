@@ -17,12 +17,14 @@ aws elasticache modify-replication-group \
 ```
 
 Process (single shard / cluster mode disabled):
+
 1. ElastiCache upgrades replicas first, one at a time
 2. Performs a failover to promote an upgraded replica to primary
 3. Upgrades the old primary last
 4. Total time depends on cluster size and data volume (typically minutes to an hour)
 
 Process (multiple shards / cluster mode enabled):
+
 1. All shards are processed in parallel; only one upgrade operation is performed on a shard at any time
 2. In each shard, all replicas are processed before the primary is processed
 3. If there are fewer replicas in a shard, the primary in that shard might be processed before replicas in other shards finish
@@ -33,6 +35,7 @@ Process (multiple shards / cluster mode enabled):
 Same in-place mechanism as minor upgrades. Major versions may introduce new features (e.g., vector search in 8.2) and deprecate old behaviors.
 
 Pre-upgrade checklist:
+
 - Review the Valkey release notes for breaking changes
 - Test the upgrade in a non-production environment first
 - Confirm application compatibility with the new version
@@ -80,10 +83,12 @@ aws elasticache modify-replication-group \
 ```
 
 Prerequisites:
+
 - Single-node Redis OSS (cluster mode disabled) clusters must first be added to a replication group before performing the cross-engine upgrade. See [Creating a replication group using an existing cluster](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Replication.CreatingReplGroup.ExistingCluster.html).
 - If a custom cache parameter group is applied to the existing Redis OSS replication group, you must pass a custom Valkey cache parameter group with the same Redis OSS static parameter values (use `--cache-parameter-group-name`).
 
 Benefits:
+
 - Immediate 20% cost savings on node-based pricing
 - Access to Valkey-specific features in future versions
 - No-downtime, zero-data-loss process (from Redis OSS 5.0.6+)
@@ -94,6 +99,7 @@ Benefits:
 For Valkey 7.2+ and Redis OSS 7.0+ replication groups with automatic failover and at least one replica, you can convert from cluster mode disabled (CMD) to cluster mode enabled (CME) in-place without creating a new cluster. This is a **one-way operation** — once cluster mode is set to `enabled`, it cannot be disabled. CME→CMD conversion is not supported.
 
 This is a two-step process:
+
 1. Set cluster mode to `compatible` (allows both CMD and CME clients to connect)
 2. Set cluster mode to `enabled` (CME only)
 
@@ -115,6 +121,7 @@ aws elasticache modify-replication-group \
 ```
 
 Prerequisites:
+
 - Valkey 7.2+ or Redis OSS 7.0+
 - Automatic failover enabled with at least one replica
 - All keys must be in database 0 (DB 0)
@@ -143,11 +150,13 @@ Redis OSS versions 4 and 5 will enter Extended Support on February 1, 2026 (end 
 ### Rollback Considerations
 
 General engine version downgrades are not supported, with one exception: ElastiCache supports rolling back from Valkey 7.2 to Redis OSS 7.1 using the same in-place process as an upgrade, with zero downtime. Requirements for this rollback:
+
 - Only Valkey 7.2 to Redis OSS 7.1 is supported (even if you upgraded from an earlier version)
 - Any user group and user associated with the replication group or serverless cache must be configured with engine type `REDIS`
 - You can also restore a Valkey 7.2 snapshot as a Redis OSS 7.1 cache
 
 For all other downgrade scenarios:
+
 - **Before upgrading**: create a manual snapshot
 - **If the upgrade causes issues**: restore the snapshot to a new cluster running the old version, update application endpoints, and decommission the upgraded cluster
 - **For critical workloads**: run the new version in parallel (blue-green) and cut over only after validation
@@ -159,6 +168,7 @@ ElastiCache periodically releases service updates for security patches, bug fixe
 ### Self-Service Updates
 
 Check for available updates:
+
 ```bash
 aws elasticache describe-service-updates \
   --service-update-status available \
@@ -172,6 +182,7 @@ aws elasticache describe-update-actions \
 ```
 
 Apply an update:
+
 ```bash
 aws elasticache batch-apply-update-action \
   --replication-group-ids <cluster-id-1> <cluster-id-2> \
@@ -191,6 +202,7 @@ Some service updates have an auto-apply date. If you do not apply them before th
 Node-based clusters have a configurable weekly maintenance window for auto-applied updates. Serverless caches do not have maintenance windows (updates are applied transparently with zero downtime).
 
 Configure the maintenance window:
+
 ```bash
 aws elasticache modify-replication-group \
   --replication-group-id <cluster-id> \
@@ -199,6 +211,7 @@ aws elasticache modify-replication-group \
 ```
 
 Best practices:
+
 - Set the maintenance window to a low-traffic period
 - Multi-AZ clusters experience zero downtime during patching (replicas are patched first, then a failover occurs)
 - Single-node clusters experience brief downtime during patching (avoid single-node in production)
@@ -229,6 +242,7 @@ aws elasticache modify-replication-group \
 ```
 
 Process:
+
 1. ElastiCache provisions new nodes with the target type
 2. Syncs data to the new nodes
 3. Performs DNS failover to the new nodes
@@ -260,6 +274,7 @@ aws elasticache modify-serverless-cache \
 ## Operational Checklist
 
 Before any upgrade or patching operation:
+
 - [ ] Verify Multi-AZ and automatic failover are enabled (required for zero-downtime operations)
 - [ ] Take a manual snapshot (safety net for rollback)
 - [ ] Review release notes for the target version

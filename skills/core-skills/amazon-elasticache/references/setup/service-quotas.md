@@ -26,6 +26,7 @@ Per-cache serverless limits (storage, ECPU) are adjusted directly via `modify-se
 ## Checking Current Quotas
 
 **CLI:**
+
 ```bash
 aws service-quotas list-service-quotas --service-code elasticache --region <region>
 ```
@@ -33,6 +34,7 @@ aws service-quotas list-service-quotas --service-code elasticache --region <regi
 **Console:** Service Quotas > AWS services > Amazon ElastiCache.
 
 To check applied (effective) values vs defaults:
+
 ```bash
 aws service-quotas get-service-quota --service-code elasticache --quota-code <quota-code>
 ```
@@ -40,6 +42,7 @@ aws service-quotas get-service-quota --service-code elasticache --quota-code <qu
 ## Requesting Increases
 
 **Self-service (most quotas):**
+
 ```bash
 aws service-quotas request-service-quota-increase \
   --service-code elasticache \
@@ -50,6 +53,7 @@ aws service-quotas request-service-quota-increase \
 Find the quota code from `list-service-quotas` output or the table above. Increases are typically approved within minutes for standard quotas.
 
 **Serverless storage/ECPU:** Adjust directly, no quota request needed:
+
 ```bash
 aws elasticache modify-serverless-cache \
   --serverless-cache-name <name> \

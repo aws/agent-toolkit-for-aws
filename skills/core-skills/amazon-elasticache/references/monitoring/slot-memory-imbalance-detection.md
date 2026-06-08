@@ -14,6 +14,7 @@
 ### Engine version gate
 
 CLUSTER SLOT-STATS with MEMORY-BYTES requires **Valkey 8.0+** (this is a Valkey-only feature and is not available on any Redis OSS engine version). Verify:
+
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls INFO server | grep -E 'redis_version|valkey_version'
 ```
@@ -23,12 +24,14 @@ valkey-cli -h <endpoint> -p 6379 --tls INFO server | grep -E 'redis_version|valk
 ### Feature flag
 
 `cluster-slot-stats-enabled` must be `yes` in the parameter group. This is a Valkey 8.0+ parameter; verify it is available in your cache parameter group before relying on it. Note: This parameter may not appear in ElastiCache parameter groups documentation. It may be enabled by default or not exposed as a configurable parameter. `CONFIG GET` is restricted on all ElastiCache caches; check via the AWS API:
+
 ```bash
 aws elasticache describe-cache-parameters \
   --cache-parameter-group-name <parameter-group-name> \
   --query "Parameters[?ParameterName=='cluster-slot-stats-enabled'].ParameterValue" \
   --output text --region <region>
 ```
+
 If missing or `no`, enable via parameter group modification (zero-downtime on most configs).
 
 ### Command availability
@@ -46,7 +49,7 @@ If missing or `no`, enable via parameter group modification (zero-downtime on mo
 
 ## Tier A: Triage with CloudWatch
 
-**Step 1: Per-node memory utilization**
+### Step 1: Per-node memory utilization
 
 ```bash
 aws cloudwatch get-metric-statistics \
@@ -63,7 +66,7 @@ Run for each primary (discover with `CLUSTER SHARDS`).
 
 Proceed if spread is >15 percentage points (e.g., one node at 85%, another at 45%).
 
-**Step 2: Confirm persistence**
+### Step 2: Confirm persistence
 
 Query `BytesUsedForCache` per node over 24h (node-based, using `CacheClusterId` and `CacheNodeId` dimensions). For serverless, use `BytesUsedForCache` with the `ServerlessCacheName` dimension. A stable gap over hours is real. A 10-minute transient is not.
 
@@ -71,7 +74,7 @@ Query `BytesUsedForCache` per node over 24h (node-based, using `CacheClusterId` 
 
 ## Tier B: Narrow with CLUSTER SLOT-STATS
 
-**Step 1: Identify memory-heavy slots**
+### Step 1: Identify memory-heavy slots
 
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls \
@@ -84,11 +87,11 @@ A single dominant slot (order of magnitude above peers) is a memory hotspot.
 
 Subsecond, negligible impact. Reads stats Valkey already maintains. Safe at any time on production.
 
-**Step 2: Map hot slots to shards**
+### Step 2: Map hot slots to shards
 
 Use `CLUSTER SHARDS` output to map each hot slot to its primary. Hot slot on the already-hot node confirms the story.
 
-**Step 3: Correlate with key count**
+### Step 3: Correlate with key count
 
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls CLUSTER COUNTKEYSINSLOT <hot-slot>
@@ -105,18 +108,18 @@ valkey-cli -h <endpoint> -p 6379 --tls CLUSTER COUNTKEYSINSLOT <hot-slot>
 
 ## Tier C: Verify with key-level inspection
 
-**Step 1: Sample keys from the hot slot**
+### Step 1: Sample keys from the hot slot
 
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls \
   CLUSTER GETKEYSINSLOT <hot-slot> 200
 ```
 
-**Step 2: Identify hash-tag pattern**
+### Step 2: Identify hash-tag pattern
 
 Look for common `{...}` hash-tag prefix in returned keys. If most keys are `{tenant_42}:session:*`, `{tenant_42}:cache:*`, tenant 42 has concentrated its keys into a single slot.
 
-**Step 3: Measure top keys**
+### Step 3: Measure top keys
 
 ```bash
 valkey-cli -h <endpoint> -p 6379 --tls MEMORY USAGE <key>

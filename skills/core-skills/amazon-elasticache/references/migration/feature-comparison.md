@@ -51,22 +51,26 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 ### Migration Notes: Redis OSS to Valkey
 
 **What you gain:**
+
 * 20% cost savings on node-based, 33% on serverless
 * Access to Valkey-specific features in future releases (vector search in 8.2)
 * Active open-source community and roadmap
 * Zero application code changes (API-compatible with Redis OSS 7.2)
 
 **What you lose:**
+
 * Nothing for standard Redis OSS workloads
 * Redis Ltd. commercial module ecosystem (RediSearch, RedisBloom, RedisTimeSeries) is not available. Valkey 8.1 provides native Bloom filters (BF.* commands) and Valkey 8.2 provides native vector search
 
 **What changes:**
+
 * Engine identifier changes from `redis` to `valkey` in API calls and IaC
 * Future version numbers follow Valkey versioning (7.2, 8.0, 8.1, 8.2, 9.0)
 
 ### Migration Notes: Memcached to Valkey
 
 **What you gain:**
+
 * Persistence (snapshots, AOF)
 * Replication and automatic failover
 * Rich data structures (hashes, lists, sets, sorted sets, streams, JSON)
@@ -77,11 +81,13 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 * Online resharding
 
 **What you lose:**
+
 * Multi-threaded architecture (Memcached uses multiple threads per node; Valkey is primarily single-threaded per shard but compensates with sharding)
 * Potentially lower per-node cost for simple key-value workloads (Memcached nodes can be cheaper)
 * Slab-based memory allocator (Memcached's memory model differs; unlikely to matter in practice)
 
 **What changes:**
+
 * Client library must change (memcached client to Valkey/Redis client)
 * Application code must be rewritten for Valkey commands (SET/GET vs set/get, different API)
 * Connection model changes (Valkey uses persistent TCP connections)
@@ -131,6 +137,7 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 ### Migration Notes: Node-Based to Serverless
 
 **What you gain:**
+
 * Zero capacity planning and automatic scaling
 * No maintenance windows or patching overhead
 * Sub-minute provisioning
@@ -138,6 +145,7 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 * Always-on TLS and encryption
 
 **What you lose:**
+
 * Sub-millisecond latency (serverless is single-digit ms)
 * Vector search support (Valkey 8.2 or above, node-based only)
 * Global Datastore (node-based only)
@@ -147,6 +155,7 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 * Direct control over node count and placement
 
 **What changes:**
+
 * Endpoint format changes to `*.serverless.<region>.cache.amazonaws.com`
 * Auth must be RBAC or IAM (AUTH tokens not supported)
 * TLS is mandatory (update clients if not already using TLS)
@@ -158,6 +167,7 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 ### Migration Notes: Serverless to Node-Based
 
 **What you gain:**
+
 * Sub-millisecond latency
 * Vector search (Valkey 8.2 or above)
 * Global Datastore for multi-region
@@ -167,12 +177,14 @@ Side-by-side comparison of features, capabilities, and constraints across migrat
 * Full control over topology and placement
 
 **What you lose:**
+
 * Automatic scaling (must manage capacity manually or via policies)
 * Zero-maintenance patching (must configure maintenance windows)
 * Sub-minute provisioning (node-based takes 5-15 minutes)
 * Usage-based pricing (node-based charges for provisioned capacity, not actual use)
 
 **What changes:**
+
 * Endpoint format changes from serverless to standard replication group endpoint
 * May switch from RBAC to AUTH token (or keep RBAC)
 * TLS becomes optional (but strongly recommended to keep it enabled)

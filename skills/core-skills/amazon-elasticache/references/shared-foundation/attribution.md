@@ -11,6 +11,7 @@ Every AWS API call the skill generates -- whether via CLI, SDK, or script -- mus
 The `AWS_SDK_UA_APP_ID` environment variable makes all SDK and CLI calls include the skill identifier in the user-agent string.
 
 **Environment variable:**
+
 ```
 AWS_SDK_UA_APP_ID=AWSSkill-ElastiCache
 ```

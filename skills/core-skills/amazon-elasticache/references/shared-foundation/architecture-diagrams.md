@@ -32,6 +32,7 @@ flowchart LR
 ```
 
 **Key characteristics:**
+
 - Serverless Valkey is the default cache layer (deploys in under a minute)
 - TLS is always on for all serverless caches (Valkey, Redis OSS, and Memcached)
 - Application handles cache-miss logic (lazy loading)
@@ -86,6 +87,7 @@ flowchart TB
 ```
 
 **Key characteristics:**
+
 - Reads go through cache first (significantly faster than direct DB queries; per AWS published benchmarks, results vary by workload)
 - Writes go to the database primary, then invalidate or update the cache
 - Aurora read replicas handle cache misses and complex queries
@@ -150,6 +152,7 @@ flowchart TB
 ```
 
 **Key characteristics:**
+
 - **Semantic cache**: Stores prompt embeddings and LLM responses. On a new prompt, computes embedding similarity to find cached answers. Significantly reduces inference cost and latency (per AWS published benchmarks, results vary by workload).
 - **Vector search**: Stores document chunk embeddings for RAG. Retrieves semantically relevant context to ground LLM responses and reduce hallucinations.
 - **Agent memory**: Stores conversation turns as vectors. Retrieves only relevant past interactions per LLM invocation to avoid context window overflow.
@@ -214,6 +217,7 @@ flowchart TB
 ```
 
 **Key characteristics:**
+
 - ElastiCache runs in private subnets only (no public internet access)
 - Security groups restrict inbound to port 6379 (and 6380 for serverless reader endpoint) from the app security group
 - Multi-AZ deployment with nodes/endpoints in at least 2 availability zones

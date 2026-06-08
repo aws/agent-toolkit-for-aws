@@ -31,6 +31,7 @@ Before provisioning, verify:
 ### Serverless
 
 Key differences from node-based:
+
 - Deploys in under a minute
 - TLS, encryption at rest, Multi-AZ: all automatic (no flags needed)
 - Snapshots are supported but must be explicitly configured via `SnapshotRetentionLimit` > 0 and optionally `DailySnapshotTime`. They are not enabled by default.
@@ -41,6 +42,7 @@ Key differences from node-based:
 ### Node-Based
 
 Key differences from serverless:
+
 - Takes 5-15 minutes to provision
 - Requires explicit security flags: `--transit-encryption-enabled`, `--at-rest-encryption-enabled`, `--automatic-failover-enabled`, `--multi-az-enabled`, `--snapshot-retention-limit 7`
 - Requires a subnet group (separate resource)
@@ -62,6 +64,7 @@ Always tell the user after creating:
 > Use the bundled scripts (`scripts/find_tunnel_host.py`, `scripts/start_tunnel.py`) as the primary path. Always try option 1 before option 2.
 
 Tunnel startup:
+
 ```bash
 python3 scripts/start_tunnel.py --instance-id <id> --cache-host <endpoint> --region <region>
 python3 scripts/test_connection.py 127.0.0.1 --port 6379 --tunnel-mode --server-name <endpoint>
@@ -76,8 +79,9 @@ python3 scripts/test_connection.py 127.0.0.1 --port 6379 --tunnel-mode --server-
 
 Use the engine value that matches your cache engine (`valkey` for Valkey caches, `redis` for Redis OSS caches).
 3. Attach to cache:
-   - Serverless: `modify-serverless-cache --serverless-cache-name <name> --user-group-id <name>-usergroup`
-   - Node-based: set `--user-group-ids` at creation time
+
+- Serverless: `modify-serverless-cache --serverless-cache-name <name> --user-group-id <name>-usergroup`
+- Node-based: set `--user-group-ids` at creation time
 
 **Note:** The `--engine` value for user and user-group accepts `valkey` or `redis`. Use the value that matches your cache engine.
 

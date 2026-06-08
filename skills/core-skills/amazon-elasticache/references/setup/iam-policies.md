@@ -15,16 +15,20 @@ Which permissions to generate based on what the user is doing.
 ## ElastiCache-Specific Gotchas
 
 **`elasticache:Connect` requires two ARNs.** The Resource list must include both the cache AND the user. Without both, connection is denied:
+
 ```
 arn:aws:elasticache:<region>:<account-id>:serverlesscache:<cache-name>
 arn:aws:elasticache:<region>:<account-id>:user:<user-id>
 ```
+
 For node-based, replace `serverlesscache` with `replicationgroup`.
 
 **KMS condition for at-rest encryption** (only if using customer-managed key):
+
 ```
 "Condition": { "StringEquals": { "kms:ViaService": "elasticache.<region>.amazonaws.com" } }
 ```
+
 Required KMS actions: `kms:CreateGrant`, `kms:DescribeKey`, `kms:GenerateDataKey`, `kms:Decrypt`.
 
 **Service-linked role:** `AWSServiceRoleForElastiCache`. First-time account setup needs `iam:CreateServiceLinkedRole` with condition `"iam:AWSServiceName": "elasticache.amazonaws.com"`. Once created, remove.

@@ -139,6 +139,7 @@ aws elasticache failover-global-replication-group \
 ```
 
 After failover:
+
 * The former secondary becomes the new primary (read-write).
 * The former primary becomes the new secondary (read-only).
 * Application writes must target the new primary region's endpoint.

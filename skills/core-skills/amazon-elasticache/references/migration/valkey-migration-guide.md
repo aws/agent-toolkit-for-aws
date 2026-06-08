@@ -86,6 +86,7 @@ Valkey is wire-protocol compatible with Redis OSS 7.2. Most client libraries wor
 | Valkey GLIDE (Java) | 1.0+ | New client | Official Valkey client. Consider for new projects building on the Valkey ecosystem. Existing projects can stay on Jedis/Lettuce with no compatibility issues. |
 
 **Redisson-specific notes:**
+
 * Redisson 3.27+ is validated for Valkey 7.2 compatibility.
 * If using `RedissonClient` with cluster mode enabled, test the `ClusterServersConfig` scan interval and DNS resolution against Valkey endpoints before production cutover.
 * Redisson's `RLock`, `RMap`, `RQueue`, and other distributed objects are Valkey-compatible since they use standard Redis commands internally.
@@ -125,14 +126,14 @@ Valkey is wire-protocol compatible with Redis OSS 7.2. Most client libraries wor
 
 Before switching from Redis OSS to Valkey:
 
-- [ ] **Verify source version.** Direct cross-engine upgrade from any Redis OSS version to Valkey is supported. No intermediate Redis OSS version upgrade is required.
-- [ ] **Check for Redis module usage.** If using RediSearch, RedisBloom, or RedisTimeSeries modules: RediSearch functionality is replaced by native vector search in Valkey 8.2. RedisBloom is replaced by native Bloom filter support (BF.ADD, BF.EXISTS, BF.RESERVE) in Valkey 8.1+. RedisTimeSeries has no Valkey equivalent; evaluate whether the workload can be redesigned.
-- [ ] **Verify client library version.** Check the compatibility table above. Upgrade the client library if below the minimum version.
-- [ ] **Test in non-production.** Create a non-production cluster, switch it to Valkey, and run application integration tests.
-- [ ] **Run `scripts/migration_preflight.py`.** Validates version compatibility, module usage, memory, and cluster configuration.
-- [ ] **Take a manual snapshot.** In-place rollback is only supported from Valkey 7.2 to Redis OSS 7.1. For upgrades beyond Valkey 7.2 (e.g., to 8.0+), the snapshot is your rollback path.
-- [ ] **Plan the maintenance window.** The engine switch is zero-downtime with Multi-AZ, but schedule during low traffic as a precaution.
-- [ ] **Notify stakeholders.** The engine identifier changes from `redis` to `valkey` in API calls, CloudWatch metrics namespace, and IaC definitions.
+* [ ] **Verify source version.** Direct cross-engine upgrade from any Redis OSS version to Valkey is supported. No intermediate Redis OSS version upgrade is required.
+* [ ] **Check for Redis module usage.** If using RediSearch, RedisBloom, or RedisTimeSeries modules: RediSearch functionality is replaced by native vector search in Valkey 8.2. RedisBloom is replaced by native Bloom filter support (BF.ADD, BF.EXISTS, BF.RESERVE) in Valkey 8.1+. RedisTimeSeries has no Valkey equivalent; evaluate whether the workload can be redesigned.
+* [ ] **Verify client library version.** Check the compatibility table above. Upgrade the client library if below the minimum version.
+* [ ] **Test in non-production.** Create a non-production cluster, switch it to Valkey, and run application integration tests.
+* [ ] **Run `scripts/migration_preflight.py`.** Validates version compatibility, module usage, memory, and cluster configuration.
+* [ ] **Take a manual snapshot.** In-place rollback is only supported from Valkey 7.2 to Redis OSS 7.1. For upgrades beyond Valkey 7.2 (e.g., to 8.0+), the snapshot is your rollback path.
+* [ ] **Plan the maintenance window.** The engine switch is zero-downtime with Multi-AZ, but schedule during low traffic as a precaution.
+* [ ] **Notify stakeholders.** The engine identifier changes from `redis` to `valkey` in API calls, CloudWatch metrics namespace, and IaC definitions.
 
 ## Execution
 
@@ -161,6 +162,7 @@ aws elasticache modify-replication-group \
 ```
 
 Monitor the operation:
+
 ```bash
 aws elasticache describe-replication-groups \
   --replication-group-id <cluster-id> \
@@ -180,12 +182,12 @@ aws elasticache modify-replication-group \
 
 ## Post-Migration Validation
 
-- [ ] Confirm engine shows `valkey` in `describe-replication-groups` output
-- [ ] Spot-check application reads and writes
-- [ ] Verify CloudWatch metrics are flowing (namespace remains `AWS/ElastiCache`; dimensions are `CacheClusterId` and `CacheNodeId`, not an engine dimension)
-- [ ] Run `scripts/security_audit.py --replication-group <cluster-id>` to confirm security posture
-- [ ] Update IaC definitions to reflect `engine: valkey` and the new engine version
-- [ ] Keep the pre-migration snapshot for at least 7 days as a rollback safety net
+* [ ] Confirm engine shows `valkey` in `describe-replication-groups` output
+* [ ] Spot-check application reads and writes
+* [ ] Verify CloudWatch metrics are flowing (namespace remains `AWS/ElastiCache`; dimensions are `CacheClusterId` and `CacheNodeId`, not an engine dimension)
+* [ ] Run `scripts/security_audit.py --replication-group <cluster-id>` to confirm security posture
+* [ ] Update IaC definitions to reflect `engine: valkey` and the new engine version
+* [ ] Keep the pre-migration snapshot for at least 7 days as a rollback safety net
 
 ## Rollback
 

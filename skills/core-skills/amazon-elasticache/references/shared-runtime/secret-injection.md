@@ -18,6 +18,7 @@ Standardized patterns for injecting cache credentials into Lambda, ECS, and EKS 
 No secrets to manage. The Lambda execution role generates a short-lived token at runtime.
 
 IAM policy on the Lambda execution role:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -38,6 +39,7 @@ IAM policy on the Lambda execution role:
 Use `serverlesscache:` for serverless caches, `replicationgroup:` for node-based clusters. Include both if the policy covers multiple deployment types.
 
 Application code (Python):
+
 ```python
 import os
 import boto3
@@ -108,6 +110,7 @@ def handler(event, context):
 ```
 
 Environment variables in the Lambda configuration:
+
 ```
 CACHE_ENDPOINT = your-endpoint.cache.amazonaws.com
 CACHE_PORT = 6379
@@ -146,6 +149,7 @@ def handler(event, context):
 ```
 
 Lambda execution role needs:
+
 ```json
 {
   "Effect": "Allow",
@@ -184,6 +188,7 @@ client = valkey.Valkey(
 ### Environment Variables (non-secret only)
 
 Safe to pass as plain environment variables:
+
 - `CACHE_ENDPOINT` -- the cache hostname
 - `CACHE_PORT` -- 6379 or 6380
 - `CACHE_USER_ID` -- the RBAC user ID (not the password)
@@ -197,6 +202,7 @@ Never place passwords or auth tokens in Lambda environment variables.
 Attach `elasticache:Connect` to the ECS task role. The application generates IAM tokens at runtime.
 
 Task role policy (for serverless caches):
+
 ```json
 {
   "Version": "2012-10-17",
@@ -217,6 +223,7 @@ Task role policy (for serverless caches):
 For node-based clusters (replication groups), use the `replicationgroup` resource type instead of `serverlesscache` in the Resource ARN.
 
 Task definition (environment variables for non-secret config):
+
 ```json
 {
   "containerDefinitions": [
@@ -263,6 +270,7 @@ Use the `secrets` block in the ECS task definition to inject Secrets Manager val
 ```
 
 Task execution role needs:
+
 ```json
 {
   "Effect": "Allow",
@@ -331,7 +339,7 @@ metadata:
     eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/CacheAppRole
 ```
 
-3. The pod uses the service account and generates IAM auth tokens at runtime using the injected AWS credentials.
+1. The pod uses the service account and generates IAM auth tokens at runtime using the injected AWS credentials.
 
 ```yaml
 apiVersion: apps/v1

@@ -232,6 +232,6 @@ For bulk refresh: delete existing chunks, then re-ingest the updated document.
 
 ## Cross-References
 
-* Embedding providers and utility setup: see `embedding-providers.md`
-* Platform constraints, FT.SEARCH encoding, HNSW tuning: see `elasticache-search.md`
-* Framework integration (LangChain, Strands): see `framework-guide.md`
+- Embedding providers and utility setup: see `embedding-providers.md`
+- Platform constraints, FT.SEARCH encoding, HNSW tuning: see `elasticache-search.md`
+- Framework integration (LangChain, Strands): see `framework-guide.md`

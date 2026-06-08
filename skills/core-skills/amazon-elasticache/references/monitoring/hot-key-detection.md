@@ -33,6 +33,7 @@ Cluster mode disabled        → Single shard. Skip Tier B. Tier A and Tier C on
 ```
 
 Check engine version (use `describe-cache-clusters` which exposes both fields):
+
 ```bash
 aws elasticache describe-cache-clusters \
   --cache-cluster-id <node-id> --region <region> \
@@ -110,6 +111,7 @@ valkey-cli -h <endpoint> -p 6379 --tls LATENCY HISTORY <event-name>
 Serverless: the entire `LATENCY *` family is blocked. Use `SuccessfulReadRequestLatency` and `SuccessfulWriteRequestLatency` CloudWatch metrics at p50/p99/p100 instead.
 
 **Tier A summary (produce before proceeding):**
+
 - Per-shard imbalance? (yes / no / single shard N/A)
 - Which node is hot? (node-id or "aggregate only")
 - Dominant data type? (from Step 2)
@@ -176,6 +178,7 @@ valkey-cli -h <endpoint> -p 6379 --tls OBJECT FREQ <key>
 ```
 
 Interpreting the counter (logarithmic):
+
 - 0-3: rarely accessed
 - 4-8: moderate access
 - 9-15: high access, candidate
@@ -190,11 +193,13 @@ Rank candidates by `OBJECT FREQ`. Retrieve sizes via `MEMORY USAGE <key>` to det
 **Serverless:** `MONITOR` is blocked. This section applies to node-based only.
 
 `MONITOR` streams every command to the connected client. Do not use on production:
+
 - 50%+ throughput reduction per valkey.io documentation; impact increases with multiple MONITOR clients
 - Can saturate the client's network pipe
 - No rate limit, cannot scope to a subset of keys
 
 **If genuinely the only option** (no LFU, Tier B unavailable, client instrumentation not feasible):
+
 - Replica node only, never the primary
 - Short bounded window: `valkey-cli MONITOR | head -n 100000`
 - Off-peak or maintenance window only

@@ -13,6 +13,7 @@ Client -> API Gateway -> Lambda (VPC-attached) -> ElastiCache (VPC)
 ```
 
 Requirements:
+
 - Lambda must be attached to the VPC where ElastiCache resides
 - Lambda execution role needs ENI permissions (`ec2:CreateNetworkInterface`, `ec2:DescribeNetworkInterfaces`, `ec2:DeleteNetworkInterface`, `ec2:DescribeSubnets`, `ec2:AssignPrivateIpAddresses`, `ec2:UnassignPrivateIpAddresses`). Alternatively, use the managed policy `AWSLambdaVPCAccessExecutionRole` which includes all required permissions.
 - Lambda security group must have outbound access to the cache security group on port 6379 (and also port 6380 if using the serverless read-optimized endpoint for lower-latency eventually-consistent reads; routing is handled by the endpoint itself, not by issuing the READONLY command)
@@ -30,6 +31,7 @@ Client -> API Gateway -> VPC Link -> NLB/ALB -> ECS/EKS -> ElastiCache (same VPC
 ```
 
 Requirements:
+
 - REST API VPC Links (V1) support NLB only. REST APIs also support VPC Link V2 with ALB as a target. HTTP API VPC Links (V2) support ALB, NLB, or Cloud Map.
 - Load balancer must be in the same VPC as ElastiCache
 - ECS tasks use `awsvpc` network mode; EKS pods use VPC CNI
@@ -46,12 +48,14 @@ Client -> API Gateway -> Lambda/Container -> ElastiCache (rate limit check) -> B
 ```
 
 How it works:
+
 1. API Gateway forwards the request to the compute layer
 2. The compute layer increments a counter in ElastiCache keyed by user, API key, or IP
 3. If the counter exceeds the limit, the compute layer returns HTTP 429 immediately
 4. If within limits, the request proceeds to the backend logic
 
 This enables:
+
 - Per-user or per-tenant rate limits (API Gateway throttling is per-stage or per-key)
 - Sliding-window rate limiting using sorted sets
 - Shared rate limit state across multiple Lambda functions or container instances
@@ -74,11 +78,13 @@ These are complementary, not competing, layers.
 | Use case | Cache entire API responses for read-heavy public endpoints | Cache database queries, sessions, rate limits, computed results |
 
 When to use both:
+
 - API Gateway stage cache for static or semi-static GET responses that rarely change
 - ElastiCache for dynamic, fine-grained caching behind the API (database queries, session lookups, computed aggregations)
 - The two layers do not conflict; API Gateway cache reduces calls to Lambda/containers, and ElastiCache reduces calls to databases and external services within those functions
 
 When to skip API Gateway cache:
+
 - POST/PUT/DELETE requests (not cacheable at the gateway)
 - Personalized responses that vary per user
 - Responses that need sub-second invalidation

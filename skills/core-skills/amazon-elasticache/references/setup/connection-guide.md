@@ -5,6 +5,7 @@ ElastiCache-specific connection constraints, tunnel patterns, and runtime gotcha
 ## VPC Access Only
 
 ElastiCache runs inside a VPC. You cannot connect from the public internet. Options:
+
 1. Connect from compute in the same VPC (EC2, Lambda, ECS, EKS)
 2. SSM port forwarding (no SSH keys needed, use `scripts/start_tunnel.py` and `scripts/find_tunnel_host.py`)
 3. Jump host with SSH tunnel
@@ -70,6 +71,7 @@ token = generate_iam_auth_token(
 ```
 
 Constraints:
+
 - Token valid for 15 minutes (for initial AUTH/HELLO). An authenticated connection remains valid for up to 12 hours; re-AUTH with a new token within 12 hours to extend. Connections that are not re-authenticated within 12 hours are terminated.
 - IAM auth does NOT work inside MULTI/EXEC transactions
 - Requires Valkey 7.2+ or Redis OSS 7.0+
@@ -101,17 +103,20 @@ Constraints:
 ## Runtime-Specific Gotchas
 
 ### Lambda
+
 - Requires VPC attachment (`VpcConfig` with subnets and security group)
 - Needs `ec2:CreateNetworkInterface`, `ec2:DescribeNetworkInterfaces`, `ec2:DeleteNetworkInterface` permissions
 - Since the September 2019 Hyperplane ENI improvements, VPC cold starts add only tens to low-hundreds of milliseconds (not the 1-2s of pre-2019 behavior). For IAM-authenticated connections, expect approximately 50-100ms additional overhead (estimate; actual overhead depends on SigV4 signing and network conditions). Reuse connections across invocations via module-level client
 - Use IAM auth to avoid managing secrets in environment variables
 
 ### ECS
+
 - Use `awsvpc` network mode for per-task ENIs in the same VPC
 - Task security group must allow outbound to cache security group on port 6379
 - Reuse connections across requests (connection pooling)
 
 ### EKS
+
 - VPC CNI plugin affects pod-to-cache reachability; pods must have IPs in the VPC CIDR
 - Use Kubernetes secrets or AWS Secrets Manager CSI driver for credential injection
 - Pod service account with IAM role for IAM auth (IRSA or EKS Pod Identity)

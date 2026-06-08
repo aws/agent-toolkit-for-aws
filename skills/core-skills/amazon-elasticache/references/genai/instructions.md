@@ -40,6 +40,7 @@ Cache LLM responses with semantic similarity matching so "nearly identical" prom
 When to use: the user wants fuzzy cache hits, where semantically close prompts share a cached response.
 
 Two implementation paths:
+
 - **Application-side embedding comparison**: app computes embeddings, stores as plain keys, does similarity math client-side. Serverless OK. Works on ANY Valkey/Redis version.
 - **Server-side vector similarity**: Valkey performs the similarity search via FT.SEARCH. Requires node-based Valkey 8.2 or above (recommend 9.0).
 
@@ -115,4 +116,3 @@ After the pattern is implemented, update `.elasticache/requirements.json`. GenAI
 ## Freshness disclaimer
 
 When your response includes pricing, version constraints, or feature availability, include the freshness disclaimer per SKILL.md Global Rule #5: "For current pricing see https://aws.amazon.com/elasticache/pricing/. For current feature availability see https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/."
-
