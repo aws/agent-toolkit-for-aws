@@ -1,5 +1,5 @@
 [tools]
-node = "20"
+node = "24"
 gitleaks = "latest"
 
 [tools."npm:markdownlint-cli2"]
