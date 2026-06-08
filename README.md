@@ -21,6 +21,12 @@ For `aws-core` that covers service selection, CDK/CloudFormation, serverless, co
 /plugin install aws-core@claude-plugins-official
 ```
 
+> **Tip:** If you get `Plugin not found`, update your local marketplace index first:
+>
+> ```
+> /plugin marketplace update claude-plugins-official
+> ```
+
 For `aws-agents` that covers building AI agents on AWS with Amazon Bedrock and AgentCore:
 
 ```
