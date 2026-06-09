@@ -58,7 +58,7 @@ import time
 try:
     import valkey as client_lib
 
-    CLIENT_NAME = "valkey-py"
+    client_name = "valkey-py"
 except ImportError:
     print(
         "Error: the 'valkey' package is required for this script.\n"
@@ -158,7 +158,7 @@ def test_connection(
         if username
         else ("password-auth" if password else "no-auth")
     )
-    print(f"Connecting to {host}:{port} ({tls_label}, {auth_label}) via {CLIENT_NAME} ...")
+    print(f"Connecting to {host}:{port} ({tls_label}, {auth_label}) via {client_name} ...")
 
     kwargs = {
         "host": host,
@@ -206,11 +206,11 @@ def test_connection(
 
     try:
         if use_cluster_client:
-            if CLIENT_NAME == "valkey-py":
+            if client_name == "valkey-py":
                 conn = client_lib.ValkeyCluster(**kwargs)
             else:
                 conn = client_lib.RedisCluster(**kwargs)
-        elif CLIENT_NAME == "valkey-py":
+        elif client_name == "valkey-py":
             conn = client_lib.Valkey(**kwargs)
         else:
             conn = client_lib.Redis(**kwargs)

@@ -144,7 +144,7 @@ def _parse_bulk_pricing(data: dict) -> dict:
                 serverless_ecpu[key] = price_per_unit
 
     # Parse Reserved terms for node-based instances
-    _VALID_PURCHASE_OPTIONS = {"No Upfront", "Partial Upfront", "All Upfront"}
+    _valid_purchase_options = {"No Upfront", "Partial Upfront", "All Upfront"}
     for sku, offers in reserved_terms.items():
         product = products.get(sku)
         if not product or product.get("productFamily") != "Cache Instance":
@@ -163,7 +163,7 @@ def _parse_bulk_pricing(data: dict) -> dict:
         for offer_id, offer in offers.items():
             ta = offer.get("termAttributes", {})
             purchase_option = ta.get("PurchaseOption", "")
-            if purchase_option not in _VALID_PURCHASE_OPTIONS:
+            if purchase_option not in _valid_purchase_options:
                 continue  # skip legacy "Heavy Utilization"
             lease = ta.get("LeaseContractLength", "")  # "1yr" or "3yr"
 

@@ -254,11 +254,11 @@ def start_tunnel(
 
         # Stream SSM output with periodic health checks.
         # Uses select() to avoid blocking forever if the session stalls.
-        HEALTH_CHECK_INTERVAL = 30  # seconds between port probes
+        health_check_interval = 30  # seconds between port probes
 
         assert proc.stdout is not None
         while proc.poll() is None:
-            ready, _, _ = select.select([proc.stdout], [], [], HEALTH_CHECK_INTERVAL)
+            ready, _, _ = select.select([proc.stdout], [], [], health_check_interval)
             if ready:
                 line = proc.stdout.readline()
                 if line:
@@ -266,7 +266,7 @@ def start_tunnel(
                 else:
                     break  # EOF -- process closed stdout
             else:
-                # No output for HEALTH_CHECK_INTERVAL seconds, check tunnel
+                # No output for health_check_interval seconds, check tunnel
                 if not wait_for_port(local_port, timeout=3.0):
                     print(f"\n  [WARN] Tunnel port {local_port} is no longer responding.")
                     print("         The SSM session may have stalled. Press Ctrl+C to stop.")
