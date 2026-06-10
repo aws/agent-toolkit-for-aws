@@ -9,6 +9,7 @@ This guide covers KPU sizing, operator parallelism tuning, Amazon Managed Servic
 ### CRITICAL: Understanding the KPU Resource Model
 
 Each Kinesis Processing Unit (KPU) provides exactly:
+
 - 1 vCPU
 - 4 GB memory (3 GiB JVM heap + 1 GiB reserved for native code allocations including RocksDB, network buffers, and framework overhead)
 - 50 GB running application storage
@@ -20,7 +21,7 @@ Managed Service for Apache Flink allocates KPUs based on two configuration param
 
 MSF derives the KPU count from these settings:
 
-**Allocated KPUs = Parallelism / ParallelismPerKPU**
+**Allocated KPUs = Parallelism / ParallelismPerKPU**.
 
 | Parallelism | ParallelismPerKPU | Allocated KPUs | Resources |
 |-------------|-------------------|----------------|-----------|
@@ -38,28 +39,36 @@ Use ParallelismPerKPU = 1 for most workloads. Increase only when the application
 Start with the highest of these three estimates, then add headroom:
 
 **1. CRITICAL: Throughput-based estimate:**
+
 ```
 base_kpus = (input_record_rate × avg_record_size_bytes × processing_amplification) / throughput_per_kpu
 ```
+
 - `processing_amplification`: ratio of total bytes processed (including intermediate shuffles) to input bytes. Typically 2–4× for jobs with `keyBy` and windowing.
 - `throughput_per_kpu`: start with 5–10 MB/s per KPU for typical ETL workloads. CPU-intensive transformations (regex, JSON parsing, ML inference) reduce this to 1–3 MB/s.
 
 **2. CRITICAL: State-size-based estimate:**
+
 ```
 base_kpus = total_state_size_gb / usable_memory_per_kpu_gb
 ```
+
 - `usable_memory_per_kpu_gb`: approximately 2–2.5 GB per KPU after JVM overhead and network buffers (out of 3 GiB heap). The 1 GiB native memory is used by RocksDB and framework overhead. With ParallelismPerKPU = 2, usable memory per slot drops to ~1–1.2 GB.
 
 **3. CRITICAL: Source-parallelism-based estimate:**
+
 ```
 base_kpus = max(kinesis_shard_count, kafka_partition_count)
 ```
+
 Source parallelism should match the partition/shard count. If the source has 16 shards, you generally need at least 16 task slots.  
 
 **Final KPU count with headroom:**
+
 ```
 recommended_kpus = max(throughput_estimate, state_estimate, source_estimate) × 1.3
 ```
+
 The 1.3× multiplier provides ~30% headroom for checkpoint overhead, traffic spikes, and GC pauses. Round up to the nearest even number for balanced TaskManager allocation.
 
 ### Auto-Scaling Behavior
@@ -89,6 +98,7 @@ After deployment, use these CloudWatch metrics to validate sizing and adjust:
 **Scaling decision process:**
 
 **`heapMemoryUtilization` graduated thresholds**:
+
 - **Healthy:** ≤ 75% — no action needed
 - **Scale-up / investigation:** > 80% sustained — investigate state size, TTL, and consider adding KPUs (see [monitoring-and-metrics.md](monitoring-and-metrics.md))
 - **Critical alarm:** > 90% — immediate action required; risk of OOM (see [checkpoint-tuning.md](checkpoint-tuning.md) for OOM diagnostic steps)
@@ -146,7 +156,6 @@ DataStream<Result> results = events
 results.sinkTo(sink).uid("sink-uid");
 ```
 
-
 ## Managed Service for Apache Flink Configuration Overrides
 
 ### Parameters Overridable via AWS Support
@@ -169,6 +178,5 @@ Managed Service for Apache Flink manages most infrastructure configuration autom
 3. Include: application ARN, current KPU count, the specific parameter to override, the requested value, and the diagnostic evidence
 4. AWS support applies the override at the service level — no application code changes needed
 5. After the override is applied, Managed Service for Apache Flink restarts the application to pick up the new configuration
-
 
 For checkpoint impact on resources (checkpoint size and memory, frequency vs CPU/network, duration exceeding interval, OOM/GC diagnostic steps), see [checkpoint-tuning.md](checkpoint-tuning.md).

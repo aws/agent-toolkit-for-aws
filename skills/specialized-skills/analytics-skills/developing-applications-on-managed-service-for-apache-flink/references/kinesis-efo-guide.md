@@ -9,12 +9,14 @@ For Kinesis source/sink configuration, authentication, and legacy consumer migra
 ## When to Use EFO vs Standard Polling
 
 Use Enhanced Fan-Out when:
+
 - Multiple consumers read from the same Kinesis stream (EFO gives each consumer dedicated 2 MB/s per shard, vs shared 2 MB/s with polling)
 - You need sub-200ms read latency (EFO uses HTTP/2 push, polling has up to 200ms delay per `GetRecords` call)
 - Your application cannot tolerate `ReadProvisionedThroughputExceeded` throttling from competing consumers
 - You are hitting the 5 `GetRecords` calls per second per shard limit due to multiple consumers or aggressive polling intervals
 
 Standard polling is sufficient when:
+
 - Your Flink application is the only consumer on the stream
 - Latency requirements are relaxed (200ms+ acceptable)
 - You want to minimize cost (EFO incurs additional per-consumer, per-shard-hour charges)
@@ -71,6 +73,7 @@ Source parallelism should ideally match or exceed the Kinesis shard count when u
 ## EFO Interaction with Managed Service for Apache Flink Auto-Scaling and KPU Allocation
 
 When Managed Service for Apache Flink auto-scaling adjusts KPU count, the total parallelism changes. This affects EFO consumers:
+
 - Scaling up increases parallelism, potentially creating idle subtasks if parallelism exceeds shard count — ensure `withIdleness()` is set
 - Scaling down reduces parallelism, causing subtasks to handle more shards — EFO still provides dedicated throughput per shard but each subtask processes more data
 - During scaling events, the EFO consumer subscription is re-established automatically; expect brief transient errors in logs (this is normal)
@@ -79,10 +82,12 @@ When Managed Service for Apache Flink auto-scaling adjusts KPU count, the total 
 ## Troubleshooting EFO
 
 **Consumer registration errors (`LimitExceededException`)**:
+
 - Kinesis limits concurrent consumer registrations to 5 in `CREATING` state per account. If you see this during job startup, the consumer will retry automatically. For persistent failures, check if other applications are registering consumers simultaneously.
 - Maximum consumers per stream: 20 (Provisioned/On-demand Standard) or 50 (On-demand Advantage). Verify you haven't hit the limit with `aws kinesis list-stream-consumers`.
 
 **Throughput exceptions (`SubscribeToShard` failures)**:
+
 - Each EFO consumer gets dedicated 2 MB/s per shard. If you see throughput errors, verify the consumer is properly registered (`ACTIVE` status) using `aws kinesis describe-stream-consumer`.
 - Transient `SubscribeToShard` errors are expected — subscriptions last 5 minutes and are automatically re-acquired.
 

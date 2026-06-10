@@ -244,6 +244,7 @@ Three serialization incompatibilities prevent state migration from 1.x to 2.x:
 ### Compatible Patterns (State Migrates Successfully)
 
 **Serialization Methods:**
+
 - **Avro serialization** with explicit `AvroTypeInfo` - schema-based, independent of Flink's type system
 - **Protobuf serialization** - schema-based, bypasses TypeExtractor
 - **Custom TypeSerializer** implementations - user-controlled serialization
@@ -252,6 +253,7 @@ Three serialization incompatibilities prevent state migration from 1.x to 2.x:
 - **Primitive types** - fastest, no serialization changes
 
 **State Types (all compatible with above serializers):**
+
 - ValueState, MapState, ListState, ReducingState, AggregatingState
 - BroadcastState with control streams
 - Operator state (even-split and union redistribution)
@@ -259,12 +261,14 @@ Three serialization incompatibilities prevent state migration from 1.x to 2.x:
 - Timer state (event-time and processing-time)
 
 **Connectors:**
+
 - Kinesis connector state (v5.0+ only — see note below; default polling and Enhanced Fan-Out)
 - Kafka connector state (offsets, partition tracking)
 
 **CRITICAL — Kinesis Connector Version Prerequisite:** KDS connector versions below 5.0 maintain state that is incompatible with the Flink 2.2 Kinesis connector (v6.0.0-2.0). You must migrate to connector v5.0+ on Flink 1.x before upgrading to Flink 2.x. See `kinesis-connector-guide.md` for migration paths and the [AWS blog post](https://aws.amazon.com/blogs/big-data/introducing-the-new-amazon-kinesis-source-connector-for-apache-flink/) for details.
 
 **Table API/SQL (with caveat):**
+
 - All tested patterns compatible: GROUP BY, window aggregations (TUMBLE, HOP, SESSION)
 - Stream joins (INNER, LEFT OUTER), Top-N, deduplication
 - DISTINCT aggregations, OVER windows
@@ -274,12 +278,14 @@ Three serialization incompatibilities prevent state migration from 1.x to 2.x:
 ### Incompatible Patterns (State Migration Fails)
 
 **Direct Kryo Usage:**
+
 ```java
 // INCOMPATIBLE - Kryo 2.x → 5.x reference tracking changed
 env.getConfig().registerTypeWithKryoSerializer(MyType.class, MyKryoSerializer.class);
 ```
 
 **Generic Collections in State:**
+
 ```java
 // INCOMPATIBLE - Kryo CollectionSerializer format changed
 ValueState<List<String>> listState;
@@ -288,6 +294,7 @@ ValueState<Set<Long>> setState;
 ```
 
 **POJOs with Collection Fields:**
+
 ```java
 // INCOMPATIBLE - TypeExtractor selects different collection serializers
 public class UserSession {
@@ -300,12 +307,14 @@ public class UserSession {
 ```
 
 **Scala Case Classes:**
+
 ```scala
 // INCOMPATIBLE - Serialized via Kryo in Flink 1.x, Kryo v2→v5 binary format change breaks state
 case class UserEvent(userId: String, eventType: String, timestamp: Long)
 ```
 
 **Java Records:**
+
 ```java
 // INCOMPATIBLE - Typically fall back to Kryo serialization in Flink 1.x
 // Verify by testing with env.getConfig().disableGenericTypes()
@@ -313,6 +322,7 @@ public record UserEvent(String userId, String eventType, long timestamp) {}
 ```
 
 **Third-Party Library Types:**
+
 ```java
 // INCOMPATIBLE - Types without a registered custom serializer fall back to Kryo
 // The Kryo v2→v5 binary format change breaks all Kryo-serialized state
@@ -325,6 +335,7 @@ If Flink cannot handle a type with a built-in or registered serializer, it falls
 ### Failure Behavior and Detection
 
 **Failure Path:**
+
 1. Managed Service for Apache Flink application update completes successfully (no errors during deployment)
 2. Job transitions to RUNNING state
 3. State restoration begins during operator initialization
@@ -333,7 +344,8 @@ If Flink cannot handle a type with a built-in or registered serializer, it falls
 6. Restart strategy triggers automatic restart
 7. **Infinite restart loop** - same failure repeats until manual intervention
 
-**Critical: No Sync API Feedback**
+#### Critical: No Sync API Feedback
+
 - Update API returns success before state restoration
 - Failures occur during state restoration path (outside async workflow scope)
 - State restoration duration varies (seconds to tens of minutes based on state size)
@@ -342,18 +354,21 @@ If Flink cannot handle a type with a built-in or registered serializer, it falls
 **Error Signatures to Watch For:**
 
 *Kryo Reference Tracking:*
+
 ```
 com.esotericsoftware.kryo.KryoException: Unable to resolve reference for String with id: 116
 Caused by: java.lang.IndexOutOfBoundsException: Index 116 out of bounds for length 1
 ```
 
 *Kryo CollectionSerializer:*
+
 ```
 com.esotericsoftware.kryo.KryoException: Unable to find class: value2
 Caused by: java.lang.ClassNotFoundException: value2
 ```
 
 *PojoSerializer Collection Handling:*
+
 ```
 org.apache.flink.util.StateMigrationException: The new state serializer 
 (org.apache.flink.api.java.typeutils.runtime.PojoSerializer@8bf85b5d) must not be 
@@ -366,50 +381,58 @@ incompatible with the old state serializer
 **Identify Incompatible Patterns:**
 
 1. **Search for Kryo registration:**
+
 ```java
 grep -r "registerTypeWithKryoSerializer" src/
 grep -r "registerKryoType" src/
 ```
 
-2. **Search for collection fields in POJOs:**
+1. **Search for collection fields in POJOs:**
+
 ```java
 // Look for POJOs with List, Map, Set, Collection, Queue, Deque fields
 // that are used in state (ValueState, MapState, etc.)
 ```
 
-3. **Search for generic collection state:**
+1. **Search for generic collection state:**
+
 ```java
 grep -r "ValueState<List" src/
 grep -r "ValueState<Map" src/
 grep -r "ValueState<Set" src/
 ```
 
-4. **Check for Kryo fallback warnings in logs:**
+1. **Check for Kryo fallback warnings in logs:**
+
 ```
 "Class ... cannot be used as a POJO type because not all fields are valid POJO fields"
 ```
 
 ### Migration Strategies for Incompatible Apps
 
-**Strategy 1: Parallel Deployment (Zero Downtime)**
+#### Strategy 1: Parallel Deployment (Zero Downtime)
+
 - Deploy Flink 2.x application alongside 1.x
 - Let 2.x rebuild state from scratch while 1.x continues processing
 - Switch traffic once 2.x state is fully built
 - Best for: Applications that can tolerate dual processing temporarily
 
-**Strategy 2: State Processor API (State Transformation)**
+#### Strategy 2: State Processor API (State Transformation)
+
 - Use State Processor API to read 1.x savepoint
 - Transform state serialization to 2.x-compatible format (Avro/Protobuf)
 - Write new savepoint for 2.x restoration
 - Best for: Large state that cannot be rebuilt quickly
 
-**Strategy 3: Reprocess from Source (Clean Start)**
+#### Strategy 3: Reprocess from Source (Clean Start)
+
 - Take final savepoint from 1.x for audit/rollback
 - Deploy 2.x with refactored serialization (Avro/Protobuf)
 - Reprocess historical data from Kinesis/Kafka/S3
 - Best for: Applications with replayable sources and acceptable rebuild time
 
-**Strategy 4: Refactor Before Migration (Recommended)**
+#### Strategy 4: Refactor Before Migration (Recommended)
+
 - Refactor 1.x application to use compatible serialization (Avro/Protobuf)
 - Deploy refactored 1.x, let it checkpoint with new serialization
 - Then migrate to 2.x with state preservation
@@ -418,6 +441,7 @@ grep -r "ValueState<Set" src/
 ### Best Practices for Migration-Safe Applications
 
 **Use Schema-Based Serialization:**
+
 ```java
 // RECOMMENDED: Avro with explicit TypeInformation
 import org.apache.flink.formats.avro.typeutils.AvroTypeInfo;
@@ -429,6 +453,7 @@ ValueStateDescriptor<UserEvent> descriptor = new ValueStateDescriptor<>(
 ```
 
 **Avoid Collection Fields in POJOs:**
+
 ```java
 // INSTEAD OF:
 public class UserSession {
@@ -443,6 +468,7 @@ public class UserSession {
 ```
 
 **Use MapState Instead of Collections:**
+
 ```java
 // INSTEAD OF:
 ValueState<Map<String, Integer>> mapState; // BREAKS
@@ -452,6 +478,7 @@ MapState<String, Integer> mapState; // Compatible - Flink's built-in state type
 ```
 
 **Detect Kryo Fallbacks During Development:**
+
 ```java
 // Add during development to catch serialization issues early
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -472,13 +499,15 @@ Your upgrade experience depends on your application's compatibility with Flink 2
 
 ### Upgrade Phases
 
-**Phase 1: Preparation**
+#### Phase 1: Preparation
+
 1. Update application code for Flink 2.2 compatibility (dependencies, removed APIs, Java 17)
 2. Build the new JAR and upload to S3 with a different file name (e.g., `my-app-flink-2.2.jar`)
 
-**Phase 2: Enable auto-rollback**
+#### Phase 2: Enable auto-rollback
 
 Check and enable auto-rollback before upgrading:
+
 ```bash
 # Check auto-rollback status
 aws kinesisanalyticsv2 describe-application \
@@ -496,9 +525,10 @@ aws kinesisanalyticsv2 update-application \
     }'
 ```
 
-**Phase 3: Take snapshot**
+#### Phase 3: Take snapshot
 
 If automatic snapshots are enabled, you can skip this. Otherwise, take a snapshot before upgrading:
+
 ```bash
 aws kinesisanalyticsv2 create-application-snapshot \
     --application-name MyApplication \
@@ -510,9 +540,10 @@ aws kinesisanalyticsv2 describe-application-snapshot \
     --snapshot-name pre-flink-2.2-upgrade
 ```
 
-**Phase 4: Upgrade application**
+#### Phase 4: Upgrade application
 
 You can upgrade from RUNNING or READY state using the UpdateApplication API:
+
 ```bash
 aws kinesisanalyticsv2 update-application \
     --application-name MyApplication \
@@ -531,7 +562,8 @@ aws kinesisanalyticsv2 update-application \
 
 CloudFormation also supports in-place upgrades — update the `RuntimeEnvironment` field and CloudFormation will update in place without deleting and recreating the application (preserving snapshots and history).
 
-**Phase 5: Monitor upgrade**
+#### Phase 5: Monitor upgrade
+
 - Use the Operations API to check upgrade status and surface binary incompatibilities
 - If the application is RUNNING but still on the older runtime, auto-rollback kicked in — check Operations API for the failure reason
 - Monitor CloudWatch metrics:
@@ -540,7 +572,8 @@ CloudFormation also supports in-place upgrades — update the `RuntimeEnvironmen
   - `lastCheckpointDuration`: should be similar to pre-upgrade values
   - `numberOfFailedCheckpoints`: should remain at 0
 
-**Phase 6: Validate (run 24+ hours)**
+#### Phase 6: Validate (run 24+ hours)
+
 - Verify data flowing through sources and sinks
 - Compare output with pre-upgrade baseline
 - Monitor latency, throughput, checkpoint duration/size, memory/CPU utilization
@@ -550,6 +583,7 @@ CloudFormation also supports in-place upgrades — update the `RuntimeEnvironmen
 **Automatic rollback:** If auto-rollback is enabled and the upgrade fails during startup, MSF automatically reverts to the previous version.
 
 **Manual rollback** (for applications running but unhealthy):
+
 ```bash
 aws kinesisanalyticsv2 rollback-application \
     --application-name MyApplication \
@@ -561,6 +595,7 @@ Rollback restores the previous Flink version, previous JAR, and restarts from th
 ### Rebuild State (for incompatible state)
 
 If state is incompatible and cannot be migrated, start fresh:
+
 ```bash
 aws kinesisanalyticsv2 start-application \
     --application-name MyApplication \
@@ -745,6 +780,7 @@ Note: Some connectors were renamed between major versions (e.g., Firehose connec
 ### Disaggregated State Management
 
 Flink 2.x introduces ForSt (disaggregated state backend) for cloud-native deployments:
+
 - Leverages distributed file systems as primary storage
 - Asynchronous execution model for better performance
 - Fast rescaling for large state (hundreds of TB)
@@ -753,6 +789,7 @@ Flink 2.x introduces ForSt (disaggregated state backend) for cloud-native deploy
 ### DataStream V2 API (Experimental)
 
 New DataStream API with improved design (not yet production-ready):
+
 - Cleaner separation of concerns
 - Better state management primitives
 - Improved type safety
@@ -845,14 +882,14 @@ MSF Flink 2.2 now throws an exception when you attempt to modify configs not sup
 
 ## Not Supported Features in Managed Service for Apache Flink
 
-The following Flink 2.2 features are not currently supported in Managed Service for Apache Flink as they are still considered experimental in Apache Flink: 
+The following Flink 2.2 features are not currently supported in Managed Service for Apache Flink as they are still considered experimental in Apache Flink:
 
-* Materialized Tables
-* ForSt State Backend (disaggregated state storage)
-* Java 21
-* Custom metric reporters/telemetry configurations
+- Materialized Tables
+- ForSt State Backend (disaggregated state storage)
+- Java 21
+- Custom metric reporters/telemetry configurations
 
-For details on which features are supported in Managed Service for Apache Flink, refer to  [Apache Flink 2.2 features supported](https://docs.aws.amazon.com/managed-flink/latest/java/flink-2-2.html#flink-2-2-supported-features). 
+For details on which features are supported in Managed Service for Apache Flink, refer to  [Apache Flink 2.2 features supported](https://docs.aws.amazon.com/managed-flink/latest/java/flink-2-2.html#flink-2-2-supported-features).
 
 ## References
 

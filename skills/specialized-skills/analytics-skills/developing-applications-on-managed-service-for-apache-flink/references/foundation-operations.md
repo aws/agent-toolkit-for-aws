@@ -65,7 +65,7 @@ Example: 16 KPU app 16 ENIs per subnet. Allow 20 available IPs per subnet to acc
 
 **Regional ENI quota** (`vpc` service code, `Network interfaces per region`) defaults to 5,000. Each VPC-enabled MSF KPU consumes one. Multiple large MSF apps in the same region can pressure this quota — check before deploying. Other services in the VPC (Lambda, ECS, RDS) also consume ENIs from the same quota.
 
-Subnets should span at least 2 AZs for fault tolerance. 
+Subnets should span at least 2 AZs for fault tolerance.
 
 ## When VPC Is Required
 

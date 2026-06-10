@@ -27,17 +27,20 @@ Checkpoint frequency is configured via the Managed Service for Apache Flink `Che
 ## Checkpoint Duration Exceeding Interval
 
 **Symptoms:**
+
 - `lastCheckpointDuration` in CloudWatch approaches or exceeds the configured checkpoint interval
 - `numberOfInProgressCheckpoints` stays > 0 for extended periods
 - Increasing `backPressuredTimeMsPerSecond` during checkpoint windows
 - `millisBehindLatest` (Kinesis) or consumer lag (Kafka) grows during checkpoints
 
 **Consequences:**
+
 - By default, the next checkpoint is triggered immediately once the ongoing one completes. With `MinPauseBetweenCheckpoints` (default 5s on Managed Service for Apache Flink), there's a minimum gap, but the system can still end up constantly checkpointing.
 - For aligned checkpoints (the default mode), checkpoint barriers can cause channels to block while waiting for alignment, contributing to backpressure. Unaligned checkpoints (available from Flink 1.15+, requestable via AWS support for Managed Service for Apache Flink) avoid this alignment delay but have other trade-offs.
 - In extreme cases, checkpoint timeouts trigger checkpoint failures, and repeated failures can cause application restarts.
 
 **Remediation:**
+
 1. **Verify incremental checkpoints are active** (they are enabled by default on Managed Service for Apache Flink). If for some reason they were overridden, re-enable them — incremental checkpoints only upload state changes since the last checkpoint, dramatically reducing upload size for large state.
 2. **Increase checkpoint interval** via the `UpdateApplication` API with `ConfigurationType: CUSTOM` to give more time for completion. Also consider increasing `MinPauseBetweenCheckpoints`.
 3. **Add KPUs** to spread state across more TaskManagers, reducing per-TaskManager checkpoint size.
@@ -56,6 +59,7 @@ If the application throws `OutOfMemoryError` or shows sustained high GC activity
 5. **Review operator state usage.** Use Flink Web UI to check state size per operator. Identify operators with disproportionately large state.
 
 **If the root cause is legitimate memory pressure after optimization:**
+
 - Request a JVM heap size increase via AWS support
 - Consider increasing KPU count to spread state across more TaskManagers
 - Request RocksDB block cache increase if state reads are the bottleneck (high cache miss rate)

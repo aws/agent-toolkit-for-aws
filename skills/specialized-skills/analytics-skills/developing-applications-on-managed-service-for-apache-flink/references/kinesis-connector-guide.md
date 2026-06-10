@@ -119,6 +119,7 @@ KinesisStreamsSource<String> source = KinesisStreamsSource.<String>builder()
 ```
 
 **When polling tuning is sufficient (vs switching to EFO):**
+
 - Single consumer reading from the stream: tune polling — EFO is unnecessary cost since there is no shared-quota contention.
 - 2+ consumers and still seeing `ReadProvisionedThroughputExceeded` after raising `READER_EMPTY_RECORDS_FETCH_INTERVAL`: switch to EFO. Tuning polling intervals across multiple consumers is fragile; EFO eliminates the shared quota entirely.
 - Polling interval increase introduces unacceptable latency: switch to EFO (HTTP/2 push has no polling delay).
@@ -127,6 +128,7 @@ KinesisStreamsSource<String> source = KinesisStreamsSource.<String>builder()
 See [kinesis-efo-guide.md](kinesis-efo-guide.md) for EFO configuration, consumer lifecycle, and the full when-to-use-EFO checklist.
 
 **Diagnosing polling throttling:**
+
 - Check CloudWatch metric `ReadProvisionedThroughputExceeded` on the Kinesis stream — sustained values > 0 indicate throttling.
 - Check Managed Service for Apache Flink CloudWatch logs for `LimitExceededException` errors.
 - Monitor `GetRecords.Latency` and `GetRecords.Success` metrics to correlate throttling with read performance.
@@ -140,6 +142,7 @@ The legacy `FlinkKinesisConsumer` uses the removed `SourceFunction` interface an
 ### Migration Paths
 
 **DataStream API with operator UIDs defined:**
+
 1. Update dependencies: replace `flink-connector-kinesis` with `flink-connector-aws-kinesis-streams` v5.0.0+
 2. Replace `FlinkKinesisConsumer` with `KinesisStreamsSource` builder pattern
 3. Change the UID of the source operator to a new string (this selectively resets source state while preserving all other operator state)
@@ -147,6 +150,7 @@ The legacy `FlinkKinesisConsumer` uses the removed `SourceFunction` interface an
 5. Deploy with `allowNonRestoredState = true`
 
 **Table API/SQL or DataStream without operator UIDs:**
+
 1. Update dependencies and code as above
 2. Deploy with `SKIP_RESTORE_FROM_SNAPSHOT` since Flink cannot map old operator state to new operators
 3. After the application is running, switch back to `RESTORE_FROM_LATEST_SNAPSHOT` for future restarts
@@ -171,4 +175,3 @@ The saved state from `FlinkKinesisConsumer` is not compatible with `KinesisStrea
 ## Authentication
 
 In Managed Service for Apache Flink, authentication to Kinesis is handled automatically via the application's IAM execution role. No explicit credentials configuration is needed in the code.
-

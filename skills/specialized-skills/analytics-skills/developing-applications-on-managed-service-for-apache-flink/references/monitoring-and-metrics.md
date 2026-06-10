@@ -92,6 +92,7 @@ These metrics relate to memory managed by Flink outside the Java heap, used for 
 A common source of confusion: these metrics are **not** reported as a single summed value across all TaskManagers. Instead, Managed Service for Apache Flink publishes **one sample per TaskManager** per reporting interval.
 
 With 5 TaskManagers, CloudWatch receives 5 data points per interval. CloudWatch statistics then work naturally:
+
 - `Average` = mean utilization across all TaskManagers
 - `Maximum` = the hottest (most utilized) TaskManager
 - `Minimum` = the least utilized TaskManager
@@ -112,6 +113,7 @@ Managed Service for Apache Flink metrics are available at four dimension levels:
 | **Parallelism** | Per-subtask (individual parallel instance) | Most granular level. Use for diagnosing data skew across subtasks. Kinesis `millisBehindLatest` uses this for per-ShardId metrics. Kafka offsets use this for per-PartitionId metrics. |
 
 **Dimension selection guidance:**
+
 - Start with Application-level metrics for dashboards and alarms — they give the overall health picture with minimal cardinality.
 - Drop to Task-level when Application-level metrics show a problem (e.g., high backpressure) and you need to identify which task chain is responsible.
 - Use Operator-level for targeted debugging of specific operators.
@@ -157,6 +159,7 @@ Set up CloudWatch alarms for these metrics on every Managed Service for Apache F
 | `currentOutputWatermark - currentInputWatermark` | Minimum | 5 minutes | > threshold | Continuously increasing indicates the application is processing increasingly older events or an upstream subtask has stalled watermark emission. | Medium |
 
 **Alarm configuration notes:**
+
 - Use "3 out of 3 consecutive periods" evaluation for CPU, heap, and backpressure alarms to avoid false alarms from transient spikes during checkpoints or GC.
 - For `downtime`, use "1 out of 1" — any downtime is immediately actionable.
 - For `lastCheckpointDuration`, calculate the threshold from your configured checkpoint interval. If the interval is 60 seconds, alarm at > 30,000 ms.
@@ -167,17 +170,20 @@ Set up CloudWatch alarms for these metrics on every Managed Service for Apache F
 Point-in-time metric values can be misleading. Use trends over 30–60 minute windows to make scaling decisions:
 
 **Scale up (add KPUs) when:**
+
 - `cpuUtilization` `Maximum` is sustained above 70% for 30+ minutes during normal (non-peak) traffic. This leaves insufficient headroom for traffic spikes and checkpoint overhead.
 - `backPressuredTimeMsPerSecond` is sustained above 100 ms/s for 15+ minutes. This means at least one operator chain cannot keep up with its input rate.
 - `millisBehindLatest` or `records_lag_max` is monotonically increasing over 30+ minutes. The application is falling further behind and will not recover without more resources.
 - `lastCheckpointDuration` is trending upward and approaching the checkpoint interval. State is growing faster than the application can snapshot it.
 
 **Scale down (reduce KPUs) when:**
+
 - `cpuUtilization` `Maximum` is sustained below 30% for 60+ minutes during peak traffic. The application is over-provisioned.
 - `backPressuredTimeMsPerSecond` is consistently 0 for 60+ minutes. No operators are bottlenecked.
 - `heapMemoryUtilization` `Maximum` is sustained below 40% for 60+ minutes. Memory is significantly over-provisioned.
 
 **Do not scale based on:**
+
 - Short spikes (< 10 minutes) in CPU or backpressure — these are often caused by checkpoint processing or transient traffic bursts and resolve on their own.
 - A single high `lastCheckpointDuration` value — one slow checkpoint can be caused by a GC pause or S3 latency spike. Look for a trend of increasing duration across multiple checkpoints.
 - `numRecordsInPerSecond` alone — throughput fluctuations are normal. Combine with backpressure and lag metrics to determine if the application is actually struggling.
@@ -219,6 +225,7 @@ The `kinesisanalytics` group name is a legacy from when the service was called K
 Managed Service for Apache Flink automatically publishes all Flink metrics registered under the `kinesisanalytics` group to CloudWatch under the `AWS/KinesisAnalytics` namespace. Custom metrics appear in CloudWatch with the same dimensions as built-in metrics (Application, Task, Operator, Parallelism).
 
 **Naming conventions:**
+
 - Use descriptive concatenated names: `ReceivedRecordsTotal`, `FilteredRecordsAverage` (as shown in the AWS examples)
 - Prefix with a domain to avoid collisions with Flink internal metrics
 - Keep names short — they contribute to CloudWatch metric cardinality and appear in dashboards
@@ -303,7 +310,6 @@ Managed Service for Apache Flink reports metrics to CloudWatch at a fixed interv
 - **Cost**: CloudWatch charges are per-metric per-month, not per-data-point. The reporting interval does not directly affect cost — but more frequent reporting (if configurable in future Managed Service for Apache Flink versions) would not increase cost for the same metric set.
 - **Meter accuracy**: Flink's `MeterView` calculates rates over a configurable window (e.g., 60 seconds). Align the meter window with the reporting interval for consistent rate values in CloudWatch. A 60-second `MeterView` window with 60-second reporting produces stable rate metrics.
 - **Gauge staleness**: Gauges report their current value at each reporting interval. If the gauge value changes rapidly between intervals, CloudWatch only captures the value at the reporting moment. For rapidly changing values, consider using a counter (cumulative) and computing rates in CloudWatch metric math.
-
 
 ## Monitoring Setup Operations
 

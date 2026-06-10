@@ -20,6 +20,7 @@ Files per day = (86400 / checkpoint_interval_seconds) × files_per_commit
 ```
 
 Example with 60-second checkpoints, 4 writer tasks, 10 active partitions:
+
 - 1,440 checkpoints/day × 4 × 10 = 57,600 files/day
 - After 7 days: 403,200 files, each potentially only 1-10 MB
 
@@ -40,6 +41,7 @@ With a 10-second checkpoint interval, that becomes 345,600 files/day.
 Apply these together — none is sufficient on its own for production streaming workloads.
 
 1. **Increase checkpoint interval:** The single most effective lever. A 60-second interval creates 24x fewer files than a 2.5-second interval. On MSF, configure this at the application level (not in code):
+
    ```typescript
    // CDK
    checkpointConfiguration: {
@@ -94,10 +96,12 @@ There are exactly three ways to run maintenance for Iceberg tables written by Fl
 | **3. Glue + Flink embedded maintenance** | Glue | Flink job topology | Flink job topology | Flink job topology | High — RDS for JDBC locks, VPC config | Full — every parameter is yours to tune |
 
 **Key constraints (do not violate):**
+
 - S3 Tables: do NOT add Flink embedded maintenance or external compaction. Concurrent maintenance causes commit conflicts.
 - Glue: do NOT combine Glue auto-compaction with Flink embedded compaction on the same table. Pick one compaction mechanism. (You can still pair Glue auto-compaction with Flink embedded snapshot expiration and orphan cleanup — those are not redundant.)
 
 **Quick picker:**
+
 - Want zero maintenance work and accept S3 Tables' constraints? → S3 Tables
 - Want Glue catalog (broader query engine support, full table-property control) but don't want to operate compaction yourself? → Glue + Glue auto-compaction
 - Need to control compaction strategy, scheduling, and partial-progress behavior precisely? → Glue + Flink embedded maintenance
@@ -109,6 +113,7 @@ These approaches are detailed in the next section, followed by the Flink TableMa
 Each of the three approaches introduced above is described below with its specific behaviors and pitfalls.
 
 **S3 Tables (fully managed):**
+
 - Compaction is automatic and enabled by default. Target file size: 512 MB (configurable 64-512 MB). Strategies: auto (default), binpack, sort, z-order.
 - Compaction applies delete file effects — merges equality/position deletes into data files automatically.
 - Snapshot management is automatic: defaults to min 1 snapshot, max 120 hours age. Configurable via `PutTableMaintenanceConfiguration` API.
@@ -118,6 +123,7 @@ Each of the three approaches introduced above is described below with its specif
 - Transient commit conflicts between S3 Tables compaction and your streaming writer are normal — S3 Tables handles retry internally, but you may see transient errors in Flink logs.
 
 **Glue Catalog with Glue Auto-Compaction (managed compaction, manual snapshot/orphan cleanup):**
+
 - AWS Glue Data Catalog supports automatic compaction for Iceberg tables. It monitors partitions and triggers compaction when thresholds are met (e.g., >100 files smaller than 75% of target size).
 - Supports both CoW and MoR tables, including compacting delete files.
 - Commits partial progress regularly.
@@ -125,6 +131,7 @@ Each of the three approaches introduced above is described below with its specif
 - Concurrent write conflicts between Glue compaction and your streaming writer are possible. Glue handles retries, but your Flink job should tolerate transient commit failures.
 
 **Glue Catalog with Flink Embedded Maintenance (full control):**
+
 - Full control over all three operations: compaction, snapshot expiration, orphan cleanup.
 - Runs inside the Flink job topology, coordinated by distributed locks (JDBC/ZK). No external compaction conflicts.
 - Requires infrastructure: RDS PostgreSQL instance for JDBC locks, VPC configuration for the Flink app.
@@ -132,6 +139,7 @@ Each of the three approaches introduced above is described below with its specif
 - Do NOT combine with Glue auto-compaction — pick one compaction approach to avoid conflicts.
 
 **Decision guide (recap):**
+
 - Want zero maintenance overhead? → S3 Tables (Approach 1)
 - Want managed compaction but keep Glue catalog flexibility? → Glue auto-compaction + Flink for snapshot/orphan cleanup (Approach 2)
 - Need full control over maintenance scheduling and parameters? → Flink embedded maintenance with JDBC locks on Glue Catalog (Approach 3)
@@ -201,6 +209,7 @@ IcebergSink.forRowData(dataStream)
 ```
 
 Or via SQL:
+
 ```sql
 SET 'table.exec.iceberg.use-v2-sink' = 'true';
 SET 'compaction-enabled' = 'true';
@@ -227,6 +236,7 @@ Maintenance requires distributed locks to prevent concurrent operations on the s
 | ZooKeeper | If ZK is already available | ZooKeeper cluster |
 
 JDBC lock factory with auto-table creation:
+
 ```java
 // Resolve lock-DB credentials from Secrets Manager — do not hardcode (see
 // cdc-connector-guide.md → Database Credentials and Secrets Management).

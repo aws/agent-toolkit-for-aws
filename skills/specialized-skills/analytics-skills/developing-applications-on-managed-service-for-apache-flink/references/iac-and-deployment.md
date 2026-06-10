@@ -30,6 +30,7 @@ This applies to all IaC tools: CloudFormation, CDK, Terraform, SAM, etc.
 Split the deployment into two CloudFormation stacks:
 
 **Stack 1 — Infrastructure (`cfn-infra.yaml`)**:
+
 - S3 bucket for JAR staging
 - S3 bucket for application output (if applicable)
 - Kinesis streams or Kafka/MSK resources
@@ -39,11 +40,13 @@ Split the deployment into two CloudFormation stacks:
 - Exports: bucket names, stream ARNs, role ARN, log group/stream ARNs
 
 **Stack 2 — Application (`cfn-app.yaml`)**:
+
 - `AWS::KinesisAnalyticsV2::Application` resource
 - `AWS::KinesisAnalyticsV2::ApplicationCloudWatchLoggingOption` (if not inline)
 - Imports: references from Stack 1 via `Fn::ImportValue` or parameters
 
 **Deploy script ordering:**
+
 ```bash
 # 1. Deploy infrastructure
 aws cloudformation deploy --template-file cfn-infra.yaml --stack-name my-app-infra ...
@@ -61,6 +64,7 @@ aws cloudformation deploy --template-file cfn-app.yaml --stack-name my-app ...
 In CDK, use separate stacks or ensure the JAR upload happens before the MSF application construct is created. CDK does not natively upload JARs during synthesis — you need a custom resource or a deploy script wrapper.
 
 **Option A — Two CDK stacks with a script wrapper:**
+
 ```typescript
 // InfraStack: buckets, streams, IAM, logs
 // AppStack: MSF application (depends on InfraStack)
@@ -68,6 +72,7 @@ In CDK, use separate stacks or ensure the JAR upload happens before the MSF appl
 ```
 
 **Option B — CDK `BucketDeployment` construct:**
+
 ```typescript
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 
@@ -154,6 +159,7 @@ Every MSF application needs at minimum:
 ### Common Source/Sink Permissions
 
 **Kinesis Data Streams (source)**:
+
 ```yaml
 - Effect: Allow
   Action:
@@ -172,6 +178,7 @@ Every MSF application needs at minimum:
 ```
 
 **Kinesis Data Streams (sink)**:
+
 ```yaml
 - Effect: Allow
   Action:
@@ -184,6 +191,7 @@ Every MSF application needs at minimum:
 ```
 
 **S3 (sink)**:
+
 ```yaml
 - Effect: Allow
   Action:
@@ -200,6 +208,7 @@ Every MSF application needs at minimum:
 ```
 
 **Kafka/MSK (source or sink)**:
+
 ```yaml
 # VPC access for MSK. The describe* and *NetworkInterface* actions don't
 # accept ARN-scoped resources, so the resource has to be "*" — but you can
@@ -298,6 +307,7 @@ FlinkApplication:
 A complete deployment script should handle: build → infrastructure deploy → JAR upload → app deploy → code update → start.
 
 **Key considerations:**
+
 - Always build the JAR first and verify it exists before uploading.
 - Use `aws cloudformation deploy` (or equivalent) with `--no-fail-on-empty-changeset` to make scripts idempotent.
 - After updating the JAR in S3, call `UpdateApplication` with the new S3 object version to point the running application at the new code.
@@ -365,6 +375,7 @@ contradicts the lifecycle guidance in [application-lifecycle.md](application-lif
 ### Teardown
 
 When deleting MSF resources:
+
 1. Stop the application first (`StopApplication` API or `Force=true` if stuck).
 2. Delete the application stack (MSF application resource).
 3. Delete the infrastructure stack (buckets, streams, etc.).

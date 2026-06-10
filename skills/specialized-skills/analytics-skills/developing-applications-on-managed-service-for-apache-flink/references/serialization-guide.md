@@ -11,6 +11,7 @@ Code examples in this guide use Flink 2.2 APIs by default, which are also compat
 ## Performance Hierarchy: Choose the Right Serializer
 
 Flink serialization performance (fastest to slowest):
+
 1. **Flink Tuples/Rows** - Fastest (direct field access, no reflection)
 2. **POJOs** - Fast (~30% slower than tuples, supports schema evolution)
 3. **Protobuf** - Good performance (~30% slower than POJOs)
@@ -101,6 +102,7 @@ DataStream<MyEvent> events = protobufSource
 ```
 
 > **Legacy note — not recommended for new applications:** If you must use Protobuf objects directly in state, you can register them with Kryo via `env.getConfig()`. However, Kryo has a 50%+ performance penalty and Kryo-serialized state does not migrate from Flink 1.x to 2.x. Convenience registration methods on `StreamExecutionEnvironment` are removed in Flink 2.x.
+>
 > ```java
 > // Not recommended — use POJO conversion instead:
 > env.getConfig().registerTypeWithKryoSerializer(

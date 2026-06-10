@@ -47,6 +47,7 @@ For the MSF architecture overview, KPU resource model, and AWS service integrati
 ### Service Constraints
 
 **Resource Limits**:
+
 - Maximum parallelism per application: ParallelismPerKPU × KPU limit (default KPU limit is 64; request increase via Service Quotas)
 - Maximum memory per KPU: 4 GB (1 vCPU, 4 GB memory, 50 GB storage per KPU)
 - Maximum number of applications per account: 50 (adjustable through AWS support)
@@ -54,6 +55,7 @@ For the MSF architecture overview, KPU resource model, and AWS service integrati
 - Maximum KPU count per application: 250 (default quota is 64; request increase via Service Quotas)
 
 **Network Constraints**:
+
 - VPC-only deployment (no direct public internet access for security)
 - Specific subnet requirements for high availability across multiple AZs
 - Managed Service for Apache Flink-managed security group configuration for service communication
@@ -61,6 +63,7 @@ For the MSF architecture overview, KPU resource model, and AWS service integrati
 - Cross-region data transfer limitations for compliance and performance
 
 **Storage Constraints**:
+
 - Checkpoints automatically stored in Managed Service for Apache Flink-managed S3 buckets (user cannot configure location)
 - Savepoints require user-specified S3 bucket in same region as Managed Service for Apache Flink application
 - State backend: RocksDB by default (configurable via AWS support case)
@@ -70,6 +73,7 @@ For the MSF architecture overview, KPU resource model, and AWS service integrati
 ## Common Managed Service for Apache Flink Patterns
 
 ### Streaming ETL Pattern
+
 ```java
 KinesisStreamsSource<ProcessedRecord> kdsSource =
         KinesisStreamsSource.<ProcessedRecord>builder()
@@ -112,6 +116,7 @@ processed.sinkTo(kdsSink);
 ```
 
 ### Real-time Analytics Pattern
+
 ```sql
 -- Managed Service for Apache Flink-optimized Flink SQL for real-time analytics
 CREATE TABLE kinesis_source (
@@ -156,6 +161,7 @@ GROUP BY window_start, window_end;
 
 **Managed Service for Apache Flink KPU Configuration (Service Level)**
 Configured through Managed Service for Apache Flink console - NOT in application code. KPU Configuration:
+
 - Each KPU: 1 vCPU, 4 GB memory
 - You configure `Parallelism` (total task slots) and `ParallelismPerKPU` (task slots per KPU, default 1, max 8)
 - Allocated KPUs = Parallelism / ParallelismPerKPU
@@ -166,15 +172,16 @@ Configured through Managed Service for Apache Flink console - NOT in application
 Managed Service for Apache Flink manages these through service configuration:
 
 State backend:
-  - RocksDB (configurable via support case)
+
+- RocksDB (configurable via support case)
 Checkpoint Configuration:
-  - Interval: 60 seconds (configurable)
-  - Storage: S3 (Managed Service for Apache Flink-managed bucket)
+- Interval: 60 seconds (configurable)
+- Storage: S3 (Managed Service for Apache Flink-managed bucket)
 Savepoint Configuration:
-  - Storage: S3 (Managed Service for Apache Flink-managed)
-  - Triggered through Managed Service for Apache Flink console/API
+- Storage: S3 (Managed Service for Apache Flink-managed)
+- Triggered through Managed Service for Apache Flink console/API
 Parallelism Configuration:
-  - Parallelism: Total task slots (service-level setting)
-  - ParallelismPerKPU: Task slots per KPU (default 1, max 8)
-  - Allocated KPUs = Parallelism / ParallelismPerKPU
-  - Auto-scaling: adjusts CurrentParallelism within configured bounds
+- Parallelism: Total task slots (service-level setting)
+- ParallelismPerKPU: Task slots per KPU (default 1, max 8)
+- Allocated KPUs = Parallelism / ParallelismPerKPU
+- Auto-scaling: adjusts CurrentParallelism within configured bounds

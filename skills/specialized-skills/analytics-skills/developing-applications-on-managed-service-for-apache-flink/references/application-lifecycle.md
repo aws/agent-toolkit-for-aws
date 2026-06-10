@@ -152,6 +152,7 @@ MSF has three rollback paths — choose the highest one available:
    - The deploy succeeded but the new version has downstream issues you only see in production (auto-rollback does not cover this case).
    - The application is stuck in a transient state (e.g., long UPDATING).
    - Auto-rollback was not enabled.
+
    ```bash
    aws kinesisanalyticsv2 rollback-application --application-name "$APP" \
      --current-application-version-id "$VERSION"

@@ -74,6 +74,7 @@ public class OptimizedKeyedProcessor extends KeyedProcessFunction<String, Event,
 ## Managed Service for Apache Flink State Management
 
 Managed Service for Apache Flink service handles:
+
 - State backend configuration (RocksDB with S3 for checkpoints/savepoints)
 - Checkpoint storage and retention
 - Savepoint management through console

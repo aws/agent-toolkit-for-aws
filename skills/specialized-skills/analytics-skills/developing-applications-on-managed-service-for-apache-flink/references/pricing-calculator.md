@@ -47,6 +47,7 @@ These assume stateless-to-moderate stateful workloads. Stateful workloads (keyed
 ## Worked Examples
 
 **Small / development (Parallelism=2, PPK=1, 24/7, negligible state, no snapshots):**
+
 - KPU count: 2 / 1 = 2 application KPUs, plus 1 orchestration KPU = **3 billed KPUs**
 - KPU cost: 3 × $0.11 × 730 = **$240.90**
 - Running application storage: state ≤ 2 × 50 GB included → **$0** (the 50 GB/KPU allocation is *included*, not separately billable; do **not** multiply 50 × $0.10 per KPU)
@@ -56,12 +57,14 @@ These assume stateless-to-moderate stateful workloads. Stateful workloads (keyed
 The orchestration KPU is the most common sizing mistake at this scale: it raises the bill from $158 (2 KPUs) to $241 (3 KPUs), a 52% increase. Always include it.
 
 **Medium production (8 parallel, PPK=1, 24/7, 5 GB state):**
+
 - KPUs: 8 + 1 = 9 → 9 × $0.11 × 730 = **$722.70**
 - Storage: 5 GB ≤ 8 × 50 GB included → $0
 - Snapshots: 5 GB × $0.023 = $0.12
 - **Total: ~$723/month**
 
 **Enterprise with autoscaling (avg 16 KPU, peak 32 KPU 20% of time, 60 GB state):**
+
 - Peak: 33 × $0.11 × 146 = $530
 - Off-peak: 17 × $0.11 × 584 = $1,092
 - Snapshots: 60 GB × $0.023 = $1.38

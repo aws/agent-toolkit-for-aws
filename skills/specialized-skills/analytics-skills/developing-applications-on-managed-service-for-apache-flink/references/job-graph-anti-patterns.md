@@ -13,6 +13,7 @@ For operator chaining, operator-to-task-slot mapping, and task slot overload gui
 Data skew occurs when some subtasks of a keyed operator receive significantly more data than others. This causes the overloaded subtasks to become bottlenecks while other subtasks sit idle.
 
 **How to detect skew in the Flink Web UI:**
+
 1. Open the running job → click on a keyed operator (any operator after a `keyBy`)
 2. Select the "Subtasks" tab
 3. Compare these columns across subtasks:
@@ -49,11 +50,11 @@ Running Managed Service for Apache Flink applications with high KPU counts (e.g.
 - **High parallelism** amplifies the shuffle: with 64 subtasks, each record after a `keyBy` is serialized, sent over the network, and deserialized. The skewed subtasks become CPU-bound on Kryo deserialization.
 
 **Remediation:**
+
 - Switch from Kryo to POJO serialization by ensuring your data classes follow Flink's POJO rules (public class, public no-arg constructor, public fields or getters/setters). Check logs for `"Class ... cannot be used as a POJO type"` to find Kryo fallbacks.
 - If POJO is not feasible, use Avro serialization with a defined schema.
 - Address the skew itself: add a salt/prefix to hot keys to spread them across subtasks, then aggregate in a second pass.
 - Only after skew is confirmed and quantified per the steps above, consider reducing parallelism for the skewed operator if most subtasks are idle while a few are saturated. Do not lower parallelism preemptively — it masks the underlying hot-key problem and can hurt unrelated operators in the same job.
-
 
 ## Monolith Job Anti-Pattern
 
@@ -94,7 +95,6 @@ Split a monolith job when any of these conditions are met:
 | Cost | Single application | Multiple applications + intermediate stream costs |
 
 **General guidance**: Split when the monolith causes operational pain (frequent restarts, resource waste, mixed SLAs). For small applications with < 50 operators and uniform requirements, a single job is simpler.
-
 
 ## High Fan-Out Anti-Pattern
 
@@ -152,6 +152,7 @@ The same principle applies to Kafka sinks — use a single `KafkaSink` with a `K
 | 32 | 64–128 | At this scale, prefer fewer sinks with built-in partitioning |
 
 If the application genuinely needs to write to many distinct destinations (different streams, different tables), consider:
+
 - Using a single sink with a routing function that directs records to different targets based on record content
 - Splitting into multiple jobs, each responsible for a subset of destinations (see Monolith Job Anti-Pattern above)
 - Using side outputs to route records to a small number of categorized sinks rather than one per destination

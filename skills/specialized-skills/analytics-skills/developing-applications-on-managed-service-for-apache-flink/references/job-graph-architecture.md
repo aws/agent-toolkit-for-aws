@@ -18,6 +18,7 @@ Flink automatically chains operators that meet all of these conditions into a si
 Chained operators run in the same thread, eliminating serialization/deserialization overhead and thread context switching between them. In the Flink Web UI, chained operators appear as a single box in the job graph with names joined by arrows (e.g., `Source → Map → Filter`).
 
 **Verifying chaining in the Flink Web UI:**
+
 1. Open the Flink Web UI from the Managed Service for Apache Flink console
 2. Navigate to the running job's "Overview" tab
 3. Each box in the job graph represents one task (a chain of operators)
@@ -25,6 +26,7 @@ Chained operators run in the same thread, eliminating serialization/deserializat
 5. If operators you expected to be chained appear as separate boxes, check that parallelism matches and the data exchange is forward
 
 **Diagnosing unexpected chain breaks** — work this list in order before assuming a bug or re-running the job:
+
 1. **Parallelism mismatch.** Confirm every operator in the supposed chain runs at the same parallelism. Source connectors are a frequent culprit — a Kinesis source defaults to one subtask per shard, so a 4-shard stream can't chain with downstream operators set to 8. Per-operator `setParallelism()` overrides the env default.
 2. **Implicit shuffle.** Any `keyBy()`, `rebalance()`, `shuffle()`, `broadcast()`, or `rescale()` between two operators inserts a network exchange and breaks the chain at that point. The exchange-label arrow (`HASH`, `REBALANCE`, `FORWARD`) between job-graph boxes tells you which case applies.
 3. **`startNewChain()` or `disableChaining()` left in code.** These are commonly added for diagnostic isolation (see below) and forgotten.
@@ -66,11 +68,13 @@ DataStream<Enriched> enriched = events
 ```
 
 **When to break chains:**
+
 - To isolate a CPU-intensive operator so its metrics (busyTime, backpressure) are visible independently in the Flink Web UI
 - To separate an operator that makes external calls (HTTP, database) from the rest of the pipeline so its latency does not mask upstream/downstream metrics
 - To control parallelism boundaries — operators with different parallelism cannot chain anyway, but `startNewChain()` makes the intent explicit
 
 **When NOT to break chains:**
+
 - For debugging only — use the Web UI's subtask metrics instead
 - To "improve parallelism" — breaking chains does not change parallelism; it only adds serialization overhead
 - Preemptively on every operator — this defeats the purpose of chaining and increases resource consumption
@@ -83,11 +87,11 @@ The Flink Web UI shows two views of the job:
 2. **Task Managers** tab: Shows which task slots are allocated on each TaskManager and what tasks run in each slot. Use this to verify operator-to-task-slot distribution.
 
 To check operator-to-task-slot assignments:
+
 1. Open the Flink Web UI → select the running job
 2. Click on a task box in the job graph to expand its details
 3. The "Subtasks" tab shows each parallel instance (subtask) and which TaskManager hosts it
 4. Cross-reference with the TaskManagers tab to see total slot utilization per TaskManager
-
 
 For data skew detection and mitigation, the monolith job anti-pattern, and the high fan-out anti-pattern, see [job-graph-anti-patterns.md](job-graph-anti-patterns.md).
 
@@ -132,7 +136,6 @@ DataStream<Result> results = events
 Flink's slot sharing allows operators from different pipeline parts to share the same task slot. When all operators are in the default group and the job has many operators, every slot runs one subtask of every operator — leading to overload.
 
 **Strategies**: Group operators by resource profile (CPU-intensive vs I/O-bound in separate groups). Use the Flink Web UI's TaskManagers tab to verify balanced slot utilization.
-
 
 ## References
 

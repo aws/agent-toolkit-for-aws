@@ -20,6 +20,7 @@ Not all connector versions are published for every Flink version. Use the correc
 | `maven-compiler-plugin` | `3.8.1` | `3.11.0` | Newer version recommended for Java 17 |
 
 **Flink 2.2 additional notes:**
+
 - `flink-statebackend-forst` is available as an alternative to `flink-statebackend-rocksdb` for disaggregated state management
 - Logging uses `log4j-slf4j-impl` (same as 1.20; older Flink versions used `slf4j-log4j12`)
 - See `flink-2x-migration.md` for API changes that affect application code (e.g., `open(OpenContext)`, `Duration` instead of `Time`, removed `SourceFunction`/`SinkFunction`)

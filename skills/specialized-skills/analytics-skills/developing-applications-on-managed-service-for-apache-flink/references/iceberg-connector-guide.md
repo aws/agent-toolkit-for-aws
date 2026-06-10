@@ -55,9 +55,10 @@ catalog.createTable(tableId, schema, partitionSpec, tableProperties);
 ```
 
 **Guidance:**
-- Use v2 for any table that needs upserts, updates, or deletes
-- v1 is sufficient for pure append workloads (event logs, clickstreams)
-- v3 adds delete vectors which improve read performance for upsert tables, but check query engine compatibility
+
+* Use v2 for any table that needs upserts, updates, or deletes
+* v1 is sufficient for pure append workloads (event logs, clickstreams)
+* v3 adds delete vectors which improve read performance for upsert tables, but check query engine compatibility
 
 ## Write Patterns
 
@@ -73,6 +74,7 @@ Iceberg provides two DataStream sink implementations and a SQL path:
 | DynamicIcebergSink | `DynamicIcebergSink` | Dynamic table routing, schema evolution, writing to multiple tables from one stream. |
 
 To use IcebergSink (SinkV2) via SQL, set:
+
 ```sql
 SET 'table.exec.iceberg.use-v2-sink' = 'true';
 ```
@@ -108,12 +110,13 @@ IcebergSink.forRowData(rowDataStream)
 ```
 
 **Critical upsert rules:**
-- Table must use format-version 2 or 3
-- Primary key / equality fields must be defined
-- Partition columns must be included in equality fields for HASH distribution
-- OVERWRITE and UPSERT are mutually exclusive
-- Upsert generates equality delete files which accumulate and degrade read performance — compaction is essential
-- **HASH distribution is required for correctness with upsert.** Without it (distribution mode NONE), Flink uses rebalance to distribute records across writer tasks. If multiple updates to the same key land on different writer tasks within the same checkpoint, the delete file written by one task cannot find the insert written by another, causing duplicate rows. HASH distribution ensures all records for the same equality fields go to the same writer task. This is a correctness requirement, not just a performance optimization.
+
+* Table must use format-version 2 or 3
+* Primary key / equality fields must be defined
+* Partition columns must be included in equality fields for HASH distribution
+* OVERWRITE and UPSERT are mutually exclusive
+* Upsert generates equality delete files which accumulate and degrade read performance — compaction is essential
+* **HASH distribution is required for correctness with upsert.** Without it (distribution mode NONE), Flink uses rebalance to distribute records across writer tasks. If multiple updates to the same key land on different writer tasks within the same checkpoint, the delete file written by one task cannot find the insert written by another, causing duplicate rows. HASH distribution ensures all records for the same equality fields go to the same writer task. This is a correctness requirement, not just a performance optimization.
 
 ### Upsert Mode (SQL)
 
@@ -210,11 +213,11 @@ RANGE distribution handles skewed data (e.g., recent partitions have more traffi
 
 Equality deletes are the only viable option for streaming upsert/CDC workloads (the writer doesn't know the physical file location of the row to delete). Key considerations:
 
-- Delete files accumulate with every checkpoint that includes updates/deletes
-- Query engines must merge delete files with data files at read time (read amplification)
-- Some query engines have limited equality delete support (check your downstream consumers)
-- Regular compaction is essential to merge delete files into data files and restore read performance
-- Monitor the `equality_delete_file_count` and `equality_delete_record_count` in the `$partitions` metadata table
+* Delete files accumulate with every checkpoint that includes updates/deletes
+* Query engines must merge delete files with data files at read time (read amplification)
+* Some query engines have limited equality delete support (check your downstream consumers)
+* Regular compaction is essential to merge delete files into data files and restore read performance
+* Monitor the `equality_delete_file_count` and `equality_delete_record_count` in the `$partitions` metadata table
 
 ## Read Patterns
 
@@ -240,11 +243,12 @@ DataStream<RowData> stream = env.fromSource(
 ```
 
 **Starting strategies:**
-- `INCREMENTAL_FROM_LATEST_SNAPSHOT` — Start from latest snapshot (inclusive), discover new appends
-- `INCREMENTAL_FROM_EARLIEST_SNAPSHOT` — Start from earliest snapshot (inclusive)
-- `TABLE_SCAN_THEN_INCREMENTAL` — Full table scan first, then switch to incremental
-- `INCREMENTAL_FROM_SNAPSHOT_ID` — Start from a specific snapshot ID (inclusive)
-- `INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP` — Start from a specific timestamp (inclusive)
+
+* `INCREMENTAL_FROM_LATEST_SNAPSHOT` — Start from latest snapshot (inclusive), discover new appends
+* `INCREMENTAL_FROM_EARLIEST_SNAPSHOT` — Start from earliest snapshot (inclusive)
+* `TABLE_SCAN_THEN_INCREMENTAL` — Full table scan first, then switch to incremental
+* `INCREMENTAL_FROM_SNAPSHOT_ID` — Start from a specific snapshot ID (inclusive)
+* `INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP` — Start from a specific timestamp (inclusive)
 
 ### Streaming Read (SQL)
 
@@ -347,10 +351,10 @@ SELECT name, type, snapshot_id FROM db.my_table$refs;
 
 ### Guidelines
 
-- **Partition tables with more than ~1 million records.** Unpartitioned large tables force full scans.
-- **Use moderate cardinality.** Too high (e.g., per-sensor_id with 50,000 sensors) creates millions of tiny partitions that can't be compacted. Too low (e.g., single region) provides minimal pruning benefit.
-- **Time-series data:** Partition by `day(event_time)` or `hour(event_time)`, not by raw timestamp.
-- **Flink SQL limitation:** Flink DDL does not support hidden partitioning transforms like `day()`, `bucket()`, or `truncate()`. Use the DataStream/Catalog API for hidden partitions, or partition by a pre-computed column.
+* **Partition tables with more than ~1 million records.** Unpartitioned large tables force full scans.
+* **Use moderate cardinality.** Too high (e.g., per-sensor_id with 50,000 sensors) creates millions of tiny partitions that can't be compacted. Too low (e.g., single region) provides minimal pruning benefit.
+* **Time-series data:** Partition by `day(event_time)` or `hour(event_time)`, not by raw timestamp.
+* **Flink SQL limitation:** Flink DDL does not support hidden partitioning transforms like `day()`, `bucket()`, or `truncate()`. Use the DataStream/Catalog API for hidden partitions, or partition by a pre-computed column.
 
 ### Partition Evolution
 
@@ -408,7 +412,7 @@ ALTER TABLE my_table RENAME TO new_table_name;
 
 ### Flink DDL Limitations
 
-- No hidden partitioning transforms (`day()`, `bucket()`, `truncate()`) in DDL — use DataStream API or pre-computed columns
-- No computed columns
-- No watermark definitions in DDL
-- Column and partition changes not supported via ALTER TABLE
+* No hidden partitioning transforms (`day()`, `bucket()`, `truncate()`) in DDL — use DataStream API or pre-computed columns
+* No computed columns
+* No watermark definitions in DDL
+* Column and partition changes not supported via ALTER TABLE

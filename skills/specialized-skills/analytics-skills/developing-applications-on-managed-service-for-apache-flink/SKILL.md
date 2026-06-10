@@ -9,7 +9,7 @@ description: >-
   the trust principal — two-phase IaC deploys, snapshot lifecycle, Flink 1.x→2.x migration)
   that override generic Flink knowledge.
 
-  Triggers — activate on any of: Flink, MSF, Managed Flink, KinesisAnalytics(V2),
+Triggers — activate on any of: Flink, MSF, Managed Flink, KinesisAnalytics(V2),
   KPU, ParallelismPerKPU, savepoint, checkpoint, operator UID, FlinkKinesisConsumer,
   KinesisStreamsSource, KafkaSource, IcebergSink, EFO, CreateApplication, UpdateApplication,
   CreateApplicationSnapshot, Kryo, RocksDB, Iceberg streaming, EXACTLY_ONCE, watermark,
@@ -64,10 +64,10 @@ These will inform how to organize the project, and whether to use Flink Table AP
 
 ## Reference Files
 
-* You MUST use this skill and its reference files to answer any question on these topics. 
-* Do NOT answer from training knowledge or by searching general AWS documentation when the question concerns Apache Flink, Managed Service for Apache Flink, KPU sizing, Flink monitoring, deployment, migration, real-time analytics, or Iceberg/LakeHouse streaming with Flink 
-  * You MUST load the relevant reference files below before taking other steps.
-  * The reference files contain MSF-specific details (thresholds, statistics, namespaces, constraints) that differ from generic Flink guidance and are required for correct responses.
+- You MUST use this skill and its reference files to answer any question on these topics.
+- Do NOT answer from training knowledge or by searching general AWS documentation when the question concerns Apache Flink, Managed Service for Apache Flink, KPU sizing, Flink monitoring, deployment, migration, real-time analytics, or Iceberg/LakeHouse streaming with Flink
+  - You MUST load the relevant reference files below before taking other steps.
+  - The reference files contain MSF-specific details (thresholds, statistics, namespaces, constraints) that differ from generic Flink guidance and are required for correct responses.
 
 | Goal | Reference | When to Load |
 |------|-----------|-------------|

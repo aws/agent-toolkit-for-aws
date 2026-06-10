@@ -101,10 +101,9 @@ Starting with 3.6.x, Flink CDC publishes per-Flink-version artifacts; the unsuff
 </dependency>
 ```
 
-
 ## Database Credentials and Secrets Management
 
-**Secrets Manager is the only supported credential source for CDC on MSF.** Database passwords must be fetched in application code at job startup. Do not put credentials into MSF runtime properties. 
+**Secrets Manager is the only supported credential source for CDC on MSF.** Database passwords must be fetched in application code at job startup. Do not put credentials into MSF runtime properties.
 
 The supported pattern is to keep only non-sensitive values plus a **secret ID** in MSF runtime properties, and look up the actual credentials with the AWS SDK in `main()` before constructing the source.
 
@@ -275,6 +274,7 @@ Always import from the connector's `.source` sub-package, never from the top-lev
 Before using the MySQL CDC connector, the source database must be configured:
 
 1. **Enable binlog in ROW format** (required):
+
    ```sql
    -- Verify binlog is enabled and in ROW format
    SHOW VARIABLES LIKE 'log_bin';        -- Must be ON
@@ -282,16 +282,19 @@ Before using the MySQL CDC connector, the source database must be configured:
    ```
 
 2. **Create a dedicated CDC user** with minimal required permissions:
+
    ```sql
    CREATE USER 'flink_cdc'@'%' IDENTIFIED BY '<password>';
    GRANT SELECT, SHOW DATABASES, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'flink_cdc'@'%';
    FLUSH PRIVILEGES;
    ```
+
    Note: `RELOAD` permission is NOT required when incremental snapshot is enabled (the default).
 
 3. **For Aurora MySQL / RDS MySQL**: Binlog is enabled by default. Ensure the parameter group has `binlog_format = ROW`. For Aurora, set `binlog_replication_globaldb` to `1` if using Global Database.
 
 4. **Recommended: Enable GTID mode** for high availability failover:
+
    ```
    gtid_mode = on
    enforce_gtid_consistency = on
@@ -361,6 +364,7 @@ If multiple Flink CDC jobs read from the same MySQL instance, their server ID ra
 ### Database Prerequisites
 
 1. **Set WAL level to logical** (requires restart):
+
    ```sql
    -- Check current setting
    SHOW wal_level;  -- Must be 'logical'
@@ -369,18 +373,22 @@ If multiple Flink CDC jobs read from the same MySQL instance, their server ID ra
    ```
 
 2. **Set table replica identity to FULL** (required for UPDATE/DELETE events):
+
    ```sql
    ALTER TABLE my_schema.my_table REPLICA IDENTITY FULL;
    ```
+
    Without `FULL`, Debezium cannot capture the before-image of UPDATE/DELETE events, which will cause deserialization failures.
 
 3. **Create a dedicated CDC user**:
+
    ```sql
    CREATE ROLE flink_cdc WITH LOGIN PASSWORD '<password>' REPLICATION;
    GRANT SELECT ON ALL TABLES IN SCHEMA public TO flink_cdc;
    ```
 
 4. **Ensure sufficient replication slots** (`max_replication_slots` and `max_wal_senders`):
+
    ```sql
    SHOW max_replication_slots;  -- Default is 10, increase if needed
    SHOW max_wal_senders;        -- Must be >= max_replication_slots
@@ -458,6 +466,7 @@ Replication slots are a limited resource (default max: 10) and have significant 
 
 - **Slots retain WAL segments** until the consumer confirms processing. If a Flink job stops or falls behind, WAL accumulates on disk and can fill the volume.
 - **Flink CDC does NOT automatically drop replication slots** when the job stops. You must clean up orphaned slots manually:
+
   ```sql
   -- List active replication slots
   SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained_wal
@@ -466,9 +475,9 @@ Replication slots are a limited resource (default max: 10) and have significant 
   -- Drop an inactive slot
   SELECT pg_drop_replication_slot('flink_cdc_slot');
   ```
+
 - **Monitor WAL retention size** — set up CloudWatch alarms on RDS `FreeStorageSpace` or Aurora `VolumeBytesUsed`.
 - **Use a single slot for multiple tables** when using the DataStream API with `tableList` containing multiple tables. This is more efficient than one slot per table.
-
 
 ## Table API / SQL CDC Source
 
@@ -515,6 +524,7 @@ tableEnv.from("orders_cdc")
 ```
 
 Why `TableDescriptor` is preferred over string-templated DDL on MSF:
+
 - Credentials are passed as typed option values, not interpolated into a SQL string — quote characters in a password cannot break the statement.
 - Schema typos fail at compile time, not at job submission.
 - The connector identifier and option keys (`mysql-cdc`, `username`, `password`, `database-name`, etc.) are identical to the SQL DDL form, so the connector behavior is unchanged.
@@ -567,6 +577,7 @@ CDC workloads on MSF require VPC configuration to reach the source database. The
 ### IAM Permissions
 
 The MSF application's IAM execution role needs permissions for:
+
 - VPC networking (automatically managed by MSF when VPC is configured)
 - AWS Secrets Manager secrets holding database credentials (always required — see [Database Credentials and Secrets Management](#database-credentials-and-secrets-management))
 - S3 access for sinks (if writing CDC data to S3/Iceberg)
@@ -608,27 +619,31 @@ CDC workloads have unique resource characteristics:
 
 ### Snapshot Phase Issues
 
-**Problem: Snapshot takes too long or causes checkpoint timeouts**
+#### Problem: Snapshot takes too long or causes checkpoint timeouts
+
 - The initial snapshot reads the entire table before switching to incremental mode.
 - With incremental snapshot enabled (default), the snapshot is chunked and checkpointable.
 - For very large tables, increase `scan.incremental.snapshot.chunk.size` or use `scan.startup.mode = 'latest-offset'` to skip the snapshot.
 
-**Problem: `FLUSH TABLES WITH READ LOCK` errors**
+#### Problem: `FLUSH TABLES WITH READ LOCK` errors
+
 - This only occurs when `scan.incremental.snapshot.enabled = false` (the old snapshot mechanism). Keep incremental snapshot enabled (the default) to avoid global locks.
 
-**Problem: Snapshot restarts from the beginning after job failure**
+#### Problem: Snapshot restarts from the beginning after job failure
+
 - Ensure checkpointing is enabled. Without checkpoints, snapshot progress is not persisted.
 - With incremental snapshot, progress is checkpointed at chunk granularity.
 
 ### Binlog / WAL Phase Issues
 
-**Problem: `binlog file has been purged` or `WAL segment has been removed`**
+#### Problem: `binlog file has been purged` or `WAL segment has been removed`
 
 The Flink job fell too far behind and the database cleaned up the binlog/WAL files it needed to resume from. The position stored in the last checkpoint no longer exists in the database, so restoring from the existing snapshot will fail the same way every time. Recovery has three parts — apply all three:
 
 1. **Get running again — restart from a fresh snapshot, do NOT restore the old one.** Stop the application and start it without the old snapshot, with `scan.startup.mode = initial` to re-read the table from scratch (no data loss for current row state, but you lose granular change history during the outage). If a gap is acceptable, `scan.startup.mode = latest-offset` is faster but lossy. Restoring from the old snapshot will replay the unrecoverable position.
 
 2. **Increase binlog / WAL retention so future outages have headroom.**
+
    ```sql
    -- MySQL (community / self-managed): increase binlog retention (e.g., 7 days)
    SET GLOBAL expire_logs_days = 7;
@@ -643,24 +658,28 @@ The Flink job fell too far behind and the database cleaned up the binlog/WAL fil
    -- PostgreSQL (RDS): increase WAL retention
    -- Set wal_keep_size in the parameter group (e.g., 2048 MB)
    ```
+
    Pick a window that comfortably exceeds your worst-case outage plus reprocessing time.
 
 3. **Right-size KPUs so steady-state lag stays well within retention.** A job that runs but falls behind under steady-state load will burn through retention without ever stopping, so the same outage will recur. See the [KPU Sizing for CDC Workloads](#kpu-sizing-for-cdc-workloads) section in this guide for sizing guidance, and [scaling-decisions.md](scaling-decisions.md) for the operational scale-up workflow. Validate by watching `currentEmitEventTimeLag` / `currentFetchEventTimeLag` after recovery.
 
 Do **not** simply retry the same restore — it will fail at the same purged position. Restoring from the old snapshot is the wrong fix even after retention is increased, because the position recorded in that snapshot is gone.
 
-**Problem: MySQL `server_id` conflicts**
+#### Problem: MySQL `server_id` conflicts
+
 - Each CDC reader needs a unique server ID. If multiple jobs or tools connect to the same MySQL instance, their server IDs must not overlap.
 - Use explicit server ID ranges: `.serverId("5400-5404")` for parallelism 4.
 
-**Problem: PostgreSQL WAL disk usage growing unbounded**
+#### Problem: PostgreSQL WAL disk usage growing unbounded
+
 - Replication slots retain WAL until the consumer confirms. If the Flink job is stopped or slow, WAL accumulates.
 - Monitor replication slot lag and set up alerts.
 - Clean up orphaned slots when jobs are permanently stopped.
 
 ### Schema Evolution
 
-**Problem: Source table schema changes (DDL) break the CDC job**
+#### Problem: Source table schema changes (DDL) break the CDC job
+
 - By default, Flink CDC source connectors do NOT automatically handle schema changes in the DataStream API. A column addition or type change in the source table can cause deserialization errors.
 - Mitigation strategies:
   1. Use `JsonDebeziumDeserializationSchema` which is more tolerant of schema changes (new fields appear in JSON, removed fields disappear).
@@ -669,7 +688,8 @@ Do **not** simply retry the same restore — it will fail at the same purged pos
 
 ### Deserialization Performance
 
-**Problem: High CPU usage from JSON serialization/deserialization**
+#### Problem: High CPU usage from JSON serialization/deserialization
+
 - `JsonDebeziumDeserializationSchema` serializes Debezium records to JSON strings, which then need to be parsed again downstream. This double serialization can consume 60%+ of CPU.
 - For high-throughput workloads, consider:
   1. Implementing a custom `DebeziumDeserializationSchema` that converts directly to your target POJO type.
@@ -681,7 +701,6 @@ Do **not** simply retry the same restore — it will fail at the same purged pos
 - During the **snapshot phase**, records are read via `SELECT` queries with no guaranteed ordering. If ordering matters, use `keyBy` on the primary key downstream.
 - During the **incremental phase** (binlog/WAL), records arrive in commit order from the database. A single CDC source reader preserves this order.
 - After a `keyBy` or parallelism change, ordering is preserved per-key but not globally.
-
 
 ## Complete MSF Application Example: MySQL CDC to Processing
 
@@ -782,6 +801,7 @@ For local development, create `flink-application-properties-dev.json` with the s
 ## CDC Anti-Patterns
 
 ### Anti-Pattern: Missing Operator UIDs on CDC Sources
+
 ```java
 // AVOID: No UID means state cannot be restored after code changes
 env.fromSource(mySqlSource, WatermarkStrategy.noWatermarks(), "source");
@@ -792,6 +812,7 @@ env.fromSource(mySqlSource, WatermarkStrategy.noWatermarks(), "mysql-cdc-source"
 ```
 
 ### Anti-Pattern: Skipping Checkpoints for CDC
+
 ```java
 // AVOID: No checkpointing — CDC will never transition to incremental phase
 // and snapshot progress will be lost on restart
@@ -804,6 +825,7 @@ if (isLocal(env)) {
 ```
 
 ### Anti-Pattern: Using CDC Source with Parallelism > 1 Without Server ID Range (MySQL)
+
 ```java
 // AVOID: Single server ID with parallelism > 1
 MySqlSource.builder()
@@ -817,6 +839,7 @@ MySqlSource.builder()
 ```
 
 ### Anti-Pattern: One Replication Slot Per Table (PostgreSQL)
+
 ```java
 // AVOID: Creating separate CDC sources (and slots) for each table
 PostgresIncrementalSource.<String>builder().tableList("public.orders").slotName("slot_orders").build();
@@ -839,4 +862,3 @@ Additional hardening that pairs with Secrets Manager:
 - Enable TLS to the database. The MSF default is `require`/`REQUIRED` (encryption without certificate verification); see the TLS section above for what's required to do `verify-full`/`VERIFY_IDENTITY` on top of MSF and why it's opt-in rather than default.
 - Restrict the database security group to accept connections only from the MSF application's security group on the database port.
 - Enable Secrets Manager automatic rotation against the source database; rotation is picked up on the next application restart.
-

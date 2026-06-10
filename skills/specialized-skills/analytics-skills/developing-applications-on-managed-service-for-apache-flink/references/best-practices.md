@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide provides Managed Service for Apache Flink-optimized development patterns, anti-patterns, and best practices for building robust, performant, and secure Flink applications on Amazon Managed Service for Apache Flink. For existing applications, use the current user's Flink version. For new applications, assume Flink 2.2 and ask if the user has a preference. 
+This guide provides Managed Service for Apache Flink-optimized development patterns, anti-patterns, and best practices for building robust, performant, and secure Flink applications on Amazon Managed Service for Apache Flink. For existing applications, use the current user's Flink version. For new applications, assume Flink 2.2 and ask if the user has a preference.
 
 Code examples in this guide use Flink 2.2 APIs by default, which are also compatible with Flink 1.20 unless noted otherwise. See `flink-2x-migration.md` for the complete migration reference.
 
@@ -11,18 +11,21 @@ Code examples in this guide use Flink 2.2 APIs by default, which are also compat
 ### Best Practices for Managed Service for Apache Flink
 
 **Application Design**:
+
 - Design for KPU-based automatic scaling with service-level parallelism configuration
 - Use appropriate parallelism levels as suggestions (Managed Service for Apache Flink service-level settings take precedence)
 - Implement proper backpressure handling for Managed Service for Apache Flink's automatic scaling algorithms
 - Design stateful operations with Managed Service for Apache Flink-managed checkpoint intervals in mind
 
 **Resource Management**:
+
 - Configure application for KPU-based resource allocation (1 vCPU, 4GB per KPU)
 - Let Managed Service for Apache Flink manage checkpoint intervals and retention through service-level configuration
 - Monitor resource utilization patterns through CloudWatch metrics
 - Implement proper error handling that works with Managed Service for Apache Flink's automatic recovery
 
 **Monitoring and Alerting**:
+
 - Leverage integrated CloudWatch dashboards and metrics
 - Configure Managed Service for Apache Flink-specific alarms for KPU utilization and throughput
 - Monitor key performance metrics through Managed Service for Apache Flink console and CloudWatch
@@ -30,7 +33,8 @@ Code examples in this guide use Flink 2.2 APIs by default, which are also compat
 
 ### Managed Service for Apache Flink-Optimized Application Structure
 
-**Best Practice: Clean Application Architecture**
+#### Best Practice: Clean Application Architecture
+
 ```java
 public class MSFStreamingApp {
     public static void main(String[] args) throws Exception {
@@ -58,7 +62,8 @@ public class MSFStreamingApp {
 
 `fromSource()`/`sinkTo()` are the recommended APIs for both Flink 1.20 and 2.2. The legacy `addSource()`/`addSink()` APIs are deprecated in 1.20 and removed in 2.x. See `environment-setup.md` for docker-compose.yml setup.
 
-**Anti-Pattern: Monolithic Processing**
+#### Anti-Pattern: Monolithic Processing
+
 ```java
 // AVOID: Single large operator doing everything
 events.map(event -> {
@@ -79,7 +84,8 @@ For serialization best practices (performance hierarchy, POJO, Tuple, Avro, Prot
 
 ### KPU-Based Resource Configuration
 
-**Best Practice: Managed Service for Apache Flink KPU-Optimized Applications**
+#### Best Practice: Managed Service for Apache Flink KPU-Optimized Applications
+
 ```java
 // Application code should be KPU-agnostic
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -102,10 +108,10 @@ dataStream
     .setParallelism(5);
 ```
 
-
 ### Error Handling and Recovery in Managed Service for Apache Flink
 
-**Best Practice: Use Side Outputs for dead letter queues for bad data handling and dependency failures**
+#### Best Practice: Use Side Outputs for dead letter queues for bad data handling and dependency failures
+
 ```java
 public class RobustProcessor extends ProcessFunction<Event, ProcessedEvent> {
     public static final OutputTag<Event> DEAD_LETTER_TAG =
@@ -157,7 +163,8 @@ public class RobustProcessor extends ProcessFunction<Event, ProcessedEvent> {
 
 ### Environment-Specific Configuration Management
 
-**Best Practice: Clean Configuration Separation**
+#### Best Practice: Clean Configuration Separation
+
 ```java
 import com.amazonaws.services.kinesisanalytics.runtime.KinesisAnalyticsRuntime;
 
@@ -211,12 +218,15 @@ In Managed Service for Apache Flink, application properties are configured at th
 ### Performance Anti-Patterns
 
 1. **KPU-Unaware Parallelism Configuration**
+
    ```java
    // AVOID: Fixed parallelism that doesn't align with KPU model
    env.setParallelism(7); // Doesn't align with KPU scaling
    dataStream.setParallelism(13); // Arbitrary parallelism, only set when operator requires custom parallelism
    ```
+
 2. **Excessive Rebalancing**
+
    ```java
    // AVOID: Unnecessary rebalance operations
    stream.rebalance().map(...).rebalance().filter(...);
@@ -224,6 +234,7 @@ In Managed Service for Apache Flink, application properties are configured at th
    ```
 
 3. **Blocking Operations in Processing Functions**
+
    ```java
    // AVOID: Synchronous external calls that block KPU resources, use Async functions instead
    public void processElement(Event event, Context ctx, Collector<Result> out) {
@@ -233,6 +244,7 @@ In Managed Service for Apache Flink, application properties are configured at th
    ```
 
 4. **Large State Objects Without TTL**
+
    ```java
    // AVOID: Unbounded state growth
    private transient ListState<Event> allEvents; // Can exhaust KPU memory

@@ -7,6 +7,7 @@ This guide provides setup instructions for Apache Flink development targeting Am
 ## Prerequisites
 
 Before starting, ensure you have:
+
 - Administrative access to your development machine
 - Stable internet connection for downloading dependencies
 - At least 16GB RAM and 30GB free disk space (for Docker containers)
@@ -21,6 +22,7 @@ Before starting, ensure you have:
 Docker is required for running Flink, Kafka, LocalStack, and other infrastructure locally for testing. Ensure Docker is installed.
 
 **Verification:**
+
 ```bash
 docker --version
 docker-compose --version
@@ -32,6 +34,7 @@ docker run hello-world
 While Flink runs in containers, JDK is still needed for compilation and IDE support. Flink 1.20 requires Java 11. Flink 2.2 requires Java 17 (Java 21 also supported).
 
 **Verification:**
+
 ```bash
 java -version
 javac -version
@@ -43,6 +46,7 @@ echo $JAVA_HOME
 ### Docker Compose Configuration
 
 Create a comprehensive Docker Compose setup that mirrors the Managed Service for Apache Flink environment. Adjust the Flink image tag to match your target version:
+
 - Flink 1.20: `flink:1.20-java11`
 - Flink 2.2: `flink:2.2-java17`
 
@@ -170,6 +174,7 @@ networks:
 ### Starting the Development Environment
 
 **1. Create Project Structure:**
+
 ```bash
 # Create Managed Service for Apache Flink project directory
 mkdir my-msf-app
@@ -182,6 +187,7 @@ mkdir -p flink-jobs src/main/java src/test/java
 ```
 
 **2. Start Docker Environment:**
+
 ```bash
 # Start all services
 docker-compose up -d
@@ -203,7 +209,7 @@ docker-compose exec kafka kafka-topics --bootstrap-server localhost:9092 --list
 
 ### Maven Project Template for Managed Service for Apache Flink
 
-Build the JAR in local mode to include Managed Service for Apache Flink provided dependencies: 
+Build the JAR in local mode to include Managed Service for Apache Flink provided dependencies:
 
 ```bash
 # For Flink 1.20 (Java 11):
@@ -224,6 +230,7 @@ See `dependency-management.md` for examples of dependencies and pom.xml requried
 ### Managed Service for Apache Flink-Specific Tools
 
 **AWS CLI Managed Service for Apache Flink Commands:**
+
 ```bash
 # List Managed Service for Apache Flink applications
 aws kinesisanalyticsv2 list-applications
