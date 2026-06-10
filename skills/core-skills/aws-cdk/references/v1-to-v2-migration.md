@@ -111,3 +111,9 @@ If more than one version appears, you have duplicates.
 2. Run `npm dedupe` to collapse duplicates
 3. In monorepos, hoist `aws-cdk-lib` to the root workspace
 4. Verify with `npm ls aws-cdk-lib` — only one copy SHOULD appear
+
+If `npm dedupe` alone does not resolve it, reset the install:
+
+```bash
+rm -rf node_modules && npm ci && npm dedupe
+```

@@ -26,59 +26,150 @@ Three error categories exist:
 
 ## Deploy Failure Root Cause Analysis
 
-The CDK CLI surfaces a summary, but you MUST check CloudFormation stack events for the real error.
+The CDK CLI surfaces only a terse summary; the real cause is in the failed deployment, not the CLI output. You MUST work through these steps in order.
 
-### Step 1: Query failed events
-
-```bash
-aws cloudformation describe-stack-events \
-  --stack-name $STACK \
-  --query "StackEvents[?contains(ResourceStatus,'FAILED')]"
-```
-
-### Step 2: Enable verbose output
-
-Re-run the deploy with verbose logging to capture the full CLI-to-CloudFormation interaction:
+### Step 1: Re-run with `--verbose`
 
 ```bash
 cdk deploy $STACK --verbose
 ```
 
-### Diagnosis checklist
+Prints every AWS API call, the change-set diff, and a fuller stack trace (`-vv` / `-vvv` for more).
 
-You MUST work through these in order:
+### Step 2: `cdk diagnose` (preferred, CDK CLI ≥ 2.1120.0)
 
-1. Read the `ResourceStatusReason` from the failed CloudFormation event.
-2. Identify the logical resource ID and map it back to your CDK construct.
-3. Classify the error into one of the three categories above.
-4. For `DeployFailed`: fix the resource configuration or IAM permissions.
-5. For `DeploymentError`: check asset paths, Docker availability, and the CDK publishing role.
-6. For `EarlyValidationFailure`: check bootstrap version, environment configuration, or CLI version.
+```bash
+cdk --unstable=diagnose diagnose $STACK
+```
+
+Inspects the failed deployment and prints the root cause with pointers back to the CDK source that caused it. It runs after the fact, so it also works for diagnosing CI/CD pipeline failures. Requires the `--unstable=diagnose` flag.
+
+### Step 3: CloudFormation events (fallback)
+
+If `cdk diagnose` is unavailable (older CLI) or you need the raw stream:
+
+```bash
+aws cloudformation describe-events --stack-name $STACK --filters FailedEvents=true
+```
+
+`describe-events` groups events by operation ID and surfaces validation, provisioning, and hook-invocation errors — it supersedes `describe-stack-events`. The FIRST event in the output is the real root cause; later failures are rollback cascade.
+
+### Step 4: Read the `ResourceStatusReason`
+
+| Reason | Likely cause → fix |
+|---|---|
+| `... already exists` | Physical-name collision — remove `bucketName`/`tableName`/`roleName` and let CDK auto-generate. |
+| `resource creation cancelled` | Not the root — another resource failed first; find that event. |
+| `... in the WAITING state for approximately ... seconds` | Stabilization timeout (RDS, ASG signals, long-running Lambda). |
+| `Export X cannot be deleted as it is in use by Stack Y` | Cross-stack deadlock — see [Deadly Embrace](#deadly-embrace-cross-stack-reference-deadlock). |
+| `is not authorized to perform ...` | The default CDK bootstrap grants AdministratorAccess to the execution role — this error means you're using a customized bootstrap with a restricted execution role, a permissions boundary, or an SCP. Check which specific action/resource is denied, then add only that permission to your custom execution role or permissions boundary. Do NOT widen to `*` — grant the minimum action on the minimum resource ARN. |
+
+### Step 5: Service logs for Lambda / API Gateway / custom resources
+
+CloudFormation only reports *that* a resource failed. The actual reason (e.g. a custom-resource Lambda threw) is in CloudWatch Logs:
+
+- Lambda: `/aws/lambda/<function-name>`
+- CodeBuild-in-pipeline: `/aws/codebuild/<project>`
+- CloudFormation custom resources: the backing Lambda's log group.
+
+### `EarlyValidationFailure` specifically
+
+Fails BEFORE the change set is submitted — a construct's `validate()` returned errors, a synth-time assertion tripped, or an `addError` annotation fired. The message names the exact property and constraint; fix it before redeploying.
+
+> If you have the awslabs `aws-iac-mcp-server`, its `troubleshoot_cloudformation_deployment` tool matches the failure event stream against 30+ known patterns and returns CloudTrail deep links — use it to shortcut Steps 2–4.
 
 ---
 
 ## Deadly Embrace (Cross-Stack Reference Deadlock)
 
-A deadly embrace occurs when Stack A exports a value that Stack B imports. CloudFormation MUST NOT delete an export while any other stack imports it. Attempting to remove the export or the resource behind it fails with:
+A deadly embrace occurs when Stack A exports a value that Stack B imports, and you then try to remove the export (or the resource behind it). CloudFormation refuses:
 
-> Export cannot be deleted while it is in use by another stack.
+> Export Stack1:ExportsOutputFnGetAtt-XXXX cannot be deleted as it is in use by Stack2
 
-### Two-deploy fix
+The deadlock is structural: a safe removal needs B deployed first (so it stops importing), but CDK orders A before B because of the dependency.
 
-This MUST be done in exactly two deployments:
+Every cross-stack reference has a **strength**:
 
-**Deploy 1 — Decouple the consumer:**
+- **Strong** (default) — uses `Fn::ImportValue`. CloudFormation blocks the producer from removing the export while any consumer still imports it.
+- **Weak** — uses `Fn::GetStackOutput`. No coupling; the producer can be changed or deleted independently.
+- **Both** — transitional state for migrating strong → weak.
 
-1. In the consuming stack (Stack B), remove the `Fn.importValue` / cross-stack reference. Replace it with a hardcoded value, SSM lookup, or other mechanism.
-2. In the producing stack (Stack A), add `this.exportValue(resource.resourceArn)` (or the relevant attribute) to keep the export alive during transition.
-3. Deploy both stacks.
+Cross-account references are always weak (strong is unsupported cross-account).
 
-**Deploy 2 — Remove the export:**
+### Fix — reference strength (recommended)
 
-1. In the producing stack (Stack A), remove the `this.exportValue()` call.
+CDK supports weakening the reference before removing the resource, with no manual `exportValue` hacks. You MUST do this as a **three-deploy migration**.
+
+**Weaken all references to a resource** — `CrossStackReferences.of(resource).produce()`:
+
+```typescript
+import { CrossStackReferences, ReferenceStrength } from 'aws-cdk-lib';
+
+// Deploy 1 — consumers move to Fn::GetStackOutput; the strong export stays
+CrossStackReferences.of(bucket).produce(ReferenceStrength.BOTH);
+
+// Deploy 2 — drop the strong export now that no consumer uses Fn::ImportValue
+CrossStackReferences.of(bucket).produce(ReferenceStrength.WEAK);
+
+// Deploy 3 — remove the resource or the reference entirely
+```
+
+**Weaken a single reference** — `Stack.consumeReference()`:
+
+```typescript
+import { Stack, ReferenceStrength } from 'aws-cdk-lib';
+
+// Deploy 1 — wrap with consumeReference (defaults to BOTH)
+new CfnOutput(consumer, 'BucketArn', { value: Stack.consumeReference(bucket.bucketArn) });
+
+// Deploy 2 — switch to WEAK
+new CfnOutput(consumer, 'BucketArn', {
+  value: Stack.consumeReference(bucket.bucketArn, ReferenceStrength.WEAK),
+});
+
+// Deploy 3 — remove the resource or reference
+```
+
+(Use `Stack.consumeListReference()` for string-list references.)
+
+### Fix — legacy two-deploy (`exportValue`)
+
+Use this only on CDK versions that lack `ReferenceStrength`. It MUST be done in exactly two deployments:
+
+**Deploy 1 — decouple the consumer, keep the export alive:**
+
+1. In consumer Stack B, remove the cross-stack reference (replace with a hardcoded value, SSM lookup, etc.).
+2. In producer Stack A, add `this.exportValue(resource.attribute)` to keep the export alive during the transition.
+3. Deploy both.
+
+**Deploy 2 — remove the export:**
+
+1. In Stack A, remove the `this.exportValue()` call (and the underlying resource if desired).
 2. Deploy again.
 
 You MUST NOT attempt to remove the export and the import in a single deployment.
+
+### Manual deploy ordering (`cdk deploy -e`)
+
+If the consumer already stopped using the value and you control ordering yourself:
+
+```bash
+cdk deploy -e $CONSUMER_STACK   # deploy consumer first (drops the import)
+cdk deploy -e $PRODUCER_STACK   # then producer, removing the export
+```
+
+`-e` / `--exclusively` deploys only the named stack and skips dependency reconciliation.
+
+### Prevention
+
+- Default cross-stack references to **weak** for resources you expect to remove or replace. Set app-wide in `cdk.json`:
+
+  ```json
+  { "context": { "@aws-cdk/core:defaultCrossStackReferences": "weak" } }
+  ```
+
+- Keep stateful, long-lived resources in their own stack, separate from consumers.
+- Use SSM Parameter Store as indirection (producer writes a parameter, consumer reads it) — no CFN export, no embrace.
 
 ---
 

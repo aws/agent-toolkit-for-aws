@@ -14,7 +14,7 @@ Domain expertise for CDK construct authoring, deployment workflows, compliance, 
 
 ## Critical Warnings
 
-**Deadly embrace**: Removing a cross-stack reference deadlocks deployment. Two-deploy fix required: (1) remove consumer import + add `this.exportValue()` on producer, deploy; (2) remove `exportValue()`, deploy again. See [troubleshooting-deployment](references/troubleshooting-deployment.md).
+**Deadly embrace**: Removing a cross-stack reference deadlocks deployment (`Export ... cannot be deleted as it is in use by ...`). Preferred fix: weaken the reference first — `CrossStackReferences.of($RESOURCE).produce(ReferenceStrength.BOTH)` then `WEAK`, then remove (three deploys). Legacy fallback: two-deploy `this.exportValue()` recipe. See [troubleshooting-deployment](references/troubleshooting-deployment.md).
 
 **Construct ID changes cause replacement**: Renaming/moving a construct changes its logical ID → CloudFormation replaces the resource (data loss for stateful resources). Always `cdk diff` before deploy. See [refactor-and-prevent-replacement](references/refactor-and-prevent-replacement.md).
 
@@ -39,7 +39,7 @@ Domain expertise for CDK construct authoring, deployment workflows, compliance, 
 
 | Error | Cause → Fix |
 |-------|------------|
-| **DeployFailed / DeploymentError** | CDK error is not root cause. Check CFN events: `aws cloudformation describe-stack-events --stack-name $STACK --query "StackEvents[?contains(ResourceStatus,'FAILED')]"`. [Details](references/troubleshooting-deployment.md) |
+| **DeployFailed / DeploymentError** | CDK error isn't the root cause. `cdk deploy $STACK --verbose`, then `cdk --unstable=diagnose diagnose $STACK` (CLI ≥ 2.1120.0); else `aws cloudformation describe-events --stack-name $STACK --filters FailedEvents=true` — the first `_FAILED` event is the cause. [Details](references/troubleshooting-deployment.md) |
 | **NoCredentials / ExpiredToken / AssumeRoleFailed** | `aws sts get-caller-identity` + `cdk doctor`. Expired SSO, missing `env`, missing `sts:AssumeRole`. [Details](references/troubleshooting-credentials.md) |
 | **Asset errors** (CannotFindAsset, FailedToBundleAsset, AssetBuildFailed, AssetPublishFailed) | Path wrong, Docker not running, or bootstrap bucket perms. Use `path.join(__dirname, ...)`. [Details](references/troubleshooting-synth.md) |
 | **AppRequired** | Add `"app": "npx tsx bin/my-app.ts"` to `cdk.json`. [Details](references/troubleshooting-synth.md) |

@@ -126,10 +126,10 @@ preference):
    with the CDK-defined state. This is the simplest resolution.
 
 2. **Adopt the change** — If the out-of-band change is desired, update the CDK
-   code to match the live state using `Cfn``<Resource>``PropsMixin` to adopt the drifted
+   code to match the live state using `Cfn<Resource>PropsMixin` to adopt the drifted
    property values.
 
-3. **Fallback overrides** — If `Cfn``<Resource>``PropsMixin` is not available for the
+3. **Fallback overrides** — If `Cfn<Resource>PropsMixin` is not available for the
    resource type, use `addPropertyOverride` or `node.defaultChild` to set the
    property at the L1 level.
 
