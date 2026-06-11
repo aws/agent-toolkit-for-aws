@@ -1,7 +1,12 @@
 ---
 name: aws-serverless
-description: Builds, deploys, manages, debugs, configures, and optimizes serverless applications on AWS using Lambda, API Gateway, Step Functions, EventBridge, and SAM/CDK. Covers cold starts, CORS debugging, event source mappings, troubleshooting, concurrency, SnapStart, Powertools, function URLs, EventBridge Scheduler, Lambda layers, Durable Functions, durable execution, checkpoint-and-replay, and production readiness. Use when the user mentions Lambda, API Gateway, Step Functions, SAM templates, CDK serverless stacks, DynamoDB stream triggers, SQS event sources, cold starts, timeouts, 502/504 errors, throttling, concurrency, CORS, Powertools, Durable Functions, durable execution, checkpoint-and-replay, or any event-driven architecture on AWS, even if they don't say "serverless." Do NOT use for EC2, ECS/Fargate containers, or Amplify hosting.
+description: Builds, deploys, manages, debugs, configures, and optimizes serverless applications on AWS using Lambda, API Gateway, Step Functions, EventBridge, and SAM/CDK. Covers cold starts, CORS debugging, event source mappings, troubleshooting, concurrency, SnapStart, Powertools, function URLs, EventBridge Scheduler, Lambda layers, and production readiness. Triggers on mentions of Lambda, API Gateway, Step Functions, SAM templates, CDK serverless stacks, DynamoDB stream triggers, SQS event sources, cold starts, timeouts, 502/504 errors, throttling, concurrency, CORS, Powertools, or any event-driven architecture on AWS, even without the word "serverless." Does not apply to EC2, ECS/Fargate containers, or Amplify hosting.
 version: 1
+metadata:
+  service: [lambda, api-gateway, step-functions, eventbridge, dynamodb, sqs, sns, s3, kinesis]
+  task: [build, deploy, debug, optimize]
+  persona: [developer, devops]
+  workload: [serverless]
 ---
 
 # AWS Serverless
@@ -26,6 +31,8 @@ Domain expertise for building serverless applications on AWS. Covers Lambda conf
 | API Gateway setup | Read [api-gateway.md](references/api-gateway.md) |
 | Common anti-patterns | Read the anti-patterns section in [production.md](references/production.md) |
 | Starting with Powertools | Use [powertools-handler.py](assets/powertools-handler.py) as a template |
+| Lambda Managed Instances, LMI, capacity providers, EC2-backed Lambda, PerExecutionEnvironmentMaxConcurrency | Use the **aws-lambda-managed-instances** skill instead |
+| Durable functions, durable execution, checkpoint-and-replay | Use the **aws-lambda-durable-functions** skill instead |
 | Spans multiple areas | Read the most specific reference first, then consult others as needed |
 
 ## Files
