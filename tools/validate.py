@@ -127,6 +127,18 @@ def validate_plugin(plugin_dir: Path) -> None:
         ["name", "version", "description", "author", "interface"],
     )
 
+    # Cursor manifest (optional; only the name is required by the Cursor spec)
+    cursor_path = plugin_dir / ".cursor-plugin" / "plugin.json"
+    if cursor_path.exists():
+        cursor = validate_json(cursor_path, ["name"])
+        if cursor:
+            cursor_name = cursor.get("name")
+            if cursor_name and cursor_name != name:
+                error(
+                    f"Name '{cursor_name}' does not match directory '{name}' "
+                    f"in {cursor_path.relative_to(REPO_ROOT)}"
+                )
+
     # MCP config
     mcp_path = plugin_dir / ".mcp.json"
     if mcp_path.exists():
@@ -179,6 +191,9 @@ def main() -> None:
         )
         validate_marketplace(
             REPO_ROOT / ".agents" / "plugins" / "marketplace.json", "Codex"
+        )
+        validate_marketplace(
+            REPO_ROOT / ".cursor-plugin" / "marketplace.json", "Cursor"
         )
 
         # All plugins

@@ -129,9 +129,9 @@ Trigger → Step Functions → Lambda (validate)
 | Workflow type | Standard (exactly-once, up to 1 year) | Express (<5 min, high-volume; async=at-least-once, sync=at-most-once) |
 | Simple data transforms | JSONata (inline, no Lambda needed) | Lambda task (complex logic) |
 | Service calls | Direct SDK integration (200+ services) | Lambda intermediary (only if business logic needed) |
-| Human approval | .waitForTaskToken | Durable Functions waitForCallback |
-| AI agent loops | Step Functions + Bedrock | Durable Functions (code-first, checkpointed) |
-| Error handling | Retry + Catch in ASL | Durable Functions try/catch in code |
+| Human approval | .waitForTaskToken | Lambda durable functions waitForCallback |
+| AI agent loops | Step Functions + Bedrock | Lambda durable functions (code-first, checkpointed) |
+| Error handling | Retry + Catch in ASL | Lambda durable functions try/catch in code |
 
 **Key constraints:**
 
@@ -163,14 +163,14 @@ Client → Lambda Function URL (streaming) → Bedrock ConverseStream
 |---|---|---|
 | Bidirectional | API Gateway WebSocket | AppSync subscriptions (GraphQL) |
 | LLM streaming | Lambda Function URL + ConverseStream | REST API proxy with STREAM mode |
-| Connection state | DynamoDB (connectionId → metadata) | ElastiCache (higher throughput) |
+| Connection state | DynamoDB (connectionId → metadata, enable TTL to clean up stale connections after 2-hour max duration) | ElastiCache (higher throughput) |
 | Auth | $connect route authorizer | Cognito + custom auth in Lambda |
 
 **Key constraints:**
 
 - WebSocket: 10 min idle timeout, 2 hour max connection, 128 KB message (hard limit)
 - Function URL streaming: 200 MB limit, 2 MBps after first 6 MB, Node.js native support
-- Function URLs support `AWS_IAM` or `NONE` (public) — no native JWT/Cognito. Add CloudFront + Lambda@Edge for JWT/Cognito auth.
+- Function URLs **MUST** use `AWS_IAM` auth type. For CloudFront integration, use Origin Access Control (OAC) to sign requests — do not set auth to `NONE`. If `NONE` is unavoidable for other reasons, authentication **MUST** be enforced at the edge (e.g., CloudFront + Lambda@Edge). No native JWT/Cognito support.
 
 ---
 
@@ -218,7 +218,7 @@ EventBridge Scheduler → Lambda (task)
 |---|---|---|
 | Scheduler | EventBridge Scheduler (flexible, one-time + recurring) | EventBridge rules with schedule expression (simpler) |
 | Short task (<15 min) | Lambda directly | — |
-| Long task (>15 min) | Step Functions (up to 1 year) | Durable Functions |
+| Long task (>15 min) | Step Functions (up to 1 year) | Lambda durable functions |
 | High frequency (<1 min) | Not supported natively | SQS delay queue + Lambda |
 
 **Key constraints:**

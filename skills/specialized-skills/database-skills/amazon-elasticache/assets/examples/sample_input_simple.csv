@@ -1,0 +1,6 @@
+cluster_name,instance_type,region,engine,node_count,primary_nodes,avg_memory_gb,daily_commands
+demo-session-cache,cache.r6g.xlarge,us-east-1,redis,6,3,12.5,850000000
+demo-leaderboard,cache.r7g.2xlarge,us-east-1,valkey,4,2,45.2,2100000000
+staging-cache,cache.t4g.medium,us-west-2,redis,2,1,0.3,5000000
+demo-rate-limiter,cache.r7g.large,eu-west-1,valkey,2,1,0.05,15000000000
+demo-user-profiles,cache.r5.4xlarge,ap-southeast-1,redis,6,3,85.0,500000000

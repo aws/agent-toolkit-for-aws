@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SQS processor on Lambda Managed Instances (c7g.xlarge, arm64)
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: 3+ subnets across different AZs
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group with HTTPS (443) egress scoped to VPC endpoint SGs or AWS prefix lists. Avoid 0.0.0.0/0.
+
+Resources:
+  OperatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaManagedEC2ResourceOperator
+
+  CapacityProvider:
+    Type: AWS::Lambda::CapacityProvider
+    Properties:
+      CapacityProviderName: !Sub sqs-processor-cp-${Environment}
+      VpcConfig:
+        SubnetIds: !Ref SubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+      PermissionsConfig:
+        CapacityProviderOperatorRoleArn: !GetAtt OperatorRole.Arn
+      InstanceRequirements:
+        Architectures: [arm64]
+        AllowedInstanceTypes: [c7g.xlarge]
+      CapacityProviderScalingConfig:
+        MaxVCpuCount: 16
+
+  SqsProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub sqs-processor-${Environment}
+      Runtime: nodejs22.x
+      Handler: index.handler
+      CodeUri: src/
+      Architectures: [arm64]
+      MemorySize: 4096
+      Timeout: 900
+      CapacityProviderConfig:
+        LambdaManagedInstancesCapacityProviderConfig:
+          CapacityProviderArn: !GetAtt CapacityProvider.Arn
+          PerExecutionEnvironmentMaxConcurrency: 10
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ProcessingQueue.Arn
+            BatchSize: 10
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: !GetAtt ProcessingQueue.QueueName
+
+  ProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub sqs-processor-queue-${Environment}
+      VisibilityTimeout: 960
+      SqsManagedSseEnabled: true
+
+  ProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/sqs-processor-${Environment}
+      RetentionInDays: 30
+
+Outputs:
+  FunctionArn:
+    Value: !GetAtt SqsProcessorFunction.Arn
+  QueueUrl:
+    Value: !Ref ProcessingQueue
+  CapacityProviderArn:
+    Value: !GetAtt CapacityProvider.Arn

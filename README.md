@@ -6,7 +6,7 @@
 
 Help AI coding agents build, deploy, and manage applications on AWS.
 
-The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, and Kiro.
+The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, Cursor, and Kiro.
 
 ## Quick start
 
@@ -20,6 +20,12 @@ For `aws-core` that covers service selection, CDK/CloudFormation, serverless, co
 ```
 /plugin install aws-core@claude-plugins-official
 ```
+
+> **Tip:** If you get `Plugin not found`, update your local marketplace index first:
+>
+> ```
+> /plugin marketplace update claude-plugins-official
+> ```
 
 For `aws-agents` that covers building AI agents on AWS with Amazon Bedrock and AgentCore:
 
@@ -43,6 +49,12 @@ codex plugin marketplace add aws/agent-toolkit-for-aws
 
 Then launch Codex and run `/plugins` to browse and install the **aws-core** plugin.
 
+### Cursor
+
+Add this repository as a team marketplace from **Settings → Plugins → Team Marketplaces → Add Marketplace → Import from Repo**, pointing it at `aws/agent-toolkit-for-aws`. Cursor indexes the plugins listed in [`.cursor-plugin/marketplace.json`](.cursor-plugin/marketplace.json) on import.
+
+Then open the **Plugins** panel and install the **aws-core** plugin (start here), or **aws-agents** and **aws-data-analytics** as needed. Each plugin bundles the AWS MCP Server configuration and agent skills.
+
 ### Kiro
 
 Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`):
@@ -53,7 +65,7 @@ Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`
     "aws": {
       "command": "uvx",
       "args": [
-        "mcp-proxy-for-aws@latest",
+        "mcp-proxy-for-aws@1.6.0",
         "https://aws-mcp.us-east-1.api.aws/mcp",
         "--metadata", "AWS_REGION=us-west-2"
       ]
@@ -61,6 +73,8 @@ Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`
   }
 }
 ```
+
+> **Note:** It is recommended to pin to a specific version (e.g., `@1.6.0`) to ensure reproducible behavior and protect against supply chain risks. We recommend regularly checking [PyPI](https://pypi.org/project/mcp-proxy-for-aws/) for new stable versions and updating accordingly.
 
 Then install skills from this repository:
 
@@ -94,7 +108,7 @@ Plugins bundle the AWS MCP Server configuration and agent skills into a single i
 | [aws-agents](plugins/aws-agents/) | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore. |
 | [aws-data-analytics](plugins/aws-data-analytics/) | Skills for data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. |
 
-Plugins are currently available for Claude Code and Codex. For other agents, configure the AWS MCP Server directly and install skills from this repository.
+Plugins are currently available for Claude Code, Codex, and Cursor. For other agents, configure the AWS MCP Server directly and install skills from this repository.
 
 ### Skills
 
