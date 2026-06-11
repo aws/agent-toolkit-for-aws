@@ -7,8 +7,7 @@ The primary plugin for the Agent Toolkit for AWS. This plugin gives your AI codi
 ### Claude Code
 
 ```
-/plugin marketplace add aws/agent-toolkit-for-aws
-/plugin install aws-core@agent-toolkit-for-aws
+/plugin install aws-core@claude-plugins-official
 /reload-plugins
 ```
 
@@ -56,7 +55,7 @@ This plugin includes the following default skills:
 
 ### Rules files
 
-Recommended AWS rules files are available separately in the [`rules/`](../rules/) directory of this repository. See the [rules README](../rules/README.md) for details.
+Recommended AWS rules files are available separately in the [`rules/`](../../rules/) directory of this repository.
 
 ## Documentation
 
