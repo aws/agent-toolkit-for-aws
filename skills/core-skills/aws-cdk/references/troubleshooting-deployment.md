@@ -6,7 +6,7 @@
 - [Deploy Failure Root Cause Analysis](#deploy-failure-root-cause-analysis)
 - [Deadly Embrace (Cross-Stack Reference Deadlock)](#deadly-embrace-cross-stack-reference-deadlock)
 - [UPDATE_ROLLBACK_FAILED Recovery](#update_rollback_failed-recovery)
-- [Versioned Bucket Deletion](#non-empty-bucket-deletion)
+- [Non-Empty Bucket Deletion](#non-empty-bucket-deletion)
 
 ---
 
