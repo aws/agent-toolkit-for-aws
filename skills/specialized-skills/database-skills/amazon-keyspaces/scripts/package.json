@@ -1,0 +1,21 @@
+{
+  "name": "amazon-keyspaces-skill-scripts",
+  "version": "1.0.0",
+  "description": "Bundled scripts for the Amazon Keyspaces AWS MCP skill: pricing, Cassandra diagnostic parsing, compatibility checks, SQL modeling, and PDF reporting.",
+  "private": true,
+  "scripts": {
+    "calculate": "ts-node --project tsconfig.scripts.json calculate.ts",
+    "parse-cassandra": "ts-node --project tsconfig.scripts.json parse-cassandra.ts",
+    "check-compatibility": "ts-node --project tsconfig.scripts.json check-compatibility.ts",
+    "generate-pdf": "ts-node --project tsconfig.scripts.json generate-pdf.ts"
+  },
+  "dependencies": {
+    "jspdf": "4.2.1",
+    "jspdf-autotable": "5.0.8",
+    "ts-node": "10.9.2",
+    "typescript": "5.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.0"
+  }
+}
