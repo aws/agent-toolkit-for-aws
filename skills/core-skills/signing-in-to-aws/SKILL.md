@@ -9,6 +9,7 @@ description: |
 Help developers get AWS credentials for local development using `aws login`. This provides short-term, auto-rotating credentials that refresh every 15 minutes and remain valid for up to 12 hours.
 
 **Important:**
+
 - You MUST run `aws login` and `aws --version` in the user's local shell — NOT via MCP/API tools.
 - You MUST ask the user for confirmation before running `aws login`. Do not tell the user to run the command themselves — ask if YOU should run it (e.g., "Ready for me to run `aws login`?" or "Shall I proceed with `aws login`?"). Wait for their response before proceeding.
 
