@@ -1,0 +1,65 @@
+{
+  "description": "Prevents AI agents from directly fetching secret values via AWS Secrets Manager API calls",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(aws secretsmanager get-secret-value*)",
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/secret-safety.py"],
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "if": "Bash(aws secretsmanager batch-get-secret-value*)",
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/secret-safety.py"],
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "if": "Bash(curl*localhost:2773/secretsmanager/get*)",
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/secret-safety.py"],
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "if": "Bash(curl*127.0.0.1:2773/secretsmanager/get*)",
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/secret-safety.py"],
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "if": "Bash(*get_secret_value*)",
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/secret-safety.py"],
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "if": "Bash(*batch_get_secret_value*)",
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/secret-safety.py"],
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "use_aws|mcp__aws.*|mcp__plugin_*aws-mcp*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/secret-safety.py"],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
