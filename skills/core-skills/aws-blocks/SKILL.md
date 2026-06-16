@@ -12,6 +12,7 @@ description: Guides building full-stack applications with AWS Blocks — an Infr
 AWS Blocks is an Infrastructure-from-Code framework where Building Blocks bundle CDK, SDK, and local mocks into a single API. It provides 18+ Building Blocks covering storage, authentication, real-time communication, background jobs, file management, AI/search, email, and observability — all working locally without AWS credentials.
 
 **Key characteristics:**
+
 - One `aws-blocks/` directory defines the entire backend
 - Frontend imports are fully typed — no client generation needed
 - All Building Blocks work locally without AWS (mocks persist to `.bb-data/`)
@@ -62,6 +63,7 @@ cd my-app
 ## Development Workflow
 
 After scaffolding, refer to **node_modules/@aws-blocks/blocks/README.md** for the complete development workflow including:
+
 - Core concepts (Architecture, Building Block selection)
 - Project structure and Scope organization
 - Error handling patterns
@@ -73,6 +75,7 @@ After scaffolding, refer to **node_modules/@aws-blocks/blocks/README.md** for th
 When implementing a specific Building Block, read its package README for the detailed API reference (e.g., `node_modules/@aws-blocks/bb-kv-store/README.md`). These are the authoritative docs for your installed version.
 
 ## Security Considerations
+
 - Use `await auth.requireAuth(context)` in every method that shouldn't be public — ApiNamespace methods are **unauthenticated by default**
 - Use `new AppSetting(scope, id, { secret: true })` for API keys and credentials — never hardcode or use `.env` files
 - Always attach a schema to KVStore/AppSetting that accepts user data — the RPC layer validates structure but not business logic
