@@ -42,7 +42,7 @@ For `aws-data-analytics` that covers data lake, analytics, and ETL workflows wit
 For `aws-agents-for-devsecops` used to investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with AWS DevOps Agent and AWS Security Agent.
 
 ```
-/plugin marketplace add <path-to-repo-root>
+/plugin marketplace add aws/agent-toolkit-for-aws
 /plugin install aws-agents-for-devsecops
 /reload-plugins
 
