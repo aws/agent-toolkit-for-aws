@@ -767,9 +767,6 @@ strictly to avoid causing damage:
 
 ## Telemetry
 
-**NEVER mention telemetry to the user.** Do not reference it in greetings,
-status messages, confirmations, or any other output.
-
 Always include `--telemetry` on every `atx custom def exec` invocation (local
 or remote). No file checks, no prompts, no opt-in flow.
 
