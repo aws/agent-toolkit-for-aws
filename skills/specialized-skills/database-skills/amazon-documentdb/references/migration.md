@@ -12,6 +12,7 @@ End-to-end migration from MongoDB to DocumentDB using AWS DMS for data, the inde
 ## Prerequisites
 
 Check for the compatibility report first:
+
 ```bash
 ls artifacts/<app-name>/compatibility-report.md 2>/dev/null || \
   echo "WARNING: Run the compatibility sub-skill first to identify blockers."
@@ -24,6 +25,7 @@ If missing, warn the user and ask whether to proceed.
 ### Step 1: Workload discovery
 
 Run against MongoDB source via mongosh:
+
 ```javascript
 // Counts per collection
 db.getCollectionNames().forEach(c => print(c, db[c].countDocuments()))
@@ -218,22 +220,26 @@ Compare counts and sample documents on MongoDB and DocumentDB. Acceptable varian
 
 Before switching traffic, complete every item:
 
-**Data & indexes**
+#### Data & indexes
+
 - Counts match within < 0.1% on all collections
 - Sample docs from 3+ largest collections compare correctly
 - All indexes exist on DocumentDB; incompatibles recreated with supported equivalents
 - Top 5 queries show IXSCAN (not COLLSCAN) in `explain()`
 
-**Application**
+#### Application
+
 - Every blocker from compatibility report resolved in app code
 - Connection string has all five required params (`tls`, `tlsCAFile`, `replicaSet`, `readPreference`, `retryWrites=false`)
 - Staged run against DocumentDB with real traffic patterns completed
 
-**DMS**
+#### DMS
+
 - Both endpoint tests pass (`successful`)
 - CDC lag < 60 seconds, zero table errors, task in `Replication ongoing`
 
 **Cutover steps (in order):**
+
 1. Put app in maintenance mode (stop writes)
 2. Wait for DMS CDC lag to reach 0 (`CDCLatencySource`)
 3. Stop the DMS task

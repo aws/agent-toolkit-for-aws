@@ -27,6 +27,7 @@ If git clone fails, tell the user and ask them to clone it manually.
 Pick one input mode:
 
 **A — Live MongoDB URI (most accurate):**
+
 ```bash
 python3 amazon-documentdb-tools/compat-tool/compat.py \
   --uri "mongodb://<user>:<pass>@<host>:<port>/admin?directConnection=true" \
@@ -34,6 +35,7 @@ python3 amazon-documentdb-tools/compat-tool/compat.py \
 ```
 
 **B — Source directory:**
+
 ```bash
 python3 amazon-documentdb-tools/compat-tool/compat.py \
   --version 8.0 --directory /path/to/app/src \
@@ -41,6 +43,7 @@ python3 amazon-documentdb-tools/compat-tool/compat.py \
 ```
 
 **C — MongoDB log file:**
+
 ```bash
 python3 amazon-documentdb-tools/compat-tool/compat.py \
   --file /path/to/mongod.log --version 8.0
@@ -118,6 +121,7 @@ Summarize the key findings to the user (blocker count, warning count, critical i
 ## Common blockers and workarounds
 
 ### `$where` (JS in queries)
+
 ```javascript
 // BLOCKED
 db.col.find({ $where: "this.price > this.cost" })
@@ -127,6 +131,7 @@ db.col.find({ $expr: { $gt: ["$price", "$cost"] } })
 
 ### MapReduce (blocked on 3.6 / 4.0 / 5.0 — works on 8.0)
 Rewrite as aggregation for 5.0:
+
 ```javascript
 db.orders.aggregate([
   { $group: { _id: "$category", total: { $sum: "$amount" } } },
@@ -138,6 +143,7 @@ db.orders.aggregate([
 Rewrite with native operators: `$sum`, `$avg`, `$reduce`, `$map`, `$filter`, `$switch`.
 
 ### Hashed indexes
+
 ```javascript
 // BLOCKED: db.col.createIndex({ userId: "hashed" })
 db.col.createIndex({ userId: 1 })    // single-field ascending
@@ -145,18 +151,21 @@ db.col.createIndex({ userId: 1 })    // single-field ascending
 
 ### Wildcard indexes (verify current support status)
 Check the [MongoDB API compatibility page](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html) — wildcard indexes may not be supported on all DocumentDB versions, and DocumentDB adds index types across versions.
+
 ```javascript
 // If unsupported: create explicit indexes for the specific fields you filter on
 // db.col.createIndex({ "$**": 1 })  ← check support status before attempting
 ```
 
 ### 2d (legacy) geospatial indexes
+
 ```javascript
 // BLOCKED: db.places.createIndex({ location: "2d" })
 db.places.createIndex({ location: "2dsphere" })    // works, supports GeoJSON
 ```
 
 ### `$lookup` with pipeline (blocked on 5.0, works on 8.0)
+
 ```javascript
 // For 5.0, rewrite as localField/foreignField:
 { $lookup: { from: "orders", localField: "_id", foreignField: "userId", as: "orders" } }
@@ -164,6 +173,7 @@ db.places.createIndex({ location: "2dsphere" })    // works, supports GeoJSON
 
 ### `$graphLookup` (verify current support status — workaround below)
 Check the [MongoDB API compatibility page](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html) before advising. If unsupported, use the materialized path pattern — store the ancestor list at write time (this is often the better design regardless of `$graphLookup` availability):
+
 ```javascript
 // Each doc carries its ancestors array
 { _id: "cat3", name: "Shoes", ancestors: ["cat1", "cat2", "cat3"] }

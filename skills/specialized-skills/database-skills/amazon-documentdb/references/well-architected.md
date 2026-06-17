@@ -44,6 +44,7 @@ Read `artifacts/<cluster-id>/wa_review_results.json`. Categorize findings:
 Organize findings by priority. For each FAIL and WARN, give the specific command:
 
 **Enable deletion protection:**
+
 ```bash
 aws docdb modify-db-cluster \
   --db-cluster-identifier <cluster-id> \
@@ -51,6 +52,7 @@ aws docdb modify-db-cluster \
 ```
 
 **Add a reader replica for HA:**
+
 ```bash
 aws docdb create-db-instance \
   --db-instance-identifier <cluster-id>-reader \
@@ -59,6 +61,7 @@ aws docdb create-db-instance \
 ```
 
 **Increase backup retention:**
+
 ```bash
 aws docdb modify-db-cluster \
   --db-cluster-identifier <cluster-id> \
@@ -66,6 +69,7 @@ aws docdb modify-db-cluster \
 ```
 
 **Enable audit logging:**
+
 ```bash
 aws docdb modify-db-cluster-parameter-group \
   --db-cluster-parameter-group-name <pg> \
@@ -73,6 +77,7 @@ aws docdb modify-db-cluster-parameter-group \
 ```
 
 For each finding include:
+
 1. What was checked and the result
 2. Why it matters (one sentence)
 3. The specific command to execute
@@ -104,6 +109,7 @@ SUST1 Graviton instance family (`r6g`/`r8g`/`t4g`) · SUST2 compression enabled 
 **Enable Zstd compression (SUST2, COST7):** Available in 8.0, enabled by default on new collections. For existing collections, modify compression settings per collection.
 
 **Remove unused indexes (COST3):**
+
 ```javascript
 // Find indexes with zero usage
 db.collection.aggregate([{ $indexStats: {} }])

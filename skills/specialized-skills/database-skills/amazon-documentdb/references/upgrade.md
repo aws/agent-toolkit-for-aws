@@ -1,10 +1,12 @@
 # DocumentDB — Major Version Upgrade
 
 Orchestrate DocumentDB major version upgrades. Supports two paths:
+
 - **4.0 → 5.0**
 - **5.0 → 8.0**
 
 Two approaches:
+
 - **Option A: In-place MVU** — simpler, has downtime (multiple reboots). Best for dev/staging, small clusters, or when downtime is acceptable.
 - **Option B: Near-zero downtime** — clone + MVU on clone + CDC + cutover. Source stays online. Best for production.
 
@@ -23,6 +25,7 @@ Two approaches:
 **Mandatory on every `modify-db-cluster` MVU command:** `--allow-major-version-upgrade`. **When cluster uses a custom parameter group:** also `--db-cluster-parameter-group-name` pointing at a new PG for the target engine family (`docdb5.0`, `docdb8.0`).
 
 **Pre-upgrade checks:**
+
 - Manual snapshot created and available (use polling loop — `aws docdb wait` is not in all CLI versions)
 - Pending OS maintenance applied
 - No `db.r4` instances (not supported on 4.0+) — upgrade to `db.r5+` first
@@ -109,6 +112,7 @@ Apply Option A Steps 2–4 to the clone. Do NOT write to the clone after it's up
 ### Step 4: Set up CDC replication (DMS is the primary method)
 
 Follow `references/migration.md` for DMS setup:
+
 - SG allows inbound TCP 27017 on the DocumentDB SG from DMS instance SG
 - DMS replication subnet group in the same VPC
 - RDS CA cert imported into DMS
@@ -154,6 +158,7 @@ Start the task. Monitor `CDCLatencySource` — should decrease toward 0.
 ### Step 7: Rollback
 
 **Before cutover:** delete the clone; source is untouched.
+
 ```bash
 aws docdb delete-db-cluster --db-cluster-identifier <clone-id> --skip-final-snapshot
 ```
@@ -161,6 +166,7 @@ aws docdb delete-db-cluster --db-cluster-identifier <clone-id> --skip-final-snap
 **After cutover, within 24–48 hours:** point app back at source (still has data up to cutover). Manual reconciliation needed for writes made to the clone after cutover.
 
 **If source was already deleted:** restore from the pre-upgrade snapshot:
+
 ```bash
 aws docdb restore-db-cluster-from-snapshot \
   --db-cluster-identifier <id>-restored \

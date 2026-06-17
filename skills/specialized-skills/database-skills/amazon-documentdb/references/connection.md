@@ -111,6 +111,7 @@ use $external;
 db.createUser({ user: "arn:aws:iam::<account-id>:role/<app-role>",
   mechanisms: ["MONGODB-AWS"], roles: [ { role: "readWrite", db: "<app-db>" } ] });
 ```
+
 ```
 mongodb://<endpoint>:27017/?tls=true&tlsCAFile=global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false&authSource=%24external&authMechanism=MONGODB-AWS
 ```

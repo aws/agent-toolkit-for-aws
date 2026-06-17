@@ -34,6 +34,7 @@ The AWS MCP server is **recommended** for executing AWS commands via its `call_a
 ## Cluster Creation Default: Serverless on 8.0
 
 **DocumentDB architecture primer (clarify this whenever the user is confused):**
+
 - **Serverless** = `db.serverless` as the instance class on a normal instance-based DocumentDB cluster. Auto-scales capacity, no instance-class decisions, costs up to 90% less when idle. This is the recommended default for most workloads.
 - **Instance-based** = fixed instance class (`db.r8g.large`, `db.r6g.xlarge`, etc.). Use when the workload is sustained 24/7 high throughput and serverless scaling overhead is unacceptable.
 - **Elastic Clusters** = a separate DocumentDB product for horizontal sharding. NOT the same as serverless. Elastic Clusters are **not at feature parity** with instance-based clusters — they lack support for transactions, change streams, and many aggregation operators. Steer customers away from Elastic Clusters unless they have a sharding requirement that exhausts even the largest instance-based options. Almost all workloads can be served by serverless or instance-based given DocumentDB's wide range of instance classes.
@@ -93,6 +94,7 @@ When refusing, explain why and offer the matching assessment workflow:
 Check that required tools are available in context before running any workflow.
 
 **Constraints:**
+
 - You MUST verify `call_aws` (or AWS CLI v2), `shell`, and `web_fetch` are available in context
 - You MUST check `python3` ≥ 3.6 for [wa_review.py](scripts/wa_review.py), the `amazon-documentdb-tools` compat tool, and the index tool
 - You MUST check `git`, `curl`, `mongosh`, and `ssh` only when a specific workflow requires them
@@ -105,6 +107,7 @@ Check that required tools are available in context before running any workflow.
 Use the [Decision Guide](#decision-guide) to pick one workflow.
 
 **Constraints:**
+
 - You MUST name the workflow you are routing to before loading the reference
 - You MUST pass along cluster id, region, app name, source URI, and engine versions the user already supplied — they SHOULD NOT re-type these
 - You MAY ask one clarifying question if a request straddles two workflows
@@ -115,6 +118,7 @@ Use the [Decision Guide](#decision-guide) to pick one workflow.
 Load the matching `references/<workflow>.md` and follow its `## Workflow` section.
 
 **Constraints:**
+
 - You MUST execute AWS CLI commands, DMS calls, `mongosh` queries, and bundled scripts yourself — the skill is an executor unless a step requires credentials the agent doesn't have
 - You MUST explain what step is running, why, and which tool is being called before running it
 - Extract required parameters from the conversation first — if `cluster_id`, `region`, or other required values are already present, use them and proceed. Only ask for missing parameters, and ask for all missing ones together in a single prompt.

@@ -75,6 +75,7 @@ done
 ```
 
 JVM flags (reference the same `$storepassword` generated above — never hardcode it; source it from Secrets Manager / Parameter Store in production):
+
 ```
 -Djavax.net.ssl.trustStore=/tmp/certs/rds-truststore.jks
 -Djavax.net.ssl.trustStorePassword=$storepassword
@@ -152,4 +153,3 @@ When tunneling from a local machine, add `--tlsAllowInvalidHostnames`:
 mongosh --tls --tlsAllowInvalidHostnames --tlsCAFile global-bundle.pem \
   --host 127.0.0.1 --port 27017 --username admin --password '<pw>'
 ```
-

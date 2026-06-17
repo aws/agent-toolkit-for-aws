@@ -14,6 +14,7 @@ Use-case-first schema design. Start by understanding what the user is building, 
 ### Step 1: Identify entities, relationships, access patterns
 
 From the user's description, extract:
+
 - **Entities** — the main "things" (products, users, orders, messages)
 - **Relationships** — how they relate (users have orders, orders have items)
 - **Access patterns** — what queries the app runs (get user by id, list orders by user, search by category)
@@ -32,6 +33,7 @@ Core principle: embed when data is always accessed together; reference when it's
 | Post → comments | 1:many, need latest N | Mixed | **Hybrid**: embed latest 3, reference the rest |
 
 **Anti-patterns:**
+
 - **Unbounded arrays** (comments, events, messages) — they push documents toward the 16MB limit. Move to a separate collection.
 - **Recreating SQL tables 1:1** — if you always join two tables in SQL, embed them in DocumentDB.
 - **Excessive `$lookup`** — denormalize frequently-joined fields at write time.
@@ -82,6 +84,7 @@ db.articles.createIndex({ "title": "text", "body": "text" })
 ```
 
 **Constraints:**
+
 - Only one field in a compound index can be an array (multikey)
 - `sparse` and `partialFilterExpression` cannot be combined
 - Avoid compound indexes with more than 3 fields — write overhead outweighs query benefit for most workloads
@@ -91,6 +94,7 @@ db.articles.createIndex({ "title": "text", "body": "text" })
 Use DocumentDB native vector search for semantic search, RAG, chatbot memory, recommendations, or anomaly detection.
 
 **Availability:**
+
 - Vector indexes: DocumentDB 5.0+ (instance-based clusters)
 - Classic operator (`$search.vectorSearch`): DocumentDB 5.0+
 - `$vectorSearch` operator: DocumentDB 8.0+ (both instance-based and serverless)
@@ -175,6 +179,7 @@ Check these against the schema and warn the user about any that apply:
 ## Output format
 
 Every schema advisor response has three deliverables:
+
 1. **JSON document examples** (one per collection, with field-level comments)
 2. **`db.createIndex()` commands** (one per access pattern, ready to run in mongosh)
 3. **One-sentence rationale** per embed/reference decision

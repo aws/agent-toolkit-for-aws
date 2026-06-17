@@ -96,6 +96,7 @@ db.collection.aggregate([{ $indexStats: {} }])   // unused since last restart
 ```
 
 Look for:
+
 - **Redundant indexes** — `{a:1}` and `{a:1, b:1}` on the same collection. The single-field is covered by the compound; drop it.
 - **Compound indexes with > 3 fields** — most filtering uses the first 1–3 fields; extras add write overhead.
 - **Multikey indexes on large arrays** — each element is a separate index entry; storage bloat.
@@ -117,6 +118,7 @@ Look for:
 ### Step 4: Produce a report
 
 Organize findings by severity:
+
 - **Critical** — COLLSCAN on large collections, long-running queries blocking GC
 - **Warning** — redundant indexes, high-cardinality sorts without index
 - **Improvement** — missing projections, pipeline ordering
@@ -133,4 +135,3 @@ For each finding, give the exact fix command.
 | `LongestRunningGCProcess` | > 1800s = long query blocking GC |
 | `AvailableMVCCIds` | Low = risk of read-only mode |
 | `BufferCacheHitRatio` | Low = queries hitting disk; scale up or add indexes |
-
