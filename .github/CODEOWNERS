@@ -2,6 +2,6 @@
 
 ## Alphabetical listing of Agent Plugins
 /plugins/aws-agents               @aws/agent-toolkit-admins @aws/agentcore-devex-devs @aws/agentcore-devex-pms
-/plugins/aws-agents-for-devsecops @aws/agent-toolkit-admins @aws/aws-agentic-devsecops
+/plugins/aws-agents-for-devsecops @aws/agent-toolkit-admins @aws/aws-agentic-devsecops @coffeencoke @tipuq @HuiSF @ljainiaz @adthiru @AhmetAhunbayAWS
 /plugins/aws-core                 @aws/agent-toolkit-admins
 /plugins/aws-data-analytics       @aws/agent-toolkit-admins @npmajisha @risears @mitczach @harshabattapady @shoukasg @sanjolia @dhruvyadav2007 @mukeshsahay
