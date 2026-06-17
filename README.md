@@ -39,6 +39,21 @@ For `aws-data-analytics` that covers data lake, analytics, and ETL workflows wit
 /plugin install aws-data-analytics@claude-plugins-official
 ```
 
+For `aws-agents-for-devsecops` used to investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with AWS DevOps Agent and AWS Security Agent.
+
+```
+/plugin marketplace add aws/agent-toolkit-for-aws
+/plugin install aws-agents-for-devsecops
+/reload-plugins
+
+# Or from Claude's official marketplace:
+/plugin install aws-agents-for-devsecops@claude-plugins-official
+/reload-plugins
+
+# Setup:
+/aws-agents-for-devsecops:setup
+```
+
 ### Codex
 
 In your terminal:
@@ -107,6 +122,7 @@ Plugins bundle the AWS MCP Server configuration and agent skills into a single i
 | [aws-core](plugins/aws-core/) | Core AWS skills and MCP Server configuration. Covers service selection, CDK/CloudFormation, serverless, containers, storage, observability, billing, SDK usage, and deployment. **Start here.** |
 | [aws-agents](plugins/aws-agents/) | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore. |
 | [aws-data-analytics](plugins/aws-data-analytics/) | Skills for data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. |
+| [aws-agents-for-devsecops](plugins/aws-agents-for-devsecops/) | Investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with [AWS DevOps Agent](https://aws.amazon.com/devops-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr) and [AWS Security Agent](https://aws.amazon.com/security-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr). |
 
 Plugins are currently available for Claude Code, Codex, and Cursor. For other agents, configure the AWS MCP Server directly and install skills from this repository.
 
