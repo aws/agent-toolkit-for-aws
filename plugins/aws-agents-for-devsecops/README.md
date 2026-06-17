@@ -54,7 +54,7 @@ From the root directory of this repository:
 
 ```
 # From local path:
-/plugin marketplace add <path-to-repo-root>
+/plugin marketplace add aws/agent-toolkit-for-aws
 /plugin install aws-agents-for-devsecops
 /reload-plugins
 
