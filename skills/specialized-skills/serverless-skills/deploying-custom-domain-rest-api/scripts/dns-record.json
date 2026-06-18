@@ -1,0 +1,16 @@
+{
+  "Changes": [
+    {
+      "Action": "CREATE",
+      "ResourceRecordSet": {
+        "Name": "CUSTOM_DOMAIN_NAME",
+        "Type": "A",
+        "AliasTarget": {
+          "DNSName": "REGIONAL_DOMAIN_NAME",
+          "HostedZoneId": "REGIONAL_HOSTED_ZONE_ID",
+          "EvaluateTargetHealth": false
+        }
+      }
+    }
+  ]
+}
