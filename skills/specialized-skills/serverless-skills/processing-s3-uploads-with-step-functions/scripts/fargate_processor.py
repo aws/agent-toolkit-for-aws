@@ -1,3 +1,4 @@
+# Fargate file processor for Step Functions workflow
 import json
 import boto3
 import os
