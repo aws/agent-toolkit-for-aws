@@ -1,15 +1,19 @@
 ### Step 5: Create IAM Roles
 
 Constraints:
+
 - You MUST create four IAM roles: Lambda execution role, ECS task execution role, ECS task role, and Step Functions role
 - For each trust policy, create a working copy from `scripts/` and replace ACCOUNT_ID:
+
   ```
   sed 's/ACCOUNT_ID/{account_id}/' scripts/lambda-trust-policy.json > /tmp/lambda-trust-policy.json
   sed 's/ACCOUNT_ID/{account_id}/' scripts/ecs-trust-policy.json > /tmp/ecs-trust-policy.json
   sed 's/ACCOUNT_ID/{account_id}/' scripts/stepfunctions-trust-policy.json > /tmp/stepfunctions-trust-policy.json
   sed 's/ACCOUNT_ID/{account_id}/' scripts/eventbridge-trust-policy.json > /tmp/eventbridge-trust-policy.json
   ```
+
 - You MUST create the Lambda role with S3 read access:
+
   ```
   aws iam create-role --role-name sfn-lambda-role --assume-role-policy-document file:///tmp/lambda-trust-policy.json
   aws iam attach-role-policy --role-name sfn-lambda-role --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
@@ -22,12 +26,16 @@ Constraints:
     }]
   }'
   ```
+
 - You MUST create the ECS task execution role (for pulling images and writing logs):
+
   ```
   aws iam create-role --role-name sfn-ecs-execution-role --assume-role-policy-document file:///tmp/ecs-trust-policy.json
   aws iam attach-role-policy --role-name sfn-ecs-execution-role --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
   ```
+
 - You MUST create the ECS task role with only S3 read access (not Step Functions access):
+
   ```
   aws iam create-role --role-name sfn-ecs-task-role --assume-role-policy-document file:///tmp/ecs-trust-policy.json
   aws iam put-role-policy --role-name sfn-ecs-task-role --policy-name s3-read --policy-document '{
@@ -39,11 +47,15 @@ Constraints:
     }]
   }'
   ```
+
 - You MUST create the Step Functions role with scoped permissions:
+
   ```
   aws iam create-role --role-name sfn-state-machine-role --assume-role-policy-document file:///tmp/stepfunctions-trust-policy.json
   ```
+
 - You MUST attach a scoped policy to the Step Functions role:
+
   ```
   aws iam put-role-policy --role-name sfn-state-machine-role --policy-name sfn-policy --policy-document '{
     "Version": "2012-10-17",
@@ -94,7 +106,9 @@ Constraints:
     ]
   }'
   ```
+
 - You MUST create a separate EventBridge target role with only `states:StartExecution` permission:
+
   ```
   aws iam create-role --role-name sfn-eventbridge-role --assume-role-policy-document file:///tmp/eventbridge-trust-policy.json
   aws iam put-role-policy --role-name sfn-eventbridge-role --policy-name eventbridge-sfn-policy --policy-document '{
@@ -106,5 +120,5 @@ Constraints:
     }]
   }'
   ```
-- You MUST wait at least 10 seconds for IAM role propagation
 
+- You MUST wait at least 10 seconds for IAM role propagation

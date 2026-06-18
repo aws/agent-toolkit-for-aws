@@ -17,6 +17,7 @@ version: 1
 This SOP deploys a REST API with a Regional custom domain name, a Lambda backend function, and a request-based Lambda authorizer. It handles ACM certificate provisioning, IAM role creation, Lambda function deployment, API Gateway REST API creation with a custom authorizer, custom domain configuration, base path mapping, and Route 53 DNS setup.
 
 The architecture includes:
+
 - An API Gateway REST API with an endpoint type of REGIONAL
 - A request-based Lambda authorizer that validates headers, query string parameters, and stage variables
 - A Lambda backend function at `GET /example`

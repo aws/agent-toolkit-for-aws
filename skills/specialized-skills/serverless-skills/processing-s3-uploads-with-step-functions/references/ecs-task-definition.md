@@ -1,9 +1,11 @@
 ### Step 8: Create the ECS Cluster and Task Definition
 
 Constraints:
+
 - You MUST create the ECS cluster:
   `aws ecs create-cluster --cluster-name sfn-cluster --capacity-providers FARGATE --region {region}`
 - You MUST register the task definition with:
+
   ```
   aws ecs register-task-definition \
       --family StepFunctionFargateTask \
@@ -30,5 +32,5 @@ Constraints:
       }]' \
       --region {region}
   ```
-- You MUST capture the task definition ARN from the response
 
+- You MUST capture the task definition ARN from the response
