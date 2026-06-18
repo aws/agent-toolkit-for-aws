@@ -1,0 +1,63 @@
+{
+  "Comment": "Choose Lambda or Fargate based on file size",
+  "StartAt": "CheckFileSize",
+  "States": {
+    "CheckFileSize": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.detail.object.size",
+          "NumericGreaterThan": 6291456,
+          "Next": "RunFargateTask"
+        }
+      ],
+      "Default": "InvokeLambda"
+    },
+    "InvokeLambda": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${LambdaFunction}",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.lambdaResult",
+      "End": true
+    },
+    "RunFargateTask": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "LaunchType": "FARGATE",
+        "Cluster": "${Cluster}",
+        "TaskDefinition": "${TaskDefinition}",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": [
+              "${Subnet1}",
+              "${Subnet2}"
+            ],
+            "SecurityGroups": [
+              "${SecurityGroup}"
+            ],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "StepFunctionFargateTask1",
+              "Environment": [
+                {
+                  "Name": "TASK_EVENT",
+                  "Value.$": "States.JsonToString($)"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultPath": "$.fargateResult",
+      "End": true
+    }
+  }
+}
