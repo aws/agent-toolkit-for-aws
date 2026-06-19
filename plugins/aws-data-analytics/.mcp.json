@@ -3,7 +3,7 @@
     "aws-mcp": {
       "command": "uvx",
       "args": [
-        "mcp-proxy-for-aws@1.6.0",
+        "mcp-proxy-for-aws@1.6.2",
         "https://aws-mcp.us-east-1.api.aws/mcp",
         "--skip-auth",
         "--metadata",

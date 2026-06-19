@@ -80,7 +80,7 @@ Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`
     "aws": {
       "command": "uvx",
       "args": [
-        "mcp-proxy-for-aws@1.6.0",
+        "mcp-proxy-for-aws@1.6.2",
         "https://aws-mcp.us-east-1.api.aws/mcp",
         "--metadata", "AWS_REGION=us-west-2"
       ]
@@ -89,7 +89,7 @@ Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`
 }
 ```
 
-> **Note:** It is recommended to pin to a specific version (e.g., `@1.6.0`) to ensure reproducible behavior and protect against supply chain risks. We recommend regularly checking [PyPI](https://pypi.org/project/mcp-proxy-for-aws/) for new stable versions and updating accordingly.
+> **Note:** It is recommended to pin to a specific version (e.g., `@1.6.2`) to ensure reproducible behavior and protect against supply chain risks. We recommend regularly checking [PyPI](https://pypi.org/project/mcp-proxy-for-aws/) for new stable versions and updating accordingly.
 
 Then install skills from this repository:
 
