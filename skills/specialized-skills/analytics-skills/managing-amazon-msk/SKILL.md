@@ -8,9 +8,9 @@ description: >-
   storage, and traffic shaping diagnosis; sizing and choosing Standard vs Express;
   Kafka client tuning; creating CloudWatch alarms, dashboards, monitoring, and cluster
   configurations; AND MSK maintenance, patching, version upgrades, and rolling-restart
-  behavior. Triggers: MSK, Kafka on AWS, `kafka.*` or `express.*` instance types, AWS/Kafka
-  CloudWatch namespace, alarms, dashboards, monitoring, consumer lag, partition replication,
-  broker storage, MSK upgrades, patching, maintenance windows, SECURITY_PATCHING,
+  behavior. Triggers: MSK, Kafka on AWS, `kafka.*` or `express.*` instance types,
+  AWS/Kafka CloudWatch namespace, alarms, dashboards, monitoring, consumer lag, partition
+  replication, broker storage, MSK upgrades, patching, maintenance windows, SECURITY_PATCHING,
   BROKER_UPDATE, rolling restarts, unexpected broker reboots. Do NOT use for MSK Connect,
   MSK Serverless, or MSK Replicator.
 version: 1
@@ -46,11 +46,15 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 | High CPU, high latency, slow cluster, traffic shaping | [troubleshoot-performance.md](references/troubleshoot-performance.md) |
 | Consumer lag increasing, rebalance storms, stuck consumer groups | [troubleshoot-consumer-lag.md](references/troubleshoot-consumer-lag.md) |
 | Disk filling up, retention planning, tiered storage | [manage-storage.md](references/manage-storage.md) |
-| Choosing Standard vs Express, sizing a cluster, partition limits | [size-and-choose-cluster.md](references/size-and-choose-cluster.md) |
+| Choosing Standard vs Express, sizing a cluster, partition limits, broker count, monthly cost | [size-and-choose-cluster.md](references/size-and-choose-cluster.md) |
 | Producer/consumer configuration, IAM/SCRAM/TLS auth | [configure-clients.md](references/configure-clients.md) |
 | Setting up monitoring, dashboards, alarms | [monitor-and-alarm.md](references/monitor-and-alarm.md) |
 | Full CloudWatch metric list (Standard or Express) | Search AWS docs for `"MSK CloudWatch metrics Standard brokers"` or `"MSK CloudWatch metrics Express brokers"` |
 | Rolling restart impact, patching, maintenance resilience | [maintenance-operations.md](references/maintenance-operations.md) |
+
+## Available scripts
+
+- **`scripts/msk_sizing.py`** — **MUST** be run for any sizing question (broker count, instance choice, cost). See [size-and-choose-cluster.md](references/size-and-choose-cluster.md) for the required workflow and script reference.
 
 ## Quick Diagnostics
 
