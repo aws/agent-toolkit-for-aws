@@ -1,6 +1,6 @@
 ---
 name: dms-schema-conversion
-description: "Handles the full DMS Schema Conversion lifecycle including creating migration projects, converting schemas to a target engine, running compatibility assessments, navigating schema trees, exporting converted DDL to S3, applying schema changes to a target database, and converting SQL statements between database engines."
+description: "Handles the full DMS Schema Conversion lifecycle including creating migration projects, converting database schemas to a target engine, running compatibility assessments, navigating metadata trees, exporting converted DDL to S3, applying schema changes to a target database, and converting SQL statements between database engines."
 version: 1
 ---
 
@@ -13,6 +13,7 @@ This skill handles the full DMS Schema Conversion lifecycle — from first-time 
 > Execute commands using available tools from the AWS MCP server when connected — it provides sandboxed execution, audit logging, and observability. When the MCP server is not available, fall back to the AWS CLI or shell as needed.
 
 **Key documentation:**
+
 - [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html) — scoping operations to specific objects
 - [Transformation rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-transformation-rules.html) — renaming schemas, tables, columns during conversion
 
@@ -25,6 +26,7 @@ This skill handles the full DMS Schema Conversion lifecycle — from first-time 
 Before starting, check that AWS CLI commands can be executed.
 
 **Constraints:**
+
 - You MUST verify that AWS CLI commands can be run (via MCP server tools or directly via shell)
 - You MUST inform the customer if no execution method is available and ask whether to proceed
 - You MUST ask the customer which AWS region to use — do NOT attempt to infer it from the STS response (it does not contain a region field). If the customer is unsure, suggest checking the `AWS_DEFAULT_REGION` environment variable or the `--region` flag they are using.
@@ -54,6 +56,7 @@ aws dms describe-migration-projects
 2. Run `start-metadata-model-import` with `--origin SOURCE --refresh` and the selection rules from step 1.
 
 3. Wait for import completion using the DMS waiter:
+
    ```
    aws dms wait metadata-model-imported \
      --migration-project-identifier <migration_project_identifier>
@@ -71,12 +74,14 @@ aws dms describe-migration-projects
 Present the actions menu using a structured selection tool (e.g., `AskUserQuestion`) if available — this gives the customer a clickable/selectable list.
 
 **For SQL Server → PostgreSQL/Aurora PostgreSQL projects** (present as a single-select question "What would you like to do?"):
+
 1. **Convert database** — convert schema objects to the target engine (also produces an conversion assessment report)
 2. **Assess database** — run a compatibility assessment (also produces an conversion assessment report)
 3. **Convert statement** — convert a single SQL statement
 4. **Clean up** — delete migration project and related DMS resources
 
 **For all other engine combinations** (present as a single-select question "What would you like to do?"):
+
 1. **Convert database** — convert schema objects to the target engine (also produces an conversion assessment report)
 2. **Assess database** — run a compatibility assessment (also produces an conversion assessment report)
 3. **Work with tree** — browse the metadata model tree
@@ -99,6 +104,7 @@ After each action completes, return to this menu by presenting the same selectio
 3. **Run conversion:** Call `start-metadata-model-conversion` with the migration project and selection rules. Extract `RequestIdentifier`.
 
 4. **Wait for completion:** Wait using the DMS waiter:
+
    ```
    aws dms wait metadata-model-converted \
      --migration-project-identifier <migration_project_identifier>
@@ -137,6 +143,7 @@ Assessment analyzes conversion complexity and generates an conversion assessment
 3. **Run assessment:** Call `start-metadata-model-assessment` with the migration project and selection rules. Extract `RequestIdentifier`.
 
 4. **Wait for completion:** Wait using the DMS waiter:
+
    ```
    aws dms wait metadata-model-assessed \
      --migration-project-identifier <migration_project_identifier>
@@ -166,12 +173,14 @@ After completing, ask the customer what they'd like to do next.
 ### Work with Tree
 
 The metadata tree represents database schemas hierarchically. It contains two kinds of elements:
+
 - **Objects** — actual database objects (tables, functions, views, sequences, indexes) that have SQL definitions
 - **Categories** — virtual grouping containers ("Schemas", "Tables", "Functions") that organize objects for navigation but have no SQL definitions
 
 The tree uses on-demand loading — metadata is retrieved from the database only when imported. See [Navigating the metadata model](https://docs.aws.amazon.com/dms/latest/userguide/sc-metadata-model.html#sc-metadata-model-navigating) for full details.
 
 **Navigation uses two APIs:**
+
 - `describe-metadata-model-children` — returns the children of a given node, each with its own `SelectionRules` for drilling deeper
 - `describe-metadata-model` — returns the name, type, and SQL definition of a specific object
 
@@ -235,9 +244,11 @@ When a customer asks about their source database statistics — such as the numb
 4. **Export conversion assessment report:** Call `export-metadata-model-assessment` with the same selection rules.
 
 5. **Download and present only what the customer asked for:** Download the Summary CSV from S3:
+
    ```
    aws s3 cp s3://<bucket>/<CsvReport.S3ObjectKey> ./Summary.csv
    ```
+
    The report contains many data points. Present **only** the information the customer requested — do not dump the entire report. For example:
    - If they asked "how many tables?" → show only the table count
    - If they asked about a specific schema → show only that schema's stats
@@ -245,6 +256,7 @@ When a customer asks about their source database statistics — such as the numb
 6. **Offer next steps:** Ask if they'd like to see conversion complexity or proceed with conversion.
 
 **Constraints:**
+
 - If the customer specifies a scope, use it. If not, default to all schemas.
 - Present only what the customer asked for — do not overwhelm with unrequested data.
 - Present statistics in a clear, tabular format.
@@ -258,18 +270,22 @@ After completing, ask the customer what they'd like to do next.
 Delete the migration project and its associated DMS resources. Resources MUST be deleted in dependency order.
 
 1. **Confirm with customer:** List the resources that will be deleted and ask for confirmation:
+
    ```
    aws dms describe-migration-projects --filter Name=migration-project-identifier,Values=<migration_project_identifier>
    ```
+
    Show the project name, source/target data providers, and instance profile.
 
 2. **Delete migration project:**
+
    ```
    aws dms delete-migration-project \
      --migration-project-identifier <migration_project_identifier>
    ```
 
 3. **Delete data providers:** Delete both source and target data providers:
+
    ```
    aws dms delete-data-provider \
      --data-provider-identifier <source_data_provider_identifier>
@@ -278,12 +294,14 @@ Delete the migration project and its associated DMS resources. Resources MUST be
    ```
 
 4. **Delete instance profile:**
+
    ```
    aws dms delete-instance-profile \
      --instance-profile-identifier <instance_profile_identifier>
    ```
 
 5. **Delete subnet group:**
+
    ```
    aws dms delete-replication-subnet-group \
      --replication-subnet-group-identifier <subnet_group_identifier>
@@ -292,6 +310,7 @@ Delete the migration project and its associated DMS resources. Resources MUST be
 6. **Confirm completion:** Inform the customer that all DMS Schema Conversion resources have been removed.
 
 **Constraints:**
+
 - You MUST get explicit customer confirmation before deleting any resources.
 - You MUST delete in order: migration project first, then data providers, then instance profile, then subnet group — deleting in the wrong order will fail due to dependencies.
 - You MUST NOT delete the underlying infrastructure (VPC, subnets, security groups, RDS instances, Secrets Manager secrets) — those are outside the scope of DMS Schema Conversion cleanup.

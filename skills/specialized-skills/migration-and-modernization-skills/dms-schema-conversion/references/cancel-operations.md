@@ -15,6 +15,7 @@ aws dms cancel-metadata-model-conversion \
 ```
 
 After cancelling, wait for completion:
+
 ```bash
 aws dms wait metadata-model-conversion-cancelled \
   --migration-project-identifier <project_arn>
@@ -28,6 +29,7 @@ aws dms cancel-metadata-model-creation \
 ```
 
 After cancelling, wait for completion:
+
 ```bash
 aws dms wait metadata-model-creation-cancelled \
   --migration-project-identifier <project_arn>

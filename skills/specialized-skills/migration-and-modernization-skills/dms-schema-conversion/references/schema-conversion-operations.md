@@ -2,22 +2,22 @@
 
 ## Command Summary
 
-| Command | Purpose | Async | Poll via | Waiter | Docs |
-|---------|---------|-------|----------|--------|------|
-| [start-metadata-model-import](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-import.html) | Import metadata from source or target DB | Yes | `describe-metadata-model-imports` | [`metadata-model-imported`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-imported.html) | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-import.html) |
-| [start-metadata-model-conversion](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-conversion.html) | Convert source schema to target | Yes | `describe-metadata-model-conversions` | [`metadata-model-converted`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-converted.html) | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-conversion.html) |
-| [start-metadata-model-assessment](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-assessment.html) | Assess conversion complexity | Yes | `describe-metadata-model-assessments` | [`metadata-model-assessed`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-assessed.html) | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-assessment.html) |
-| [start-metadata-model-creation](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-creation.html) | Create statement-based model | Yes | `describe-metadata-model-creations` | [`metadata-model-created`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-created.html) | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-creation.html) |
-| [start-metadata-model-export-as-script](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-export-as-script.html) | Export DDL to S3 | Yes | `describe-metadata-model-exports-as-script` | [`metadata-model-exported-as-script`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-exported-as-script.html) | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-export-as-script.html) |
-| [start-metadata-model-export-to-target](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-export-to-target.html) | Apply converted DDL to target DB | Yes | `describe-metadata-model-exports-to-target` | [`metadata-model-exported-to-target`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-exported-to-target.html) | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-export-to-target.html) |
-| [export-metadata-model-assessment](https://docs.aws.amazon.com/cli/latest/reference/dms/export-metadata-model-assessment.html) | Generate PDF/CSV report to S3 | Sync | N/A | sync | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/export-metadata-model-assessment.html) |
-| [describe-metadata-model-children](https://docs.aws.amazon.com/cli/latest/reference/dms/describe-metadata-model-children.html) | Navigate tree structure | Sync | N/A | sync | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/describe-metadata-model-children.html) |
-| [describe-metadata-model](https://docs.aws.amazon.com/cli/latest/reference/dms/describe-metadata-model.html) | Get object definition (DDL) | Sync | N/A | sync | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/describe-metadata-model.html) |
-| [cancel-metadata-model-conversion](https://docs.aws.amazon.com/cli/latest/reference/dms/cancel-metadata-model-conversion.html) | Cancel running conversion | Yes* | N/A | [`metadata-model-conversion-cancelled`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-conversion-cancelled.html) | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/cancel-metadata-model-conversion.html) |
-| [cancel-metadata-model-creation](https://docs.aws.amazon.com/cli/latest/reference/dms/cancel-metadata-model-creation.html) | Cancel running creation | Yes* | N/A | [`metadata-model-creation-cancelled`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-creation-cancelled.html) | [link](https://docs.aws.amazon.com/cli/latest/reference/dms/cancel-metadata-model-creation.html) |
+| Command | Purpose | Async | Poll via | Waiter |
+|---------|---------|-------|----------|--------|
+| [start-metadata-model-import](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-import.html) | Import metadata from source or target DB | Yes | `describe-metadata-model-imports` | [`metadata-model-imported`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-imported.html) |
+| [start-metadata-model-conversion](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-conversion.html) | Convert source schema to target | Yes | `describe-metadata-model-conversions` | [`metadata-model-converted`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-converted.html) |
+| [start-metadata-model-assessment](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-assessment.html) | Assess conversion complexity | Yes | `describe-metadata-model-assessments` | [`metadata-model-assessed`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-assessed.html) |
+| [start-metadata-model-creation](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-creation.html) | Create statement-based model | Yes | `describe-metadata-model-creations` | [`metadata-model-created`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-created.html) |
+| [start-metadata-model-export-as-script](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-export-as-script.html) | Export DDL to S3 | Yes | `describe-metadata-model-exports-as-script` | [`metadata-model-exported-as-script`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-exported-as-script.html) |
+| [start-metadata-model-export-to-target](https://docs.aws.amazon.com/cli/latest/reference/dms/start-metadata-model-export-to-target.html) | Apply converted DDL to target DB | Yes | `describe-metadata-model-exports-to-target` | [`metadata-model-exported-to-target`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-exported-to-target.html) |
+| [export-metadata-model-assessment](https://docs.aws.amazon.com/cli/latest/reference/dms/export-metadata-model-assessment.html) | Generate PDF/CSV report to S3 | Sync | N/A | sync |
+| [describe-metadata-model-children](https://docs.aws.amazon.com/cli/latest/reference/dms/describe-metadata-model-children.html) | Navigate tree structure | Sync | N/A | sync |
+| [describe-metadata-model](https://docs.aws.amazon.com/cli/latest/reference/dms/describe-metadata-model.html) | Get object definition (DDL) | Sync | N/A | sync |
+| [cancel-metadata-model-conversion](https://docs.aws.amazon.com/cli/latest/reference/dms/cancel-metadata-model-conversion.html) | Cancel running conversion | Yes* | N/A | [`metadata-model-conversion-cancelled`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-conversion-cancelled.html) |
+| [cancel-metadata-model-creation](https://docs.aws.amazon.com/cli/latest/reference/dms/cancel-metadata-model-creation.html) | Cancel running creation | Yes* | N/A | [`metadata-model-creation-cancelled`](https://docs.aws.amazon.com/cli/latest/reference/dms/wait/metadata-model-creation-cancelled.html) |
 
 > \* The cancel API call returns synchronously, but the cancellation state transition is async (`CANCEL_RECEIVED` → `CANCELING` → `CANCELED`). Use the corresponding waiter to confirm the operation reached the `CANCELED` state.
-
+>
 > **Note:** All waiters require `--filter 'Name=schema-conversion-operation-id,Values=<RequestId>'` in addition to `--migration-project-identifier`.
 
 For full parameter details and examples, refer to the linked CLI documentation for each command.
@@ -70,11 +70,13 @@ All async operations use the same status values:
 4. If the waiter fails or is unavailable (e.g., `Invalid choice` due to outdated CLI) → fall back to manual polling with the corresponding `describe-*` command until status reaches `SUCCESS` or `FAILED`
 
 **Fallback polling pattern** (use when waiter is not available):
+
 ```
 aws dms describe-metadata-model-<operation>s \
   --migration-project-identifier <migration_project_identifier> \
   --filter Name=request-id,Values=<RequestIdentifier>
 ```
+
 Check `Requests[0].Status` — repeat every 30 seconds until it reaches `SUCCESS` or `FAILED`.
 
 **Constraint:** You MUST NOT proceed to the next step until the operation has completed. If the waiter fails or times out, you MUST fall back to polling with the describe command. Never assume an operation succeeded without confirming its status.

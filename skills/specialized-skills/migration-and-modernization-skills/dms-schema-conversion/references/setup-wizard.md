@@ -1,6 +1,7 @@
 # DMS Schema Conversion: Setup Wizard Reference
 
 ## Table of Contents
+
 - [Global Constraints](#global-constraints)
 - [Phase 1 — Project Name](#phase-1--project-name)
 - [Phase 2 — Target Type Selection](#phase-2--target-type-selection)
@@ -52,6 +53,7 @@ Ask:
 | S3 IAM Role | `<project_name>-sc-s3-role` |
 
 **Constraints:**
+
 - Resolve `aws_account_id` by running `aws sts get-caller-identity` and extracting the `Account` field
 - Ask the customer which AWS region to use. Do NOT attempt to infer it from the STS response. Store as `aws_region`.
 - If region resolution fails, ask the customer to provide it manually
@@ -86,6 +88,7 @@ Ask:
   | S3 IAM Role `<project_name>-sc-s3-role` | EXISTS / will be created |
   | DMS VPC Role `dms-vpc-role` | EXISTS / will be created |
   | DMS CloudWatch Role `dms-cloudwatch-logs-role` | EXISTS / will be created |
+
 - If the migration project already exists, inform the customer and ask: "A migration project with this name already exists. Would you like to (1) choose a different name, or (2) continue anyway and reuse existing resources where possible? If you choose option 2, please provide a new name for any resources that need to be recreated."
 - You MUST wait for the customer's confirmation before proceeding to Phase 2
 
@@ -97,6 +100,7 @@ Ask:
 
 Explain:
 > "DMS Schema Conversion supports two target modes:
+>
 > - **Live database** — connects to a live Amazon RDS, Aurora, or Redshift instance. DMS reads its network config automatically.
 > - **Virtual** — no live target database needed. Useful for reviewing converted schema without an actual DB.
 >
@@ -105,6 +109,7 @@ Explain:
 **Supported target engines:** `aurora-postgresql`, `mysql`, `aurora-mysql`, `redshift`, `mariadb`, `postgresql`. See [DMS SC supported target databases](https://docs.aws.amazon.com/dms/latest/userguide/data-providers-target.html) for the full list.
 
 **Constraints:**
+
 - Accept `live` or `virtual` (case-insensitive); store as `use_virtual_target`
 - **If live:** Ask for the target engine type (e.g., `aurora-postgresql`, `mysql`, `redshift`). Then ask:
   > "Is your target an Amazon RDS/Aurora instance or Redshift cluster? If yes, provide the ARN and I'll retrieve connection details automatically. Otherwise, provide hostname, port, database name."
@@ -202,11 +207,13 @@ Store as `source_secret_arn`.
 Ask if the customer needs help setting up target database credentials. Guide the customer based on [target data provider prerequisites](https://docs.aws.amazon.com/dms/latest/userguide/data-providers-target.html) for required permissions.
 
 **If virtual target:** A secret is still required by DMS even though it won't be used for an actual connection. Create a placeholder secret automatically (the password is non-sensitive — used only to satisfy the API schema requirement):
+
 ```
 aws secretsmanager create-secret \
   --name <project_name>-target-dummy-secret \
   --secret-string '{"username":"virtual_placeholder","password":"'"$(openssl rand -base64 16)"'"}'
 ```
+
 On `ResourceExistsException`, reuse the existing secret. Store the ARN as `target_secret_arn`.
 
 **If live target (RDS/Aurora/Redshift):** If the customer provided an ARN in Phase 2, automatically retrieve the associated secret ARN from the instance/cluster metadata (e.g., `MasterUserSecret.SecretArn` from `describe-db-instances` or `describe-db-clusters`). Inform the customer of the secret found. If no secret is associated with the instance, fall back to asking manually.
@@ -242,6 +249,7 @@ Store `source_data_provider_arn`. Do NOT include credentials in settings.
 ### 7b — Target data provider
 
 - **If virtual target:** Use placeholder settings matching `target_engine` (use `"virtual"` as the server name and the default port for the engine). You MUST also pass `--virtual` to mark the data provider as virtual:
+
   ```
   aws dms create-data-provider \
     --data-provider-name <project_name>-target \
@@ -249,6 +257,7 @@ Store `source_data_provider_arn`. Do NOT include credentials in settings.
     --virtual \
     --settings '{...placeholder settings...}'
   ```
+
 - **If live target:** Use the actual connection values from Phase 2 (`target_hostname`, `target_port`, `target_database_name`). Use the same engine-specific settings structure as the source data provider (e.g., `AuroraPostgreSqlSettings`, `MySqlSettings`, `RedshiftSettings`, etc.) with the real values. Do NOT pass `--virtual`.
 
 Store `target_data_provider_arn`.
@@ -293,6 +302,7 @@ aws s3api put-bucket-policy --bucket <bucket_name> --policy '{
 ```
 
 **Constraints:**
+
 - The bucket name MUST include the region suffix: `<project_name>-sc-bucket-<aws_account_id>-<aws_region>`
 - Do NOT configure SSE-KMS — DMS Schema Conversion only supports SSE-S3 (default)
 - Store `bucket_name`
@@ -308,11 +318,13 @@ aws s3api put-bucket-policy --bucket <bucket_name> --policy '{
 Ask if an existing role is available. If yes, validate with `aws iam get-role`. If no, create:
 
 1. Create the role with trust policy (includes condition keys to prevent confused deputy):
+
    ```
    aws iam create-role \
      --role-name <project_name>-sc-secrets-role \
      --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["dms.amazonaws.com","dms.<aws_region>.amazonaws.com"]},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
    ```
+
 2. Attach a policy granting access to the secret ARNs used by the migration project. See [IAM policies for DMS](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam-policies) for the required permissions (Secrets Manager and KMS actions). Scope the resource to `<source_secret_arn>` and `<target_secret_arn>`.
 
 Store `secrets_role_arn`.
@@ -322,11 +334,13 @@ Store `secrets_role_arn`.
 Ask if an existing role is available. If yes, validate. If no, create:
 
 1. Create the role with trust policy (includes condition keys to prevent confused deputy):
+
    ```
    aws iam create-role \
      --role-name <project_name>-sc-s3-role \
      --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["dms.amazonaws.com","dms.<aws_region>.amazonaws.com"]},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
    ```
+
 2. Attach a policy granting S3 access to the migration bucket. See [IAM policies for DMS](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam-policies) for the required permissions. Scope the resource to `arn:aws:s3:::<bucket_name>` and `arn:aws:s3:::<bucket_name>/*`.
 
 Store `s3_role_arn`.
@@ -336,6 +350,7 @@ Store `s3_role_arn`.
 Required by DMS to manage VPC and ENI resources. The role name MUST be exactly `dms-vpc-role` — DMS looks it up by this fixed name. See [IAM roles for DMS](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam-roles) for details.
 
 First check if the role exists:
+
 ```
 aws iam get-role --role-name dms-vpc-role
 ```
@@ -343,12 +358,15 @@ aws iam get-role --role-name dms-vpc-role
 If the role already exists (found in Phase 1 lookup or via the check above), skip creation. Otherwise create it:
 
 1. Create the role with trust policy for `dms.amazonaws.com` (includes condition keys to prevent confused deputy):
+
    ```
    aws iam create-role \
      --role-name dms-vpc-role \
      --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"dms.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
    ```
+
 2. Attach the AWS managed policy:
+
    ```
    aws iam attach-role-policy \
      --role-name dms-vpc-role \
@@ -360,6 +378,7 @@ If the role already exists (found in Phase 1 lookup or via the check above), ski
 Required by DMS to publish schema conversion logs to CloudWatch. The role name MUST be exactly `dms-cloudwatch-logs-role`. See [IAM roles for DMS](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam-roles) for details.
 
 First check if the role exists:
+
 ```
 aws iam get-role --role-name dms-cloudwatch-logs-role
 ```
@@ -367,12 +386,15 @@ aws iam get-role --role-name dms-cloudwatch-logs-role
 If the role already exists (found in Phase 1 lookup or via the check above), skip creation. Otherwise create it:
 
 1. Create the role with trust policy for `dms.amazonaws.com` (includes condition keys to prevent confused deputy):
+
    ```
    aws iam create-role \
      --role-name dms-cloudwatch-logs-role \
      --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"dms.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
    ```
+
 2. Attach the AWS managed policy:
+
    ```
    aws iam attach-role-policy \
      --role-name dms-cloudwatch-logs-role \
@@ -407,9 +429,11 @@ Ask if the customer wants transformation rules (rename schemas, tables, columns)
 ### 12a — Create Migration Project
 
 Build source descriptor (always includes secret):
+
 - `{"DataProviderIdentifier": "<source_data_provider_arn>", "SecretsManagerSecretId": "<source_secret_arn>", "SecretsManagerAccessRoleArn": "<secrets_role_arn>"}`
 
 Build target descriptor (always includes secret):
+
 - `{"DataProviderIdentifier": "<target_data_provider_arn>", "SecretsManagerSecretId": "<target_secret_arn>", "SecretsManagerAccessRoleArn": "<secrets_role_arn>"}`
 
 ```

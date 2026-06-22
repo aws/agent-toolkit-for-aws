@@ -81,13 +81,16 @@ When the customer asks to review or work through action items:
 When the customer asks to fix Action Items (e.g., "fix the action items", "help me resolve these"):
 
 1. **Export target as SQL script:**
+
    ```
    aws dms start-metadata-model-export-as-script \
      --migration-project-identifier <migration_project_identifier> \
      --origin TARGET \
      --selection-rules '<json>'
    ```
+
    Wait via `aws dms wait metadata-model-exported-as-script --migration-project-identifier <migration_project_identifier>`. Download the exported SQL file from S3 and restrict permissions:
+
    ```
    aws s3 cp s3://<bucket>/<S3ObjectKey> ./exported_target.sql
    chmod 600 ./exported_target.sql
@@ -107,6 +110,7 @@ When the customer asks to fix Action Items (e.g., "fix the action items", "help 
 5. **After all fixes:** The customer has a corrected SQL script they can apply to the target database manually or review further.
 
 **Constraints:**
+
 - You MUST process objects one at a time and get customer confirmation before modifying each.
 - You MUST show the original and proposed DDL so the customer has full context.
 - You MUST explain the action item in plain language — do not just repeat the CSV description verbatim.
