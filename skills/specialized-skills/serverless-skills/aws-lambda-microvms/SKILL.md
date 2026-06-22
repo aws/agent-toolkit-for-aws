@@ -149,20 +149,36 @@ aws lambda-microvms create-microvm-image \
   --additional-os-capabilities '["ALL"]'
 ```
 
-## Shell ingress for agent use cases
+### Shell ingress for agent use cases
 
 For programmatic shell access (agent workflows, remote command execution), use the `SHELL_INGRESS` network connector:
 
 ```bash
+# 1. Run with SHELL_INGRESS enabled
 aws lambda-microvms run-microvm \
   --image-identifier arn:aws:lambda:<region>:<acct>:microvm-image:my-image \
-  --image-version 1.0 \
   --execution-role-arn arn:aws:iam::<acct>:role/MicroVMExecutionRole \
   --ingress-network-connectors '["arn:aws:lambda:<region>:aws:network-connector:aws-network-connector:SHELL_INGRESS"]' \
   --idle-policy '{"maxIdleDurationSeconds":900,"suspendedDurationSeconds":300,"autoResumeEnabled":true}'
+# Response includes microvmId and endpoint
+
+# 2. Mint a shell auth token (max 60 min; use shortest duration needed)
+# Treat the token as a secret — avoid logging, storing in files, or shell history.
+TOKEN=$(aws lambda-microvms create-microvm-shell-auth-token \
+  --microvm-identifier microvm-... \
+  --expiration-in-minutes 15 \
+  --query 'authToken."X-aws-proxy-auth"' --output text)
+
+# 3. Connect via WebSocket (port 8022)
+# CLI args are visible in process listings (ps aux). For shared hosts,
+# pipe the header via a file descriptor or use a wrapper script.
+websocat "wss://<endpoint>/shell" \
+  -H "Sec-WebSocket-Protocol: lambda-microvms.authentication.${TOKEN}, lambda-microvms, lambda-microvms.port.8022"
 ```
 
-This provides a WebSocket-based shell channel accessible from any client (terminal or browser), suitable for agent-driven workflows that need to execute commands inside the MicroVM.
+The shell drops into the same container as the running application — same network namespace, filesystem, and process tree. This provides an interactive PTY over a WebSocket-based shell channel accessible from any client (terminal or browser), suitable for agent-driven workflows that need to execute commands inside the MicroVM.
+
+Prerequisites: MicroVM must be run with SHELL_INGRESS attached, and caller also needs `lambda:CreateMicrovmShellAuthToken`.
 
 ## Known constraints
 
