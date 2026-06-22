@@ -32,7 +32,7 @@ These errors are returned immediately by the API call itself (`start-*`, `create
 
 These errors do not fail the initial API call. The operation starts successfully but later transitions to a `failed` status, visible when checking the corresponding `describe-*` command (see [schema-conversion-operations.md](schema-conversion-operations.md) for the full list).
 
-#### Step 1 — Retrieve the error message
+### Step 1 — Retrieve the error message
 
 Use the corresponding `describe-*` command for the operation that failed (e.g., `describe-metadata-model-imports`, `describe-metadata-model-conversions`, `describe-metadata-model-assessments`, `describe-metadata-model-creations`, `describe-metadata-model-exports-as-script`). Extract `ErrorDetails.defaultErrorDetails.message` and match it to a group below.
 
