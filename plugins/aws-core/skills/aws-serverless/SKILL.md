@@ -33,6 +33,7 @@ Domain expertise for building serverless applications on AWS. Covers Lambda conf
 | Starting with Powertools | Use [powertools-handler.py](assets/powertools-handler.py) as a template |
 | Lambda Managed Instances, LMI, capacity providers, EC2-backed Lambda, PerExecutionEnvironmentMaxConcurrency | Use the **aws-lambda-managed-instances** skill instead |
 | Durable functions, durable execution, checkpoint-and-replay | Use the **aws-lambda-durable-functions** skill instead |
+| Firecracker microVMs, strong tenant isolation, sandboxed/untrusted code execution, long-lived sessions, suspend/resume, port-listening servers, snapshot-resumable compute | Use the **aws-lambda-microvms** skill instead |
 | Spans multiple areas | Read the most specific reference first, then consult others as needed |
 
 ## Files
