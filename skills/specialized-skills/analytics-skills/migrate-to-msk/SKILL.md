@@ -1,5 +1,5 @@
 ---
-name: migrate-to-msk-express
+name: migrate-to-msk
 description: >-
   Helps migrate self-managed Apache Kafka workloads to Amazon MSK Express. Inventories the
   source cluster (from IaC files, Kafka CLI output, or manual input), assesses MSK Express
