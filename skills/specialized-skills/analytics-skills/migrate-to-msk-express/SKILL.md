@@ -11,7 +11,6 @@ description: >-
   MSK, streaming migration, moving streaming workloads to AWS, MSK workload compatibility,
   MSK cluster sizing, choosing an MSK cluster type, or MSK Replicator.
 version: 1
-  workload: [streaming, messaging]
 ---
 
 # Migrating to MSK Express
