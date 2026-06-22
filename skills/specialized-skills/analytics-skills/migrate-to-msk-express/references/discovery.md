@@ -7,6 +7,7 @@ at once.
 Your response MUST follow the template exactly.
 
 FORBIDDEN content — do NOT include any of the following:
+
 - Compatibility observations ("not supported by MSK", "should migrate smoothly")
 - Blockers, warnings, or recommendations
 - Migration steps or deployment commands
@@ -52,15 +53,19 @@ The following require runtime data that isn't available in IaC:
 
 **Options to fill these gaps:**
 - **A.** Run these commands on your cluster and share the output files:
+
   ```bash
   kafka-topics.sh --bootstrap-server <addr> --describe > kafka-topics-output.txt
   kafka-configs.sh --bootstrap-server <addr> --entity-type brokers --entity-default --describe > kafka-configs-output.txt
   kafka-broker-api-versions.sh --bootstrap-server <addr> > kafka-versions-output.txt
   ```
+
   Then share the files or paste their contents here.
+
 - **B.** Proceed with partial data (assessment will be less accurate)
 
 Would you like to proceed to assessment, or provide additional information first?
+
 ```
 
 ## Rules

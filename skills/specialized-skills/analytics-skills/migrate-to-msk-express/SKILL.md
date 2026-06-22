@@ -111,6 +111,7 @@ and answer based on knowledge of AWS MSK.
 **Purpose:** Inventory the source cluster to build a migration profile.
 
 **Input:** One of:
+
 - A directory path containing IaC files (CDK, CloudFormation, Docker Compose, Kubernetes manifests, Terraform)
 - Output from Kafka CLI commands the customer runs on their cluster
 - Manual information provided by the customer in conversation
@@ -156,6 +157,7 @@ Express specification (instance type, broker count, monthly cost projection).
 **Input:** `migrate-to-msk-skill-artifacts/<cluster_name>/cluster-config.json` from Phase 1.
 
 **Outputs:**
+
 - `migrate-to-msk-skill-artifacts/<cluster_name>/compatibility.<cluster_name>.json` — five-pillar verdict.
 - `migrate-to-msk-skill-artifacts/<cluster_name>/MSK_Sizing_Pricing.<cluster_name>.xlsx` — the AWS-published MSK Sizing/Pricing workbook (downloaded by the agent) with the six workload inputs filled into the `MSK Provisioned` sheet. Open it to read the broker count and cost recommendations.
 - `migrate-to-msk-skill-artifacts/<cluster_name>/msk-sizing-inputs.<cluster_name>.json` — a record of the six input values and the cell each maps to.
