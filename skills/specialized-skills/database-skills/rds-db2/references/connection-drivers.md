@@ -21,6 +21,7 @@ conn = ibm_db.connect(conn_str, "", "")
 ```
 
 Download the cert bundle first:
+
 ```bash
 curl -sL https://truststore.pki.rds.amazonaws.com/<region>/<region>-bundle.pem -o ~/<region>-bundle.pem
 ```
@@ -89,6 +90,7 @@ db2_show_env   # confirm which instance is active
 ```
 
 How `db2_use` actually works (important for understanding password rotation):
+
 - Reads `~/.db2instances` (populated by `db2client-configure.sh` for each instance you registered).
 - Calls `aws secretsmanager get-secret-value` against the instance's secret to fetch the **current** master password (automatically handles secret rotation).
 - If no secret is associated, falls back to `~/.need_password`.

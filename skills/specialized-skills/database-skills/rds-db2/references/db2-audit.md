@@ -1,6 +1,7 @@
 # RDS for Db2 — Db2 Audit to S3
 
 > **Source**
+>
 > - `04-db2-client/db2-audit/AWS-Blog-Post-DB2-Audit.md` — "Simplifying DB2 Audit Configuration on Amazon RDS: Three Easy Ways to Get Started"
 > - Bundled script: `scripts/create-db2-audit-role.sh`
 > - AWS docs: DB2_AUDIT option — https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Db2.Options.Audit.html

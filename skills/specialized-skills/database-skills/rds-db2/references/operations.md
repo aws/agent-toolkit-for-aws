@@ -29,6 +29,7 @@ aws rds modify-db-instance \
 ```
 
 Enable storage autoscaling:
+
 ```bash
 aws rds modify-db-instance \
   --db-instance-identifier <instance-id> \
@@ -59,6 +60,7 @@ aws rds modify-db-parameter-group \
 ### Non-modifiable instance-level parameters
 
 Parameters that are managed by RDS and cannot be changed:
+
 - `db2comm` (always TCPIP)
 - `svcename` (managed by RDS)
 - `diagpath` (managed by RDS)
@@ -74,6 +76,7 @@ FROM TABLE(rdsadmin.list_db_registry_variables()) AS t;
 ```
 
 Modify a registry variable:
+
 ```sql
 call rdsadmin.set_db_registry_variable('<VAR_NAME>', '<VALUE>');
 ```
@@ -126,6 +129,7 @@ CALL SYSPROC.ADMIN_CMD('LOAD FROM DB2REMOTE://myS3/<path/to/file.ixf> OF IXF INS
 ```
 
 Or using LOAD CLIENT from a connected Db2 client:
+
 ```bash
 db2 "LOAD CLIENT FROM /local/path/file.ixf OF IXF INSERT INTO <schema>.<table>"
 ```
@@ -157,6 +161,7 @@ Logs appear in CloudWatch Logs group `/aws/rds/instance/<instance-id>/diag`.
 
 **Encrypt the log group.** db2diag logs can contain sensitive diagnostic data, so
 encrypt the CloudWatch Logs group with a KMS key:
+
 ```bash
 aws logs associate-kms-key \
   --log-group-name /aws/rds/instance/<instance-id>/diag \

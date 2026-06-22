@@ -37,6 +37,7 @@ aws rds modify-db-parameter-group \
 ```
 
 **Constraints:**
+
 - You MUST ask the user for their IBM customer ID and site ID. These are not optional.
 - The parameter group family MUST match the engine edition + major version (e.g. `db2-se-11.5` for Standard Edition 11.5).
 
@@ -65,6 +66,7 @@ aws rds create-db-instance \
 ```
 
 **Key flags:**
+
 - `--manage-master-user-password`: **MANDATORY for production.** RDS creates the master password and automatically rotates it in Secrets Manager. Do NOT use `--master-user-password` with a plaintext value under any circumstances for a production instance.
 - `--license-model bring-your-own-license`: Required for all Db2 editions.
 - `--port 50000`: Default Db2 port. Can be changed but 50000 is standard.

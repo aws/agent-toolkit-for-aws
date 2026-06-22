@@ -1,6 +1,7 @@
 # RDS for Db2 — Migration Reference
 
 Source blogs:
+
 - https://aws.amazon.com/blogs/database/data-migration-strategies-to-amazon-rds-for-db2/
 - https://aws.amazon.com/blogs/database/restore-self-managed-db2-linux-databases-in-amazon-rds-for-db2/
 - https://aws.amazon.com/blogs/database/near-zero-downtime-migrations-from-self-managed-db2-on-aix-or-windows-to-amazon-rds-for-db2-using-ibm-q-replication/
@@ -69,12 +70,14 @@ DB2_INSTANCES=db2inst1 ./db2_migration_prereq_check.sh
 ### Using Db2 backup + restore stored procedure
 
 Take a multi-part backup (parallel streams improve S3 restore performance):
+
 ```bash
 db2 backup database <DBNAME> to /backup, /backup, /backup, /backup, /backup
 # Produces .001 .002 .003 .004 .005 parts
 ```
 
 Copy to S3 (create storage alias first):
+
 ```bash
 # On EC2 with IAM role — no credentials needed:
 db2 "CATALOG STORAGE ACCESS ALIAS db2S3 VENDOR S3 SERVER https://s3.<region>.amazonaws.com CONTAINER <bucket> DBUSER <masterUser>"
@@ -87,9 +90,11 @@ db2 backup database <DBNAME> to DB2REMOTE://db2S3, DB2REMOTE://db2S3, DB2REMOTE:
 ```
 
 Restore on RDS for Db2:
+
 ```sql
 call rdsadmin.restore_database('<DBNAME>', 'OFFLINE', '<s3-prefix>', '<bucket>', '<region>');
 ```
+
 The `s3_prefix` is the common part of the backup image filenames excluding `.001`, `.002`, etc.
 
 ### Performance tuning for restore
@@ -107,14 +112,19 @@ call rdsadmin.set_configuration('USE_STREAMING_RESTORE', 'TRUE');
 
 1. Take online backup to S3 (same as above but `backup_type = 'ONLINE'`)
 2. Restore on RDS:
+
    ```sql
    call rdsadmin.restore_database('<DBNAME>', 'ONLINE', '<s3-prefix>', '<bucket>', '<region>');
    ```
+
 3. Copy archive logs to S3 and apply:
+
    ```sql
    call rdsadmin.rollforward_database('<DBNAME>', '<log-s3-prefix>', '<bucket>', '<region>');
    ```
+
 4. Repeat step 3 until all logs applied, then complete:
+
    ```sql
    call rdsadmin.complete_rollforward('<DBNAME>');
    ```
@@ -138,10 +148,12 @@ Source: https://aws.amazon.com/blogs/database/near-zero-downtime-migrations-from
 2. Catalog source and target databases with different aliases
 3. Create MQ queues (RESTARTQ, ADMINQ, DATAQ1 with MAXDEPTH=99999999)
 4. Create Q Replication control tables on RDS (requires RDSADMIN stored procedures for tablespaces):
+
    ```sql
    call rdsadmin.create_bufferpool('<DBNAME>', 'BPQASN', 10000, 'Y', 'Y', 8192);
    call rdsadmin.create_tablespace('<DBNAME>', 'QAQASN', 'BPQASN', 8192);
    ```
+
 5. Create subscriptions with `HAS LOAD PHASE N` (Db2MT handles the load)
 6. Start Capture and Apply to verify subscriptions activate
 7. Record the start time of earliest in-flight transaction
@@ -173,6 +185,7 @@ Use Db2 backup/restore via Db2MT or `rdsadmin.restore_database`. Fastest path wh
 ## Zero downtime upgrade
 
 Online restore + rollforward:
+
 1. Take online backup of source
 2. Restore to RDS (stays in rollforward-pending)
 3. Continuously apply archive logs with `rdsadmin.rollforward_database`

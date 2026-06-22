@@ -74,6 +74,7 @@ aws rds promote-read-replica \
 ```
 
 After promotion, connect to the promoted instance:
+
 ```bash
 db2 catalog TCPIP node <node_name> remote <promoted-endpoint> server <port>
 db2 catalog database <dbname> as <alias> at node <node_name>
@@ -118,6 +119,7 @@ aws rds delete-db-instance \
 ## Switch MAZ instance (failover)
 
 Force a failover to the standby (Multi-AZ):
+
 ```bash
 aws rds reboot-db-instance \
   --db-instance-identifier <instance-id> \
@@ -131,6 +133,7 @@ aws rds reboot-db-instance \
 After a Multi-AZ failover, the primary moves to the standby's AZ. To minimize latency, deploy application servers in the same AZ as the current primary.
 
 Check current AZ of the primary:
+
 ```bash
 aws rds describe-db-instances \
   --db-instance-identifier <instance-id> \

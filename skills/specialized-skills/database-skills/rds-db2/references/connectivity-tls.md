@@ -21,6 +21,7 @@ Source blog: <https://aws.amazon.com/blogs/database/connect-to-amazon-rds-for-db
 It writes one SSL DSN per database: `RDSAS` for the RDSADMIN system database and `<DB>S` for each user database. The certificate lands at `~/<region>-bundle.pem`.
 
 Verify the SSL path end to end:
+
 ```bash
 db2_test_connection RDSAS
 ```
@@ -33,6 +34,7 @@ db2_connect RDSAS
 # Direct CLP
 db2 "connect to RDSAS user admin using '<password>'"
 ```
+
 SSL connections use port **50443**; plaintext TCP uses 50000. Single quotes around the password protect special characters (`!`, `>`, `<`, `$`).
 
 ## Download / re-download the certificate
@@ -43,6 +45,7 @@ curl -sL https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem
 # Airgap — from the staged S3 bucket
 aws s3 cp s3://<bucket>/ssl/us-east-1-bundle.pem ~/us-east-1-bundle.pem
 ```
+
 After re-downloading, re-run `db2client-configure.sh` to re-register the SSL DSN against the refreshed (RSA-first) certificate.
 
 ## Manual SSL catalog (without the helper)
@@ -51,6 +54,7 @@ After re-downloading, re-run `db2client-configure.sh` to re-register the SSL DSN
 db2cli writecfg add -dsn RDSAS -database RDSADMIN -host <endpoint> -port 50443 \
   -parameter "SSLServerCertificate=~/<region>-bundle.pem;SecurityTransportMode=SSL;TLSVersion=TLSV12"
 ```
+
 `TLSVersion=TLSV12` enforces TLS 1.2. Point `SSLServerCertificate` at the reordered region PEM at `~/<region>-bundle.pem`.
 
 ## Troubleshooting (GSKit / SSL)

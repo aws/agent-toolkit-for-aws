@@ -72,7 +72,7 @@ UTF-8; Japanese characters use 3 bytes. To avoid editing every CHAR/VARCHAR leng
 string measurement to CODEUNITS32:
 
 ```bash
-$ db2 "call rdsadmin.update_db_param('<DBNAME>','STRING_UNITS','CODEUNITS32','NO')"
+db2 "call rdsadmin.update_db_param('<DBNAME>','STRING_UNITS','CODEUNITS32','NO')"
 ```
 
 `STRING_UNITS` is not dynamic — this requires an instance restart, and DDL objects must be created

@@ -17,19 +17,24 @@ Source blog: <https://aws.amazon.com/blogs/database/connect-to-amazon-rds-for-db
 Works from EC2 or CloudShell with internet.
 
 **Step 1 — Download the installer scripts:**
+
 ```bash
 curl -sL https://bit.ly/getdb2driver | bash
 ```
+
 Writes `db2-driver.sh` (RT client installer) and `db2client-airgap.sh` (airgap bundler) to the current directory.
 
 **Step 2 — Install the RT client** (run as root or ec2-user):
+
 ```bash
 REGION=us-east-1 ./db2-driver.sh                     # Db2 11.5 (default)
 DB2_VER=12.1 REGION=us-east-1 ./db2-driver.sh        # Db2 12.1
 ```
+
 `DB2_VER` defaults to `11.5`. On completion the script prints the next command.
 
 **Step 3 — Configure DSN entries** (as `db2inst1`):
+
 ```bash
 sudo su - db2inst1
 REGION=us-east-1 source db2client-configure.sh
@@ -38,10 +43,12 @@ DB_INSTANCE_ID=my-db2-instance REGION=us-east-1 source db2client-configure.sh
 ```
 
 **Step 4 — Activate helper functions:**
+
 ```bash
 source ~/.bashrc
 db2_help
 ```
+
 `source ~/functions.sh` is added to `~/.bashrc` automatically during configure.
 
 ## Install — airgap mode
@@ -49,21 +56,26 @@ db2_help
 Private subnet with no internet. Artifacts staged in S3.
 
 **Step 1 — On internet-connected machine, download:**
+
 ```bash
 curl -sL https://bit.ly/getdb2driver | bash
 ./db2client-airgap.sh --mode download --region <region>
 # Or for Db2 12.1:
 DB2_VER=12.1 ./db2client-airgap.sh --mode download --region <region>
 ```
+
 Produces `./db2client-artifacts/{scripts,drivers,ssl}/`.
 
 **Step 2 — On AWS-configured machine, upload to S3:**
+
 ```bash
 ./db2client-airgap.sh --mode upload --region <region>
 ```
+
 Creates `db2client-artifacts-<account-id>-<region>`, uploads all artifacts, verifies every file, prints target-machine commands.
 
 **Step 3 — On target (private subnet, AWS configured):**
+
 ```bash
 aws s3 cp s3://db2client-artifacts-<account>-<region>/db2-driver.sh . && chmod +x db2-driver.sh
 export BUCKET=db2client-artifacts-<account>-<region> REGION=<region>
@@ -72,6 +84,7 @@ export BUCKET=db2client-artifacts-<account>-<region> REGION=<region>
 ```
 
 **Step 4 — Configure DSNs** (as `db2inst1`):
+
 ```bash
 sudo su - db2inst1
 BUCKET=db2client-artifacts-<account>-<region> REGION=<region> source db2client-configure.sh
@@ -112,6 +125,7 @@ db2 "connect to RDSAT user admin using '$MASTER_USER_PASSWORD'"
 db2 "connect to RDSAS user admin using '$MASTER_USER_PASSWORD'"
 db2 connect reset && db2 terminate
 ```
+
 Single quotes around `$MASTER_USER_PASSWORD` protect special characters (`!`, `>`, `<`, `$`).
 
 ## Security considerations
@@ -167,6 +181,7 @@ For SSL/TLS, GSKit, and certificate setup, see `connectivity-tls.md`.
 > must be `chmod 600` and never committed to source control or shared.
 
 If not using Secrets Manager:
+
 ```bash
 vi ~/.need_password && chmod 600 ~/.need_password
 # Format — one line per instance:
@@ -188,10 +203,12 @@ vi ~/.need_password && chmod 600 ~/.need_password
 Full diagnostics: `db2_test_connection` / `db2_test_connection RDSAS`.
 
 Find Db2 version:
+
 ```bash
 aws rds describe-db-instances --db-instance-identifier <id> \
   --query 'DBInstances[0].EngineVersion' --output text
 ```
+
 ```sql
 SELECT SERVICE_LEVEL FROM TABLE(SYSPROC.ENV_GET_INST_INFO()) AS T
 ```

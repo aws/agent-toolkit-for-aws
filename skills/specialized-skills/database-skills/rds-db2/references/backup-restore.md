@@ -11,6 +11,7 @@ Source blog: https://aws.amazon.com/blogs/database/restore-self-managed-db2-linu
 RDS for Db2 takes daily automated backups during the backup window. Retention period: 0–35 days.
 
 Enable/configure via console or CLI:
+
 ```bash
 aws rds modify-db-instance \
   --db-instance-identifier <instance-id> \
@@ -27,6 +28,7 @@ aws rds create-db-snapshot \
 ```
 
 Restore from snapshot:
+
 ```bash
 aws rds restore-db-instance-from-db-snapshot \
   --db-instance-identifier <new-instance-id> \
@@ -90,6 +92,7 @@ aws rds add-role-to-db-instance \
 ### Create storage access alias (required before backup/restore)
 
 On EC2 with IAM role (no credentials needed):
+
 ```sql
 db2 "CATALOG STORAGE ACCESS ALIAS db2S3 VENDOR S3 
      SERVER https://s3.<region>.amazonaws.com 
@@ -98,6 +101,7 @@ db2 "CATALOG STORAGE ACCESS ALIAS db2S3 VENDOR S3
 ```
 
 With explicit credentials (self-managed Db2):
+
 ```sql
 db2 "CATALOG STORAGE ACCESS ALIAS db2S3 VENDOR S3 
      SERVER s3.<region>.amazonaws.com 
@@ -111,6 +115,7 @@ db2 "CATALOG STORAGE ACCESS ALIAS db2S3 VENDOR S3
 ### Take multi-part backup to S3
 
 Use multiple paths for parallel backup (recommended — improves restore performance):
+
 ```bash
 # 5 parallel streams → produces .001 .002 .003 .004 .005
 db2 backup database <DBNAME> to DB2REMOTE://db2S3, DB2REMOTE://db2S3, DB2REMOTE://db2S3, DB2REMOTE://db2S3, DB2REMOTE://db2S3
@@ -174,6 +179,7 @@ call rdsadmin.restore_database(
 ```
 
 Apply archive logs:
+
 ```sql
 call rdsadmin.rollforward_database(
   '<DBNAME>',
@@ -185,6 +191,7 @@ call rdsadmin.rollforward_database(
 ```
 
 Complete rollforward (makes database connectable):
+
 ```sql
 call rdsadmin.complete_rollforward('<DBNAME>');
 ```
@@ -208,6 +215,7 @@ aws rds restore-db-instance-to-point-in-time \
 | Cross-region automated backups | ~25 minutes | Hours |
 
 Enable cross-region automated backups:
+
 ```bash
 aws rds create-db-instance-automated-backup-replication \
   --source-db-instance-arn arn:aws:rds:<source-region>:<account>:db:<instance-id> \
@@ -241,6 +249,7 @@ ORDER BY created_at DESC FETCH FIRST 1 ROW ONLY;
 ```
 
 Helper function (if `functions.sh` is sourced):
+
 ```bash
 get_task_status
 get_task_output

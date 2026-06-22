@@ -1,6 +1,7 @@
 # RDS for Db2 — Mainframe Migration Reference
 
 Source blogs:
+
 - https://aws.amazon.com/blogs/database/migrating-tables-from-ibm-db2-for-z-os-to-amazon-rds-for-db2/
 - https://aws.amazon.com/blogs/database/choosing-the-right-code-page-and-collation-for-migration-from-mainframe-db2-to-amazon-rds-for-db2/
 
@@ -9,6 +10,7 @@ Source blogs:
 ## z/OS to RDS Db2 — Overview
 
 Migrating from Db2 for z/OS is a **replatform** (different OS/endianness). You cannot restore a z/OS backup image to RDS for Db2. The process requires:
+
 1. Schema conversion (DDL extraction + transformation)
 2. Data migration (export/load, federation, or replication tools)
 
@@ -103,6 +105,7 @@ LOAD FROM (SELECT * FROM ZOSDB.<schema>.<table>) OF CURSOR INSERT INTO <rds-sche
 2. Convert EBCDIC → ASCII (mainframe tools or `iconv`)
 3. Copy to S3 using AWS CLI on mainframe (Go SDK for AIX where CLI unavailable)
 4. Load into RDS from S3:
+
    ```sql
    CALL SYSPROC.ADMIN_CMD('LOAD FROM DB2REMOTE://myS3/<path/to/file.ixf> OF IXF INSERT INTO <schema>.<table>');
    ```

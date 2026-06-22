@@ -31,6 +31,7 @@ Before executing an RDS for Db2 workflow, confirm required tools exist. Do not r
 - Kerberos JDBC test: a JDK and the Db2 JDBC driver `db2jcc4.jar` v4.33+ (earlier driver versions lack `securityMechanism=11` Kerberos support)
 
 **Constraints:**
+
 - The agent MUST check dependencies before running any install or AWS API command.
 - The agent MUST NOT prompt the user to paste credentials because credentials MUST flow through an IAM role or instance profile.
 - The agent MUST tell the user which dependencies are missing and MUST respect the user's decision to abort.
@@ -59,6 +60,7 @@ Map the user's question to the correct sub-skill reference, then load only that 
 | colocation / co-locate / EC2 app latency / ASG / ALB / failover routing | colocation | [colocation.md](references/colocation.md) |
 
 **Constraints:**
+
 - The agent MUST read only the reference files that match the user's question, to keep the context focused.
 - The agent MUST NOT invent RDSADMIN procedure signatures, because wrong parameter order will fail at runtime — always cite the signature from the reference file.
 - The agent MUST cite the source blog URL when an answer is blog-sourced, so the user can verify specifics.
@@ -69,16 +71,19 @@ Map the user's question to the correct sub-skill reference, then load only that 
 Once routed, give the user a concrete, runnable answer grounded in the reference file.
 
 Parameter acquisition:
+
 - All required parameters (region, instance identifier, source/target ARNs, S3 bucket, prefix, the `--master-username` value) MUST be collected upfront in a single message.
 - Parameter formats MUST be specified: region `us-east-1`-style; instance identifier `^[a-zA-Z][a-zA-Z0-9-]{0,62}$`; ARN `arn:aws:rds:<region>:<account>:db:<name>`; S3 bucket 3–63 chars lowercase.
 - The agent MUST accept parameters via direct input, a JSON/YAML file path, or a URL.
 
 Tool use:
+
 - Use AWS CLI for RDS operations (example: `aws rds create-db-instance-read-replica --db-instance-identifier <name> --source-db-instance-identifier <arn> --replica-mode mounted --region <dr-region>`). Every operation is expressed in AWS CLI syntax so it runs whether or not the AWS MCP server is installed.
 - Use bundled scripts — [db2-driver.sh](scripts/db2-driver.sh), [db2client-configure.sh](scripts/db2client-configure.sh), [db2client-airgap.sh](scripts/db2client-airgap.sh), [functions.sh](scripts/functions.sh) — instead of rewriting install steps.
 - Write migration plans, upgrade plans, validation reports to a local `artifacts/<app-name>/` directory created at runtime in the working directory (this is a run-time output location, not part of the shipped skill).
 
 **Constraints:**
+
 - The agent MUST give exact CLI commands when behavior is deterministic, not descriptions like "enable Multi-AZ".
 - The agent MUST obtain AWS credentials through an IAM role or instance profile and MUST NOT prompt the user to paste credentials.
 - The agent MUST cite the source blog or documentation URL whenever the answer is sourced from published material, so the user can verify it.
@@ -221,7 +226,6 @@ These adjacent topics are not expanded into routed references in this iteration.
 The authoritative list of published RDS for Db2 blogs and sample tools is maintained at https://github.com/aws-samples/sample-rds-db2-tools/tree/main — consult it for the current set of blog articles and companion code.
 
 - Related skill (migrating off Db2 LUW to PostgreSQL): `rds-postgres-migration` (if present in corpus).
-
 
 ## Handoff from aws-database-selection
 
