@@ -77,7 +77,7 @@ for the full download-and-fill flow.
 
 Every threshold and rule below is anchored to one of these AWS public
 documentation pages. When AWS publishes updates, refresh the constants in
-`compatibility.py` and re-run tests.
+`compatibility.py`.
 
 - [Express broker overview](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)
 - [Express read/write broker and topic configurations](https://docs.aws.amazon.com/msk/latest/developerguide/msk-configuration-express-read-write.html)
@@ -406,7 +406,6 @@ When AWS publishes updates to the anchor docs:
 1. Re-fetch the AWS public docs linked at the top of this file.
 2. Diff against the constants at the top of `compatibility.py`.
 3. Update `BROKER_DEFAULTS_BY_VERSION` / `TOPIC_DEFAULTS_BY_VERSION` if Apache Kafka adds a new supported version.
-4. Run `python3 -m pytest scripts/tests/`.
 
 ## Security considerations
 
