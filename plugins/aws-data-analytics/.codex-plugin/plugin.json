@@ -1,7 +1,7 @@
 {
   "name": "aws-data-analytics",
-  "version": "1.0.0",
-  "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. Covers managed Iceberg tables on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, and vector storage and semantic search on Amazon S3 Vectors.",
+  "version": "1.1.0",
+  "description": "Data lake, analytics, search, and ETL workflows with S3 Tables, AWS Glue, Athena, and Amazon OpenSearch Service. Covers managed Iceberg tables on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, vector storage and semantic search on Amazon S3 Vectors, and Amazon OpenSearch Service and Serverless (migration from Solr/Elasticsearch, provisioning, vector/semantic/hybrid search, log analytics, trace analytics).",
   "author": {
     "name": "Amazon Web Services",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
@@ -39,18 +39,27 @@
     "rag",
     "embeddings",
     "vector-database",
-    "aurora"
+    "aurora",
+    "opensearch",
+    "opensearch-serverless",
+    "amazon-opensearch-service",
+    "elasticsearch",
+    "solr",
+    "hybrid-search",
+    "k-nn",
+    "log-analytics",
+    "trace-analytics"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "AWS Data Analytics",
-    "shortDescription": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena",
-    "longDescription": "Skills for building and operating data lakes on AWS. Covers managed Iceberg table creation on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, and vector storage and semantic search on Amazon S3 Vectors.",
+    "shortDescription": "Data lake, analytics, search, and ETL with S3 Tables, AWS Glue, Athena, and OpenSearch",
+    "longDescription": "Skills for building and operating data lakes, analytics, and search on AWS. Covers managed Iceberg table creation on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, vector storage and semantic search on Amazon S3 Vectors, and Amazon OpenSearch Service and Serverless (migration from Solr and Elasticsearch, provisioning, vector/semantic/hybrid search, log analytics, trace analytics).",
     "defaultPrompt": [
       "Create a data lake table backed by S3 Tables.",
-      "Ingest this dataset into the data lake.",
-      "Query the data lake with Athena."
+      "Query the data lake with Athena.",
+      "Plan a migration from self-managed Elasticsearch to Amazon OpenSearch Service."
     ],
     "developerName": "Amazon Web Services",
     "category": "Cloud",

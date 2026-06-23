@@ -8,6 +8,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 - **Data Discovery** — Inventory and audit your AWS Glue Data Catalog across S3 Tables, Amazon Redshift-federated, and remote Iceberg catalogs. Resolve data asset references by name, keyword, column, or reverse-lookup from S3 location metadata in the catalog.
 - **Vector Storage** — Store and query vector embeddings using Amazon S3 Vectors for cost-effective semantic search and RAG workloads.
 - **External Connectivity** — Create and troubleshoot AWS Glue connections to JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift, Snowflake, and BigQuery.
+- **Search & Observability (OpenSearch)** — Migrate from Solr/Elasticsearch/self-managed OpenSearch into Amazon OpenSearch Service or Serverless, provision domains and collections, and build vector/semantic/hybrid search, log analytics, and trace analytics.
 
 ## Agent Skills
 
@@ -20,6 +21,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 | 5 | `exploring-data-catalog` | Full inventory and audit of AWS Glue Data Catalog assets across S3 Tables, Amazon Redshift-federated, and remote Iceberg catalogs | [SKILL.md](skills/exploring-data-catalog/SKILL.md) |
 | 6 | `storing-and-querying-vectors` | Store and query vector embeddings using Amazon S3 Vectors for semantic search and RAG workloads | [SKILL.md](skills/storing-and-querying-vectors/SKILL.md) |
 | 7 | `connecting-to-data-source` | Create and troubleshoot AWS Glue connections to JDBC databases, Amazon Redshift, Snowflake, and BigQuery | [SKILL.md](skills/connecting-to-data-source/SKILL.md) |
+| 8 | `amazon-opensearch-service` | Migration, provisioning, vector/semantic/hybrid search, log analytics, and trace analytics for Amazon OpenSearch Service and Serverless | [SKILL.md](skills/amazon-opensearch-service/SKILL.md) |
 
 ## MCP Servers
 
