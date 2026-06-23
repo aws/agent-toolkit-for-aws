@@ -8,8 +8,8 @@ Inspect the per-build error:
 
 ```bash
 aws lambda-microvms list-microvm-image-builds \
-  --image-identifier my-image \
-  --image-version 1 \
+  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
+  --image-version 1.0 \
   --query 'items[].[architecture,buildState,stateReason]' --output table
 ```
 
@@ -28,7 +28,7 @@ aws lambda-microvms list-microvm-image-builds \
 
 ### `/ready` hook caused build failure
 
-The `/ready` and `/validate` hooks are asynchronous — return 503 until the application is ready/validated, and the platform will retry. If the application blocks instead of returning 503, the platform may time out before the configured timeout. If `/ready` never returns 200 (or times out), the build fails. Look at the application's CloudWatch logs (`/aws/lambda-microvms/<image-name>`) for stack traces from your hook server.
+The `/ready` and `/validate` hooks are asynchronous — return 503 until the application is ready/validated, and the platform will retry. If the application blocks the request instead of returning 503 promptly, a single hung call can consume the whole hook timeout window before the platform gets a chance to retry. If `/ready` never returns 200 (or the timeout elapses), the build fails. Look at the application's CloudWatch logs (`/aws/lambda-microvms/<image-name>`) for stack traces from your hook server.
 
 ### `/validate` hook caused build failure
 
@@ -106,10 +106,10 @@ Old image versions persist (and bill) even when unused.
 
 ```bash
 aws lambda-microvms list-microvm-image-versions \
-  --image-identifier my-image
+  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image
 
 aws lambda-microvms delete-microvm-image-version \
-  --image-identifier my-image \
+  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
   --image-version <old-version>
 ```
 
