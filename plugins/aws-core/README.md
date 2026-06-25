@@ -49,7 +49,7 @@ This plugin includes the following default skills:
 | observability | Monitor applications with CloudWatch |
 | containers | Run containerized workloads on AWS |
 | storage | Store and manage data with AWS storage services |
-| amplify-gen2 | Build full-stack web and mobile applications with AWS Amplify Gen2 |
+| aws-blocks | Build full-stack applications with AWS Blocks |
 
 <!-- [TODO] Confirm final skill list matches what ships in the plugin. deploy-to-aws status is RED in tracker. -->
 

@@ -1,7 +1,7 @@
 {
   "name": "aws-core",
   "version": "1.1.0",
-  "description": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code (CDK, CloudFormation), use core services (Lambda, API Gateway, Step Functions, ECS/Fargate, ECR, IAM, Amazon Bedrock with Knowledge Bases and Guardrails, Amplify), and complete common tasks across observability (CloudWatch, X-Ray, CloudTrail, ADOT), messaging and streaming (SQS, SNS, EventBridge, Kinesis, MSK), AWS SDKs (boto3, JS v3, Swift), and cost optimization.",
+  "description": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code (CDK, CloudFormation), use core services (Lambda, API Gateway, Step Functions, ECS/Fargate, ECR, IAM, Amazon Bedrock with Knowledge Bases and Guardrails, AWS Blocks), and complete common tasks across observability (CloudWatch, X-Ray, CloudTrail, ADOT), messaging and streaming (SQS, SNS, EventBridge, Kinesis, MSK), AWS SDKs (boto3, JS v3, Swift), and cost optimization.",
   "author": {
     "name": "Amazon Web Services",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
@@ -16,8 +16,7 @@
     "iam",
     "bedrock",
     "amazon-bedrock",
-    "amplify",
-    "amplify-gen2",
+    "aws-blocks",
     "billing",
     "cost-explorer",
     "cost-optimization",
@@ -80,7 +79,7 @@
   "interface": {
     "displayName": "AWS Core",
     "shortDescription": "AWS agent plugin with skills and MCP servers",
-    "longDescription": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code (CDK, CloudFormation), use core services (Lambda, API Gateway, Step Functions, ECS/Fargate, ECR, IAM, Amazon Bedrock with Knowledge Bases and Guardrails, Amplify), and complete common tasks across observability (CloudWatch, X-Ray, CloudTrail, ADOT), messaging and streaming (SQS, SNS, EventBridge, Kinesis, MSK), AWS SDKs (boto3, JS v3, Swift), and cost optimization, including OpenSearch Serverless vector stores for Knowledge Bases.",
+    "longDescription": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code (CDK, CloudFormation), use core services (Lambda, API Gateway, Step Functions, ECS/Fargate, ECR, IAM, Amazon Bedrock with Knowledge Bases and Guardrails, AWS Blocks), and complete common tasks across observability (CloudWatch, X-Ray, CloudTrail, ADOT), messaging and streaming (SQS, SNS, EventBridge, Kinesis, MSK), AWS SDKs (boto3, JS v3, Swift), and cost optimization, including OpenSearch Serverless vector stores for Knowledge Bases.",
     "defaultPrompt": [
       "Scaffold a CDK stack for this app.",
       "Add IAM least-privilege policies for these resources.",

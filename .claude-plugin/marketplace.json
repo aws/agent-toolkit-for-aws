@@ -10,7 +10,7 @@
   "plugins": [
     {
       "category": "cloud",
-      "description": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code (CDK, CloudFormation), use core services (Lambda, API Gateway, Step Functions, ECS/Fargate, ECR, IAM, Amazon Bedrock with Knowledge Bases and Guardrails, Amplify), and complete common tasks across observability (CloudWatch, X-Ray, CloudTrail, ADOT), messaging and streaming (SQS, SNS, EventBridge, Kinesis, MSK), AWS SDKs (boto3, JS v3, Swift), and cost optimization.",
+      "description": "Build, deploy, and operate applications on AWS. Skills to author infrastructure-as-code (CDK, CloudFormation), use core services (Lambda, API Gateway, Step Functions, ECS/Fargate, ECR, IAM, Amazon Bedrock with Knowledge Bases and Guardrails, AWS Blocks), and complete common tasks across observability (CloudWatch, X-Ray, CloudTrail, ADOT), messaging and streaming (SQS, SNS, EventBridge, Kinesis, MSK), AWS SDKs (boto3, JS v3, Swift), and cost optimization.",
       "keywords": [
         "aws",
         "amazon",
@@ -18,8 +18,7 @@
         "iam",
         "bedrock",
         "amazon-bedrock",
-        "amplify",
-        "amplify-gen2",
+        "aws-blocks",
         "billing",
         "cost-explorer",
         "cost-optimization",
