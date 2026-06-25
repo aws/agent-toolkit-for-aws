@@ -1,0 +1,65 @@
+{
+  "service": "amazon-rds-for-db2",
+  "engine_editions": [
+    "db2-se",
+    "db2-ae"
+  ],
+  "licensing": {
+    "model": "bring-your-own-license",
+    "requires": [
+      "rds.ibm_customer_id",
+      "rds.ibm_site_id"
+    ]
+  },
+  "source_migration_scenarios": [
+    {
+      "source": "db2-zos",
+      "approach": "replatform",
+      "schema_tool": "ADB2GEN",
+      "cdc": [
+        "Q Replication/IIDR",
+        "Qlik",
+        "Precisely"
+      ],
+      "dms": "full-load-only",
+      "not_supported": [
+        "AWS SCT"
+      ]
+    },
+    {
+      "source": "db2-luw-linux",
+      "approach": "restore-or-replicate"
+    },
+    {
+      "source": "db2-luw-aix",
+      "approach": "near-zero-downtime via Q Replication"
+    },
+    {
+      "source": "db2-luw-windows",
+      "approach": "near-zero-downtime via Q Replication"
+    },
+    {
+      "source": "db2-as400",
+      "approach": "replicate"
+    }
+  ],
+  "hard_constraints": [
+    "no host SSH",
+    "no unfenced C/COBOL stored procedures",
+    "code page/collation immutable after creation"
+  ],
+  "ha_dr": [
+    "Multi-AZ",
+    "cross-region mounted standby replica"
+  ],
+  "security": [
+    "BYOK customer-managed KMS",
+    "self-managed AD + Kerberos",
+    "Db2 audit to S3",
+    "minimum IAM policy"
+  ],
+  "anti_patterns": [
+    "AWS SCT for z/OS source",
+    "read offload from mounted standby"
+  ]
+}

@@ -1,0 +1,361 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RDSInstanceManagement",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBInstance",
+        "rds:ModifyDBInstance",
+        "rds:DeleteDBInstance",
+        "rds:DescribeDBInstances",
+        "rds:RebootDBInstance",
+        "rds:StartDBInstance",
+        "rds:StopDBInstance",
+        "rds:AddRoleToDBInstance",
+        "rds:RemoveRoleFromDBInstance"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:db:*",
+        "arn:aws:rds:*:*:cluster:*"
+      ]
+    },
+    {
+      "Sid": "RDSSnapshotManagement",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBSnapshot",
+        "rds:DeleteDBSnapshot",
+        "rds:DescribeDBSnapshots",
+        "rds:CopyDBSnapshot",
+        "rds:RestoreDBInstanceFromDBSnapshot",
+        "rds:ModifyDBSnapshotAttribute",
+        "rds:RestoreDBInstanceToPointInTime"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:snapshot:*",
+        "arn:aws:rds:*:*:db:*"
+      ]
+    },
+    {
+      "Sid": "RDSReadReplica",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBInstanceReadReplica",
+        "rds:PromoteReadReplica"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:db:*"
+      ]
+    },
+    {
+      "Sid": "RDSParameterGroups",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBParameterGroup",
+        "rds:ModifyDBParameterGroup",
+        "rds:DeleteDBParameterGroup",
+        "rds:DescribeDBParameterGroups",
+        "rds:DescribeDBParameters",
+        "rds:ResetDBParameterGroup"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:pg:*"
+      ]
+    },
+    {
+      "Sid": "RDSOptionGroups",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateOptionGroup",
+        "rds:ModifyOptionGroup",
+        "rds:DeleteOptionGroup",
+        "rds:DescribeOptionGroups",
+        "rds:DescribeOptionGroupOptions"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:og:*"
+      ]
+    },
+    {
+      "Sid": "RDSSubnetGroups",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBSubnetGroup",
+        "rds:ModifyDBSubnetGroup",
+        "rds:DeleteDBSubnetGroup",
+        "rds:DescribeDBSubnetGroups"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:subgrp:*"
+      ]
+    },
+    {
+      "Sid": "RDSDescribeOperations",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBEngineVersions",
+        "rds:DescribeOrderableDBInstanceOptions",
+        "rds:DescribeDBLogFiles",
+        "rds:DownloadDBLogFilePortion",
+        "rds:DescribeEvents",
+        "rds:DescribeEventCategories",
+        "rds:DescribeEventSubscriptions",
+        "rds:DescribeDBClusters",
+        "rds:DescribeDBClusterSnapshots",
+        "rds:DescribeDBClusterParameterGroups",
+        "rds:DescribeDBClusterParameters",
+        "rds:DescribeReservedDBInstances",
+        "rds:DescribeReservedDBInstancesOfferings",
+        "rds:DescribeAccountAttributes",
+        "rds:DescribeCertificates",
+        "rds:DescribeValidDBInstanceModifications"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RDSClusterManagement",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBCluster",
+        "rds:ModifyDBCluster",
+        "rds:DeleteDBCluster",
+        "rds:StartDBCluster",
+        "rds:StopDBCluster",
+        "rds:CreateDBClusterSnapshot",
+        "rds:DeleteDBClusterSnapshot",
+        "rds:RestoreDBClusterFromSnapshot",
+        "rds:RestoreDBClusterToPointInTime"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:cluster:*",
+        "arn:aws:rds:*:*:cluster-snapshot:*"
+      ]
+    },
+    {
+      "Sid": "KMSNonResourceActions",
+      "Effect": "Allow",
+      "Action": [
+        "kms:CreateKey",
+        "kms:ListKeys",
+        "kms:ListAliases"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "KMSKeyManagement",
+      "Effect": "Allow",
+      "Action": [
+        "kms:CreateAlias",
+        "kms:DeleteAlias",
+        "kms:DescribeKey",
+        "kms:CreateGrant",
+        "kms:ListGrants",
+        "kms:RevokeGrant",
+        "kms:GetParametersForImport",
+        "kms:ImportKeyMaterial",
+        "kms:ReplicateKey",
+        "kms:UpdateKeyDescription",
+        "kms:TagResource",
+        "kms:UntagResource",
+        "kms:ListResourceTags"
+      ],
+      "Resource": [
+        "arn:aws:kms:*:*:key/*",
+        "arn:aws:kms:*:*:alias/*"
+      ]
+    },
+    {
+      "Sid": "S3BucketOperations",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:PutBucketVersioning",
+        "s3:GetBucketNotification",
+        "s3:PutBucketNotification",
+        "s3:GetBucketPolicy",
+        "s3:PutBucketPolicy",
+        "s3:DeleteBucketPolicy"
+      ],
+      "Resource": [
+        "arn:aws:s3:::*db2*",
+        "arn:aws:s3:::*backup*",
+        "arn:aws:s3:::*restore*",
+        "arn:aws:s3:::*audit*"
+      ]
+    },
+    {
+      "Sid": "S3ObjectOperations",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:GetObjectVersion",
+        "s3:DeleteObjectVersion",
+        "s3:ListMultipartUploadParts",
+        "s3:AbortMultipartUpload"
+      ],
+      "Resource": [
+        "arn:aws:s3:::*db2*/*",
+        "arn:aws:s3:::*backup*/*",
+        "arn:aws:s3:::*restore*/*",
+        "arn:aws:s3:::*audit*/*"
+      ]
+    },
+    {
+      "Sid": "DirectoryServiceIntegration",
+      "Effect": "Allow",
+      "Action": [
+        "ds:DescribeDirectories",
+        "ds:AuthorizeApplication",
+        "ds:UnauthorizeApplication",
+        "ds:GetDirectoryLimits"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMRoleForRDS",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:role/rds-*",
+        "arn:aws:iam::*:role/*-rds-*",
+        "arn:aws:iam::*:role/*-db2-*"
+      ]
+    },
+    {
+      "Sid": "IAMPassRoleForRDS",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:role/rds-*",
+        "arn:aws:iam::*:role/*-rds-*",
+        "arn:aws:iam::*:role/*-db2-*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": [
+            "rds.amazonaws.com",
+            "monitoring.rds.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "IAMAttachPolicyForRDS",
+      "Effect": "Allow",
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:role/rds-*",
+        "arn:aws:iam::*:role/*-rds-*",
+        "arn:aws:iam::*:role/*-db2-*"
+      ],
+      "Condition": {
+        "ArnLike": {
+          "iam:PolicyARN": [
+            "arn:aws:iam::*:policy/rds-*",
+            "arn:aws:iam::*:policy/*-rds-*",
+            "arn:aws:iam::*:policy/*-db2-*",
+            "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "EnhancedMonitoring",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:RDSOSMetrics*",
+        "arn:aws:logs:*:*:log-group:/aws/rds/*"
+      ]
+    },
+    {
+      "Sid": "SNSNotifications",
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreateTopic",
+        "sns:DeleteTopic",
+        "sns:Subscribe",
+        "sns:Unsubscribe",
+        "sns:Publish",
+        "sns:ListTopics",
+        "sns:ListSubscriptions",
+        "sns:GetTopicAttributes",
+        "sns:SetTopicAttributes"
+      ],
+      "Resource": [
+        "arn:aws:sns:*:*:rds-*",
+        "arn:aws:sns:*:*:*-rds-*",
+        "arn:aws:sns:*:*:*-db2-*"
+      ]
+    },
+    {
+      "Sid": "EventSubscriptions",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateEventSubscription",
+        "rds:ModifyEventSubscription",
+        "rds:DeleteEventSubscription"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:es:*"
+      ]
+    },
+    {
+      "Sid": "VPCNetworking",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:CreateSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ResourceTagging",
+      "Effect": "Allow",
+      "Action": [
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource",
+        "rds:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:db:*",
+        "arn:aws:rds:*:*:snapshot:*",
+        "arn:aws:rds:*:*:pg:*",
+        "arn:aws:rds:*:*:og:*",
+        "arn:aws:rds:*:*:subgrp:*",
+        "arn:aws:rds:*:*:cluster:*",
+        "arn:aws:rds:*:*:cluster-snapshot:*"
+      ]
+    }
+  ]
+}
