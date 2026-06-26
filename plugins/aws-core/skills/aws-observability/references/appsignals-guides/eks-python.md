@@ -12,10 +12,12 @@ This guide shows how to modify existing CDK and Terraform infrastructure code to
 ## Critical Requirements
 
 **Error Handling:**
+
 - If you cannot determine required values from the IaC, STOP and ask the user
 - Preserve all existing configuration; add new resources/annotations in addition
 
 **Do NOT:**
+
 - Run deployment commands automatically (`cdk deploy`, `terraform apply`, etc.)
 - Remove existing application startup logic
 - Skip the user approval step before deployment
@@ -132,11 +134,13 @@ template {
 "I've completed the Application Signals enablement for your Python application. Here's what I modified:
 
 **Files Changed:**
+
 - IAM role: Added CloudWatchAgentServerPolicy
 - CloudWatch Observability EKS add-on: Added to the EKS Cluster
 - Kubernetes Deployment: Instrumentation annotation added with inject-python set to true
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes I made using `git diff`
 3. Deploy your infrastructure:
@@ -145,6 +149,7 @@ template {
 4. After deployment, wait 5-10 minutes for telemetry data to start flowing
 
 **Verification:**
+
 - Open AWS CloudWatch Console → Application Signals → Services
 - Look for your service and check that traces and metrics are being collected
 

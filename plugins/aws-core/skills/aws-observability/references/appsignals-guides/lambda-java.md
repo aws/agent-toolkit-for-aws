@@ -44,6 +44,7 @@ eu-south-1:     arn:aws:lambda:eu-south-1:257394471194:layer:AWSOpenTelemetryDis
 Add `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda function's execution role.
 
 **CDK:**
+
 ```typescript
 managedPolicies: [
   iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
@@ -52,6 +53,7 @@ managedPolicies: [
 ```
 
 **Terraform:**
+
 ```hcl
 resource "aws_iam_role_policy_attachment" "application_signals" {
   role       = aws_iam_role.lambda_role.name
@@ -79,18 +81,21 @@ Add `AWS_LAMBDA_EXEC_WRAPPER = "/opt/otel-instrument"`.
 "I've completed the Application Signals enablement for your Java Lambda function.
 
 **Configuration Changes:**
+
 - IAM Permissions: Added CloudWatchLambdaApplicationSignalsExecutionRolePolicy
 - X-Ray Tracing: Enabled active tracing
 - ADOT Layer: Added AWSOpenTelemetryDistroJava layer
 - Environment Variable: Set AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes using `git diff`
 3. Deploy your infrastructure
 4. After deployment, invoke your Lambda function to generate telemetry data
 
 **Verification:**
+
 - Open AWS CloudWatch Console → Application Signals → Services
 
 **Troubleshooting**

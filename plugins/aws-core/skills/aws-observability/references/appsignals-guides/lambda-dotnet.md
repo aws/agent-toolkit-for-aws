@@ -63,18 +63,21 @@ Add `AWS_LAMBDA_EXEC_WRAPPER = "/opt/otel-instrument"`.
 "I've completed the Application Signals enablement for your .NET Lambda function.
 
 **Configuration Changes:**
+
 - IAM Permissions: Added CloudWatchLambdaApplicationSignalsExecutionRolePolicy
 - X-Ray Tracing: Enabled active tracing
 - ADOT Layer: Added AWSOpenTelemetryDistroDotNet layer
 - Environment Variable: Set AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes using `git diff`
 3. Deploy your infrastructure
 4. After deployment, invoke your Lambda function to generate telemetry data
 
 **Verification:**
+
 - Open AWS CloudWatch Console → Application Signals → Services
 
 **Troubleshooting**

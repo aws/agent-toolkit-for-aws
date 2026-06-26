@@ -5,6 +5,7 @@ Your task is to modify Infrastructure as Code (IaC) files to enable AWS Applicat
 ## What You Will Accomplish
 
 After completing this task:
+
 - The EC2 instance will have permissions to send telemetry data to CloudWatch
 - The CloudWatch Agent will be installed and configured for Application Signals
 - The .NET application will be automatically instrumented with AWS Distro for OpenTelemetry (ADOT)
@@ -13,11 +14,13 @@ After completing this task:
 ## Critical Requirements
 
 **Error Handling:**
+
 - If you cannot determine required values from the IaC, STOP and ask the user
 - For multiple EC2 instances, ask which one(s) to modify
 - Preserve all existing UserData commands; add new ones in sequence
 
 **Do NOT:**
+
 - Run deployment commands automatically (`cdk deploy`, `terraform apply`, etc.)
 - Remove existing application startup logic
 - Skip the user approval step before deployment
@@ -42,9 +45,11 @@ After completing this task:
 ### Step 3: Identify Instance OS
 
 **Linux:**
+
 - **Amazon Linux 2:** `yum`, **Amazon Linux 2023:** `dnf`, **Ubuntu/Debian:** `apt`
 
 **Windows Server:**
+
 - Supported. Use the **For Windows instances** code blocks in Steps 4–7 (PowerShell). **How to detect:** look for a Windows AMI reference in the IaC (e.g. `Windows_Server`, `windowsLatest`), PowerShell in existing UserData, or ask the user.
 
 ## Instructions
@@ -72,6 +77,7 @@ const role = new iam.Role(this, 'AppRole', {
 ### Step 4: Modify UserData - Install CloudWatch Agent
 
 **For Linux instances:**
+
 ```typescript
 instance.userData.addCommands(
   'dnf install -y amazon-cloudwatch-agent',  // Use dnf for AL2023, yum for AL2, apt-get for Ubuntu
@@ -79,6 +85,7 @@ instance.userData.addCommands(
 ```
 
 **For Windows instances:**
+
 ```typescript
 instance.userData.addCommands(
   'Invoke-WebRequest -Uri "https://amazoncloudwatch-agent.s3.amazonaws.com/windows/amd64/latest/amazon-cloudwatch-agent.msi" -OutFile "C:\\amazon-cloudwatch-agent.msi"',
@@ -90,6 +97,7 @@ instance.userData.addCommands(
 ### Step 5: Modify UserData - Configure CloudWatch Agent
 
 **For Linux instances:**
+
 ```typescript
 instance.userData.addCommands(
   "cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'",
@@ -113,6 +121,7 @@ instance.userData.addCommands(
 ```
 
 **For Windows instances:**
+
 ```typescript
 instance.userData.addCommands(
   '@"',
@@ -127,6 +136,7 @@ instance.userData.addCommands(
 #### Option A: Docker Deployment - Modify Dockerfile
 
 **For Linux-based containers:**
+
 ```dockerfile
 # Install unzip (required by ADOT installation script)
 RUN dnf install -y unzip  # Adjust package manager as needed
@@ -141,6 +151,7 @@ RUN curl -L -O https://github.com/aws-observability/aws-otel-dotnet-instrumentat
 #### Option B: Non-Docker Deployment - Modify UserData
 
 **For Linux instances:**
+
 ```typescript
 instance.userData.addCommands(
   'dnf install -y unzip',
@@ -152,6 +163,7 @@ instance.userData.addCommands(
 ```
 
 **For Windows instances:**
+
 ```typescript
 instance.userData.addCommands(
   '$module_url = "https://github.com/aws-observability/aws-otel-dotnet-instrumentation/releases/latest/download/AWS.Otel.DotNet.Auto.psm1"',
@@ -173,6 +185,7 @@ instance.userData.addCommands(
 - **Option 2 — CloudWatch Agent as a sidecar container** (most isolated): run the agent as another container on the same user-defined Docker network and target it by name (e.g. `cwagent:4316`). Nothing binds to host interfaces. This is the same model the ECS guides use; choose it if the customer prefers full container isolation over a host-installed agent.
 
 **For Linux-based containers (`--network host` example — adapt per the networking variant you chose above):**
+
 ```typescript
 instance.userData.addCommands(
   `docker run -d --name {{APP_NAME}} \\`,
@@ -195,6 +208,7 @@ instance.userData.addCommands(
 #### Option B: Non-Docker Deployment
 
 **For Linux instances:**
+
 ```typescript
 instance.userData.addCommands(
   '. /opt/otel-dotnet-auto/instrument.sh',
@@ -214,6 +228,7 @@ instance.userData.addCommands(
 > The `export ...` / `. instrument.sh` form above only instruments an app **launched in the same shell session**. If the application runs as a **systemd service** (the app is started by an `ExecStart=` in a `.service` unit), those exports do **not** reach the service process — `ExecStart` is a fresh process that does not inherit the userdata shell's environment, and sourcing `instrument.sh` in `ExecStartPre=` does not propagate either. You must put the variables on the unit itself. The CoreCLR profiler env vars are required because the .NET profiler is loaded by the runtime at process start from these variables.
 
 **For Linux instances where the app runs as a systemd service:** set the auto-instrumentation env vars in the unit (or an `EnvironmentFile=`) so the `ExecStart` process inherits them. The Linux CoreCLR values below are from the [Application Signals EC2 docs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable-EC2Main.html) — adjust `OTEL_DOTNET_AUTO_HOME` (here `/opt/otel-dotnet-auto`) to your install dir:
+
 ```ini
 # /etc/systemd/system/{{SERVICE_NAME}}.service  (add to the [Service] section)
 [Service]
@@ -233,9 +248,11 @@ Environment=OTEL_AWS_APPLICATION_SIGNALS_EXPORTER_ENDPOINT=http://localhost:4316
 Environment=OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4316/v1/traces
 Environment=OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}
 ```
+
 After editing the unit, the userdata must reload and (re)start it: `systemctl daemon-reload` then `systemctl restart {{SERVICE_NAME}}`. (Equivalently, write these `KEY=VALUE` pairs to a file and reference it with `EnvironmentFile=/etc/{{SERVICE_NAME}}.env` instead of inline `Environment=` lines.)
 
 **For Windows instances:**
+
 ```typescript
 instance.userData.addCommands(
   '$env:INSTALL_DIR = "C:\\Program Files\\AWS Distro for OpenTelemetry AutoInstrumentation"',
@@ -272,6 +289,7 @@ instance.userData.addCommands(
 "I've completed the Application Signals enablement for your .NET application. Here's what I modified:
 
 **Files Changed:**
+
 - IAM role: Added CloudWatchAgentServerPolicy
 - UserData: Installed and configured CloudWatch Agent
 - UserData: Downloaded and installed ADOT .NET auto-instrumentation
@@ -279,6 +297,7 @@ instance.userData.addCommands(
 - Dockerfile: Installed ADOT .NET auto-instrumentation (if using Docker)
 
 **Next Steps:**
+
 1. Review the changes I made using `git diff`
 2. Deploy your infrastructure:
    - For CDK: `cdk deploy`
@@ -288,6 +307,7 @@ instance.userData.addCommands(
 
 **Verification:**
 Once deployed, you can verify Application Signals is working by:
+
 - Opening the AWS CloudWatch Console
 - Navigating to Application Signals → Services
 - Looking for your service (named: {{SERVICE_NAME}})

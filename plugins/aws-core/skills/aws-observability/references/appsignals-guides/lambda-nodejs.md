@@ -44,6 +44,7 @@ eu-south-1:     arn:aws:lambda:eu-south-1:257394471194:layer:AWSOpenTelemetryDis
 Add `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda function's execution role.
 
 **CDK:**
+
 ```typescript
 const role = new iam.Role(this, 'LambdaRole', {
   assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -55,6 +56,7 @@ const role = new iam.Role(this, 'LambdaRole', {
 ```
 
 **Terraform:**
+
 ```hcl
 resource "aws_iam_role_policy_attachment" "application_signals" {
   role       = aws_iam_role.lambda_role.name
@@ -65,11 +67,13 @@ resource "aws_iam_role_policy_attachment" "application_signals" {
 ### Step 2: Enable X-Ray Active Tracing
 
 **CDK:**
+
 ```typescript
 tracing: lambda.Tracing.ACTIVE,
 ```
 
 **Terraform:**
+
 ```hcl
 tracing_config {
   mode = "Active"
@@ -81,6 +85,7 @@ tracing_config {
 Use the layer name `AWSOpenTelemetryDistroJs` with automatic region detection.
 
 **CDK:**
+
 ```typescript
 const layerArns: { [region: string]: string } = {
   // ... (see Region-Specific Layer ARNs section above for complete mapping)
@@ -92,6 +97,7 @@ layers: [
 ```
 
 **Terraform:**
+
 ```hcl
 locals {
   layer_arns = {
@@ -109,6 +115,7 @@ layers = [local.layer_arns[data.aws_region.current.name]]
 Add `AWS_LAMBDA_EXEC_WRAPPER` environment variable with value `/opt/otel-instrument`.
 
 **CDK:**
+
 ```typescript
 environment: {
   AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
@@ -116,6 +123,7 @@ environment: {
 ```
 
 **Terraform:**
+
 ```hcl
 environment {
   variables = {
@@ -131,18 +139,21 @@ environment {
 "I've completed the Application Signals enablement for your Node.js Lambda function.
 
 **Configuration Changes:**
+
 - IAM Permissions: Added CloudWatchLambdaApplicationSignalsExecutionRolePolicy
 - X-Ray Tracing: Enabled active tracing
 - ADOT Layer: Added AWSOpenTelemetryDistroJs layer
 - Environment Variable: Set AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes using `git diff`
 3. Deploy your infrastructure
 4. After deployment, invoke your Lambda function to generate telemetry data
 
 **Verification:**
+
 - Open AWS CloudWatch Console → Application Signals → Services
 
 **Troubleshooting**

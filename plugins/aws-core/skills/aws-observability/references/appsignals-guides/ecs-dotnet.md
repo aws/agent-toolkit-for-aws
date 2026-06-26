@@ -4,6 +4,7 @@
 This guide provides complete steps to enable AWS Application Signals for ECS services (both EC2 and Fargate launch types), including distributed tracing, performance monitoring, and service mapping.
 
 ## Prerequisites
+
 - Services running on ECS (EC2 or Fargate launch types)
 - Applications using .NET language
 
@@ -27,6 +28,7 @@ const taskRole = new iam.Role(this, 'EcsTaskRole', {
 ```
 
 #### 1.2 Create CloudWatch Agent Log Group
+
 ```typescript
 const cwAgentLogGroup = new logs.LogGroup(this, 'CwAgentLogGroup', {
   logGroupName: '/ecs/ecs-cwagent',
@@ -36,6 +38,7 @@ const cwAgentLogGroup = new logs.LogGroup(this, 'CwAgentLogGroup', {
 ```
 
 #### 1.3 Add CloudWatch Agent Container to Each Task Definition
+
 ```typescript
 const cwAgentContainer = taskDefinition.addContainer('ecs-cwagent-{{SERVICE_NAME}}', {
   image: ecs.ContainerImage.fromRegistry('public.ecr.aws/cloudwatch-agent/cloudwatch-agent:latest'),
@@ -66,6 +69,7 @@ const cwAgentContainer = taskDefinition.addContainer('ecs-cwagent-{{SERVICE_NAME
 ### Step 2: Add AWS Distro for OpenTelemetry Zero-Code Auto-Instrumentation to Main Service
 
 #### 2.1 Add Bind Mount Volumes to Task Definition
+
 ```typescript
 const taskDefinition = new ecs.FargateTaskDefinition(this, '{{SERVICE_NAME}}TaskDefinition', {
   // Existing configuration...
@@ -80,6 +84,7 @@ const taskDefinition = new ecs.FargateTaskDefinition(this, '{{SERVICE_NAME}}Task
 #### 2.2 Add ADOT Auto-instrumentation Init Container
 
 ##### For Linux Containers:
+
 ```typescript
 const initContainer = taskDefinition.addContainer('init', {
   image: ecs.ContainerImage.fromRegistry('public.ecr.aws/aws-observability/adot-autoinstrumentation-dotnet:v1.9.2'),
@@ -101,6 +106,7 @@ initContainer.addMountPoints({
 ```
 
 ##### For Windows Server Containers:
+
 ```typescript
 const initContainer = taskDefinition.addContainer('init', {
   image: ecs.ContainerImage.fromRegistry('public.ecr.aws/aws-observability/adot-autoinstrumentation-dotnet:v1.9.2'),
@@ -124,6 +130,7 @@ initContainer.addMountPoints({
 #### 2.3 Configure Main Application Container OpenTelemetry Environment Variables
 
 ##### For Linux Containers:
+
 ```typescript
 const mainContainer = taskDefinition.addContainer('{{SERVICE_NAME}}-container', {
   // Existing configuration...
@@ -150,6 +157,7 @@ const mainContainer = taskDefinition.addContainer('{{SERVICE_NAME}}-container', 
 ```
 
 ##### For Windows Server Containers:
+
 ```typescript
 const mainContainer = taskDefinition.addContainer('{{SERVICE_NAME}}-container', {
   // Existing configuration...
@@ -178,6 +186,7 @@ const mainContainer = taskDefinition.addContainer('{{SERVICE_NAME}}-container', 
 #### 2.4 Add Mount Point to Main Container
 
 ##### For Linux Containers:
+
 ```typescript
 mainContainer.addMountPoints({
   sourceVolume: 'opentelemetry-auto-instrumentation-dotnet',
@@ -187,6 +196,7 @@ mainContainer.addMountPoints({
 ```
 
 ##### For Windows Server Containers:
+
 ```typescript
 mainContainer.addMountPoints({
   sourceVolume: 'opentelemetry-auto-instrumentation-dotnet',
@@ -196,6 +206,7 @@ mainContainer.addMountPoints({
 ```
 
 #### 2.5 Configure Container Dependencies
+
 ```typescript
 mainContainer.addContainerDependencies({
   container: initContainer,
@@ -215,18 +226,21 @@ mainContainer.addContainerDependencies({
 "I've completed the Application Signals enablement for your .NET application. Here's what I modified:
 
 **Files Changed:**
+
 - IAM role: Added CloudWatchAgentServerPolicy
 - ECS container: Installed and configured CloudWatch Agent as sidecar
 - ADOT SDK container: Mounted ADOT SDK dependencies into Application container
 - Application container: Enabled zero-code auto-instrumentation for .NET Application
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes I made using `git diff`
 3. Deploy your infrastructure
 4. After deployment, wait 5-10 minutes for telemetry data to start flowing
 
 **Verification:**
+
 - Open AWS CloudWatch Console → Application Signals → Services
 - Look for your service (named: {{SERVICE_NAME}})
 

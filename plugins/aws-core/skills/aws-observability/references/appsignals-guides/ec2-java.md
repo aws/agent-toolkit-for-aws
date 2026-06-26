@@ -5,6 +5,7 @@ Your task is to modify Infrastructure as Code (IaC) files to enable AWS Applicat
 ## What You Will Accomplish
 
 After completing this task:
+
 - The EC2 instance will have permissions to send telemetry data to CloudWatch
 - The CloudWatch Agent will be installed and configured for Application Signals
 - The Java application will be automatically instrumented with AWS Distro for OpenTelemetry (ADOT)
@@ -13,11 +14,13 @@ After completing this task:
 ## Critical Requirements
 
 **Error Handling:**
+
 - If you cannot determine required values from the IaC, STOP and ask the user
 - For multiple EC2 instances, ask which one(s) to modify
 - Preserve all existing UserData commands; add new ones in sequence
 
 **Do NOT:**
+
 - Run deployment commands automatically (`cdk deploy`, `terraform apply`, etc.)
 - Remove existing application startup logic
 - Skip the user approval step before deployment
@@ -33,19 +36,21 @@ After completing this task:
 Read the UserData script and look for the application startup command.
 
 **If you see:**
+
 - `docker run` or `docker start` → Docker deployment
 - `java -jar`, `mvn spring-boot:run`, `gradle bootRun`, or similar → Non-Docker deployment
 
 **If unclear:**
+
 - Ask the user: "Is your Java application running in a Docker container or directly on the EC2 instance?" DO NOT GUESS
 
 ### Step 2: Extract Placeholder Values
 
 - `{{SERVICE_NAME}}`
-    - **Why It Matters:** Sets the service name displayed in Application Signals console via `OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}`
-    - **How to Find It:** Use the application name, stack name, or construct ID.
-    - **Example Value:** `my-java-app`
-    - **Required For:** Both Docker and non-Docker
+  - **Why It Matters:** Sets the service name displayed in Application Signals console via `OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}`
+  - **How to Find It:** Use the application name, stack name, or construct ID.
+  - **Example Value:** `my-java-app`
+  - **Required For:** Both Docker and non-Docker
 
 For Docker-based deployments:
 
@@ -78,6 +83,7 @@ Find the IAM role attached to the EC2 instance.
 Add the CloudWatch Agent Server Policy to the IAM role's managed policies.
 
 **CDK:**
+
 ```typescript
 const role = new iam.Role(this, 'AppRole', {
   assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
@@ -93,6 +99,7 @@ const role = new iam.Role(this, 'AppRole', {
 **CRITICAL for Terraform Users:** Preserve the EXACT indentation of existing heredoc lines.
 
 **CDK TypeScript example:**
+
 ```typescript
 instance.userData.addCommands(
   'dnf install -y amazon-cloudwatch-agent',  // Use dnf for AL2023, yum for AL2
@@ -161,6 +168,7 @@ instance.userData.addCommands(
 - **Option 2 — CloudWatch Agent as a sidecar container** (most isolated): run the agent as another container on the same user-defined Docker network and target it by name (e.g. `cwagent:4316`). Nothing binds to host interfaces. This is the same model the ECS guides use; choose it if the customer prefers full container isolation over a host-installed agent.
 
 **`--network host` example — adapt per the networking variant you chose above:**
+
 ```typescript
 instance.userData.addCommands(
   '# Run container with Application Signals environment variables',
@@ -204,6 +212,7 @@ instance.userData.addCommands(
 "I've completed the Application Signals enablement for your Java application. Here's what I modified:
 
 **Files Changed:**
+
 - IAM role: Added CloudWatchAgentServerPolicy
 - UserData: Installed and configured CloudWatch Agent
 - UserData: Downloaded ADOT Java agent JAR
@@ -211,6 +220,7 @@ instance.userData.addCommands(
 - Dockerfile: Downloaded ADOT Java agent JAR (if using Docker)
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes I made using `git diff`
 3. Deploy your infrastructure:
@@ -221,6 +231,7 @@ instance.userData.addCommands(
 
 **Verification:**
 Once deployed, you can verify Application Signals is working by:
+
 - Opening the AWS CloudWatch Console
 - Navigating to Application Signals → Services
 - Looking for your service (named: {{SERVICE_NAME}})

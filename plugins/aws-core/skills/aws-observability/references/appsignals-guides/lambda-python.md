@@ -44,6 +44,7 @@ eu-south-1:     arn:aws:lambda:eu-south-1:257394471194:layer:AWSOpenTelemetryDis
 Add the AWS managed policy `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda function's execution role.
 
 **CDK:**
+
 ```typescript
 const role = new iam.Role(this, 'LambdaRole', {
   assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -55,6 +56,7 @@ const role = new iam.Role(this, 'LambdaRole', {
 ```
 
 **Terraform:**
+
 ```hcl
 resource "aws_iam_role_policy_attachment" "application_signals" {
   role       = aws_iam_role.lambda_role.name
@@ -63,6 +65,7 @@ resource "aws_iam_role_policy_attachment" "application_signals" {
 ```
 
 **CloudFormation:**
+
 ```yaml
 ManagedPolicyArns:
   - arn:aws:iam::aws:policy/CloudWatchLambdaApplicationSignalsExecutionRolePolicy
@@ -71,6 +74,7 @@ ManagedPolicyArns:
 ### Step 2: Enable X-Ray Active Tracing
 
 **CDK:**
+
 ```typescript
 const myFunction = new lambda.Function(this, 'MyFunction', {
   tracing: lambda.Tracing.ACTIVE,
@@ -78,6 +82,7 @@ const myFunction = new lambda.Function(this, 'MyFunction', {
 ```
 
 **Terraform:**
+
 ```hcl
 resource "aws_lambda_function" "my_function" {
   tracing_config {
@@ -87,6 +92,7 @@ resource "aws_lambda_function" "my_function" {
 ```
 
 **CloudFormation:**
+
 ```yaml
 TracingConfig:
   Mode: Active
@@ -97,6 +103,7 @@ TracingConfig:
 Use the layer name `AWSOpenTelemetryDistroPython` with automatic region detection.
 
 **CDK:**
+
 ```typescript
 const layerArns: { [region: string]: string } = {
   // ... (see Region-Specific Layer ARNs section above for complete mapping)
@@ -110,6 +117,7 @@ const myFunction = new lambda.Function(this, 'MyFunction', {
 ```
 
 **Terraform:**
+
 ```hcl
 locals {
   layer_arns = {
@@ -129,6 +137,7 @@ resource "aws_lambda_function" "my_function" {
 Add `AWS_LAMBDA_EXEC_WRAPPER` environment variable with value `/opt/otel-instrument`.
 
 **CDK:**
+
 ```typescript
 environment: {
   AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
@@ -136,6 +145,7 @@ environment: {
 ```
 
 **Terraform:**
+
 ```hcl
 environment {
   variables = {
@@ -151,18 +161,21 @@ environment {
 "I've completed the Application Signals enablement for your Python Lambda function.
 
 **Configuration Changes:**
+
 - IAM Permissions: Added CloudWatchLambdaApplicationSignalsExecutionRolePolicy
 - X-Ray Tracing: Enabled active tracing
 - ADOT Layer: Added AWSOpenTelemetryDistroPython layer
 - Environment Variable: Set AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes using `git diff`
 3. Deploy your infrastructure
 4. After deployment, invoke your Lambda function to generate telemetry data
 
 **Verification:**
+
 - Open AWS CloudWatch Console → Application Signals → Services
 - Look for your Lambda function service
 

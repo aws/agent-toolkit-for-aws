@@ -5,6 +5,7 @@ Your task is to modify Infrastructure as Code (IaC) files to enable AWS Applicat
 ## What You Will Accomplish
 
 After completing this task:
+
 - The EC2 instance will have permissions to send telemetry data to CloudWatch
 - The CloudWatch Agent will be installed and configured for Application Signals
 - The Python application will be automatically instrumented with AWS Distro for OpenTelemetry (ADOT)
@@ -14,11 +15,13 @@ After completing this task:
 ## Critical Requirements
 
 **Error Handling:**
+
 - If you cannot determine required values from the IaC, STOP and ask the user
 - For multiple EC2 instances, ask which one(s) to modify
 - Preserve all existing UserData commands; add new ones in sequence
 
 **Do NOT:**
+
 - Run deployment commands automatically (`cdk deploy`, `terraform apply`, etc.)
 - Remove existing application startup logic
 - Skip the user approval step before deployment
@@ -36,13 +39,16 @@ Execute these steps to collect the information needed for configuration:
 Read the UserData script and look for the application startup command. This is typically one of the last commands in UserData.
 
 **If you see:**
+
 - `docker run` or `docker start` → **Docker deployment**
 - `python`, `gunicorn`, `uvicorn`, `flask run`, or similar → **Non-Docker deployment**
 
 **If unclear:**
+
 - Ask the user: "Is your Python application running in a Docker container or directly on the EC2 instance?" DO NOT GUESS
 
 **Critical distinction:** Where does the Python process run?
+
 - **Docker:** Python runs inside a container → Modify Dockerfile
 - **Non-Docker:** Python runs directly on EC2 → Modify UserData
 
@@ -51,39 +57,38 @@ Read the UserData script and look for the application startup command. This is t
 Analyze the existing IaC to determine these values for Application Signals enablement:
 
 - `{{SERVICE_NAME}}`:
-    - **Why It Matters:** Sets the service name displayed in Application Signals console via `OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}`
-    - **How to Find It:** Use the application name, stack name, or construct ID. Look for service/app names in the IaC.
-    - **Example Value:** `my-python-app`
-    - **Required For:** Both Docker and non-Docker
+  - **Why It Matters:** Sets the service name displayed in Application Signals console via `OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}`
+  - **How to Find It:** Use the application name, stack name, or construct ID. Look for service/app names in the IaC.
+  - **Example Value:** `my-python-app`
+  - **Required For:** Both Docker and non-Docker
 - `{{ENTRY_POINT}}`
-    - **Why It Matters:** Used to wrap the application startup with OpenTelemetry instrumentation: `opentelemetry-instrument python {{ENTRY_POINT}}`
-    - **How to Find It:** Find the Python file that starts the application (look for `python` commands in UserData)
-    - **Example Value:** `app.py` or `main.py`
-    - **Required For:** non-Docker
+  - **Why It Matters:** Used to wrap the application startup with OpenTelemetry instrumentation: `opentelemetry-instrument python {{ENTRY_POINT}}`
+  - **How to Find It:** Find the Python file that starts the application (look for `python` commands in UserData)
+  - **Example Value:** `app.py` or `main.py`
+  - **Required For:** non-Docker
 - `{{APP_DIR}}`
-    - **Why It Matters:** Python needs to run from the correct directory to find application files and dependencies
-    - **How to Find It:** Find where the application code is deployed (look for `cd`, `git clone`, or file copy commands in UserData)
-    - **Example Value:** `/opt/myapp`
-    - **Required For:** non-Docker
-
+  - **Why It Matters:** Python needs to run from the correct directory to find application files and dependencies
+  - **How to Find It:** Find where the application code is deployed (look for `cd`, `git clone`, or file copy commands in UserData)
+  - **Example Value:** `/opt/myapp`
+  - **Required For:** non-Docker
 
 For Docker-based deployments you will also need to find these additional values:
 
 - `{{PORT}}`
-    - **Why It Matters:** Docker port mapping that ensures the container is accessible on the correct port
-    - **How to Find It:** Find port mappings in `docker run -p` commands or security group ingress rules
-    - **Example Value:** `5000`
-    - **Required For:** Docker
+  - **Why It Matters:** Docker port mapping that ensures the container is accessible on the correct port
+  - **How to Find It:** Find port mappings in `docker run -p` commands or security group ingress rules
+  - **Example Value:** `5000`
+  - **Required For:** Docker
 - `{{APP_NAME}}`
-    - **Why It Matters:** Used to reference the container for operations like `docker logs {{APP_NAME}}`, `docker exec`, health checks, etc.
-    - **How to Find It:** Find container name in `docker run --name` or use `{{SERVICE_NAME}}-container`
-    - **Example Value:** `python-flask-app`
-    - **Required For:** Docker
+  - **Why It Matters:** Used to reference the container for operations like `docker logs {{APP_NAME}}`, `docker exec`, health checks, etc.
+  - **How to Find It:** Find container name in `docker run --name` or use `{{SERVICE_NAME}}-container`
+  - **Example Value:** `python-flask-app`
+  - **Required For:** Docker
 - `{{IMAGE_URI}}`
-    - **Why It Matters:** This is the identifier for the application that Docker will run
-    - **How to Find It:** Find the Docker image in `docker run` or `docker pull` commands
-    - **Example Value:** `123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest`
-    - **Required For:** Docker
+  - **Why It Matters:** This is the identifier for the application that Docker will run
+  - **How to Find It:** Find the Docker image in `docker run` or `docker pull` commands
+  - **Example Value:** `123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest`
+  - **Required For:** Docker
 
 **If you cannot determine a value:** Ask the user for clarification before proceeding. Do not guess or make up values.
 
@@ -108,9 +113,9 @@ Only complete the relevant subsections based on what you identified in Step 3.
 If you identified Django in Step 3, extract the Django settings module path:
 
 - `{{DJANGO_SETTINGS_MODULE}}`: The Python module path to `settings.py`
-    - **How to Find:** Look for existing `DJANGO_SETTINGS_MODULE` in UserData/Dockerfile, or search for `settings.py` location
-    - **Common Patterns:** `myproject.settings` (if `settings.py` at `myproject/settings.py`)
-    - **If not found:** Ask the user for the Django settings module path
+  - **How to Find:** Look for existing `DJANGO_SETTINGS_MODULE` in UserData/Dockerfile, or search for `settings.py` location
+  - **Common Patterns:** `myproject.settings` (if `settings.py` at `myproject/settings.py`)
+  - **If not found:** Ask the user for the Django settings module path
 
 #### 4b. WSGI Server Applications (Gunicorn/uWSGI)
 
@@ -125,12 +130,14 @@ If you identified a WSGI server in Step 3, note that additional worker instrumen
 
 Determine the operating system to use the correct package manager and installation commands.
 
-**Amazon Linux**
+**Amazon Linux:**
+
 - **Amazon Linux 2:** Use `yum` package manager
 - **Amazon Linux 2023:** Use `dnf` package manager
 - **How to detect:** Look for existing package install commands in UserData (check for `yum` or `dnf`), or look for AMI references containing `al2` or `al2023`
 
 **Other Linux distributions:**
+
 - **Ubuntu/Debian:** Use `apt` package manager
 - **Fedora/RHEL/CentOS:** Use `dnf` or `yum` package manager
 
@@ -153,16 +160,19 @@ CfnInstance(
 ```
 
 **Terraform:**
+
 ```
 resource "aws_instance"
 ```
 
 **CloudFormation:**
+
 ```
 AWS::EC2::Instance
 ```
 
 **Read the file(s)** containing the EC2 instance definition. You need to identify:
+
 1. The instance resource/construct
 2. The IAM role attached to the instance
 3. The UserData script or property
@@ -199,6 +209,7 @@ const role = new iam.Role(this, 'AppRole', {
 Add a CloudWatch Agent installation command to the UserData script.
 
 **CRITICAL for Terraform Users:** When modifying Terraform `user_data` heredocs, you MUST preserve the EXACT indentation of existing lines. Terraform's `<<-EOF` syntax strips leading whitespace, but only if indentation is consistent. When adding new bash commands:
+
 - Count the leading spaces/tabs on existing lines in the heredoc
 - Apply the SAME amount of leading whitespace to all new lines you add
 - Do NOT modify the indentation of any existing lines
@@ -206,6 +217,7 @@ Add a CloudWatch Agent installation command to the UserData script.
 If indentation is inconsistent, Terraform will NOT strip the whitespace, causing the deployed script to have leading spaces before `#!/bin/bash`, which will cause cloud-init to fail.
 
 **CDK TypeScript example:**
+
 ```typescript
 instance.userData.addCommands(
   'dnf install -y amazon-cloudwatch-agent',  // Use dnf for AL2023, yum for AL2
@@ -214,6 +226,7 @@ instance.userData.addCommands(
 ```
 
 **Placement:** Add this command early in the UserData script:
+
 - If system update commands exist (like `dnf update -y`, `apt-get update`), add it immediately after those
 - If no system update commands exist, add it at the very beginning of UserData
 - This should come before any application dependency installations or application setup commands
@@ -263,7 +276,7 @@ For Docker deployments, modify the `Dockerfile` in the application directory.
 
 **1. Install aws-opentelemetry-distro:**
 
-Find the line that installs Python dependencies (usually `RUN pip install ` or `RUN pip install -r requirements.txt`). Add ADOT installation AFTER it:
+Find the line that installs Python dependencies (usually `RUN pip install` or `RUN pip install -r requirements.txt`). Add ADOT installation AFTER it:
 
 ```dockerfile
 # Add this line after the existing pip install command
@@ -292,6 +305,7 @@ CMD ["opentelemetry-instrument", "python", "app.py"]
 **Django-specific examples:**
 
 For Django with Gunicorn (production):
+
 ```dockerfile
 # Before:
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "djangoapp.wsgi:application"]
@@ -301,6 +315,7 @@ CMD ["opentelemetry-instrument", "gunicorn", "-c", "gunicorn.conf.py", "djangoap
 ```
 
 For Django development server, add the `--noreload` flag to prevent auto-reloader conflicts with OpenTelemetry:
+
 ```dockerfile
 # Before:
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
@@ -410,6 +425,7 @@ def post_fork(server, worker):
 ```
 
 For **uWSGI** - Create or modify `uwsgi.ini`:
+
 ```ini
 [uwsgi]
 enable-threads = true
@@ -428,6 +444,7 @@ Go back to the `docker run` command you configured in Step 7A and add this envir
 Add it right after the `OTEL_RESOURCE_ATTRIBUTES` line and before `--network host`.
 
 **WSGI requirements:**
+
 - `OTEL_AWS_PYTHON_DEFER_TO_WORKERS_ENABLED=true` is REQUIRED for all WSGI servers
 - The `gunicorn.conf.py` or `uwsgi.ini` file with worker instrumentation is REQUIRED
 
@@ -494,6 +511,7 @@ instance.userData.addCommands(
 ```
 
 **Django-specific notes:**
+
 - `--noreload` flag is REQUIRED to prevent auto-reloader conflicts with OpenTelemetry
 
 #### Step 8B: WSGI Additional Configuration
@@ -514,6 +532,7 @@ def post_fork(server, worker):
 ```
 
 For **uWSGI** - Create or modify `uwsgi.ini`:
+
 ```ini
 [uwsgi]
 enable-threads = true
@@ -536,6 +555,7 @@ Add it right after the `export OTEL_RESOURCE_ATTRIBUTES` line.
 Replace the application startup command with the WSGI server command wrapped with OpenTelemetry instrumentation.
 
 **General examples (Flask, FastAPI, etc.):**
+
 ```typescript
 // Flask with Gunicorn
 'opentelemetry-instrument gunicorn -c gunicorn.conf.py app:app',
@@ -547,17 +567,20 @@ Replace the application startup command with the WSGI server command wrapped wit
 **Django-specific examples:**
 
 For Django with Gunicorn:
+
 ```typescript
 // The cd command is from Step 8A, this replaces the startup command
 'opentelemetry-instrument gunicorn -c gunicorn.conf.py myproject.wsgi:application',
 ```
 
 For Django with uWSGI:
+
 ```typescript
 'opentelemetry-instrument uwsgi --ini uwsgi.ini --module myproject.wsgi:application',
 ```
 
 **WSGI requirements:**
+
 - `OTEL_AWS_PYTHON_DEFER_TO_WORKERS_ENABLED=true` is REQUIRED for all WSGI servers
 - The `gunicorn.conf.py` or `uwsgi.ini` file with worker instrumentation is REQUIRED
 - The startup command must use `opentelemetry-instrument` wrapper with your WSGI server
@@ -569,6 +592,7 @@ For Django with uWSGI:
 "I've completed the Application Signals enablement for your Python application. Here's what I modified:
 
 **Files Changed:**
+
 - IAM role: Added CloudWatchAgentServerPolicy
 - UserData: Installed and configured CloudWatch Agent
 - UserData: Installed ADOT Python SDK
@@ -577,6 +601,7 @@ For Django with uWSGI:
 - WSGI configuration: Added worker instrumentation (if using Gunicorn/uWSGI)
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes I made using `git diff`
 3. Deploy your infrastructure:
@@ -587,6 +612,7 @@ For Django with uWSGI:
 
 **Verification:**
 Once deployed, you can verify Application Signals is working by:
+
 - Opening the AWS CloudWatch Console
 - Navigating to Application Signals → Services
 - Looking for your service (named: {{SERVICE_NAME}})

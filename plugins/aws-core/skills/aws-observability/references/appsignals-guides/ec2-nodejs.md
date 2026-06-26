@@ -5,6 +5,7 @@ Your task is to modify Infrastructure as Code (IaC) files to enable AWS Applicat
 ## What You Will Accomplish
 
 After completing this task:
+
 - The EC2 instance will have permissions to send telemetry data to CloudWatch
 - The CloudWatch Agent will be installed and configured for Application Signals
 - The Node.js application will be automatically instrumented with AWS Distro for OpenTelemetry (ADOT)
@@ -14,11 +15,13 @@ After completing this task:
 ## Critical Requirements
 
 **Error Handling:**
+
 - If you cannot determine required values from the IaC, STOP and ask the user
 - For multiple EC2 instances, ask which one(s) to modify
 - Preserve all existing UserData commands; add new ones in sequence
 
 **Do NOT:**
+
 - Run deployment commands automatically (`cdk deploy`, `terraform apply`, etc.)
 - Remove existing application startup logic
 - Skip the user approval step before deployment
@@ -36,13 +39,16 @@ Execute these steps to collect the information needed for configuration:
 Read the UserData script and look for the application startup command. This is typically one of the last commands in UserData.
 
 **If you see:**
+
 - `docker run` or `docker start` → Docker deployment
 - `node`, `npm start`, `yarn start`, or similar → Non-Docker deployment
 
 **If unclear:**
+
 - Ask the user: "Is your Node.js application running in a Docker container or directly on the EC2 instance?" DO NOT GUESS
 
 **Critical distinction:** Where does the Node.js process run?
+
 - **Docker:** Node.js runs inside a container → Modify Dockerfile
 - **Non-Docker:** Node.js runs directly on EC2 → Modify UserData
 
@@ -51,33 +57,33 @@ Read the UserData script and look for the application startup command. This is t
 Analyze the existing IaC to determine these values for Application Signals enablement:
 
 - `{{SERVICE_NAME}}`
-    - **Why It Matters:** Sets the service name displayed in Application Signals console via `OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}`
-    - **How to Find It:** Use the application name, stack name, or construct ID. Look for service/app names in the IaC.
-    - **Example Value:** `my-nodejs-app`
-    - **Required For:** Both Docker and non-Docker
+  - **Why It Matters:** Sets the service name displayed in Application Signals console via `OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}`
+  - **How to Find It:** Use the application name, stack name, or construct ID. Look for service/app names in the IaC.
+  - **Example Value:** `my-nodejs-app`
+  - **Required For:** Both Docker and non-Docker
 - `{{ENTRY_POINT}}`
-    - **Why It Matters:** Used to start the application with OpenTelemetry instrumentation: `node --require ... {{ENTRY_POINT}}`
-    - **How to Find It:** Find the JavaScript file that starts the application (look for `node` commands in UserData)
-    - **Example Value:** `server.js`, `index.js`, or `app.js`
-    - **Required For:** Non-Docker
+  - **Why It Matters:** Used to start the application with OpenTelemetry instrumentation: `node --require ... {{ENTRY_POINT}}`
+  - **How to Find It:** Find the JavaScript file that starts the application (look for `node` commands in UserData)
+  - **Example Value:** `server.js`, `index.js`, or `app.js`
+  - **Required For:** Non-Docker
 - `{{APP_DIR}}`
-    - **Why It Matters:** Node.js needs to run from the correct directory to find application files and dependencies
-    - **How to Find It:** Find where the application code is deployed (look for `cd`, `git clone`, or file copy commands in UserData)
-    - **Example Value:** `/opt/myapp`
-    - **Required For:** Non-Docker
+  - **Why It Matters:** Node.js needs to run from the correct directory to find application files and dependencies
+  - **How to Find It:** Find where the application code is deployed (look for `cd`, `git clone`, or file copy commands in UserData)
+  - **Example Value:** `/opt/myapp`
+  - **Required For:** Non-Docker
 
 For Docker-based deployments you will also need to find these additional values:
 
 - `{{APP_NAME}}`
-    - **Why It Matters:** Used to reference the container for operations like `docker logs {{APP_NAME}}`, `docker exec`, health checks, etc.
-    - **How to Find It:** Find container name in `docker run --name` or use `{{SERVICE_NAME}}-container`
-    - **Example Value:** `nodejs-express-app`
-    - **Required For:** Docker
+  - **Why It Matters:** Used to reference the container for operations like `docker logs {{APP_NAME}}`, `docker exec`, health checks, etc.
+  - **How to Find It:** Find container name in `docker run --name` or use `{{SERVICE_NAME}}-container`
+  - **Example Value:** `nodejs-express-app`
+  - **Required For:** Docker
 - `{{IMAGE_URI}}`
-    - **Why It Matters:** This is the identifier for the application that Docker will run
-    - **How to Find It:** Find the Docker image in `docker run` or `docker pull` commands
-    - **Example Value:** `123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest`
-    - **Required For:** Docker
+  - **Why It Matters:** This is the identifier for the application that Docker will run
+  - **How to Find It:** Find the Docker image in `docker run` or `docker pull` commands
+  - **Example Value:** `123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest`
+  - **Required For:** Docker
 
 **If you cannot determine a value:** Ask the user for clarification before proceeding. Do not guess or make up values.
 
@@ -85,12 +91,14 @@ For Docker-based deployments you will also need to find these additional values:
 
 Determine the operating system to use the correct package manager and installation commands.
 
-**Amazon Linux**
+**Amazon Linux:**
+
 - **Amazon Linux 2:** Use `yum` package manager
 - **Amazon Linux 2023:** Use `dnf` package manager
 - **How to detect:** Look for existing package install commands in UserData (check for `yum` or `dnf`), or look for AMI references containing `al2` or `al2023`
 
 **Other Linux distributions:**
+
 - **Ubuntu/Debian:** Use `apt` package manager
 - **Fedora/RHEL/CentOS:** Use `dnf` or `yum` package manager
 
@@ -112,6 +120,7 @@ Determine if the Node.js application uses CommonJS or ESM module format. This af
 - If `.js` extension → Depends on package.json type field
 
 **If unclear:**
+
 - Ask the user: "Does your Node.js application use ESM module format (type: module in package.json)?" DO NOT GUESS
 - Default to CommonJS if package.json doesn't specify type
 
@@ -124,6 +133,7 @@ Follow these steps in sequence:
 **Search for EC2 instance definitions** using these patterns:
 
 **CDK:**
+
 ```
 new ec2.Instance(
 ec2.Instance(
@@ -131,16 +141,19 @@ CfnInstance(
 ```
 
 **Terraform:**
+
 ```
 resource "aws_instance"
 ```
 
 **CloudFormation:**
+
 ```
 AWS::EC2::Instance
 ```
 
 **Read the file(s)** containing the EC2 instance definition. You need to identify:
+
 1. The instance resource/construct
 2. The IAM role attached to the instance
 3. The UserData script or property
@@ -150,6 +163,7 @@ AWS::EC2::Instance
 Find the IAM role attached to the EC2 instance
 
 **CDK:**
+
 ```typescript
 role: someRole
 new iam.Role(this, 'RoleName'
@@ -160,6 +174,7 @@ new iam.Role(this, 'RoleName'
 Add the CloudWatch Agent Server Policy to the IAM role's managed policies.
 
 **CDK:**
+
 ```typescript
 const role = new iam.Role(this, 'AppRole', {
   assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
@@ -175,6 +190,7 @@ const role = new iam.Role(this, 'AppRole', {
 Add a CloudWatch Agent installation command to the UserData script.
 
 **CRITICAL for Terraform Users:** When modifying Terraform `user_data` heredocs, you MUST preserve the EXACT indentation of existing lines. Terraform's `<<-EOF` syntax strips leading whitespace, but only if indentation is consistent. When adding new bash commands:
+
 - Count the leading spaces/tabs on existing lines in the heredoc
 - Apply the SAME amount of leading whitespace to all new lines you add
 - Do NOT modify the indentation of any existing lines
@@ -182,6 +198,7 @@ Add a CloudWatch Agent installation command to the UserData script.
 If indentation is inconsistent, Terraform will NOT strip the whitespace, causing the deployed script to have leading spaces before `#!/bin/bash`, which will cause cloud-init to fail.
 
 **CDK TypeScript example:**
+
 ```typescript
 instance.userData.addCommands(
   'dnf install -y amazon-cloudwatch-agent',  // Use dnf for AL2023, yum for AL2
@@ -190,6 +207,7 @@ instance.userData.addCommands(
 ```
 
 **Placement:** Add this command early in the UserData script:
+
 - If system update commands exist (like `dnf update -y`, `apt-get update`), add it immediately after those
 - If no system update commands exist, add it at the very beginning of UserData
 - This should come before any application dependency installations or application setup commands
@@ -201,6 +219,7 @@ instance.userData.addCommands(
 The CloudWatch Agent was installed in Step 4. Now configure it for Application Signals:
 
 **CDK TypeScript example:**
+
 ```typescript
 instance.userData.addCommands(
   '# Create CloudWatch Agent configuration for Application Signals',
@@ -239,12 +258,14 @@ For Docker deployments, modify the `Dockerfile` in the application directory.
 Add the ADOT Node.js SDK installation AFTER any existing `npm install` or dependency installation commands:
 
 **For CommonJS applications:**
+
 ```dockerfile
 # Install ADOT Node.js auto-instrumentation (use latest; ServiceEvents requires >=0.12.0)
 RUN npm install @aws/aws-distro-opentelemetry-node-autoinstrumentation
 ```
 
 **For ESM applications:**
+
 ```dockerfile
 # Install ADOT Node.js auto-instrumentation with ESM support (use latest; ServiceEvents requires >=0.12.0)
 RUN npm install @aws/aws-distro-opentelemetry-node-autoinstrumentation @opentelemetry/instrumentation
@@ -257,6 +278,7 @@ RUN npm install @aws/aws-distro-opentelemetry-node-autoinstrumentation @opentele
 For non-Docker deployments, add to UserData AFTER CloudWatch Agent configuration:
 
 **For CommonJS applications:**
+
 ```typescript
 instance.userData.addCommands(
   '# Install ADOT Node.js auto-instrumentation (must run in the app directory so the',
@@ -266,6 +288,7 @@ instance.userData.addCommands(
 ```
 
 **For ESM applications:**
+
 ```typescript
 instance.userData.addCommands(
   '# Install ADOT Node.js auto-instrumentation with ESM support (run in the app directory)',
@@ -286,6 +309,7 @@ For Docker deployments, you need to modify both the Dockerfile CMD and the UserD
 Find the `CMD` line in your Dockerfile and modify it based on module format:
 
 **For CommonJS applications:**
+
 ```dockerfile
 # Before:
 CMD ["node", "app.js"]
@@ -295,6 +319,7 @@ CMD ["node", "--require", "@aws/aws-distro-opentelemetry-node-autoinstrumentatio
 ```
 
 **For ESM applications:**
+
 ```dockerfile
 # Before:
 CMD ["node", "app.js"]
@@ -338,6 +363,7 @@ For non-Docker deployments, set environment variables and modify the node startu
 Find the existing command that starts the Node.js application. Add the environment variables BEFORE it and modify the startup command:
 
 **For CommonJS applications:**
+
 ```typescript
 instance.userData.addCommands(
   '# Set OpenTelemetry environment variables',
@@ -358,6 +384,7 @@ instance.userData.addCommands(
 ```
 
 **For ESM applications:**
+
 ```typescript
 instance.userData.addCommands(
   '# Set OpenTelemetry environment variables',
@@ -388,6 +415,7 @@ instance.userData.addCommands(
 "I've completed the Application Signals enablement for your Node.js application. Here's what I modified:
 
 **Files Changed:**
+
 - IAM role: Added CloudWatchAgentServerPolicy
 - UserData: Installed and configured CloudWatch Agent
 - UserData: Installed ADOT Node.js SDK
@@ -395,6 +423,7 @@ instance.userData.addCommands(
 - Dockerfile: Installed ADOT Node.js SDK and modified CMD with node flags (if using Docker)
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes I made using `git diff`
 3. Deploy your infrastructure:
@@ -405,6 +434,7 @@ instance.userData.addCommands(
 
 **Verification:**
 Once deployed, you can verify Application Signals is working by:
+
 - Opening the AWS CloudWatch Console
 - Navigating to Application Signals → Services
 - Looking for your service (named: {{SERVICE_NAME}})

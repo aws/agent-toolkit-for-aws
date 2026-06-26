@@ -48,6 +48,7 @@ Read the deploy workflow YAML, the `Dockerfile*` and `docker-compose*.yml` in th
 ### 3. Trace the propagation chain
 
 Trace how env vars flow from CI/CD to the running container. Every intermediate layer must explicitly forward each var or it is silently dropped:
+
 - Category 1: workflow step env → shell → docker build args → Dockerfile `ARG`/`ENV`.
 - Category 2: workflow step env → shell → template engine / Terraform vars → deployment manifest → container env.
 
@@ -64,6 +65,7 @@ Summarize changes, stating which vars are build-time vs deploy-time. Present for
 ## Pattern examples
 
 ### GitHub Actions — app IS the workflow repo
+
 ```yaml
 - name: Set git metadata
   id: git-meta
@@ -73,6 +75,7 @@ Summarize changes, stating which vars are build-time vs deploy-time. Present for
 ```
 
 ### GitHub Actions — app is a DIFFERENT repo (multi-checkout)
+
 ```yaml
 - name: Set git metadata from app repo
   id: git-meta
@@ -83,6 +86,7 @@ Summarize changes, stating which vars are build-time vs deploy-time. Present for
 ```
 
 ### Dockerfile ARG/ENV (build-side — 2 git vars only)
+
 ```dockerfile
 ARG OTEL_AWS_SERVICE_EVENTS_GIT_REPO_URL
 ARG OTEL_AWS_SERVICE_EVENTS_GIT_COMMIT_SHA
@@ -91,6 +95,7 @@ ENV OTEL_AWS_SERVICE_EVENTS_GIT_COMMIT_SHA=${OTEL_AWS_SERVICE_EVENTS_GIT_COMMIT_
 ```
 
 ### Kubernetes deployment YAML with envsubst (deploy-side — 3 deployment vars only)
+
 ```yaml
         - name: OTEL_AWS_SERVICE_EVENTS_DEPLOYMENT_URL
           value: "${OTEL_AWS_SERVICE_EVENTS_DEPLOYMENT_URL}"
@@ -99,9 +104,11 @@ ENV OTEL_AWS_SERVICE_EVENTS_GIT_COMMIT_SHA=${OTEL_AWS_SERVICE_EVENTS_GIT_COMMIT_
         - name: OTEL_AWS_SERVICE_EVENTS_DEPLOYMENT_TIMESTAMP
           value: "${OTEL_AWS_SERVICE_EVENTS_DEPLOYMENT_TIMESTAMP}"
 ```
+
 Quotes around `value` are required — `DEPLOYMENT_ID` is numeric and YAML rejects it without quotes.
 
 ### Terraform ECS (deploy-side — 3 deployment vars only)
+
 ```hcl
 variable "deployment_url" { type = string; default = "" }
 variable "deployment_id" { type = string; default = "" }

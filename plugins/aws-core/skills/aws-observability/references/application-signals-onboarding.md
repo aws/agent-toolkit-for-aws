@@ -45,9 +45,11 @@ The `amazon-cloudwatch-observability` add-on injects ADOT auto-instrumentation v
 Check whether the add-on is already enabled. Present the user with these options and proceed based on their response:
 
 1. **You run it** — offer to run the AWS CLI command yourself (requires CLI/credentials access and the cluster name + region from the IaC):
+
    ```bash
    aws eks describe-addon --cluster-name <cluster-name> --addon-name amazon-cloudwatch-observability --region <region>
    ```
+
    A successful response means it exists; `ResourceNotFoundException` means it does not.
 
 2. **User runs it** — ask the user to run the command above themselves or check the [EKS console → Add-ons tab](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable-EKS.html), and share the result.
@@ -57,6 +59,7 @@ Check whether the add-on is already enabled. Present the user with these options
 4. **User says it's already enabled** — proceed to the import step (see "Add-on already exists" below).
 
 - **Add-on does NOT exist**: add the `aws_eks_addon` / `CfnAddon` resource:
+
   ```hcl
   resource "aws_eks_addon" "cloudwatch_observability" {
     cluster_name = ...
@@ -65,13 +68,16 @@ Check whether the add-on is already enabled. Present the user with these options
     # ServiceEvents requires v6.3.0+. If the customer's IaC pins an older version, flag it.
   }
   ```
+
 - **Add-on already exists (Terraform)**: still add the resource above, and add a `terraform import` step to the CI/CD workflow **before** `terraform apply` so apply uses UpdateAddon instead of CreateAddon. Use `|| true` so reruns don't fail:
+
   ```bash
   # Import existing CW Observability add-on into Terraform state (first run only; can be removed after).
   # Add only this import line, BEFORE the workflow's existing `terraform apply` step, and mention that it can be removed after the first run as a comment.
   terraform import -var="region=..." -var="cluster_name=..." \
     aws_eks_addon.cloudwatch_observability <cluster-name>:amazon-cloudwatch-observability || true
   ```
+
 - **Add-on already exists (CDK)**: do NOT add it to CDK; no change needed.
 
 Do NOT introduce `helm_release`, `kubernetes`, or `helm` provider resources for this purpose.
@@ -81,11 +87,13 @@ Do NOT introduce `helm_release`, `kubernetes`, or `helm` provider resources for 
 The CloudWatch Agent needs `CloudWatchAgentServerPolicy` and `AWSXRayDaemonWriteAccess` to send metrics, logs, and traces. When ServiceEvents Dynamic Instrumentation applies (Tier 2), also add a custom policy with `application-signals:ListInstrumentationConfigurations` and `application-signals:ReportInstrumentationConfigurationStatus` on `Resource: "*"`.
 
 Attach to the role the CloudWatch Agent uses, per platform:
+
 - **EKS**: the node group's IAM role (used by the CloudWatch Agent pods).
 - **ECS**: the role used by the CloudWatch Agent container (task role or execution role, depending on deployment).
 - **EC2**: the instance profile / role used by the CloudWatch Agent process.
 
 **EKS — `terraform-aws-modules/eks/aws` module** (most common): add to `iam_role_additional_policies`:
+
 ```hcl
 resource "aws_iam_policy" "application_signals_di" {
   name = "${var.cluster_name}-${var.region}-application-signals-di"
@@ -136,6 +144,7 @@ If the running agent has the AWS MCP server / Application Signals tooling availa
 For EC2/ECS/EKS with Python/Node.js/Java, add the ServiceEvents environment variables.
 
 **5a and 5b are the core of Tier 2 — apply them by default, do NOT ask the user whether to include them.** They are part of what "enable ServiceEvents / onboard to Application Signals" means. They differ in how strict they are:
+
 - **5b (OTLP endpoints for transport) is required where it applies** — without it ServiceEvents telemetry has nowhere to go. Wire it per the platform (see 5b for the ECS/EC2-vs-EKS specifics).
 - **5a (git/deployment metadata) is best-effort** — it's correlation data that degrades gracefully. Wire in whatever the IaC supports; if a value can't be sourced (e.g. no CI/CD provider for a git URL / commit SHA, or no deploy-time hook for the deployment vars), set what you can and skip the rest, noting it in the Step 6 review rather than blocking onboarding or interrogating the user.
 
@@ -183,6 +192,7 @@ The match syntax differs per SDK — set it to the customer's own application co
 | **Node.js** | **path glob** (minimatch) matched against the file's **absolute resolved path** (NOT a module name) | `**/indico/src/**` — i.e. `**/<app-dir>/src/**` for code under `<app-dir>/src/` |
 
 **Determining the value — inspect the customer's source layout.** `PACKAGES_INCLUDE` is the one onboarding value that depends on how the customer's code is organized, so **read** the repo to derive it (reading source to determine config is allowed; the never-modify rule is about *editing* source, not looking at it). Per SDK:
+
 - **Java** — find the application's root package from the source tree (`src/main/java/<group>/<artifact>/…`) or the `package`/`namespace` declarations and `groupId` in `pom.xml`/`build.gradle`. Use the top-level package that covers the customer's own classes, e.g. `com.amazon.indico`.
 - **Python** — find the top-level package directory (the one with `__init__.py`, or the `name`/`packages` in `pyproject.toml`/`setup.py`) and append `.*`, e.g. `myapp.*`.
 - **Node.js** — find the directory holding the customer's own source (commonly `src/`, or `main`/`exports` in `package.json`) and build a path glob `**/<app-dir>/src/**`. Remember it matches the absolute *runtime* path, so anchor on a suffix that survives the build/deploy (the `**/` prefix), not the repo-relative path.

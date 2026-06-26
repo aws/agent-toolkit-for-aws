@@ -4,6 +4,7 @@
 This guide provides complete steps to enable AWS Application Signals for ECS services (both EC2 and Fargate launch types), including distributed tracing, performance monitoring, and service mapping.
 
 ## Prerequisites
+
 - Services running on ECS (EC2 or Fargate launch types)
 - Applications using Python language
 
@@ -34,6 +35,7 @@ const taskRole = new iam.Role(this, 'EcsTaskRole', {
 ```
 
 #### 1.2 Create CloudWatch Agent Log Group
+
 ```typescript
 const cwAgentLogGroup = new logs.LogGroup(this, 'CwAgentLogGroup', {
   logGroupName: '/ecs/ecs-cwagent',
@@ -43,6 +45,7 @@ const cwAgentLogGroup = new logs.LogGroup(this, 'CwAgentLogGroup', {
 ```
 
 #### 1.3 Add CloudWatch Agent Container to Each Task Definition
+
 ```typescript
 const cwAgentContainer = taskDefinition.addContainer('ecs-cwagent-{{SERVICE_NAME}}', {
   image: ecs.ContainerImage.fromRegistry('public.ecr.aws/cloudwatch-agent/cloudwatch-agent:latest'), // Use latest. ServiceEvents requires 1.300070.0+ (or 1.300069.0+).
@@ -73,6 +76,7 @@ const cwAgentContainer = taskDefinition.addContainer('ecs-cwagent-{{SERVICE_NAME
 ### Step 2: Add AWS Distro for OpenTelemetry Zero-Code Auto-Instrumentation to Main Service
 
 #### 2.1 Add Bind Mount Volumes to Task Definition
+
 ```typescript
 const taskDefinition = new ecs.FargateTaskDefinition(this, '{{SERVICE_NAME}}TaskDefinition', {
   // Existing configuration...
@@ -85,6 +89,7 @@ const taskDefinition = new ecs.FargateTaskDefinition(this, '{{SERVICE_NAME}}Task
 ```
 
 #### 2.2 Add ADOT Auto-instrumentation Init Container
+
 ```typescript
 const initContainer = taskDefinition.addContainer('init', {
   image: ecs.ContainerImage.fromRegistry('public.ecr.aws/aws-observability/adot-autoinstrumentation-python:v0.18.0'), // Minimum version for ServiceEvents. Check ../application-signals-onboarding.md for how to query the latest version.
@@ -131,11 +136,13 @@ const mainContainer = taskDefinition.addContainer('{{SERVICE_NAME}}-container', 
 ```
 
 Replace `{{EXISTING_PYTHONPATH}}` with the container's current `PYTHONPATH` value so the instrumentation paths are **prepended** to it rather than overwriting it. If the container does **not** already set a `PYTHONPATH`, drop that segment entirely:
+
 ```typescript
 PYTHONPATH: '/otel-auto-instrumentation-python/opentelemetry/instrumentation/auto_instrumentation:/otel-auto-instrumentation-python',
 ```
 
 #### 2.4 Add Mount Point to Main Container
+
 ```typescript
 mainContainer.addMountPoints({
   sourceVolume: 'opentelemetry-auto-instrumentation-python',
@@ -145,6 +152,7 @@ mainContainer.addMountPoints({
 ```
 
 #### 2.5 Configure Container Dependencies
+
 ```typescript
 mainContainer.addContainerDependencies({
   container: initContainer,
@@ -163,6 +171,7 @@ mainContainer.addContainerDependencies({
 
 ##### 3.a.1: Set DJANGO_SETTINGS_MODULE
 If your ECS application is built with Django, explicitly set the DJANGO_SETTINGS_MODULE environment variable:
+
 ```typescript
 const mainContainer = taskDefinition.addContainer('{{SERVICE_NAME}}-container', {
   environment: {
@@ -176,11 +185,13 @@ const mainContainer = taskDefinition.addContainer('{{SERVICE_NAME}}-container', 
 If using Django's development server, override the Docker CMD to add `--noreload`:
 
 **Before (Dockerfile):**
+
 ```dockerfile
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 ```
 
 **After (ECS IaC override):**
+
 ```typescript
 const appContainer = taskDefinition.addContainer('Application', {
   command: ["python", "manage.py", "runserver", "0.0.0.0:8000", "--noreload"],
@@ -194,12 +205,14 @@ const appContainer = taskDefinition.addContainer('Application', {
 "I've completed the Application Signals enablement for your application. Here's what I modified:
 
 **Files Changed:**
+
 - IAM role: Added CloudWatchAgentServerPolicy
 - ECS container: Installed and configured CloudWatch Agent as sidecar
 - ADOT SDK container: Mounted ADOT SDK dependencies into Application container
 - Application container: Enabled zero-code auto-instrumentation for Application
 
 **Next Steps:**
+
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
 2. Review the changes I made using `git diff`
 3. Deploy your infrastructure:
@@ -210,6 +223,7 @@ const appContainer = taskDefinition.addContainer('Application', {
 
 **Verification:**
 Once deployed, you can verify Application Signals is working by:
+
 - Opening the AWS CloudWatch Console
 - Navigating to Application Signals → Services
 - Looking for your service (named: {{SERVICE_NAME}})
