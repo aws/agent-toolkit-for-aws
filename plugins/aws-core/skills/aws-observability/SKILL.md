@@ -2,16 +2,18 @@
 name: aws-observability
 description: >-
   Builds, configures, debugs, and optimizes AWS observability with CloudWatch (Log Insights,
-  Metrics, Alarms, Dashboards, EMF), X-Ray, CloudTrail, and ADOT, AND enables/onboards services
-  to AWS Application Signals (auto-instrumentation). Covers Log Insights queries, alarms (metric,
-  composite, anomaly), dashboards, custom metrics/EMF, X-Ray tracing and sampling, ADOT collector
-  config, CloudTrail auditing, and end-to-end Application Signals enablement (CloudWatch
-  Observability EKS add-on, CloudWatch Agent IAM, OTLP endpoints, ServiceEvents git/deployment metadata,
-  Dynamic Instrumentation) on EC2, ECS, EKS, and Lambda in Python, Node.js, Java, and .NET.
-  Applies to CloudWatch, alarms, dashboards, EMF, X-Ray, traces, CloudTrail, ADOT, OpenTelemetry,
-  monitoring, synthetics/canaries, OR enabling/onboarding/instrumenting a service for Application
-  Signals, ServiceEvents, auto-instrumentation, or making a service show up in Application
-  Signals. Not for app logging or security threat detection.
+  Metrics, Alarms, Dashboards, EMF), X-Ray, CloudTrail, and ADOT (AWS Distro for OpenTelemetry),
+  AND enables/onboards services to Application Signals using ADOT auto-instrumentation SDKs.
+  Covers Log Insights queries, alarms (metric, composite, anomaly), dashboards, custom
+  metrics/EMF, X-Ray tracing and sampling, ADOT collector config, CloudTrail auditing, and
+  end-to-end Application Signals enablement via ADOT SDKs (CloudWatch Observability EKS add-on,
+  CloudWatch Agent IAM, OTLP endpoints, ServiceEvents, Dynamic Instrumentation)
+  on EC2, ECS, EKS, and Lambda in Python, Node.js, Java, and .NET.
+  Applies to CloudWatch, alarms, dashboards, EMF, X-Ray, traces, CloudTrail, ADOT,
+  monitoring, synthetics/canaries, OR enabling/onboarding/instrumenting
+  a service for Application Signals using ADOT, ServiceEvents, auto-instrumentation,
+  or making a service show up in Application Signals.
+  Not for app logging or security threat detection.
 version: 2
 metadata:
   service: [cloudwatch, xray, cloudtrail, synthetics]
@@ -24,7 +26,7 @@ metadata:
 
 ## Overview
 
-Domain expertise for AWS observability across metrics, logs, and traces, covering the full lifecycle: **enabling** Application Signals on a service (auto-instrumentation onboarding) through **operating** it (CloudWatch alarms, dashboards, Log Insights, custom metrics, EMF, X-Ray trace analysis, CloudTrail auditing, ADOT collector config).
+Domain expertise for AWS observability across metrics, logs, and traces, covering the full lifecycle: **enabling/onboarding** Application Signals on a service using ADOT (AWS Distro for OpenTelemetry) auto-instrumentation SDKs through **operating** it (CloudWatch alarms, dashboards, Log Insights, custom metrics, EMF, X-Ray trace analysis, CloudTrail auditing, ADOT collector config).
 
 **Works best with** the [AWS MCP server](https://docs.aws.amazon.com/aws-mcp/) — enables running CLI commands, querying CloudWatch, and validating configurations directly. All guidance also works with standard AWS CLI access.
 

@@ -1,6 +1,6 @@
-# Application Signals Onboarding (Enable Auto-Instrumentation)
+# Application Signals Onboarding (Enable Auto-Instrumentation via ADOT)
 
-Enable AWS Application Signals for a service that is **not yet instrumented**, by making minimal, reviewable changes to the customer's infrastructure-as-code, Dockerfiles, CI/CD workflows, and deployment manifests. This is the *enablement* side of observability (turning an un-instrumented service into one that reports to Application Signals). For querying, alarms, dashboards, or trace analysis on an already-instrumented service, use the other references.
+Enable AWS Application Signals for a service that is **not yet instrumented**, by using ADOT (AWS Distro for OpenTelemetry) auto-instrumentation SDKs and making minimal, reviewable changes to the customer's infrastructure-as-code, Dockerfiles, CI/CD workflows, and deployment manifests. This is the *enablement* side of observability (turning an un-instrumented service into one that reports to Application Signals via ADOT). For querying, alarms, dashboards, or trace analysis on an already-instrumented service, use the other references.
 
 **Never modify application source code** (`.py`, `.js`, `.ts`, `.java`, `.cs`). Only edit IaC, Dockerfiles, CI/CD workflows, dependency files, and deployment manifests. Make the minimum changes needed and preserve existing configuration. Present changes for the user to review; do not run `terraform apply`, `cdk deploy`, or `kubectl apply` automatically.
 
