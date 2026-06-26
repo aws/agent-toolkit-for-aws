@@ -91,6 +91,8 @@ Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`
 
 > **Note:** It is recommended to pin to a specific version (e.g., `@1.6.3`) to ensure reproducible behavior and protect against supply chain risks. We recommend regularly checking [PyPI](https://pypi.org/project/mcp-proxy-for-aws/) for new stable versions and updating accordingly.
 
+> **Region configuration:** `--metadata AWS_REGION=...` sets the default Region for AWS operations performed by the remote AWS MCP Server. The local `mcp-proxy-for-aws` process separately resolves a Region from the standard provider chain (`AWS_REGION`, `AWS_DEFAULT_REGION`, or the active profile's `region`) when refreshing credentials. If your active AWS profile has no `region` set — common with AWS CLI v2 SSO / `aws login` profiles — and you see a `NoRegionError` at MCP startup, set `AWS_REGION` in an `env` block on the MCP server config.
+
 Then install skills from this repository:
 
 ```
