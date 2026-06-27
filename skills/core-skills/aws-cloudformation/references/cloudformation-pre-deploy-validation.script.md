@@ -10,7 +10,7 @@ Deterministic procedure for running CloudFormation's pre-deployment validation f
 
 Validation errors are exposed through the **new `describe-events` API** scoped to the change set. This procedure uses `call_aws` (preferred) or the AWS CLI to invoke these APIs directly.
 
-**Important:** The legacy `describe-stack-events` API does NOT return validation errors. You MUST use `describe-events --change-set-id <arn>` to retrieve validation results.
+**Important:** The legacy `describe-stack-events` API does NOT return validation errors. You MUST use `describe-events --change-set-name <arn>` to retrieve validation results.
 
 ## Parameters
 
@@ -100,7 +100,7 @@ Fetch validation results from the **new `describe-events` API**.
 
 **Constraints:**
 
-- You MUST use `aws cloudformation describe-events --change-set-id <arn> --region <region>` (via `call_aws` or CLI)
+- You MUST use `aws cloudformation describe-events --change-set-name <arn> --region <region>` (via `call_aws` or CLI)
 - You MUST NOT use `describe-stack-events` because the legacy stack events API does NOT return validation errors — it only surfaces resource provisioning events after execution
 - You MUST filter events where `EventType` equals `VALIDATION_ERROR` because these are the validation findings
 - For each validation event, You MUST extract:
@@ -151,7 +151,7 @@ Guide the user on next steps after validation.
 ```
 Change set "pre-deploy-validation-1713580000" created for stack "my-app-stack".
 
-Retrieved via: aws cloudformation describe-events --change-set-id arn:aws:cloudformation:...
+Retrieved via: aws cloudformation describe-events --change-set-name arn:aws:cloudformation:...
 
 Validation results:
   ✓ PROPERTY_VALIDATION: PASSED
@@ -166,7 +166,7 @@ The change set is ready to execute. Would you like to execute it now?
 ```
 Change set "pre-deploy-validation-1713580000" created for stack "my-app-stack".
 
-Retrieved via: aws cloudformation describe-events --change-set-id arn:aws:cloudformation:...
+Retrieved via: aws cloudformation describe-events --change-set-name arn:aws:cloudformation:...
 
 ✗ PROPERTY_VALIDATION (FAIL):
   ValidationPath: /Resources/MyBucket/Properties/NotificationConfiguration/QueueConfigurations/0
@@ -202,7 +202,7 @@ Fix the template and create a new change set.
 The `describe-events` API (scoped to change sets with validation errors) is the newer API. If the installed AWS CLI is outdated, update it: `pip install --upgrade awscli` or `brew upgrade awscli`. If the command still returns nothing, confirm the change set ARN is correct and the change set has finished creating.
 
 ### User calls describe-stack-events instead
-`describe-stack-events` returns events after the stack begins provisioning. It does NOT include pre-deployment validation errors. You MUST redirect the user to `describe-events --change-set-id <arn>`.
+`describe-stack-events` returns events after the stack begins provisioning. It does NOT include pre-deployment validation errors. You MUST redirect the user to `describe-events --change-set-name <arn>`.
 
 ### Change set stuck in CREATE_IN_PROGRESS
 Use `aws cloudformation describe-change-set --change-set-name <arn>` to check the status. Wait until it reaches `CREATE_COMPLETE` or `FAILED` before calling `describe-events`.
