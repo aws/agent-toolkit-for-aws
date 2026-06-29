@@ -32,7 +32,7 @@ Run three validation layers in order — each catches different classes of error
 2. **Security and compliance** — [check-cloudformation-template-compliance SOP](references/check-cloudformation-template-compliance.script.md) (cfn-guard)
 3. **Pre-deployment** — [cloudformation-pre-deploy-validation SOP](references/cloudformation-pre-deploy-validation.script.md) (change set + `describe-events` API)
 
-**Critical:** Pre-deployment validation errors are retrieved via `aws cloudformation describe-events --change-set-id <arn> --region <region>`. Do NOT use `describe-stack-events` — that API does not return validation errors. Note: `describe-events` is a newer API — if the command is not recognized, upgrade the AWS CLI to the latest version.
+**Critical:** Pre-deployment validation errors are retrieved via `aws cloudformation describe-events --change-set-name <arn> --region <region>`. Do NOT use `describe-stack-events` — that API does not return validation errors. Note: `describe-events` is a newer API — if the command is not recognized, upgrade the AWS CLI to the latest version.
 
 ### Troubleshoot a failed deployment
 
