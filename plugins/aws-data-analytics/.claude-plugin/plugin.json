@@ -2,7 +2,7 @@
   "author": {
     "name": "Amazon Web Services"
   },
-  "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. Covers managed Iceberg tables on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, and vector storage and semantic search on Amazon S3 Vectors.",
+  "description": "Data lake, analytics, search, and ETL workflows with S3 Tables, AWS Glue, Athena, and Amazon OpenSearch Service. Covers managed Iceberg tables on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, vector storage and semantic search on Amazon S3 Vectors, and Amazon OpenSearch Service and Serverless (migration from Solr/Elasticsearch, provisioning, vector/semantic/hybrid search, log analytics, trace analytics).",
   "homepage": "https://github.com/aws/agent-toolkit-for-aws",
   "keywords": [
     "aws",
@@ -34,10 +34,19 @@
     "rag",
     "embeddings",
     "vector-database",
-    "aurora"
+    "aurora",
+    "opensearch",
+    "opensearch-serverless",
+    "amazon-opensearch-service",
+    "elasticsearch",
+    "solr",
+    "hybrid-search",
+    "k-nn",
+    "log-analytics",
+    "trace-analytics"
   ],
   "license": "Apache-2.0",
   "name": "aws-data-analytics",
   "repository": "https://github.com/aws/agent-toolkit-for-aws",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
