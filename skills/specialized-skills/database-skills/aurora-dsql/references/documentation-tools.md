@@ -16,7 +16,7 @@ the entries below cover the ones load-bearing for DSQL workflows.
 **Use for:** finding relevant AWS documentation, looking up DSQL features, troubleshooting.
 
 Search across all AWS documentation, including API references, best practices, service guides,
-and skills (formerly Agent SOPs). Use the topic filter to search skills exclusively, or see
+and skills. Use the topic filter to search skills exclusively, or see
 skills alongside general knowledge search results. Find relevant information from multiple AWS
 knowledge sources.
 
