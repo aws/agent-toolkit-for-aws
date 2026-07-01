@@ -37,7 +37,7 @@ Everything else — Steps 0–3a, **4 (deploy), 5 (wire), 6 (instrument/session)
 The CLI is the **npm** package `@aws/agentcore` (Node.js 20+). It is NOT a pip package — do not `pip install` it.
 
 ```bash
-agentcore --version        # need >= 0.9.0
+agentcore --version        # need >= 0.20.0 (payment commands are preview, added in 0.20.x)
 # if missing or older:
 npm install -g @aws/agentcore
 ```
@@ -74,13 +74,27 @@ agentcore add payment-manager \
 
 `eip155:84532` is Base Sepolia (testnet). Names: alphanumeric + underscores, ≤48 chars, start with a letter.
 
-**3b. Payment connector — needs provider credentials. The DEVELOPER runs this, not the agent.** The agent presents the command but must NOT execute it or handle the credentials. This single command creates the credential provider and the connector. The CLI writes the provider secrets in **plaintext to `agentcore/.env.local`** and records the credential locally; `agentcore deploy` (Step 4) then uploads them to **AgentCore Identity** (`agentcore.json` keeps only a reference). The provider secrets are used only here — nothing later reuses them.
+**3b. Payment connector — needs provider credentials. The DEVELOPER runs this, not the agent.** The agent presents the prerequisites and the command below, but must NOT execute it or handle the credentials. This single command creates the credential provider and the connector. The CLI writes the provider secrets in **plaintext to `agentcore/.env.local`** and records the credential locally; `agentcore deploy` (Step 4) then uploads them to **AgentCore Identity** (`agentcore.json` keeps only a reference). The provider secrets are used only here — nothing later reuses them.
 
-Recommended — interactive wizard (cleanest for input: the secrets never appear in the command, shell history, or process list; the CLI still writes them to `agentcore/.env.local` either way — see the note below):
+**Before running — get your provider credentials** (do this first; the connector command needs them):
+
+- **Coinbase CDP** (<https://portal.cdp.coinbase.com/>):
+    1. Create or log in to a Coinbase Developer Platform account and project
+    2. Generate an API key (or reuse existing) — note the **API Key ID** and **API Key Secret**
+    3. Generate a **Wallet Secret** (for cryptographic wallet operations like signing transactions)
+    4. Under Project > Wallet > Embedded Wallets > Policies, **enable Delegated signing** (required)
+- **Stripe Privy** (<https://dashboard.privy.io/>):
+    1. Create a **dedicated** Privy app for AgentCore (do not reuse apps serving other purposes)
+    2. Copy the **App ID** and **App Secret** from app settings
+    3. Navigate to Wallet Infrastructure > Authorization > New Key to generate a P-256 key pair
+    4. The private key is prefixed with `wallet-auth:` — **strip this prefix**, use only the raw base64 content (starting `MIGHAgEA...`)
+    5. Note the **Authorization ID** (signer ID) shown alongside the key
+
+Recommended — interactive wizard. Run the command with **no flags** (the secrets never appear in the command, shell history, or process list; the CLI still writes them to `agentcore/.env.local` either way — see the security note below). Passing `--manager`/`--name`/`--provider` does NOT trigger the wizard — those flags switch the CLI to non-interactive mode and it then requires every secret flag too, failing with "Missing required options" otherwise:
 
 ```bash
-agentcore add payment-connector --manager <ManagerName> --name <ConnectorName> --provider CoinbaseCDP
-# the wizard then prompts for the secrets:
+agentcore add payment-connector
+# the wizard prompts for everything interactively — manager, connector name, provider, then the secrets:
 #   CoinbaseCDP : API Key ID, API Key Secret, Wallet Secret
 #   StripePrivy : App ID, App Secret, Authorization Private Key, Authorization ID
 ```
@@ -101,31 +115,16 @@ agentcore add payment-connector --manager <ManagerName> --name <ConnectorName> -
 --authorization-id ezzzzzzzzzzzzzzzzzzzzzzzz
 ```
 
-Notes:
+> **Wizard vs flags:** The flags `--manager`, `--name`, and `--provider` are marked `[non-interactive]` — if you provide any of them, the CLI switches to **non-interactive mode** and expects **all required secrets as flags**. Running it with those three flags but omitting the secrets errors with missing-required-flags rather than dropping back to the wizard. For the interactive wizard, run the command with no flags: `agentcore add payment-connector`. Then wait for the developer to confirm it's done.
 
-- **Coinbase CDP** (<https://portal.cdp.coinbase.com/>): enable Delegated signing under Project > Wallet > Embedded Wallets > Policies.
-    How to get these credentials:
-    1. Create or log in to a Coinbase Developer Platform account and project
-    2. Generate an API key (or reuse existing) — note the **API Key ID** and **API Key Secret**
-    3. Generate a **Wallet Secret** (for cryptographic wallet operations like signing transactions)
-    4. Under Project > Wallet > Embedded Wallets > Policies, **enable Delegated signing**
-
-- **Stripe Privy** (<https://dashboard.privy.io/>): strip the `wallet-auth:` prefix from the Authorization Private Key (use the raw base64 starting `MIGHAgEA...`).
-    How to get these credentials:
-    1. Create a **dedicated** Privy app for AgentCore (do not reuse apps serving other purposes)
-    2. Copy the **App ID** and **App Secret** from app settings
-    3. Navigate to Wallet Infrastructure > Authorization > New Key to generate a P-256 key pair
-    4. The private key is prefixed with `wallet-auth:` — **strip this prefix**, use only the raw base64 content
-    5. Note the **Authorization ID** (signer ID) shown alongside the key
+Security:
 
 - **`agentcore/.env.local` holds the provider secrets in plaintext.** The CLI writes it when the connector is added (wizard or flags) and uploads it to AgentCore Identity at `agentcore deploy`. Ensure it is gitignored — the Python scaffold's default `.gitignore` only lists `.env`, so add `.env.local` (or `.env.*`). The agent must not read `agentcore/.env.local`.
 - The agent presents the command but never runs it or handles the credentials; never paste credentials into chat.
 
 ### Step 4: Deploy (create the resources) — agent runs
 
-```
-
-> **Wizard vs flags:** The flags `--manager`, `--name`, and `--provider` are marked `[non‑interactive]` — if you provide any of them, the CLI switches to **non‑interactive mode** and expects **all required secrets as flags**. If you run the command with those three flags but omit the secrets, the CLI will error with missing required flags, not drop back to the wizard. To get the interactive wizard, run the command without any flags: `agentcore add payment-connector`. Then wait for the developer to confirm it's done.bash
+```bash
 agentcore deploy -y
 ```
 
@@ -135,7 +134,7 @@ agentcore deploy -y
 
 Payments are wired with a small local tool, not a framework-specific plugin — so the same code works in any framework.
 
-1. **Copy [`scripts/x402_payment_tool.py`](../scripts/x402_payment_tool.py) into the agent project.** It exposes `x402_fetch(url, method="GET")`, which on a `402` extracts the x402 challenge, calls `ProcessPayment`, builds the version-aware proof (v1 `X-PAYMENT` / v2 `PAYMENT-SIGNATURE`), and retries with a fresh client. Base Sepolia settlement is intermittently transient (ProcessPayment succeeds but the paid retry still returns 402), so the tool re-runs the full settle flow with a fresh challenge + nonce up to `X402_MAX_PAYMENT_ATTEMPTS` times (default 5, env-overridable) before giving up. It reads its config from environment variables (set in Step 8): `PAYMENT_MANAGER_ARN`, `PAYMENT_INSTRUMENT_ID`, `PAYMENT_SESSION_ID`, `PAYMENT_USER_ID`, `AWS_REGION`.
+1. **Copy [`scripts/x402_payment_tool.py`](../scripts/x402_payment_tool.py) into the agent project.** It exposes `x402_fetch(url, method="GET")`, which on a `402` calls the SDK's `PaymentManager.generate_payment_header` — the SDK validates the 402, selects the network, processes the payment, and builds the version-aware proof (v1 `X-PAYMENT` / v2 `PAYMENT-SIGNATURE`) — then retries with a fresh client. Base Sepolia settlement is intermittently transient (the header is valid but the paid retry still returns 402), so the tool re-runs the settle+replay flow up to `X402_MAX_PAYMENT_ATTEMPTS` times (default 5, env-overridable) before giving up. It reuses a single idempotency token across those retries, so `ProcessPayment` stays idempotent — every attempt replays the same on-chain authorization/nonce and the user is never charged twice (a retry either settles the not-yet-settled payment or, if it was already settled, reverts on-chain). It reads its config from environment variables (set in Step 8): `PAYMENT_MANAGER_ARN`, `PAYMENT_INSTRUMENT_ID`, `PAYMENT_SESSION_ID`, `PAYMENT_USER_ID`, `AWS_REGION`.
 
 2. **Register `x402_fetch` as a tool** in the agent's framework. The tool function is identical; only the registration decorator differs:
 
