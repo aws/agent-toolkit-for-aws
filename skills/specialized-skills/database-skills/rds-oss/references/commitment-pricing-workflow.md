@@ -16,6 +16,7 @@ The analyzer supports two modes.
 **Offline:** instance type, engine (`mysql`, `mariadb`, or `postgres`), number of instances, region, optional `--multi-az` flag.
 
 **Constraints for parameter acquisition:**
+
 - You MUST ask for all required parameters upfront in a single prompt
 - You MUST ask which engine (`mysql`, `mariadb`, or `postgres`) for offline mode
 - You MUST confirm captured parameters before running the analyzer
@@ -25,6 +26,7 @@ The analyzer supports two modes.
 ### 2. Run the Analyzer
 
 **Constraints:**
+
 - You MUST use the script; RI and DSP math is non-trivial and combines multiple API surfaces
 - You MUST pass `--region` and (for offline mode) `--engine` matching the workload
 - You SHOULD pass `--format json` (the analyzer emits JSON) and present the results as a formatted table to the user
@@ -45,6 +47,7 @@ python3 scripts/rds_commitment_pricing_analyzer.py --region us-east-1 offline \
 ### 3. Interpret Coverage Limits
 
 **Constraints:**
+
 - You MUST surface the script's `notes` array — these cover common misconceptions
 - You MUST NOT claim DSP savings for instance families the analyzer marks as ineligible (r5, r6g, older). DSP only covers latest-generation families (r7g, r7i, r8g, r8gd, m7g, m7i, c7g, c7i, x8g).
 - You MUST explain Multi-AZ RI pricing: Multi-AZ RIs cost more than Single-AZ, and a Single-AZ RI does NOT cover a Multi-AZ instance. The user must buy the correct deployment type.
@@ -62,6 +65,7 @@ Every comparison MUST include:
 5. The script's `notes` when present (DSP ineligibility, Multi-AZ separation, etc.)
 
 **Constraints:**
+
 - You MUST cite both dollar and percentage savings — neither alone is sufficient (dollars alone hide the scale; percentages alone hide the magnitude)
 - You MUST show upfront payment when non-zero — cash-flow impact matters for finance approval
 - You MUST NOT run any purchase API (`purchase-reserved-db-instances-offering`, Savings Plans purchase calls) because this workflow is advisory-only
@@ -72,6 +76,7 @@ Every comparison MUST include:
 For workload-pattern questions, pull guidance from [commitment-scenarios.md](commitment-scenarios.md).
 
 **Constraints:**
+
 - You SHOULD match the user's workload to a scenario in the scenarios reference and explain why
 - You MUST NOT recommend 3yr terms for workloads the user indicates may be retired within the term, because RIs and DSPs are use-it-or-lose-it
 - You MUST warn that RDS RIs do NOT transfer to Aurora if the user is considering Aurora migration within the term — different engine, different commitment product

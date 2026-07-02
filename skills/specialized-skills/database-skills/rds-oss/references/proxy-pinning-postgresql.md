@@ -36,6 +36,7 @@ RDS Proxy for PostgreSQL uses connection multiplexing at the session level. Cert
 
 ### search_path
 Many ORMs and frameworks set `search_path` per connection. This pins every connection. Mitigation:
+
 - Set `search_path` in the proxy's init query instead of per-connection
 - Or set it in the PostgreSQL parameter group as the default
 
@@ -43,6 +44,7 @@ Many ORMs and frameworks set `search_path` per connection. This pins every conne
 PostgreSQL's extended query protocol (Parse/Bind/Execute) creates server-side prepared statements implicitly. Many drivers (libpq, JDBC, node-postgres) use this by default. This causes pinning.
 
 Mitigation:
+
 - JDBC: set `prepareThreshold=0` to disable server-side prepared statements
 - node-postgres: avoid passing a `name` property in query config objects (named queries create persistent server-side prepared statements that pin connections)
 - Python psycopg2: uses simple query protocol by default (no pinning)

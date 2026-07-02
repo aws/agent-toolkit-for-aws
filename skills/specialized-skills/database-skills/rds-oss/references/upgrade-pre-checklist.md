@@ -14,6 +14,7 @@ aws rds create-db-snapshot \
 ## Step 2: Check Automated Backup Status
 
 Automated backups are NOT required for in-place upgrades. However:
+
 - If automated backups ARE enabled, RDS automatically takes a pre-upgrade snapshot before starting the upgrade. This is a safety net you get for free.
 - If automated backups are NOT enabled, RDS skips the pre-upgrade snapshot and proceeds directly. You lose that automatic rollback point.
 - Automated backups ARE required for Blue/Green deployments (replication depends on them).
@@ -26,6 +27,7 @@ aws rds describe-db-instances \
 ```
 
 If `0` and you want the automatic pre-upgrade snapshot (recommended):
+
 ```bash
 aws rds modify-db-instance \
   --db-instance-identifier <instance-id> \
@@ -56,6 +58,7 @@ CALL mysql.rds_upgrade_prechecks();
 ```
 
 If this procedure is not available, the key checks the prechecker runs are:
+
 - Reserved keywords used as identifiers (table names, column names)
 - Orphaned InnoDB tables (`.frm` without `.ibd`)
 - Tables using non-native partitioning
@@ -111,6 +114,7 @@ aws rds restore-db-instance-from-db-snapshot \
 ```
 
 Then upgrade the test instance:
+
 ```bash
 aws rds modify-db-instance \
   --db-instance-identifier <instance-id>-upgrade-test \
@@ -121,12 +125,14 @@ aws rds modify-db-instance \
 ```
 
 After the test instance is upgraded and available:
+
 1. Validate database operations — connect, run key queries, check schema integrity
 2. Verify application connectivity — point your application (or a test instance of it) at the upgraded test database and confirm the application driver works correctly with the new engine version. Auth plugin changes (e.g., `caching_sha2_password` in MySQL 8.0), TLS requirements, and connection string parameters may behave differently.
 
 ## Step 8: Consider Blue/Green Deployment
 
 For production instances, Blue/Green is safer than in-place:
+
 - Creates a staging copy on the target version
 - Keeps it in sync via replication
 - Switchover with typically under 1 minute of downtime
@@ -138,6 +144,7 @@ Requirements: automated backups enabled, binlog_format=ROW (MySQL/MariaDB), engi
 Before upgrading, review the release notes for the target version to understand behavioral changes, new features, and deprecations. Key changes to watch for are called out below by engine.
 
 **MySQL** (e.g., 5.7 → 8.0):
+
 - New data dictionary (no more `.frm` files)
 - New TempTable engine replaces MEMORY for internal temp tables
 - GROUP BY no longer implicitly sorts results
@@ -146,11 +153,13 @@ Before upgrading, review the release notes for the target version to understand 
 - Release notes: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/
 
 **MariaDB** (e.g., 10.6 → 10.11 or 11.4):
+
 - Each major version introduces new SQL features, optimizer changes, and storage engine updates
 - Check for deprecated features being removed in the target version
 - Release notes: https://mariadb.com/kb/en/release-notes/
 
 **PostgreSQL** (e.g., 14 → 15 or 16):
+
 - Each major version refines the planner cost model, which can change query plans
 - New features like Memoize (PG 14), work_mem changes (PG 15), subquery decorrelation (PG 16)
 - Extension compatibility may change between major versions
@@ -161,6 +170,7 @@ You SHOULD read the "Incompatible Changes" or "Removed Features" section of the 
 ## Step 10: Notify Stakeholders
 
 Before executing:
+
 - Notify application teams about the maintenance window
 - Confirm connection strings don't hardcode the engine version
 - Verify application compatibility with the target version

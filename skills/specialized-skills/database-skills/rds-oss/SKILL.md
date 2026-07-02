@@ -98,6 +98,7 @@ aws rds create-db-instance \
 ```
 
 After instance creation, run the following commands to configure TLS enforcement and log group encryption (these are user-executed steps that the skill presents but does not invoke directly):
+
 ```bash
 # Create a custom parameter group with TLS enforcement (MySQL example)
 aws rds create-db-parameter-group --db-parameter-group-family mysql8.4 \
@@ -113,6 +114,7 @@ aws logs associate-kms-key --log-group-name /aws/rds/instance/<name>/slowquery -
 ```
 
 **Constraints:**
+
 - You MUST use `--manage-master-user-password` for production. NEVER use `--master-user-password` with a plaintext password for production instances.
 - You MUST check the latest available engine version via `describe-db-engine-versions` rather than hardcoding a version.
 - You MUST enable Multi-AZ, encryption, Performance Insights (7-day), backup retention (7 days), and deletion protection unless the user explicitly says otherwise.
@@ -139,6 +141,7 @@ See [references/verify-dependencies.md](references/verify-dependencies.md) for t
 Use the [Decision Guide](#decision-guide) to choose a workflow reference, the catalog presentation (broad requests), or a general-knowledge answer (out-of-scope).
 
 **Constraints:**
+
 - You MUST name the workflow you're routing to
 - You MUST pass along instance ID, region, engine, or workload details the user already supplied — do not re-ask
 - You MAY ask one clarifying question if a request straddles two workflows (e.g., "upgrade with minimal downtime" = upgrade + Blue/Green)
@@ -149,6 +152,7 @@ Use the [Decision Guide](#decision-guide) to choose a workflow reference, the ca
 Load the matching reference and follow its `## Tasks` section.
 
 **Constraints:**
+
 - You MUST explain what step is executing and which tool is being called before running it
 - You MUST NOT execute `modify-*`, `switchover-*`, purchase APIs, or `create-db-proxy`. Allowed: `create-db-instance` (for new instance provisioning), `describe-*`, `list-*`, `get-*`, `send-command` for SSM prechecks.
 - You MUST NOT handle DB credentials directly. Use user-supplied secret ARNs, pre-configured SSM parameters, or ask the user to paste script output.
@@ -251,6 +255,3 @@ Do NOT grant write/admin beyond the permissions listed above to work around perm
 - [RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html) · [RDS Blue/Green Deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
 - [RDS Extended Support](https://aws.amazon.com/rds/extended-support/)
 - [RDS Security Best Practices](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_BestPractices.Security.html)
-
-
-

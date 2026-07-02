@@ -13,6 +13,7 @@ User mentions: "should I use RDS Proxy", "too many connections", "connection poo
 Pull connection data to assess whether proxy is needed.
 
 **Constraints:**
+
 - You MUST ask for the DB instance identifier and region upfront
 - You MUST run `aws rds describe-db-instances` to get engine, instance class, and vCPU count
 - You MUST pull CloudWatch metrics for the last 7 days from the `AWS/RDS` namespace:
@@ -25,6 +26,7 @@ Pull connection data to assess whether proxy is needed.
 - You MUST determine `max_connections` for the instance class. The RDS default is roughly `LEAST({DBInstanceClassMemory/9531392}, 5000)`. Check the parameter group for overrides.
 
 Example CLI to pull the DB-side connection metric:
+
 ```bash
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
@@ -35,12 +37,15 @@ aws cloudwatch get-metric-statistics \
   --period 3600 --statistics Average Maximum \
   --region <region>
 ```
+
 For proxy-side metrics, swap the dimension to `Name=ProxyName,Value=<proxy-name>`. For p99, drop `--statistics` and pass `--extended-statistics p99` instead.
+
 - You MUST calculate connection utilization: `peak_connections / max_connections × 100`%
 
 ### 2. Assess Proxy Need
 
 **Constraints:**
+
 - You MUST categorize the result using these thresholds:
   - 🔴 **Recommended**: peak connections > 80% of `max_connections`, OR Lambda/serverless callers present
   - 🟡 **Consider**: peak connections 50–80% of `max_connections`, OR frequent connection churn (spiky workload)
@@ -54,6 +59,7 @@ For proxy-side metrics, swap the dimension to `Name=ProxyName,Value=<proxy-name>
 Connect to the database or ask the user to run diagnostic queries to identify SQL patterns that cause proxy pinning.
 
 **Constraints:**
+
 - You MUST explain what pinning is: the proxy pins a frontend connection to a specific backend connection, preventing multiplexing — the proxy's core benefit
 - For MySQL/MariaDB, check for patterns from [proxy-pinning-mysql.md](proxy-pinning-mysql.md)
 - For PostgreSQL, check for patterns from [proxy-pinning-postgresql.md](proxy-pinning-postgresql.md)
@@ -66,6 +72,7 @@ Connect to the database or ask the user to run diagnostic queries to identify SQ
 ### 4. Estimate Cost
 
 **Constraints:**
+
 - You MUST calculate proxy cost based on vCPU count of the target instance. RDS Proxy pricing is **$0.015 per vCPU per hour** in us-east-1 (verify for other regions; pricing varies slightly).
 - Monthly cost = `vCPUs × $0.015 × 730 hours`
 - You MUST present cost alongside the benefit (connection multiplexing value, failover improvement ≈ 66% faster than direct)
@@ -81,6 +88,7 @@ Connect to the database or ask the user to run diagnostic queries to identify SQ
 ### 6. Present Recommendation
 
 **Constraints:**
+
 - You MUST present a clear verdict: Recommended / Consider / Not Recommended
 - You MUST include: current connection utilization, pinning risk level, estimated monthly cost, and key tradeoffs
 - You MUST NOT create an RDS Proxy — this workflow is advisory only

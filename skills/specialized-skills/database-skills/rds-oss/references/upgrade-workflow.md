@@ -13,6 +13,7 @@ User mentions: "upgrade this instance", "upgrade RDS MySQL/MariaDB/PostgreSQL", 
 Gather instance metadata. RDS uses `describe-db-instances`, not `describe-db-clusters`.
 
 **Constraints:**
+
 - You MUST ask for the DB instance identifier and region upfront (default: `us-east-1`)
 - You MUST run `aws rds describe-db-instances --db-instance-identifier <id>` to identify the instance
 - You MUST capture: engine (`mysql`, `mariadb`, or `postgres`), engine version, status, DB parameter group, instance class, Multi-AZ, encryption, deletion protection
@@ -28,6 +29,7 @@ aws rds describe-db-engine-versions --engine <engine> --engine-version <current>
 ```
 
 **Constraints:**
+
 - You MUST run `describe-db-engine-versions` rather than hard-coding versions, because valid targets change as AWS ships releases
 - Engine values are exactly: `mysql`, `mariadb`, or `postgres`
 - You MUST NOT mention LTS releases — RDS does NOT have LTS (unlike Aurora). Present the latest available version and the latest minor within the current major.
@@ -41,6 +43,7 @@ aws rds describe-db-engine-versions --engine <engine> --engine-version <current>
 ### 3. Live Database Precheck
 
 **Constraints:**
+
 - You MUST ask the user how to connect, offering three options:
   1. SSM Run Command (requires EC2 instance ID + credentials)
   2. Direct connection (publicly accessible or tunneled)
@@ -55,6 +58,7 @@ aws rds describe-db-engine-versions --engine <engine> --engine-version <current>
 ### 4. Query Load Analysis (Optional)
 
 **Constraints:**
+
 - You MUST offer this step after prechecks and let the user opt in — don't force it
 - You MUST pull top 5 queries from `performance_schema` (MySQL/MariaDB) or `pg_stat_statements` (PostgreSQL)
 - You MUST run EXPLAIN in the engine-appropriate format: `EXPLAIN FORMAT=JSON` (MySQL/MariaDB) or `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` (PostgreSQL)
@@ -66,6 +70,7 @@ aws rds describe-db-engine-versions --engine <engine> --engine-version <current>
 See [upgrade-pre-checklist.md](upgrade-pre-checklist.md) for the 10-step walkthrough.
 
 **Constraints:**
+
 - You MUST recommend a manual snapshot before any upgrade
 - You MUST explain that automated backups are NOT required for in-place upgrades, but when enabled RDS takes a pre-upgrade snapshot automatically (and skips it when disabled)
 - You MUST explain that automated backups ARE required for Blue/Green deployments
@@ -82,6 +87,7 @@ See [upgrade-pre-checklist.md](upgrade-pre-checklist.md) for the 10-step walkthr
 See [upgrade-post-checklist.md](upgrade-post-checklist.md).
 
 **Constraints:**
+
 - You MUST NOT blanket-recommend `ANALYZE TABLE` on all user tables — it's expensive and shouldn't run during active traffic. Recommend it only if regressions are observed, targeting affected tables in a low-traffic window.
 - You MUST recommend monitoring CloudWatch metrics (all engines): CPUUtilization, DatabaseConnections, ReadIOPS, WriteIOPS, FreeableMemory, FreeStorageSpace
 - You MUST NOT reference non-CloudWatch metrics (e.g., `Created_tmp_disk_tables`) in the CloudWatch monitoring step — those live in `performance_schema`

@@ -10,6 +10,7 @@ aws rds describe-db-instances \
 ```
 
 Confirm:
+
 - EngineVersion matches the target version
 - DBInstanceStatus is `available`
 - Parameter group status is `in-sync` (if `pending-reboot`, reboot the instance)
@@ -19,6 +20,7 @@ Confirm:
 Connect to the instance and confirm basic operations work:
 
 **MySQL/MariaDB:**
+
 ```sql
 SELECT VERSION();
 SHOW DATABASES;
@@ -26,6 +28,7 @@ SELECT 1;
 ```
 
 **PostgreSQL:**
+
 ```sql
 SELECT version();
 \l
@@ -33,6 +36,7 @@ SELECT 1;
 ```
 
 Check that:
+
 - Connection succeeds (for MySQL 8.0: auth plugin may have changed to `caching_sha2_password` — older clients may need `--default-auth=mysql_native_password`)
 - All expected databases are present
 - Key application queries return expected results
@@ -40,11 +44,13 @@ Check that:
 If you observe query performance regressions at this step, table statistics may be stale. The new optimizer in the target version relies more heavily on accurate statistics. You can refresh statistics for the affected tables:
 
 **MySQL/MariaDB:**
+
 ```sql
 ANALYZE TABLE schema_name.table_name;
 ```
 
 **PostgreSQL:**
+
 ```sql
 ANALYZE schema_name.table_name;
 ```
@@ -66,11 +72,13 @@ Beyond basic database connectivity, verify that your actual application connects
 If you created a custom parameter group to preserve previous behavior, confirm the key settings took effect:
 
 **MySQL (5.7 → 8.0):**
+
 ```sql
 SELECT @@character_set_server, @@collation_server, @@sql_mode, @@innodb_strict_mode;
 ```
 
 **PostgreSQL:**
+
 ```sql
 SHOW server_encoding;
 SHOW lc_collate;
@@ -85,21 +93,25 @@ If you used the default parameter group for the target family, these will be the
 The optimizer in the target version may choose different execution plans. Run EXPLAIN on your most critical queries and compare with pre-upgrade behavior:
 
 **MySQL/MariaDB:**
+
 ```sql
 EXPLAIN FORMAT=JSON SELECT ... ;
 ```
 
 Watch for (MySQL 8.0):
+
 - Hash joins replacing nested loop joins (new in 8.0 — usually faster, but verify)
 - GROUP BY results no longer implicitly sorted — add explicit ORDER BY if your app relied on this
 - Index choices may differ due to updated cost model
 
 **PostgreSQL:**
+
 ```sql
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT ... ;
 ```
 
 Watch for (PG 15+):
+
 - work_mem per-operation accounting changes
 - Memoize nodes on nested loops (PG 14+)
 - Parallel query threshold changes
@@ -140,6 +152,7 @@ If any metric shows a significant regression compared to pre-upgrade baseline, i
 Only proceed with cleanup after you have confirmed the upgrade was successful and you do not observe any performance or operational regressions. Keep the pre-upgrade snapshot and old Blue/Green environment available as a rollback option until you are fully confident.
 
 Once confirmed:
+
 - Delete the pre-upgrade snapshot (it incurs storage charges)
 - Delete any test instances created during pre-upgrade validation
 - If Blue/Green was used: delete the old blue environment and the Blue/Green deployment

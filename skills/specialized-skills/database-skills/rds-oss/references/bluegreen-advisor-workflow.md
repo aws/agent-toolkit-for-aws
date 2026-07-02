@@ -11,6 +11,7 @@ User mentions: "blue green deployment", "zero downtime DDL", "schema change with
 ### 1. Verify Prerequisites
 
 **Constraints:**
+
 - You MUST verify `aws` CLI is available and credentials are valid
 - You MUST check the source instance is in `available` state before creating a Blue/Green deployment
 - You MUST verify automated backups are enabled — Blue/Green replication depends on them
@@ -24,6 +25,7 @@ User mentions: "blue green deployment", "zero downtime DDL", "schema change with
 Determine if the planned change is safe for Blue/Green replication.
 
 **Constraints:**
+
 - You MUST ask the user what DDL or maintenance operation they plan to run
 - For MySQL/MariaDB, you MUST check [bluegreen-ddl-mysql.md](bluegreen-ddl-mysql.md) for the full matrix. Key patterns:
   - **Breaking**: type changes (`MODIFY COLUMN`, `CHANGE COLUMN`), `ADD COLUMN ... AFTER`, table/column rename — break binlog replication, switchover immediately after
@@ -37,18 +39,22 @@ Determine if the planned change is safe for Blue/Green replication.
 ### 3. Create Blue/Green Deployment
 
 **Constraints:**
+
 - You MUST provide the correct CLI command. For both RDS MySQL/MariaDB and RDS PostgreSQL:
+
   ```bash
   aws rds create-blue-green-deployment \
     --blue-green-deployment-name <name> \
     --source <instance-arn>
   ```
+
 - You MUST recommend monitoring status until `AVAILABLE` before proceeding to DDL
 - You MUST NOT proceed to DDL until the green environment is fully synced
 
 ### 4. Apply Changes on Green
 
 **Constraints:**
+
 - You MUST instruct the user to connect to the green environment endpoint (not blue) — the whole point is to apply changes on green without affecting production traffic
 - You MUST recommend verifying the green schema matches blue before applying changes
 - You MUST warn if the DDL will break replication and advise proceeding directly to switchover after
@@ -57,6 +63,7 @@ Determine if the planned change is safe for Blue/Green replication.
 ### 5. Switchover
 
 **Constraints:**
+
 - You MUST recommend setting green to read-only briefly before switchover to avoid conflicts in transit
 - You MUST NOT execute `aws rds switchover-blue-green-deployment` without explicit user confirmation, because switchover is customer-visible and irreversible-in-place
 - You MUST recommend a switchover timeout appropriate for the database size (default 300s, up to 900s for large databases)
@@ -66,18 +73,22 @@ Determine if the planned change is safe for Blue/Green replication.
 ### 6. Post-Switchover Validation
 
 **Constraints:**
+
 - You MUST recommend verifying schema changes are in place on the production endpoint
 - You MUST recommend checking row counts and application connectivity
 - For PostgreSQL: you MUST recommend resetting sequences after switchover, because PostgreSQL sequences are NOT replicated by logical replication and the new primary's sequences may be behind. Provide the fix:
+
   ```sql
   SELECT setval('my_table_id_seq', (SELECT MAX(id) FROM my_table));
   ```
+
   Remind the user to check ALL serial/identity columns, not just the one throwing errors.
 - You MUST note the old blue environment remains for rollback and incurs charges until deleted
 
 ### 7. Cleanup
 
 **Constraints:**
+
 - You MUST provide the delete commands for both the Blue/Green deployment resource and the old blue environment
 - You MUST warn that the old environment incurs standard billing until deleted
 - You MUST recommend keeping the old blue for at least 24–72 hours after switchover — it's the cheapest rollback path if an unexpected regression emerges

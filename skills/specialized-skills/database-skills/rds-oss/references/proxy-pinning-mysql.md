@@ -33,6 +33,7 @@ Pinning means the proxy locks a frontend connection to a specific backend databa
 ## Diagnostic: Check Current Pinning Rate
 
 If RDS Proxy is already deployed, check pinning via CloudWatch:
+
 - `ClientConnectionsSetupSucceeded` vs `DatabaseConnectionsCurrentlySessionPinned`
 - Pinning rate = pinned / total × 100
 - If > 30%, proxy benefit is significantly reduced

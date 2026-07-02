@@ -25,6 +25,7 @@
 **Example**: 5 RDS MySQL instances + 3 RDS PostgreSQL instances, mix of r6g and r7g.
 
 **Recommendation**: Hybrid approach.
+
 - RI for r6g instances (DSP doesn't cover r6g) — engine-specific RIs
 - DSP covers r7g instances across both MySQL and PostgreSQL
 - Migrate r6g → r7g over time, shift more to DSP
@@ -33,7 +34,8 @@
 
 **Example**: RDS PostgreSQL Multi-AZ primary + 2 Single-AZ read replicas.
 
-**Recommendation**: 
+**Recommendation**:
+
 - Multi-AZ RI for the primary (must be Multi-AZ offering)
 - Single-AZ RI for each read replica (separate offerings)
 - Or DSP to cover all three with one commitment
