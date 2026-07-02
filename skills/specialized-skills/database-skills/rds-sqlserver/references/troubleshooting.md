@@ -76,6 +76,7 @@ setspn -L <service-account>
 ```
 
 Most common causes (in order):
+
 1. **Connected to RDS endpoint, not CNAME** → no SPN for endpoint → Kerberos fails
 2. **CNAME doesn't resolve** → DNS problem
 3. **SPN missing** → self-managed AD needs manual setspn
@@ -88,6 +89,7 @@ Kerberos attempted, fell back to NTLM. Same root cause analysis as SSPI errors:
 - Most likely: client connected to RDS endpoint rather than the CNAME
 - Fix: use CNAME
 - Verify after fix:
+
 ```sql
 SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID
 -- Expected: KERBEROS
@@ -111,6 +113,7 @@ Same VPC → use SG ID. Cross-VPC → use CIDR (SG refs don't cross VPC boundary
 ### 2. Route tables
 
 For cross-VPC connections:
+
 ```bash
 aws ec2 describe-route-tables --route-table-ids rtb-xxxx \
   --query 'RouteTables[0].Routes'
@@ -124,6 +127,7 @@ aws ec2 describe-network-acls --filters Name=vpc-id,Values=vpc-xxxx
 ```
 
 Check:
+
 - Inbound: allow 1433
 - Outbound: allow ephemeral ports 1024-65535 (return traffic)
 
@@ -188,6 +192,7 @@ Don't tunnel for production. Use VPC-resident compute (EC2/ECS/Lambda) with the 
 ### `pymssql.OperationalError: (20002, b'DB-Lib error message 20002, severity 9: Adaptive Server connection failed')`
 
 Generic — check:
+
 - `port="1433"` is a string, not int
 - `tds_version="7.3"` is set (default 4.2 fails on modern RDS)
 - `encryption="require"` (or force the server side to not require TLS for testing)
@@ -205,6 +210,7 @@ pymssql wheel missing FreeTDS. Switch to pyodbc on Windows.
 ### `A connection was successfully established... but then error occurred during pre-login handshake`
 
 Either TLS version or cert trust:
+
 - `.NET Framework < 4.7` defaults to TLS 1.0 → upgrade Framework or set `ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12`
 - Cert chain — install CA bundle
 
@@ -222,6 +228,7 @@ Connection timeout too short or network slow. Default is 15 seconds. Increase:
 ### `com.microsoft.sqlserver.jdbc.SQLServerException: The driver could not establish a secure connection`
 
 TLS issue. Either:
+
 - JDK version doesn't support TLS 1.2 — use JDK 11+
 - Truststore missing CA — build truststore from global-bundle.pem
 - JDK FIPS settings blocking RSA cipher — check `java.security` file
@@ -239,6 +246,7 @@ Network. Same TCP reachability checks as above.
 ### `ConnectionError: Failed to connect to ... in 15000ms`
 
 Default connect timeout too short. Increase:
+
 ```javascript
 options: { connectTimeout: 30000 }
 ```
@@ -254,10 +262,12 @@ Post-login — database/schema/table doesn't exist or user lacks permission. Not
 ## Access denied to Secrets Manager from Lambda
 
 Lambda in VPC can't reach Secrets Manager endpoint:
+
 - No NAT gateway AND no VPC endpoint for secretsmanager
 - Create VPC endpoint (interface) in Lambda's subnets — see `networking.md`
 
 Or Lambda execution role missing permission:
+
 - `secretsmanager:GetSecretValue` on the secret ARN
 - `kms:Decrypt` on the CMK (if customer-managed)
 
@@ -311,6 +321,7 @@ WHERE session_id = @@SPID
 ```
 
 This is the fastest way to confirm:
+
 - Authentication worked and of what type
 - Encryption is active
 - Which driver is connected

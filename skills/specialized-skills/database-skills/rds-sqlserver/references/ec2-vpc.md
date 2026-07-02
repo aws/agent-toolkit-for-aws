@@ -25,6 +25,7 @@ Using SG IDs (`--source-group sg-xxx`) works only within the same VPC. For cross
 ### Subnets
 
 EC2 and RDS can be in different subnets of the same VPC as long as:
+
 - Route tables connect them (default VPC routing covers this)
 - NACLs don't block 1433 in either direction
 
@@ -120,6 +121,7 @@ Do NOT use `rds-db:connect` — that's for IAM auth on Postgres/MySQL, not SQL S
 Connection strings pointing at the RDS endpoint (not IP) automatically redirect to the new primary after failover (typically 60-120 seconds).
 
 Tune driver timeouts to handle the gap:
+
 - **pymssql**: `login_timeout=10`
 - **.NET**: `Connection Timeout=30;MultiSubnetFailover=True`
 - **JDBC (HikariCP)**: `maxLifetime < 1800000` + `validationTimeout=5000`
@@ -140,6 +142,7 @@ Add `pool_pre_ping` (SQLAlchemy) or `connectionTestQuery: "SELECT 1"` (HikariCP)
 ## Verify
 
 From EC2 shell:
+
 ```bash
 # TCP reachability
 nc -zv mydb.xxxx.us-east-1.rds.amazonaws.com 1433

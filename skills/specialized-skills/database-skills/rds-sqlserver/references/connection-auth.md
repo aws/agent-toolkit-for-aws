@@ -51,11 +51,13 @@ GRANT EXECUTE ON SCHEMA::dbo TO app_user;   -- stored procs
 ## Password policy
 
 RDS SQL Server enforces Windows password policy by default:
+
 - Minimum 8 chars
 - Must have 3 of: uppercase, lowercase, digit, special char
 - Cannot contain the login name
 
 To disable for a login (not recommended):
+
 ```sql
 ALTER LOGIN app_user WITH CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF;
 ```
@@ -92,10 +94,12 @@ aws secretsmanager rotate-secret \
 ```
 
 Two rotation strategies:
+
 - **Single-user rotation** — same login, rotate password. Simple. Apps must handle reconnect on 18456.
 - **Alternating-users rotation** — two logins (`app_user_a`, `app_user_b`). Rotate one while the other is in use. Zero-downtime but more complex setup.
 
 For alternating users, create both logins first:
+
 ```sql
 CREATE LOGIN app_user_a WITH PASSWORD = '...';
 CREATE LOGIN app_user_b WITH PASSWORD = '...';

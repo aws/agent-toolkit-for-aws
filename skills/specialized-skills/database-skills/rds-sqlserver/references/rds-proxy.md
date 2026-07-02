@@ -74,6 +74,7 @@ aws rds create-db-proxy \
 ```
 
 Important:
+
 - `--engine-family SQLSERVER` — must specify
 - `IAMAuth: REQUIRED` — clients must use IAM tokens (vs `DISABLED` for password passthrough)
 - `--require-tls` — enforce TLS to the proxy
@@ -87,6 +88,7 @@ aws rds register-db-proxy-targets \
 ```
 
 Wait for the proxy to become `AVAILABLE`:
+
 ```bash
 aws rds describe-db-proxies --db-proxy-name mydb-proxy \
   --query 'DBProxies[0].Status'
@@ -282,6 +284,7 @@ Check the [pricing page](https://aws.amazon.com/rds/proxy/pricing/) — for smal
 ## Monitor
 
 Key CloudWatch metrics:
+
 - `DatabaseConnections` (at proxy target group)
 - `DatabaseConnectionsCurrentlySessionPinned`
 - `QueryDatabaseResponseLatency`

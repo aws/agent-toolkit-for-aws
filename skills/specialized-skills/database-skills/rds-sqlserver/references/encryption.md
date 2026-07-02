@@ -153,6 +153,7 @@ WHERE session_id = @@SPID
 RDS uses the `rds-ca-rsa2048-g1` CA by default (2024+). Previous CAs (`rds-ca-2019`, `rds-ca-2015`) have expired.
 
 To check your instance:
+
 ```bash
 aws rds describe-db-instances \
   --db-instance-identifier mydb \
@@ -161,6 +162,7 @@ aws rds describe-db-instances \
 ```
 
 To rotate (no restart required for 2019→rsa2048-g1):
+
 ```bash
 aws rds modify-db-instance \
   --db-instance-identifier mydb \
@@ -183,6 +185,7 @@ After rotation, clients that don't have the current CA bundle will fail TLS hand
 ### "A connection was successfully established with the server, but then an error occurred during the pre-login handshake"
 
 Caused by:
+
 - TLS version mismatch (client < 1.2, server requires 1.2+)
 - Cert chain not trusted (CA bundle missing from client)
 - Network tampering (rare — check for corporate TLS proxies)
@@ -192,6 +195,7 @@ Fix: install CA bundle, upgrade client (SSMS 18.x+, drivers to current versions)
 ### `SSL Provider: The target principal name is incorrect`
 
 Client verifying CN against hostname. Either:
+
 - Connect to the exact hostname the cert was issued for (`mydb.xxxx.us-east-1.rds.amazonaws.com`), OR
 - Set `hostNameInCertificate=*.rds.amazonaws.com` (Java) / equivalent
 
@@ -200,6 +204,7 @@ Common through SSM tunnel (CN won't match `localhost`) — see `ssm-tunneling.md
 ### `Could not establish trust relationship for the SSL/TLS secure channel`
 
 .NET-specific. Either:
+
 - Install RDS CA bundle in Trusted Root
 - Set `TrustServerCertificate=True` (dev only — don't use in prod)
 

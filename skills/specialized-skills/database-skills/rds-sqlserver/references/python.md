@@ -109,6 +109,7 @@ conn = pyodbc.connect(
 ```
 
 Verify Kerberos (not NTLM):
+
 ```sql
 SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID
 -- Expected: KERBEROS

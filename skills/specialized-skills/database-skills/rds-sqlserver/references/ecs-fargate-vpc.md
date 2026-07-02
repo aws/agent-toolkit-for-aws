@@ -17,6 +17,7 @@ aws ec2 authorize-security-group-ingress \
 ```
 
 For Fargate in private subnets without internet access, create VPC endpoints for:
+
 - `com.amazonaws.<region>.secretsmanager`
 - `com.amazonaws.<region>.ecr.dkr` and `com.amazonaws.<region>.ecr.api` (for ECR image pulls)
 - `com.amazonaws.<region>.s3` (gateway — for ECR image layers)
@@ -52,6 +53,7 @@ ECS resolves the secret before the container runs. The secret value appears as a
 **Critical**: `secrets` requires `executionRoleArn` (not `taskRoleArn`) to have `secretsmanager:GetSecretValue` permission. This is the most common ECS secrets misconfiguration.
 
 Execution role policy:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -120,6 +122,7 @@ See `ad-kerberos.md` for domain join + gMSA setup.
 ## Connection pooling
 
 For long-running tasks, use a proper pool:
+
 - Python: SQLAlchemy `QueuePool` (pool_size=5, max_overflow=10)
 - Java: HikariCP (maximumPoolSize=10)
 - .NET: ADO.NET built-in (`Max Pool Size=20`)
@@ -206,14 +209,17 @@ Return 200 only when DB is reachable. ALB will replace unhealthy tasks.
 ## Rolling updates during Multi-AZ failover
 
 During RDS Multi-AZ failover:
+
 - Existing connections fail (error 18456 or network disconnect)
 - New connections (after ~60-120s) succeed against the new primary
 
 App behavior:
+
 - Pools with `pool_pre_ping` / `connectionTestQuery` recover cleanly
 - Pools without will serve errors for the failover duration
 
 For minimum downtime:
+
 - HikariCP: `maxLifetime=1800000` (30 min), `validationTimeout=5000`
 - SQLAlchemy: `pool_pre_ping=True, pool_recycle=1800`
 

@@ -32,6 +32,7 @@ Get the Directory ID from the output (format: `d-xxxxxxxxxx`).
 Run your own AD on EC2 (or connect to on-prem AD via TGW/VPN). More complex — no automatic SPN management.
 
 For self-managed AD, RDS needs:
+
 - Trust relationship between Managed AD and self-managed AD, OR
 - Direct domain join via RDS AD Connector
 
@@ -94,6 +95,7 @@ aws rds describe-db-instances \
 ```
 
 Statuses:
+
 - `pending` → in progress
 - `joined` → ready for Windows auth
 - `failed` → check CloudWatch Logs `rdsadmin/error` for cause
@@ -137,6 +139,7 @@ AWS Managed Microsoft AD **automatically** creates this CNAME in AD DNS when you
 ### Verify the CNAME resolves
 
 From a domain-joined client:
+
 ```powershell
 Resolve-DnsName mydb.corp.example.com
 # Should return a CNAME to mydb.xxxx.us-east-1.rds.amazonaws.com,
@@ -155,6 +158,7 @@ setspn -L <rds-service-account>
 
 - Check DNS resolver: client's DNS must point at AD domain controllers, not public DNS
 - For self-managed AD, create the CNAME manually:
+
 ```powershell
 Add-DnsServerResourceRecordCName `
   -Name mydb `
@@ -225,6 +229,7 @@ Most common reason Kerberos falls back to NTLM:
    - Linux: check `/var/kerberos/krb5/user/` or `KRB5CCNAME` env var
 
 Verify:
+
 ```sql
 SELECT auth_scheme, client_net_address
 FROM sys.dm_exec_connections WHERE session_id = @@SPID
@@ -248,6 +253,7 @@ Run `klist` (Windows) or `klist -e` (Linux) to see if you have a ticket for `MSS
 ## Never test Windows auth via SSM send-command
 
 SSM runs as the EC2 LocalSystem account, not the user's AD identity. Testing `Integrated Security=True` via SSM:
+
 - Authenticates as the machine account (if domain-joined) or fails
 - Tells you nothing about whether a user's Windows login works
 

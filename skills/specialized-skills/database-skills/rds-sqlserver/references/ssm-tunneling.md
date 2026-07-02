@@ -117,6 +117,7 @@ The RDS certificate CN is `mydb.xxxx.us-east-1.rds.amazonaws.com` but your clien
 ## Windows auth through the tunnel — don't
 
 SSM runs as the EC2 system account, not your user. `Integrated Security=True` through a tunnel will:
+
 - Connect as the EC2 system account (which has no AD identity) → NTLM fallback or fail
 - Not test anything meaningful about your user's domain credentials
 
@@ -159,6 +160,7 @@ Limit `ssm:StartSession` to the specific document + instance:
 | Cert validation error with `TrustServerCertificate=False` | Set `TrustServerCertificate=True` — CN will never match localhost through a tunnel |
 
 Check SSM agent status from the jump host:
+
 ```bash
 sudo systemctl status amazon-ssm-agent
 sudo tail -f /var/log/amazon/ssm/amazon-ssm-agent.log

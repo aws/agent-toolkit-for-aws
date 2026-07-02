@@ -73,6 +73,7 @@ This skill works with the AWS CLI directly. The AWS MCP server is recommended bu
 Check for required tools and warn the user if any are missing.
 
 **Constraints:**
+
 - You MUST verify that the AWS CLI is available (`aws --version`)
 - You MUST inform the user if the AWS CLI is missing, because most steps need AWS API access
 - If the AWS MCP server tools (`call_aws`, `suggest_aws_commands`) are available, prefer them for audit and observability — but they are NOT required
@@ -82,6 +83,7 @@ Check for required tools and warn the user if any are missing.
 Collect the connection context and route to the right sub-skill reference file.
 
 Parameters:
+
 - **language** (required): `python` | `dotnet` | `java` | `nodejs`. Infer from project files (`requirements.txt`/`*.py` → python; `*.csproj` → dotnet; `pom.xml`/`build.gradle` → java; `package.json` → nodejs). Ask only if ambiguous.
 - **runtime** (required): `ec2` | `ecs` | `lambda` | `eks` | `laptop`. Drives networking + secrets pattern.
 - **auth** (required): `sql` | `windows-kerberos` | `windows-ntlm` | `iam-proxy`. Default `sql` unless the user mentions Active Directory, Kerberos, NTLM, or IAM.
@@ -89,6 +91,7 @@ Parameters:
 - **db_instance_id** (required for troubleshooting): RDS instance identifier.
 
 **Constraints:**
+
 - You MUST ask for all required parameters upfront in a single prompt, because iterative questioning frustrates users
 - You MUST infer `language` from project files when available rather than asking
 - You MUST validate `region` against the enumerated list of AWS regions before proceeding
@@ -120,6 +123,7 @@ Load **exactly one driver** reference plus any relevant topic references:
 Follow the steps in the loaded reference files in order: driver setup → networking → auth → secrets → verify.
 
 **Constraints:**
+
 - You MUST use `TLS 1.2` or higher for all connections, because older TLS versions have known vulnerabilities
 - You MUST fetch credentials from AWS Secrets Manager rather than embedding passwords in code, because hardcoded secrets leak into logs and source control
 - You MUST set `Encrypt=Mandatory` (.NET) / `encrypt=true` (JDBC) / `encryption="require"` (pymssql) / `encrypt: true` (tedious) in production, because opportunistic encryption may silently fall back to plaintext
@@ -262,7 +266,6 @@ Missing FreeTDS. Use `pyodbc` on Windows instead — it uses the native `SQL Ser
 - **tedious (Node.js)**: <https://tediousjs.github.io/tedious/>
 - **RDS CA bundle**: <https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem>
 - **Related skills**: `rds-oracle`, `rds-db2`, `amazon-aurora` (for cross-engine comparison)
-
 
 ## Handoff from aws-database-selection
 

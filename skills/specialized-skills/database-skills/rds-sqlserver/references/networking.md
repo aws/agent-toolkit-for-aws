@@ -17,6 +17,7 @@ aws ec2 authorize-security-group-ingress \
 ```
 
 Benefits:
+
 - No IP hardcoding
 - Works even when app servers are recreated with new IPs
 - Policy-driven: authorize the role, not the address
@@ -44,6 +45,7 @@ mydb.xxxxxxxxxxxx.us-east-1.rds.amazonaws.com
 ```
 
 The endpoint always resolves to a **private** IPv4 address when your VPC has `enableDnsSupport=true` and `enableDnsHostnames=true`. It can also resolve to a public IP if:
+
 - `PubliclyAccessible: true` is set on the instance (not recommended)
 - The client is outside AWS and resolves via public DNS
 
@@ -188,6 +190,7 @@ aws ec2 create-vpc-endpoint \
 Endpoint SG inbound 443 from app SG.
 
 Common endpoints to create for RDS SQL Server workloads:
+
 - `secretsmanager` — fetch DB credentials
 - `kms` — decrypt customer-managed secret keys
 - `logs` — CloudWatch Logs for audit/metrics
@@ -229,6 +232,7 @@ For full diagnostics including TDS/pre-login, use the bundled `scripts/test_conn
 RDS Multi-AZ creates a standby in a different AZ. The endpoint automatically switches to the standby during failover. No code changes — just tune driver timeouts to handle the 60-120 second failover window.
 
 Pool settings for failover robustness:
+
 - HikariCP: `maxLifetime=1800000` (30 min), `connectionTestQuery="SELECT 1"`, `validationTimeout=5000`
 - SQLAlchemy: `pool_pre_ping=True, pool_recycle=1800`
 - .NET: `Connection Lifetime=300` in connection string

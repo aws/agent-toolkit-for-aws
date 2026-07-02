@@ -15,6 +15,7 @@ Use the official Microsoft JDBC driver `com.microsoft.sqlserver:mssql-jdbc`. The
 ```
 
 Match the `jreN` suffix to your runtime:
+
 - `jre8` — Java 8
 - `jre11` — Java 11
 - `jre17` — Java 17/21
@@ -73,6 +74,7 @@ done
 ```
 
 Pass to the JVM:
+
 ```bash
 java -Djavax.net.ssl.trustStore=/path/to/rds-truststore.jks \
      -Djavax.net.ssl.trustStorePassword=changeit \
@@ -106,11 +108,13 @@ Requires a Kerberos `krb5.conf` pointing at the domain KDC:
 ```
 
 Point the JVM at it:
+
 ```bash
 java -Djava.security.krb5.conf=/etc/krb5.conf -jar app.jar
 ```
 
 Keytab-based auth (no password in config):
+
 ```bash
 java -Djava.security.krb5.conf=/etc/krb5.conf \
      -Djavax.security.auth.useSubjectCredsOnly=false \
@@ -119,6 +123,7 @@ java -Djava.security.krb5.conf=/etc/krb5.conf \
 ```
 
 `jaas.conf`:
+
 ```
 SQLJDBCDriver {
     com.sun.security.auth.module.Krb5LoginModule required
