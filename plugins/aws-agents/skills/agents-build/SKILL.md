@@ -11,7 +11,9 @@ description: >
   called", "migrate Bedrock Agent", "after import", "migration issue",
   "framework for migration", "change model", "browser tool", "code
   interpreter", "delete agent", "tear down", "agentcore remove",
-  "cross-account memory", "resource-based policy on memory".
+  "cross-account memory", "resource-based policy on memory", "pay for
+  x402 content", "402 Payment Required", "microtransactions", "paid API
+  or tool".
   Not for connecting to external APIs via Gateway — use agents-connect.
   Not for scaffolding a new project — use agents-get-started.
   Not for CLI/dev server errors — use agents-debug.
@@ -37,6 +39,7 @@ Add capabilities to your AgentCore agent project.
 - Migrating an existing Bedrock Agent to AgentCore
 - Adding the Browser tool so the agent can navigate websites
 - Adding the Code Interpreter so the agent can execute code in a sandbox
+- Adding AgentCore Payments so the agent can pay for x402-protected APIs, tools, or content
 - Removing resources from your project or tearing down a deployment
 
 Do NOT use for:
@@ -49,7 +52,7 @@ Do NOT use for:
 
 `$ARGUMENTS` can be:
 
-- A capability: "memory", "integrate", "vpc", "multi-agent", "migrate", "browser", "code-interpreter", "teardown"
+- A capability: "memory", "integrate", "vpc", "multi-agent", "migrate", "browser", "code-interpreter", "payments", "teardown"
 - A description of what they want: "remember user preferences", "call from React app", "scrape a website", "run pandas in the agent", "delete my agent", "clean up resources"
 - Empty — the skill will determine the workflow from context
 
@@ -94,6 +97,7 @@ Based on the developer's prompt and `$ARGUMENTS`, load the appropriate reference
 | Migrate Bedrock Agent, import agent, move to AgentCore | [`references/migrate.md`](references/migrate.md) |
 | Browser tool, web navigation, form filling, scraping, Nova Act, Playwright, live view | [`references/browser.md`](references/browser.md) |
 | Code Interpreter, execute code, sandbox, run Python/JS/TS, data analysis in agent, pandas | [`references/code-interpreter.md`](references/code-interpreter.md) |
+| Payments, pay for x402 content, 402 Payment Required, microtransactions, paid API/tool, payment manager/connector | [`references/payments.md`](references/payments.md) |
 | Delete agent, remove resource, tear down, clean up, destroy, start fresh | [`references/teardown.md`](references/teardown.md) |
 | Change model, switch model, use Haiku/Sonnet/Nova, different model | Inline — see "Changing the model" below |
 
@@ -139,7 +143,7 @@ Whichever reference you load, most end up producing an `agentcore add <resource>
 | Resource | Max chars | Allowed | Starts with |
 |---|---|---|---|
 | Agent (`add agent`) | 48 | alphanumeric + `_` | letter |
-| Memory, gateway, gateway-target, credential, evaluator, online-eval, policy, policy-engine | 48 | alphanumeric + `_` | letter |
+| Memory, gateway, gateway-target, credential, evaluator, online-eval, policy, policy-engine, payment-manager, payment-connector | 48 | alphanumeric + `_` | letter |
 
 Count the characters before constructing the command. If the name is over the limit or contains hyphens, dots, or spaces, push back: "`<name>` is N characters / uses `-`, which the CLI rejects. How about `<suggestion>`?" Never run the command with an invalid name hoping the CLI message will be clear.
 
