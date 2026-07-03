@@ -27,6 +27,7 @@ Domain expertise for the full CloudFormation lifecycle: authoring templates, val
 Follow the [authoring best-practices SOP](references/author-cloudformation-best-practices.script.md) as a review checklist. When unsure about property names or types, use the [resource property lookup SOP](references/lookup-resource-properties.script.md) to verify against authoritative documentation rather than guessing.
 
 Key defaults to apply unless there is a clear reason not to:
+
 - S3 buckets: `PublicAccessBlockConfiguration` (all four true), `BucketEncryption`, `VersioningConfiguration`
 - Stateful resources: `DeletionPolicy: Retain` and `UpdateReplacePolicy: Retain`
 - Avoid hardcoded physical resource names — use `!Sub "${AWS::StackName}-..."` for uniqueness
@@ -47,6 +48,7 @@ Run three validation layers in order — each catches different classes of error
 Use [deploy-with-express-mode SOP](references/deploy-with-express-mode.script.md) when the user wants faster deployment feedback during development iteration. Express mode completes stack operations as soon as resource configuration is applied — resources continue stabilizing in the background.
 
 Key points:
+
 - Activate with `--deployment-config '{"mode": "EXPRESS"}'` on `create-stack`, `update-stack`, or `delete-stack`
 - CDK: `cdk deploy --express`
 - Rollback is disabled by default; re-enable with `"disableRollback": false`
@@ -58,6 +60,7 @@ Key points:
 When a stack is in a failed state (`CREATE_FAILED`, `ROLLBACK_COMPLETE`, `UPDATE_ROLLBACK_FAILED`, etc.), follow the [troubleshoot-deployment SOP](references/troubleshoot-deployment.script.md).
 
 Key points:
+
 - Use `aws cloudformation describe-events --stack-name <name> --filters FailedEvents=true --region <region>` to get only failure events. Do NOT use `describe-stack-events` — that API does not support the `--filters` parameter. Do NOT use `--query` JMESPath filters as a substitute — use the `--filters` parameter directly.
 - Examine EVERY failed event's `ResourceStatusReason`. If a failure has a specific error message (e.g., "not authorized to perform", "already exists"), it is a real failure. If a failure says "Resource creation cancelled" with no specific error, it is a cascade caused by rollback — it does not tell you what would have gone wrong.
 - When multiple resources have their own specific errors, they are parallel failures from a shared root cause (e.g., an IAM role missing permissions for multiple services). Enumerate ALL the specific permission gaps, not just the first one, so the developer can fix everything in one pass.
