@@ -15,7 +15,7 @@ How traffic gets in and out of a MicroVM, what protocols are supported, and how 
 
 > The proxy agent auto-detects whether the guest application speaks TLS.
 
-Each MicroVM gets a **dedicated, service-managed HTTPS endpoint** (`https://<microvm>.lambda-microvm.on.aws`).
+Each MicroVM gets a **dedicated, service-managed HTTPS endpoint** (`https://<microvm-id>.lambda-microvm.<region>.on.aws`).
 
 ## Ingress (inbound)
 
@@ -138,7 +138,7 @@ Steps:
 
    ```bash
    aws lambda-microvms run-microvm \
-     --image-identifier arn:aws:lambda:<region>:<account>:microvm-image/my-image \
+     --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
      --egress-network-connectors '["arn:aws:lambda:<region>:<account>:network-connector:<connector-id>"]'
    ```
 

@@ -103,7 +103,7 @@ A hook left at its default `DISABLED` is not called even if the application impl
 
 ### Hook contract
 
-- Return **HTTP 200** when the hook has completed successfully. For `/ready` and `/validate`, return **503** if the application needs more time — the platform will retry until the configured timeout. Returning 503 quickly is preferred over blocking until ready, otherwise the platform may time out before the configured timeout.
+- Return **HTTP 200** when the hook has completed successfully. For `/ready` and `/validate`, return **503** if the application needs more time — the platform will keep retrying until the configured timeout elapses. Returning 503 quickly is preferred over blocking the request until ready: a blocked call holds the connection open and can consume the entire timeout window in one attempt instead of letting the platform poll.
   - During image build, a `/ready` failure (non-200/503 or timeout) fails the build.
   - At runtime, a hook failure may cause `RunMicrovm` to fail or transition the MicroVM through `TERMINATING` with `stateReason` set.
 - The `runHookPayload` you pass to `RunMicrovm` is delivered as the request body of `/run`.
@@ -137,13 +137,15 @@ TerminateMicrovm ─────▶│   POST /terminate           │
 
 ## Idle policy fields
 
+The `idlePolicy` block itself is **optional** on `RunMicrovm` — omit it to disable idle-based auto-suspend entirely. **If you supply the block, all three fields below are required:**
+
 | Field | Range | Notes |
 |---|---|---|
-| `maxIdleDurationSeconds` | ≥60 | Required. Idle threshold from last proxy traffic. |
-| `suspendedDurationSeconds` | ≥0 | Required. Time-to-terminate while suspended. `0` means "terminate immediately on suspend." |
-| `autoResumeEnabled` | bool | Required. If true, proxy resumes the VM transparently when traffic arrives at its endpoint. |
+| `maxIdleDurationSeconds` | ≥60 | Required if `idlePolicy` is supplied. Idle threshold from last proxy traffic. |
+| `suspendedDurationSeconds` | ≥0 | Required if `idlePolicy` is supplied. Time-to-terminate while suspended. `0` means "terminate immediately on suspend." |
+| `autoResumeEnabled` | bool | Required if `idlePolicy` is supplied. If true, proxy resumes the VM transparently when traffic arrives at its endpoint. |
 
-In `RunMicrovm` you can also set `maximumDurationInSeconds` (cap 28,800) — a hard wall-clock lifetime regardless of activity.
+`maximumDurationInSeconds` is **not** an `idlePolicy` field — it is a separate top-level `RunMicrovm` flag that sets a hard wall-clock lifetime regardless of activity.
 
 ## Hook implementation tips
 
