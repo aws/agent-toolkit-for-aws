@@ -148,7 +148,7 @@ Image state: `CREATING` → `CREATED`. Version state: `PENDING` → `IN_PROGRESS
 ```bash
 aws lambda-microvms list-microvm-image-builds \
   --image-identifier arn:aws:lambda:<region>:123456789012:microvm-image:my-first-image \
-  --image-version 1
+  --image-version 1.0
 ```
 
 If a build fails, `stateReason` carries an error code from [`troubleshooting.md`](troubleshooting.md).

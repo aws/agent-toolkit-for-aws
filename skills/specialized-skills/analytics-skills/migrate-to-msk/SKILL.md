@@ -1,6 +1,6 @@
 ---
 name: migrate-to-msk
-description: >-
+description: >
   Helps migrate self-managed Apache Kafka workloads to Amazon MSK Express. Inventories the
   source cluster (from IaC files, Kafka CLI output, or manual input), assesses MSK Express
   compatibility across topology, Kafka version, configs, auth, and quotas, produces a
@@ -18,8 +18,8 @@ version: 1
 ## Overview
 
 This skill helps customers migrate self-managed Apache Kafka workloads to Amazon MSK
-Express. It provides two independent phases — **Discovery** and **Assessment** —
-that can be run end-to-end or individually depending on the customer's needs.
+Express. It provides three phases — **Discovery**, **Assessment**, and an optional
+**Simulation** — that can be run end-to-end or individually depending on the customer's needs.
 
 ## Scope
 
@@ -41,7 +41,7 @@ Route the customer's request based on their intent:
 
 Explain what this skill offers:
 
-> This skill helps you migrate to MSK Express in two phases:
+> This skill helps you migrate to MSK Express in three phases:
 >
 > **Phase 1 — Discovery:** Inventory your source Kafka cluster — brokers, topics,
 > partition counts, configs, authentication, and workload metrics.
@@ -56,19 +56,25 @@ Explain what this skill offers:
 > `compatibility.<cluster_name>.json`, the filled `MSK_Sizing_Pricing.<cluster_name>.xlsx`,
 > and `msk-sizing-inputs.<cluster_name>.json`.
 >
+> **Phase 3 — Simulation:** Spin up an MSK Express cluster with load-testing
+> infrastructure to see how Express performs on your own workload, then run a vended
+> test (End-to-End Latency or Broker Restart Under Load) and review the results on a
+> CloudWatch dashboard.
+>
 > **Data replication:** For migrating data to your Express cluster, you can use
 > MSK Replicator. I can provide guidance on setup and configuration.
 >
 > Where would you like to start? I can begin with discovery if you point me to your
 > infrastructure code or describe your cluster, or jump to assessment if you already have a
-> `cluster-config.json` file.
+> `cluster-config.json` file, or go straight to simulation if you already know your target
+> Express configuration.
 
 **Guardrails for this overview response:**
 
 - This response is an overview and a routing question only. Do NOT begin, simulate, or pre-empt any phase.
 - Do NOT produce or estimate assessment output here — no verdicts, pillar findings, compatibility conclusions, broker counts, instance recommendations, or cost figures. Those values exist only after you run the Phase 2 scripts against a real `cluster-config.json`.
-- Do NOT open, read, or summarize the internals of `compatibility.py`, `sizing.py`, or the reference files to explain how a phase works. Describe the phases at the level shown above; do not walk the customer through the implementation.
-- When the customer chooses a phase, run that phase's scripts or flow to produce real results. Always operate the skill to answer — never answer from having read its source. For the exact commands, see "Running the assessment" in [references/assessment-compatibility.md](references/assessment-compatibility.md) for Phase 2.
+- Do NOT open, read, or summarize the internals of `compatibility.py`, `sizing.py`, `simulation_load_test_config.py`, or the reference files to explain how a phase works. Describe the phases at the level shown above; do not walk the customer through the implementation.
+- When the customer chooses a phase, run that phase's scripts or flow to produce real results. Always operate the skill to answer — never answer from having read its source. For the exact commands, see "Running the assessment" in [references/assessment-compatibility.md](references/assessment-compatibility.md) for Phase 2, and [references/simulation.md](references/simulation.md) for Phase 3.
 
 ### 2. Discovery intent (DEFAULT when IaC files are provided)
 
@@ -82,7 +88,15 @@ Produce the `migrate-to-msk-skill-artifacts/<cluster_name>/cluster-config.json` 
 Customer explicitly asks to assess or has a `migrate-to-msk-skill-artifacts/<cluster_name>/cluster-config.json` file
 already produced. Run Phase 2 (Assessment) only.
 
-### 4. Informational questions
+### 4. Simulation intent
+
+Customer wants to test MSK Express with their workload. They can provide cluster
+sizing directly (instance type, broker count, Kafka version) or reference an earlier
+assessment. Proceed directly to [Phase 3 — Simulation](#phase-3--simulation-optional).
+An assessment is helpful but not required — the simulation asks for sizing inputs
+directly.
+
+### 5. Informational questions
 
 Customer asks about Express capabilities, constraints, configuration differences,
 authentication support, pricing, or compaction behavior without providing
@@ -92,7 +106,7 @@ documentation. If MCP tools are not available, reference the
 [MSK Express documentation](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)
 and answer based on knowledge of AWS MSK.
 
-### 5. Migration strategy questions
+### 6. Migration strategy questions
 
 Customer asks about MSK Replicator compatibility, version upgrade paths, MirrorMaker 2,
 or migration strategies. MSK Replicator is the native AWS-supported solution for data
@@ -230,6 +244,19 @@ mapping, the download flow, and caveats.
   sections, mandatory vocabulary (use the verdict strings verbatim), and
   forbidden content (no scores, no narrative editorializing, no in-prose
   cost / instance recommendations — the user reads those from the filled workbook).
+
+---
+
+## Phase 3 — Simulation (optional)
+
+Deploy a temporary, isolated MSK Express cluster and client fleet in the
+customer's account so they can see how Express performs on their own workload, then
+run one of two vended tests (End-to-End Latency, Broker Restart Under Load) and hand
+over a CloudWatch dashboard. Follow the 12-step conversational flow and all deploy,
+sizing, and guardrail details in [references/simulation.md](references/simulation.md);
+the deterministic artifacts it drives are
+[scripts/simulation_load_test_config.py](scripts/simulation_load_test_config.py) and the
+static [assets/simulation-stack.yaml](assets/simulation-stack.yaml).
 
 ---
 

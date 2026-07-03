@@ -25,7 +25,7 @@ The two **must be separate** ARNs in production. The build role usually needs S3
         "aws:SourceAccount": "<account-id>"
       },
       "ArnLike": {
-        "aws:SourceArn": "arn:aws:lambda:<region>:<account-id>:microvm-image/*"
+        "aws:SourceArn": "arn:aws:lambda:<region>:<account-id>:microvm-image:*"
       }
     }
   }]
@@ -118,7 +118,7 @@ Attach the `SHELL_INGRESS` network connector at run time:
 
 ```bash
 aws lambda-microvms run-microvm \
-  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image/my-image \
+  --image-identifier arn:aws:lambda:<region>:<account>:microvm-image:my-image \
   --execution-role-arn ... \
   --ingress-network-connectors '["arn:aws:lambda:<region>:aws:network-connector:aws-network-connector:SHELL_INGRESS"]'
 ```
