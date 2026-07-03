@@ -15,7 +15,7 @@ The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guard
 Use the Agent Toolkit directly from your terminal with the AWS CLI:
 
 ```
-aws agent-toolkit chat
+aws configure agent-toolkit
 ```
 
 See the [AWS CLI integration guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/aws-cli.html) for setup, configuration, and usage instructions.
