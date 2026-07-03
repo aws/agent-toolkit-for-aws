@@ -8,7 +8,7 @@ Deterministic procedure for running CloudFormation's pre-deployment validation f
 2. **Resource name conflict validation** (FAIL) — Detects naming conflicts with existing resources in the account.
 3. **S3 bucket emptiness validation** (WARN) — Warns when deleting S3 buckets that contain objects.
 
-Validation errors are exposed through the **new `describe-events` API** scoped to the change set. This procedure uses `call_aws` (preferred) or the AWS CLI to invoke these APIs directly.
+Validation errors are exposed through the `describe-events` API scoped to the change set. This procedure uses `call_aws` (preferred) or the AWS CLI to invoke these APIs directly. Note: The AWS MCP server is recommended for streamlined API invocation, but all steps can be performed using the AWS CLI alone.
 
 **Important:** The legacy `describe-stack-events` API does NOT return validation errors. You MUST use `describe-events --change-set-name <arn>` to retrieve validation results.
 
@@ -25,7 +25,6 @@ Validation errors are exposed through the **new `describe-events` API** scoped t
 - **capabilities** (optional): CloudFormation capabilities (e.g., `CAPABILITY_IAM`, `CAPABILITY_NAMED_IAM`) if the template creates IAM resources.
 
 **Constraints for parameter acquisition:**
-
 - You MUST ask for all required parameters upfront in a single prompt
 - You MUST support multiple input methods for the template (direct input, file path, S3 URL)
 - You MUST confirm successful acquisition of all parameters before proceeding
@@ -37,7 +36,6 @@ Validation errors are exposed through the **new `describe-events` API** scoped t
 Check which mechanism is available to invoke AWS APIs.
 
 **Constraints:**
-
 - You MUST check in this order of preference:
   1. `call_aws` tool from the AWS MCP Server (preferred for sandboxed execution, audit logging, and observability)
   2. AWS CLI (`aws`) available on the user's system (verify with `which aws` or `aws --version`)
@@ -53,7 +51,6 @@ Check which mechanism is available to invoke AWS APIs.
 Catch issues locally before consuming CloudFormation API quota.
 
 **Constraints:**
-
 - You SHOULD recommend running the `validate-cloudformation-template` SOP first to catch cfn-lint syntax and schema errors locally
 - You SHOULD recommend running the `check-cloudformation-template-compliance` SOP to catch security violations locally
 - If the user has already run these checks or explicitly skips them, You MUST proceed to the next step
@@ -63,7 +60,6 @@ Catch issues locally before consuming CloudFormation API quota.
 Prepare the template for the change set.
 
 **Constraints:**
-
 - If the template is small (≤ 51,200 bytes) and provided as content or a local file, You MAY pass it inline via `--template-body`
 - If the template exceeds 51,200 bytes, You MUST upload it to S3 and use `--template-url` because `--template-body` has a size limit
 - If the template is already at an S3 URL, You MUST use `--template-url` directly
@@ -73,12 +69,10 @@ Prepare the template for the change set.
 Create the change set to trigger pre-deployment validation. Validation runs automatically during change set creation — no opt-in is required.
 
 **Constraints:**
-
 - You MUST use a unique, descriptive change set name (e.g., `pre-deploy-validation-<timestamp>`)
 - You MUST use the appropriate `--change-set-type` (`CREATE` for new stacks, `UPDATE` for existing)
 - You MUST include `--capabilities` if the template creates IAM resources (e.g., `CAPABILITY_IAM`, `CAPABILITY_NAMED_IAM`)
 - You MUST invoke via `call_aws` (preferred) or the AWS CLI. Example CLI form:
-
   ```
   aws cloudformation create-change-set \
     --stack-name <stack_name> \
@@ -88,7 +82,6 @@ Create the change set to trigger pre-deployment validation. Validation runs auto
     --region <region> \
     --capabilities CAPABILITY_IAM
   ```
-
   > **Notes:** Use `--template-url s3://...` instead of `--template-body` for templates exceeding 51,200 bytes. Include `--capabilities` only if the template creates IAM resources.
 - You MUST capture the returned change set ARN (Id) for the next step
 - You MUST explain to the user that creating a change set does NOT modify any resources because it only plans the changes and runs validation
@@ -96,10 +89,9 @@ Create the change set to trigger pre-deployment validation. Validation runs auto
 
 ### 5. Retrieve Validation Results via describe-events
 
-Fetch validation results from the **new `describe-events` API**.
+Fetch validation results from the `describe-events` API.
 
 **Constraints:**
-
 - You MUST use `aws cloudformation describe-events --change-set-name <arn> --region <region>` (via `call_aws` or CLI)
 - You MUST NOT use `describe-stack-events` because the legacy stack events API does NOT return validation errors — it only surfaces resource provisioning events after execution
 - You MUST filter events where `EventType` equals `VALIDATION_ERROR` because these are the validation findings
@@ -116,7 +108,6 @@ Fetch validation results from the **new `describe-events` API**.
 Report validation findings grouped by type and help the user fix issues.
 
 **Constraints:**
-
 - You MUST present results grouped by `ValidationName`:
   - **Property syntax validation** — invalid property values or formats
   - **Resource name conflict validation** — resources that conflict with existing resources
@@ -133,7 +124,6 @@ Report validation findings grouped by type and help the user fix issues.
 Guide the user on next steps after validation.
 
 **Constraints:**
-
 - If all validations passed (or only `WARN`-mode issues that the user accepts), You MUST ask the user for explicit approval before executing the change set
 - You MUST NOT execute the change set without explicit user approval because this will modify live infrastructure
 - You MUST NOT delete a stack without explicit user approval. Before deleting, You MUST verify the stack status is `REVIEW_IN_PROGRESS` by calling `describe-stacks`
@@ -147,7 +137,6 @@ Guide the user on next steps after validation.
 ## Examples
 
 ### Example: Successful Validation
-
 ```
 Change set "pre-deploy-validation-1713580000" created for stack "my-app-stack".
 
@@ -162,7 +151,6 @@ The change set is ready to execute. Would you like to execute it now?
 ```
 
 ### Example: Failed Validation
-
 ```
 Change set "pre-deploy-validation-1713580000" created for stack "my-app-stack".
 
@@ -199,7 +187,7 @@ Fix the template and create a new change set.
 ## Troubleshooting
 
 ### describe-events returns empty or unknown command
-The `describe-events` API (scoped to change sets with validation errors) is the newer API. If the installed AWS CLI is outdated, update it: `pip install --upgrade awscli` or `brew upgrade awscli`. If the command still returns nothing, confirm the change set ARN is correct and the change set has finished creating.
+The `describe-events` API (scoped to change sets) requires AWS CLI support for the command. If it is not recognized, update the AWS CLI: `pip install --upgrade awscli` or `brew upgrade awscli`. If the command still returns nothing, confirm the change set ARN is correct and the change set has finished creating.
 
 ### User calls describe-stack-events instead
 `describe-stack-events` returns events after the stack begins provisioning. It does NOT include pre-deployment validation errors. You MUST redirect the user to `describe-events --change-set-name <arn>`.
