@@ -72,7 +72,9 @@ Then open the **Plugins** panel and install the **aws-core** plugin (start here)
 
 ### Kiro
 
-Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`):
+Kiro setup has two independent parts: the AWS MCP Server (for runtime AWS API access and documentation search) and local skills (for task-specific agent guidance). They complement each other but work independently — skills don't require the MCP server, and the MCP server doesn't serve locally-installed skills.
+
+**1. Add the AWS MCP Server** to your Kiro MCP configuration (`.kiro/settings/mcp.json`):
 
 ```json
 {
@@ -82,7 +84,8 @@ Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`
       "args": [
         "mcp-proxy-for-aws@1.6.3",
         "https://aws-mcp.us-east-1.api.aws/mcp",
-        "--metadata", "AWS_REGION=us-west-2"
+        "--metadata",
+        "AWS_REGION=us-west-2"
       ]
     }
   }
@@ -91,11 +94,15 @@ Add the AWS MCP Server to your Kiro MCP configuration (`.kiro/settings/mcp.json`
 
 > **Note:** It is recommended to pin to a specific version (e.g., `@1.6.3`) to ensure reproducible behavior and protect against supply chain risks. We recommend regularly checking [PyPI](https://pypi.org/project/mcp-proxy-for-aws/) for new stable versions and updating accordingly.
 
-Then install skills from this repository:
+The MCP server gives your agent access to AWS APIs, sandboxed script execution, and real-time documentation search.
+
+**2. Install skills** from this repository:
 
 ```
 npx skills add aws/agent-toolkit-for-aws/skills
 ```
+
+This installs skill files to `~/.kiro/skills/` (global) or `.kiro/skills/` (project-level). Each skill is a directory containing a `SKILL.md` file and optionally a `references/` subdirectory with additional context the agent reads from the local filesystem when needed. Kiro discovers installed skills automatically and activates them on demand when a task matches.
 
 > **Prerequisites:** You need [uv](https://docs.astral.sh/uv/) installed. An AWS account with credentials configured locally is required for API calls and script execution, but not for documentation search or skill discovery. See the [user guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) for detailed setup instructions.
 
@@ -117,11 +124,11 @@ npx skills add aws/agent-toolkit-for-aws/skills
 
 Plugins bundle the AWS MCP Server configuration and agent skills into a single install for your coding agent.
 
-| Plugin | Description |
-|--------|-------------|
-| [aws-core](plugins/aws-core/) | Core AWS skills and MCP Server configuration. Covers service selection, CDK/CloudFormation, serverless, containers, storage, observability, billing, SDK usage, and deployment. **Start here.** |
-| [aws-agents](plugins/aws-agents/) | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore. |
-| [aws-data-analytics](plugins/aws-data-analytics/) | Skills for data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. |
+| Plugin                                                        | Description                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [aws-core](plugins/aws-core/)                                 | Core AWS skills and MCP Server configuration. Covers service selection, CDK/CloudFormation, serverless, containers, storage, observability, billing, SDK usage, and deployment. **Start here.**                                                                                                                                                                                    |
+| [aws-agents](plugins/aws-agents/)                             | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore.                                                                                                                                                                                                                                                                                                            |
+| [aws-data-analytics](plugins/aws-data-analytics/)             | Skills for data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena.                                                                                                                                                                                                                                                                                           |
 | [aws-agents-for-devsecops](plugins/aws-agents-for-devsecops/) | Investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with [AWS DevOps Agent](https://aws.amazon.com/devops-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr) and [AWS Security Agent](https://aws.amazon.com/security-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr). |
 
 Plugins are currently available for Claude Code, Codex, and Cursor. For other agents, configure the AWS MCP Server directly and install skills from this repository.
@@ -159,6 +166,7 @@ For details on operation, available tools, authentication, and supported Regions
 - [AWS MCP Server tools](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/understanding-mcp-server-tools.html) — Reference for all available MCP tools.
 
 ## How the Agent Toolkit relates to the MCP servers, skills, and plugins in AWS Labs
+
 In 2025, AWS began releasing MCP servers, skills, and plugins as part of [AWS Labs](https://github.com/awslabs). The Agent Toolkit for AWS is the successor to those tools. We recommend using the Agent Toolkit for AWS, because it offers key features including:
 
 - IAM condition keys that distinguish between agent actions and human actions, so you can write policies that apply only to agents. For example, you can write policies that only allow read-only actions through the MCP server, even if the user’s underlying IAM role can take write actions).
