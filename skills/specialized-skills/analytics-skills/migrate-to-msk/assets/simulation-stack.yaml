@@ -1,0 +1,926 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  MSK Express load-test simulation. Deploys a VPC, an MSK Express cluster (IAM auth,
+  TLS in transit), an auto-sized EC2 client fleet, SSM documents for the two vended
+  tests (End-to-End Latency, Broker Restart Under Load), and a CloudWatch dashboard.
+  Cluster sizing and fleet counts come from scripts/simulation_load_test_config.py — do NOT edit
+  this template by hand. To resize, tear down and redeploy with new parameters.
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: express.m7g.4xlarge
+    AllowedValues: [express.m7g.large, express.m7g.xlarge, express.m7g.2xlarge, express.m7g.4xlarge, express.m7g.8xlarge, express.m7g.12xlarge, express.m7g.16xlarge]
+    Description: Express broker instance type.
+  BrokerCount:
+    Type: Number
+    Default: 3
+    Description: Number of brokers (multiple of 3).
+  KafkaVersion:
+    Type: String
+    Default: 3.9.x.kraft
+    # Express supports Kafka 3.6 / 3.8 (ZooKeeper) and 3.9 (KRaft, .kraft suffix).
+    AllowedValues: [3.6.0, 3.8.x, 3.9.x.kraft]
+    Description: >
+      Express Kafka version + metadata mode. 3.9.x.kraft = KRaft (3.9 only, KRaft
+      mandatory). 3.6.0 / 3.8.x = ZooKeeper. 3.9 ZooKeeper is not supported on Express.
+  TopicName:
+    Type: String
+    Default: load-test
+  TopicPartitions:
+    Type: Number
+    Default: 48
+  ClientInstanceType:
+    Type: String
+    Default: c5.2xlarge
+    Description: EC2 instance type for the producer/consumer fleet (from simulation_load_test_config.py).
+  ProducerCount:
+    Type: Number
+    Default: 3
+    Description: Producer fleet size (from simulation_load_test_config.py fleet_producer_count).
+  ConsumerCount:
+    Type: Number
+    Default: 3
+    Description: Consumer fleet size (from simulation_load_test_config.py fleet_consumer_count).
+  LatestAl2023Ami:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  # ---------------- Networking ----------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{Key: Name, Value: !Sub "${AWS::StackName}-vpc"}]
+  Igw:
+    Type: AWS::EC2::InternetGateway
+  IgwAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: {VpcId: !Ref Vpc, InternetGatewayId: !Ref Igw}
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.1.0/24, AvailabilityZone: !Select [0, !GetAZs ""]}
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.2.0/24, AvailabilityZone: !Select [1, !GetAZs ""]}
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.3.0/24, AvailabilityZone: !Select [2, !GetAZs ""]}
+  Eip:
+    Type: AWS::EC2::EIP
+    Properties: {Domain: vpc}
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: IgwAttach
+    Properties: {AllocationId: !GetAtt Eip.AllocationId, SubnetId: !Ref PublicSubnet}
+  PublicRt:
+    Type: AWS::EC2::RouteTable
+    Properties: {VpcId: !Ref Vpc}
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAttach
+    Properties: {RouteTableId: !Ref PublicRt, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref Igw}
+  PublicAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {RouteTableId: !Ref PublicRt, SubnetId: !Ref PublicSubnet}
+  PrivateRt:
+    Type: AWS::EC2::RouteTable
+    Properties: {VpcId: !Ref Vpc}
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties: {RouteTableId: !Ref PrivateRt, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref NatGateway}
+  PrivateAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {RouteTableId: !Ref PrivateRt, SubnetId: !Ref PrivateSubnet1}
+  PrivateAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {RouteTableId: !Ref PrivateRt, SubnetId: !Ref PrivateSubnet2}
+  PrivateAssoc3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {RouteTableId: !Ref PrivateRt, SubnetId: !Ref PrivateSubnet3}
+
+  # ---------------- Security groups ----------------
+  ClientSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MSK client fleet
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - {IpProtocol: tcp, FromPort: 9098, ToPort: 9098, DestinationSecurityGroupId: !Ref MskSg, Description: MSK IAM auth}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: "HTTPS to AWS APIs (SSM, CloudWatch, STS, Kafka)"}
+  MskSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MSK Express brokers
+      VpcId: !Ref Vpc
+  MskIngress9098:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref MskSg
+      IpProtocol: tcp
+      FromPort: 9098
+      ToPort: 9098
+      SourceSecurityGroupId: !Ref ClientSg
+      Description: IAM auth bootstrap from client fleet
+
+  # ---------------- MSK Express ----------------
+  LogGroupKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Encrypts MSK simulation CloudWatch log group
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAccountRoot
+            Effect: Allow
+            Principal: {AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"}
+            Action: kms:*
+            Resource: "*"
+          - Sid: AllowCloudWatchLogs
+            Effect: Allow
+            Principal: {Service: !Sub "logs.${AWS::Region}.amazonaws.com"}
+            Action: [kms:Encrypt, kms:Decrypt, kms:GenerateDataKey*, kms:DescribeKey]
+            Resource: "*"
+            Condition:
+              ArnLike:
+                kms:EncryptionContext:aws:logs:arn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+  MskLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 14
+      KmsKeyId: !GetAtt LogGroupKey.Arn
+  FlowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 14
+      KmsKeyId: !GetAtt LogGroupKey.Arn
+  FlowLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: vpc-flow-logs.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: {"aws:SourceAccount": !Ref "AWS::AccountId"}
+              ArnLike:
+                "aws:SourceArn": !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:vpc-flow-log/*"
+      Policies:
+        - PolicyName: flow-log-delivery
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                # Log-stream actions require the log-group ARN with a :* suffix.
+                Resource: !Sub "${FlowLogGroup.Arn}:*"
+  VpcFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      ResourceId: !Ref Vpc
+      ResourceType: VPC
+      TrafficType: ALL
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref FlowLogGroup
+      DeliverLogsPermissionArn: !GetAtt FlowLogRole.Arn
+  MskCluster:
+    Type: AWS::MSK::Cluster
+    Properties:
+      ClusterName: !Sub "${AWS::StackName}-express"
+      KafkaVersion: !Ref KafkaVersion
+      NumberOfBrokerNodes: !Ref BrokerCount
+      EnhancedMonitoring: PER_BROKER
+      BrokerNodeGroupInfo:
+        InstanceType: !Ref InstanceType
+        ClientSubnets: [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3]
+        SecurityGroups: [!Ref MskSg]
+      ClientAuthentication:
+        Sasl: {Iam: {Enabled: true}}
+        Unauthenticated: {Enabled: false}
+      EncryptionInfo:
+        # Encryption at rest uses the default AWS-managed KMS key.
+        EncryptionInTransit: {ClientBroker: TLS, InCluster: true}
+      LoggingInfo:
+        BrokerLogs:
+          CloudWatchLogs: {Enabled: true, LogGroup: !Ref MskLogGroup}
+      Tags:
+        # Tag used to track MSK Express migration simulation usage; value is the skill version.
+        MSKExpressMigrationSkill: "1"
+
+  # ---------------- IAM ----------------
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns: [!Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"]
+      Policies:
+        - PolicyName: simulation-kafka
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [kafka-cluster:Connect, kafka-cluster:DescribeCluster]
+                Resource: !Ref MskCluster
+              - Effect: Allow
+                Action: [kafka-cluster:CreateTopic, kafka-cluster:DescribeTopic, kafka-cluster:WriteData, kafka-cluster:ReadData]
+                Resource: !Sub "arn:${AWS::Partition}:kafka:${AWS::Region}:${AWS::AccountId}:topic/${AWS::StackName}-express/*"
+              - Effect: Allow
+                Action: [kafka-cluster:AlterGroup, kafka-cluster:DescribeGroup]
+                Resource: !Sub "arn:${AWS::Partition}:kafka:${AWS::Region}:${AWS::AccountId}:group/${AWS::StackName}-express/*"
+              - Effect: Allow
+                Action: [kafka:GetBootstrapBrokers, kafka:DescribeCluster, kafka:DescribeClusterV2, kafka:ListNodes]
+                Resource: !Ref MskCluster
+              # Broker Restart Under Load test — scoped to this cluster only.
+              - Effect: Allow
+                Action: kafka:RebootBroker
+                Resource: !Ref MskCluster
+              # PutMetricData has no resource-level scoping; restrict by namespace.
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+                Condition: {StringEquals: {"cloudwatch:namespace": MSKSimulation}}
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: {Roles: [!Ref InstanceRole]}
+
+  # ---------------- Client fleet ----------------
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub "${AWS::StackName}-client"
+      LaunchTemplateData:
+        ImageId: !Ref LatestAl2023Ami
+        InstanceType: !Ref ClientInstanceType
+        IamInstanceProfile: {Arn: !GetAtt InstanceProfile.Arn}
+        SecurityGroupIds: [!Ref ClientSg]
+        MetadataOptions: {HttpTokens: required, InstanceMetadataTags: enabled}
+        Monitoring: {Enabled: true}
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            set -xe
+            exec > /var/log/simulation-bootstrap.log 2>&1
+            # Signal the matching Auto Scaling group based on the instance's simulation:role tag.
+            TOK=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+            ROLE=$(curl -s -H "X-aws-ec2-metadata-token: $TOK" http://169.254.169.254/latest/meta-data/tags/instance/simulation:role)
+            if [ "$ROLE" = "producer" ]; then RES=ProducerAsg; else RES=ConsumerAsg; fi
+            # On failure, signal CloudFormation so the stack rolls back instead of completing half-built.
+            trap 'cfn-signal -e 1 --stack ${AWS::StackName} --resource $RES --region ${AWS::Region}' ERR
+            dnf install -y java-17-amazon-corretto-headless tar gzip aws-cfn-bootstrap
+            cd /opt
+            # Prepare the Kafka install location and client authentication config.
+            # The Kafka client is installed after deployment via the InstallKafkaClient document.
+            mkdir -p /opt/kafka/bin /opt/kafka/libs
+            cat > /opt/kafka/client.properties <<'EOF'
+            security.protocol=SASL_SSL
+            sasl.mechanism=AWS_MSK_IAM
+            sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+            sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+            EOF
+            # Bootstrap succeeded; signal CloudFormation for this instance.
+            cfn-signal -e 0 --stack ${AWS::StackName} --resource $RES --region ${AWS::Region}
+  ProducerAsg:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    # Wait for all producers to finish bootstrapping before the stack completes.
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref ProducerCount
+        Timeout: PT15M
+    Properties:
+      VPCZoneIdentifier: [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3]
+      LaunchTemplate: {LaunchTemplateId: !Ref LaunchTemplate, Version: !GetAtt LaunchTemplate.LatestVersionNumber}
+      MinSize: !Ref ProducerCount
+      MaxSize: !Ref ProducerCount
+      DesiredCapacity: !Ref ProducerCount
+      AutoScalingGroupName: !Sub "${AWS::StackName}-producer"
+      Tags:
+        - {Key: "simulation:role", Value: producer, PropagateAtLaunch: true}
+        - {Key: Name, Value: !Sub "${AWS::StackName}-producer", PropagateAtLaunch: true}
+  ConsumerAsg:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref ConsumerCount
+        Timeout: PT15M
+    Properties:
+      VPCZoneIdentifier: [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3]
+      LaunchTemplate: {LaunchTemplateId: !Ref LaunchTemplate, Version: !GetAtt LaunchTemplate.LatestVersionNumber}
+      MinSize: !Ref ConsumerCount
+      MaxSize: !Ref ConsumerCount
+      DesiredCapacity: !Ref ConsumerCount
+      AutoScalingGroupName: !Sub "${AWS::StackName}-consumer"
+      Tags:
+        - {Key: "simulation:role", Value: consumer, PropagateAtLaunch: true}
+        - {Key: Name, Value: !Sub "${AWS::StackName}-consumer", PropagateAtLaunch: true}
+
+  # ---------------- SSM documents (self-contained) ----------------
+  CreateTopicsDoc:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      Name: !Sub "${AWS::StackName}-CreateTopics"
+      Content:
+        schemaVersion: "2.2"
+        description: >
+          Create the per-test load topics (run once, after cluster is ACTIVE): one
+          for the E2E Latency test, one for the Broker Restart test, plus a dedicated
+          single-partition probe topic for the e2e-latency sampler. Per-test topics
+          keep each test's traffic isolated, so an idle test's consumer group never
+          accumulates phantom lag from the other test writing to a shared topic.
+        parameters:
+          topicName: {type: String, default: !Ref TopicName}
+          partitions: {type: String, default: !Sub "${TopicPartitions}"}
+        mainSteps:
+          - action: aws:runShellScript
+            name: createTopic
+            inputs:
+              runCommand:
+                - 'if ! /opt/kafka/bin/kafka-topics.sh --version >/dev/null 2>&1; then echo "ERROR: Kafka client not installed/working on this instance. Install it first via the InstallKafkaClient SSM document, then retry." >&2; exit 1; fi'
+                - !Sub 'BS=$(aws kafka get-bootstrap-brokers --cluster-arn ${MskCluster} --region ${AWS::Region} --query BootstrapBrokerStringSaslIam --output text)'
+                # E2E Latency test load topic (consumer group simulation-e2e).
+                - '/opt/kafka/bin/kafka-topics.sh --bootstrap-server $BS --command-config /opt/kafka/client.properties --create --if-not-exists --topic {{topicName}}-e2e --partitions {{partitions}} --replication-factor 3'
+                # Dedicated single-partition probe topic for the e2e-latency sampler (kept off the bulk-load topic).
+                - '/opt/kafka/bin/kafka-topics.sh --bootstrap-server $BS --command-config /opt/kafka/client.properties --create --if-not-exists --topic {{topicName}}-e2e-probe --partitions 1 --replication-factor 3'
+                # Broker Restart test load topic (consumer group simulation-restart).
+                - '/opt/kafka/bin/kafka-topics.sh --bootstrap-server $BS --command-config /opt/kafka/client.properties --create --if-not-exists --topic {{topicName}}-restart --partitions {{partitions}} --replication-factor 3'
+
+  RunE2ELatencyDoc:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      Name: !Sub "${AWS::StackName}-RunE2ELatency"
+      Content:
+        schemaVersion: "2.2"
+        description: >
+          End-to-end (produce->consume) latency under load. Producers drive the
+          requested per-instance throughput; one producer samples round-trip
+          latency and emits it as the MSKSimulation/E2ELatencyMs custom metric.
+          Consumers drain the topic. Branches on the simulation:role tag.
+        parameters:
+          perInstanceThroughputMbps: {type: String, default: "10"}
+          durationMinutes: {type: String, default: "10"}
+          recordSizeBytes: {type: String, default: "1024"}
+          maxDrainMinutes: {type: String, default: "20", description: "Hard cap (minutes) on the post-producer drain. After producers stop, the consumer keeps reading until the group's lag reaches ~0 (caught up) or this many minutes elapse, whichever first."}
+          leadInstanceId: {type: String, default: "", description: "Instance id that samples e2e latency (the first targeted producer)."}
+          topic: {type: String, default: !Sub "${TopicName}-e2e"}
+        mainSteps:
+          - action: aws:runShellScript
+            name: run
+            inputs:
+              timeoutSeconds: "8400"
+              runCommand:
+                - !Sub |
+                    set -e
+                    if ! /opt/kafka/bin/kafka-topics.sh --version >/dev/null 2>&1; then echo "ERROR: Kafka client not installed on this instance; run the InstallKafkaClient SSM document first." >&2; exit 1; fi
+                    REGION=${AWS::Region}
+                    CL=${MskCluster}
+                    BS=$(aws kafka get-bootstrap-brokers --cluster-arn $CL --region $REGION --query BootstrapBrokerStringSaslIam --output text)
+                    TOK=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+                    IMDS="curl -s -H X-aws-ec2-metadata-token:$TOK http://169.254.169.254/latest/meta-data"
+                    IID=$($IMDS/instance-id)
+                    ROLE=$($IMDS/tags/instance/simulation:role)
+                    DUR={{durationMinutes}}; SECS=$((DUR*60))
+                    CAP={{maxDrainMinutes}}; CAPS=$((CAP*60))   # hard cap on the adaptive drain (see consumer branch)
+                    TOPIC={{topic}}; RS={{recordSizeBytes}}
+                    # Dedicated probe topic so the latency sampler reads back only its own messages.
+                    PROBE_TOPIC=${!TOPIC}-probe
+                    P=/opt/kafka/client.properties; K=/opt/kafka/bin
+                - |
+                    if [ "$ROLE" = "consumer" ]; then
+                      # Background consumer; drains until caught up (or maxDrainMinutes) so consume-side metrics reflect the test.
+                      GRP=simulation-e2e
+                      # Reset the consumer group to the topic's latest so each run starts clean.
+                      $K/kafka-consumer-groups.sh --bootstrap-server $BS --command-config $P --group $GRP --topic $TOPIC --reset-offsets --to-latest --execute >/dev/null 2>&1 || true
+                      nohup $K/kafka-consumer-perf-test.sh --bootstrap-server $BS --consumer.config $P --topic $TOPIC --group $GRP --from-latest --messages 1000000000 --timeout 2147483647 --reporting-interval 5000 --show-detailed-stats >/tmp/consumer.out 2>&1 &
+                      CPID=$!
+                      PRODEND=$(( $(date +%s) + SECS ))     # producers stop ~here
+                      HARDEND=$(( PRODEND + CAPS ))          # absolute cap on the drain
+                      while kill -0 $CPID 2>/dev/null && [ $(date +%s) -lt $HARDEND ]; do
+                        sleep 15
+                        if [ $(date +%s) -lt $PRODEND ]; then continue; fi   # don't test "caught up" until producers stop
+                        LAG=$($K/kafka-consumer-groups.sh --bootstrap-server $BS --command-config $P --describe --group $GRP 2>/dev/null | awk 'NR>1 && $6 ~ /^[0-9]+$/ {s+=$6; n++} END{ if (n>0) print s; else print "NA" }') || LAG=NA
+                        echo "adaptive-drain: total_lag=$LAG"
+                        if [ "$LAG" != "NA" ] && [ "$LAG" -le 1000 ]; then echo "adaptive-drain: caught up (lag<=1000), stopping"; break; fi
+                      done
+                      kill $CPID 2>/dev/null || true
+                      exit 0
+                    fi
+                    # Producers generate the aggregate target load.
+                    RECS=$(awk -v tput={{perInstanceThroughputMbps}} -v rs=$RS 'BEGIN{printf "%d", tput*1024*1024/rs}')
+                    TOTAL=$(( RECS * SECS ))
+                    nohup $K/kafka-producer-perf-test.sh --topic $TOPIC --num-records $TOTAL --record-size $RS --throughput $RECS \
+                      --producer-props bootstrap.servers=$BS --producer.config $P >/tmp/perf.out 2>&1 &
+                    # The lead producer samples end-to-end latency and publishes it as a custom metric.
+                    if [ "$IID" = "{{leadInstanceId}}" ]; then
+                      END=$(( $(date +%s) + SECS ))
+                      while [ $(date +%s) -lt $END ]; do
+                        MS=$($K/kafka-e2e-latency.sh $BS $PROBE_TOPIC 1000 1 $RS $P 2>/dev/null | grep -i 'Avg latency' | grep -oE '[0-9]+\.?[0-9]*' | head -1)
+                        if echo "$MS" | grep -qE '^[0-9]+\.?[0-9]*$'; then
+                          aws cloudwatch put-metric-data --region $REGION --namespace MSKSimulation \
+                            --metric-name E2ELatencyMs --unit Milliseconds --value "$MS" --dimensions Test=E2ELatency,Cluster=$CL
+                        fi
+                        sleep 30
+                      done
+                    fi
+                    wait
+
+  RunBrokerRestartTestDoc:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      Name: !Sub "${AWS::StackName}-RunBrokerRestartTest"
+      Content:
+        schemaVersion: "2.2"
+        description: >
+          Broker Restart Under Load. Producers sustain target throughput while
+          consumers read the topic (group simulation-restart) so both the produce and
+          consume paths are exercised; at reboot_at_minute the lead producer reboots
+          one broker via kafka:RebootBroker and emits a timeseries of produce latency
+          (MSKSimulation/ProduceLatencyMs) so the dashboard shows the impact and
+          recovery. Branches on the simulation:role tag.
+        parameters:
+          perInstanceThroughputMbps: {type: String, default: "50"}
+          durationMinutes: {type: String, default: "15"}
+          rebootAtMinute: {type: String, default: "5"}
+          recordSizeBytes: {type: String, default: "1024"}
+          maxDrainMinutes: {type: String, default: "20", description: "Hard cap (minutes) on the post-producer drain. After producers stop, the consumer keeps reading until the group's lag reaches ~0 (caught up) or this many minutes elapse, whichever first."}
+          leadInstanceId: {type: String, default: "", description: "Instance id that reboots a broker (the first targeted producer)."}
+          topic: {type: String, default: !Sub "${TopicName}-restart"}
+        mainSteps:
+          - action: aws:runShellScript
+            name: run
+            inputs:
+              timeoutSeconds: "8400"
+              runCommand:
+                - !Sub |
+                    set -e
+                    if ! /opt/kafka/bin/kafka-topics.sh --version >/dev/null 2>&1; then echo "ERROR: Kafka client not installed on this instance; run the InstallKafkaClient SSM document first." >&2; exit 1; fi
+                    REGION=${AWS::Region}
+                    CL=${MskCluster}
+                    BS=$(aws kafka get-bootstrap-brokers --cluster-arn $CL --region $REGION --query BootstrapBrokerStringSaslIam --output text)
+                    DUR={{durationMinutes}}; SECS=$((DUR*60)); RA={{rebootAtMinute}}
+                    CAP={{maxDrainMinutes}}; CAPS=$((CAP*60))   # hard cap on the adaptive drain (see consumer branch)
+                    TOPIC={{topic}}; RS={{recordSizeBytes}}
+                    P=/opt/kafka/client.properties; K=/opt/kafka/bin
+                    TOK=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+                    IID=$(curl -s -H "X-aws-ec2-metadata-token: $TOK" http://169.254.169.254/latest/meta-data/instance-id)
+                - |
+                    # Consumers read the topic so the restart exercises the consume path too.
+                    ROLE=$(curl -s -H "X-aws-ec2-metadata-token: $TOK" http://169.254.169.254/latest/meta-data/tags/instance/simulation:role)
+                    if [ "$ROLE" = "consumer" ]; then
+                      # Background consumer; drains until caught up (or maxDrainMinutes) so consume-side metrics reflect the test.
+                      GRP=simulation-restart
+                      # Reset the consumer group to the topic's latest so each run starts clean.
+                      $K/kafka-consumer-groups.sh --bootstrap-server $BS --command-config $P --group $GRP --topic $TOPIC --reset-offsets --to-latest --execute >/dev/null 2>&1 || true
+                      nohup $K/kafka-consumer-perf-test.sh --bootstrap-server $BS --consumer.config $P --topic $TOPIC --group $GRP --from-latest --messages 1000000000 --timeout 2147483647 --reporting-interval 5000 --show-detailed-stats >/tmp/consumer.out 2>&1 &
+                      CPID=$!
+                      PRODEND=$(( $(date +%s) + SECS ))     # producers stop ~here
+                      HARDEND=$(( PRODEND + CAPS ))          # absolute cap on the drain
+                      while kill -0 $CPID 2>/dev/null && [ $(date +%s) -lt $HARDEND ]; do
+                        sleep 15
+                        if [ $(date +%s) -lt $PRODEND ]; then continue; fi   # don't test "caught up" until producers stop
+                        LAG=$($K/kafka-consumer-groups.sh --bootstrap-server $BS --command-config $P --describe --group $GRP 2>/dev/null | awk 'NR>1 && $6 ~ /^[0-9]+$/ {s+=$6; n++} END{ if (n>0) print s; else print "NA" }') || LAG=NA
+                        echo "adaptive-drain: total_lag=$LAG"
+                        if [ "$LAG" != "NA" ] && [ "$LAG" -le 1000 ]; then echo "adaptive-drain: caught up (lag<=1000), stopping"; break; fi
+                      done
+                      kill $CPID 2>/dev/null || true
+                      exit 0
+                    fi
+                    # Producers generate the aggregate target load.
+                    RECS=$(awk -v tput={{perInstanceThroughputMbps}} -v rs=$RS 'BEGIN{printf "%d", tput*1024*1024/rs}')
+                    TOTAL=$(( RECS * SECS ))
+                    nohup $K/kafka-producer-perf-test.sh --topic $TOPIC --num-records $TOTAL --record-size $RS --throughput $RECS \
+                      --producer-props bootstrap.servers=$BS --producer.config $P >/tmp/perf.out 2>&1 &
+                    PERF=$!
+                    START=$(date +%s)
+                    if [ "$IID" = "{{leadInstanceId}}" ]; then
+                      sleep $(( RA * 60 ))
+                      # Select a broker to reboot.
+                      BID=$(aws kafka list-nodes --cluster-arn $CL --region $REGION --query 'NodeInfoList[?NodeType==`BROKER`].BrokerNodeInfo.BrokerId | [0]' --output text)
+                      BID=${BID%.*}
+                      if echo "$BID" | grep -qE '^[0-9]+$'; then
+                        aws kafka reboot-broker --cluster-arn $CL --broker-ids "$BID" --region $REGION || true
+                      else
+                        echo "WARN: could not resolve a broker id to reboot (got '$BID'); skipping reboot" >&2
+                      fi
+                    fi
+                    # Publish produce latency every 30s so the dashboard shows impact and recovery.
+                    # Anchor the window to the test start (not after the reboot sleep) so the lead
+                    # producer's reporting loop ends at durationMinutes, not rebootAtMinute + duration.
+                    END=$(( START + SECS ))
+                    while [ $(date +%s) -lt $END ]; do
+                      MS=$(grep -oE '[0-9]+\.?[0-9]* ms avg latency' /tmp/perf.out | tail -1 | grep -oE '[0-9]+\.?[0-9]*' | head -1)
+                      if echo "$MS" | grep -qE '^[0-9]+\.?[0-9]*$'; then
+                        aws cloudwatch put-metric-data --region $REGION --namespace MSKSimulation \
+                          --metric-name ProduceLatencyMs --unit Milliseconds --value "$MS" --dimensions Test=BrokerRestart,Cluster=$CL
+                      fi
+                      sleep 30
+                    done
+                    wait $PERF || true
+
+  InstallKafkaClientDoc:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      Name: !Sub "${AWS::StackName}-InstallKafkaClient"
+      Content:
+        schemaVersion: "2.2"
+        description: >
+          Install the Kafka client and the aws-msk-iam-auth jar on the fleet. The
+          Kafka client tarball URL is provided as a parameter at invocation
+          (kafkaUrl); the aws-msk-iam-auth jar is installed from its AWS-owned source.
+        parameters:
+          kafkaUrl:
+            type: String
+            description: "URL to the Kafka client tarball to install."
+          kafkaSha512:
+            type: String
+            description: "SHA-512 checksum of the Kafka client tarball; verified before install."
+        mainSteps:
+          - action: aws:runShellScript
+            name: install
+            inputs:
+              runCommand:
+                - |
+                    set -xe
+                    mkdir -p /opt/kafka/bin /opt/kafka/libs
+                    cd /opt
+                    # Require an HTTPS URL for the customer-provided client tarball before downloading.
+                    KURL="{{kafkaUrl}}"
+                    case "$KURL" in
+                      https://*) : ;;
+                      *) echo "ERROR: kafkaUrl must be an HTTPS URL (got: $KURL)." >&2; exit 1 ;;
+                    esac
+                    # Install the Kafka client from the provided URL.
+                    curl -fsSL "$KURL" -o kafka.tgz
+                    # Validate the checksum is a 128-char lowercase hex string before use
+                    # (it is interpolated into a shell command, so reject metacharacters).
+                    SHA="{{kafkaSha512}}"
+                    if ! echo "$SHA" | grep -qxE '[0-9a-f]{128}'; then
+                      echo "ERROR: kafkaSha512 must be a 128-char lowercase hex string." >&2; exit 1
+                    fi
+                    # Verify the tarball against the customer-provided SHA-512 before using it.
+                    echo "$SHA  kafka.tgz" | sha512sum -c -
+                    tar xzf kafka.tgz --strip-components=1 -C /opt/kafka
+                    # Install the aws-msk-iam-auth jar from its AWS-owned source (required for MSK IAM auth).
+                    curl -fsSL https://github.com/aws/aws-msk-iam-auth/releases/download/v2.2.0/aws-msk-iam-auth-2.2.0-all.jar -o /opt/kafka/libs/aws-msk-iam-auth.jar
+                    # Verify the pinned jar against its known SHA-256.
+                    echo "735dd058b81d088e767770d6cc4e7f1a1beea815ced18b66a23b35fd87651e77  /opt/kafka/libs/aws-msk-iam-auth.jar" | sha256sum -c -
+                    cat > /opt/kafka/client.properties <<'EOF'
+                    security.protocol=SASL_SSL
+                    sasl.mechanism=AWS_MSK_IAM
+                    sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+                    sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+                    EOF
+                    /opt/kafka/bin/kafka-topics.sh --version
+
+  ValidateClientDoc:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      Name: !Sub "${AWS::StackName}-ValidateClient"
+      Content:
+        schemaVersion: "2.2"
+        description: >
+          Validate the installed Kafka client against the cluster: confirms the client
+          runs, its version is >= the cluster's Kafka version, and it can authenticate
+          (IAM over TLS) and list topics. Fails with a clear message if the client is
+          missing or incompatible.
+        mainSteps:
+          - action: aws:runShellScript
+            name: validate
+            inputs:
+              runCommand:
+                - !Sub |
+                    set -e
+                    if ! /opt/kafka/bin/kafka-topics.sh --version >/dev/null 2>&1; then
+                      echo "ERROR: Kafka client not installed/working. Run ${AWS::StackName}-InstallKafkaClient first." >&2; exit 1
+                    fi
+                    CLIENT_VER=$(/opt/kafka/bin/kafka-topics.sh --version 2>/dev/null | awk '{print $1}')
+                    CLUSTER_VER=$(echo "${KafkaVersion}" | sed 's/\.kraft$//; s/\.x/.0/')
+                    LOWER=$(printf '%s\n%s\n' "$CLIENT_VER" "$CLUSTER_VER" | sort -V | head -n1)
+                    if [ "$CLIENT_VER" != "$CLUSTER_VER" ] && [ "$LOWER" = "$CLIENT_VER" ]; then
+                      echo "ERROR: Kafka client version $CLIENT_VER is older than the cluster's $CLUSTER_VER; install a client >= the cluster version." >&2; exit 1
+                    fi
+                    BS=$(aws kafka get-bootstrap-brokers --cluster-arn ${MskCluster} --region ${AWS::Region} --query BootstrapBrokerStringSaslIam --output text)
+                    if ! /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BS" --command-config /opt/kafka/client.properties --list >/dev/null 2>&1; then
+                      echo "ERROR: client $CLIENT_VER cannot authenticate/connect to the cluster (IAM/TLS/list failed). If you installed a custom client, fix it or re-run ${AWS::StackName}-InstallKafkaClient to use the official client." >&2; exit 1
+                    fi
+                    echo "Kafka client OK: version $CLIENT_VER >= cluster $CLUSTER_VER, authenticated and listed topics on the cluster."
+
+  # ---------------- Dashboard ----------------
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${AWS::StackName}-loadtest"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 5,
+              "properties": {
+                "markdown": "## Client metrics \u2014 client fleet, consumers & probes\n- **Fleet CPU (EC2 CPUUtilization)**: CPU on the producer/consumer instances. Saturation here indicates the client fleet, not the cluster, is the bottleneck.\n- **Fleet network (EC2 NetworkOut/NetworkIn)**: per-NIC throughput on the client instances; compare against instance bandwidth to detect fleet saturation.\n- **End-to-end latency (E2ELatencyMs)**: probe-measured produce-to-consume round trip; the primary latency SLA indicator.\n- **Produce latency during restart (ProduceLatencyMs)**: client-observed produce latency across the broker-restart window, showing impact and recovery.\n- **Consumer lag (MaxOffsetLag)**: messages by which the test consumers trail the log head. A sustained rise indicates consumers cannot keep pace."
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 5,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Fleet CPU % \u2014 client fleet (maxed = fleet is the bottleneck)",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    {
+                      "expression": "AVG(SEARCH('{AWS/EC2,AutoScalingGroupName} AutoScalingGroupName=\"${AWS::StackName}-producer\" MetricName=\"CPUUtilization\"', 'Average', 60))",
+                      "label": "producers",
+                      "id": "pcpu"
+                    }
+                  ],
+                  [
+                    {
+                      "expression": "AVG(SEARCH('{AWS/EC2,AutoScalingGroupName} AutoScalingGroupName=\"${AWS::StackName}-consumer\" MetricName=\"CPUUtilization\"', 'Average', 60))",
+                      "label": "consumers",
+                      "id": "ccpu"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 5,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Fleet network bytes/min \u2014 producer egress / consumer ingress",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    {
+                      "expression": "SUM(SEARCH('{AWS/EC2,AutoScalingGroupName} AutoScalingGroupName=\"${AWS::StackName}-producer\" MetricName=\"NetworkOut\"', 'Average', 60))",
+                      "label": "producers NetworkOut",
+                      "id": "pno"
+                    }
+                  ],
+                  [
+                    {
+                      "expression": "SUM(SEARCH('{AWS/EC2,AutoScalingGroupName} AutoScalingGroupName=\"${AWS::StackName}-consumer\" MetricName=\"NetworkIn\"', 'Average', 60))",
+                      "label": "consumers NetworkIn",
+                      "id": "cni"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 11,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "End-to-end latency (ms) \u2014 produce->consume round trip (probe)",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    {
+                      "expression": "MAX(SEARCH('{MSKSimulation,Cluster,Test} Test=\"E2ELatency\" MetricName=\"E2ELatencyMs\"', 'Average', 60))",
+                      "label": "E2ELatencyMs",
+                      "id": "e2elat"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 11,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Produce latency (ms) during broker restart \u2014 watch spike & recovery",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    {
+                      "expression": "MAX(SEARCH('{MSKSimulation,Cluster,Test} Test=\"BrokerRestart\" MetricName=\"ProduceLatencyMs\"', 'Average', 60))",
+                      "label": "ProduceLatencyMs",
+                      "id": "prodlat"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 17,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Consumer lag \u2014 how far consumers trail (messages behind, per test)",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    {
+                      "expression": "MAX(SEARCH('{AWS/Kafka,\"Cluster Name\",\"Consumer Group\",\"Topic\"} \"Cluster Name\"=\"${AWS::StackName}-express\" \"Consumer Group\"=\"simulation-e2e\" MetricName=\"MaxOffsetLag\"', 'Average', 60))",
+                      "label": "E2E lag - simulation-e2e (msgs behind)",
+                      "id": "lage2e"
+                    }
+                  ],
+                  [
+                    {
+                      "expression": "MAX(SEARCH('{AWS/Kafka,\"Cluster Name\",\"Consumer Group\",\"Topic\"} \"Cluster Name\"=\"${AWS::StackName}-express\" \"Consumer Group\"=\"simulation-restart\" MetricName=\"MaxOffsetLag\"', 'Average', 60))",
+                      "label": "Broker Restart lag - simulation-restart (msgs behind)",
+                      "id": "lagrestart"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "text",
+              "x": 0,
+              "y": 23,
+              "width": 24,
+              "height": 5,
+              "properties": {
+                "markdown": "## Cluster metrics \u2014 Amazon MSK (broker side)\n- **Bytes In/Out per sec**: aggregate write/read throughput across all brokers. A flat write ceiling indicates the per-broker bandwidth quota has been reached.\n- **CPU user (CpuUser)**: broker CPU spent on Kafka. Sustained >60% indicates an overloaded cluster.\n- **Health (ActiveControllerCount / UnderReplicatedPartitions / OfflinePartitionsCount)**: expected steady state is 1 / 0 / 0. The latter two spike transiently during a broker restart.\n- **Replication bytes/sec (ReplicationBytesOutPerSec)**: inter-broker replication; spikes as a restarted broker catches up."
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 28,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Bytes In/Out per sec \u2014 total write/read traffic (all brokers)",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    {
+                      "expression": "SUM(SEARCH('{AWS/Kafka,\"Broker ID\",\"Cluster Name\"} \"Cluster Name\"=\"${AWS::StackName}-express\" MetricName=\"BytesInPerSec\"', 'Average', 60))",
+                      "label": "BytesInPerSec (cluster)",
+                      "id": "bin"
+                    }
+                  ],
+                  [
+                    {
+                      "expression": "SUM(SEARCH('{AWS/Kafka,\"Broker ID\",\"Cluster Name\"} \"Cluster Name\"=\"${AWS::StackName}-express\" MetricName=\"BytesOutPerSec\"', 'Average', 60))",
+                      "label": "BytesOutPerSec (cluster)",
+                      "id": "bout"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 28,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "CPU user % \u2014 broker CPU on Kafka (keep < 60%)",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    {
+                      "expression": "AVG(SEARCH('{AWS/Kafka,\"Broker ID\",\"Cluster Name\"} \"Cluster Name\"=\"${AWS::StackName}-express\" MetricName=\"CpuUser\"', 'Average', 60))",
+                      "label": "CpuUser (avg %)",
+                      "id": "cpu"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 34,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Health \u2014 controller=1; under-replicated & offline=0",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    "AWS/Kafka",
+                    "ActiveControllerCount",
+                    "Cluster Name",
+                    "${AWS::StackName}-express"
+                  ],
+                  [
+                    "AWS/Kafka",
+                    "UnderReplicatedPartitions",
+                    "Cluster Name",
+                    "${AWS::StackName}-express"
+                  ],
+                  [
+                    "AWS/Kafka",
+                    "OfflinePartitionsCount",
+                    "Cluster Name",
+                    "${AWS::StackName}-express"
+                  ],
+                  [
+                    {
+                      "expression": "SUM(SEARCH('{AWS/Kafka,\"Broker ID\",\"Cluster Name\"} \"Cluster Name\"=\"${AWS::StackName}-express\" MetricName=\"UnderMinIsrPartitionCount\"', 'Average', 60))",
+                      "label": "UnderMinIsrPartitionCount (sum)",
+                      "id": "uminisr"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 34,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Replication bytes/sec \u2014 re-replication (spikes as a restarted broker catches up)",
+                "region": "${AWS::Region}",
+                "stat": "Average",
+                "period": 60,
+                "metrics": [
+                  [
+                    {
+                      "expression": "SUM(SEARCH('{AWS/Kafka,\"Broker ID\",\"Cluster Name\"} \"Cluster Name\"=\"${AWS::StackName}-express\" MetricName=\"ReplicationBytesOutPerSec\"', 'Average', 60))",
+                      "label": "ReplicationBytesOutPerSec (cluster)",
+                      "id": "repout"
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        }
+Outputs:
+  ClusterArn:
+    Value: !Ref MskCluster
+  DashboardUrl:
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}-loadtest"
+  DashboardArn:
+    Value: !Sub "arn:${AWS::Partition}:cloudwatch::${AWS::AccountId}:dashboard/${AWS::StackName}-loadtest"
+  CreateTopicsCommand:
+    Value: !Sub "aws ssm send-command --document-name ${AWS::StackName}-CreateTopics --targets Key=tag:simulation:role,Values=producer --max-concurrency 1 --region ${AWS::Region}"
+  InstallKafkaClientCommand:
+    Description: >
+      Installs the Kafka client (from the kafkaUrl you pass) and the aws-msk-iam-auth
+      jar (from its AWS-owned source) on the fleet.
+    Value: !Sub "aws ssm send-command --document-name ${AWS::StackName}-InstallKafkaClient --targets Key=tag:simulation:role,Values=producer,consumer --parameters 'kafkaUrl=<kafka-client-url>,kafkaSha512=<sha512>' --region ${AWS::Region}"
+  ValidateClientCommand:
+    Description: >
+      Validates the installed Kafka client against this cluster (version >= cluster,
+      and live IAM/TLS auth + topic list). Run after install and before tests; re-run
+      after any client fix.
+    Value: !Sub "aws ssm send-command --document-name ${AWS::StackName}-ValidateClient --targets Key=tag:simulation:role,Values=producer,consumer --region ${AWS::Region}"
+  FleetSummary:
+    Value: !Sub "${ProducerCount} x ${ClientInstanceType} producers, ${ConsumerCount} consumers; cluster ${BrokerCount} x ${InstanceType}"

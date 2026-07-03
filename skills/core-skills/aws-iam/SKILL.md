@@ -1,10 +1,18 @@
 ---
 name: aws-iam
-description: "Verified corrections for IAM behaviors that AI agents frequently get\
-  \ wrong \u2014 policy evaluation edge cases, trust policy gotchas, STS session limits,\
-  \ Organizations quirks, and SAML/MFA specifics. Use alongside documentation when\
-  \ working with IAM roles, policies, STS, or Organizations. Do NOT use for non-IAM\
-  \ authorization like Cognito user-pool policies or app-level RBAC."
+description: >
+  Verified corrections for IAM behaviors that AI agents frequently get wrong — policy
+  evaluation edge cases, trust policy gotchas, STS session limits, Organizations quirks,
+  and SAML/MFA specifics. Also provides structured workflows for IAM role management and
+  least-privilege policy generation. Covers condition operator safety (ForAnyValue/ForAllValues
+  with Null checks for absent keys), bucket policy deny patterns (VPC endpoint restrictions,
+  org path conditions), resource-based policy confused deputy protection, and service role
+  creation for AWS services (Glue, CloudTrail, VPC Flow Logs, Firehose, DataSync, S3
+  replication, Lambda, Step Functions, ECS, etc.) including trust policies with
+  aws:SourceAccount/aws:SourceArn conditions. Applies when creating or configuring IAM roles,
+  writing IAM or bucket policies, working with STS, Organizations, condition operators, or
+  any task requiring an IAM service role or execution role. Does not cover non-IAM
+  authorization like Cognito user-pool policies or app-level RBAC.
 version: 1
 ---
 
@@ -12,9 +20,15 @@ version: 1
 
 ## About This Skill
 
-This skill contains verified corrections for things that AI agents frequently get wrong about IAM. It is not a comprehensive IAM guide — for full IAM guidance, search AWS documentation.
+This skill contains verified corrections for things that AI agents frequently get wrong about IAM. It is not a comprehensive IAM guide — for full IAM guidance, search AWS documentation. When answering IAM questions, verify specific claims (limits, quotas, exact API names, edge-case behaviors) against official AWS documentation rather than relying on pre-training. Prefer fetching known documentation URLs over broad searches. Trust official documentation over memory when they conflict.
 
-When answering IAM questions, verify specific claims (limits, quotas, exact API names, edge-case behaviors) against official AWS documentation rather than relying on pre-training. Prefer fetching known documentation URLs over broad searches. Trust official documentation over memory when they conflict.
+## Common Workflows
+
+Use the best available tool for AWS operations — the AWS MCP server is recommended but not required; AWS CLI or SDK may be used as alternatives. Read reference files only when the conversation requires deeper detail.
+
+- Read [references/aws-iam-role-management.md](references/aws-iam-role-management.md) if the user needs to create, scope, or maintain IAM roles when provisioning or updating AWS resources. Covers service roles, execution roles, trust policies, confused deputy protection, and permission hygiene.
+
+- Read [references/aws-iam-policy-generation.md](references/aws-iam-policy-generation.md) if the user needs to generate least-privilege IAM policies, determine required IAM actions for API calls, or understand action-to-operation mappings. **CRITICAL: If the user provides source code (Python, Go, TypeScript, JavaScript, Java), you MUST read this reference — it mandates using iam-policy-autopilot instead of manual policy construction.** Uses the programmatic service authorization reference for accurate mappings.
 
 ## Verified Edge Cases
 
@@ -34,7 +48,7 @@ When answering IAM questions, verify specific claims (limits, quotas, exact API 
 - Suspended/closed accounts CANNOT be removed until permanently closed (~90 days). Remove FIRST, then close.
 - Policy management delegation: use PutResourcePolicy, NOT register-delegated-administrator.
 - AI opt-out policies: management account required by default.
-- Organizations policy types for ListPolicies filter: SERVICE_CONTROL_POLICY, TAG_POLICY, BACKUP_POLICY, AISERVICES_OPT_OUT_POLICY, CHATBOT_POLICY, DECLARATIVE_POLICY_EC2, RESOURCE_CONTROL_POLICY.
+- Organizations policy types for ListPolicies filter: fetch the current list via `aws organizations list-available-policy-types` or [the Organizations API reference](https://docs.aws.amazon.com/organizations/latest/APIReference/API_ListPolicies.html).
 
 **SDK Specifics:**
 
@@ -52,24 +66,24 @@ When answering IAM questions, verify specific claims (limits, quotas, exact API 
 
 - ForAllValues with empty/missing key: evaluates to true (vacuous truth). To avoid that, use a `Null` condition in addition to the `ForAllValues` on **the same context key** to require that key to be present and non-null. For example, when evaluating the `aws:TagKeys` context key:
 
-```
-{
+  ```json
+  {
     "Version": "2012-10-17",
     "Statement": {
-        "Effect": "Allow",
-        "Action": "ec2:RunInstances",
-        "Resource": "*",
-        "Condition": {
-            "ForAllValues:StringEquals": {
-                "aws:TagKeys": ["Alpha", "Beta"]
-            },
-            "Null": {
-                "aws:TagKeys": "false"
-            }
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "*",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": ["Alpha", "Beta"]
+        },
+        "Null": {
+          "aws:TagKeys": "false"
         }
+      }
     }
-}
-```
+  }
+  ```
 
 - Resource-based policies granting to IAM user ARN bypass permissions boundaries in same account.
 - 8 privilege escalation actions via direct IAM policy manipulation: PutGroupPolicy, PutRolePolicy, PutUserPolicy, CreatePolicy, CreatePolicyVersion, AttachGroupPolicy, AttachRolePolicy, AttachUserPolicy.
@@ -87,7 +101,7 @@ When answering IAM questions, verify specific claims (limits, quotas, exact API 
 **Service-Specific Roles:**
 
 - Redshift Serverless trust policy: include BOTH `redshift-serverless.amazonaws.com` AND `redshift.amazonaws.com` as service principals (per AWS docs; omitting serverless causes `Not authorized to get credentials of role` on COPY).
-- IAM OIDC providers: thumbprints no longer required for most providers (AWS verifies via trusted CAs since 2022).
+- IAM OIDC providers: thumbprints are not required for most providers (AWS verifies via trusted CAs).
 
 **Policy Summary Display:**
 
