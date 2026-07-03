@@ -54,7 +54,7 @@ In general, Lambda MicroVMs are suited for long-lived sessions, real port-listen
 
 ## Typical workflow
 
-0. **Check regional availability** — confirm Lambda MicroVMs is available in your target region (use a `ListMicrovmImages` call). Your S3 artifact bucket and any network connectors must be in the same region as the image.
+0. **Check regional availability** — confirm Lambda MicroVMs is available in your target region (run `aws lambda-microvms list-managed-microvm-images`). Your S3 artifact bucket and any network connectors must be in the same region as the image.
 1. **Package** an app: zip with a `Dockerfile` at the root, upload to S3 (same region as the image).
 2. **Implement lifecycle hooks** (optional but recommended) — HTTP endpoints on a port you specify (commonly `9000`) for `/run`, `/resume`, `/suspend`, `/terminate`, `/ready`, `/validate`.
 3. **CreateMicrovmImage** — pointing at the S3 artifact, a managed base image, and a build role. Lambda compiles the Dockerfile into an OCI image, starts your app, calls `/ready`, snapshots disk + memory, optionally validates with `/validate`. Lambda will periodically release new managed image versions, and customers should re-build using the latest version to ensure they have up to date images.
