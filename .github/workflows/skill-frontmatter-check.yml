@@ -12,6 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  contents: read
   pull-requests: write
 
 jobs:
@@ -19,80 +20,90 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # Safe: only reads YAML frontmatter with grep/sed — no PR code is executed.
-      - name: Checkout PR head
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-          sparse-checkout: skills
-          fetch-depth: 1
-
-      - name: Check for disallowed frontmatter fields
-        id: check
-        run: |
-          ALLOWED_FIELDS="name|version|description"
-          VIOLATIONS=""
-
-          for file in $(find . -name "SKILL.md" | sed 's|^\./||'); do
-            [ -f "$file" ] || continue
-
-            FRONTMATTER_START=0
-            FRONTMATTER_END=0
-            LINE_NUM=0
-            DASH_COUNT=0
-
-            while IFS= read -r line; do
-              LINE_NUM=$((LINE_NUM + 1))
-              if [ "$line" = "---" ]; then
-                DASH_COUNT=$((DASH_COUNT + 1))
-                if [ $DASH_COUNT -eq 1 ]; then
-                  FRONTMATTER_START=$LINE_NUM
-                elif [ $DASH_COUNT -eq 2 ]; then
-                  FRONTMATTER_END=$LINE_NUM
-                  break
-                fi
-              fi
-            done < "$file"
-
-            [ $FRONTMATTER_END -eq 0 ] && continue
-
-            DISALLOWED_KEYS=$(sed -n "$((FRONTMATTER_START + 1)),$((FRONTMATTER_END - 1))p" "$file" \
-              | grep -E '^[a-zA-Z_][a-zA-Z0-9_-]*:' \
-              | grep -oE '^[a-zA-Z_][a-zA-Z0-9_-]*' \
-              | grep -vE "^($ALLOWED_FIELDS)$" || true)
-
-            if [ -n "$DISALLOWED_KEYS" ]; then
-              VIOLATIONS="$VIOLATIONS\n- \`$file\`: $(echo $DISALLOWED_KEYS | tr '\n' ', ')"
-            fi
-          done
-
-          if [ -n "$VIOLATIONS" ]; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            # Store violations for the comment
-            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-            echo "violations<<$EOF" >> "$GITHUB_OUTPUT"
-            echo -e "$VIOLATIONS" >> "$GITHUB_OUTPUT"
-            echo "$EOF" >> "$GITHUB_OUTPUT"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Close PR and comment
-        if: steps.check.outputs.found == 'true'
+      - name: Check SKILL.md frontmatter via API
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const violations = `${{ steps.check.outputs.violations }}`;
+            const ALLOWED_FIELDS = new Set(['name', 'version', 'description']);
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                per_page: 100
+              }
+            );
+
+            const skillFiles = files
+              .filter(f => f.filename.endsWith('SKILL.md') && f.status !== 'removed');
+
+            if (skillFiles.length === 0) {
+              core.info('No SKILL.md files changed.');
+              return;
+            }
+
+            const violations = [];
+
+            for (const file of skillFiles) {
+              const { data } = await github.rest.repos.getContent({
+                owner: context.payload.pull_request.head.repo.owner.login,
+                repo: context.payload.pull_request.head.repo.name,
+                path: file.filename,
+                ref: context.payload.pull_request.head.sha
+              });
+
+              const content = Buffer.from(data.content, 'base64').toString('utf-8');
+              const lines = content.split('\n');
+
+              if (lines[0] !== '---') continue;
+
+              const disallowed = [];
+              for (let i = 1; i < lines.length; i++) {
+                if (lines[i] === '---') break;
+                const match = lines[i].match(/^([a-zA-Z_][a-zA-Z0-9_-]*):/);
+                if (match && !ALLOWED_FIELDS.has(match[1])) {
+                  disallowed.push(match[1]);
+                }
+              }
+
+              if (disallowed.length > 0) {
+                violations.push({ path: file.filename, fields: disallowed });
+              }
+            }
+
+            if (violations.length === 0) {
+              core.info('All SKILL.md files pass frontmatter check.');
+              return;
+            }
+
+            const list = violations
+              .map(v => `- \`${v.path}\`: ${v.fields.map(f => '`' + f + '`').join(', ')}`)
+              .join('\n');
+
+            const body = [
+              '⚠️ **PR closed automatically.**',
+              '',
+              'SKILL.md frontmatter must only contain `name`, `version`, and `description`. The following files have disallowed fields:',
+              '',
+              list,
+              '',
+              'Please remove these fields and reopen the PR.'
+            ].join('\n');
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: `⚠️ **PR closed automatically.**\n\nSKILL.md frontmatter must only contain \`name\`, \`version\`, and \`description\`. The following files have disallowed fields:\n${violations}\n\nPlease remove these fields and reopen the PR.`
+              body
             });
+
             await github.rest.pulls.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
               state: 'closed'
             });
+
+            core.setFailed('SKILL.md files contained disallowed frontmatter fields.');
