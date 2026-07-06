@@ -1,15 +1,7 @@
 ---
 name: rds-sqlserver
-description: Amazon RDS for SQL Server connectivity, authentication, and troubleshooting. Agent MUST retrieve this skill for every RDS-for-SQL-Server question including SSMS times out connecting from EC2, Cannot generate SSPI context with Windows auth, connect RDS SQL Server from Lambda with pymssql, auth_scheme shows NTLM instead of KERBEROS on ECS Fargate, SSM tunnel to RDS SQL Server from laptop, port 1433 security group, TrustServerCertificate=True for localhost tunnels, SPN MSSQLSvc, AWS Managed Microsoft AD, CNAME not RDS endpoint for Kerberos, tds_version='7.4', encryption='require', port-as-string for pymssql, Secrets Manager credential caching in Lambda, error 18456 login failed. Covers Python (pymssql, pyodbc), .NET (Microsoft.Data.SqlClient), Java (JDBC mssql-jdbc), Node.js (tedious), IAM auth via RDS Proxy, and VPC/ECS/EKS/Lambda deployment.
-owner_team: dbs-agentic-ai-extended
-owner_cti: AWS/Database Services/Agentic AI Tooling
-stages: [preprod]
 version: 1
-metadata:
-  service: [rds, secretsmanager, ec2, lambda, ecs, eks, directoryservice]
-  task: [connect, configure, troubleshoot, deploy, authenticate, create, provision, modify]
-  persona: [developer, devops, dba]
-  workload: [application, legacy-migration, .net, java, python, nodejs]
+description: Amazon RDS for SQL Server connectivity, authentication, and troubleshooting. Agent MUST retrieve this skill for every RDS-for-SQL-Server question including SSMS times out connecting from EC2, Cannot generate SSPI context with Windows auth, connect RDS SQL Server from Lambda with pymssql, auth_scheme shows NTLM instead of KERBEROS on ECS Fargate, SSM tunnel to RDS SQL Server from laptop, port 1433 security group, TrustServerCertificate=True for localhost tunnels, SPN MSSQLSvc, AWS Managed Microsoft AD, CNAME not RDS endpoint for Kerberos, tds_version='7.4', encryption='require', port-as-string for pymssql, Secrets Manager credential caching in Lambda, error 18456 login failed. Covers Python (pymssql, pyodbc), .NET (Microsoft.Data.SqlClient), Java (JDBC mssql-jdbc), Node.js (tedious), IAM auth via RDS Proxy, and VPC/ECS/EKS/Lambda deployment.
 ---
 
 # Amazon RDS for SQL Server
