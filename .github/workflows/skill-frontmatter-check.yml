@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize]
     branches: [main]
     paths:
-      - "skills/**/SKILL.md"
+      - "**/SKILL.md"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -19,10 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Safe: only reads YAML frontmatter with grep/sed — no PR code is executed.
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
           sparse-checkout: skills
           fetch-depth: 1
 
@@ -32,7 +34,7 @@ jobs:
           ALLOWED_FIELDS="name|version|description"
           VIOLATIONS=""
 
-          for file in $(find skills -name "SKILL.md"); do
+          for file in $(find . -name "SKILL.md" | sed 's|^\./||'); do
             [ -f "$file" ] || continue
 
             FRONTMATTER_START=0
@@ -78,7 +80,7 @@ jobs:
 
       - name: Close PR and comment
         if: steps.check.outputs.found == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const violations = `${{ steps.check.outputs.violations }}`;
