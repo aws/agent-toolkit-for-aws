@@ -10,6 +10,16 @@ The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guard
 
 ## Quick start
 
+### AWS CLI
+
+Use the Agent Toolkit directly from your terminal with the AWS CLI:
+
+```
+aws configure agent-toolkit
+```
+
+See the [AWS CLI integration guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/aws-cli.html) for setup, configuration, and usage instructions.
+
 ### Claude Code
 
 The plugins are available on the official Anthropic marketplace (`claude-plugins-official`) which is added to your Claude Code installation by default.
