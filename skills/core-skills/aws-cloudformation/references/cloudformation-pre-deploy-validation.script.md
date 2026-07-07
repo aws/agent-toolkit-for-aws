@@ -8,7 +8,7 @@ Deterministic procedure for running CloudFormation's pre-deployment validation f
 2. **Resource name conflict validation** (FAIL) — Detects naming conflicts with existing resources in the account.
 3. **S3 bucket emptiness validation** (WARN) — Warns when deleting S3 buckets that contain objects.
 
-Validation errors are exposed through the **new `describe-events` API** scoped to the change set. This procedure uses `call_aws` (preferred) or the AWS CLI to invoke these APIs directly.
+Validation errors are exposed through the `describe-events` API scoped to the change set. This procedure uses `call_aws` (preferred) or the AWS CLI to invoke these APIs directly. Note: The AWS MCP server is recommended for streamlined API invocation, but all steps can be performed using the AWS CLI alone.
 
 **Important:** The legacy `describe-stack-events` API does NOT return validation errors. You MUST use `describe-events --change-set-name <arn>` to retrieve validation results.
 
@@ -96,7 +96,7 @@ Create the change set to trigger pre-deployment validation. Validation runs auto
 
 ### 5. Retrieve Validation Results via describe-events
 
-Fetch validation results from the **new `describe-events` API**.
+Fetch validation results from the `describe-events` API.
 
 **Constraints:**
 
@@ -199,7 +199,7 @@ Fix the template and create a new change set.
 ## Troubleshooting
 
 ### describe-events returns empty or unknown command
-The `describe-events` API (scoped to change sets with validation errors) is the newer API. If the installed AWS CLI is outdated, update it: `pip install --upgrade awscli` or `brew upgrade awscli`. If the command still returns nothing, confirm the change set ARN is correct and the change set has finished creating.
+The `describe-events` API (scoped to change sets) requires AWS CLI support for the command. If it is not recognized, update the AWS CLI: `pip install --upgrade awscli` or `brew upgrade awscli`. If the command still returns nothing, confirm the change set ARN is correct and the change set has finished creating.
 
 ### User calls describe-stack-events instead
 `describe-stack-events` returns events after the stack begins provisioning. It does NOT include pre-deployment validation errors. You MUST redirect the user to `describe-events --change-set-name <arn>`.
