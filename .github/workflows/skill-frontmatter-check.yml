@@ -24,7 +24,8 @@ jobs:
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const DISALLOWED_FIELDS = new Set(['owner_team', 'owner_cti', 'stages']);
+            const DISALLOWED_FIELDS = new Set(['stages']);
+            const DISALLOWED_PREFIXES = ['owner_'];
 
             const files = await github.paginate(
               github.rest.pulls.listFiles,
@@ -63,7 +64,7 @@ jobs:
               for (let i = 1; i < lines.length; i++) {
                 if (lines[i] === '---') break;
                 const match = lines[i].match(/^([a-zA-Z_][a-zA-Z0-9_-]*):/);
-                if (match && DISALLOWED_FIELDS.has(match[1])) {
+                if (match && (DISALLOWED_FIELDS.has(match[1]) || DISALLOWED_PREFIXES.some(p => match[1].startsWith(p)))) {
                   disallowed.push(match[1]);
                 }
               }
