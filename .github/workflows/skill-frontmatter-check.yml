@@ -24,7 +24,7 @@ jobs:
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const ALLOWED_FIELDS = new Set(['name', 'version', 'description']);
+            const DISALLOWED_FIELDS = new Set(['owner_team', 'owner_cti', 'stages']);
 
             const files = await github.paginate(
               github.rest.pulls.listFiles,
@@ -63,7 +63,7 @@ jobs:
               for (let i = 1; i < lines.length; i++) {
                 if (lines[i] === '---') break;
                 const match = lines[i].match(/^([a-zA-Z_][a-zA-Z0-9_-]*):/);
-                if (match && !ALLOWED_FIELDS.has(match[1])) {
+                if (match && DISALLOWED_FIELDS.has(match[1])) {
                   disallowed.push(match[1]);
                 }
               }
@@ -85,7 +85,7 @@ jobs:
             const body = [
               '⚠️ **PR closed automatically.**',
               '',
-              'SKILL.md frontmatter must only contain `name`, `version`, and `description`. The following files have disallowed fields:',
+              'SKILL.md frontmatter contains fields that are not permitted in this public repository:',
               '',
               list,
               '',
