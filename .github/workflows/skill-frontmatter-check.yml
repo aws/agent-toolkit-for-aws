@@ -23,6 +23,7 @@ jobs:
       - name: Check SKILL.md frontmatter via API
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
+          retries: 3
           script: |
             const DISALLOWED_FIELDS = new Set(['stages']);
             const DISALLOWED_PREFIXES = ['owner_'];
