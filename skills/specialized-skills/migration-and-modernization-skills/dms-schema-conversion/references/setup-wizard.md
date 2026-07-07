@@ -6,6 +6,7 @@
 - [Phase 1 — Project Name](#phase-1--project-name)
 - [Phase 2 — Target Type Selection](#phase-2--target-type-selection)
 - [Phase 3 — Source Database](#phase-3--source-database)
+  - [3d — Offline source configuration](#3d--offline-source-configuration)
 - [Phase 4 — Network Investigation & Connectivity](#phase-4--network-investigation--connectivity)
 - [Phase 5 — Create DMS Subnet Group](#phase-5--create-dms-subnet-group)
 - [Phase 6 — Database Credentials](#phase-6--database-credentials)
@@ -48,9 +49,10 @@ Ask:
 | DMS Subnet Group | `<project_name>-subnet-group` |
 | Source Data Provider | `<project_name>-source` |
 | Target Data Provider | `<project_name>-target` |
-| S3 Bucket | `<project_name>-sc-bucket-<aws_account_id>-<aws_region>` |
+| S3 Bucket (migration artifacts) | `<project_name>-sc-bucket-<aws_account_id>-<aws_region>` |
 | Secrets IAM Role | `<project_name>-sc-secrets-role` |
-| S3 IAM Role | `<project_name>-sc-s3-role` |
+| S3 IAM Role (migration artifacts) | `<project_name>-sc-s3-role` |
+| S3 Access Role (offline source, if applicable) | `<project_name>-sc-s3-access-role` |
 
 **Constraints:**
 
@@ -69,6 +71,7 @@ Ask:
   aws s3api head-bucket --bucket <project_name>-sc-bucket-<aws_account_id>-<aws_region>
   aws iam get-role --role-name <project_name>-sc-secrets-role
   aws iam get-role --role-name <project_name>-sc-s3-role
+  aws iam get-role --role-name <project_name>-sc-s3-access-role
   aws iam get-role --role-name dms-vpc-role
   aws iam get-role --role-name dms-cloudwatch-logs-role
   ```
@@ -86,6 +89,7 @@ Ask:
   | S3 Bucket `<project_name>-sc-bucket-<aws_account_id>-<aws_region>` | EXISTS / will be created |
   | Secrets IAM Role `<project_name>-sc-secrets-role` | EXISTS / will be created |
   | S3 IAM Role `<project_name>-sc-s3-role` | EXISTS / will be created |
+  | S3 Access Role `<project_name>-sc-s3-access-role` (offline source) | EXISTS / will be created if needed |
   | DMS VPC Role `dms-vpc-role` | EXISTS / will be created |
   | DMS CloudWatch Role `dms-cloudwatch-logs-role` | EXISTS / will be created |
 
@@ -130,7 +134,22 @@ Explain:
 
 Ask for source engine. Supported source engines: `sqlserver`, `oracle`, `mysql`, `postgresql`, `db2-luw`, `db2-zos`, `sybase`. See [DMS SC supported source databases](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_Introduction.Sources.html#CHAP_Introduction.Sources.SchemaConversion) for the full list. The customer may provide the engine name in any format — map it to the correct API identifier automatically.
 
-### 3b — Source connection
+### 3b — Source mode (online / offline)
+
+**If source engine is `sqlserver`**, ask:
+> "Would you like to connect directly to the source database (online mode), or use exported DDL scripts from S3 (offline mode)?
+> - **Online** — DMS connects to your database to read metadata directly.
+> - **Offline** — DMS reads metadata from DDL scripts you've uploaded to S3. No database connectivity required."
+
+Store as `source_mode` (`online` or `offline`).
+
+**If offline:** Proceed to [Phase 3d — Offline Source Configuration](#3d--offline-source-configuration).
+
+**If source engine is NOT `sqlserver`**, set `source_mode = online` (offline is available only for SQL Server).
+
+### 3c — Source connection (online mode only)
+
+**Skip this step if `source_mode = offline`.**
 
 Ask for hostname, port, and database name in a single prompt. If the source is an RDS instance, offer to look up the connection details automatically:
 > "Is your source database an RDS instance? If yes, provide the RDS instance ARN or identifier and I'll retrieve the connection details automatically. Otherwise, please provide the hostname, port, and database name."
@@ -140,6 +159,90 @@ Ask for hostname, port, and database name in a single prompt. If the source is a
 
 Store as `source_hostname`, `source_port`, `source_database_name`.
 
+### 3d — Offline source configuration
+
+**Skip this step if `source_mode = online`.**
+
+#### Step 1 — DDL Scripts (Offline Source)
+
+Ask:
+> "What is the current state of your DDL scripts?
+> 1. Already exported and uploaded to S3
+> 2. Already exported but not yet uploaded to S3
+> 3. Not yet exported — I'd like help"
+
+**Option 1 (exported + uploaded):** Proceed to Step 2.
+
+**Option 2 (exported, not uploaded):** Ask for the local path and target S3 bucket. Upload using:
+```
+aws s3 sync <local_path>/ s3://<bucket>/<database_name>/ --sse AES256
+```
+Verify upload: `aws s3 ls s3://<bucket>/<database_name>/ --recursive | head -10`. Proceed to Step 2.
+
+**Option 3 (not exported):** Ask:
+> "Would you like me to extract the DDL scripts from your database via CLI, or would you prefer to do it yourself?"
+
+- **Agent extracts (with customer permission):** Read [Export SQL Server database objects](https://docs.aws.amazon.com/dms/latest/userguide/export-sql-server-database-objects.html) for the CLI extraction approach. Then:
+  1. Ask for database connection details (hostname, port, database name). For credentials, ask if they are stored in AWS Secrets Manager (provide the secret ARN) or provide directly — credentials will not be logged or persisted.
+  2. Verify the customer's environment has the required tools (PowerShell, `SqlServer` PowerShell module — provides SQL Server Management Objects for scripting database objects). If not, guide installation: `Install-Module SqlServer`.
+  3. Generate the PowerShell SMO export script configured for the customer's database, following the settings and approach from the user guide.
+  4. Ask the customer for permission to execute the script on their machine. If granted, run it via CLI. If not, provide the script for the customer to run manually.
+  5. After extraction completes, upload results to S3 with `aws s3 sync <output_dir>/ s3://<bucket>/<database_name>/ --sse AES256`.
+  6. Proceed to Step 2.
+
+- **Customer extracts:** Provide the link: [Export SQL Server database objects](https://docs.aws.amazon.com/dms/latest/userguide/export-sql-server-database-objects.html). Inform the customer about the DDL structure requirements (below) and wait for them to complete. Then ask whether scripts are uploaded to S3 (→ Option 1) or need uploading (→ Option 2).
+
+**DDL structure requirements** (inform customer if they export themselves):
+- One SQL file per database object
+- Each file contains exactly one `CREATE` statement
+- `USE [DatabaseName];` at the top of each file
+- All objects for one database under a single S3 prefix
+- No DML or DROP statements
+
+#### Step 2 — S3 Configuration (Offline Source)
+
+1. **S3 path:** Ask:
+   > "Please provide the S3 path to your DDL scripts (e.g., `s3://my-bucket/MyDatabase/`)."
+
+   Store as `ddl_s3_path`.
+
+2. **Verify S3 content:** List objects to confirm scripts are present:
+   ```
+   aws s3 ls <ddl_s3_path> --recursive | head -10
+   ```
+   If empty or path not found, inform the customer and ask to correct.
+
+3. **S3 access role:** Ask:
+   > "Do you have an IAM role that grants DMS read access to this S3 bucket? If yes, provide the ARN. If no, I'll create one."
+
+   - **If provided:** Validate with `aws iam get-role`. Store as `offline_s3_access_role_arn`.
+   - **If not provided:** Create the role in [Phase 9e](#9e--s3-access-role-for-offline-source).
+
+4. **KMS encryption (optional):** Ask:
+   > "Are the S3 objects encrypted with a customer-managed KMS key? (yes / no)"
+
+   - **If yes:** Ask for the KMS key ARN. Store as `s3_kms_key_arn`.
+   - **If no:** No additional configuration needed.
+
+#### Step 3 — Prepare Source Data Provider Settings (Offline Source)
+
+Store the following for use in Phase 7a:
+
+```
+source_engine = "sqlserver"
+source_mode = "offline"
+source_settings = {
+  "MicrosoftSqlServerSettings": {
+    "ServerName": "offline",
+    "Port": 1433,
+    "DatabaseName": "offline",
+    "SslMode": "none",
+    "S3Path": "<ddl_s3_path>",
+    "S3AccessRoleArn": "<offline_s3_access_role_arn>"
+  }
+}
+```
+
 ---
 
 ## Phase 4 — Network Investigation & Connectivity
@@ -148,9 +251,11 @@ Store as `source_hostname`, `source_port`, `source_database_name`.
 
 ### 4a — Derive or ask for VPC
 
+**Skip Phase 4 entirely (4a, 4b, 4c) if `source_mode = offline` AND `use_virtual_target = true`.** No network configuration is needed — the instance profile will be created without subnet group or security groups.
+
 - **If live target:** Use `target_vpc_id` from Phase 2. Ask if the customer also wants to reuse the target subnets and security groups. If yes, skip to 4c.
   > **Note:** Reusing the same security group is less secure than creating a dedicated SG with minimal permissions.
-- **If virtual target:** Use the VPC where the source database resides. If the source is an RDS instance, derive the VPC from the RDS metadata. Otherwise, ask the customer which VPC the source database is in.
+- **If virtual target AND `source_mode = online`:** Use the VPC where the source database resides. If the source is an RDS instance, derive the VPC from the RDS metadata. Otherwise, ask the customer which VPC the source database is in.
 
 ### 4b — Collect subnets and security groups manually
 
@@ -161,6 +266,8 @@ Store as `source_hostname`, `source_port`, `source_database_name`.
 - After collecting security group IDs, run `aws ec2 describe-security-groups --group-ids <ids>` and check for rules referencing `0.0.0.0/0` or `::/0`. If found, warn the customer and recommend scoping rules to the specific database port and source CIDR or security group reference.
 
 ### 4c — Connectivity confirmation
+
+**Skip this step if `source_mode = offline`** — no source database connectivity is needed.
 
 Ask:
 > "Does your source database require special network setup to be reachable from this VPC? (VPN, Direct Connect, VPC peering, firewall rules) (yes / no)"
@@ -173,6 +280,8 @@ Store final `vpc_id`, `subnet_ids`, `security_group_ids`.
 ---
 
 ## Phase 5 — Create DMS Subnet Group
+
+**Skip this phase if `source_mode = offline` AND `use_virtual_target = true`.**
 
 **Goal:** Create the subnet group for the DMS instance profile.
 
@@ -233,18 +342,21 @@ Store as `target_secret_arn`.
 
 ### 7a — Source data provider
 
-Use the connection values collected in Phase 3. See [create-data-provider CLI reference](https://docs.aws.amazon.com/cli/latest/reference/dms/create-data-provider.html) for the full list of engine-specific settings structures.
+Use the settings prepared in Phase 3c (online) or Phase 3d (offline). See [create-data-provider CLI reference](https://docs.aws.amazon.com/cli/latest/reference/dms/create-data-provider.html) for engine-specific settings structures.
 
 ```
 aws dms create-data-provider \
   --data-provider-name <project_name>-source \
   --engine <source_engine> \
-  --settings '{...}'
+  [--virtual] \
+  --settings '<source_settings>'
 ```
+
+Pass `--virtual` only if `source_mode = offline`.
 
 Store `source_data_provider_arn`. Do NOT include credentials in settings.
 
-**SSL/TLS:** Ask the customer which SSL mode to use for the database connection (e.g., `none`, `require`, `verify-ca`, `verify-full`). Recommend `require` or higher for encryption in transit. Set the `SslMode` field in the data provider settings accordingly.
+**SSL/TLS:** For offline mode, SslMode is already set to `"none"` in the prepared settings — do NOT ask the customer. For online mode, ask the customer which SSL mode to use for the database connection (e.g., `none`, `require`, `verify-ca`, `verify-full`). Recommend `require` or higher for encryption in transit. Set the `SslMode` field in the data provider settings accordingly.
 
 ### 7b — Target data provider
 
@@ -322,7 +434,7 @@ Ask if an existing role is available. If yes, validate with `aws iam get-role`. 
    ```
    aws iam create-role \
      --role-name <project_name>-sc-secrets-role \
-     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["dms.amazonaws.com","dms.<aws_region>.amazonaws.com"]},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
+     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"dms.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
    ```
 
 2. Attach a policy granting access to the secret ARNs used by the migration project. See [IAM policies for DMS](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam-policies) for the required permissions (Secrets Manager and KMS actions). Scope the resource to `<source_secret_arn>` and `<target_secret_arn>`.
@@ -338,7 +450,7 @@ Ask if an existing role is available. If yes, validate. If no, create:
    ```
    aws iam create-role \
      --role-name <project_name>-sc-s3-role \
-     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["dms.amazonaws.com","dms.<aws_region>.amazonaws.com"]},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
+     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"dms.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
    ```
 
 2. Attach a policy granting S3 access to the migration bucket. See [IAM policies for DMS](https://docs.aws.amazon.com/dms/latest/userguide/set-up.html#set-up-iam-policies) for the required permissions. Scope the resource to `arn:aws:s3:::<bucket_name>` and `arn:aws:s3:::<bucket_name>/*`.
@@ -401,12 +513,50 @@ If the role already exists (found in Phase 1 lookup or via the check above), ski
      --policy-arn arn:aws:iam::aws:policy/service-role/AmazonDMSCloudWatchLogsRole
    ```
 
+### 9e — S3 Access Role for Offline Source
+
+**Skip this step if `source_mode = online` or the customer already provided `offline_s3_access_role_arn` in Phase 3d.**
+
+Create an IAM role allowing DMS to read DDL scripts from the customer's S3 bucket (the bucket from `ddl_s3_path`, NOT the migration artifacts bucket from Phase 8):
+
+1. Create the role with trust policy:
+   ```
+   aws iam create-role \
+     --role-name <project_name>-sc-s3-access-role \
+     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"dms.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"<aws_account_id>"},"ArnLike":{"aws:SourceArn":"arn:aws:dms:<aws_region>:<aws_account_id>:*"}}}]}'
+   ```
+
+2. Attach S3 read policy scoped to the DDL scripts bucket (extract bucket name from `ddl_s3_path`):
+   ```
+   aws iam put-role-policy \
+     --role-name <project_name>-sc-s3-access-role \
+     --policy-name S3ReadAccess \
+     --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:ListBucket","Resource":"arn:aws:s3:::<ddl_bucket_name>"},{"Effect":"Allow","Action":"s3:GetObject","Resource":"arn:aws:s3:::<ddl_bucket_name>/*"}]}'
+   ```
+
+3. **If `s3_kms_key_arn` is set**, add KMS decrypt:
+   ```
+   aws iam put-role-policy \
+     --role-name <project_name>-sc-s3-access-role \
+     --policy-name KmsDecrypt \
+     --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"kms:Decrypt","Resource":"<s3_kms_key_arn>","Condition":{"StringEquals":{"kms:ViaService":"s3.<aws_region>.amazonaws.com"}}}]}'
+   ```
+
+Store `offline_s3_access_role_arn`.
+
 ---
 
 ## Phase 10 — Create Instance Profile
 
 **Goal:** Create the DMS instance profile that ties together the subnet group and security groups.
 
+**If `source_mode = offline` AND `use_virtual_target = true`:**
+```
+aws dms create-instance-profile \
+  --instance-profile-name <project_name>-instance-profile
+```
+
+**Otherwise:**
 ```
 aws dms create-instance-profile \
   --instance-profile-name <project_name>-instance-profile \

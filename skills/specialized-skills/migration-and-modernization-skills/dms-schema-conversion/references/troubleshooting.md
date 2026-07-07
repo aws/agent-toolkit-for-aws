@@ -6,6 +6,7 @@
 - [Async Exceptions](#async-exceptions)
 - [Outdated AWS CLI Version](#outdated-aws-cli-version)
 - [Verify Connectivity](#verify-connectivity)
+- [DDL Processing Statistics (Offline Source)](#ddl-processing-statistics-offline-source)
 
 ---
 
@@ -331,3 +332,16 @@ If a DMS command fails with `Invalid choice` or `argument operation: Invalid cho
 ## Verify Connectivity
 
 If the error indicates a network or connectivity issue, read [DMS SC network configuration](https://docs.aws.amazon.com/dms/latest/userguide/instance-profiles-network.html) and guide the customer through setting up the correct network configuration.
+
+---
+
+## DDL Processing Statistics (Offline Source)
+
+For offline source projects, DMS produces processing statistics in the project's S3 bucket after import, conversion, or assessment operations. **Check these statistics proactively** when results contain fewer objects than expected or when an operation completes without errors but the metadata tree appears incomplete.
+
+Retrieve the statistics:
+```
+aws s3 cp s3://<project-bucket>/<migration-project-folder>/ddl-statistics/ds.csv ./ds.csv
+```
+
+Review the output for entries indicating processing failures. Common causes: malformed DDL, unsupported statements (DML/DROP), encoding issues, or non-compliant file structure. Refer to Phase 3d of the setup wizard for DDL structure requirements.

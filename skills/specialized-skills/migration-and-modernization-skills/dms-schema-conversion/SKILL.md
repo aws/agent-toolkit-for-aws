@@ -1,7 +1,7 @@
 ---
 name: dms-schema-conversion
 description: Handles the full DMS Schema Conversion lifecycle including creating migration projects, converting database schemas to a target engine, running compatibility assessments, navigating metadata trees, exporting converted DDL to S3, applying schema changes to a target database, and converting SQL statements between database engines.
-version: 1
+version: 2
 ---
 
 # DMS Schema Conversion
@@ -110,7 +110,7 @@ After each action completes, return to this menu by presenting the same selectio
      --migration-project-identifier <migration_project_identifier>
    ```
 
-5. **Export conversion assessment report:** On conversion success, call `export-metadata-model-assessment` with the same selection rules. Provide the customer with S3 links for both PDF and CSV reports (`PdfReport.S3ObjectKey` and `CsvReport.S3ObjectKey`).
+5. **Export conversion assessment report:** On conversion success, call `export-metadata-model-assessment` with selection rules using `rule-action: "explicit"` (this API requires explicit rules, not `include`). Provide the customer with S3 links for both PDF and CSV reports (`PdfReport.S3ObjectKey` and `CsvReport.S3ObjectKey`).
 
 6. **Show summary:** Download the Summary CSV from S3 using `aws s3 cp s3://<bucket>/<CsvReport.S3ObjectKey> ./Summary.csv`. Present its contents to the customer — show the number of objects per category, how many converted automatically, and how many have Action Items at each complexity level.
 
