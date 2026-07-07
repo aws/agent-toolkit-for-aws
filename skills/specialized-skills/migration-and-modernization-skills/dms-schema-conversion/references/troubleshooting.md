@@ -340,6 +340,7 @@ If the error indicates a network or connectivity issue, read [DMS SC network con
 For offline source projects, DMS produces processing statistics in the project's S3 bucket after import, conversion, or assessment operations. **Check these statistics proactively** when results contain fewer objects than expected or when an operation completes without errors but the metadata tree appears incomplete.
 
 Retrieve the statistics:
+
 ```
 aws s3 cp s3://<project-bucket>/<migration-project-folder>/ddl-statistics/ds.csv ./ds.csv
 ```

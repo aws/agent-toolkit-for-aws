@@ -138,6 +138,7 @@ Ask for source engine. Supported source engines: `sqlserver`, `oracle`, `mysql`,
 
 **If source engine is `sqlserver`**, ask:
 > "Would you like to connect directly to the source database (online mode), or use exported DDL scripts from S3 (offline mode)?
+>
 > - **Online** — DMS connects to your database to read metadata directly.
 > - **Offline** — DMS reads metadata from DDL scripts you've uploaded to S3. No database connectivity required."
 
@@ -167,6 +168,7 @@ Store as `source_hostname`, `source_port`, `source_database_name`.
 
 Ask:
 > "What is the current state of your DDL scripts?
+>
 > 1. Already exported and uploaded to S3
 > 2. Already exported but not yet uploaded to S3
 > 3. Not yet exported — I'd like help"
@@ -174,9 +176,11 @@ Ask:
 **Option 1 (exported + uploaded):** Proceed to Step 2.
 
 **Option 2 (exported, not uploaded):** Ask for the local path and target S3 bucket. Upload using:
+
 ```
 aws s3 sync <local_path>/ s3://<bucket>/<database_name>/ --sse AES256
 ```
+
 Verify upload: `aws s3 ls s3://<bucket>/<database_name>/ --recursive | head -10`. Proceed to Step 2.
 
 **Option 3 (not exported):** Ask:
@@ -193,6 +197,7 @@ Verify upload: `aws s3 ls s3://<bucket>/<database_name>/ --recursive | head -10`
 - **Customer extracts:** Provide the link: [Export SQL Server database objects](https://docs.aws.amazon.com/dms/latest/userguide/export-sql-server-database-objects.html). Inform the customer about the DDL structure requirements (below) and wait for them to complete. Then ask whether scripts are uploaded to S3 (→ Option 1) or need uploading (→ Option 2).
 
 **DDL structure requirements** (inform customer if they export themselves):
+
 - One SQL file per database object
 - Each file contains exactly one `CREATE` statement
 - `USE [DatabaseName];` at the top of each file
@@ -207,9 +212,11 @@ Verify upload: `aws s3 ls s3://<bucket>/<database_name>/ --recursive | head -10`
    Store as `ddl_s3_path`.
 
 2. **Verify S3 content:** List objects to confirm scripts are present:
+
    ```
    aws s3 ls <ddl_s3_path> --recursive | head -10
    ```
+
    If empty or path not found, inform the customer and ask to correct.
 
 3. **S3 access role:** Ask:
@@ -520,6 +527,7 @@ If the role already exists (found in Phase 1 lookup or via the check above), ski
 Create an IAM role allowing DMS to read DDL scripts from the customer's S3 bucket (the bucket from `ddl_s3_path`, NOT the migration artifacts bucket from Phase 8):
 
 1. Create the role with trust policy:
+
    ```
    aws iam create-role \
      --role-name <project_name>-sc-s3-access-role \
@@ -527,6 +535,7 @@ Create an IAM role allowing DMS to read DDL scripts from the customer's S3 bucke
    ```
 
 2. Attach S3 read policy scoped to the DDL scripts bucket (extract bucket name from `ddl_s3_path`):
+
    ```
    aws iam put-role-policy \
      --role-name <project_name>-sc-s3-access-role \
@@ -535,6 +544,7 @@ Create an IAM role allowing DMS to read DDL scripts from the customer's S3 bucke
    ```
 
 3. **If `s3_kms_key_arn` is set**, add KMS decrypt:
+
    ```
    aws iam put-role-policy \
      --role-name <project_name>-sc-s3-access-role \
@@ -551,12 +561,14 @@ Store `offline_s3_access_role_arn`.
 **Goal:** Create the DMS instance profile that ties together the subnet group and security groups.
 
 **If `source_mode = offline` AND `use_virtual_target = true`:**
+
 ```
 aws dms create-instance-profile \
   --instance-profile-name <project_name>-instance-profile
 ```
 
 **Otherwise:**
+
 ```
 aws dms create-instance-profile \
   --instance-profile-name <project_name>-instance-profile \
