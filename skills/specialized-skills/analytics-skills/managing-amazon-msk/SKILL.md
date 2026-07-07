@@ -56,6 +56,31 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 
 - **`scripts/msk_sizing.py`** — **MUST** be run for any sizing question (broker count, instance choice, cost). See [size-and-choose-cluster.md](references/size-and-choose-cluster.md) for the required workflow and script reference.
 
+## Guardrail — where this skill's own files live (MCP vs local install)
+
+This skill can be loaded two ways, and they resolve the skill's **own bundled files** — the `references/` documents and the `scripts/` files
+from different places. Determine how the skill was loaded before you read a reference or run a script:
+
+- **Loaded through the AWS MCP `retrieve_skill` tool call.** The skill is **not
+  installed on the local filesystem**; its reference files and scripts do not
+  exist on disk. You MUST fetch each reference or script through the same
+  `retrieve_skill` tool by passing the `file` parameter (for example,
+  `file="references/configure-clients.md"` or `file="scripts/msk_sizing.py"`),
+  and run a script from the content that tool returns. Do NOT `file_read` these
+  paths from the local or working directory, and do NOT search the filesystem
+  for them — they are not there, and any local file that happens to match the
+  name is unrelated to this skill.
+- **Installed locally** (the skill lives in a local skills directory such as
+  `.claude/skills/managing-amazon-msk/`, `~/.claude/skills/managing-amazon-msk/`, or
+  `.kiro/skills/managing-amazon-msk/`). Read references and run scripts from the
+  local skill directory using the relative paths shown throughout this
+  documentation.
+
+This distinction applies **only** to the skill's own packaged files. Every artifact
+created during a session or supplied by users are read from and written to
+the user's working directory regardless of how the skill was loaded. Never
+fetch or write customer data through `retrieve_skill`.
+
 ## Quick Diagnostics
 
 These 5 checks cover the most common MSK issues. Use them before loading a reference file.

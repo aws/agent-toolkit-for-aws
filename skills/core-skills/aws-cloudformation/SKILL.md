@@ -30,9 +30,21 @@ Run three validation layers in order — each catches different classes of error
 
 1. **Syntax and schema** — [validate-cloudformation-template SOP](references/validate-cloudformation-template.script.md) (cfn-lint)
 2. **Security and compliance** — [check-cloudformation-template-compliance SOP](references/check-cloudformation-template-compliance.script.md) (cfn-guard)
-3. **Pre-deployment** — [cloudformation-pre-deploy-validation SOP](references/cloudformation-pre-deploy-validation.script.md) (change set + `describe-events` API)
+3. **Pre-deployment** — [cloudformation-pre-deploy-validation SOP](references/cloudformation-pre-deploy-validation.script.md) (`describe-events` API)
 
-**Critical:** Pre-deployment validation errors are retrieved via `aws cloudformation describe-events --change-set-name <arn> --region <region>`. Do NOT use `describe-stack-events` — that API does not return validation errors. Note: `describe-events` is a newer API — if the command is not recognized, upgrade the AWS CLI to the latest version.
+**Critical:** Pre-deployment validation is enabled by default on Create Stack, Update Stack, and change set creation. Retrieve results via `aws cloudformation describe-events` (see [SOP](references/cloudformation-pre-deploy-validation.script.md) for scoping options). Do NOT use `describe-stack-events`.
+
+### Deploy faster with Express mode
+
+Use [deploy-with-express-mode SOP](references/deploy-with-express-mode.script.md) when the user wants faster deployment feedback during development iteration. Express mode completes stack operations as soon as resource configuration is applied — resources continue stabilizing in the background.
+
+Key points:
+
+- Activate with `--deployment-config '{"mode": "EXPRESS"}'` on `create-stack`, `update-stack`, or `delete-stack`
+- CDK: `cdk deploy --express`
+- Rollback is disabled by default; re-enable with `"disableRollback": false`
+- NOT for production workflows that require resources to serve traffic immediately after stack completion
+- `aws cloudformation deploy` does NOT support Express mode — use `create-stack`/`update-stack`
 
 ### Troubleshoot a failed deployment
 
@@ -52,6 +64,7 @@ Key points:
 |-------------|--------|
 | Write or modify a template | Author task + best-practices checklist |
 | Check a template before deploying | Validation pipeline (3 layers) |
+| Deploy faster during development | Deploy-with-express-mode SOP |
 | Stack failed or is stuck | Troubleshoot-deployment SOP |
 | Unsure about a resource property | Resource property lookup SOP |
 
