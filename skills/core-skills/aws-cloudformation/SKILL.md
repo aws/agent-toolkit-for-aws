@@ -1,16 +1,7 @@
 ---
 name: aws-cloudformation
 description: Author, validate, and troubleshoot AWS CloudFormation templates. Covers template authoring with secure defaults, pre-deployment validation (cfn-lint, cfn-guard, change sets), and root-cause diagnosis of failed stacks using CloudFormation events and CloudTrail correlation.
-owner_team: CloudFormation
-owner_cti: AWS/CloudFormation/AWS IAC MCP Server
-stages: [preprod, prod]
-categories: [aws-core]
 version: 1
-metadata:
-  service: [cloudformation, cloudtrail, iam]
-  task: [author, validate, deploy, debug, troubleshoot]
-  persona: [developer, devops, architect]
-  workload: [infrastructure-as-code]
 ---
 # CloudFormation
 
