@@ -80,7 +80,25 @@ When the customer asks to review or work through action items:
 
 When the customer asks to fix Action Items (e.g., "fix the action items", "help me resolve these"):
 
-1. **Export target as SQL script:**
+### Step 1 — Verify existing conversion
+
+Before proposing any fixes, confirm the object has already been converted by checking for existing TARGET DDL. Use the object's `Occurrence` path from the Detailed CSV to build `explicit` selection rules targeting that specific object: [Selection rules in DMS Schema Conversion](https://docs.aws.amazon.com/dms/latest/userguide/sc-selection-rules.html)
+
+If `TargetMetadataModels` is populated in the response, the object has been converted. Extract `TargetMetadataModels[0].SelectionRules` and verify target DDL:
+
+```
+aws dms describe-metadata-model \
+  --migration-project-identifier <migration_project_identifier> \
+  --origin TARGET \
+  --selection-rules '<target_selection_rules_from_above>'
+```
+
+- **If TARGET DDL exists** (i.e., `Definition` is non-empty) → the object was already converted by the DMS Schema Conversion engine. Proceed to Step 2 to apply targeted fixes to the action-item-affected code only. Do NOT trigger a full reconversion.
+- **If TARGET DDL does not exist** (i.e., `TargetMetadataModels` is empty or `Definition` is empty) → inform the customer that this object has not been converted yet and ask whether they want to convert it first (via [Convert Database](../SKILL.md#convert-database)) before fixing action items.
+
+### Step 2 — Export and prepare
+
+1. **Export target as SQL script:** Use `--origin TARGET` with selection rules containing the **target** server name (from `TargetMetadataModels[0].SelectionRules` in Step 1):
 
    ```
    aws dms start-metadata-model-export-as-script \
@@ -88,6 +106,8 @@ When the customer asks to fix Action Items (e.g., "fix the action items", "help 
      --origin TARGET \
      --selection-rules '<json>'
    ```
+
+   > **Important:** The `server-name` must be the target data provider server name (e.g., `"virtual"` for virtual targets), NOT the source server name. The schema name also uses the target naming convention (e.g., `bobsusedbookstore_dbo` instead of `dbo`).
 
    Wait via `aws dms wait metadata-model-exported-as-script --migration-project-identifier <migration_project_identifier>`. Download the exported SQL file from S3 and restrict permissions:
 
@@ -100,22 +120,46 @@ When the customer asks to fix Action Items (e.g., "fix the action items", "help 
 
 3. **Load the Detailed CSV** to get the list of affected objects grouped by occurrence path.
 
-4. **For each affected object:**
-   a. Locate the object's DDL in the SQL file — find the line where the object's `CREATE` statement begins (match by object name from the `Occurrence` column).
-   b. Analyze the action item description and the current DDL at that location.
-   c. Propose the corrected SQL to the customer — explain the issue in plain language and show the before/after.
-   d. On customer confirmation, replace the relevant portion of the DDL in the working copy.
-   e. Move to the next object.
+### Step 3 — Targeted fixes (preserve rule-based conversion)
 
-5. **After all fixes:** The customer has a corrected SQL script they can apply to the target database manually or review further.
+For each affected object:
+
+1. **Locate the action-item scope:** Use the `Line` and `Position` columns from the Detailed CSV to identify the exact lines/section of code covered by the action item.
+
+2. **Fix only the action-item-affected code.** Rewrite ONLY the specific lines or code block identified by the action item. The surrounding DDL produced by the DMS Schema Conversion rule-based engine MUST remain untouched.
+
+3. **Mark generated code:** Wrap any agent-generated SQL with a comment indicating it requires verification:
+
+   ```sql
+   -- [GenAI-generated] Begin. Requires verification.
+   <generated SQL>
+   -- [GenAI-generated] End.
+   ```
+
+4. **Present the fix:** Show the customer:
+   - The original action-item-affected code (before)
+   - The proposed replacement (after)
+   - A plain-language explanation of what was changed and why
+
+5. **On customer confirmation**, apply the replacement to the working copy.
+
+6. **Move to the next action item.**
+
+### Step 4 — Completion
+
+After all fixes, the customer has a corrected SQL script they can apply to the target database manually or review further.
 
 **Constraints:**
 
+- You MUST verify that TARGET DDL exists (Step 1) before proposing fixes — do NOT assume conversion has run.
+- You MUST fix only the code covered by the action item — do NOT reconvert or rewrite the entire object. Full-object reconversion MUST only happen if the customer explicitly requests it (e.g., "reconvert the whole object", "redo the entire procedure").
+- You MUST mark all agent-generated SQL with `-- [GenAI-generated]` comments so the customer can identify what needs verification.
 - You MUST process objects one at a time and get customer confirmation before modifying each.
 - You MUST show the original and proposed DDL so the customer has full context.
 - You MUST explain the action item in plain language — do not just repeat the CSV description verbatim.
 - You MUST only modify the specific lines for the affected object — do not alter other objects in the file.
 - For `Info`-level items, inform the customer these are informational and may not require changes — ask if they want to review or skip them.
+- If the customer explicitly asks to reconvert an entire object, use `start-metadata-model-conversion` with selection rules scoped to that object and inform them that the full rule-based conversion output will be replaced.
 
 ---
 
