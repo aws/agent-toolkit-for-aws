@@ -369,9 +369,18 @@ def main():
         print('Usage: asm-exec <command> [args...]', file=sys.stderr)
         sys.exit(1)
 
+    # Resolve references in command-line arguments
     args = [resolve_string(a) if PATTERN.search(a) else a for a in cmd_args]
 
-    result = subprocess.run(args)
+    # Resolve references in exported environment variables (documented behavior).
+    # Uses the same single-pass re.sub as argv — resolved values are never re-scanned.
+    # Secret values flow only to the child process and never return to the calling agent.
+    child_env = {
+        k: (resolve_string(v) if PATTERN.search(v) else v)
+        for k, v in os.environ.items()
+    }
+
+    result = subprocess.run(args, env=child_env)
     sys.exit(result.returncode)
 
 
