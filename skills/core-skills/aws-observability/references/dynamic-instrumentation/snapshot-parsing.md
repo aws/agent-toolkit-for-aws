@@ -26,6 +26,7 @@ stdin) so values stay off the shell command line.
   #  "location_hash": "<16-hex>", "status_timestamp": "<ACTIVE-event-ISO8601>"}
   python3 scripts/di_snapshots.py sample --json-file args.json
   ```
+
   Returns one nearby snapshot as JSON plus per-attribute `field_documentation`. Read the
   field paths from this sample — they are authoritative; do not rely on canned paths that may
   be stale.
@@ -40,6 +41,7 @@ stdin) so values stay off the shell command line.
   #  "limit": 20, "custom_filters": ["..."]}
   python3 scripts/di_snapshots.py search --json-file args.json --out /tmp/snaps.json
   ```
+
   `custom_filters` are raw Logs Insights fragments appended with `and`; an unbalanced double
   quote is rejected. `--out` writes the result with owner-only (0600) permissions because
   snapshots may contain PII/secrets.

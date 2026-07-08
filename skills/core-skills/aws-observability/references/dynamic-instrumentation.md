@@ -233,7 +233,7 @@ effect (the breakpoint never installs); confirm enablement before instrumenting.
 
 **`instrumentation_type` is required on every `di_instrumentation.py` op** (not just `create`) and must be the same value (`BREAKPOINT`/`PROBE`) the breakpoint was created with.
 
-<a id="status-ops"></a>**check-status vs get-status (single source of truth).** `check-status` is the default: it returns `ACTIVE`/`READY`/`ERROR`/`PENDING` plus ACTIVE event timestamps, but **cannot detect `DISABLED`**. `get-status` is the only way to confirm `DISABLED` (and to recover ACTIVE timestamps from an already-disabled breakpoint) — it takes a **required** `status`, so pass it explicitly (e.g. `status="DISABLED"`).
+**check-status vs get-status (single source of truth).** `check-status` is the default: it returns `ACTIVE`/`READY`/`ERROR`/`PENDING` plus ACTIVE event timestamps, but **cannot detect `DISABLED`**. `get-status` is the only way to confirm `DISABLED` (and to recover ACTIVE timestamps from an already-disabled breakpoint) — it takes a **required** `status`, so pass it explicitly (e.g. `status="DISABLED"`).
 
 **Snapshot retrieval** (`scripts/di_snapshots.py`). Snapshot output may contain PII/secrets:
 write large results with `--out FILE` (saved `0600`) and parse with `jq`/`python` (see

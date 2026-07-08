@@ -9,7 +9,7 @@ description: >-
   end-to-end Application Signals enablement via ADOT SDKs (CloudWatch Observability EKS add-on,
   CloudWatch Agent IAM, OTLP endpoints, ServiceEvents, Dynamic Instrumentation),
   breakpoint and snapshot in Dynamic Instrumentation, live data capture in running service,
-  debug without redeploying. Applies to CloudWatch, alarms, dashboards, EMF, X-Ray, traces, CloudTrail, 
+  debug without redeploying. Applies to CloudWatch, alarms, dashboards, EMF, X-Ray, traces, CloudTrail,
   ADOT, monitoring, synthetics/canaries, OR enabling/onboarding/instrumenting
   a service for Application Signals. Not for app logging or security threat detection.
 version: 2
