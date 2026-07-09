@@ -29,6 +29,7 @@ Domain expertise for building serverless applications on AWS. Covers Lambda conf
 | Step Functions, EventBridge, or orchestration | Read [orchestration.md](references/orchestration.md) |
 | Concurrency configuration | Read [concurrency.md](references/concurrency.md) |
 | API Gateway setup | Read [api-gateway.md](references/api-gateway.md) |
+| Configuring Function URLs | Read [deployment.md](references/deployment.md) § Setting up a Public Function URL |
 | Common anti-patterns | Read the anti-patterns section in [production.md](references/production.md) |
 | Starting with Powertools | Use [powertools-handler.py](assets/powertools-handler.py) as a template |
 | Lambda Managed Instances, LMI, capacity providers, EC2-backed Lambda, PerExecutionEnvironmentMaxConcurrency | Use the **aws-lambda-managed-instances** skill instead |
@@ -46,6 +47,6 @@ Domain expertise for building serverless applications on AWS. Covers Lambda conf
 | [orchestration.md](references/orchestration.md) | Step Functions, EventBridge rules/pipes/scheduler |
 | [concurrency.md](references/concurrency.md) | Reserved vs provisioned, scaling, ESM concurrency |
 | [architecture.md](references/architecture.md) | Patterns, reference architectures, service selection |
-| [deployment.md](references/deployment.md) | SAM/CDK resource types, globals, fast iteration |
+| [deployment.md](references/deployment.md) | SAM/CDK resource types, globals, Function URL setup, fast iteration |
 | [production.md](references/production.md) | Readiness checklist, observability, anti-patterns |
 | [troubleshooting.md](references/troubleshooting.md) | Error → cause → fix for all serverless services |

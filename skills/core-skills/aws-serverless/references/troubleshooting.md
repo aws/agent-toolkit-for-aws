@@ -271,6 +271,22 @@ aws logs tail /aws/lambda/my-authorizer --since 1h --filter-pattern ERROR
 # Test rules in Count mode before switching to Block
 ```
 
+### Function URL 403 Forbidden (NONE auth type)
+
+**Error:** 403 Forbidden with `{"Message":"Forbidden"}` when calling a public function URL
+**Cause:** Missing `lambda:InvokeFunction` permission. Since October 2025, function URLs require both `lambda:InvokeFunctionUrl` AND `lambda:InvokeFunction` in the resource-based policy. The console and SAM auto-create both statements for NONE auth type; CLI, CloudFormation, and Lambda API users must add them manually. No auto-configuration occurs for AWS_IAM auth type regardless of tooling.
+
+```bash
+# Add the missing second permission
+aws lambda add-permission --function-name my-func \
+  --statement-id FunctionURLInvokeAllowPublicAccess \
+  --action lambda:InvokeFunction \
+  --principal "*" \
+  --invoked-via-function-url
+```
+
+**Verify:** `aws lambda get-policy --function-name my-func` should show two statements. See the "Setting up a Public Function URL" section in [deployment.md](deployment.md) for the complete setup sequence.
+
 ### CORS Errors
 
 **Error:** `blocked by CORS policy: No 'Access-Control-Allow-Origin' header`

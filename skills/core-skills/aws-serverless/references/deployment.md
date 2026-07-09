@@ -7,6 +7,7 @@ Serverless-specific deployment patterns, resource types, and fast iteration tool
 - [SAM resource types](#sam-resource-types)
 - [SAM Globals section](#sam-globals-section)
 - [CDK serverless constructs](#cdk-serverless-constructs)
+- [Setting up a Public Function URL (auth type NONE)](#setting-up-a-public-function-url-auth-type-none)
 - [Fast iteration](#fast-iteration)
 
 ---
@@ -55,6 +56,59 @@ Prefer L2 constructs — they provide sensible defaults and least-privilege IAM 
 | `PythonFunction` | `@aws-cdk/aws-lambda-python-alpha` | Python — requires Docker for bundling |
 | `HttpApi` | `aws-cdk-lib/aws-apigatewayv2` | HTTP API with CORS, JWT auth |
 | `HttpLambdaIntegration` | `aws-cdk-lib/aws-apigatewayv2-integrations` | Connect Lambda to HttpApi |
+
+---
+
+## Setting up a Public Function URL (auth type NONE)
+
+Since October 2025, Lambda function URLs require **two** resource-based policy statements: `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction`. Omitting either results in `403 Forbidden`.
+
+The console and SAM auto-create both statements when you set auth type to `NONE`. When using the CLI, CloudFormation, or Lambda API directly, you must add them manually:
+
+```bash
+# 1. Create the function URL
+aws lambda create-function-url-config \
+  --function-name my-func --auth-type NONE
+
+# 2. Grant InvokeFunctionUrl (required)
+aws lambda add-permission --function-name my-func \
+  --statement-id FunctionURLAllowPublicAccess \
+  --action lambda:InvokeFunctionUrl \
+  --principal "*" \
+  --function-url-auth-type NONE
+
+# 3. Grant InvokeFunction via URL (required since Oct 2025 — commonly missed)
+aws lambda add-permission --function-name my-func \
+  --statement-id FunctionURLInvokeAllowPublicAccess \
+  --action lambda:InvokeFunction \
+  --principal "*" \
+  --invoked-via-function-url
+```
+
+Why two statements? `lambda:InvokeFunctionUrl` authorizes the URL endpoint; `lambda:InvokeFunction` authorizes the actual execution. The `--invoked-via-function-url` flag adds a `lambda:InvokedViaFunctionUrl` condition key ensuring the function can only be invoked through the URL, not via the Invoke API.
+
+For `AWS_IAM` auth type, the same dual-permission requirement applies for cross-account access — replace `"*"` with the specific principal ARN and use `--function-url-auth-type AWS_IAM`. No auto-configuration occurs for `AWS_IAM` regardless of tooling.
+
+CloudFormation equivalent:
+
+```yaml
+# Both AWS::Lambda::Permission resources are required
+FunctionURLPermission:
+  Type: AWS::Lambda::Permission
+  Properties:
+    Action: lambda:InvokeFunctionUrl
+    FunctionName: !Ref MyFunction
+    Principal: "*"
+    FunctionUrlAuthType: NONE
+
+FunctionInvokePermission:
+  Type: AWS::Lambda::Permission
+  Properties:
+    Action: lambda:InvokeFunction
+    FunctionName: !Ref MyFunction
+    Principal: "*"
+    InvokedViaFunctionUrl: true
+```
 
 ---
 
