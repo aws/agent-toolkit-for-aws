@@ -7,16 +7,14 @@ description: >-
   Covers Log Insights queries, alarms (metric, composite, anomaly), dashboards, custom
   metrics/EMF, X-Ray tracing and sampling, ADOT collector config, CloudTrail auditing, and
   end-to-end Application Signals enablement via ADOT SDKs (CloudWatch Observability EKS add-on,
-  CloudWatch Agent IAM, OTLP endpoints, ServiceEvents, Dynamic Instrumentation)
-  on EC2, ECS, EKS, and Lambda in Python, Node.js, Java, and .NET.
-  Applies to CloudWatch, alarms, dashboards, EMF, X-Ray, traces, CloudTrail, ADOT,
-  monitoring, synthetics/canaries, OR enabling/onboarding/instrumenting
-  a service for Application Signals using ADOT, ServiceEvents, auto-instrumentation,
-  or making a service show up in Application Signals.
-  Not for app logging or security threat detection.
+  CloudWatch Agent IAM, OTLP endpoints, ServiceEvents, Dynamic Instrumentation),
+  breakpoint and snapshot in Dynamic Instrumentation, live data capture in running service,
+  debug without redeploying. Applies to CloudWatch, alarms, dashboards, EMF, X-Ray, traces, CloudTrail,
+  ADOT, monitoring, synthetics/canaries, OR enabling/onboarding/instrumenting
+  a service for Application Signals. Not for app logging or security threat detection.
 version: 2
 metadata:
-  service: [cloudwatch, xray, cloudtrail, synthetics]
+  service: [cloudwatch, xray, cloudtrail, synthetics, application-signals]
   task: [build, deploy, debug, optimize, configure, enable, onboard, instrument]
   persona: [developer, devops]
   workload: [observability]
@@ -26,7 +24,7 @@ metadata:
 
 ## Overview
 
-Domain expertise for AWS observability across metrics, logs, and traces, covering the full lifecycle: **enabling/onboarding** Application Signals on a service using ADOT (AWS Distro for OpenTelemetry) auto-instrumentation SDKs through **operating** it (CloudWatch alarms, dashboards, Log Insights, custom metrics, EMF, X-Ray trace analysis, CloudTrail auditing, ADOT collector config).
+Domain expertise for AWS observability across metrics, logs, and traces, covering the full lifecycle: **enabling/onboarding** a service to Application Signals using ADOT (AWS Distro for OpenTelemetry) auto-instrumentation SDKs and ServiceEvents — making the service show up in Application Signals — on EC2, ECS, EKS, and Lambda in Python, Node.js, Java, and .NET.
 
 **Works best with** the [AWS MCP server](https://docs.aws.amazon.com/aws-mcp/) — enables running CLI commands, querying CloudWatch, and validating configurations directly. All guidance also works with standard AWS CLI access.
 
@@ -50,6 +48,7 @@ Domain expertise for AWS observability across metrics, logs, and traces, coverin
 | Setting up Lambda monitoring with CDK | Use [alarm-template.ts](assets/alarm-template.ts) as a starting point |
 | Creating synthetic canaries | Read [synthetics.md](references/synthetics.md) |
 | Configuring ADOT collector | Use [otel-config.yaml](assets/otel-config.yaml) as a starting point |
+| Debugging a running service with breakpoints/snapshots — Dynamic Instrumentation (**modifies live services and capture live data**) | Read [dynamic-instrumentation.md](references/dynamic-instrumentation.md) in full before acting. Confirm with the user before any create/delete, and narrate before significant actions: observation → hypothesis → proposed action → expected result. Diagnosing running-service root cause from source/code inspection. Source inspection alone identifies hypotheses, not confirmed root causes. Keep suspected causes tentative until runtime evidence confirms them. |
 | Spans multiple areas | Read the most specific reference first, then consult others as needed |
 
 ## Files
@@ -69,3 +68,4 @@ Domain expertise for AWS observability across metrics, logs, and traces, coverin
 | [synthetics.md](references/synthetics.md) | Canary runtime/blueprint constraints, VPC networking, common failures |
 | [alarm-template.ts](assets/alarm-template.ts) | Best-practice CDK Lambda monitoring (alarms + dashboard) |
 | [otel-config.yaml](assets/otel-config.yaml) | ADOT collector config for X-Ray traces + CloudWatch EMF metrics |
+| [dynamic-instrumentation.md](references/dynamic-instrumentation.md) | Dynamic Instrumentation debugging loop — breakpoints/probes on live code, snapshot capture + correlation analysis, create/delete gating, snapshot PII handling. Runs via `scripts/di_instrumentation.py` + `scripts/di_snapshots.py`. |
