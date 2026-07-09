@@ -1,0 +1,21 @@
+# Keyspaces (Apache Cassandra)
+
+- **Docs**: https://docs.aws.amazon.com/keyspaces/
+- **Docs (llms.txt)**: https://docs.aws.amazon.com/keyspaces/latest/devguide/llms.txt
+- **Data model**: Wide-column (partition key + clustering columns)
+- **Query language**: CQL (Cassandra Query Language)
+- **Compatibility**: Apache Cassandra compatible (CQL, open-source Cassandra drivers)
+- **Serverless**: Yes (on-demand and provisioned capacity)
+- **Serverless type**: Operations — no cluster to manage, create a keyspace and start writing; capacity scales automatically
+- **Scale to zero**: Yes (on-demand: throughput scales to zero; storage still billed)
+- **VPC required**: No (VPC endpoints supported)
+- **Multi-region**: Multi-Region replication (add/remove Regions on a live keyspace)
+- **Consistency**: Tunable reads (ONE, LOCAL_QUORUM); lightweight transactions (LWT) for conditional writes
+- **Free Tier**: First three months (30M write request units, 30M read request units, 1 GB storage per month).
+- **Min cost**: $0 (free tier)
+- **Pricing**: On-demand and provisioned; AWS Database Savings Plans supported
+- **Time to first query**: Seconds (create table, start writing)
+- **Key features**: CQL compatibility, serverless, replication across 3 AZs, multi-Region replication, TTL, point-in-time recovery, CDC Streams (pull API), client-side timestamps, logged batches, User Defined Types (UDTs) including nested UDTs, frozen collections, pre-warming, IPv6, customer-managed KMS keys
+- **Limitations**: No JOINs, no secondary indexes, no full-text search, no complex analytical queries, per-row 1 MB size, some CQL features unsupported
+- **Best for**: Cassandra migrations, CQL/Cassandra-driver applications, high-throughput write-heavy workloads, event-driven pipelines via CDC Streams, IoT device registries, fleet and time-series-style data already modeled in CQL
+- **Not for**: Relational/transactional joins, full-text search, analytics, teams without a CQL/Cassandra requirement (DynamoDB is the default key-value choice)

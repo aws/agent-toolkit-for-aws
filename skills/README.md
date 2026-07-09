@@ -45,6 +45,7 @@ Core skills cover:
 - Cost management (Billing and Cost Management)
 - Full-stack applictaion development (AWS Blocks)
 - Generative AI (Bedrock)
+- Databases (service selection and routing)
 
 ### Specialized skills
 

@@ -1,0 +1,21 @@
+# ElastiCache (Valkey)
+
+- **Docs**: https://docs.aws.amazon.com/AmazonElastiCache/
+- **Docs (llms.txt)**: https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/llms.txt
+- **Data model**: In-memory key-value and data structures (durable primary store with durability enabled, or cache layer without)
+- **Query language**: Valkey/Redis commands (GET, SET, HSET, ZADD, XADD, FT.SEARCH, FT.AGGREGATE, etc.)
+- **Compatibility**: Valkey/Redis protocol (open-source, no vendor lock-in)
+- **Serverless**: Yes (option)
+- **Serverless type**: Capacity — Serverless mode auto-scales compute and memory. Compute scales to zero compute. Memory has a minimum cache size of 100MB
+- **Scale to zero**: Partial — compute scales to zero, minimum 100MB memory floor
+- **VPC required**: Yes
+- **Multi-region**: Global Datastore (replicate a primary to up to 2 secondary Regions — 3 Regions total — with sub-second replication lag; local reads at microsecond latency from any Region; promote a secondary to primary for fast disaster recovery). Cross-Region replicas are read-only; for active-active multi-Region writes use MemoryDB.
+- **Free Tier**: up to $200 credits for free tier accounts - applicable to ElastiCache Serverless as well as any node-based instance deployments
+- **Min cost**: $0 (free tier) → ~$6/month after (ElastiCache for Valkey Serverless)
+- **Time to first query**: 1 min (Serverless) and 5-10 min (node-based)
+- **Key features**: Sub-millisecond latency, sorted sets (leaderboards), pub/sub, streams, Lua scripting, JSON support, durability (sync or async writes via Multi-AZ transactional log, Valkey 9.0+), vector search (HNSW, up to 32K dimensions, microsecond latency, 95%+ recall, billions of embeddings — Valkey 8.2+), full-text/numeric/tag/hybrid search with aggregations (Valkey 9.0+), semantic caching (reduce LLM token costs via embedding-similarity matching on cached prompt/response pairs), Global Datastore for multi-region replication with local-speed reads
+- **Durability options** (Valkey 9.0+): With durability enabled, ElastiCache is a primary database (no backing store, no cache-miss penalty — data lives here as source of truth). Synchronous writes (zero data loss, single-digit ms write latency, microsecond reads) or Asynchronous writes (microsecond write AND read latency, up to 10s data loss on failure, no additional cost)
+- **AI/Agentic capabilities**: Semantic caching (vector-similarity match on prompt embeddings to return cached LLM responses — significantly reduces token spend for repetitive/similar queries), lowest-latency agentic memory (sub-ms read/write for agent state, conversation history, tool call results, and workflow checkpoints stored as JSON/hashes with TTL), vector search for RAG retrieval (microsecond KNN at scale), Global Datastore enables multi-region AI applications with local-latency access to shared context
+- **Limitations**: In-memory (cost scales with data size), minimum 100MB memory on Serverless, VPC required
+- **Best for**: Durable primary data store for microsecond-latency workloads (with durability enabled), caching (API responses, query results, sessions), real-time leaderboards and counters, rate limiting, pub/sub messaging, streams, AI agent memory and workflow state, semantic/prompt caching to cut LLM costs, real-time vector similarity search (recommendations, RAG, anomaly detection), payment tokenization, real-time inventory, global low-latency reads via Global Datastore
+- **Not for**: Multi-region active-active writes (use MemoryDB multi-region replication), large analytical datasets, relational data with JOINs, workloads needing full scale-to-zero cost efficiency
