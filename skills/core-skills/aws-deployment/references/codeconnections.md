@@ -50,6 +50,7 @@ aws codeconnections get-connection --connection-arn CONNECTION_ARN \
 Connections created via CLI/CloudFormation/CDK are **always** `PENDING`. There is NO API to complete authorization — the console OAuth handshake is mandatory.
 
 A PENDING connection:
+
 - Returns no errors from `create-connection`
 - Passes ARN validation in pipeline definitions
 - **Silently fails** when the pipeline fetches source

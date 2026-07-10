@@ -110,6 +110,7 @@ CodePipeline supports multiple deploy providers beyond CodeDeploy:
 | PARALLEL | All run independently, no waiting | 50 concurrent | Independent feature branches, no shared state |
 
 **Pitfalls:**
+
 - PARALLEL loses rollback capability and source revision tracking — do not use for prod pipelines requiring rollback
 - Changing mode discards queued executions — stop pipeline first
 - QUEUED rejects execution 51 (not queued silently)

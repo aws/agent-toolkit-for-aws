@@ -28,12 +28,14 @@ phases:
 ```
 
 For pip:
+
 ```yaml
       - aws codeartifact login --tool pip --domain MY_DOMAIN --domain-owner ACCOUNT_ID --repository MY_REPO
       - pip install -r requirements.txt
 ```
 
 For Maven/Gradle, use `get-authorization-token` and configure settings.xml/build.gradle:
+
 ```yaml
       - export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token --domain MY_DOMAIN --domain-owner ACCOUNT_ID --query authorizationToken --output text)
 ```
@@ -58,6 +60,7 @@ Minimum permissions for pulling packages:
 ```
 
 Also requires `sts:GetServiceBearerToken` (for the auth token exchange):
+
 ```json
 {
   "Effect": "Allow",
@@ -72,6 +75,7 @@ Also requires `sts:GetServiceBearerToken` (for the auth token exchange):
 ### Publishing Packages (CI produces packages)
 
 Additional permission for publish:
+
 ```json
 {
   "Effect": "Allow",
@@ -104,6 +108,7 @@ Packages are fetched from npmjs on first request and cached in npm-store. Intern
 ### Cross-account access
 
 Set a domain policy to allow other accounts to read:
+
 ```bash
 aws codeartifact put-domain-permissions-policy --domain my-org --policy-document file://policy.json
 ```

@@ -3,6 +3,7 @@
 ## Source Configuration
 
 Code reaches CodeBuild via:
+
 - **Pipeline action** — CodePipeline passes artifacts (most common in CI/CD)
 - **Direct source** — CodeBuild pulls from CodeCommit, S3, GitHub, GitLab, or Bitbucket
 - **No source** — buildspec commands handle everything (e.g., `git clone` in install phase)
@@ -87,6 +88,7 @@ Service role needs: `ec2:CreateNetworkInterface`, `ec2:DescribeNetworkInterfaces
 | Local - custom_cache | Same host | Arbitrary paths | Best-effort on-demand; reliable on fleet |
 
 S3 caching (works on-demand and fleet):
+
 ```yaml
 cache:
   paths:
@@ -110,6 +112,7 @@ aws codebuild create-project --name docker-builder \
 ```
 
 Buildspec for Docker + ECR push:
+
 ```yaml
 version: 0.2
 phases:
