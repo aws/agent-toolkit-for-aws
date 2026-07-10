@@ -2,7 +2,7 @@
 
 Add AgentCore Payments to your agent — the managed service that lets your agent pay for x402-protected APIs, MCP tools, and web content via microtransactions (Coinbase CDP, Stripe Privy).
 
-The control-plane resources (payment manager, connector, credential provider) are provisioned with the AgentCore **CLI**. The per-user data-plane resources (instrument, session) are created with the AgentCore **SDK** (a provided script). Payments are wired into the agent with a small **framework-agnostic local tool** (`scripts/x402_payment_tool.py`) — so this works with Strands, LangGraph, OpenAI Agents SDK, or any Python framework, in the AgentCore Runtime or on any other host.
+The control-plane resources (payment manager, connector, credential provider) are provisioned with the AgentCore **CLI**. The per-user data-plane resources (instrument, session) are created with the AgentCore **SDK** (a provided script). Payments can be wired into the agent in two ways: (1) a **framework-native integration** for Strands (plugin) or LangGraph (middleware) that handles 402 detection, payment signing, and retry transparently — no custom tool code needed, or (2) a **framework-agnostic local tool** (`scripts/x402_payment_tool.py`) for any other Python framework (OpenAI Agents SDK, CrewAI, etc.) or when you need full manual control.
 
 ## When to use
 
@@ -61,6 +61,8 @@ The CLI provisions payment resources into a project (`agentcore/agentcore.json`)
 - **Case B — manager/connector exist, needs wiring**: skip to Step 5.
 - **Case C — wired, debugging**: ask what's failing, then use the Debugging section.
 - **Case D — developer asking about payments without a project** (architecture, flow explanation): explain the x402 end‑to‑end flow (see **How x402 Payment Works** section), and ask whether they want to set up payments (→ proceed to Step 3) or need wiring help (→ Step 5).
+
+**Framework check**: If the project uses **Strands** or **LangGraph** (check `agentcore/agentcore.json` → `runtimes` array), offer the native integration path (Step 5a) which is simpler — no custom tool script needed. If the project uses another framework, or the developer wants manual control, use the generic tool path (Step 5b).
 
 ### Step 3: Provision the payment manager and connector (CLI — control plane)
 
@@ -130,7 +132,76 @@ agentcore deploy -y
 
 `agentcore deploy` provisions the project's resources to your AWS account: the payment manager/connector via the AgentCore control plane, and supporting IAM (the `Payment<Name>ProcessPaymentRole`) and any runtime via a CloudFormation stack (CDK). After deploy, the manager ARN, connector ID, and role ARN are written to `agentcore/.cli/deployed-state.json`. On CLI 0.20.x these live under `targets.<target>.resources.payments[]` (`managerArn`, `connectors[].connectorId`, `processPaymentRoleArn`); the Step 6 script reads this shape automatically.
 
-### Step 5: Wire the agent (framework-agnostic local tool) — agent runs
+### Step 5: Wire the agent
+
+#### Step 5a: Native integration (Strands or LangGraph) — agent runs
+
+If the project uses Strands or LangGraph, use the framework's native payments integration. This is simpler than the generic tool — no `x402_payment_tool.py` needed, no `x402_fetch` registration, and the middleware/plugin automatically handles ALL tool calls (not just a dedicated payment tool).
+
+**Strands:**
+
+```python
+from strands import Agent
+from strands_tools import http_request
+from bedrock_agentcore.payments.integrations.config import AgentCorePaymentsPluginConfig
+from bedrock_agentcore.payments.integrations.strands.plugin import AgentCorePaymentsPlugin
+
+config = AgentCorePaymentsPluginConfig(
+    payment_manager_arn=os.environ["PAYMENT_MANAGER_ARN"],
+    user_id=os.environ["PAYMENT_USER_ID"],
+    payment_instrument_id=os.environ["PAYMENT_INSTRUMENT_ID"],
+    payment_session_id=os.environ["PAYMENT_SESSION_ID"],
+    region=os.environ.get("AWS_REGION", "us-west-2"),
+)
+plugin = AgentCorePaymentsPlugin(config=config)
+agent = Agent(
+    system_prompt="You are a helpful assistant that can access paid APIs.",
+    tools=[http_request],
+    plugins=[plugin],
+)
+```
+
+The plugin intercepts 402 responses from ANY tool, signs payment, and retries automatically. No special tool needed — the agent just uses `http_request` normally.
+
+**LangGraph:**
+
+```python
+from langchain.agents import create_agent
+from bedrock_agentcore.payments.integrations.langgraph import (
+    AgentCorePaymentsConfig,
+    AgentCorePaymentsMiddleware,
+)
+
+config = AgentCorePaymentsConfig(
+    payment_manager_arn=os.environ["PAYMENT_MANAGER_ARN"],
+    user_id=os.environ["PAYMENT_USER_ID"],
+    payment_instrument_id=os.environ["PAYMENT_INSTRUMENT_ID"],
+    payment_session_id=os.environ["PAYMENT_SESSION_ID"],
+    region=os.environ.get("AWS_REGION", "us-west-2"),
+    auto_session=True,  # optionally auto-create a session on first 402 (dev/test convenience)
+    auto_session_budget="5.00",
+    auto_session_expiry_minutes=60,
+)
+payments = AgentCorePaymentsMiddleware(config)
+agent = create_agent(
+    model=model,
+    tools=[],  # middleware auto-registers http_request + payment query tools
+    middleware=[payments],
+)
+```
+
+The middleware wraps ALL tool calls, detects 402 from any response format (no `PAYMENT_REQUIRED:` marker needed), signs payment, and retries. It also auto-registers an `http_request` tool and payment query tools.
+
+**LangGraph simplifications vs the generic tool path:**
+
+- No `x402_payment_tool.py` script needed — the middleware IS the payment tool
+- No special system prompt — no need to tell the model to use a specific tool for paid URLs; all tools are payment-aware
+- `auto_session=True` can lazily create a session on first 402 (dev/test convenience — requires `CreatePaymentSession` IAM permission on the runtime role)
+- Error recovery — optional `on_payment_error` callback for programmatic recovery (create new session, swap instrument) without the LLM seeing errors
+
+> **Note on `auto_session`**: This creates exactly one session per middleware instance with the developer-set budget. The LLM cannot trigger or control this. In production with IAM role separation (recommended ProcessPaymentRole), the `CreatePaymentSession` call would be denied — use explicit `payment_session_id` instead. See [IAM roles for AgentCore payments](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-iam-roles.html).
+
+#### Step 5b: Framework-agnostic local tool (any framework) — agent runs
 
 Payments are wired with a small local tool, not a framework-specific plugin — so the same code works in any framework.
 
@@ -175,6 +246,8 @@ python scripts/setup_payment_user.py --user-id alice --email alice@example.com -
 
 It creates the instrument (with the email in `linkedAccounts`) and a budget-bounded session, then prints the `export` lines for `PAYMENT_INSTRUMENT_ID` / `PAYMENT_SESSION_ID` / `PAYMENT_USER_ID` (used in Step 8), plus the `wallet_address` and `redirect_url` (used in Step 7). The script is the canonical data-plane path — do not hand-write the SDK calls.
 
+**LangGraph with `auto_session=True`**: If you used Step 5a with LangGraph and set `auto_session=True`, you only need the instrument from this step — skip the session creation. The middleware creates a session automatically on the first 402. You still need to run `setup_payment_user.py` for the instrument (pass `--no-session` if the script supports it, or just ignore the session output).
+
 ### Step 7: Delegation and funding (one-time per wallet) — developer does this
 
 Using the `wallet_address` / `redirect_url` the script printed:
@@ -195,6 +268,16 @@ export PAYMENT_INSTRUMENT_ID=...
 export PAYMENT_SESSION_ID=...
 export PAYMENT_USER_ID=...
 export AWS_REGION=...
+```
+
+**LangGraph (Step 5a with `auto_session=True`)**: You only need these env vars:
+
+```bash
+export PAYMENT_MANAGER_ARN=...
+export PAYMENT_INSTRUMENT_ID=...
+export PAYMENT_USER_ID=...
+export AWS_REGION=...
+# PAYMENT_SESSION_ID is not needed — auto_session manages it internally
 ```
 
 Run the agent and prompt it to fetch a paid endpoint:
@@ -401,5 +484,7 @@ For testing, start with **Base Sepolia** (network: `ETHEREUM`, chain: `BASE_SEPO
 - CLI is installed via `npm install -g @aws/agentcore`, not pip
 - Control plane (credential provider, manager, connector) is provisioned via the CLI; the manager non-interactively, only the connector's credential entry involves the developer
 - Data plane (instrument, session) is created via the SDK script, not hand-written code
-- Payments are wired via the framework-agnostic `x402_fetch` tool, so any framework works
+- If the project is Strands or LangGraph, the native integration (Step 5a) is offered first as the simpler path
+- The generic tool path (Step 5b) is used only for other frameworks or when the developer explicitly wants manual control
+- Payments are wired via the framework-native integration (Step 5a) or the framework-agnostic `x402_fetch` tool (Step 5b)
 - Credentials never pass through the agent or the chat
