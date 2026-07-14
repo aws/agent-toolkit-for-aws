@@ -1,0 +1,111 @@
+name: Skill Frontmatter Check
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+    branches: [main]
+    paths:
+      - "**/SKILL.md"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-frontmatter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check SKILL.md frontmatter via API
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          retries: 3
+          script: |
+            const DISALLOWED_FIELDS = new Set(['stages']);
+            const DISALLOWED_PREFIXES = ['owner_'];
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                per_page: 100
+              }
+            );
+
+            const skillFiles = files
+              .filter(f => f.filename.endsWith('SKILL.md') && f.status !== 'removed');
+
+            if (skillFiles.length === 0) {
+              core.info('No SKILL.md files changed.');
+              return;
+            }
+
+            const violations = [];
+
+            for (const file of skillFiles) {
+              const { data } = await github.rest.repos.getContent({
+                owner: context.payload.pull_request.head.repo.owner.login,
+                repo: context.payload.pull_request.head.repo.name,
+                path: file.filename,
+                ref: context.payload.pull_request.head.sha
+              });
+
+              const content = Buffer.from(data.content, 'base64').toString('utf-8');
+              const lines = content.split('\n');
+
+              if (lines[0] !== '---') continue;
+
+              const disallowed = [];
+              for (let i = 1; i < lines.length; i++) {
+                if (lines[i] === '---') break;
+                const match = lines[i].match(/^([a-zA-Z_][a-zA-Z0-9_-]*):/);
+                if (match && (DISALLOWED_FIELDS.has(match[1]) || DISALLOWED_PREFIXES.some(p => match[1].startsWith(p)))) {
+                  disallowed.push(match[1]);
+                }
+              }
+
+              if (disallowed.length > 0) {
+                violations.push({ path: file.filename, fields: disallowed });
+              }
+            }
+
+            if (violations.length === 0) {
+              core.info('All SKILL.md files pass frontmatter check.');
+              return;
+            }
+
+            const list = violations
+              .map(v => `- \`${v.path}\`: ${v.fields.map(f => '`' + f + '`').join(', ')}`)
+              .join('\n');
+
+            const body = [
+              '⚠️ **PR closed automatically.**',
+              '',
+              'SKILL.md frontmatter contains fields that are not permitted in this public repository:',
+              '',
+              list,
+              '',
+              'Please remove these fields and reopen the PR.'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body
+            });
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              state: 'closed'
+            });
+
+            core.setFailed('SKILL.md files contained disallowed frontmatter fields.');

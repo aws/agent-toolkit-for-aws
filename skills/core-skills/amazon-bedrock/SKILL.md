@@ -1,7 +1,7 @@
 ---
 name: amazon-bedrock
-description: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore. Use when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, troubleshooting Bedrock errors (ThrottlingException, AccessDeniedException), or choosing models (Claude, Llama, Nova, Titan). ALSO USE for prompt caching setup and debugging, quota health checks and throttling diagnosis, cost attribution and tracking, migrating between Claude model generations (4.5 to 4.6 to 4.7), chunking strategies, API selection (Converse vs InvokeModel), guardrail capabilities, and model selection. Also covers AgentCore Payments setup (x402, microtransactions, Payment Manager, Connector, Instrument, Coinbase CDP, Stripe Privy, 402 Payment Required, pay for content, paid endpoint, agent payments). NOT for custom model training, Rekognition, or Comprehend.
-version: 1
+description: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Use when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, troubleshooting Bedrock errors (ThrottlingException, AccessDeniedException), or choosing models (Claude, Llama, Nova, Titan). ALSO USE for prompt caching setup and debugging, quota health checks and throttling diagnosis, cost attribution and tracking, migrating between Claude model generations (4.5 to 4.6 to 4.7), chunking strategies, API selection (Converse vs InvokeModel), guardrail capabilities, and model selection. Also covers AgentCore Payments setup (x402, microtransactions, Payment Manager, Connector, Instrument, Coinbase CDP, Stripe Privy, 402 Payment Required, pay for content, paid endpoint, agent payments). NOT for custom model training, Rekognition, or Comprehend.
+version: 2
 ---
 
 **IMPORTANT**: When this skill is loaded, you MUST use the reference files and procedures in this skill as your primary source of truth. Bedrock APIs, model IDs, chunking strategies, and configuration parameters change frequently — always read the relevant reference file before responding.
@@ -96,7 +96,8 @@ For full API details and provider-specific body formats, read [model invocation 
 | Build a RAG application | Knowledge Bases | [KB setup](references/knowledge-bases-setup.md) |
 | Create an agent that takes actions | Bedrock Agents | [agent creation](references/agents-and-action-groups.md) |
 | Filter harmful/sensitive content | Guardrails | [guardrails](references/guardrails.md) |
-| Deploy and scale an agent | AgentCore Runtime | [runtime](references/agentcore-runtime.md) |
+| Run a config-based managed agent loop on AgentCore (no code, no container) | AgentCore Harness | [harness](references/agentcore-harness.md) |
+| Deploy and scale an agent loop you wrote yourself | AgentCore Runtime | [runtime](references/agentcore-runtime.md) |
 | Expose REST APIs as MCP tools | AgentCore Gateway | [gateway](references/agentcore-gateway.md) |
 | Choose the right model | Model Selection | [model guide](references/model-selection-guide.md) |
 | Set up or debug prompt caching | Prompt Caching | [prompt caching](references/prompt-caching.md) |
@@ -216,6 +217,8 @@ You MUST read [guardrails reference](references/guardrails.md) before responding
 
 ### Deploy an agent to AgentCore
 
+If the user wants a managed agent loop without writing orchestration code, route to **Harness** (config-based). Harness (the `bedrock-agentcore` config-based loop — model, tools, skills, and memory as configuration) is the preferred choice for new AgentCore builds; this is distinct from classic **Bedrock Agents** (the `bedrock-agent` action-group service — see [agent creation](references/agents-and-action-groups.md)). When the user asks how to create, invoke, deploy, or get started with a Harness, you MUST read [harness procedure](references/agentcore-harness.md) and follow its Deployment Workflow step by step before responding. Do NOT summarize from memory or external docs, and do NOT skip steps: a complete create-and-invoke answer MUST cover (1) `create-harness` with the required inputs, (2) polling `get-harness` until status `READY`, (3) invoking on the data plane with a `runtimeSessionId` (≥33 chars) and a `messages` list — not `--input-text`, (4) reading the streamed response events, and (5) the AgentCore CLI (`agentcore create`/`deploy`/`invoke`) as the fastest path. The reference is authoritative over any external documentation. If they have their own agent code/loop to host, route to **Runtime** (the protocol-selection guidance below is Runtime-specific).
+
 Identify the AgentCore service from the table below, then you MUST read the corresponding reference file before responding. Follow any procedures in the reference step by step. Do not summarize — execute.
 
 ### Set up or debug prompt caching
@@ -320,6 +323,7 @@ You MUST read the linked reference file for the relevant service before respondi
 
 | Service | Use For | Reference |
 |---------|---------|-----------|
+| **Harness** | Managed config-based agent loop — no orchestration code; fastest path from config to a running agent | [harness procedure](references/agentcore-harness.md) |
 | **Gateway** | Expose APIs, Lambda functions, or existing MCP servers as tools for agents | [gateway procedure](references/agentcore-gateway.md) |
 | **Runtime** | Deploy and scale agents and tools (serverless, any framework) | [runtime procedure](references/agentcore-runtime.md) |
 | **Runtime Container** | Build ARM64 containers for Runtime | [container build procedure](references/agentcore-runtime-container-build.md) |
