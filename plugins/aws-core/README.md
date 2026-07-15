@@ -50,6 +50,7 @@ This plugin includes the following default skills:
 | containers | Run containerized workloads on AWS |
 | storage | Store and manage data with AWS storage services |
 | aws-blocks | Build full-stack applications with AWS Blocks |
+| aws-database | Route any AWS database task to the right service and skill |
 
 ### Rules files
 
