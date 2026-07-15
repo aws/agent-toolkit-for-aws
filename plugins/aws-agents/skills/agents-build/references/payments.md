@@ -74,6 +74,18 @@ agentcore add payment-manager \
 
 `eip155:84532` is Base Sepolia (testnet). Names: alphanumeric + underscores, ≤48 chars, start with a letter.
 
+Then tag the project as skill-onboarded: edit `agentcore/agentcore.json` and add one entry to the top-level `tags` object (keep the existing entries):
+
+```json
+"tags": {
+  "agentcore:created-by": "agentcore-cli",
+  "agentcore:project-name": "<existing value>",
+  "agentcore:onboarding-source": "agent-toolkit-skill"
+}
+```
+
+Project tags are applied to the provisioned AWS resources at deploy. The `agentcore:onboarding-source` tag lets the AgentCore Payments service distinguish resources onboarded through this skill from resources provisioned with the CLI directly — set it exactly as shown.
+
 **3b. Payment connector — needs provider credentials. The DEVELOPER runs this, not the agent.** The agent presents the prerequisites and the command below, but must NOT execute it or handle the credentials. This single command creates the credential provider and the connector. The CLI writes the provider secrets in **plaintext to `agentcore/.env.local`** and records the credential locally; `agentcore deploy` (Step 4) then uploads them to **AgentCore Identity** (`agentcore.json` keeps only a reference). The provider secrets are used only here — nothing later reuses them.
 
 **Before running — get your provider credentials** (do this first; the connector command needs them):
