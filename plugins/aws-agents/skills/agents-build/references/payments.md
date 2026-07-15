@@ -246,7 +246,7 @@ python scripts/setup_payment_user.py --user-id alice --email alice@example.com -
 
 It creates the instrument (with the email in `linkedAccounts`) and a budget-bounded session, then prints the `export` lines for `PAYMENT_INSTRUMENT_ID` / `PAYMENT_SESSION_ID` / `PAYMENT_USER_ID` (used in Step 8), plus the `wallet_address` and `redirect_url` (used in Step 7). The script is the canonical data-plane path — do not hand-write the SDK calls.
 
-**LangGraph with `auto_session=True`**: If you used Step 5a with LangGraph and set `auto_session=True`, you only need the instrument from this step — skip the session creation. The middleware creates a session automatically on the first 402. You still need to run `setup_payment_user.py` for the instrument (pass `--no-session` if the script supports it, or just ignore the session output).
+**LangGraph with `auto_session=True`**: If you used Step 5a with LangGraph and set `auto_session=True`, you only need the instrument from this step — skip the session creation. The middleware creates a session automatically on the first 402. You still need to run `setup_payment_user.py` for the instrument (do NOT use the --budget flag as that will create a session).
 
 ### Step 7: Delegation and funding (one-time per wallet) — developer does this
 
