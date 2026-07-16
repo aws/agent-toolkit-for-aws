@@ -1,6 +1,6 @@
 ---
 name: amazon-bedrock
-description: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Use when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, troubleshooting Bedrock errors (ThrottlingException, AccessDeniedException), or choosing models (Claude, Llama, Nova, Titan). ALSO USE for prompt caching setup and debugging, quota health checks and throttling diagnosis, cost attribution and tracking, migrating between Claude model generations (4.5 to 4.6 to 4.7), chunking strategies, API selection (Converse vs InvokeModel), guardrail capabilities, and model selection. Also covers AgentCore Payments setup (x402, microtransactions, Payment Manager, Connector, Instrument, Coinbase CDP, Stripe Privy, 402 Payment Required, pay for content, paid endpoint, agent payments). NOT for custom model training, Rekognition, or Comprehend.
+description: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Use when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, migrating/porting/converting a Bedrock Agent (including inline agents) to an AgentCore Harness, troubleshooting Bedrock errors (ThrottlingException, AccessDeniedException), or choosing models (Claude, Llama, Nova, Titan). ALSO USE for prompt caching setup and debugging, quota health checks and throttling diagnosis, cost attribution and tracking, migrating between Claude model generations (4.5 to 4.6 to 4.7), chunking strategies, API selection (Converse vs InvokeModel), guardrail capabilities, and model selection. Also covers AgentCore Payments setup (x402, microtransactions, Payment Manager, Connector, Instrument, Coinbase CDP, Stripe Privy, 402 Payment Required, pay for content, paid endpoint, agent payments). NOT for custom model training, Rekognition, or Comprehend.
 version: 2
 ---
 
@@ -61,6 +61,8 @@ AgentCore is a separate service with its own endpoints. Refer to [AgentCore endp
 
 **SDK versions**: Requires recent versions of boto3 (≥ 1.34.x) and AWS CLI v2. Older versions are missing Converse API, Agents, and AgentCore support. Run `aws --version` and `pip show boto3` to check.
 
+**Bedrock Agents classic is in maintenance mode**: classic Bedrock Agents (`bedrock-agent`) is in maintenance mode and closed to new customers ([announcement](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html)). For new agent workloads use AgentCore (the Harness managed loop); for existing agents, recommend migrating to an AgentCore Harness — see the [migration guide](references/migrate-bedrock-agents-to-agentcore-harness.md).
+
 ## Security Considerations
 
 - Use **IAM roles** (not IAM users) for all Bedrock service access
@@ -98,6 +100,7 @@ For full API details and provider-specific body formats, read [model invocation 
 | Filter harmful/sensitive content | Guardrails | [guardrails](references/guardrails.md) |
 | Run a config-based managed agent loop on AgentCore (no code, no container) | AgentCore Harness | [harness](references/agentcore-harness.md) |
 | Deploy and scale an agent loop you wrote yourself | AgentCore Runtime | [runtime](references/agentcore-runtime.md) |
+| Migrate an existing Bedrock Agent (classic) to an AgentCore Harness | Bedrock Agents to AgentCore harness Migration | [migration guide](references/migrate-bedrock-agents-to-agentcore-harness.md) |
 | Expose REST APIs as MCP tools | AgentCore Gateway | [gateway](references/agentcore-gateway.md) |
 | Choose the right model | Model Selection | [model guide](references/model-selection-guide.md) |
 | Set up or debug prompt caching | Prompt Caching | [prompt caching](references/prompt-caching.md) |
@@ -358,6 +361,7 @@ For model ID formats (4 patterns), access provisioning, and selection criteria, 
 - [Amazon Bedrock User Guide](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html)
 - [Amazon Bedrock API Reference](https://docs.aws.amazon.com/bedrock/latest/APIReference/welcome.html)
 - [Amazon Bedrock AgentCore User Guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html)
+- [Bedrock Agents Classic Maintenance mode Announcement](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html)
 - [Bedrock Pricing](https://aws.amazon.com/bedrock/pricing/)
 - [Bedrock Quotas and Limits](https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html)
 - [Bedrock Supported Regions](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html)

@@ -1,0 +1,80 @@
+"""
+Knowledge Base shim Lambda — AgentCore Gateway target.
+
+WHY: the native Gateway KB connector only takes a MANAGED Bedrock KB and a fixed
+retrieval contract. For VECTOR / KENDRA / SQL KBs, or to preserve a managed KB's
+non-default retrieval config (reranker, metadata filter, hybrid override, top-k),
+expose retrieval as this Lambda: it presents one MCP tool, calls
+`bedrock-agent-runtime:Retrieve` against the source KB, and returns MCP-shaped
+passages.
+
+Gateway invokes a Lambda target with the tool arguments flat in `event` and the
+tool name in context.client_context.custom['bedrockAgentCoreToolName']
+("<target>___<tool>"). The handler also tolerates a direct {"query": ...} for local
+testing.
+"""
+# <<< RENDER: delete this whole block after substituting the tokens below.
+#   {{KB_ID}}        - the source knowledge base id
+#   {{TOP_K}}        - numberOfResults from the source KB association (default 5)
+#   {{SEARCH_TYPE}}  - "HYBRID" | "SEMANTIC" | "" (empty means KB default)
+# <<< /RENDER
+import boto3
+
+# Rendered at migration time — the Gateway lambda code target has no
+# environment-variable support, so all config is baked in as literals.
+_KB_ID = "{{KB_ID}}"
+_TOP_K = int("{{TOP_K}}")
+_SEARCH_TYPE = "{{SEARCH_TYPE}}".strip().upper()
+_MAX_QUERY_LEN = 1000  # reject oversized queries — abuse / runaway retrieval cost
+
+_runtime = boto3.client("bedrock-agent-runtime")
+
+
+def _vector_search_config():
+    cfg = {"numberOfResults": _TOP_K}
+    if _SEARCH_TYPE in ("HYBRID", "SEMANTIC"):
+        cfg["overrideSearchType"] = _SEARCH_TYPE
+    # <<< OPTIONAL: metadata_filter
+    # Render the source KB association's `filter` here when present.
+    # cfg["filter"] = {{METADATA_FILTER_JSON}}
+    # <<< /OPTIONAL: metadata_filter
+    # <<< OPTIONAL: reranking
+    # Render the source KB association's `rerankingConfiguration` here when present.
+    # (Set on retrievalConfiguration, not vectorSearchConfiguration — see the
+    #  bedrock-agent-runtime Retrieve API shape.)
+    # <<< /OPTIONAL: reranking
+    return cfg
+
+
+def lambda_handler(event, context):
+    # single-tool target: Gateway passes the tool args flat in `event`
+    args = event if isinstance(event, dict) else {}
+    query = args.get("query") or args.get("text") or ""
+    if not isinstance(query, str) or not query:
+        return {"error": "Missing required argument 'query'."}
+    if len(query) > _MAX_QUERY_LEN:
+        return {"error": f"Query exceeds {_MAX_QUERY_LEN} chars."}
+
+    vector_cfg = _vector_search_config()
+    max_results = args.get("max_results")
+    if isinstance(max_results, int) and max_results > 0:
+        vector_cfg["numberOfResults"] = max_results
+
+    resp = _runtime.retrieve(
+        knowledgeBaseId=_KB_ID,
+        retrievalQuery={"text": query},
+        retrievalConfiguration={"vectorSearchConfiguration": vector_cfg},
+    )
+    # Returns KB passage text + source location verbatim. If the KB holds
+    # sensitive data (PII, financial records), review what it returns and redact
+    # or filter fields here before returning, and keep this Lambda's CloudWatch
+    # log group KMS-encrypted (see references/deploy.md) — do not log full passages.
+    results = [
+        {
+            "text": r.get("content", {}).get("text", ""),
+            "source": r.get("location", {}),
+            "score": r.get("score"),
+        }
+        for r in resp.get("retrievalResults", [])
+    ]
+    return {"results": results, "count": len(results)}

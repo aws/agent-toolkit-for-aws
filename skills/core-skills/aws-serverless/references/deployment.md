@@ -1,6 +1,6 @@
 # Deployment Reference
 
-Serverless-specific deployment patterns, resource types, and fast iteration tools.
+Serverless-specific resource types and fast-iteration tools. For step-by-step deployment procedures (custom domain REST API, API Gateway stages, connecting Lambda to API Gateway/DynamoDB), use the specialized skills in SKILL.md's routing table.
 
 ## Contents
 

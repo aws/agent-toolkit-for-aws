@@ -1,16 +1,15 @@
 # AWS Lambda Reference
 
-Specific values, limits, constraints, and code that complement general Lambda knowledge.
+Quotas, constraints, and gotchas that are easy to get wrong. Assumes you already know Lambda basics (packaging, layer paths, VPC-has-no-public-IP, Graviton ≈ 34% better price-performance, Powertools APIs) — this file focuses on the values and edge cases that trip up implementations.
 
 ## Contents
 
 - [Cold Start Optimization](#cold-start-optimization)
-- [Packaging](#packaging)
 - [Memory and Timeout Tuning](#memory-and-timeout-tuning)
 - [VPC Connectivity](#vpc-connectivity)
-- [Execution Roles](#execution-roles)
 - [Runtime Lifecycle](#runtime-lifecycle)
-- [Powertools for AWS Lambda](#powertools-for-aws-lambda)
+- [Function URLs](#function-urls)
+- [Powertools and Packaging](#powertools-and-packaging)
 
 ---
 
@@ -21,28 +20,23 @@ Specific values, limits, constraints, and code that complement general Lambda kn
 Snapshots the initialized execution environment (Firecracker microVM memory + disk) and restores from cache instead of cold-booting.
 
 **Supported runtimes:** Java 11+, Python 3.12+, .NET 8+
-**NOT supported:** Node.js, Ruby, container images, OS-only runtimes
 
 **Constraints:**
 
-- Mutually exclusive with Provisioned Concurrency
+- **Mutually exclusive with Provisioned Concurrency** (cannot set both on one function)
 - Mutually exclusive with Amazon EFS
 - Ephemeral storage must be ≤ 512 MB
 - Only works on published versions (not `$LATEST`)
-- Java: no additional SnapStart overhead
-- Python/.NET: caching charge (based on memory, minimum 3 hours) + per-restore charge
+- Java: no additional SnapStart charge. Python/.NET: caching charge (by memory, min 3 hours) + per-restore charge
 
-**Restoration considerations:**
+**Restoration gotchas** (snapshot is reused across restores):
 
-- Generate unique IDs/secrets in the handler, not during init (snapshot reuse)
+- Generate unique IDs/secrets in the handler, not during init
 - Re-establish network connections in the handler (connections are stale after restore)
 - Refresh cached timestamps/credentials in the handler
 
-**CDK example (Python):**
-
 ```python
-from aws_cdk import aws_lambda as lambda_
-
+# CDK (Python)
 fn = lambda_.Function(self, "MyFunction",
     runtime=lambda_.Runtime.PYTHON_3_13,
     handler="index.handler",
@@ -57,492 +51,139 @@ version = fn.current_version
 Pre-initializes execution environments that stay warm permanently.
 
 - A single instance handles one concurrent request at a time; throughput per instance = 1 / function duration
-- Account-level RPS quota: 10 × total concurrency (applies across all invocations, not per instance)
-- Supports auto-scaling via Application Auto Scaling
+- **Account-level RPS quota: 10 × total concurrency** (applies across all invocations, not per instance)
+- Supports auto-scaling via Application Auto Scaling (target ~70% utilization)
 - Lambda can scale beyond provisioned count using on-demand instances
 - **Paid even when idle** — disable in dev/staging
-
-```typescript
-const fn = new lambda.Function(this, 'MyFunction', {
-  runtime: lambda.Runtime.NODEJS_22_X,
-  handler: 'index.handler',
-  code: lambda.Code.fromAsset('lambda'),
-});
-
-const version = fn.currentVersion;
-const alias = new lambda.Alias(this, 'ProdAlias', {
-  aliasName: 'prod',
-  version,
-  provisionedConcurrentExecutions: 10,
-});
-```
-
-### Graviton (arm64)
-
-- **Up to 34% better price-performance** compared to x86 (per AWS)
-- Supported for all Lambda managed runtimes
-- Set `architecture: lambda_.Architecture.ARM_64` in CDK
 
 ### Strategy Selection
 
 | Scenario | Strategy |
 |---|---|
 | Java/Python/.NET with heavy init | SnapStart |
-| Strict <50ms cold start | Provisioned Concurrency |
+| Strict <50ms cold start, or need EFS / >512MB ephemeral | Provisioned Concurrency |
 | Tolerant of occasional cold starts | On-demand + minimize package |
 | Predictable traffic | Provisioned Concurrency + auto-scaling |
 | General optimization | arm64 (Graviton) |
 
 ---
 
-## Packaging
-
-### Decision Tree
-
-```
-Need > 250 MB uncompressed?
-  └─ YES → Container image (up to 10 GB)
-  └─ NO
-      ├─ Sharing deps across multiple functions?
-      │   └─ YES → Lambda layers
-      └─ NO
-          ├─ Simple function, few deps → .zip
-          └─ Native binaries, complex build → Container image
-```
-
-### Size Limits
-
-| Package Type | Limit |
-|---|---|
-| .zip compressed | 50 MB |
-| .zip uncompressed (including layers) | 250 MB |
-| Container image | 10 GB |
-| Layers per function | 5 |
-
-### Layer Paths by Runtime
-
-| Runtime | Layer Path |
-|---|---|
-| Python | `python/` or `python/lib/python3.x/site-packages/` |
-| Node.js | `nodejs/node_modules/` |
-| Java | `java/lib/` |
-| Ruby | `ruby/gems/3.4.0/` or `ruby/lib/` |
-| All runtimes | `bin/` (PATH), `lib/` (LD_LIBRARY_PATH) |
-
-**Layer constraints:**
-
-- Layers count toward the 250 MB unzipped limit
-- Layers only work with .zip deployments, NOT container images
-- Not recommended for Go/Rust — bundle deps in the deployment package
-- Multiple layers with conflicting dependency versions cause subtle bugs; merge order matters
-
-### Container Image Dockerfile
-
-```dockerfile
-FROM public.ecr.aws/lambda/python:3.13
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY app.py ${LAMBDA_TASK_ROOT}
-
-CMD ["app.handler"]
-```
-
-- Use official AWS base images from `public.ecr.aws/lambda/`
-- Container images do NOT support Lambda layers
-- SnapStart is NOT supported with container images
-
-### Python Build Tips
-
-Use `uv` for dependency installation — **10-100x faster than pip**:
-
-```bash
-uv pip install -r requirements.txt --target ./package
-```
-
-Cross-platform build flags (when building on non-Linux):
-
-```bash
-pip install -r requirements.txt \
-  --target ./package \
-  --platform manylinux2014_x86_64 \
-  --only-binary=:all:
-```
-
-Use `manylinux2014_aarch64` for arm64. Exclude `__pycache__`, `.pyc`, tests, docs.
-
----
-
 ## Memory and Timeout Tuning
 
-### Memory
+### Memory → CPU
 
 | Parameter | Value |
 |---|---|
-| Minimum | 128 MB |
-| Maximum | 10,240 MB (10 GB) |
-| Increment | 1 MB |
-| Default | 128 MB |
-| 1 vCPU at | 1,769 MB |
+| Range | 128 MB – 10,240 MB (1 MB increments), default 128 MB |
+| **1 vCPU at** | **1,769 MB** |
 | ~5.8 vCPUs at | 10,240 MB |
 
-CPU scales linearly with memory. Doubling memory doubles CPU. **Over-provisioning memory can improve performance** — faster execution = less total duration.
+CPU scales linearly with memory — doubling memory doubles CPU. **Over-provisioning memory often lowers cost** (faster execution = less billed duration). Start at 256–512 MB; tune with [AWS Lambda Power Tuning](https://github.com/alexcasalboni/aws-lambda-power-tuning) against `Max Memory Used` in REPORT lines.
 
-**Tuning process:**
+### Ephemeral storage (/tmp)
 
-1. Start at 256–512 MB (128 MB only for trivial event routers)
-2. Monitor `Max Memory Used` in CloudWatch REPORT lines
-3. Use **AWS Lambda Power Tuning** (open-source Step Functions tool):
-
-```bash
-aws stepfunctions start-execution \
-  --state-machine-arn arn:aws:states:REGION:ACCOUNT:stateMachine:powerTuningStateMachine \
-  --input '{
-    "lambdaARN": "arn:aws:lambda:REGION:ACCOUNT:function:my-function",
-    "powerValues": [128, 256, 512, 1024, 1769, 3008],
-    "num": 50,
-    "payload": "{\"test\": true}"
-  }'
-```
-
-### Ephemeral Storage (/tmp)
-
-| Parameter | Value |
-|---|---|
-| Minimum / Default | 512 MB |
-| Maximum | 10,240 MB (10 GB) |
-| Extra cost | Above 512 MB |
-
-- Content **persists across warm invocations** (use as transient cache)
-- Content is NOT cleared after invoke failures
-- SnapStart requires ≤ 512 MB ephemeral storage
+- 512 MB (default/min) – 10,240 MB; extra cost above 512 MB
+- Persists across warm invocations (transient cache); NOT cleared after invoke failures
+- SnapStart requires ≤ 512 MB
 
 ### Timeout
 
-| Parameter | Value |
-|---|---|
-| Minimum | 1 second |
-| Maximum | 900 seconds (15 minutes) |
-| Default | 3 seconds |
+- Range 1s – 900s (15 min); **default is 3s** — always set it explicitly
 
 **Critical integration limits:**
 
-- API Gateway REST API: **29s default** (adjustable for Regional/private APIs since June 2024; edge-optimized remains 29s max)
-- API Gateway HTTP API: **30-second hard limit**
-- SQS visibility timeout must be **≥ 6× function timeout** (AWS recommendation)
+- **API Gateway REST API: 29s default** — adjustable higher for Regional/private APIs; **edge-optimized remains 29s max**
+- **API Gateway HTTP API: 30s hard limit** (cannot be raised)
+- SQS visibility timeout should be **≥ 6× function timeout**
 
-### Other Limits
+### Other limits worth knowing
 
 | Resource | Limit |
 |---|---|
-| Environment variables (total) | 4 KB |
 | Sync invocation payload (request/response) | 6 MB each |
 | Async invocation payload | 1 MB |
-| Streamed response | 200 MB (first 6 MB uncapped, then 2 MBps) |
-| File descriptors | 1,024 |
-| Processes/threads | 1,024 |
-| Concurrent executions (default) | 1,000 per region (soft limit) |
-| Scaling rate | 1,000 new environments every 10s per function |
-| Function code storage (.zip) | 75 GB per region (soft limit) |
+| Streamed response | 200 MB (2 MBps after first 6 MB) |
+| Environment variables (total) | 4 KB |
+| Concurrent executions (default) | 1,000 per region (soft) |
+| Scaling rate | 1,000 new environments / 10s, per function |
 
 ---
 
 ## VPC Connectivity
 
-### Hyperplane ENI
+Lambda uses **Hyperplane ENIs** — shared across functions that use the same subnet + security group combination (NOT per-function). Each ENI supports ~65,000 connections.
 
-Lambda uses **Hyperplane Elastic Network Interfaces** (shared, not per-function):
+- First-time ENI creation can take **several minutes** (function stays `Pending`)
+- ENIs reclaimed after **14 days of inactivity** (function goes `Inactive`); removing VPC config takes up to **20 minutes**
 
-- Shared across functions using the same subnet + security group combination
-- Each ENI supports **65,000 connections/ports**
-- First-time ENI creation: **several minutes** (function stays in `Pending`)
-- ENIs reclaimed after **14 days of inactivity** (function goes `Inactive`)
-- Removing VPC config takes up to **20 minutes** for ENI cleanup
-- Default quota: **500 Hyperplane ENIs per VPC** (Lambda-specific soft limit, can be increased). The broader VPC ENI service quota is **5,000 per region** by default.
-
-### Internet Access Patterns
-
-**Lambda in a VPC NEVER gets a public IP**, even in a public subnet.
-
-**Pattern 1: Private Subnet + NAT Gateway** (most common)
-
-```
-Lambda → Private Subnet → Route Table → NAT Gateway → IGW → Internet
-```
-
-- Deploy in each AZ for HA
-
-**Pattern 2: VPC Endpoints** (for AWS services)
-
-```
-Lambda → Private Subnet → VPC Endpoint → AWS Service
-```
-
-- **Gateway endpoints:** S3, DynamoDB
-- **Interface endpoints:** STS, Secrets Manager, SQS, etc.
-- Traffic stays on AWS network — lower latency
-
-#### Pattern 3: IPv6 Egress-Only Internet Gateway
-
-```
-Lambda → Dual-Stack Subnet → Egress-Only IGW → Internet (IPv6)
-```
-
-- Eliminates NAT Gateway for IPv6 traffic
-- Requires dual-stack subnets and IPv6-capable endpoints
-- Set `Ipv6AllowedForDualStack=true` in function config
-
-### Required IAM Permissions
-
-VPC-attached functions need `AWSLambdaVPCAccessExecutionRole` managed policy or equivalent EC2 network interface permissions.
-
-### Best Practices
-
-- Reuse subnet + security group combos across functions to share ENIs
-- Use multiple subnets across AZs for HA
-- Prefer VPC endpoints over NAT Gateway for AWS service access
-- Don't attach to VPC unless accessing private resources (RDS, ElastiCache, etc.)
-
----
-
-## Execution Roles
-
-One execution role per function. Key Lambda-specific managed policies:
-
-| Policy | Grants |
-|---|---|
-| `AWSLambdaBasicExecutionRole` | CloudWatch Logs only |
-| `AWSLambdaVPCAccessExecutionRole` | VPC ENI management |
-| `AWSLambdaDynamoDBExecutionRole` | DynamoDB Streams |
-| `AWSLambdaSQSQueueExecutionRole` | SQS polling |
-| `AWSLambdaKinesisExecutionRole` | Kinesis Streams |
+Reuse subnet + SG combos to share ENIs. Prefer **VPC endpoints** (gateway: S3, DynamoDB; interface: STS, Secrets Manager, SQS, …) over NAT Gateway for AWS-service access — lower latency, traffic stays on the AWS backbone. Don't attach to a VPC unless you need private resources (RDS, ElastiCache). VPC-attached functions need `AWSLambdaVPCAccessExecutionRole`.
 
 ---
 
 ## Runtime Lifecycle
 
-### Phases
-
 ```
-┌─────────┐    ┌─────────┐    ┌──────────┐
-│  INIT   │───▶│ INVOKE  │───▶│ SHUTDOWN │
-│         │    │(repeat) │    │          │
-└─────────┘    └─────────┘    └──────────┘
+INIT ──▶ INVOKE (repeat) ──▶ SHUTDOWN          [+ RESTORE phase for SnapStart]
 ```
 
-**Init Phase** (3 sub-phases: extension init → runtime init → function init):
+**Init phase** (extension init → runtime init → function init):
 
-- On-demand timeout: **10 seconds**
-- Provisioned/SnapStart timeout: **up to 15 minutes**
-- If init exceeds 10s on-demand, Lambda retries at first invocation using the function's configured timeout
+- **On-demand init timeout: 10s.** If exceeded, Lambda retries at first invocation using the function's configured timeout.
+- **Provisioned/SnapStart init timeout: up to 15 minutes.**
 
-**Invoke Phase:**
+**Shutdown phase:** 0 ms (no extensions), 500 ms (internal only), 2,000 ms (external extensions); SIGKILL if not done in time.
 
-- Limited by function timeout (max 900s)
-- Each environment handles **one concurrent invocation** at a time
+**Restore phase (SnapStart):** 10s timeout for restore + after-restore hooks.
 
-**Shutdown Phase:**
+### Warm-start reuse
 
-- 0 ms (no extensions), 500 ms (internal only), 2,000 ms (external extensions)
-- SIGKILL if extensions don't respond in time
+Objects initialized outside the handler persist across invocations (SDK clients, DB connections, `/tmp`). Gotchas:
 
-**Restore Phase** (SnapStart only):
-
-- Resumes from cached snapshot
-- 10-second timeout for restore + after-restore hooks
-
-### Execution Environment Reuse (Warm Starts)
-
-Objects initialized outside the handler persist across invocations:
-
-- SDK clients, DB connections, cached data all survive
-- `/tmp` content persists (512 MB–10 GB)
-- Background processes resume on next invocation
-- **Workers have a maximum lease lifetime of ~14 hours** (observed behavior, not a documented SLA — do not depend on this value)
-- Environments terminated periodically for maintenance even under continuous load
-
-**Common pitfall:** Global variables persist — stale DB connections, expired credentials, and leaked state across invocations cause subtle production bugs.
-
-### Extensions
-
-- **Internal:** Run in the runtime process (APM agents)
-- **External:** Separate processes alongside the runtime
-- Use Extensions API and Telemetry API for lifecycle events, logs, metrics, traces
+- **Execution environments are recycled periodically** for maintenance even under continuous load — never assume an environment (or its warmed state) lives indefinitely.
+- **Global variables persist** — stale DB connections, expired credentials, and leaked state across invocations cause subtle production bugs. Refresh connections/credentials in the handler.
 
 ---
 
-## Powertools for AWS Lambda
+## Function URLs
 
-Official AWS toolkit for Lambda best practices. Available for Python, TypeScript, Java, .NET.
+A Function URL is a dedicated HTTPS endpoint on a single function — no API Gateway. Use for internal service-to-service (IAM auth), Lambdalith + CloudFront, response streaming, or webhook receivers. There's **no built-in rate limiting, WAF, or request validation** (front with CloudFront/API Gateway if you need those). Choose **API Gateway** instead for public APIs needing rate limiting, JWT/Cognito auth, multi-function routing, request validation, or WAF without CloudFront.
 
-**Performance note:** Powertools adds cold start overhead. Use selective imports when cold start matters:
+Invoking a Function URL **always requires `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction`** — granting only `InvokeFunctionUrl` returns **HTTP 403** even with `AuthType=NONE`. The two `AuthType` options differ in *how* those permissions are supplied:
 
-```python
-# Instead of: from aws_lambda_powertools import Logger, Tracer, Metrics
-# Import only what you need if cold start is critical
-from aws_lambda_powertools import Logger
+### `AuthType=AWS_IAM` (non-public — prefer for production)
+
+Only callers with valid AWS credentials that sign requests with **SigV4** can invoke; unauthenticated requests get **403**.
+
+- **Same-account caller:** grant the two actions in the caller's **identity-based policy** *or* the function's resource-based policy — a resource-based policy is **optional** if the caller's identity policy already allows them (this is why an admin/broad identity policy invokes with no resource policy on the function).
+- **Cross-account caller:** requires **both** an identity-based policy on the caller **and** a resource-based policy on the function.
+- For CloudFront in front, use **Origin Access Control** to sign requests rather than `NONE`.
+
+### `AuthType=NONE` (public)
+
+Lambda does no auth — the resource-based policy alone gates access, so it must grant **public** access. Only use when the endpoint must be reachable by unauthenticated clients (e.g. a browser hitting the URL directly) with no CloudFront/edge auth in front; it exposes the function to anyone with the URL, so pair it with in-code auth, throttling, and monitoring. The console and SAM add both required statements automatically; with the CLI/API add each yourself (two separate `add-permission` calls):
+
+```bash
+# Statement 1: allow invoking via the Function URL (public)
+aws lambda add-permission --function-name my-function \
+  --statement-id FunctionURLAllowPublicAccess \
+  --action lambda:InvokeFunctionUrl --principal '*' \
+  --function-url-auth-type NONE
+
+# Statement 2: REQUIRED — allow the underlying invoke, scoped to URL calls
+aws lambda add-permission --function-name my-function \
+  --statement-id FunctionURLInvokeAllowPublicAccess \
+  --action lambda:InvokeFunction --principal '*' \
+  --invoked-via-function-url
 ```
 
-### Core Utilities
+The `lambda:InvokedViaFunctionUrl` condition on statement 2 (set by `--invoked-via-function-url`) restricts that grant to Function URL calls, so it does not open direct `Invoke` access. See [Lambda function URL auth](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
 
-| Utility | Purpose |
-|---|---|
-| Logger | Structured JSON logging with correlation IDs |
-| Tracer | X-Ray tracing with decorators/middleware |
-| Metrics | CloudWatch metrics via Embedded Metric Format (EMF) |
-| Idempotency | Make handlers idempotent using DynamoDB |
-| Batch Processing | Partial failure handling for SQS, Kinesis, DynamoDB Streams |
-| Event Handler | Routing for API Gateway, ALB, Function URLs, AppSync |
-| Parameters | Retrieve/cache SSM, Secrets Manager, AppConfig, DynamoDB values |
+## Powertools and Packaging
 
-### Environment Variables
+Use **Powertools for AWS Lambda** (Python, TypeScript, Java, .NET) for structured logging, X-Ray tracing, EMF metrics, idempotency, batch processing, event handling, and parameter caching. The APIs are well-documented at [docs.powertools.aws.dev](https://docs.powertools.aws.dev/lambda/); for a ready-to-use Python handler with Logger + Tracer + Metrics + Idempotency wired, start from [assets/powertools-handler.py](../assets/powertools-handler.py).
 
-| Variable | Purpose |
-|---|---|
-| `POWERTOOLS_SERVICE_NAME` | Service name for logs, metrics, traces |
-| `POWERTOOLS_METRICS_NAMESPACE` | CloudWatch metrics namespace |
-| `POWERTOOLS_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) |
-| `POWERTOOLS_TRACE_DISABLED` | Disable tracing (useful for tests) |
-| `POWERTOOLS_DEV` | Dev mode (pretty-print JSON, verbose errors) |
+Powertools adds cold-start overhead — use selective imports when cold start is critical.
 
-### Python: Logger + Tracer + Metrics
+**Useful Powertools env vars:** `POWERTOOLS_SERVICE_NAME`, `POWERTOOLS_METRICS_NAMESPACE`, `POWERTOOLS_LOG_LEVEL`, `POWERTOOLS_TRACE_DISABLED` (tests), `POWERTOOLS_DEV` (pretty-print).
 
-```python
-from aws_lambda_powertools import Logger, Tracer, Metrics
-from aws_lambda_powertools.metrics import MetricUnit
-from aws_lambda_powertools.utilities.typing import LambdaContext
-
-logger = Logger()
-tracer = Tracer()
-metrics = Metrics()
-
-@logger.inject_lambda_context(log_event=False)
-@tracer.capture_lambda_handler
-@metrics.log_metrics(capture_cold_start_metric=True)
-def handler(event: dict, context: LambdaContext) -> dict:
-    logger.info("Processing order", order_id=event.get("order_id"))
-    metrics.add_metric(name="OrdersProcessed", unit=MetricUnit.Count, value=1)
-    result = process_order(event)
-    return {"statusCode": 200, "body": result}
-
-@tracer.capture_method
-def process_order(event: dict) -> str:
-    return "processed"
-```
-
-### TypeScript: Logger + Tracer + Metrics
-
-```typescript
-import { Logger } from '@aws-lambda-powertools/logger';
-import { Tracer } from '@aws-lambda-powertools/tracer';
-import { Metrics, MetricUnit } from '@aws-lambda-powertools/metrics';
-import middy from '@middy/core';
-import { injectLambdaContext } from '@aws-lambda-powertools/logger/middleware';
-import { captureLambdaHandler } from '@aws-lambda-powertools/tracer/middleware';
-import { logMetrics } from '@aws-lambda-powertools/metrics/middleware';
-
-const logger = new Logger({ serviceName: 'orderService' });
-const tracer = new Tracer({ serviceName: 'orderService' });
-const metrics = new Metrics({ namespace: 'OrderApp', serviceName: 'orderService' });
-
-const lambdaHandler = async (event: any) => {
-  logger.info('Processing order', { orderId: event.orderId });
-  metrics.addMetric('OrdersProcessed', MetricUnit.Count, 1);
-  const result = await processOrder(event);
-  return { statusCode: 200, body: JSON.stringify(result) };
-};
-
-export const handler = middy(lambdaHandler)
-  .use(injectLambdaContext(logger, { logEvent: false }))
-  .use(captureLambdaHandler(tracer))
-  .use(logMetrics(metrics, { captureColdStartMetric: true }));
-```
-
-### Python: Idempotency
-
-```python
-from aws_lambda_powertools.utilities.idempotency import (
-    DynamoDBPersistenceLayer,
-    idempotent,
-)
-
-persistence_layer = DynamoDBPersistenceLayer(table_name="IdempotencyTable")
-
-@idempotent(persistence_store=persistence_layer)
-def handler(event: dict, context) -> dict:
-    payment = process_payment(event)
-    return {"payment_id": payment.id, "status": "success"}
-```
-
-### TypeScript: Idempotency
-
-```typescript
-import { makeIdempotent } from '@aws-lambda-powertools/idempotency';
-import { DynamoDBPersistenceLayer } from '@aws-lambda-powertools/idempotency/dynamodb';
-
-const persistenceStore = new DynamoDBPersistenceLayer({
-  tableName: 'IdempotencyTable',
-});
-
-const processPayment = async (event: { paymentId: string; amount: number }) => {
-  return { paymentId: event.paymentId, status: 'success' };
-};
-
-export const handler = makeIdempotent(processPayment, {
-  persistenceStore,
-});
-```
-
-### Python: Batch Processing (SQS Partial Failures)
-
-```python
-from aws_lambda_powertools.utilities.batch import (
-    BatchProcessor,
-    EventType,
-    process_partial_response,
-)
-from aws_lambda_powertools.utilities.data_classes.sqs_event import SQSRecord
-
-processor = BatchProcessor(event_type=EventType.SQS)
-
-def record_handler(record: SQSRecord):
-    payload = record.json_body
-    process_item(payload)
-
-def handler(event, context):
-    return process_partial_response(
-        event=event,
-        record_handler=record_handler,
-        processor=processor,
-        context=context,
-    )
-```
-
-### TypeScript: Batch Processing (SQS Partial Failures)
-
-```typescript
-import {
-  BatchProcessor,
-  EventType,
-  processPartialResponse,
-} from '@aws-lambda-powertools/batch';
-import type { SQSRecord, SQSHandler } from 'aws-lambda';
-
-const processor = new BatchProcessor(EventType.SQS);
-
-const recordHandler = async (record: SQSRecord): Promise<void> => {
-  const payload = JSON.parse(record.body);
-  await processItem(payload);
-};
-
-export const handler: SQSHandler = async (event, context) => {
-  return processPartialResponse(event, recordHandler, processor, {
-    context,
-  });
-};
-```
-
-### Asset Reference
-
-For a ready-to-use Python handler with Powertools wired, read [assets/powertools-handler.py](../assets/powertools-handler.py).
+**Packaging quick facts:** 50 MB zipped / 250 MB unzipped (incl. layers) → switch to container image (10 GB) past that. Max 5 layers/function; layers don't work with container images. Use `uv pip install` (10–100× faster than pip) and `--platform manylinux2014_{x86_64,aarch64} --only-binary=:all:` for cross-platform builds, or let `sam build` handle it. See [troubleshooting.md](troubleshooting.md) for size/import errors.

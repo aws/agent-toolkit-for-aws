@@ -1,0 +1,158 @@
+"""
+Action-Group shim Lambda — AgentCore Gateway target (proxy-by-ARN).
+
+WHY: a Bedrock action-group Lambda is invoked with the Bedrock envelope and returns
+a wrapped response. AgentCore Gateway sends the tool arguments flat in `event` with
+the tool name in context.client_context.custom['bedrockAgentCoreToolName']
+("<target>___<tool>") and expects plain JSON. This shim is a NEW Lambda deployed in
+front of the original: it translates the Gateway event into the Bedrock event,
+invokes the original by ARN, and unwraps the response. The original is left
+untouched, so the source agent keeps working.
+
+Do NOT zip or `create-function` this yourself. Place this handler at
+tools/<shim>/handler.py, hand-add a `targetType:"lambda"` code target to
+agentcore.json pointing at it, and let `agentcore deploy` build the Lambda. All
+config ({{TOKEN}}s below) is baked in at render time — the code target has no
+environment-variable support. See references/deploy.md "How shims are deployed".
+"""
+# <<< RENDER: delete this whole block after substituting the tokens below.
+#   {{ORIGINAL_LAMBDA_ARN}}  - the source action-group Lambda ARN
+#   {{SCHEMA_STYLE}}         - "function" (functionSchema) | "openapi" (apiSchema)
+#   {{OP_ROUTES}}            - (openapi only) JSON object mapping each operationId to
+#                             its {"method","apiPath"} from the SOURCE OpenAPI schema.
+#                             apiPath MUST be the literal route TEMPLATE, e.g.
+#                             "/customer/{customer_id}" — NOT a value-substituted path.
+# <<< /RENDER
+import json
+import re
+
+import boto3
+
+# Rendered at migration time — the Gateway lambda code target has no
+# environment-variable support, so all config is baked in as literals.
+_ORIGINAL_ARN = "{{ORIGINAL_LAMBDA_ARN}}"
+_SCHEMA_STYLE = "{{SCHEMA_STYLE}}"  # function | openapi
+_MAX_ARG_BYTES = 256 * 1024  # cap forwarded payload — reject oversized/abusive input
+
+# operationId -> {"method": <HTTP method>, "apiPath": <route TEMPLATE>}.
+# Rendered from the source OpenAPI schema. The apiPath is the template with
+# placeholders intact (e.g. "/customer/{customer_id}") because the original Bedrock
+# Lambda dispatches by matching that exact template; path-param VALUES stay in the
+# parameters array, never substituted into the path.
+_OP_ROUTES = {{OP_ROUTES}}
+_lambda = boto3.client("lambda")
+
+
+def _resolve_tool_and_args(event, context):
+    cc = getattr(context, "client_context", None)
+    custom = getattr(cc, "custom", None) if cc else None
+    raw = (custom or {}).get("bedrockAgentCoreToolName", "") if custom else ""
+    tool = raw.split("___", 1)[1] if "___" in raw else raw
+    args = event if isinstance(event, dict) else {}
+    return tool, args
+
+
+def _validate_args(args):
+    """Reject unexpected shapes before forwarding to the original Lambda: keys must
+    be strings and the whole payload must stay under a sane size cap. This keeps the
+    shim from injecting oversized or malformed input into the original's envelope."""
+    if not all(isinstance(k, str) for k in args):
+        raise ValueError("All argument keys must be strings.")
+    if len(json.dumps(args, default=str).encode("utf-8")) > _MAX_ARG_BYTES:
+        raise ValueError(f"Arguments exceed {_MAX_ARG_BYTES} bytes.")
+
+
+def _to_bedrock_event(tool, args):
+    """Build the Bedrock-Agents envelope the original handler expects."""
+    _validate_args(args)
+    if _SCHEMA_STYLE == "openapi":
+        # Look up the route TEMPLATE for this operationId and pass it verbatim.
+        route = _OP_ROUTES.get(tool)
+        if route is None:
+            raise ValueError(
+                f"No OpenAPI route for operationId {tool!r}; _OP_ROUTES must be "
+                "rendered from the source schema."
+            )
+        # In the real Bedrock envelope, path/query params live in `parameters` and
+        # body params in `requestBody` — don't put every arg in both, or a Lambda
+        # that reads both sees duplicated/misplaced values. Path params are the
+        # `{placeholder}` names in the route template. For methods with no request
+        # body (GET/DELETE/HEAD) the remaining args are query params and also belong
+        # in `parameters`; only body-bearing methods route the rest to `requestBody`.
+        path_names = set(re.findall(r"\{(\w+)\}", route["apiPath"]))
+        non_path = {k: v for k, v in args.items() if k not in path_names}
+        base = {
+            "messageVersion": "1.0", "actionGroup": "migrated",
+            "apiPath": route["apiPath"],       # literal template — never substitute values
+            "httpMethod": route["method"],
+        }
+        # `parameters` entries declare type "string", so values must be strings —
+        # Gateway may hand us typed JSON (int/bool). `requestBody` keeps native types.
+        if route["method"].upper() in ("GET", "DELETE", "HEAD"):
+            params = [{"name": k, "value": str(v), "type": "string"}
+                      for k, v in args.items()]  # path + query, all in parameters
+            base["parameters"] = params
+        else:
+            base["parameters"] = [{"name": k, "value": str(v), "type": "string"}
+                                  for k in path_names for v in [args[k]]]
+            base["requestBody"] = {"content": {"application/json": {
+                "properties": [{"name": k, "value": v} for k, v in non_path.items()]}}}
+        return base
+    # functionSchema style: all args are flat parameters.
+    params = [{"name": k, "value": str(v), "type": "string"} for k, v in args.items()]
+    return {"messageVersion": "1.0", "actionGroup": "migrated",
+            "parameters": params, "function": tool}
+
+
+def _unwrap(resp):
+    """Pull the tool output out of the Bedrock-Agents response envelope."""
+    if not isinstance(resp, dict):
+        return {"body": resp}
+    r = resp.get("response", {})
+    fr = r.get("functionResponse", {})
+    if fr:
+        body = fr.get("responseBody", {}).get("TEXT", {}).get("body")
+        if body is not None:
+            return {"body": body}
+    api = r.get("apiResponse", {})
+    if api:
+        body = api.get("responseBody", {}).get("application/json", {}).get("body")
+        if body is not None:
+            return {"body": body}
+    return resp  # some Lambdas already return plain JSON
+
+
+def lambda_handler(event, context):
+    # This shim forwards user-provided tool arguments, which may hold PII, financial
+    # data, or other sensitive values. Do NOT log the full event/args/response, and
+    # keep this Lambda's CloudWatch log group KMS-encrypted (see references/deploy.md).
+    tool, args = _resolve_tool_and_args(event, context)
+    bedrock_event = _to_bedrock_event(tool, dict(args))
+    try:
+        out = _lambda.invoke(
+            FunctionName=_ORIGINAL_ARN,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(bedrock_event).encode("utf-8"),
+        )
+    except _lambda.exceptions.ClientError as e:
+        # AccessDenied here means the SOURCE Lambda's resource policy does not yet
+        # allow this shim role to invoke it. This is a source-side grant the builder
+        # must add (see references/deploy.md "Source-side prerequisites") — the
+        # migration must NOT add-permission on the source itself.
+        if e.response.get("Error", {}).get("Code") in ("AccessDeniedException", "AccessDenied"):
+            raise RuntimeError(
+                f"Denied invoking original Lambda {_ORIGINAL_ARN}. The builder must grant "
+                "this shim's role lambda:InvokeFunction on the source (do not modify the "
+                "source from the migration)."
+            ) from e
+        raise
+    payload = json.loads(out["Payload"].read() or b"{}")
+    # A failed original Lambda returns 200 with FunctionError set and the error in
+    # the payload — surface it as a real failure so the Gateway/Harness sees the
+    # tool errored, instead of passing the error dict off as a successful result.
+    if "FunctionError" in out:
+        raise RuntimeError(
+            f"Original Lambda failed ({out['FunctionError']}): "
+            f"{payload.get('errorMessage', 'unknown error')}"
+        )
+    return _unwrap(payload)
