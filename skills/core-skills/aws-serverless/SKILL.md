@@ -10,42 +10,47 @@ metadata:
 ---
 
 # AWS Serverless
-## Overview
 
-Domain expertise for building serverless applications on AWS. Covers Lambda configuration, API Gateway debugging, Step Functions orchestration, EventBridge patterns, event source mappings, concurrency tuning, cold start optimization, deployment with SAM/CDK, production readiness, and troubleshooting across all serverless services.
+Domain expertise for building serverless applications on AWS: Lambda, API Gateway, Step Functions, EventBridge, event source mappings, concurrency, cold starts, deployment, and troubleshooting.
 
-**Works best with** the [AWS MCP server](https://docs.aws.amazon.com/aws-mcp/) — enables running CLI commands, querying CloudWatch, and validating configurations directly. All guidance also works with standard AWS CLI access.
+**Works best with** the [AWS MCP server](https://docs.aws.amazon.com/aws-mcp/) — run CLI commands, query CloudWatch, validate configs directly. All guidance also works with standard AWS CLI access.
 
-**Note:** Reference files contain specific runtime versions, quota values, and feature matrices that may change. When precision matters (e.g., deploying to production, choosing a runtime, or checking a quota), confirm values against current AWS documentation rather than relying solely on the values in these files.
+## Specialized skills — check these first
 
-## Routing
+These cover capabilities and procedures the general references below do **not**. Several are specialized features or step-by-step tested procedures you would otherwise miss. Route to the matching skill before falling back to the references.
 
-| User need | Action |
-|-----------|--------|
-| Building a new serverless app | Read [architecture.md](references/architecture.md) for pattern selection, then [deployment.md](references/deployment.md) for SAM/CDK templates |
-| Debugging an error | Read [troubleshooting.md](references/troubleshooting.md) — starts with the 5 most common fixes |
-| Optimizing performance or cost | Read [lambda.md](references/lambda.md) for cold starts and memory tuning, [production.md](references/production.md) for readiness checklist |
-| Configuring event sources (SQS, DDB Streams, SNS) | Read [event-sources.md](references/event-sources.md) |
-| Step Functions, EventBridge, or orchestration | Read [orchestration.md](references/orchestration.md) |
-| Concurrency configuration | Read [concurrency.md](references/concurrency.md) |
-| API Gateway setup | Read [api-gateway.md](references/api-gateway.md) |
-| Common anti-patterns | Read the anti-patterns section in [production.md](references/production.md) |
-| Starting with Powertools | Use [powertools-handler.py](assets/powertools-handler.py) as a template |
-| Lambda Managed Instances, LMI, capacity providers, EC2-backed Lambda, PerExecutionEnvironmentMaxConcurrency | Use the **aws-lambda-managed-instances** skill instead |
-| Durable functions, durable execution, checkpoint-and-replay | Use the **aws-lambda-durable-functions** skill instead |
-| Firecracker microVMs, strong tenant isolation, sandboxed/untrusted code execution, long-lived sessions, suspend/resume, port-listening servers, snapshot-resumable compute | Use the **aws-lambda-microvms** skill instead |
-| Spans multiple areas | Read the most specific reference first, then consult others as needed |
+### Advanced Lambda compute (easy to overlook)
 
-## Files
+| Use this skill | When the workload involves |
+|---|---|
+| **aws-lambda-microvms** | Strong tenant isolation, sandboxed/untrusted code execution (AI agent code sandboxes, REPLs, notebooks, CI runners), long-lived sessions, suspend/resume with preserved state, port-listening servers (gRPC, WebSocket, custom TCP), Firecracker microVMs, snapshot-resumable compute, up to 8-hour lifetimes |
+| **aws-lambda-durable-functions** | Durable execution, checkpoint-and-replay, long-running multi-step workflows written as plain code (TS/Python/Java), automatic state persistence, saga pattern in code, human-in-the-loop callbacks, executions up to 1 year, `context.step`/`context.wait`/`context.invoke`, `withDurableExecution`, `durable-execution-sdk` |
+| **aws-lambda-managed-instances** | Lambda Managed Instances (LMI), capacity providers, EC2-backed Lambda, steady high-volume traffic (50M+ req/mo) wanting Savings Plans / Reserved Instance pricing, `PerExecutionEnvironmentMaxConcurrency`, `CapacityProviderConfig`, multi-concurrent execution environments |
 
-| File | Content |
-|------|---------|
-| [lambda.md](references/lambda.md) | Runtime, memory/CPU, cold starts, SnapStart, layers, containers |
-| [api-gateway.md](references/api-gateway.md) | REST vs HTTP API, stages, auth, throttling, mapping |
-| [event-sources.md](references/event-sources.md) | SQS, DDB Streams, SNS, S3, Kinesis triggers |
-| [orchestration.md](references/orchestration.md) | Step Functions, EventBridge rules/pipes/scheduler |
-| [concurrency.md](references/concurrency.md) | Reserved vs provisioned, scaling, ESM concurrency |
-| [architecture.md](references/architecture.md) | Patterns, reference architectures, service selection |
-| [deployment.md](references/deployment.md) | SAM/CDK resource types, globals, fast iteration |
-| [production.md](references/production.md) | Readiness checklist, observability, anti-patterns |
-| [troubleshooting.md](references/troubleshooting.md) | Error → cause → fix for all serverless services |
+### Step-by-step task procedures (tested CLI SOPs)
+
+| Use this skill | For the task |
+|---|---|
+| **connecting-lambda-to-api-gateway** | Wire an existing Lambda to a new REST/HTTP API: proxy integration, permissions, CORS, throttling, access logging, deployment |
+| **connecting-lambda-to-dynamodb** | Connect Lambda to DynamoDB: IAM execution role, read/write permissions, stream event source mapping |
+| **creating-api-gateway-stage** | Create an API Gateway stage with CloudWatch logging, X-Ray tracing, throttling, WAF association, and authorization |
+| **deploying-custom-domain-rest-api** | Deploy a Regional REST API with custom domain: ACM cert, Lambda backend, request authorizer, base path mapping, Route 53 DNS |
+| **debugging-lambda-timeouts** | Systematically diagnose a timing-out Lambda: config, CloudWatch logs/metrics, VPC, cold starts, memory, downstream calls |
+| **processing-s3-uploads-with-step-functions** | Deploy an event-driven workflow: S3 upload → EventBridge → Step Functions → Lambda (small files) or Fargate (large files), with VPC/ECR/ECS/IAM |
+
+## Routing (general references in this skill)
+
+| User need | Read |
+|-----------|------|
+| Building a new serverless app — pattern selection | [architecture.md](references/architecture.md) |
+| Lambda config, cold starts, SnapStart, memory, VPC, layers, Function URLs | [lambda.md](references/lambda.md) |
+| Concurrency (reserved, provisioned, ESM controls) | [concurrency.md](references/concurrency.md) |
+| Event sources (SQS, DynamoDB Streams, SNS, Kinesis), filtering, batch failures | [event-sources.md](references/event-sources.md) |
+| Step Functions, EventBridge rules/pipes/scheduler | [orchestration.md](references/orchestration.md) |
+| API Gateway quotas, authorizers, WebSocket | [api-gateway.md](references/api-gateway.md) |
+| SAM/CDK resource types and fast iteration | [deployment.md](references/deployment.md) |
+| Production readiness, observability, anti-patterns | [production.md](references/production.md) |
+| Debugging an error (exact string → cause → fix) | [troubleshooting.md](references/troubleshooting.md) |
+| Powertools handler template | [powertools-handler.py](assets/powertools-handler.py) |
+
+**Note:** Reference files contain specific runtime versions, quotas, and feature matrices that change. When precision matters (production, runtime choice, quotas), confirm against current AWS documentation. The references focus on values and gotchas that are easy to get wrong — not on basics.
