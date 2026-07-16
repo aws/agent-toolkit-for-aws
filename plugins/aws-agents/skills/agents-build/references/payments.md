@@ -172,17 +172,24 @@ from bedrock_agentcore.payments.integrations.langgraph import (
     AgentCorePaymentsMiddleware,
 )
 
-config = AgentCorePaymentsConfig(
-    payment_manager_arn=os.environ["PAYMENT_MANAGER_ARN"],
-    user_id=os.environ["PAYMENT_USER_ID"],
-    payment_instrument_id=os.environ["PAYMENT_INSTRUMENT_ID"],
-    payment_session_id=os.environ["PAYMENT_SESSION_ID"],
-    region=os.environ.get("AWS_REGION", "us-west-2"),
-    auto_session=True,  # optionally auto-create a session on first 402 (dev/test convenience)
-    auto_session_budget="5.00",
-    auto_session_expiry_minutes=60,
-)
+# Choose ONE of the following configurations
+
+# Option A: explicit session (production)
+  config = AgentCorePaymentsConfig(
+      ...
+      payment_session_id=os.environ["PAYMENT_SESSION_ID"],
+  )
+  
+  # Option B: auto-session (dev/test convenience)
+  config = AgentCorePaymentsConfig(
+      ...
+      auto_session=True,
+      auto_session_budget="5.00",
+      auto_session_expiry_minutes=60,
+  )
+
 payments = AgentCorePaymentsMiddleware(config)
+
 agent = create_agent(
     model=model,
     tools=[],  # middleware auto-registers http_request + payment query tools
