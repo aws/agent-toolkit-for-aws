@@ -53,6 +53,9 @@ _INTERPRETER_INLINE_RE = re.compile(
     r'(?:python[23]?|python3\.\d+|node|ruby|perl)\s+(?:-[a-zA-Z]*c|-e)\s'
 )
 
+# Shell compound operators that indicate the command has multiple parts.
+_COMPOUND_OPERATORS_RE = re.compile(r'[;&|`]|\$\(')
+
 
 def _normalize_op(operation):
     """Collapse casing and -/_ separators so GetSecretValue == get-secret-value."""
@@ -135,8 +138,10 @@ def main():
         # Direct SMA access (shape-aware: actual URL to the agent)
         if SMA_PATTERN.search(command):
             deny()
-        # Skip read-only commands that merely mention the API name
-        if _is_read_only_command(command):
+        # Skip read-only commands that merely mention the API name,
+        # but only for simple commands (no compound operators that could
+        # chain a secret-fetching command after the read-only prefix).
+        if _is_read_only_command(command) and not _COMPOUND_OPERATORS_RE.search(command):
             allow()
         # SDK call invocations in inline interpreter code
         if _has_sdk_call_in_inline_code(command):
