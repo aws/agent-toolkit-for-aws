@@ -13,7 +13,8 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 
 logger = Logger()
 tracer = Tracer()
-metrics = Metrics()
+# Namespace is required (or set POWERTOOLS_METRICS_NAMESPACE); flushing without one raises SchemaValidationError.
+metrics = Metrics(namespace="MyApp")
 persistence = DynamoDBPersistenceLayer(table_name="IdempotencyTable")
 
 # Idempotency key: "body" deduplicates identical payloads.
