@@ -1,0 +1,1155 @@
+{
+    "version": "2.0",
+    "metadata": {
+        "apiVersion": "2026-06-15",
+        "auth": [
+            "smithy.api#httpBearerAuth"
+        ],
+        "endpointPrefix": "launch-with-aws",
+        "protocol": "rest-json",
+        "protocols": [
+            "rest-json"
+        ],
+        "serviceFullName": "Launch with AWS",
+        "serviceId": "launchwithaws",
+        "signatureVersion": "bearer",
+        "signingName": "launchwithaws",
+        "uid": "launchwithaws-2026-06-15"
+    },
+    "operations": {
+        "CreateLaunch": {
+            "name": "CreateLaunch",
+            "http": {
+                "method": "POST",
+                "requestUri": "/api/launches",
+                "responseCode": 201
+            },
+            "input": {
+                "shape": "CreateLaunchInput"
+            },
+            "output": {
+                "shape": "CreateLaunchOutput"
+            },
+            "errors": [
+                {
+                    "shape": "ResourceNotFoundException"
+                },
+                {
+                    "shape": "ValidationException"
+                },
+                {
+                    "shape": "ConflictException"
+                },
+                {
+                    "shape": "InternalServerException"
+                },
+                {
+                    "shape": "ThrottlingException"
+                }
+            ],
+            "documentation": "<p>Create a new migration launch from an uploaded archive or GitHub repository.</p>"
+        },
+        "CreateUploadUrl": {
+            "name": "CreateUploadUrl",
+            "http": {
+                "method": "POST",
+                "requestUri": "/api/uploads",
+                "responseCode": 201
+            },
+            "input": {
+                "shape": "CreateUploadUrlInput"
+            },
+            "output": {
+                "shape": "CreateUploadUrlOutput"
+            },
+            "errors": [
+                {
+                    "shape": "ValidationException"
+                },
+                {
+                    "shape": "InternalServerException"
+                },
+                {
+                    "shape": "ThrottlingException"
+                }
+            ],
+            "documentation": "<p>Create a presigned S3 upload URL for uploading a repository archive.</p>"
+        },
+        "DeleteLaunch": {
+            "name": "DeleteLaunch",
+            "http": {
+                "method": "DELETE",
+                "requestUri": "/api/launches/{launchIdentifier}",
+                "responseCode": 204
+            },
+            "input": {
+                "shape": "DeleteLaunchInput"
+            },
+            "errors": [
+                {
+                    "shape": "ResourceNotFoundException"
+                },
+                {
+                    "shape": "ValidationException"
+                },
+                {
+                    "shape": "InternalServerException"
+                }
+            ],
+            "documentation": "<p>Delete a launch. Transitions to DELETING status and triggers async cleanup.</p>",
+            "idempotent": true
+        },
+        "GetLaunch": {
+            "name": "GetLaunch",
+            "http": {
+                "method": "GET",
+                "requestUri": "/api/launches/{launchIdentifier}",
+                "responseCode": 200
+            },
+            "input": {
+                "shape": "GetLaunchInput"
+            },
+            "output": {
+                "shape": "GetLaunchOutput"
+            },
+            "errors": [
+                {
+                    "shape": "ResourceNotFoundException"
+                },
+                {
+                    "shape": "ValidationException"
+                },
+                {
+                    "shape": "InternalServerException"
+                }
+            ],
+            "documentation": "<p>Get detailed information about a specific launch.</p>",
+            "readonly": true
+        },
+        "ListLaunches": {
+            "name": "ListLaunches",
+            "http": {
+                "method": "GET",
+                "requestUri": "/api/launches",
+                "responseCode": 200
+            },
+            "input": {
+                "shape": "ListLaunchesInput"
+            },
+            "output": {
+                "shape": "ListLaunchesOutput"
+            },
+            "errors": [
+                {
+                    "shape": "ValidationException"
+                },
+                {
+                    "shape": "InternalServerException"
+                }
+            ],
+            "documentation": "<p>List all launches for the authenticated user.</p>",
+            "readonly": true
+        },
+        "RefinePlan": {
+            "name": "RefinePlan",
+            "http": {
+                "method": "POST",
+                "requestUri": "/api/launches/{launchIdentifier}/refine",
+                "responseCode": 200
+            },
+            "input": {
+                "shape": "RefinePlanInput"
+            },
+            "output": {
+                "shape": "RefinePlanOutput"
+            },
+            "errors": [
+                {
+                    "shape": "ResourceNotFoundException"
+                },
+                {
+                    "shape": "ValidationException"
+                },
+                {
+                    "shape": "ConflictException"
+                },
+                {
+                    "shape": "ServiceUnavailableException"
+                },
+                {
+                    "shape": "InternalServerException"
+                }
+            ],
+            "documentation": "<p>Refine the plan by providing context answers. Triggers re-planning.</p>"
+        },
+        "StartLaunchExecution": {
+            "name": "StartLaunchExecution",
+            "http": {
+                "method": "POST",
+                "requestUri": "/api/launches/{launchIdentifier}/start",
+                "responseCode": 202
+            },
+            "input": {
+                "shape": "StartLaunchExecutionInput"
+            },
+            "output": {
+                "shape": "StartLaunchExecutionOutput"
+            },
+            "errors": [
+                {
+                    "shape": "ResourceNotFoundException"
+                },
+                {
+                    "shape": "ValidationException"
+                },
+                {
+                    "shape": "ConflictException"
+                },
+                {
+                    "shape": "ServiceUnavailableException"
+                },
+                {
+                    "shape": "InternalServerException"
+                }
+            ],
+            "documentation": "<p>Start execution of the deployment plan.</p>"
+        }
+    },
+    "shapes": {
+        "AnalysisResult": {
+            "type": "structure",
+            "required": [
+                "appType",
+                "dependencies",
+                "originPlatform",
+                "hostingPlatformHints",
+                "detectionOutcome"
+            ],
+            "members": {
+                "appType": {
+                    "shape": "AppType"
+                },
+                "dependencies": {
+                    "shape": "DependencyMap"
+                },
+                "originPlatform": {
+                    "shape": "OriginPlatform"
+                },
+                "hostingPlatformHints": {
+                    "shape": "StringList"
+                },
+                "detectionOutcome": {
+                    "shape": "DetectionOutcome"
+                }
+            }
+        },
+        "AppType": {
+            "type": "string",
+            "documentation": "<p>Application types detected by the analyzer.</p>",
+            "enum": [
+                "replit",
+                "supabase-spa",
+                "supabase-ssr",
+                "react",
+                "vue",
+                "angular",
+                "gatsby",
+                "docusaurus",
+                "cra",
+                "nextjs",
+                "nuxt",
+                "astro",
+                "sveltekit",
+                "solid",
+                "svelte",
+                "preact",
+                "lit",
+                "eleventy",
+                "vitepress",
+                "vite",
+                "unsupported"
+            ]
+        },
+        "Boolean": {
+            "type": "boolean",
+            "box": true
+        },
+        "BranchName": {
+            "type": "string",
+            "documentation": "<p>Git branch name produced by a completed launch.</p>",
+            "max": 256,
+            "min": 1
+        },
+        "ClientToken": {
+            "type": "string",
+            "documentation": "<p>Idempotency token. Any unique string up to 128 characters.</p>",
+            "max": 128,
+            "min": 1
+        },
+        "ConflictException": {
+            "type": "structure",
+            "required": [
+                "message"
+            ],
+            "members": {
+                "message": {
+                    "shape": "String"
+                }
+            },
+            "error": {
+                "httpStatusCode": 409,
+                "senderFault": true
+            },
+            "exception": true
+        },
+        "ContextAnswersMap": {
+            "type": "map",
+            "key": {
+                "shape": "String"
+            },
+            "value": {
+                "shape": "String"
+            },
+            "max": 50,
+            "min": 0
+        },
+        "ContextInput": {
+            "type": "structure",
+            "required": [
+                "key",
+                "label",
+                "type"
+            ],
+            "members": {
+                "key": {
+                    "shape": "String"
+                },
+                "label": {
+                    "shape": "String"
+                },
+                "type": {
+                    "shape": "ContextInputType"
+                },
+                "required": {
+                    "shape": "Boolean",
+                    "documentation": "<p>Whether this input must be answered before the launch can proceed to planning. When true, the launch pauses at AWAITING_INPUT until all required inputs are answered. When false (or omitted), the input is optional context that enriches planning but does not block it.</p>"
+                },
+                "options": {
+                    "shape": "ContextInputOptionList",
+                    "documentation": "<p>Valid choices when type is SELECT. Agents can pick from these without prompting the user.</p>"
+                },
+                "defaultValue": {
+                    "shape": "ContextInputDefaultValueString",
+                    "documentation": "<p>Default value if the user provides nothing. Agents may use this to auto-answer optional inputs.</p>"
+                }
+            },
+            "documentation": "<p>A context input that may be presented to the user during the launch flow. Inputs with <code>required: true</code> gate the flow (launch pauses at AWAITING_INPUT). Inputs with <code>required: false</code> or omitted are optional enrichment.</p>"
+        },
+        "ContextInputDefaultValueString": {
+            "type": "string",
+            "max": 256,
+            "min": 0
+        },
+        "ContextInputList": {
+            "type": "list",
+            "member": {
+                "shape": "ContextInput"
+            },
+            "max": 50,
+            "min": 0
+        },
+        "ContextInputOption": {
+            "type": "structure",
+            "required": [
+                "value",
+                "label"
+            ],
+            "members": {
+                "value": {
+                    "shape": "ContextInputOptionValueString",
+                    "documentation": "<p>The value to submit in contextAnswers.</p>"
+                },
+                "label": {
+                    "shape": "ContextInputOptionLabelString",
+                    "documentation": "<p>Human-readable label for display.</p>"
+                }
+            },
+            "documentation": "<p>A selectable option for SELECT-type context inputs.</p>"
+        },
+        "ContextInputOptionLabelString": {
+            "type": "string",
+            "max": 256,
+            "min": 1
+        },
+        "ContextInputOptionList": {
+            "type": "list",
+            "member": {
+                "shape": "ContextInputOption"
+            },
+            "max": 20,
+            "min": 0
+        },
+        "ContextInputOptionValueString": {
+            "type": "string",
+            "max": 128,
+            "min": 1
+        },
+        "ContextInputType": {
+            "type": "string",
+            "documentation": "<p>Input type that determines how an agent or UI should render and validate the input.</p>",
+            "enum": [
+                "text",
+                "select",
+                "boolean"
+            ]
+        },
+        "CostBreakdownItem": {
+            "type": "structure",
+            "required": [
+                "service",
+                "monthlyCost"
+            ],
+            "members": {
+                "service": {
+                    "shape": "String"
+                },
+                "monthlyCost": {
+                    "shape": "Float"
+                },
+                "description": {
+                    "shape": "String"
+                },
+                "feature": {
+                    "shape": "String",
+                    "documentation": "<p>Logical feature category this service belongs to (e.g. &quot;static_hosting&quot;, &quot;rest_api&quot;).</p>"
+                }
+            }
+        },
+        "CostBreakdownList": {
+            "type": "list",
+            "member": {
+                "shape": "CostBreakdownItem"
+            }
+        },
+        "CreateLaunchInput": {
+            "type": "structure",
+            "required": [
+                "name",
+                "source"
+            ],
+            "members": {
+                "name": {
+                    "shape": "CreateLaunchInputNameString",
+                    "documentation": "<p>Display name for the launch.</p>"
+                },
+                "source": {
+                    "shape": "LaunchSource",
+                    "documentation": "<p>Source of the application code. Exactly one variant must be provided.</p>"
+                },
+                "clientToken": {
+                    "shape": "ClientToken",
+                    "idempotencyToken": true
+                }
+            }
+        },
+        "CreateLaunchInputNameString": {
+            "type": "string",
+            "max": 128,
+            "min": 1
+        },
+        "CreateLaunchOutput": {
+            "type": "structure",
+            "required": [
+                "launch"
+            ],
+            "members": {
+                "launch": {
+                    "shape": "Launch"
+                }
+            }
+        },
+        "CreateUploadUrlInput": {
+            "type": "structure",
+            "members": {
+                "clientToken": {
+                    "shape": "ClientToken",
+                    "idempotencyToken": true
+                }
+            }
+        },
+        "CreateUploadUrlOutput": {
+            "type": "structure",
+            "required": [
+                "uploadUrl",
+                "uploadId"
+            ],
+            "members": {
+                "uploadUrl": {
+                    "shape": "SensitiveUrl",
+                    "documentation": "<p>Presigned S3 PUT URL (valid for 15 minutes).</p>"
+                },
+                "uploadId": {
+                    "shape": "String",
+                    "documentation": "<p>Unique upload identifier. Pass to CreateLaunch.</p>"
+                }
+            }
+        },
+        "DeleteLaunchInput": {
+            "type": "structure",
+            "required": [
+                "launchIdentifier"
+            ],
+            "members": {
+                "launchIdentifier": {
+                    "shape": "LaunchIdentifier",
+                    "location": "uri",
+                    "locationName": "launchIdentifier"
+                }
+            }
+        },
+        "DependencyMap": {
+            "type": "map",
+            "key": {
+                "shape": "String"
+            },
+            "value": {
+                "shape": "String"
+            }
+        },
+        "DetectionOutcome": {
+            "type": "string",
+            "documentation": "<p>Outcome of the app detection process.</p>",
+            "enum": [
+                "supported",
+                "detected-not-plannable",
+                "unknown"
+            ]
+        },
+        "FailureCode": {
+            "type": "string",
+            "documentation": "<p>Machine-readable error code describing why a launch failed.</p>",
+            "enum": [
+                "UNSUPPORTED_APP_TYPE",
+                "ANALYSIS_FAILED",
+                "PLANNING_FAILED",
+                "EXECUTION_FAILED",
+                "INTERNAL_ERROR"
+            ]
+        },
+        "FailurePhase": {
+            "type": "string",
+            "documentation": "<p>Phase in which a failure occurred.</p>",
+            "enum": [
+                "analysis",
+                "planning",
+                "execution"
+            ]
+        },
+        "Float": {
+            "type": "float",
+            "box": true
+        },
+        "GetLaunchInput": {
+            "type": "structure",
+            "required": [
+                "launchIdentifier"
+            ],
+            "members": {
+                "launchIdentifier": {
+                    "shape": "LaunchIdentifier",
+                    "location": "uri",
+                    "locationName": "launchIdentifier"
+                },
+                "include": {
+                    "shape": "LaunchIncludeSectionList",
+                    "documentation": "<p>Sections to include in the response beyond core fields.</p>",
+                    "location": "querystring",
+                    "locationName": "include"
+                }
+            }
+        },
+        "GetLaunchOutput": {
+            "type": "structure",
+            "required": [
+                "launch"
+            ],
+            "members": {
+                "launch": {
+                    "shape": "Launch"
+                }
+            }
+        },
+        "GitHubSource": {
+            "type": "structure",
+            "required": [
+                "repositoryUrl"
+            ],
+            "members": {
+                "repositoryUrl": {
+                    "shape": "RepoUrl",
+                    "documentation": "<p>GitHub HTTPS repository URL.</p>"
+                },
+                "branch": {
+                    "shape": "String",
+                    "documentation": "<p>Branch to clone (default: repository default branch).</p>"
+                },
+                "connectionId": {
+                    "shape": "String",
+                    "documentation": "<p>Code Connection ID for private repositories.</p>"
+                }
+            }
+        },
+        "Integer": {
+            "type": "integer",
+            "box": true
+        },
+        "InternalServerException": {
+            "type": "structure",
+            "required": [
+                "message"
+            ],
+            "members": {
+                "message": {
+                    "shape": "String"
+                }
+            },
+            "error": {
+                "httpStatusCode": 500
+            },
+            "exception": true,
+            "fault": true
+        },
+        "Launch": {
+            "type": "structure",
+            "required": [
+                "id",
+                "name",
+                "status",
+                "source",
+                "createdAt",
+                "updatedAt"
+            ],
+            "members": {
+                "id": {
+                    "shape": "LaunchId"
+                },
+                "name": {
+                    "shape": "String"
+                },
+                "status": {
+                    "shape": "LaunchStatus"
+                },
+                "source": {
+                    "shape": "LaunchSource"
+                },
+                "analysis": {
+                    "shape": "AnalysisResult"
+                },
+                "contextInputs": {
+                    "shape": "ContextInputList"
+                },
+                "contextAnswers": {
+                    "shape": "ContextAnswersMap"
+                },
+                "plan": {
+                    "shape": "LaunchPlan"
+                },
+                "costEstimate": {
+                    "shape": "LaunchCostEstimate"
+                },
+                "execution": {
+                    "shape": "LaunchExecution"
+                },
+                "failureReason": {
+                    "shape": "LaunchFailureReason"
+                },
+                "previewUrl": {
+                    "shape": "SensitiveUrl"
+                },
+                "downloadUrl": {
+                    "shape": "SensitiveUrl"
+                },
+                "outputBranchName": {
+                    "shape": "BranchName"
+                },
+                "createdAt": {
+                    "shape": "SyntheticTimestamp_date_time"
+                },
+                "updatedAt": {
+                    "shape": "SyntheticTimestamp_date_time"
+                }
+            },
+            "documentation": "<p>Full launch representation returned by GetLaunch and mutation operations.</p>"
+        },
+        "LaunchCostEstimate": {
+            "type": "structure",
+            "required": [
+                "estimatedMonthlyCost",
+                "region",
+                "services"
+            ],
+            "members": {
+                "estimatedMonthlyCost": {
+                    "shape": "Float"
+                },
+                "region": {
+                    "shape": "String"
+                },
+                "services": {
+                    "shape": "CostBreakdownList"
+                }
+            }
+        },
+        "LaunchExecution": {
+            "type": "structure",
+            "required": [
+                "completedTasks",
+                "totalTasks"
+            ],
+            "members": {
+                "completedTasks": {
+                    "shape": "Integer"
+                },
+                "totalTasks": {
+                    "shape": "Integer"
+                },
+                "currentPhase": {
+                    "shape": "String"
+                }
+            }
+        },
+        "LaunchFailureReason": {
+            "type": "structure",
+            "required": [
+                "phase",
+                "code",
+                "message"
+            ],
+            "members": {
+                "phase": {
+                    "shape": "FailurePhase"
+                },
+                "code": {
+                    "shape": "FailureCode"
+                },
+                "message": {
+                    "shape": "String"
+                }
+            }
+        },
+        "LaunchId": {
+            "type": "string",
+            "documentation": "<p>Opaque service-generated launch ID used in response bodies. Per AWS Identifier RFC 1.1.7: generic constraints only, no implementation details.</p>",
+            "max": 64,
+            "min": 1,
+            "pattern": "[a-z0-9]+"
+        },
+        "LaunchIdentifier": {
+            "type": "string",
+            "documentation": "<p>Launch identifier. Accepts a launch ID or ARN.</p>",
+            "max": 2048,
+            "min": 1
+        },
+        "LaunchIncludeSection": {
+            "type": "string",
+            "documentation": "<p>Sections that can be included in the GetLaunch response.</p>",
+            "enum": [
+                "analysis",
+                "plan",
+                "execution",
+                "cost_estimate",
+                "preview_url",
+                "download_url"
+            ]
+        },
+        "LaunchIncludeSectionList": {
+            "type": "list",
+            "member": {
+                "shape": "LaunchIncludeSection"
+            }
+        },
+        "LaunchPhase": {
+            "type": "structure",
+            "required": [
+                "id",
+                "name",
+                "order",
+                "status",
+                "tasks"
+            ],
+            "members": {
+                "id": {
+                    "shape": "String"
+                },
+                "name": {
+                    "shape": "String"
+                },
+                "order": {
+                    "shape": "Integer"
+                },
+                "status": {
+                    "shape": "PhaseStatus"
+                },
+                "tasks": {
+                    "shape": "LaunchTaskList"
+                }
+            }
+        },
+        "LaunchPhaseList": {
+            "type": "list",
+            "member": {
+                "shape": "LaunchPhase"
+            },
+            "max": 20,
+            "min": 0
+        },
+        "LaunchPlan": {
+            "type": "structure",
+            "required": [
+                "id",
+                "phases"
+            ],
+            "members": {
+                "id": {
+                    "shape": "String"
+                },
+                "phases": {
+                    "shape": "LaunchPhaseList"
+                }
+            }
+        },
+        "LaunchSource": {
+            "type": "structure",
+            "members": {
+                "s3Upload": {
+                    "shape": "S3UploadSource",
+                    "documentation": "<p>Upload a local archive via presigned URL.</p>"
+                },
+                "gitHub": {
+                    "shape": "GitHubSource",
+                    "documentation": "<p>Clone from a GitHub repository.</p>"
+                }
+            },
+            "documentation": "<p>Source specification for a launch.</p>",
+            "union": true
+        },
+        "LaunchStatus": {
+            "type": "string",
+            "documentation": "<p>Launch lifecycle status.</p>",
+            "enum": [
+                "analyzing",
+                "awaiting_input",
+                "planning",
+                "planned",
+                "executing",
+                "completed",
+                "failed",
+                "deleting"
+            ]
+        },
+        "LaunchSummary": {
+            "type": "structure",
+            "required": [
+                "id",
+                "name",
+                "status",
+                "createdAt",
+                "updatedAt"
+            ],
+            "members": {
+                "id": {
+                    "shape": "LaunchId"
+                },
+                "name": {
+                    "shape": "String"
+                },
+                "status": {
+                    "shape": "LaunchStatus"
+                },
+                "createdAt": {
+                    "shape": "SyntheticTimestamp_date_time"
+                },
+                "updatedAt": {
+                    "shape": "SyntheticTimestamp_date_time"
+                }
+            },
+            "documentation": "<p>Summary representation for list endpoints.</p>"
+        },
+        "LaunchSummaryList": {
+            "type": "list",
+            "member": {
+                "shape": "LaunchSummary"
+            }
+        },
+        "LaunchTask": {
+            "type": "structure",
+            "required": [
+                "id",
+                "name",
+                "status",
+                "order"
+            ],
+            "members": {
+                "id": {
+                    "shape": "String"
+                },
+                "name": {
+                    "shape": "String"
+                },
+                "status": {
+                    "shape": "TaskStatus"
+                },
+                "order": {
+                    "shape": "Integer"
+                }
+            }
+        },
+        "LaunchTaskList": {
+            "type": "list",
+            "member": {
+                "shape": "LaunchTask"
+            },
+            "max": 100,
+            "min": 0
+        },
+        "ListLaunchesInput": {
+            "type": "structure",
+            "members": {
+                "maxResults": {
+                    "shape": "ListLaunchesInputMaxResultsInteger",
+                    "location": "querystring",
+                    "locationName": "maxResults"
+                },
+                "nextToken": {
+                    "shape": "String",
+                    "location": "querystring",
+                    "locationName": "nextToken"
+                }
+            }
+        },
+        "ListLaunchesInputMaxResultsInteger": {
+            "type": "integer",
+            "box": true,
+            "max": 100,
+            "min": 1
+        },
+        "ListLaunchesOutput": {
+            "type": "structure",
+            "required": [
+                "items"
+            ],
+            "members": {
+                "items": {
+                    "shape": "LaunchSummaryList"
+                },
+                "nextToken": {
+                    "shape": "String"
+                }
+            }
+        },
+        "OriginPlatform": {
+            "type": "string",
+            "documentation": "<p>Origin hosting platform detected from the repository.</p>",
+            "enum": [
+                "lovable",
+                "bolt",
+                "replit",
+                "unknown"
+            ]
+        },
+        "PhaseStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "in_progress",
+                "completed",
+                "failed"
+            ]
+        },
+        "RefinePlanInput": {
+            "type": "structure",
+            "required": [
+                "launchIdentifier"
+            ],
+            "members": {
+                "launchIdentifier": {
+                    "shape": "LaunchIdentifier",
+                    "location": "uri",
+                    "locationName": "launchIdentifier"
+                },
+                "contextAnswers": {
+                    "shape": "ContextAnswersMap",
+                    "documentation": "<p>Key-value answers to contextual questions about the deployment.</p>"
+                },
+                "prompt": {
+                    "shape": "RefinePlanInputPromptString",
+                    "documentation": "<p>Free-text planning prompt (reserved for future use).</p>"
+                },
+                "clientToken": {
+                    "shape": "ClientToken",
+                    "idempotencyToken": true
+                }
+            }
+        },
+        "RefinePlanInputPromptString": {
+            "type": "string",
+            "max": 4096,
+            "min": 0
+        },
+        "RefinePlanOutput": {
+            "type": "structure",
+            "required": [
+                "launch"
+            ],
+            "members": {
+                "launch": {
+                    "shape": "Launch"
+                }
+            }
+        },
+        "RepoUrl": {
+            "type": "string",
+            "pattern": "https://github\\.com/[\\w.-]+/[\\w.-]+/?"
+        },
+        "ResourceNotFoundException": {
+            "type": "structure",
+            "required": [
+                "message"
+            ],
+            "members": {
+                "message": {
+                    "shape": "String"
+                }
+            },
+            "error": {
+                "httpStatusCode": 404,
+                "senderFault": true
+            },
+            "exception": true
+        },
+        "S3UploadSource": {
+            "type": "structure",
+            "required": [
+                "uploadId"
+            ],
+            "members": {
+                "uploadId": {
+                    "shape": "String",
+                    "documentation": "<p>The uploadId returned by CreateUploadUrl.</p>"
+                }
+            }
+        },
+        "SensitiveUrl": {
+            "type": "string",
+            "documentation": "<p>URL containing embedded credentials (presigned S3 URLs, signed cookie URLs). Marked sensitive to prevent SDK-level logging of credential material.</p>",
+            "sensitive": true
+        },
+        "ServiceUnavailableException": {
+            "type": "structure",
+            "required": [
+                "message"
+            ],
+            "members": {
+                "message": {
+                    "shape": "String"
+                }
+            },
+            "error": {
+                "httpStatusCode": 503
+            },
+            "exception": true,
+            "fault": true,
+            "retryable": {
+                "throttling": false
+            }
+        },
+        "StartLaunchExecutionInput": {
+            "type": "structure",
+            "required": [
+                "launchIdentifier"
+            ],
+            "members": {
+                "launchIdentifier": {
+                    "shape": "LaunchIdentifier",
+                    "location": "uri",
+                    "locationName": "launchIdentifier"
+                },
+                "clientToken": {
+                    "shape": "ClientToken",
+                    "idempotencyToken": true
+                }
+            }
+        },
+        "StartLaunchExecutionOutput": {
+            "type": "structure",
+            "required": [
+                "launch"
+            ],
+            "members": {
+                "launch": {
+                    "shape": "Launch"
+                }
+            }
+        },
+        "String": {
+            "type": "string"
+        },
+        "StringList": {
+            "type": "list",
+            "member": {
+                "shape": "String"
+            }
+        },
+        "SyntheticTimestamp_date_time": {
+            "type": "timestamp",
+            "timestampFormat": "iso8601"
+        },
+        "TaskStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "running",
+                "completed",
+                "failed",
+                "paused",
+                "blocked"
+            ]
+        },
+        "ThrottlingException": {
+            "type": "structure",
+            "required": [
+                "message"
+            ],
+            "members": {
+                "message": {
+                    "shape": "String"
+                }
+            },
+            "error": {
+                "httpStatusCode": 429,
+                "senderFault": true
+            },
+            "exception": true,
+            "retryable": {
+                "throttling": true
+            }
+        },
+        "ValidationException": {
+            "type": "structure",
+            "required": [
+                "message"
+            ],
+            "members": {
+                "message": {
+                    "shape": "String"
+                }
+            },
+            "error": {
+                "httpStatusCode": 400,
+                "senderFault": true
+            },
+            "exception": true
+        }
+    },
+    "documentation": "<p>Launch with AWS API surface for the AWS MCP Server and AWS Agent Toolkit.</p>"
+}
