@@ -3,11 +3,11 @@
     "aws-mcp": {
       "command": "uvx",
       "args": [
-        "mcp-proxy-for-aws@1.6.3",
+        "mcp-proxy-for-aws@1.6.4",
         "https://aws-mcp.us-east-1.api.aws/mcp",
         "--skip-auth",
         "--metadata",
-        "INSTALL_SOURCE=agent-toolkit"
+        "INSTALL_SOURCE=agent-toolkit-core"
       ]
     }
   }
