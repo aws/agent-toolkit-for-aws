@@ -2,11 +2,6 @@
 name: aws-lambda-durable-functions
 description: Builds resilient, long-running, multi-step applications with AWS Lambda durable functions with automatic state persistence, retry logic, and orchestration for long-running executions. Covers the critical replay model, step operations, wait/callback patterns, error handling with saga pattern, testing with LocalDurableTestRunner. Triggers on phrases like lambda durable functions, durable execution, workflow orchestration, state machines, retry/checkpoint patterns, long-running stateful Lambda functions, saga pattern, human-in-the-loop callbacks, reliable serverless applications, context.step, context.wait, context.invoke, context.runInChildContext, withDurableExecution, DurableContext, UnrecoverableInvocationError, durable-execution-sdk, qualified ARN invocation, and durable handler replay.
 version: 1
-metadata:
-   service: [lambda]
-   task: [deploy, debug, operate]
-   persona: [developer]
-   workload: [serverless, compute]
 ---
 
 # AWS Lambda durable functions

@@ -2,11 +2,6 @@
 name: aws-serverless
 description: Builds, deploys, manages, debugs, configures, and optimizes serverless applications on AWS using Lambda, API Gateway, Step Functions, EventBridge, and SAM/CDK. Covers cold starts, CORS debugging, event source mappings, troubleshooting, concurrency, SnapStart, Powertools, function URLs, EventBridge Scheduler, Lambda layers, and production readiness. Triggers on mentions of Lambda, API Gateway, Step Functions, SAM templates, CDK serverless stacks, DynamoDB stream triggers, SQS event sources, cold starts, timeouts, 502/504 errors, throttling, concurrency, CORS, Powertools, or any event-driven architecture on AWS, even without the word "serverless." Does not apply to EC2, ECS/Fargate containers, or Amplify hosting.
 version: 1
-metadata:
-  service: [lambda, api-gateway, step-functions, eventbridge, dynamodb, sqs, sns, s3, kinesis]
-  task: [build, deploy, debug, optimize]
-  persona: [developer, devops]
-  workload: [serverless]
 ---
 
 # AWS Serverless
