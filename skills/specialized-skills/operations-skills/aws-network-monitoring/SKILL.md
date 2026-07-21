@@ -6,11 +6,6 @@ description: >-
   network paths, and troubleshooting agents reporting no metrics, HTTP 403 errors, or
   connectivity failures.
 version: 1
-metadata:
-  service: [network-flow-monitor, ec2, ssm, cloudwatch]
-  task: [deploy, debug]
-  persona: [developer, devops, network-engineer]
-  workload: [networking]
 ---
 
 # AWS Network Monitoring
