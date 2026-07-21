@@ -6,14 +6,12 @@ description: >
   code interpreter, or resource removal. Triggers on: "add memory",
   "remember across sessions", "call agent from app", "invoke agent from
   code", "auth to call agent", "streaming responses", "VPC", "VPC
-  connectivity", "VPC error", "can't reach from VPC", "multi-agent",
-  "A2A", "A2A auth", "orchestrator not delegating", "specialist not
-  called", "migrate Bedrock Agent", "after import", "migration issue",
-  "framework for migration", "change model", "browser tool", "code
-  interpreter", "delete agent", "tear down", "agentcore remove",
-  "cross-account memory", "resource-based policy on memory", "pay for
-  x402 content", "402 Payment Required", "microtransactions", "paid API
-  or tool".
+  connectivity", "VPC error", "multi-agent", "A2A", "A2A auth",
+  "orchestrator not delegating", "specialist not called", "migrate
+  Bedrock Agent", "after import", "migration issue", "change model",
+  "browser tool", "code interpreter", "delete agent", "tear down",
+  "agentcore remove", "cross-account memory", "pay for x402 content",
+  "402 Payment Required", "paid API or tool".
   Not for connecting to external APIs via Gateway — use agents-connect.
   Not for scaffolding a new project — use agents-get-started.
   Not for CLI/dev server errors — use agents-debug.
