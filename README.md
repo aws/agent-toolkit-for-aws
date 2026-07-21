@@ -92,7 +92,7 @@ Kiro setup has two independent parts: the AWS MCP Server (for runtime AWS API ac
     "aws": {
       "command": "uvx",
       "args": [
-        "mcp-proxy-for-aws@1.6.3",
+        "mcp-proxy-for-aws@1.6.4",
         "https://aws-mcp.us-east-1.api.aws/mcp",
         "--metadata",
         "AWS_REGION=us-west-2"
@@ -102,7 +102,7 @@ Kiro setup has two independent parts: the AWS MCP Server (for runtime AWS API ac
 }
 ```
 
-> **Note:** It is recommended to pin to a specific version (e.g., `@1.6.3`) to ensure reproducible behavior and protect against supply chain risks. We recommend regularly checking [PyPI](https://pypi.org/project/mcp-proxy-for-aws/) for new stable versions and updating accordingly.
+> **Note:** It is recommended to pin to a specific version (e.g., `@1.6.4`) to ensure reproducible behavior and protect against supply chain risks. We recommend regularly checking [PyPI](https://pypi.org/project/mcp-proxy-for-aws/) for new stable versions and updating accordingly.
 
 The MCP server gives your agent access to AWS APIs, sandboxed script execution, and real-time documentation search.
 
