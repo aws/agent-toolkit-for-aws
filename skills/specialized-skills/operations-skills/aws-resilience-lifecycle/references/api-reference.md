@@ -91,7 +91,7 @@ Common parameter mistakes:
 | Use case | Use exactly |
 |---|---|
 | Failover one region OFF and another ON in one transaction (the typical case) | `aws route53-recovery-cluster update-routing-control-states --update-routing-control-state-entries '[{"RoutingControlArn":"east-arn","RoutingControlState":"Off"},{"RoutingControlArn":"west-arn","RoutingControlState":"On"}]'` |
-| Update exactly one routing control (rare; use only when sequential is intentional) | `aws route53-recovery-cluster update-routing-control-state --routing-control-arn ARN --routing-control-state On|Off` |
+| Update exactly one routing control (rare; use only when sequential is intentional) | `aws route53-recovery-cluster update-routing-control-state --routing-control-arn ARN --routing-control-state On\|Off` |
 
 **Default to the plural/atomic version for failover.** Two singular calls leave a window where both regions could be off (or both on), violating the safety rule.
 
