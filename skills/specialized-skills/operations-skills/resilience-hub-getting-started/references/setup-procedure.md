@@ -33,6 +33,7 @@ This SOP guides you through first-time Resilience Hub v2 setup: creating a resil
 Check for required tools and warn the user if any are missing.
 
 **Constraints:**
+
 - You MUST verify that either the AWS CLI (e.g., `aws --version`) or the AWS MCP server's `call_aws` tool is available
 - You SHOULD recommend the customer use IAM roles (instance profiles, SSO session credentials, or `aws sts assume-role`) rather than long-lived IAM access keys, and never store such keys in shell history, scripts, or environment variables without time-bound session tokens
 - You MUST NOT call any AWS service APIs (e.g., `aws resiliencehubv2 ...`) during verification — only local checks such as `aws --version` are permitted, since running AWS service operations during verification could create or mutate resources
@@ -46,6 +47,7 @@ Check for required tools and warn the user if any are missing.
 Create a policy defining SLO targets that drive all subsequent assessments.
 
 **Constraints:**
+
 - You MUST inform the customer that you are creating a resilience policy with their specified targets
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-policy --name {policy_name} --availability-slo target={availability_target} --multi-az rtoInMinutes={multi_az_rto},rpoInMinutes={multi_az_rpo},disasterRecoveryApproach={multi_az_dr_approach} --multi-region rtoInMinutes={multi_region_rto},rpoInMinutes={multi_region_rpo},disasterRecoveryApproach={multi_region_dr_approach}`
 - You MUST omit the `--multi-region` flag entirely if `multi_region_rto` / `multi_region_rpo` are not provided (never emit empty `rtoInMinutes=`)
@@ -59,6 +61,7 @@ Create a policy defining SLO targets that drive all subsequent assessments.
 Create the top-level organizational unit that groups related services.
 
 **Constraints:**
+
 - You MUST inform the customer that you are creating a system
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-system --name {system_name} --description "{system_description}"`
 - You MUST capture the systemArn from the response
@@ -70,6 +73,7 @@ Create the top-level organizational unit that groups related services.
 Map a business-critical path to the system with an associated policy.
 
 **Constraints:**
+
 - You MUST inform the customer that you are creating a user journey
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-user-journey --system-arn {system_arn} --name {journey_name} --policy-arn {policy_arn} --description "{journey_description}"`
 - You MUST associate the journey with the policy created in Step 2
@@ -80,6 +84,7 @@ Map a business-critical path to the system with an associated policy.
 Register the service that will be assessed.
 
 **Constraints:**
+
 - You MUST inform the customer that you are registering their service
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-service --name {service_name} --regions {regions} --associated-systems '[{"systemArn":"{system_arn}","userJourneyIds":["{journey_id}"]}]' --policy-arn {policy_arn} --permission-model invokerRoleName={invoker_role_name} --dependency-discovery ENABLED`
 - You MUST include --permission-model (REQUIRED); ensure the invoker role exists first and allow ~60-90s for it to become assumable — retry on `Cannot assume invoker role`
@@ -91,6 +96,7 @@ Register the service that will be assessed.
 Tell Resilience Hub v2 where to discover resources for this service.
 
 **Constraints:**
+
 - You MUST inform the customer that you are adding input sources for resource discovery
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-input-source --service-arn {service_arn} --resource-configuration {config}`
 - You MUST map input_source_type to the correct resource-configuration format:
@@ -105,6 +111,7 @@ Tell Resilience Hub v2 where to discover resources for this service.
 Start the asynchronous assessment that analyzes the service against policy targets.
 
 **Constraints:**
+
 - You MUST inform the customer that you are starting a failure mode assessment
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 start-failure-mode-assessment --service-arn {service_arn}`
 - You MUST poll with `aws resiliencehubv2 list-failure-mode-assessments --service-arn {service_arn}` until status is SUCCESS or FAILED
@@ -116,6 +123,7 @@ Start the asynchronous assessment that analyzes the service against policy targe
 Retrieve and present assessment results grouped by severity.
 
 **Constraints:**
+
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 list-failure-mode-findings --service-arn {service_arn}` (returns a summary per finding); call `aws resiliencehubv2 get-failure-mode-finding --service-arn {service_arn} --finding-id {finding_id}` for full detail
 - You MUST present findings grouped by severity (High, Medium, Low) — there is no Critical severity
 - You MUST include the recommendations from get-failure-mode-finding (infrastructureAndCodeRecommendations, observabilityRecommendations, testingRecommendations) — these are NOT returned by list-failure-mode-findings
@@ -130,6 +138,7 @@ Retrieve and present assessment results grouped by severity.
 Record resilience assertions that inform the assessment.
 
 **Constraints:**
+
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-assertion --service-arn {service_arn} --text "{assertion_text}"`
 - You SHOULD suggest documenting assertions about DR approach, scaling behavior, and operational procedures
 - You MUST inform the customer that assertions have a `source` field (AI_GENERATED or USER); manually created ones are USER
@@ -139,6 +148,7 @@ Record resilience assertions that inform the assessment.
 Generate an exportable report and save to S3.
 
 **Constraints:**
+
 - You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-report --service-arn {service_arn} --report-type FAILURE_MODE`
 - You MUST use the only supported report type: FAILURE_MODE
 - You MUST poll with `aws resiliencehubv2 list-reports --service-arn {service_arn}` until status is a terminal state (SUCCEEDED or FAILED)
