@@ -9,17 +9,17 @@ positioning, analyst-briefing, or "how do I pitch/compare this" questions.
 Use this language in all customer-facing and public contexts:
 
 > "Region switch in ARC enables you to build comprehensive multi-Region recovery plans that include traffic shift, scaling, and database failover."
-
+>
 > "ARC Region switch provides centralized, observable recovery orchestration — replacing custom scripts with managed plans that execute automatically or on-demand."
-
+>
 > "With Region switch, you define your recovery logic once as a plan, and ARC handles execution, monitoring, and compliance reporting."
 
 ## Legacy Framing to Avoid
 
 > ~~"Routing controls enable you to switch client traffic from one Regional replica to another."~~
-
+>
 > ~~"Use routing control states to manage failover."~~
-
+>
 > ~~"ARC clusters provide a highly available data plane for traffic management."~~
 
 ## Region switch vs Routing Controls
