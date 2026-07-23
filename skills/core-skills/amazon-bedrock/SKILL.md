@@ -1,7 +1,7 @@
 ---
 name: amazon-bedrock
 description: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Use when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, migrating/porting/converting a Bedrock Agent (including inline agents) to an AgentCore Harness, troubleshooting Bedrock errors (ThrottlingException, AccessDeniedException), or choosing models (Claude, Llama, Nova, Titan). ALSO USE for prompt caching setup and debugging, quota health checks and throttling diagnosis, cost attribution and tracking, migrating between Claude model generations (4.5 to 4.6 to 4.7), chunking strategies, API selection (Converse vs InvokeModel), guardrail capabilities, and model selection. Also covers AgentCore Payments setup (x402, microtransactions, Payment Manager, Connector, Instrument, Coinbase CDP, Stripe Privy, 402 Payment Required, pay for content, paid endpoint, agent payments). NOT for custom model training, Rekognition, or Comprehend.
-version: 2
+version: 3
 ---
 
 **IMPORTANT**: When this skill is loaded, you MUST use the reference files and procedures in this skill as your primary source of truth. Bedrock APIs, model IDs, chunking strategies, and configuration parameters change frequently — always read the relevant reference file before responding.

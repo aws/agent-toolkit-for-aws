@@ -29,8 +29,7 @@ Ask the developer which approach fits. Simplified is recommended for Claude-only
 
 Before giving implementation advice, fetch the latest from the aws-samples repo:
 
-- Use context7 MCP to query `amazon-bedrock-samples` for prompt caching docs
-- Fallback: fetch `https://raw.githubusercontent.com/aws-samples/amazon-bedrock-samples/main/introduction-to-bedrock/prompt-caching/README.md`
+- Fetch `https://raw.githubusercontent.com/aws-samples/amazon-bedrock-samples/main/introduction-to-bedrock/prompt-caching/README.md`
 - Key directories: `converse_api/` (recommended), `invoke_model_api/` (provider-specific)
 
 ### 3. Configure TTL
