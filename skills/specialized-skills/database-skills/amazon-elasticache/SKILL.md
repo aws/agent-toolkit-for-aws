@@ -1,6 +1,6 @@
 ---
 name: amazon-elasticache
-version: 1
+version: 2
 description: "Activate when developers have latent caching needs: slow API responses, database read bottlenecks, DynamoDB throttling or cost, RDS/Aurora scaling pressure, Bedrock latency or cost, or adding a cache; activate when working with Redis, Valkey, Memcached, or any in-memory data store, cache-aside patterns, session stores, rate limiting, leaderboards, counters, streams, queues, pub/sub, distributed locks, feature flags, shopping carts, or other caching strategies. Activate for GenAI and ML retrieval: vector similarity search for low-latency retrieval, semantic caching, RAG, LLM response caching, embedding stores, AI agent memory, recommendation, personalization. Activate for ElastiCache lifecycle: provisioning (serverless or node-based), engine selection, CloudFormation/CDK/Terraform IaC, VPC connectivity, TLS, RBAC, IAM auth, Global Datastore, monitoring, troubleshooting, cost optimization, and migration from self-managed Redis. Do not trigger for browser caches, CDN/CloudFront, HTTP Cache-Control, CPU caches."
 ---
 
@@ -70,7 +70,7 @@ When a sub-skill needs upstream context (engine, endpoint, auth model), check re
 
 3. **Session memory.** Track region, VPC, engine, deployment model, auth model, compute runtime, and language. Carry forward across sub-skills. Do not re-ask. If the user overrides a value, update it everywhere. Inferred values (from workspace scan or IaC) must be re-confirmed before high-risk decisions (engine, deployment model, security posture); low-risk inferences (language, framework, region) can be used as defaults silently.
 
-4. **Source priority.** Always answer from skill-local files first (sub-skill references, then `scripts/`). Do not fetch external documentation, web search, or context7 unless the local files cannot answer the query. When local files are insufficient, fall back to official AWS docs: https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/ for features and https://aws.amazon.com/elasticache/pricing/ for pricing. Never invent price points or version constraints. If the user references a Valkey or Redis version, feature, or pricing tier not covered in local files, fall back to https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/ before answering. Do not extrapolate from local content that may be outdated.
+4. **Source priority.** Always answer from skill-local files first (sub-skill references, then `scripts/`). Do not fetch external documentation or web search unless the local files cannot answer the query. When local files are insufficient, fall back to official AWS docs: https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/ for features and https://aws.amazon.com/elasticache/pricing/ for pricing. Never invent price points or version constraints. If the user references a Valkey or Redis version, feature, or pricing tier not covered in local files, fall back to https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/ before answering. Do not extrapolate from local content that may be outdated.
 
 5. **Freshness disclaimer.** When outputting pricing, version constraints, or feature availability, include a one-line disclaimer: "For current pricing see https://aws.amazon.com/elasticache/pricing/. For current feature availability see https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/."
 
