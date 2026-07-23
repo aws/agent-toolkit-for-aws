@@ -66,6 +66,7 @@ Specialized skills are organized by AWS service category:
 - **[Migration & Modernization](specialized-skills/migration-and-modernization-skills/)**
 - **[Networking & Content Delivery](specialized-skills/networking-and-content-delivery-skills/)**
 - **[Operations](specialized-skills/operations-skills/)**
+- **[Resilience](specialized-skills/resilience-skills/)**
 - **[Security & Identity](specialized-skills/security-and-identity-skills/)**
 - **[Serverless](specialized-skills/serverless-skills/)**
 - **[Storage](specialized-skills/storage-skills/)**
