@@ -323,7 +323,70 @@ Using the `wallet_address` / `redirect_url` the script printed:
 
 1. **Delegation** — authorize the agent to spend from the wallet.
     - **Coinbase CDP**: the end user visits `redirect_url`, logs in, and grants permissions to `wallet_address`.
-    - **Stripe Privy**: no `redirect_url`; use the Privy frontend SDK (<https://github.com/privy-io/aws-agentcore-sdk>), log in with the end user's email, approve delegation.
+    - **Stripe Privy**: Delegation requires a frontend app where the end user authenticates with Privy and approves the agent as a session signer on their wallets. Use the reference frontend at <https://github.com/privy-io/aws-agentcore-sdk> — the agent sets it up for the developer:
+
+      **7a. Clone and install the delegation frontend — agent runs:**
+
+      ```bash
+      git clone https://github.com/privy-io/aws-agentcore-sdk.git agentcore-privy-frontend
+      cd agentcore-privy-frontend
+      pnpm install
+      ```
+
+      **7b. Configure environment — agent runs:**
+
+      Create `.env.local` from the template. The three required values come from the same Privy app used in Step 3b:
+
+      ```bash
+      cp .env.example .env.local
+      ```
+
+      Then set these values in `.env.local`:
+
+      | Variable | Source | Visibility |
+      |----------|--------|------------|
+      | `NEXT_PUBLIC_PRIVY_APP_ID` | Privy Dashboard > Settings > API keys | Public (client) |
+      | `PRIVY_APP_SECRET` | Privy Dashboard > Settings > API keys | Server-only |
+      | `NEXT_PUBLIC_PRIVY_SIGNER_ID` | Privy Dashboard > Wallet Infrastructure > Authorization > the Key ID created in Step 3b (looks like `zr17anh9dpiqno1iaref9jpx`) | Public (identifier only) |
+      | `NEXT_PUBLIC_NETWORK_MODE` | `testnet` for Base Sepolia / Solana Devnet; `mainnet` for production | Public |
+
+      The `NEXT_PUBLIC_PRIVY_SIGNER_ID` is the Authorization Key ID — the same one whose private key was provided to the payment connector in Step 3b. It is safe to expose publicly (it's an identifier, not a secret).
+
+      > **Important:** Use the same Privy app and authorization key from Step 3b. The frontend's signer ID must match the key the AgentCore connector uses to sign transactions — otherwise delegation succeeds but payments fail with "Wallet policy denied the transaction."
+
+      **7c. Start the frontend — agent runs:**
+
+      ```bash
+      pnpm dev
+      ```
+
+      The app starts at `http://localhost:3000`. If port 3000 is occupied (e.g. by the agent's own dev server), Next.js auto-selects the next available port.
+
+      **7d. Complete delegation — developer does this in browser:**
+
+      1. Open `http://localhost:3000` in a browser
+      2. Log in with the **same email** used in the `setup_payment_user.py` `--email` flag (Step 6) — Privy creates embedded wallets for this user
+      3. On the "Complete setup" screen, click **"Connect agent"**
+      4. In the modal, click **"Give access"** — this calls `addSessionSigners` which registers the authorization key as a session signer on all the user's Privy embedded wallets
+      5. Once the success toast appears ("Agent connected successfully"), the agent is authorized to sign transactions on behalf of this user
+
+      After delegation succeeds, the developer can optionally fund the wallet directly from the same UI (click "Add funds" > use the Circle faucet address shown, or transfer from an external wallet).
+
+      > **How it works under the hood:** The frontend calls Privy's `addSessionSigners` API with the `NEXT_PUBLIC_PRIVY_SIGNER_ID`. This adds the AgentCore authorization key as an approved signer on the user's embedded wallets. When AgentCore later calls `ProcessPayment`, it uses the corresponding private key to sign transactions — Privy's wallet infrastructure validates that the signer is authorized and executes the transaction.
+
+      **7e. Verify delegation — agent can validate:**
+
+      After the developer confirms delegation is complete, the agent can verify by calling the same check-signers endpoint the frontend uses:
+
+      ```bash
+      curl -s -X POST http://localhost:3000/api/check-signers \
+        -H "Content-Type: application/json" \
+        -d '{"walletIds": ["<wallet-id-from-step-6>"]}' | python3 -m json.tool
+      ```
+
+      Expected: `{"connected": true}`. If `false`, the developer needs to repeat step 7d.
+
+      **Deployed alternative:** For production, deploy the frontend (e.g. to Vercel: `vercel --prod`) and direct end users to the hosted URL. The same `.env.local` values go into Vercel's environment variables settings. Each end user logs in with their own email, delegates once, and is then ready for agent-initiated payments.
 
 2. **Funding** — send testnet USDC to `wallet_address` via the Circle faucet (<https://faucet.circle.com/>), Base Sepolia.
 
@@ -533,8 +596,17 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 
 **Stripe Privy: "Delegation not completed":**
 
-- The agent auth key has not been added as a signer on the embedded wallet.
-- Set up a frontend using the Privy frontend SDK (https://github.com/privy-io/aws-agentcore-sdk), log in with the end user email provided during setup, and approve delegation for the wallet.
+- The agent auth key has not been added as a session signer on the embedded wallet.
+- Follow Step 7 (Stripe Privy sub-steps 7a–7d) to set up the delegation frontend, log in with the end user email provided during setup, and approve delegation for the wallet.
+- Verify delegation status with the `/api/check-signers` endpoint (Step 7e).
+
+**Stripe Privy: Delegation frontend setup issues:**
+
+- **"Missing server configuration" from /api/check-signers**: One or more env vars (`NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `NEXT_PUBLIC_PRIVY_SIGNER_ID`) are not set in `.env.local`. Copy from `.env.example` and fill all three.
+- **Login fails or no wallets appear**: The Privy app may not have embedded wallets enabled. In Privy Dashboard > Wallet Infrastructure, ensure embedded wallets are configured for the relevant chains (Ethereum/Solana).
+- **"Give access" succeeds but payments still fail with "Wallet policy denied"**: The `NEXT_PUBLIC_PRIVY_SIGNER_ID` in the frontend doesn't match the Authorization ID used in the payment connector (Step 3b). They must be the same key.
+- **User logged in with wrong email**: The email must match the one passed to `setup_payment_user.py --email`. If mismatched, the instrument points to a different Privy user's wallets. Log out, log back in with the correct email.
+- **Port conflict**: If the agent's own server is on port 3000, the frontend auto-selects another port. Check the terminal output for the actual URL.
 
 ## Security Considerations
 
