@@ -1,0 +1,134 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "ReserveInventory",
+  "States": {
+    "ReserveInventory": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Arguments": {
+        "TableName": "InventoryTable",
+        "Key": {
+          "productId": {
+            "S": "{% $states.input.productId %}"
+          }
+        },
+        "UpdateExpression": "SET reserved = reserved + :qty",
+        "ExpressionAttributeValues": {
+          ":qty": {
+            "N": "{% $string($states.input.quantity) %}"
+          }
+        }
+      },
+      "Assign": {
+        "orderId": "{% $states.input.orderId %}",
+        "productId": "{% $states.input.productId %}",
+        "reservedQty": "{% $states.input.quantity %}",
+        "total": "{% $states.input.total %}"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Assign": {
+            "orderId": "{% $states.input.orderId %}",
+            "failedStep": "ReserveInventory",
+            "errorInfo": "{% $states.errorOutput %}"
+          },
+          "Next": "OrderFailed"
+        }
+      ],
+      "Next": "ChargePayment"
+    },
+    "ChargePayment": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:ChargeCard:$LATEST",
+        "Payload": {
+          "orderId": "{% $orderId %}",
+          "amount": "{% $total %}"
+        }
+      },
+      "Assign": {
+        "chargeId": "{% $states.result.Payload.chargeId %}"
+      },
+      "Output": "{% $states.result.Payload %}",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Assign": {
+            "failedStep": "ChargePayment",
+            "errorInfo": "{% $states.errorOutput %}"
+          },
+          "Next": "ReleaseInventory"
+        }
+      ],
+      "Next": "ShipOrder"
+    },
+    "ShipOrder": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:ShipOrder:$LATEST",
+        "Payload": {
+          "orderId": "{% $orderId %}"
+        }
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Assign": {
+            "failedStep": "ShipOrder",
+            "errorInfo": "{% $states.errorOutput %}"
+          },
+          "Next": "RefundPayment"
+        }
+      ],
+      "Next": "OrderComplete"
+    },
+    "RefundPayment": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:RefundCharge:$LATEST",
+        "Payload": {
+          "chargeId": "{% $chargeId %}",
+          "reason": "{% $errorInfo.Cause %}"
+        }
+      },
+      "Next": "ReleaseInventory"
+    },
+    "ReleaseInventory": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Arguments": {
+        "TableName": "InventoryTable",
+        "Key": {
+          "productId": {
+            "S": "{% $productId %}"
+          }
+        },
+        "UpdateExpression": "SET reserved = reserved - :qty",
+        "ExpressionAttributeValues": {
+          ":qty": {
+            "N": "{% $string($reservedQty) %}"
+          }
+        }
+      },
+      "Next": "OrderFailed"
+    },
+    "OrderFailed": {
+      "Type": "Fail",
+      "Error": "{% $failedStep & 'Error' %}",
+      "Cause": "{% 'Order ' & $orderId & ' failed at ' & $failedStep & ': ' & ($exists($errorInfo.Cause) ? $errorInfo.Cause : 'Unknown') %}"
+    },
+    "OrderComplete": {
+      "Type": "Succeed"
+    }
+  }
+}

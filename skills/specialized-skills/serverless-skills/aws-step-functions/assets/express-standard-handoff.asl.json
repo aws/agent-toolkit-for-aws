@@ -1,0 +1,75 @@
+{
+  "Comment": "Express workflow - fast ingest and validation",
+  "QueryLanguage": "JSONata",
+  "StartAt": "ValidateInput",
+  "States": {
+    "ValidateInput": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:ValidateOrder:$LATEST",
+        "Payload": "{% $states.input %}"
+      },
+      "Output": "{% $states.result.Payload %}",
+      "Next": "EnrichData"
+    },
+    "EnrichData": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "LookupCustomer",
+          "States": {
+            "LookupCustomer": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::dynamodb:getItem",
+              "Arguments": {
+                "TableName": "CustomersTable",
+                "Key": {
+                  "customerId": {
+                    "S": "{% $states.input.customerId %}"
+                  }
+                }
+              },
+              "Output": "{% $states.result.Item %}",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "LookupPricing",
+          "States": {
+            "LookupPricing": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Arguments": {
+                "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:GetPricing:$LATEST",
+                "Payload": "{% $states.input %}"
+              },
+              "Output": "{% $states.result.Payload %}",
+              "End": true
+            }
+          }
+        }
+      ],
+      "Output": {
+        "order": "{% $states.input %}",
+        "customer": "{% $states.result[0] %}",
+        "pricing": "{% $states.result[1] %}"
+      },
+      "Next": "HandOffToStandard"
+    },
+    "HandOffToStandard": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution",
+      "Arguments": {
+        "StateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:OrderFulfillment-Standard",
+        "Input": "{% $string($states.input) %}"
+      },
+      "Output": {
+        "status": "handed_off",
+        "childExecutionArn": "{% $states.result.ExecutionArn %}"
+      },
+      "End": true
+    }
+  }
+}

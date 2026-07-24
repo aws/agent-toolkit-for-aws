@@ -1,0 +1,70 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "ProcessAllOrders",
+  "States": {
+    "ProcessAllOrders": {
+      "Type": "Map",
+      "Items": "{% $states.input.orders %}",
+      "MaxConcurrency": 5,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "ProcessSingleOrder",
+        "States": {
+          "ProcessSingleOrder": {
+            "Type": "Parallel",
+            "Branches": [
+              {
+                "StartAt": "ValidatePayment",
+                "States": {
+                  "ValidatePayment": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Arguments": {
+                      "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:ValidatePayment:$LATEST",
+                      "Payload": "{% $states.input %}"
+                    },
+                    "Output": "{% $states.result.Payload %}",
+                    "End": true
+                  }
+                }
+              },
+              {
+                "StartAt": "CheckInventory",
+                "States": {
+                  "CheckInventory": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::dynamodb:getItem",
+                    "Arguments": {
+                      "TableName": "InventoryTable",
+                      "Key": {
+                        "productId": {
+                          "S": "{% $states.input.productId %}"
+                        }
+                      }
+                    },
+                    "Output": "{% $states.result.Item %}",
+                    "End": true
+                  }
+                }
+              }
+            ],
+            "Output": {
+              "payment": "{% $states.result[0] %}",
+              "inventory": "{% $states.result[1] %}"
+            },
+            "End": true
+          }
+        }
+      },
+      "Assign": {
+        "orderResults": "{% $states.result %}"
+      },
+      "Next": "Summarize"
+    },
+    "Summarize": {
+      "Type": "Succeed"
+    }
+  }
+}

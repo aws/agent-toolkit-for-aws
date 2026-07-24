@@ -1,0 +1,111 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "RequestApproval",
+  "States": {
+    "RequestApproval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
+      "Arguments": {
+        "QueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/ApprovalQueue",
+        "MessageBody": "{% $string({'taskToken': $states.context.Task.Token, 'orderId': $states.input.orderId, 'approver': $states.input.primaryApprover}) %}"
+      },
+      "TimeoutSeconds": 86400,
+      "Assign": {
+        "orderId": "{% $states.input.orderId %}",
+        "approvalResult": "{% $states.result %}"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.Timeout"
+          ],
+          "Assign": {
+            "orderId": "{% $states.input.orderId %}",
+            "managerApprover": "{% $states.input.managerApprover %}",
+            "escalationReason": "Primary approver did not respond within 24 hours"
+          },
+          "Next": "EscalateToManager"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Assign": {
+            "approvalError": "{% $states.errorOutput %}"
+          },
+          "Next": "ApprovalFailed"
+        }
+      ],
+      "Next": "EvaluateApproval"
+    },
+    "EscalateToManager": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Arguments": {
+        "TopicArn": "arn:aws:sns:us-east-1:123456789012:EscalationNotifications",
+        "Subject": "Approval Escalation",
+        "Message": "{% 'Order ' & $orderId & ' requires manager approval. ' & $escalationReason %}"
+      },
+      "Next": "WaitForManagerApproval"
+    },
+    "WaitForManagerApproval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
+      "Arguments": {
+        "QueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/ApprovalQueue",
+        "MessageBody": "{% $string({'taskToken': $states.context.Task.Token, 'orderId': $orderId, 'approver': $managerApprover, 'escalated': true}) %}"
+      },
+      "TimeoutSeconds": 43200,
+      "Assign": {
+        "approvalResult": "{% $states.result %}"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.Timeout"
+          ],
+          "Assign": {
+            "approvalResult": {
+              "decision": "rejected",
+              "reason": "No response from manager within 12 hours; auto-rejected"
+            }
+          },
+          "Next": "EvaluateApproval"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Assign": {
+            "approvalError": "{% $states.errorOutput %}"
+          },
+          "Next": "ApprovalFailed"
+        }
+      ],
+      "Next": "EvaluateApproval"
+    },
+    "EvaluateApproval": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": "{% $approvalResult.decision = 'approved' %}",
+          "Next": "ProcessApprovedOrder"
+        }
+      ],
+      "Default": "OrderRejected"
+    },
+    "ProcessApprovedOrder": {
+      "Type": "Succeed"
+    },
+    "OrderRejected": {
+      "Type": "Fail",
+      "Error": "OrderRejected",
+      "Cause": "{% $exists($approvalResult.reason) ? $approvalResult.reason : 'Approval denied' %}"
+    },
+    "ApprovalFailed": {
+      "Type": "Fail",
+      "Error": "ApprovalFailed",
+      "Cause": "{% $exists($approvalError.Cause) ? $approvalError.Cause : 'Approval process encountered an error' %}"
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "CallExternalAPIs",
+  "States": {
+    "CallExternalAPIs": {
+      "Type": "Map",
+      "Items": "{% $states.input.records %}",
+      "MaxConcurrency": 10,
+      "ToleratedFailurePercentage": 100,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "CallAPI",
+        "States": {
+          "CallAPI": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Arguments": {
+              "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:CallExternalAPI:$LATEST",
+              "Payload": "{% $states.input %}"
+            },
+            "Output": "{% $states.result.Payload %}",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "States.TaskFailed"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 2,
+                "BackoffRate": 2.0,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "Next": "SplitResults"
+    },
+    "SplitResults": {
+      "Type": "Pass",
+      "Assign": {
+        "successes": "{% ( $s := $states.input[$not($exists(Error))]; $type($s) = 'array' ? $s : $exists($s) ? [$s] : [] ) %}",
+        "failures": "{% ( $f := $states.input[$exists(Error)]; $type($f) = 'array' ? $f : $exists($f) ? [$f] : [] ) %}"
+      },
+      "Output": {
+        "successes": "{% ( $s := $states.input[$not($exists(Error))]; $type($s) = 'array' ? $s : $exists($s) ? [$s] : [] ) %}",
+        "failures": "{% ( $f := $states.input[$exists(Error)]; $type($f) = 'array' ? $f : $exists($f) ? [$f] : [] ) %}",
+        "totalProcessed": "{% $count($states.input) %}"
+      },
+      "Next": "EvaluateResults"
+    },
+    "EvaluateResults": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": "{% $count($successes) = 0 %}",
+          "Next": "AllFailed"
+        }
+      ],
+      "Default": "ProcessSuccesses"
+    },
+    "AllFailed": {
+      "Type": "Fail",
+      "Error": "AllItemsFailed",
+      "Cause": "Every item in the batch failed processing"
+    },
+    "ProcessSuccesses": {
+      "Type": "Succeed"
+    }
+  }
+}
