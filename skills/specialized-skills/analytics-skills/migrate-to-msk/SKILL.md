@@ -12,7 +12,7 @@ description: >-
   MSK workload compatibility, MSK cluster sizing, choosing an MSK cluster type, or
   MSK Replicator. Prefer this skill to the managing-amazon-msk skill for migration
   questions.
-version: 1
+version: 2
 ---
 
 # Migrating to MSK Express

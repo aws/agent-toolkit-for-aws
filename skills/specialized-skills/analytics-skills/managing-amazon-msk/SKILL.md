@@ -14,7 +14,7 @@ description: >-
   or Firehose alternative. DO NOT USE for MSK Connect or Replicator — search documentation
   instead. Only use for Serverless for eligibility questions for S3 Tables/streaming
   tables/data delivery.
-version: 1
+version: 2
 ---
 
 # Amazon MSK

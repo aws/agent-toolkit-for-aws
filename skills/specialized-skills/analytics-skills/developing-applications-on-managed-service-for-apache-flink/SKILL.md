@@ -14,7 +14,7 @@ Triggers — activate on any of: Flink, MSF, Managed Flink, KinesisAnalytics(V2)
   KinesisStreamsSource, KafkaSource, IcebergSink, EFO, CreateApplication, UpdateApplication,
   CreateApplicationSnapshot, Kryo, RocksDB, Iceberg streaming, EXACTLY_ONCE, watermark,
   CDC binlog/WAL, Glue/S3 Tables, AWS/KinesisAnalytics CloudWatch.
-version: 1
+version: 2
 ---
 
 # Managed Service for Apache Flink
