@@ -1,8 +1,10 @@
 # Size and Choose an MSK Cluster
 
-## For any sizing question, run [`scripts/msk_sizing.py`](../scripts/msk_sizing.py)
+## For any sizing question, you MUST use [`scripts/msk_sizing.py`](../scripts/msk_sizing.py)
 
 If the user is asking how many brokers, what instance size, what cost, etc., you **MUST** run [`scripts/msk_sizing.py`](../scripts/msk_sizing.py) before answering. Do not size by hand. Do not estimate from memory. Run the script from the skill directory with `python3`.
+
+You MUST use script outputs directly for all sizing dimensions (instance types, broker counts, storage costs, data transfer costs, bottlenecks, and total monthly costs) and report them back to the user verbatim. You MUST NOT round, re-derive, or substitute your own numbers.
 
 The script is the source of truth for broker counts and costs in this skill — it models broker capacity (EBS, NIC, partitions, PST, storage), AZ rounding, 1-AZ-down headroom, fan-out, Tiered Storage detection, EBS headroom, cross-AZ producer replication, optional cross-AZ consumer fetch, Express storage and data-in charges, and PST cost. It enumerates every Standard and Express instance size and returns a "Recommended pick per class" section naming the lowest-cost option per class within the broker quota.
 
@@ -10,7 +12,7 @@ Required workflow for any sizing answer:
 
 1. Translate the user's inputs (avg/peak ingress, avg/peak egress, partitions, retention, primary retention, RF, PST, rack affinity) into the script's flags. If a value is missing, ask before guessing.
 2. Run the script with `--explain`. Always pass `--retention-hours` and `--primary-retention-hours` — set them equal to disable Tiered Storage; set retention > primary to enable it.
-3. Read the "Recommended pick per class" section. Quote those instance types, broker counts, bottlenecks, and total monthly costs back to the user verbatim — do not round, re-derive, or substitute your own numbers.
+3. Read the "Recommended pick per class" section.
 4. Use the `--explain` per-instance breakdown only to explain *why* the script picked what it did, never to override the recommendation.
 
 You may suggest a larger size than the recommended pick only when (a) the user explicitly asks for one, or (b) the workload exceeds the broker quota and a quota increase is impractical. In both cases, name the recommended pick first and the alternative second.
@@ -31,7 +33,7 @@ Flag reference:
 - `--use-max-partitions` — size against the hard partition cap instead of the recommended cap (use only when the user accepts the operational risk).
 - `--pst-per-broker-mbs` — apply a Provisioned Storage Throughput limit (4xlarge+ Standard only). Pass when the user mentions PST, gp3 provisioned throughput, or EBS write IO bottleneck.
 - `--utilization-standard` / `--utilization-express` — override the headroom factor (defaults: 0.50 / 0.75). Do not change unless the user explicitly asks.
-- `--no-rack-affined-consumers` — include consumer fetch traffic in the cross-AZ cost (use when consumers fetch from any leader rather than local-AZ replicas). Affects cost only, not broker count.
+- `--no-rack-affined-consumers` — include consumer fetch traffic in the cross-AZ cost (use when consumers fetch from any leader rather than local-AZ replicas). Affects cost only, not broker count. Run the script both with and without the flag to show the customer the concrete monthly delta; the `--explain` output breaks out each pricing dimension line by line, and `scripts/msk_sizing.py` itself is the source of truth if the customer needs the exact per-GiB rate or formula. To eliminate this cost, enable rack-aware Kafka consumer fetching — see [configure-clients.md](configure-clients.md) for `client.rack` and `replica.selector.class` guidance.
 
 The narrative steps below explain what the script computes and when each constraint dominates. Use them to interpret `--explain` output, **never as a substitute for running the script**.
 

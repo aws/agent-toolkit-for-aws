@@ -29,7 +29,8 @@
 | `auto.commit.interval.ms` | 5000 minimum | Prevents excessive commit requests that add broker load. |
 | `fetch.min.bytes` | 1024-131072 (1 KB-128 KB) | Reduces number of fetch requests. 1 KB for low-latency use cases; 32-128 KB for throughput-oriented workloads. |
 | `fetch.max.wait.ms` | 1000 | How long to wait if `fetch.min.bytes` is not met. |
-| `client.rack` | AZ ID (e.g., `use1-az1`) | Enables nearest-replica reads to reduce cross-AZ network costs. |
+| `client.rack` | AZ ID (e.g., `use1-az1`) | Consumer side. Enables nearest-replica reads to eliminate cross-AZ consumer fetch cost. Must be paired with the broker-side selector in the row below. |
+| `replica.selector.class` (cluster configuration) | `org.apache.kafka.common.replica.RackAwareReplicaSelector` | Broker-side. Default on MSK is `null` — must be set explicitly by attaching a custom MSK cluster configuration that includes this line, then applying it to the cluster. Without it, `client.rack` has no effect and consumers still fetch from the partition leader regardless of AZ. `broker.rack` itself is set automatically by MSK to the broker's AZ ID (e.g., `use1-az1`) so no manual config is needed there. See [Reduce network traffic costs of your Amazon MSK consumers with rack awareness](https://aws.amazon.com/blogs/big-data/reduce-network-traffic-costs-of-your-amazon-msk-consumers-with-rack-awareness/) for the full setup. |
 | `isolation.level` | `read_uncommitted` (default) | SHOULD NOT use `read_committed` when reading from tiered storage unless actively using transactions. |
 | `receive.buffer.bytes` | -1 (OS default) | Let OS manage TCP buffers on high-latency networks. |
 
