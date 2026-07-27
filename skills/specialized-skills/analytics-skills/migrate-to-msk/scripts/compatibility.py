@@ -717,9 +717,7 @@ IAM_AUTHENTICATION_VALUES: frozenset[str] = frozenset({"SASL_IAM", "SASL_OAUTHBE
 # Mechanisms MSK Express accepts that require TLS in transit (IAM, SASL/SCRAM,
 # TLS; OAUTHBEARER is an IAM token transport). Plaintext is only possible with
 # unauthenticated access, so a non-TLS source matters only for these.
-TLS_REQUIRED_AUTH_VALUES: frozenset[str] = frozenset(
-    {"TLS", "SASL_SCRAM", "SASL_IAM"}
-)
+TLS_REQUIRED_AUTH_VALUES: frozenset[str] = frozenset({"TLS", "SASL_SCRAM", "SASL_IAM"})
 
 
 def assess_auth(cfg: dict) -> tuple[str, list[dict]]:

@@ -359,9 +359,15 @@ def main(argv: list[str] | None = None) -> int:
     cfg = json.loads(args.cluster_config.read_text())
 
     inputs = compute_inputs(cfg)
-    retention_hrs = args.retention_hrs if args.retention_hrs is not None else inputs["retention_hrs"]
-    avg_in = _resolve_avg(args.avg_in_mbps, inputs["avg_in_mbps_from_contract"], inputs["peak_in_mbps"])
-    avg_out = _resolve_avg(args.avg_out_mbps, inputs["avg_out_mbps_from_contract"], inputs["peak_out_mbps"])
+    retention_hrs = (
+        args.retention_hrs if args.retention_hrs is not None else inputs["retention_hrs"]
+    )
+    avg_in = _resolve_avg(
+        args.avg_in_mbps, inputs["avg_in_mbps_from_contract"], inputs["peak_in_mbps"]
+    )
+    avg_out = _resolve_avg(
+        args.avg_out_mbps, inputs["avg_out_mbps_from_contract"], inputs["peak_out_mbps"]
+    )
 
     cell_map = build_cell_map(
         peak_in_mbps=inputs["peak_in_mbps"],
