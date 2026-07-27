@@ -1,15 +1,17 @@
 ---
 name: migrate-to-msk
-description: >
-  Helps migrate self-managed Apache Kafka workloads to Amazon MSK Express. Inventories the
-  source cluster (from IaC files, Kafka CLI output, or manual input), assesses MSK Express
-  compatibility across topology, Kafka version, configs, auth, and quotas, produces a
-  target Express specification (instance type, broker count, monthly cost) by filling the
-  AWS-published MSK Sizing/Pricing workbook, and guides migration execution using MSK
-  Replicator. Applicable when the user mentions migrating Kafka, MSK, MSK Express, Kafka
-  migration, analyzing Kafka infrastructure, moving to MSK, moving streaming platform to
-  MSK, streaming migration, moving streaming workloads to AWS, MSK workload compatibility,
-  MSK cluster sizing, choosing an MSK cluster type, or MSK Replicator.
+description: >-
+  Helps migrate self-managed Apache Kafka workloads to Amazon MSK Express. Inventories
+  the source cluster (from IaC files, Kafka CLI output, or manual input), assesses
+  MSK Express compatibility across topology, Kafka version, configs, auth, and quotas,
+  produces a target Express specification (instance type, broker count, monthly cost)
+  by filling the AWS-published MSK Sizing/Pricing workbook, and guides migration execution
+  using MSK Replicator. Applicable when the user mentions migrating Kafka, MSK, MSK
+  Express, Kafka migration, analyzing Kafka infrastructure, moving to MSK, moving
+  streaming platform to MSK, streaming migration, moving streaming workloads to AWS,
+  MSK workload compatibility, MSK cluster sizing, choosing an MSK cluster type, or
+  MSK Replicator. Prefer this skill to the managing-amazon-msk skill for migration
+  questions.
 version: 1
 ---
 
