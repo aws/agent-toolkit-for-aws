@@ -7,16 +7,37 @@ import io
 import logging
 import os
 import re
+import stat
 import subprocess
 import tempfile
 import urllib.error
 import urllib.request
 import zipfile
 from typing import Optional, Set, Tuple
+from urllib.parse import urlparse
 
-from launch_config import GITHUB_ZIPBALL_TIMEOUT_SECS, MAX_ARCHIVE_BYTES
+from launch_config import (
+    GITHUB_ZIPBALL_TIMEOUT_SECS,
+    MAX_ARCHIVE_BYTES,
+    MAX_ARCHIVE_ENTRIES,
+    MAX_COMPRESSION_RATIO,
+    MAX_ENTRY_UNCOMPRESSED_BYTES,
+    MAX_UNCOMPRESSED_BYTES,
+)
 
 logger = logging.getLogger(__name__)
+
+# Chunk size for reading the GitHub download.
+_DOWNLOAD_CHUNK_BYTES = 64 * 1024
+
+# Hosts a GitHub zipball request may be redirected through: api.github.com
+# redirects to codeload and then to its S3-backed object store.
+_ALLOWED_REDIRECT_HOST_SUFFIXES = (
+    ".github.com",
+    ".githubusercontent.com",
+    ".amazonaws.com",
+)
+_ALLOWED_REDIRECT_HOSTS = frozenset({"github.com"})
 
 _SKIP_DIRS = frozenset(
     {
@@ -77,7 +98,7 @@ _SKIP_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".jks", ".keystore")
 _SKIP_NAME_PREFIXES = ("id_rsa", "id_ed25519", "id_ecdsa", "id_dsa")
 
 _GITHUB_URL_RE = re.compile(
-    r"^https?://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?$",
+    r"^https://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?$",
 )
 
 
@@ -201,11 +222,18 @@ def _has_git_metadata(root: str) -> bool:
 
 
 def parse_github_url(url: str) -> Optional[Tuple[str, str]]:
-    """Return (owner, repo) for a GitHub HTTPS URL, or None."""
+    """Return (owner, repo) for a GitHub HTTPS URL, or None.
+
+    Only https://github.com/<owner>/<repo> URLs are accepted, and `.` / `..`
+    segments are rejected.
+    """
     match = _GITHUB_URL_RE.match(url.strip())
     if not match:
         return None
-    return match.group(1), match.group(2)
+    owner, repo = match.group(1), match.group(2)
+    if any(segment in (".", "..") for segment in (owner, repo)):
+        return None
+    return owner, repo
 
 
 def sanitize_root_name(name: str) -> str:
@@ -227,6 +255,92 @@ def _is_secret_file(filename: str) -> bool:
     if any(lower.startswith(p) for p in _SKIP_NAME_PREFIXES):
         return True
     return False
+
+
+def _is_safe_entry_name(name: str) -> bool:
+    """Return True if a ZIP entry name is a plain relative path.
+
+    Rejects absolute paths, Windows drive/UNC prefixes, `..` segments, and
+    embedded NUL bytes.
+    """
+    if not name or "\x00" in name:
+        return False
+    if name.startswith("/") or name.startswith("\\"):
+        return False
+    # Windows drive letter (e.g. "C:\") or UNC ("\\host").
+    if re.match(r"^[A-Za-z]:", name) or name.startswith("\\\\"):
+        return False
+    normalized = name.replace("\\", "/")
+    return not any(segment == ".." for segment in normalized.split("/"))
+
+
+def _is_symlink_entry(info: zipfile.ZipInfo) -> bool:
+    """Return True if a ZIP entry encodes a Unix symlink."""
+    # The high 16 bits of external_attr hold the Unix mode for Unix-created
+    # entries.
+    mode = (info.external_attr >> 16) & 0xFFFF
+    return stat.S_ISLNK(mode)
+
+
+def validate_archive_bytes(data: bytes) -> None:
+    """Validate ZIP entry names, shape, and size limits.
+
+    All checks read the central-directory metadata only (nothing is
+    decompressed). Raises ArchiveError on the first violation.
+    """
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as err:
+        raise ArchiveError("Downloaded file is not a valid zip archive.") from err
+
+    with zf:
+        infos = zf.infolist()
+
+        if len(infos) > MAX_ARCHIVE_ENTRIES:
+            raise ArchiveError(
+                f"Archive has {len(infos)} entries, exceeding the "
+                f"{MAX_ARCHIVE_ENTRIES} entry limit."
+            )
+
+        total_uncompressed = 0
+        roots: Set[str] = set()
+        for info in infos:
+            name = info.filename
+
+            if not _is_safe_entry_name(name):
+                raise ArchiveError(f"Archive contains an unsafe entry path: {name!r}")
+            if _is_symlink_entry(info):
+                raise ArchiveError(f"Archive contains a symlink entry: {name!r}")
+
+            size = info.file_size
+            if size > MAX_ENTRY_UNCOMPRESSED_BYTES:
+                raise ArchiveError(
+                    f"Archive entry {name!r} is {size // (1024 * 1024)} MiB "
+                    f"uncompressed, exceeding the "
+                    f"{MAX_ENTRY_UNCOMPRESSED_BYTES // (1024 * 1024)} MiB per-entry limit."
+                )
+            if info.compress_size > 0 and size / info.compress_size > MAX_COMPRESSION_RATIO:
+                raise ArchiveError(
+                    f"Archive entry {name!r} exceeds the {MAX_COMPRESSION_RATIO}:1 "
+                    "compression-ratio limit."
+                )
+
+            total_uncompressed += size
+            if total_uncompressed > MAX_UNCOMPRESSED_BYTES:
+                raise ArchiveError(
+                    f"Archive decompresses to over "
+                    f"{MAX_UNCOMPRESSED_BYTES // (1024 * 1024 * 1024)} GiB, "
+                    "exceeding the decompressed-size limit."
+                )
+
+            top = info.filename.replace("\\", "/").split("/", 1)[0]
+            if top:
+                roots.add(top)
+
+        if len(roots) > 1:
+            raise ArchiveError(
+                f"Archive must contain a single top-level directory; found {len(roots)}."
+            )
 
 
 def zip_local_repo(path: str, root_name: str) -> bytes:
@@ -282,11 +396,77 @@ def zip_local_repo(path: str, root_name: str) -> bytes:
             f"{MAX_ARCHIVE_BYTES // (1024 * 1024)} MiB limit. Remove large "
             "files or build artifacts and try again."
         )
+    validate_archive_bytes(data)
     return data
 
 
+def _is_allowed_redirect_host(hostname: Optional[str]) -> bool:
+    """Return True if a redirect target host is on the allowlist."""
+    if not hostname:
+        return False
+    hostname = hostname.lower()
+    if hostname in _ALLOWED_REDIRECT_HOSTS:
+        return True
+    return any(hostname.endswith(suffix) for suffix in _ALLOWED_REDIRECT_HOST_SUFFIXES)
+
+
+class _AllowlistRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Redirect handler that only follows redirects to allowlisted hosts.
+
+    GitHub zipball downloads 302 from api.github.com to codeload and then to an
+    S3 object store; redirects to any other host are refused.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urlparse(newurl)
+        if parsed.scheme != "https":
+            raise ArchiveError(f"Refusing redirect to non-HTTPS URL during download: {newurl!r}")
+        if not _is_allowed_redirect_host(parsed.hostname):
+            raise ArchiveError(
+                f"Refusing redirect to disallowed host during download: {parsed.hostname!r}"
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _read_capped(resp) -> bytes:
+    """Read a response body, aborting if it exceeds MAX_ARCHIVE_BYTES.
+
+    Pre-checks the declared Content-Length when present, then reads in chunks
+    against a running total so bodies without a Content-Length are also bounded.
+    """
+    declared = resp.headers.get("Content-Length")
+    if declared is not None:
+        try:
+            if int(declared) > MAX_ARCHIVE_BYTES:
+                raise ArchiveError(
+                    f"Downloaded archive is {int(declared) // (1024 * 1024)} MiB, "
+                    f"exceeding the {MAX_ARCHIVE_BYTES // (1024 * 1024)} MiB limit."
+                )
+        except ValueError:
+            pass
+
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = resp.read(_DOWNLOAD_CHUNK_BYTES)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_ARCHIVE_BYTES:
+            raise ArchiveError(
+                f"Downloaded archive exceeds the "
+                f"{MAX_ARCHIVE_BYTES // (1024 * 1024)} MiB limit."
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def download_github_zip(url: str) -> bytes:
-    """Download a public GitHub repo's default-branch archive."""
+    """Download and validate a public GitHub repo's default-branch archive.
+
+    Follows only allowlisted redirects, caps the body at MAX_ARCHIVE_BYTES, and
+    validates the archive before returning the bytes.
+    """
     parsed = parse_github_url(url)
     if not parsed:
         raise ArchiveError(f"Not a GitHub repository URL: {url}")
@@ -294,9 +474,12 @@ def download_github_zip(url: str) -> bytes:
 
     zipball = f"https://api.github.com/repos/{owner}/{repo}/zipball"
     req = urllib.request.Request(zipball, headers={"Accept": "application/vnd.github+json"})
+    opener = urllib.request.build_opener(_AllowlistRedirectHandler())
     try:
-        with urllib.request.urlopen(req, timeout=GITHUB_ZIPBALL_TIMEOUT_SECS) as resp:
-            data = resp.read()
+        with opener.open(req, timeout=GITHUB_ZIPBALL_TIMEOUT_SECS) as resp:
+            data = _read_capped(resp)
+    except ArchiveError:
+        raise
     except urllib.error.HTTPError as err:
         if err.code in (401, 403, 404):
             raise ArchiveError(
@@ -308,9 +491,5 @@ def download_github_zip(url: str) -> bytes:
     except (urllib.error.URLError, OSError) as err:
         raise ArchiveError(f"Failed to download {url}: {err}") from err
 
-    if len(data) > MAX_ARCHIVE_BYTES:
-        raise ArchiveError(
-            f"Downloaded archive is {len(data) // (1024 * 1024)} MiB, exceeding "
-            f"the {MAX_ARCHIVE_BYTES // (1024 * 1024)} MiB limit."
-        )
+    validate_archive_bytes(data)
     return data

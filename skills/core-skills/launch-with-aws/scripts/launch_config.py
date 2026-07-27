@@ -29,6 +29,9 @@ TOKEN_EXPIRY_BUFFER_SECS = 300
 CALLBACK_TIMEOUT_SECS = 600.0
 DEFAULT_TOKEN_LIFETIME_SECS = 28800
 
+# Maximum local session lifetime; re-authentication is required after this.
+MAX_SESSION_LIFETIME_SECS = 90 * 24 * 3600  # 90 days
+
 SESSION_DIR = "~/.launch-with-aws"
 SESSION_FILE_NAME = "session.json"
 
@@ -39,7 +42,14 @@ UPLOAD_TIMEOUT_SECS = 300.0
 GITHUB_ZIPBALL_TIMEOUT_SECS = 120.0
 
 DEFAULT_COST_ESTIMATE_REGION = "us-east-1"
-MAX_ARCHIVE_BYTES = 500 * 1024 * 1024
+
+# Archive limits, checked against ZIP central-directory metadata (no
+# decompression) plus a streamed compressed-size cap.
+MAX_ARCHIVE_BYTES = 500 * 1024 * 1024  # 500 MiB compressed
+MAX_ARCHIVE_ENTRIES = 100_000
+MAX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB total decompressed
+MAX_ENTRY_UNCOMPRESSED_BYTES = 100 * 1024 * 1024  # 100 MiB per entry
+MAX_COMPRESSION_RATIO = 100  # decompressed/compressed per entry
 
 # ── Models ───────────────────────────────────────────────────────────────
 
@@ -129,6 +139,50 @@ def _validate_base_url(url: str) -> str:
             )
 
     return url.rstrip("/")
+
+
+# IAM Identity Center issuer hosts accepted for the issuer URL override.
+_ALLOWED_ISSUER_HOST_SUFFIXES = (".amazonaws.com", ".awsapps.com")
+
+
+def validate_issuer_url(url: str) -> str:
+    """Validate an IdC issuer URL override, returning it unchanged if allowed.
+
+    Only https URLs whose host is on an allowed issuer domain are accepted.
+    """
+    parsed = urlparse(url)
+
+    if parsed.scheme != "https":
+        raise ConfigError(
+            f"Invalid {ENV_IDC_ISSUER_URL}: scheme must be https, got {parsed.scheme!r}. "
+            "Refusing to anchor the authentication flow on a non-HTTPS issuer."
+        )
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ConfigError(f"Invalid {ENV_IDC_ISSUER_URL}: no hostname in {url!r}.")
+
+    if not any(
+        hostname == suffix.lstrip(".") or hostname.endswith(suffix)
+        for suffix in _ALLOWED_ISSUER_HOST_SUFFIXES
+    ):
+        raise ConfigError(
+            f"Invalid {ENV_IDC_ISSUER_URL}: host {hostname!r} is not in the allowed "
+            f'issuer domains ({", ".join(_ALLOWED_ISSUER_HOST_SUFFIXES)}). '
+            "Only official AWS IAM Identity Center endpoints are permitted."
+        )
+
+    return url
+
+
+def resolve_issuer_url() -> str:
+    """Return the IdC issuer URL, honoring a validated env-var override."""
+    override = os.environ.get(ENV_IDC_ISSUER_URL)
+    if override:
+        validated = validate_issuer_url(override)
+        logger.warning("Using non-default IdC issuer URL: %s", validated)
+        return validated
+    return IDC_ISSUER_URL
 
 
 class Config:

@@ -8,7 +8,9 @@ boto3 service model registration for the Launch with AWS service.
 """
 
 import json
+import logging
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -34,6 +36,22 @@ _SERVICE_MODEL_PATH = Path(__file__).parent.parent / "references" / "launchwitha
 
 SERVICE_NAME = "launchwithaws"
 API_VERSION = "2026-06-15"
+
+logger = logging.getLogger(__name__)
+
+# Replace UUIDs and long id-like runs in a request path with a placeholder.
+_UUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+_ID_SEGMENT_RE = re.compile(r"[A-Za-z0-9_-]{16,}")
+
+
+def _sanitize_path(path: str) -> str:
+    """Strip query strings and replace id-like path segments with <id>."""
+    path = path.split("?", 1)[0].split("#", 1)[0]
+    path = _UUID_RE.sub("<id>", path)
+    path = _ID_SEGMENT_RE.sub("<id>", path)
+    return path
 
 
 def _load_service_model() -> dict:
@@ -110,20 +128,42 @@ def create_client(
 
 
 class ApiError(Exception):
-    """Raised when a backend API request returns a non-success status."""
+    """Raised when a backend API request returns a non-success status.
 
-    def __init__(self, status: int, method: str, path: str, body: str) -> None:
-        super().__init__(f"{method} {path} failed ({status}): {body}")
+    The string representation exposes only the HTTP method, status, a sanitized
+    path template, and the structured error code. The raw response body is kept
+    on the instance (``body``) and logged at DEBUG for local diagnosis.
+    """
+
+    def __init__(
+        self,
+        status: int,
+        method: str,
+        path: str,
+        body: str,
+        error_code: Optional[str] = None,
+    ) -> None:
         self.status = status
         self.method = method
         self.path = path
         self.body = body
+        self.error_code = error_code
+
+        safe_path = _sanitize_path(path)
+        if error_code:
+            message = f"{method} {safe_path} failed ({status}): {error_code}"
+        else:
+            message = f"{method} {safe_path} failed ({status})"
+        super().__init__(message)
+
+        logger.debug("API error %s %s (%s): %s", method, path, status, body)
 
 
 def _client_error_to_api_error(err: ClientError, method: str, path: str) -> ApiError:
     status = err.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 500)
-    message = err.response.get("Error", {}).get("Message", str(err))
-    return ApiError(status, method, path, message)
+    error_code = err.response.get("Error", {}).get("Code")
+    raw_message = err.response.get("Error", {}).get("Message", str(err))
+    return ApiError(status, method, path, raw_message, error_code=error_code)
 
 
 def _get_base_url() -> str:
