@@ -9,9 +9,8 @@ description: >-
   using MSK Replicator. Applicable when the user mentions migrating Kafka, MSK, MSK
   Express, Kafka migration, analyzing Kafka infrastructure, moving to MSK, moving
   streaming platform to MSK, streaming migration, moving streaming workloads to AWS,
-  MSK workload compatibility, MSK cluster sizing, choosing an MSK cluster type, or
-  MSK Replicator. Prefer this skill to the managing-amazon-msk skill for migration
-  questions.
+  MSK workload compatibility, choosing an MSK cluster type, or MSK Replicator.
+  Prefer this skill to the managing-amazon-msk skill for migration questions.
 version: 2
 ---
 
