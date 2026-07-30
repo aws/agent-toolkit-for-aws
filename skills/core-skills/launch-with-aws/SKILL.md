@@ -1,7 +1,7 @@
 ---
 name: launch-with-aws
 description: "Migrates vibe-coded web applications to AWS. Handles the full workflow from analysis through migration to deployment, producing deployable AWS Blocks infrastructure code. Supports full-stack apps built with vibe-coding platforms (Lovable, Bolt.new, Replit) and frontend web applications and websites: React, Vue, Angular, Next.js, Nuxt, Astro, SvelteKit, Gatsby, Vite, Svelte, Solid, Docusaurus, and others (static sites, SPAs, and SSR frameworks with static export). Triggers on: launch with AWS, launch on AWS, deploy to AWS, migrate to AWS, host my app on AWS, move my app to AWS, transfer my app to AWS. Activates when the user wants to migrate a vibe-coded app or frontend web app to AWS, even if they don't say 'migrate' explicitly."
-version: 1
+version: 2
 ---
 
 # Launch with AWS
@@ -107,6 +107,17 @@ python3 scripts/launch_with_aws.py auth-wait <pid>
 ```
 
 where `<pid>` is the `pid` value from the `auth-start` response. This blocks until the user completes browser sign-in (or times out after 600s). Returns `{"authenticated": true, "baseUrl": "..."}` on success.
+
+Sessions are capped at 90 days even if the identity provider does not set an expiration; after that the interactive flow is required again.
+
+To check the current session without authenticating, or to sign out:
+
+```bash
+python3 scripts/launch_with_aws.py session-status
+python3 scripts/launch_with_aws.py sign-out
+```
+
+`session-status` reports whether a session exists and how long until the token and overall session expire. `sign-out` best-effort revokes the refresh token and deletes the local `~/.launch-with-aws/session.json`. On shared or untrusted workstations, run `sign-out` when finished.
 
 ### 2. Create Launch
 

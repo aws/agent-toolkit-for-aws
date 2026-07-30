@@ -12,10 +12,13 @@ Dependencies:
 """
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 # The scripts use PEP 604 union syntax (`str | None`) in signatures, which
 # fails at definition time on Python < 3.10; boto3 also requires 3.10+.
@@ -41,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import launch_api_client as api
 from archive import ArchiveError, parse_github_url, zip_local_repo
-from auth import SessionExpiredError, start_auth, wait_for_auth
+from auth import SessionExpiredError, session_status, sign_out, start_auth, wait_for_auth
 from launch_config import load_config
 
 
@@ -82,6 +85,16 @@ def cmd_auth_wait(pid: str) -> None:
     result = wait_for_auth(pid=int(pid))
     result["baseUrl"] = config.base_url
     _ok(result)
+
+
+def cmd_session_status() -> None:
+    """Report the local session state without triggering authentication."""
+    _ok(session_status())
+
+
+def cmd_sign_out() -> None:
+    """Sign out and delete the local session; requires re-auth next use."""
+    _ok(sign_out())
 
 
 def cmd_create_launch(source: str, name: str | None = None) -> None:
@@ -194,6 +207,8 @@ from typing import Any, Callable
 COMMANDS: dict[str, tuple[Callable[..., Any], int]] = {
     "auth-start": (cmd_auth_start, 0),
     "auth-wait": (cmd_auth_wait, 1),
+    "session-status": (cmd_session_status, 0),
+    "sign-out": (cmd_sign_out, 0),
     "create-launch": (cmd_create_launch, 1),
     "get-launch": (cmd_get_launch, 1),
     "list-launches": (cmd_list_launches, 0),
@@ -242,8 +257,10 @@ def main() -> None:
                 "signed in successfully."
             )
         _fail(f"{err}{hint}")
-    except Exception as err:
-        _fail(str(err))
+    except Exception:
+        # Log the full exception locally; return a generic message.
+        logger.debug("Unhandled error in command %s", command, exc_info=True)
+        _fail("The operation failed. Re-run with logging enabled for details.")
 
 
 if __name__ == "__main__":

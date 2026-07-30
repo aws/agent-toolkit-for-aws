@@ -1,0 +1,131 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "AcquireLock",
+  "States": {
+    "AcquireLock": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Arguments": {
+        "TableName": "LocksTable",
+        "Item": {
+          "lockId": {
+            "S": "{% $states.input.customerId %}"
+          },
+          "executionId": {
+            "S": "{% $states.context.Execution.Id %}"
+          },
+          "expiresAt": {
+            "N": "{% $string($toMillis($now()) + 900000) %}"
+          }
+        },
+        "ConditionExpression": "attribute_not_exists(lockId) OR expiresAt < :now",
+        "ExpressionAttributeValues": {
+          ":now": {
+            "N": "{% $string($toMillis($now())) %}"
+          }
+        }
+      },
+      "Assign": {
+        "customerId": "{% $states.input.customerId %}"
+      },
+      "Output": "{% $states.input %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "DynamoDB.ConditionalCheckFailedException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 12,
+          "BackoffRate": 1.5,
+          "JitterStrategy": "FULL"
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "DynamoDB.ConditionalCheckFailedException"
+          ],
+          "Assign": {
+            "customerId": "{% $states.input.customerId %}",
+            "lockError": "{% $states.errorOutput %}"
+          },
+          "Next": "LockUnavailable"
+        }
+      ],
+      "Next": "DoProtectedWork"
+    },
+    "DoProtectedWork": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:ProcessCustomer:$LATEST",
+        "Payload": "{% $states.input %}"
+      },
+      "Output": "{% $states.result.Payload %}",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Assign": {
+            "workError": "{% $states.errorOutput %}"
+          },
+          "Next": "ReleaseLock"
+        }
+      ],
+      "Next": "ReleaseLock"
+    },
+    "ReleaseLock": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:deleteItem",
+      "Arguments": {
+        "TableName": "LocksTable",
+        "Key": {
+          "lockId": {
+            "S": "{% $customerId %}"
+          }
+        },
+        "ConditionExpression": "executionId = :execId",
+        "ExpressionAttributeValues": {
+          ":execId": {
+            "S": "{% $states.context.Execution.Id %}"
+          }
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Next": "CheckWorkResult"
+    },
+    "CheckWorkResult": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": "{% $exists($workError) %}",
+          "Next": "WorkFailed"
+        }
+      ],
+      "Default": "Done"
+    },
+    "WorkFailed": {
+      "Type": "Fail",
+      "Error": "{% $exists($workError.Error) ? $workError.Error : 'WorkFailed' %}",
+      "Cause": "{% $exists($workError.Cause) ? $workError.Cause : 'Protected work failed' %}"
+    },
+    "Done": {
+      "Type": "Succeed"
+    },
+    "LockUnavailable": {
+      "Type": "Fail",
+      "Error": "LockContention",
+      "Cause": "{% 'Could not acquire lock for ' & $customerId & ' after retries' %}"
+    }
+  }
+}

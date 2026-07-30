@@ -35,9 +35,8 @@ from launch_config import (
     CALLBACK_TIMEOUT_SECS,
     CLIENT_NAME,
     DEFAULT_TOKEN_LIFETIME_SECS,
-    ENV_IDC_ISSUER_URL,
     ENV_SCOPES,
-    IDC_ISSUER_URL,
+    MAX_SESSION_LIFETIME_SECS,
     SCOPES,
     SESSION_DIR,
     SESSION_FILE_NAME,
@@ -45,6 +44,7 @@ from launch_config import (
     TOKEN_EXPIRY_BUFFER_SECS,
     ClientCredentials,
     StoredSession,
+    resolve_issuer_url,
 )
 
 __version__ = "0.1.0"
@@ -134,7 +134,7 @@ def _register_client() -> ClientCredentials:
         "clientType": "public",
         "grantTypes": ["authorization_code", "refresh_token"],
         "scopes": scopes,
-        "issuerUrl": os.environ.get(ENV_IDC_ISSUER_URL) or IDC_ISSUER_URL,
+        "issuerUrl": resolve_issuer_url(),
         "redirectUris": ["http://127.0.0.1"],
     }
 
@@ -145,8 +145,13 @@ def _register_client() -> ClientCredentials:
     if not client_id or not client_secret:
         raise RuntimeError("Client registration response missing credentials")
 
+    # Cap the local session lifetime at MAX_SESSION_LIFETIME_SECS. A
+    # clientSecretExpiresAt of 0 means the IdP set no expiry; otherwise use the
+    # sooner of the IdP value and the cap.
     expires_at_sec = response.get("clientSecretExpiresAt") or 0
-    client_expires_at = sys.maxsize if expires_at_sec == 0 else int(expires_at_sec)
+    now = int(time.time())
+    cap = now + MAX_SESSION_LIFETIME_SECS
+    client_expires_at = cap if expires_at_sec == 0 else min(int(expires_at_sec), cap)
 
     return ClientCredentials(
         client_id=client_id,
@@ -295,6 +300,61 @@ def get_access_token() -> str:
             pass
 
     raise SessionExpiredError("Session expired or not authenticated. Run auth-start to sign in.")
+
+
+def session_status() -> dict:
+    """Report the local session state without triggering authentication.
+
+    Returns a dict describing whether a session exists, whether its access
+    token is currently usable, and how long until the access token and the
+    overall session registration expire (seconds, clamped at 0).
+    """
+    session = load_session()
+    if not session:
+        return {"authenticated": False}
+
+    now = int(time.time())
+    token_valid = session.token_expires_at > now + TOKEN_EXPIRY_BUFFER_SECS
+    return {
+        "authenticated": token_valid,
+        "tokenExpiresInSecs": max(0, session.token_expires_at - now),
+        "sessionExpiresInSecs": max(0, session.client_expires_at - now),
+        "canRefresh": session.client_expires_at > now,
+    }
+
+
+def sign_out() -> dict:
+    """Sign out: delete the local session so the next call requires re-auth.
+
+    Best-effort revokes the refresh token, then removes the local session file.
+    Revocation failures do not block local deletion.
+    """
+    session = load_session()
+
+    if session and session.refresh_token:
+        try:
+            sso_oidc = _create_sso_oidc_client(SSO_OIDC_REGION)
+            # revoke_token is not exposed on all endpoints; call it only when
+            # available.
+            revoke = getattr(sso_oidc, "revoke_token", None)
+            if callable(revoke):
+                revoke(
+                    clientId=session.client_id,
+                    clientSecret=session.client_secret,
+                    token=session.refresh_token,
+                    tokenTypeHint="refresh_token",
+                )
+        except Exception:
+            pass
+
+    removed = False
+    try:
+        os.unlink(_session_file())
+        removed = True
+    except FileNotFoundError:
+        pass
+
+    return {"signedOut": True, "sessionRemoved": removed}
 
 
 # ── Non-blocking auth (auth-start / auth-wait) ──────────────────────────

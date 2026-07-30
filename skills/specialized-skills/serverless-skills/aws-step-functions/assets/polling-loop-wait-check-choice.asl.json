@@ -1,0 +1,77 @@
+{
+  "QueryLanguage": "JSONata",
+  "StartAt": "SubmitOrder",
+  "States": {
+    "SubmitOrder": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sqs:sendMessage",
+      "Arguments": {
+        "QueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/FulfillmentQueue",
+        "MessageBody": "{% $string({'orderId': $states.input.orderId, 'items': $states.input.items}) %}"
+      },
+      "Assign": {
+        "fulfillmentOrderId": "{% $states.input.orderId %}"
+      },
+      "Next": "InitialWaitForFulfillment"
+    },
+    "InitialWaitForFulfillment": {
+      "Type": "Wait",
+      "Seconds": 300,
+      "Next": "CheckFulfillmentStatus"
+    },
+    "CheckFulfillmentStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:getItem",
+      "Arguments": {
+        "TableName": "OrdersTable",
+        "Key": {
+          "orderId": {
+            "S": "{% $fulfillmentOrderId %}"
+          }
+        }
+      },
+      "Assign": {
+        "orderStatus": "{% $states.result.Item.status.S %}"
+      },
+      "Next": "EvaluateFulfillment",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "ThrottlingException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "EvaluateFulfillment": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": "{% $orderStatus = 'fulfilled' %}",
+          "Next": "FulfillmentComplete"
+        },
+        {
+          "Condition": "{% $orderStatus in ['failed', 'cancelled'] %}",
+          "Next": "FulfillmentFailed"
+        }
+      ],
+      "Default": "WaitBeforeNextPoll"
+    },
+    "WaitBeforeNextPoll": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "CheckFulfillmentStatus"
+    },
+    "FulfillmentComplete": {
+      "Type": "Succeed"
+    },
+    "FulfillmentFailed": {
+      "Type": "Fail",
+      "Error": "FulfillmentFailed",
+      "Cause": "{% 'Order fulfillment status: ' & $orderStatus %}"
+    }
+  }
+}
