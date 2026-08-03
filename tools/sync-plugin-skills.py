@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Sync plugin-bundled skills from canonical skills/ sources.
 
-Reads each plugin's skills.json manifest and copies the referenced skill
-directories into plugins/<name>/skills/. Skills listed in the manifest are
-replaced entirely; plugin-only skills (not in the manifest) are left untouched.
+Auto-discovers matching skills by name: for each directory under
+plugins/<plugin>/skills/<name>/, if a directory with the same name
+containing a SKILL.md exists under skills/, the canonical copy is
+treated as the source of truth.
 
 Usage:
     python3 tools/sync-plugin-skills.py              # sync all plugins
@@ -14,12 +15,23 @@ from __future__ import annotations
 
 import argparse
 import filecmp
-import json
 import shutil
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def build_canonical_index() -> dict[str, Path]:
+    """Build a map of skill name -> canonical directory path."""
+    skills_root = REPO_ROOT / "skills"
+    index: dict[str, Path] = {}
+    if not skills_root.is_dir():
+        return index
+    for skill_md in skills_root.rglob("SKILL.md"):
+        skill_dir = skill_md.parent
+        index[skill_dir.name] = skill_dir
+    return index
 
 
 def trees_match(a: Path, b: Path) -> bool:
@@ -33,37 +45,32 @@ def trees_match(a: Path, b: Path) -> bool:
     )
 
 
-def sync_plugin(plugin_dir: Path, check_only: bool) -> list[str]:
+def sync_plugin(plugin_dir: Path, canonical: dict[str, Path], check_only: bool) -> list[str]:
     """Sync one plugin. Returns list of error messages (empty = success)."""
-    manifest_path = plugin_dir / "skills.json"
-    if not manifest_path.exists():
+    skills_dir = plugin_dir / "skills"
+    if not skills_dir.is_dir():
         return []
 
-    manifest = json.loads(manifest_path.read_text())
-    skills_map = manifest.get("skills", {})
-    skills_dir = plugin_dir / "skills"
     errors = []
-
-    for skill_name, source_rel in sorted(skills_map.items()):
-        source = REPO_ROOT / source_rel
-        dest = skills_dir / skill_name
-
-        if not source.is_dir():
-            errors.append(f"{plugin_dir.name}: source not found: {source_rel}")
+    for bundled in sorted(skills_dir.iterdir()):
+        if not bundled.is_dir():
+            continue
+        source = canonical.get(bundled.name)
+        if source is None:
             continue
 
-        if dest.exists() and trees_match(source, dest):
+        if trees_match(source, bundled):
             continue
 
+        source_rel = source.relative_to(REPO_ROOT)
         if check_only:
             errors.append(
-                f"{plugin_dir.name}: {skill_name} is out of sync with {source_rel}"
+                f"{plugin_dir.name}: {bundled.name} is out of sync with {source_rel}"
             )
         else:
-            if dest.exists():
-                shutil.rmtree(dest)
-            shutil.copytree(source, dest)
-            print(f"  synced {skill_name} <- {source_rel}")
+            shutil.rmtree(bundled)
+            shutil.copytree(source, bundled)
+            print(f"  synced {bundled.name} <- {source_rel}")
 
     return errors
 
@@ -75,6 +82,7 @@ def main() -> None:
     args = parser.parse_args()
 
     plugins_dir = REPO_ROOT / "plugins"
+    canonical = build_canonical_index()
     all_errors: list[str] = []
 
     if args.plugin:
@@ -83,12 +91,14 @@ def main() -> None:
             print(f"Plugin not found: {args.plugin}", file=sys.stderr)
             sys.exit(1)
         print(f"{'Checking' if args.check else 'Syncing'} plugin: {args.plugin}")
-        all_errors.extend(sync_plugin(plugin_dir, args.check))
+        all_errors.extend(sync_plugin(plugin_dir, canonical, args.check))
     else:
         for plugin_dir in sorted(plugins_dir.iterdir()):
-            if plugin_dir.is_dir() and (plugin_dir / "skills.json").exists():
+            if not plugin_dir.is_dir():
+                continue
+            if (plugin_dir / "skills").is_dir():
                 print(f"{'Checking' if args.check else 'Syncing'} plugin: {plugin_dir.name}")
-                all_errors.extend(sync_plugin(plugin_dir, args.check))
+                all_errors.extend(sync_plugin(plugin_dir, canonical, args.check))
 
     if all_errors:
         print(f"\n{len(all_errors)} error(s):", file=sys.stderr)
