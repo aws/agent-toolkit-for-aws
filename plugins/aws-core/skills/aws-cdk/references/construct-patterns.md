@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [Scope and Construct IDs](#scope-and-construct-ids)
 - [Choosing Construct Levels](#choosing-construct-levels)
 - [Mixing L1 and L2](#mixing-l1-and-l2)
 - [Cross-Stack References](#cross-stack-references)
@@ -14,6 +15,44 @@
 ## Overview
 
 This reference covers construct selection, composition, cross-stack wiring, and testing patterns. It provides decision frameworks for choosing construct levels, mixing them safely, passing references across stacks, building custom constructs, and verifying infrastructure with assertions.
+
+---
+
+## Scope and Construct IDs
+
+Every construct is created with `new SomeConstruct(scope, id, props?)`. The first two arguments are not interchangeable boilerplate — misusing them is a common review finding.
+
+### Scope (first argument)
+
+Inside a construct's `constructor`, you MUST pass `this` as the scope of child constructs — NOT the incoming `scope` argument:
+
+```typescript
+// ❌ INCORRECT — child parented to the wrong node
+export class MyConstruct extends Construct {
+  constructor(scope: Construct, id: string) {
+    super(scope, id);
+    new ChildConstruct(scope, 'Child');   // wrong: uses 'scope'
+  }
+}
+
+// ✅ CORRECT
+export class MyConstruct extends Construct {
+  constructor(scope: Construct, id: string) {
+    super(scope, id);
+    new ChildConstruct(this, 'Child');     // 'this' is the parent
+  }
+}
+```
+
+Passing `this` makes the child a child of the current construct, which is almost always the intent. A scope other than `this` is legitimate only when it comes from a function parameter or a local variable used to group constructs (e.g. in `App` or helper/test stacks).
+
+### Construct ID (second argument)
+
+The construct ID is the locally unique identifier within a scope. The IDs between a CloudFormation resource and its containing `Stack` are concatenated into the resource's **logical ID** — and changing a logical ID replaces the resource.
+
+- Construct IDs SHOULD be short and to the point.
+- You SHOULD NOT interpolate variables into a construct ID: if the variable's value changes, the logical ID changes and the resource is replaced. Legitimate exceptions (constructs created in a loop; an intentional, conditional replacement) MUST be annotated with a comment explaining why.
+- Construct IDs only need to be unique within their scope. They SHOULD NOT repeat project, region, or stage names already present higher in the construct tree.
 
 ---
 
@@ -32,7 +71,7 @@ You SHOULD prefer L2 constructs as the default choice. They provide sensible def
 
 ### When L1 is viable
 
-L1 (`Cfn*`) constructs are acceptable when no L2 exists or when you need a property the L2 does not expose. You SHOULD combine L1 with Mixins, Facades, or `I``<Resource>``Ref` interfaces to retain type safety and grant support.
+L1 (`Cfn*`) constructs are acceptable when no L2 exists or when you need a property the L2 does not expose. You SHOULD combine L1 with Mixins, Facades, or `I<Resource>Ref` interfaces to retain type safety and grant support.
 
 ### When using L3
 
@@ -42,7 +81,7 @@ L3 constructs provision multiple resources behind a single API. You MUST read wh
 
 Use this escalation ladder — prefer the first option that works:
 
-1. **Cfn``<Resource>``PropsMixin** (preferred) — type-safe, applied via `.with()`:
+1. **Cfn<Resource>PropsMixin** (preferred) — type-safe, applied via `.with()`:
 
    ```typescript
    import { CfnBucketPropsMixin } from '@aws-cdk/cfn-property-mixins/aws-s3';
@@ -62,11 +101,11 @@ Use this escalation ladder — prefer the first option that works:
 
 ## Mixing L1 and L2
 
-When a stack contains both L1 and L2 constructs, you MUST use `I``<Resource>``Ref` interfaces and Facades to bridge them — do not pass L1 property types to L2 props or vice versa, as their types are not interchangeable.
+When a stack contains both L1 and L2 constructs, you MUST use `I<Resource>Ref` interfaces and Facades to bridge them — do not pass L1 property types to L2 props or vice versa, as their types are not interchangeable.
 
-### I``<Resource>``Ref interfaces (e.g. IBucketRef)
+### I<Resource>Ref interfaces (e.g. IBucketRef)
 
-Both L1 and L2 constructs implement `I``<Resource>``Ref`-style interfaces (e.g., `IBucketRef`, `IFunctionRef`). Use these interfaces as prop types to accept either level:
+Both L1 and L2 constructs implement `I<Resource>Ref`-style interfaces (e.g., `IBucketRef`, `IFunctionRef`). Use these interfaces as prop types to accept either level:
 
 ```typescript
 interface MyProps {
@@ -76,7 +115,7 @@ interface MyProps {
 
 ### Facades for L1 grants
 
-L1 constructs lack `grant*()` methods. You SHOULD wrap them with `fromCfn``<Resource>``()` or `from``<Resource>``Attributes()` to get an L2 interface:
+L1 constructs lack `grant*()` methods. You SHOULD wrap them with `fromCfn<Resource>()` or `from<Resource>Attributes()` to get an L2 interface:
 
 ```typescript
 const cfnTable = new dynamodb.CfnTable(this, 'Table', { /* ... */ });
@@ -90,7 +129,7 @@ When you need to customize a resource, follow this order (least invasive first):
 
 1. L2 prop — use the built-in property if available.
 2. Mixin — add behavior via a helper function.
-3. `Cfn``<Resource>``PropsMixin` — type-safe L1 prop injection.
+3. `Cfn<Resource>PropsMixin` — type-safe L1 prop injection.
 4. `node.defaultChild` — access the underlying L1 construct.
 5. `addPropertyOverride` — override arbitrary CloudFormation properties.
 

@@ -17,9 +17,13 @@ run = "npx markdownlint-cli2 '**/*.md' '#node_modules'"
 description = "Validate all manifests and skill frontmatter"
 run = "python3 tools/validate.py"
 
+[tasks."lint:skill-parity"]
+description = "Check plugin skills are in sync with canonical sources"
+run = "python3 tools/sync-plugin-skills.py --check"
+
 [tasks.validate]
 description = "Run all validation"
-depends = ["lint:manifests"]
+depends = ["lint:manifests", "lint:skill-parity"]
 
 [tasks.security]
 description = "Run security scans"

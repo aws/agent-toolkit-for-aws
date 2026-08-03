@@ -26,14 +26,15 @@
     - [Virtual Environment](#virtual-environment)
     - [Common Commands](#common-commands-1)
   - [Version Management Best Practices](#version-management-best-practices)
+    - [CLI and Library Are Separate Release Tracks](#cli-and-library-are-separate-release-tracks)
+    - [Feature Flags](#feature-flags)
 
 ---
 
 ## Overview
 
 Every CDK deployment target (account + region pair) MUST be bootstrapped before the first
-deployment. Projects MUST be initialized with pinned dependencies and strict tooling to
-ensure reproducible builds.
+deployment. Projects MUST commit a lockfile and SHOULD use strict tooling to ensure reproducible builds.
 
 ---
 
@@ -193,7 +194,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Dependencies SHOULD be pinned to exact versions in `requirements.txt`.
+Dependencies SHOULD be captured in `requirements.txt` (or `poetry.lock` / `Pipfile.lock`) and committed for reproducible builds. See [Version Management Best Practices](#version-management-best-practices).
 
 ### Common Commands
 
@@ -208,29 +209,49 @@ cdk doctor          # Check for potential problems
 
 ## Version Management Best Practices
 
-- `aws-cdk-lib` and `constructs` MUST be pinned to exact versions in
-  `package.json` (or `requirements.txt` for Python).
-- The CDK CLI MUST be installed as a pinned dev dependency and invoked via
-  `npx cdk` — MUST NOT be installed globally.
-- `@latest` MUST NOT be used for any CDK package.
-- Teams SHOULD automate weekly dependency upgrades (e.g., Dependabot, Renovate)
-  to stay current without manual drift.
+- **Commit lockfiles** (`package-lock.json` / `poetry.lock` / `Pipfile.lock`). Unlocked builds drift and lose determinism.
+- **For CDK applications**, use **caret (`^`) ranges** for `aws-cdk-lib` and `constructs` in `dependencies` — this is the officially recommended approach. The lockfile provides reproducibility; the caret range lets `npm update` pull compatible fixes and features.
+
+  ```json
+  {
+    "dependencies": {
+      "aws-cdk-lib": "^2.170.0",
+      "constructs": "^10.5.0"
+    }
+  }
+  ```
+
+  Teams that prefer exact pinning for stricter reproducibility SHOULD pair it with automated upgrade tooling (Dependabot, Renovate) to avoid falling behind.
+- **For construct libraries**, declare `aws-cdk-lib` and `constructs` as `peerDependencies` (caret, widest compatible) and as `devDependencies` at the oldest supported exact version.
+- **Experimental / alpha modules** (e.g. `@aws-cdk/aws-*-alpha`) SHOULD use exact versions — their APIs can change between releases without SemVer guarantees.
+- **Automate upgrades**: a weekly job that bumps `aws-cdk-lib`, runs `cdk synth` to catch breaking changes, deploys to a test environment, and opens a PR on success.
+
+### CLI and Library Are Separate Release Tracks
+
+The CDK CLI (`aws-cdk`) and the library (`aws-cdk-lib`) are **independent packages on different release tracks — their version numbers do NOT align**. A CLI at `2.1001.x` paired with a library at `2.200.x` is normal. The compatibility contract is one-way: a newer CLI can read assemblies produced by older libraries, but an older CLI CANNOT read assemblies produced by newer libraries. The mismatch surfaces as:
+
+```
+This CDK CLI is not compatible with the CDK library used by your application.
+(Cloud assembly schema version mismatch)
+```
+
+The fix is to upgrade the CLI to a specific newer version. You MUST install `aws-cdk` as a dev dependency at an **exact** version and invoke it via `npx cdk`; you MUST NOT use `aws-cdk@latest` anywhere — it is non-deterministic, so a broken release can reach your pipeline instantly.
 
 ```json
 {
   "devDependencies": {
-    "aws-cdk": "$EXACT_VERSION"
-  },
-  "dependencies": {
-    "aws-cdk-lib": "$EXACT_VERSION",
-    "constructs": "$EXACT_VERSION"
+    "aws-cdk": "2.1010.0"
   }
 }
 ```
-
-Invoke the CLI through the pinned version:
 
 ```bash
 npx cdk synth
 npx cdk deploy $STACK_NAME
 ```
+
+Bump the pinned CLI version regularly (Dependabot / Renovate), on the same cadence as `aws-cdk-lib`.
+
+### Feature Flags
+
+`cdk.json`'s `context` object carries CDK feature flags — per-release opt-ins to behaviour changes. When upgrading `aws-cdk-lib`, review new flags and adopt them incrementally (inspect via `cdk flags --unstable=flags`). Do not flip everything to recommended in one commit.

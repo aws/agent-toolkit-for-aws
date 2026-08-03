@@ -1,0 +1,12 @@
+{
+  "skills": {
+    "amazon-opensearch-service": "skills/specialized-skills/analytics-skills/amazon-opensearch-service",
+    "connecting-to-data-source": "skills/specialized-skills/analytics-skills/connecting-to-data-source",
+    "creating-data-lake-table": "skills/specialized-skills/storage-skills/creating-data-lake-table",
+    "exploring-data-catalog": "skills/specialized-skills/analytics-skills/exploring-data-catalog",
+    "finding-data-lake-assets": "skills/specialized-skills/analytics-skills/finding-data-lake-assets",
+    "ingesting-into-data-lake": "skills/specialized-skills/analytics-skills/ingesting-into-data-lake",
+    "querying-data-lake": "skills/specialized-skills/analytics-skills/querying-data-lake",
+    "storing-and-querying-vectors": "skills/specialized-skills/storage-skills/storing-and-querying-vectors"
+  }
+}

@@ -49,7 +49,7 @@ The `app` field in `cdk.json` determines the execution mode. The failure causes 
 
 | Cause | Symptom | Fix |
 |-------|---------|-----|
-| Path aliases not resolved by ts-node | `Cannot find module 'lib/MyStack'` | Switch to `tsx`: `"app": "npx tsx bin/my-app.ts"` |
+| Path aliases not resolved by ts-node | `Cannot find module 'lib/MyStack'` | Switch to `tsx` (`"app": "npx tsx bin/my-app.ts"`), or register `tsconfig-paths` with ts-node (`"app": "npx ts-node -r tsconfig-paths/register --prefer-ts-exts bin/my-app.ts"`) |
 | Monorepo — wrong `node_modules` | `Cannot find module 'typescript'` | Verify hoisting: `npm ls typescript`. Point `cdk.json` at correct binary. pnpm: `shamefully-hoist=true`. |
 | `npm link` / symlinked packages | `Cannot find module '@my/shared-constructs'` | Install peer deps explicitly, or `NODE_OPTIONS=--preserve-symlinks`. Long-term: publish to registry. |
 | Wrong working directory | `cdk.json` not found | `cd` to directory containing `cdk.json` |

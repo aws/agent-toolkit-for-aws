@@ -171,6 +171,7 @@ def validate_top_level_skills() -> None:
         validate_skill_frontmatter(skill_md)
 
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate repo manifests and skills")
     parser.add_argument("--plugin", help="Validate only this plugin")
