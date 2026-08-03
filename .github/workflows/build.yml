@@ -45,8 +45,8 @@ jobs:
       - name: Lint markdown
         run: mise run lint:md
 
-      - name: Validate manifests and skills
-        run: mise run lint:manifests
+      - name: Validate manifests, skills, and plugin parity
+        run: mise run validate
 
       - name: Security scan (gitleaks)
         run: mise run security
