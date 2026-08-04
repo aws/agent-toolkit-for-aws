@@ -7,7 +7,7 @@ wiring. See the tool inventory in SKILL.md for what the agent can call.
 
 ```bash
 python3 -m pip install -r requirements.txt
-npm install -g @aws/agentcore          # CLI >= 0.20.0; npm, NOT pip
+npm install -g @aws/agentcore@1.0.0-preview.24
 agentcore --version
 python3 -c "from bedrock_agentcore.payments import PaymentManager; print('payments OK')"
 ```
@@ -46,12 +46,12 @@ an agent prompt, or a command flag.**
 
 ## 2. Create the payment manager
 
-No secrets involved:
+Leave the LLM conversation and run this in a separate terminal. Do not paste
+credentials, command output, deployed state, or generated IDs back into chat.
+Use the bare command so the whole setup stays in the interactive terminal:
 
 ```bash
-agentcore add payment-manager \
-  --name <ManagerName> \
-  --network-preferences eip155:84532        # Base Sepolia testnet
+agentcore add payment-manager
 ```
 
 Names: start with a letter, alphanumeric plus underscores, ≤48 characters.
@@ -91,7 +91,7 @@ must be added. **The agent must never read this file.**
 ## 4. Deploy
 
 ```bash
-agentcore deploy -y
+agentcore deploy
 ```
 
 Provisions the manager and connector, plus a

@@ -1,13 +1,14 @@
 # OpenClaw Package Publishing
 
 This directory is the canonical source for the `@aws/aws-agents-pay`
-OpenClaw package. PR 1797 in `awslabs/agentcore-samples` carries a traceable
-snapshot for its tutorial, not a second publication source.
+OpenClaw package. The published artifact also contains the canonical
+`agents-pay` skill staged from the parent skill directory.
 
 ## Release versions
 
 - Initial release: `1.0.0`
 - Scoped install compatibility fix: `1.0.1`
+- Bundled canonical skill and external setup guidance: `1.0.2`
 
 Do not publish until the package has passed the checks below and the publisher
 has given explicit approval.
@@ -66,10 +67,10 @@ Run this before requesting publication approval:
 npx --yes clawhub@0.23.1 package publish . \
   --family code-plugin \
   --name @aws/aws-agents-pay \
-  --version 1.0.1 \
+  --version 1.0.2 \
   --tags latest \
   --source-repo aws/agent-toolkit-for-aws \
-  --source-commit <pr-215-head-sha> \
+  --source-commit <release-commit-sha> \
   --source-ref feat/agents-pay-skill \
   --source-path plugins/aws-agents/skills/agents-pay/packages/openclaw \
   --dry-run --json
@@ -92,5 +93,5 @@ only:
 5. Complete one approved Base Sepolia payment.
 6. Roll back to the prior plugin and configuration.
 
-Apply any validation fix to this canonical directory first, rerun the checks,
-then refresh the exact tutorial snapshot in PR 1797.
+Apply any validation fix to this canonical directory first and rerun the checks.
+PR 1797 consumes the published package and does not carry a source snapshot.

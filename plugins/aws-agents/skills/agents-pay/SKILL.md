@@ -25,7 +25,7 @@ metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
-  requires-cli: ">=0.20.0"
+  requires-cli: ">=1.0.0-preview.24"
 ---
 
 # pay
@@ -229,26 +229,31 @@ files (`../other-skill/...`) can silently break. Everything needed is here.
 ```bash
 python3 --version                      # 3.9+
 python3 -m pip install -r requirements.txt
-agentcore --version                    # >= 0.20.0; npm i -g @aws/agentcore
+agentcore --version                    # >= 1.0.0-preview.24
 ```
 
 `bedrock_agentcore.payments` must be importable — earlier releases lack it.
 Verify: `python3 -c "from bedrock_agentcore.payments import PaymentManager"`.
 
-### Step 1: Provision payment resources — human runs this
+### Step 1: Provision payment resources — human runs this outside the LLM loop
 
-The agent must NOT run this step; it involves provider credentials.
+The agent must NOT run this step; it involves provider credentials. Tell the
+user to open a separate terminal and complete the commands there. Do not ask
+them to paste credentials, command output, deployed state, or generated IDs
+back into chat. Wait only for the user to confirm that setup completed.
 
 ```bash
-agentcore add payment-manager --name <ManagerName> --network-preferences eip155:84532
+npm install -g @aws/agentcore@1.0.0-preview.24
+agentcore add payment-manager          # NO FLAGS — interactive wizard
 agentcore add payment-connector        # NO FLAGS — interactive wizard
-agentcore deploy -y
+agentcore deploy                       # interactive deployment
 ```
 
-Run `agentcore add payment-connector` with **no flags** so the wizard prompts for
-secrets interactively; passing them as flags puts them in shell history and the
-process list. See [`references/setup.md`](references/setup.md) for obtaining
-Coinbase CDP / Stripe Privy credentials and for the split IAM policies.
+Run both `agentcore add` commands with **no flags** to keep the complete setup
+flow in the human's terminal. In particular, connector secret flags put values
+in shell history and the process list. See
+[`references/setup.md`](references/setup.md) for obtaining Coinbase CDP /
+Stripe Privy credentials and for the split IAM policies.
 
 `agentcore/.env.local` holds provider secrets in plaintext until `deploy`
 uploads them to AgentCore Identity. Ensure `.env.local` is gitignored. **The
@@ -314,16 +319,22 @@ Otherwise an agent that exhausts one budget can mint another, and a per-session
 cap stops being a cumulative bound. See the split policies in
 [`references/setup.md`](references/setup.md).
 
-### Step 5: Wire the runtime — the agent may run this
+### Step 5: Wire the runtime — human completes this locally
 
-Export the identifiers (no secrets), then register the tool:
+The human exports the identifiers or writes the OpenClaw plugin configuration
+in the same separate terminal. The agent must not ask the user to paste these
+values or command output into chat. For OpenClaw, follow
+[`references/openclaw-setup.md`](references/openclaw-setup.md).
 
 ```bash
 export PAYMENT_MANAGER_ARN=...   PAYMENT_INSTRUMENT_ID=...
 export PAYMENT_SESSION_ID=...    PAYMENT_USER_ID=alice
 export AWS_REGION=us-west-2
-python3 scripts/agents_pay_admin.py preflight     # verifies wiring, flags stray secrets
+python3 scripts/agents_pay_admin.py preflight
 ```
+
+After the user confirms that local wiring is complete, the agent may call only
+the read-only session-status tool to verify readiness.
 
 ### How the agent invokes it
 
