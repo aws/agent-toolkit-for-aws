@@ -7,6 +7,7 @@ snapshot for its tutorial, not a second publication source.
 ## Release versions
 
 - Initial release: `1.0.0`
+- Scoped install compatibility fix: `1.0.1`
 
 Do not publish until the package has passed the checks below and the publisher
 has given explicit approval.
@@ -65,7 +66,7 @@ Run this before requesting publication approval:
 npx --yes clawhub@0.23.1 package publish . \
   --family code-plugin \
   --name @aws/aws-agents-pay \
-  --version 1.0.0 \
+  --version 1.0.1 \
   --tags latest \
   --source-repo aws/agent-toolkit-for-aws \
   --source-commit <pr-215-head-sha> \
