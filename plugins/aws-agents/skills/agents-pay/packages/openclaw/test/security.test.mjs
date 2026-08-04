@@ -200,16 +200,19 @@ test("manifest permits installation before trusted runtime config is supplied", 
 });
 
 test("public package and runtime identities stay aligned", async () => {
-  const [manifest, packageJson] = await Promise.all([
+  const [manifest, packageJson, readme] = await Promise.all([
     readFile(new URL("../openclaw.plugin.json", import.meta.url), "utf8").then(
       JSON.parse,
     ),
     readFile(new URL("../package.json", import.meta.url), "utf8").then(
       JSON.parse,
     ),
+    readFile(new URL("../README.md", import.meta.url), "utf8"),
   ]);
   assert.equal(packageJson.name, "@aws/aws-agents-pay");
-  assert.equal(packageJson.version, "1.0.0");
+  assert.equal(packageJson.version, "1.0.1");
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
+  assert.match(readme, /clawhub:\@aws%2Faws-agents-pay/);
+  assert.doesNotMatch(readme, /clawhub:\@aws\/aws-agents-pay/);
 });

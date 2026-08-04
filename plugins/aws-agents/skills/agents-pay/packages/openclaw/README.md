@@ -7,6 +7,15 @@ through AWS AgentCore Payments. It exposes two runtime tools:
 - `get_paid_content` pays an approved HTTPS resource and returns response
   metadata and a SHA-256 body digest, never the signed proof or paid body.
 
+Install from ClawHub:
+
+```bash
+openclaw plugins install clawhub:@aws%2Faws-agents-pay
+```
+
+The encoded slash is required by OpenClaw when installing a scoped ClawHub
+package.
+
 The runtime requires an existing payment manager, instrument, user, and session.
 It cannot provision payment infrastructure or create replacement sessions.
 Configure approved origins, recipients, networks, assets, and a positive

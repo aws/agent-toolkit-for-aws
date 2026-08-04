@@ -7,7 +7,7 @@ source lives at
 ## Install
 
 ```bash
-openclaw plugins install clawhub:@aws/aws-agents-pay
+openclaw plugins install clawhub:@aws%2Faws-agents-pay
 ```
 
 ## Configure
