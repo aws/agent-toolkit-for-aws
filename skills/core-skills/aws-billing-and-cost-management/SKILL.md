@@ -8,7 +8,8 @@ description: |
   AWS bill, cost analysis, reduce spend, savings plan, reserved instance,
   right-size, budget alert, cost optimization, pricing, free tier, cost
   anomaly, CUR, cost audit, billing view, billing view ARN.
-version: 1
+metadata:
+  version: "1"
 ---
 
 # Billing and Cost Management

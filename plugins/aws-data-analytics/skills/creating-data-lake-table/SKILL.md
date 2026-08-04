@@ -9,8 +9,9 @@ description: >-
   importing files (use ingesting-into-data-lake), vector storage (use storing-and-querying-vectors),
   querying existing tables (use querying-data-lake), or locating existing table (use
   finding-data-lake-assets).
-version: 1
-argument-hint: '[table-description|schema-spec]'
+metadata:
+  version: "1"
+  argument-hint: "'[table-description|schema-spec]'"
 ---
 
 # Create Data Lake Tables with Amazon S3 Tables

@@ -12,7 +12,8 @@ description: >-
   debug without redeploying. Applies to CloudWatch, alarms, dashboards, EMF, X-Ray, traces, CloudTrail,
   ADOT, monitoring, synthetics/canaries, OR enabling/onboarding/instrumenting
   a service for Application Signals. Not for app logging or security threat detection.
-version: 2
+metadata:
+  version: "2"
 ---
 
 # AWS Observability

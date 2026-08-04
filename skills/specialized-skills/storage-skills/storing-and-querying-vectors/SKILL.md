@@ -7,7 +7,8 @@ description: >-
   similarity search, vector database, migrate from other vector databases. Do NOT
   use for: querying tabular data (use querying-data-lake), S3 object storage, or hundreds/thousands
   of sustained QPS (use OpenSearch).
-version: 1
+metadata:
+  version: "1"
 ---
 
 # Store and Query Vectors with Amazon S3 Vectors

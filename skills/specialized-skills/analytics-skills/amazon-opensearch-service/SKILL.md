@@ -1,7 +1,8 @@
 ---
 name: amazon-opensearch-service
 description: Amazon OpenSearch Service and Serverless across five capabilities — migration (Solr/ES/self-managed OpenSearch into AOS/AOSS, schema/query translation, sizing, cutover); provisioning (domain + AOSS lifecycle, upgrades, storage tiers, FGAC, monitoring); search (vector / semantic / hybrid / RAG with Bedrock connectors); log-analytics (PPL, OSI ingestion, anomaly detection, OpenSearch Dashboards, Splunk/Datadog alternatives); trace-analytics (OTel spans, service maps, Data Prepper). Triggers on OpenSearch, AOS, AOSS, Elasticsearch, ELK, Solr, Lucene, vector / k-NN / semantic / hybrid / neural search, RAG, ELSER, log analytics, observability, Kibana, OSI, OCU, PPL, trace analytics, BM25, eDisMax, schema.xml, ILM, ISM, FAISS, HNSW, Migration Assistant for Amazon OpenSearch Service, Historical Data Migration, Live Traffic Migration, UltraWarm, OR1, Splunk/Datadog alternative, moving off Solr. Picks ONE capability per ask, names instance class + count + shard math, ships query DSL examples.
-version: 1
+metadata:
+  version: "1"
 ---
 
 # Amazon OpenSearch Service — the unified skill

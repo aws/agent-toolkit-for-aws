@@ -1,0 +1,33 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aws-agents-for-devsecops",
+  "version": "1.0.0",
+  "description": "Investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with AWS DevOps Agent and AWS Security Agent.",
+  "author": {
+    "name": "Amazon Web Services"
+  },
+  "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
+  "repository": "https://github.com/aws/agent-toolkit-for-aws",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aws",
+    "devops",
+    "devsecops",
+    "security",
+    "security-scan",
+    "pentest",
+    "penetration-test",
+    "incident",
+    "investigation",
+    "code-review",
+    "release-readiness",
+    "release-testing",
+    "threat-model",
+    "remediation",
+    "observability",
+    "cloudwatch",
+    "mcp",
+    "qa",
+    "uat"
+  ]
+}

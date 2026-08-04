@@ -8,7 +8,8 @@ description: >-
   use specific skills or documentation searches for detailed service-specific questions.
   Do NOT use for MSK or Managed Service for Apache Flink questions, prefer specific
   skills.
-version: 2
+metadata:
+  version: "2"
 ---
 
 # AWS Messaging & Streaming Services

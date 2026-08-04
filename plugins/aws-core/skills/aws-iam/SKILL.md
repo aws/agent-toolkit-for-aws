@@ -13,7 +13,8 @@ description: >
   writing IAM or bucket policies, working with STS, Organizations, condition operators, or
   any task requiring an IAM service role or execution role. Does not cover non-IAM
   authorization like Cognito user-pool policies or app-level RBAC.
-version: 1
+metadata:
+  version: "1"
 ---
 
 # AWS IAM — Common Pitfalls

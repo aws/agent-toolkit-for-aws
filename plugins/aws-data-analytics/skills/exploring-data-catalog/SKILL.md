@@ -6,8 +6,9 @@ description: >-
   list all tables, catalog overview, data landscape, enumerate catalogs, data inventory,
   search the catalog. Do NOT use for finding specific data (use finding-data-lake-assets),
   running queries (use querying-data-lake), or creating tables (use creating-data-lake-table).
-version: 2
-argument-hint: '[search-term|catalog-name|database-name|s3://bucket-path|table-name]'
+metadata:
+  version: "2"
+  argument-hint: "'[search-term|catalog-name|database-name|s3://bucket-path|table-name]'"
 ---
 
 Structured inventory and cataloging across your AWS data landscape: Glue Data Catalog with S3 Tables, Redshift-federated, and remote Iceberg catalogs.

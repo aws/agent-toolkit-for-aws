@@ -6,8 +6,9 @@ description: >-
   analyze table, SQL query, workgroup status, profile table, query Redshift catalog,
   query S3 Tables. Do NOT use for finding specific data assets (use finding-data-lake-assets),
   full catalog audits (use exploring-data-catalog), importing data (use ingesting-into-data-lake).
-version: 1
-argument-hint: '[SQL-query|query-name|workgroup-name|catalog-name|''profile TABLE_NAME'']'
+metadata:
+  version: "1"
+  argument-hint: "'[SQL-query|query-name|workgroup-name|catalog-name|''profile TABLE_NAME'']'"
 ---
 
 # Query Data Lake
