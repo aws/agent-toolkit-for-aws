@@ -1,4 +1,4 @@
-"""Trusted x402 fetch: settle a 402 and return content WITHOUT leaking secrets.
+"""Trusted x402 fetch: settle a 402 and return metadata without leaking secrets.
 
 Register `x402_fetch` as a tool in any Python framework. Everything
 security-relevant happens in this process, never in the model's context:
@@ -8,8 +8,9 @@ security-relevant happens in this process, never in the model's context:
     discarded. It is never returned, logged, or shown to the model.
   * Provider credentials are never parameters — this module never touches them.
     Signing happens inside AgentCore Payments; only resource IDs live here.
-  * Paid content is returned as bounded, structured data with a caller-visible
-    `untrusted: true` marker, so the caller can route it away from tools.
+  * Paid content is not returned into the model context. The tool returns only
+    bounded metadata and a SHA-256 hash, so fetched instructions cannot become
+    payment-capable instructions.
 
 Configuration
 -------------
@@ -36,6 +37,7 @@ compromised agent cannot mint budget or create payment resources.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -75,12 +77,6 @@ TIMEOUT_SECONDS = _bounded_env("X402_TIMEOUT_SECONDS", 20.0, 1.0, 120.0)
 # Transient on-chain settlement can leave a paid retry at 402; replay the SAME
 # authorization up to this many times. Bounded so a bad value cannot loop forever.
 MAX_PAYMENT_ATTEMPTS = int(_bounded_env("X402_MAX_PAYMENT_ATTEMPTS", 5, 1, 10))
-
-# Only these content types are returned to the caller. Anything else is
-# summarized by length alone: paid content is untrusted input, and HTML/JS is a
-# far richer injection and rendering surface than text or JSON.
-_ALLOWED_CONTENT_PREFIXES = ("application/json", "text/plain", "text/markdown", "text/csv")
-
 
 class PaymentBlocked(Exception):
     """Raised when trusted code refuses to pay or to fetch."""
@@ -249,22 +245,19 @@ def _body_text(response: httpx.Response) -> str:
 
 
 def _safe_content(response: httpx.Response) -> dict[str, Any]:
-    """Return paid content as bounded, explicitly untrusted structured data."""
+    """Return metadata only; never place publisher content in model context."""
     content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
-    if not content_type.startswith(_ALLOWED_CONTENT_PREFIXES):
-        return {
-            "content_type": content_type or "unknown",
-            "omitted": True,
-            "bytes": len(getattr(response, "read_body", b"")),
-            "note": (
-                "Body withheld: content type is not in the allowed set "
-                "(json/plain/markdown/csv). Paid content is untrusted input."
-            ),
-        }
+    raw: bytes = getattr(response, "read_body", b"")
     return {
-        "content_type": content_type,
-        "body": _body_text(response),
-        "bytes": len(getattr(response, "read_body", b"")),
+        "content_type": content_type or "unknown",
+        "body_returned": False,
+        "body_sha256": hashlib.sha256(raw).hexdigest(),
+        "bytes": len(raw),
+        "note": (
+            "Body withheld: paid publisher content is untrusted and must not enter "
+            "the payment-capable model context. Use a separate no-payment/no-network "
+            "analysis context if summarisation is required."
+        ),
     }
 
 
@@ -533,9 +526,9 @@ def _extract_challenge(response: httpx.Response) -> dict:
 def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") -> str:
     """Fetch an x402-protected URL, paying only if trusted policy allows it.
 
-    Returns a JSON string. On success it contains the status, bounded content,
+    Returns a JSON string. On success it contains status, response metadata,
     and a redacted payment receipt (amount, network, resource) — never the
-    signed proof, never a credential, never a transaction signature.
+    paid body, signed proof, credential, or transaction signature.
     """
     try:
         # Pre-flight: load policy and clear the origin BEFORE any network I/O, so

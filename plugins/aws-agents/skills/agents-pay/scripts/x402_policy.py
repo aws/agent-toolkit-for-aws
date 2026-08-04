@@ -33,6 +33,7 @@ group/world-writable, no symlinks (see load_config). One file, two sections:
         "allowed_assets": {             # network -> exact asset contract(s)
           "eip155:84532": ["0x036CbD53842c5426634e7929541eC2318f3dCF7e"]
         },
+        "allowed_recipients": ["0x1111111111111111111111111111111111111111"],
         "allowed_origins": ["https://sandbox.node4all.com"],
         "allowed_schemes": ["exact"]
       }
@@ -40,34 +41,17 @@ group/world-writable, no symlinks (see load_config). One file, two sections:
 
 Absent keys deny rather than allow. There is no wildcard.
 
-Recipient validation is OUT OF SCOPE
-------------------------------------
-This gate does NOT validate the payee (`payTo`). That is deliberate and it is a
-known, documented gap rather than an oversight.
+Recipient validation
+--------------------
+The payee (`payTo`) must appear in `allowed_recipients`, an operator-approved
+allowlist in the config file. Unknown recipients are refused before signing.
 
-x402's premise is that an agent discovers a resource on the open web and pays
-whatever that resource asks. Pinning payees to an operator-maintained list — or
-interrupting for approval each time a new address appears — defeats that premise:
-the agent stops being able to transact with sites nobody enumerated in advance.
-
-AppSec finding 1 remediation item 5 asks for one of: "Validate the recipient
-against a customer approved policy OR require trusted approval for a new
-recipient." **Neither is implemented here**, so a reviewer should expect this to be
-raised. What bounds the loss instead:
-
-  * `max_per_payment_usd` caps any single payment;
-  * the session budget caps cumulative spend before a human re-approves;
-  * network, exact asset contract, and scheme are all validated;
-  * the wallet balance is a hard backstop.
-
-So a hostile site can be paid, but only up to the per-payment ceiling, and only
-until the session budget is exhausted.
-
-**Clients who need recipient control must implement it themselves.** The hook is
-`select_accept_entry()`: add a check on `entry["payTo"]` before returning, backed by
-whatever source of truth you trust (an allowlist, a service call, or a
-human-approval queue). Keep it in trusted code — a recipient rule the model can
-talk past is not a control.
+This is intentionally less "open web" than x402 can be in theory, but it is the
+only deterministic way for this runtime skill to satisfy the AppSec requirement
+that a publisher-controlled challenge must not choose a new recipient by itself.
+If an operator wants to transact with a new merchant, they first add that wallet
+address through the trusted admin path and review the per-payment and session
+limits at the same time.
 
 Two ceilings, not one
 ---------------------
@@ -506,6 +490,7 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
 
     allowed_networks = _policy_list(policy, "allowed_networks")
     allowed_schemes = _policy_list(policy, "allowed_schemes") or ["exact"]
+    allowed_recipients = [r.lower() for r in _policy_list(policy, "allowed_recipients")]
     allowed_assets = policy.get("allowed_assets") or {}
     if not isinstance(allowed_assets, dict):
         raise _fail("Payment policy 'allowed_assets' must be an object.")
@@ -513,6 +498,8 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
 
     if not allowed_networks:
         raise _fail("Payment policy allows no networks.")
+    if not allowed_recipients:
+        raise _fail("Payment policy allows no recipients.")
 
     for entry in accepts:
         if not isinstance(entry, dict):
@@ -529,8 +516,8 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
         permitted_assets = [a.lower() for a in allowed_assets.get(network, [])]
         if str(entry["asset"]).lower() not in permitted_assets:
             continue
-        # NOTE: the recipient (payTo) is deliberately NOT validated. See the
-        # "Recipient validation is out of scope" note in the module docstring.
+        if str(entry["payTo"]).lower() not in allowed_recipients:
+            continue
         amount = entry.get("amount", entry.get("maxAmountRequired"))
         if amount is None:
             continue
@@ -590,11 +577,24 @@ def authorize_payment(
         "amount_base_units": str(amount_units),
         "amount_usd": str(base_units_to_usd(amount_units)),
         "x402_version": int(challenge.get("x402Version") or challenge.get("version") or 1),
-        "client_token": derive_client_token(url, entry, challenge, purchase_id),
+        "client_token": derive_client_token(
+            url,
+            entry,
+            challenge,
+            purchase_id,
+            session_id=resolve_resource(policy, "payment_session_id") or "",
+        ),
     }
 
 
-def derive_client_token(url: str, accept: dict, challenge: dict, purchase_id: str | None = None) -> str:
+def derive_client_token(
+    url: str,
+    accept: dict,
+    challenge: dict,
+    purchase_id: str | None = None,
+    *,
+    session_id: str | None = None,
+) -> str:
     """Derive a stable idempotency token for one logical purchase.
 
     Same (session, resource, network, asset, recipient, amount) always yields the
@@ -615,9 +615,10 @@ def derive_client_token(url: str, accept: dict, challenge: dict, purchase_id: st
     repeat buys. Suppressing a duplicate charge is the safer default when the
     caller has not said otherwise.
     """
+    session = session_id if session_id is not None else os.environ.get("PAYMENT_SESSION_ID", "")
     material = "\x1f".join(  # unit separator: cannot appear in these values
         [
-            os.environ.get("PAYMENT_SESSION_ID", ""),
+            session,
             _canonical_origin(url),
             urlparse(url).path or "/",
             str(accept.get("network", "")),

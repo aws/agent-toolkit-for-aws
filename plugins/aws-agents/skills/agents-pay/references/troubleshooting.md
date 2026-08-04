@@ -30,11 +30,11 @@ curl -sD - https://<host>/<path> -o /dev/null \
 python3 scripts/agents_pay_admin.py show-config
 ```
 
-The recipient is **not** checked, so it is never the cause of a refusal. Compare, in
-this order:
+Compare, in this order:
 
 | Check | Challenge field | Policy key |
 |---|---|---|
+| Recipient | `accepts[].payTo` | `allowed_recipients` |
 | Amount | `accepts[].amount` (base units) | `max_per_payment_usd` |
 | Network | `accepts[].network` | `allowed_networks` |
 | Asset | `accepts[].asset` | `allowed_assets[network]` |
@@ -107,8 +107,8 @@ investigate before "fixing" it — something wrote it as another user.
 ### "Payment policy allows no recipients" / "allows no origins"
 
 An empty allowlist denies everything. Absent keys deny rather than allow; there
-is no wildcard. Re-run `init-config` with at least one `--recipient` and
-`--origin`.
+is no wildcard. Re-run `init-config` with at least one `--recipient`. Add
+`--origin` only when you want to pin the merchant host set.
 
 ## Failures
 

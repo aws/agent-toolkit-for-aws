@@ -29,6 +29,7 @@ BASE_POLICY = {
     "max_per_payment_usd": "0.50",
     "allowed_networks": ["eip155:84532"],
     "allowed_assets": {"eip155:84532": [USDC_BASE_SEPOLIA]},
+    "allowed_recipients": [MERCHANT],
     "allowed_origins": [ORIGIN],
     "allowed_schemes": ["exact"],
 }
@@ -203,8 +204,7 @@ class RecipientAndValueTests(unittest.TestCase):
     def test_does_not_blindly_take_first_accepts_entry(self):
         """The reviewed implementation took accepts[0]; a compliant later entry must win.
 
-        Discriminates on amount, since that is enforced — the recipient is not
-        validated at all (see RecipientNotValidatedTests).
+        Discriminates on amount and recipient, since both are enforced by policy.
         """
         ch = challenge()
         hostile = dict(ch["accepts"][0])
@@ -283,40 +283,35 @@ class SingleTenantUserIdTests(unittest.TestCase):
         self.assertIsNone(self.admin.resolve_user_id(None, self.path))
 
 
-class RecipientNotValidatedTests(unittest.TestCase):
-    """Recipient validation is deliberately NOT implemented — pin that fact.
+class RecipientValidationTests(unittest.TestCase):
+    """Finding 1: the publisher cannot choose an unapproved recipient."""
 
-    x402 assumes an agent pays whatever a resource on the open web asks, so pinning
-    payees defeats the pattern. AppSec finding 1 item 5 asks for an allowlist OR
-    trusted approval for a new recipient; neither is here, and that is a documented
-    gap a client implements themselves if they need it.
-
-    These tests exist so the gap stays deliberate: if someone adds a payee check
-    later, the first test fails and forces the docs to be updated with it.
-    """
-
-    def test_any_recipient_is_accepted(self):
-        """An unknown payee is paid, bounded only by the ceilings."""
-        entry = pol.select_accept_entry(challenge(payTo=ATTACKER), BASE_POLICY)
-        self.assertEqual(entry["payTo"], ATTACKER)
-
-    def test_the_ceiling_still_bounds_an_unknown_recipient(self):
-        """This is what limits the loss instead of a payee check."""
+    def test_unknown_recipient_is_refused(self):
         with self.assertRaises(pol.PolicyError):
-            pol.select_accept_entry(
-                challenge(payTo=ATTACKER, amount="5000000"), BASE_POLICY
-            )
+            pol.select_accept_entry(challenge(payTo=ATTACKER), BASE_POLICY)
 
-    def test_network_asset_and_scheme_are_still_validated(self):
+    def test_known_recipient_is_accepted(self):
+        entry = pol.select_accept_entry(challenge(payTo=MERCHANT), BASE_POLICY)
+        self.assertEqual(entry["payTo"], MERCHANT)
+
+    def test_missing_recipient_allowlist_denies_by_default(self):
+        policy = dict(BASE_POLICY)
+        policy.pop("allowed_recipients")
+        with self.assertRaises(pol.PolicyError) as ctx:
+            pol.select_accept_entry(challenge(payTo=MERCHANT), policy)
+        self.assertIn("allows no recipients", str(ctx.exception))
+
+    def test_recipient_match_is_case_insensitive(self):
+        policy = dict(BASE_POLICY)
+        policy["allowed_recipients"] = [MERCHANT.upper()]
+        entry = pol.select_accept_entry(challenge(payTo=MERCHANT.lower()), policy)
+        self.assertEqual(entry["payTo"], MERCHANT.lower())
+
+    def test_network_asset_and_scheme_are_still_validated_for_known_recipient(self):
         for kwargs in ({"network": "eip155:1"}, {"asset": ATTACKER}, {"scheme": "upto"}):
             with self.subTest(**kwargs):
                 with self.assertRaises(pol.PolicyError):
-                    pol.select_accept_entry(challenge(payTo=ATTACKER, **kwargs), BASE_POLICY)
-
-    def test_no_recipient_machinery_remains(self):
-        """Guards against a half-removed implementation reappearing."""
-        for name in ("recipient_mode", "load_known_recipients", "_recipient_permitted"):
-            self.assertFalse(hasattr(pol, name), f"{name} should have been removed")
+                    pol.select_accept_entry(challenge(payTo=MERCHANT, **kwargs), BASE_POLICY)
 
 
 class OptionalOriginTests(unittest.TestCase):
@@ -469,6 +464,30 @@ class IdempotencyTests(unittest.TestCase):
         first = self._token()
         os.environ["PAYMENT_SESSION_ID"] = "sess-2"
         self.assertNotEqual(first, self._token())
+
+    def test_authorization_token_uses_config_session_over_environment(self):
+        """The protected config session is the spend boundary, so it keys retries."""
+        policy = dict(BASE_POLICY)
+        policy["_resources"] = {"payment_session_id": "sess-approved-small"}
+        os.environ["PAYMENT_SESSION_ID"] = "sess-attacker-huge"
+        ch = challenge()
+
+        decision = pol.authorize_payment(f"{ORIGIN}/v1/x402-test", ch, policy)
+        expected = pol.derive_client_token(
+            f"{ORIGIN}/v1/x402-test",
+            ch["accepts"][0],
+            ch,
+            session_id="sess-approved-small",
+        )
+        env_based = pol.derive_client_token(
+            f"{ORIGIN}/v1/x402-test",
+            ch["accepts"][0],
+            ch,
+            session_id="sess-attacker-huge",
+        )
+
+        self.assertEqual(decision["client_token"], expected)
+        self.assertNotEqual(decision["client_token"], env_based)
 
 
 class PolicyDirectoryTests(unittest.TestCase):

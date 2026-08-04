@@ -6,7 +6,7 @@ wiring. See the tool inventory in SKILL.md for what the agent can call.
 ## 0. Install
 
 ```bash
-python3 -m pip install 'httpx>=0.27' 'bedrock-agentcore>=1.19.0'
+python3 -m pip install -r requirements.txt
 npm install -g @aws/agentcore          # CLI >= 0.20.0; npm, NOT pip
 agentcore --version
 python3 -c "from bedrock_agentcore.payments import PaymentManager; print('payments OK')"
@@ -15,10 +15,13 @@ python3 -c "from bedrock_agentcore.payments import PaymentManager; print('paymen
 If that import fails, the installed `bedrock-agentcore` predates payments
 support. Upgrade before continuing — nothing below will work without it.
 
-For reproducible installs (finding 9), pin with hashes rather than floors:
+`requirements.txt` pins the complete Python runtime graph used by this skill. For
+integrity pinning in your own release process, generate platform-specific hashes
+from that exact graph:
 
 ```bash
-python3 -m pip install --require-hashes -r requirements.txt
+python3 -m pip download -r requirements.txt -d wheels/
+python3 -m pip hash wheels/*
 ```
 
 ## 1. Obtain provider credentials
@@ -226,7 +229,8 @@ guide for the full base and per-connector permissions.
 ```bash
 python3 scripts/agents_pay_admin.py init-config \
   --max-per-payment-usd 0.05 \
-  --network eip155:84532
+  --network eip155:84532 \
+  --recipient 0xMerchantWalletAddress
 ```
 
 To find a merchant's real `payTo` and amount before allowlisting, read its
@@ -238,12 +242,11 @@ curl -sD - https://<merchant-host>/<path> -o /dev/null \
 ```
 
 Inspect `accepts[].payTo`, `.amount` (integer base units; USDC has 6 decimals,
-so `2000` = $0.002), `.asset`, and `.network`, then allowlist deliberately.
+so `2000` = $0.002), `.asset`, and `.network`, then allowlist deliberately with
+`--recipient`. Unknown recipients are refused before signing.
 
 Add `--origin https://host` (repeatable) only if you want to pin the agent to a
 known merchant set; omitted, it may fetch any public HTTPS site.
-
-**The payee is not validated** — see the known-gap note in operator-guide.md.
 
 ## 7. Create the per-user instrument
 

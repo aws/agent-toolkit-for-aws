@@ -205,6 +205,7 @@ def cmd_init_config(args: argparse.Namespace) -> int:
         "max_per_payment_usd": args.max_per_payment_usd,
         "allowed_networks": [network],
         "allowed_assets": {network: [asset]},
+        "allowed_recipients": list(args.recipient),
         "allowed_schemes": ["exact"],
     }
     # Omitted entirely when not pinned, so the agent can browse the open web.
@@ -241,12 +242,8 @@ def cmd_init_config(args: argparse.Namespace) -> int:
         "drain the session in a single payment."
     )
     print(
-        "\n*** RECIPIENT VALIDATION IS NOT IMPLEMENTED. The payee (payTo) named by a\n"
-        "*** site is NOT checked, because x402 assumes an agent pays whatever a\n"
-        "*** resource on the open web asks. A hostile site CAN be paid — bounded by\n"
-        "*** max_per_payment_usd per payment and by the session budget in total.\n"
-        "*** If you need payee control, implement it in select_accept_entry() in\n"
-        "*** x402_policy.py. See references/security-model.md."
+        "\nApproved recipients are enforced in trusted code. A challenge whose payTo is\n"
+        "not in allowed_recipients is refused before ProcessPayment is called."
     )
     if not args.origin:
         print(
@@ -469,7 +466,7 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         import x402_policy as pol
 
         policy = pol.load_config(args.path) if args.path else pol.load_config()
-        print(f"[ok]   policy loaded, max_amount_usd={policy['max_amount_usd']}")
+        print(f"[ok]   policy loaded, max_per_payment_usd={policy['max_per_payment_usd']}")
     except Exception as e:  # noqa: BLE001
         print(f"[FAIL] policy: {e}")
         ok = False
@@ -529,6 +526,8 @@ def main() -> int:
     p.add_argument("--user-id", default=None,
                    help="Payer identity. Omit to have one generated (single-tenant default).")
     p.add_argument("--network", default="eip155:84532", help="CAIP-2 network (default Base Sepolia testnet)")
+    p.add_argument("--recipient", action="append", required=True,
+                   help="Approved merchant payTo wallet address (repeatable). Required: unknown recipients are refused.")
     p.add_argument("--origin", action="append", default=[],
                    help="Pin to these https origins (repeatable). Omit to allow the open web.")
     p.add_argument("--path", default=None, help="Config path (default ~/.agents-pay/config.json)")

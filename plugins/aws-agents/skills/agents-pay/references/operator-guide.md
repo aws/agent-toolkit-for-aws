@@ -245,29 +245,13 @@ environment chooses the session.
 ### Browsing the open web
 
 By default the agent may fetch **any public HTTPS site**. `allowed_origins` is
-optional; set it only when you want to pin a known merchant set.
+optional; set it only when you want to pin a known merchant set. Payment still
+requires an approved recipient: the challenge `payTo` must appear in
+`allowed_recipients`, or trusted code refuses before signing.
 
-> ### Known gap: the payment recipient is NOT validated
->
-> **The payee (`payTo`) named by a site is not checked.** A hostile site can be paid,
-> bounded only by `max_per_payment_usd` per payment and by the session budget in
-> total.
->
-> This is deliberate. x402 assumes an agent discovers a resource on the open web and
-> pays what it asks; pinning payees to a pre-registered list, or interrupting for
-> approval on every new address, defeats that pattern.
->
-> AppSec finding 1 remediation item 5 asks for a recipient allowlist **or** trusted
-> approval for new recipients. **Neither is implemented, and a security review will
-> raise it.** Accept the risk knowingly, or implement it yourself.
->
-> **To add it:** put a check on `entry["payTo"]` in `select_accept_entry()` in
-> `scripts/x402_policy.py`, backed by whatever source of truth you trust. Keep it in
-> Python — a recipient rule the model can talk past is not a control.
-
-What does bound the loss without it: the per-payment ceiling, the session budget,
-the validated chain / exact token contract / scheme, and the wallet balance. Fund the
-wallet with only what the agent may plausibly spend.
+For a new merchant, inspect the unpaid 402 challenge, review `payTo`, amount,
+asset, and network, then re-run `init-config --force --recipient <payTo>` with the
+intended allowlist. Keep the approval in Python policy, not in a prompt.
 
 ### The two ceilings
 
