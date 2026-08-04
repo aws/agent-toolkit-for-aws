@@ -424,7 +424,7 @@ loads anywhere: Claude Code, Codex, Cursor, Kiro, and OpenClaw-style harnesses.
 Install the published plugin, then follow this skill as normal:
 
 ```bash
-openclaw plugins install clawhub:@aws/aws-agent-payments
+openclaw plugins install clawhub:agentcore-payments
 ```
 
 **Check what the plugin exposes to the model before trusting it.** A payments plugin
@@ -444,7 +444,7 @@ decision in `x402_policy.py` regardless of what the host registers.
 Verify quickly:
 
 ```bash
-openclaw plugins inspect @aws/aws-agent-payments   # list the registered tools
+openclaw plugins inspect agentcore-payments       # list the registered tools
 python3 scripts/agents_pay_admin.py preflight      # fails if provider secrets are in the env
 ```
 

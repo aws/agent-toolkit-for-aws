@@ -1,39 +1,47 @@
 # OpenClaw Setup
 
-OpenClaw uses the `@aws/aws-agent-payments` package from ClawHub. Its canonical
+OpenClaw uses the `agentcore-payments` package from ClawHub. Its canonical
 source lives at
 `plugins/aws-agents/skills/agents-pay/packages/openclaw/` in this repository.
 
 ## Install
 
 ```bash
-openclaw plugins install clawhub:@aws/aws-agent-payments
+openclaw plugins install clawhub:agentcore-payments
 ```
 
 ## Configure
 
-Add to your OpenClaw config (`~/.openclaw/config.yaml` or via `openclaw config`):
+Add to your OpenClaw config (`~/.openclaw/openclaw.json` or via
+`openclaw config`). Explicitly allow the installed plugin:
 
-```yaml
-plugins:
-  agentcore-payments:
-    enabled: true
-    config:
-      region: us-east-1
-      paymentManagerArn: arn:aws:bedrock-agentcore:us-east-1:ACCOUNT:payment-manager/NAME
-      paymentInstrumentId: payment-instrument-XXXX
-      payment_session_id: payment-session-XXXX
-      userId: your-user-id
-      networkPreferences:
-        - eip155:84532
-      allowedOrigins:
-        - "https://merchant.example"
-      allowedRecipients:
-        - "0xMerchantWalletAddress"
-      allowedAssetsByNetwork:
-        eip155:84532:
-          - "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-      maxPaymentAmountAtomic: "100000"
+```json
+{
+  "plugins": {
+    "allow": ["agentcore-payments"],
+    "entries": {
+      "agentcore-payments": {
+        "enabled": true,
+        "config": {
+          "region": "us-east-1",
+          "paymentManagerArn": "arn:aws:bedrock-agentcore:us-east-1:ACCOUNT:payment-manager/NAME",
+          "paymentInstrumentId": "payment-instrument-XXXX",
+          "payment_session_id": "payment-session-XXXX",
+          "userId": "your-user-id",
+          "networkPreferences": ["eip155:84532"],
+          "allowedOrigins": ["https://merchant.example"],
+          "allowedRecipients": ["0xMerchantWalletAddress"],
+          "allowedAssetsByNetwork": {
+            "eip155:84532": [
+              "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+            ]
+          },
+          "maxPaymentAmountAtomic": "100000"
+        }
+      }
+    }
+  }
+}
 ```
 
 The `paymentManagerArn`, `paymentInstrumentId`, `payment_session_id`, and

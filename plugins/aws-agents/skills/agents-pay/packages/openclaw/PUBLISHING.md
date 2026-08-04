@@ -1,6 +1,6 @@
 # OpenClaw Package Publishing
 
-This directory is the canonical source for the `@aws/aws-agent-payments`
+This directory is the canonical source for the `agentcore-payments`
 OpenClaw package. PR 1797 in `awslabs/agentcore-samples` carries a traceable
 snapshot for its tutorial, not a second publication source.
 
@@ -50,6 +50,14 @@ npx --yes clawhub@0.23.1 package verify artifacts/*.tgz \
   --sha256 <recorded-sha256> --json
 ```
 
+Smoke-test installation against the minimum supported OpenClaw version:
+
+```bash
+OPENCLAW_TEST_HOME=$(mktemp -d)
+HOME="$OPENCLAW_TEST_HOME" npx --yes openclaw@2026.3.24-beta.2 \
+  plugins install artifacts/*.tgz
+```
+
 ## Publication dry run
 
 Run this before requesting publication approval:
@@ -57,7 +65,7 @@ Run this before requesting publication approval:
 ```bash
 npx --yes clawhub@0.23.1 package publish . \
   --family code-plugin \
-  --name @aws/aws-agent-payments \
+  --name agentcore-payments \
   --version 1.1.0-rc.1 \
   --tags rc \
   --source-repo aws/agent-toolkit-for-aws \
