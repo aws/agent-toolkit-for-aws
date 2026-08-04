@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, open, readFile, rename } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -7,169 +7,120 @@ export interface X402Config {
   paymentManagerArn: string;
   paymentInstrumentId: string;
   userId: string;
+  payment_session_id: string;
   networkPreferences?: string[];
-  allowedRecipients?: string[];
-  allowedAssets?: string[];
+  allowedOrigins?: string[];
+  allowedRecipients: string[];
+  allowedAssetsByNetwork?: Record<string, string[]>;
   maxPaymentAmountAtomic?: string;
-  payment_session_id?: string;
 }
 
 const CONFIG_DIR = join(homedir(), ".x402");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-const CONFIG_FILE_MODE = 0o600;
-const CONFIG_DIR_MODE = 0o700;
 
 let cachedConfig: X402Config | null = null;
 
-/**
- * Load config from plugin config (passed in) or fallback to ~/.x402/config.json
- */
-export async function loadConfig(pluginConfig?: Partial<X402Config>): Promise<X402Config> {
-  if (cachedConfig) return cachedConfig;
-
-  // Try plugin config first
-  if (pluginConfig && pluginConfig.paymentManagerArn && pluginConfig.paymentInstrumentId && pluginConfig.userId) {
-    cachedConfig = {
-      region: pluginConfig.region ?? "us-east-1",
-      paymentManagerArn: pluginConfig.paymentManagerArn,
-      paymentInstrumentId: pluginConfig.paymentInstrumentId,
-      userId: pluginConfig.userId,
-      networkPreferences: pluginConfig.networkPreferences,
-      allowedRecipients: pluginConfig.allowedRecipients,
-      allowedAssets: pluginConfig.allowedAssets,
-      maxPaymentAmountAtomic: pluginConfig.maxPaymentAmountAtomic,
-      payment_session_id: pluginConfig.payment_session_id,
-    };
-
-    // Try to load session ID from file if not in plugin config
-    if (!cachedConfig.payment_session_id) {
-      try {
-        const fileConfig = JSON.parse(await readProtectedConfig());
-        if (fileConfig.payment_session_id) {
-          cachedConfig.payment_session_id = fileConfig.payment_session_id;
-        }
-      } catch {
-        // File doesn't exist or is invalid — that's fine
-      }
-    }
-
-    return cachedConfig;
-  }
-
-  // Fallback: load from ~/.x402/config.json
-  try {
-    const raw = await readProtectedConfig();
-    const fileConfig = JSON.parse(raw) as X402Config;
-    cachedConfig = {
-      region: fileConfig.region ?? "us-east-1",
-      paymentManagerArn: fileConfig.paymentManagerArn,
-      paymentInstrumentId: fileConfig.paymentInstrumentId,
-      userId: fileConfig.userId,
-      networkPreferences: fileConfig.networkPreferences,
-      allowedRecipients: fileConfig.allowedRecipients,
-      allowedAssets: fileConfig.allowedAssets,
-      maxPaymentAmountAtomic: fileConfig.maxPaymentAmountAtomic,
-      payment_session_id: fileConfig.payment_session_id,
-    };
-    return cachedConfig;
-  } catch (err) {
-    throw new Error(
-      `x402 config not found. Provide config via OpenClaw plugin settings or create ~/.x402/config.json. Error: ${err}`
-    );
-  }
+function isNotFound(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: string }).code === "ENOENT",
+  );
 }
 
-async function ensureConfigDir(): Promise<void> {
-  await mkdir(CONFIG_DIR, { recursive: true, mode: CONFIG_DIR_MODE });
-  await chmod(CONFIG_DIR, CONFIG_DIR_MODE);
-}
-
-async function assertSafeConfigPath(): Promise<void> {
-  try {
-    const st = await lstat(CONFIG_PATH);
-    if (!st.isFile()) {
-      throw new Error(`${CONFIG_PATH} is not a regular file`);
-    }
-    if (st.isSymbolicLink()) {
-      throw new Error(`${CONFIG_PATH} must not be a symbolic link`);
-    }
-    if (typeof process.getuid === "function" && st.uid !== process.getuid()) {
-      throw new Error(`${CONFIG_PATH} is not owned by the current user`);
-    }
-    await chmod(CONFIG_PATH, CONFIG_FILE_MODE);
-  } catch (err: any) {
-    if (err?.code === "ENOENT") return;
-    throw err;
+async function assertProtectedPath(
+  path: string,
+  kind: "directory" | "file",
+): Promise<void> {
+  const stat = await lstat(path);
+  const expectedType =
+    kind === "directory" ? stat.isDirectory() : stat.isFile();
+  if (stat.isSymbolicLink() || !expectedType) {
+    throw new Error(`${path} must be a regular ${kind}, not a symlink`);
+  }
+  if (typeof process.getuid === "function" && stat.uid !== process.getuid()) {
+    throw new Error(`${path} must be owned by the current user`);
+  }
+  if ((stat.mode & 0o077) !== 0) {
+    throw new Error(`${path} must not be accessible by group or other users`);
   }
 }
 
 async function readProtectedConfig(): Promise<string> {
-  await assertSafeConfigPath();
+  await assertProtectedPath(CONFIG_DIR, "directory");
+  await assertProtectedPath(CONFIG_PATH, "file");
   return readFile(CONFIG_PATH, "utf-8");
 }
 
-async function writeProtectedConfig(config: Record<string, unknown>): Promise<void> {
-  await ensureConfigDir();
-  await assertSafeConfigPath();
-
-  const tmpPath = join(CONFIG_DIR, `config.json.${process.pid}.${Date.now()}.tmp`);
-  const handle = await open(tmpPath, "wx", CONFIG_FILE_MODE);
-  try {
-    await handle.writeFile(JSON.stringify(config, null, 2) + "\n", "utf-8");
-    await handle.sync();
-  } finally {
-    await handle.close();
+function requireString(
+  config: Partial<X402Config>,
+  key: keyof X402Config,
+): string {
+  const value = config[key];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`Missing required x402 configuration field: ${key}`);
   }
-  await chmod(tmpPath, CONFIG_FILE_MODE);
-  await rename(tmpPath, CONFIG_PATH);
-  await chmod(CONFIG_PATH, CONFIG_FILE_MODE);
+  return value;
+}
+
+function normalizeConfig(config: Partial<X402Config>): X402Config {
+  const allowedRecipients = config.allowedRecipients;
+  if (!Array.isArray(allowedRecipients) || allowedRecipients.length === 0) {
+    throw new Error(
+      "x402 configuration must contain at least one allowed recipient",
+    );
+  }
+
+  return {
+    region: config.region ?? "us-east-1",
+    paymentManagerArn: requireString(config, "paymentManagerArn"),
+    paymentInstrumentId: requireString(config, "paymentInstrumentId"),
+    userId: requireString(config, "userId"),
+    payment_session_id: requireString(config, "payment_session_id"),
+    networkPreferences: config.networkPreferences,
+    allowedOrigins: config.allowedOrigins,
+    allowedRecipients,
+    allowedAssetsByNetwork: config.allowedAssetsByNetwork,
+    maxPaymentAmountAtomic: config.maxPaymentAmountAtomic,
+  };
 }
 
 /**
- * Get the current config (must be loaded first)
+ * Load immutable runtime configuration from trusted plugin settings or a
+ * user-owned, non-group/world-accessible ~/.x402/config.json.
  */
+export async function loadConfig(
+  pluginConfig?: Partial<X402Config>,
+): Promise<X402Config> {
+  if (cachedConfig) return cachedConfig;
+
+  if (pluginConfig?.paymentManagerArn) {
+    cachedConfig = normalizeConfig(pluginConfig);
+    return cachedConfig;
+  }
+
+  try {
+    const fileConfig = JSON.parse(
+      await readProtectedConfig(),
+    ) as Partial<X402Config>;
+    cachedConfig = normalizeConfig(fileConfig);
+    return cachedConfig;
+  } catch (error) {
+    if (isNotFound(error)) {
+      throw new Error(
+        "x402 config not found in trusted plugin settings or ~/.x402/config.json",
+      );
+    }
+    throw new Error(
+      `x402 configuration refused: ${error instanceof Error ? error.message : "invalid config"}`,
+    );
+  }
+}
+
 export function getConfig(): X402Config {
   if (!cachedConfig) {
     throw new Error("Config not loaded. Call loadConfig() first.");
   }
   return cachedConfig;
-}
-
-/**
- * Save the full config to ~/.x402/config.json (used after setup)
- */
-export async function saveFullConfig(config: X402Config): Promise<void> {
-  cachedConfig = config;
-  try {
-    await writeProtectedConfig(config as unknown as Record<string, unknown>);
-  } catch (err) {
-    console.error(`Warning: could not write config to ${CONFIG_PATH}: ${err}`);
-  }
-}
-
-/**
- * Update the payment session ID in memory and persist to disk
- */
-export async function setPaymentSessionId(sessionId: string): Promise<void> {
-  if (!cachedConfig) {
-    throw new Error("Config not loaded. Call loadConfig() first.");
-  }
-
-  cachedConfig.payment_session_id = sessionId;
-
-  // Persist to ~/.x402/config.json
-  try {
-    let fileConfig: Record<string, unknown> = {};
-    try {
-      fileConfig = JSON.parse(await readProtectedConfig());
-    } catch {
-      // File doesn't exist yet — start fresh
-    }
-
-    fileConfig.payment_session_id = sessionId;
-    await writeProtectedConfig(fileConfig);
-  } catch (err) {
-    // Non-fatal: we still have it in memory
-    console.error(`Warning: could not persist session ID to ${CONFIG_PATH}: ${err}`);
-  }
 }

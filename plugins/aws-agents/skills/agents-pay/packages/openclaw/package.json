@@ -1,20 +1,26 @@
 {
   "name": "@aws/aws-agent-payments",
-  "version": "1.0.4",
-  "description": "x402 payments MCP plugin for OpenClaw with guarded x402 payment fetches via AWS AgentCore Payments",
+  "version": "1.1.0-rc.1",
+  "description": "Guarded x402 v2 payments for OpenClaw through AWS AgentCore Payments",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
     "clean": "rm -rf dist",
-    "prepublish": "npm run build"
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "3.1090.0",
     "typebox": "1.1.39"
   },
   "peerDependencies": {
-    "openclaw": "2026.3.24-beta.2"
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "26.1.1",
@@ -27,6 +33,10 @@
     "compat": {
       "pluginApi": ">=2026.3.24-beta.2",
       "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2",
+      "pluginSdkVersion": "2026.3.24-beta.2"
     }
   },
   "files": [

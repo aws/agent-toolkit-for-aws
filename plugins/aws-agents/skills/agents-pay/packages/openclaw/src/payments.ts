@@ -3,9 +3,7 @@ import {
   GetPaymentSessionCommand,
   ProcessPaymentCommand,
 } from "@aws-sdk/client-bedrock-agentcore";
-import type {
-  PaymentSession,
-} from "@aws-sdk/client-bedrock-agentcore";
+import type { PaymentSession } from "@aws-sdk/client-bedrock-agentcore";
 import { createHash } from "node:crypto";
 import { getConfig } from "./config.js";
 
@@ -13,8 +11,7 @@ let client: BedrockAgentCoreClient | null = null;
 
 function getClient(): BedrockAgentCoreClient {
   if (!client) {
-    const config = getConfig();
-    client = new BedrockAgentCoreClient({ region: config.region });
+    client = new BedrockAgentCoreClient({ region: getConfig().region });
   }
   return client;
 }
@@ -25,35 +22,19 @@ export interface SessionStatus {
   expired: boolean;
   minutes_left: number | null;
   remaining_usd: number | null;
-  raw?: unknown;
 }
 
-/**
- * Get the current payment session status
- */
 export async function getPaymentSessionStatus(): Promise<SessionStatus> {
   const config = getConfig();
-
-  if (!config.payment_session_id) {
-    return {
-      usable: false,
-      status: "no_session",
-      expired: true,
-      minutes_left: null,
-      remaining_usd: null,
-    };
-  }
-
-  const cmd = new GetPaymentSessionCommand({
+  const command = new GetPaymentSessionCommand({
     paymentManagerArn: config.paymentManagerArn,
     paymentSessionId: config.payment_session_id,
     userId: config.userId,
   } as any);
 
   try {
-    const response = await getClient().send(cmd);
+    const response = await getClient().send(command);
     const session: PaymentSession | undefined = response.paymentSession;
-
     if (!session) {
       return {
         usable: false,
@@ -64,42 +45,39 @@ export async function getPaymentSessionStatus(): Promise<SessionStatus> {
       };
     }
 
-    // Compute expiry from createdAt + expiryTimeInMinutes
     let expired = false;
     let minutesLeft: number | null = null;
-
     if (session.createdAt && session.expiryTimeInMinutes) {
-      const expiryDate = new Date(
-        session.createdAt.getTime() + session.expiryTimeInMinutes * 60 * 1000
-      );
-      const now = new Date();
-      expired = expiryDate <= now;
+      const expiresAt =
+        session.createdAt.getTime() + session.expiryTimeInMinutes * 60_000;
+      expired = expiresAt <= Date.now();
       if (!expired) {
-        minutesLeft = Math.round((expiryDate.getTime() - now.getTime()) / 60000);
+        minutesLeft = Math.max(
+          0,
+          Math.floor((expiresAt - Date.now()) / 60_000),
+        );
       }
     }
 
-    // Get remaining balance from availableLimits
-    let remainingUsd: number | null = null;
-    if (session.availableLimits?.availableSpendAmount?.value) {
-      remainingUsd = parseFloat(session.availableLimits.availableSpendAmount.value);
-    }
-
-    const usable = !expired && (remainingUsd === null || remainingUsd > 0);
+    const rawRemaining = session.availableLimits?.availableSpendAmount?.value;
+    const remainingUsd =
+      rawRemaining === undefined ? null : Number.parseFloat(rawRemaining);
+    const hasBudget =
+      remainingUsd === null ||
+      (Number.isFinite(remainingUsd) && remainingUsd > 0);
+    const usable = !expired && hasBudget;
 
     return {
       usable,
-      status: expired ? "EXPIRED" : "ACTIVE",
+      status: usable ? "ACTIVE" : expired ? "EXPIRED" : "DRAINED",
       expired,
       minutes_left: minutesLeft,
       remaining_usd: remainingUsd,
-      raw: session,
     };
-  } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
+  } catch {
     return {
       usable: false,
-      status: `error: ${errMsg}`,
+      status: "error",
       expired: true,
       minutes_left: null,
       remaining_usd: null,
@@ -107,81 +85,87 @@ export async function getPaymentSessionStatus(): Promise<SessionStatus> {
   }
 }
 
-export interface PaymentResult {
-  headerName: string;
-  headerValue: string;
-  signedPayload: Record<string, unknown>;
-  paymentOutput: unknown;
+function stableResource(url: string): string {
+  const parsed = new URL(url);
+  return `${parsed.origin}${parsed.pathname || "/"}`;
 }
 
 /**
- * Process an x402 payment — send the challenge payload, get back the signed payment.
- *
- * @param version - x402 protocol version ("1" or "2")
- * @param challengePayload - The payment challenge object (accepts entry fields: scheme, network, amount, etc.)
- * @returns The signed payment payload (authorization + signature) and metadata
+ * Build one stable token per logical purchase. Publisher-controlled fields such
+ * as extra.nonce are deliberately excluded so a rotating challenge cannot turn
+ * a retry into another payment.
  */
+export function deriveClientToken(
+  sessionId: string,
+  resourceUrl: string,
+  accepted: Record<string, unknown>,
+): string {
+  const material = [
+    sessionId,
+    stableResource(resourceUrl),
+    String(accepted.scheme ?? ""),
+    String(accepted.network ?? ""),
+    String(accepted.asset ?? "").toLowerCase(),
+    String(accepted.payTo ?? "").toLowerCase(),
+    String(accepted.amount ?? accepted.maxAmountRequired ?? ""),
+  ].join("\x1f");
+  return createHash("sha256").update(material).digest("hex");
+}
+
+export interface PaymentResult {
+  signedPayload: Record<string, unknown>;
+}
+
 export async function processPayment(
   version: string,
-  challengePayload: Record<string, unknown>,
-  resourceUrl: string
+  accepted: Record<string, unknown>,
+  resourceUrl: string,
 ): Promise<PaymentResult> {
-  const config = getConfig();
-
-  if (!config.payment_session_id) {
-    throw new Error("No active payment session. Create one first.");
+  if (version !== "2") {
+    throw new Error("Only x402 v2 payment challenges are supported");
   }
 
-  // Derive a stable clientToken from the challenge to ensure idempotent retries.
-  // Without this, the SDK auto-generates a fresh UUID per call, making retries
-  // separate payments (double-spend).
-  const clientToken = createHash("sha256")
-    .update(JSON.stringify(challengePayload))
-    .update(config.payment_session_id)
-    .update(resourceUrl)
-    .digest("hex")
-    .slice(0, 64);
-
-  const cmd = new ProcessPaymentCommand({
+  const config = getConfig();
+  const command = new ProcessPaymentCommand({
     paymentManagerArn: config.paymentManagerArn,
     paymentSessionId: config.payment_session_id,
     paymentInstrumentId: config.paymentInstrumentId,
     userId: config.userId,
-    clientToken,
+    clientToken: deriveClientToken(
+      config.payment_session_id,
+      resourceUrl,
+      accepted,
+    ),
     paymentType: "CRYPTO_X402",
     paymentInput: {
       cryptoX402: {
         version,
-        payload: challengePayload as any,
+        payload: accepted as any,
       },
     },
   });
 
-  const response = await getClient().send(cmd);
+  const response = await getClient().send(command);
   const paymentOutput = response.paymentOutput;
-
-  if (!paymentOutput || !("cryptoX402" in paymentOutput) || !paymentOutput.cryptoX402) {
-    throw new Error("ProcessPayment did not return cryptoX402 output");
+  if (
+    !paymentOutput ||
+    !("cryptoX402" in paymentOutput) ||
+    !paymentOutput.cryptoX402?.payload
+  ) {
+    throw new Error(
+      "ProcessPayment did not return a signed cryptoX402 payload",
+    );
   }
 
-  const cryptoX402Output = paymentOutput.cryptoX402;
-  const signedPayload = cryptoX402Output.payload;
-
-  if (!signedPayload) {
-    throw new Error("ProcessPayment cryptoX402 output missing payload (signed payment)");
+  const payload = paymentOutput.cryptoX402.payload;
+  const normalized: unknown =
+    typeof payload === "string" ? JSON.parse(payload) : payload;
+  if (
+    !normalized ||
+    typeof normalized !== "object" ||
+    Array.isArray(normalized)
+  ) {
+    throw new Error("ProcessPayment returned an invalid signed payload");
   }
-
-  // The payload is a DocumentType — normalize to object
-  const signedPayloadObj: Record<string, unknown> =
-    typeof signedPayload === "string" ? JSON.parse(signedPayload) : signedPayload;
-
-  // Header is X-PAYMENT for both v1 and v2
-  const headerName = "X-PAYMENT";
-
-  return {
-    headerName,
-    headerValue: JSON.stringify(signedPayloadObj), // raw JSON; caller builds envelope
-    signedPayload: signedPayloadObj,
-    paymentOutput,
-  };
+  return { signedPayload: normalized as Record<string, unknown> };
 }
