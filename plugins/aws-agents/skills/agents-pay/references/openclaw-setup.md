@@ -1,13 +1,13 @@
 # OpenClaw Setup
 
-OpenClaw uses the `aws/aws-agents-pay` package from ClawHub. Its canonical
+OpenClaw uses the `@aws/aws-agents-pay` package from ClawHub. Its canonical
 source lives at
 `plugins/aws-agents/skills/agents-pay/packages/openclaw/` in this repository.
 
 ## Install
 
 ```bash
-openclaw plugins install clawhub:aws/aws-agents-pay
+openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
 ## Configure

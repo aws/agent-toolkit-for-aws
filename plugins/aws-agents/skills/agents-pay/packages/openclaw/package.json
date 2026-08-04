@@ -1,5 +1,5 @@
 {
-  "name": "aws/aws-agents-pay",
+  "name": "@aws/aws-agents-pay",
   "version": "1.0.0",
   "description": "Guarded x402 v2 payments for OpenClaw through AWS AgentCore Payments",
   "type": "module",

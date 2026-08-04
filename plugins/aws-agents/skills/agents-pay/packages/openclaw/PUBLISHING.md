@@ -1,6 +1,6 @@
 # OpenClaw Package Publishing
 
-This directory is the canonical source for the `aws/aws-agents-pay`
+This directory is the canonical source for the `@aws/aws-agents-pay`
 OpenClaw package. PR 1797 in `awslabs/agentcore-samples` carries a traceable
 snapshot for its tutorial, not a second publication source.
 
@@ -64,7 +64,7 @@ Run this before requesting publication approval:
 ```bash
 npx --yes clawhub@0.23.1 package publish . \
   --family code-plugin \
-  --name aws/aws-agents-pay \
+  --name @aws/aws-agents-pay \
   --version 1.0.0 \
   --tags latest \
   --source-repo aws/agent-toolkit-for-aws \

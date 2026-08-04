@@ -208,7 +208,7 @@ test("public package and runtime identities stay aligned", async () => {
       JSON.parse,
     ),
   ]);
-  assert.equal(packageJson.name, "aws/aws-agents-pay");
+  assert.equal(packageJson.name, "@aws/aws-agents-pay");
   assert.equal(packageJson.version, "1.0.0");
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
