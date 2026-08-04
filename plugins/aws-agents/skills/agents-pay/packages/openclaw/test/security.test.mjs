@@ -191,3 +191,10 @@ test("model-facing tool inventory excludes setup, session creation, and proof to
     assert.ok(!manifest.contracts.tools.includes(name));
   }
 });
+
+test("manifest permits installation before trusted runtime config is supplied", async () => {
+  const manifest = JSON.parse(
+    await readFile(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(manifest.configSchema.required, []);
+});

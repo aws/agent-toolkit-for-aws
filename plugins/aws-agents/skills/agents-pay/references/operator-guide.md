@@ -146,8 +146,8 @@ If the agent runs on OpenClaw, install the published plugin instead of wiring th
 Python functions by hand:
 
 ```bash
-openclaw plugins install clawhub:@aws/aws-agent-payments
-openclaw plugins inspect @aws/aws-agent-payments     # confirm what it registers
+openclaw plugins install clawhub:agentcore-payments
+openclaw plugins inspect agentcore-payments          # confirm what it registers
 ```
 
 Two things to confirm before you trust it, because an earlier x402 plugin for this

@@ -20,6 +20,11 @@ Required configuration:
 - `allowedAssetsByNetwork` for exact network-to-asset policy
 - `maxPaymentAmountAtomic`, which defaults to `100000` (0.10 USDC)
 
+OpenClaw installs the plugin before configuration is available, so the manifest
+accepts an empty install-time config. Both tools still fail closed at first use
+unless every required field is present in trusted plugin settings or the
+protected `~/.x402/config.json` file.
+
 Provision infrastructure and create the bounded session outside the
 model-facing runtime. Use separate administration and runtime IAM roles, and
 never put CDP or Privy credentials in prompts, tool arguments, transcripts, or
