@@ -1,14 +1,15 @@
 {
   "name": "@aws/aws-agents-pay",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Guarded x402 v2 payments for OpenClaw through AWS AgentCore Payments",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test test/*.test.mjs",
+    "stage-skill": "node scripts/stage-skill.mjs",
+    "test": "npm run build && npm run stage-skill && node --test test/*.test.mjs",
     "clean": "rm -rf dist",
-    "prepack": "npm run build"
+    "prepack": "npm run build && npm run stage-skill"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "3.1090.0",
@@ -41,6 +42,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "openclaw.plugin.json",
     "README.md"
   ],

@@ -84,12 +84,12 @@ and on why the split exists at all:
 ```bash
 # 0. Prerequisites
 python3 -m pip install 'httpx>=0.27' 'bedrock-agentcore>=1.19.0'
-npm install -g @aws/agentcore                     # CLI >= 0.20.0
+npm install -g @aws/agentcore@1.0.0-preview.24
 
 # 1. Provision (ControlPlaneRole; only step that touches provider secrets)
-agentcore add payment-manager --name MyPayments --network-preferences eip155:84532
+agentcore add payment-manager                     # NO FLAGS — interactive wizard
 agentcore add payment-connector                   # NO FLAGS — interactive wizard
-agentcore deploy -y
+agentcore deploy
 
 # 2. Write the config
 python3 scripts/agents_pay_admin.py init-config --max-per-payment-usd 0.05

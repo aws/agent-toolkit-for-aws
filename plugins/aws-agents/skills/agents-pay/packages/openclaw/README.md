@@ -16,6 +16,10 @@ openclaw plugins install clawhub:@aws%2Faws-agents-pay
 The encoded slash is required by OpenClaw when installing a scoped ClawHub
 package.
 
+The package bundles the canonical `agents-pay` skill. It guides users through
+human-run setup in a separate terminal while the plugin keeps only the two
+runtime payment tools model-visible.
+
 The runtime requires an existing payment manager, instrument, user, and session.
 It cannot provision payment infrastructure or create replacement sessions.
 Configure approved origins, recipients, networks, assets, and a positive

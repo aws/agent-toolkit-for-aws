@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { deriveClientToken } from "../dist/payments.js";
 import {
@@ -33,6 +35,26 @@ function probeFor(challenge) {
     bodySha256: "",
     bodyBytes: 0,
   };
+}
+
+async function relativeFiles(root) {
+  const files = [];
+
+  async function walk(directory, relativeDirectory = "") {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const relativePath = path.join(relativeDirectory, entry.name);
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath, relativePath);
+      } else {
+        files.push(relativePath);
+      }
+    }
+  }
+
+  await walk(root);
+  return files.sort();
 }
 
 test("v2 policy skips a hostile first offer and selects the approved offer", () => {
@@ -210,9 +232,51 @@ test("public package and runtime identities stay aligned", async () => {
     readFile(new URL("../README.md", import.meta.url), "utf8"),
   ]);
   assert.equal(packageJson.name, "@aws/aws-agents-pay");
-  assert.equal(packageJson.version, "1.0.1");
+  assert.equal(packageJson.version, "1.0.2");
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
+  assert.ok(packageJson.files.includes("skills"));
   assert.match(readme, /clawhub:\@aws%2Faws-agents-pay/);
   assert.doesNotMatch(readme, /clawhub:\@aws\/aws-agents-pay/);
+});
+
+test("bundled skill is exact and excludes nested packages", async () => {
+  const packageRoot = fileURLToPath(new URL("../", import.meta.url));
+  const canonicalRoot = path.resolve(packageRoot, "../..");
+  const bundledRoot = path.join(packageRoot, "skills", "agents-pay");
+  const includedEntries = [
+    "SKILL.md",
+    "requirements.txt",
+    "references",
+    "scripts",
+  ];
+
+  const expectedFiles = [];
+  for (const entry of includedEntries) {
+    const source = path.join(canonicalRoot, entry);
+    try {
+      const children = await relativeFiles(source);
+      expectedFiles.push(...children.map((child) => path.join(entry, child)));
+    } catch (error) {
+      if (error.code !== "ENOTDIR") {
+        throw error;
+      }
+      expectedFiles.push(entry);
+    }
+  }
+  const expectedSourceFiles = expectedFiles
+    .filter((relativePath) => {
+      const parts = relativePath.split(path.sep);
+      return !parts.includes("__pycache__") && !relativePath.endsWith(".pyc");
+    })
+    .sort();
+
+  assert.deepEqual(await relativeFiles(bundledRoot), expectedSourceFiles);
+  for (const relativePath of expectedSourceFiles) {
+    assert.deepEqual(
+      await readFile(path.join(bundledRoot, relativePath)),
+      await readFile(path.join(canonicalRoot, relativePath)),
+    );
+  }
+  await assert.rejects(access(path.join(bundledRoot, "packages")));
 });

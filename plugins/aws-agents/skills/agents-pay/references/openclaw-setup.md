@@ -15,6 +15,33 @@ openclaw plugins install clawhub:@aws%2Faws-agents-pay
 Add to your OpenClaw config (`~/.openclaw/openclaw.json` or via
 `openclaw config`). Explicitly allow the installed plugin:
 
+If payment infrastructure or a session does not exist, stop the LLM workflow.
+Open a separate terminal and run the human setup from the bundled skill:
+
+```bash
+cd ~/.openclaw/extensions/aws-agents-pay/skills/agents-pay
+npm install -g @aws/agentcore@1.0.0-preview.24
+agentcore add payment-manager
+agentcore add payment-connector
+agentcore deploy
+python3 -m pip install -r requirements.txt
+python3 scripts/agents_pay_admin.py init-config \
+  --max-per-payment-usd 0.05 \
+  --network eip155:84532 \
+  --recipient 0xMerchantWalletAddress
+python3 scripts/agents_pay_admin.py create-instrument --email you@example.com
+python3 scripts/agents_pay_admin.py new-session \
+  --budget 1.00 \
+  --expiry-minutes 60
+```
+
+The two `agentcore add` commands must run without flags so credentials remain in
+the interactive terminal. Do not paste credentials, command output, deployed
+state, or generated identifiers into an LLM conversation.
+
+Complete delegation and testnet funding before creating the session. Then edit
+the OpenClaw config locally in the same terminal or a local editor:
+
 ```json
 {
   "plugins": {
