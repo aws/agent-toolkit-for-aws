@@ -198,3 +198,18 @@ test("manifest permits installation before trusted runtime config is supplied", 
   );
   assert.deepEqual(manifest.configSchema.required, []);
 });
+
+test("public package and runtime identities stay aligned", async () => {
+  const [manifest, packageJson] = await Promise.all([
+    readFile(new URL("../openclaw.plugin.json", import.meta.url), "utf8").then(
+      JSON.parse,
+    ),
+    readFile(new URL("../package.json", import.meta.url), "utf8").then(
+      JSON.parse,
+    ),
+  ]);
+  assert.equal(packageJson.name, "aws/aws-agents-pay");
+  assert.equal(packageJson.version, "1.0.0");
+  assert.equal(manifest.id, "aws-agents-pay");
+  assert.equal(manifest.name, "AWS Agents Pay");
+});

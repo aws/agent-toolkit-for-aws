@@ -1,6 +1,6 @@
 {
-  "id": "agentcore-payments",
-  "name": "AgentCore Payments",
+  "id": "aws-agents-pay",
+  "name": "AWS Agents Pay",
   "description": "Guarded x402 v2 payments through AWS AgentCore Payments",
   "contracts": {
     "tools": [

@@ -1,16 +1,15 @@
 # OpenClaw Package Publishing
 
-This directory is the canonical source for the `agentcore-payments`
+This directory is the canonical source for the `aws/aws-agents-pay`
 OpenClaw package. PR 1797 in `awslabs/agentcore-samples` carries a traceable
 snapshot for its tutorial, not a second publication source.
 
 ## Release versions
 
-- Validation release: `1.1.0-rc.1`
-- Stable release after validation: `1.1.0`
+- Initial release: `1.0.0`
 
-This is a minor release. Do not publish either version until the package has
-passed the checks below and the publisher has given explicit approval.
+Do not publish until the package has passed the checks below and the publisher
+has given explicit approval.
 
 ## Reproducible build and tests
 
@@ -54,7 +53,7 @@ Smoke-test installation against the minimum supported OpenClaw version:
 
 ```bash
 OPENCLAW_TEST_HOME=$(mktemp -d)
-HOME="$OPENCLAW_TEST_HOME" npx --yes openclaw@2026.3.24-beta.2 \
+HOME="$OPENCLAW_TEST_HOME" npx --yes openclaw@2026.3.24 \
   plugins install artifacts/*.tgz
 ```
 
@@ -65,9 +64,9 @@ Run this before requesting publication approval:
 ```bash
 npx --yes clawhub@0.23.1 package publish . \
   --family code-plugin \
-  --name agentcore-payments \
-  --version 1.1.0-rc.1 \
-  --tags rc \
+  --name aws/aws-agents-pay \
+  --version 1.0.0 \
+  --tags latest \
   --source-repo aws/agent-toolkit-for-aws \
   --source-commit <pr-215-head-sha> \
   --source-ref feat/agents-pay-skill \
@@ -80,8 +79,8 @@ testnet funds each require separate explicit approval.
 
 ## Post-publication validation
 
-Install the RC on the supplied OpenClaw instance through SSM and validate x402
-v2 only:
+Install the release on the supplied OpenClaw deployment and validate x402 v2
+only:
 
 1. Confirm the package version and the two-tool runtime inventory.
 2. Confirm paid replay uses `PAYMENT-SIGNATURE`.
