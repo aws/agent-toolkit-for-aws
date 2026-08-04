@@ -1,6 +1,6 @@
 {
-  "name": "agentcore-payments",
-  "version": "1.1.0-rc.1",
+  "name": "aws/aws-agents-pay",
+  "version": "1.0.0",
   "description": "Guarded x402 v2 payments for OpenClaw through AWS AgentCore Payments",
   "type": "module",
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
     "typebox": "1.1.39"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.24-beta.2"
+    "openclaw": ">=2026.3.24"
   },
   "peerDependenciesMeta": {
     "openclaw": {
@@ -31,12 +31,12 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.3.24-beta.2",
-      "minGatewayVersion": "2026.3.24-beta.2"
+      "pluginApi": ">=2026.3.24",
+      "minGatewayVersion": "2026.3.24"
     },
     "build": {
-      "openclawVersion": "2026.3.24-beta.2",
-      "pluginSdkVersion": "2026.3.24-beta.2"
+      "openclawVersion": "2026.3.24",
+      "pluginSdkVersion": "2026.3.24"
     }
   },
   "files": [

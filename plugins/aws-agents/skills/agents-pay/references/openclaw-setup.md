@@ -1,13 +1,13 @@
 # OpenClaw Setup
 
-OpenClaw uses the `agentcore-payments` package from ClawHub. Its canonical
+OpenClaw uses the `aws/aws-agents-pay` package from ClawHub. Its canonical
 source lives at
 `plugins/aws-agents/skills/agents-pay/packages/openclaw/` in this repository.
 
 ## Install
 
 ```bash
-openclaw plugins install clawhub:agentcore-payments
+openclaw plugins install clawhub:aws/aws-agents-pay
 ```
 
 ## Configure
@@ -18,9 +18,9 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json` or via
 ```json
 {
   "plugins": {
-    "allow": ["agentcore-payments"],
+    "allow": ["aws-agents-pay"],
     "entries": {
-      "agentcore-payments": {
+      "aws-agents-pay": {
         "enabled": true,
         "config": {
           "region": "us-east-1",
