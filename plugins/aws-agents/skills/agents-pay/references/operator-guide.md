@@ -146,7 +146,7 @@ If the agent runs on OpenClaw, install the published plugin instead of wiring th
 Python functions by hand:
 
 ```bash
-openclaw plugins install clawhub:aws/aws-agents-pay
+openclaw plugins install clawhub:@aws/aws-agents-pay
 openclaw plugins inspect aws-agents-pay               # confirm what it registers
 ```
 

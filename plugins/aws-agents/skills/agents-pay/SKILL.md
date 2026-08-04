@@ -424,7 +424,7 @@ loads anywhere: Claude Code, Codex, Cursor, Kiro, and OpenClaw-style harnesses.
 Install the published plugin, then follow this skill as normal:
 
 ```bash
-openclaw plugins install clawhub:aws/aws-agents-pay
+openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
 **Check what the plugin exposes to the model before trusting it.** A payments plugin

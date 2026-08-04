@@ -1,6 +1,6 @@
 # AWS Agents Pay for OpenClaw
 
-The `aws/aws-agents-pay` OpenClaw plugin performs guarded x402 v2 payments
+The `@aws/aws-agents-pay` OpenClaw plugin performs guarded x402 v2 payments
 through AWS AgentCore Payments. It exposes two runtime tools:
 
 - `get_payment_session_status` checks an operator-provisioned session.
