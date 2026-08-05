@@ -239,8 +239,8 @@ That last row is worth restating: a runtime `AccessDeniedException` on
 
 `GET` and `HEAD` only. A body-bearing verb (`POST`, `PUT`, `PATCH`) is refused: the
 policy gate validates the URL, not a request body, so allowing one would let the agent
-send agent-chosen data to an arbitrary origin — the exfiltration surface finding 3 is
-about. If a paid API genuinely requires `POST`, that call belongs in code you control,
+send agent-chosen data to an arbitrary origin. If a paid API genuinely requires `POST`,
+that call belongs in code you control,
 not behind this tool.
 
 ### Paid but the merchant still returns 402

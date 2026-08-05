@@ -121,7 +121,7 @@ The AWS guide states the reason directly:
 > compromised identity from both creating sessions with unlimited budgets and
 > executing payments against those sessions."
 
-That is finding 6 in one sentence.
+This separation keeps payment management and execution in different trusted roles.
 
 ### Which role runs which command
 
