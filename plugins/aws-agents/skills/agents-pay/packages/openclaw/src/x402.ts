@@ -30,7 +30,7 @@ const DEFAULT_NETWORKS = ["eip155:84532"];
 const DEFAULT_ASSETS_BY_NETWORK: Record<string, string[]> = {
   "eip155:84532": ["0x036cbd53842c5426634e7929541ec2318f3dcf7e"],
 };
-const DEFAULT_MAX_AMOUNT_ATOMIC = "100000";
+
 const MAX_VALID_AFTER_WAIT_MS = 15_000;
 
 export class PaymentBlocked extends Error {
@@ -374,9 +374,7 @@ export function validateChallengePolicy(
     ? config.networkPreferences
     : DEFAULT_NETWORKS;
   const recipients = config.allowedRecipients.map(normalize);
-  const maxAmount = parseAmount(
-    config.maxPaymentAmountAtomic ?? DEFAULT_MAX_AMOUNT_ATOMIC,
-  );
+  const maxAmount = parseAmount(config.maxPaymentAmountAtomic);
 
   for (const accepted of challenge.accepts) {
     const scheme = String(accepted.scheme ?? "");

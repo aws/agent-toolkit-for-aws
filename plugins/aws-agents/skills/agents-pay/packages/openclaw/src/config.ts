@@ -12,7 +12,7 @@ export interface X402Config {
   allowedOrigins?: string[];
   allowedRecipients: string[];
   allowedAssetsByNetwork?: Record<string, string[]>;
-  maxPaymentAmountAtomic?: string;
+  maxPaymentAmountAtomic: string;
 }
 
 const CONFIG_DIR = join(homedir(), ".x402");
@@ -72,6 +72,20 @@ function normalizeConfig(config: Partial<X402Config>): X402Config {
     );
   }
 
+  const maxPaymentAmountAtomic = config.maxPaymentAmountAtomic;
+  if (
+    typeof maxPaymentAmountAtomic !== "string" ||
+    !/^[1-9][0-9]*$/.test(maxPaymentAmountAtomic)
+  ) {
+    throw new Error(
+      "x402 configuration must set maxPaymentAmountAtomic to an explicit positive " +
+        "integer (in the asset's smallest unit, e.g. \"100000\" = 0.10 USDC). " +
+        "This is the PER-PAYMENT ceiling — not the same as the session budget. " +
+        "Without it, a single hostile challenge could drain the session budget " +
+        "in one transaction.",
+    );
+  }
+
   return {
     region: config.region ?? "us-east-1",
     paymentManagerArn: requireString(config, "paymentManagerArn"),
@@ -82,7 +96,7 @@ function normalizeConfig(config: Partial<X402Config>): X402Config {
     allowedOrigins: config.allowedOrigins,
     allowedRecipients,
     allowedAssetsByNetwork: config.allowedAssetsByNetwork,
-    maxPaymentAmountAtomic: config.maxPaymentAmountAtomic,
+    maxPaymentAmountAtomic,
   };
 }
 
