@@ -31,12 +31,28 @@ Required configuration:
 - `allowedRecipients`
 - Optional `allowedOrigins` and `networkPreferences`
 - `allowedAssetsByNetwork` for exact network-to-asset policy
-- `maxPaymentAmountAtomic`, which defaults to `100000` (0.10 USDC)
+- `maxPaymentAmountAtomic` — **required**, no default. Set this to the maximum
+  amount the agent may spend in a single payment, in the asset's smallest unit
+  (e.g. `"100000"` = 0.10 USDC at 6 decimals). This is the PER-PAYMENT ceiling;
+  it is not a substitute for the session budget, which caps cumulative spend.
 
 OpenClaw installs the plugin before configuration is available, so the manifest
 accepts an empty install-time config. Both tools still fail closed at first use
 unless every required field is present in trusted plugin settings or the
 protected `~/.x402/config.json` file.
+
+## Hard boundary: sessions are human-only
+
+Payment sessions are created **outside the agent loop** by a human operator
+using the AWS CLI or console — never inside an OpenClaw conversation. The
+plugin exposes no tool to create, extend, or replace a session. If a session
+expires or drains, the operator must create a new one and update the config;
+the agent cannot self-authorize continued spending.
+
+This is by design: the `payment_session_id` in config is a spending credential
+that names the budget being drawn down. Keeping session creation out of the
+agent's reach means a compromised or manipulated agent cannot point itself at a
+larger budget.
 
 Provision infrastructure and create the bounded session outside the
 model-facing runtime. Use separate administration and runtime IAM roles, and

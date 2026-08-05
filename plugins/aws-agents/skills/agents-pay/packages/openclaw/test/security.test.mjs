@@ -214,11 +214,18 @@ test("model-facing tool inventory excludes setup, session creation, and proof to
   }
 });
 
-test("manifest permits installation before trusted runtime config is supplied", async () => {
+test("manifest declares all required fields for safe startup", async () => {
   const manifest = JSON.parse(
     await readFile(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
   );
-  assert.deepEqual(manifest.configSchema.required, []);
+  const required = manifest.configSchema.required;
+  // Every field the plugin refuses to start without must be declared here.
+  assert.ok(required.includes("paymentManagerArn"));
+  assert.ok(required.includes("paymentInstrumentId"));
+  assert.ok(required.includes("userId"));
+  assert.ok(required.includes("payment_session_id"));
+  assert.ok(required.includes("allowedRecipients"));
+  assert.ok(required.includes("maxPaymentAmountAtomic"));
 });
 
 test("public package and runtime identities stay aligned", async () => {
@@ -232,7 +239,7 @@ test("public package and runtime identities stay aligned", async () => {
     readFile(new URL("../README.md", import.meta.url), "utf8"),
   ]);
   assert.equal(packageJson.name, "@aws/aws-agents-pay");
-  assert.equal(packageJson.version, "1.0.2");
+  assert.equal(packageJson.version, "1.0.3");
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
   assert.ok(packageJson.files.includes("skills"));
