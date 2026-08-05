@@ -3,15 +3,15 @@ name: agents-pay
 description: >
   Use when THIS agent needs to pay for x402-protected content at runtime —
   hitting a paywall mid-task, settling it via AgentCore Payments, and
-  enforcing spend limits in code. Covers runtime payment policy, budget-
-  bounded sessions, SSRF-hardened fetching, idempotent settlement, and
-  browser payment handles.
-  Triggers on: "pay for this API", "x402", "402 Payment Required",
-  "this agent needs to pay", "let the agent pay", "spend limit for agent",
-  "budget for agent", "micropayment", "microtransactions", "USDC",
-  "pay per call", "paywalled content", "paid API or tool",
-  "ProcessPayment failed", "why did my agent refuse to pay",
-  "auto_session".
+  applying operator-defined spend limits. Covers runtime payment setup,
+  policy, session budgets, and payment troubleshooting.
+  Triggers on: "my agent hit a 402 while calling an API",
+  "a tool call returned 402 Payment Required",
+  "my agent needs to pay for x402-protected content",
+  "let the agent pay for content, capped at $5 per session",
+  "set a spend limit for the agent", "budget an agent's API payments",
+  "agent should pay per API call", "settle a paywall mid-task",
+  "ProcessPayment failed", "why did my agent refuse to pay".
   Not for BUILDING a payment-capable agent for your own end users
   (per-customer wallets, framework payment middleware, Strands payments
   plugin, LangGraph payments middleware, AgentCorePaymentsPlugin) —
