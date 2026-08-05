@@ -47,8 +47,8 @@ The payee (`payTo`) must appear in `allowed_recipients`, an operator-approved
 allowlist in the config file. Unknown recipients are refused before signing.
 
 This is intentionally less "open web" than x402 can be in theory, but it is the
-only deterministic way for this runtime skill to satisfy the AppSec requirement
-that a publisher-controlled challenge must not choose a new recipient by itself.
+only deterministic way to prevent a publisher-controlled challenge from choosing
+a new recipient by itself.
 If an operator wants to transact with a new merchant, they first add that wallet
 address through the trusted admin path and review the per-payment and session
 limits at the same time.
@@ -61,8 +61,8 @@ Two ceilings, not one
   * `max_per_payment_usd` is PER TRANSACTION.
 
 With only the session budget, one hostile challenge for the full remaining balance
-drains it in a single payment. Finding 1's remediation asks for "a positive amount
-and a trusted maximum for EACH payment", so both bounds are required.
+drains it in a single payment. A trusted positive maximum for each payment keeps
+both bounds meaningful.
 
 Scope / non-goals
 -----------------
@@ -358,16 +358,17 @@ def base_units_to_usd(amount: str | int, decimals: int = USDC_DECIMALS) -> Decim
 def select_accept_entry(challenge: dict, policy: dict) -> dict:
     """Return the first accepts[] entry that satisfies policy, else raise.
 
-    The reviewed implementation took accepts[0] unconditionally, which handed
-    the publisher control of network, asset, recipient, and amount. Here an
-    entry must earn selection by passing every check.
+    Each entry must earn selection by passing every configured check. The publisher
+    cannot choose the network, asset, recipient, or amount unilaterally.
     """
     accepts = challenge.get("accepts")
     if not isinstance(accepts, list) or not accepts:
         raise _fail("Payment challenge has no accepts entries.")
 
     allowed_networks = _policy_list(policy, "allowed_networks")
-    allowed_schemes = _policy_list(policy, "allowed_schemes") or ["exact"]
+    allowed_schemes = _policy_list(policy, "allowed_schemes")
+    if "allowed_schemes" not in policy:
+        allowed_schemes = ["exact"]
     allowed_recipients = [r.lower() for r in _policy_list(policy, "allowed_recipients")]
     allowed_assets = policy.get("allowed_assets") or {}
     if not isinstance(allowed_assets, dict):
@@ -376,6 +377,8 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
 
     if not allowed_networks:
         raise _fail("Payment policy allows no networks.")
+    if not allowed_schemes:
+        raise _fail("Payment policy allows no schemes.")
     if not allowed_recipients:
         raise _fail("Payment policy allows no recipients.")
 
@@ -396,7 +399,9 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
             continue
         if str(entry["payTo"]).lower() not in allowed_recipients:
             continue
-        amount = entry.get("amount", entry.get("maxAmountRequired"))
+        amount = entry.get("amount")
+        if amount is None:
+            amount = entry.get("maxAmountRequired")
         if amount is None:
             continue
         try:
@@ -433,12 +438,9 @@ def authorize_payment(
 
     origin = assert_public_https_url(url)
 
-    # Origin allowlisting is OPTIONAL. Finding 3 says "PREFER an approved domain
-    # egress policy" — a preference, not a requirement — and its mandatory items
-    # (HTTPS only, address vetting, no redirects, rebinding protection, timeouts,
-    # byte limits) are enforced regardless. Omitting allowed_origins therefore lets
-    # an agent browse the open web, which is the point of a paying agent, while a
-    # deployment with a known merchant set can still pin it.
+    # Origin allowlisting is optional. HTTPS, address vetting, redirect refusal,
+    # rebinding protection, timeouts, and byte limits are always enforced. An
+    # operator with a known merchant set can pin it with allowed_origins.
     allowed_origins = _policy_list(policy, "allowed_origins")
     if allowed_origins and origin.lower() not in [o.lower().rstrip("/") for o in allowed_origins]:
         raise _fail(f"Origin {origin} is not in the configured allowed_origins.")
@@ -447,7 +449,9 @@ def authorize_payment(
         raise _fail("Payment challenge is not a JSON object.")
 
     entry = select_accept_entry(challenge, policy)
-    amount_units = entry.get("amount", entry.get("maxAmountRequired"))
+    amount_units = entry.get("amount")
+    if amount_units is None:
+        amount_units = entry.get("maxAmountRequired")
 
     return {
         "accept": entry,

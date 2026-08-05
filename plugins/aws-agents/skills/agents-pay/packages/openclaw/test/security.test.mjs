@@ -226,6 +226,9 @@ test("manifest declares all required fields for safe startup", async () => {
   assert.ok(required.includes("payment_session_id"));
   assert.ok(required.includes("allowedRecipients"));
   assert.ok(required.includes("maxPaymentAmountAtomic"));
+  const amount = manifest.configSchema.properties.maxPaymentAmountAtomic;
+  assert.equal(amount.default, undefined);
+  assert.equal(amount.pattern, "^[1-9][0-9]*$");
 });
 
 test("public package and runtime identities stay aligned", async () => {
@@ -245,6 +248,7 @@ test("public package and runtime identities stay aligned", async () => {
   assert.ok(packageJson.files.includes("skills"));
   assert.match(readme, /clawhub:\@aws%2Faws-agents-pay/);
   assert.doesNotMatch(readme, /clawhub:\@aws\/aws-agents-pay/);
+  assert.doesNotMatch(readme, /accepts an empty install-time config/);
 });
 
 test("bundled skill is exact and excludes nested packages", async () => {

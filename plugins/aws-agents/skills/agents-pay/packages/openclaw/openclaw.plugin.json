@@ -29,7 +29,7 @@
           "items": { "type": "string" }
         }
       },
-      "maxPaymentAmountAtomic": { "type": "string", "default": "100000" }
+      "maxPaymentAmountAtomic": { "type": "string", "pattern": "^[1-9][0-9]*$" }
     },
     "required": ["paymentManagerArn", "paymentInstrumentId", "userId", "payment_session_id", "allowedRecipients", "maxPaymentAmountAtomic"]
   }
