@@ -44,10 +44,10 @@ Security Lake does not generate findings or assign severity scores. It stores se
 ## Output Sensitivity
 
 Security Lake configuration APIs reveal:
+
 - Data lake S3 bucket names and KMS key ARNs per region
 - Subscriber identities, access types, and source subscriptions
 - Organization account coverage and exception details
 - Log source configuration across accounts and regions
 
 Present source enablement and subscriber summary first. Offer full configuration details on request.
-

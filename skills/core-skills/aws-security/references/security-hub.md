@@ -8,6 +8,7 @@ AWS Security Hub (V2) is the unified security dashboard that ingests findings fr
 ## Data Sources
 
 Security Hub V2 ingests findings from:
+
 - GuardDuty (threat detection)
 - Inspector (vulnerability management)
 - Macie (sensitive data discovery)
@@ -62,6 +63,7 @@ Security Hub V2 uses the OCSF severity model (integer enum):
 Findings from integrated services (GuardDuty, Inspector, Macie) are normalized to this scale upon ingestion into the V2 hub.
 
 **Key notes:**
+
 - Exposure findings (attack paths) carry their own severity based on resource exposure and blast radius
 - The `severity_id` field in OCSF findings uses this integer enum
 
@@ -78,6 +80,7 @@ See SKILL.md Security considerations for CloudTrail audit logging, CloudWatch an
 ## Output Sensitivity
 
 Security Hub OCSF findings (`GetFindingsV2`) contain:
+
 - Aggregated finding data from multiple source services (GuardDuty, Inspector, Macie)
 - AWS account IDs, resource ARNs, and region details
 - IP addresses, network paths, and exposure details (attack path findings)
@@ -85,4 +88,3 @@ Security Hub OCSF findings (`GetFindingsV2`) contain:
 - Threat intelligence correlation data
 
 Present finding statistics and severity distribution first. Offer full OCSF finding bodies on request. Avoid logging raw OCSF finding or resource responses in plaintext, store exported findings data only in downstream destinations encrypted at rest, and transmit exported data only over encrypted channels such as TLS. If logging to CloudWatch Logs, verify the log group is encrypted with a KMS key. If findings or automation outputs are forwarded to SNS topics or S3 buckets, verify those destinations use KMS encryption and resource policies include `aws:SourceArn` and `aws:SourceAccount` condition keys.
-

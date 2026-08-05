@@ -19,14 +19,16 @@ Works from both standalone accounts and delegated administrator accounts.
 ## Workflow A: Review Single Account
 
 1. Get the detector ID:
-```bash
-aws guardduty list-detectors
-```
+
+   ```bash
+   aws guardduty list-detectors
+   ```
 
 2. Get detector configuration:
-```bash
-aws guardduty get-detector --detector-id <DETECTOR_ID>
-```
+
+   ```bash
+   aws guardduty get-detector --detector-id <DETECTOR_ID>
+   ```
 
 3. Report ALL features from the `get-detector` response. The response includes a `features` array — enumerate each feature and its `status` (ENABLED/DISABLED). Do not hardcode a feature list; report whatever the API returns.
 
@@ -37,84 +39,97 @@ aws guardduty get-detector --detector-id <DETECTOR_ID>
    For RUNTIME_MONITORING, the response includes `additionalConfiguration` items for agent management per resource type. Report all `additionalConfiguration` items present in the response.
 
    For Malware Protection for S3 (on-demand scanning):
+
    ```bash
    aws guardduty list-malware-protection-plans
    ```
 
 4. Check publishing destination:
-```bash
-aws guardduty list-publishing-destinations --detector-id <DETECTOR_ID>
-```
-If destination exists:
-```bash
-aws guardduty describe-publishing-destination --detector-id <DETECTOR_ID> --destination-id <DEST_ID>
-```
 
-**Security check:** Verify publishing destination has SSE-KMS encryption configured — check for `KmsKeyArn` in the destination properties.
+   ```bash
+   aws guardduty list-publishing-destinations --detector-id <DETECTOR_ID>
+   ```
+
+   If destination exists:
+
+   ```bash
+   aws guardduty describe-publishing-destination --detector-id <DETECTOR_ID> --destination-id <DEST_ID>
+   ```
+
+   **Security check:** Verify publishing destination has SSE-KMS encryption configured — check for `KmsKeyArn` in the destination properties.
 
 5. Check IP sets and threat intel sets:
-```bash
-aws guardduty list-ip-sets --detector-id <DETECTOR_ID>
-aws guardduty list-threat-intel-sets --detector-id <DETECTOR_ID>
-```
+
+   ```bash
+   aws guardduty list-ip-sets --detector-id <DETECTOR_ID>
+   aws guardduty list-threat-intel-sets --detector-id <DETECTOR_ID>
+   ```
 
 6. Check suppression filters:
-```bash
-aws guardduty list-filters --detector-id <DETECTOR_ID>
-```
+
+   ```bash
+   aws guardduty list-filters --detector-id <DETECTOR_ID>
+   ```
 
 7. Present results:
 
-**Security check:** Verify CloudTrail is enabled and logging GuardDuty API calls (`guardduty:*` events) for audit purposes.
+   **Security check:** Verify CloudTrail is enabled and logging GuardDuty API calls (`guardduty:*` events) for audit purposes.
 
-| Check | Status |
-|---|---|
-| Detector enabled | Enabled / Not Enabled |
-| Each feature from API response | Enabled / Disabled |
-| Runtime Monitoring agent management (per resource type) | Enabled / Disabled |
-| Malware Protection for S3 plans | Configured / Not Configured |
-| Publishing destination | Configured / Not Configured |
-| Trusted IP list | Configured / Not Configured |
+   | Check | Status |
+   |---|---|
+   | Detector enabled | Enabled / Not Enabled |
+   | Each feature from API response | Enabled / Disabled |
+   | Runtime Monitoring agent management (per resource type) | Enabled / Disabled |
+   | Malware Protection for S3 plans | Configured / Not Configured |
+   | Publishing destination | Configured / Not Configured |
+   | Trusted IP list | Configured / Not Configured |
 
 ## Workflow B: Review Organization Coverage
 
 1. Identify the admin account:
-```bash
-aws guardduty list-organization-admin-accounts
-```
+
+   ```bash
+   aws guardduty list-organization-admin-accounts
+   ```
 
 2. Get the detector ID:
-```bash
-aws guardduty list-detectors
-```
+
+   ```bash
+   aws guardduty list-detectors
+   ```
 
 3. Check organization auto-enable settings:
-```bash
-aws guardduty describe-organization-configuration --detector-id <DETECTOR_ID>
-```
-Report ALL features and their auto-enable status. For features with `additionalConfiguration`, also report auto-enable for sub-features.
+
+   ```bash
+   aws guardduty describe-organization-configuration --detector-id <DETECTOR_ID>
+   ```
+
+   Report ALL features and their auto-enable status. For features with `additionalConfiguration`, also report auto-enable for sub-features.
 
 4. Get coverage statistics (summary without per-account enumeration):
-```bash
-aws guardduty get-coverage-statistics --detector-id <DETECTOR_ID> --statistics-type COUNT_BY_COVERAGE_STATUS
-```
+
+   ```bash
+   aws guardduty get-coverage-statistics --detector-id <DETECTOR_ID> --statistics-type COUNT_BY_COVERAGE_STATUS
+   ```
 
 5. (ONLY if user explicitly requests per-account detail) Enumerate members:
-```bash
-aws guardduty list-members --detector-id <DETECTOR_ID>
-aws guardduty get-member-detectors --detector-id <DETECTOR_ID> --account-ids <ACCOUNT_IDS>
-```
-MAY batch up to 50 account IDs per call.
+
+   ```bash
+   aws guardduty list-members --detector-id <DETECTOR_ID>
+   aws guardduty get-member-detectors --detector-id <DETECTOR_ID> --account-ids <ACCOUNT_IDS>
+   ```
+
+   MAY batch up to 50 account IDs per call.
 
 6. Present results:
 
-| Check | Status |
-|---|---|
-| Delegated admin designated | Yes / No |
-| Auto-enable new members | Enabled / Not Enabled |
-| Auto-enable per feature (each from org config response) | Enabled / Not Enabled |
-| Member accounts | Enrolled (details on request) |
-| Coverage statistics | Healthy / Unhealthy / Count |
+   | Check | Status |
+   |---|---|
+   | Delegated admin designated | Yes / No |
+   | Auto-enable new members | Enabled / Not Enabled |
+   | Auto-enable per feature (each from org config response) | Enabled / Not Enabled |
+   | Member accounts | Enrolled (details on request) |
+   | Coverage statistics | Healthy / Unhealthy / Count |
 
 ## Constraints
 

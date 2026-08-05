@@ -18,50 +18,56 @@ Works from both standalone accounts and delegated administrator accounts.
 ## Workflow A: Account Findings Summary
 
 1. Get statistics by severity:
-```bash
-aws macie2 get-finding-statistics --group-by severity.description
-```
+
+   ```bash
+   aws macie2 get-finding-statistics --group-by severity.description
+   ```
 
 2. Get statistics by type:
-```bash
-aws macie2 get-finding-statistics --group-by type
-```
+
+   ```bash
+   aws macie2 get-finding-statistics --group-by type
+   ```
 
 3. Get statistics by bucket:
-```bash
-aws macie2 get-finding-statistics --group-by "resourcesAffected.s3Bucket.name"
-```
+
+   ```bash
+   aws macie2 get-finding-statistics --group-by "resourcesAffected.s3Bucket.name"
+   ```
 
 4. List findings sorted by severity:
-```bash
-aws macie2 list-findings --sort-criteria '{"attributeName":"severity.score","orderBy":"DESC"}' --max-results 50
-```
+
+   ```bash
+   aws macie2 list-findings --sort-criteria '{"attributeName":"severity.score","orderBy":"DESC"}' --max-results 50
+   ```
 
 5. Get finding details (batch, max 50):
-```bash
-aws macie2 get-findings --finding-ids <id1> <id2> ...
-```
+
+   ```bash
+   aws macie2 get-findings --finding-ids <id1> <id2> ...
+   ```
 
 6. Check usage:
-```bash
-aws macie2 get-usage-totals
-```
+
+   ```bash
+   aws macie2 get-usage-totals
+   ```
 
 7. Present summary:
 
-| Severity | Count |
-|---|---|
-| High | X |
-| Medium | Y |
-| Low | Z |
+   | Severity | Count |
+   |---|---|
+   | High | X |
+   | Medium | Y |
+   | Low | Z |
 
-| Finding Type | Count |
-|---|---|
-| SensitiveData:S3Object/... | X |
+   | Finding Type | Count |
+   |---|---|
+   | SensitiveData:S3Object/... | X |
 
-| Top Affected Buckets | Finding Count |
-|---|---|
-| bucket-name | X |
+   | Top Affected Buckets | Finding Count |
+   |---|---|
+   | bucket-name | X |
 
 ## Workflow B: Sensitive Data Overview
 
@@ -70,16 +76,19 @@ If Workflow A returns zero findings, skip and report no sensitive data detection
 1. To investigate a specific resource from Workflow A results, use the `resourcesAffected.s3Bucket.arn` or `resourcesAffected.s3Object.key` from the finding detail.
 
 2. List resource profile detections:
-```bash
-aws macie2 list-resource-profile-detections --resource-arn <arn>
-```
+
+   ```bash
+   aws macie2 list-resource-profile-detections --resource-arn <arn>
+   ```
 
 3. Check sensitive data availability:
-```bash
-aws macie2 get-sensitive-data-occurrences-availability --finding-id <finding-id>
-```
+
+   ```bash
+   aws macie2 get-sensitive-data-occurrences-availability --finding-id <finding-id>
+   ```
 
 4. Summarize categories:
+
    - Financial (credit cards, bank accounts)
    - PII (names, addresses, SSNs)
    - Credentials (API keys, passwords)
@@ -87,11 +96,11 @@ aws macie2 get-sensitive-data-occurrences-availability --finding-id <finding-id>
 
 5. Present overview:
 
-| Category | Buckets Affected | Detection Count |
-|---|---|---|
-| Financial | X | Y |
-| PII | X | Y |
-| Credentials | X | Y |
+   | Category | Buckets Affected | Detection Count |
+   |---|---|---|
+   | Financial | X | Y |
+   | PII | X | Y |
+   | Credentials | X | Y |
 
 ## Constraints
 

@@ -16,83 +16,99 @@ Works from both standalone and delegated administrator accounts.
 ## Workflow A: Review Single Account
 
 1. Check data lake status:
-```bash
-aws securitylake list-data-lakes
-```
-Verify each expected region has a data lake with `createStatus` = COMPLETED.
 
-**Security check:** Verify data lake has KMS encryption configured — check `encryptionConfiguration.kmsKeyId` in the `list-data-lakes` output.
+   ```bash
+   aws securitylake list-data-lakes
+   ```
+
+   Verify each expected region has a data lake with `createStatus` = COMPLETED.
+
+   **Security check:** Verify data lake has KMS encryption configured — check `encryptionConfiguration.kmsKeyId` in the `list-data-lakes` output.
 
 2. Check configured AWS sources:
-```bash
-aws securitylake get-data-lake-sources
-```
-Verify these source types are present:
-- ROUTE53
-- VPC_FLOW
-- SH_FINDINGS
-- CLOUD_TRAIL_MGMT
-- LAMBDA_EXECUTION
-- S3_DATA
-- EKS_AUDIT
+
+   ```bash
+   aws securitylake get-data-lake-sources
+   ```
+
+   Verify these source types are present:
+
+   - ROUTE53
+   - VPC_FLOW
+   - SH_FINDINGS
+   - CLOUD_TRAIL_MGMT
+   - LAMBDA_EXECUTION
+   - S3_DATA
+   - EKS_AUDIT
 
 3. List log sources for detail:
-```bash
-aws securitylake list-log-sources
-```
+
+   ```bash
+   aws securitylake list-log-sources
+   ```
 
 4. Check subscribers:
-```bash
-aws securitylake list-subscribers
-```
-For each subscriber, note access type (S3, LAKEFORMATION) and status.
+
+   ```bash
+   aws securitylake list-subscribers
+   ```
+
+   For each subscriber, note access type (S3, LAKEFORMATION) and status.
 
 5. Present results:
 
-| Check | Status | Detail |
-|---|---|---|
-| Data lake enabled (region) | Configured | createStatus=COMPLETED |
-| CloudTrail Management | Configured / Not Configured | ... |
-| VPC Flow Logs | Configured / Not Configured | ... |
-| Route53 | Configured / Not Configured | ... |
-| S3 Data Events | Configured / Not Configured | ... |
-| Lambda Execution | Configured / Not Configured | ... |
-| EKS Audit | Configured / Not Configured | ... |
-| Subscribers | Configured | N subscribers active |
+   | Check | Status | Detail |
+   |---|---|---|
+   | Data lake enabled (region) | Configured | createStatus=COMPLETED |
+   | CloudTrail Management | Configured / Not Configured | ... |
+   | VPC Flow Logs | Configured / Not Configured | ... |
+   | Route53 | Configured / Not Configured | ... |
+   | S3 Data Events | Configured / Not Configured | ... |
+   | Lambda Execution | Configured / Not Configured | ... |
+   | EKS Audit | Configured / Not Configured | ... |
+   | Subscribers | Configured | N subscribers active |
 
 6. MUST check all standard AWS sources listed above.
+
 7. SHOULD flag any source with a non-healthy status.
 
 ## Workflow B: Review Organization Coverage
 
 1. Get organization configuration:
-```bash
-aws securitylake get-data-lake-organization-configuration
-```
-Check which sources have auto-enable configured.
+
+   ```bash
+   aws securitylake get-data-lake-organization-configuration
+   ```
+
+   Check which sources have auto-enable configured.
 
 2. List exceptions:
-```bash
-aws securitylake list-data-lake-exceptions
-```
-Identify accounts/regions with failures.
+
+   ```bash
+   aws securitylake list-data-lake-exceptions
+   ```
+
+   Identify accounts/regions with failures.
 
 3. Present organization summary:
 
-| Check | Status | Detail |
-|---|---|---|
-| Org auto-enable (each source) | Configured / Not Configured | ... |
-| Exceptions | Count | ... |
+   | Check | Status | Detail |
+   |---|---|---|
+   | Org auto-enable (each source) | Configured / Not Configured | ... |
+   | Exceptions | Count | ... |
 
 4. For each exception:
 
-| Account | Region | Source | Exception Reason |
-|---|---|---|---|
-| 111122223333 | us-east-1 | VPC_FLOW | INTERNAL_ERROR |
+   | Account | Region | Source | Exception Reason |
+   |---|---|---|---|
+   | 111122223333 | us-east-1 | VPC_FLOW | INTERNAL_ERROR |
 
 5. MUST report all exceptions.
+
 6. SHOULD compare auto-enable sources against full source list.
+
 7. MUST NOT paginate through all member accounts by default.
+
 8. MUST only enumerate individual member status if user explicitly requests it.
 
 ## Constraints

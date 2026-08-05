@@ -21,26 +21,31 @@ This skill works from both standalone accounts and delegated administrator accou
 ## Workflow A: Standards Compliance Summary
 
 1. Get active compliance findings:
-```bash
-aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}]}' --max-items 100
-```
+
+   ```bash
+   aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}]}' --max-items 100
+   ```
 
 2. Get FAILED findings:
-```bash
-aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}],"ComplianceStatus":[{"Value":"FAILED","Comparison":"EQUALS"}]}' --max-items 100
-```
+
+   ```bash
+   aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}],"ComplianceStatus":[{"Value":"FAILED","Comparison":"EQUALS"}]}' --max-items 100
+   ```
 
 3. Get PASSED findings:
-```bash
-aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}],"ComplianceStatus":[{"Value":"PASSED","Comparison":"EQUALS"}]}' --max-items 100
-```
+
+   ```bash
+   aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}],"ComplianceStatus":[{"Value":"PASSED","Comparison":"EQUALS"}]}' --max-items 100
+   ```
 
 4. List enabled standards for context:
-```bash
-aws securityhub get-enabled-standards
-```
+
+   ```bash
+   aws securityhub get-enabled-standards
+   ```
 
 5. Summarize:
+
    - Per standard: PASSED / FAILED / NOT_AVAILABLE counts
    - Overall compliance percentage
    - Severity breakdown of failed findings
@@ -48,16 +53,19 @@ aws securityhub get-enabled-standards
 ## Workflow B: Failed Controls Summary
 
 1. Get FAILED findings sorted by severity:
-```bash
-aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}],"ComplianceStatus":[{"Value":"FAILED","Comparison":"EQUALS"}]}' --sort-criteria '{"Field":"SeverityNormalized","SortOrder":"desc"}' --max-items 100
-```
+
+   ```bash
+   aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}],"ComplianceStatus":[{"Value":"FAILED","Comparison":"EQUALS"}]}' --sort-criteria '{"Field":"SeverityNormalized","SortOrder":"desc"}' --max-items 100
+   ```
 
 2. Get CRITICAL failed findings:
-```bash
-aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}],"ComplianceStatus":[{"Value":"FAILED","Comparison":"EQUALS"}],"SeverityLabel":[{"Value":"CRITICAL","Comparison":"EQUALS"}]}' --max-items 100
-```
+
+   ```bash
+   aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}],"ComplianceStatus":[{"Value":"FAILED","Comparison":"EQUALS"}],"SeverityLabel":[{"Value":"CRITICAL","Comparison":"EQUALS"}]}' --max-items 100
+   ```
 
 3. Summarize by:
+
    - Control ID (ComplianceSecurityControlId)
    - Severity
    - Resource type
@@ -68,17 +76,20 @@ aws securityhub get-findings --filters '{"ProductName":[{"Value":"Security Hub",
 For customers using Security Hub CSPM as their primary hub:
 
 1. Get findings from integrated services:
-```bash
-aws securityhub get-findings --filters '{"ProductName":[{"Value":"GuardDuty","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}]}' --max-items 100
-```
+
+   ```bash
+   aws securityhub get-findings --filters '{"ProductName":[{"Value":"GuardDuty","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}]}' --max-items 100
+   ```
 
 2. Repeat for Inspector and Macie:
-```bash
-aws securityhub get-findings --filters '{"ProductName":[{"Value":"Inspector","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}]}' --max-items 100
-```
-```bash
-aws securityhub get-findings --filters '{"ProductName":[{"Value":"Macie","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}]}' --max-items 100
-```
+
+   ```bash
+   aws securityhub get-findings --filters '{"ProductName":[{"Value":"Inspector","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}]}' --max-items 100
+   ```
+
+   ```bash
+   aws securityhub get-findings --filters '{"ProductName":[{"Value":"Macie","Comparison":"EQUALS"}],"RecordState":[{"Value":"ACTIVE","Comparison":"EQUALS"}]}' --max-items 100
+   ```
 
 3. Summarize by ProductName, severity, and finding type.
 

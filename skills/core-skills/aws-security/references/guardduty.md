@@ -53,6 +53,7 @@ GuardDuty uses a numeric 0–10 scale mapped to severity levels:
 | Critical | 9.0 – 10.0 | Attack Sequences — correlated multi-step attacks across multiple signals |
 
 **Key notes:**
+
 - Attack Sequence findings (type prefix `AttackSequence:`) are always Critical severity
 - Severity is assigned by GuardDuty based on threat intelligence and behavior analysis
 - Severity may differ for the same finding type depending on context (e.g., known malicious IP vs unknown)
@@ -67,6 +68,7 @@ GuardDuty uses a numeric 0–10 scale mapped to severity levels:
 ## Output Sensitivity
 
 GuardDuty finding details (`GetFindings`) contain:
+
 - IP addresses (actor and target)
 - Network connection details (ports, protocols, direction)
 - AWS account IDs and resource ARNs
@@ -76,4 +78,3 @@ GuardDuty finding details (`GetFindings`) contain:
 - Process and container details (runtime findings)
 
 Present severity/type summary first. Offer full finding body on request.
-

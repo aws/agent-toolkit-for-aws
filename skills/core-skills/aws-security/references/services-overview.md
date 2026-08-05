@@ -73,6 +73,7 @@ aws organizations list-delegated-administrators \
 ```
 
 Service principals:
+
 - `guardduty.amazonaws.com`
 - `inspector2.amazonaws.com`
 - `securityhub.amazonaws.com`

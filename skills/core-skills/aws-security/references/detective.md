@@ -44,6 +44,7 @@ Detective investigations use a severity score:
 | CRITICAL | Strong evidence of compromise |
 
 **Key notes:**
+
 - Investigation severity is based on the combination and weight of indicators found
 - Indicator types: TTP_OBSERVED, IMPOSSIBLE_TRAVEL, FLAGGED_IP_ADDRESS, NEW_GEOLOCATION, NEW_ASO, NEW_USER_AGENT, RELATED_FINDING, RELATED_FINDING_GROUP
 - Detective does not generate findings — it produces investigations and finding groups from ingested data
@@ -57,6 +58,7 @@ Detective investigations use a severity score:
 ## Output Sensitivity
 
 Detective investigation details (`GetInvestigation`, `ListIndicators`) contain:
+
 - AWS account IDs and IAM principal ARNs under investigation
 - IP addresses flagged as suspicious (FLAGGED_IP_ADDRESS indicators)
 - Geolocation data (NEW_GEOLOCATION, IMPOSSIBLE_TRAVEL indicators)
@@ -64,4 +66,3 @@ Detective investigation details (`GetInvestigation`, `ListIndicators`) contain:
 - Related GuardDuty finding IDs and Security Hub finding references
 
 Present investigation status/severity summary first. Offer full indicator details on request.
-

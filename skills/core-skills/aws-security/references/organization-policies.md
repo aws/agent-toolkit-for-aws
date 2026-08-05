@@ -42,10 +42,12 @@ These are `organizations` namespace APIs — not service-specific APIs like `sec
 ## Operator Prerequisites
 
 Organization policy APIs are `organizations` namespace APIs. Access requires one of:
+
 - A role in the Organizations **management account** with `organizations:List*` and `organizations:Describe*` permissions, OR
 - A role in a **delegated administrator** account where the management account has configured the delegation policy to grant Organization policy API access to the service's delegated administrator. The standard service onboarding flow configures this delegation.
 
 If `list-policies` returns `AccessDeniedException`, the current role lacks Organizations access. This typically means either:
+
 - The account is not the management account or delegated administrator
 - The delegation policy has not been configured to grant these permissions
 

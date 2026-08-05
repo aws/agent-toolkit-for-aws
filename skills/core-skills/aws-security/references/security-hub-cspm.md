@@ -8,6 +8,7 @@ AWS Security Hub CSPM (Cloud Security Posture Management) evaluates AWS resource
 ## Data Sources
 
 Security Hub CSPM receives:
+
 - AWS Config evaluations (compliance checks against standards)
 - GuardDuty findings (in ASFF format)
 - Inspector findings (in ASFF format)
@@ -81,6 +82,7 @@ CSPM compliance findings use the same normalized severity as Security Hub:
 | CRITICAL | Critical control failed (e.g., root account without MFA) |
 
 **Key notes:**
+
 - Severity is assigned per control definition, not per resource
 - The same control failure has the same severity regardless of which account it appears in
 - Enabled standards define severity per control; use `describe-standards-controls` for the current control metadata
@@ -96,6 +98,7 @@ No service-specific notes.
 ## Output Sensitivity
 
 Security Hub CSPM findings (`GetFindings` ASFF) contain:
+
 - AWS account IDs and resource ARNs across the organization
 - Resource configuration details (security group rules, IAM policies, encryption settings)
 - Compliance standard and control identifiers
@@ -103,4 +106,3 @@ Security Hub CSPM findings (`GetFindings` ASFF) contain:
 - Automation rule configurations and suppression logic
 
 Present compliance pass/fail rates and severity distribution first. Offer full ASFF finding bodies on request. Avoid logging raw ASFF finding or configuration responses in plaintext, store exported CSPM data only in downstream destinations encrypted at rest, and transmit exported data only over encrypted channels such as TLS. If logging to CloudWatch Logs, verify the log group is encrypted with a KMS key. If CSPM findings or automation outputs are forwarded to SNS topics or S3 buckets, verify those destinations use KMS encryption and resource policies include `aws:SourceArn` and `aws:SourceAccount` condition keys.
-

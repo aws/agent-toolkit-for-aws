@@ -18,74 +18,81 @@ Works from both standalone accounts and delegated administrator accounts.
 ## Workflow A: Account Findings Summary
 
 1. Get aggregated counts by severity:
-```bash
-aws inspector2 list-finding-aggregations --aggregation-type ACCOUNT
-```
+
+   ```bash
+   aws inspector2 list-finding-aggregations --aggregation-type ACCOUNT
+   ```
 
 2. Get aggregated counts by finding type:
-```bash
-aws inspector2 list-finding-aggregations --aggregation-type FINDING_TYPE
-```
+
+   ```bash
+   aws inspector2 list-finding-aggregations --aggregation-type FINDING_TYPE
+   ```
 
 3. Get aggregated counts by resource type:
-```bash
-aws inspector2 list-finding-aggregations --aggregation-type AWS_EC2_INSTANCE
-aws inspector2 list-finding-aggregations --aggregation-type AWS_LAMBDA_FUNCTION
-aws inspector2 list-finding-aggregations --aggregation-type AWS_ECR_CONTAINER
-```
+
+   ```bash
+   aws inspector2 list-finding-aggregations --aggregation-type AWS_EC2_INSTANCE
+   aws inspector2 list-finding-aggregations --aggregation-type AWS_LAMBDA_FUNCTION
+   aws inspector2 list-finding-aggregations --aggregation-type AWS_ECR_CONTAINER
+   ```
 
 4. For ECR context, aggregate by repository:
-```bash
-aws inspector2 list-finding-aggregations --aggregation-type REPOSITORY
-```
+
+   ```bash
+   aws inspector2 list-finding-aggregations --aggregation-type REPOSITORY
+   ```
 
 5. For EC2 context, aggregate by AMI:
-```bash
-aws inspector2 list-finding-aggregations --aggregation-type AMI
-```
+
+   ```bash
+   aws inspector2 list-finding-aggregations --aggregation-type AMI
+   ```
 
 6. Present summary:
 
-| Severity | Count |
-|---|---|
-| Critical | N |
-| High | N |
-| Medium | N |
-| Low | N |
+   | Severity | Count |
+   |---|---|
+   | Critical | N |
+   | High | N |
+   | Medium | N |
+   | Low | N |
 
-| Finding Type | Count | Highest Severity |
-|---|---|---|
-| PACKAGE_VULNERABILITY | N | CRITICAL |
-| CODE_VULNERABILITY | N | HIGH |
-| NETWORK_REACHABILITY | N | MEDIUM |
+   | Finding Type | Count | Highest Severity |
+   |---|---|---|
+   | PACKAGE_VULNERABILITY | N | CRITICAL |
+   | CODE_VULNERABILITY | N | HIGH |
+   | NETWORK_REACHABILITY | N | MEDIUM |
 
-| Resource Type | Count | Critical+High |
-|---|---|---|
-| AWS_EC2_INSTANCE | N | N |
-| AWS_ECR_CONTAINER_IMAGE | N | N |
-| AWS_LAMBDA_FUNCTION | N | N |
+   | Resource Type | Count | Critical+High |
+   |---|---|---|
+   | AWS_EC2_INSTANCE | N | N |
+   | AWS_ECR_CONTAINER_IMAGE | N | N |
+   | AWS_LAMBDA_FUNCTION | N | N |
 
-SHOULD include top 5 AMIs/repositories/functions by finding count when relevant.
+   SHOULD include top 5 AMIs/repositories/functions by finding count when relevant.
 
 ## Workflow B: Organization Findings Overview
 
 1. Aggregate by account:
-```bash
-aws inspector2 list-finding-aggregations --aggregation-type ACCOUNT
-```
+
+   ```bash
+   aws inspector2 list-finding-aggregations --aggregation-type ACCOUNT
+   ```
 
 2. Present per-account summary:
 
-| Account ID | Critical | High | Medium | Low | Total |
-|---|---|---|---|---|---|
-| 111111111111 | N | N | N | N | N |
+   | Account ID | Critical | High | Medium | Low | Total |
+   |---|---|---|---|---|---|
+   | 111111111111 | N | N | N | N | N |
 
-MUST identify the top 5 accounts by critical+high findings count.
+   MUST identify the top 5 accounts by critical+high findings count.
 
 3. Get overall finding type distribution:
-```bash
-aws inspector2 list-finding-aggregations --aggregation-type FINDING_TYPE
-```
+
+   ```bash
+   aws inspector2 list-finding-aggregations --aggregation-type FINDING_TYPE
+   ```
 
 ## Constraints
 

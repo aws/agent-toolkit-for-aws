@@ -5,14 +5,16 @@
 Reviews Security Hub CSPM configuration — standards, controls, and compliance posture management using ASFF format. Covers enabled standards (FSBP, CIS, PCI-DSS, NIST 800-53, NIST 800-171, AI Best Practices, Resource Tagging), control status, automation rules, and organization-wide policy enforcement.
 
 Security Hub CSPM provides two categories of functionality:
+
 1. **Compliance management** — standards, controls, compliance findings
+
 2. **ASFF hub features** — finding aggregation, automation rules, custom actions, cross-region aggregation
 
-This skill works from both standalone accounts and delegated administrator accounts.
+   This skill works from both standalone accounts and delegated administrator accounts.
 
-**API constraint:** MUST use V1 APIs (no `-v2` suffix) only. MUST NOT use V2 APIs.
+   **API constraint:** MUST use V1 APIs (no `-v2` suffix) only. MUST NOT use V2 APIs.
 
-**Membership:** Supports both Organizations (Central Configuration) and legacy invitation-based membership.
+   **Membership:** Supports both Organizations (Central Configuration) and legacy invitation-based membership.
 
 ## Classify the Request
 
@@ -24,80 +26,95 @@ This skill works from both standalone accounts and delegated administrator accou
 ## Workflow A: Review Standards & Controls
 
 1. List enabled standards:
-```bash
-aws securityhub get-enabled-standards
-```
+
+   ```bash
+   aws securityhub get-enabled-standards
+   ```
 
 2. For each enabled standard, list controls:
-```bash
-aws securityhub describe-standards-controls --standards-subscription-arn <arn>
-```
+
+   ```bash
+   aws securityhub describe-standards-controls --standards-subscription-arn <arn>
+   ```
 
 3. Get security control definitions:
-```bash
-aws securityhub list-security-control-definitions
-```
+
+   ```bash
+   aws securityhub list-security-control-definitions
+   ```
 
 4. Batch check specific controls:
-```bash
-aws securityhub batch-get-security-controls --security-control-ids '["EC2.1","S3.1","IAM.1"]'
-```
+
+   ```bash
+   aws securityhub batch-get-security-controls --security-control-ids '["EC2.1","S3.1","IAM.1"]'
+   ```
 
 5. Identify disabled controls:
-```bash
-aws securityhub describe-standards-controls --standards-subscription-arn <arn> --query "Controls[?ControlStatus=='DISABLED']"
-```
+
+   ```bash
+   aws securityhub describe-standards-controls --standards-subscription-arn <arn> --query "Controls[?ControlStatus=='DISABLED']"
+   ```
 
 6. Check custom actions:
-```bash
-aws securityhub describe-action-targets
-```
 
-**Constraints:**
-- MUST enumerate all enabled standards
-- MUST report disabled controls with their DisabledReason
-- SHOULD flag standards available but not enabled
-- SHOULD note control count per standard (enabled vs total)
+   ```bash
+   aws securityhub describe-action-targets
+   ```
+
+   **Constraints:**
+
+   - MUST enumerate all enabled standards
+   - MUST report disabled controls with their DisabledReason
+   - SHOULD flag standards available but not enabled
+   - SHOULD note control count per standard (enabled vs total)
 
 ## Workflow B: Review Automation & Policies
 
 0. Determine membership model:
-```bash
-aws securityhub describe-organization-configuration
-```
-If succeeds: Organizations (Central Configuration). If fails: may use invitation-based or not an admin.
+
+   ```bash
+   aws securityhub describe-organization-configuration
+   ```
+
+   If succeeds: Organizations (Central Configuration). If fails: may use invitation-based or not an admin.
 
 1. List automation rules:
-```bash
-aws securityhub list-automation-rules
-```
+
+   ```bash
+   aws securityhub list-automation-rules
+   ```
 
 2. Get rule details:
-```bash
-aws securityhub batch-get-automation-rules --automation-rules-arns '["<arn>"]'
-```
+
+   ```bash
+   aws securityhub batch-get-automation-rules --automation-rules-arns '["<arn>"]'
+   ```
 
 3. List configuration policies:
-```bash
-aws securityhub list-configuration-policies
-```
+
+   ```bash
+   aws securityhub list-configuration-policies
+   ```
 
 4. Get policy details:
-```bash
-aws securityhub get-configuration-policy --identifier <policy-id>
-```
+
+   ```bash
+   aws securityhub get-configuration-policy --identifier <policy-id>
+   ```
 
 5. Check policy associations:
-```bash
-aws securityhub list-configuration-policy-associations --filters '{"ConfigurationPolicyId":"<policy-id>"}'
-```
+
+   ```bash
+   aws securityhub list-configuration-policy-associations --filters '{"ConfigurationPolicyId":"<policy-id>"}'
+   ```
 
 6. Check org configuration:
-```bash
-aws securityhub describe-organization-configuration
-```
 
-**Security check:** Verify CloudTrail is enabled and logging Security Hub CSPM API calls (`securityhub:*` events without `-v2` suffix) for audit purposes.
+   ```bash
+   aws securityhub describe-organization-configuration
+   ```
+
+   **Security check:** Verify CloudTrail is enabled and logging Security Hub CSPM API calls (`securityhub:*` events without `-v2` suffix) for audit purposes.
 
 ## Constraints
 

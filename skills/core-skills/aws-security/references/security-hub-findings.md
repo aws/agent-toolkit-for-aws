@@ -22,85 +22,106 @@ This skill works from both standalone accounts and delegated administrator accou
 ## Workflow A: Account Findings Summary
 
 1. Get finding statistics:
-```bash
-aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"severity"}]'
-```
-Valid GroupByField values (examples — see [API reference](https://docs.aws.amazon.com/securityhub/latest/userguide/llms.txt) for the current set): `severity`, `status`, `resources.type`, `cloud.account.uid`, `cloud.region`, `metadata.product.name`, `finding_info.types`, `class_name`
+
+   ```bash
+   aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"severity"}]'
+   ```
+
+   Valid GroupByField values (examples — see [API reference](https://docs.aws.amazon.com/securityhub/latest/userguide/llms.txt) for the current set): `severity`, `status`, `resources.type`, `cloud.account.uid`, `cloud.region`, `metadata.product.name`, `finding_info.types`, `class_name`
 
 2. Query for Exposure findings (cross-service resource exposure — prioritize these first):
-```bash
-aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"class_name"}]'
-```
-If Exposure findings exist, retrieve them with a server-side filter:
-```bash
-aws securityhub get-findings-v2 --filters '{"CompositeFilters":[{"StringFilters":[{"FieldName":"class_name","Filter":{"Value":"Exposure","Comparison":"EQUALS"}}]}]}' --max-results 50
-```
-Present Exposure findings first in summary.
+
+   ```bash
+   aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"class_name"}]'
+   ```
+
+   If Exposure findings exist, retrieve them with a server-side filter:
+
+   ```bash
+   aws securityhub get-findings-v2 --filters '{"CompositeFilters":[{"StringFilters":[{"FieldName":"class_name","Filter":{"Value":"Exposure","Comparison":"EQUALS"}}]}]}' --max-results 50
+   ```
+
+   Present Exposure findings first in summary.
 
 3. Get findings trends:
-```bash
-aws securityhub get-findings-trends-v2 --start-time <ISO-8601> --end-time <ISO-8601>
-```
-Default to last 30 days.
+
+   ```bash
+   aws securityhub get-findings-trends-v2 --start-time <ISO-8601> --end-time <ISO-8601>
+   ```
+
+   Default to last 30 days.
 
 4. Get active findings:
-```bash
-aws securityhub get-findings-v2 --max-results 100
-```
+
+   ```bash
+   aws securityhub get-findings-v2 --max-results 100
+   ```
 
 5. Get resource-centric view:
-```bash
-aws securityhub get-resources-v2 --max-results 100
-```
+
+   ```bash
+   aws securityhub get-resources-v2 --max-results 100
+   ```
 
 6. Get resource statistics:
-```bash
-aws securityhub get-resources-statistics-v2 --group-by-rules '[{"GroupByField":"ResourceType"}]'
-```
-Valid GroupByField values (examples — see [API reference](https://docs.aws.amazon.com/securityhub/latest/userguide/llms.txt) for the current set): `AccountId`, `Region`, `ResourceType`, `ResourceCategory`
+
+   ```bash
+   aws securityhub get-resources-statistics-v2 --group-by-rules '[{"GroupByField":"ResourceType"}]'
+   ```
+
+   Valid GroupByField values (examples — see [API reference](https://docs.aws.amazon.com/securityhub/latest/userguide/llms.txt) for the current set): `AccountId`, `Region`, `ResourceType`, `ResourceCategory`
 
 7. Get resource trends:
-```bash
-aws securityhub get-resources-trends-v2 --start-time <ISO-8601> --end-time <ISO-8601>
-```
+
+   ```bash
+   aws securityhub get-resources-trends-v2 --start-time <ISO-8601> --end-time <ISO-8601>
+   ```
 
 ## Workflow B: Organization Findings Overview
 
 1. Get org-wide finding statistics:
-```bash
-aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"severity"}]'
-```
+
+   ```bash
+   aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"severity"}]'
+   ```
 
 2. Query for Exposure findings across the org (prioritize these first):
-```bash
-aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"class_name"}]'
-```
-If Exposure findings exist, retrieve and present first:
-```bash
-aws securityhub get-findings-v2 --filters '{"CompositeFilters":[{"StringFilters":[{"FieldName":"class_name","Filter":{"Value":"Exposure","Comparison":"EQUALS"}}]}]}' --max-results 50
-```
+
+   ```bash
+   aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"class_name"}]'
+   ```
+
+   If Exposure findings exist, retrieve and present first:
+
+   ```bash
+   aws securityhub get-findings-v2 --filters '{"CompositeFilters":[{"StringFilters":[{"FieldName":"class_name","Filter":{"Value":"Exposure","Comparison":"EQUALS"}}]}]}' --max-results 50
+   ```
 
 3. Get org-wide trends:
-```bash
-aws securityhub get-findings-trends-v2 --start-time <ISO-8601> --end-time <ISO-8601>
-```
+
+   ```bash
+   aws securityhub get-findings-trends-v2 --start-time <ISO-8601> --end-time <ISO-8601>
+   ```
 
 4. Get resource statistics across org:
-```bash
-aws securityhub get-resources-statistics-v2 --group-by-rules '[{"GroupByField":"ResourceType"}]'
-```
+
+   ```bash
+   aws securityhub get-resources-statistics-v2 --group-by-rules '[{"GroupByField":"ResourceType"}]'
+   ```
 
 5. For drill-down:
-```bash
-aws securityhub get-findings-v2 --max-results 100
-```
+
+   ```bash
+   aws securityhub get-findings-v2 --max-results 100
+   ```
 
 6. Get resource trends:
-```bash
-aws securityhub get-resources-trends-v2 --start-time <ISO-8601> --end-time <ISO-8601>
-```
 
-**Security check:** See SKILL.md Security considerations for CloudTrail audit logging, CloudWatch anomaly alarms, KMS/TLS encryption, SNS recipient validation, and current AWS security best-practice references.
+   ```bash
+   aws securityhub get-resources-trends-v2 --start-time <ISO-8601> --end-time <ISO-8601>
+   ```
+
+   **Security check:** See SKILL.md Security considerations for CloudTrail audit logging, CloudWatch anomaly alarms, KMS/TLS encryption, SNS recipient validation, and current AWS security best-practice references.
 
 ## Constraints
 

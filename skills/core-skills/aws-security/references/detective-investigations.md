@@ -18,39 +18,46 @@ Works from both standalone and delegated administrator accounts.
 ## Workflow A: Active Investigations Summary
 
 1. Obtain the graph ARN:
-```bash
-aws detective list-graphs
-```
-If no graphs, report Detective not configured and stop.
+
+   ```bash
+   aws detective list-graphs
+   ```
+
+   If no graphs, report Detective not configured and stop.
 
 2. List investigations:
-```bash
-aws detective list-investigations --graph-arn <graph-arn> --filter-criteria '{}'
-```
+
+   ```bash
+   aws detective list-investigations --graph-arn <graph-arn> --filter-criteria '{}'
+   ```
 
 3. Group results by `Status` (RUNNING, SUCCESSFUL, FAILED) and `Severity` (CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL).
 
 4. Present results:
 
-| Status | Severity | Count | Most Recent |
-|---|---|---|---|
-| RUNNING | HIGH | 3 | inv-abc123 (2024-01-15) |
+   | Status | Severity | Count | Most Recent |
+   |---|---|---|---|
+   | RUNNING | HIGH | 3 | inv-abc123 (2024-01-15) |
 
 5. MUST include total counts per status category.
+
 6. SHOULD note if any investigations are in FAILED state.
+
 7. MAY paginate using NextToken if results exceed page size.
 
 ## Workflow B: Investigation Detail
 
 1. Get investigation details:
-```bash
-aws detective get-investigation --graph-arn <graph-arn> --investigation-id <id>
-```
+
+   ```bash
+   aws detective get-investigation --graph-arn <graph-arn> --investigation-id <id>
+   ```
 
 2. List indicators:
-```bash
-aws detective list-indicators --graph-arn <graph-arn> --investigation-id <id>
-```
+
+   ```bash
+   aws detective list-indicators --graph-arn <graph-arn> --investigation-id <id>
+   ```
 
 3. Group indicators by whatever `IndicatorType` values the API returns. Do not validate against a fixed list — report all types present in the response.
 
@@ -58,13 +65,14 @@ aws detective list-indicators --graph-arn <graph-arn> --investigation-id <id>
 
 4. Present summary:
 
-| Indicator Type | Count |
-|---|---|
-| TTP_OBSERVED | 5 |
-| FLAGGED_IP_ADDRESS | 2 |
-| RELATED_FINDING_GROUP | 1 |
+   | Indicator Type | Count |
+   |---|---|
+   | TTP_OBSERVED | 5 |
+   | FLAGGED_IP_ADDRESS | 2 |
+   | RELATED_FINDING_GROUP | 1 |
 
 5. MUST include `EntityType` and `EntityArn` from investigation detail.
+
 6. MUST NOT perform follow-up investigation on flagged entities.
 
 ## Constraints

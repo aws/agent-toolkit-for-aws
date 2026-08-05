@@ -8,6 +8,7 @@ Amazon Inspector is a vulnerability management service that automatically scans 
 ## Data Sources
 
 Inspector automatically discovers and scans:
+
 - EC2 instances (via SSM agent) — OS package vulnerabilities, network reachability
 - ECR container images — image layer vulnerabilities
 - Lambda functions — code vulnerabilities, package vulnerabilities
@@ -52,6 +53,7 @@ Inspector uses CVSS (Common Vulnerability Scoring System) for package vulnerabil
 | Network Reachability | Exposed port risk + service type |
 
 **Key notes:**
+
 - Inspector uses the highest available CVSS score (NVD or vendor-provided)
 - Inspector Score may differ from raw CVSS — it incorporates exploitability and fix availability
 - ECR findings include both CVSS v2 and v3 scores when available
@@ -65,6 +67,7 @@ No service-specific notes.
 ## Output Sensitivity
 
 Inspector finding details (`ListFindings`, `BatchGetFindingDetails`, coverage APIs) contain:
+
 - EC2 instance IDs and AMI IDs
 - ECR repository names and image digests
 - Lambda function names and ARNs
@@ -73,4 +76,3 @@ Inspector finding details (`ListFindings`, `BatchGetFindingDetails`, coverage AP
 - Code file paths and line numbers (code vulnerabilities)
 
 Present severity/type aggregation first. Offer full finding details on request.
-

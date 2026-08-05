@@ -8,6 +8,7 @@ Amazon Macie is a data security service that uses machine learning and pattern m
 ## Data Sources
 
 Macie analyzes:
+
 - S3 bucket inventory and access configurations (automated)
 - S3 object content via classification jobs or automated sensitive data discovery
 - Supports all S3 storage classes except Glacier Deep Archive
@@ -45,6 +46,7 @@ Macie assigns severity (1-3 scale) based on **sensitive data type** and context,
 | Low | 1 | Small amounts of non-credential PII (names, addresses), single-category findings |
 
 **Key rules:**
+
 - Credentials are **always** High regardless of occurrence count
 - Severity increases when multiple sensitive data categories appear in the same S3 object
 - Custom data identifiers inherit the severity configured at creation time
@@ -60,6 +62,7 @@ No service-specific notes.
 ## Output Sensitivity
 
 Macie finding details (`GetFindings`) contain:
+
 - S3 bucket names and object keys where sensitive data was detected
 - Sensitive data categories and occurrence counts (PII, financial, credentials)
 - AWS account IDs and resource ARNs
@@ -67,4 +70,3 @@ Macie finding details (`GetFindings`) contain:
 - Bucket access permissions and encryption status
 
 Present finding severity/type summary and affected bucket counts first. Offer full finding details on request. Never include actual sensitive data samples in output.
-
