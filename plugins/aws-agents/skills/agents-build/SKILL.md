@@ -11,11 +11,13 @@ description: >
   called", "migrate Bedrock Agent", "after import", "migration issue",
   "framework for migration", "change model", "browser tool", "code
   interpreter", "delete agent", "tear down", "agentcore remove",
-  "cross-account memory", "x402 content", "402 Payment Required",
-  "microtransactions", "paid API or tool".
+  "cross-account memory",
+  "add payments capability to my agent", "wire payments plugin",
+  "payments middleware for my agent".
   Not for connecting to external APIs via Gateway — use agents-connect.
   Not for scaffolding a new project — use agents-get-started.
   Not for CLI/dev server errors — use agents-debug.
+  Not for THIS agent paying for x402 content at runtime — use agents-pay.
   Strands vs LangGraph in a migration context routes here.
 allowed-tools: Read Grep Glob Bash
 metadata:
