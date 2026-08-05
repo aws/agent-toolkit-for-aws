@@ -36,10 +36,9 @@ Required configuration:
   (e.g. `"100000"` = 0.10 USDC at 6 decimals). This is the PER-PAYMENT ceiling;
   it is not a substitute for the session budget, which caps cumulative spend.
 
-OpenClaw installs the plugin before configuration is available, so the manifest
-accepts an empty install-time config. Both tools still fail closed at first use
-unless every required field is present in trusted plugin settings or the
-protected `~/.x402/config.json` file.
+The manifest requires the listed configuration before the plugin can be enabled.
+Both tools fail closed unless every required field is present in trusted plugin
+settings or the protected `~/.x402/config.json` file.
 
 ## Hard boundary: sessions are human-only
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the x402 policy gate, written as security regression proofs.
 
-Each test names the AppSec finding it defends. Run with no arguments:
+Run with no arguments:
 
     python3 test_x402_policy.py
 
@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import x402_policy as pol
@@ -50,7 +51,7 @@ def challenge(**overrides) -> dict:
 
 
 class PolicyFileTests(unittest.TestCase):
-    """Finding 10: local payment configuration lacks restrictive file protections."""
+    """Local payment configuration requires restrictive file protections."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -153,8 +154,8 @@ class ConfigPrecedenceTests(unittest.TestCase):
         cfg = pol.load_config(self.path)
         self.assertEqual(pol.per_payment_cap(cfg), "0.50")
 
-    def test_config_file_perms_are_still_enforced_after_the_merge(self):
-        """Finding 10 must not regress now that the file also holds identifiers."""
+    def test_config_file_permissions_remain_enforced_with_resource_identifiers(self):
+        """The config remains protected after resource identifiers are added."""
         self._write({"payment_session_id": "ps-1"})
         for bad in (0o640, 0o666):
             self.path.chmod(bad)
@@ -169,7 +170,7 @@ class ConfigPrecedenceTests(unittest.TestCase):
 
 
 class RecipientAndValueTests(unittest.TestCase):
-    """Finding 1: untrusted payment challenge controls recipient and value."""
+    """Untrusted payment challenges cannot control recipient or value."""
 
     def test_amount_above_ceiling_is_refused(self):
         # 5.00 USDC against a 0.50 cap.
@@ -197,15 +198,31 @@ class RecipientAndValueTests(unittest.TestCase):
         with self.assertRaises(pol.PolicyError):
             pol.select_accept_entry(challenge(scheme="upto"), BASE_POLICY)
 
+    def test_explicitly_empty_scheme_list_refuses_every_payment(self):
+        policy = dict(BASE_POLICY)
+        policy["allowed_schemes"] = []
+        with self.assertRaises(pol.PolicyError) as ctx:
+            pol.select_accept_entry(challenge(), policy)
+        self.assertIn("allows no schemes", str(ctx.exception))
+
+    def test_absent_scheme_list_uses_the_exact_scheme_default(self):
+        policy = dict(BASE_POLICY)
+        policy.pop("allowed_schemes")
+        self.assertEqual(pol.select_accept_entry(challenge(), policy)["scheme"], "exact")
+
+    def test_null_amount_uses_max_amount_required(self):
+        entry = pol.select_accept_entry(
+            challenge(amount=None, maxAmountRequired="100000"),
+            BASE_POLICY,
+        )
+        self.assertEqual(entry["maxAmountRequired"], "100000")
+
     def test_checksum_capitalization_still_matches(self):
         entry = pol.select_accept_entry(challenge(asset=USDC_BASE_SEPOLIA.lower()), BASE_POLICY)
         self.assertIsNotNone(entry)
 
     def test_does_not_blindly_take_first_accepts_entry(self):
-        """The reviewed implementation took accepts[0]; a compliant later entry must win.
-
-        Discriminates on amount and recipient, since both are enforced by policy.
-        """
+        """A compliant later entry must win over a hostile first entry."""
         ch = challenge()
         hostile = dict(ch["accepts"][0])
         hostile["amount"] = "5000000"          # $5.00, over the $0.50 ceiling
@@ -284,7 +301,7 @@ class SingleTenantUserIdTests(unittest.TestCase):
 
 
 class RecipientValidationTests(unittest.TestCase):
-    """Finding 1: the publisher cannot choose an unapproved recipient."""
+    """The publisher cannot choose an unapproved recipient."""
 
     def test_unknown_recipient_is_refused(self):
         with self.assertRaises(pol.PolicyError):
@@ -315,10 +332,7 @@ class RecipientValidationTests(unittest.TestCase):
 
 
 class OptionalOriginTests(unittest.TestCase):
-    """Finding 3 item 7 says "PREFER an approved domain egress policy" — a
-    preference, not a requirement. Items 1-6 are mandatory and stay enforced, so an
-    unset allowed_origins means the open web rather than a refusal.
-    """
+    """Origin allowlisting is optional; baseline URL protections remain required."""
 
     def _policy(self, origins=None):
         p = dict(BASE_POLICY)
@@ -350,7 +364,7 @@ class OptionalOriginTests(unittest.TestCase):
 
 
 class SsrfTests(unittest.TestCase):
-    """Finding 3: arbitrary URL fetching enables server-side request forgery."""
+    """Arbitrary URL fetching must not enable server-side request forgery."""
 
     def test_non_https_schemes_are_refused(self):
         for url in ("http://example.com/x", "file:///etc/passwd", "gopher://h/1"):
@@ -398,7 +412,7 @@ class SsrfTests(unittest.TestCase):
 
 
 class IdempotencyTests(unittest.TestCase):
-    """Finding 5: payment retries lack stable idempotency."""
+    """Payment retries use stable idempotency keys."""
 
     def setUp(self):
         self._saved = os.environ.get("PAYMENT_SESSION_ID")
@@ -491,7 +505,7 @@ class IdempotencyTests(unittest.TestCase):
 
 
 class PolicyDirectoryTests(unittest.TestCase):
-    """Finding 10: the directory matters as much as the file.
+    """The directory matters as much as the file.
 
     Write access to the containing directory lets another principal rename a
     wider policy into place, which checks on the original inode cannot detect.
@@ -522,12 +536,11 @@ class PolicyDirectoryTests(unittest.TestCase):
 
 
 class SignerInputTests(unittest.TestCase):
-    """Finding 1, at the boundary that actually matters.
+    """The signer receives only the policy-approved challenge.
 
     Validating a challenge and then forwarding the publisher's raw response to
     the signer would mean approving one document and signing another. These
-    assert on what the SIGNER receives, not on what the gate returns — the
-    distinction an earlier revision of this suite missed.
+    assert on what the signer receives, not only on what the gate returns.
     """
 
     @classmethod
@@ -592,7 +605,11 @@ class SignerInputTests(unittest.TestCase):
         self.assertGreaterEqual(fetch.MAX_BODY_BYTES, 1024)
         for bad in ("0", "-1", "abc", ""):
             with self.subTest(value=bad):
-                self.assertEqual(fetch._bounded_env("X402_NOPE", 256.0, 1.0, 1000.0), 256.0)
+                with mock.patch.dict(os.environ, {"X402_BODY_LIMIT_BYTES": bad}):
+                    self.assertEqual(
+                        fetch._bounded_env("X402_BODY_LIMIT_BYTES", 256.0, 1.0, 1000.0),
+                        256.0,
+                    )
 
 
 class TransientSettlementTests(unittest.TestCase):
@@ -618,7 +635,11 @@ class TransientSettlementTests(unittest.TestCase):
         self.assertLessEqual(fetch.MAX_PAYMENT_ATTEMPTS, 10)
         for bad in ("0", "-1", "abc", "99999"):
             with self.subTest(value=bad):
-                self.assertEqual(fetch._bounded_env("X402_NOPE", 5, 1, 10), 5)
+                with mock.patch.dict(os.environ, {"X402_MAX_PAYMENT_ATTEMPTS": bad}):
+                    self.assertEqual(
+                        fetch._bounded_env("X402_MAX_PAYMENT_ATTEMPTS", 5, 1, 10),
+                        5,
+                    )
 
     def test_the_same_token_is_reused_across_attempts(self):
         """This is what makes the retry safe rather than a double-charge."""
@@ -646,9 +667,8 @@ class SafeMethodTests(unittest.TestCase):
     """Method support without opening an exfiltration channel.
 
     wirjo's tool takes any method. Paid retrieval needs GET/HEAD; a body-bearing verb
-    would let the agent push agent-chosen data to an arbitrary origin, which the policy
-    gate does not validate (it checks the URL, not a body) — the surface finding 3 is
-    about.
+    would let the agent push agent-chosen data to an arbitrary origin, which the
+    policy gate does not validate because it checks the URL, not a body.
     """
 
     @classmethod
@@ -739,13 +759,7 @@ class HarnessCliTests(unittest.TestCase):
 
 
 class BrowserHandleTests(unittest.TestCase):
-    """Feature parity with the plugin's `pay_and_get_header`, without finding 7.
-
-    The plugin returned the signed proof to the model. Finding 7's own remediation
-    prescribes the alternative — "return an opaque single purpose handle ... bound
-    to the validated origin, resource, session, and intended request" — which is
-    what these assert.
-    """
+    """Browser payments use an opaque, single-purpose handle."""
 
     @classmethod
     def setUpClass(cls):
@@ -847,9 +861,45 @@ class SessionStatusTests(unittest.TestCase):
         for mutator in ("create_payment_session", "CreatePaymentSession", "update_", "delete_"):
             self.assertNotIn(mutator, src)
 
+    def test_unknown_sdk_status_is_not_reported_as_usable(self):
+        import types
+
+        import x402_fetch as fetch
+
+        class PaymentManager:
+            def __init__(self, **_kwargs):
+                pass
+
+            def get_payment_session(self, **_kwargs):
+                return {"state": "MAYBE_ACTIVE"}
+
+        payments_module = types.ModuleType("bedrock_agentcore.payments")
+        payments_module.PaymentManager = PaymentManager
+        agentcore_module = types.ModuleType("bedrock_agentcore")
+        agentcore_module.payments = payments_module
+        policy = {
+            "_resources": {
+                "payment_session_id": "session-1",
+                "payment_manager_arn": "arn:aws:bedrock-agentcore:region:account:payment-manager/pm-1",
+            }
+        }
+
+        with mock.patch.object(fetch.pol, "load_config", return_value=policy):
+            with mock.patch.dict(
+                sys.modules,
+                {
+                    "bedrock_agentcore": agentcore_module,
+                    "bedrock_agentcore.payments": payments_module,
+                },
+            ):
+                result = json.loads(fetch.payment_session_status())
+
+        self.assertFalse(result["usable"])
+        self.assertEqual(result["status"], "unknown")
+
 
 class DnsPinningTests(unittest.TestCase):
-    """Finding 3: DNS rebinding must not reopen the SSRF window.
+    """DNS rebinding must not reopen the SSRF window.
 
     These live here rather than in a separate file so the whole security surface
     runs in one command. They import x402_fetch, which needs httpx.

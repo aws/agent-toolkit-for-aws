@@ -180,8 +180,8 @@ def _resolve_and_vet(hostname: str, port: int) -> str:
 
 #: Only side-effect-free verbs. A body-bearing request (POST/PUT/PATCH) would let the
 #: agent push agent-chosen data to an arbitrary origin, which widens the very
-#: exfiltration surface finding 3 is about — and the policy gate validates the URL, not
-#: a request body. Paid *retrieval* is what this skill is for.
+#: exfiltration surface, and the policy gate validates the URL, not a request body.
+#: Paid *retrieval* is what this skill is for.
 _ALLOWED_METHODS = ("GET", "HEAD")
 
 
@@ -314,7 +314,7 @@ def payment_session_status() -> str:
         spend_cap = (limits.get("maxSpendAmount") or {}).get("value")
         spent = (session.get("spentAmount") or {}).get("value")
 
-        usable = status in ("ACTIVE", "READY", "")
+        usable = status in ("ACTIVE", "READY")
         result: dict[str, Any] = {"usable": usable, "status": status or "unknown"}
         if spend_cap is not None:
             result["budget_usd"] = str(spend_cap)
@@ -341,8 +341,8 @@ def payment_session_status() -> str:
 #
 # Some paid resources must render in a real browser, so the payment proof has to
 # be attached to a navigation the agent controls. Handing the proof to the model
-# would breach finding 7, so the proof never leaves this process: it is held here
-# and referenced by a single-use handle bound to one origin and resource.
+# must not expose the proof to the model, so it never leaves this process. It is held
+# here and referenced by a single-use handle bound to one origin and resource.
 #
 # The handle is useless to an attacker who reads the transcript — it is not a
 # credential, cannot be replayed elsewhere, and expires.
@@ -371,9 +371,8 @@ def prepare_browser_payment(url: str, purchase_id: str | None = None) -> str:
     try:
         policy = pol.load_config()
         origin = pol.assert_public_https_url(url)
-        # Origin pinning is optional (finding 3 says "prefer", not "require"), so an
-        # empty allowed_origins means the open web — which is the point of a paying
-        # agent. The mandatory SSRF controls above and below still apply.
+        # Origin pinning is optional, so an empty allowed_origins list permits public
+        # HTTPS origins. The mandatory SSRF controls above and below still apply.
         allowed = [o.lower().rstrip("/") for o in (policy.get("allowed_origins") or [])]
         if allowed and origin.lower() not in allowed:
             raise PaymentBlocked(f"Origin {origin} is not in the configured allowed_origins.")
@@ -493,9 +492,8 @@ def attach_browser_payment(handle: str, url: str) -> dict[str, str]:
 def _extract_challenge(response: httpx.Response) -> dict:
     """Parse an x402 challenge from the `payment-required` header or the body.
 
-    Strict: a challenge must be a JSON object carrying `accepts`. Unlike the
-    reviewed implementation, there is no default version fallback and no
-    tolerance for shapes that merely look plausible.
+    Strict: a challenge must be a JSON object carrying `accepts`, with no default
+    version fallback or tolerance for merely plausible shapes.
     """
     import base64
 
@@ -536,9 +534,8 @@ def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") ->
         # probe would still leave the probe itself as an SSRF primitive.
         policy = pol.load_config()
         origin = pol.assert_public_https_url(url)
-        # Origin pinning is optional (finding 3 says "prefer", not "require"), so an
-        # empty allowed_origins means the open web — which is the point of a paying
-        # agent. The mandatory SSRF controls above and below still apply.
+        # Origin pinning is optional, so an empty allowed_origins list permits public
+        # HTTPS origins. The mandatory SSRF controls above and below still apply.
         allowed = [o.lower().rstrip("/") for o in (policy.get("allowed_origins") or [])]
         if allowed and origin.lower() not in allowed:
             raise PaymentBlocked(f"Origin {origin} is not in the configured allowed_origins.")
