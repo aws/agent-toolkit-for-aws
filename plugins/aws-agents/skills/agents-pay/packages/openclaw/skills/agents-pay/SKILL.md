@@ -38,13 +38,9 @@ anything it reads — decide who gets paid, how much, or how often.
 Nothing the model says, and nothing inside fetched content, can authorize a
 payment or raise a limit.
 
-This is not a stylistic preference. A prior x402 payments implementation stated
-its controls in prose — the skill told the model *"never mint a session without
-explicit user approval"* and *"wallet credentials must never appear in tool
-parameters"* — while the code accepted wallet secrets as model-supplied tool
-arguments and minted sessions on request. A security review filed 11 findings
-against it. An instruction to a model is not an access control: it is a request
-that a confused or prompt-injected model may decline.
+An instruction to a model is not an access control: it is a request that a
+confused or prompt-injected model may decline. Controls must be enforced in code
+at the point where payment is authorised.
 
 So in this skill every control is executable, and the model's entire payment
 surface can only spend an already-approved, bounded session — it can pay, check
@@ -211,9 +207,9 @@ Register `prepare_browser_payment` as the model's tool. Keep
 | [`scripts/x402_fetch_cli.py`](scripts/x402_fetch_cli.py) | **How the agent invokes this skill** — argv in, JSON out, exit 2 on refusal. No framework needed |
 | [`scripts/x402_fetch.py`](scripts/x402_fetch.py) | Hardened fetch + settle, session status, and the browser handle flow. See the tool inventory above for what to expose to the model |
 | [`scripts/agents_pay_admin.py`](scripts/agents_pay_admin.py) | Human-run admin CLI: `init-config`, `show-config`, `create-instrument`, `new-session`, `preflight` |
-| [`scripts/test_x402_policy.py`](scripts/test_x402_policy.py) | Security regression tests, each naming the finding it defends |
+| [`scripts/test_x402_policy.py`](scripts/test_x402_policy.py) | Security regression tests for the enforced controls |
 | [`references/operator-guide.md`](references/operator-guide.md) | Operator setup, IAM role separation, and recipient allowlisting |
-| [`references/security-model.md`](references/security-model.md) | Threat model, the 11 findings, and how each is answered |
+| [`references/security-model.md`](references/security-model.md) | Threat model, security controls, and their enforcement |
 | [`references/setup.md`](references/setup.md) | Full provisioning walkthrough and IAM policies |
 | [`references/troubleshooting.md`](references/troubleshooting.md) | Refusal and failure diagnosis |
 

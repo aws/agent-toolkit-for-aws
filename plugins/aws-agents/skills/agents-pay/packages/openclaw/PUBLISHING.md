@@ -71,7 +71,7 @@ npx --yes clawhub@0.23.1 package publish . \
   --tags latest \
   --source-repo aws/agent-toolkit-for-aws \
   --source-commit <release-commit-sha> \
-  --source-ref feat/agents-pay-skill \
+  --source-ref <release-branch-or-tag> \
   --source-path plugins/aws-agents/skills/agents-pay/packages/openclaw \
   --dry-run --json
 ```
@@ -94,4 +94,5 @@ only:
 6. Roll back to the prior plugin and configuration.
 
 Apply any validation fix to this canonical directory first and rerun the checks.
-PR 1797 consumes the published package and does not carry a source snapshot.
+The consuming package uses the published artifact and does not carry a source
+snapshot.

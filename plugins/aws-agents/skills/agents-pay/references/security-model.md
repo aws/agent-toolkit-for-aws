@@ -19,9 +19,9 @@ it does the same job.
 That last row is why this skill exists separately. When a product mints a session per
 customer through its own approval flow, the agent is a component inside a system its
 author controls. When an agent spends its **operator's** money mid-task, the agent is
-the thing that might be compromised — so every limit has to hold against the agent, and
-`auto_session=True` (fine in the build-time guidance) becomes exactly the arrangement
-finding 6 objects to.
+the thing that might be compromised, so every limit has to hold against the agent.
+`auto_session=True`, while valid in build-time guidance, lets a runtime replace an
+exhausted budget and is unsuitable for this skill.
 
 Neither is wrong. They answer different questions, and `agents-build` is left untouched
 by this branch.
@@ -48,8 +48,8 @@ What that costs, concretely:
 | Proof kept out of model context | enforced | depends on the integration |
 | Session creation kept off the runtime role | enforced | **`auto_session=True` requires it** |
 
-That last row is finding 6 restated: an agent that can mint a session replaces a spent
-budget with a larger one, and the per-session cap stops bounding anything.
+An agent that can mint a session can replace a spent budget with a larger one, so
+the per-session cap stops bounding anything.
 
 **Do not run both paths in one process.** If the native integration is active *and*
 `x402_fetch` is registered, the model chooses which one settles a given `402`, so the
@@ -72,18 +72,9 @@ explicit `payment_session_id` so budget still comes from a human.
 The model is inside the threat model, not outside it. A correct design must hold
 even when the model is fully compromised by injected instructions.
 
-## Why prose controls fail
+## Why executable controls matter
 
-The predecessor implementation carried these lines in its skill and docs:
-
-> "Never mint a session without explicit user approval."
-> "Wallet credentials must never appear in tool parameters or transcripts."
-
-Meanwhile its code declared `cdp_api_key_secret` and `wallet_secret` as
-model-supplied tool arguments, and `create_payment_session` executed on call with
-no approval gate. The documentation described a system that did not exist.
-
-Two lessons, both applied here:
+Two design rules apply throughout this skill:
 
 1. **A control that a model can decline is not a control.** Every limit in this
    skill is evaluated in Python, from a file the model cannot write, before any
@@ -92,19 +83,15 @@ Two lessons, both applied here:
    claim below names the function that implements it, so the two cannot drift
    silently.
 
-## Feature parity with the reviewed plugin
+## Runtime design
 
-The goal is every capability the earlier plugin offered, without any of the
-findings. Nothing was dropped for convenience; where a capability moved, the
-reason is a specific finding.
-
-| Plugin tool | Here | Why it moved |
+| Capability | Here | Security property |
 |---|---|---|
 | `get_paid_content` | `x402_fetch(url)` — agent tool | Same capability, now behind the policy gate |
 | `get_payment_session_status` | `payment_session_status()` — agent tool | Unchanged in spirit: read-only, cannot mint budget |
-| `pay_and_get_header` | `prepare_browser_payment(url)` + `attach_browser_payment(handle, url)` | Finding 7: the proof must not reach the model, so the model gets an opaque single-use handle and trusted glue redeems it |
-| `create_payment_session` | `agents_pay_admin.py new-session` — human at a TTY | Finding 6: a runtime that can mint sessions has no cumulative bound |
-| `setup_x402_payments` | `agentcore` CLI wizard + `agents_pay_admin.py init-config` | Findings 2 and 8: provider secrets must never be tool parameters, and setup must not exist at runtime |
+| Browser payment | `prepare_browser_payment(url)` + `attach_browser_payment(handle, url)` | The model receives an opaque single-use handle; trusted glue redeems it |
+| Create a payment session | `agents_pay_admin.py new-session` — human at a TTY | A runtime that can mint sessions has no cumulative bound |
+| Provision infrastructure | `agentcore` CLI wizard + `agents_pay_admin.py init-config` | Provider secrets never enter tool parameters, and setup does not exist at runtime |
 
 The browser flow is worth stating plainly, because it is the one case where a
 proof must reach a caller: the model receives a handle, never proof bytes. The
@@ -113,48 +100,42 @@ so a handle lifted from a transcript cannot be redeemed for another resource or
 redeemed twice. `attach_browser_payment` returns the real header and is therefore
 for trusted glue, not for the model's tool set.
 
-## The 11 findings and their answers
+## Security controls and enforcement
 
-Findings from the AWS AppSec review of the earlier x402 payments skill and
-plugin. Each row names the enforcing code.
+| Control | Enforcement |
+|---|---|
+| Challenge validation | Strict schema, configured scheme and network, exact asset contract, approved recipient in `allowed_recipients`, canonical positive amount under `max_per_payment_usd`, and resource/origin checks are enforced before signing. `x402_fetch` forwards only the vetted entry, reserialized, to the signer. |
+| Secret handling | No script accepts a secret argument. Provider credentials go only to the `agentcore` CLI wizard; signing happens inside AgentCore Payments. `preflight` rejects credential-shaped environment variables. |
+| Network protection | `assert_public_https_url()` and `assert_public_ip()` require HTTPS and reject loopback, RFC1918, link-local, metadata, multicast, reserved, unspecified, CGNAT, and v4-mapped forms. `_PinnedResolverTransport` connects to the vetted address; redirects are refused and bodies are capped. |
+| Content isolation | Paid bodies are withheld from model-visible output. The runtime returns status, content type, byte count, and SHA-256 hash only; authorisation never reads content. |
+| Idempotency | `derive_client_token()` hashes session, origin, path, network, asset, recipient, and amount. It excludes a publisher nonce so retries reuse the same authorisation. |
+| Role separation | Session creation exists only in `agents_pay_admin.py new-session`, which refuses without a TTY and has no `--yes` flag. The human uses **ManagementRole** and the agent uses **ProcessPaymentRole** with no session writes. |
+| Proof isolation | `x402_fetch` holds the proof locally for one request. The browser path returns an opaque single-use handle bound to one origin and path, and output carries a redacted receipt only. |
+| Runtime surface | No provisioning or session-creation tool exists in the runtime path. |
+| Reproducible installation | Runtime dependencies and version floors are documented; tests are stdlib-only. Operators requiring full reproducibility should install from a hashed lockfile. |
+| Local configuration | `_atomic_write_0600()` creates a `0700` directory and `0600` file. `load_config()` checks ownership, type, symlinks, and writable parents. The file takes precedence over the environment. |
+| Documentation checks | This table names enforcing code; `test_x402_policy.py` asserts behaviour; `preflight` checks deployed state. |
 
-| # | Finding | Sev | How this skill answers it |
-|---|---|---|---|
-| 1 | Untrusted challenge controls recipient and value | 3 | Strict schema, configured scheme and network, exact asset contract, approved recipient in `allowed_recipients`, canonical positive amount under `max_per_payment_usd`, and resource/origin checks are enforced before signing. It never takes `accepts[0]` on faith, and `x402_fetch` forwards **only the vetted entry**, reserialized, to the signer — the publisher's raw headers and body never reach it (see "Validate one document, sign another") |
-| 2 | Wallet provider secrets enter model-visible tool parameters | 3 | No script accepts a secret argument. Provider credentials go only to the `agentcore` CLI wizard; signing happens inside AgentCore Payments. `preflight` fails if credential-shaped env vars are present |
-| 3 | Arbitrary URL fetching enables SSRF | 3 | Items 1-6 (mandatory) are all enforced; item 7 says *prefer* a domain egress policy, so `allowed_origins` is optional and unset means the open web. `assert_public_https_url()` + `assert_public_ip()` require HTTPS and reject loopback, RFC1918, link-local, metadata, multicast, reserved, unspecified, CGNAT, and v4-mapped forms. `_PinnedResolverTransport` opens the socket to the vetted address via the connection pool's network backend (not by patching `socket.getaddrinfo`, which is racy — see below); redirects are never followed; body is capped |
-| 4 | Untrusted paid content re-enters payment-capable context | 3 | Paid bodies are withheld from model-visible output. The runtime returns status, content type, byte count, and SHA-256 hash only; authorization never reads content. Summarisation requires a separate no-payment/no-network context |
-| 5 | Payment retries lack stable idempotency | 3 | `derive_client_token()` hashes session + origin + path + network + asset + recipient + amount. Derived, not random, so it survives a process restart. The publisher's nonce is deliberately excluded — a re-fetched 402 often carries a fresh one, which would give each attempt a different token and defeat the retry protection |
-| 6 | Runtime can create replacement sessions without approval | 3 | Session creation exists only in `agents_pay_admin.py new-session`, which **refuses without a TTY** and has no `--yes` flag. Per the [official IAM guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-iam-roles.html) the human uses the **ManagementRole** (explicit `Deny` on `ProcessPayment`) and the agent uses the **ProcessPaymentRole** (no session writes). No session tool is exposed to the model |
-| 7 | Signed payment proofs are exposed to the model | 4 | In `x402_fetch` the proof is a local variable, attached to one request, then cleared and dropped in a `finally` (released even if the paid request raises). For the browser path, `prepare_browser_payment` keeps the proof in-process and returns an **opaque single-use handle** bound to one origin and path, expiring in 90s — exactly the remediation the finding prescribes. Output carries a redacted receipt only |
-| 8 | Payment infrastructure setup available at runtime | 4 | No setup tool exists in the runtime path. Provisioning is CLI + admin script, run by a human with separate credentials |
-| 9 | Dependencies and installation not reproducibly pinned | 4 | Runtime needs only stdlib + `httpx` + `bedrock-agentcore`, with floors given. Tests are stdlib-only. See "Pinning" below for the operator's lockfile step |
-| 10 | Local payment config lacks restrictive file protections | 5 | `_atomic_write_0600()` creates dir `0700`, file `0600`, writes to a temp file and atomically replaces. `load_config()` re-verifies file mode and ownership, rejects symlinks and non-regular files, **and** refuses a group/world-writable or foreign-owned parent directory. The file now also holds the resource identifiers, and **it takes precedence over the environment** — see "One config file" below |
-| 11 | Documentation differs from implemented security behavior | 5 | This table names the enforcing function per claim; `test_x402_policy.py` asserts each behavior; `preflight` checks the deployed state |
+### Limits of the controls
 
-### Where the answer is partial
-
-Stating these plainly, because a security review will find them anyway:
-
-- **Finding 6 (cumulative ceiling).** A per-session budget plus human-only session
+- **Cumulative ceiling.** A per-session budget plus human-only session
   creation bounds spend per session and forces a human into the loop between
   sessions. It is not a *service-side* cumulative ceiling across sessions — that
   requires support in AgentCore Payments, outside a skill's reach. An operator who
   approves ten sessions has authorized ten budgets.
-- **Finding 9 (pinning).** A skill folder cannot ship a Python lockfile that the
+- **Dependency pinning.** A skill folder cannot ship a Python lockfile that the
   host environment will honor. Operators wanting reproducibility should install
   from a `requirements.txt` with hashes, or `pip install --require-hashes`. The
   skill states floors; it cannot enforce the resolution.
-- **Finding 3 (rebinding).** IP pinning closes the common TOCTOU window by
+- **DNS rebinding.** IP pinning closes the common TOCTOU window by
   dialing the vetted address. A network-level egress allowlist remains the
   stronger control for a payment-capable agent, and is recommended, not replaced.
 
   Implementation note worth preserving: the pin **must not** be implemented by
   temporarily replacing `socket.getaddrinfo`. That global is shared, so two
   concurrent fetches can restore or observe each other's state and a request can
-  end up resolving *unpinned* — silently reopening the window. This was a real
-  defect in an earlier revision of this file, reproduced under two threads. The
-  pin now lives in the connection pool's network backend, which is per-transport.
+  end up resolving *unpinned*, silently reopening the window. The pin therefore
+  lives in the connection pool's network backend, which is per-transport.
   `test_pin_is_not_implemented_by_patching_a_global` guards the regression.
 
 ## One config file, and why the file beats the environment
@@ -199,11 +180,10 @@ denial, and case-insensitive matching.
 
 ## Origins are optional
 
-Finding 3's mandatory remediation items are 1-6 — HTTPS only, reject internal
-address ranges, manual redirect handling, DNS-rebinding protection, timeouts, and a
-strict byte limit. All six are enforced unconditionally. Item 7 says *"**Prefer** an
-approved domain egress policy for payment capable agents"* — a preference, not a
-requirement.
+HTTPS only, internal-address rejection, manual redirect handling, DNS-rebinding
+protection, timeouts, and a strict byte limit are enforced unconditionally. An
+approved domain egress policy is an additional protection for payment-capable
+agents, but is not required.
 
 So `allowed_origins` is **optional**: unset means any public HTTPS site, and a
 deployment with a known merchant set can still pin it. *Test: `OptionalOriginTests`.*
@@ -221,10 +201,9 @@ Because they bound different things:
 | `max_per_payment_usd` | **Per transaction** | the policy section |
 
 With only the session budget, a hostile merchant returns one challenge for the
-entire remaining balance and drains it in a single payment. Finding 1's remediation
-asks for "a positive amount and a trusted maximum for **each** payment", so the
-per-payment bound is required, not redundant. A missing per-payment ceiling is a
-refusal, never an unbounded payment.
+entire remaining balance and drains it in a single payment. A positive, trusted
+maximum for each payment makes the per-payment bound necessary, not redundant. A
+missing per-payment ceiling is a refusal, never an unbounded payment.
 *Test: `test_missing_per_payment_cap_refuses_rather_than_paying_unbounded`.*
 
 ## Role separation is the real boundary
@@ -266,8 +245,8 @@ one entry but forwards the publisher's raw response to
   larger amount on a different chain. The receipt then *lies* to the operator.
 
 Both are silent: the returned receipt reflects the approved entry, not what was
-signed. A test that asserts on the gate's return value passes while the exploit
-works — which is exactly how this survived an earlier round of testing here.
+signed. A test that asserts only on the gate's return value can pass while the
+exploit still works.
 
 The fix is structural: `x402_fetch` reserializes the single vetted entry into a
 fresh minimal challenge (`{"x402Version": ..., "accepts": [vetted]}`) and passes
@@ -322,9 +301,9 @@ python3 scripts/agents_pay_admin.py show-config      # confirm 0600 + contents
 python3 scripts/agents_pay_admin.py preflight        # wiring + secret exposure
 ```
 
-For a re-review, the reproducible evidence is: the test suite passing, a
-`show-config` transcript, and a refusal captured against a live endpoint whose
-recipient is deliberately absent from the allowlist.
+The reproducible evidence is: the test suite passing, a `show-config` transcript,
+and a refusal captured against a live endpoint whose recipient is deliberately
+absent from the allowlist.
 
 ## Residual risks the operator owns
 
