@@ -6,15 +6,14 @@ Reviews Security Hub CSPM configuration — standards, controls, and compliance 
 
 Security Hub CSPM provides two categories of functionality:
 
-1. **Compliance management** — standards, controls, compliance findings
+- **Compliance management** — standards, controls, compliance findings
+- **ASFF hub features** — finding aggregation, automation rules, custom actions, cross-region aggregation
 
-2. **ASFF hub features** — finding aggregation, automation rules, custom actions, cross-region aggregation
+This skill works from both standalone accounts and delegated administrator accounts.
 
-   This skill works from both standalone accounts and delegated administrator accounts.
+**API constraint:** MUST use V1 APIs (no `-v2` suffix) only. MUST NOT use V2 APIs.
 
-   **API constraint:** MUST use V1 APIs (no `-v2` suffix) only. MUST NOT use V2 APIs.
-
-   **Membership:** Supports both Organizations (Central Configuration) and legacy invitation-based membership.
+**Membership:** Supports both Organizations (Central Configuration) and legacy invitation-based membership.
 
 ## Classify the Request
 
