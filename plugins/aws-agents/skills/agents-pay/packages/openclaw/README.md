@@ -22,13 +22,14 @@ runtime payment tools model-visible.
 
 The runtime requires an existing payment manager, instrument, user, and session.
 It cannot provision payment infrastructure or create replacement sessions.
-Configure approved origins, recipients, networks, assets, and a positive
+Configure approved origins, a recipient mode, networks, assets, and a positive
 per-payment ceiling before enabling the payment tool.
 
 Required configuration:
 
 - `paymentManagerArn`, `paymentInstrumentId`, `payment_session_id`, and `userId`
-- `allowedRecipients`
+- Exactly one recipient mode: `allowedRecipients`, or the explicit high-risk
+  `allowAnyRecipient: true`
 - Optional `allowedOrigins` and `networkPreferences`
 - `allowedAssetsByNetwork` for exact network-to-asset policy
 - `maxPaymentAmountAtomic` — **required**, no default. Set this to the maximum
@@ -39,6 +40,10 @@ Required configuration:
 The manifest requires the listed configuration before the plugin can be enabled.
 Both tools fail closed unless every required field is present in trusted plugin
 settings or the protected `~/.x402/config.json` file.
+
+`allowAnyRecipient` delegates beneficiary choice to the publisher. It is
+mutually exclusive with `allowedRecipients` and does not relax origin, network,
+asset, per-payment, or cumulative session limits.
 
 ## Hard boundary: sessions are human-only
 

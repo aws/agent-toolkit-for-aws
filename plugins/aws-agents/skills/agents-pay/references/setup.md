@@ -248,6 +248,11 @@ Inspect `accepts[].payTo`, `.amount` (integer base units; USDC has 6 decimals,
 so `2000` = $0.002), `.asset`, and `.network`, then allowlist deliberately with
 `--recipient`. Unknown recipients are refused before signing.
 
+If the operator deliberately accepts publisher-selected beneficiaries, replace
+all `--recipient` flags with `--allow-any-recipient`. These modes are mutually
+exclusive. The flag does not relax scheme, network, asset, origin/resource,
+per-payment, or cumulative session limits.
+
 Add `--origin https://host` (repeatable) only if you want to pin the agent to a
 known merchant set; omitted, it may fetch any public HTTPS site.
 

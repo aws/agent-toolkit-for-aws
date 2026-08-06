@@ -204,9 +204,12 @@ def cmd_init_config(args: argparse.Namespace) -> int:
         "max_per_payment_usd": args.max_per_payment_usd,
         "allowed_networks": [network],
         "allowed_assets": {network: [asset]},
-        "allowed_recipients": list(args.recipient),
         "allowed_schemes": ["exact"],
     }
+    if args.allow_any_recipient:
+        config["policy"]["allow_any_recipient"] = True
+    else:
+        config["policy"]["allowed_recipients"] = list(args.recipient)
     # Omitted entirely when not pinned, so the agent can browse the open web.
     if args.origin:
         config["policy"]["allowed_origins"] = list(args.origin)
@@ -240,10 +243,17 @@ def cmd_init_config(args: argparse.Namespace) -> int:
         "per-payment cap, one hostile challenge for the whole remaining balance would\n"
         "drain the session in a single payment."
     )
-    print(
-        "\nApproved recipients are enforced in trusted code. A challenge whose payTo is\n"
-        "not in allowed_recipients is refused before ProcessPayment is called."
-    )
+    if args.allow_any_recipient:
+        print(
+            "\nWARNING: allow_any_recipient is enabled. The publisher may choose the\n"
+            "payment beneficiary. Network, asset, scheme, origin, per-payment, and\n"
+            "cumulative session limits remain enforced."
+        )
+    else:
+        print(
+            "\nApproved recipients are enforced in trusted code. A challenge whose payTo is\n"
+            "not in allowed_recipients is refused before ProcessPayment is called."
+        )
     if not args.origin:
         print(
             "\nNo allowed_origins set: the agent may fetch ANY public HTTPS site. The\n"
@@ -259,7 +269,8 @@ def cmd_show_config(args: argparse.Namespace) -> int:
         print(f"No config at {path}. Payments are refused until one exists.")
         print(
             "Create it with: agents_pay_admin.py init-config "
-            "--max-per-payment-usd 0.05 --recipient <payTo>"
+            "--max-per-payment-usd 0.05 --recipient <payTo> "
+            "(or explicitly use --allow-any-recipient)"
         )
         return 1
     st = path.lstat()
@@ -523,8 +534,17 @@ def main() -> int:
     p.add_argument("--user-id", default=None,
                    help="Payer identity. Omit to have one generated (single-tenant default).")
     p.add_argument("--network", default="eip155:84532", help="CAIP-2 network (default Base Sepolia testnet)")
-    p.add_argument("--recipient", action="append", required=True,
-                   help="Approved merchant payTo wallet address (repeatable). Required: unknown recipients are refused.")
+    recipient_mode = p.add_mutually_exclusive_group(required=True)
+    recipient_mode.add_argument(
+        "--recipient",
+        action="append",
+        help="Approved merchant payTo wallet address (repeatable).",
+    )
+    recipient_mode.add_argument(
+        "--allow-any-recipient",
+        action="store_true",
+        help="Allow any challenge payTo. High risk: the publisher chooses the beneficiary.",
+    )
     p.add_argument("--origin", action="append", default=[],
                    help="Pin to these https origins (repeatable). Omit to allow the open web.")
     p.add_argument("--path", default=None, help="Config path (default ~/.agents-pay/config.json)")

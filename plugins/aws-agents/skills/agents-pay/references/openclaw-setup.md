@@ -76,8 +76,10 @@ the OpenClaw config locally in the same terminal or a local editor:
 The `paymentManagerArn`, `paymentInstrumentId`, `payment_session_id`, and
 `userId` come from the human-run administrative setup. Configure origins,
 recipients, networks, and exact asset contracts from values approved out of
-band. The default `maxPaymentAmountAtomic` is `100000` (0.10 USDC with 6
-decimals).
+band. To deliberately allow publisher-selected beneficiaries, replace
+`allowedRecipients` with `"allowAnyRecipient": true`; the plugin rejects both
+fields together. The example `maxPaymentAmountAtomic` value is `100000` (0.10
+USDC with 6 decimals), and no default is supplied.
 
 ## How it works
 

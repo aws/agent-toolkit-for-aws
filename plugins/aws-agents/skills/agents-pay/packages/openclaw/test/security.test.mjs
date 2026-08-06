@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { deriveClientToken } from "../dist/payments.js";
+import { normalizeConfig } from "../dist/config.js";
 import {
   PaymentBlocked,
   assertHttpsUrl,
@@ -113,6 +114,96 @@ test("recipient, amount, asset, scheme, network, origin, and resource are policy
     () => validateChallengePolicy(parsed, fixture.requestUrl, config),
     PaymentBlocked,
   );
+});
+
+test("allowAnyRecipient accepts an unlisted payee while retaining other controls", () => {
+  const config = structuredClone(fixture.config);
+  delete config.allowedRecipients;
+  config.allowAnyRecipient = true;
+
+  const challenge = structuredClone(fixture.challenge);
+  challenge.accepts = [challenge.accepts[0]];
+  const parsed = extractChallenge(probeFor(challenge));
+  const authorized = validateChallengePolicy(
+    parsed,
+    fixture.requestUrl,
+    config,
+  );
+  assert.equal(
+    authorized.accepted.payTo,
+    "0x9999999999999999999999999999999999999999",
+  );
+
+  const mutations = [
+    (candidate) => {
+      candidate.accepts[0].amount = "100001";
+    },
+    (candidate) => {
+      candidate.accepts[0].asset =
+        "0x2222222222222222222222222222222222222222";
+    },
+    (candidate) => {
+      candidate.accepts[0].scheme = "upto";
+    },
+    (candidate) => {
+      candidate.accepts[0].network = "eip155:1";
+    },
+    (candidate) => {
+      candidate.resource.url = "https://evil.example/pay/weather";
+    },
+  ];
+  for (const mutate of mutations) {
+    const candidate = structuredClone(challenge);
+    mutate(candidate);
+    assert.throws(
+      () =>
+        validateChallengePolicy(
+          extractChallenge(probeFor(candidate)),
+          fixture.requestUrl,
+          config,
+        ),
+      PaymentBlocked,
+    );
+  }
+
+  const wrongOrigin = structuredClone(config);
+  wrongOrigin.allowedOrigins = ["https://other.example"];
+  assert.throws(
+    () =>
+      validateChallengePolicy(
+        extractChallenge(probeFor(challenge)),
+        fixture.requestUrl,
+        wrongOrigin,
+      ),
+    PaymentBlocked,
+  );
+});
+
+test("recipient configuration modes are explicit and mutually exclusive", () => {
+  for (const allowAnyRecipient of [true, false]) {
+    assert.throws(
+      () =>
+        normalizeConfig({
+          ...structuredClone(fixture.config),
+          allowAnyRecipient,
+        }),
+      /mutually exclusive/,
+    );
+  }
+
+  const neither = structuredClone(fixture.config);
+  delete neither.allowedRecipients;
+  assert.throws(() => normalizeConfig(neither), /at least one allowed recipient/);
+
+  const malformed = structuredClone(fixture.config);
+  delete malformed.allowedRecipients;
+  malformed.allowAnyRecipient = "true";
+  assert.throws(() => normalizeConfig(malformed), /must be a boolean/);
+
+  const allowAny = structuredClone(fixture.config);
+  delete allowAny.allowedRecipients;
+  allowAny.allowAnyRecipient = true;
+  assert.equal(normalizeConfig(allowAny).allowAnyRecipient, true);
 });
 
 test("amounts must be canonical positive integer atomic units", () => {
@@ -224,8 +315,12 @@ test("manifest declares all required fields for safe startup", async () => {
   assert.ok(required.includes("paymentInstrumentId"));
   assert.ok(required.includes("userId"));
   assert.ok(required.includes("payment_session_id"));
-  assert.ok(required.includes("allowedRecipients"));
+  assert.ok(!required.includes("allowedRecipients"));
   assert.ok(required.includes("maxPaymentAmountAtomic"));
+  assert.deepEqual(
+    manifest.configSchema.oneOf.map((branch) => branch.required),
+    [["allowedRecipients"], ["allowAnyRecipient"]],
+  );
   const amount = manifest.configSchema.properties.maxPaymentAmountAtomic;
   assert.equal(amount.default, undefined);
   assert.equal(amount.pattern, "^[1-9][0-9]*$");

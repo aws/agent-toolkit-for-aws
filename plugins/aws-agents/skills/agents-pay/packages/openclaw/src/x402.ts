@@ -373,7 +373,7 @@ export function validateChallengePolicy(
   const networks = config.networkPreferences?.length
     ? config.networkPreferences
     : DEFAULT_NETWORKS;
-  const recipients = config.allowedRecipients.map(normalize);
+  const recipients = (config.allowedRecipients ?? []).map(normalize);
   const maxAmount = parseAmount(config.maxPaymentAmountAtomic);
 
   for (const accepted of challenge.accepts) {
@@ -391,7 +391,7 @@ export function validateChallengePolicy(
       scheme === "exact" &&
       networks.includes(network) &&
       configuredAssets(config, network).includes(asset) &&
-      recipients.includes(recipient) &&
+      (config.allowAnyRecipient === true || recipients.includes(recipient)) &&
       amount <= maxAmount
     ) {
       return { ...challenge, accepted };

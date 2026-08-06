@@ -112,11 +112,12 @@ chmod 600 ~/.agents-pay/config.json
 If it is a symlink, replace it with a real file. If it is not owned by you,
 investigate before "fixing" it — something wrote it as another user.
 
-### "Payment policy allows no recipients" / "allows no origins"
+### "Payment policy allows no recipients" / recipient modes are mutually exclusive
 
 An empty allowlist denies everything. Absent keys deny rather than allow; there
-is no wildcard. Re-run `init-config` with at least one `--recipient`. Add
-`--origin` only when you want to pin the merchant host set.
+is no implicit wildcard. Re-run `init-config` with at least one `--recipient`,
+or deliberately use `--allow-any-recipient` instead. Never combine the two
+modes. Add `--origin` only when you want to pin the merchant host set.
 
 ## Failures
 

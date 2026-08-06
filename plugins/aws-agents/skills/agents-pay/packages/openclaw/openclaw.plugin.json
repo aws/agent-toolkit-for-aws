@@ -22,6 +22,7 @@
       "networkPreferences": { "type": "array", "items": { "type": "string" } },
       "allowedOrigins": { "type": "array", "items": { "type": "string" } },
       "allowedRecipients": { "type": "array", "items": { "type": "string" } },
+      "allowAnyRecipient": { "type": "boolean" },
       "allowedAssetsByNetwork": {
         "type": "object",
         "additionalProperties": {
@@ -31,6 +32,17 @@
       },
       "maxPaymentAmountAtomic": { "type": "string", "pattern": "^[1-9][0-9]*$" }
     },
-    "required": ["paymentManagerArn", "paymentInstrumentId", "userId", "payment_session_id", "allowedRecipients", "maxPaymentAmountAtomic"]
+    "required": ["paymentManagerArn", "paymentInstrumentId", "userId", "payment_session_id", "maxPaymentAmountAtomic"],
+    "oneOf": [
+      {
+        "required": ["allowedRecipients"],
+        "not": { "required": ["allowAnyRecipient"] }
+      },
+      {
+        "required": ["allowAnyRecipient"],
+        "properties": { "allowAnyRecipient": { "const": true } },
+        "not": { "required": ["allowedRecipients"] }
+      }
+    ]
   }
 }

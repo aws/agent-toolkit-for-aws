@@ -316,7 +316,7 @@ class SingleTenantUserIdTests(unittest.TestCase):
 
 
 class RecipientValidationTests(unittest.TestCase):
-    """The publisher cannot choose an unapproved recipient."""
+    """Recipient mode is explicit, exclusive, and fail-closed by default."""
 
     def test_unknown_recipient_is_refused(self):
         with self.assertRaises(pol.PolicyError):
@@ -339,11 +339,113 @@ class RecipientValidationTests(unittest.TestCase):
         entry = pol.select_accept_entry(challenge(payTo=MERCHANT.lower()), policy)
         self.assertEqual(entry["payTo"], MERCHANT.lower())
 
+    def test_allow_any_recipient_accepts_an_unlisted_payee(self):
+        policy = dict(BASE_POLICY)
+        policy.pop("allowed_recipients")
+        policy["allow_any_recipient"] = True
+        entry = pol.select_accept_entry(challenge(payTo=ATTACKER), policy)
+        self.assertEqual(entry["payTo"], ATTACKER)
+
+    def test_recipient_modes_are_mutually_exclusive(self):
+        for value in (True, False):
+            with self.subTest(allow_any_recipient=value):
+                policy = dict(BASE_POLICY)
+                policy["allow_any_recipient"] = value
+                with self.assertRaises(pol.PolicyError) as ctx:
+                    pol.select_accept_entry(challenge(), policy)
+                self.assertIn("mutually exclusive", str(ctx.exception))
+
+    def test_allow_any_recipient_requires_a_boolean(self):
+        policy = dict(BASE_POLICY)
+        policy.pop("allowed_recipients")
+        policy["allow_any_recipient"] = "true"
+        with self.assertRaises(pol.PolicyError) as ctx:
+            pol.select_accept_entry(challenge(), policy)
+        self.assertIn("must be a boolean", str(ctx.exception))
+
+    def test_allow_any_recipient_keeps_other_policy_checks(self):
+        policy = dict(BASE_POLICY)
+        policy.pop("allowed_recipients")
+        policy["allow_any_recipient"] = True
+        for kwargs in (
+            {"network": "eip155:1"},
+            {"asset": ATTACKER},
+            {"scheme": "upto"},
+            {"amount": "500001"},
+        ):
+            with self.subTest(**kwargs):
+                with self.assertRaises(pol.PolicyError):
+                    pol.select_accept_entry(challenge(payTo=ATTACKER, **kwargs), policy)
+
     def test_network_asset_and_scheme_are_still_validated_for_known_recipient(self):
         for kwargs in ({"network": "eip155:1"}, {"asset": ATTACKER}, {"scheme": "upto"}):
             with self.subTest(**kwargs):
                 with self.assertRaises(pol.PolicyError):
                     pol.select_accept_entry(challenge(payTo=MERCHANT, **kwargs), BASE_POLICY)
+
+
+class AdminRecipientModeTests(unittest.TestCase):
+    """The human-facing CLI writes exactly one recipient authorization mode."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "agents_pay_admin_recipient_tests",
+            Path(__file__).resolve().parent / "agents_pay_admin.py",
+        )
+        cls.admin = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.admin)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "config.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _run(self, *arguments):
+        from contextlib import redirect_stderr, redirect_stdout
+        from io import StringIO
+
+        argv = [
+            "agents_pay_admin.py",
+            "init-config",
+            "--path",
+            str(self.path),
+            *arguments,
+        ]
+        with (
+            mock.patch.object(sys, "argv", argv),
+            redirect_stdout(StringIO()),
+            redirect_stderr(StringIO()),
+        ):
+            return self.admin.main()
+
+    def test_recipient_flag_writes_an_allowlist(self):
+        self.assertEqual(self._run("--recipient", MERCHANT), 0)
+        policy = json.loads(self.path.read_text())["policy"]
+        self.assertEqual(policy["allowed_recipients"], [MERCHANT])
+        self.assertNotIn("allow_any_recipient", policy)
+
+    def test_allow_any_recipient_writes_explicit_mode(self):
+        self.assertEqual(self._run("--allow-any-recipient"), 0)
+        policy = json.loads(self.path.read_text())["policy"]
+        self.assertIs(policy["allow_any_recipient"], True)
+        self.assertNotIn("allowed_recipients", policy)
+
+    def test_recipient_modes_cannot_be_combined(self):
+        with self.assertRaises(SystemExit) as ctx:
+            self._run("--recipient", MERCHANT, "--allow-any-recipient")
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertFalse(self.path.exists())
+
+    def test_one_recipient_mode_is_required(self):
+        with self.assertRaises(SystemExit) as ctx:
+            self._run()
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertFalse(self.path.exists())
 
 
 class OptionalOriginTests(unittest.TestCase):

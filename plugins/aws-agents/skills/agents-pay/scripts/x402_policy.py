@@ -32,24 +32,26 @@ group/world-writable, no symlinks (see load_config). One file, two sections:
           "eip155:84532": ["0x036CbD53842c5426634e7929541eC2318f3dCF7e"]
         },
         "allowed_recipients": ["0x1111111111111111111111111111111111111111"],
+        # Or, instead of allowed_recipients:
+        # "allow_any_recipient": true,
         "allowed_origins": ["https://sandbox.node4all.com"],
         "allowed_schemes": ["exact"]
       }
     }
 
-Absent keys deny rather than allow. There is no wildcard.
+Absent keys deny rather than allow. There is no implicit wildcard.
 
 Recipient validation
 --------------------
-The payee (`payTo`) must appear in `allowed_recipients`, an operator-approved
-allowlist in the config file. Unknown recipients are refused before signing.
+By default, the payee (`payTo`) must appear in `allowed_recipients`, an
+operator-approved allowlist in the config file. Unknown recipients are refused
+before signing. An operator may instead set `allow_any_recipient` to the literal
+boolean `true`. The two modes are mutually exclusive, and the runtime rejects a
+policy that enables both.
 
-This is intentionally less "open web" than x402 can be in theory, but it is the
-only deterministic way to prevent a publisher-controlled challenge from choosing
-a new recipient by itself.
-If an operator wants to transact with a new merchant, they first add that wallet
-address through the trusted admin path and review the per-payment and session
-limits at the same time.
+Allowing any recipient means a publisher controls the beneficiary. Network,
+asset, scheme, origin/resource, per-payment, and cumulative session limits still
+apply, but recipient allowlisting no longer protects against a malicious payee.
 
 Two ceilings, not one
 ---------------------
@@ -367,6 +369,17 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
     allowed_schemes = _policy_list(policy, "allowed_schemes")
     if "allowed_schemes" not in policy:
         allowed_schemes = ["exact"]
+    allow_any_recipient = policy.get("allow_any_recipient", False)
+    if not isinstance(allow_any_recipient, bool):
+        raise _fail("Payment policy 'allow_any_recipient' must be a boolean.")
+    if (
+        "allow_any_recipient" in policy
+        and "allowed_recipients" in policy
+    ):
+        raise _fail(
+            "Payment policy 'allow_any_recipient' and 'allowed_recipients' "
+            "are mutually exclusive."
+        )
     allowed_recipients = [r.lower() for r in _policy_list(policy, "allowed_recipients")]
     allowed_assets = policy.get("allowed_assets") or {}
     if not isinstance(allowed_assets, dict):
@@ -377,7 +390,7 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
         raise _fail("Payment policy allows no networks.")
     if not allowed_schemes:
         raise _fail("Payment policy allows no schemes.")
-    if not allowed_recipients:
+    if not allow_any_recipient and not allowed_recipients:
         raise _fail("Payment policy allows no recipients.")
 
     for entry in accepts:
@@ -395,7 +408,10 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
         permitted_assets = [a.lower() for a in allowed_assets.get(network, [])]
         if str(entry["asset"]).lower() not in permitted_assets:
             continue
-        if str(entry["payTo"]).lower() not in allowed_recipients:
+        if (
+            not allow_any_recipient
+            and str(entry["payTo"]).lower() not in allowed_recipients
+        ):
             continue
         amount = entry.get("amount")
         if amount is None:

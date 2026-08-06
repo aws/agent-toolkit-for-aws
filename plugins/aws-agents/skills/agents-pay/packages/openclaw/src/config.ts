@@ -10,7 +10,8 @@ export interface X402Config {
   payment_session_id: string;
   networkPreferences?: string[];
   allowedOrigins?: string[];
-  allowedRecipients: string[];
+  allowedRecipients?: string[];
+  allowAnyRecipient?: boolean;
   allowedAssetsByNetwork?: Record<string, string[]>;
   maxPaymentAmountAtomic: string;
 }
@@ -64,11 +65,33 @@ function requireString(
   return value;
 }
 
-function normalizeConfig(config: Partial<X402Config>): X402Config {
+export function normalizeConfig(config: Partial<X402Config>): X402Config {
   const allowedRecipients = config.allowedRecipients;
-  if (!Array.isArray(allowedRecipients) || allowedRecipients.length === 0) {
+  const allowAnyRecipient = config.allowAnyRecipient;
+  if (
+    allowAnyRecipient !== undefined &&
+    typeof allowAnyRecipient !== "boolean"
+  ) {
     throw new Error(
-      "x402 configuration must contain at least one allowed recipient",
+      "x402 configuration field allowAnyRecipient must be a boolean",
+    );
+  }
+  if (
+    allowAnyRecipient !== undefined &&
+    allowedRecipients !== undefined
+  ) {
+    throw new Error(
+      "x402 configuration fields allowAnyRecipient and allowedRecipients " +
+        "are mutually exclusive",
+    );
+  }
+  if (
+    allowAnyRecipient !== true &&
+    (!Array.isArray(allowedRecipients) || allowedRecipients.length === 0)
+  ) {
+    throw new Error(
+      "x402 configuration must contain at least one allowed recipient or " +
+        "explicitly set allowAnyRecipient to true",
     );
   }
 
@@ -95,6 +118,7 @@ function normalizeConfig(config: Partial<X402Config>): X402Config {
     networkPreferences: config.networkPreferences,
     allowedOrigins: config.allowedOrigins,
     allowedRecipients,
+    allowAnyRecipient,
     allowedAssetsByNetwork: config.allowedAssetsByNetwork,
     maxPaymentAmountAtomic,
   };

@@ -104,7 +104,7 @@ for trusted glue, not for the model's tool set.
 
 | Control | Enforcement |
 |---|---|
-| Challenge validation | Strict schema, configured scheme and network, exact asset contract, approved recipient in `allowed_recipients`, canonical positive amount under `max_per_payment_usd`, and resource/origin checks are enforced before signing. `x402_fetch` forwards only the vetted entry, reserialized, to the signer. |
+| Challenge validation | Strict schema, configured scheme and network, exact asset contract, explicit recipient mode, canonical positive amount under `max_per_payment_usd`, and resource/origin checks are enforced before signing. The normal mode requires `payTo` in `allowed_recipients`; the explicit `allow_any_recipient: true` mode delegates beneficiary choice to the publisher. `x402_fetch` forwards only the vetted entry, reserialized, to the signer. |
 | Secret handling | No script accepts a secret argument. Provider credentials go only to the `agentcore` CLI wizard; signing happens inside AgentCore Payments. `preflight` rejects credential-shaped environment variables. |
 | Network protection | `assert_public_https_url()` and `assert_public_ip()` require HTTPS and reject loopback, RFC1918, link-local, metadata, multicast, reserved, unspecified, CGNAT, and v4-mapped forms. `_PinnedResolverTransport` connects to the vetted address; redirects are refused and bodies are capped. |
 | Content isolation | Paid bodies are withheld from model-visible output. The runtime returns status, content type, byte count, and SHA-256 hash only; authorisation never reads content. |
@@ -169,14 +169,19 @@ environment can choose the session. Prefer the file where you have one.
 
 ## Recipient validation
 
-The payee (`payTo`) named by the publisher must match an operator-approved entry
-in `allowed_recipients`. Missing or empty recipient policy denies every payment.
-This deliberately trades some open-web convenience for a deterministic financial
-authorization boundary: a publisher can describe a price, but cannot choose a new
-recipient without the operator updating trusted policy first.
+The normal mode requires the payee (`payTo`) named by the publisher to match an
+operator-approved entry in `allowed_recipients`. Missing or empty recipient
+policy denies every payment. An operator may instead set
+`allow_any_recipient: true`, explicitly delegating beneficiary choice to the
+publisher. The modes are mutually exclusive, and non-boolean values fail closed.
+
+Open-recipient mode does not relax scheme, network, exact asset, origin/resource,
+per-payment, or cumulative session controls. It does remove the deterministic
+beneficiary boundary, so it is a deliberate high-risk operator choice.
 
 `RecipientValidationTests` covers unknown-recipient refusal, missing-allowlist
-denial, and case-insensitive matching.
+denial, case-insensitive matching, open-recipient acceptance, mode conflicts,
+malformed values, and retention of the other policy checks.
 
 ## Origins are optional
 

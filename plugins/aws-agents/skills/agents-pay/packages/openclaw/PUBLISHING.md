@@ -87,7 +87,8 @@ only:
 1. Confirm the package version and the two-tool runtime inventory.
 2. Confirm paid replay uses `PAYMENT-SIGNATURE`.
 3. Refuse unapproved recipient, value, asset, scheme, network, origin, SSRF,
-   and redirect cases before `ProcessPayment`.
+   and redirect cases before `ProcessPayment`; separately verify explicit
+   `allowAnyRecipient` mode retains every non-recipient control.
 4. Confirm signed proofs and paid response bodies never appear in tool output or
    gateway logs.
 5. Complete one approved Base Sepolia payment.

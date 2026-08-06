@@ -251,13 +251,20 @@ environment chooses the session.
 ### Browsing the open web
 
 By default the agent may fetch **any public HTTPS site**. `allowed_origins` is
-optional; set it only when you want to pin a known merchant set. Payment still
+optional; set it only when you want to pin a known merchant set. Payment normally
 requires an approved recipient: the challenge `payTo` must appear in
 `allowed_recipients`, or trusted code refuses before signing.
 
 For a new merchant, inspect the unpaid 402 challenge, review `payTo`, amount,
 asset, and network, then re-run `init-config --force --recipient <payTo>` with the
 intended allowlist. Keep the approval in Python policy, not in a prompt.
+
+For an explicit open-recipient policy, run `init-config` with
+`--allow-any-recipient` instead of any `--recipient` flags. This delegates
+beneficiary choice to the publisher. Scheme, network, exact asset, origin/resource,
+per-payment ceiling, and cumulative session budget remain enforced. Never set
+`allow_any_recipient` and `allowed_recipients` together; trusted code rejects that
+ambiguous policy.
 
 ### The two ceilings
 

@@ -266,6 +266,10 @@ python3 scripts/agents_pay_admin.py init-config \
   --recipient 0xMerchantWalletAddress
 ```
 
+Use repeatable `--recipient` flags for the normal allowlist mode. To
+deliberately let publishers choose the beneficiary, use
+`--allow-any-recipient` instead. The two modes are mutually exclusive.
+
 Add `--origin https://<host>` (repeatable) only to pin the agent to a known merchant
 set; omitted, it may fetch any public HTTPS site.
 
@@ -278,11 +282,13 @@ pins:
 | `allowed_networks` | Exact CAIP-2 networks |
 | `allowed_assets` | Exact token contract per network |
 | `allowed_recipients` | Approved `payTo` wallet addresses. Unknown recipients → refuse |
+| `allow_any_recipient` | Explicit high-risk alternative to `allowed_recipients`; publishers may choose `payTo` |
 | `allowed_origins` | **Optional.** Omit to allow any public HTTPS site; set to pin a merchant set |
 | `allowed_schemes` | Defaults to `exact` |
 
-A missing key denies. There is no wildcard. USDC contracts come from a pinned
-table in the admin script, so a look-alike contract cannot be pasted in.
+A missing recipient mode denies. Setting both recipient modes is invalid. There
+is no implicit wildcard. USDC contracts come from a pinned table in the admin
+script, so a look-alike contract cannot be pasted in.
 
 ### Step 3: Create a per-user instrument — human runs this
 
