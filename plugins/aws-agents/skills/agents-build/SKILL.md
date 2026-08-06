@@ -13,7 +13,9 @@ description: >
   interpreter", "delete agent", "tear down", "agentcore remove",
   "cross-account memory",
   "add payments capability to my agent", "wire payments plugin",
-  "payments middleware for my agent".
+  "payments middleware for my agent",
+  "integrate x402 payments with the agent I'm building",
+  "enable my agent project with x402 payments".
   Not for connecting to external APIs via Gateway — use agents-connect.
   Not for scaffolding a new project — use agents-get-started.
   Not for CLI/dev server errors — use agents-debug.
