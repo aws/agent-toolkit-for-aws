@@ -14,12 +14,10 @@ https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-iam-roles
 
 Why the split matters
 ---------------------
-An earlier implementation exposed `setup_x402_payments` and
-`create_payment_session` as model-callable tools, and accepted wallet provider
-secrets as tool parameters. That let a prompt-injected model mint fresh budget
-after exhausting a session, and pushed credentials through the model context.
-Neither is possible here: these subcommands are not tools, take no model input,
-and this file is never imported by the runtime fetch path.
+Administrative actions are not model-callable tools, take no model input, and
+this file is never imported by the runtime fetch path. A payment-capable model
+therefore cannot mint fresh budget or receive provider credentials through this
+interface.
 
 Commands
 --------
@@ -47,6 +45,7 @@ from pathlib import Path
 
 DEFAULT_DIR = Path.home() / ".agents-pay"
 DEFAULT_CONFIG = DEFAULT_DIR / "config.json"
+AGENT_NAME = "aws-agents-pay"
 
 # Where the AgentCore CLI records what `agentcore deploy` created. Read so the
 # operator never has to copy a manager ARN or connector ID by hand.
@@ -258,7 +257,10 @@ def cmd_show_config(args: argparse.Namespace) -> int:
     path = Path(args.path or os.environ.get("AGENTS_PAY_CONFIG") or DEFAULT_CONFIG)
     if not path.exists():
         print(f"No config at {path}. Payments are refused until one exists.")
-        print("Create it with: agents_pay_admin.py init-config --max-per-payment-usd 0.05")
+        print(
+            "Create it with: agents_pay_admin.py init-config "
+            "--max-per-payment-usd 0.05 --recipient <payTo>"
+        )
         return 1
     st = path.lstat()
     dir_st = path.parent.lstat()
@@ -282,19 +284,14 @@ def cmd_show_config(args: argparse.Namespace) -> int:
 
 
 def cmd_create_instrument(args: argparse.Namespace) -> int:
-    """Create the per-user wallet (instrument) and print the delegation/funding steps.
-
-    Previously this was a Python snippet the operator had to paste and edit, which
-    is both error-prone and an odd thing to ask of someone provisioning payments.
-    It is a command now. No secret is involved: the connector already holds the
-    provider credentials, so this only names the user and their email.
-    """
+    """Create the per-user wallet and print the delegation and funding steps."""
     try:
         from bedrock_agentcore.payments import PaymentManager
     except ImportError:
         print(
             "bedrock-agentcore with payments support is not installed.\n"
-            "  python3 -m pip install --upgrade 'bedrock-agentcore>=1.19.0'",
+            "Activate the setup virtual environment, then run:\n"
+            "  python -m pip install --upgrade 'bedrock-agentcore>=1.19.0'",
             file=sys.stderr,
         )
         return 1
@@ -325,6 +322,7 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
     manager = PaymentManager(
         payment_manager_arn=manager_arn,
         region_name=args.region or os.environ.get("AWS_REGION", "us-west-2"),
+        agent_name=AGENT_NAME,
     )
     instrument = manager.create_payment_instrument(
         user_id=user_id,
@@ -379,9 +377,8 @@ def cmd_new_session(args: argparse.Namespace) -> int:
     # There is deliberately NO --yes / non-interactive escape hatch. This script
     # lives inside the skill directory, so any agent with shell access can run
     # it; a flag that skips the prompt would hand that agent the power to mint
-    # budget, which is exactly the finding this split exists to answer. Requiring
-    # a TTY means a headless agent cannot satisfy the gate even by invoking the
-    # command directly.
+    # budget. A TTY means a headless agent cannot satisfy the gate even by
+    # invoking the command directly.
     if not sys.stdin.isatty():
         print(
             "Refusing to create a payment session without an interactive terminal.\n"
@@ -397,7 +394,7 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         print(
             "bedrock-agentcore with payments support is not installed.\n"
             "Install a version that provides bedrock_agentcore.payments, e.g.:\n"
-            "  python3 -m pip install --upgrade 'bedrock-agentcore>=1.19.0'",
+            "  python -m pip install --upgrade 'bedrock-agentcore>=1.19.0'",
             file=sys.stderr,
         )
         return 1
@@ -434,6 +431,7 @@ def cmd_new_session(args: argparse.Namespace) -> int:
     manager = PaymentManager(
         payment_manager_arn=manager_arn,
         region_name=args.region or os.environ.get("AWS_REGION", "us-west-2"),
+        agent_name=AGENT_NAME,
     )
     session = manager.create_payment_session(
         user_id=user_id,
@@ -486,8 +484,7 @@ def cmd_preflight(args: argparse.Namespace) -> int:
             print(f"\n       No {DEPLOYED_STATE} here. Run from your AgentCore project")
             print("       directory, or set the variables by hand.")
 
-    # Anything credential-shaped in the environment would be a finding: this
-    # design never needs provider secrets in the runtime process.
+    # This design never needs provider secrets in the runtime process.
     leaked = [
         k
         for k in os.environ

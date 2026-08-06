@@ -7,11 +7,9 @@ injection inside paid content) cannot talk its way past these checks.
 
 Why this file exists
 --------------------
-An earlier x402 payments implementation put its safety controls in prose — the
-skill told the model "never mint a session without approval" and "credentials
-must never appear in tool parameters" while the code did neither. Instructions
-to a model are not an access control. This module is the executable form of
-those rules, so the guarantee holds even when the model is wrong or hostile.
+Instructions to a model are not an access control. This module makes the
+payment rules executable, so the guarantee holds even when the model is wrong
+or hostile.
 
 Config file
 -----------
@@ -339,9 +337,9 @@ def base_units_to_usd(amount: str | int, decimals: int = USDC_DECIMALS) -> Decim
     Decimal() would otherwise happily parse "1E+7", "Infinity", "500000.0",
     " 500000 ", and "+500000". None of those breach the ceiling on their own
     (the comparison still holds), but a publisher should not get to express an
-    amount in a form that a human reviewing logs would misread. Strict parsing
-    is also what the finding asked for, so an exotic encoding fails closed here
-    rather than relying on downstream arithmetic to save us.
+    amount in a form that a human reviewing logs would misread. An exotic
+    encoding therefore fails closed rather than relying on downstream
+    arithmetic to save us.
     """
     text = amount if isinstance(amount, str) else str(amount)
     if not isinstance(amount, int) and not text.isdigit():

@@ -1,5 +1,11 @@
 # agents-pay troubleshooting
 
+Run Python commands from the virtual environment created during setup:
+
+```bash
+source .venv/bin/activate
+```
+
 Two different situations, and it matters which one you are in:
 
 - **A refusal** — trusted code declined to pay. The control worked. Fix the
@@ -89,7 +95,9 @@ valid payment target from this agent.
 There is no permissive default — payments are refused until a policy exists:
 
 ```bash
-python3 scripts/agents_pay_admin.py init-config --max-per-payment-usd 0.05
+python scripts/agents_pay_admin.py init-config \
+  --max-per-payment-usd 0.05 \
+  --recipient 0xMerchantWalletAddress
 ```
 
 ### "... has mode -rw-rw-r--; expected 0600" / "is a symlink"
@@ -126,8 +134,8 @@ Manager ARN and connector ID come from
 ### "bedrock-agentcore with payments support is not installed"
 
 ```bash
-python3 -m pip install --upgrade 'bedrock-agentcore>=1.19.0'
-python3 -c "from bedrock_agentcore.payments import PaymentManager; print('OK')"
+python -m pip install --upgrade 'bedrock-agentcore>=1.19.0'
+python -c "from bedrock_agentcore.payments import PaymentManager; print('OK')"
 ```
 
 ### "Response exceeded N bytes"

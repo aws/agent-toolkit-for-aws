@@ -6,22 +6,25 @@ wiring. See the tool inventory in SKILL.md for what the agent can call.
 ## 0. Install
 
 ```bash
-python3 -m pip install -r requirements.txt
-npm install -g @aws/agentcore@1.0.0-preview.24
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+npm install -g @aws/agentcore
 agentcore --version
-python3 -c "from bedrock_agentcore.payments import PaymentManager; print('payments OK')"
+python -c "from bedrock_agentcore.payments import PaymentManager; print('payments OK')"
 ```
 
-If that import fails, the installed `bedrock-agentcore` predates payments
-support. Upgrade before continuing — nothing below will work without it.
+If that import fails, install a `bedrock-agentcore` release with payments
+support before continuing. Keep the virtual environment active for the Python
+commands below.
 
 `requirements.txt` pins the complete Python runtime graph used by this skill. For
 integrity pinning in your own release process, generate platform-specific hashes
 from that exact graph:
 
 ```bash
-python3 -m pip download -r requirements.txt -d wheels/
-python3 -m pip hash wheels/*
+python -m pip download -r requirements.txt -d wheels/
+python -m pip hash wheels/*
 ```
 
 ## 1. Obtain provider credentials

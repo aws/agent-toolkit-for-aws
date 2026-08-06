@@ -10,7 +10,7 @@ through AWS AgentCore Payments. It exposes two runtime tools:
 Install from ClawHub:
 
 ```bash
-openclaw plugins install clawhub:@aws%2Faws-agents-pay
+openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
 The encoded slash is required by OpenClaw when installing a scoped ClawHub

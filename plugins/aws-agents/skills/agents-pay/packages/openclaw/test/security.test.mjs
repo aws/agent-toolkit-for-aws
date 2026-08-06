@@ -246,8 +246,8 @@ test("public package and runtime identities stay aligned", async () => {
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
   assert.ok(packageJson.files.includes("skills"));
-  assert.match(readme, /clawhub:\@aws%2Faws-agents-pay/);
-  assert.doesNotMatch(readme, /clawhub:\@aws\/aws-agents-pay/);
+  assert.match(readme, /clawhub:\@aws\/aws-agents-pay/);
+  assert.doesNotMatch(readme, /clawhub:\@aws%2Faws-agents-pay/);
   assert.doesNotMatch(readme, /accepts an empty install-time config/);
 });
 

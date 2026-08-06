@@ -299,6 +299,21 @@ class SingleTenantUserIdTests(unittest.TestCase):
     def test_absent_everywhere_returns_none(self):
         self.assertIsNone(self.admin.resolve_user_id(None, self.path))
 
+    def test_admin_calls_are_attributed_to_the_skill(self):
+        import inspect
+
+        self.assertEqual(self.admin.AGENT_NAME, "aws-agents-pay")
+        for command in (self.admin.cmd_create_instrument, self.admin.cmd_new_session):
+            self.assertIn("agent_name=AGENT_NAME", inspect.getsource(command))
+
+    def test_runtime_calls_are_attributed_to_the_skill(self):
+        import inspect
+        import x402_fetch
+
+        self.assertEqual(x402_fetch.AGENT_NAME, "aws-agents-pay")
+        source = inspect.getsource(x402_fetch)
+        self.assertEqual(source.count("agent_name=AGENT_NAME"), 3)
+
 
 class RecipientValidationTests(unittest.TestCase):
     """The publisher cannot choose an unapproved recipient."""

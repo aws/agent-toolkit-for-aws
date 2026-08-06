@@ -7,7 +7,7 @@ source lives at
 ## Install
 
 ```bash
-openclaw plugins install clawhub:@aws%2Faws-agents-pay
+openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
 ## Configure
@@ -20,17 +20,19 @@ Open a separate terminal and run the human setup from the bundled skill:
 
 ```bash
 cd ~/.openclaw/extensions/aws-agents-pay/skills/agents-pay
-npm install -g @aws/agentcore@1.0.0-preview.24
+npm install -g @aws/agentcore
 agentcore add payment-manager
 agentcore add payment-connector
 agentcore deploy
-python3 -m pip install -r requirements.txt
-python3 scripts/agents_pay_admin.py init-config \
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python scripts/agents_pay_admin.py init-config \
   --max-per-payment-usd 0.05 \
   --network eip155:84532 \
   --recipient 0xMerchantWalletAddress
-python3 scripts/agents_pay_admin.py create-instrument --email you@example.com
-python3 scripts/agents_pay_admin.py new-session \
+python scripts/agents_pay_admin.py create-instrument --email you@example.com
+python scripts/agents_pay_admin.py new-session \
   --budget 1.00 \
   --expiry-minutes 60
 ```
@@ -78,6 +80,12 @@ band. The default `maxPaymentAmountAtomic` is `100000` (0.10 USDC with 6
 decimals).
 
 ## How it works
+
+OpenClaw executes payments through this TypeScript plugin, using
+`get_paid_content`. It does not invoke the Python `x402_fetch` runtime. The
+bundled Python admin CLI is only for human-run provisioning. For other agent
+hosts, use the Python runtime described in `SKILL.md` instead, and never enable
+both paths at once.
 
 The plugin exposes two scoped OpenClaw runtime tools only:
 

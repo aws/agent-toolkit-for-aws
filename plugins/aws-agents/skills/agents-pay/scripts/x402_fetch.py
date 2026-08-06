@@ -51,6 +51,9 @@ import httpx
 
 import x402_policy as pol
 
+AGENT_NAME = "aws-agents-pay"
+
+
 def _bounded_env(name: str, default: float, minimum: float, maximum: float) -> float:
     """Read a numeric tunable, ignoring values that are invalid or out of range.
 
@@ -304,6 +307,7 @@ def payment_session_status() -> str:
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
             region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            agent_name=AGENT_NAME,
         )
         session = manager.get_payment_session(payment_session_id=session_id)
 
@@ -405,6 +409,7 @@ def prepare_browser_payment(url: str, purchase_id: str | None = None) -> str:
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
             region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            agent_name=AGENT_NAME,
         )
 
         # Only the vetted entry reaches the signer — same rule as x402_fetch.
@@ -574,6 +579,7 @@ def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") ->
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
             region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            agent_name=AGENT_NAME,
         )
 
         # CRITICAL: hand the signer ONLY the entry the policy approved.

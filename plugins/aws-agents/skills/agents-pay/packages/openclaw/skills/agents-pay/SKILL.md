@@ -19,12 +19,11 @@ description: >
   Not for connecting to non-paid APIs via Gateway — use agents-connect.
   Not for inbound auth (who may call your agent) — use agents-harden.
   Not for project scaffolding — use agents-get-started.
-allowed-tools: Read Grep Glob Bash
+allowed-tools: Read Bash
 metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
-  requires-cli: ">=1.0.0-preview.24"
 ---
 
 # pay
@@ -223,12 +222,14 @@ files (`../other-skill/...`) can silently break. Everything needed is here.
 
 ```bash
 python3 --version                      # 3.9+
-python3 -m pip install -r requirements.txt
-agentcore --version                    # >= 1.0.0-preview.24
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+agentcore --version
 ```
 
-`bedrock_agentcore.payments` must be importable — earlier releases lack it.
-Verify: `python3 -c "from bedrock_agentcore.payments import PaymentManager"`.
+`bedrock_agentcore.payments` must be importable. Verify:
+`python -c "from bedrock_agentcore.payments import PaymentManager"`.
 
 ### Step 1: Provision payment resources — human runs this outside the LLM loop
 
@@ -238,7 +239,7 @@ them to paste credentials, command output, deployed state, or generated IDs
 back into chat. Wait only for the user to confirm that setup completed.
 
 ```bash
-npm install -g @aws/agentcore@1.0.0-preview.24
+npm install -g @aws/agentcore
 agentcore add payment-manager          # NO FLAGS — interactive wizard
 agentcore add payment-connector        # NO FLAGS — interactive wizard
 agentcore deploy                       # interactive deployment
@@ -430,22 +431,26 @@ loads anywhere: Claude Code, Codex, Cursor, Kiro, and OpenClaw-style harnesses.
 Install the published plugin, then follow this skill as normal:
 
 ```bash
-openclaw plugins install clawhub:@aws%2Faws-agents-pay
+openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
-**Check what the plugin exposes to the model before trusting it.** A payments plugin
-for OpenClaw is only as safe as the tools it registers, and an earlier x402 plugin
-for this exact runtime drew 11 security findings for exposing the wrong ones. Two
-questions decide it:
+**Choose one runtime path.** OpenClaw uses the TypeScript plugin and its
+`get_paid_content` tool. Other supported hosts use the Python implementation and
+its equivalent `x402_fetch` tool. Do not run both. The plugin package bundles the
+same skill, references, Python admin CLI, and tests for operator setup, but payment
+execution stays in TypeScript on OpenClaw.
+
+Check what the plugin exposes to the model before trusting it. Two questions
+decide whether its runtime surface is safe:
 
 | Ask | Safe answer | Why |
 |---|---|---|
 | Does any tool take a wallet secret or provider key as a **parameter**? | No — credentials come from the environment or the `agentcore` wizard | A model-visible secret ends up in transcripts, traces, and logs |
 | Can the model call something that **creates a payment session**? | No — session creation is human-only | Otherwise it mints fresh budget when one runs out, and per-session caps bound nothing |
 
-If either answer is wrong, do not use the plugin's tools for payment. Fall back to
-the runtime path in this skill — `x402_fetch` plus the admin CLI — which keeps the
-decision in `x402_policy.py` regardless of what the host registers.
+If either answer is wrong, do not use the plugin's tools for payment. Disable the
+plugin before switching to the Python `x402_fetch` path so only one payment
+implementation is active.
 
 Verify quickly:
 

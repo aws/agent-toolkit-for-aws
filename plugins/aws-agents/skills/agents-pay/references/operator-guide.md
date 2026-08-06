@@ -83,19 +83,23 @@ and on why the split exists at all:
 
 ```bash
 # 0. Prerequisites
-python3 -m pip install 'httpx>=0.27' 'bedrock-agentcore>=1.19.0'
-npm install -g @aws/agentcore@1.0.0-preview.24
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+npm install -g @aws/agentcore
 
 # 1. Provision (ControlPlaneRole; only step that touches provider secrets)
 agentcore add payment-manager                     # NO FLAGS — interactive wizard
 agentcore add payment-connector                   # NO FLAGS — interactive wizard
 agentcore deploy
 
-# 2. Write the config
-python3 scripts/agents_pay_admin.py init-config --max-per-payment-usd 0.05
+# 2. Write the config with at least one approved payee
+python scripts/agents_pay_admin.py init-config \
+  --max-per-payment-usd 0.05 \
+  --recipient 0xMerchantWalletAddress
 
 # 3. Create the wallet (ManagementRole) — payer identity comes from the config
-python3 scripts/agents_pay_admin.py create-instrument --email you@example.com
+python scripts/agents_pay_admin.py create-instrument --email you@example.com
 
 # 3a/3b. THE END USER now delegates in a browser and funds the wallet with USDC.
 #        Both belong to the wallet, and both must happen BEFORE step 4 —
@@ -103,10 +107,10 @@ python3 scripts/agents_pay_admin.py create-instrument --email you@example.com
 #        Step 3 prints the delegation URL and the wallet address.
 
 # 4. Authorize a budget (ManagementRole; interactive — you type "approve")
-python3 scripts/agents_pay_admin.py new-session --budget 1.00
+python scripts/agents_pay_admin.py new-session --budget 1.00
 
 # 5. Verify, then register the tool in your agent
-python3 scripts/agents_pay_admin.py preflight
+python scripts/agents_pay_admin.py preflight
 ```
 
 ### The interactive approval, concretely
@@ -146,12 +150,15 @@ If the agent runs on OpenClaw, install the published plugin instead of wiring th
 Python functions by hand:
 
 ```bash
-openclaw plugins install clawhub:@aws%2Faws-agents-pay
+openclaw plugins install clawhub:@aws/aws-agents-pay
 openclaw plugins inspect aws-agents-pay               # confirm what it registers
 ```
 
-Two things to confirm before you trust it, because an earlier x402 plugin for this
-runtime drew 11 security findings for getting them wrong:
+OpenClaw executes payments through the TypeScript plugin's `get_paid_content`
+tool. Other hosts use the equivalent Python `x402_fetch` tool. Choose exactly one
+runtime path; enabling both would make policy enforcement path-dependent.
+
+Two things to confirm before you trust the OpenClaw runtime:
 
 1. **No tool takes a wallet secret or provider key as a parameter.** Credentials
    belong in the environment or the `agentcore` wizard, never in a model-visible
@@ -159,9 +166,8 @@ runtime drew 11 security findings for getting them wrong:
 2. **No model-callable tool creates a payment session.** If the model can mint
    budget, the per-session cap bounds nothing.
 
-If either is wrong, do not use the plugin's payment tools. Use this skill's runtime
-path (`x402_fetch` plus the admin CLI), which keeps the decision in `x402_policy.py`
-whatever the host registers.
+If either is wrong, disable the plugin before switching to the Python
+`x402_fetch` path.
 
 ### If you use the Strands plugin or LangGraph middleware instead
 
@@ -289,7 +295,7 @@ prompt injection succeeds. In summary:
 - **Paid content is untrusted input** — returned bounded, type-restricted, and
   marked `"untrusted": true`. Instructions inside it are data, never commands.
 
-Full threat model, per-finding enforcement table, and the partial answers:
+Full threat model and enforcement table:
 [`security-model.md`](security-model.md).
 
 ---
