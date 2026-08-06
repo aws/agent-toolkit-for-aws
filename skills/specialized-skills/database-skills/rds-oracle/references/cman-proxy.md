@@ -254,7 +254,7 @@ resource "aws_security_group" "cman" {
 
 ## Why not RDS Proxy?
 
-**RDS Proxy does not support Oracle.** RDS Proxy supports MySQL, PostgreSQL, and SQL Server only. For Oracle connection multiplexing, CMAN is the supported path.
+**RDS Proxy does not support Oracle.** RDS Proxy supports MariaDB, MySQL, PostgreSQL, and SQL Server only. RDS for Oracle and RDS for Db2 are the engines RDS Proxy does NOT support. For Oracle connection multiplexing, CMAN is the supported path.
 
 ## CMAN log files
 

@@ -195,9 +195,9 @@ Surface these controls when advising on any production RDS for Db2 deployment. T
 
 ### In-scope documentation and blogs
 
-- AWS docs — RDS for Db2: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_RDSDb2.html
+- AWS docs — RDS for Db2: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Db2.html
 - AWS docs — RDS for Db2 IAM permissions: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAM.html
-- AWS docs — Kerberos authentication for RDS for Db2: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/db2-kerberos.html
+- AWS docs — Kerberos authentication for RDS for Db2: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/db2-kerberos-setting-up.html
 - Blog — Connect to RDS for Db2 from CloudShell: https://aws.amazon.com/blogs/database/connect-to-amazon-rds-for-db2-using-aws-cloudshell/
 - Blog — Restore self-managed Db2 Linux into RDS for Db2: https://aws.amazon.com/blogs/database/restore-self-managed-db2-linux-databases-in-amazon-rds-for-db2/
 - Blog — Near-zero downtime from AIX/Windows to RDS for Db2 with Q Replication: https://aws.amazon.com/blogs/database/near-zero-downtime-migrations-from-self-managed-db2-on-aix-or-windows-to-amazon-rds-for-db2-using-ibm-q-replication/

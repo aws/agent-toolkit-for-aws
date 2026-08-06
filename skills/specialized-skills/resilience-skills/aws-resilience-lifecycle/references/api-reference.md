@@ -21,8 +21,8 @@ These are the most common mistakes observed in actual test runs. **Memorize thes
 | `aws resiliencehub list-apps` (v1) | `aws resiliencehubv2 list-services` |
 | `aws:fis:inject-api-unavailable` (missing suffix) | `aws:fis:inject-api-unavailable-error` (the real FIS action ends in `-error`) |
 | `update-routing-control-state` (singular, two calls for failover) | `update-routing-control-states` (plural, one atomic call with `--update-routing-control-state-entries`) |
-| `--reportType FAILURE_MODE` (camelCase) | `--report-type FAILURE_MODE` (kebab-case — standard CLI; `FAILURE_MODE` is the ONLY valid value) |
-| `aws resiliencehubv2 create-assumption --category ...` | `aws resiliencehubv2 create-assertion --service-arn --text` (it's "assertion" not "assumption"; NO --category) |
+| `--reportType FAILURE_MODE` (camelCase) | `--report-type FAILURE_MODE` (kebab-case — standard CLI; valid values: `FAILURE_MODE`, `DEPENDENCY`, `TESTING`) |
+| `aws resiliencehubv2 create-assumption --category ...` | `aws resiliencehubv2 create-assertion --service-arn --text --category` (it's "assertion" not "assumption") |
 | `--criticality PRIMARY\|SECONDARY` | `--criticality PRIMARY\|SUPPLEMENTAL` (SECONDARY is wrong) |
 | service-function `--type REQUEST_RESPONSE\|...` | (no such parameter — service functions have name, criticality, description only) |
 | `register-delegated-administrator` | (does NOT exist — use `--permission-model` on create-service for cross-account) |
@@ -137,7 +137,7 @@ For monitoring/alarms/dashboards, **always recommend the companion AWS Observabi
 
 - `create-system --name --description [--no-sharing-enabled]`  (NO --dependency-discovery here — it lives on create-service)
 - `get-system --system-arn` / `update-system --system-arn ...` / `list-systems` / `delete-system --system-arn`
-- `create-user-journey --system-arn --name --policy-arn --description`
+- `create-user-journey --system-arn --name --description`
 - `list-user-journeys --system-arn` / `update-user-journey --system-arn --user-journey-id ...` / `delete-user-journey --system-arn --user-journey-id`
 
 ### Service
@@ -173,17 +173,17 @@ For monitoring/alarms/dashboards, **always recommend the companion AWS Observabi
 - `create-service-function --name --service-arn --criticality PRIMARY|SUPPLEMENTAL [--description]`
 - `list-service-functions --service-arn`
 - `update-service-function --service-arn --service-function-id --name --criticality PRIMARY|SUPPLEMENTAL` (source field becomes USER after update; there is NO `--type` parameter)
-- `create-service-function-resources --service-arn --service-function-id --resources '["resource-id-1","resource-id-2"]'`
+- `add-service-function-resources --service-arn --service-function-id --resources '["resource-id-1","resource-id-2"]'`
 - `delete-service-function --service-arn --service-function-id`
 
 ### Topology / Assertions / Reports
 
 - `list-service-topology-edges --service-arn`
-- `create-assertion --service-arn --text "..."` (NO `--category` parameter; assertion has a `source` field AI_GENERATED|USER)
+- `create-assertion --service-arn --text "..." --category "..."` (assertion has a `source` field USER|SYSTEM)
 - `list-assertions --service-arn`
 - `update-assertion --service-arn --assertion-id --text "..."`
 - `delete-assertion --service-arn --assertion-id`
-- `create-report --service-arn --report-type FAILURE_MODE` (`--report-type` is kebab-case; `FAILURE_MODE` is the ONLY valid value)
+- `create-report --service-arn --report-type FAILURE_MODE` (`--report-type` is kebab-case; valid values: `FAILURE_MODE`, `DEPENDENCY`, `TESTING`)
 - `list-reports --service-arn` (returns `reportOutput.s3ReportOutput.s3ObjectKey` on SUCCEEDED). The S3 bucket receiving reports MUST have SSE-KMS encryption, a bucket policy enforcing TLS (`aws:SecureTransport`), and least-privilege access — assessment reports reveal architectural weaknesses and failure modes.
 
 ### Multi-Account

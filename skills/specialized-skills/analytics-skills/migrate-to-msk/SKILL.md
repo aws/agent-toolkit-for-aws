@@ -190,7 +190,7 @@ invocation commands, see "Running the assessment" in
 `compatibility.py` validates the source against MSK Express across five pillars:
 
 1. **Topology** — AZ count, broker count, KRaft vs ZooKeeper, per-cluster broker quota.
-2. **Kafka version** — source version against the Express supported set (3.6, 3.8, 3.9).
+2. **Kafka version** — source version against the Express supported set (3.6, 3.8, 3.9, 4.2).
 3. **Configs** — broker- and topic-level configs against Express's editable, read-only,
    range-restricted, and enforced-value sets (sourced from the Express broker configuration
    documentation on `docs.aws.amazon.com/msk`).

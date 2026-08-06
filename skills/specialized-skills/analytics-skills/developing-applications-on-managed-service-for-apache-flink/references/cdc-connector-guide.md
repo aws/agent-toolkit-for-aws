@@ -15,16 +15,16 @@ For MSF deployments, use the Source Connector approach via DataStream API or Tab
 
 **CRITICAL:** Flink CDC versions must match your Flink version. Use this mapping for MSF-supported Flink versions:
 
-| Flink CDC Release | Flink 1.20 coordinate | Flink 2.2 coordinate | Notes |
-|---|---|---|---|
-| `3.6.x` | `3.6.0-1.20` | `3.6.0-2.2` | Recommended for new projects. Per-Flink-version artifacts. |
-| `3.5.x` | `3.5.0` | ❌ | Flink 1.20 only. Single unsuffixed artifact. |
-| `3.4.x` | `3.4.0` | ❌ | Flink 1.20 only. Single unsuffixed artifact. |
-| `3.3.x` | `3.3.0` | ❌ | Flink 1.20 only (also supports 1.18, 1.19). Single unsuffixed artifact. |
+| Flink CDC Release | Flink 1.20 coordinate | Flink 2.2 coordinate | Flink 2.3 coordinate | Notes |
+|---|---|---|---|---|
+| `3.6.x` | `3.6.0-1.20` | `3.6.0-2.2` | `3.6.0-2.3` | Recommended for new projects. Per-Flink-version artifacts. |
+| `3.5.x` | `3.5.0` | ❌ | ❌ | Flink 1.20 only. Single unsuffixed artifact. |
+| `3.4.x` | `3.4.0` | ❌ | ❌ | Flink 1.20 only. Single unsuffixed artifact. |
+| `3.3.x` | `3.3.0` | ❌ | ❌ | Flink 1.20 only (also supports 1.18, 1.19). Single unsuffixed artifact. |
 
-For Flink 2.2 on MSF, you must use Flink CDC 3.6.x.
+For Flink 2.3 on MSF, you must use Flink CDC 3.6.x. Flink 2.2 also requires 3.6.x.
 
-**IMPORTANT — version coordinate change in 3.6.x:** Starting with the 3.6.x line, Flink CDC publishes **per-Flink-version artifacts** on Maven Central. The plain `3.6.0` GAV does NOT exist — only `3.6.0-1.20` and `3.6.0-2.2`. Earlier versions (3.5.x and below) used a single artifact compatible with multiple Flink minors. Always copy the coordinate from the table above; do not assume an unsuffixed `3.6.0` will resolve.
+**IMPORTANT — version coordinate change in 3.6.x:** Starting with the 3.6.x line, Flink CDC publishes **per-Flink-version artifacts** on Maven Central. The plain `3.6.0` GAV does NOT exist — only `3.6.0-1.20`, `3.6.0-2.2`, and `3.6.0-2.3`. Earlier versions (3.5.x and below) used a single artifact compatible with multiple Flink minors. Always copy the coordinate from the table above; do not assume an unsuffixed `3.6.0` will resolve.
 
 ## Supported Database Sources
 

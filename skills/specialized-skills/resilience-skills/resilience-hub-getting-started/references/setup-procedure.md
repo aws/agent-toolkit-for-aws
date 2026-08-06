@@ -18,7 +18,7 @@ This SOP guides you through first-time Resilience Hub v2 setup: creating a resil
 **multi_az_dr_approach** (optional, default: "ACTIVE_ACTIVE"): DR approach for multi-AZ — ACTIVE_ACTIVE, HOT_STANDBY, WARM_STANDBY, PILOT_LIGHT, or BACKUP_AND_RESTORE
 **multi_region_dr_approach** (optional, default: "HOT_STANDBY"): DR approach for multi-Region — ACTIVE_ACTIVE, HOT_STANDBY, WARM_STANDBY, PILOT_LIGHT, or BACKUP_AND_RESTORE
 > The `disasterRecoveryApproach` values listed above are the valid enum values. If `create-policy` rejects a value, confirm the current set with `aws resiliencehubv2 create-policy help` rather than assuming this list is exhaustive.
-**invoker_role_name** (required): IAM role name Resilience Hub v2 assumes for resource discovery (trust principal `resiliencehub.amazonaws.com` + managed policy `AWSResilienceHubAsssessmentExecutionPolicy`).
+**invoker_role_name** (required): IAM role name Resilience Hub v2 assumes for resource discovery (trust principal `resiliencehub.amazonaws.com` + managed policy `AWSResilienceHubV2AssessmentExecutionPolicy`).
 **regions** (required): JSON array of AWS regions (e.g., '["us-east-1","us-west-2"]')
 **input_source_type** (required): One of cfn_stack, resource_tags, terraform, eks
 **input_source_identifier** (required): Stack ARN, tag key/value pair, TF state URI, or EKS cluster ARN
@@ -75,7 +75,7 @@ Map a business-critical path to the system with an associated policy.
 **Constraints:**
 
 - You MUST inform the customer that you are creating a user journey
-- You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-user-journey --system-arn {system_arn} --name {journey_name} --policy-arn {policy_arn} --description "{journey_description}"`
+- You MUST run the following AWS CLI command (use the AWS MCP server's `call_aws` tool when connected, otherwise the AWS CLI directly): `aws resiliencehubv2 create-user-journey --system-arn {system_arn} --name {journey_name} --description "{journey_description}"`
 - You MUST associate the journey with the policy created in Step 2
 - You MUST capture the userJourneyId from the response
 
@@ -162,7 +162,7 @@ Generate an exportable report and save to S3.
 # Create the invoker role first (trust policy per AWS Resilience Hub v2 docs)
 aws iam create-role --role-name rh-invoker \
   --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"resiliencehub.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"123456789012"},"ArnLike":{"aws:SourceArn":"arn:aws:resiliencehub:*:123456789012:*"}}}]}'
-aws iam attach-role-policy --role-name rh-invoker --policy-arn arn:aws:iam::aws:policy/AWSResilienceHubAsssessmentExecutionPolicy
+aws iam attach-role-policy --role-name rh-invoker --policy-arn arn:aws:iam::aws:policy/AWSResilienceHubV2AssessmentExecutionPolicy
 
 # Create a Tier-1 policy
 aws resiliencehubv2 create-policy \
@@ -173,7 +173,7 @@ aws resiliencehubv2 create-policy \
 
 # Create system and journey
 aws resiliencehubv2 create-system --name "payment-platform"
-aws resiliencehubv2 create-user-journey --system-arn {system_arn} --name "customer-checkout" --policy-arn {policy_arn}
+aws resiliencehubv2 create-user-journey --system-arn {system_arn} --name "customer-checkout" --description "End-to-end checkout flow"
 
 # Register service with CFN input source
 aws resiliencehubv2 create-service --name "checkout-api" --regions '["us-east-1","us-west-2"]' --associated-systems '[{"systemArn":"{system_arn}","userJourneyIds":["{journey_id}"]}]' --policy-arn {policy_arn} --permission-model invokerRoleName=rh-invoker --dependency-discovery ENABLED

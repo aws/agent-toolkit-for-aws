@@ -39,7 +39,7 @@ Domain expertise for CDK construct authoring, deployment workflows, compliance, 
 
 | Error | Cause → Fix |
 |-------|------------|
-| **DeployFailed / DeploymentError** | CDK error isn't the root cause. `cdk deploy $STACK --verbose`, then `cdk --unstable=diagnose diagnose $STACK` (CLI ≥ 2.1120.0); else `aws cloudformation describe-events --stack-name $STACK --filters FailedEvents=true` — the first `_FAILED` event is the cause. [Details](references/troubleshooting-deployment.md) |
+| **DeployFailed / DeploymentError** | CDK error isn't the root cause. `cdk deploy $STACK --verbose`, then `cdk diagnose $STACK` (CLI ≥ 2.1120.0); else `aws cloudformation describe-events --stack-name $STACK --filters FailedEvents=true` — the first `_FAILED` event is the cause. [Details](references/troubleshooting-deployment.md) |
 | **NoCredentials / ExpiredToken / AssumeRoleFailed** | `aws sts get-caller-identity` + `cdk doctor`. Expired SSO, missing `env`, missing `sts:AssumeRole`. [Details](references/troubleshooting-credentials.md) |
 | **Asset errors** (CannotFindAsset, FailedToBundleAsset, AssetBuildFailed, AssetPublishFailed) | Path wrong, Docker not running, or bootstrap bucket perms. Use `path.join(__dirname, ...)`. [Details](references/troubleshooting-synth.md) |
 | **AppRequired** | Add `"app": "npx tsx bin/my-app.ts"` to `cdk.json`. [Details](references/troubleshooting-synth.md) |

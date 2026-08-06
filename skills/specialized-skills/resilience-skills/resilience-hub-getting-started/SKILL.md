@@ -53,7 +53,7 @@ EKS cluster is in the specified regions, or resource tags match actual resources
 
 ## Security Considerations
 
-- **Least privilege:** scope the invoker role to read-only discovery of only the resource types in your input sources; attach the AWS managed `AWSResilienceHubAsssessmentExecutionPolicy` (AWS spells it with three s's) or a tighter custom policy.
+- **Least privilege:** scope the invoker role to read-only discovery of only the resource types in your input sources; attach the AWS managed `AWSResilienceHubV2AssessmentExecutionPolicy` or a tighter custom policy.
 - **Encryption at rest / in transit:** recommend S3 buckets for Terraform state and assessment reports use server-side encryption (SSE-KMS) and a bucket policy enforcing TLS via `aws:SecureTransport`.
 - **Condition keys (confused-deputy):** add an `aws:SourceAccount` (and ideally `aws:SourceArn` scoped to the specific Resilience Hub service ARN) condition to the invoker role's trust policy so only your account's Resilience Hub can assume it.
 - **Limit assessment exposure:** restrict who can call `start-failure-mode-assessment` (it reads infrastructure state) and who can read assessment findings and reports — these can contain sensitive architecture detail.

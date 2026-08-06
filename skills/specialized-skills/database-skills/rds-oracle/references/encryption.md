@@ -1,6 +1,6 @@
 # RDS for Oracle — Encryption (SSL/TLS and NNE)
 
-RDS Oracle supports two transport-encryption methods. **You cannot use both on the same instance.** If SSL is enabled, disable NNE first, and vice versa. Both are available on all licensed editions of Oracle 19c and 21c on RDS.
+RDS Oracle supports two transport-encryption methods. **You cannot use both on the same instance.** If SSL is enabled, disable NNE first, and vice versa. Both are available on all licensed editions of Oracle 26ai (26.0.0.0), 21c, and 19c on RDS.
 
 Source: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.Oracle.Options.SSL.html
 
@@ -73,17 +73,27 @@ When SSL is enabled, RDS opens a **second port** (default 2484) for encrypted co
 
 ## Cipher suites (FIPS and FedRAMP)
 
-Default: `SSL_RSA_WITH_AES_256_CBC_SHA`. For stronger security or FedRAMP, set `SQLNET.CIPHER_SUITE`:
+The default cipher suite varies by Oracle version:
+
+| Oracle Version | Default Cipher Suite |
+|---|---|
+| 19c | `SSL_RSA_WITH_AES_256_CBC_SHA` |
+| 21c | `SSL_RSA_WITH_AES_256_CBC_SHA` |
+| 26ai | `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384` |
+
+For stronger security or FedRAMP, set `SQLNET.CIPHER_SUITE`:
 
 | Cipher Suite | TLS | FIPS | FedRAMP |
 |---|---|---|---|
-| SSL_RSA_WITH_AES_256_CBC_SHA (default) | 1.0, 1.2 | Yes | No |
+| SSL_RSA_WITH_AES_256_CBC_SHA (default 19c/21c) | 1.0, 1.2 | Yes | No |
 | SSL_RSA_WITH_AES_256_CBC_SHA256 | 1.2 | Yes | No |
 | SSL_RSA_WITH_AES_256_GCM_SHA384 | 1.2 | Yes | No |
-| **TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384** | 1.2 | Yes | Yes |
+| **TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384** (default 26ai) | 1.2 | Yes | Yes |
 | TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 | 1.2 | Yes | Yes |
 | TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 | 1.2 | Yes | Yes |
 | TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256 | 1.2 | Yes | Yes |
+| TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA | 1.2 | Yes | Yes |
+| TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA | 1.2 | Yes | Yes |
 | TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 | 1.2 | Yes | Yes |
 | TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384 | 1.2 | Yes | Yes |
 

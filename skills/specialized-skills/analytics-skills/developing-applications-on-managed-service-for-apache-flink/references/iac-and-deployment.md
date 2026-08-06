@@ -101,7 +101,7 @@ resource "aws_s3_object" "app_jar" {
 
 resource "aws_kinesisanalyticsv2_application" "flink_app" {
   name                   = "my-flink-app"
-  runtime_environment    = "FLINK-2_2"  # Default for new apps. Use FLINK-1_20 only when migrating an existing 1.20 app and state compatibility forbids the upgrade.
+  runtime_environment    = "FLINK-2_3"  # Default for new apps. Use FLINK-2_2 or FLINK-1_20 only when migrating an existing app and state compatibility forbids the upgrade.
   service_execution_role = aws_iam_role.flink_role.arn
 
   application_configuration {
@@ -252,7 +252,7 @@ FlinkApplication:
   Type: AWS::KinesisAnalyticsV2::Application
   Properties:
     ApplicationName: !Ref ApplicationName
-    RuntimeEnvironment: !Ref FlinkRuntimeEnvironment  # FLINK-2_2 (default for new apps). FLINK-1_20 only for in-place upgrades of existing 1.20 apps.
+    RuntimeEnvironment: !Ref FlinkRuntimeEnvironment  # FLINK-2_3 (default for new apps). FLINK-2_2 or FLINK-1_20 only for in-place upgrades of existing apps.
     ServiceExecutionRole: !GetAtt FlinkRole.Arn
     ApplicationConfiguration:
       # JAR location — JAR must exist before this resource is created
@@ -293,7 +293,7 @@ FlinkApplication:
 
 ### Key Configuration Notes
 
-- **`RuntimeEnvironment`**: For new applications, use `FLINK-2_2` (production-recommended default). Use `FLINK-1_20` only when migrating an existing 1.20 application and state compatibility prevents an in-place upgrade (see [flink-2x-migration.md](flink-2x-migration.md) for state-break patterns). The valid enum values come from the `kinesisanalyticsv2` API; the version-segment format mirrors the underlying Flink minor version with an underscore separator (`FLINK-<major>_<minor>`). For the full list of accepted values, see the [`kinesisanalyticsv2 create-application` CLI reference](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/kinesisanalyticsv2/create-application.html), and for migration steps see [flink-2x-migration.md](flink-2x-migration.md).
+- **`RuntimeEnvironment`**: For new applications, use `FLINK-2_3` (production-recommended default, Apache Flink 2.3.0). Use `FLINK-2_2` or `FLINK-1_20` only when migrating an existing application and state compatibility prevents an in-place upgrade (see [flink-2x-migration.md](flink-2x-migration.md) for state-break patterns). The valid enum values come from the `kinesisanalyticsv2` API; the version-segment format mirrors the underlying Flink minor version with an underscore separator (`FLINK-<major>_<minor>`). For the full list of accepted values, see the [`kinesisanalyticsv2 create-application` CLI reference](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/kinesisanalyticsv2/create-application.html), and for migration steps see [flink-2x-migration.md](flink-2x-migration.md).
 - **`CodeContentType`**: Always `ZIPFILE` for JAR files (this is the correct value despite the name).
 - **`ConfigurationType`**: Set to `CUSTOM` to override defaults. If set to `DEFAULT`, the service ignores your parallelism/checkpoint settings.
 - **`Parallelism`**: This is the total parallelism, which equals KPU count × ParallelismPerKPU. For example, 8 KPUs with ParallelismPerKPU=1 means Parallelism=8.
