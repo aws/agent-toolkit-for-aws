@@ -1,0 +1,37 @@
+# Model License Information
+
+| SageMaker Hub Model ID                       | Model Name                    | License URL(s)                                                                                                                    |
+| -------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `huggingface-reasoning-qwen3-32b`            | Qwen3-32B                     | https://huggingface.co/Qwen/Qwen3-32B/blob/main/LICENSE                                                                           |
+| `huggingface-reasoning-qwen3-14b`            | Qwen3-14B                     | https://huggingface.co/Qwen/Qwen3-14B/blob/main/LICENSE                                                                           |
+| `huggingface-reasoning-qwen3-8b`             | Qwen3-8B                      | https://huggingface.co/Qwen/Qwen3-8B/blob/main/LICENSE                                                                            |
+| `huggingface-reasoning-qwen3-4b`             | Qwen3-4B                      | https://huggingface.co/Qwen/Qwen3-4B/blob/main/LICENSE                                                                            |
+| `huggingface-reasoning-qwen3-1-7b`           | Qwen3-1.7B                    | https://huggingface.co/Qwen/Qwen3-1.7B/blob/main/LICENSE                                                                          |
+| `huggingface-reasoning-qwen3-06b`            | Qwen3-0.6B                    | https://huggingface.co/Qwen/Qwen3-0.6B/blob/main/LICENSE                                                                          |
+| `huggingface-llm-qwen2-5-72b-instruct`       | Qwen2.5-72B-Instruct          | https://huggingface.co/Qwen/Qwen2.5-72B-Instruct/blob/main/LICENSE                                                                |
+| `huggingface-llm-qwen2-5-32b-instruct`       | Qwen2.5-32B-Instruct          | https://huggingface.co/Qwen/Qwen2.5-32B-Instruct/blob/main/LICENSE                                                                |
+| `huggingface-llm-qwen2-5-14b-instruct`       | Qwen2.5-14B-Instruct          | https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/blob/main/LICENSE                                                                |
+| `huggingface-llm-qwen2-5-7b-instruct`        | Qwen2.5-7B-Instruct           | https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/main/LICENSE                                                                 |
+| `deepseek-llm-r1-distill-llama-70b`          | DeepSeek-R1-Distill-Llama-70B | https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B/blob/main/LICENSE                                                |
+| `deepseek-llm-r1-distill-qwen-32b`           | DeepSeek-R1-Distill-Qwen-32B  | https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B/blob/main/LICENSE                                                 |
+| `deepseek-llm-r1-distill-qwen-14b`           | DeepSeek-R1-Distill-Qwen-14B  | https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B/blob/main/LICENSE                                                 |
+| `deepseek-llm-r1-distill-llama-8b`           | DeepSeek-R1-Distill-Llama-8B  | https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-8B/blob/main/LICENSE                                                 |
+| `deepseek-llm-r1-distill-qwen-7b`            | DeepSeek-R1-Distill-Qwen-7B   | https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/blob/main/LICENSE                                                  |
+| `deepseek-llm-r1-distill-qwen-1-5b`          | DeepSeek-R1-Distill-Qwen-1.5B | https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B/blob/main/LICENSE                                                |
+| `openai-reasoning-gpt-oss-120b`              | GPT-OSS-120B                  | https://huggingface.co/openai/gpt-oss-120b/blob/main/LICENSE; https://huggingface.co/openai/gpt-oss-120b/blob/main/USAGE_POLICY |
+| `openai-reasoning-gpt-oss-20b`               | GPT-OSS-20B                   | https://huggingface.co/openai/gpt-oss-20b/blob/main/LICENSE; https://huggingface.co/openai/gpt-oss-20b/blob/main/USAGE_POLICY   |
+| `meta-textgeneration-llama-3-3-70b-instruct` | Llama 3.3 70B Instruct        | https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct/blob/main/LICENSE                                                        |
+| `meta-textgeneration-llama-3-2-3b-instruct`  | Llama 3.2 3B Instruct         | https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct/blob/main/LICENSE.txt                                                     |
+| `meta-textgeneration-llama-3-2-1b-instruct`  | Llama 3.2 1B Instruct         | https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/blob/main/LICENSE.txt                                                     |
+| `meta-textgeneration-llama-3-1-8b-instruct`  | Llama 3.1 8B Instruct         | https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/blob/main/LICENSE                                                         |
+| `nova-textgeneration-pro`                    | Amazon Nova Pro               | https://aws.amazon.com/service-terms/                                                                                             |
+| `nova-textgeneration-micro`                  | Amazon Nova Micro             | https://aws.amazon.com/service-terms/                                                                                             |
+| `nova-textgeneration-lite`                   | Amazon Nova Lite              | https://aws.amazon.com/service-terms/                                                                                             |
+| `nova-textgeneration-lite-v2`                | Amazon Nova Lite v2           | https://aws.amazon.com/service-terms/                                                                                             |
+| `huggingface-reasoning-nvidia-nemotron-3-nano-30b-a3b-bf16` | Nemotron 3 Nano 30B | https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16/blob/main/LICENSE                                              |
+| `huggingface-vlm-qwen3-6-27b`               | Qwen3.6-27B                   | https://huggingface.co/Qwen/Qwen3-VL-27B/blob/main/LICENSE                                                                        |
+| `huggingface-vlm-qwen3-5-27b`               | Qwen3.5-27B                   | https://huggingface.co/Qwen/Qwen3-VL-27B/blob/main/LICENSE                                                                        |
+| `huggingface-vlm-qwen3-5-9b`                | Qwen3.5-9B                    | https://huggingface.co/Qwen/Qwen3-VL-9B/blob/main/LICENSE                                                                         |
+| `huggingface-vlm-qwen3-5-4b`                | Qwen3.5-4B                    | https://huggingface.co/Qwen/Qwen3-VL-4B/blob/main/LICENSE                                                                         |
+| `huggingface-vlm-gemma-4-31b-it`             | Gemma 4 31B                   | https://huggingface.co/google/gemma-4-31b-it/blob/main/LICENSE                                                                     |
+| `meta-vlm-llama-4-scout-17b-16e-instruct`   | Llama 4 Scout 17B             | https://huggingface.co/meta-llama/Llama-4-Scout-17B-16E-Instruct/blob/main/LICENSE                                                |
