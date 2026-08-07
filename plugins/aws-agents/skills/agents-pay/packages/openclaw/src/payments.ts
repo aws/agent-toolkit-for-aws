@@ -30,6 +30,7 @@ export async function getPaymentSessionStatus(): Promise<SessionStatus> {
       payment_manager_arn: config.paymentManagerArn,
       payment_session_id: config.payment_session_id,
       user_id: config.userId,
+      agent_name: "openclaw-aws-agents-pay",
     });
     const session = response.paymentSession as PaymentSession | undefined;
     if (!session) {
@@ -135,6 +136,7 @@ export async function processPayment(
     payment_session_id: config.payment_session_id,
     payment_instrument_id: config.paymentInstrumentId,
     user_id: config.userId,
+    agent_name: "openclaw-aws-agents-pay",
     client_token: deriveClientToken(
       config.payment_session_id,
       resourceUrl,

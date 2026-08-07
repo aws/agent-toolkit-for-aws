@@ -13,8 +13,17 @@ Install from ClawHub:
 openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
-The encoded slash is required by OpenClaw when installing a scoped ClawHub
-package.
+## Getting started
+
+After installation, provision AWS resources and configure the plugin before
+activation. The bundled skill walks through each step:
+
+```bash
+openclaw skills read agents-pay    # or open skills/agents-pay/SKILL.md
+```
+
+For OpenClaw-specific configuration, see
+[`skills/agents-pay/references/openclaw-setup.md`](skills/agents-pay/references/openclaw-setup.md).
 
 The package bundles the canonical `agents-pay` skill. It guides users through
 human-run setup in a separate terminal while the plugin keeps only the two

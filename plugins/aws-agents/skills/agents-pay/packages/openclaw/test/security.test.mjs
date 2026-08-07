@@ -354,7 +354,7 @@ test("public package and runtime identities stay aligned", async () => {
     readFile(new URL("../README.md", import.meta.url), "utf8"),
   ]);
   assert.equal(packageJson.name, "@aws/aws-agents-pay");
-  assert.equal(packageJson.version, "1.0.3");
+  assert.equal(packageJson.version, "1.0.6");
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
   assert.ok(packageJson.files.includes("skills"));

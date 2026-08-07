@@ -51,6 +51,7 @@ def _dispatch(
         "payment_manager_arn",
         "payment_session_id",
         "user_id",
+        "agent_name",
     }
     if operation == "get_payment_session":
         _require_exact_keys(request, common)
@@ -69,10 +70,12 @@ def _dispatch(
         raise BridgeInputError("unsupported operation")
 
     region = _required_string(request, "region", max_length=128)
+    agent_name = _required_string(request, "agent_name", max_length=256)
     common_params = {
         "paymentManagerArn": _required_string(request, "payment_manager_arn"),
         "paymentSessionId": _required_string(request, "payment_session_id"),
         "userId": _required_string(request, "user_id", max_length=512),
+        "agentName": agent_name,
     }
 
     if operation == "get_payment_session":
