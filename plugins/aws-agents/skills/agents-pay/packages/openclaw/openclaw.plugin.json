@@ -1,0 +1,48 @@
+{
+  "id": "aws-agents-pay",
+  "name": "AWS Agents Pay",
+  "description": "Guarded x402 v2 payments through AWS AgentCore Payments",
+  "contracts": {
+    "tools": [
+      "get_payment_session_status",
+      "get_paid_content"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "region": { "type": "string", "default": "us-east-1" },
+      "paymentManagerArn": { "type": "string" },
+      "paymentInstrumentId": { "type": "string" },
+      "userId": { "type": "string" },
+      "payment_session_id": { "type": "string" },
+      "networkPreferences": { "type": "array", "items": { "type": "string" } },
+      "allowedOrigins": { "type": "array", "items": { "type": "string" } },
+      "allowedRecipients": { "type": "array", "items": { "type": "string" } },
+      "allowAnyRecipient": { "type": "boolean" },
+      "allowedAssetsByNetwork": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "maxPaymentAmountAtomic": { "type": "string", "pattern": "^[1-9][0-9]*$" }
+    },
+    "required": ["paymentManagerArn", "paymentInstrumentId", "userId", "payment_session_id", "maxPaymentAmountAtomic"],
+    "oneOf": [
+      {
+        "required": ["allowedRecipients"],
+        "not": { "required": ["allowAnyRecipient"] }
+      },
+      {
+        "required": ["allowAnyRecipient"],
+        "properties": { "allowAnyRecipient": { "const": true } },
+        "not": { "required": ["allowedRecipients"] }
+      }
+    ]
+  }
+}

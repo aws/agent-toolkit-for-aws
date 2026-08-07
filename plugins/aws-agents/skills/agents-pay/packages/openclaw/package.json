@@ -1,0 +1,50 @@
+{
+  "name": "@aws/aws-agents-pay",
+  "version": "1.0.3",
+  "description": "Guarded x402 v2 payments for OpenClaw through AWS AgentCore Payments",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "stage-skill": "node scripts/stage-skill.mjs",
+    "test": "npm run build && npm run stage-skill && python3 -m unittest discover -s test -p 'test_*.py' && node --test test/*.test.mjs",
+    "clean": "rm -rf dist",
+    "prepack": "npm run build && npm run stage-skill"
+  },
+  "dependencies": {
+    "typebox": "1.1.39"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "typescript": "7.0.2"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.3.24",
+      "minGatewayVersion": "2026.3.24"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24",
+      "pluginSdkVersion": "2026.3.24"
+    }
+  },
+  "files": [
+    "dist",
+    "runtime/agentcore_bridge.py",
+    "skills",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "license": "MIT-0"
+}
