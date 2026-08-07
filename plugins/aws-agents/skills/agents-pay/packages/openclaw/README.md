@@ -20,6 +20,12 @@ The package bundles the canonical `agents-pay` skill. It guides users through
 human-run setup in a separate terminal while the plugin keeps only the two
 runtime payment tools model-visible.
 
+The plugin keeps policy validation and paid HTTP replay in TypeScript. It uses
+the package-local Python virtual environment created during setup for only
+`GetPaymentSession` and `ProcessPayment`, through a fixed helper path with no
+shell. This preserves the standard boto3 AWS credential chain without adding
+the JavaScript AgentCore SDK to the runtime dependency graph.
+
 The runtime requires an existing payment manager, instrument, user, and session.
 It cannot provision payment infrastructure or create replacement sessions.
 Configure approved origins, a recipient mode, networks, assets, and a positive

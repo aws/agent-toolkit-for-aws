@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { deriveClientToken } from "../dist/payments.js";
+import { parseBridgeResponse } from "../dist/bridge.js";
 import { normalizeConfig } from "../dist/config.js";
 import {
   PaymentBlocked,
@@ -269,6 +270,22 @@ test("stable idempotency excludes rotating publisher nonce", () => {
   );
 });
 
+test("AgentCore bridge accepts only a successful object response", () => {
+  assert.deepEqual(
+    parseBridgeResponse('{"ok":true,"result":{"paymentSession":{"status":"ACTIVE"}}}'),
+    { paymentSession: { status: "ACTIVE" } },
+  );
+  for (const response of [
+    '{"ok":false,"error":"failed"}',
+    '{"ok":true,"result":null}',
+    '{"ok":true,"result":[]}',
+    '{"result":{}}',
+    "not-json",
+  ]) {
+    assert.throws(() => parseBridgeResponse(response));
+  }
+});
+
 test("v2 replay uses PAYMENT-SIGNATURE and a complete base64 envelope", () => {
   const signedPayload = {
     authorization: { validAfter: "0", nonce: "proof-nonce" },
@@ -341,6 +358,8 @@ test("public package and runtime identities stay aligned", async () => {
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
   assert.ok(packageJson.files.includes("skills"));
+  assert.ok(packageJson.files.includes("runtime/agentcore_bridge.py"));
+  assert.equal(packageJson.dependencies["@aws-sdk/client-bedrock-agentcore"], undefined);
   assert.match(readme, /clawhub:\@aws\/aws-agents-pay/);
   assert.doesNotMatch(readme, /clawhub:\@aws%2Faws-agents-pay/);
   assert.doesNotMatch(readme, /accepts an empty install-time config/);
@@ -385,4 +404,16 @@ test("bundled skill is exact and excludes nested packages", async () => {
     );
   }
   await assert.rejects(access(path.join(bundledRoot, "packages")));
+});
+
+test("runtime dependency graph excludes Bowser", async () => {
+  const packageLock = await readFile(
+    new URL("../package-lock.json", import.meta.url),
+    "utf8",
+  ).then(JSON.parse);
+  assert.equal(packageLock.packages["node_modules/bowser"], undefined);
+  assert.equal(
+    packageLock.packages["node_modules/@aws-sdk/client-bedrock-agentcore"],
+    undefined,
+  );
 });

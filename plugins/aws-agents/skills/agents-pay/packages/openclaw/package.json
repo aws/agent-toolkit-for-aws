@@ -7,12 +7,11 @@
   "scripts": {
     "build": "tsc",
     "stage-skill": "node scripts/stage-skill.mjs",
-    "test": "npm run build && npm run stage-skill && node --test test/*.test.mjs",
+    "test": "npm run build && npm run stage-skill && python3 -m unittest discover -s test -p 'test_*.py' && node --test test/*.test.mjs",
     "clean": "rm -rf dist",
     "prepack": "npm run build && npm run stage-skill"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "3.1090.0",
     "typebox": "1.1.39"
   },
   "peerDependencies": {
@@ -42,6 +41,7 @@
   },
   "files": [
     "dist",
+    "runtime/agentcore_bridge.py",
     "skills",
     "openclaw.plugin.json",
     "README.md"

@@ -84,10 +84,13 @@ USDC with 6 decimals), and no default is supplied.
 ## How it works
 
 OpenClaw executes payments through this TypeScript plugin, using
-`get_paid_content`. It does not invoke the Python `x402_fetch` runtime. The
-bundled Python admin CLI is only for human-run provisioning. For other agent
-hosts, use the Python runtime described in `SKILL.md` instead, and never enable
-both paths at once.
+`get_paid_content`. Policy validation, SSRF controls, idempotency, proof
+isolation, and merchant replay remain in TypeScript. The plugin invokes a fixed
+package-relative Python helper, without a shell, only for `GetPaymentSession`
+and `ProcessPayment`; the package-local `.venv` created above supplies boto3 and
+the standard AWS credential chain. It does not invoke the Python `x402_fetch`
+runtime. For other agent hosts, use the Python runtime described in `SKILL.md`
+instead, and never enable both paths at once.
 
 The plugin exposes two scoped OpenClaw runtime tools only:
 
@@ -98,7 +101,9 @@ The plugin exposes two scoped OpenClaw runtime tools only:
 
 ### Security boundaries
 
-- **No shell access.** The agent cannot run scripts, read files, or access env vars.
+- **No general shell access.** The agent cannot choose a command, script, path,
+  or environment variable. The plugin starts only its fixed AgentCore helper
+  with `shell: false`, bounded JSON, a timeout, and output limits.
 - **No setup at runtime.** Payment Manager, connector, credential provider,
   instrument, and session creation happen outside the model-visible runtime.
 - **No credential exposure.** Wallet provider secrets never appear in the tool

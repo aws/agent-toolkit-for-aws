@@ -1,19 +1,15 @@
-import {
-  BedrockAgentCoreClient,
-  GetPaymentSessionCommand,
-  ProcessPaymentCommand,
-} from "@aws-sdk/client-bedrock-agentcore";
-import type { PaymentSession } from "@aws-sdk/client-bedrock-agentcore";
 import { createHash } from "node:crypto";
+import { invokeAgentCoreBridge } from "./bridge.js";
 import { getConfig } from "./config.js";
 
-let client: BedrockAgentCoreClient | null = null;
-
-function getClient(): BedrockAgentCoreClient {
-  if (!client) {
-    client = new BedrockAgentCoreClient({ region: getConfig().region });
-  }
-  return client;
+interface PaymentSession {
+  createdAt?: string;
+  expiryTimeInMinutes?: number;
+  availableLimits?: {
+    availableSpendAmount?: {
+      value?: string;
+    };
+  };
 }
 
 export interface SessionStatus {
@@ -26,15 +22,16 @@ export interface SessionStatus {
 
 export async function getPaymentSessionStatus(): Promise<SessionStatus> {
   const config = getConfig();
-  const command = new GetPaymentSessionCommand({
-    paymentManagerArn: config.paymentManagerArn,
-    paymentSessionId: config.payment_session_id,
-    userId: config.userId,
-  } as any);
 
   try {
-    const response = await getClient().send(command);
-    const session: PaymentSession | undefined = response.paymentSession;
+    const response = await invokeAgentCoreBridge({
+      operation: "get_payment_session",
+      region: config.region,
+      payment_manager_arn: config.paymentManagerArn,
+      payment_session_id: config.payment_session_id,
+      user_id: config.userId,
+    });
+    const session = response.paymentSession as PaymentSession | undefined;
     if (!session) {
       return {
         usable: false,
@@ -47,9 +44,14 @@ export async function getPaymentSessionStatus(): Promise<SessionStatus> {
 
     let expired = false;
     let minutesLeft: number | null = null;
-    if (session.createdAt && session.expiryTimeInMinutes) {
-      const expiresAt =
-        session.createdAt.getTime() + session.expiryTimeInMinutes * 60_000;
+    const createdAt = session.createdAt
+      ? Date.parse(session.createdAt)
+      : Number.NaN;
+    if (
+      Number.isFinite(createdAt) &&
+      typeof session.expiryTimeInMinutes === "number"
+    ) {
+      const expiresAt = createdAt + session.expiryTimeInMinutes * 60_000;
       expired = expiresAt <= Date.now();
       if (!expired) {
         minutesLeft = Math.max(
@@ -126,30 +128,27 @@ export async function processPayment(
   }
 
   const config = getConfig();
-  const command = new ProcessPaymentCommand({
-    paymentManagerArn: config.paymentManagerArn,
-    paymentSessionId: config.payment_session_id,
-    paymentInstrumentId: config.paymentInstrumentId,
-    userId: config.userId,
-    clientToken: deriveClientToken(
+  const response = await invokeAgentCoreBridge({
+    operation: "process_payment",
+    region: config.region,
+    payment_manager_arn: config.paymentManagerArn,
+    payment_session_id: config.payment_session_id,
+    payment_instrument_id: config.paymentInstrumentId,
+    user_id: config.userId,
+    client_token: deriveClientToken(
       config.payment_session_id,
       resourceUrl,
       accepted,
     ),
-    paymentType: "CRYPTO_X402",
-    paymentInput: {
-      cryptoX402: {
-        version,
-        payload: accepted as any,
-      },
-    },
+    version,
+    payload: accepted,
   });
 
-  const response = await getClient().send(command);
-  const paymentOutput = response.paymentOutput;
+  const paymentOutput = response.paymentOutput as
+    | { cryptoX402?: { payload?: unknown } }
+    | undefined;
   if (
     !paymentOutput ||
-    !("cryptoX402" in paymentOutput) ||
     !paymentOutput.cryptoX402?.payload
   ) {
     throw new Error(

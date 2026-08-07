@@ -444,7 +444,9 @@ openclaw plugins install clawhub:@aws/aws-agents-pay
 `get_paid_content` tool. Other supported hosts use the Python implementation and
 its equivalent `x402_fetch` tool. Do not run both. The plugin package bundles the
 same skill, references, Python admin CLI, and tests for operator setup, but payment
-execution stays in TypeScript on OpenClaw.
+policy and merchant replay stay in TypeScript on OpenClaw. Only
+`GetPaymentSession` and `ProcessPayment` cross a bounded, no-shell bridge to
+boto3 in the package-local virtual environment.
 
 Check what the plugin exposes to the model before trusting it. Two questions
 decide whether its runtime surface is safe:
