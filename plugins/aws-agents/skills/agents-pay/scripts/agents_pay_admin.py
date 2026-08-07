@@ -79,8 +79,9 @@ def discover_deployed() -> dict[str, str | None]:
     Searches several relative paths so the command works whether you run from the
     project root, inside the agentcore/ directory, or a subdirectory of it.
 
-    CLI 0.20.x writes targets.<target>.resources.payments[]; older layouts used a
-    top-level payments[]. Both are handled.
+    CLI 0.20.x writes targets.<target>.resources.payments[]; 0.26.x writes
+    payments as objects keyed by name. Older layouts used a top-level payments[].
+    All three are handled.
     """
     out: dict[str, str | None] = {"manager_arn": None, "connector_id": None, "role_arn": None}
     state_path = _find_deployed_state()
@@ -97,10 +98,24 @@ def discover_deployed() -> dict[str, str | None]:
             payments = data.get("payments")
         if not payments:
             return out
-        pay = payments[0]
+        # 0.26.x: payments is a dict keyed by name
+        if isinstance(payments, dict):
+            pay = next(iter(payments.values()), {})
+        # 0.20.x and older: payments is a list
+        elif isinstance(payments, list):
+            pay = payments[0] if payments else {}
+        else:
+            return out
         connectors = pay.get("connectors") or []
         out["manager_arn"] = pay.get("managerArn")
-        out["connector_id"] = connectors[0].get("connectorId") if connectors else None
+        # 0.26.x: connectors may be a dict keyed by name
+        if isinstance(connectors, dict):
+            first_connector = next(iter(connectors.values()), {})
+        elif isinstance(connectors, list):
+            first_connector = connectors[0] if connectors else {}
+        else:
+            first_connector = {}
+        out["connector_id"] = first_connector.get("connectorId") if first_connector else None
         out["role_arn"] = pay.get("processPaymentRoleArn")
     except Exception:  # noqa: BLE001 - convenience only; never fatal
         pass

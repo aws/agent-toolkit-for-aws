@@ -270,9 +270,10 @@ Add `--origin https://<host>` (repeatable) only to pin the agent to a known merc
 set; omitted, it may fetch any public HTTPS site.
 
 Written to `~/.agents-pay/config.json`, mode `0600`, via atomic replace. It
-pins:
+pins these policy keys (use hyphens for the corresponding CLI flags, e.g.
+`--allow-any-recipient`):
 
-| Rule | Effect |
+| Config key | Effect |
 |---|---|
 | `max_per_payment_usd` | Per-payment ceiling. Above it → refuse |
 | `allowed_networks` | Exact CAIP-2 networks |
