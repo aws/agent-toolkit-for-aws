@@ -49,12 +49,24 @@ AGENT_NAME = "aws-agents-pay"
 
 # Where the AgentCore CLI records what `agentcore deploy` created. Read so the
 # operator never has to copy a manager ARN or connector ID by hand.
-DEPLOYED_STATE = Path("agentcore/.cli/deployed-state.json")
+DEPLOYED_STATE_CANDIDATES = [
+    Path("agentcore/.cli/deployed-state.json"),   # from project root (parent of agentcore/)
+    Path(".cli/deployed-state.json"),              # from inside the agentcore/ directory
+    Path("../.cli/deployed-state.json"),           # from a subdirectory of agentcore/
+]
 
 
 def admin_config_path(explicit: str | None) -> Path:
     """Resolve an operator-selected path for administrative commands only."""
     return Path(explicit or os.environ.get("AGENTS_PAY_CONFIG") or DEFAULT_CONFIG)
+
+
+def _find_deployed_state() -> Path | None:
+    """Return the first existing deployed-state.json candidate, or None."""
+    for candidate in DEPLOYED_STATE_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def discover_deployed() -> dict[str, str | None]:
@@ -64,14 +76,18 @@ def discover_deployed() -> dict[str, str | None]:
     Purely a convenience: nothing security-relevant is decided from this file, and
     a wrong or missing value surfaces as a plain error from the service.
 
+    Searches several relative paths so the command works whether you run from the
+    project root, inside the agentcore/ directory, or a subdirectory of it.
+
     CLI 0.20.x writes targets.<target>.resources.payments[]; older layouts used a
     top-level payments[]. Both are handled.
     """
     out: dict[str, str | None] = {"manager_arn": None, "connector_id": None, "role_arn": None}
-    if not DEPLOYED_STATE.exists():
+    state_path = _find_deployed_state()
+    if state_path is None:
         return out
     try:
-        data = json.loads(DEPLOYED_STATE.read_text())
+        data = json.loads(state_path.read_text())
         payments = None
         targets = data.get("targets") or {}
         target = targets.get("default") or (next(iter(targets.values()), {}) if targets else {})
@@ -328,10 +344,13 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
     connector_id = args.connector_id or os.environ.get("PAYMENT_CONNECTOR_ID") or discovered["connector_id"]
 
     if not manager_arn or not connector_id:
+        checked = ", ".join(str(p) for p in DEPLOYED_STATE_CANDIDATES)
         print(
-            "Could not determine the manager ARN and connector ID. Either run this from\n"
-            "your AgentCore project directory (so agentcore/.cli/deployed-state.json can\n"
-            "be read), or pass --manager-arn and --connector-id.",
+            f"Could not find deployed-state.json (checked: {checked}).\n\n"
+            "This file is created by `agentcore deploy`. To resolve:\n"
+            "  \u2022 Run this command from the directory that CONTAINS the agentcore/ folder, OR\n"
+            "  \u2022 Run from inside the agentcore/ directory itself, OR\n"
+            "  \u2022 Pass --manager-arn and --connector-id explicitly.",
             file=sys.stderr,
         )
         return 1
@@ -428,12 +447,18 @@ def cmd_new_session(args: argparse.Namespace) -> int:
 
     manager_arn = resolve_manager_arn(args.manager_arn)
     if not manager_arn:
+        checked = ", ".join(str(p) for p in DEPLOYED_STATE_CANDIDATES)
         print(
-            "Could not determine the payment manager ARN. Either run this from your\n"
-            "AgentCore project directory (so agentcore/.cli/deployed-state.json can be\n"
-            "read), pass --manager-arn, or set PAYMENT_MANAGER_ARN.",
+            f"Could not determine the payment manager ARN.\n\n"
+            f"Searched for deployed-state.json at: {checked}\n\n"
+            "This file is created by `agentcore deploy`. To resolve:\n"
+            "  \u2022 Run this command from the directory that CONTAINS the agentcore/ folder, OR\n"
+            "  \u2022 Run from inside the agentcore/ directory itself, OR\n"
+            "  \u2022 Pass --manager-arn explicitly, OR\n"
+            "  \u2022 Set PAYMENT_MANAGER_ARN in your environment.",
             file=sys.stderr,
         )
+        return 1
         return 1
 
     print("About to create a payment session:")
@@ -495,11 +520,13 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     if not os.environ.get("PAYMENT_MANAGER_ARN"):
         discovered = discover_deployed()
         if discovered["manager_arn"]:
-            print(f"\n       Found in {DEPLOYED_STATE}: run this to fix the above ->")
+            state_path = _find_deployed_state()
+            print(f"\n       Found in {state_path}: run this to fix the above ->")
             print(f"         export PAYMENT_MANAGER_ARN={discovered['manager_arn']}")
         else:
-            print(f"\n       No {DEPLOYED_STATE} here. Run from your AgentCore project")
-            print("       directory, or set the variables by hand.")
+            print(f"\n       deployed-state.json not found (checked: {', '.join(str(p) for p in DEPLOYED_STATE_CANDIDATES)}).")
+            print("       Run from the directory that CONTAINS the agentcore/ folder,")
+            print("       from inside it, or set the variables by hand.")
 
     # This design never needs provider secrets in the runtime process.
     leaked = [
