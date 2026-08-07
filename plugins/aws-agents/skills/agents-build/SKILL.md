@@ -1,26 +1,25 @@
 ---
 name: agents-build
 description: >
-  Use when adding capabilities to an existing agent project — memory,
-  app integration, VPC, multi-agent, migration, model changes, browser,
-  code interpreter, or resource removal. Triggers on: "add memory",
+  Use to extend an existing agent project with memory, app integration,
+  VPC, multi-agent, migration, model, browser, code interpreter,
+  payments, or resource removal. Triggers: "add memory",
   "remember across sessions", "call agent from app", "invoke agent from
-  code", "auth to call agent", "streaming responses", "VPC", "VPC
-  connectivity", "VPC error", "can't reach from VPC", "multi-agent",
+  code", "agent auth", "streaming", "VPC", "VPC
+  connectivity", "can't reach from VPC", "multi-agent",
   "A2A", "A2A auth", "orchestrator not delegating", "specialist not
-  called", "migrate Bedrock Agent", "after import", "migration issue",
-  "framework for migration", "change model", "browser tool", "code
+  called", "migrate Bedrock Agent", "migration issue", "change model",
+  "browser tool", "code
   interpreter", "delete agent", "tear down", "agentcore remove",
   "cross-account memory",
   "add payments capability to my agent", "wire payments plugin",
   "payments middleware for my agent",
   "integrate x402 payments with the agent I'm building",
   "enable my agent project with x402 payments".
-  Not for connecting to external APIs via Gateway — use agents-connect.
-  Not for scaffolding a new project — use agents-get-started.
-  Not for CLI/dev server errors — use agents-debug.
-  Not for THIS agent paying for x402 content at runtime — use agents-pay.
-  Strands vs LangGraph in a migration context routes here.
+  External APIs via Gateway: use agents-connect. New project:
+  use agents-get-started. CLI/dev-server errors: use agents-debug.
+  Runtime x402 payments: use agents-pay. Migration-specific Strands vs
+  LangGraph routes here.
 allowed-tools: Read Grep Glob Bash
 metadata:
   type: skill
