@@ -16,6 +16,7 @@ type BridgeRequest =
       payment_manager_arn: string;
       payment_session_id: string;
       user_id: string;
+      agent_name: string;
     }
   | {
       operation: "process_payment";
@@ -24,6 +25,7 @@ type BridgeRequest =
       payment_session_id: string;
       payment_instrument_id: string;
       user_id: string;
+      agent_name: string;
       client_token: string;
       version: string;
       payload: Record<string, unknown>;

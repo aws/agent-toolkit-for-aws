@@ -149,13 +149,16 @@ legitimately large:
 export X402_MAX_BODY_BYTES=1048576
 ```
 
-### Content withheld: `"omitted": true`
+### Content withheld: `body_returned: false`
 
-The response was not `application/json`, `text/plain`, `text/markdown`, or
-`text/csv`. HTML is withheld by length because it is a much richer injection and
-rendering surface. If you need HTML, fetch and summarize it in a separate context
-that has no payment tool — do not widen the allowed types in a payment-capable
-context.
+By default, paid response bodies are not returned to the model context. The
+response includes content type, byte count, and SHA-256 hash only. To opt in to
+body return, set `return_body: true` in the policy section of
+`~/.agents-pay/config.json`. When enabled, content is capped at 10 KiB and
+marked `untrusted: true`.
+
+If you need to process larger or richer content (e.g. HTML), fetch and summarize
+it in a separate context that has no payment tool.
 
 ### `ConnectError` during the payment flow
 
