@@ -43,6 +43,38 @@ import sys
 import tempfile
 from pathlib import Path
 
+
+def _check_aws_credentials(region: str | None = None) -> bool:
+    """Fail fast with a clear message if AWS credentials are missing/expired.
+
+    A cheap, read-only STS call (no IAM permissions beyond the default caller
+    identity) run BEFORE any interactive prompts. Without this, a user can type
+    through the entire setup-openclaw wizard only to discover at instrument or
+    session creation — several prompts later — that their credentials expired,
+    forcing a full re-run. boto3 is already a hard dependency of
+    bedrock-agentcore, so this adds no new dependency.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+    except ImportError:
+        # boto3 missing entirely is caught by the bedrock_agentcore.payments
+        # import check that every caller already performs; nothing to add here.
+        return True
+    try:
+        sts = boto3.client("sts", region_name=region or os.environ.get("AWS_REGION", "us-east-1"))
+        sts.get_caller_identity()
+        return True
+    except (NoCredentialsError, ClientError, BotoCoreError) as exc:
+        print(
+            "AWS credentials are invalid, expired, or missing.\n"
+            f"  ({exc})\n\n"
+            "Run `aws sso login` (or otherwise refresh your credentials), then "
+            "re-run this command.",
+            file=sys.stderr,
+        )
+        return False
+
 DEFAULT_DIR = Path.home() / ".agents-pay"
 DEFAULT_CONFIG = DEFAULT_DIR / "config.json"
 AGENT_NAME = "aws-agents-pay"
@@ -344,6 +376,9 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         )
         return 1
 
+    if not _check_aws_credentials(args.region):
+        return 1
+
     config_path = admin_config_path(args.path)
     user_id = resolve_user_id(args.user_id, config_path)
     if not user_id:
@@ -450,6 +485,9 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         )
         return 1
 
+    if not _check_aws_credentials(args.region):
+        return 1
+
     config_path = admin_config_path(args.path)
     user_id = resolve_user_id(args.user_id, config_path)
     if not user_id:
@@ -546,6 +584,9 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
         )
         return 1
 
+    if not _check_aws_credentials():
+        return 1
+
     # --- Step 1: User identity ---
     print("\n--- Step 1: User Identity ---")
     print("A stable userId ties your instrument and session together.")
@@ -600,6 +641,16 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
             break
         origins.append(origin)
 
+    # --- Step 7: Return body ---
+    print("\n--- Step 5: Paid Content Return ---")
+    print(
+        "By default, paid publisher content is withheld from the model's context "
+        "as a security\ncontrol — the response body may contain prompt injection. "
+        "Returning it lets the agent\nread/summarize what it paid for, at that risk."
+    )
+    return_body_answer = _prompt("Return paid response body to the agent? (y/n)", "y")
+    return_body = return_body_answer.strip().lower() not in ("n", "no", "false", "0")
+
     # --- Write config ---
     config_path = admin_config_path(args.path)
     config: dict = {"resources": {}, "policy": {}}
@@ -610,6 +661,7 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
         "allowed_networks": [network],
         "allowed_assets": {network: [asset]},
         "allowed_schemes": ["exact"],
+        "return_body": return_body,
     }
     if allow_any:
         config["policy"]["allow_any_recipient"] = True
@@ -642,9 +694,13 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
 
     save_config(config_path, config)
     print(f"\n  ✓ Config written to {config_path}")
+    print(
+        f"  Paid response body will be {'RETURNED to' if return_body else 'WITHHELD from'} "
+        "the agent (policy.return_body)."
+    )
 
     # --- Create instrument ---
-    print("\n--- Step 5: Create Payment Instrument ---")
+    print("\n--- Step 6: Create Payment Instrument ---")
     email = _prompt("End-user email (for wallet delegation)", "")
     if not email:
         print("Email is required for instrument creation.", file=sys.stderr)
@@ -677,7 +733,7 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     print(f"    Wallet: {wallet_address}")
 
     # --- Delegation + funding ---
-    print("\n--- Step 6: Delegate & Fund ---")
+    print("\n--- Step 7: Delegate & Fund ---")
     if redirect_url:
         print(f"  1. Visit: {redirect_url}")
         print(f"     Sign in and grant access to {wallet_address}")
@@ -689,7 +745,7 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     input("Press Enter when delegation and funding are complete...")
 
     # --- Create session ---
-    print("\n--- Step 7: Create Payment Session ---")
+    print("\n--- Step 8: Create Payment Session ---")
     budget = _prompt("Session budget USD", "5.00")
     expiry = _prompt("Expiry minutes", "120")
 

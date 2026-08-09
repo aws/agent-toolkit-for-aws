@@ -174,8 +174,8 @@ third_party = sorted(
     if i not in stdlib and not i.startswith("x402") and i != "agents_pay_admin"
 )
 print(f"         third-party: {third_party or 'none'}")
-check(set(third_party) <= {"httpx", "bedrock_agentcore", "certifi"},
-      "third-party deps limited to httpx / bedrock_agentcore / certifi", str(third_party))
+check(set(third_party) <= {"httpx", "bedrock_agentcore", "certifi", "boto3", "botocore"},
+      "third-party deps limited to httpx / bedrock_agentcore / certifi / boto3 / botocore", str(third_party))
 
 print(f"\n{'=' * 62}")
 if failures:

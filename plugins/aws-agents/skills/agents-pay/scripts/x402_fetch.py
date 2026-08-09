@@ -355,7 +355,7 @@ def payment_session_status() -> str:
             {
                 "usable": False,
                 "reason": f"{type(e).__name__} while reading session status.",
-                "next_step": "Check PAYMENT_SESSION_ID and AWS credentials.",
+                "next_step": "An operator must check PAYMENT_SESSION_ID and AWS credentials.",
             }
         )
 
