@@ -30,7 +30,11 @@
           "items": { "type": "string" }
         }
       },
-      "maxPaymentAmountAtomic": { "type": "string", "pattern": "^[1-9][0-9]*$" }
+      "maxPaymentAmountAtomic": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+      "returnBody": {
+        "type": "boolean",
+        "description": "Opt-in only. When true, get_paid_content returns the actual paid response body (capped, marked untrusted) instead of metadata only. Unsanitized paid content may contain prompt injection; leave unset/false unless you have explicitly accepted that risk."
+      }
     },
     "required": ["paymentManagerArn", "paymentInstrumentId", "userId", "payment_session_id", "maxPaymentAmountAtomic"],
     "oneOf": [

@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { getConfig, loadConfig } from "./config.js";
+import { getConfig, loadConfig, type X402Config } from "./config.js";
 import { getPaymentSessionStatus, processPayment } from "./payments.js";
 import {
   PaymentBlocked,
@@ -27,6 +27,52 @@ function clearObject(value: Record<string, unknown>): void {
   }
 }
 
+export const MAX_RETURNED_BODY_BYTES = 10240;
+
+/**
+ * Build the model-visible `get_paid_content` result from a successfully paid
+ * replay. Pure and side-effect-free so the security contract around body
+ * withholding can be tested directly, without mocking the network.
+ *
+ * Default/absent `config.returnBody` preserves the original behavior exactly:
+ * metadata + hash only, never the paid body. Opt-in (`returnBody: true`)
+ * additionally returns the body (capped, marked untrusted) — see
+ * references/security-model.md ("Publisher content isolation"): unsanitized
+ * paid content may carry prompt injection.
+ */
+export function buildPaidContentResult(
+  result: {
+    status: number;
+    contentType: string;
+    bodySha256: string;
+    bodyBytes: number;
+    url: string;
+    body: string;
+  },
+  config: Pick<X402Config, "returnBody">,
+): Record<string, unknown> {
+  const response: Record<string, unknown> = {
+    paid: result.status >= 200 && result.status < 300,
+    refused: false,
+    status_code: result.status,
+    content_type: result.contentType,
+    body_sha256: result.bodySha256,
+    body_bytes: result.bodyBytes,
+    url: result.url,
+    content_returned: false,
+  };
+
+  if (config.returnBody === true) {
+    const truncated = result.body.length > MAX_RETURNED_BODY_BYTES;
+    response.content_returned = true;
+    response.body = result.body.slice(0, MAX_RETURNED_BODY_BYTES);
+    response.truncated = truncated;
+    response.untrusted = true;
+  }
+
+  return response;
+}
+
 async function paidFetch(url: string): Promise<Record<string, unknown>> {
   try {
     const probe = await probeUrl(url);
@@ -39,8 +85,9 @@ async function paidFetch(url: string): Promise<Record<string, unknown>> {
       };
     }
 
+    const config = getConfig();
     const parsed = extractChallenge(probe);
-    const authorized = validateChallengePolicy(parsed, url, getConfig());
+    const authorized = validateChallengePolicy(parsed, url, config);
     const accepted = buildProcessPaymentPayload(authorized.accepted);
     const payment = await processPayment(authorized.version, accepted, url);
 
@@ -63,16 +110,7 @@ async function paidFetch(url: string): Promise<Record<string, unknown>> {
         };
       }
 
-      return {
-        paid: result.status >= 200 && result.status < 300,
-        refused: false,
-        status_code: result.status,
-        content_type: result.contentType,
-        body_sha256: result.bodySha256,
-        body_bytes: result.bodyBytes,
-        url: result.url,
-        content_returned: false,
-      };
+      return buildPaidContentResult(result, config);
     } finally {
       signature = "";
       clearObject(payment.signedPayload);

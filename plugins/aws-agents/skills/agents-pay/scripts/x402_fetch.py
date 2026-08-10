@@ -53,7 +53,7 @@ import httpx
 
 import x402_policy as pol
 
-AGENT_NAME = "aws-agents-pay"
+AGENT_NAME = "openclaw-aws-agents-pay"
 
 
 def _bounded_env(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -249,21 +249,37 @@ def _body_text(response: httpx.Response) -> str:
     return raw.decode(response.encoding or "utf-8", errors="replace")
 
 
-def _safe_content(response: httpx.Response) -> dict[str, Any]:
-    """Return metadata only; never place publisher content in model context."""
+def _safe_content(response: httpx.Response, policy: dict | None = None) -> dict[str, Any]:
+    """Return metadata about paid content; optionally return the body.
+
+    By default, paid publisher content is withheld from model context as a
+    security control (it may contain prompt injection). Operators can opt in
+    to body return by setting `return_body: true` in the policy section of
+    the config file (~/.agents-pay/config.json). The config file is bound to
+    the OS account (0600) and cannot be set by the model at runtime.
+    """
     content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
     raw: bytes = getattr(response, "read_body", b"")
-    return {
+    result: dict[str, Any] = {
         "content_type": content_type or "unknown",
-        "body_returned": False,
         "body_sha256": hashlib.sha256(raw).hexdigest(),
         "bytes": len(raw),
-        "note": (
+    }
+    return_body = (policy or {}).get("return_body") is True
+    if return_body:
+        result["body_returned"] = True
+        result["body"] = raw.decode("utf-8", errors="replace")[:10240]
+        result["truncated"] = len(raw) > 10240
+        result["untrusted"] = True
+    else:
+        result["body_returned"] = False
+        result["note"] = (
             "Body withheld: paid publisher content is untrusted and must not enter "
             "the payment-capable model context. Use a separate no-payment/no-network "
-            "analysis context if summarisation is required."
-        ),
-    }
+            "analysis context if summarisation is required. To opt in, set "
+            "'return_body: true' in the policy section of the config file."
+        )
+    return result
 
 
 def payment_session_status() -> str:
@@ -283,6 +299,7 @@ def payment_session_status() -> str:
             policy = {"_resources": {}}   # no config: fall back to the environment
         session_id = pol.resolve_resource(policy, "payment_session_id")
         manager_arn = pol.resolve_resource(policy, "payment_manager_arn")
+        user_id = pol.resolve_resource(policy, "user_id")
         if not session_id or not manager_arn:
             return json.dumps(
                 {
@@ -311,7 +328,7 @@ def payment_session_status() -> str:
             region_name=pol.resolve_resource(policy, "region") or "us-west-2",
             agent_name=AGENT_NAME,
         )
-        session = manager.get_payment_session(payment_session_id=session_id)
+        session = manager.get_payment_session(payment_session_id=session_id, user_id=user_id)
 
         # Field names vary across SDK revisions; read defensively and report only
         # what we can positively confirm rather than guessing a usable=True.
@@ -338,7 +355,7 @@ def payment_session_status() -> str:
             {
                 "usable": False,
                 "reason": f"{type(e).__name__} while reading session status.",
-                "next_step": "Check PAYMENT_SESSION_ID and AWS credentials.",
+                "next_step": "An operator must check PAYMENT_SESSION_ID and AWS credentials.",
             }
         )
 
@@ -414,10 +431,12 @@ def prepare_browser_payment(url: str, purchase_id: str | None = None) -> str:
             agent_name=AGENT_NAME,
         )
 
-        # Only the vetted entry reaches the signer — same rule as x402_fetch.
-        vetted_challenge = json.dumps(
-            {"x402Version": decision["x402_version"], "accepts": [decision["accept"]]}
-        )
+        # Only the vetted entry reaches the signer — resource is included only
+        # after URL-binding validation in the policy gate (see _validated_resource).
+        vetted = {"x402Version": decision["x402_version"], "accepts": [decision["accept"]]}
+        if decision.get("resource"):
+            vetted["resource"] = decision["resource"]
+        vetted_challenge = json.dumps(vetted)
         payment_header = manager.generate_payment_header(
             payment_instrument_id=instrument_id,
             payment_session_id=session_id,
@@ -533,7 +552,10 @@ def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") ->
 
     Returns a JSON string. On success it contains status, response metadata,
     and a redacted payment receipt (amount, network, resource) — never the
-    paid body, signed proof, credential, or transaction signature.
+    signed proof, credential, or transaction signature. The paid body is
+    returned only when `return_body: true` is set in the operator's config
+    file; otherwise only content type, byte count, and SHA-256 hash are
+    included.
     """
     try:
         # Pre-flight: load policy and clear the origin BEFORE any network I/O, so
@@ -555,7 +577,7 @@ def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") ->
                     "status_code": response.status_code,
                     "paid": False,
                     "untrusted": True,
-                    **_safe_content(response),
+                    **_safe_content(response, policy),
                 }
             )
 
@@ -590,11 +612,13 @@ def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") ->
         # validating one document and signing another: the challenge can carry
         # several accepts entries, or a compliant header alongside a hostile
         # body, so the SDK could settle terms the gate never saw. The vetted
-        # entry is reserialized into a single-entry challenge, and nothing else
-        # from the publisher's response is passed through.
-        vetted_challenge = json.dumps(
-            {"x402Version": decision["x402_version"], "accepts": [decision["accept"]]}
-        )
+        # entry is reserialized into a single-entry challenge; the resource
+        # object is included only after URL-binding validation in the policy
+        # gate (see _validated_resource).
+        vetted = {"x402Version": decision["x402_version"], "accepts": [decision["accept"]]}
+        if decision.get("resource"):
+            vetted["resource"] = decision["resource"]
+        vetted_challenge = json.dumps(vetted)
 
         # Settle and replay, retrying a TRANSIENT post-payment 402.
         #
@@ -665,7 +689,7 @@ def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") ->
                     "network": decision["accept"]["network"],
                     "resource": f"{decision['origin']}{urlparse(url).path}",
                 },
-                **_safe_content(paid_response),
+                **_safe_content(paid_response, policy),
             }
         )
 

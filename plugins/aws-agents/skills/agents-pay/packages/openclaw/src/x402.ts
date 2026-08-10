@@ -473,6 +473,7 @@ export async function replayWithHeader(
   bodySha256: string;
   bodyBytes: number;
   url: string;
+  body: string;
 }> {
   const result = await hardenedGet(url, paymentSignatureHeader(headerValue));
   return {
@@ -481,5 +482,6 @@ export async function replayWithHeader(
     bodySha256: result.bodySha256,
     bodyBytes: result.bodyBytes,
     url: result.url,
+    body: result.body,
   };
 }

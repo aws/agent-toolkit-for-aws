@@ -13,8 +13,23 @@ Install from ClawHub:
 openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
-The encoded slash is required by OpenClaw when installing a scoped ClawHub
-package.
+## Getting started
+
+After installation, provision AWS resources and configure the plugin before
+activation. The fastest path is to ask your agent to walk you through it:
+
+> Ask OpenClaw: "help me set up the agents-pay skill"
+
+This drives the bundled skill's interactive setup wizard end-to-end — it
+prompts for AWS credentials, network, recipients, and spend limits, then
+provisions the payment instrument and session for you.
+
+If you'd rather run it yourself, or want to see the raw steps first, open
+[`skills/agents-pay/SKILL.md`](skills/agents-pay/SKILL.md) directly (there is
+no `openclaw skills read` command — use `openclaw skills info agents-pay`
+once the skill is installed/staged, or just open the file). For
+OpenClaw-specific configuration, see
+[`skills/agents-pay/references/openclaw-setup.md`](skills/agents-pay/references/openclaw-setup.md).
 
 The package bundles the canonical `agents-pay` skill. It guides users through
 human-run setup in a separate terminal while the plugin keeps only the two
@@ -42,6 +57,15 @@ Required configuration:
   amount the agent may spend in a single payment, in the asset's smallest unit
   (e.g. `"100000"` = 0.10 USDC at 6 decimals). This is the PER-PAYMENT ceiling;
   it is not a substitute for the session budget, which caps cumulative spend.
+- Optional `returnBody` (boolean, default unset/false). When true,
+  `get_paid_content` returns the actual paid response body (capped at 10 KiB,
+  marked `untrusted: true`) instead of metadata only. Leave this unset unless
+  you have deliberately decided to accept the risk: unsanitized paid content
+  may contain prompt injection aimed at the agent. See "Content isolation" in
+  [`references/security-model.md`](../../references/security-model.md) for the
+  full tradeoff. This is a separate, TypeScript-runtime-only setting from the
+  Python `x402_fetch.py` path's `return_body` policy field — set both if you
+  run both runtimes and want consistent behavior.
 
 The manifest requires the listed configuration before the plugin can be enabled.
 Both tools fail closed unless every required field is present in trusted plugin

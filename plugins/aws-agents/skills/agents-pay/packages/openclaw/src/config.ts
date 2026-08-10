@@ -14,6 +14,14 @@ export interface X402Config {
   allowAnyRecipient?: boolean;
   allowedAssetsByNetwork?: Record<string, string[]>;
   maxPaymentAmountAtomic: string;
+  /**
+   * Opt-in only. When true, `get_paid_content` returns the actual paid
+   * response body (capped, marked untrusted) instead of metadata only.
+   * Publisher content may contain prompt injection; leave this unset/false
+   * unless the operator has explicitly decided to accept that risk. See
+   * references/security-model.md ("Publisher content isolation").
+   */
+  returnBody?: boolean;
 }
 
 const CONFIG_DIR = join(homedir(), ".x402");
@@ -109,6 +117,13 @@ export function normalizeConfig(config: Partial<X402Config>): X402Config {
     );
   }
 
+  if (
+    config.returnBody !== undefined &&
+    typeof config.returnBody !== "boolean"
+  ) {
+    throw new Error("x402 configuration field returnBody must be a boolean");
+  }
+
   return {
     region: config.region ?? "us-east-1",
     paymentManagerArn: requireString(config, "paymentManagerArn"),
@@ -121,6 +136,7 @@ export function normalizeConfig(config: Partial<X402Config>): X402Config {
     allowAnyRecipient,
     allowedAssetsByNetwork: config.allowedAssetsByNetwork,
     maxPaymentAmountAtomic,
+    returnBody: config.returnBody,
   };
 }
 

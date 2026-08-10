@@ -4,13 +4,46 @@ OpenClaw uses the `@aws/aws-agents-pay` package from ClawHub. Its canonical
 source lives at
 `plugins/aws-agents/skills/agents-pay/packages/openclaw/` in this repository.
 
+For background on AgentCore Payments, see the
+[getting started guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-getting-started.html).
+
+## Step 0: Choose your user identity
+
+Pick a stable `userId` before provisioning any payment resources. This identity
+must be used consistently across `create-instrument`, `new-session`, and your
+OpenClaw plugin config — a mismatch means the session cannot spend the
+instrument.
+
+```bash
+export PAYMENT_USER_ID="my-openclaw-agent"
+```
+
+Pass `--user-id $PAYMENT_USER_ID` to every admin command, or run `init-config`
+first (which generates and stores one in `~/.agents-pay/config.json` for you).
+
 ## Install
 
 ```bash
 openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
-## Configure
+## Quick Setup (Recommended)
+
+Run the interactive wizard — it handles all steps in one flow:
+
+```bash
+cd ~/.openclaw/extensions/aws-agents-pay/skills/agents-pay
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python3 scripts/agents_pay_admin.py setup-openclaw
+```
+
+The wizard walks through: user identity → network → recipients → spend limits →
+instrument creation → delegation/funding → session approval → generates your
+OpenClaw config JSON ready to paste.
+
+## Manual Setup
 
 Add to your OpenClaw config (`~/.openclaw/openclaw.json` or via
 `openclaw config`). Explicitly allow the installed plugin:
@@ -42,7 +75,11 @@ the interactive terminal. Do not paste credentials, command output, deployed
 state, or generated identifiers into an LLM conversation.
 
 Complete delegation and testnet funding before creating the session. Then edit
-the OpenClaw config locally in the same terminal or a local editor:
+the OpenClaw config locally in the same terminal or a local editor.
+
+> **Important:** The `userId` below must match the identity used in
+> `create-instrument` and `new-session`. A mismatch means the session cannot
+> spend the instrument.
 
 ```json
 {

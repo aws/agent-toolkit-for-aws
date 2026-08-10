@@ -36,7 +36,7 @@ BASE_POLICY = {
 }
 
 
-def challenge(**overrides) -> dict:
+def challenge(url: str | None = None, **overrides) -> dict:
     """A well-formed x402 v1 challenge for $0.10 to the approved merchant."""
     accept = {
         "scheme": "exact",
@@ -47,7 +47,8 @@ def challenge(**overrides) -> dict:
         "extra": {"nonce": "abc123"},
     }
     accept.update(overrides)
-    return {"x402Version": 1, "resource": {"url": f"{ORIGIN}/v1/x402-test"}, "accepts": [accept]}
+    resource_url = url or f"{ORIGIN}/v1/x402-test"
+    return {"x402Version": 1, "resource": {"url": resource_url}, "accepts": [accept]}
 
 
 class PolicyFileTests(unittest.TestCase):
@@ -361,7 +362,7 @@ class SingleTenantUserIdTests(unittest.TestCase):
         import inspect
         import x402_fetch
 
-        self.assertEqual(x402_fetch.AGENT_NAME, "aws-agents-pay")
+        self.assertEqual(x402_fetch.AGENT_NAME, "openclaw-aws-agents-pay")
         source = inspect.getsource(x402_fetch)
         self.assertEqual(source.count("agent_name=AGENT_NAME"), 3)
 
@@ -521,12 +522,12 @@ class OptionalOriginTests(unittest.TestCase):
         return p
 
     def test_no_origin_list_allows_any_public_https_site(self):
-        decision = pol.authorize_payment("https://example.com/paid", challenge(), self._policy())
+        decision = pol.authorize_payment("https://example.com/paid", challenge(url="https://example.com/paid"), self._policy())
         self.assertEqual(decision["origin"], "https://example.com")
 
     def test_an_origin_list_still_pins_when_provided(self):
         with self.assertRaises(pol.PolicyError) as ctx:
-            pol.authorize_payment("https://example.com/paid", challenge(), self._policy([ORIGIN]))
+            pol.authorize_payment("https://example.com/paid", challenge(url="https://example.com/paid"), self._policy([ORIGIN]))
         self.assertIn("allowed_origins", str(ctx.exception))
 
     def test_mandatory_ssrf_controls_apply_even_with_no_origin_list(self):
@@ -1254,6 +1255,38 @@ class AuthorizeTests(unittest.TestCase):
         self.assertEqual(decision["origin"], ORIGIN)
         self.assertEqual(decision["x402_version"], 1)
         self.assertEqual(len(decision["client_token"]), 64)
+        # x402 v2 requires resource in the signed payload for URL binding
+        self.assertEqual(decision["resource"], {"url": f"{ORIGIN}/v1/x402-test"})
+
+    def test_resource_none_when_challenge_omits_it(self):
+        ch = challenge()
+        del ch["resource"]
+        decision = pol.authorize_payment(f"{ORIGIN}/v1/x402-test", ch, BASE_POLICY)
+        self.assertIsNone(decision["resource"])
+
+    def test_resource_url_mismatch_is_refused(self):
+        ch = challenge()
+        ch["resource"] = {"url": "https://attacker.example/evil"}
+        with self.assertRaises(pol.PolicyError):
+            pol.authorize_payment(f"{ORIGIN}/v1/x402-test", ch, BASE_POLICY)
+
+    def test_resource_extra_fields_are_stripped(self):
+        ch = challenge()
+        ch["resource"] = {"url": f"{ORIGIN}/v1/x402-test", "injected": "payload", "nested": {"x": 1}}
+        decision = pol.authorize_payment(f"{ORIGIN}/v1/x402-test", ch, BASE_POLICY)
+        self.assertEqual(decision["resource"], {"url": f"{ORIGIN}/v1/x402-test"})
+
+    def test_resource_non_dict_is_ignored(self):
+        ch = challenge()
+        ch["resource"] = "not-a-dict"
+        decision = pol.authorize_payment(f"{ORIGIN}/v1/x402-test", ch, BASE_POLICY)
+        self.assertIsNone(decision["resource"])
+
+    def test_resource_non_string_url_is_ignored(self):
+        ch = challenge()
+        ch["resource"] = {"url": 12345}
+        decision = pol.authorize_payment(f"{ORIGIN}/v1/x402-test", ch, BASE_POLICY)
+        self.assertIsNone(decision["resource"])
 
     def test_non_dict_challenge_is_refused(self):
         for bad in ("[]", None, 5, []):
