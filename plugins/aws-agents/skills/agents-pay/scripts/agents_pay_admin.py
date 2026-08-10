@@ -158,6 +158,26 @@ def resolve_manager_arn(explicit: str | None) -> str | None:
     """Manager ARN from --flag, else the environment, else the CLI deploy record."""
     return explicit or os.environ.get("PAYMENT_MANAGER_ARN") or discover_deployed()["manager_arn"]
 
+
+def resolve_region(explicit: str | None, config_path: Path) -> str | None:
+    """Region from --flag, else the environment, else the config file, else None.
+
+    init-config (and create-instrument, on success) persist the region actually
+    used into resources.region, right alongside the manager ARN it goes with.
+    Preferring that saved value here — instead of a hardcoded default — keeps
+    the PaymentManager client in the same region as the manager ARN it was just
+    told to use. Returning None when nothing is configured lets boto3's own
+    session/profile resolution take over, rather than silently forcing a
+    region the operator never chose.
+    """
+    if explicit:
+        return explicit
+    env_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    if env_region:
+        return env_region
+    config = load_raw_config(config_path)
+    return (config.get("resources") or {}).get("region")
+
 # USDC contract addresses per network. Pinned here so an operator cannot be
 # tricked into allowlisting a look-alike token contract by pasting one in.
 KNOWN_USDC = {
@@ -376,10 +396,12 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         )
         return 1
 
-    if not _check_aws_credentials(args.region):
+    config_path = admin_config_path(args.path)
+    region = resolve_region(args.region, config_path)
+
+    if not _check_aws_credentials(region):
         return 1
 
-    config_path = admin_config_path(args.path)
     user_id = resolve_user_id(args.user_id, config_path)
     if not user_id:
         print(
@@ -407,7 +429,7 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
 
     manager = PaymentManager(
         payment_manager_arn=manager_arn,
-        region_name=args.region or os.environ.get("AWS_REGION", "us-west-2"),
+        region_name=region,
         agent_name=AGENT_NAME,
     )
     instrument = manager.create_payment_instrument(
@@ -431,7 +453,7 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         payment_manager_arn=manager_arn,
         payment_instrument_id=instrument_id,
         user_id=user_id,
-        region=args.region or os.environ.get("AWS_REGION"),
+        region=region,
     )
 
     print(f"Instrument created : {instrument_id}")
@@ -485,10 +507,12 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         )
         return 1
 
-    if not _check_aws_credentials(args.region):
+    config_path = admin_config_path(args.path)
+    region = resolve_region(args.region, config_path)
+
+    if not _check_aws_credentials(region):
         return 1
 
-    config_path = admin_config_path(args.path)
     user_id = resolve_user_id(args.user_id, config_path)
     if not user_id:
         print(
@@ -512,7 +536,6 @@ def cmd_new_session(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-        return 1
 
     print("About to create a payment session:")
     print(f"  manager   : {manager_arn}")
@@ -525,7 +548,7 @@ def cmd_new_session(args: argparse.Namespace) -> int:
 
     manager = PaymentManager(
         payment_manager_arn=manager_arn,
-        region_name=args.region or os.environ.get("AWS_REGION", "us-west-2"),
+        region_name=region,
         agent_name=AGENT_NAME,
     )
     session = manager.create_payment_session(
