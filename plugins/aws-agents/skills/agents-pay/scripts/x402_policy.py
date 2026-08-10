@@ -574,6 +574,12 @@ def derive_client_token(
 ) -> str:
     """Derive a stable idempotency token for one logical purchase.
 
+    Part of the same fix batch as the region-resolution changes in x402_fetch.py
+    (see that module's docstring): the `policy=` parameter below closes a second
+    instance of the "config.json has the value, code reads the environment
+    instead" pattern found in this batch, this time for the session ID used as
+    idempotency-token material rather than for region.
+
     Same (session, resource, network, asset, recipient, amount) always yields the
     same token, so a retry after a lost response replays the SAME authorization
     instead of creating a second irreversible payment. Derived rather than random
