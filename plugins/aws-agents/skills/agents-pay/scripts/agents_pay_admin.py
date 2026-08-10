@@ -154,9 +154,27 @@ def discover_deployed() -> dict[str, str | None]:
     return out
 
 
-def resolve_manager_arn(explicit: str | None) -> str | None:
-    """Manager ARN from --flag, else the environment, else the CLI deploy record."""
-    return explicit or os.environ.get("PAYMENT_MANAGER_ARN") or discover_deployed()["manager_arn"]
+def resolve_manager_arn(explicit: str | None, config_path: Path) -> str | None:
+    """Manager ARN from --flag, else the environment, else config.json, else the CLI deploy record.
+
+    config.json's resources.payment_manager_arn is exactly the value create-instrument
+    (and init-config, when discoverable) persist right after a successful call — the
+    same source of truth resolve_region() now reads for region. Checking it here means
+    a repeat run of new-session from a different directory (no deployed-state.json in
+    reach) still finds the manager ARN the tool itself already saved, instead of
+    failing with "Could not determine the payment manager ARN" right next to a config
+    file that has had the answer the whole time.
+    """
+    if explicit:
+        return explicit
+    env_arn = os.environ.get("PAYMENT_MANAGER_ARN")
+    if env_arn:
+        return env_arn
+    config = load_raw_config(config_path)
+    config_arn = (config.get("resources") or {}).get("payment_manager_arn")
+    if config_arn:
+        return config_arn
+    return discover_deployed()["manager_arn"]
 
 
 def resolve_region(explicit: str | None, config_path: Path) -> str | None:
@@ -412,7 +430,7 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         return 1
 
     discovered = discover_deployed()
-    manager_arn = resolve_manager_arn(args.manager_arn)
+    manager_arn = resolve_manager_arn(args.manager_arn, config_path)
     connector_id = args.connector_id or os.environ.get("PAYMENT_CONNECTOR_ID") or discovered["connector_id"]
 
     if not manager_arn or not connector_id:
@@ -522,7 +540,7 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         )
         return 1
 
-    manager_arn = resolve_manager_arn(args.manager_arn)
+    manager_arn = resolve_manager_arn(args.manager_arn, config_path)
     if not manager_arn:
         checked = ", ".join(str(p) for p in DEPLOYED_STATE_CANDIDATES)
         print(
