@@ -325,7 +325,14 @@ def payment_session_status() -> str:
 
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
-            region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            # Region resolution here must match agents_pay_admin.py's resolve_region():
+            # config.json's resources.region, else AWS_REGION, else let boto3/PaymentManager
+            # resolve it (profile, IMDS, etc.) themselves. A hardcoded "us-west-2" fallback
+            # would silently override a correctly-resolved region whenever the operator's
+            # deployment lives elsewhere and neither config nor env sets one explicitly —
+            # PaymentManager itself already falls back to boto3.Session().region_name before
+            # its own "us-west-2" default, so passing None here is safe and correct.
+            region_name=pol.resolve_resource(policy, "region"),
             agent_name=AGENT_NAME,
         )
         session = manager.get_payment_session(payment_session_id=session_id, user_id=user_id)
@@ -427,7 +434,11 @@ def prepare_browser_payment(url: str, purchase_id: str | None = None) -> str:
 
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
-            region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            # See the resolve_region()-equivalent rationale in payment_session_status():
+            # config.json/env first, else let boto3 resolve region itself rather than
+            # forcing "us-west-2" and risking a manager-not-found against an ARN that
+            # actually lives in the operator's real deployment region.
+            region_name=pol.resolve_resource(policy, "region"),
             agent_name=AGENT_NAME,
         )
 
@@ -602,7 +613,12 @@ def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") ->
 
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
-            region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            # Same fix as the two call sites above and agents_pay_admin.py's
+            # resolve_region(): never force "us-west-2" over a region that config.json,
+            # the environment, or boto3's own session/profile resolution already has
+            # right — doing so on this signing path risked a real payment attempt
+            # failing with a confusing manager-not-found instead of succeeding.
+            region_name=pol.resolve_resource(policy, "region"),
             agent_name=AGENT_NAME,
         )
 

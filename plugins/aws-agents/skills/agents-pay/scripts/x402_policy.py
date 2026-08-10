@@ -570,6 +570,7 @@ def derive_client_token(
     purchase_id: str | None = None,
     *,
     session_id: str | None = None,
+    policy: dict | None = None,
 ) -> str:
     """Derive a stable idempotency token for one logical purchase.
 
@@ -590,8 +591,23 @@ def derive_client_token(
     turn counter — anything the caller controls) to distinguish deliberate
     repeat buys. Suppressing a duplicate charge is the safer default when the
     caller has not said otherwise.
+
+    session_id resolution: an explicit `session_id` always wins. If neither
+    `session_id` nor `policy` is given, this falls back to a raw environment
+    read for backward compatibility with existing callers (tests, embedded use)
+    that predate the `policy` parameter. A caller that DOES pass `policy` gets
+    resolve_resource()'s documented config-file-first precedence instead — the
+    correct behavior for any new caller resolving the session itself rather than
+    passing an explicit session_id (the production call site in
+    authorize_payment() already always passes session_id explicitly and is
+    unaffected either way).
     """
-    session = session_id if session_id is not None else os.environ.get("PAYMENT_SESSION_ID", "")
+    if session_id is not None:
+        session = session_id
+    elif policy is not None:
+        session = resolve_resource(policy, "payment_session_id") or ""
+    else:
+        session = os.environ.get("PAYMENT_SESSION_ID", "")
     material = "\x1f".join(  # unit separator: cannot appear in these values
         [
             session,
