@@ -1,19 +1,19 @@
 ---
 name: amazon-opensearch-service
-description: Amazon OpenSearch Service and Serverless across five capabilities — migration (Solr/ES/self-managed OpenSearch into AOS/AOSS, schema/query translation, sizing, cutover); provisioning (domain + AOSS lifecycle, upgrades, storage tiers, FGAC, monitoring); search (vector / semantic / hybrid / RAG with Bedrock connectors); log-analytics (PPL, OSI ingestion, anomaly detection, OpenSearch Dashboards, Splunk/Datadog alternatives); trace-analytics (OTel spans, service maps, Data Prepper). Triggers on OpenSearch, AOS, AOSS, Elasticsearch, ELK, Solr, Lucene, vector / k-NN / semantic / hybrid / neural search, RAG, ELSER, log analytics, observability, Kibana, OSI, OCU, PPL, trace analytics, BM25, eDisMax, schema.xml, ILM, ISM, FAISS, HNSW, Migration Assistant for Amazon OpenSearch Service, Historical Data Migration, Live Traffic Migration, UltraWarm, OR1, Splunk/Datadog alternative, moving off Solr. Picks ONE capability per ask, names instance class + count + shard math, ships query DSL examples.
+description: Guides migration, provisioning, search, log-analytics, trace-analytics, and Agentic AI Assistant workflows for Amazon OpenSearch Service and Serverless across six capabilities — migration (Solr/ES/self-managed into AOS/AOSS, schema/query translation, sizing, cutover); provisioning (domain + AOSS lifecycle, upgrades, FGAC, monitoring); search (vector / semantic / hybrid / RAG with Bedrock); log-analytics (PPL, OSI, anomaly detection, Dashboards); trace-analytics (OTel spans, service maps, Data Prepper); ai-assistant (natural language data exploration, incident investigation, root cause analysis). Triggers on OpenSearch, AOS, AOSS, Elasticsearch, Solr, vector/k-NN/semantic/hybrid search, RAG, log analytics, PPL, trace analytics, ISM, FAISS, HNSW, Migration Assistant, UltraWarm, OR1, query my data, analyze logs, investigate errors, root cause analysis.
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Amazon OpenSearch Service — the unified skill
 
-This skill answers anything about Amazon OpenSearch Service or Serverless across five capabilities. **Step 0 below routes the question to ONE capability** and points at that capability's entry-point reference. Everything else — when to dispatch, sub-references, capability-specific facts, cross-capability links — lives in the entry-point reference for that capability.
+This skill answers anything about Amazon OpenSearch Service or Serverless across six capabilities. **Step 0 below routes the question to ONE capability** and points at that capability's entry-point reference. Everything else — when to dispatch, sub-references, capability-specific facts, cross-capability links — lives in the entry-point reference for that capability.
 
 > **AWS MCP server is recommended, not required.** Capability references show standard AWS CLI commands as the primary syntax (e.g., `aws opensearch describe-domain`, `aws opensearchserverless create-collection`). Where the AWS MCP server is available, its `call_aws` tool offers a streamlined alternative — but every operation in this skill MUST work via the AWS CLI alone. Data-plane HTTP calls against AOS / AOSS use `awscurl` for SigV4-signed requests; this works in both contexts.
 
 ## Step 0: detect the capability — first thing you do
 
-Pick **one** of the five capabilities below. State the detected capability in your first sentence (e.g., *"Detected capability: SEARCH — semantic search setup with Bedrock embeddings."*). Then load the entry-point reference; that file describes when to dispatch, indexes the rest of the capability's files, and routes you to the next step.
+Pick **one** of the six capabilities below. State the detected capability in your first sentence (e.g., *"Detected capability: SEARCH — semantic search setup with Bedrock embeddings."*). Then load the entry-point reference; that file describes when to dispatch, indexes the rest of the capability's files, and routes you to the next step.
 
 | Capability | Entry-point reference |
 |---|---|
@@ -22,6 +22,7 @@ Pick **one** of the five capabilities below. State the detected capability in yo
 | **search** — Vector / semantic / hybrid / sparse / dense / RAG retrieval. Bedrock connectors, FAISS HNSW vs Lucene. | [`references/search-semantic-search-guide.md`](references/search-semantic-search-guide.md) |
 | **log-analytics** — Log search, observability, PPL, OSI ingestion, anomaly detection, OpenSearch Dashboards. Splunk/Datadog/ELK alternatives. | [`references/log-analytics-guide.md`](references/log-analytics-guide.md) |
 | **trace-analytics** — Distributed traces with OpenTelemetry. Span queries, service maps, Data Prepper. | [`references/trace-analytics-trace-queries.md`](references/trace-analytics-trace-queries.md) |
+| **ai-assistant** — Agentic AI Assistant: auto-discovers indices, generates optimized PPL/DSL queries, summarizes results, and investigates incidents end-to-end. No manual query crafting needed. | [`references/ai-assistant.md`](references/ai-assistant.md) |
 
 If a prompt spans capabilities (e.g., *"migrate from Solr AND set up RAG on the new domain"*), pick the dominant capability for the response and close with a one-line handoff to the other capability's entry-point ref.
 
@@ -58,3 +59,24 @@ Assets (`assets/`): report templates for FULL_ASSESSMENT renderings (Solr-source
 - **Build embedding models.** Use Amazon Bedrock or SageMaker.
 - **Replace Splunk SPL or Datadog APM 1:1.** Some queries / detectors / dashboards need rewriting.
 - **Tune relevance for a specific catalog.** Use OpenSearch Benchmark `big5` workload + your own judgment list.
+
+
+## Guardrail — where this skill's own files live (MCP vs local install)
+
+This skill can be loaded two ways, and they resolve the skill's own bundled
+files from different places. Determine how the skill was loaded before reading
+a reference or running a script:
+
+- **Loaded through the AWS MCP server's `retrieve_skill` tool:** The skill is not
+  installed on the local filesystem. You MUST fetch each reference or script
+  via `retrieve_skill` with the `file` parameter (e.g.
+  `file="references/architecture.md"` or `file="scripts/deploy.py"`), and
+  run the script from the returned content. Do NOT `file_read` these paths
+  locally — they do not exist on disk.
+- **Installed locally** (e.g. `.kiro/skills/your-skill/` or
+  `~/.claude/skills/your-skill/`): Read and run files from the local skill
+  directory using relative paths.
+
+This distinction applies only to the skill's own packaged files. User data and
+session artifacts are always read from and written to the user's working
+directory. Never fetch or write customer data through `retrieve_skill`.
