@@ -1,4 +1,4 @@
-"""Framework-agnostic x402 payment tool for AgentCore Payments.
+"""Framework-agnostic payment tool for AgentCore Payments (x402 and MPP).
 
 Copy this file into your agent project and register `x402_fetch` as a tool in
 whatever framework you use (Strands, LangGraph, OpenAI Agents SDK, etc.). The

@@ -4,7 +4,7 @@ Add AgentCore Payments to your agent — the managed service that lets your agen
 
 AgentCore Payments is **protocol-agnostic**: it supports both **x402** (Coinbase/Cloudflare's HTTP-native stablecoin micropayment protocol) and **MPP** (the Machine Payments Protocol from Stripe and Tempo). Both are exercised through the same `ProcessPayment` API and the same manager/connector/instrument/session resources — the service detects which protocol a merchant speaks from its `402 Payment Required` response and mints the matching payment proof. You do not pick a protocol up front; you provision payments once and the agent can pay either kind of merchant. See **How x402 Payment Works** and **MPP (Machine Payments Protocol)** below for the two wire flows.
 
-The control-plane resources (payment manager, connector, credential provider) are provisioned with the AgentCore **CLI**. The per-user data-plane resources (instrument, session) are created with the AgentCore **SDK** (a provided script). Payments can be wired into the agent in two ways: (1) a **framework-native integration** for Strands (plugin) or LangGraph (middleware) that handles 402 detection, payment signing, and retry transparently — no custom tool code needed, or (2) a **framework-agnostic local tool** (`scripts/x402_payment_tool.py`) for any other Python framework (OpenAI Agents SDK, CrewAI, etc.) or when you need full manual control.
+The control-plane resources (payment manager, connector, credential provider) are provisioned with the AgentCore **CLI**. The per-user data-plane resources (instrument, session) are created with the AgentCore **SDK** (a provided script). Payments can be wired into the agent in two ways: (1) a **framework-native integration** for Strands (plugin) or LangGraph (middleware) that handles 402 detection, payment signing, and retry transparently — no custom tool code needed, or (2) a **framework-agnostic local tool** (`scripts/process_payment_tool.py`) for any other Python framework (OpenAI Agents SDK, CrewAI, etc.) or when you need full manual control.
 
 ## When to use
 
@@ -150,7 +150,7 @@ agentcore deploy -y
 
 #### Step 5a: Native integration (Strands or LangGraph) — agent runs
 
-If the project uses Strands or LangGraph, use the framework's native payments integration. This is simpler than the generic tool — no `x402_payment_tool.py` needed, no `x402_fetch` registration, and the middleware/plugin automatically handles ALL tool calls (not just a dedicated payment tool).
+If the project uses Strands or LangGraph, use the framework's native payments integration. This is simpler than the generic tool — no `process_payment_tool.py` needed, no `x402_fetch` registration, and the middleware/plugin automatically handles ALL tool calls (not just a dedicated payment tool).
 
 **Strands:**
 
@@ -215,7 +215,7 @@ The middleware wraps ALL tool calls, detects 402 from any response format (no `P
 
 **LangGraph simplifications vs the generic tool path:**
 
-- No `x402_payment_tool.py` script needed — the middleware IS the payment tool
+- No `process_payment_tool.py` script needed — the middleware IS the payment tool
 - No special system prompt — no need to tell the model to use a specific tool for paid URLs; all tools are payment-aware
 - `auto_session=True` can lazily create a session on first 402 (dev/test convenience — requires `CreatePaymentSession` IAM permission on the runtime role)
 - Error recovery — optional `on_payment_error` callback for programmatic recovery (create new session, swap instrument) without the LLM seeing errors
@@ -226,14 +226,14 @@ The middleware wraps ALL tool calls, detects 402 from any response format (no `P
 
 Payments are wired with a small local tool, not a framework-specific plugin — so the same code works in any framework.
 
-1. **Copy [`scripts/x402_payment_tool.py`](../scripts/x402_payment_tool.py) into the agent project.** It exposes `x402_fetch(url, method="GET")`, which on a `402` calls the SDK's `PaymentManager.generate_payment_header` — the SDK validates the 402, selects the network, processes the payment, and builds the version-aware proof (v1 `X-PAYMENT` / v2 `PAYMENT-SIGNATURE`) — then retries with a fresh client. Base Sepolia settlement is intermittently transient (the header is valid but the paid retry still returns 402), so the tool re-runs the settle+replay flow up to `X402_MAX_PAYMENT_ATTEMPTS` times (default 5, env-overridable) before giving up. It reuses a single idempotency token across those retries, so `ProcessPayment` stays idempotent — every attempt replays the same on-chain authorization/nonce and the user is never charged twice (a retry either settles the not-yet-settled payment or, if it was already settled, reverts on-chain). It reads its config from environment variables (set in Step 8): `PAYMENT_MANAGER_ARN`, `PAYMENT_INSTRUMENT_ID`, `PAYMENT_SESSION_ID`, `PAYMENT_USER_ID`, `AWS_REGION`.
+1. **Copy [`scripts/process_payment_tool.py`](../scripts/process_payment_tool.py) into the agent project.** It exposes `x402_fetch(url, method="GET")`, which on a `402` calls the SDK's `PaymentManager.generate_payment_header` — the SDK validates the 402, selects the network, processes the payment, and builds the version-aware proof (v1 `X-PAYMENT` / v2 `PAYMENT-SIGNATURE`) — then retries with a fresh client. Base Sepolia settlement is intermittently transient (the header is valid but the paid retry still returns 402), so the tool re-runs the settle+replay flow up to `X402_MAX_PAYMENT_ATTEMPTS` times (default 5, env-overridable) before giving up. It reuses a single idempotency token across those retries, so `ProcessPayment` stays idempotent — every attempt replays the same on-chain authorization/nonce and the user is never charged twice (a retry either settles the not-yet-settled payment or, if it was already settled, reverts on-chain). It reads its config from environment variables (set in Step 8): `PAYMENT_MANAGER_ARN`, `PAYMENT_INSTRUMENT_ID`, `PAYMENT_SESSION_ID`, `PAYMENT_USER_ID`, `AWS_REGION`.
 
 2. **Register `x402_fetch` as a tool** in the agent's framework. The tool function is identical; only the registration decorator differs:
 
    ```python
    # Strands
    from strands import Agent, tool
-   from x402_payment_tool import x402_fetch as _x402
+   from process_payment_tool import x402_fetch as _x402
    x402_fetch = tool(_x402)
    agent = Agent(model=..., tools=[x402_fetch], system_prompt="... use x402_fetch for paid URLs ...")
    ```
@@ -242,14 +242,14 @@ Payments are wired with a small local tool, not a framework-specific plugin — 
    # LangGraph
    from langchain_core.tools import tool
    from langgraph.prebuilt import create_react_agent
-   from x402_payment_tool import x402_fetch as _x402
+   from process_payment_tool import x402_fetch as _x402
    graph = create_react_agent(model, tools=[tool(_x402)])
    ```
 
    ```python
    # OpenAI Agents SDK
    from agents import Agent, function_tool
-   from x402_payment_tool import x402_fetch as _x402
+   from process_payment_tool import x402_fetch as _x402
    agent = Agent(name="PaymentAgent", tools=[function_tool(_x402)], instructions="... use x402_fetch for paid URLs ...")
    ```
 
