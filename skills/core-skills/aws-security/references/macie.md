@@ -11,7 +11,7 @@ Macie analyzes:
 
 - S3 bucket inventory and access configurations (automated)
 - S3 object content via classification jobs or automated sensitive data discovery
-- Supports all S3 storage classes except Glacier Deep Archive
+- Macie scans objects in [supported S3 storage classes](https://docs.aws.amazon.com/macie/latest/user/discovery-supported-storage.html) only (not all classes are supported; consult the linked documentation)
 
 ## Read-Only APIs
 

@@ -58,6 +58,7 @@ Security Hub V2 uses the OCSF severity model (integer enum):
 | 3 | Medium | Moderate impact; should be addressed |
 | 4 | High | Significant impact; prompt action required |
 | 5 | Critical | Severe impact; immediate action required |
+| 6 | Fatal | Defined in OCSF schema; Security Hub does not populate this value |
 | 99 | Other | Unmapped severity from source |
 
 Findings from integrated services (GuardDuty, Inspector, Macie) are normalized to this scale upon ingestion into the V2 hub.

@@ -3,16 +3,15 @@
 - **Docs**: https://docs.aws.amazon.com/inspector/latest/user/
 - **Docs (llms.txt)**: https://docs.aws.amazon.com/inspector/latest/user/llms.txt
 
-Amazon Inspector is a vulnerability management service that automatically scans EC2 instances, ECR container images, Lambda functions, and ECS containers for software vulnerabilities, code weaknesses, and network exposure. It uses CVSS scoring and incorporates exploitability context. Findings are in Inspector's proprietary JSON format and are also sent to Security Hub in OCSF format.
+Amazon Inspector is a vulnerability management service that automatically scans EC2 instances, ECR container images, and Lambda functions for software vulnerabilities, code weaknesses, and network exposure. It uses CVSS scoring and incorporates exploitability context. Findings are in Inspector's proprietary JSON format and are also sent to Security Hub in OCSF format.
 
 ## Data Sources
 
 Inspector automatically discovers and scans:
 
 - EC2 instances (via SSM agent) — OS package vulnerabilities, network reachability
-- ECR container images — image layer vulnerabilities
+- ECR container images — image layer vulnerabilities, mapped to running containers
 - Lambda functions — code vulnerabilities, package vulnerabilities
-- ECS containers — running container image vulnerabilities
 
 ## Read-Only APIs
 

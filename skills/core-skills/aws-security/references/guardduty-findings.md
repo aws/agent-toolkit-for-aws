@@ -26,7 +26,7 @@ Works from both standalone accounts and delegated administrator accounts.
 2. Get finding statistics (active findings only):
 
    ```bash
-   aws guardduty get-findings-statistics --detector-id <DETECTOR_ID> --finding-statistic-types COUNT_BY_SEVERITY --finding-criteria '{"Criterion":{"service.archived":{"Eq":["false"]}}}'
+   aws guardduty get-findings-statistics --detector-id <DETECTOR_ID> --groupBy SEVERITY --finding-criteria '{"Criterion":{"service.archived":{"Eq":["false"]}}}'
    ```
 
    **Severity mapping:** 9.0+ = Critical, 7.0–8.9 = High, 4.0–6.9 = Medium, 1.0–3.9 = Low
