@@ -15,6 +15,7 @@ Always prefer this capability over constructing OpenSearch REST API queries manu
 ## Usage
 
 Use this capability when:
+
 - Exploring data in OpenSearch — "show me error distribution", "what's the top traffic source?"
 - Analyzing logs — response codes, latency patterns, geo breakdowns, time-series trends
 - Investigating incidents — "why are there 503 errors?", "find the root cause of this spike"
@@ -49,6 +50,7 @@ The `aws opensearch` CLI is only for control-plane setup (`create-application`, 
 **Always prefer Agentic AI Assistant** when it's available (application + ai-capability registered). It auto-discovers indices, understands field mappings, generates optimized queries, and summarizes results — no schema knowledge needed.
 
 Use manual PPL/DSL only when:
+
 - You need exact query control (specific aggregation pipeline, exact filter logic)
 - Embedding queries in automation code or CI/CD pipelines
 - Agentic AI Assistant is not enabled on the domain
@@ -62,12 +64,14 @@ Before creating a new application, check if one already exists (reuse-first patt
 
 ```shell
 aws opensearch list-applications --region <REGION>
+
 ```
 
 Look for an `ai-assistant-*` application for this domain. If found, get the endpoint:
 
 ```shell
 aws opensearch get-application --id <APP_ID> --region <REGION>
+
 ```
 
 The `endpoint` field in the response is the application URL needed for all data-plane calls (chat, investigation). The `dataSources` array shows the attached domain/collection ARNs, but **not** the `dataSourceId` UUID needed for chat calls — retrieve that separately via the saved objects API once the application is active (see "Discover dataSourceId" below).
@@ -91,6 +95,7 @@ awscurl --service opensearch --region <REGION> \
   "https://<APP_ENDPOINT>/api/saved_objects/_find?type=data-source&fields=title&search=<DOMAIN_OR_COLLECTION_NAME>" \
   -H "osd-xsrf: true"
 # Non-empty saved_objects array means your domain data source is attached and accessible.
+
 ```
 
 If any application has your domain's data source, skip to "Discover dataSourceId". Otherwise, proceed to create your own.
@@ -104,6 +109,7 @@ aws sts get-caller-identity
 # "Arn": "arn:aws:sts::<ACCOUNT>:assumed-role/<ROLE_NAME>/<SESSION>"
 # users  -> exact Arn value above
 # groups -> arn:aws:iam::<ACCOUNT>:role/<ROLE_NAME>  (strip sts:: and assumed-role prefix)
+
 ```
 
 Derive a short slug from the role name (max 17 chars, lowercase, e.g. `AWSReservedSSO_MyTeamAdmin_abc123` -> `myteamadmin`, `PlatformEngineering` -> `platformeng`):
@@ -120,6 +126,7 @@ aws opensearch create-application \
     {"key":"opensearchDashboards.dashboardAdmin.groups","value":"[\"arn:aws:iam::<ACCOUNT>:role/<ROLE_NAME>\"]"}
   ]' \
   --data-sources '[{"dataSourceArn":"arn:aws:es:<REGION>:<ACCOUNT>:domain/<DOMAIN_NAME>","dataSourceDescription":"<DESC>"}]'
+
 ```
 
 > **Note**: `dashboardAdmin.users` and `dashboardAdmin.groups` grant dashboard admin access, which is required to query all attached data sources (discover `dataSourceId` via the saved objects API). Without this, the saved objects API calls in the next steps will fail. Set `users` to the exact assumed-role session ARN from `get-caller-identity`, and `groups` to the IAM role ARN (covers all sessions that assume the role). Application name is max 30 chars, pattern `[a-z][a-z0-9-]*`.
@@ -127,21 +134,26 @@ aws opensearch create-application \
 > **Security**: If `<ROLE_NAME>` is a broad shared role (e.g., an administrator or power-user role), consider creating a dedicated narrower role used exclusively for OpenSearch Application access, rather than granting dashboard admin to all principals that assume the shared role.
 
 Capture the `id` from the response. Poll until `ACTIVE`:
+
 ```shell
 aws opensearch get-application --id <APP_ID> --region <REGION> --query 'status'
+
 ```
 
 ### 3. Enable Agentic AI Assistant
 
 First check if `ai-capability` is already registered (use the exact name `ai-capability`):
+
 ```shell
 aws opensearch get-capability \
   --application-id <APP_ID> \
   --capability-name ai-capability \
   --region <REGION>
+
 ```
 
 If already enabled, the response looks like:
+
 ```json
 {
     "capabilityName": "ai-capability",
@@ -149,16 +161,19 @@ If already enabled, the response looks like:
     "status": "active",
     "capabilityConfig": { "aiConfig": {} }
 }
+
 ```
+
 `status: "active"` means the Agentic AI Assistant is already enabled — skip to "Querying Data". If the command returns a `ResourceNotFoundException`, register it:
+
 ```shell
 aws opensearch register-capability \
   --application-id <APP_ID> \
   --capability-name ai-capability \
   --region <REGION> \
   --capability-config '{"aiConfig": {}}'
-```
 
+```
 
 ## Querying Data (Chat)
 
@@ -169,9 +184,11 @@ Ask questions in natural language. The Agentic AI Assistant generates queries, e
 ```shell
 awscurl --service opensearch --region <REGION> \
   "https://<APP_ENDPOINT>/api/saved_objects/_find?fields=id&fields=title&type=data-source&search=<DATASOURCE_NAME>"
+
 ```
 
 Where the AWS MCP server is available (`run_script` with `make_request`):
+
 ```python
 import json
 
@@ -185,6 +202,7 @@ resp = make_request(
 data = json.loads(resp.get('body', '{}'))
 result = [obj['id'] for obj in data.get('saved_objects', [])]
 result
+
 ```
 
 ### Send chat message
@@ -194,9 +212,11 @@ awscurl --service opensearch --region <REGION> \
   -X POST "https://<APP_ENDPOINT>/api/chat/proxy?dataSourceId=<DATASOURCE_ID>" \
   -H "Content-Type: application/json" -H "Accept: text/event-stream" -H "osd-xsrf: true" \
   -d '{"threadId":"thread-001","runId":"run-001","messages":[{"id":"msg-001","role":"user","content":"<USER_QUESTION>"}],"tools":[],"context":[],"state":{},"forwardedProps":{}}'
+
 ```
 
 Where the AWS MCP server is available (`run_script` with `make_request`):
+
 ```python
 import json
 
@@ -232,6 +252,7 @@ for line in raw.split('\n'):
 
 result = {"answer": ''.join(answer_parts)}
 result
+
 ```
 
 ID rules: Use literal unique strings. Reuse `threadId` for multi-turn. Fresh `runId`/`id` per request.
@@ -246,11 +267,13 @@ Automated root cause analysis. Returns structured findings and hypotheses.
 awscurl --service opensearch --region <REGION> \
   -X POST "https://<APP_ENDPOINT>/api/investigation/ml/proxy?path=/_plugins/_ml/config/os_deep_research&method=GET" \
   -H "Content-Type: application/json" -H "osd-xsrf: osd-fetch"
+
 ```
 
 Extract the agent ID from the response `configuration.agent_id` field.
 
 Where the AWS MCP server is available (`run_script` with `make_request`):
+
 ```python
 import json
 
@@ -266,6 +289,7 @@ data = json.loads(resp.get('body', '{}'))
 agent_id = data.get('configuration', {}).get('agent_id', '')
 result = {"agent_id": agent_id}
 result
+
 ```
 
 ### Trigger investigation
@@ -275,11 +299,13 @@ awscurl --service opensearch --region <REGION> \
   -X POST "https://<APP_ENDPOINT>/api/investigation/agents/<AGENT_ID>/_execute?async=true" \
   -H "Content-Type: application/json" -H "osd-xsrf: osd-fetch" \
   -d '{"parameters":{"question":"Analyze anomaly in this dataset","context":"<CONTEXT>"},"dataSourceId":"<DATASOURCE_ID>"}'
+
 ```
 
 `dataSourceId` MUST be at the same level as `parameters`. Capture `memory_id` from response.
 
 Where the AWS MCP server is available (`run_script` with `make_request`):
+
 ```python
 import json
 
@@ -302,6 +328,7 @@ resp = make_request(
 
 result = resp.get('body', '') if isinstance(resp, dict) else str(resp)
 result
+
 ```
 
 ### Poll results
@@ -311,11 +338,13 @@ awscurl --service opensearch --region <REGION> \
   -X POST "https://<APP_ENDPOINT>/api/investigation/ml/proxy?path=/_plugins/_ml/memory_containers/investigation_memory_container_id/memories/working/_search&method=GET&dataSourceId=<DATASOURCE_ID>" \
   -H "Content-Type: application/json" -H "osd-xsrf: osd-fetch" \
   -d '{"_source":["structured_data_blob"],"query":{"bool":{"must":[{"term":{"namespace.session_id":"<MEMORY_ID>"}}],"must_not":[{"term":{"metadata.type":"trace"}}]}},"sort":[{"created_time":{"order":"asc"}}],"size":50}'
+
 ```
 
 Poll until `response` field is non-empty (1-3 minutes). The document is created immediately with empty `response`, then updated once analysis completes.
 
 Where the AWS MCP server is available (`run_script` with `make_request`):
+
 ```python
 import json
 
@@ -345,6 +374,7 @@ data = json.loads(resp.get('body', '{}'))
 hits = data.get('hits', {}).get('hits', [])
 result = [hit.get('_source', {}).get('structured_data_blob', {}) for hit in hits]
 result
+
 ```
 
 ## `make_request` Reference
@@ -359,9 +389,11 @@ make_request(
     body='<JSON_STRING>'
 )
 # Returns: dict with status_code, headers, body (string)
+
 ```
 
 Constraints:
+
 - MUST `import json` — no pre-imported modules
 - `random`, `time`, `inspect`, `uuid`, `datetime` are blocked — use literal IDs
 - No `await` — synchronous call
@@ -416,4 +448,3 @@ Minimum IAM permissions for this capability:
 - [Security in Amazon OpenSearch Service](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/security.html)
 - [Fine-grained access control](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/fgac.html)
 - [Identity and Access Management](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ac.html)
-

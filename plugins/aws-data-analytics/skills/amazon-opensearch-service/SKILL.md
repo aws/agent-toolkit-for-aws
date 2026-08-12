@@ -60,7 +60,6 @@ Assets (`assets/`): report templates for FULL_ASSESSMENT renderings (Solr-source
 - **Replace Splunk SPL or Datadog APM 1:1.** Some queries / detectors / dashboards need rewriting.
 - **Tune relevance for a specific catalog.** Use OpenSearch Benchmark `big5` workload + your own judgment list.
 
-
 ## Guardrail — where this skill's own files live (MCP vs local install)
 
 This skill can be loaded two ways, and they resolve the skill's own bundled
