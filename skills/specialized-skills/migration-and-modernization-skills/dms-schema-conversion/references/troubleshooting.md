@@ -308,6 +308,47 @@ If yes, return to the appropriate action. If no, return to the [Actions Menu](..
 
 ---
 
+### Group 8 — Offline Source Import Failure (Unexpected application error)
+
+**Messages:**
+
+- `Unexpected application error.`
+
+**Context:** This generic error occurs specifically during `start-metadata-model-import` for **offline source** data providers. The most common cause is a `DatabaseName` mismatch between the data provider settings and the DDL script content.
+
+**Fix:**
+
+1. Retrieve the data provider settings and extract the configured `DatabaseName`:
+
+   ```
+   aws dms describe-data-providers \
+     --filters Name=data-provider-identifier,Values=<project_name>-source
+   ```
+
+   Show the customer the `DatabaseName` value from `Settings.MicrosoftSqlServerSettings.DatabaseName`.
+
+2. Download one DDL script from S3 and check the actual database name:
+
+   ```
+   aws s3 cp <S3Path><first_file.sql> - | head -5
+   ```
+
+   Look for `USE [<name>]` or `CREATE DATABASE [<name>]`. Do not log or persist this output — DDL content may contain sensitive schema information. Use it only transiently to extract the database name.
+
+3. If the configured `DatabaseName` does not match the database name in the DDL scripts, modify the data provider with the corrected `DatabaseName`. Keep all other settings (ServerName, Port, SslMode, S3Path, S3AccessRoleArn) unchanged from the describe output.
+
+4. If `DatabaseName` was already correct, check DDL processing statistics in the S3 artifacts bucket:
+
+   ```
+   aws s3 cp s3://<artifacts_bucket>/<project_name>-migration-project/ddl-statistics/ds.csv -
+   ```
+
+   Look for files with `FAILED` status in the CSV — these indicate individual DDL parsing errors.
+
+5. Retry the import after the fix.
+
+---
+
 ## Outdated AWS CLI Version
 
 If a DMS command fails with `Invalid choice` or `argument operation: Invalid choice`, the installed AWS CLI version does not support the operation.
