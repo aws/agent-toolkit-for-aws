@@ -323,12 +323,21 @@ test("model-facing tool inventory excludes setup, session creation, and proof to
   }
 });
 
-test("manifest declares all required fields for safe startup", async () => {
+test("manifest supports setup before enforcing complete payment config", async () => {
   const manifest = JSON.parse(
     await readFile(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
   );
-  const required = manifest.configSchema.required;
-  // Every field the plugin refuses to start without must be declared here.
+  assert.deepEqual(manifest.skills, ["skills/agents-pay"]);
+  assert.equal(manifest.configSchema.required, undefined);
+  const [unconfigured, configured] = manifest.configSchema.anyOf;
+  const preconfigurationFields = unconfigured.not.anyOf.map(
+    (branch) => branch.required[0],
+  );
+  assert.ok(preconfigurationFields.includes("paymentManagerArn"));
+  assert.ok(preconfigurationFields.includes("allowedRecipients"));
+  assert.ok(preconfigurationFields.includes("returnBody"));
+
+  const required = configured.required;
   assert.ok(required.includes("paymentManagerArn"));
   assert.ok(required.includes("paymentInstrumentId"));
   assert.ok(required.includes("userId"));
@@ -336,7 +345,7 @@ test("manifest declares all required fields for safe startup", async () => {
   assert.ok(!required.includes("allowedRecipients"));
   assert.ok(required.includes("maxPaymentAmountAtomic"));
   assert.deepEqual(
-    manifest.configSchema.oneOf.map((branch) => branch.required),
+    configured.oneOf.map((branch) => branch.required),
     [["allowedRecipients"], ["allowAnyRecipient"]],
   );
   const amount = manifest.configSchema.properties.maxPaymentAmountAtomic;
@@ -355,9 +364,10 @@ test("public package and runtime identities stay aligned", async () => {
     readFile(new URL("../README.md", import.meta.url), "utf8"),
   ]);
   assert.equal(packageJson.name, "@aws/aws-agents-pay");
-  assert.equal(packageJson.version, "1.0.6");
+  assert.equal(packageJson.version, "1.0.7");
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
+  assert.deepEqual(manifest.skills, ["skills/agents-pay"]);
   assert.ok(packageJson.files.includes("skills"));
   assert.ok(packageJson.files.includes("runtime/agentcore_bridge.py"));
   assert.equal(packageJson.dependencies["@aws-sdk/client-bedrock-agentcore"], undefined);
@@ -405,6 +415,10 @@ test("bundled skill is exact and excludes nested packages", async () => {
     );
   }
   await assert.rejects(access(path.join(bundledRoot, "packages")));
+  assert.match(
+    await readFile(path.join(bundledRoot, "requirements.txt"), "utf8"),
+    /^bedrock-agentcore==1\.19\.0$/m,
+  );
 });
 
 test("runtime dependency graph excludes Bowser", async () => {

@@ -41,6 +41,7 @@ import secrets
 import stat
 import sys
 import tempfile
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 
@@ -78,14 +79,7 @@ def _check_aws_credentials(region: str | None = None) -> bool:
 DEFAULT_DIR = Path.home() / ".agents-pay"
 DEFAULT_CONFIG = DEFAULT_DIR / "config.json"
 AGENT_NAME = "aws-agents-pay"
-
-# Where the AgentCore CLI records what `agentcore deploy` created. Read so the
-# operator never has to copy a manager ARN or connector ID by hand.
-DEPLOYED_STATE_CANDIDATES = [
-    Path("agentcore/.cli/deployed-state.json"),   # from project root (parent of agentcore/)
-    Path(".cli/deployed-state.json"),              # from inside the agentcore/ directory
-    Path("../.cli/deployed-state.json"),           # from a subdirectory of agentcore/
-]
+USDC_DECIMALS = 6
 
 
 def admin_config_path(explicit: str | None) -> Path:
@@ -93,15 +87,31 @@ def admin_config_path(explicit: str | None) -> Path:
     return Path(explicit or os.environ.get("AGENTS_PAY_CONFIG") or DEFAULT_CONFIG)
 
 
-def _find_deployed_state() -> Path | None:
+def deployed_state_candidates(project_dir: str | Path | None = None) -> list[Path]:
+    """Paths where the AgentCore CLI may record deployed payment resources."""
+    explicit = project_dir or os.environ.get("AGENTCORE_PROJECT_DIR")
+    if explicit:
+        root = Path(explicit).expanduser().resolve()
+        return [
+            root / "agentcore/.cli/deployed-state.json",
+            root / ".cli/deployed-state.json",
+        ]
+    return [
+        Path("agentcore/.cli/deployed-state.json"),  # project root
+        Path(".cli/deployed-state.json"),             # inside agentcore/
+        Path("../.cli/deployed-state.json"),          # child of agentcore/
+    ]
+
+
+def _find_deployed_state(project_dir: str | Path | None = None) -> Path | None:
     """Return the first existing deployed-state.json candidate, or None."""
-    for candidate in DEPLOYED_STATE_CANDIDATES:
+    for candidate in deployed_state_candidates(project_dir):
         if candidate.exists():
             return candidate
     return None
 
 
-def discover_deployed() -> dict[str, str | None]:
+def discover_deployed(project_dir: str | Path | None = None) -> dict[str, str | None]:
     """Best-effort read of manager ARN / connector ID from the CLI's deploy record.
 
     Returns a dict with possibly-None values; callers fall back to flags or env.
@@ -116,7 +126,7 @@ def discover_deployed() -> dict[str, str | None]:
     All three are handled.
     """
     out: dict[str, str | None] = {"manager_arn": None, "connector_id": None, "role_arn": None}
-    state_path = _find_deployed_state()
+    state_path = _find_deployed_state(project_dir)
     if state_path is None:
         return out
     try:
@@ -434,7 +444,7 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
     connector_id = args.connector_id or os.environ.get("PAYMENT_CONNECTOR_ID") or discovered["connector_id"]
 
     if not manager_arn or not connector_id:
-        checked = ", ".join(str(p) for p in DEPLOYED_STATE_CANDIDATES)
+        checked = ", ".join(str(p) for p in deployed_state_candidates())
         print(
             f"Could not find deployed-state.json (checked: {checked}).\n\n"
             "This file is created by `agentcore deploy`. To resolve:\n"
@@ -542,7 +552,7 @@ def cmd_new_session(args: argparse.Namespace) -> int:
 
     manager_arn = resolve_manager_arn(args.manager_arn, config_path)
     if not manager_arn:
-        checked = ", ".join(str(p) for p in DEPLOYED_STATE_CANDIDATES)
+        checked = ", ".join(str(p) for p in deployed_state_candidates())
         print(
             f"Could not determine the payment manager ARN.\n\n"
             f"Searched for deployed-state.json at: {checked}\n\n"
@@ -598,10 +608,94 @@ def _prompt(question: str, default: str = "") -> str:
     return answer or default
 
 
+def parse_positive_decimal(value: str, label: str) -> Decimal:
+    """Parse a human-entered positive decimal without float rounding."""
+    try:
+        amount = Decimal(value)
+    except InvalidOperation as exc:
+        raise ValueError(f"{label} must be a decimal number.") from exc
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError(f"{label} must be greater than zero.")
+    return amount
+
+
+def usd_to_atomic(value: Decimal, decimals: int = USDC_DECIMALS) -> str:
+    """Convert a decimal stablecoin amount to exact atomic units."""
+    atomic = value * (Decimal(10) ** decimals)
+    if atomic != atomic.to_integral_value():
+        raise ValueError(
+            f"Max per-payment USD supports at most {decimals} decimal places."
+        )
+    return str(int(atomic))
+
+
+def format_duration(minutes: int) -> str:
+    """Render minutes with a compact hours hint for human review."""
+    if minutes % 60 == 0:
+        hours = minutes // 60
+        return f"{minutes} minutes ({hours} hour{'s' if hours != 1 else ''})"
+    return f"{minutes} minutes"
+
+
+def build_openclaw_config(
+    *,
+    region: str,
+    manager_arn: str,
+    instrument_id: str,
+    session_id: str,
+    user_id: str,
+    network: str,
+    asset: str,
+    max_payment_atomic: str,
+    recipients: list[str],
+    allow_any: bool,
+    origins: list[str],
+    return_body: bool,
+) -> dict:
+    """Build the final OpenClaw configuration from validated wizard inputs."""
+    plugin_config = {
+        "region": region,
+        "paymentManagerArn": manager_arn,
+        "paymentInstrumentId": instrument_id,
+        "payment_session_id": session_id,
+        "userId": user_id,
+        "networkPreferences": [network],
+        "allowedAssetsByNetwork": {network: [asset]},
+        "maxPaymentAmountAtomic": max_payment_atomic,
+        "returnBody": return_body,
+    }
+    if allow_any:
+        plugin_config["allowAnyRecipient"] = True
+    else:
+        plugin_config["allowedRecipients"] = recipients
+    if origins:
+        plugin_config["allowedOrigins"] = origins
+
+    return {
+        "plugins": {
+            "allow": ["aws-agents-pay"],
+            "entries": {
+                "aws-agents-pay": {
+                    "enabled": True,
+                    "config": plugin_config,
+                },
+            },
+        }
+    }
+
+
 def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     """Interactive guided setup for OpenClaw — collects inputs once and threads through."""
     if not sys.stdin.isatty():
         print("setup-openclaw requires an interactive terminal.", file=sys.stderr)
+        return 1
+    project_dir = (
+        Path(args.project_dir).expanduser().resolve()
+        if args.project_dir
+        else None
+    )
+    if project_dir and not project_dir.is_dir():
+        print(f"AgentCore project directory does not exist: {project_dir}", file=sys.stderr)
         return 1
 
     print("\n" + "=" * 60)
@@ -612,6 +706,8 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     print("  • agentcore CLI installed and deployed (agentcore deploy)")
     print("  • bedrock-agentcore Python package (>=1.19.0)")
     print("  • AWS credentials with the ManagementRole")
+    if project_dir:
+        print(f"  • AgentCore project: {project_dir}")
     print()
 
     # --- Prerequisites check ---
@@ -671,7 +767,35 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
 
     # --- Step 5: Per-payment cap ---
     print("\n--- Step 4: Spend Limits ---")
-    max_usd = _prompt("Max per-payment USD", "0.05")
+    max_usd_text = _prompt(
+        "Max per-payment USD (for example 0.10, not atomic units)",
+        "0.05",
+    )
+    try:
+        max_usd = parse_positive_decimal(max_usd_text, "Max per-payment USD")
+        max_payment_atomic = usd_to_atomic(max_usd)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(
+        f"  ${format(max_usd, 'f')} USD = {max_payment_atomic} atomic units "
+        f"(USDC, {USDC_DECIMALS} decimals)"
+    )
+    budget_text = _prompt("Cumulative session budget USD", "5.00")
+    expiry_text = _prompt("Session expiry in minutes (1440 = 24 hours)", "120")
+    try:
+        budget = parse_positive_decimal(budget_text, "Session budget USD")
+        expiry = int(expiry_text)
+        if expiry <= 0:
+            raise ValueError("Expiry minutes must be greater than zero.")
+        if max_usd > budget:
+            raise ValueError(
+                "Max per-payment USD cannot exceed the cumulative session budget. "
+                "Enter decimal USD values, not atomic units."
+            )
+    except (ValueError, TypeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
     # --- Step 6: Origins ---
     print("\nAllowed origins (blank to allow any public HTTPS site):")
@@ -698,7 +822,7 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     config["resources"]["user_id"] = user_id
     config["resources"]["region"] = region
     config["policy"] = {
-        "max_per_payment_usd": max_usd,
+        "max_per_payment_usd": format(max_usd, "f"),
         "allowed_networks": [network],
         "allowed_assets": {network: [asset]},
         "allowed_schemes": ["exact"],
@@ -712,11 +836,15 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
         config["policy"]["allowed_origins"] = origins
 
     # Discover manager ARN
-    discovered = discover_deployed()
+    discovered = discover_deployed(project_dir)
     manager_arn = discovered["manager_arn"]
     connector_id = discovered["connector_id"]
     if not manager_arn:
-        print("\nCould not auto-discover payment manager ARN from deployed-state.json.")
+        checked = ", ".join(str(p) for p in deployed_state_candidates(project_dir))
+        print(
+            "\nCould not auto-discover payment manager ARN from deployed-state.json.\n"
+            f"Checked: {checked}"
+        )
         manager_arn = _prompt("Payment Manager ARN", "")
         if not manager_arn:
             print("Manager ARN is required.", file=sys.stderr)
@@ -787,21 +915,27 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
 
     # --- Create session ---
     print("\n--- Step 8: Create Payment Session ---")
-    budget = _prompt("Session budget USD", "5.00")
-    expiry = _prompt("Expiry minutes", "120")
-
     print(f"\n  About to create session:")
-    print(f"    Budget:  ${budget} USD")
-    print(f"    Expiry:  {expiry} minutes")
-    print(f"    User:    {user_id}")
+    print(f"    Budget:          ${format(budget, 'f')} USD cumulative")
+    print(
+        f"    Per-payment cap: ${format(max_usd, 'f')} USD "
+        f"({max_payment_atomic} atomic units)"
+    )
+    print(f"    Expiry:          {format_duration(expiry)}")
+    print(f"    User:            {user_id}")
     if input("  Type 'approve' to continue: ").strip() != "approve":
         print("Aborted. No session created.")
         return 1
 
     session = manager.create_payment_session(
         user_id=user_id,
-        expiry_time_in_minutes=int(expiry),
-        limits={"maxSpendAmount": {"value": budget, "currency": "USD"}},
+        expiry_time_in_minutes=expiry,
+        limits={
+            "maxSpendAmount": {
+                "value": format(budget, "f"),
+                "currency": "USD",
+            }
+        },
     )
     session_id = session["paymentSessionId"]
     update_resources(config_path, payment_session_id=session_id)
@@ -813,34 +947,20 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     print("=" * 60)
     print("\nAdd this to your OpenClaw config (~/.openclaw/openclaw.json):")
     print()
-    openclaw_config = {
-        "plugins": {
-            "allow": ["aws-agents-pay"],
-            "entries": {
-                "aws-agents-pay": {
-                    "enabled": True,
-                    "config": {
-                        "region": region,
-                        "paymentManagerArn": manager_arn,
-                        "paymentInstrumentId": instrument_id,
-                        "payment_session_id": session_id,
-                        "userId": user_id,
-                        "networkPreferences": [network],
-                        "allowedAssetsByNetwork": {network: [asset]},
-                        "maxPaymentAmountAtomic": str(int(float(max_usd) * 1_000_000)),
-                    },
-                },
-            },
-        }
-    }
-    # Add recipient mode
-    plugin_cfg = openclaw_config["plugins"]["entries"]["aws-agents-pay"]["config"]
-    if allow_any:
-        plugin_cfg["allowAnyRecipient"] = True
-    else:
-        plugin_cfg["allowedRecipients"] = recipients
-    if origins:
-        plugin_cfg["allowedOrigins"] = origins
+    openclaw_config = build_openclaw_config(
+        region=region,
+        manager_arn=manager_arn,
+        instrument_id=instrument_id,
+        session_id=session_id,
+        user_id=user_id,
+        network=network,
+        asset=asset,
+        max_payment_atomic=max_payment_atomic,
+        recipients=recipients,
+        allow_any=allow_any,
+        origins=origins,
+        return_body=return_body,
+    )
 
     print(json.dumps(openclaw_config, indent=2))
     print("\nThen restart OpenClaw to activate the plugin.")
@@ -874,7 +994,10 @@ def cmd_preflight(args: argparse.Namespace) -> int:
             print(f"\n       Found in {state_path}: run this to fix the above ->")
             print(f"         export PAYMENT_MANAGER_ARN={discovered['manager_arn']}")
         else:
-            print(f"\n       deployed-state.json not found (checked: {', '.join(str(p) for p in DEPLOYED_STATE_CANDIDATES)}).")
+            print(
+                "\n       deployed-state.json not found "
+                f"(checked: {', '.join(str(p) for p in deployed_state_candidates())})."
+            )
             print("       Run from the directory that CONTAINS the agentcore/ folder,")
             print("       from inside it, or set the variables by hand.")
 
@@ -966,6 +1089,14 @@ def main() -> int:
 
     p = sub.add_parser("setup-openclaw", help="Interactive guided setup for OpenClaw (all steps in one flow)")
     p.add_argument("--path", default=None, help="Config path (default ~/.agents-pay/config.json)")
+    p.add_argument(
+        "--project-dir",
+        default=None,
+        help=(
+            "AgentCore project directory used to locate deployed-state.json "
+            "(or set AGENTCORE_PROJECT_DIR)"
+        ),
+    )
     p.set_defaults(func=cmd_setup_openclaw)
 
     args = ap.parse_args()

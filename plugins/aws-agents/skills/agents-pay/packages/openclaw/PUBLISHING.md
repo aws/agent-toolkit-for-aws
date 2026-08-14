@@ -11,6 +11,7 @@ OpenClaw package. The published artifact also contains the canonical
 - Bundled canonical skill and external setup guidance: `1.0.2`
 - Setup discoverability improvements: `1.0.5`
 - AgentCore CLI 0.26.x compat and flag clarity: `1.0.6`
+- Clean-install onboarding and generated-config safety: `1.0.7`
 
 Do not publish until the package has passed the checks below and the publisher
 has given explicit approval.
@@ -69,7 +70,7 @@ Run this before requesting publication approval:
 npx --yes clawhub@0.23.1 package publish . \
   --family code-plugin \
   --name @aws/aws-agents-pay \
-  --version 1.0.6 \
+  --version 1.0.7 \
   --tags latest \
   --source-repo aws/agent-toolkit-for-aws \
   --source-commit <release-commit-sha> \

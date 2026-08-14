@@ -27,16 +27,41 @@ first (which generates and stores one in `~/.agents-pay/config.json` for you).
 openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
+The plugin can load before payment resources are configured so the bundled
+setup skill remains discoverable. Both payment tools still fail closed until a
+complete trusted configuration exists.
+
+## Provision the AgentCore project
+
+Create an AgentCore project before adding and deploying the payment resources:
+
+```bash
+npm install -g @aws/agentcore
+PROJECT_NAME=openclaw-payments
+agentcore create --project-name "$PROJECT_NAME" --no-agent
+cd "$PROJECT_NAME"
+agentcore add payment-manager
+agentcore add payment-connector
+agentcore deploy
+export AGENTCORE_PROJECT_DIR="$PWD"
+```
+
+Run both `agentcore add` commands without flags so credentials remain in the
+interactive terminal. Keep `AGENTCORE_PROJECT_DIR` set while running the setup
+wizard from the plugin directory.
+
 ## Quick Setup (Recommended)
 
-Run the interactive wizard — it handles all steps in one flow:
+After deploying the AgentCore project, run the interactive wizard. It creates
+the payment instrument and session, then generates the OpenClaw configuration:
 
 ```bash
 cd ~/.openclaw/extensions/aws-agents-pay/skills/agents-pay
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python3 scripts/agents_pay_admin.py setup-openclaw
+python scripts/agents_pay_admin.py setup-openclaw \
+  --project-dir "$AGENTCORE_PROJECT_DIR"
 ```
 
 The wizard walks through: user identity → network → recipients → spend limits →
@@ -53,11 +78,7 @@ Open a separate terminal and run the human setup from the bundled skill:
 
 ```bash
 cd ~/.openclaw/extensions/aws-agents-pay/skills/agents-pay
-npm install -g @aws/agentcore
-agentcore add payment-manager
-agentcore add payment-connector
-agentcore deploy
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python scripts/agents_pay_admin.py init-config \

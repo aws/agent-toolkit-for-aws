@@ -8,6 +8,9 @@
       "get_paid_content"
     ]
   },
+  "skills": [
+    "skills/agents-pay"
+  ],
   "activation": {
     "onStartup": true
   },
@@ -36,16 +39,37 @@
         "description": "Opt-in only. When true, get_paid_content returns the actual paid response body (capped, marked untrusted) instead of metadata only. Unsanitized paid content may contain prompt injection; leave unset/false unless you have explicitly accepted that risk."
       }
     },
-    "required": ["paymentManagerArn", "paymentInstrumentId", "userId", "payment_session_id", "maxPaymentAmountAtomic"],
-    "oneOf": [
+    "anyOf": [
       {
-        "required": ["allowedRecipients"],
-        "not": { "required": ["allowAnyRecipient"] }
+        "not": {
+          "anyOf": [
+            { "required": ["paymentManagerArn"] },
+            { "required": ["paymentInstrumentId"] },
+            { "required": ["userId"] },
+            { "required": ["payment_session_id"] },
+            { "required": ["networkPreferences"] },
+            { "required": ["allowedOrigins"] },
+            { "required": ["allowedRecipients"] },
+            { "required": ["allowAnyRecipient"] },
+            { "required": ["allowedAssetsByNetwork"] },
+            { "required": ["maxPaymentAmountAtomic"] },
+            { "required": ["returnBody"] }
+          ]
+        }
       },
       {
-        "required": ["allowAnyRecipient"],
-        "properties": { "allowAnyRecipient": { "const": true } },
-        "not": { "required": ["allowedRecipients"] }
+        "required": ["paymentManagerArn", "paymentInstrumentId", "userId", "payment_session_id", "maxPaymentAmountAtomic"],
+        "oneOf": [
+          {
+            "required": ["allowedRecipients"],
+            "not": { "required": ["allowAnyRecipient"] }
+          },
+          {
+            "required": ["allowAnyRecipient"],
+            "properties": { "allowAnyRecipient": { "const": true } },
+            "not": { "required": ["allowedRecipients"] }
+          }
+        ]
       }
     ]
   }
