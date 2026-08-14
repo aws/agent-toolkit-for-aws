@@ -84,3 +84,7 @@ ssl.key.password=<password>
 This config format is required for the Kafka CLI. In application code, load keystore/truststore passwords from Secrets Manager or SSM Parameter Store (SecureString) at startup — do not commit passwords to source-controlled config files.
 
 If you don't have an existing CA, [AWS Private CA](https://docs.aws.amazon.com/msk/latest/developerguide/msk-authentication.html) can issue and rotate client certificates for MSK mTLS.
+
+## References
+
+- [MSK Client Best Practices](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-kafka-client.html)
