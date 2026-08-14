@@ -1,6 +1,7 @@
 # Example: Customer Support Agent
 
-A complete, realistic example of a customer support agent scaffolded with `agentcore create`. Use this as a reference when the developer asks to "build a customer support agent" or similar task-framed prompts.
+A complete customer support Runtime project scaffolded with `agentcore project
+create`. Use this when the developer asks to build a customer support agent.
 
 ## What this agent does
 
@@ -9,13 +10,9 @@ Answers customer questions about product policies, shipping, and returns. Uses S
 ## Scaffold command
 
 ```bash
-agentcore create \
+agentcore project create \
   --name SupportAgent \
-  --framework Strands \
-  --protocol HTTP \
-  --build CodeZip \
-  --model-provider Bedrock \
-  --memory none
+  --template hello-world-python
 ```
 
 ## Generated `main.py` (annotated)
@@ -25,7 +22,7 @@ After scaffolding, `app/SupportAgent/main.py` looks something like:
 ```python
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent
-from model.load import load_model  # scaffolded by `agentcore create` in model/load.py
+from model.load import load_model
 
 app = BedrockAgentCoreApp()
 
@@ -56,10 +53,11 @@ if __name__ == "__main__":
 ## Try it locally
 
 ```bash
-agentcore dev
+agentcore project dev
 ```
 
-In another terminal:
+Use the URL printed by the command. If it exposes the Runtime HTTP contract on
+port 8080, invoke it with:
 
 ```bash
 curl -X POST http://localhost:8080/invocations \
@@ -70,7 +68,16 @@ curl -X POST http://localhost:8080/invocations \
 ## Deploy it
 
 ```bash
-agentcore deploy
+agentcore project deploy
+```
+
+Once the Runtime exists:
+
+```bash
+agentcore runtime invoke \
+  --id <RUNTIME_ID> \
+  --payload '{"prompt":"What is your return policy?"}' \
+  --json
 ```
 
 ## Natural next steps
@@ -89,11 +96,8 @@ After the basic agent is working, the developer typically asks for one of these 
 
 ### LangGraph variant
 
-```bash
-agentcore create --name SupportAgent --framework LangChain_LangGraph --model-provider Bedrock --memory none
-```
-
-Generated `main.py` uses `create_react_agent` and `langchain_aws`:
+Use the same project scaffold, install LangGraph dependencies, and implement
+`main.py` with `create_react_agent` and `langchain_aws`:
 
 ```python
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -121,9 +125,8 @@ if __name__ == "__main__":
 
 ### OpenAI Agents SDK variant
 
-```bash
-agentcore create --name SupportAgent --framework OpenAIAgents --model-provider OpenAI --memory none
-```
+Use the same project scaffold, install the OpenAI Agents SDK, and replace the
+application code:
 
 ```python
 from agents import Agent, Runner
@@ -146,9 +149,8 @@ if __name__ == "__main__":
 
 ### Google ADK variant
 
-```bash
-agentcore create --name SupportAgent --framework GoogleADK --model-provider Gemini --memory none
-```
+Use the same project scaffold, install Google ADK, and replace the application
+code:
 
 ```python
 from google.adk.agents import Agent
@@ -186,7 +188,7 @@ if __name__ == "__main__":
 
 ### Model provider options
 
-The CLI supports four model providers:
+The application can use these model providers:
 
 | Provider | Best for | Notes |
 |---|---|---|
@@ -197,4 +199,6 @@ The CLI supports four model providers:
 
 For cost-sensitive use cases, consider Bedrock Nova models (e.g., `amazon.nova-micro-v1:0`, `amazon.nova-lite-v1:0`) — significantly cheaper than Claude for simpler extractive tasks. See [`agents-optimize/references/cost.md`](../../agents-optimize/references/cost.md) for model selection guidance.
 
-For a chatbot that remembers conversations, add `--memory longAndShortTerm` during scaffolding. Memory can also be added later — see [`agents-build/references/memory.md`](../../agents-build/references/memory.md).
+For a chatbot that remembers conversations, add Memory with `agentcore project
+add`; see
+[`agents-build/references/memory.md`](../../agents-build/references/memory.md).
