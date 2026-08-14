@@ -102,3 +102,9 @@ Check the [MSK Express broker quotas](https://docs.aws.amazon.com/msk/latest/dev
 - Add more brokers — Express clusters with Intelligent Rebalancing enabled will automatically redistribute partitions. If Intelligent Rebalancing is disabled, manually rebalance (limit to 20 partitions per reassignment call).
 - Spread consumers across all AZs to balance egress load
 - Reduce consumer group count if egress is the bottleneck (each consumer group multiplies egress)
+
+## References
+
+- [MSK Client Best Practices](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-kafka-client.html)
+- [MSK Best Practices - Standard](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices.html)
+- [MSK Best Practices - Express](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-express.html)

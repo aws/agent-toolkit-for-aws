@@ -2,6 +2,8 @@
 
 Data Delivery for General Purpose S3 Buckets for Amazon MSK Express brokers delivers topic data from Express brokers to a general-purpose S3 bucket as objects, with configurable compression, storage class, and output key layout.
 
+Serverless with no connectors to manage, minutes-level freshness, and auto-scaling up to 10 GB/s. Each record is delivered exactly once by the delivery pipeline. Data Delivery does not consume broker egress throughput or impact producer or consumer workloads. This optimizes cost as it enables delivery to S3 without requiring additional cluster capacity on MSK Express clusters. Additionally, you can fan out multiple delivery channels from the same topic.
+
 > **Note:** Records are batched into S3 objects — multiple Kafka records land in a single S3 object. The output key template determines the key for each object, and the `!{sequence-number}` token provides uniqueness across objects within the same prefix.
 
 ## Data Delivery for General Purpose S3 Buckets Constraints
@@ -9,10 +11,12 @@ Data Delivery for General Purpose S3 Buckets for Amazon MSK Express brokers deli
 Check Data Delivery for General Purpose S3 Buckets documentation for constraints. Some key constraints are:
 
 - Data Delivery for General Purpose S3 Buckets is ONLY available on **Express brokers** — Standard brokers and MSK Serverless are NOT supported
-- Data freshness is **5–15 minutes** (minimum 300 seconds). For the 5-minute minimum, the topic must produce at least **2.4 MB/s** uncompressed data
+- Data freshness is **5–15 minutes** (minimum 300 seconds, default 10 minutes). For the 5-minute minimum, the topic must produce at least **2.4 MB/s** uncompressed data
 - **No backfill** — only records produced AFTER Data Delivery for General Purpose S3 Buckets is enabled are delivered
 
 If the user needs any of the above functionality, recommend **Managed Service for Apache Flink** instead. Data Delivery for General Purpose S3 Buckets is the most cost-effective way to deliver data to General Purpose S3 Buckets, so if it can be used it should be preferred in general.
+
+**Broker-type routing (Express vs Standard/Serverless).** Data Delivery and Streaming Tables are **Express-only**. On **Standard or Serverless** clusters they are not available — to land topic data in S3 there, use one of: the [Amazon Data Firehose MSK-source integration](https://docs.aws.amazon.com/msk/latest/developerguide/integrations-kinesis-data-firehose.html) (fully managed; delivers to Amazon S3 or to Apache Iceberg tables in self-managed S3 or S3 Tables), a self-managed Kafka Connect S3 sink connector, or Managed Service for Apache Flink. On Express, prefer Data Delivery / Streaming Tables over all three — it is fully managed, consumes no broker egress, and is the lowest-cost option.
 
 ## Prerequisites
 
@@ -33,11 +37,11 @@ No schema registry is required for S3 bucket delivery.
 
 ## Destination Options
 
-> Supported values for `compressionType` and `storageClass` may change over time. Run `aws kafka create-channel help` or check the [CreateChannel API reference](https://docs.aws.amazon.com/msk/latest/APIReference/API_CreateChannel.html) for the latest accepted values.
+> Supported values for `compressionType` and `storageClass` may change over time. Run `aws kafka create-channel help` or check the [Amazon MSK Data Delivery documentation](https://docs.aws.amazon.com/msk/latest/developerguide/msk-data-delivery.html) for the latest accepted values.
 
 | Option | Values |
 |---|---|
-| `compressionType` | `NONE`, `GZIP` |
+| `compressionType` | `NONE`, `GZIP`, `ZSTD` |
 | `storageClass` | `STANDARD`, `STANDARD_IA`, `INTELLIGENT_TIERING`, `GLACIER_IR` |
 | `outputPrefix` | String prepended to key template |
 | `outputKeyTemplate` | Template with variables (see below) |
@@ -270,3 +274,7 @@ aws kafka delete-channel \
 - Encrypt CloudWatch Logs log groups that receive Data Delivery for General Purpose S3 Buckets delivery logs
 - Use VPC endpoints for S3 where applicable to keep traffic off the public internet
 - For additional hardening guidance, see the [MSK Security chapter](https://docs.aws.amazon.com/msk/latest/developerguide/security.html) and [Amazon S3 security best practices](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html)
+
+## References
+
+- [Amazon MSK Data Delivery](https://docs.aws.amazon.com/msk/latest/developerguide/msk-data-delivery.html)
