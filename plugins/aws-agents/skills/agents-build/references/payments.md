@@ -307,6 +307,27 @@ Fetch https://sandbox.node4all.com/v1/x402-test and tell me what you find.
 
 Run it however your agent runs — directly in your framework, or `agentcore dev` for a local server / `agentcore invoke` for the deployed runtime (set the same `PAYMENT_*` env vars on the runtime). A successful run shows `x402_fetch` hitting `402`, settling payment, and the retry returning `200`.
 
+## The `upto` scheme and Permit2 allowance
+
+The setup and wiring above are scheme-agnostic: the agent passes through whichever x402 scheme the merchant's `402` advertises. Most endpoints use `exact` (a fixed price known up front). Some use **`upto`**, for metered or usage-based pricing such as pay-per-inference — the agent authorizes a spending ceiling and the merchant settles the actual amount consumed, up to that ceiling. No configuration change is required to pay an `upto` endpoint.
+
+The `upto` scheme has one additional prerequisite: it settles through the [Uniswap Permit2](https://docs.uniswap.org/contracts/permit2/overview) contract, so the payer wallet must hold a Permit2 allowance for the asset. The optional **`permit2_allowance_limit`** field is an add-on for `upto` that grants this allowance — when set, `ProcessPayment` submits the one-time on-chain `approve` before signing. Set it on the native integration config (Step 5a):
+
+```python
+config = AgentCorePaymentsPluginConfig(   # AgentCorePaymentsConfig for LangGraph
+    ...,
+    permit2_allowance_limit="1000000",     # decimal string, asset's smallest unit (1000000 = 1 USDC)
+)
+```
+
+- A decimal string in the asset's smallest denomination. The uint256 maximum (`115792089237316195423570985008687907853269984665640564039457584007913129639935`) grants an unlimited allowance.
+- Applies only to `upto`; supplying it for an `exact` payment returns a validation error.
+- It broadcasts a real on-chain `approve` transaction — gas is paid from the wallet's native-token balance (not its USDC balance).
+- Needed only for a wallet's first `upto` payment. `approve` sets the allowance rather than adding to it, so omit it on later calls to avoid a redundant transaction.
+- Requires an SDK build whose integration config (or `generate_payment_header`) accepts `permit2_allowance_limit`.
+
+For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."` to its `generate_payment_header` call when paying an `upto` endpoint.
+
 ## Debugging payments
 
 **Agent sees 402 but does not pay:**
