@@ -1,278 +1,159 @@
 ---
 name: agents-deploy
 description: >
-  Use when deploying your agent to AWS, or when a deploy has failed.
-  Handles pre-flight validation, CDK/IAM/quota error diagnosis, version
-  management, rollback, and canary deployments. Triggers on: "deploy my
-  agent", "agentcore deploy", "deploy failed", "CDK error", "rollback",
-  "canary deploy", "pin version", "redeploy", "deploy stuck".
-  Not for production hardening — use agents-harden. Not for adding
-  capabilities before deploy — use agents-build or agents-connect.
-  Not for VPC configuration errors — use agents-build.
+  Prepare, deploy, inspect, or troubleshoot AgentCore projects. Use for
+  deployment readiness, IAM and region checks, failed infrastructure
+  deployments, Runtime version inspection, endpoint inspection, rollback
+  planning, and canary planning. Uses the refactored AgentCore CLI command
+  tree. Use agents-harden for production security.
 allowed-tools: Read Grep Glob Bash
 metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
-  requires-cli: ">=0.9.0"
+  cli-surface: refactor
 ---
 
-# deploy
+# Deploy
 
-Deploy your AgentCore agent to AWS, or diagnose why a deploy failed.
+Build and deploy an AgentCore project, inspect the deployed resources, or
+diagnose a failed deployment.
 
-## When to use
+## When To Use
 
-- You're ready to deploy and want to validate config first
-- `agentcore deploy` failed with an error
-- You want to preview what deploy will create without actually deploying
-- You want to deploy to a specific target (staging, production)
-- You need to roll back to a previous version, pin to a specific version, or set up canary deployments
+- A project is ready to build or deploy.
+- A deployment failed or appears stuck.
+- The deployed project or Runtime needs inspection.
+- A rollout, rollback, or canary plan is needed.
 
-## Input
+Use `agents-harden` for production security reviews and `agents-build` for
+capabilities that must be added before deployment.
 
-`$ARGUMENTS` is optional:
+## Workflow
 
-```
-/agents-deploy                     # interactive — pre-flight check or diagnose failure
-/agents-deploy preflight           # validate config and IAM before deploying
-/agents-deploy diagnose            # diagnose a failed deploy (paste error or read logs)
-/agents-deploy preview             # show what deploy will create without deploying
-/agents-deploy rollback            # roll back to a previous version
-```
+### 1. Inspect The Project
 
-## Process
+Read the project configuration, source, dependency files, and deployment
+artifacts. Determine:
 
-### Step 0: Verify CLI version
+- the expected AWS account and region,
+- the resources the project creates,
+- the model IDs and external dependencies it uses,
+- the current deployment state,
+- whether this is a first deployment, update, or recovery.
 
-Run `agentcore --version`. This skill requires v0.9.0 or later. If the version is older, tell the developer to run `agentcore update` before proceeding.
+The refactored CLI has no root version flag, so do not perform a CLI version
+check.
 
-### Step 1: Determine the situation
+### 2. Run Preflight Checks
 
-Read `agentcore/agentcore.json` and `agentcore/aws-targets.json` if they exist.
-
-Ask (or infer from context):
-
-> "Are you:
->
-> 1. About to deploy and want to check everything first
-> 2. Dealing with a failed deploy — what error did you see?
-> 3. Needing to roll back or pin a specific version?"
-
-If the developer needs versioning, rollback, or canary deployment, load [`references/versioning.md`](references/versioning.md) and follow its instructions.
-
----
-
-## Path A: Pre-flight validation
-
-Run these checks before `agentcore deploy`:
-
-### Check 1: Validate config files
-
-Show the developer this command to run:
+Confirm the active AWS identity and region using the credential profile required
+by the project or repository:
 
 ```bash
-agentcore validate
+aws sts get-caller-identity --profile <PROFILE>
+aws configure get region --profile <PROFILE>
 ```
 
-This catches malformed `agentcore.json` before CDK even starts.
+Check model availability, IAM permissions, quotas, container tooling, and any
+project-specific prerequisites before changing AWS resources. Use the
+repository's established IaC validation commands when the project contains
+CloudFormation, CDK, Terraform, or another deployment system.
 
-### Check 2: Verify region alignment
-
-The most common deploy failure is a region mismatch. Show the developer these commands to verify:
+### 3. Build The Project
 
 ```bash
-# Your configured AWS region
-aws configure get region
-
-# The region in your deployment target
-cat agentcore/aws-targets.json
-
-# The account you're actually authenticated as
-aws sts get-caller-identity
+agentcore project build
 ```
 
-The `region` in `aws-targets.json` must match your `aws configure` default region. The `account` must match the account ID from `sts get-caller-identity`.
+Inspect build output before deploying. Resolve dependency, packaging, container,
+and configuration failures at the first actionable error.
 
-### Check 3: Verify Bedrock model access
-
-Show the developer this command to check enabled models in their region:
+### 4. Deploy The Project
 
 ```bash
-aws bedrock list-foundation-models --region $(aws configure get region) \
-  --query 'modelSummaries[?modelLifecycle.status==`ACTIVE`].modelId' \
-  --output table
+agentcore project deploy
 ```
 
-Cross-region inference profile IDs use a geographic prefix (`us.`, `eu.`, `apac.`) or `global.` to control where inference runs. The CLI scaffolds `global.` by default (e.g., `global.anthropic.claude-sonnet-4-5-20250929-v1:0`), which routes to any commercial region. Geographic prefixes keep inference within that geography (e.g., `eu.` stays in EU regions). All prefixes require model access enabled in every destination region the profile covers. Check the Bedrock docs for which regions are included in each profile prefix.
+The command currently has no documented command-specific flags. Do not add
+legacy flags such as `-y`, `--target`, `--dry-run`, or `--diff`.
 
-### Check 4: Preview what will be deployed
+### 5. Check Deployment Status
 
 ```bash
-agentcore deploy --dry-run
-agentcore deploy --diff
+agentcore project status
 ```
 
-`--dry-run` shows what resources will be created. `--diff` shows the CDK diff against what's currently deployed.
-
-### Check 5: Verify IAM permissions
-
-Show the developer the permissions needed and this verification command:
+Use service-specific inspection when more detail is needed. For example:
 
 ```bash
-aws iam simulate-principal-policy \
-  --policy-source-arn $(aws sts get-caller-identity --query Arn --output text) \
-  --action-names iam:CreateRole \
-  --resource-arns "arn:aws:iam::*:role/*BedrockAgentCore*"
+agentcore runtime list --json
+agentcore memory list --json
+agentcore gateway list --json
 ```
 
-### Run the deploy
+## Inspect A Deployed Runtime
+
+Use Runtime IDs, not ARNs:
 
 ```bash
-agentcore deploy -y          # auto-confirm (alias: agentcore dp -y)
-agentcore deploy -y -v       # verbose — shows resource-level events
-agentcore deploy --target staging -y   # deploy to a specific target
+agentcore runtime get --id <RUNTIME_ID> --json
+agentcore runtime version list --id <RUNTIME_ID> --json
+agentcore runtime endpoint list --id <RUNTIME_ID> --json
 ```
 
-**Memory provisioning note:** If your project includes memory, deploy takes 2–5 minutes longer while the memory resource becomes ACTIVE. This is normal — not an error. Check status:
+The Runtime command group supports read-only inspection and invocation. It does
+not expose Runtime create, update, or delete commands, and Runtime endpoint and
+version groups are read-only.
+
+Read [`references/versioning.md`](references/versioning.md) before planning a
+rollout, rollback, or endpoint change.
+
+## Diagnose A Failed Deployment
+
+1. Capture the exact build or deployment command.
+2. Find the first failing operation, not only the final summary.
+3. Record the target account, region, and caller identity.
+4. Identify the affected resource and deployment mechanism.
+5. Inspect `~/.agentcore/logs/` when the CLI was run with `--debug`.
+6. Check the underlying service, CloudFormation, or pipeline events.
+7. Correct the cause, then rerun the bare build, deploy, or status command.
+
+Useful AWS checks include:
 
 ```bash
-agentcore status --type memory
+aws cloudformation describe-stack-events \
+  --stack-name <STACK_NAME> \
+  --profile <PROFILE>
+
+aws service-quotas list-service-quotas \
+  --service-code bedrock-agentcore \
+  --profile <PROFILE>
 ```
 
----
+Common failure classes:
 
-## Path B: Diagnose a failed deploy
+- **IAM denial:** identify the denied action, resource, principal, and
+  permissions boundary or service control policy involved.
+- **Region mismatch:** align the CLI region, AWS profile, project
+  configuration, model availability, and resource ARNs.
+- **Packaging failure:** fix the first dependency, container, or artifact
+  error, then rerun `agentcore project build`.
+- **CloudFormation failure:** inspect the first failed stack event and the
+  corresponding resource logs.
+- **Quota failure:** confirm current usage and request the specific quota
+  increase.
+- **Resource still creating:** inspect the resource through its refactored CLI
+  group or service API before retrying.
 
-### Step B1: Read the error
+Do not translate failures into obsolete root-level deployment, status, or log
+commands.
 
-If the developer pasted an error, diagnose it directly. If not, read the deploy logs:
+## Quality Criteria
 
-```bash
-# View recent deploy logs
-ls -lt agentcore/.cli/logs/
-cat agentcore/.cli/logs/deploy-*.log 2>/dev/null | tail -100
-```
-
-### Step B2: Match to known failure patterns
-
-**IAM permission error:**
-
-```
-User: arn:aws:iam::123456789012:user/dev is not authorized to perform: iam:CreateRole
-```
-
-Fix: Attach the required IAM permissions (see Check 5 above). The deploying identity needs IAM write access scoped to `*BedrockAgentCore*` roles.
-
-**CDK bootstrap not run:**
-
-```
-This stack uses assets, so the toolkit stack must be deployed to the environment
-```
-
-Fix:
-
-```bash
-npx cdk bootstrap aws://<YOUR_ACCOUNT_ID>/<REGION>
-```
-
-**ECR authorization error:**
-
-```
-no basic auth credentials
-Error response from daemon: Head "https://<YOUR_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/..."
-```
-
-Fix:
-
-```bash
-aws ecr get-login-password --region <REGION> | \
-  docker login --username AWS --password-stdin <YOUR_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com
-```
-
-**Model access denied during deploy:**
-
-```
-ValidationException: The provided model identifier is invalid
-```
-
-Fix: Enable the model in the Bedrock console → Model access. Ensure the model ID in `agentcore.json` matches an enabled model in your target region.
-
-**Region mismatch:**
-
-```
-Stack ... is in region us-east-1 but the target is us-west-2
-```
-
-Fix: Update `agentcore/aws-targets.json` to match your `aws configure` default region, or run `aws configure set region <REGION>`.
-
-**Memory stuck in CREATING:**
-
-```
-Memory resource is in CREATING state after 10 minutes
-```
-
-This is unusual — normal provisioning takes 2–5 minutes. Check:
-
-```bash
-agentcore status --type memory --json
-```
-
-If stuck, try removing and re-adding the memory resource.
-
-**Service quota exceeded:**
-
-```
-LimitExceededException: Account limit for AgentCore runtimes exceeded
-```
-
-Fix: Request a quota increase in the AWS console → Service Quotas → Amazon Bedrock AgentCore.
-
-### Step B3: After fixing, re-run
-
-```bash
-agentcore deploy -y
-```
-
-If the same error recurs, check `agentcore status` to see the current state of all resources:
-
-```bash
-agentcore status
-agentcore status --state pending-removal  # resources marked for deletion
-```
-
----
-
-## Deploying to multiple targets
-
-Define targets in `agentcore/aws-targets.json`:
-
-```json
-[
-  {
-    "name": "staging",
-    "description": "Staging environment",
-    "account": "123456789012",
-    "region": "us-east-1"
-  },
-  {
-    "name": "production",
-    "description": "Production environment",
-    "account": "987654321098",
-    "region": "us-west-2"
-  }
-]
-```
-
-Deploy to a specific target:
-
-```bash
-agentcore deploy --target staging -y
-agentcore deploy --target production -y
-```
-
-## Output
-
-- Pre-flight check results with specific fixes for any issues found
-- Diagnosis of deploy failure with the specific fix
-- Deploy command to run after fixes are applied
+- Build, deployment, and status use the `agentcore project` command group.
+- Project lifecycle commands remain bare until their flags are documented.
+- Runtime inspection uses IDs and the `runtime version` or `runtime endpoint`
+  groups.
+- No root version flag, aliases, or legacy root commands are emitted.
+- AWS mutations follow the repository's credential and approval requirements.

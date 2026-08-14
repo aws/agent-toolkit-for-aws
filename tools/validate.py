@@ -29,6 +29,7 @@ PROJECT_LIFECYCLE_ARGS_RE = re.compile(
 )
 MIGRATED_AGENTCORE_DOCS = (
     Path("plugins/aws-agents/README.md"),
+    Path("plugins/aws-agents/skills/agents-deploy"),
     Path("plugins/aws-agents/skills/agents-get-started"),
 )
 
