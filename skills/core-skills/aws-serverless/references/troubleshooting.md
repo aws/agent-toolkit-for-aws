@@ -14,6 +14,26 @@ Error → cause → fix, focused on non-obvious gotchas and exact CLI commands. 
 
 ## Lambda errors (gotchas)
 
+### Function URL 403 Forbidden (`AuthType=NONE`)
+
+A public Function URL returns **403 Forbidden** even with `AuthType=NONE` when the resource-based policy grants only `lambda:InvokeFunctionUrl`. Invoking a Function URL **always requires both `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction`** — the console and SAM add both statements automatically, but with the CLI/API you must add each yourself (two separate `add-permission` calls):
+
+```bash
+# Statement 1: allow invoking via the Function URL (public)
+aws lambda add-permission --function-name my-function \
+  --statement-id FunctionURLAllowPublicAccess \
+  --action lambda:InvokeFunctionUrl --principal '*' \
+  --function-url-auth-type NONE
+
+# Statement 2: REQUIRED — allow the underlying invoke, scoped to URL calls
+aws lambda add-permission --function-name my-function \
+  --statement-id FunctionURLInvokeAllowPublicAccess \
+  --action lambda:InvokeFunction --principal '*' \
+  --invoked-via-function-url
+```
+
+The `--invoked-via-function-url` flag sets the `lambda:InvokedViaFunctionUrl` condition on statement 2, scoping it to Function URL calls so it does not open direct `Invoke` access. This 403 is **not** an org SCP/RCP block — Lambda does not support RCPs, so don't chase that path. See [Function URLs](lambda.md#function-urls) and [Lambda function URL auth](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
+
 ### RecursiveInvocationException
 
 A function writes to a resource that re-triggers it (Lambda halts after ~16 loops).
