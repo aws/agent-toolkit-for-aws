@@ -35,6 +35,10 @@ The package bundles the canonical `agents-pay` skill. It guides users through
 human-run setup in a separate terminal while the plugin keeps only the two
 runtime payment tools model-visible.
 
+The plugin accepts an unconfigured installation state so OpenClaw can load the
+bundled skill before setup. The payment tools validate the complete trusted
+configuration when invoked and fail closed while it is absent or incomplete.
+
 The plugin keeps policy validation and paid HTTP replay in TypeScript. It uses
 the package-local Python virtual environment created during setup for only
 `GetPaymentSession` and `ProcessPayment`, through a fixed helper path with no
@@ -67,8 +71,9 @@ Required configuration:
   Python `x402_fetch.py` path's `return_body` policy field — set both if you
   run both runtimes and want consistent behavior.
 
-The manifest requires the listed configuration before the plugin can be enabled.
-Both tools fail closed unless every required field is present in trusted plugin
+The manifest accepts either an unconfigured installation or the complete
+configuration listed above. Partial payment configuration is rejected. Both
+tools fail closed unless every required field is present in trusted plugin
 settings or the protected `~/.x402/config.json` file.
 
 `allowAnyRecipient` delegates beneficiary choice to the publisher. It is

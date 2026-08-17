@@ -26,9 +26,7 @@ Works from both standalone accounts and delegated administrator accounts.
 
    Configured: at least one graph. Not Configured: no graphs.
 
-2. Check behavior graph encryption — verify `EncryptionType` from `list-graphs` response indicates customer-managed KMS key (CMK). If `EncryptionType` is `SERVICE_DEFAULT`, the graph uses AWS-owned keys rather than customer-managed encryption.
-
-3. For each graph, check data source packages:
+2. For each graph, check data source packages:
 
    ```bash
    aws detective list-datasource-packages --graph-arn <graph-arn>
@@ -42,7 +40,7 @@ Works from both standalone accounts and delegated administrator accounts.
 
    For each: STARTED = Configured, STOPPED/DISABLED = Not Configured.
 
-4. List members:
+3. List members:
 
    ```bash
    aws detective list-members --graph-arn <graph-arn>
@@ -50,7 +48,7 @@ Works from both standalone accounts and delegated administrator accounts.
 
    Check each member status: ENABLED, VERIFICATION_FAILED, VERIFICATION_IN_PROGRESS.
 
-5. Check pending invitations (from member perspective):
+4. Check pending invitations (from member perspective):
 
    ```bash
    aws detective list-invitations
@@ -58,12 +56,11 @@ Works from both standalone accounts and delegated administrator accounts.
 
    **Security check:** Verify CloudTrail is enabled and logging Detective API calls (`detective:*` events) for audit purposes.
 
-6. Present results:
+5. Present results:
 
    | Check | Status |
    |---|---|
    | Behavior Graph Exists | Configured / Not Configured |
-   | Behavior Graph Encryption | Customer-managed KMS / AWS-owned |
    | CloudTrail Logs | Enabled / Disabled / Not Configured |
    | EKS Audit Logs | Enabled / Disabled / Not Configured |
    | Security Hub Findings | Enabled / Disabled / Not Configured |

@@ -691,6 +691,76 @@ class IdempotencyTests(unittest.TestCase):
         self.assertEqual(decision["client_token"], expected)
         self.assertNotEqual(decision["client_token"], env_based)
 
+    def test_derive_client_token_with_policy_param_prefers_config_over_env(self):
+        """A caller that resolves session_id itself via `policy=` must not
+        invert resolve_resource()'s documented config-file-first precedence.
+
+        Before this fix, omitting `session_id` fell through to a bare
+        `os.environ.get("PAYMENT_SESSION_ID", "")` unconditionally — bypassing
+        config.json entirely for any caller using this path. Passing `policy=`
+        now correctly prefers the config file, matching resolve_resource().
+        """
+        policy = dict(BASE_POLICY)
+        policy["_resources"] = {"payment_session_id": "sess-config-value"}
+        saved = os.environ.get("PAYMENT_SESSION_ID")
+        os.environ["PAYMENT_SESSION_ID"] = "sess-env-value"
+        try:
+            ch = challenge()
+            via_policy = pol.derive_client_token(
+                f"{ORIGIN}/v1/x402-test", ch["accepts"][0], ch, policy=policy
+            )
+            via_explicit_session = pol.derive_client_token(
+                f"{ORIGIN}/v1/x402-test",
+                ch["accepts"][0],
+                ch,
+                session_id="sess-config-value",
+            )
+            self.assertEqual(
+                via_policy,
+                via_explicit_session,
+                "policy= must resolve the session via resolve_resource() (config-first),"
+                " matching what an explicit config-derived session_id would produce",
+            )
+
+            # Explicit session_id still wins over policy= when both are given.
+            via_both = pol.derive_client_token(
+                f"{ORIGIN}/v1/x402-test",
+                ch["accepts"][0],
+                ch,
+                session_id="sess-explicit-wins",
+                policy=policy,
+            )
+            self.assertNotEqual(via_both, via_policy)
+        finally:
+            if saved is None:
+                os.environ.pop("PAYMENT_SESSION_ID", None)
+            else:
+                os.environ["PAYMENT_SESSION_ID"] = saved
+
+    def test_derive_client_token_without_session_id_or_policy_still_uses_env(self):
+        """Backward compatibility: pre-existing callers that pass neither
+        `session_id` nor `policy` keep the original bare env-var behavior
+        (the path this file's own `_token()` helper and several tests above
+        rely on).
+        """
+        saved = os.environ.get("PAYMENT_SESSION_ID")
+        os.environ["PAYMENT_SESSION_ID"] = "sess-bare-env"
+        try:
+            ch = challenge()
+            token = pol.derive_client_token(f"{ORIGIN}/v1/x402-test", ch["accepts"][0], ch)
+            expected = pol.derive_client_token(
+                f"{ORIGIN}/v1/x402-test",
+                ch["accepts"][0],
+                ch,
+                session_id="sess-bare-env",
+            )
+            self.assertEqual(token, expected)
+        finally:
+            if saved is None:
+                os.environ.pop("PAYMENT_SESSION_ID", None)
+            else:
+                os.environ["PAYMENT_SESSION_ID"] = saved
+
 
 class PolicyDirectoryTests(unittest.TestCase):
     """The directory matters as much as the file.
@@ -1155,6 +1225,27 @@ class SessionStatusTests(unittest.TestCase):
         src = inspect.getsource(fetch.payment_session_status)
         for mutator in ("create_payment_session", "CreatePaymentSession", "update_", "delete_"):
             self.assertNotIn(mutator, src)
+
+    def test_region_is_not_forced_to_a_hardcoded_default(self):
+        """region_name must come from resolve_resource(), never a bare `or "us-west-2"`.
+
+        A hardcoded fallback here would silently override a region resolved from
+        config.json, the environment, or boto3's own session/profile resolution
+        whenever none of those apply — forcing a real payment manager lookup
+        (which lives in the operator's actual deployment region) against the
+        wrong AWS region and producing a confusing manager-not-found error.
+        """
+        import inspect
+
+        import x402_fetch as fetch
+
+        for fn in (fetch.payment_session_status, fetch.prepare_browser_payment, fetch.x402_fetch):
+            src = inspect.getsource(fn)
+            self.assertNotIn(
+                'or "us-west-2"',
+                src,
+                f'{fn.__name__} must not hardcode a region fallback; let boto3 resolve it',
+            )
 
     def test_unknown_sdk_status_is_not_reported_as_usable(self):
         import types

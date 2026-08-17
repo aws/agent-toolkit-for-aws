@@ -14,7 +14,7 @@ description: >-
   or Firehose alternative. DO NOT USE for MSK Connect or Replicator — search documentation
   instead. Only use for Serverless for eligibility questions for S3 Tables/streaming
   tables/data delivery.
-version: 2
+version: 3
 ---
 
 # Amazon MSK
@@ -41,14 +41,19 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 | Choosing Standard vs Express, sizing a cluster, partition limits, broker count, monthly cost | [size-and-choose-cluster.md](references/size-and-choose-cluster.md) |
 | Producer/consumer configuration, IAM/SCRAM/TLS auth | [configure-clients.md](references/configure-clients.md) |
 | Setting up monitoring, dashboards, alarms | [monitor-and-alarm.md](references/monitor-and-alarm.md) |
-| Full CloudWatch metric list (Standard or Express) | Search AWS docs for `"MSK CloudWatch metrics Standard brokers"` or `"MSK CloudWatch metrics Express brokers"` |
+| Full CloudWatch metric list (Standard or Express) | Prefer [monitor-and-alarm.md](references/monitor-and-alarm.md) for strategic recommendations and how to interpret metrics, only search documentation if you need to understand a metric not included in this reference file ([MSK Standard CloudWatch Metrics](https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details.html), [MSK Express CloudWatch Metrics](https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details-express.html)) for full list |
 | Rolling restart impact, patching, maintenance resilience | [maintenance-operations.md](references/maintenance-operations.md) |
 | Deliver streaming data to Apache Iceberg tables on S3 Tables with low cost in a fully managed service (Streaming Tables) — setup, IAM, schema, create/update/delete/list/describe channels | [streaming-tables.md](references/streaming-tables.md) |
 | Deliver topic data to S3 bucket as JSON/ByteArray/String objects with low cost in a fully managed service (Data Delivery for General Purpose S3 buckets) — setup, IAM, output key templates, create/update/delete/list/describe channels | [data-delivery-for-general-purpose-s3.md](references/data-delivery-for-general-purpose-s3.md) |
 | Build a lakehouse / data lake from Kafka; make streaming data queryable in Athena | [streaming-tables.md](references/streaming-tables.md) |
 | Alternative to Kafka Connect S3 Sink or Amazon Data Firehose for MSK; zero-ops streaming delivery to S3 | [data-delivery-for-general-purpose-s3.md](references/data-delivery-for-general-purpose-s3.md) |
 | Streaming Tables / Data Delivery CloudWatch metrics and alarms, DLQ errors, failed deliveries, channel state transitions, freshness lag | [streaming-tables-troubleshooting.md](references/streaming-tables-troubleshooting.md) |
-| "Can I use Streaming Tables / Data Delivery on MSK Serverless / Standard brokers?" — eligibility routing | [streaming-tables.md](references/streaming-tables.md) (answer is always: Express brokers only) |
+| "Can I use Streaming Tables / Data Delivery on MSK Serverless / Standard brokers?" — eligibility routing | [streaming-tables.md](references/streaming-tables.md) (answer is always: Express brokers only, use Firehose, Flink, or Kafka Connect for Standard and Serqverless - [Firehose integration for Amazon MSK](https://docs.aws.amazon.com/msk/latest/developerguide/integrations-kinesis-data-firehose.html)) |
+| What are the current supported Kafka versions for MSK? | [Supported Apache Kafka versions](https://docs.aws.amazon.com/msk/latest/developerguide/supported-kafka-versions.html) |
+| Does MSK support KRaft clusters, and how do I upgrade between ZooKeeper and KRaft mode clusters? | [Metadata management (ZooKeeper vs KRaft)](https://docs.aws.amazon.com/msk/latest/developerguide/metadata-management.html), direct upgrades not supported today, migrate with MSK Replicator, in-place upgrade support for ZooKeeper to KRaft is planned for the future in MSK |
+| What are the current quotas for MSK Express (ingress, egress, partitions, broker count, etc.)? | [MSK Express Quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-express-quota) |
+| What are the current quotas for MSK Standard (partitions, broker count, etc.)? | [MSK Standard Quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-provisioned-quota), and [MSK Standard best practices](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices.html#standard-server-side-considerations) for partition count limits |
+| What broker-level configuration changes can I make on MSK Express or Standard brokers? | [MSK Configuration](https://docs.aws.amazon.com/msk/latest/developerguide/msk-configuration.html) |
 
 ## Available scripts
 
@@ -105,12 +110,3 @@ aws kafka create-configuration \
 ```
 
 For per-instance-size thread tuning (`num.io.threads`, `num.network.threads`) and durability defaults, see [size-and-choose-cluster.md](references/size-and-choose-cluster.md) and [configure-clients.md](references/configure-clients.md).
-
-## Additional Resources
-
-- [MSK Best Practices - Standard](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices.html)
-- [MSK Best Practices - Express](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-express.html)
-- [MSK Client Best Practices](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-kafka-client.html)
-- [MSK CloudWatch Metrics](https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details.html)
-- [MSK Quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html)
-- [MSK Configuration](https://docs.aws.amazon.com/msk/latest/developerguide/msk-configuration.html)

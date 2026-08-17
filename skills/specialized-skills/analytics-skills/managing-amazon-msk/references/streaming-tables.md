@@ -1,13 +1,15 @@
 # Streaming Tables — Iceberg (S3 Tables) Delivery
 
-Streaming Tables for Amazon MSK Express brokers delivers topic data from Express brokers to Apache Iceberg tables in S3 Table buckets. Serverless, no connector management, 5-minute minimum data freshness, auto-scaling to tens of GB/s.
+Streaming Tables for Amazon MSK Express brokers delivers topic data from Express brokers to Apache Iceberg tables in S3 Table buckets. Serverless, no connector management, 5-minute minimum data freshness, auto-scaling up to 10 GB/s.
+
+Each record is delivered exactly once by the delivery pipeline. Streaming tables do not consume broker egress throughput or impact producer or consumer workloads. This optimizes cost as it enables delivery to Iceberg tables without requiring additional cluster capacity on MSK Express clusters. Additionally, you can fan out multiple streaming tables channels from the same topic.
 
 ## Streaming Tables for Apache Iceberg on S3 Tables Constraints
 
 Check Streaming Tables documentation for constraints. Some key constraints are:
 
 - Streaming Tables is ONLY available on **Express brokers** — Standard brokers and MSK Serverless are NOT supported
-- Data freshness is **5–15 minutes** (minimum 300 seconds). For the 5-minute minimum, the topic must produce at least **2.4 MB/s** uncompressed data
+- Data freshness is **5–15 minutes** (minimum 300 seconds, default 10 minutes). For the 5-minute minimum, the topic must produce at least **2.4 MB/s** uncompressed data
 - Streaming Tables is **append-only** — does not support CDC, upserts, or deletes
 - Streaming Tables Iceberg destination supports **JSON input only** (plain JSON or GSR-serialized JSON) - does not support Avro/Protobuf input
 - **Schema evolution is not supported**
@@ -16,6 +18,8 @@ Check Streaming Tables documentation for constraints. Some key constraints are:
 
 If the user needs any of the above functionality, recommend **Managed Service for Apache Flink** instead. Streaming Tables are the most cost-effective way
 to deliver data to Iceberg tables on S3 Tables, so if it can be used it should be preferred in general.
+
+**Broker-type routing (Express vs Standard/Serverless).** Streaming Tables and Data Delivery are **Express-only**. On **Standard or Serverless** clusters they are not available — to move topic data into S3 / an Iceberg lakehouse there, use one of: the [Amazon Data Firehose MSK-source integration](https://docs.aws.amazon.com/msk/latest/developerguide/integrations-kinesis-data-firehose.html) (fully managed; delivers to Amazon S3 or to Apache Iceberg tables in self-managed S3 or S3 Tables), a self-managed Kafka Connect S3 sink connector, or Managed Service for Apache Flink. On Express, prefer Streaming Tables / Data Delivery over all three.
 
 ## Prerequisites
 
@@ -228,6 +232,8 @@ aws kafka create-channel \
 
 **GSR-serialized input** — same command but the topic entry uses `"RecordConverter": {"ValueConverter": "JSON_SCHEMA_GSR"}` and omits `RecordSchema` (the schema ID is embedded per-record).
 
+**Compression:** Iceberg Parquet output is compressed with `ZSTD` by default; `SNAPPY` is also supported via the `CompressionType` field.
+
 ## Delivery Logging
 
 **Always enable at least one logging destination** on the channel. Without it, delivery errors (`AccessDenied` on S3 Tables / DLQ, schema-mapping failures, GSR access denials, KMS `Decrypt` failures) are invisible — the only visible symptom is missing rows in Iceberg. Logging is also a prerequisite for [streaming-tables-troubleshooting.md](streaming-tables-troubleshooting.md).
@@ -289,13 +295,15 @@ Streaming Tables emits its own CloudWatch metrics in the `AWS/Kafka` namespace w
 
 ## Throughput and Freshness
 
-> These values are current as of launch. Check the [MSK Streaming Tables documentation](https://docs.aws.amazon.com/msk/latest/developerguide/data-channel.html) for the latest minimum throughput requirements per freshness interval.
+> These values are current as of launch. Check the [MSK Streaming Tables documentation](https://docs.aws.amazon.com/msk/latest/developerguide/msk-data-delivery.html) for the latest minimum throughput requirements per freshness interval.
 
 | Data freshness | Min throughput |
 |---|---|
 | 5 minutes | 2.4 MB/s |
 | 10 minutes | ~1.2 MB/s |
 | 15 minutes | ~0.8 MB/s |
+
+The default data freshness is **10 minutes** (configurable within the 5–15 minute range).
 
 ## Table Maintenance
 
@@ -324,3 +332,7 @@ Enable S3 Tables automated maintenance: **compaction**, **snapshot expiration**,
 - Regularly audit IAM role policies and cross-account trust relationships
 - Use VPC endpoints for S3 where applicable to keep traffic off the public internet
 - For additional hardening guidance, see the [MSK Security chapter](https://docs.aws.amazon.com/msk/latest/developerguide/security.html) and [Amazon S3 security best practices](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html)
+
+## References
+
+- [Amazon MSK Data Delivery](https://docs.aws.amazon.com/msk/latest/developerguide/msk-data-delivery.html)

@@ -61,7 +61,7 @@ Works from both standalone and delegated administrator accounts.
 
 3. Group indicators by whatever `IndicatorType` values the API returns. Do not validate against a fixed list — report all types present in the response.
 
-   For reference on indicator types, see: https://docs.aws.amazon.com/detective/latest/userguide/investigation-details.html
+   For reference on indicator types, see: https://docs.aws.amazon.com/detective/latest/userguide/investigations-report-understand.html
 
 4. Present summary:
 

@@ -24,6 +24,13 @@ Express brokers have **no maintenance windows**. MSK updates Express broker soft
 
 **Client contract still applies**: Clients must still handle leadership failover. Configure producers with retries, `delivery.timeout.ms >= 60000`, and `acks=all`; configure consumers with `session.timeout.ms = 45000-60000`. See [configure-clients.md](configure-clients.md) and the "Consumer Resilience During Maintenance" section below.
 
+## Can You Reschedule or Opt Out of Patching?
+
+Patching cannot be opted out of on either broker type — it is mandatory for the health and security of the cluster.
+
+- **Standard**: the maintenance window **is** configurable, but only by opening an **AWS Support case** — there is no self-service control (no MSK API, SDK, CLI, or console setting) to change it yourself. Use a Support case to shift the window or reschedule/postpone a specific pending patch. Do not rely on repeatedly postponing: MSK force-applies patching to clusters whose maintenance is continually delayed.
+- **Express**: patching is continuous and time-distributed with no maintenance window, so there is nothing to schedule or reschedule.
+
 ## What Happens During a Rolling Restart
 
 When a broker restarts during maintenance:
@@ -138,7 +145,8 @@ Version upgrades trigger rolling restarts. The process:
 
 - You MUST check that partition counts per broker are within the limits for the target version before upgrading (see [size-and-choose-cluster.md](size-and-choose-cluster.md)).
 - Upgrades are forward-only — you cannot downgrade Kafka versions.
-- Express brokers support Kafka versions 3.6, 3.8, and 3.9.
+- The supported version list and end-of-support dates change over time — check [Supported Apache Kafka versions](https://docs.aws.amazon.com/msk/latest/developerguide/supported-kafka-versions.html) rather than relying on memory, and query a specific cluster's valid upgrade targets with `aws kafka get-compatible-kafka-versions --cluster-arn <arn>`. Express supports a narrower set than Standard.
+- KRaft metadata mode (no ZooKeeper) is available from Kafka 3.7.x — see [Metadata management](https://docs.aws.amazon.com/msk/latest/developerguide/metadata-management.html).
 
 ## Monitoring During Maintenance
 

@@ -27,6 +27,27 @@ redirect spending to a larger session. The environment remains a fallback for
 container and Lambda deployments with no writable home — a weaker mode, because
 whatever sets the environment there chooses the session.
 
+Region/resource-resolution fixes (see agents_pay_admin.py for the admin-side
+half of this batch: resolve_region() and resolve_manager_arn() there fix the
+same pattern for the admin CLI's config.json lookups)
+-------------------------------------------------------------------------------
+Three call sites in this file used to build PaymentManager with
+`region_name=pol.resolve_resource(policy, "region") or "us-west-2"`. That
+hardcoded fallback only fires when nothing configures a region anywhere — a
+normal state for a deployment that relies on its AWS profile/IMDS region rather
+than setting one explicitly — and PaymentManager already falls back to
+boto3.Session().region_name internally before its own "us-west-2" default. So
+forcing "us-west-2" here could send a real payment against the wrong AWS region
+and fail with a confusing manager-not-found error. Fixed by passing
+pol.resolve_resource(policy, "region") (or None) and letting boto3/PaymentManager
+resolve it themselves. See payment_session_status(), prepare_browser_payment(),
+and x402_fetch() below.
+
+A related fix in x402_policy.derive_client_token() closes a second instance of
+the same pattern: it read PAYMENT_SESSION_ID from the environment directly
+whenever a caller omitted session_id, bypassing resolve_resource()'s documented
+config-file-first precedence for a spending credential. See its docstring.
+
 Tunables (behaviour only, never identifiers):
 
   X402_MAX_BODY_BYTES    response cap (default 262144, clamped 1 KiB - 64 MiB)
@@ -325,7 +346,14 @@ def payment_session_status() -> str:
 
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
-            region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            # Region resolution here must match agents_pay_admin.py's resolve_region():
+            # config.json's resources.region, else AWS_REGION, else let boto3/PaymentManager
+            # resolve it (profile, IMDS, etc.) themselves. A hardcoded "us-west-2" fallback
+            # would silently override a correctly-resolved region whenever the operator's
+            # deployment lives elsewhere and neither config nor env sets one explicitly —
+            # PaymentManager itself already falls back to boto3.Session().region_name before
+            # its own "us-west-2" default, so passing None here is safe and correct.
+            region_name=pol.resolve_resource(policy, "region"),
             agent_name=AGENT_NAME,
         )
         session = manager.get_payment_session(payment_session_id=session_id, user_id=user_id)
@@ -427,7 +455,11 @@ def prepare_browser_payment(url: str, purchase_id: str | None = None) -> str:
 
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
-            region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            # See the resolve_region()-equivalent rationale in payment_session_status():
+            # config.json/env first, else let boto3 resolve region itself rather than
+            # forcing "us-west-2" and risking a manager-not-found against an ARN that
+            # actually lives in the operator's real deployment region.
+            region_name=pol.resolve_resource(policy, "region"),
             agent_name=AGENT_NAME,
         )
 
@@ -602,7 +634,12 @@ def x402_fetch(url: str, purchase_id: str | None = None, method: str = "GET") ->
 
         manager = PaymentManager(
             payment_manager_arn=manager_arn,
-            region_name=pol.resolve_resource(policy, "region") or "us-west-2",
+            # Same fix as the two call sites above and agents_pay_admin.py's
+            # resolve_region(): never force "us-west-2" over a region that config.json,
+            # the environment, or boto3's own session/profile resolution already has
+            # right — doing so on this signing path risked a real payment attempt
+            # failing with a confusing manager-not-found instead of succeeding.
+            region_name=pol.resolve_resource(policy, "region"),
             agent_name=AGENT_NAME,
         )
 
