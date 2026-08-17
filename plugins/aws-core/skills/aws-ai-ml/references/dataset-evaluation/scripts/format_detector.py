@@ -14,11 +14,14 @@ Usage:
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Optional
 
 import boto3
+
+os.environ.setdefault("AWS_SDK_UA_APP_ID", "AWSSkill-SageMaker")
 
 logger = logging.getLogger(__name__)
 

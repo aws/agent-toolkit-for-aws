@@ -1,7 +1,10 @@
 import json
+import os
 import sys
 
 import boto3
+
+os.environ.setdefault("AWS_SDK_UA_APP_ID", "AWSSkill-SageMaker")
 
 if len(sys.argv) < 3:
     print("Usage: python get_recipes.py <model-name> <hub-name>")
