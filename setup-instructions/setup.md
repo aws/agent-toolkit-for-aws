@@ -16,7 +16,11 @@ The workflow includes:
 ## Parameters
 
 - operating_system (optional): macOS, Linux, or Windows. If not provided, Step 1 detects it automatically
+- profile_name (required): The AWS CLI profile name to use for all commands. You MUST ask the user: "What profile name do you want to use for your AWS CLI credentials?"
+- AWS experience (required): The user has access to either our new AWS experience or our advanced AWS experience. If not provided in the prompt, you MUST ask the user: "Did you sign up recently for AWS using a social provider like Google or GitHub, and did you create a project?" If they say yes, they are using our new AWS experience. If they say no, they are using our advanced AWS experience.
 - Region (required): The default AWS Region for the user's account. If not provided in the prompt, you MUST ask the user for it before proceeding
+  - If the AWS experience parameter is our advanced AWS experience, ask the user: "What AWS Region do you want to use as your default Region?"
+  - If the AWS experience parameter is our new AWS experience, ask the user: "What AWS Region was your project created in?" They can find this value in the additional info tab of their project in AWS Settings.
 
 Constraints for parameter acquisition:
 
@@ -29,13 +33,17 @@ Constraints for parameter acquisition:
 
 Constraints:
 
-- You MUST verify the following tools are available: curl (macOS/Linux) or PowerShell (Windows)
+- You MUST verify the following tools are available: curl (macOS/Linux) or PowerShell (Windows), and uv (all platforms)
+- If uv is not installed, install it before proceeding:
+  - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+  - Windows: `irm https://astral.sh/uv/install.ps1 | iex`
 - You MUST verify internet connectivity to `https://awscli.amazonaws.com`
 - You MUST inform the user about any missing tools with a clear message
 - You MUST ask if the user wants to proceed despite missing tools
 - You MUST respect the customer's decision to abort at any point
 - You MUST explain to the customer what step is being executed, why, and which tool is being called
-- You MUST NOT require node, python3, or any other runtime beyond the shell — the installer handles all dependencies
+- You MUST NOT require node, python3, or any other runtime beyond the shell and uv — the installer handles all other dependencies
+- IF the AWS experience parameter is "our new AWS experience" THEN the user's account is part of a "project". Always use the term "project" when talking to the user.
 
 ## General error handling
 
@@ -100,6 +108,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC" && source "$SHELL_RC"
 | `musl-based Linux detected` | Alpine or similar musl distro | Cannot use prebuilt binaries; direct user to source install |
 | `--system requires root` | User passed `--system` without sudo | Re-run with `sudo` or omit `--system` for user-local install |
 | `post-install check failed` | `aws --version` didn't succeed after install | Check that `$HOME/.local/bin` is on PATH; re-run the script |
+| `aws --version` returns an older version than just installed | A previous AWS CLI installation exists in a different location (e.g., `/usr/local/bin/aws` or Homebrew) and takes precedence on PATH | Run `which -a aws` to show all install locations. Inform the user which locations were found and offer two options: (1) remove the old installation, or (2) reorder PATH so the new install takes precedence. Ask which they prefer before proceeding |
 | PATH warning in output | `$HOME/.local/bin` not first on PATH | Add it to shell rc file as the script suggests, then open a new shell |
 | `Permission denied` when writing to rc file | File or directory permissions prevent writing | Check file permissions with `ls -la "$SHELL_RC"` and fix with `chmod u+w "$SHELL_RC"` |
 | RC file does not exist | File hasn't been created yet (fresh system) | Create it first with `touch "$SHELL_RC"`, then re-run the echo command |
@@ -124,23 +133,29 @@ irm 'https://awscli.amazonaws.com/v2/install.ps1' | iex
 | `-System requires admin privileges` | User passed `-System` without elevation | Re-run from an elevated PowerShell, or omit `-System` for user-local install |
 | `msiexec failed with exit code ...` | MSI installation failed | Check Windows Event Log for MSI errors; ensure no other AWS CLI installer is running |
 | `post-install check failed` | `aws --version` didn't succeed after install | Restart the shell so PATH changes from the MSI take effect, then retry |
+| `aws --version` returns an older version than just installed | A previous AWS CLI installation exists in a different location (e.g., `C:\Program Files\Amazon\AWSCLIV2\`) and takes precedence on PATH | Run `Get-Command aws -All` to show all install locations. Inform the user which locations were found and offer two options: (1) uninstall the old version via Apps & Features, or (2) reorder PATH so the new install takes precedence. Ask which they prefer before proceeding |
 | `LOCALAPPDATA is not set` | Rare environment issue | Set the variable or use `-System` for a Program Files install |
 
 ### **Step 3: Log in to AWS**
 
-Check if the user's prompt includes their AWS Region (e.g., "Your AWS Region is: us-east-2"). If not provided, ask the user: "What AWS Region do you want to use as your default Region?" Then configure it before logging in:
+Check if the user's prompt includes their AWS Region (e.g., "Your AWS Region is: us-east-2").
+
+- If not provided and the AWS experience parameter is our advanced AWS experience, ask the user: "What AWS Region do you want to use as your default Region?"
+- If not provided and the AWS experience parameter is our new AWS experience, ask the user: "What AWS Region was your project created in?" They can find this value in the additional info tab of their project in AWS Settings.
+
+Then configure it before logging in:
 
 ```bash
-aws configure set region <region from prompt>
+aws configure set region <region from prompt> --profile <profile_name>
 ```
 
-Then sign in to the AWS CLI, passing the Region explicitly:
+Then sign in to the AWS CLI using the dedicated profile, passing the Region explicitly:
 
 ```bash
-aws login --region <region from prompt>
+aws login --region <region from prompt> --profile <profile_name>
 ```
 
-A browser window will open for authentication. The human user will authenticate.
+A browser window will open for authentication. The human user will authenticate. If the human user wants to cancel this command at any time, let them.
 
 Wait for the command to exit before proceeding to Step 4.
 
@@ -150,17 +165,18 @@ Wait for the command to exit before proceeding to Step 4.
 
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
-| Region not provided in prompt | User pasted the prompt without region context | Ask the user: "What AWS Region do you want to use as your default Region?" and set it with `aws configure set region <value>` |
+| Region not provided in prompt | User pasted the prompt without region context | Ask the user the relevant follow up question depending on their AWS experience parameter. Then, set it with `aws configure set region <value> --profile <profile_name>` |
 | command not found: `aws` | PATH not set correctly after install | Re-run `export PATH="$HOME/.local/bin:$PATH"` and retry |
-| aws login exits with non-zero | User closed the browser without completing auth, or timed out | Re-run `aws login` and instruct the user to complete authentication in the browser |
-| Browser did not open | Headless environment or no default browser configured | Look for a URL in the command output and ask the user to open it manually |
+| `Profile '<profile_name>' is already configured with Access Key credentials` | User previously configured static access keys for this profile via `aws configure` | Offer the user two options: (1) Use a different profile name and re-run `aws login --profile <new_name>`, or (2) Remove the `aws_access_key_id` and `aws_secret_access_key` lines from `~/.aws/credentials` (under the `[<profile_name>]` section), then re-run `aws login --profile <profile_name>` |
+| aws login exits with non-zero | User closed the browser without completing auth, or timed out | Re-run `aws login --profile <profile_name>` and instruct the user to complete authentication in the browser |
+| Browser did not open | Headless environment or no default browser configured | Run `aws login --region <region from prompt> --profile <profile_name> --remote`. Then let the human user finish the process. |
 
 ### Step 4: Verify access
 
 Verify AWS CLI access:
 
 ```bash
-aws sts get-caller-identity
+aws sts get-caller-identity --profile <profile_name>
 ```
 
 **Success**: Returns AccountId, Arn, and UserId. Confirm to the user that credentials are working.
@@ -177,7 +193,7 @@ aws sts get-caller-identity
 Run the following command to install AI coding agents, install default AWS skills, and configure the AWS MCP Server connection.
 
 ```bash
-aws configure agent-toolkit --yes --region us-east-1
+aws configure agent-toolkit --yes --region us-east-1 --profile <profile_name>
 ```
 
 **Note:** The Agent Toolkit service is currently only available in `us-east-1`, regardless of your Region. Use `us-east-1` here and in Step 6 — do not substitute the user's current Region.
@@ -188,17 +204,50 @@ aws configure agent-toolkit --yes --region us-east-1
 
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
-| `--yes` not recognized or `invalid choice` | CLI version doesn't support this flag yet | Remove the flag and retry: `aws configure agent-toolkit --region us-east-1` |
-| Exit code 253 or "requires interactive terminal" | Agent's bash tool runs in a non-interactive subshell; wizard cannot prompt for input | Inform the user: "Almost done! Run this command in your terminal to finish setup: `aws configure agent-toolkit --region us-east-1`. It's a one-time interactive wizard (~30 seconds). Once complete, come back here and I'll verify everything is working." Then proceed to Step 6 only after the user confirms completion.|
+| `--yes` not recognized or `invalid choice` | CLI version doesn't support this flag yet | Remove the flag and retry: `aws configure agent-toolkit --region us-east-1 --profile <profile_name>` |
+| Exit code 253 or "requires interactive terminal" | Agent's bash tool runs in a non-interactive subshell; wizard cannot prompt for input | Inform the user: "Almost done! Run this command in your terminal to finish setup: `aws configure agent-toolkit --region us-east-1 --profile <profile_name>`. It's a one-time interactive wizard (~30 seconds). Once complete, come back here and I'll verify everything is working." Then proceed to Step 6 only after the user confirms completion. |
 | `Unable to locate credentials` or `ExpiredToken` | Session expired during setup | Re-run Step 3, then retry Step 5 |
 | `command not found: aws` | PATH not set correctly | Re-run `export PATH="$HOME/.local/bin:$PATH"` and retry |
+
+#### Point the AWS MCP Server at the user's profile
+
+After the command completes, the Agent Toolkit writes an `aws-mcp` server entry into each detected AI tool's MCP configuration file. This entry does NOT reference the profile the user authenticated with in Step 3 — it falls back to the `default` profile. Because this set up file always authenticates under a named `<profile_name>`, you MUST propagate that profile into each generated `aws-mcp` entry, or the MCP server will fail to start with `JSON-RPC error: -32602: Invalid request parameters("")` (it cannot locate credentials under the `default` profile).
+
+For each MCP configuration file the Agent Toolkit updated, open the file, locate the `aws-mcp` entry under `mcpServers`, and add an `env` block that sets `AWS_MCP_PROXY_PROFILES` to `<profile_name>`. You MUST NOT remove or modify any other server entries. Only the `env` block is added — leave `command`, `args`, `timeout`, and `transport` exactly as generated:
+
+```json
+"aws-mcp": {
+  "command": "uvx",
+  "args": ["mcp-proxy-for-aws@latest", "https://aws-mcp.us-east-1.api.aws/mcp", "--metadata", "INSTALL_SOURCE=aws-cli"],
+  "env": {
+    "AWS_MCP_PROXY_PROFILES": "<profile_name>"
+  },
+  "timeout": 100000,
+  "transport": "stdio"
+}
+```
+
+MCP configuration file locations by tool:
+
+| Agent       | MCP configuration file    |
+| ----------- | ------------------------- |
+| Claude Code | ~/.claude.json            |
+| Cline       | ~/.cline/mcp.json         |
+| Cursor      | ~/.cursor/mcp.json        |
+| Kiro        | ~/.kiro/settings/mcp.json |
+
+Notes:
+
+- Use `AWS_MCP_PROXY_PROFILES` (not `AWS_PROFILE`) because it also enables cross-account switching later.
+
+After adding the `env` block, tell the user: "To use another AWS account later, run `aws login --profile <name>`, add that profile name to the space-separated `AWS_MCP_PROXY_PROFILES` list in each MCP configuration file above, and restart your AI tool."
 
 ### Step 6: Verify Agent Toolkit installation
 
 Run the following command to list all available skills in the remote catalog.
 
 ```bash
-aws agent-toolkit list-available-skills --region us-east-1
+aws agent-toolkit list-available-skills --region us-east-1 --profile <profile_name>
 ```
 
 **Success:** Returns a JSON of skills with name, description, skillVersion, and categories values.
@@ -221,12 +270,22 @@ First, identify which AI coding tool is in use and its rules files per this tabl
 | Cursor      | .cursor/rules/\*.mdc | .cursor/rules/ directory  |
 | Kiro        | .kiro/steering/\*.md | .kiro/steering/ directory |
 
-Then retrieve the AWS experience rules file, read its full contents, and
+Then retrieve the AWS experience rules file based on their AWS experience parameter. Read its full contents, and
 save them to that tool's rules file (creating the directory if needed):
 
+If the AWS experience parameter is our new AWS experience, fetch the rule file. The rule file is located at:
+https://raw.githubusercontent.com/aws/agent-toolkit-for-aws/refs/heads/main/rules/aws-starter-rules.md
+
+If the AWS experience parameter is our advanced AWS experience, the rule file is located at:
 https://raw.githubusercontent.com/aws/agent-toolkit-for-aws/refs/heads/main/rules/aws-agent-rules.md
 
-**Success**: Rule file is saved to the correct location for each AI tool. End the skill by telling the user: "The steps to get set up have all been completed. Start a new session to create new AWS resources"
+**Success**: Rule file is saved to the correct location for each AI tool. End the set up by telling the user:
+
+"Setup is complete! Close this session and start a new one. Your AI tool will automatically use the rules and skill files we just installed. Try this as your first prompt:
+
+Please make a single page webapp game and deploy it to AWS.
+
+If you’re looking to explore what you can do on AWS, that prompt will get you started with a fun project. You can replace the game request with anything you’d like to build"
 
 **Error handling:**
 
