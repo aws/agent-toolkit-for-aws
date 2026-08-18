@@ -2,8 +2,8 @@
 
 Loaded on demand from `querying-aws-redshift` SKILL.md. Timing columns are **microseconds** — divide by 1,000,000 for seconds. Confirm the namespace from the status API before substituting it below; never hand-construct it.
 
-
 ## Top 10 longest-running queries in the last 7 days (Athena)
+
 ```sql
 SELECT query_id,
        username,
@@ -22,6 +22,7 @@ LIMIT 10;
 ```
 
 ## Same query from Redshift (auto-mounted catalog)
+
 ```sql
 SELECT query_id,
        username,
@@ -40,6 +41,7 @@ LIMIT 10;
 ```
 
 ## Query volume and latency percentiles by hour
+
 ```sql
 SELECT hour(start_time) AS hour_of_day,
        count(*) AS query_count,
@@ -52,6 +54,7 @@ ORDER BY hour_of_day;
 ```
 
 ## Most expensive repeated query shapes
+
 ```sql
 SELECT generic_query_hash,
        count(*) AS executions,
@@ -67,6 +70,7 @@ LIMIT 10;
 ```
 
 ## Failed authentication attempts
+
 ```sql
 SELECT user_name,
        remote_host,
@@ -82,6 +86,7 @@ LIMIT 20;
 ```
 
 ## Reassemble full text of a long query
+
 ```sql
 SELECT query_id,
        array_join(array_agg(text ORDER BY sequence), '') AS full_query_text
@@ -91,6 +96,7 @@ GROUP BY query_id;
 ```
 
 ## Correlate expensive queries with client origin
+
 ```sql
 SELECT qh.query_id,
        qh.username,
@@ -106,4 +112,3 @@ WHERE qh.start_time > current_timestamp - interval '1' day
 ORDER BY qh.elapsed_time DESC
 LIMIT 15;
 ```
-

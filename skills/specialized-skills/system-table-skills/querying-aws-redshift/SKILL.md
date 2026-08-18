@@ -30,6 +30,7 @@ Redshift can publish **system tables** — the `SYS_*` monitoring data such as `
 Terminology used throughout: **system table** refers to a `SYS_*` dataset generally, and each one maps 1:1 to a published Iceberg table. Where this skill says **`SYS_` view**, it means specifically the live in-cluster object you query on the cluster itself — that is a view, and it is a different thing from the published S3 Tables copy. This applies to both **Provisioned clusters** and **Serverless namespaces**. It is an opt-in extension of the existing logging APIs. Published tables are read-only, stored in the AWS-managed `aws-redshift` table bucket, and queryable via any Iceberg-compatible engine including Amazon Athena and Amazon Redshift itself.
 
 Querying the S3 Tables copy is preferred over the live in-cluster `SYS_` views when analyzing historical or high-volume system-table data because:
+
 - The in-cluster `SYS_` views have a limited retention window; S3 Tables retains history well beyond it.
 - Querying S3 Tables adds **no load** to the running Redshift cluster.
 - The logs are Iceberg tables, so they can be queried at scale from any Iceberg-compatible engine and joined with other lake data.
@@ -85,6 +86,7 @@ aws redshift-serverless get-namespace --region <REGION> --namespace-name <NAMESP
 | All available system tables published | `S3Tables.EnabledAll` | `namespace.s3TablePublishStatus.enabledAll` |
 
 Notes:
+
 - `LogDestinationType` is a **comma-joined list** when more than one destination is active — e.g. `"cloudwatch,s3table"`. Test with a substring/contains check, not equality against `s3table`.
 - An empty `LastIngestionTimes` / `lastIngestionTimes` map, or a table listed as published but absent from the map, means data for that table may still be in flight. Compare successive values to confirm new data is landing.
 - On Serverless, do **not** read the top-level `logExports` field for this feature — that field carries the CloudWatch/S3 audit logs (`useractivitylog`, `userlog`, `connectionlog`) and is unrelated to `SYS_*` S3 Tables publishing.
@@ -113,6 +115,7 @@ Enable from AWS console Amazon Redshift Console > Clusters > select your cluster
 | Validate without applying | `--dry-run` | `--dry-run` |
 
 Notes:
+
 - Granularity: Provisioned supports `cluster` (default) or `account`; Serverless supports `namespace` (default) or `account`.
 - `cluster`/`namespace` granularity → one S3 table per cluster/namespace; `account` → one shared table for all clusters/namespaces per account per region.
 - Use `all` to publish all available `SYS_*` tables — `--log-exports all` on Provisioned, `--s3-table-names all` on Serverless.
@@ -133,10 +136,12 @@ aws redshift-serverless update-namespace --region <REGION> --namespace-name <NAM
 Full setup commands for both paths: **`${SKILL_DIR}/references/permissions-setup.md`**. Load it before creating roles or registering resources.
 
 **Athena path** — needs the `s3tablescatalog/aws-redshift` catalog registered in Glue, a workgroup with an output location, and S3 Tables read permissions. Confirm the catalog is queryable:
+
 ```bash
 aws glue get-databases --region <REGION> \
   --catalog-id "<ACCOUNT>:s3tablescatalog/aws-redshift"
 ```
+
 Namespaces returned → registered and queryable. `EntityNotFoundException` / `CATALOG_NOT_FOUND` → the S3 Tables integration is not enabled (S3 console > Table buckets > Enable integration). **Encrypt the workgroup output location** — Athena writes full result sets, including `query_text` and `user_name`, to S3.
 
 **Redshift auto-mount path** — needs a Provisioned RA3 cluster and a four-step setup: create the `query_s3_tables` role (trust policy must name *both* `redshift.amazonaws.com` and `lakeformation.amazonaws.com`, the latter with all four of `sts:AssumeRole`, `sts:SetContext`, `sts:SetSourceIdentity`, `sts:TagSession`), attach it to the cluster, register the table bucket with Lake Formation, and add the Redshift service-linked roles to `ReadOnlyAdmins`. Constraints that cause most failures:
@@ -144,9 +149,11 @@ Namespaces returned → registered and queryable. `EntityNotFoundException` / `C
 - **Condition both trust statements on `aws:SourceAccount`** — a bare service principal is a confused-deputy risk.
 - **Do not attach `AWSLakeFormationDataAdmin` to the cluster's query role.** It is needed only by the principal performing setup, and only during setup. The cluster's role needs read access alone.
 - **Auto-mount is a poll, not a callback** — the catalog can take up to 300 seconds to appear in `pg_database`. A cluster reboot forces immediate discovery.
+
 ### 4. Identify the Target Table
 
 **Namespace** — resolve it from the API, do not construct it:
+
 - Read `S3Tables.S3TableNamespace` from `describe-logging-status` (Provisioned) or `s3TablePublishStatus.s3TableNamespace` from `get-namespace` (Serverless) and use it verbatim.
 - Optional sanity check only: the API value typically follows `<namespace_arn_id>_sys` for `cluster`/`namespace` granularity and `<account>_sys` for `account` granularity. Use this only to *verify* the value looks right — never to generate the namespace when the API response is unavailable.
 
@@ -157,6 +164,7 @@ Namespaces returned → registered and queryable. `EntityNotFoundException` / `C
 3. **What each table contains** — the public [Redshift SYS monitoring views reference](https://docs.aws.amazon.com/redshift/latest/dg/cm_chap_system-tables.html), which documents every `SYS_*` view and its columns. AWS adds views over time, so treat the docs as the current list rather than hardcoding one.
 
 Column names and types come from the same public reference, or from the live table:
+
 ```bash
 aws glue get-table --region <REGION> \
   --catalog-id "<ACCOUNT>:s3tablescatalog/aws-redshift" \
@@ -170,6 +178,7 @@ Two caveats when reading the public docs against a published table: enum-valued 
 #### Query from Athena
 
 **Query syntax:**
+
 ```sql
 "s3tablescatalog/aws-redshift"."<NAMESPACE>"."<SYS_TABLE>"
 ```
@@ -211,6 +220,7 @@ Worked SQL for the common asks — longest-running queries, error analysis, conn
 
 - **Timing columns are microseconds.** Divide by 1,000,000 for seconds. Reporting `elapsed_time` as-is overstates durations by 10^6.
 - **Filter on the Iceberg partition columns** (`year`/`month`/`day` or the table's own partitioning) in addition to any timestamp predicate, or the engine scans the full history.
+
 ### Routing: Athena vs Redshift vs Direct SYS_ Access
 
 | Scenario | Use |
@@ -274,6 +284,7 @@ Full policies, key policy, and detection setup: **`${SKILL_DIR}/references/secur
 - [Lake Formation permissions](https://docs.aws.amazon.com/lake-formation/latest/dg/granting-catalog-permissions.html)
 
 Security best practices:
+
 - [Amazon Redshift security best practices](https://docs.aws.amazon.com/redshift/latest/mgmt/security-best-practices.html)
 - [S3 Tables security](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables-security.html) and [access management for S3 Tables](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables-permissions.html)
 - [IAM security best practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)

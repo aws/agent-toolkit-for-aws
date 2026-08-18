@@ -5,20 +5,24 @@ Loaded on demand from `querying-aws-redshift` SKILL.md. Read this before running
 ## For Athena Querying
 
 Requires:
+
 - S3 Tables catalog registered in Glue (`s3tablescatalog/aws-redshift`)
 - Athena execution permissions and a workgroup with an output location
 - S3 Tables read permissions (see the least-privilege policy in `${SKILL_DIR}/references/security.md`)
 
 **Encrypt the workgroup's output location.** Athena writes full result sets to S3, so `query_text`, `user_name`, and `remote_host` from the `SYS_*` tables land there in plaintext unless the workgroup enforces encryption. Configure SSE-KMS and lock it so query authors cannot override it:
+
 ```bash
 aws athena update-work-group \
   --region <REGION> \
   --work-group <WORKGROUP> \
   --configuration-updates 'EnforceWorkGroupConfiguration=true,ResultConfigurationUpdates={OutputLocation=s3://<RESULTS_BUCKET>/<PREFIX>/,EncryptionConfiguration={EncryptionOption=SSE_KMS,KmsKey=<KEY_ARN>}}'
 ```
+
 `EnforceWorkGroupConfiguration=true` is the part that matters — without it a client can pass its own unencrypted `ResultConfiguration` per query. Verify with `aws athena get-work-group --work-group <WORKGROUP>`.
 
 Confirm the catalog is registered:
+
 ```bash
 aws glue get-databases --region <REGION> \
   --catalog-id "<ACCOUNT>:s3tablescatalog/aws-redshift"
@@ -30,14 +34,16 @@ aws glue get-databases --region <REGION> \
 ## For Redshift Querying (Auto-Mounted S3 Tables Catalog)
 
 Prerequisites:
+
 - A Provisioned RA3 cluster. Auto-mount support depends on node type; confirm the current supported node types in the [Redshift documentation](https://docs.aws.amazon.com/redshift/latest/mgmt/working-with-clusters.html) or via `aws redshift describe-orderable-cluster-options` rather than assuming a fixed list.
 - The Glue `s3tablescatalog` S3 Tables catalog must exist (auto-created when the table bucket is integrated with analytics services)
 
-**Step 1: Create IAM Role with Required Permissions**
+### Step 1: Create IAM Role with Required Permissions
 
 Create a role (e.g., `query_s3_tables`) with:
 
 Trust Policy:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -63,6 +69,7 @@ All four actions (`sts:AssumeRole`, `sts:SetContext`, `sts:SetSourceIdentity`, `
 The `aws:SourceAccount` conditions guard against the [confused deputy problem](https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html): a bare service principal with no condition can be assumed on behalf of *any* account, so a caller in another account could induce the service to use this role. Restrict to the account that owns the cluster. Use `aws:SourceArn` with the cluster ARN instead if you want to pin to a single cluster.
 
 Create the role and attach the read-only query policy. Pass both documents inline so the commands work unchanged through the AWS MCP server's `call_aws` tool, which cannot read local files:
+
 ```bash
 aws iam create-role \
   --role-name query_s3_tables \
@@ -86,6 +93,7 @@ aws iam attach-role-policy \
 ```
 
   `AWSLakeFormationDataAdmin` is a broad starting point, not a production posture: it grants administrative control over *every* Lake Formation resource in the account, including `PutDataLakeSettings`, which can rewrite the admin list. For production, replace it on the setup principal with a custom policy holding only the setup actions actually used here, and detach it once setup completes:
+
   ```json
   {
     "Version": "2012-10-17",
@@ -104,8 +112,11 @@ aws iam attach-role-policy \
     }]
   }
   ```
+
   Once setup is complete, detach it from the setup principal too — nothing in steady-state querying needs it. The cluster's role only ever needs the read-only inline policy below.
+
 - Inline policy for S3 Tables, Glue, and Lake Formation access, scoped to the `aws-redshift` table bucket and its catalog:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -162,7 +173,8 @@ Note the shape of the Glue database and table ARNs: federated S3 Tables catalogs
 
 If you hit a permission error during initial setup that the scoped policy above doesn't cover, widen it deliberately and narrow it back down for production — do not fall back to `"Action": "*"` on `"Resource": "*"`.
 
-**Step 2: Attach Role to Cluster**
+### Step 2: Attach Role to Cluster
+
 ```bash
 aws redshift modify-cluster-iam-roles \
   --cluster-identifier <CLUSTER_ID> \
@@ -170,9 +182,10 @@ aws redshift modify-cluster-iam-roles \
   --region <REGION>
 ```
 
-**Step 3: Register the Table Bucket with Lake Formation**
+### Step 3: Register the Table Bucket with Lake Formation
 
 Scope the registration to just the `aws-redshift` table bucket so the role cannot be used to reach other table buckets in the account:
+
 ```bash
 aws lakeformation register-resource \
   --region <REGION> \
@@ -182,7 +195,8 @@ aws lakeformation register-resource \
 
 Note: `VerificationStatus: NOT_VERIFIED` after registration is normal and does not block functionality.
 
-**Step 4: Add Redshift SLRs as Lake Formation Read-Only Admins**
+### Step 4: Add Redshift SLRs as Lake Formation Read-Only Admins
+
 ```bash
 aws lakeformation put-data-lake-settings \
   --region <REGION> \
@@ -199,13 +213,14 @@ aws lakeformation put-data-lake-settings \
 
 **WARNING:** `put-data-lake-settings` REPLACES the entire settings object. Always include your existing `DataLakeAdmins` alongside the new `ReadOnlyAdmins`.
 
-**Step 5: Verify Auto-Mount**
+### Step 5: Verify Auto-Mount
 
 The cluster polls every 300 seconds. After up to 5 minutes:
+
 ```sql
 SELECT datname FROM pg_database;
 ```
+
 Expected output includes: `aws-redshift@s3tablescatalog`
 
 If it doesn't appear after 5 minutes, a cluster reboot triggers immediate discovery.
-

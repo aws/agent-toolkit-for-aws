@@ -80,6 +80,7 @@ When using `--s3-table-kms-key-id` (both Provisioned and Serverless), the KMS ke
 ## Data Sensitivity
 
 `SYS_*` system-table data may contain sensitive fields:
+
 - `query_text` — may reveal schema, data values, or business logic
 - `username` / `user_id` — the principal that ran the query
 - `remote_host` (in `sys_connection_log`) — client IP address
@@ -97,6 +98,7 @@ Enable CloudTrail logging for Athena (`StartQueryExecution`, `GetQueryResults`) 
 Collecting logs is passive; add active detection so misuse surfaces without someone reading them. Two alarms worth having:
 
 - **Access-denied spikes on the published tables** — a burst of `AccessDenied` on `s3tables:GetTableData` is the signature of enumeration or a broken least-privilege change. With CloudTrail delivering to CloudWatch Logs, create a metric filter and alarm on it:
+
   ```bash
   aws logs put-metric-filter \
     --log-group-name <CLOUDTRAIL_LOG_GROUP> \
@@ -111,11 +113,13 @@ Collecting logs is passive; add active detection so misuse surfaces without some
     --threshold 10 --comparison-operator GreaterThanThreshold \
     --alarm-actions <SNS_TOPIC_ARN>
   ```
+
 - **Failed authentications against the cluster** — `sys_connection_log` records these, so once it is published you can detect credential-stuffing from the S3 table on a schedule rather than by ad-hoc query. Alert on a rising count of failed connections grouped by `remote_host`.
 
 Tune both thresholds to your own baseline; the values above are starting points, not recommendations.
 
 **Secure the notification path, not just the detection.** Alarm payloads describe who is touching which system tables, so the topic is itself sensitive. Encrypt it with a customer-managed key and audit who receives it:
+
 ```bash
 aws sns set-topic-attributes \
   --topic-arn <SNS_TOPIC_ARN> \
@@ -123,5 +127,5 @@ aws sns set-topic-attributes \
 
 aws sns list-subscriptions-by-topic --topic-arn <SNS_TOPIC_ARN>
 ```
-The default `alias/aws/sns` key cannot be restricted by policy or revoked; a customer-managed key can. Review the subscription list on a schedule — an email or HTTP subscriber added later inherits every future alert, and confirm the key policy lets `cloudwatch.amazonaws.com` call `kms:GenerateDataKey*`/`kms:Decrypt`, or alarms will fail to publish silently.
 
+The default `alias/aws/sns` key cannot be restricted by policy or revoked; a customer-managed key can. Review the subscription list on a schedule — an email or HTTP subscriber added later inherits every future alert, and confirm the key policy lets `cloudwatch.amazonaws.com` call `kms:GenerateDataKey*`/`kms:Decrypt`, or alarms will fail to publish silently.
