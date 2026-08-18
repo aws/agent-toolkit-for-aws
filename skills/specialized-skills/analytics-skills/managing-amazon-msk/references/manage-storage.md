@@ -118,9 +118,28 @@ With `retention.ms = 5 days` and `local.retention.ms = 12 hours`:
 - Not supported on `kafka.t3.small` instances
 - Clients SHOULD NOT use `read_committed` isolation level when reading from tiered storage unless actively using transactions
 
-### Enable tiered storage on a topic
+### Enable tiered storage
+
+Enabling tiered storage is a **two-step** process: first switch the cluster to `TIERED` storage mode, then enable `remote.storage.enable` on each topic. Switching the cluster mode alone does NOT tier any data — no topic tiers until you set `remote.storage.enable=true` on it.
+
+**Step 1 — set the cluster storage mode to `TIERED`.** The cluster must run Kafka 3.6.0+ or 2.8.2.tiered. If it does not, upgrade first with `aws kafka update-cluster-kafka-version` (check upgrade targets via `aws kafka get-compatible-kafka-versions`). The cluster `log.cleanup.policy` must be `delete` (compacted topics are not eligible). Get the current version string (e.g. `KTVPDKIKX0DER`, not an integer) from `describe-cluster-v2` first.
+
+```
+aws kafka update-storage \
+  --cluster-arn <cluster-arn> \
+  --current-version <cluster-version> \
+  --storage-mode TIERED
+```
+
+**Step 2 — enable tiered storage per topic.** Requires an Apache Kafka client version 3.0.0+ for `kafka-topics.sh --create`; existing topics can be reconfigured from a lower client version with `kafka-configs.sh`.
 
 ```
 kafka-configs.sh --bootstrap-server <bootstrap> --alter --entity-type topics --entity-name <topic> \
   --add-config 'remote.storage.enable=true,local.retention.ms=43200000,retention.ms=604800000'
 ```
+
+## References
+
+- [Tiered storage for Standard brokers](https://docs.aws.amazon.com/msk/latest/developerguide/msk-tiered-storage.html)
+- [Enable tiered storage on an existing cluster (CLI)](https://docs.aws.amazon.com/msk/latest/developerguide/msk-enable-cluster-tiered-storage-cli.html)
+- [Topic-level configuration guidelines](https://docs.aws.amazon.com/msk/latest/developerguide/msk-guidelines-tiered-storage-topic-level-config.html)

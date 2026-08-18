@@ -294,8 +294,9 @@ prompt injection succeeds. In summary:
 - **Payment decisions are made in code**, from the config file, before signing:
   scheme, network, exact asset contract, recipient, and per-payment ceiling.
 - **Only the vetted challenge entry reaches the signer.** The publisher's raw
-  response is never forwarded, so policy cannot validate one document while the SDK
-  signs another.
+  response is not forwarded. The `resource` object is included only after
+  URL-binding validation (origin+path must match the requested URL); arbitrary
+  publisher-injected fields are stripped.
 - **Signed proofs never reach the model.** For browser flows, the model gets an
   opaque single-use handle bound to one origin and path, expiring in 90 seconds.
 - **Fetching is hardened**: HTTPS only; loopback, private, link-local, metadata,
@@ -305,8 +306,10 @@ prompt injection succeeds. In summary:
 - **Retries are idempotent.** The token is derived, not random, and excludes the
   publisher's nonce, so a retry after a lost response replays one authorization
   instead of paying twice.
-- **Paid content is untrusted input** — returned bounded, type-restricted, and
-  marked `"untrusted": true`. Instructions inside it are data, never commands.
+- **Paid content is untrusted input** — by default, only content type, byte
+  count, and SHA-256 hash are returned. When the operator sets `return_body: true`
+  in the config file, body content is returned bounded (10 KiB cap) and marked
+  `"untrusted": true`. Instructions inside it are data, never commands.
 
 Full threat model and enforcement table:
 [`security-model.md`](security-model.md).

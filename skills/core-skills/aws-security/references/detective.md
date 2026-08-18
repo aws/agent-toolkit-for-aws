@@ -49,7 +49,7 @@ Detective investigations use a severity score:
 - Indicator types: TTP_OBSERVED, IMPOSSIBLE_TRAVEL, FLAGGED_IP_ADDRESS, NEW_GEOLOCATION, NEW_ASO, NEW_USER_AGENT, RELATED_FINDING, RELATED_FINDING_GROUP
 - Detective does not generate findings — it produces investigations and finding groups from ingested data
 
-**Documentation:** https://docs.aws.amazon.com/detective/latest/userguide/detective-investigations.html
+**Documentation:** https://docs.aws.amazon.com/detective/latest/userguide/investigations-report.html
 
 ## Service Notes
 

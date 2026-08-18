@@ -56,6 +56,7 @@ class BridgeContractTests(unittest.TestCase):
                 "payment_manager_arn": "arn:manager",
                 "payment_session_id": "session-1",
                 "user_id": "user-1",
+                "agent_name": "openclaw-aws-agents-pay",
             },
             self.factory,
         )
@@ -70,6 +71,7 @@ class BridgeContractTests(unittest.TestCase):
                         "paymentManagerArn": "arn:manager",
                         "paymentSessionId": "session-1",
                         "userId": "user-1",
+                        "agentName": "openclaw-aws-agents-pay",
                     },
                 )
             ],
@@ -93,6 +95,7 @@ class BridgeContractTests(unittest.TestCase):
                 "payment_session_id": "session-1",
                 "payment_instrument_id": "instrument-1",
                 "user_id": "user-1",
+                "agent_name": "openclaw-aws-agents-pay",
                 "client_token": token,
                 "version": "2",
                 "payload": payload,
@@ -110,6 +113,7 @@ class BridgeContractTests(unittest.TestCase):
                         "paymentManagerArn": "arn:manager",
                         "paymentSessionId": "session-1",
                         "userId": "user-1",
+                        "agentName": "openclaw-aws-agents-pay",
                         "paymentInstrumentId": "instrument-1",
                         "clientToken": token,
                         "paymentType": "CRYPTO_X402",
@@ -135,6 +139,7 @@ class BridgeContractTests(unittest.TestCase):
             "payment_manager_arn": "arn:manager",
             "payment_session_id": "session-1",
             "user_id": "user-1",
+            "agent_name": "openclaw-aws-agents-pay",
             "unexpected": "value",
         }
         with self.assertRaises(bridge.BridgeInputError):
@@ -149,6 +154,7 @@ class BridgeContractTests(unittest.TestCase):
             "payment_session_id": "session-1",
             "payment_instrument_id": "instrument-1",
             "user_id": "user-1",
+            "agent_name": "openclaw-aws-agents-pay",
             "client_token": "a" * 64,
             "version": "2",
             "payload": {"amount": "1000"},

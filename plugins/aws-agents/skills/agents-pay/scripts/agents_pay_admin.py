@@ -41,15 +41,45 @@ import secrets
 import stat
 import sys
 import tempfile
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
+
+
+def _check_aws_credentials(region: str | None = None) -> bool:
+    """Fail fast with a clear message if AWS credentials are missing/expired.
+
+    A cheap, read-only STS call (no IAM permissions beyond the default caller
+    identity) run BEFORE any interactive prompts. Without this, a user can type
+    through the entire setup-openclaw wizard only to discover at instrument or
+    session creation — several prompts later — that their credentials expired,
+    forcing a full re-run. boto3 is already a hard dependency of
+    bedrock-agentcore, so this adds no new dependency.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+    except ImportError:
+        # boto3 missing entirely is caught by the bedrock_agentcore.payments
+        # import check that every caller already performs; nothing to add here.
+        return True
+    try:
+        sts = boto3.client("sts", region_name=region or os.environ.get("AWS_REGION", "us-east-1"))
+        sts.get_caller_identity()
+        return True
+    except (NoCredentialsError, ClientError, BotoCoreError) as exc:
+        print(
+            "AWS credentials are invalid, expired, or missing.\n"
+            f"  ({exc})\n\n"
+            "Run `aws sso login` (or otherwise refresh your credentials), then "
+            "re-run this command.",
+            file=sys.stderr,
+        )
+        return False
 
 DEFAULT_DIR = Path.home() / ".agents-pay"
 DEFAULT_CONFIG = DEFAULT_DIR / "config.json"
 AGENT_NAME = "aws-agents-pay"
-
-# Where the AgentCore CLI records what `agentcore deploy` created. Read so the
-# operator never has to copy a manager ARN or connector ID by hand.
-DEPLOYED_STATE = Path("agentcore/.cli/deployed-state.json")
+USDC_DECIMALS = 6
 
 
 def admin_config_path(explicit: str | None) -> Path:
@@ -57,21 +87,50 @@ def admin_config_path(explicit: str | None) -> Path:
     return Path(explicit or os.environ.get("AGENTS_PAY_CONFIG") or DEFAULT_CONFIG)
 
 
-def discover_deployed() -> dict[str, str | None]:
+def deployed_state_candidates(project_dir: str | Path | None = None) -> list[Path]:
+    """Paths where the AgentCore CLI may record deployed payment resources."""
+    explicit = project_dir or os.environ.get("AGENTCORE_PROJECT_DIR")
+    if explicit:
+        root = Path(explicit).expanduser().resolve()
+        return [
+            root / "agentcore/.cli/deployed-state.json",
+            root / ".cli/deployed-state.json",
+        ]
+    return [
+        Path("agentcore/.cli/deployed-state.json"),  # project root
+        Path(".cli/deployed-state.json"),             # inside agentcore/
+        Path("../.cli/deployed-state.json"),          # child of agentcore/
+    ]
+
+
+def _find_deployed_state(project_dir: str | Path | None = None) -> Path | None:
+    """Return the first existing deployed-state.json candidate, or None."""
+    for candidate in deployed_state_candidates(project_dir):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def discover_deployed(project_dir: str | Path | None = None) -> dict[str, str | None]:
     """Best-effort read of manager ARN / connector ID from the CLI's deploy record.
 
     Returns a dict with possibly-None values; callers fall back to flags or env.
     Purely a convenience: nothing security-relevant is decided from this file, and
     a wrong or missing value surfaces as a plain error from the service.
 
-    CLI 0.20.x writes targets.<target>.resources.payments[]; older layouts used a
-    top-level payments[]. Both are handled.
+    Searches several relative paths so the command works whether you run from the
+    project root, inside the agentcore/ directory, or a subdirectory of it.
+
+    CLI 0.20.x writes targets.<target>.resources.payments[]; 0.26.x writes
+    payments as objects keyed by name. Older layouts used a top-level payments[].
+    All three are handled.
     """
     out: dict[str, str | None] = {"manager_arn": None, "connector_id": None, "role_arn": None}
-    if not DEPLOYED_STATE.exists():
+    state_path = _find_deployed_state(project_dir)
+    if state_path is None:
         return out
     try:
-        data = json.loads(DEPLOYED_STATE.read_text())
+        data = json.loads(state_path.read_text())
         payments = None
         targets = data.get("targets") or {}
         target = targets.get("default") or (next(iter(targets.values()), {}) if targets else {})
@@ -81,19 +140,71 @@ def discover_deployed() -> dict[str, str | None]:
             payments = data.get("payments")
         if not payments:
             return out
-        pay = payments[0]
+        # 0.26.x: payments is a dict keyed by name
+        if isinstance(payments, dict):
+            pay = next(iter(payments.values()), {})
+        # 0.20.x and older: payments is a list
+        elif isinstance(payments, list):
+            pay = payments[0] if payments else {}
+        else:
+            return out
         connectors = pay.get("connectors") or []
         out["manager_arn"] = pay.get("managerArn")
-        out["connector_id"] = connectors[0].get("connectorId") if connectors else None
+        # 0.26.x: connectors may be a dict keyed by name
+        if isinstance(connectors, dict):
+            first_connector = next(iter(connectors.values()), {})
+        elif isinstance(connectors, list):
+            first_connector = connectors[0] if connectors else {}
+        else:
+            first_connector = {}
+        out["connector_id"] = first_connector.get("connectorId") if first_connector else None
         out["role_arn"] = pay.get("processPaymentRoleArn")
     except Exception:  # noqa: BLE001 - convenience only; never fatal
         pass
     return out
 
 
-def resolve_manager_arn(explicit: str | None) -> str | None:
-    """Manager ARN from --flag, else the environment, else the CLI deploy record."""
-    return explicit or os.environ.get("PAYMENT_MANAGER_ARN") or discover_deployed()["manager_arn"]
+def resolve_manager_arn(explicit: str | None, config_path: Path) -> str | None:
+    """Manager ARN from --flag, else the environment, else config.json, else the CLI deploy record.
+
+    config.json's resources.payment_manager_arn is exactly the value create-instrument
+    (and init-config, when discoverable) persist right after a successful call — the
+    same source of truth resolve_region() now reads for region. Checking it here means
+    a repeat run of new-session from a different directory (no deployed-state.json in
+    reach) still finds the manager ARN the tool itself already saved, instead of
+    failing with "Could not determine the payment manager ARN" right next to a config
+    file that has had the answer the whole time.
+    """
+    if explicit:
+        return explicit
+    env_arn = os.environ.get("PAYMENT_MANAGER_ARN")
+    if env_arn:
+        return env_arn
+    config = load_raw_config(config_path)
+    config_arn = (config.get("resources") or {}).get("payment_manager_arn")
+    if config_arn:
+        return config_arn
+    return discover_deployed()["manager_arn"]
+
+
+def resolve_region(explicit: str | None, config_path: Path) -> str | None:
+    """Region from --flag, else the environment, else the config file, else None.
+
+    init-config (and create-instrument, on success) persist the region actually
+    used into resources.region, right alongside the manager ARN it goes with.
+    Preferring that saved value here — instead of a hardcoded default — keeps
+    the PaymentManager client in the same region as the manager ARN it was just
+    told to use. Returning None when nothing is configured lets boto3's own
+    session/profile resolution take over, rather than silently forcing a
+    region the operator never chose.
+    """
+    if explicit:
+        return explicit
+    env_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    if env_region:
+        return env_region
+    config = load_raw_config(config_path)
+    return (config.get("resources") or {}).get("region")
 
 # USDC contract addresses per network. Pinned here so an operator cannot be
 # tricked into allowlisting a look-alike token contract by pasting one in.
@@ -314,6 +425,11 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         return 1
 
     config_path = admin_config_path(args.path)
+    region = resolve_region(args.region, config_path)
+
+    if not _check_aws_credentials(region):
+        return 1
+
     user_id = resolve_user_id(args.user_id, config_path)
     if not user_id:
         print(
@@ -324,21 +440,24 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         return 1
 
     discovered = discover_deployed()
-    manager_arn = resolve_manager_arn(args.manager_arn)
+    manager_arn = resolve_manager_arn(args.manager_arn, config_path)
     connector_id = args.connector_id or os.environ.get("PAYMENT_CONNECTOR_ID") or discovered["connector_id"]
 
     if not manager_arn or not connector_id:
+        checked = ", ".join(str(p) for p in deployed_state_candidates())
         print(
-            "Could not determine the manager ARN and connector ID. Either run this from\n"
-            "your AgentCore project directory (so agentcore/.cli/deployed-state.json can\n"
-            "be read), or pass --manager-arn and --connector-id.",
+            f"Could not find deployed-state.json (checked: {checked}).\n\n"
+            "This file is created by `agentcore deploy`. To resolve:\n"
+            "  \u2022 Run this command from the directory that CONTAINS the agentcore/ folder, OR\n"
+            "  \u2022 Run from inside the agentcore/ directory itself, OR\n"
+            "  \u2022 Pass --manager-arn and --connector-id explicitly.",
             file=sys.stderr,
         )
         return 1
 
     manager = PaymentManager(
         payment_manager_arn=manager_arn,
-        region_name=args.region or os.environ.get("AWS_REGION", "us-west-2"),
+        region_name=region,
         agent_name=AGENT_NAME,
     )
     instrument = manager.create_payment_instrument(
@@ -362,7 +481,7 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         payment_manager_arn=manager_arn,
         payment_instrument_id=instrument_id,
         user_id=user_id,
-        region=args.region or os.environ.get("AWS_REGION"),
+        region=region,
     )
 
     print(f"Instrument created : {instrument_id}")
@@ -376,7 +495,7 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         print("     https://github.com/privy-io/aws-agentcore-sdk")
     print(f"  2. Funding   : send testnet USDC to {wallet_address}")
     print("                 https://faucet.circle.com/ (Base Sepolia)")
-    print(f"\nThen authorize spending:\n  {Path(__file__).name} new-session --budget 1.00")
+    print(f"\nThen authorize spending:\n  {Path(__file__).name} new-session --budget 1.00 --expiry-minutes 120")
     return 0
 
 
@@ -417,6 +536,11 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         return 1
 
     config_path = admin_config_path(args.path)
+    region = resolve_region(args.region, config_path)
+
+    if not _check_aws_credentials(region):
+        return 1
+
     user_id = resolve_user_id(args.user_id, config_path)
     if not user_id:
         print(
@@ -426,12 +550,17 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         )
         return 1
 
-    manager_arn = resolve_manager_arn(args.manager_arn)
+    manager_arn = resolve_manager_arn(args.manager_arn, config_path)
     if not manager_arn:
+        checked = ", ".join(str(p) for p in deployed_state_candidates())
         print(
-            "Could not determine the payment manager ARN. Either run this from your\n"
-            "AgentCore project directory (so agentcore/.cli/deployed-state.json can be\n"
-            "read), pass --manager-arn, or set PAYMENT_MANAGER_ARN.",
+            f"Could not determine the payment manager ARN.\n\n"
+            f"Searched for deployed-state.json at: {checked}\n\n"
+            "This file is created by `agentcore deploy`. To resolve:\n"
+            "  \u2022 Run this command from the directory that CONTAINS the agentcore/ folder, OR\n"
+            "  \u2022 Run from inside the agentcore/ directory itself, OR\n"
+            "  \u2022 Pass --manager-arn explicitly, OR\n"
+            "  \u2022 Set PAYMENT_MANAGER_ARN in your environment.",
             file=sys.stderr,
         )
         return 1
@@ -447,7 +576,7 @@ def cmd_new_session(args: argparse.Namespace) -> int:
 
     manager = PaymentManager(
         payment_manager_arn=manager_arn,
-        region_name=args.region or os.environ.get("AWS_REGION", "us-west-2"),
+        region_name=region,
         agent_name=AGENT_NAME,
     )
     session = manager.create_payment_session(
@@ -469,6 +598,372 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         "\nWhen this budget is spent, the agent CANNOT mint another session — by design.\n"
         "Re-run this command yourself to authorize more spending."
     )
+    return 0
+
+
+def _prompt(question: str, default: str = "") -> str:
+    """Prompt with an optional default shown in brackets."""
+    suffix = f" [{default}]: " if default else ": "
+    answer = input(question + suffix).strip()
+    return answer or default
+
+
+def parse_positive_decimal(value: str, label: str) -> Decimal:
+    """Parse a human-entered positive decimal without float rounding."""
+    try:
+        amount = Decimal(value)
+    except InvalidOperation as exc:
+        raise ValueError(f"{label} must be a decimal number.") from exc
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError(f"{label} must be greater than zero.")
+    return amount
+
+
+def usd_to_atomic(value: Decimal, decimals: int = USDC_DECIMALS) -> str:
+    """Convert a decimal stablecoin amount to exact atomic units."""
+    atomic = value * (Decimal(10) ** decimals)
+    if atomic != atomic.to_integral_value():
+        raise ValueError(
+            f"Max per-payment USD supports at most {decimals} decimal places."
+        )
+    return str(int(atomic))
+
+
+def format_duration(minutes: int) -> str:
+    """Render minutes with a compact hours hint for human review."""
+    if minutes % 60 == 0:
+        hours = minutes // 60
+        return f"{minutes} minutes ({hours} hour{'s' if hours != 1 else ''})"
+    return f"{minutes} minutes"
+
+
+def build_openclaw_config(
+    *,
+    region: str,
+    manager_arn: str,
+    instrument_id: str,
+    session_id: str,
+    user_id: str,
+    network: str,
+    asset: str,
+    max_payment_atomic: str,
+    recipients: list[str],
+    allow_any: bool,
+    origins: list[str],
+    return_body: bool,
+) -> dict:
+    """Build the final OpenClaw configuration from validated wizard inputs."""
+    plugin_config = {
+        "region": region,
+        "paymentManagerArn": manager_arn,
+        "paymentInstrumentId": instrument_id,
+        "payment_session_id": session_id,
+        "userId": user_id,
+        "networkPreferences": [network],
+        "allowedAssetsByNetwork": {network: [asset]},
+        "maxPaymentAmountAtomic": max_payment_atomic,
+        "returnBody": return_body,
+    }
+    if allow_any:
+        plugin_config["allowAnyRecipient"] = True
+    else:
+        plugin_config["allowedRecipients"] = recipients
+    if origins:
+        plugin_config["allowedOrigins"] = origins
+
+    return {
+        "plugins": {
+            "allow": ["aws-agents-pay"],
+            "entries": {
+                "aws-agents-pay": {
+                    "enabled": True,
+                    "config": plugin_config,
+                },
+            },
+        }
+    }
+
+
+def cmd_setup_openclaw(args: argparse.Namespace) -> int:
+    """Interactive guided setup for OpenClaw — collects inputs once and threads through."""
+    if not sys.stdin.isatty():
+        print("setup-openclaw requires an interactive terminal.", file=sys.stderr)
+        return 1
+    project_dir = (
+        Path(args.project_dir).expanduser().resolve()
+        if args.project_dir
+        else None
+    )
+    if project_dir and not project_dir.is_dir():
+        print(f"AgentCore project directory does not exist: {project_dir}", file=sys.stderr)
+        return 1
+
+    print("\n" + "=" * 60)
+    print("  AWS Agents Pay — OpenClaw Setup")
+    print("=" * 60)
+    print("\nThis wizard provisions payment resources and generates your")
+    print("OpenClaw plugin configuration. You'll need:")
+    print("  • agentcore CLI installed and deployed (agentcore deploy)")
+    print("  • bedrock-agentcore Python package (>=1.19.0)")
+    print("  • AWS credentials with the ManagementRole")
+    if project_dir:
+        print(f"  • AgentCore project: {project_dir}")
+    print()
+
+    # --- Prerequisites check ---
+    try:
+        from bedrock_agentcore.payments import PaymentManager
+    except ImportError:
+        print(
+            "[FAIL] bedrock_agentcore.payments is not installed.\n"
+            "Run: python -m pip install --upgrade 'bedrock-agentcore>=1.19.0'",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not _check_aws_credentials():
+        return 1
+
+    # --- Step 1: User identity ---
+    print("\n--- Step 1: User Identity ---")
+    print("A stable userId ties your instrument and session together.")
+    user_id = _prompt("User ID (blank to auto-generate)", "")
+    if not user_id:
+        user_id = generate_user_id()
+        print(f"  Generated: {user_id}")
+
+    # --- Step 2: Region ---
+    region = _prompt("AWS region", "us-east-1")
+
+    # --- Step 3: Network ---
+    print("\n--- Step 2: Network ---")
+    print(f"Known networks: {', '.join(KNOWN_USDC.keys())}")
+    network = _prompt("CAIP-2 network", "eip155:84532")
+    if network not in KNOWN_USDC:
+        print(f"Unknown network {network}. Known: {', '.join(KNOWN_USDC)}", file=sys.stderr)
+        return 1
+    asset = KNOWN_USDC[network]
+
+    # --- Step 4: Recipient mode ---
+    print("\n--- Step 3: Recipient Mode ---")
+    print("  1. Allowlist specific merchant addresses (recommended)")
+    print("  2. Allow any recipient (high risk — publisher chooses beneficiary)")
+    mode = _prompt("Choice", "1")
+    recipients: list[str] = []
+    allow_any = False
+    if mode == "2":
+        allow_any = True
+        print("  ⚠ allow-any-recipient enabled.")
+    else:
+        print("Enter merchant wallet addresses (one per line, blank to finish):")
+        while True:
+            addr = input("  payTo: ").strip()
+            if not addr:
+                break
+            recipients.append(addr)
+        if not recipients:
+            print("At least one recipient is required.", file=sys.stderr)
+            return 1
+
+    # --- Step 5: Per-payment cap ---
+    print("\n--- Step 4: Spend Limits ---")
+    max_usd_text = _prompt(
+        "Max per-payment USD (for example 0.10, not atomic units)",
+        "0.05",
+    )
+    try:
+        max_usd = parse_positive_decimal(max_usd_text, "Max per-payment USD")
+        max_payment_atomic = usd_to_atomic(max_usd)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(
+        f"  ${format(max_usd, 'f')} USD = {max_payment_atomic} atomic units "
+        f"(USDC, {USDC_DECIMALS} decimals)"
+    )
+    budget_text = _prompt("Cumulative session budget USD", "5.00")
+    expiry_text = _prompt("Session expiry in minutes (1440 = 24 hours)", "120")
+    try:
+        budget = parse_positive_decimal(budget_text, "Session budget USD")
+        expiry = int(expiry_text)
+        if expiry <= 0:
+            raise ValueError("Expiry minutes must be greater than zero.")
+        if max_usd > budget:
+            raise ValueError(
+                "Max per-payment USD cannot exceed the cumulative session budget. "
+                "Enter decimal USD values, not atomic units."
+            )
+    except (ValueError, TypeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    # --- Step 6: Origins ---
+    print("\nAllowed origins (blank to allow any public HTTPS site):")
+    origins: list[str] = []
+    while True:
+        origin = input("  origin: ").strip()
+        if not origin:
+            break
+        origins.append(origin)
+
+    # --- Step 7: Return body ---
+    print("\n--- Step 5: Paid Content Return ---")
+    print(
+        "By default, paid publisher content is withheld from the model's context "
+        "as a security\ncontrol — the response body may contain prompt injection. "
+        "Returning it lets the agent\nread/summarize what it paid for, at that risk."
+    )
+    return_body_answer = _prompt("Return paid response body to the agent? (y/n)", "y")
+    return_body = return_body_answer.strip().lower() not in ("n", "no", "false", "0")
+
+    # --- Write config ---
+    config_path = admin_config_path(args.path)
+    config: dict = {"resources": {}, "policy": {}}
+    config["resources"]["user_id"] = user_id
+    config["resources"]["region"] = region
+    config["policy"] = {
+        "max_per_payment_usd": format(max_usd, "f"),
+        "allowed_networks": [network],
+        "allowed_assets": {network: [asset]},
+        "allowed_schemes": ["exact"],
+        "return_body": return_body,
+    }
+    if allow_any:
+        config["policy"]["allow_any_recipient"] = True
+    else:
+        config["policy"]["allowed_recipients"] = recipients
+    if origins:
+        config["policy"]["allowed_origins"] = origins
+
+    # Discover manager ARN
+    discovered = discover_deployed(project_dir)
+    manager_arn = discovered["manager_arn"]
+    connector_id = discovered["connector_id"]
+    if not manager_arn:
+        checked = ", ".join(str(p) for p in deployed_state_candidates(project_dir))
+        print(
+            "\nCould not auto-discover payment manager ARN from deployed-state.json.\n"
+            f"Checked: {checked}"
+        )
+        manager_arn = _prompt("Payment Manager ARN", "")
+        if not manager_arn:
+            print("Manager ARN is required.", file=sys.stderr)
+            return 1
+    else:
+        print(f"\n  Discovered manager ARN: {manager_arn}")
+    config["resources"]["payment_manager_arn"] = manager_arn
+
+    if not connector_id:
+        connector_id = _prompt("Payment Connector ID", "")
+        if not connector_id:
+            print("Connector ID is required.", file=sys.stderr)
+            return 1
+    else:
+        print(f"  Discovered connector ID: {connector_id}")
+
+    save_config(config_path, config)
+    print(f"\n  ✓ Config written to {config_path}")
+    print(
+        f"  Paid response body will be {'RETURNED to' if return_body else 'WITHHELD from'} "
+        "the agent (policy.return_body)."
+    )
+
+    # --- Create instrument ---
+    print("\n--- Step 6: Create Payment Instrument ---")
+    email = _prompt("End-user email (for wallet delegation)", "")
+    if not email:
+        print("Email is required for instrument creation.", file=sys.stderr)
+        return 1
+
+    network_family = "ETHEREUM" if "eip155" in network else "SOLANA"
+    manager = PaymentManager(
+        payment_manager_arn=manager_arn,
+        region_name=region,
+        agent_name=AGENT_NAME,
+    )
+    instrument = manager.create_payment_instrument(
+        user_id=user_id,
+        payment_connector_id=connector_id,
+        payment_instrument_type="EMBEDDED_CRYPTO_WALLET",
+        payment_instrument_details={
+            "embeddedCryptoWallet": {
+                "network": network_family,
+                "linkedAccounts": [{"email": {"emailAddress": email}}],
+            }
+        },
+    )
+    instrument_id = instrument["paymentInstrumentId"]
+    wallet = (instrument.get("paymentInstrumentDetails") or {}).get("embeddedCryptoWallet", {})
+    wallet_address = wallet.get("walletAddress")
+    redirect_url = wallet.get("redirectUrl")
+
+    update_resources(config_path, payment_instrument_id=instrument_id)
+    print(f"  ✓ Instrument created: {instrument_id}")
+    print(f"    Wallet: {wallet_address}")
+
+    # --- Delegation + funding ---
+    print("\n--- Step 7: Delegate & Fund ---")
+    if redirect_url:
+        print(f"  1. Visit: {redirect_url}")
+        print(f"     Sign in and grant access to {wallet_address}")
+    else:
+        print("  1. Approve via the Privy frontend SDK")
+    print(f"  2. Send testnet USDC to {wallet_address}")
+    print("     https://faucet.circle.com/ (Base Sepolia)")
+    print()
+    input("Press Enter when delegation and funding are complete...")
+
+    # --- Create session ---
+    print("\n--- Step 8: Create Payment Session ---")
+    print(f"\n  About to create session:")
+    print(f"    Budget:          ${format(budget, 'f')} USD cumulative")
+    print(
+        f"    Per-payment cap: ${format(max_usd, 'f')} USD "
+        f"({max_payment_atomic} atomic units)"
+    )
+    print(f"    Expiry:          {format_duration(expiry)}")
+    print(f"    User:            {user_id}")
+    if input("  Type 'approve' to continue: ").strip() != "approve":
+        print("Aborted. No session created.")
+        return 1
+
+    session = manager.create_payment_session(
+        user_id=user_id,
+        expiry_time_in_minutes=expiry,
+        limits={
+            "maxSpendAmount": {
+                "value": format(budget, "f"),
+                "currency": "USD",
+            }
+        },
+    )
+    session_id = session["paymentSessionId"]
+    update_resources(config_path, payment_session_id=session_id)
+    print(f"  ✓ Session created: {session_id}")
+
+    # --- Generate OpenClaw config ---
+    print("\n" + "=" * 60)
+    print("  ✅ Setup complete!")
+    print("=" * 60)
+    print("\nAdd this to your OpenClaw config (~/.openclaw/openclaw.json):")
+    print()
+    openclaw_config = build_openclaw_config(
+        region=region,
+        manager_arn=manager_arn,
+        instrument_id=instrument_id,
+        session_id=session_id,
+        user_id=user_id,
+        network=network,
+        asset=asset,
+        max_payment_atomic=max_payment_atomic,
+        recipients=recipients,
+        allow_any=allow_any,
+        origins=origins,
+        return_body=return_body,
+    )
+
+    print(json.dumps(openclaw_config, indent=2))
+    print("\nThen restart OpenClaw to activate the plugin.")
     return 0
 
 
@@ -495,11 +990,16 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     if not os.environ.get("PAYMENT_MANAGER_ARN"):
         discovered = discover_deployed()
         if discovered["manager_arn"]:
-            print(f"\n       Found in {DEPLOYED_STATE}: run this to fix the above ->")
+            state_path = _find_deployed_state()
+            print(f"\n       Found in {state_path}: run this to fix the above ->")
             print(f"         export PAYMENT_MANAGER_ARN={discovered['manager_arn']}")
         else:
-            print(f"\n       No {DEPLOYED_STATE} here. Run from your AgentCore project")
-            print("       directory, or set the variables by hand.")
+            print(
+                "\n       deployed-state.json not found "
+                f"(checked: {', '.join(str(p) for p in deployed_state_candidates())})."
+            )
+            print("       Run from the directory that CONTAINS the agentcore/ folder,")
+            print("       from inside it, or set the variables by hand.")
 
     # This design never needs provider secrets in the runtime process.
     leaked = [
@@ -586,6 +1086,18 @@ def main() -> int:
     p = sub.add_parser("preflight", help="Verify wiring and check for exposed secrets")
     p.add_argument("--path", default=None)
     p.set_defaults(func=cmd_preflight)
+
+    p = sub.add_parser("setup-openclaw", help="Interactive guided setup for OpenClaw (all steps in one flow)")
+    p.add_argument("--path", default=None, help="Config path (default ~/.agents-pay/config.json)")
+    p.add_argument(
+        "--project-dir",
+        default=None,
+        help=(
+            "AgentCore project directory used to locate deployed-state.json "
+            "(or set AGENTCORE_PROJECT_DIR)"
+        ),
+    )
+    p.set_defaults(func=cmd_setup_openclaw)
 
     args = ap.parse_args()
     return args.func(args)

@@ -470,6 +470,39 @@ def select_accept_entry(challenge: dict, policy: dict) -> dict:
     )
 
 
+def _validated_resource(challenge: dict, url: str) -> dict | None:
+    """Validate and sanitize the challenge's resource object before signing.
+
+    The x402 v2 spec requires the signed header to echo the resource for URL
+    binding. However, the publisher controls the challenge, so we must verify
+    that resource.url matches the URL we actually requested. This prevents a
+    hostile publisher from binding the signature to a different resource.
+
+    Comparison uses origin+path only: query parameters appended by the
+    publisher (e.g. tracking params) do not change which server gets paid.
+
+    Returns a sanitized dict with only the `url` field, or None if the
+    challenge has no resource. Raises PolicyError on mismatch.
+    """
+    resource = challenge.get("resource")
+    if resource is None:
+        return None
+    if not isinstance(resource, dict):
+        return None
+    resource_url = resource.get("url")
+    if not isinstance(resource_url, str):
+        return None
+    # Bind: resource.url origin+path must match the requested origin+path.
+    requested = urlparse(url)
+    challenged = urlparse(resource_url)
+    req_base = f"{requested.scheme}://{requested.netloc}{requested.path}".rstrip("/")
+    ch_base = f"{challenged.scheme}://{challenged.netloc}{challenged.path}".rstrip("/")
+    if req_base != ch_base:
+        raise _fail("Challenge resource.url does not match the requested URL.")
+    # Forward only the url field — no arbitrary publisher-controlled keys.
+    return {"url": resource_url}
+
+
 def authorize_payment(
     url: str,
     challenge: dict,
@@ -516,6 +549,7 @@ def authorize_payment(
     return {
         "accept": vetted_entry,
         "origin": origin,
+        "resource": _validated_resource(challenge, url),
         "amount_base_units": str(amount_units),
         "amount_usd": str(base_units_to_usd(amount_units)),
         "x402_version": x402_version,
@@ -536,8 +570,15 @@ def derive_client_token(
     purchase_id: str | None = None,
     *,
     session_id: str | None = None,
+    policy: dict | None = None,
 ) -> str:
     """Derive a stable idempotency token for one logical purchase.
+
+    Part of the same fix batch as the region-resolution changes in x402_fetch.py
+    (see that module's docstring): the `policy=` parameter below closes a second
+    instance of the "config.json has the value, code reads the environment
+    instead" pattern found in this batch, this time for the session ID used as
+    idempotency-token material rather than for region.
 
     Same (session, resource, network, asset, recipient, amount) always yields the
     same token, so a retry after a lost response replays the SAME authorization
@@ -556,8 +597,23 @@ def derive_client_token(
     turn counter — anything the caller controls) to distinguish deliberate
     repeat buys. Suppressing a duplicate charge is the safer default when the
     caller has not said otherwise.
+
+    session_id resolution: an explicit `session_id` always wins. If neither
+    `session_id` nor `policy` is given, this falls back to a raw environment
+    read for backward compatibility with existing callers (tests, embedded use)
+    that predate the `policy` parameter. A caller that DOES pass `policy` gets
+    resolve_resource()'s documented config-file-first precedence instead — the
+    correct behavior for any new caller resolving the session itself rather than
+    passing an explicit session_id (the production call site in
+    authorize_payment() already always passes session_id explicitly and is
+    unaffected either way).
     """
-    session = session_id if session_id is not None else os.environ.get("PAYMENT_SESSION_ID", "")
+    if session_id is not None:
+        session = session_id
+    elif policy is not None:
+        session = resolve_resource(policy, "payment_session_id") or ""
+    else:
+        session = os.environ.get("PAYMENT_SESSION_ID", "")
     material = "\x1f".join(  # unit separator: cannot appear in these values
         [
             session,

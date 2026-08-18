@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { deriveClientToken } from "../dist/payments.js";
 import { parseBridgeResponse } from "../dist/bridge.js";
 import { normalizeConfig } from "../dist/config.js";
+import { buildPaidContentResult, MAX_RETURNED_BODY_BYTES } from "../dist/index.js";
 import {
   PaymentBlocked,
   assertHttpsUrl,
@@ -322,12 +323,21 @@ test("model-facing tool inventory excludes setup, session creation, and proof to
   }
 });
 
-test("manifest declares all required fields for safe startup", async () => {
+test("manifest supports setup before enforcing complete payment config", async () => {
   const manifest = JSON.parse(
     await readFile(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
   );
-  const required = manifest.configSchema.required;
-  // Every field the plugin refuses to start without must be declared here.
+  assert.deepEqual(manifest.skills, ["skills/agents-pay"]);
+  assert.equal(manifest.configSchema.required, undefined);
+  const [unconfigured, configured] = manifest.configSchema.anyOf;
+  const preconfigurationFields = unconfigured.not.anyOf.map(
+    (branch) => branch.required[0],
+  );
+  assert.ok(preconfigurationFields.includes("paymentManagerArn"));
+  assert.ok(preconfigurationFields.includes("allowedRecipients"));
+  assert.ok(preconfigurationFields.includes("returnBody"));
+
+  const required = configured.required;
   assert.ok(required.includes("paymentManagerArn"));
   assert.ok(required.includes("paymentInstrumentId"));
   assert.ok(required.includes("userId"));
@@ -335,7 +345,7 @@ test("manifest declares all required fields for safe startup", async () => {
   assert.ok(!required.includes("allowedRecipients"));
   assert.ok(required.includes("maxPaymentAmountAtomic"));
   assert.deepEqual(
-    manifest.configSchema.oneOf.map((branch) => branch.required),
+    configured.oneOf.map((branch) => branch.required),
     [["allowedRecipients"], ["allowAnyRecipient"]],
   );
   const amount = manifest.configSchema.properties.maxPaymentAmountAtomic;
@@ -354,9 +364,10 @@ test("public package and runtime identities stay aligned", async () => {
     readFile(new URL("../README.md", import.meta.url), "utf8"),
   ]);
   assert.equal(packageJson.name, "@aws/aws-agents-pay");
-  assert.equal(packageJson.version, "1.0.3");
+  assert.equal(packageJson.version, "1.0.7");
   assert.equal(manifest.id, "aws-agents-pay");
   assert.equal(manifest.name, "AWS Agents Pay");
+  assert.deepEqual(manifest.skills, ["skills/agents-pay"]);
   assert.ok(packageJson.files.includes("skills"));
   assert.ok(packageJson.files.includes("runtime/agentcore_bridge.py"));
   assert.equal(packageJson.dependencies["@aws-sdk/client-bedrock-agentcore"], undefined);
@@ -404,6 +415,10 @@ test("bundled skill is exact and excludes nested packages", async () => {
     );
   }
   await assert.rejects(access(path.join(bundledRoot, "packages")));
+  assert.match(
+    await readFile(path.join(bundledRoot, "requirements.txt"), "utf8"),
+    /^bedrock-agentcore==1\.19\.0$/m,
+  );
 });
 
 test("runtime dependency graph excludes Bowser", async () => {
@@ -415,5 +430,89 @@ test("runtime dependency graph excludes Bowser", async () => {
   assert.equal(
     packageLock.packages["node_modules/@aws-sdk/client-bedrock-agentcore"],
     undefined,
+  );
+});
+
+function replayResultFor(body) {
+  return {
+    status: 200,
+    contentType: "application/json",
+    bodySha256: "deadbeef",
+    bodyBytes: Buffer.byteLength(body),
+    url: fixture.requestUrl,
+    body,
+  };
+}
+
+test("get_paid_content withholds the paid body by default (returnBody absent)", () => {
+  const result = buildPaidContentResult(
+    replayResultFor('{"secret":"paid content"}'),
+    { returnBody: undefined },
+  );
+  assert.equal(result.content_returned, false);
+  assert.equal("body" in result, false);
+  assert.equal("untrusted" in result, false);
+  assert.equal("truncated" in result, false);
+  // Metadata-only fields are unchanged from the pre-returnBody contract.
+  assert.deepEqual(Object.keys(result).sort(), [
+    "body_bytes",
+    "body_sha256",
+    "content_returned",
+    "content_type",
+    "paid",
+    "refused",
+    "status_code",
+    "url",
+  ]);
+});
+
+test("get_paid_content withholds the paid body when returnBody is explicitly false", () => {
+  const result = buildPaidContentResult(
+    replayResultFor('{"secret":"paid content"}'),
+    { returnBody: false },
+  );
+  assert.equal(result.content_returned, false);
+  assert.equal("body" in result, false);
+});
+
+test("get_paid_content returns the paid body only when returnBody is explicitly true", () => {
+  const body = '{"secret":"paid content"}';
+  const result = buildPaidContentResult(replayResultFor(body), {
+    returnBody: true,
+  });
+  assert.equal(result.content_returned, true);
+  assert.equal(result.body, body);
+  assert.equal(result.truncated, false);
+  assert.equal(result.untrusted, true);
+});
+
+test("get_paid_content caps and marks truncated when the paid body exceeds the return cap", () => {
+  const body = "x".repeat(MAX_RETURNED_BODY_BYTES + 500);
+  const result = buildPaidContentResult(replayResultFor(body), {
+    returnBody: true,
+  });
+  assert.equal(result.content_returned, true);
+  assert.equal(result.body.length, MAX_RETURNED_BODY_BYTES);
+  assert.equal(result.truncated, true);
+  assert.equal(result.untrusted, true);
+});
+
+test("config.ts accepts an explicit returnBody boolean and rejects non-boolean values", () => {
+  const withReturnBody = normalizeConfig({
+    ...structuredClone(fixture.config),
+    returnBody: true,
+  });
+  assert.equal(withReturnBody.returnBody, true);
+
+  const withoutReturnBody = normalizeConfig(structuredClone(fixture.config));
+  assert.equal(withoutReturnBody.returnBody, undefined);
+
+  assert.throws(
+    () =>
+      normalizeConfig({
+        ...structuredClone(fixture.config),
+        returnBody: "true",
+      }),
+    /returnBody must be a boolean/,
   );
 });

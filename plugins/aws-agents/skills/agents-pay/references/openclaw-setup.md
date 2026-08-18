@@ -4,13 +4,71 @@ OpenClaw uses the `@aws/aws-agents-pay` package from ClawHub. Its canonical
 source lives at
 `plugins/aws-agents/skills/agents-pay/packages/openclaw/` in this repository.
 
+For background on AgentCore Payments, see the
+[getting started guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-getting-started.html).
+
+## Step 0: Choose your user identity
+
+Pick a stable `userId` before provisioning any payment resources. This identity
+must be used consistently across `create-instrument`, `new-session`, and your
+OpenClaw plugin config — a mismatch means the session cannot spend the
+instrument.
+
+```bash
+export PAYMENT_USER_ID="my-openclaw-agent"
+```
+
+Pass `--user-id $PAYMENT_USER_ID` to every admin command, or run `init-config`
+first (which generates and stores one in `~/.agents-pay/config.json` for you).
+
 ## Install
 
 ```bash
 openclaw plugins install clawhub:@aws/aws-agents-pay
 ```
 
-## Configure
+The plugin can load before payment resources are configured so the bundled
+setup skill remains discoverable. Both payment tools still fail closed until a
+complete trusted configuration exists.
+
+## Provision the AgentCore project
+
+Create an AgentCore project before adding and deploying the payment resources:
+
+```bash
+npm install -g @aws/agentcore
+PROJECT_NAME=openclaw-payments
+agentcore create --project-name "$PROJECT_NAME" --no-agent
+cd "$PROJECT_NAME"
+agentcore add payment-manager
+agentcore add payment-connector
+agentcore deploy
+export AGENTCORE_PROJECT_DIR="$PWD"
+```
+
+Run both `agentcore add` commands without flags so credentials remain in the
+interactive terminal. Keep `AGENTCORE_PROJECT_DIR` set while running the setup
+wizard from the plugin directory.
+
+## Quick Setup (Recommended)
+
+After deploying the AgentCore project, run the interactive wizard. It creates
+the payment instrument and session, then generates the OpenClaw configuration:
+
+```bash
+cd ~/.openclaw/extensions/aws-agents-pay/skills/agents-pay
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python scripts/agents_pay_admin.py setup-openclaw \
+  --project-dir "$AGENTCORE_PROJECT_DIR"
+```
+
+The wizard walks through: user identity → network → recipients → spend limits →
+instrument creation → delegation/funding → session approval → generates your
+OpenClaw config JSON ready to paste.
+
+## Manual Setup
 
 Add to your OpenClaw config (`~/.openclaw/openclaw.json` or via
 `openclaw config`). Explicitly allow the installed plugin:
@@ -20,11 +78,7 @@ Open a separate terminal and run the human setup from the bundled skill:
 
 ```bash
 cd ~/.openclaw/extensions/aws-agents-pay/skills/agents-pay
-npm install -g @aws/agentcore
-agentcore add payment-manager
-agentcore add payment-connector
-agentcore deploy
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python scripts/agents_pay_admin.py init-config \
@@ -42,7 +96,11 @@ the interactive terminal. Do not paste credentials, command output, deployed
 state, or generated identifiers into an LLM conversation.
 
 Complete delegation and testnet funding before creating the session. Then edit
-the OpenClaw config locally in the same terminal or a local editor:
+the OpenClaw config locally in the same terminal or a local editor.
+
+> **Important:** The `userId` below must match the identity used in
+> `create-instrument` and `new-session`. A mismatch means the session cannot
+> spend the instrument.
 
 ```json
 {
