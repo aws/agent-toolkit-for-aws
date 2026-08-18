@@ -13,11 +13,8 @@ description: >
   interpreter", "delete agent", "tear down", "agentcore remove",
   "cross-account memory",
   "add payments capability to my agent", "wire payments plugin",
-  "payments middleware for my agent",
   "integrate x402 payments with the agent I'm building",
-  "enable my agent project with x402 payments",
-  "add MPP payments", "Machine Payments Protocol",
-  "pay an MPP merchant", "WWW-Authenticate: Payment".
+  "add MPP payments", "Machine Payments Protocol".
   External APIs via Gateway: use agents-connect. New project:
   use agents-get-started. CLI/dev-server errors: use agents-debug.
   Runtime x402/MPP payments: use agents-pay. Migration-specific Strands vs
