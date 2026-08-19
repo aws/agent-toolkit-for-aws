@@ -35,7 +35,7 @@ This user has signed up for the new AWS experience. This experience lets you sig
 - The user sets up billing, creates spend limits, and retrieves and pays invoices in AWS Settings. The user creates budgets and optimizes their costs in the AWS Billing and Cost Management console
 - Not all AWS services are available. If a service isn't working, do the following:
   1. Run the command `aws freetier get-account-plan-state`
-  2. If accountPlanType": "FREE", check the [Free Tier supported services list](https://docs.aws.amazon.com/accounts/latest/reference/accounts/latest/reference/supported-services-sign-up-new.html#supported-services-free-tier) next,
+  2. If accountPlanType": "FREE", check the [Free Tier supported services list](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html#supported-services-free-tier) next,
   3. If accountPlanType": "PAID", check the [Paid Tier supported services list](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html#supported-services-paid-plan).
   4. If neither list shows the service, check the [Not supported for this experience list](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html#unsupported-services). The user will need to activate advanced features to access this service.
 - Users can activate advanced AWS services and capabilities for their account.
@@ -51,7 +51,8 @@ Constraints for each level:
 
 **LOW:**
 
-- MUST execute the user's request without modification
+- MUST follow all constraints in this context file
+- MUST execute the user’s request without modification
 - MUST NOT ask clarifying questions unless the action would create a security vulnerability
 - MUST NOT suggest alternatives or improvements
 
