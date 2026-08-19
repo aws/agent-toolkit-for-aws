@@ -17,6 +17,20 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 KEBAB_RE = re.compile(r"^[a-z][a-z0-9]+(-[a-z0-9]+)*$")
+LEGACY_AGENTCORE_RE = re.compile(
+    r"\bagentcore "
+    r"(?:--version|create|add|remove|dev|deploy|status|invoke|fetch|logs|"
+    r"traces|run|evals|pause|resume|validate|update|import|init|dp)"
+    r"(?=[\s`]|$)"
+)
+PROJECT_LIFECYCLE_ARGS_RE = re.compile(
+    r"\bagentcore project (?:add|remove|dev|deploy|status|build)\s+"
+    r"(?:--|[a-zA-Z0-9_<])"
+)
+MIGRATED_AGENTCORE_DOCS = (
+    Path("plugins/aws-agents/README.md"),
+    Path("plugins/aws-agents/skills/agents-get-started"),
+)
 
 errors: list[str] = []
 
@@ -171,6 +185,36 @@ def validate_top_level_skills() -> None:
         validate_skill_frontmatter(skill_md)
 
 
+def validate_migrated_agentcore_docs() -> None:
+    """Validate AgentCore commands in skill families migrated to the new CLI."""
+    print("Validating migrated AgentCore CLI references")
+    markdown_files: set[Path] = set()
+    for relative_path in MIGRATED_AGENTCORE_DOCS:
+        path = REPO_ROOT / relative_path
+        if path.is_file():
+            markdown_files.add(path)
+        elif path.is_dir():
+            markdown_files.update(path.rglob("*.md"))
+
+    for path in sorted(markdown_files):
+        relative = path.relative_to(REPO_ROOT)
+        lines = path.read_text().splitlines()
+        for line_number, line in enumerate(lines, start=1):
+            legacy = LEGACY_AGENTCORE_RE.search(line)
+            if legacy:
+                error(
+                    f"Legacy AgentCore command '{legacy.group(0)}' in "
+                    f"{relative}:{line_number}"
+                )
+
+            if PROJECT_LIFECYCLE_ARGS_RE.search(line):
+                error(
+                    "Project lifecycle commands must not have undocumented "
+                    "arguments "
+                    f"or flags in {relative}:{line_number}"
+                )
+
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate repo manifests and skills")
@@ -185,6 +229,8 @@ def main() -> None:
             print(f"Plugin not found: {args.plugin}", file=sys.stderr)
             sys.exit(1)
         validate_plugin(plugin_dir)
+        if args.plugin == "aws-agents":
+            validate_migrated_agentcore_docs()
     else:
         # Marketplace manifests
         validate_marketplace(
@@ -205,6 +251,7 @@ def main() -> None:
 
         # Top-level skills
         validate_top_level_skills()
+        validate_migrated_agentcore_docs()
 
     if errors:
         print(f"\nValidation failed with {len(errors)} error(s).", file=sys.stderr)

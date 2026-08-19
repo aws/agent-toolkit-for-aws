@@ -55,10 +55,23 @@ Discovered automatically from the marketplace manifest.
 
 ## Prerequisites
 
-- AgentCore CLI v0.9.0+ (`npm install -g @aws/agentcore`)
+- AgentCore CLI refactor build with `project`, `harness`, and `runtime`
+  command groups
 - AWS CLI with configured credentials
 - Node.js 20+
 - Python 3.11+ with `uv`
+
+The refactor CLI has no root `--version` flag or command aliases. Project
+lifecycle commands are:
+
+```text
+agentcore project add
+agentcore project remove
+agentcore project dev
+agentcore project deploy
+agentcore project status
+agentcore project build
+```
 
 ## Examples
 
