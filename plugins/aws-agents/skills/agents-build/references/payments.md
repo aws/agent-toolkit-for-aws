@@ -92,19 +92,21 @@ Project tags are applied to the provisioned AWS resources at deploy. The `agentc
 
 **3b. Payment connector — needs provider credentials. The DEVELOPER runs this, not the agent.** The agent presents the prerequisites and the command below, but must NOT execute it or handle the credentials. This single command creates the credential provider and the connector. The CLI writes the provider secrets in **plaintext to `agentcore/.env.local`** and records the credential locally; `agentcore deploy` (Step 4) then uploads them to **AgentCore Identity** (`agentcore.json` keeps only a reference). The provider secrets are used only here — nothing later reuses them.
 
-**Before running — get your provider credentials** (do this first; the connector command needs them):
+**Before running — get your provider credentials** (do this first; the connector command needs them). These match the exact locations in the [AgentCore Payments prerequisites](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-prerequisites.html).
 
 - **Coinbase CDP** (<https://portal.cdp.coinbase.com/>):
-    1. Create or log in to a Coinbase Developer Platform account and project
-    2. Generate an API key (or reuse existing) — note the **API Key ID** and **API Key Secret**
-    3. Generate a **Wallet Secret** (for cryptographic wallet operations like signing transactions)
-    4. Under Project > Wallet > Embedded Wallets > Policies, **enable Delegated signing** (required)
+    1. Create or log in to a Coinbase Developer Platform account and project.
+    2. Generate an **API key** (or reuse one) at <https://portal.cdp.coinbase.com/api-keys/secret> and note two values:
+        - **API Key ID** — the public identifier for your CDP project.
+        - **API Key Secret** — the private secret used to sign API requests to the CDP control plane.
+    3. Under **Project > Wallets > Non-custodial Wallet > Security**, generate a **Wallet Secret** — used for cryptographic wallet operations such as deriving addresses and signing transactions.
+    4. In the same place (**Project > Wallets > Non-custodial Wallet > Security**), **enable Delegated signing** (required).
 - **Stripe Privy** (<https://dashboard.privy.io/>):
-    1. Create a **dedicated** Privy app for AgentCore (do not reuse apps serving other purposes)
-    2. Copy the **App ID** and **App Secret** from app settings
-    3. Navigate to Wallet Infrastructure > Authorization > New Key to generate a P-256 key pair
-    4. The private key is prefixed with `wallet-auth:` — **strip this prefix**, use only the raw base64 content (starting `MIGHAgEA...`)
-    5. Note the **Authorization ID** (signer ID) shown alongside the key
+    1. Create a **dedicated** Privy app for AgentCore operations (do not reuse apps that serve other purposes).
+    2. In **App settings > Basics > API Keys**, copy the **App ID** and **App Secret**.
+    3. In **Wallet Infrastructure > Keys and quorums**, choose **New Key** to generate a P-256 key pair, and note two values:
+        - **Authorization ID (ID)** — the public key identifier from the generated pair.
+        - **Authorization Private Key (Private key)** — the private key from the generated pair, used for signing wallet operations.
 
 Recommended — interactive wizard. Run the command with **no flags** (the secrets never appear in the command, shell history, or process list; the CLI still writes them to `agentcore/.env.local` either way — see the security note below). Passing `--manager`/`--name`/`--provider` does NOT trigger the wizard — those flags switch the CLI to non-interactive mode and it then requires every secret flag too, failing with "Missing required options" otherwise:
 
@@ -445,7 +447,6 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 
 - The Authorization Private Key or Authorization ID is invalid or has expired.
 - Generate a new P-256 key pair in Privy Dashboard > Wallet Infrastructure > Authorization.
-- Remember to strip the `wallet-auth:` prefix from the private key.
 - Update the credential provider with the new key.
 
 **Stripe Privy: "Wallet policy denied the transaction":**
