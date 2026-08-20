@@ -1,9 +1,15 @@
 """Benchmark Lambda handler: runs settle/seed/warmup/measure phases against deployed DDB resources.
 
 Invoked by scripts/benchmark_model.py. Single file, stdlib + boto3 only.
-Every DynamoDB data-path call sets ReturnConsumedCapacity='TOTAL' and is
+Every DynamoDB data-path call sets ReturnConsumedCapacity='INDEXES' and is
 timed with time.monotonic() so latency numbers reflect service + SDK
 overhead inside the same-region Lambda — not the user's local network.
+
+'INDEXES' rather than 'TOTAL' is load-bearing, not a preference. 'TOTAL' returns only
+the aggregate CapacityUnits: no Table block, no per-GSI blocks, no vector byte
+counters. Under 'TOTAL' every per-GSI figure comes back empty and base-table capacity
+is overstated by the GSI fan-out, so do not "simplify" it back. See _consumed() and
+_consumed_vector().
 
 Event schema (from the orchestrator):
 
@@ -51,6 +57,10 @@ from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
 READ_OPS = {"GetItem", "Query", "Scan", "BatchGetItem", "TransactGetItems"}
+# SearchVectors is a read but consumes NO RCU — it is metered in bytes
+# (VectorSearchRequestBytes), so it is tracked separately from consumed_cu rather than
+# folded into READ_OPS, where a naive report would show it as a free operation.
+VECTOR_SEARCH_OP = "SearchVectors"
 WRITE_OPS = {"PutItem", "UpdateItem", "DeleteItem", "BatchWriteItem", "TransactWriteItems"}
 THROTTLE_CODES = (
     "ProvisionedThroughputExceededException",
@@ -163,7 +173,19 @@ def _serialize(value):
         return {"NULL": True}
     if isinstance(value, bytes):
         return {"B": value}
+    if isinstance(value, (list, tuple)):
+        # A vector attribute. Must be an L of N — see _serialize_vector.
+        return _serialize_vector(value)
     raise ValueError(f"unsupported attribute type for {value!r}")
+
+
+def _serialize_vector(values):
+    """A vector attribute is a DynamoDB List of Numbers — never a Number Set.
+
+    Sending NS is rejected with the misleading 'Input collection contains duplicates'
+    (the set collapses repeated values), which is why this is explicit.
+    """
+    return {"L": [{"N": f"{float(v):.6f}"} for v in values]}
 
 
 def _build_item(pk_attr, pk_val, sk_attr, sk_val, target_size_bytes, gsi_attrs=None, extra=None):
@@ -178,17 +200,26 @@ def _build_item(pk_attr, pk_val, sk_attr, sk_val, target_size_bytes, gsi_attrs=N
 
     # Pad using a single "payload" String attribute. Account for the small
     # attribute-name overhead; target is approximate.
+    def _attr_value_bytes(v):
+        # A vector attribute is an L of N, and it MUST be counted. Missing it is not a
+        # rounding error: a 1024-dim embedding is ~8.7 KB, so an item declared at 2,048 B
+        # was being padded as though the vector weren't there and landed at 10,745 B —
+        # 5.2x the declared size, which inflates base-table WCU for exactly the vector
+        # designs this benchmark is meant to measure. Recursive because L can nest.
+        if "L" in v:
+            return sum(_attr_value_bytes(e) for e in v["L"])
+        if "M" in v:
+            return sum(len(k) + _attr_value_bytes(e) for k, e in v["M"].items())
+        for t in ("S", "N", "B"):
+            if t in v:
+                return len(v[t])
+        # BOOL/NULL carry no value bytes and count as their key length only. That
+        # under-counts by a few bytes, which pads VERY slightly larger — never smaller —
+        # so the item still meets target_size_bytes.
+        return 0
+
     def _size(it):
-        # Rough: attribute-name + value-bytes for each attribute. Only S/N/B
-        # values contribute value-bytes here; BOOL/NULL count as their key length
-        # only. That under-counts an item that leads with a bool/null attr by a
-        # few bytes, which just makes the payload pad VERY slightly larger — never
-        # smaller — so the item still meets target_size_bytes. Bench items are
-        # dominated by the padded "payload" blob, so this approximation is fine.
-        return sum(
-            len(k) + (len(v.get("S", "") or v.get("N", "") or v.get("B", b"") or ""))
-            for k, v in it.items()
-        )
+        return sum(len(k) + _attr_value_bytes(v) for k, v in it.items())
 
     current = _size(item)
     if target_size_bytes and current < target_size_bytes:
@@ -318,6 +349,30 @@ class RunContext:
     def prefixed_table(self, orig: str) -> str:
         """Return the benchmark-prefixed physical table name."""
         return self.prefixed.get(orig, orig)
+
+    def vector_indexes(self, table_name: str) -> list:
+        """Vector index metadata for a table, normalised for the seeder and dispatch.
+
+        Flattens search_schema so the driver does not have to know the design's nesting:
+        each entry carries vector_attribute, dimensions, partition_key, pk_type and
+        inline_filters.
+        """
+        spec = self.table_by_name.get(table_name) or {}
+        out = []
+        for vi in spec.get("vector_indexes") or []:
+            schema = vi.get("search_schema") or {}
+            pk = schema.get("partition_key")
+            out.append(
+                {
+                    "index_name": vi.get("index_name"),
+                    "vector_attribute": vi.get("vector_attribute"),
+                    "dimensions": vi.get("dimensions"),
+                    "partition_key": pk,
+                    "pk_type": self.key_type(table_name, pk) if pk else "S",
+                    "inline_filters": list(schema.get("inline_filters") or []),
+                }
+            )
+        return out
 
     def key_type(self, table_name: str, attr: str) -> str:
         """Declared DDB type ('S'/'N'/'B') of a key attribute; 'S' if unknown."""
@@ -456,6 +511,14 @@ def _consumed(cc_block):
       - GlobalSecondaryIndexes.{name}.CapacityUnits = per-GSI
     We want base-only so amplification_ratio = sum(GSI) / base is meaningful.
     Prefer Table.CapacityUnits; fall back to top-level minus sum(GSI) if absent.
+
+    The Table and GlobalSecondaryIndexes blocks are only returned when the call asked
+    for ReturnConsumedCapacity='INDEXES'. Measured 2026-08-19: a PutItem fanning out to
+    one ALL-projection GSI reported CapacityUnits=6.0 with no sub-blocks under 'TOTAL',
+    versus Table=3.0 + GSI=3.0 under 'INDEXES'. So under 'TOTAL' the fallback below is
+    always taken, per-GSI comes back {}, and base absorbs the whole 6.0 — a 2x
+    overstatement, with amplification_ratio pinned at 0. That is why the call sites use
+    'INDEXES'; the fallback is now a genuine edge case rather than the normal path.
     """
     if not cc_block:
         return 0.0, {}
@@ -469,6 +532,30 @@ def _consumed(cc_block):
         top = float(cc_block.get("CapacityUnits", 0.0) or 0.0)
         base = max(0.0, top - sum(gsi.values()))
     return base, gsi
+
+
+def _consumed_vector(cc_block):
+    """Extract vector byte counters from ConsumedCapacity.
+
+    Vector capacity is metered in BYTES, not capacity units, and appears in two places:
+      - SearchVectors:  top-level "VectorSearchRequestBytes"
+      - writes:         "VectorIndexes".{name}.VectorWriteRequestBytes
+
+    These are what make vector cost observable at all: search metering depends on index
+    traversal, so it cannot be derived from a design (see cost-model-schema.md). The
+    benchmark measuring it is the only sound source of a real number.
+
+    NOTE the per-index write values are each floored at 1 KB in the REPORTED payload,
+    independently of the request total, so summing them can overstate the billed amount
+    for sub-1KB vectors. Raw observations are recorded; interpretation lives in the report.
+    """
+    if not cc_block:
+        return 0.0, {}
+    search_bytes = float(cc_block.get("VectorSearchRequestBytes", 0.0) or 0.0)
+    per_index = {}
+    for name, block in (cc_block.get("VectorIndexes") or {}).items():
+        per_index[name] = float((block or {}).get("VectorWriteRequestBytes", 0.0) or 0.0)
+    return search_bytes, per_index
 
 
 def _time_call(fn, *args, **kwargs):
@@ -498,14 +585,28 @@ def _time_call(fn, *args, **kwargs):
                             g[idx_name]["CapacityUnits"] = g[idx_name].get(
                                 "CapacityUnits", 0.0
                             ) + float((idx_block or {}).get("CapacityUnits", 0) or 0)
+                    elif k == "VectorIndexes":
+                        vx = merged.setdefault("VectorIndexes", {})
+                        for idx_name, idx_block in (v or {}).items():
+                            vx.setdefault(idx_name, {})
+                            vx[idx_name]["VectorWriteRequestBytes"] = vx[idx_name].get(
+                                "VectorWriteRequestBytes", 0.0
+                            ) + float((idx_block or {}).get("VectorWriteRequestBytes", 0) or 0)
+                    elif k == "VectorSearchRequestBytes":
+                        merged["VectorSearchRequestBytes"] = merged.get(
+                            "VectorSearchRequestBytes", 0.0
+                        ) + float(v or 0)
             cc_block = merged if merged else None
         else:
             cc_block = cc_raw
         base, gsi = _consumed(cc_block)
+        vec_search_bytes, vec_write_bytes = _consumed_vector(cc_block)
         return {
             "latency_ms": lat_ms,
             "consumed_cu": base,
             "gsi_cu": gsi,
+            "vector_search_bytes": vec_search_bytes,
+            "vector_write_bytes": vec_write_bytes,
             "throttled": False,
             "error": None,
             "resp": resp,
@@ -530,6 +631,8 @@ def _time_call(fn, *args, **kwargs):
             "latency_ms": lat_ms,
             "consumed_cu": 0.0,
             "gsi_cu": {},
+            "vector_search_bytes": 0.0,
+            "vector_write_bytes": {},
             "throttled": code in THROTTLE_CODES,
             "error": code,
             "cancellation_reasons": cancel_codes,
@@ -541,6 +644,8 @@ def _time_call(fn, *args, **kwargs):
             "latency_ms": lat_ms,
             "consumed_cu": 0.0,
             "gsi_cu": {},
+            "vector_search_bytes": 0.0,
+            "vector_write_bytes": {},
             "throttled": False,
             "error": type(e).__name__,
             "resp": None,
@@ -654,7 +759,7 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
             TableName=table_name,
             Key=key,
             ConsistentRead=consistent,
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
 
     if op == "Query":
@@ -691,7 +796,7 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
                 ExpressionAttributeNames={"#pk": g_pk},
                 ExpressionAttributeValues={":pk": _serialize(g_pk_val)},
                 Limit=items_per,
-                ReturnConsumedCapacity="TOTAL",
+                ReturnConsumedCapacity="INDEXES",
             )
         else:
             kwargs = dict(
@@ -700,7 +805,7 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
                 ExpressionAttributeNames={"#pk": pk_attr},
                 ExpressionAttributeValues={":pk": _serialize(pk_val)},
                 Limit=items_per,
-                ReturnConsumedCapacity="TOTAL",
+                ReturnConsumedCapacity="INDEXES",
             )
         return _time_call(client.query, **kwargs)
 
@@ -711,7 +816,7 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
             client.scan,
             TableName=table_name,
             Limit=max(1, items_per),
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
 
     if op == "BatchGetItem":
@@ -725,23 +830,40 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
         return _time_call(
             client.batch_get_item,
             RequestItems={table_name: {"Keys": keys}},
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
 
     if op == "PutItem":
+        # Annotated because the vector branch below adds an embedding list and a
+        # partition-key string; inferred from this literal alone it would be dict[str, int].
+        write_extra: dict[str, Any] = {"bench_ts": int(time.time())}
+        # Without these the write never reaches the vector index, so the run reports no
+        # vector write capacity and the index looks free to maintain. The partition key
+        # matters as much as the vector: omit it and the write SUCCEEDS while the item is
+        # silently excluded from the index.
+        for vi in ctx.vector_indexes(pattern["table"]):
+            vattr, vdims = vi.get("vector_attribute"), int(vi.get("dimensions") or 0)
+            if vattr and vdims:
+                vrng = random.Random(f"{pattern['pattern_id']}:{part_idx}:{vattr}:w")
+                write_extra[vattr] = [round(vrng.uniform(-1.0, 1.0), 6) for _ in range(vdims)]
+            vpk = vi.get("partition_key")
+            if vpk and vpk not in (pk_attr, sk_attr):
+                write_extra[vpk] = _seed_key_val(
+                    pattern["pattern_id"], part_idx, "vector_pk", vi.get("pk_type", "S")
+                )
         item = _build_item(
             pk_attr,
             pk_val,
             sk_attr,
             sk_val,
             item_size,
-            extra={"bench_ts": int(time.time())},
+            extra=write_extra,
         )
         return _time_call(
             client.put_item,
             TableName=table_name,
             Item=item,
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
 
     if op == "UpdateItem":
@@ -755,7 +877,7 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
             Key=key,
             UpdateExpression="SET bench_ts = :t",
             ExpressionAttributeValues={":t": _serialize(int(time.time()))},
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
 
     if op == "DeleteItem":
@@ -766,7 +888,7 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
             client.delete_item,
             TableName=table_name,
             Key=key,
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
 
     if op == "BatchWriteItem":
@@ -786,7 +908,7 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
         return _time_call(
             client.batch_write_item,
             RequestItems={table_name: reqs},
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
 
     if op == "TransactWriteItems":
@@ -818,7 +940,7 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
         return _time_call(
             client.transact_write_items,
             TransactItems=tx_items,
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
 
     if op == "TransactGetItems":
@@ -832,13 +954,89 @@ def _dispatch(ctx: RunContext, pattern: dict, part_idx: int, member_counter: int
         return _time_call(
             client.transact_get_items,
             TransactItems=tx_items,
-            ReturnConsumedCapacity="TOTAL",
+            ReturnConsumedCapacity="INDEXES",
         )
+
+    if op == VECTOR_SEARCH_OP:
+        # The pattern carries the index metadata the driver needs, injected by
+        # benchmark_model.py from the design: dimensions (the query vector must match
+        # exactly, or every call fails), the SearchSchema partition key (mandatory in
+        # SearchConditionExpression when the index defines one), and TopK.
+        vi = pattern.get("vector_index") or {}
+        dims = int(vi.get("dimensions") or 0)
+        if not hasattr(client, "search_vectors"):
+            # The runtime's boto3 predates vector support. Left to itself this raises a
+            # bare AttributeError that the drain loop records as a generic exception, so
+            # the pattern shows 0 consumed capacity and reads as FREE. Return an explicit,
+            # named error instead so the aggregation and report can call it out.
+            import botocore as _bc
+
+            return {
+                "latency_ms": 0.0,
+                "consumed_cu": 0.0,
+                "gsi_cu": {},
+                "vector_search_bytes": 0.0,
+                "vector_write_bytes": {},
+                "throttled": False,
+                "error": f"search_vectors_unavailable_botocore_{_bc.__version__}",
+            }
+        if not dims:
+            return {
+                "latency_ms": 0.0,
+                "consumed_cu": 0.0,
+                "gsi_cu": {},
+                "vector_search_bytes": 0.0,
+                "vector_write_bytes": {},
+                "throttled": False,
+                "error": "vector_index_metadata_missing",
+            }
+        # A deterministic pseudo-random unit-ish vector. Content does not affect
+        # metering — measurement showed bytes depend on TopK, projection and dimensions,
+        # not on the query vector's values — so a fixed seed keeps runs comparable.
+        rng = random.Random(f"{pattern['pattern_id']}:{part_idx}")
+        query_vector = [{"N": f"{rng.uniform(-1.0, 1.0):.6f}"} for _ in range(dims)]
+
+        kwargs = {
+            "TableName": table_name,
+            "IndexName": pattern.get("index"),
+            "SearchVector": query_vector,
+            "TopK": max(1, min(int(pattern.get("top_k") or 10), 100)),
+            "ReturnConsumedCapacity": "INDEXES",
+        }
+        v_pk = vi.get("partition_key")
+        if v_pk:
+            # Scoped to the same seeded partition the read sampler chose, so the search
+            # examines seeded data rather than an empty partition. Aliased via
+            # ExpressionAttributeNames because SearchConditionExpression enforces
+            # reserved words exactly as other expression parameters do.
+            #
+            # The coincidence cases are load-bearing, exactly as they are for a GSI Query
+            # above. When the search-schema partition key IS the table's PK or SK, neither
+            # run_seed nor the PutItem path writes a separate synthetic "vector_pk" value —
+            # the attribute already holds the base key value — so searching for the
+            # synthetic one queries a partition nothing was ever written to. The search
+            # returns no results, VectorSearchRequestBytes reports ~0, and the index reads
+            # as FREE, which is the precise failure this instrumentation exists to prevent
+            # and is indistinguishable from a genuinely cheap index.
+            if v_pk == pk_attr:
+                v_pk_val = pk_val
+            elif v_pk == sk_attr:
+                v_pk_val = sk_val
+            else:
+                v_pk_val = _seed_key_val(
+                    pattern["pattern_id"], part_idx, "vector_pk", vi.get("pk_type", "S")
+                )
+            kwargs["SearchConditionExpression"] = "#vpk = :vpk"
+            kwargs["ExpressionAttributeNames"] = {"#vpk": v_pk}
+            kwargs["ExpressionAttributeValues"] = {":vpk": _serialize(v_pk_val)}
+        return _time_call(client.search_vectors, **kwargs)
 
     return {
         "latency_ms": 0.0,
         "consumed_cu": 0.0,
         "gsi_cu": {},
+        "vector_search_bytes": 0.0,
+        "vector_write_bytes": {},
         "throttled": False,
         "error": f"unsupported_op:{op}",
     }
@@ -964,6 +1162,36 @@ def run_seed(ctx: RunContext, sink: RowSink) -> dict:
                             gsi_extras[g_sk] = _gsi_val(
                                 pid, global_idx, "sk", ctx.key_type(orig_table, g_sk)
                             )
+                    # Vector attributes. Two omissions here would BOTH look like a
+                    # cheap, working benchmark rather than an error:
+                    #   * no vector attribute -> the item is never replicated to the
+                    #     index, so SearchVectors returns nothing and reads as free
+                    #   * no SearchSchema partition key -> the write SUCCEEDS on the base
+                    #     table with no error and the item is silently de-indexed
+                    # So both are set explicitly, and the vector length must match the
+                    # index's Dimensions exactly or the write is rejected outright.
+                    vec_extras = {}
+                    for vi in ctx.vector_indexes(orig_table):
+                        vattr = vi.get("vector_attribute")
+                        vdims = int(vi.get("dimensions") or 0)
+                        if vattr and vdims:
+                            vrng = random.Random(f"{pid}:{pidx}:{global_idx}:{vattr}")
+                            vec_extras[vattr] = [
+                                round(vrng.uniform(-1.0, 1.0), 6) for _ in range(vdims)
+                            ]
+                        vpk = vi.get("partition_key")
+                        if vpk and vpk not in (pk_attr, sk_attr) and vpk not in gsi_extras:
+                            # Same value the SearchVectors dispatch will search for, so
+                            # the search hits a populated partition.
+                            vec_extras[vpk] = _seed_key_val(
+                                pid, pidx, "vector_pk", vi.get("pk_type", "S")
+                            )
+                        for f in vi.get("inline_filters") or []:
+                            if f not in (pk_attr, sk_attr) and f not in gsi_extras:
+                                vec_extras.setdefault(f, _gsi_val(pid, pidx, "vfilter", "S"))
+
+                    extra = {"bench_seed": 1}
+                    extra.update(vec_extras)
                     it = _build_item(
                         pk_attr,
                         _seed_key_val(pid, pidx, "pk", pk_type),
@@ -971,7 +1199,7 @@ def run_seed(ctx: RunContext, sink: RowSink) -> dict:
                         _seed_key_val(pid, global_idx, "sk", sk_type) if sk_attr else None,
                         item_size,
                         gsi_attrs=gsi_extras,
-                        extra={"bench_seed": 1},
+                        extra=extra,
                     )
                     items.append(it)
 
@@ -1008,7 +1236,7 @@ def run_seed(ctx: RunContext, sink: RowSink) -> dict:
             res = _time_call(
                 ctx.client.batch_write_item,
                 RequestItems={table_name: reqs},
-                ReturnConsumedCapacity="TOTAL",
+                ReturnConsumedCapacity="INDEXES",
             )
             sink.add(
                 {
@@ -1019,6 +1247,10 @@ def run_seed(ctx: RunContext, sink: RowSink) -> dict:
                     "latency_ms": res["latency_ms"],
                     "consumed_cu": res["consumed_cu"],
                     "gsi_cu": res["gsi_cu"],
+                    # Vector capacity is metered in bytes, not CU — carried through
+                    # because a SearchVectors pattern has no other cost signal.
+                    "vector_search_bytes": res.get("vector_search_bytes", 0.0),
+                    "vector_write_bytes": res.get("vector_write_bytes") or {},
                     "throttled": res["throttled"],
                     "error": res["error"],
                     "table": table_name,
@@ -1037,7 +1269,7 @@ def run_seed(ctx: RunContext, sink: RowSink) -> dict:
                     retry = _time_call(
                         ctx.client.batch_write_item,
                         RequestItems=unproc,
-                        ReturnConsumedCapacity="TOTAL",
+                        ReturnConsumedCapacity="INDEXES",
                     )
                     sink.add(
                         {
@@ -1244,6 +1476,10 @@ def run_pattern_window(
                     "latency_ms": res["latency_ms"],
                     "consumed_cu": res["consumed_cu"],
                     "gsi_cu": res["gsi_cu"],
+                    # Vector capacity is metered in bytes, not CU — carried through
+                    # because a SearchVectors pattern has no other cost signal.
+                    "vector_search_bytes": res.get("vector_search_bytes", 0.0),
+                    "vector_write_bytes": res.get("vector_write_bytes") or {},
                     "throttled": res["throttled"],
                     "error": res["error"],
                     # Partition the read/write targeted — drives the per-pattern

@@ -165,8 +165,36 @@ def _validate_pattern_refs(model: dict) -> None:
                 "table."
             )
         idx = ap.get("index")
-        if idx:
-            gsi_names = {g.get("index_name") for g in ((td or {}).get("gsis") or [])}
+        op = ap.get("operation")
+        vec_names = {v.get("index_name") for v in ((td or {}).get("vector_indexes") or [])}
+        gsi_names = {g.get("index_name") for g in ((td or {}).get("gsis") or [])}
+
+        # SearchVectors reads a VECTOR index, never a GSI — and the reverse is also
+        # true, so each operation is checked against the right index family. Getting
+        # this wrong fails every call at runtime while the observed CU reads as 0,
+        # which a naive report then calls cheap.
+        if op == "SearchVectors":
+            if not idx:
+                _die(
+                    f'access pattern {pid} is a SearchVectors but has no "index" — '
+                    "it must name the vector index to search."
+                )
+            if idx not in vec_names:
+                _die(
+                    f"access pattern {pid} searches vector index {idx!r} on table "
+                    f"{tn!r}, but that table defines no such vector index. Defined "
+                    f"vector indexes on {tn}: {sorted(n for n in vec_names if n)}. "
+                    'Add it to vector_indexes[] or correct the "index" field.'
+                )
+        elif idx:
+            if idx in vec_names:
+                _die(
+                    f"access pattern {pid} targets {idx!r} on table {tn!r} with "
+                    f"operation {op!r}, but {idx!r} is a VECTOR index. Query and Scan "
+                    "are rejected against a vector index with "
+                    "'ValidationException: Query operation not supported on this index "
+                    'type.\' Use operation "SearchVectors" to read it.'
+                )
             if idx not in gsi_names:
                 _die(
                     f"access pattern {pid} uses index {idx!r} on table {tn!r}, "
@@ -430,6 +458,77 @@ def _build_create_kwargs(
             }
         )
 
+    # Vector indexes. Two things bite here and both are hard failures at CreateTable
+    # rather than at write time, so they are handled before AttributeDefinitions is built:
+    #   * every SearchSchema attribute must ALSO be declared in AttributeDefinitions,
+    #     exactly as a GSI key attribute must ("One element in SearchSchema is not
+    #     defined in attribute definitions"), and
+    #   * vector indexes require on-demand capacity, so a provisioned bench run cannot
+    #     carry one.
+    vector_indexes = []
+    for v in table_def.get("vector_indexes") or []:
+        name = v.get("index_name")
+        attr = v.get("vector_attribute")
+        dims = v.get("dimensions")
+        fn = (v.get("distance_function") or "").upper()
+        if not (name and attr and dims and fn):
+            _die(
+                f"vector index {name or '?'} on table {table_def['table_name']} needs "
+                "index_name, vector_attribute, dimensions and distance_function"
+            )
+        if fn not in {"COSINE", "EUCLIDEAN", "DOT_PRODUCT"}:
+            _die(
+                f"vector index {name}: distance_function must be COSINE, EUCLIDEAN or "
+                f"DOT_PRODUCT, got {v.get('distance_function')!r}"
+            )
+        if not 1 <= int(dims) <= 4096:
+            _die(f"vector index {name}: dimensions must be 1-4096, got {dims!r}")
+
+        vproj = v.get("projection") or {"type": "ALL"}
+        # Accept the bare-string shorthand: "KEYS_ONLY" == {"type": "KEYS_ONLY"}. Writing the
+        # string is the natural mistake (it is how the API-level value reads), and without this
+        # the next line raised a bare AttributeError instead of anything actionable. Mirrors the
+        # attribute_definitions shorthand accepted elsewhere in these scripts.
+        if isinstance(vproj, str):
+            vproj = {"type": vproj}
+        vp_type = (vproj.get("type") or "ALL").upper()
+        vproj_kwargs: dict = {"ProjectionType": vp_type}
+        if vp_type == "INCLUDE":
+            inc = (
+                vproj.get("attributes")
+                or vproj.get("non_key_attributes")
+                or vproj.get("NonKeyAttributes")
+                or []
+            )
+            if not inc:
+                _die(
+                    f"vector index {name} has projection INCLUDE but no projected "
+                    'attributes. Add a non-empty "attributes" list, or use '
+                    '"ALL"/"KEYS_ONLY".'
+                )
+            vproj_kwargs["NonKeyAttributes"] = list(inc)
+
+        spec: dict = {
+            "IndexName": name,
+            "VectorAttribute": {"AttributeName": attr},
+            "Projection": vproj_kwargs,
+            "Dimensions": int(dims),
+            "DistanceFunction": fn,
+        }
+
+        schema = v.get("search_schema") or {}
+        elements = []
+        v_pk = schema.get("partition_key")
+        if v_pk:
+            referenced_attrs[v_pk] = attr_types.get(v_pk, "S")
+            elements.append({"AttributeName": v_pk, "SearchSchemaElementType": "HASH"})
+        for f in schema.get("inline_filters") or []:
+            referenced_attrs[f] = attr_types.get(f, "S")
+            elements.append({"AttributeName": f, "SearchSchemaElementType": "INLINE_FILTER"})
+        if elements:
+            spec["SearchSchema"] = elements
+        vector_indexes.append(spec)
+
     attr_defs = [
         {"AttributeName": name, "AttributeType": t} for name, t in sorted(referenced_attrs.items())
     ]
@@ -464,6 +563,15 @@ def _build_create_kwargs(
     # via benchmark_config.provisioned_capacity. Bench-only; production designs
     # still default to on-demand.
     prov = table_def.get("provisioned_capacity") or _global_provisioned
+    if prov and vector_indexes:
+        _die(
+            f"table {table_def['table_name']} declares a vector index AND provisioned "
+            "capacity. Vector indexes are supported only on on-demand "
+            "(PAY_PER_REQUEST) tables, so this table cannot be created as declared. "
+            "Remove provisioned_capacity for this table (or drop the vector index) and "
+            "re-run. Note a provisioned-ceiling throttle experiment is therefore not "
+            "available on a vector-indexed table."
+        )
     if prov:
         kwargs["BillingMode"] = "PROVISIONED"
         kwargs["ProvisionedThroughput"] = {
@@ -479,6 +587,18 @@ def _build_create_kwargs(
                     "WriteCapacityUnits": int(prov.get("write", 5)),
                 }
         kwargs["GlobalSecondaryIndexes"] = gsis
+
+    if vector_indexes:
+        # A single CreateTable may define several vector indexes (up to the per-table
+        # limit of 5), and creating them inline avoids the UpdateTable backfill path
+        # entirely — measured at 20s inline versus 8m33s for an add-to-existing-table on
+        # a six-item table.
+        if len(vector_indexes) > 5:
+            _die(
+                f"table {table_def['table_name']} declares {len(vector_indexes)} vector "
+                "indexes; the per-table limit is 5"
+            )
+        kwargs["VectorIndexes"] = vector_indexes
 
     streams = table_def.get("streams") or {}
     if streams.get("enabled"):
@@ -507,7 +627,48 @@ def _create_table_one(client, kwargs: dict) -> None:
 def _wait_table_active(client, table_name: str) -> dict:
     waiter = client.get_waiter("table_exists")
     waiter.wait(TableName=table_name)
-    return client.describe_table(TableName=table_name)["Table"]
+    desc = client.describe_table(TableName=table_name)["Table"]
+    if desc.get("VectorIndexes"):
+        desc = _wait_vector_indexes_ready(client, table_name)
+    return desc
+
+
+def _wait_vector_indexes_ready(client, table_name: str, timeout_s: int = 1800) -> dict:
+    """Wait until every vector index is ACTIVE and not backfilling.
+
+    The `table_exists` waiter returns when the TABLE is ACTIVE and says nothing about a
+    vector index, so returning there hands the benchmark an index that rejects
+    SearchVectors. There is no `BACKFILLING` index status: the correct predicate is
+    `IndexStatus == "ACTIVE" and not Backfilling`, and it is the only one correct on both
+    creation paths — measured, the two report `Backfilling` differently:
+
+      inline CreateTable : CREATING with the Backfilling key ABSENT, then ACTIVE (~20s)
+      UpdateTable add    : CREATING/Backfilling=false, then CREATING/Backfilling=true,
+                           then ACTIVE (8m33s on a six-item table)
+
+    So "wait for the Backfilling key to disappear" returns immediately-but-wrongly on the
+    inline path, and "wait for Backfilling == false" returns minutes early on the other.
+    """
+    deadline = time.time() + timeout_s
+    announced = False
+    while True:
+        desc = client.describe_table(TableName=table_name)["Table"]
+        vis = desc.get("VectorIndexes") or []
+        pending = [v for v in vis if v.get("IndexStatus") != "ACTIVE" or v.get("Backfilling")]
+        if not pending:
+            return desc
+        if not announced:
+            names = ", ".join(v.get("IndexName", "?") for v in pending)
+            print(f"  waiting on vector index/indexes: {names} " f"(ACTIVE and not backfilling)")
+            announced = True
+        if time.time() > deadline:
+            states = {v.get("IndexName"): (v.get("IndexStatus"), v.get("Backfilling")) for v in vis}
+            _die(
+                f"vector index on {table_name} not ready after {timeout_s}s: {states}. "
+                "Backfill duration is driven by index construction, not item count, so a "
+                "small table can still take many minutes."
+            )
+        time.sleep(5)
 
 
 def _deploy_tables_concurrent(client, table_specs: list[tuple[dict, str]]):
@@ -536,8 +697,47 @@ def _deploy_tables_concurrent(client, table_specs: list[tuple[dict, str]]):
     return descriptions
 
 
-def _build_lambda_zip() -> bytes:
-    """Zip the handler source into an in-memory Lambda deployment package."""
+# DynamoDB vector operations (SearchVectors and friends) ship in botocore 1.43.64. The
+# managed Lambda python3.12 runtime bundles a much older boto3, so a vector benchmark run
+# MUST carry its own SDK or every SearchVectors call dies with AttributeError while the
+# observed capacity reads as zero — i.e. it looks like a free pattern rather than a broken
+# one.
+#
+# Shipping only the newer dynamodb service model via AWS_DATA_PATH does NOT work: the new
+# endpoint rule set uses a `stringArray` parameter type the old botocore cannot parse
+# (`EndpointResolutionError: Unknown parameter type: stringArray`), and SearchVectors is
+# served by a dedicated endpoint that must be resolved from those rules. Verified.
+#
+# So the whole SDK is vendored from the LOCAL install — which the skill already requires —
+# rather than pip-installed at deploy time. No network, no new dependency. The cost (~18 MB
+# zipped, a few seconds of upload) is paid ONLY by designs that declare a vector index;
+# every other design gets the same few-KB package as before.
+VECTOR_SDK_MIN = (1, 43, 64)
+
+
+def _local_sdk_paths() -> tuple[Path, Path]:
+    import boto3 as _b3
+    import botocore as _bc
+
+    ver = tuple(int(x) for x in _bc.__version__.split(".")[:3])
+    if ver < VECTOR_SDK_MIN:
+        _die(
+            f"this design declares a vector index, which the benchmark Lambda can only "
+            f"drive with botocore >= {'.'.join(map(str, VECTOR_SDK_MIN))}. The locally "
+            f"installed botocore is {_bc.__version__}, and it is what gets vendored into "
+            f"the Lambda package. Upgrade locally first:\n"
+            f"    pip install 'boto3>={'.'.join(map(str, VECTOR_SDK_MIN))}'"
+        )
+    return Path(_b3.__file__).resolve().parent, Path(_bc.__file__).resolve().parent
+
+
+def _build_lambda_zip(bundle_vector_sdk: bool = False) -> bytes:
+    """Zip the handler source into an in-memory Lambda deployment package.
+
+    With bundle_vector_sdk, also vendor the local boto3/botocore so the handler can call
+    SearchVectors. Lambda puts /var/task ahead of the runtime's site-packages on sys.path,
+    so the vendored copy wins.
+    """
     here = Path(__file__).resolve().parent
     handler_src = here / "benchmark_lambda.py"
     if not handler_src.exists():
@@ -551,6 +751,23 @@ def _build_lambda_zip() -> bytes:
         # Handler config (LAMBDA_HANDLER = "benchmark.handler") resolves; the
         # local source file is scripts/benchmark_lambda.py.
         z.writestr("benchmark.py", handler_src.read_text())
+        if bundle_vector_sdk:
+            b3_dir, bc_dir = _local_sdk_paths()
+            n = 0
+            for pkg_dir in (b3_dir, bc_dir):
+                root = pkg_dir.parent
+                for f in pkg_dir.rglob("*"):
+                    if not f.is_file():
+                        continue
+                    # Skip caches and test trees; they are dead weight in a Lambda.
+                    if "__pycache__" in f.parts or f.suffix in (".pyc", ".pyo"):
+                        continue
+                    z.write(f, str(f.relative_to(root)))
+                    n += 1
+            print(
+                f"  vendoring local boto3/botocore into the Lambda package "
+                f"({n} files) so SearchVectors can be driven"
+            )
     return buf.getvalue()
 
 
@@ -580,6 +797,30 @@ def _build_role_policy(prefix: str, region: str, account: str) -> dict:
                 ],
             },
             {
+                # dynamodb:SearchVectors gets its OWN statement, scoped to the index
+                # resource, and deliberately carries NO condition block.
+                #
+                # This is not stylistic. DynamoDB's fine-grained access control condition
+                # keys (dynamodb:LeadingKeys, dynamodb:Attributes, dynamodb:Select) are
+                # absent from the SearchVectors request context, so a statement whose
+                # Condition references one does not match a SearchVectors call and the
+                # result is a DENIAL rather than a grant. Folding this action into a
+                # conditioned statement silently breaks vector search while that
+                # statement's other actions keep working — which presents as a broken
+                # index rather than a policy fault. See SKILL.md "Security
+                # considerations" #6 and references/vector-search.md.
+                #
+                # The `/index/*` wildcard is deliberate HERE and only here: this is a
+                # throwaway benchmark role whose table ARN is already bounded by the bench
+                # prefix, and whose indexes this same run creates and destroys. Do NOT copy
+                # the wildcard into a production policy — name the specific index(es) the
+                # workload searches, or a vector index added to the table later inherits
+                # the grant silently. references/vector-search.md shows the scoped form.
+                "Effect": "Allow",
+                "Action": ["dynamodb:SearchVectors"],
+                "Resource": [f"{table_arn}/index/*"],
+            },
+            {
                 "Effect": "Allow",
                 "Action": [
                     "logs:CreateLogGroup",
@@ -596,7 +837,9 @@ def _build_role_policy(prefix: str, region: str, account: str) -> dict:
     }
 
 
-def _deploy_lambda(session, cfg: dict, ident: dict, prefix: str, tags: dict) -> dict:
+def _deploy_lambda(
+    session, cfg: dict, ident: dict, prefix: str, tags: dict, bundle_vector_sdk: bool = False
+) -> dict:
     """Create the IAM role and the Lambda function. Returns their ARNs."""
     from botocore.exceptions import ClientError
 
@@ -633,7 +876,7 @@ def _deploy_lambda(session, cfg: dict, ident: dict, prefix: str, tags: dict) -> 
     print(f"  PutRolePolicy: {role_name}/{prefix}bench-policy")
 
     # --- Lambda function ---
-    zip_bytes = _build_lambda_zip()
+    zip_bytes = _build_lambda_zip(bundle_vector_sdk)
     memory = int(cfg.get("lambda_memory_mb") or DEFAULT_LAMBDA_MEMORY_MB)
     timeout = int(cfg.get("lambda_timeout_seconds") or DEFAULT_LAMBDA_TIMEOUT_S)
 
@@ -834,7 +1077,8 @@ def main():
 
     # --- Deploy Lambda + IAM role ---
     print(f"\nDeploying benchmark Lambda and IAM role …")
-    lambda_info = _deploy_lambda(session, cfg, ident, prefix, tags)
+    has_vectors = any(t.get("vector_indexes") for t in (model.get("tables") or []))
+    lambda_info = _deploy_lambda(session, cfg, ident, prefix, tags, bundle_vector_sdk=has_vectors)
 
     manifest = {
         "account": ident["account"],
