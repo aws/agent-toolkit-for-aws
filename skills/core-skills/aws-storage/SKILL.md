@@ -55,6 +55,7 @@ Decision Factors:
 Use the Storage Options table to identify candidate services, not to cut services; keyword matches against the Common Workloads column are not the only answers. You MUST retrieve the reference files for each of the candidate services using the Routing section below.
 
 Considering these factors, recommend specific AWS storage service(s) and:
+
 1. You MUST include clear rationale tied to the user's stated requirements.
 2. You MUST present alternatives where the choice is close or dependent on unspecified information, explaining the tradeoff.
 
@@ -76,10 +77,12 @@ The user knows their service or approach and needs operational help.
 | Configuration and Guidance | "Mount EFS on EKS", "Set up replication", "Does Service X support Y?", deployment steps, best practices | Client environment (OS, compute type, VPC/on-premises), target operation or feature |
 | Troubleshooting | "Getting AccessDenied errors", "Mount is hanging", "Unexpected latency spike", "Why is my lifecycle rule not transitioning?" | Error message or symptom, what changed recently, what they have attempted |
 
+<!-- markdownlint-disable MD029 -->
 2. Ask scoping questions per the "What to clarify" column for information not already in the query. Where the missing detail would not change the guidance, answer under a stated assumption instead of waiting to ask more questions.
 3. You MUST retrieve the reference files from the Routing section below for all candidate services.
 4. Provide the answer with specific, actionable guidance, gotchas, and documentation links.
 5. When answering Configuration or Security questions, you MUST recommend enabling access logging, CloudTrail data events, and CloudWatch metrics for observability.
+<!-- markdownlint-enable MD029 -->
 
 ## Storage Options
 

@@ -20,6 +20,7 @@ Both must be included when reasoning about task pricing.
 - Quantum tasks created associated with a hybrid job use the `"Braket Managed Jobs QPU Task"` (per-task fee) and `"Braket Managed Jobs QPU Task Shot"` (per-shot fee) `productFamily` values.
 
 CLI examples:
+
 ```bash
 # Fetch names of QPUs
 # QPU names may differ between `SearchDevices` and the Pricing API, so look them up here before getting the corresponding pricing products
@@ -40,6 +41,7 @@ On-demand simulators bill by **simulation duration** only with a **minimum charg
 Simulators are absent from `devicename` and share that one family, so they are identified by the `usagetype` suffix instead.
 
 CLI examples:
+
 ```bash
 # Fetch simulator usage types
 aws pricing get-attribute-values --service-code AmazonBraket \
@@ -63,7 +65,7 @@ An **embedded** simulator inside the job incurs no separate task charge — only
 Reserved device access is billed **hourly** (1-hour increments) instead of per-task/per-shot, under `productFamily = "Quantum Reservation"` (per hour).
 During a reservation, tasks and jobs submitted WITH the reservation ARN incur no additional charge.
 Other resources, like S3 buckets, managed notebook compute, or tasks submitted WITHOUT the reservation ARN are billed at on-demand rates.
-Learn more about reservations [here](https://docs.aws.amazon.com/braket/latest/developerguide/braket-reservations.html).
+Learn more about [Braket Direct reservations](https://docs.aws.amazon.com/braket/latest/developerguide/braket-reservations.html).
 
 ### Managed notebooks — SageMaker-billed
 A Braket managed notebook is a SageMaker notebook instance, so compute and storage are billed by SageMaker.
@@ -78,6 +80,7 @@ Refer to SageMaker documentation for further details.
 | Uses `deviceCost` from GetDevice as the bill | Not authoritative for billing | Use the pricing page or the AWS Pricing API |
 
 ## References
+
 - Amazon Braket pricing https://aws.amazon.com/braket/pricing/
 - Amazon SageMaker pricing https://aws.amazon.com/sagemaker/pricing/
 - Amazon Braket reservations https://docs.aws.amazon.com/braket/latest/developerguide/braket-reservations.html

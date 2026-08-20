@@ -24,6 +24,7 @@ Prefer the SDK — it applies filters client-side, performs region fan-out, and 
 | Read capabilities | `device.properties` — already a parsed object | `aws braket get-device --device-arn <arn> --region <region> --query 'deviceCapabilities' --output text \| jq '.paradigm.qubitCount, (.action \| keys)'` — a JSON **string**, parse before reading |
 
 Reference docs for correct usage:
+
 - Braket Python SDK — [`AwsDevice`](https://amazon-braket-sdk-python.readthedocs.io/en/latest/_apidoc/braket.aws.aws_device.html) (`AwsDevice.get_devices`, `AwsDevice.properties`)
 - AWS CLI — [`braket search-devices`](https://docs.aws.amazon.com/cli/latest/reference/braket/search-devices.html), [`braket get-device`](https://docs.aws.amazon.com/cli/latest/reference/braket/get-device.html)
 - boto3 `braket` client — [`search_devices`](https://docs.aws.amazon.com/boto3/latest/reference/services/braket/client/search_devices.html), [`get_device`](https://docs.aws.amazon.com/boto3/latest/reference/services/braket/client/get_device.html)
@@ -32,6 +33,7 @@ Reference docs for correct usage:
 ## Reading GetDevice
 
 Warning: GetDevice responses are large (10–30 KB per device, mostly `deviceCapabilities`). Do NOT dump the full response into your context — extract only the fields you need. Preferred approaches:
+
 - **SDK:** `device = AwsDevice(arn); device.properties.<path>` (already parsed, access fields directly)
 - **AWS CLI + jq:** `aws braket get-device --device-arn <arn> --region <region> --query 'deviceCapabilities' --output text | jq '<path to fields you need>'`
 
@@ -43,6 +45,7 @@ Do not skip a field or substitute null based on assumptions about what a device 
 
 For field **meanings, types, and constraints**, consult the `amazon-braket-schemas-python` repository rather than inferring them from memory.
 You can do this by:
+
 - **Read from the web** — fetch the module source directly from the [GitHub repository](https://github.com/amazon-braket/amazon-braket-schemas-python)
 - **Install the package** — `pip install --upgrade amazon-braket-schemas` (always the latest), then read the module (e.g. `inspect.getsource`).
 
@@ -51,6 +54,7 @@ Resolve the module from the live payload's `braketSchemaHeader`: dots in `name` 
 ## Paradigms
 
 Braket supports two paradigms that are **not mutually compatible**:
+
 - **Gate model** — quantum circuits (gates + measurements). Most QPUs and all managed simulators.
 - **AHS (Analog Hamiltonian Simulation)** — continuous Hamiltonian evolution on neutral-atom arrays. Verify which devices support AHS via `GetDevice` (`deviceCapabilities.paradigm`) rather than assuming a fixed device.
 
@@ -88,17 +92,15 @@ Some providers apply a further shot minimum when error mitigation is enabled, ca
 ## Simulators
 
 - **On-demand** (managed by Braket). Duration-billed — see https://docs.aws.amazon.com/braket/latest/developerguide/braket-submit-tasks-simulators.html.
-- **Local** (in the SDK, no ARN, no charge): `LocalSimulator(backend=...)`, documented at https://amazon-braket-sdk-python.readthedocs.io/en/latest/_apidoc/braket.devices.local_simulator.html and https://docs.aws.amazon.com/braket/latest/developerguide/braket-send-to-local-simulator.html 
+- **Local** (in the SDK, no ARN, no charge): `LocalSimulator(backend=...)`, documented at https://amazon-braket-sdk-python.readthedocs.io/en/latest/_apidoc/braket.devices.local_simulator.html and https://docs.aws.amazon.com/braket/latest/developerguide/braket-send-to-local-simulator.html
 - **Noise-aware simulation:** applies only to density-matrix backends — `LocalSimulator("braket_dm")` locally, or the managed on-demand DM1. State-vector backends (`braket_sv`, default) cannot express noise models. See the [example notebook](https://github.com/amazon-braket/amazon-braket-examples/blob/main/examples/braket_features/Simulating_Noise_On_Amazon_Braket.ipynb) and [SDK noise modules](https://amazon-braket-sdk-python.readthedocs.io/en/latest/_apidoc/braket.circuits.noise_model.html).
 - `shots=0` has special, simulator-specific behavior (analytical/exact mode): the circuit MUST include explicit result types — e.g. `circuit.probability()`, `circuit.state_vector()`, or `circuit.expectation(observable)` — or the simulator raises an error. QPUs always require `shots > 0`. See https://docs.aws.amazon.com/braket/latest/developerguide/braket-submit-tasks-simulators.html and https://docs.aws.amazon.com/braket/latest/developerguide/braket-result-types.html
 
-
 ### Local quantum device emulator
 
-A local quantum device **emulator** is distinct from the local simulator: it applies a real device's validation rules and noise model to a circuit locally, so you can catch a rejection before running on the QPU. 
+A local quantum device **emulator** is distinct from the local simulator: it applies a real device's validation rules and noise model to a circuit locally, so you can catch a rejection before running on the QPU.
 Learn how to use local device emulators at https://docs.aws.amazon.com/braket/latest/developerguide/braket-local-emulator.html.
 In the SDK, the emulator obtained from a method on the `AwsDevice` class as [`AwsDevice.emulator()`](https://amazon-braket-sdk-python.readthedocs.io/en/stable/_apidoc/braket.aws.aws_device.html#module-braket.aws.aws_device).
-
 
 ### Experimental capabilities
 
@@ -111,7 +113,6 @@ See example notebooks for experimental capabilities at https://github.com/amazon
 Some QPUs expose pulse-level access — you can inspect the native gate calibrations the QPU uses and attach custom pulse sequences at run time. Support can be determined from `AwsDevice.properties`.
 Learn more about pulse control on Amazon Braket at https://docs.aws.amazon.com/braket/latest/developerguide/braket-pulse-control.html.
 See example notebooks for pulse control at https://github.com/amazon-braket/amazon-braket-examples/tree/main/examples/pulse_control.
-
 
 ## Common mistakes
 
@@ -127,6 +128,7 @@ See example notebooks for pulse control at https://github.com/amazon-braket/amaz
 | Misses a conditional shot minimum (e.g. IonQ error mitigation) | Only read `service.shotsRange` | Check the device's `provider` properties too — a mitigation scheme can raise the minimum above `service.shotsRange` |
 
 ## References
+
 - Amazon Braket Python SDK: https://github.com/amazon-braket/amazon-braket-sdk-python
 - Amazon Braket supported regions and devices: https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices.html
 - Amazon Braket Python schemas: https://github.com/amazon-braket/amazon-braket-schemas-python
