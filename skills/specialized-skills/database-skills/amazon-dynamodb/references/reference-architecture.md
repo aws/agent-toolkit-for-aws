@@ -984,8 +984,8 @@ in a plaintext Lambda environment variable, where it is visible to anyone with
 `lambda:GetFunctionConfiguration` and lands in CloudFormation templates and
 deployment logs. Whichever model you pick, pin it: re-embedding existing
 content with a *different* model produces vectors that are not comparable to
-the ones already stored, which degrades results with no error (SKILL.md Fact
-#10).
+the ones already stored, which degrades results with no error
+(SKILL.md Fact #10).
 
 **Projection choice is the cost lever.** `KEYS_ONLY` on the vector index is
 flat in item size — measured `dimensions × 4` plus ~35 B regardless of how
@@ -997,7 +997,6 @@ at creation.
 
 **On-demand is mandatory**, not merely the default (Mechanics #19), so this
 rules provisioned capacity out for `BoardItems` permanently.
-
 
 ## 8. Observability: Powertools + X-Ray
 
