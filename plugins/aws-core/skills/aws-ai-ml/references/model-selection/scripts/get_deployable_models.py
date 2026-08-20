@@ -15,10 +15,13 @@ Output:
 """
 
 import json
+import os
 import sys
 
 import boto3
 import botocore.exceptions
+
+os.environ.setdefault("AWS_SDK_UA_APP_ID", "AWSSkill-SageMaker")
 
 
 def get_deployable_models(hub_name, region_name=None):

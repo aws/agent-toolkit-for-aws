@@ -5,8 +5,9 @@ description: >
   (SFT, DPO, RLVR, RLAIF), model selection, dataset preparation, evaluation,
   deployment to SageMaker endpoints or Bedrock, and endpoint diagnostics. Covers
   the full lifecycle from planning through production. Use when fine-tuning
-  models on SageMaker, selecting base models from SageMaker Hub, finding a model
-  to deploy without fine-tuning, transforming datasets for training, checking
+  models on SageMaker, choosing/selecting which base model to customize or
+  fine-tune from SageMaker Hub, finding a model to deploy without fine-tuning,
+  transforming datasets for training, checking
   data readiness, evaluating model quality, deploying to endpoints, setting up
   IAM roles and S3 buckets for training jobs, or managing a SageMaker Managed
   MLflow app. Also use to check endpoint health, diagnose failures, debug
@@ -15,7 +16,7 @@ description: >
   usage. NOT for Ground Truth labeling, Feature Store, or general-purpose AWS
   infrastructure.
 metadata:
-  version: "1"
+  version: "3"
 ---
 
 # AWS AI/ML Model Customization
@@ -46,3 +47,4 @@ Match the user's intent to the appropriate reference folder and load only that c
 
 - **Progressive disclosure.** Load only the reference folder relevant to the current user intent. Do not load all references at once.
 - **Best-effort help.** If the user's request falls outside this skill's references, do not dead-end the conversation. Help them using general AWS knowledge and documentation, and inform the user that the guidance is not covered by this skill's validated workflows.
+- **Usage attribution.** Before running any AWS CLI command or packaged script, set `export AWS_SDK_UA_APP_ID=AWSSkill-SageMaker`.
