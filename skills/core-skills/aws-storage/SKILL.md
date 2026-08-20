@@ -55,6 +55,7 @@ Decision Factors:
 Use the Storage Options table to identify candidate services, not to cut services; keyword matches against the Common Workloads column are not the only answers. You MUST retrieve the reference files for each of the candidate services using the Routing section below.
 
 Considering these factors, recommend specific AWS storage service(s) and:
+
 1. You MUST include clear rationale tied to the user's stated requirements.
 2. You MUST present alternatives where the choice is close or dependent on unspecified information, explaining the tradeoff.
 
@@ -66,15 +67,15 @@ The user knows their service or approach and needs operational help.
 
 1. Classify the Question Domain based on the table below to identify which context matters.
 
-| Question Domain | Example Triggers | What to clarify |
-| --- | --- | --- |
-| Migration and Data Transfer | "How do I move my data to AWS?", "Set up DataSync", "Sync from on-premises NFS to EFS", source-to-destination questions | Source system and protocol, destination service, data volume, network path to AWS (Direct Connect, VPN, internet) |
-| Data Protection and Resiliency | "Set up backup", "Cross-region replication", "What's my DR strategy?", "RTO under 1 hour", failover, immutability | Failure scenario (deletion, corruption, AZ/region loss, compliance hold), RTO and RPO targets, replication scope (same-region, cross-region, cross-account) |
-| Cost and Lifecycle | "Reduce my storage bill", "Right-size my volumes", "Cost optimize", lifecycle rules, tiering decisions, storage class selection | Current service and configuration, access frequency (daily, weekly, rarely), data volume and growth trajectory |
-| Performance | "My reads are slow", "Throughput bottleneck", "Need more IOPS", sizing | Observed vs. required (latency, IOPS, or throughput), access pattern (random/sequential, read/write mix), whether storage or compute/network is the suspected bottleneck |
-| Security and Compliance | "Encrypt at rest", "Restrict bucket access", "Meet HIPAA", access control, compliance frameworks | Security objective (restrict access, audit access, encrypt, isolate network, meet compliance mandate), compliance framework if any |
-| Configuration and Guidance | "Mount EFS on EKS", "Set up replication", "Does Service X support Y?", deployment steps, best practices | Client environment (OS, compute type, VPC/on-premises), target operation or feature |
-| Troubleshooting | "Getting AccessDenied errors", "Mount is hanging", "Unexpected latency spike", "Why is my lifecycle rule not transitioning?" | Error message or symptom, what changed recently, what they have attempted |
+   | Question Domain | Example Triggers | What to clarify |
+   | --- | --- | --- |
+   | Migration and Data Transfer | "How do I move my data to AWS?", "Set up DataSync", "Sync from on-premises NFS to EFS", source-to-destination questions | Source system and protocol, destination service, data volume, network path to AWS (Direct Connect, VPN, internet) |
+   | Data Protection and Resiliency | "Set up backup", "Cross-region replication", "What's my DR strategy?", "RTO under 1 hour", failover, immutability | Failure scenario (deletion, corruption, AZ/region loss, compliance hold), RTO and RPO targets, replication scope (same-region, cross-region, cross-account) |
+   | Cost and Lifecycle | "Reduce my storage bill", "Right-size my volumes", "Cost optimize", lifecycle rules, tiering decisions, storage class selection | Current service and configuration, access frequency (daily, weekly, rarely), data volume and growth trajectory |
+   | Performance | "My reads are slow", "Throughput bottleneck", "Need more IOPS", sizing | Observed vs. required (latency, IOPS, or throughput), access pattern (random/sequential, read/write mix), whether storage or compute/network is the suspected bottleneck |
+   | Security and Compliance | "Encrypt at rest", "Restrict bucket access", "Meet HIPAA", access control, compliance frameworks | Security objective (restrict access, audit access, encrypt, isolate network, meet compliance mandate), compliance framework if any |
+   | Configuration and Guidance | "Mount EFS on EKS", "Set up replication", "Does Service X support Y?", deployment steps, best practices | Client environment (OS, compute type, VPC/on-premises), target operation or feature |
+   | Troubleshooting | "Getting AccessDenied errors", "Mount is hanging", "Unexpected latency spike", "Why is my lifecycle rule not transitioning?" | Error message or symptom, what changed recently, what they have attempted |
 
 2. Ask scoping questions per the "What to clarify" column for information not already in the query. Where the missing detail would not change the guidance, answer under a stated assumption instead of waiting to ask more questions.
 3. You MUST retrieve the reference files from the Routing section below for all candidate services.
