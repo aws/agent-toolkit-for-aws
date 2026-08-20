@@ -56,7 +56,7 @@ Retrieve the documentation and extract the relevant sections.
   - **properties**: the "Properties" section with each property's name, required/optional status, type, allowed values, update requirements
   - **required**: only properties marked "Required: Yes"
   - **return-values**: the "Return values" section covering `!Ref` and `!GetAtt` attributes
-  - **property:`<Name>`**: the sub-sections describing that property's nested schema
+  - **property:<Name>**: the sub-sections describing that property's nested schema
 - You MUST preserve the exact property names (case-sensitive) because CloudFormation rejects misspelled property names
 - You MUST capture type information (String, Integer, Boolean, List, or a sub-type link) because type mismatches are a leading cause of deployment failures
 - You SHOULD capture the "Update requires" column because users often care whether a property change triggers replacement vs. modification
