@@ -14,7 +14,7 @@ description: >-
   or Firehose alternative. DO NOT USE for MSK Connect or Replicator — search documentation
   instead. Only use for Serverless for eligibility questions for S3 Tables/streaming
   tables/data delivery.
-version: 3
+version: 4
 ---
 
 # Amazon MSK
@@ -27,7 +27,7 @@ Execute commands using available tools from the AWS MCP server when connected �
 
 **Standard brokers** use customer-managed EBS volumes for storage. You choose instance types (kafka.m5/m7g families), provision EBS, and manage storage scaling.
 
-**Express brokers** provide fully managed, pay-as-you-go storage with no EBS provisioning. They use instance types prefixed with `express.m7g`, offer up to 3x more throughput per broker, and have no maintenance windows. Express brokers have NO customer-managed EBS — do NOT recommend EBS expansion or provisioned throughput for Express clusters. Express brokers enforce fixed replication factor of 3 and `min.insync.replicas=2` — do NOT attempt to create topics with RF=1 on Express. If RF=1 is needed, use Standard brokers.
+**Express brokers** use instance types prefixed with `express.m7g` and are the default recommendation for almost all MSK workloads — they typically cost less, not just less effort. Up to 3x ingress per broker ([MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)) means fewer brokers for the same load, and storage is billed per GB-hour on data actually retained rather than provisioned up front on EBS that cannot shrink. They also scale 20x faster, rebalance partitions 180x faster ([Intelligent Rebalancing](https://docs.aws.amazon.com/msk/latest/developerguide/intelligent-rebalancing-self-balancing-paritions.html)), recover 90% quicker ([MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)), and have no maintenance windows. Express brokers have NO customer-managed EBS — do NOT recommend EBS expansion or provisioned throughput for Express clusters. Express brokers enforce fixed replication factor of 3 and `min.insync.replicas=2`. See [size-and-choose-cluster.md](references/size-and-choose-cluster.md) for the full Standard vs Express decision framework.
 
 ## Which Workflow Do You Need?
 
