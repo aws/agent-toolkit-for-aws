@@ -135,7 +135,7 @@ agentcore deploy
 # then re-run: agentcore add payment-connector … --provider CoinbaseCDP --provision-mode QUICK_CREATE   (and agentcore deploy)
 ```
 
-**Manual (Coinbase CDP or Stripe Privy) — needs provider credentials. The DEVELOPER runs this, not the agent.** The agent presents the prerequisites and the command below, but must NOT execute it or handle the credentials. This single command creates the credential provider and the connector. The CLI writes the provider secrets in **plaintext to `agentcore/.env.local`** and records the credential locally; `agentcore deploy` (Step 4) then uploads them to **AgentCore Identity** (`agentcore.json` keeps only a reference). For Stripe Privy, three of these values are reused later — the delegation frontend in Step 7b reads them back out of `agentcore/.env.local`, so the developer is never asked for them twice.
+**Manual (Coinbase CDP or Stripe Privy) — needs provider credentials. The DEVELOPER runs this, not the agent.** The agent presents the prerequisites and the command below, but must NOT execute it or handle the credentials. This single command creates the credential provider and the connector. The CLI writes the provider secrets in **plaintext to `agentcore/.env.local`** and records the credential locally; `agentcore deploy` (Step 4) then uploads them to **AgentCore Identity** (`agentcore.json` keeps only a reference). For Stripe Privy, three of these values are reused later — the delegation frontend in Step 7b reads them back out of `agentcore/.env.local`, so the developer is never asked for them twice. Note the CLI namespaces each key as `AGENTCORE_CREDENTIAL_<MANAGER>_<CONNECTOR>_STRIPE_PRIVY_<FIELD>`, using the manager and connector names chosen below; Step 7b matches on the `_STRIPE_PRIVY_<FIELD>` suffix for that reason.
 
 **Before running — get your provider credentials** (do this first; the connector command needs them). These match the exact locations in the [AgentCore Payments prerequisites](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-prerequisites.html).
 
@@ -335,44 +335,54 @@ Using the `wallet_address` / `redirect_url` the script printed:
 
       **7b. Configure environment — reuse the Step 3b credentials. The DEVELOPER runs this, not the agent.**
 
-      Create `.env.local` from the template:
+      **Do not ask the developer to re-provide the Privy credentials.** All three were already captured when the payment connector was created in Step 3b, and the CLI wrote them to `agentcore/.env.local` in the agent project.
 
-      ```bash
-      cp .env.example .env.local
+      **The connector's key names are namespaced — match on the suffix, not the full name.** `agentcore add payment-connector` does not write bare `STRIPE_PRIVY_*` keys. It writes one key per secret in the form:
+
+      ```text
+      AGENTCORE_CREDENTIAL_<MANAGER>_<CONNECTOR>_STRIPE_PRIVY_<FIELD>
       ```
 
-      **Do not ask the developer to re-provide the Privy credentials.** All three were already captured when the payment connector was created in Step 3b, and the CLI wrote them to `agentcore/.env.local` in the agent project. The frontend reads Next.js-prefixed names, so the keys differ on each side — map them across:
+      `<MANAGER>` and `<CONNECTOR>` are the names the developer chose in Step 3b, so the fully-qualified key names are different in every project. Never search for a hardcoded full name — match on the `_STRIPE_PRIVY_<FIELD>` **suffix**:
 
-      | Frontend `.env.local` variable | Value comes from | Visibility |
+      | Frontend `.env.local` variable | Suffix to match in `agentcore/.env.local` | Visibility |
       |----------|--------|------------|
-      | `NEXT_PUBLIC_PRIVY_APP_ID` | `STRIPE_PRIVY_APP_ID` in `agentcore/.env.local` | Public (client) |
-      | `PRIVY_APP_SECRET` | `STRIPE_PRIVY_APP_SECRET` in `agentcore/.env.local` | Server-only |
-      | `NEXT_PUBLIC_PRIVY_SIGNER_ID` | `STRIPE_PRIVY_AUTHORIZATION_ID` in `agentcore/.env.local` | Public (identifier only) |
+      | `NEXT_PUBLIC_PRIVY_APP_ID` | `*_STRIPE_PRIVY_APP_ID` | Public (client) |
+      | `PRIVY_APP_SECRET` | `*_STRIPE_PRIVY_APP_SECRET` | Server-only |
+      | `NEXT_PUBLIC_PRIVY_SIGNER_ID` | `*_STRIPE_PRIVY_AUTHORIZATION_ID` | Public (identifier only) |
       | `NEXT_PUBLIC_NETWORK_MODE` | not a connector credential — set `testnet` for Base Sepolia / Solana Devnet, `mainnet` for production | Public |
 
-      The frontend does **not** need the authorization private key — only the connector signs, so `STRIPE_PRIVY_AUTHORIZATION_PRIVATE_KEY` stays where it is.
+      The frontend does **not** need the authorization private key — only the connector signs, so `*_STRIPE_PRIVY_AUTHORIZATION_PRIVATE_KEY` stays where it is.
 
-      `PRIVY_APP_SECRET` is a real secret and `agentcore/.env.local` holds it in plaintext, so the **developer** copies the values across — the agent must not read that file (same rule as Step 3b). Copy the three values by hand, or run this from the agent project root:
+      `PRIVY_APP_SECRET` is a real secret and `agentcore/.env.local` holds it in plaintext, so the **developer** runs the commands below — the agent must not read that file (same rule as Step 3b).
+
+      First confirm the keys are there. This prints key **names** only, never a value — substitute the absolute path to the agent project:
 
       ```bash
-      # developer runs — maps the three connector creds into the frontend's .env.local
-      # without printing any of them
-      FRONTEND=../agentcore-privy-frontend   # path to the frontend cloned in Step 7a
-      SRC=./agentcore/.env.local
-      get() { sed -n "s/^$1=//p" "$SRC" | tail -1; }
-      {
-        echo "NEXT_PUBLIC_PRIVY_APP_ID=$(get STRIPE_PRIVY_APP_ID)"
-        echo "PRIVY_APP_SECRET=$(get STRIPE_PRIVY_APP_SECRET)"
-        echo "NEXT_PUBLIC_PRIVY_SIGNER_ID=$(get STRIPE_PRIVY_AUTHORIZATION_ID)"
-        echo "NEXT_PUBLIC_NETWORK_MODE=testnet"
-      } > "$FRONTEND/.env.local"
+      grep -oE '^[^=]*_STRIPE_PRIVY_[A-Z_]+' /absolute/path/to/agent-project/agentcore/.env.local
       ```
 
-      Only fall back to the Privy Dashboard (**Configuration > App settings**, plus **Wallet infrastructure > Authorization keys** for the signer ID) if `agentcore/.env.local` is missing — for example when the connector was created on a different machine.
+      Expect four lines ending in `_APP_ID`, `_APP_SECRET`, `_AUTHORIZATION_PRIVATE_KEY`, and `_AUTHORIZATION_ID`. If it prints nothing, skip to the dashboard fallback below.
+
+      Then write the frontend's `.env.local`. One command, absolute paths on both sides (relative paths and `cd` are what break here — the two projects are different directories), no values printed:
+
+      ```bash
+      sed -nE 's/^[^=]*_STRIPE_PRIVY_APP_ID=/NEXT_PUBLIC_PRIVY_APP_ID=/p;s/^[^=]*_STRIPE_PRIVY_APP_SECRET=/PRIVY_APP_SECRET=/p;s/^[^=]*_STRIPE_PRIVY_AUTHORIZATION_ID=/NEXT_PUBLIC_PRIVY_SIGNER_ID=/p' /absolute/path/to/agent-project/agentcore/.env.local > /absolute/path/to/agentcore-privy-frontend/.env.local && printf 'NEXT_PUBLIC_NETWORK_MODE=testnet\n' >> /absolute/path/to/agentcore-privy-frontend/.env.local
+      ```
+
+      It writes the file outright, so there is no need to `cp .env.example .env.local` first and no duplicate keys to reason about. Verify by listing the key names — again no values:
+
+      ```bash
+      cut -d= -f1 /absolute/path/to/agentcore-privy-frontend/.env.local
+      ```
+
+      All four of `NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `NEXT_PUBLIC_PRIVY_SIGNER_ID`, `NEXT_PUBLIC_NETWORK_MODE` must be present. Fewer than four means a suffix didn't match — use the fallback rather than a partial file.
+
+      **Dashboard fallback.** If `agentcore/.env.local` is missing or the suffixes don't match — the connector was created on another machine, or the CLI's key format changed — fill in the values by hand instead. `cp .env.example .env.local` in the frontend, then take the App ID and App Secret from the Privy Dashboard under **Configuration > App settings**, and the signer ID from **Wallet infrastructure > Authorization keys**. It must be the **same app and same authorization key** used in Step 3b.
 
       The `NEXT_PUBLIC_PRIVY_SIGNER_ID` is the Authorization Key ID (looks like `zr17anh9dpiqno1iaref9jpx`) — the same key whose private key went to the payment connector. It is safe to expose publicly (it's an identifier, not a secret).
 
-      > **Important:** Because these values come straight out of `agentcore/.env.local`, the frontend automatically uses the same Privy app and authorization key as the connector. If they are ever set by hand and diverge, delegation succeeds but payments fail with "Wallet policy denied the transaction."
+      > **Important:** Taking these values straight out of `agentcore/.env.local` is what guarantees the frontend uses the same Privy app and authorization key as the connector. If they are set by hand and diverge, delegation succeeds but payments fail with "Wallet policy denied the transaction."
 
       **7c. Start the frontend — agent runs:**
 
@@ -644,9 +654,9 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 **Stripe Privy: Delegation frontend setup issues:**
 
 - **Login fails, the Privy modal won't open, or the browser console shows an origin/CORS or "not a valid origin for this app" error**: the local origin is not allowlisted. Add the dev server's exact URL under Privy Dashboard > Configuration > App settings > Domains > Allowed origins > Web & mobile web (Step 7d). Privy matches the browser **origin**, so `http://localhost:3000` works but `http://localhost:3000/` (trailing slash) and `http://localhost` (no port) do not. If the dev server moved off port 3000, the allowlisted port must move with it.
-- **"Missing server configuration" from /api/check-signers**: One or more env vars (`NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `NEXT_PUBLIC_PRIVY_SIGNER_ID`) are not set in the frontend's `.env.local`. Map them from `STRIPE_PRIVY_APP_ID` / `STRIPE_PRIVY_APP_SECRET` / `STRIPE_PRIVY_AUTHORIZATION_ID` in `agentcore/.env.local` (Step 7b) — the key names differ on each side, so a straight copy of the file does not work.
+- **"Missing server configuration" from /api/check-signers**: One or more env vars (`NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `NEXT_PUBLIC_PRIVY_SIGNER_ID`) are not set in the frontend's `.env.local`. Map them from the `*_STRIPE_PRIVY_APP_ID` / `*_STRIPE_PRIVY_APP_SECRET` / `*_STRIPE_PRIVY_AUTHORIZATION_ID` keys in `agentcore/.env.local` (Step 7b). Two things make a straight file copy fail: the frontend uses different key names, and the connector's keys are namespaced `AGENTCORE_CREDENTIAL_<MANAGER>_<CONNECTOR>_STRIPE_PRIVY_*` — so grep the suffix, not the bare name. `cut -d= -f1` on the frontend's `.env.local` shows which keys actually landed.
 - **Login fails or no wallets appear**: The Privy app may not have embedded wallets enabled. In Privy Dashboard > Wallet Infrastructure, ensure embedded wallets are configured for the relevant chains (Ethereum/Solana).
-- **"Give access" succeeds but payments still fail with "Wallet policy denied"**: The `NEXT_PUBLIC_PRIVY_SIGNER_ID` in the frontend doesn't match the Authorization ID used in the payment connector (Step 3b). Re-derive it from `STRIPE_PRIVY_AUTHORIZATION_ID` in `agentcore/.env.local` rather than retyping it from the dashboard.
+- **"Give access" succeeds but payments still fail with "Wallet policy denied"**: The `NEXT_PUBLIC_PRIVY_SIGNER_ID` in the frontend doesn't match the Authorization ID used in the payment connector (Step 3b). Re-derive it from the `*_STRIPE_PRIVY_AUTHORIZATION_ID` key in `agentcore/.env.local` rather than retyping it from the dashboard.
 - **User logged in with wrong email**: The email must match the one passed to `setup_payment_user.py --email`. If mismatched, the instrument points to a different Privy user's wallets. Log out, log back in with the correct email.
 - **Port conflict**: If the agent's own server is on port 3000, the frontend auto-selects another port. Check the terminal output for the actual URL — and allowlist that port (Step 7d), otherwise login fails.
 
