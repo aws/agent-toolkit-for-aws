@@ -171,6 +171,27 @@ def _merge_rows(model: dict, summary: dict) -> list[dict]:
         extrapolated = observed_cu * declared_rps * cc.SECONDS_PER_MONTH * unit_price
         expected_monthly = pc["total_cost"]
 
+        # Vector capacity is metered in BYTES, so it contributes nothing to observed_cu.
+        # Without the block below a SearchVectors pattern extrapolates to exactly $0 and
+        # the design reads as though its search traffic were free.
+        #
+        # Extrapolating from these numbers is sound even though calculate_costs.py
+        # refuses to PREDICT search bytes. The two are different problems: prediction
+        # needs the fraction of the index ANN examines, which measured ~10x apart across
+        # configurations, whereas here the per-call bytes were observed on this design at
+        # its real dimensions and projection. Measure-then-multiply, not model-then-hope.
+        # This is the figure the cost report deliberately leaves blank.
+        ss = p["steady_state"]
+        obs_search_bytes = ss.get("mean_vector_search_bytes") or 0.0
+        obs_write_bytes_by_index = ss.get("mean_vector_write_bytes_by_index") or {}
+        obs_write_bytes = sum(obs_write_bytes_by_index.values())
+        calls_per_month = declared_rps * cc.SECONDS_PER_MONTH
+        vector_monthly = (
+            obs_search_bytes / cc.BYTES_PER_GB * cc.VECTOR_SEARCH_PRICE_PER_GB
+            + obs_write_bytes / cc.BYTES_PER_GB * cc.VECTOR_WRITE_PRICE_PER_GB
+        ) * calls_per_month
+        extrapolated += vector_monthly
+
         delta_pct = None
         if expected_cu > 0:
             delta_pct = (observed_cu - expected_cu) / expected_cu
@@ -201,6 +222,10 @@ def _merge_rows(model: dict, summary: dict) -> list[dict]:
                 "expected_monthly": expected_monthly,
                 "amplification_ratio": p["steady_state"]["amplification_ratio"],
                 "gsi_cu_by_index": p["steady_state"]["gsi_cu_by_index"],
+                "observed_vector_search_bytes": obs_search_bytes,
+                "observed_vector_write_bytes_by_index": obs_write_bytes_by_index,
+                "observed_vector_write_bytes": obs_write_bytes,
+                "vector_monthly": vector_monthly,
                 "cold_start": p["cold_start"],
                 "measurement_tainted": p.get("measurement_tainted", False),
                 "consistency": ap.get("consistency", "eventual"),
@@ -742,11 +767,34 @@ def _render_report(
     if total_expected > 0:
         delta = (total_extrapolated - total_expected) / total_expected * 100
 
+    # How much of total_extrapolated is measured vector SEARCH cost. The calculator
+    # deliberately omits search from total_expected, so this part of the delta is an
+    # expected gap rather than a model error, and the prose below says so. Vector WRITE
+    # cost is in both figures, so it does not need excluding.
+    vector_search_monthly = sum(
+        (r["observed_vector_search_bytes"] or 0.0)
+        / cc.BYTES_PER_GB
+        * cc.VECTOR_SEARCH_PRICE_PER_GB
+        * r["declared_peak_rps"]
+        * cc.SECONDS_PER_MONTH
+        for r in rows
+    )
+
     # Crude actual-bill estimate: mean_observed_cu × number of calls × unit price.
+    # Vector bytes are added on the same basis: they are real charges the run incurred,
+    # and omitting them understated the spend for any design with a vector index.
     bench_cost = 0.0
     for r in rows:
         unit = cc.WRU_PRICE if r["op"] in cc.WRITE_OPS else cc.RRU_PRICE
         bench_cost += r["observed_cu"] * r["call_count"] * unit
+        bench_cost += (
+            (r["observed_vector_search_bytes"] or 0.0)
+            / cc.BYTES_PER_GB
+            * cc.VECTOR_SEARCH_PRICE_PER_GB
+            + (r["observed_vector_write_bytes"] or 0.0)
+            / cc.BYTES_PER_GB
+            * cc.VECTOR_WRITE_PRICE_PER_GB
+        ) * r["call_count"]
 
     # Effective driven throughput — describe what the run ACTUALLY drove, from
     # the per-pattern bench_rps in the summary, not the nominal scale_factor
@@ -839,6 +887,14 @@ def _render_report(
     a(
         f"**Delta:                                           {f'{delta:+.1f}%' if delta is not None else '—'}**"
     )
+    if delta is not None and total_expected > 0 and vector_search_monthly / total_expected > 0.01:
+        a(
+            f"\n*Of the measured figure, {_fmt_money(vector_search_monthly)}/month is vector "
+            f"**search** cost. The calculator deliberately does not price search, so that "
+            f"amount is missing from the expected column by design — it accounts for "
+            f"{vector_search_monthly / total_expected * 100:+.1f} points of the delta above and "
+            f"is not a model error. See **Vector capacity (measured)** below.*"
+        )
     a(
         f"**This benchmark consumed: ~{_fmt_money(bench_cost)} in actual AWS charges** *(seed + warmup + measurement)*\n"
     )
@@ -1292,6 +1348,65 @@ def _render_report(
     a("- Data Modeling #13 (Global Tables LWW / MRSC): single-region deploy.")
     a("- Patterns #1 (idempotency middleware): application layer, not DDB alone.")
     a("- Integration #1 (consumer idempotency): consumers not deployed.\n")
+
+    # Vector capacity — measured, because it cannot be soundly predicted.
+    vector_rows = [
+        r for r in rows if r["observed_vector_search_bytes"] or r["observed_vector_write_bytes"]
+    ]
+    if vector_rows:
+        a("## Vector capacity (measured)\n")
+        a(
+            "Vector indexes are metered in **bytes**, not RCU/WCU, so none of this "
+            "appears in the capacity columns above — a `SearchVectors` pattern legitimately "
+            "consumes 0 CU. These are observed `VectorSearchRequestBytes` and "
+            "`VectorWriteRequestBytes` per call, taken from `ConsumedCapacity` on this "
+            "deployment.\n"
+        )
+        a(
+            f"`calculate_costs.py` prices vector **storage and writes** but deliberately "
+            f"declines to price **search**: the share of an index that approximate-nearest-"
+            f"neighbour search examines varied by roughly 10x across configurations in "
+            f"testing, so a predicted figure would be confidently wrong. The numbers below "
+            f"close that gap by measurement — per-call bytes observed on this design, at its "
+            f"real dimensions and projection, multiplied by declared peak. Search is billed at "
+            f"${cc.VECTOR_SEARCH_PRICE_PER_GB}/GB and writes at "
+            f"${cc.VECTOR_WRITE_PRICE_PER_GB}/GB.\n"
+        )
+        a(
+            "| Pattern | Op | Index | Search B/call | Write B/call | Declared peak rps | "
+            "Vector $/mo |"
+        )
+        a("| --- | --- | --- | --- | --- | --- | --- |")
+        for r in vector_rows:
+            wb = r["observed_vector_write_bytes_by_index"]
+            idx = r["index"] or (", ".join(sorted(wb)) if wb else "—")
+            a(
+                f"| {r['pattern_id']} | {r['op']} | {idx} | "
+                f"{r['observed_vector_search_bytes']:,.0f} | "
+                f"{r['observed_vector_write_bytes']:,.0f} | "
+                f"{r['declared_peak_rps']:,} | {_fmt_money(r['vector_monthly'])} |"
+            )
+        a("")
+        vector_total = sum(r["vector_monthly"] for r in vector_rows)
+        a(
+            f"**Vector capacity total: {_fmt_money(vector_total)}/month** at declared peak, "
+            "already included in the extrapolated monthly figures above. Vector index "
+            "*storage* is not in this total — it rolls into table storage, which the cost "
+            "report covers.\n"
+        )
+        min_b = cc.VECTOR_METERING_MIN_BYTES
+        if any(
+            0 < r["observed_vector_search_bytes"] <= min_b
+            or 0 < r["observed_vector_write_bytes"] <= min_b
+            for r in vector_rows
+        ):
+            a(
+                f"At least one figure is at or below the {min_b:,}-byte metering minimum, so "
+                "it reflects the floor rather than the vector's real size. Low-dimension "
+                "indexes do not meter proportionally cheaper; scaling these numbers up by "
+                "dimension count will overstate cost until the floor is cleared "
+                f"(~{min_b // 4} dimensions).\n"
+            )
 
     # Cost-estimate validation.
     a("## Cost-estimate validation\n")

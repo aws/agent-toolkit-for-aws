@@ -2,7 +2,7 @@
 
 Data Delivery for General Purpose S3 Buckets for Amazon MSK Express brokers delivers topic data from Express brokers to a general-purpose S3 bucket as objects, with configurable compression, storage class, and output key layout.
 
-Serverless with no connectors to manage, minutes-level freshness, and auto-scaling up to 10 GB/s. Each record is delivered exactly once by the delivery pipeline. Data Delivery does not consume broker egress throughput or impact producer or consumer workloads. This optimizes cost as it enables delivery to S3 without requiring additional cluster capacity on MSK Express clusters. Additionally, you can fan out multiple delivery channels from the same topic.
+Serverless with no connectors to manage, minutes-level freshness, and auto-scaling throughput (see [Amazon MSK Data Delivery quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-data-delivery-quota) for the per-channel ceiling). Each record is delivered exactly once by the delivery pipeline. Data Delivery does not consume broker egress throughput or impact producer or consumer workloads. This optimizes cost as it enables delivery to S3 without requiring additional cluster capacity on MSK Express clusters. Additionally, you can fan out multiple delivery channels from the same topic.
 
 > **Note:** Records are batched into S3 objects — multiple Kafka records land in a single S3 object. The output key template determines the key for each object, and the `!{sequence-number}` token provides uniqueness across objects within the same prefix.
 
@@ -11,7 +11,7 @@ Serverless with no connectors to manage, minutes-level freshness, and auto-scali
 Check Data Delivery for General Purpose S3 Buckets documentation for constraints. Some key constraints are:
 
 - Data Delivery for General Purpose S3 Buckets is ONLY available on **Express brokers** — Standard brokers and MSK Serverless are NOT supported
-- Data freshness is **5–15 minutes** (minimum 300 seconds, default 10 minutes). For the 5-minute minimum, the topic must produce at least **2.4 MB/s** uncompressed data
+- Data freshness is bounded and not adjustable — get the current bounds and default from [Amazon MSK Data Delivery quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-data-delivery-quota). The documented minimum-throughput floor for the tightest freshness setting applies to the S3 Tables (Iceberg) destination, not to General Purpose S3
 - **No backfill** — only records produced AFTER Data Delivery for General Purpose S3 Buckets is enabled are delivered
 
 If the user needs any of the above functionality, recommend **Managed Service for Apache Flink** instead. Data Delivery for General Purpose S3 Buckets is the most cost-effective way to deliver data to General Purpose S3 Buckets, so if it can be used it should be preferred in general.

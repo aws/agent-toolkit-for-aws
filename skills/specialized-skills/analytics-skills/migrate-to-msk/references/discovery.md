@@ -6,6 +6,21 @@ at once.
 
 Your response MUST follow the template exactly.
 
+## Input methods
+
+Use whichever of these the customer's input supports; they combine.
+
+1. **IaC analysis** — Read infrastructure files and extract cluster metadata.
+2. **Kafka CLI commands** — Display standard Kafka CLI commands for the customer to
+   run on their cluster (`kafka-topics.sh`, `kafka-configs.sh`,
+   `kafka-broker-api-versions.sh`). Do NOT generate or offer Python scripts.
+3. **Runtime metrics intake** — Ingest metrics provided by the customer.
+4. **Manual conversation** — Ask the customer for cluster details.
+5. **Target inputs** — Ask the customer whether consumers will use rack-aware
+   (local-AZ) fetching on the target and whether they have a PPA or enterprise
+   discount to apply. Record both in the `target` block; record `null` for
+   "unknown". Never guess a discount percentage.
+
 FORBIDDEN content — do NOT include any of the following:
 
 - Compatibility observations ("not supported by MSK", "should migrate smoothly")
@@ -41,6 +56,10 @@ FORBIDDEN content — do NOT include any of the following:
 ### Non-default Broker Configs
 - `<config.key>`: `<value>`
 
+### Target Inputs
+- **Consumer rack affinity:** <local-AZ (rack-aware) fetching | leaders in any AZ | unknown>
+- **Negotiated pricing discount:** <N% | none | unknown>
+
 ---
 
 ### Information I Could Not Determine
@@ -64,6 +83,22 @@ The following require runtime data that isn't available in IaC:
 
 - **B.** Proceed with partial data (assessment will be less accurate)
 
+### Target Inputs I Need From You
+
+These two are choices about the target cluster, not properties of your source, and
+they drive the cost estimate:
+
+1. **Consumer rack affinity** — will your consumers fetch from local-AZ replicas
+   (rack-aware fetching, with `client.rack` set on each consumer and
+   `replica.selector.class=RackAwareReplicaSelector` on the cluster), or will they
+   fetch from partition leaders in any AZ?
+2. **Negotiated pricing** — does your organization have a Private Pricing Agreement
+   (PPA), Enterprise Discount Program (EDP), or other negotiated AWS pricing? If so,
+   what discount percentage should I apply? Without one I will use public on-demand
+   pricing.
+
+Answer "unknown" to either and I will record it as unknown.
+
 Would you like to proceed to assessment, or provide additional information first?
 
 ```
@@ -75,11 +110,21 @@ Would you like to proceed to assessment, or provide additional information first
 - Do NOT add extra sections beyond what the template shows.
 - Do NOT summarize, characterize, or editorialize the findings ("solid foundation",
   "straightforward migration", etc.). Only state facts.
-- Do NOT mention Express, MSK, compatibility, blockers, or migration steps.
+- Do NOT mention Express, MSK, compatibility, blockers, or migration steps. The two
+  Target Inputs questions are the sole exception: they may refer to the target
+  cluster, since they are decisions about it. Ask them as written — no compatibility
+  commentary, no cost figures, no recommendation about which option to pick.
+- ALWAYS ask the two Target Inputs questions unless the user already supplied both
+  answers. Record what they said in the `target` block; record `null` for anything
+  they answered "unknown" or did not answer. Never guess a discount percentage and
+  never infer rack affinity from the source cluster's AZ layout.
+- Skip the "Target Inputs I Need From You" section only when both answers are
+  already in hand; the `### Target Inputs` section of the report is always present.
 - Do NOT offer or generate Python scripts. Only show Kafka CLI commands.
 - Do NOT reference CLI commands unless you actually displayed them in the response.
 - If the user provided all information manually and there are no gaps, skip the
-  "Information I Could Not Determine" section entirely. Just end with:
+  "Information I Could Not Determine" section entirely. Keep the Target Inputs
+  questions if either answer is still missing, then end with:
   "Would you like to proceed to assessment, or provide additional information first?"
 
 ---
@@ -146,6 +191,30 @@ For how each value is evaluated against MSK Express, see
 Discovery MUST emit one of these exact strings. `compatibility.py`'s
 `validate_input` rejects unrecognized values.
 
+### `target` block values
+
+Both fields are user-stated decisions about the target cluster, not measurements of
+the source. Discovery asks for them; Assessment reads them and passes them to the
+sizing script.
+
+`rack_affined_consumers`:
+
+- `true` — consumers will fetch from local-AZ replicas (`client.rack` on each
+  consumer, `replica.selector.class=RackAwareReplicaSelector` on the cluster).
+- `false` — consumers will fetch from partition leaders in any AZ, or no rack
+  configuration is planned.
+- `null` — the user answered "unknown" or was not asked.
+
+`pricing_discount_pct`:
+
+- A number in `[0, 100)` — the discount percentage the user stated (`0` means they
+  confirmed no negotiated discount).
+- `null` — the user answered "unknown" or was not asked.
+
+Record only what the user stated. Do not derive `rack_affined_consumers` from
+`topology.num_azs` or the source's rack configuration, and do not supply a discount
+percentage the user did not give.
+
 ### Partition counts: leaders vs. total replicas
 
 Two different partition numbers come up, and they are not interchangeable. Be
@@ -168,10 +237,11 @@ How each contract field is counted:
 - `metrics.peak_partitions_per_broker` — **total replicas** (leaders +
   followers) hosted on the busiest broker, matching the AWS quota basis.
 
-The skill converts when it needs the total: `sizing.py` multiplies the summed
-leader count by the Express target replication factor (always 3) to populate the
-workbook's "Partitions" cell. So you only ever enter leader counts in
-`num_partitions` — do not pre-multiply by RF.
+Assessment converts when it needs the total: it multiplies the summed leader count
+by the Express target replication factor (always 3) before passing
+`--num-partitions` to the sizing script (see "Deriving the sizing inputs" in
+[assessment-sizing.md](./assessment-sizing.md)). So you only ever enter leader
+counts in `num_partitions` — do not pre-multiply by RF.
 
 **If a user reports a partition number conversationally and it is ambiguous
 which count they mean, ask before recording it:** "Is that the configured
@@ -215,6 +285,11 @@ capture the replication factor separately) before writing `num_partitions`.
     "encryption_in_transit": "<enum: 'TLS' | 'PLAINTEXT' | 'TLS_PLAINTEXT' | 'UNKNOWN'>",
     "authentication": "<enum: 'UNAUTHENTICATED' | 'TLS' | 'SASL_SCRAM' | 'SASL_IAM' | 'SASL_OAUTHBEARER' | 'OTHER' | 'UNKNOWN'>",
     "auth_identity": "<string> (optional)"
+  },
+
+  "target": {
+    "rack_affined_consumers": "<boolean | null>",
+    "pricing_discount_pct": "<number | null>"
   },
 
   "metrics": {
@@ -274,6 +349,10 @@ capture the replication factor separately) before writing `num_partitions`.
     "encryption_in_transit": "TLS",
     "authentication": "SASL_SCRAM",
     "auth_identity": "kafka-admin"
+  },
+  "target": {
+    "rack_affined_consumers": true,
+    "pricing_discount_pct": 15
   },
   "metrics": {
     "source": "manual",

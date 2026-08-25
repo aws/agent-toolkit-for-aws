@@ -25,6 +25,7 @@ The vocabulary of a Braket workflow, and which reference to open for each.
 Each reference carries the domain detail for its own area — field paths, key names, API shapes, and billing models.
 
 Additional notes:
+
 - **Reservation** — exclusive device access for a booked window. This skill covers reservations at pointer depth only: the billing model is in [pricing.md](references/pricing.md), reservation-specific device limits such as `service.reservationShotsRange` are in [devices.md](references/devices.md), and the full model is in the [reservations developer guide](https://docs.aws.amazon.com/braket/latest/developerguide/braket-reservations.html).
 - **Gate calibrations / pulse control** — access native gate calibrations on QPUs and attach custom pulse sequences at run time. See [devices.md](references/devices.md) for detecting support, and the [pulse control developer guide](https://docs.aws.amazon.com/braket/latest/developerguide/braket-pulse-control.html) for the full model.
 
@@ -49,13 +50,13 @@ Resource ARNs containing a region may only be queried from that same region, oth
 
 1. **Confirm an SDK signature before you write code that calls it.** Read it from the [SDK reference docs](https://amazon-braket-sdk-python.readthedocs.io/en/latest/).
 If no available tool can reach them, get it from the installed SDK with `shell`:
+
 ```bash
 PAGER=cat python -c "import braket; help(braket)"       # subpackages: ahs, circuits, pulse, program_sets, ...
 python -c "import braket.ahs; print(dir(braket.ahs))"   # names: DrivingField, AtomArrangement, ...
 python -c "import inspect; from braket.ahs import DrivingField; \
 print(inspect.signature(DrivingField.from_lists)); print(inspect.getdoc(DrivingField.from_lists))"
 ```
-
 
 ## Guardrail — where this skill's own files live (MCP vs local install)
 
@@ -67,7 +68,6 @@ This skill can be loaded two ways, and they resolve the skill's own bundled file
 `references/` is a sibling of this `SKILL.md` — resolve reference paths against that directory, not your working directory, and do not search the filesystem for them.
 If a skill tool returns this overview instead of the file you asked for, it did not fetch it: read it from that directory instead, and do not write code from memory because a reference read failed.
 This distinction applies only to the skill's own packaged files. User data and session artifacts are always read from and written to the user's working directory — do not `cd` before running a script that writes a relative artifact path.
-
 
 ## Common mistakes
 
@@ -103,6 +103,7 @@ For details, see the [Amazon Braket security documentation](https://docs.aws.ama
 Authoritative sources — prefer these over recalled details, since device ARNs, quotas, prices, and supported features change.
 
 **Official documentation** (stable entry points — navigate/search from here)
+
 - Developer Guide — https://docs.aws.amazon.com/braket/latest/developerguide/what-is-braket.html
 - Prerequisites & account setup — https://docs.aws.amazon.com/braket/latest/developerguide/braket-get-started.html
 - How Amazon Braket works — https://docs.aws.amazon.com/braket/latest/developerguide/braket-how-it-works.html
@@ -117,7 +118,8 @@ Authoritative sources — prefer these over recalled details, since device ARNs,
 
 For anything not covered here, **search the documentation** rather than guessing page slugs or recalling details: if the AWS MCP server is available, its `aws___search_documentation` tool can help; otherwise start from the Developer Guide or API Reference above and navigate.
 
-**GitHub**
+### GitHub
+
 - `amazon-braket-sdk-python` (core SDK) — https://github.com/amazon-braket/amazon-braket-sdk-python
 - `amazon-braket-schemas-python` (schemas and models for public Braket data) — https://github.com/amazon-braket/amazon-braket-schemas-python
 - `amazon-braket-examples` — https://github.com/amazon-braket/amazon-braket-examples

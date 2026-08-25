@@ -25,12 +25,15 @@ This provides a representative sample, not exhaustive logs.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+
+os.environ.setdefault("AWS_SDK_UA_APP_ID", "AWSSkill-SageMaker")
 
 
 @dataclass(frozen=True)

@@ -876,7 +876,18 @@ Two S3 clients in the Lambda code
 permissive even with presigning; restrict to your CloudFront origin
 in production.
 
-## 7. Search: OpenSearch as a projection
+## 7. Search: two different problems, two different homes
+
+TaskBoard needs two things people both call "search", and they belong in
+different places. Because DynamoDB has native vector indexes, getting this
+split wrong is the most common design error here.
+
+| Requirement | Home |
+|---|---|
+| Full-text over card titles/descriptions, typo tolerance, faceting | **OpenSearch projection** (7a below) |
+| "Related cards" — surface cards about the same thing in different words | **Vector index on `BoardItems`** (7b below) |
+
+### 7a. Full-text: OpenSearch as a projection
 
 **Pattern**: search is a derived view, not the source of truth.
 
@@ -910,6 +921,82 @@ only works against `.keyword` because UUID dashes split the text
 analyzer into multiple terms. Use `boardId.keyword` for exact-match
 filtering, or set an explicit index template that maps `boardId` as
 `keyword` to control this rather than discovering it later.
+
+### 7b. Semantic "related cards": a vector index on the table itself
+
+**Pattern**: similarity lives with the data, not in a second store.
+
+Do NOT add k-NN to the OpenSearch domain for this. The cards and their
+embeddings already live in `BoardItems`; a vector index searches them in
+place, with no second copy of the vectors and no sync path to keep honest.
+The OpenSearch projection stays exactly as it is for full-text — the two
+coexist.
+
+**Shape.** A vector index on `BoardItems` over an `embedding` attribute, with
+`boardId` as the SearchSchema partition key (`HASH`) so every similarity
+search is scoped to one board, and `status` as an `INLINE_FILTER` so
+"related, still open" is one call. `boardId` must also appear in
+`AttributeDefinitions`, exactly as a GSI key attribute must.
+
+That partition key does double duty: it matches the authorization identifier
+(Data modeling #14) and it scales search throughput, since each
+`SearchVectors` call is scoped to one board. But **it is not a security
+boundary** — any principal with `dynamodb:SearchVectors` on the index can
+search any `boardId`, and FGAC condition keys do not apply to
+`SearchVectors`. The application must inject the caller's `boardId` and never
+accept it from the client, and `dynamodb:SearchVectors` must be granted in
+its own condition-free statement scoped to the index ARN.
+
+Three things make that injection trustworthy rather than merely present.
+**Validate the injected value against the caller's board membership** before it
+reaches `SearchVectors` — a token can carry a `boardId` that is well-formed,
+authentic and no longer authorized (membership revoked, board moved), and the
+injection alone cannot tell. **Rate-limit the search endpoint per principal**:
+because each call returns similarity scores, an attacker who can issue enough
+targeted queries can probe the embedding space of a board they can reach, so
+the throttle is a confidentiality control here, not just a cost one. And
+**enable CloudTrail data events** on the table — it is the only record of which
+`boardId` each principal actually searched, which is precisely what IAM cannot
+constrain, so a failed injection or a compromised principal is otherwise
+invisible. Alarm on per-principal `VectorSearchRequestBytes` to catch board
+enumeration as a volume anomaly. This matches SKILL.md *Best practices* #2,
+which already calls for CloudTrail data events on sensitive tables. See
+`references/vector-search.md` and SKILL.md *Security considerations* #6.
+
+**Keeping embeddings fresh — this is the part that rots silently.** DynamoDB
+does not recompute embeddings. Edit a card's description and the stored
+vector still describes the old text, so "related cards" quietly degrades with
+no error anywhere. Reuse the Stream that already drives `SearchIndexFn`: an
+`EmbedFn` consumer compares the new and old images, and when the indexed text
+changed, calls the embedding model and writes the new vector back. Same
+at-least-once discipline as every other Stream consumer (Integration #1) —
+make it idempotent, and note that the write-back is itself a Stream event, so
+guard against re-embedding your own writes by comparing the text rather than
+the vector.
+
+**Which embedding model `EmbedFn` calls has a credential consequence.** Prefer
+Amazon Bedrock: it authenticates with the Lambda's IAM role, so there is no
+long-lived secret to store, rotate or leak, and the same execution role already
+scopes the DynamoDB write-back. If the workload requires a third-party
+embedding endpoint, the API key belongs in **AWS Secrets Manager** (or SSM
+Parameter Store as a `SecureString`), fetched at cold start and cached — never
+in a plaintext Lambda environment variable, where it is visible to anyone with
+`lambda:GetFunctionConfiguration` and lands in CloudFormation templates and
+deployment logs. Whichever model you pick, pin it: re-embedding existing
+content with a *different* model produces vectors that are not comparable to
+the ones already stored, which degrades results with no error
+(SKILL.md Fact #10).
+
+**Projection choice is the cost lever.** `KEYS_ONLY` on the vector index is
+flat in item size — measured `dimensions × 4` plus ~35 B regardless of how
+large the card is — whereas `ALL` adds the whole rest of the card to every
+vector write. For a card carrying a long description, `KEYS_ONLY` plus a
+`BatchGetItem` to hydrate the results is materially cheaper on both writes
+and searches. The projection is immutable, so this is a decision to get right
+at creation.
+
+**On-demand is mandatory**, not merely the default (Mechanics #19), so this
+rules provisioned capacity out for `BoardItems` permanently.
 
 ## 8. Observability: Powertools + X-Ray
 

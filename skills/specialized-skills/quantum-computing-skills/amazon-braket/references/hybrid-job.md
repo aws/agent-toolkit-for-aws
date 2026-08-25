@@ -28,6 +28,7 @@ The SDK archives `source_module` under its **basename only**, stripping every le
 | `a/b/hj_source` (a directory) | `hj_source/algorithm_script.py` | `hj_source.algorithm_script:main` |
 
 Two failure modes, both `ModuleNotFoundError` at container boot — do NOT do either:
+
 - ❌ bare module for a directory `source_module`: `entry_point="algorithm_script:main"` (missing the required `hj_source.` prefix)
 - ❌ full path in the module: `entry_point="a.b.hj_source.algorithm_script:main"` (leading `a/b/` is stripped by the SDK)
 
@@ -90,6 +91,7 @@ Learn more about debugging a hybrid job with local mode at https://docs.aws.amaz
 | Tasks lose priority queueing | `create_quantum_task` called through boto3 inside the algorithm script | Pass `AMZN_BRAKET_JOB_TOKEN` as `jobToken` (the SDK does this automatically) |
 
 ## References
+
 - API: [CreateJob](https://docs.aws.amazon.com/braket/latest/APIReference/API_CreateJob.html) · [InstanceConfig](https://docs.aws.amazon.com/braket/latest/APIReference/API_InstanceConfig.html)
 - SDK API:
   - [`braket.aws.aws_quantum_job`](https://amazon-braket-sdk-python.readthedocs.io/en/stable/_apidoc/braket.aws.aws_quantum_job.html)

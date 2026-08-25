@@ -72,7 +72,7 @@ Steady-state only (warmup excluded). One paragraph intro pointing at `## Cold st
 | `p99 ms` | from `phase: "measure"` latency samples |
 | `Throttles` | count from steady state (not warmup) |
 | `Errors` | non-throttle (structural) error count and rate from steady state, rendered `count (rate%)`; suffixed `*` when the rate is at/above the structural threshold (≥50%), marking the pattern as structurally broken. Feeds the Correctness section below. |
-| `Extrapolated Monthly` | observed CU × declared `peak_rps` × seconds/month × unit price |
+| `Extrapolated Monthly` | observed CU × declared `peak_rps` × seconds/month × unit price, **plus** observed vector bytes × declared `peak_rps` × seconds/month × the vector rates. The vector term matters: a `SearchVectors` pattern consumes 0 CU, so without it the pattern extrapolates to exactly $0 and reads as free. See *Vector capacity* below. |
 
 Footnotes below the table:
 
@@ -93,6 +93,44 @@ Prose intro naming `table_settle_seconds` and `warmup_seconds` from the config, 
 | `Elevated?` | `cold_start_elevated` flag (true when warmup p99 > 2 × steady p99) |
 
 One-paragraph explanation: an "Elevated" pattern means callers hitting it immediately after deploy will see materially worse latency than steady-state numbers suggest — characteristic of on-demand baseline capacity on a fresh table, not a design defect, but worth noting for deploy-time UX expectations.
+
+## `## Vector capacity (measured)`
+
+**Emitted only when the run observed vector bytes** — omitted entirely for a design with no
+vector index, so a non-vector report is unchanged.
+
+This section exists because `calculate_costs.py` deliberately declines to price vector
+search: the share of an index that approximate-nearest-neighbour search examines varied by
+roughly 10× across configurations, so a predicted figure would be confidently wrong. A live
+run does not have to predict it — it measures it.
+
+| Column | Source |
+|---|---|
+| `Pattern` | `pattern_id` |
+| `Op` | `operation` |
+| `Index` | the pattern's `index`, or the vector indexes the write fanned out to |
+| `Search B/call` | mean `VectorSearchRequestBytes` over non-errored measure calls |
+| `Write B/call` | mean `VectorWriteRequestBytes` summed across indexes, per call |
+| `Declared peak rps` | `peak_rps` from the design JSON |
+| `Vector $/mo` | bytes/call × peak rps × seconds/month × the per-GB rate |
+
+Followed by a bold **Vector capacity total** line, and two conditional notes:
+
+- When measured search cost is more than 1% of the calculator's expected total, a note under
+  the headline delta says how much of the gap is vector search — because the calculator omits
+  search *by design*, that part of the delta is not a model error and must not be read as one.
+- When any figure sits at or below the 1,024-byte metering minimum, a note says the number
+  reflects the floor rather than the vector's real size, so it must not be scaled up by
+  dimension count. The floor stops binding at ~256 dimensions.
+
+Vector index *storage* is not in this total — it rolls into table storage.
+
+`perf_summary.json` carries these per pattern under `steady_state`, **emitted only when the
+design declares a vector index** (so a non-vector summary is unchanged):
+`mean_vector_search_bytes`, `vector_search_bytes_total`, `vector_write_bytes_by_index`, and
+`mean_vector_write_bytes_by_index`. Means are over non-errored calls — a failed call reports
+0 bytes and averaging those in would understate per-call cost — with the error count in the
+same block so a partly-failed pattern stays visible.
 
 ## `## Supporting services (designed, not benchmarked)`
 

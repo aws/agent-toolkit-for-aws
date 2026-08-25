@@ -1,6 +1,6 @@
 # Streaming Tables — Iceberg (S3 Tables) Delivery
 
-Streaming Tables for Amazon MSK Express brokers delivers topic data from Express brokers to Apache Iceberg tables in S3 Table buckets. Serverless, no connector management, 5-minute minimum data freshness, auto-scaling up to 10 GB/s.
+Streaming Tables for Amazon MSK Express brokers delivers topic data from Express brokers to Apache Iceberg tables in S3 Table buckets. Serverless, no connector management, minutes-level data freshness, and auto-scaling throughput. Freshness bounds and the per-channel throughput ceiling are in [Amazon MSK Data Delivery quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-data-delivery-quota).
 
 Each record is delivered exactly once by the delivery pipeline. Streaming tables do not consume broker egress throughput or impact producer or consumer workloads. This optimizes cost as it enables delivery to Iceberg tables without requiring additional cluster capacity on MSK Express clusters. Additionally, you can fan out multiple streaming tables channels from the same topic.
 
@@ -9,7 +9,7 @@ Each record is delivered exactly once by the delivery pipeline. Streaming tables
 Check Streaming Tables documentation for constraints. Some key constraints are:
 
 - Streaming Tables is ONLY available on **Express brokers** — Standard brokers and MSK Serverless are NOT supported
-- Data freshness is **5–15 minutes** (minimum 300 seconds, default 10 minutes). For the 5-minute minimum, the topic must produce at least **2.4 MB/s** uncompressed data
+- Data freshness is bounded and not adjustable, and the tightest freshness setting requires a minimum sustained uncompressed throughput per channel — get both from [Amazon MSK Data Delivery quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-data-delivery-quota). Low-throughput topics must use a looser freshness setting
 - Streaming Tables is **append-only** — does not support CDC, upserts, or deletes
 - Streaming Tables Iceberg destination supports **JSON input only** (plain JSON or GSR-serialized JSON) - does not support Avro/Protobuf input
 - **Schema evolution is not supported**
@@ -295,15 +295,9 @@ Streaming Tables emits its own CloudWatch metrics in the `AWS/Kafka` namespace w
 
 ## Throughput and Freshness
 
-> These values are current as of launch. Check the [MSK Streaming Tables documentation](https://docs.aws.amazon.com/msk/latest/developerguide/msk-data-delivery.html) for the latest minimum throughput requirements per freshness interval.
+The freshness range, the default freshness, and the minimum throughput required to sustain the tightest freshness setting are published quotas. Read them from [Amazon MSK Data Delivery quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-data-delivery-quota) before advising a customer on a freshness value. The tradeoff behind the throughput floor is explained in [Key concepts](https://docs.aws.amazon.com/msk/latest/developerguide/msk-data-delivery-concepts.html): the service needs enough accumulated data per interval for efficient delivery and inline compaction, so lower-throughput topics need a looser freshness setting.
 
-| Data freshness | Min throughput |
-|---|---|
-| 5 minutes | 2.4 MB/s |
-| 10 minutes | ~1.2 MB/s |
-| 15 minutes | ~0.8 MB/s |
-
-The default data freshness is **10 minutes** (configurable within the 5–15 minute range).
+Only one throughput floor is published — the one paired with the minimum freshness interval. Do not present a per-interval throughput table by scaling that figure across the rest of the freshness range; those values are not documented. For a topic below the floor, tell the customer to loosen freshness without quoting a specific required rate.
 
 ## Table Maintenance
 
@@ -314,13 +308,15 @@ Enable S3 Tables automated maintenance: **compaction**, **snapshot expiration**,
 
 ## Quotas
 
-> Default quotas may change over time. Check current values via `aws service-quotas list-service-quotas --service-code kafka` or the AWS Service Quotas console.
+Do not quote channel, freshness, throughput, or partition limits from memory. Read the current values from [Amazon MSK Data Delivery quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-data-delivery-quota), which lists channels per cluster, channels per Kafka topic, the freshness bounds, the minimum throughput for the tightest freshness, max throughput per channel, and max partitions per table, along with whether each is adjustable.
 
-| Resource | Default | Adjustable |
-|---|---|---|
-| Channels per cluster | 50 | Yes |
-| Channels per topic | 10 | Yes |
-| Data freshness | 5–15 min | No |
+For the account's actual (possibly already-raised) values on the adjustable quotas, check the account rather than the docs:
+
+```bash
+aws service-quotas list-service-quotas --service-code kafka --query "Quotas[?contains(QuotaName, 'Channel')]"
+```
+
+Adjustable quotas are raised through the [Service Quotas console](https://console.aws.amazon.com/servicequotas/home/services/kafka/quotas).
 
 ## Security Considerations
 

@@ -36,6 +36,7 @@ See the [Getting Started notebook](https://github.com/amazon-braket/amazon-brake
 | Assumes modifying a spending limit leaves no trace | Limit changes are management events | CloudTrail records `CreateSpendingLimit`, `UpdateSpendingLimit` and `DeleteSpendingLimit` under `braket.amazonaws.com` — read the trail to see who changed a limit |
 
 ## References
+
 - [CreateSpendingLimit](https://docs.aws.amazon.com/braket/latest/APIReference/API_CreateSpendingLimit.html)
 - [UpdateSpendingLimit](https://docs.aws.amazon.com/braket/latest/APIReference/API_UpdateSpendingLimit.html)
 - [SearchSpendingLimits](https://docs.aws.amazon.com/braket/latest/APIReference/API_SearchSpendingLimits.html)
