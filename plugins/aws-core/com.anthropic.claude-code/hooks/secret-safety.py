@@ -21,9 +21,20 @@ SMA_PATTERN = re.compile(
     r'(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|::1):2773/secretsmanager/get'
 )
 
-# Match the operation regardless of casing/separators:
-# GetSecretValue, get_secret_value, get-secret-value, BatchGetSecretValue, ...
-GSV_PATTERN = re.compile(r'(batch[-_]?)?get[-_]?secret[-_]?value', re.I)
+# AWS CLI invocation shape. Shared by the Bash and MCP branches so the two paths
+# cannot drift. Tolerates global flags interleaved before the service name or the
+# operation (e.g. `aws --region us-east-1 secretsmanager get-secret-value`).
+#
+# A flag token is `-` plus greedy non-whitespace, so it has exactly one possible
+# parse; an optional value token must not itself start with `-`. Both properties,
+# plus the bounded repetition, keep this linear — an ambiguous flag pattern here
+# backtracks catastrophically on long flag runs, and because the hook has a 5s
+# timeout in hooks.json, a hang would let the tool call through (fail-open).
+_CLI_FLAGS = r'(?:-\S+(?:\s+[^-\s]\S*)?\s+){0,12}'
+CLI_GSV_PATTERN = re.compile(
+    rf'aws\s+{_CLI_FLAGS}secretsmanager\s+{_CLI_FLAGS}(?:batch-)?get-secret-value\b',
+    re.I
+)
 
 # Structured operation names normalized to lowercase, no separators.
 GSV_OPERATIONS = ("getsecretvalue", "batchgetsecretvalue")
@@ -120,6 +131,10 @@ def main():
         if SDK_CALL_PATTERN.search(input_str):
             if "secretsmanager" in input_str.lower():
                 deny()
+        # AWS CLI command strings routed through an MCP proxy (e.g. call_aws's
+        # cli_command), which carry neither structured fields nor SDK call syntax.
+        if CLI_GSV_PATTERN.search(input_str):
+            deny()
         allow()
 
     # Check run_script tools for secret fetching in code
@@ -133,7 +148,7 @@ def main():
     if tool_name == "Bash":
         command = tool_input.get("command", "")
         # AWS CLI secret fetching (shape-aware: actual `aws secretsmanager get-secret-value`)
-        if re.search(r'aws\s+secretsmanager\s+(get-secret-value|batch-get-secret-value)', command, re.I):
+        if CLI_GSV_PATTERN.search(command):
             deny()
         # Direct SMA access (shape-aware: actual URL to the agent)
         if SMA_PATTERN.search(command):
