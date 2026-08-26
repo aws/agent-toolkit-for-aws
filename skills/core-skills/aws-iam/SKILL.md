@@ -1,20 +1,21 @@
 ---
 name: aws-iam
 description: >
-  Verified corrections for IAM behaviors that AI agents frequently get wrong — policy
+  Provides verified corrections for IAM behaviors that AI agents frequently get wrong — policy
   evaluation edge cases, trust policy gotchas, STS session limits, Organizations quirks,
   and SAML/MFA specifics. Also provides structured workflows for IAM role management and
-  least-privilege policy generation. Covers condition operator safety (ForAnyValue/ForAllValues
-  with Null checks for absent keys), bucket policy deny patterns (VPC endpoint restrictions,
-  org path conditions), resource-based policy confused deputy protection, and service role
-  creation for AWS services (Glue, CloudTrail, VPC Flow Logs, Firehose, DataSync, S3
-  replication, Lambda, Step Functions, ECS, etc.) including trust policies with
-  aws:SourceAccount/aws:SourceArn conditions. Applies when creating or configuring IAM roles,
-  writing IAM or bucket policies, working with STS, Organizations, condition operators, or
-  any task requiring an IAM service role or execution role. Does not cover non-IAM
-  authorization like Cognito user-pool policies or app-level RBAC.
+  baseline policy generation from application source code or a Terraform plan JSON.
+  Covers condition operator safety (ForAnyValue/ForAllValues with Null checks),
+  bucket policy deny patterns (VPC endpoint restrictions, org paths), confused deputy
+  protection, and service role creation for AWS services (Glue, CloudTrail, Lambda, ECS,
+  etc.) with
+  aws:SourceAccount/aws:SourceArn trust conditions. Applies when creating IAM roles,
+  writing IAM or bucket policies, generating policies from application source code or a Terraform plan JSON,
+  working with STS, Organizations, or condition operators, or any task needing a service
+  or execution role. Does not cover non-IAM authorization like Cognito user-pool policies
+  or app-level RBAC.
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # AWS IAM — Common Pitfalls
@@ -29,7 +30,7 @@ Use the best available tool for AWS operations — the AWS MCP server is recomme
 
 - Read [references/aws-iam-role-management.md](references/aws-iam-role-management.md) if the user needs to create, scope, or maintain IAM roles when provisioning or updating AWS resources. Covers service roles, execution roles, trust policies, confused deputy protection, and permission hygiene.
 
-- Read [references/aws-iam-policy-generation.md](references/aws-iam-policy-generation.md) if the user needs to generate least-privilege IAM policies, determine required IAM actions for API calls, or understand action-to-operation mappings. **CRITICAL: If the user provides source code (Python, Go, TypeScript, JavaScript, Java), you MUST read this reference — it mandates using iam-policy-autopilot instead of manual policy construction.** Uses the programmatic service authorization reference for accurate mappings.
+- Read [references/aws-iam-policy-generation.md](references/aws-iam-policy-generation.md) if the user needs to generate IAM policies, determine required IAM actions for API calls, or understand action-to-operation mappings. **CRITICAL: If the user provides application source code (in any language) or a Terraform plan JSON file (`terraform show -json` output), you MUST read this reference — it mandates using iam-policy-autopilot instead of manual policy construction.** Uses the programmatic service authorization reference for accurate mappings.
 
 ## Verified Edge Cases
 
