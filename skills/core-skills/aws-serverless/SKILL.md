@@ -2,7 +2,7 @@
 name: aws-serverless
 description: Builds, deploys, manages, debugs, configures, and optimizes serverless applications on AWS using Lambda, API Gateway, Step Functions, EventBridge, and SAM/CDK. Covers cold starts, CORS debugging, event source mappings, troubleshooting, concurrency, SnapStart, Powertools, function URLs, EventBridge Scheduler, Lambda layers, and production readiness. Triggers on mentions of Lambda, API Gateway, Step Functions, SAM templates, CDK serverless stacks, DynamoDB stream triggers, SQS event sources, cold starts, timeouts, 502/504 errors, throttling, concurrency, CORS, Powertools, or any event-driven architecture on AWS, even without the word "serverless." Does not apply to EC2, ECS/Fargate containers, or Amplify hosting.
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # AWS Serverless
@@ -22,6 +22,21 @@ These cover capabilities and procedures the general references below do **not**.
 | **aws-lambda-microvms** | Strong tenant isolation, sandboxed/untrusted code execution (AI agent code sandboxes, REPLs, notebooks, CI runners), long-lived sessions, suspend/resume with preserved state, port-listening servers (gRPC, WebSocket, custom TCP), Firecracker microVMs, snapshot-resumable compute, up to 8-hour lifetimes |
 | **aws-lambda-durable-functions** | Durable execution, checkpoint-and-replay, long-running multi-step workflows written as plain code (TS/Python/Java), automatic state persistence, saga pattern in code, human-in-the-loop callbacks, executions up to 1 year, `context.step`/`context.wait`/`context.invoke`, `withDurableExecution`, `durable-execution-sdk` |
 | **aws-lambda-managed-instances** | Lambda Managed Instances (LMI), capacity providers, EC2-backed Lambda, steady high-volume traffic (50M+ req/mo) wanting Savings Plans / Reserved Instance pricing, `PerExecutionEnvironmentMaxConcurrency`, `CapacityProviderConfig`, multi-concurrent execution environments |
+
+### Workflow orchestration
+
+Route here when the user wants to coordinate multiple steps, services, or functions. Triggers include "orchestration", "workflow", "state machine", "multi-step coordination", "coordinate Lambda functions", "durable execution", "pipeline with retries", or intent to build saga/compensation, human-in-the-loop approval, fan-out, or long-running async coordination.
+
+When starting a new orchestration or multi-step workflow, you MUST surface the choice between AWS Step Functions and AWS Lambda Durable Functions before implementing — do not silently pick one. Route on the signals below. When the request names only a generic pattern (saga/compensation, human-in-the-loop, fan-out, or "workflow orchestration") with no technology, present both options and the one-line tradeoff, then let the user decide. Do not lead with the tradeoff caveats when the signals already point to one service.
+
+| Use this skill | When the workload involves |
+|---|---|
+| **aws-step-functions** | Orchestration whose primary work is calling AWS services directly; coordinating non-Lambda compute (ECS/Fargate, Glue, SageMaker, Batch) through native managed integrations; a visual, auditable workflow definition required for compliance, cross-team operational observability, or as a shared contract between teams that do not share a codebase (ASL is the specification, not application code); authoring or editing state machines and Amazon States Language (ASL) — state types, JSONata data transformation, Retry/Catch error handling, `.sync`/`waitForTaskToken` service integrations, Distributed Map, TestState unit testing, JSONPath-to-JSONata migration |
+| **aws-lambda-durable-functions** | Code-first orchestration in-process when already building on Lambda (`context.step`/`context.wait`/`context.invoke`, `withDurableExecution`); many fine-grained steps per execution where cumulative Step Functions Standard state-transition cost may be significant — compare Step Functions pricing (Standard vs Express) against Lambda invocation cost at the expected volume before choosing; orchestration steps written in a general-purpose language within the same application codebase (share modules, data types, and test suites with application code); teams applying standard software-engineering practices (unit tests, code review, type checking) to orchestration logic without learning a declarative workflow language |
+
+**Tradeoff (use when either fits):** Durable Functions keeps orchestration in your Lambda codebase; Step Functions externalizes it into a managed, visual state machine with built-in service integrations.
+
+**Security:** Both services persist workflow state and payloads — Step Functions records full input/output in execution history (viewable in the console and, if logging is enabled, CloudWatch Logs). As a baseline, enable execution logging (CloudTrail) and CloudWatch alarms on execution failures, and use least-privilege per-workflow execution roles. Do not pass secrets, tokens, or PII through workflow state; reference them by Secrets Manager/ARN pointer, and apply a customer-managed KMS key to encrypt state when the data is sensitive.
 
 ### Step-by-step task procedures (tested CLI SOPs)
 

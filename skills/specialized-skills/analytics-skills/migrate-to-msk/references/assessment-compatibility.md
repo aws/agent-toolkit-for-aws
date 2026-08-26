@@ -14,14 +14,14 @@ the per-finding verdicts each pillar emits.
 
 This skill can be loaded two ways, and they resolve the skill's **own bundled
 files** — the `references/` documents and the `scripts/` files
-(`compatibility.py`, `sizing.py`) — from different places. Determine how the
-skill was loaded before you read a reference or run a script:
+(`compatibility.py`, `simulation_load_test_config.py`) — from different places.
+Determine how the skill was loaded before you read a reference or run a script:
 
 - **Loaded through the AWS MCP `retrieve_skill` tool call.** The skill is **not
   installed on the local filesystem**; its reference files and scripts do not
   exist on disk. You MUST fetch each reference or script through the same
   `retrieve_skill` tool by passing the `file` parameter (for example,
-  `file="references/assessment-compatibility.md"` or `file="scripts/sizing.py"`),
+  `file="references/assessment-compatibility.md"` or `file="scripts/compatibility.py"`),
   and run a script from the content that tool returns. Do NOT `file_read` these
   paths from the local or working directory, and do NOT search the filesystem
   for them — they are not there, and any local file that happens to match the
@@ -55,23 +55,19 @@ uv run scripts/compatibility.py \
   migrate-to-msk-skill-artifacts/<cluster_name>/cluster-config.json \
   --out-dir migrate-to-msk-skill-artifacts/<cluster_name>
 
-# Sizing: first download the AWS workbook by following the "MSK Sizing/Pricing
-# workbook" link on the Express best-practices page (resolve the URL from the
-# page; do not hardcode it), then fill it. Writes the filled
-# MSK_Sizing_Pricing.<cluster_name>.xlsx plus msk-sizing-inputs.<cluster_name>.json.
-uv run scripts/sizing.py \
-  migrate-to-msk-skill-artifacts/<cluster_name>/cluster-config.json \
-  --workbook <downloaded-MSK_Sizing_Pricing.xlsx> \
-  --out-dir migrate-to-msk-skill-artifacts/<cluster_name>
 ```
 
-The two scripts are independent: run them in either order, and a failure in one
-does not block the other. `sizing.py` fills a workbook the agent has already
-downloaded and performs no network access itself; without `--workbook` it emits
-the JSON inputs and a cell-by-cell fill-in table only. It also accepts
-`--avg-in-mbps`, `--avg-out-mbps`, and `--retention-hrs` to override the
-workbook's heuristic defaults — see [assessment-sizing.md](./assessment-sizing.md)
-for the full download-and-fill flow.
+Sizing is not a script in this skill. Load the managing-amazon-msk Skill and run
+its `scripts/msk_sizing.py` with the workload inputs derived from
+`cluster-config.json`, passing `--broker-classes express`. Write
+the summary to
+`migrate-to-msk-skill-artifacts/<cluster_name>/msk_sizing_pricing.md` and the
+input record to `msk-sizing-inputs.<cluster_name>.json`. See
+[assessment-sizing.md](./assessment-sizing.md) for the full flow, the Express-only
+presentation rule, and the source-footprint comparison.
+
+Compatibility and sizing are independent: run them in either order, and a failure
+in one does not block the other.
 
 ## Source of truth (AWS public docs)
 
@@ -108,6 +104,16 @@ When in Assessment, you MUST NOT:
 - Ask the user to provide additional cluster fields, peaks, configs, or
   topics. The contract is fixed at the input file.
 
+**Two exceptions,** both cost assumptions about the target rather than facts about the
+source cluster, and both material to the estimate: whether consumers will use
+rack-aware fetching (`target.rack_affined_consumers`) and whether the customer has a
+negotiated discount to apply (`target.pricing_discount_pct`). Discovery collects both
+into the `target` block — read them from `cluster-config.json` first. Ask only for the
+ones that are `null` or absent, once, together, before running sizing — see
+"Negotiated pricing" and "Consumer rack affinity" in
+[assessment-sizing.md](./assessment-sizing.md). Asking them does not license any
+other question.
+
 **Partial data is fine.** When required fields are missing or empty
 (no `metrics` block, no `num_azs`, no broker configs, etc.), the scripts
 already emit ADVISORY evidence describing the gap (`METRICS_MISSING`,
@@ -122,9 +128,9 @@ report the error from the script and stop. Do not improvise around it.
 
 ## Response Template
 
-After running `compatibility.py` and `sizing.py`, your response MUST follow
-the template below exactly. One template covers both artifacts in a single
-response.
+After running `compatibility.py` and the managing-amazon-msk sizing script, your
+response MUST follow the template below exactly. One template covers both
+artifacts in a single response.
 
 FORBIDDEN content — do NOT include any of the following:
 
@@ -141,8 +147,11 @@ FORBIDDEN content — do NOT include any of the following:
   to a later conversation, not the assessment response.
 - "Action items", "Next steps", or "Recommendations" sections beyond the
   one mandated below.
-- Per-instance broker-count recommendations or monthly cost numbers in
-  prose. The user reads those from the populated xlsx; do not retype them.
+- Broker counts or cost figures you did not read from the sizing script output.
+  Report the script's Express pick verbatim; never round, re-derive, or estimate.
+- Standard instance types, broker counts, or costs, unless the customer asked to
+  compare classes (see "Present Express only" in
+  [assessment-sizing.md](./assessment-sizing.md)).
 
 ### Template
 
@@ -178,33 +187,34 @@ Group by pillar in the same order as the table.)
 If there are zero non-INFO findings, replace this section with:
 "No advisories or action-required items. All five pillars: INFO."
 
-### Sizing artifact
+### Recommended Express target
 
-The six workload inputs have been computed from the source workload and filled
-into the AWS-published MSK Sizing/Pricing workbook, saved to:
+**`<express instance type>` — <N> brokers — $<total>/mo (us-east-1)**
 
-`migrate-to-msk-skill-artifacts/<cluster_name>/MSK_Sizing_Pricing.<cluster_name>.xlsx`
+Bottleneck: <ingress | egress | partitions | storage>. <One sentence on the demand
+vs per-broker capacity that drives the count, from the script's output.>
 
-Open it in Excel, LibreOffice, or Google Sheets to view the per-instance broker
-count and monthly cost recommendations on the `MSK Provisioned` sheet. The
-workbook formulas recalculate on open. The computed inputs are also recorded in
-`msk-sizing-inputs.<cluster_name>.json`.
+Your source cluster runs <source broker count> broker(s)<, instance type
+`<broker_instance_type>` when present>. <State the delta against the recommended
+target. When the target is smaller, explain why per "Compare the recommendation
+against the source footprint" in assessment-sizing.md. When
+`broker_instance_type` is absent, compare broker counts only and say the
+instance-level comparison was not possible.>
 
-### Choosing the right size for your cluster
+Full breakdown — inputs, per-instance options, cost components, and cost-optimization
+opportunities:
 
-Guidance for reading the workbook and picking a target:
+`migrate-to-msk-skill-artifacts/<cluster_name>/msk_sizing_pricing.md`
 
-1. Refine your inputs in column **C**. The rest of the sheet recalculates automatically as you change them.
-2. Compare the monthly cost of each Express instance type in cells **I26:I32**, then choose the instance type from the matching rows in **G26:G32**. Throughput and connection quotas vary by instance type. Please review the [MSK Express broker quotas page](https://docs.aws.amazon.com/msk/latest/developerguide/MSK-Express-MSK-broker-quotas.html) to confirm the instance you choose meets your throughput, connection, and partition requirements.
-3. Stay within the per-cluster broker quota when you choose: **60 brokers with KRaft, 30 with ZooKeeper**.
-4. To see why the workbook recommends this broker count, review the bottleneck breakdown in cells **F149:H155**. It displays which of the ingress, egress, and partition limits determines the recommended count for each type of instance.
-
-The workbook estimates cost using us-east-1 pricing. For pricing in other AWS Regions, or to calculate costs in detail, see the [Amazon MSK pricing page](https://aws.amazon.com/msk/pricing/).
+Verify the per-cluster broker quota before provisioning: **60 brokers with KRaft,
+30 with ZooKeeper** (adjustable via Service Quotas). Cost figures use us-east-1
+on-demand pricing — see the [Amazon MSK pricing page](https://aws.amazon.com/msk/pricing/)
+for other Regions.
 
 ### Artifacts produced
 
 - `migrate-to-msk-skill-artifacts/<cluster_name>/compatibility.<cluster_name>.json`
-- `migrate-to-msk-skill-artifacts/<cluster_name>/MSK_Sizing_Pricing.<cluster_name>.xlsx`
+- `migrate-to-msk-skill-artifacts/<cluster_name>/msk_sizing_pricing.md`
 - `migrate-to-msk-skill-artifacts/<cluster_name>/msk-sizing-inputs.<cluster_name>.json`
 
 ---
@@ -225,9 +235,10 @@ findings above?
 - The findings list reproduces evidence `code` and `detail` strings as-is.
   Do not paraphrase the script's wording, do not drop the code, do not
   reorder severity components within a finding.
-- Do NOT add a "Cost summary" or "Recommended instance" section in prose
-  even if you opened the xlsx — the user reads numbers from the workbook,
-  the skill response only points at it.
+- The "Recommended Express target" section carries the instance type, broker
+  count, and monthly cost read verbatim from the sizing script. Do not add cost
+  sections beyond it, and do not restate the per-instance option table — that
+  lives in `msk_sizing_pricing.md`.
 - Do NOT add a confidence rating, risk score, or quality bar.
 - Do NOT add migration timeline estimates.
 - The closing question is fixed: ask whether to discuss data replication
@@ -241,15 +252,19 @@ findings above?
 
 The 3-AZ requirement, KRaft availability, and the 3-broker minimum come from
 the Express broker overview page. The target broker count is determined by the
-sizing workbook, not carried over from the source, so this pillar does not
+sizing script, not carried over from the source, so this pillar does not
 compare the source broker count against a per-cluster ceiling.
 
 | Code | Severity | When |
 |---|---|---|
 | `AZ_COUNT_UNKNOWN` | ADVISORY | `topology.num_azs` missing |
 | `AZ_COUNT_NOT_3` | ADVISORY | `topology.num_azs` ≠ 3 (note: Express always uses 3 AZs) |
-| `BROKER_COUNT_LT_3` | ADVISORY | `topology.num_brokers` < 3 (note: Express minimum is 3; exact count comes from the sizing workbook) |
+| `BROKER_COUNT_LT_3` | ADVISORY | `topology.num_brokers` < 3 (note: Express minimum is 3; exact count comes from the sizing script) |
 | `KRAFT_REQUIRED_FOR_VERSION` | ADVISORY | `kafka.version` is 3.9 and `kafka.coordination_mechanism` is `ZooKeeper` |
+
+A single-broker or single-AZ source emits these two advisories rather than an
+action item: Express fixes it at the target by deploying across 3 AZs with ≥3
+brokers regardless of the source layout.
 
 ### 2. Kafka version (`assess_kafka_version`)
 
@@ -306,6 +321,9 @@ Per-topic replication factor: `replication_factor ≠ 3` → ADVISORY (`TOPIC_RF
 |---|---|
 | `log.cleaner.max.compaction.lag.ms` | [1 day = 86_400_000 ms, +∞] |
 | `max.compaction.lag.ms` (topic) | [1 day = 86_400_000 ms, +∞] |
+
+`max.compaction.lag.ms < 1 day` is the only Express-rejected topic-config bound
+encoded in `compatibility.py`. Adjust it on the source before migration.
 
 **Forced values** (Express read-only configurations page):
 

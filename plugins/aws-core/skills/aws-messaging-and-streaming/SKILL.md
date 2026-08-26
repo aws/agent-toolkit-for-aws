@@ -1,15 +1,20 @@
 ---
 name: aws-messaging-and-streaming
 description: >-
-  Guides general use of AWS messaging and streaming services. Covers Amazon SQS, Amazon
-  SNS, Amazon EventBridge, Amazon MQ, Amazon Kinesis Data Streams, Amazon Data Firehose,
-  Amazon Managed Service for Apache Flink, and Amazon Managed Streaming for Apache
-  Kafka (MSK).  Use when reasoning about messaging and streaming patterns.  In general,
-  use specific skills or documentation searches for detailed service-specific questions.
-  Do NOT use for MSK or Managed Service for Apache Flink questions, prefer specific
-  skills.
+  Guides general use of AWS messaging and streaming services. Covers Amazon SQS,
+  Amazon SNS, Amazon EventBridge, Amazon MQ, Amazon Kinesis Data Streams,
+  Amazon Data Firehose, Amazon Managed Service for Apache Flink, and Amazon Managed Streaming for Apache Kafka (MSK).
+  Use when reasoning about messaging and streaming patterns.
+  Also identifies which AWS service owns each customer communication channel:
+  email (Amazon SES), and WhatsApp, SMS, MMS, RCS, voice and mobile push
+  (the AWS End User Messaging family of services).
+  Routes the request to the specialized skill for that channel.
+  Defers to the channel's specialized skill when the user already named a specific channel.
+  In general, use specific skills or documentation searches for detailed service-specific questions.
+  Do NOT use for MSK or Managed Service for Apache Flink questions, prefer specific skills.
+  Does not configure customer communication channels; defers to specific skills.
 metadata:
-  version: "2"
+  version: "3"
 ---
 
 # AWS Messaging & Streaming Services
@@ -22,6 +27,7 @@ When a question asks about recommended configurations (CloudWatch alarm settings
 
 Domain expertise for choosing and using AWS services that move data between producers and consumers.
 This skill covers two fundamental patterns — **messaging** and **streaming** — and the AWS services that implement each.
+It also marks the boundary with **customer communication** — messages delivered to people rather than to application components — and routes those questions to the skill or AWS documentation that owns each channel (see Customer Communications (Application-to-Person)).
 Use this skill to decide which pattern fits a workload, select the right service, and understand how services integrate with each other.
 
 For specific guidance on individual AWS services, see reference files or service-specific Skills.
@@ -85,7 +91,7 @@ Sometimes streaming services (Kinesis Data Streams, Managed Streaming for Apache
 | Service | Best For | Key Differentiator |
 |---|---|---|
 | **Amazon SQS** | Task queues, decoupling, buffering | Fully managed, unlimited throughput (Standard), exactly-once (FIFO), fair queues for multi-tenant workloads |
-| **Amazon SNS** | Fan-out, pub/sub notifications | Push to multiple subscribers (SQS, Lambda, HTTP, email, SMS) |
+| **Amazon SNS** | Fan-out, pub/sub notifications | Push to multiple subscribers (SQS, Lambda, HTTP; email/SMS endpoints suit operational alerts — for customer email or SMS see Customer Communications (Application-to-Person)) |
 | **Amazon EventBridge** | Event routing, cross-account/SaaS integration | Content-based filtering, schema registry, 200+ AWS source integrations |
 | **Amazon MQ** | Lift-and-shift of existing JMS/AMQP/MQTT apps | Protocol compatibility (ActiveMQ, RabbitMQ) for legacy migration |
 
@@ -99,6 +105,24 @@ These services are generally used for streaming workloads.
 | **Amazon Data Firehose** | Zero-admin delivery to storage/analytics | Auto-scales, buffers, batches, and delivers to destinations |
 | **Amazon Managed Service for Apache Flink** | Complex stream processing (joins, windows, state) | Full Apache Flink runtime — SQL, Java, Python APIs for stateful computation |
 | **Amazon MSK** | Kafka-native workloads, ecosystem compatibility | Apache Kafka API, Express brokers (3x throughput, 20x faster scaling compared to Standard brokers), broad connector ecosystem |
+
+## Customer Communications (Application-to-Person)
+
+The services above move data application-to-application, between components of the same application.
+A separate group of AWS services is application-to-person (A2P): it delivers messages to — or receives them from — recipients outside the application, such as customers and subscribers.
+The two groups are not interchangeable.
+
+| Channel | Service | Skill |
+|---|---|---|
+| Email | **Amazon SES** | `amazon-ses` |
+| WhatsApp | **AWS End User Messaging Social** | `aws-social-messaging` |
+| SMS, MMS, RCS, voice | **AWS End User Messaging SMS** | None |
+| Mobile push | **AWS End User Messaging Push** | None |
+
+Answer two kinds of question directly from this section: which group a workload belongs to, and which service owns a channel.
+For every other customer communication question — setting up a channel, sending through it, or troubleshooting delivery — do not answer from this skill: load the skill named in the table and answer from that.
+To load it, use `aws___retrieve_skill(skill_name="<skill>")` with the exact name from the table when the AWS MCP server is available, or read the skill document from the Agent Toolkit at `skills/<skill>/SKILL.md`.
+Where the table says None, or the named skill cannot be loaded, say so, then answer using the documentation tools (`aws___search_documentation`, `aws___read_documentation`) if available, or the AWS documentation for the named service otherwise.
 
 ## Common Integration Gotchas
 
