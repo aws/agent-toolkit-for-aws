@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/com.anthropic.claude-code/hooks/secret-safety.py\"",
+            "command": "sh -c 'python3 \"$0\" 2>/dev/null || python \"$0\" 2>/dev/null || py -3 \"$0\"' \"${CLAUDE_PLUGIN_ROOT}/com.anthropic.claude-code/hooks/secret-safety.py\"",
             "timeout": 5
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/com.anthropic.claude-code/hooks/secret-safety.py\"",
+            "command": "sh -c 'python3 \"$0\" 2>/dev/null || python \"$0\" 2>/dev/null || py -3 \"$0\"' \"${CLAUDE_PLUGIN_ROOT}/com.anthropic.claude-code/hooks/secret-safety.py\"",
             "timeout": 5
           }
         ]
