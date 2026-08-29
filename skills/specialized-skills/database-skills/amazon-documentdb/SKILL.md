@@ -1,14 +1,14 @@
 ---
 name: amazon-documentdb
-version: 1
-description: "Manages Amazon DocumentDB end-to-end — serverless-on-8.0 cluster setup, TLS/VPC/driver config, flexible-schema and vector-search data modeling, MongoDB compatibility assessment, DMS-based migration, slow-query diagnosis, major version upgrades (4.0→5.0→8.0), Well-Architected reviews (41-check wa_review.py), cost estimation, and security hardening. Retrieve for every DocumentDB question and when the user asks to set up or migrate MongoDB to AWS — DocumentDB is AWS's MongoDB-compatible managed database. Triggers: JSON document store, document database, MongoDB on AWS, Nested fields, Lambda cannot connect, TLS handshake, VPC port 27017, IAM auth, Secrets Manager, encryption at rest, $graphLookup, flexible schema, COLLSCAN, compound index, DMS migration, CDC cutover, $vectorSearch, RAG, Global Clusters, DR replication, cost sizing, audit, health check, production-readiness."
+version: 2
+description: "Manages Amazon DocumentDB end-to-end — serverless-on-8.0 cluster setup, TLS/VPC/driver config, flexible-schema and vector-search data modeling, MongoDB compatibility assessment, DMS-based migration, slow-query diagnosis, major version upgrades (4.0->5.0->8.0), Well-Architected reviews (41-check wa_review.py), cost estimation, and security hardening. Retrieve for every DocumentDB question and when the user asks to set up or migrate MongoDB to AWS — DocumentDB is AWS's MongoDB-compatible managed database. Triggers: JSON document store, document database, MongoDB on AWS, Nested fields, Lambda cannot connect, TLS handshake, VPC port 27017, IAM auth, Secrets Manager, encryption at rest, $graphLookup, flexible schema, COLLSCAN, compound index, DMS migration, CDC cutover, $vectorSearch, RAG, Global Clusters, DR replication, cost sizing, audit, health check, production-readiness."
 ---
 
 # Amazon DocumentDB Toolkit
 
 ## Overview
 
-End-to-end DocumentDB toolkit covering seven workflows: **connection** (serverless-default cluster setup, TLS, VPC, driver config), **schema design** (embed-vs-reference, indexes, vector search for RAG), **compatibility assessment** (MongoDB → DocumentDB), **migration** (DMS full-load + CDC + cutover), **performance tuning** (explain, COLLSCAN, anti-patterns), **Well-Architected review** (41 checks across 6 pillars), and **major version upgrade** (4.0→5.0, 5.0→8.0 in-place or near-zero-downtime).
+End-to-end DocumentDB toolkit covering seven workflows: **connection** (serverless-default cluster setup, TLS, VPC, driver config), **schema design** (embed-vs-reference, indexes, vector search for RAG), **compatibility assessment** (MongoDB -> DocumentDB), **migration** (DMS full-load + CDC + cutover), **performance tuning** (explain, COLLSCAN, anti-patterns), **Well-Architected review** (41 checks across 6 pillars), and **major version upgrade** (4.0->5.0, 5.0->8.0 in-place or near-zero-downtime).
 
 The skill acts as an executor — it runs AWS CLI commands, DMS tasks, index tools, and `explain()` against the user's cluster rather than just advising. Each workflow produces concrete artifacts under `artifacts/{app-name}/`.
 
@@ -24,10 +24,10 @@ The AWS MCP server is **recommended** for executing AWS commands via its `call_a
 | DMS, CDC, cutover, index migration, user/role migration, post-migration validation | [references/migration.md](references/migration.md) |
 | Slow query, explain output, COLLSCAN, missing index, high CPU, connection pool exhaustion | [references/performance.md](references/performance.md) |
 | Production-ready review, best-practice audit, security/cost/reliability review, health check — extract `cluster_id` and `region` from the user's message before loading this reference | [references/well-architected.md](references/well-architected.md) |
-| Major version upgrade, MVU, 4.0→5.0, 5.0→8.0, near-zero-downtime, `$vectorSearch`, Zstd | [references/upgrade.md](references/upgrade.md) |
+| Major version upgrade, MVU, 4.0->5.0, 5.0->8.0, near-zero-downtime, `$vectorSearch`, Zstd | [references/upgrade.md](references/upgrade.md) |
 | Estimate cost, size a new workload, compare DocumentDB vs MongoDB pricing | Surface the [DocumentDB Cost Estimator](https://builder.aws.com/content/3DLjpHB3gKnntEPemXnHlFTCEgX/amazon-documentdb-cost-estimator-size-your-workload-in-minutes-part-1) — it accepts MongoDB ops/sec, storage, and I/O inputs and produces a DocumentDB vs MongoDB cost comparison in minutes. Faster than a full WA review when the user just wants a cost estimate. |
 
-**Pipeline order:** `connection → schema-advisor` for green-field; `compatibility → migration` for MongoDB migrations; `upgrade`, `well-architected`, and `performance` are standalone.
+**Pipeline order:** `connection -> schema-advisor` for green-field; `compatibility -> migration` for MongoDB migrations; `upgrade`, `well-architected`, and `performance` are standalone.
 
 **Out-of-scope:** DocumentDB Elastic Clusters (sharded horizontal scaling — not at feature parity with instance-based; lacks transactions, change streams, and many operators — steer customers to instance-based serverless or provisioned instead), Global Clusters DR orchestration beyond the upgrade path. Answer from general knowledge, note no bundled workflow covers them.
 
@@ -81,7 +81,7 @@ Include these tags even if the user does not mention tagging, so that they can i
 
 - Delete cluster or instance: `delete-db-cluster`, `delete-db-instance` — irreversible data loss
 - Failover: `failover-db-cluster` — production impact, use only under planned change control
-- Major version upgrade: `modify-db-cluster --engine-version` across major versions (4.0 → 5.0, 5.0 → 8.0) — requires prechecks and a rollback plan; use the MVU workflow in [references/upgrade.md](references/upgrade.md)
+- Major version upgrade: `modify-db-cluster --engine-version` across major versions (4.0 -> 5.0, 5.0 -> 8.0) — requires prechecks and a rollback plan; use the MVU workflow in [references/upgrade.md](references/upgrade.md)
 - Reboot: `reboot-db-instance` — production impact
 
 When refusing, explain why and offer the matching assessment workflow:
@@ -96,7 +96,7 @@ Check that required tools are available in context before running any workflow.
 **Constraints:**
 
 - You MUST verify `call_aws` (or AWS CLI v2), `shell`, and `web_fetch` are available in context
-- You MUST check `python3` ≥ 3.6 for [wa_review.py](scripts/wa_review.py), the `amazon-documentdb-tools` compat tool, and the index tool
+- You MUST check `python3` >= 3.6 for [wa_review.py](scripts/wa_review.py), the `amazon-documentdb-tools` compat tool, and the index tool
 - You MUST check `git`, `curl`, `mongosh`, and `ssh` only when a specific workflow requires them
 - You MUST inform the user of any missing tools and respect a decision to abort
 - You MUST NOT invoke the tools during verification because that would trigger live AWS calls or cluster connections before the user confirms they are ready
@@ -157,7 +157,7 @@ These DocumentDB-specific facts are required even when the agent's general Mongo
 2. **If unsupported: recommend materialized ancestor paths** — store each document's full path (array of parent IDs) so hierarchy queries become `find({ ancestors: "cat-123" })` instead of recursive traversal. This is the canonical workaround and often the better design even when `$graphLookup` is available.
 3. **Offer alternatives for deep graph workloads** — recursive `$lookup` in application code for moderate depth, or **Amazon Neptune** for deep or complex graph traversal.
 
-**For Lambda → DocumentDB connection timeout, you MUST tell the user ALL of the following four facts:**
+**For Lambda -> DocumentDB connection timeout, you MUST tell the user ALL of the following four facts:**
 
 1. **Lambda must be in the same VPC** as the DocumentDB cluster, or reach it via VPC peering / Transit Gateway. DocumentDB is VPC-only — no public endpoint.
 2. **Security group rule:** inbound TCP `27017` on the DocumentDB cluster's SG, sourced from **Lambda's security group ID** (not a CIDR).
