@@ -2,15 +2,15 @@
 
 Orchestrate DocumentDB major version upgrades. Supports two paths:
 
-- **4.0 → 5.0**
-- **5.0 → 8.0**
+- **4.0 -> 5.0**
+- **5.0 -> 8.0**
 
 Two approaches:
 
 - **Option A: In-place MVU** — simpler, has downtime (multiple reboots). Best for dev/staging, small clusters, or when downtime is acceptable.
 - **Option B: Near-zero downtime** — clone + MVU on clone + CDC + cutover. Source stays online. Best for production.
 
-**Cannot skip versions** (3.6 must go 3.6→5.0→8.0). **Elastic Clusters:** MVU is not supported — no workaround. **Global Clusters:** direct in-place MVU is not supported. Workaround: remove the cluster from the Global Cluster first (this converts it to a standalone regional cluster), perform the upgrade using Option A or B below, then re-add it to the Global Cluster.
+**Cannot skip versions** (3.6 must go 3.6->5.0->8.0). **Elastic Clusters:** MVU is not supported — no workaround. **Global Clusters:** direct in-place MVU is not supported. Workaround: remove the cluster from the Global Cluster first (this converts it to a standalone regional cluster), perform the upgrade using Option A or B below, then re-add it to the Global Cluster.
 
 ## What to ask upfront
 
@@ -29,7 +29,7 @@ Two approaches:
 - Manual snapshot created and available (use polling loop — `aws docdb wait` is not in all CLI versions)
 - Pending OS maintenance applied
 - No `db.r4` instances (not supported on 4.0+) — upgrade to `db.r5+` first
-- Burstable instance index counts within limits: `db.t4g.medium` ≤ 3,000 indexes, `db.t3.medium` ≤ 10,000. If over, scale primary to `db.r5.large` before upgrading
+- Burstable instance index counts within limits: `db.t4g.medium` <= 3,000 indexes, `db.t3.medium` <= 10,000. If over, scale primary to `db.r5.large` before upgrading
 
 ## Option A: In-Place MVU
 
@@ -75,7 +75,7 @@ aws docdb describe-db-clusters --db-cluster-identifier <id> \
 # Confirm via mongosh: db.version() and db.runCommand({ping: 1})
 ```
 
-For 5.0→8.0: wait for "Index metadata refresh process completed" event (up to 2 hours). Do NOT reboot, failover, or scale the writer during this time.
+For 5.0->8.0: wait for "Index metadata refresh process completed" event (up to 2 hours). Do NOT reboot, failover, or scale the writer during this time.
 
 ## Option B: Near-Zero Downtime (clone + MVU + CDC)
 
@@ -143,7 +143,7 @@ Start the task. Monitor `CDCLatencySource` — should decrease toward 0.
 - CDC lag near zero (`CDCLatencySource` < 60s)
 - Counts match within 0.1% on 3+ largest collections
 - All indexes exist on clone; critical queries tested
-- For 5.0→8.0: Query Planner v3 active, Zstd on new collections, driver updated
+- For 5.0->8.0: Query Planner v3 active, Zstd on new collections, driver updated
 
 ### Step 6: Cutover (in order)
 
@@ -182,6 +182,6 @@ aws docdb restore-db-cluster-from-snapshot \
 
 ## What changes by target version
 
-**4.0 → 5.0:** Vector search, LZ4 compression (off by default), I/O-Optimized storage, partial indexes, text indexes v1. Recommended but optional: `db.collection.reIndex()` on low-cardinality indexes.
+**4.0 -> 5.0:** Vector search, LZ4 compression (off by default), I/O-Optimized storage, partial indexes, text indexes v1. Recommended but optional: `db.collection.reIndex()` on low-cardinality indexes.
 
-**5.0 → 8.0:** Query Planner v3 (7× faster aggregations), Zstd compression (on by default, 5× ratio), Text v2 parser, Collation (default-on), Views, new stages (`$merge`, `$bucket`, `$replaceWith`, `$vectorSearch`), 30× faster vector index builds. No index rebuild needed. Update driver to MongoDB 6.0+/7.0+/8.0 to use new features.
+**5.0 -> 8.0:** Query Planner v3 (7× faster aggregations), Zstd compression (on by default, 5× ratio), Text v2 parser, Collation (default-on), Views, new stages (`$merge`, `$bucket`, `$replaceWith`, `$vectorSearch`), 30× faster vector index builds. No index rebuild needed. Update driver to MongoDB 6.0+/7.0+/8.0 to use new features.

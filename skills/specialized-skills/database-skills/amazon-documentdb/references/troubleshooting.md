@@ -64,7 +64,7 @@ Also verify the DocumentDB SG allows inbound TCP 27017 from the DMS replication 
 
 **MVU fails / rolls back.** In-place MVU auto-rolls back on failure. Check cluster events for "Database cluster is in a state that cannot be upgraded." Verify: no db.r4 instances (not supported on 4.0+), no pending OS maintenance, burstable-instance index counts within limits (t4g.medium: 3,000; t3.medium: 10,000). Contact AWS support before re-attempting.
 
-**Post-upgrade performance degradation (5.0→8.0).** Index metadata refresh is running — wait for "Index metadata refresh process completed" event (up to 2 hours). Do NOT reboot or failover the writer during this window.
+**Post-upgrade performance degradation (5.0->8.0).** Index metadata refresh is running — wait for "Index metadata refresh process completed" event (up to 2 hours). Do NOT reboot or failover the writer during this window.
 
 **MVU CDC migrator connection error.** Source URI must NOT include `readPreference=secondaryPreferred` — change streams only work on the primary.
 

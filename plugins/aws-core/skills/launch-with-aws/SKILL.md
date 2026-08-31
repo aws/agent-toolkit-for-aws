@@ -2,7 +2,7 @@
 name: launch-with-aws
 description: "Migrates vibe-coded web applications to AWS. Handles the full workflow from analysis through migration to deployment, producing deployable AWS Blocks infrastructure code. Supports full-stack apps built with vibe-coding platforms (Lovable, Bolt.new, Replit) and frontend web applications and websites: React, Vue, Angular, Next.js, Nuxt, Astro, SvelteKit, Gatsby, Vite, Svelte, Solid, Docusaurus, and others (static sites, SPAs, and SSR frameworks with static export). Triggers on: launch with AWS, launch on AWS, deploy to AWS, migrate to AWS, host my app on AWS, move my app to AWS, transfer my app to AWS. Activates when the user wants to migrate a vibe-coded app or frontend web app to AWS, even if they don't say 'migrate' explicitly."
 metadata:
-  version: "2"
+  version: "3"
 ---
 
 # Launch with AWS
@@ -72,7 +72,7 @@ The app continues to call Supabase for database, auth, storage, and realtime fro
 | Server logic (Express.js) | Migrated to AWS Lambda (API Gateway) |
 | Database (PostgreSQL) | Schema and code migrated to AWS (Aurora Serverless / DynamoDB). Existing data is NOT migrated — customers must export and import their data separately. |
 | Auth (Replit Auth) | Code migrated to AWS (Cognito). Existing user accounts are NOT migrated — customers must re-create or invite users in Cognito. |
-| Realtime (WebSockets) | Migrated to AWS (AppSync Events) |
+| Realtime (WebSockets) | Migrated to AWS (API Gateway WebSocket) |
 | File storage | Migrated to AWS (S3). Existing files are NOT migrated. |
 
 Replit app infrastructure and code are migrated to AWS-native services, but existing data, user accounts, and files must be migrated separately by the customer.
@@ -124,7 +124,7 @@ python3 scripts/launch_with_aws.py sign-out
 
 For a local directory, present this confirmation and wait for explicit approval:
 
-> Your source code will be uploaded to the Launch with AWS service to analyze your application and generate a migration plan. If you later approve execution, an AWS-hosted agent will modify a copy of your source code according to the plan and produce a migrated snapshot for you to download. Your source code is encrypted at rest, automatically deleted after 7 days, and never used to train AI models. We exclude Git history, Git-ignored files, and files matching common sensitive-file patterns. Sensitive-file filtering is best effort; review your project for secrets. Continue?
+> Your source code will be uploaded to the Launch with AWS service to analyze your application and generate a migration plan. If you later approve execution, an AWS-hosted agent will modify a copy of your source code according to the plan and produce a migrated snapshot for you to download. Your uploaded source code and associated launch data are encrypted in transit and at rest and retained for up to 48 hours for recovery. Your data is never used to train AI models. We exclude Git history, Git-ignored files, and files matching common sensitive-file patterns. Sensitive-file filtering is best effort; review your project for secrets. Continue?
 
 Do NOT call `create-launch` for a local directory until the user explicitly confirms. A missing or ambiguous response means no.
 

@@ -1,8 +1,8 @@
 ---
 name: aws-compute
-description: "Provisions, scales, and operates Amazon EC2 virtual-machine workloads: instance-type selection (Graviton/Arm64, burstable T credits, GPU, instance store vs EBS), launch templates, Auto Scaling groups (scaling policies, instance refresh, mixed instances, Spot, warm pools, lifecycle hooks), IMDSv2, placement groups, Elastic IPs, AMI lifecycle, and Systems Manager fleet operations (Session Manager, Run Command, Patch Manager). Applies to EC2 instance and fleet questions, InsufficientInstanceCapacity, CPU-credit/surplus charges, IMDSv2 401s, instances stuck in Pending:Wait, ASG not replacing unhealthy instances, status-check failures, SSH refused/timed out, or instances missing as SSM managed nodes. For a single secure instance launch, the launching-ec2-instance-with-best-practices skill is more appropriate; for instance profiles, see setting-up-ec2-instance-profiles; for Image Builder, see creating-ec2-image-builder-pipeline. Does NOT cover Lambda, ECS/Fargate, EKS, VPC/ALB/NLB design, or IAM policy authoring."
+description: "Provisions, scales, and operates Amazon EC2 virtual-machine workloads: instance-type selection (Graviton/Arm64, burstable T credits, GPU, instance store vs EBS), launch templates, Auto Scaling groups (scaling policies, instance refresh, mixed instances, Spot, warm pools, lifecycle hooks), IMDSv2, placement groups, Elastic IPs, AMI lifecycle, and Systems Manager fleet operations (Session Manager, Run Command, Patch Manager). Applies to EC2 instance and fleet questions, InsufficientInstanceCapacity, CPU-credit/surplus charges, IMDSv2 401s, instances stuck in Pending:Wait, ASG not replacing unhealthy instances, status-check failures, SSH refused/timed out, or instances missing as SSM managed nodes. For a single secure instance launch, the launching-ec2-instance-with-best-practices skill is more appropriate; for instance profiles, see setting-up-ec2-instance-profiles; for Image Builder, see amazon-ec2-image-builder. Does NOT cover Lambda, ECS/Fargate, EKS, VPC/ALB/NLB design, or IAM policy authoring."
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Amazon EC2 Compute
@@ -80,7 +80,7 @@ Full tables and more errors in [troubleshooting.md](references/troubleshooting.m
 
 - **Launching a single hardened instance with best-practice defaults** → use the `launching-ec2-instance-with-best-practices` skill
 - **Creating IAM roles / instance profiles for EC2** → use the `setting-up-ec2-instance-profiles` skill
-- **Building AMIs with an Image Builder pipeline** → use the `creating-ec2-image-builder-pipeline` skill
+- **Building AMIs with an Image Builder pipeline** → use the `amazon-ec2-image-builder` skill
 - **Lambda / serverless** → `aws-serverless`; **ECS/Fargate** → `aws-containers`; **EKS/Kubernetes** → `kubernetes`
 - **VPC, subnets, ALB/NLB, endpoints** → `aws-networking` or built-in knowledge
 - **IAM policy logic and CloudWatch dashboards/agent setup** → `aws-iam`, `aws-observability`

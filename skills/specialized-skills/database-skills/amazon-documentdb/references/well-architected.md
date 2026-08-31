@@ -85,19 +85,19 @@ For each finding include:
 ## Checks reference (41 total)
 
 ### Reliability (8)
-REL1 backup retention ≥ 7 days · REL2 deletion protection enabled · REL5a instances ≥ 2 · REL5b instances across ≥ 2 AZs · REL6 engine version currency · REL7 no failover events in last 13 days · REL8 no cursor timeouts · REL9 `AvailableMVCCIds` > 50%
+REL1 backup retention >= 7 days · REL2 deletion protection enabled · REL5a instances >= 2 · REL5b instances across >= 2 AZs · REL6 engine version currency · REL7 no failover events in last 13 days · REL8 no cursor timeouts · REL9 `AvailableMVCCIds` > 50%
 
 ### Security (6)
-SEC1a encryption at rest · SEC1b TLS enabled · SEC2 SG not open to `0.0.0.0/0` · SEC3 credentials in Secrets Manager · SEC5 audit logging · SEC6 TLS ≥ 1.2
+SEC1a encryption at rest · SEC1b TLS enabled · SEC2 SG not open to `0.0.0.0/0` · SEC3 credentials in Secrets Manager · SEC5 audit logging · SEC6 TLS >= 1.2
 
 ### Operational Excellence (5)
-OPS2 subnet group spans ≥ 3 AZs · OPS5a profiler logging · OPS5b ≥ 3 CloudWatch alarms · OPS5c custom parameter group · OPS7 maintenance window review
+OPS2 subnet group spans >= 3 AZs · OPS5a profiler logging · OPS5b >= 3 CloudWatch alarms · OPS5c custom parameter group · OPS7 maintenance window review
 
 ### Cost Optimization (6)
-COST1 CPU P95 per instance (< 10% = oversized) · COST3 unused indexes · COST4 TTL indexes present · COST6 ≥ 2 cost allocation tags · COST7 storage type (Standard vs I/O-Optimized) · COST9 idle reader detection
+COST1 CPU P95 per instance (< 10% = oversized) · COST3 unused indexes · COST4 TTL indexes present · COST6 >= 2 cost allocation tags · COST7 storage type (Standard vs I/O-Optimized) · COST9 idle reader detection
 
 ### Performance Efficiency (14)
-PERF1 avg doc size < 8 KB · PERF1b no redundant (prefix) indexes · PERF1c no low-cardinality indexes · PERF5 connections < 70% of instance limit · PERF6 `BufferCacheHitRatio` ≥ 99% · PERF8 index-to-data ratio < 50% · PERF9 storage bloat < 30% · PERF10 no over-indexed collections (> 10 indexes) · PERF11 `FreeableMemory` > 10% of instance RAM · PERF12 no swap usage · PERF13 `DiskQueueDepth` < 5 · PERF14 `IndexBufferCacheHitRatio` ≥ 99% · PERF15 large collections have secondary indexes · PERF16 index size < 2× data size per collection
+PERF1 avg doc size < 8 KB · PERF1b no redundant (prefix) indexes · PERF1c no low-cardinality indexes · PERF5 connections < 70% of instance limit · PERF6 `BufferCacheHitRatio` >= 99% · PERF8 index-to-data ratio < 50% · PERF9 storage bloat < 30% · PERF10 no over-indexed collections (> 10 indexes) · PERF11 `FreeableMemory` > 10% of instance RAM · PERF12 no swap usage · PERF13 `DiskQueueDepth` < 5 · PERF14 `IndexBufferCacheHitRatio` >= 99% · PERF15 large collections have secondary indexes · PERF16 index size < 2× data size per collection
 
 ### Sustainability (2)
 SUST1 Graviton instance family (`r6g`/`r8g`/`t4g`) · SUST2 compression enabled on all collections

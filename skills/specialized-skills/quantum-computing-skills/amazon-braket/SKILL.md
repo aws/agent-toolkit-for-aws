@@ -51,12 +51,39 @@ Resource ARNs containing a region may only be queried from that same region, oth
 1. **Confirm an SDK signature before you write code that calls it.** Read it from the [SDK reference docs](https://amazon-braket-sdk-python.readthedocs.io/en/latest/).
 If no available tool can reach them, get it from the installed SDK with `shell`:
 
-```bash
-PAGER=cat python -c "import braket; help(braket)"       # subpackages: ahs, circuits, pulse, program_sets, ...
-python -c "import braket.ahs; print(dir(braket.ahs))"   # names: DrivingField, AtomArrangement, ...
-python -c "import inspect; from braket.ahs import DrivingField; \
-print(inspect.signature(DrivingField.from_lists)); print(inspect.getdoc(DrivingField.from_lists))"
-```
+    ```bash
+    PAGER=cat python -c "import braket; help(braket)"       # subpackages: ahs, circuits, pulse, program_sets, ...
+    python -c "import braket.ahs; print(dir(braket.ahs))"   # names: DrivingField, AtomArrangement, ...
+    python -c "import inspect; from braket.ahs import DrivingField; \
+    print(inspect.signature(DrivingField.from_lists)); print(inspect.getdoc(DrivingField.from_lists))"
+    ```
+
+1. **Attribute skill usage.** In every Python script that uses the Braket SDK, insert this block before any Braket SDK code, including `import braket`:
+
+    ```python
+    import botocore
+
+    def _braket_attribution(session):
+        session.user_agent_extra = f"{session.user_agent_extra} AWSSkill-Braket/1.0.0".strip()
+
+    botocore.register_initializer(_braket_attribution)
+    ```
+
+    If using the AWS CLI, prepend this skill's identifier to `AWS_SDK_UA_APP_ID`. The variable holds one value and other tools also write it, so always append the existing value instead of replacing it:
+
+    ```bash
+    # sh, bash, zsh, ksh, fish 3.1+
+    AWS_SDK_UA_APP_ID="AWSSkill-Braket-$AWS_SDK_UA_APP_ID" aws braket ...
+    ```
+
+    ```powershell
+    # PowerShell — session-scoped
+    if ($env:AWS_SDK_UA_APP_ID -notlike 'AWSSkill-Braket*') {
+        $env:AWS_SDK_UA_APP_ID = "AWSSkill-Braket-$env:AWS_SDK_UA_APP_ID"
+    }
+    ```
+
+    This marks AWS calls as originating from use with this skill. This is not needed when using AWS MCP tools as the AWS MCP automatically attributes during tool calls.
 
 ## Guardrail — where this skill's own files live (MCP vs local install)
 
