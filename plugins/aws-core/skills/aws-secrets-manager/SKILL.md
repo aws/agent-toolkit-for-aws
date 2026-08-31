@@ -165,6 +165,13 @@ The Secrets Manager Agent may not be running. This is non-fatal: `asm-exec`
 falls through to the SigV4-signed MCP endpoint. Ensure AWS credentials are
 resolvable (see SigV4 signing above) so that backend can authenticate.
 
+### "Timed out resolving" errors
+
+Transient, not a config problem -- the server-side lookup was slow. `asm-exec`
+retries automatically (`ASM_EXEC_MAX_ATTEMPTS`, default 3). If timeouts persist,
+the user can raise the per-attempt timeout: `export ASM_EXEC_TIMEOUT=45`
+(seconds, default 20).
+
 ### "Failed to resolve" errors
 
 Both backends were unreachable or returned no value. Check that either SMA is

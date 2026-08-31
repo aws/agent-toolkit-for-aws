@@ -21,8 +21,10 @@ import json
 import os
 import re
 import shlex
+import socket
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -36,6 +38,8 @@ PATTERN = re.compile(r'\{\{resolve:secretsmanager:([^}]+)\}\}')
 SMA_ENDPOINT = os.environ.get('AWS_SECRETS_MANAGER_AGENT_ENDPOINT', 'http://localhost:2773')
 SSRF_TOKEN = os.environ.get('AWS_SESSION_TOKEN', os.environ.get('AWS_TOKEN', ''))
 MCP_ENDPOINT = os.environ.get('ASM_EXEC_MCP_ENDPOINT', 'https://aws-mcp.us-east-1.api.aws/mcp')
+MCP_TIMEOUT = float(os.environ.get('ASM_EXEC_TIMEOUT', '20')) # user changes via export ASM_EXEC_TIMEOUT=x
+MCP_MAX_ATTEMPTS = max(1, int(os.environ.get('ASM_EXEC_MAX_ATTEMPTS', '3'))) # user changes via export ASM_EXEC_MAX_ATTEMPTS=x
 
 _sma_available = None
 
@@ -193,7 +197,7 @@ def _mcp_post(payload, session_id=None):
     for k, v in sig_headers.items():
         req.add_header(k, v)
 
-    resp = urllib.request.urlopen(req, timeout=10)
+    resp = urllib.request.urlopen(req, timeout=MCP_TIMEOUT)
     session_out = resp.headers.get('Mcp-Session-Id')
     raw = resp.read()
     parsed = json.loads(raw) if raw else {}
@@ -268,8 +272,9 @@ def _resolve_via_mcp(secret_name, label, region):
                         return found
         if isinstance(result, dict):
             return _extract_secret_string(result)
-    except (urllib.error.URLError, OSError, json.JSONDecodeError,
-            KeyError, TypeError, RuntimeError):
+    except (socket.timeout, TimeoutError):
+        raise
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, RuntimeError):
         pass
     return None
 
@@ -330,9 +335,23 @@ def resolve_one(ref):
         except (urllib.error.URLError, OSError, json.JSONDecodeError):
             pass
 
-    # 2. Resolve via Streamable HTTP MCP
+    # 2. Resolve via Streamable HTTP MCP. get-secret-value is an idempotent
+    #    read, so retry transient timeouts with bounded exponential backoff
+    #    before surfacing a timeout-specific error. (issue #229)
     if not value:
-        value = _resolve_via_mcp(secret_name, label, region)
+        for attempt in range(MCP_MAX_ATTEMPTS):
+            try:
+                value = _resolve_via_mcp(secret_name, label, region)
+                break
+            except (socket.timeout, TimeoutError):
+                if attempt < MCP_MAX_ATTEMPTS - 1:
+                    time.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s, 2s, ...
+                    continue
+                print(f'asm-exec: ERROR: Timed out resolving {ref} after '
+                      f'{MCP_MAX_ATTEMPTS} attempts ({MCP_TIMEOUT:.0f}s each) '
+                      f'contacting the MCP endpoint. This is usually transient; '
+                      f'retry, or raise ASM_EXEC_TIMEOUT.', file=sys.stderr)
+                sys.exit(1)
 
     if not value:
         print(f'asm-exec: ERROR: Failed to resolve: {ref}', file=sys.stderr)
