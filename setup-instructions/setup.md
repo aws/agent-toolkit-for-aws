@@ -233,6 +233,15 @@ For each MCP configuration file the Agent Toolkit updated, open the file, locate
 }
 ```
 
+MCP configuration file locations by tool (Note: it is not an exhaustive list):
+
+| Agent       | MCP configuration file    |
+| ----------- | ------------------------- |
+| Claude Code | ~/.claude.json            |
+| Cline       | ~/.cline/mcp.json         |
+| Cursor      | ~/.cursor/mcp.json        |
+| Kiro        | ~/.kiro/settings/mcp.json |
+
 Notes:
 
 - Use `AWS_MCP_PROXY_PROFILES` (not `AWS_PROFILE`) because it also enables cross-account switching later.
@@ -259,6 +268,15 @@ aws agent-toolkit list-available-skills --region us-east-1 --profile <profile_na
 | `Invalid choice` or `argument not recognized` | AWS CLI version doesn't include agent-toolkit commands | Re-run Step 2 to update to the latest version, then retry |
 
 ### Step 7: Get AWS experience rule
+
+First, identify which AI coding tool is in use and its rules files per this table (which is not an exhaustive list):
+
+| Agent       | Project rules        | Location                  |
+| ----------- | -------------------- | ------------------------- |
+| Claude Code | CLAUDE.md            | Project root              |
+| Codex       | AGENTS.md            | Project root              |
+| Cursor      | .cursor/rules/\*.mdc | .cursor/rules/ directory  |
+| Kiro        | .kiro/steering/\*.md | .kiro/steering/ directory |
 
 Retrieve the AWS experience rules file based on their AWS experience parameter. Read its full contents, and
 save them to each detected tool’s rules file (creating the directory if needed):
