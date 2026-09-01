@@ -33,6 +33,7 @@ tools = await session.list_tools()          # -> screenshot, left_click, type_te
 ```
 
 Key points:
+
 - In POLLING mode, calling a desktop tool before `connection_status` reports `CONNECTED` will not work — only `connection_status` is exposed until the desktop connects.
 - Re-list tools after `CONNECTED` to pick up the full set.
 - The desktop typically connects in 5–30s (longer on cold starts).

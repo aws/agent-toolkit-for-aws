@@ -16,6 +16,7 @@ Screenshots are large image payloads. A naive agent screenshots after every clic
 ## Batch actions
 
 Group related actions into one sequence with no intermediate screenshots:
+
 - **Setup then act:** select tool → set options → act — no screenshot between setup steps.
 - **Repeat similar actions together:** e.g. fill five form fields or draw four shapes in sequence, then one screenshot at the end — not one per element.
 
@@ -38,6 +39,7 @@ If the fleet has MCP tool forwarding enabled, use forwarded filesystem/fetch too
 ## Handle unexpected dialogs
 
 Apps show update prompts, recovery dialogs, setup wizards. When one appears:
+
 - `key("Escape")` to dismiss, or `key("alt+F4")` to close a window.
 - For save prompts choose "Don't Save"/"Discard" unless the task requires saving.
 - `key("alt+Tab")` to bring the target window back to focus.

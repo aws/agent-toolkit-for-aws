@@ -52,18 +52,21 @@ Prefer an **IAM role** (EC2 instance profile, ECS task role, or Lambda execution
 ## Non-domain-joined fleets (streaming URL)
 
 1. Generate a streaming URL:
+
    ```
    aws appstream create-streaming-url \
      --stack-name <stack> --fleet-name <fleet> \
      --user-id <user> --validity 3600 \
      --query StreamingURL --output text
    ```
+
    Sets how long the URL stays valid for *initiating* a connection: `Validity` accepts 1–604800 seconds (7 days); the API default is 60 seconds. The streaming URL is a **bearer credential** that grants desktop access — use the shortest validity that covers your connection window (e.g. 300 s if the agent connects immediately) to limit the exposure window. Once connected, how long the session runs is governed by the fleet's `MaxUserDurationInSeconds` and disconnect/idle timeouts, not by this value (see session-lifecycle.md).
 2. Pass it on every request as the `X-Amzn-AgentAccess-Streaming-Session-Url` header.
 
 > **Treat the streaming URL as a secret.** It is a bearer token — retrieve it ephemerally at connect time; do not log it, persist it to disk, or pass it through insecure channels. If your orchestrator logs MCP headers, redact `X-Amzn-AgentAccess-Streaming-Session-Url`.
 
 Python (`mcp-proxy-for-aws` signs each request; requires Python 3.10+ — running it via `uvx mcp-proxy-for-aws ...` avoids system-Python version issues):
+
 ```python
 from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
 

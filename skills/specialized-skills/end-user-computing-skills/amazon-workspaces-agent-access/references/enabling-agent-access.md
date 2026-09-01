@@ -26,6 +26,7 @@ Agent access is enabled by supplying an **`AgentAccessConfig`** when you **`Crea
 | `FORWARD_MCP_TOOLS` | Forwards MCP tools on the session to the agent (see tool-forwarding.md) |
 
 Other fields:
+
 - `ScreenResolution` — `W_1280xH_720` is the **only** value the API accepts (single-value enum).
 - `ScreenImageFormat` — `PNG` or `JPEG`.
 - `S3BucketArn` + `ScreenshotsUploadEnabled: true` — optional screenshot storage.

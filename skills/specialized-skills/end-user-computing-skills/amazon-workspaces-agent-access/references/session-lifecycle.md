@@ -7,6 +7,7 @@
 3. **Ends** when the connection closes, the session hits the fleet's timeouts, or the streaming URL's validity window lapses before it is used to connect.
 
 Two separate limits are often confused:
+
 - **Streaming URL validity** — how long the URL can be used to *initiate* a connection. Set by the `Validity` parameter of `CreateStreamingURL`: 1–604800 seconds (7 days); API default 60 seconds. (AWS sample tooling commonly passes 3600 / 1 hour.) Once connected, the URL's validity no longer matters. It is a **bearer credential** — do not log it or pass it via environment variables that may be captured in process listings or crash dumps; redact `X-Amzn-AgentAccess-Streaming-Session-Url` if MCP headers are logged.
 - **Maximum session duration** — how long a connected session may run. Governed by the fleet's `MaxUserDurationInSeconds`, plus `DisconnectTimeoutInSeconds` and `IdleDisconnectTimeoutInSeconds` for teardown after disconnect/idle. These are per-fleet configuration, not a fixed Agent Access cap — confirm the values on your fleet (see [CreateFleet](https://docs.aws.amazon.com/appstream2/latest/APIReference/API_CreateFleet.html) for allowed ranges).
 

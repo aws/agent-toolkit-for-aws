@@ -12,6 +12,7 @@ Tool forwarding needs **both** an IAM grant and a service setting — IAM access
 
 1. **Enable the service action:** turn on `FORWARD_MCP_TOOLS` in the stack's agent action configuration (API or console).
 2. **IAM:** grant `agentaccess-mcp:CallForwardedTool` (plus `agentaccess-mcp:InvokeMcp` to establish the session, and any computer-use actions the agent also uses), scoped to the stack with the `agentaccess-mcp:StackArn` condition key. Prefer enumerated actions over `agentaccess-mcp:*`:
+
    ```json
    {
      "Effect": "Allow",
@@ -25,7 +26,9 @@ Tool forwarding needs **both** an IAM grant and a service setting — IAM access
      }
    }
    ```
+
 3. **Manifest on the fleet image** at `C:/ProgramData/NICE/dcv/mcp_server_redirection_config.json`:
+
    ```json
    {
      "mcpServers": {
@@ -39,6 +42,7 @@ Tool forwarding needs **both** an IAM grant and a service setting — IAM access
      }
    }
    ```
+
    Only `command` (required, absolute path) and `args` (optional) are supported — no env vars or working directory. Servers inherit the session environment and run as the session user. The manifest must be saved as UTF-8 **without a BOM** — the service rejects a manifest that has one (Windows PowerShell 5.1's `Out-File -Encoding utf8` writes a BOM; ensure your editor/tool saves plain UTF-8).
 
 ## Constraints
@@ -50,9 +54,11 @@ Tool forwarding needs **both** an IAM grant and a service setting — IAM access
 ## How forwarded tools appear
 
 Forwarded tools are renamed to avoid collisions:
+
 ```
 forwarded___<server-name>___<original-tool-name>
 ```
+
 e.g. a `get_forecast` tool on the `weather` server appears as `forwarded___weather___get_forecast`. Agent code matching on tool names must expect this prefix. (Note: Bedrock Converse requires tool names match `[a-zA-Z0-9_-]+`, so some clients normalize dots to dashes — match forwarded tools by description, not exact spelling.)
 
 ## Requirements

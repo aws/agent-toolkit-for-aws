@@ -46,6 +46,7 @@ These are HTTP headers / metadata on the MCP connection — **not** tool paramet
                 await asyncio.sleep(2)
             tools = await session.list_tools()   # now the full desktop tool set
     ```
+
 - **Streaming session** (non-domain-joined) is the `X-Amzn-AgentAccess-Streaming-Session-Url` header. **Domain-joined** fleets instead pass the SAML assertion + stack ARN via MCP `_meta` keys `aws.agentaccess/workspacesApplicationsSamlAssertion` and `aws.agentaccess/workspacesApplicationsStackArn`. (details: connection-setup.md)
 - **Expire-on-delete** is the `X-Amzn-AgentAccess-Expire-Streaming-Session-On-Delete` header (`true`/`false`; **default `false`**). Expiry happens on the client's explicit HTTP `DELETE` — `mcp-proxy-for-aws` sends it automatically on clean close. (details: session-lifecycle.md)
 - **Forwarded tools are namespaced by server:** `forwarded___<server-name>___<tool-name>` (e.g. `forwarded___filesystem___read_file`) — **not** `forwarded___<tool-name>`. (details: tool-forwarding.md)
