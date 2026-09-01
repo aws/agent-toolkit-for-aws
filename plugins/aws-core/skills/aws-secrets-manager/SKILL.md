@@ -100,7 +100,7 @@ asm-exec -- mysql \
 
 The MCP endpoint authenticates every tool call with AWS SigV4. `asm-exec` signs
 requests itself using only the Python standard library (`hashlib`/`hmac`) -- it
-does **not** depend on botocore or spin up the `mcp-proxy-for-aws` proxy, keeping
+does **not** depend on botocore or spin up the `mcp-proxy-for-aws-cli` proxy, keeping
 the wrapper a lightweight ephemeral process. The signing service and region are
 inferred from the endpoint hostname (e.g. `aws-mcp.us-east-1.api.aws` ->
 service `aws-mcp`, region `us-east-1`); this signing region is independent of the

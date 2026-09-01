@@ -107,7 +107,7 @@ def _get_aws_credentials():
 def _signing_service_region(endpoint):
     """Derive (service, region) for SigV4 from an AWS MCP endpoint hostname.
 
-    Mirrors mcp-proxy-for-aws: 'service.region.api.aws' -> (service, region);
+    Mirrors mcp-proxy-for-aws-cli: 'service.region.api.aws' -> (service, region);
     'bedrock-agentcore' style is handled as a special case. The signing region
     is the endpoint's own region, independent of any secret's region.
     """

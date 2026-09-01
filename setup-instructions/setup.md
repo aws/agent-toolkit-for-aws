@@ -224,7 +224,7 @@ For each MCP configuration file the Agent Toolkit updated, open the file, locate
 ```json
 "aws-mcp": {
   "command": "uvx",
-  "args": ["mcp-proxy-for-aws@latest", "https://aws-mcp.us-east-1.api.aws/mcp", "--metadata", "INSTALL_SOURCE=aws-cli"],
+  "args": ["mcp-proxy-for-aws-cli@latest", "https://aws-mcp.us-east-1.api.aws/mcp", "--metadata", "INSTALL_SOURCE=agent-toolkit"],
   "env": {
     "AWS_MCP_PROXY_PROFILES": "<profile_name>"
   },
