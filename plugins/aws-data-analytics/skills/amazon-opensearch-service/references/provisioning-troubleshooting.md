@@ -1,5 +1,7 @@
 # Troubleshooting AOS Domains and Collections
 
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax.
+
 ## Common Issues
 
 | Error | Cause | Fix |
@@ -10,6 +12,19 @@
 | Upgrade fails at pre-checks | Incompatible settings or plugins | Run `get-compatible-versions`; address breaking changes listed in upgrade guide |
 | `DisabledOperationException` | Operation not available for config | Some operations (cold storage, UltraWarm) require specific instance families |
 | Snapshot failure | S3 bucket permissions or IAM role | Verify snapshot role has `s3:PutObject` on the bucket; check trust policy |
+
+## Serverless (AOSS) provisioning & teardown errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `ConflictException` / "already exists" on create | Resource name taken in this account+region | Choose a new name, because collection/policy names must be unique per account per region |
+| `Invalid value for maxIndexingCapacityInOCU` | OCU value outside the allowed set | Set a valid OCU value per [serverless-scaling.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-scaling.html), because AOSS rejects capacity numbers outside the allowed set |
+| "Providing VectorOptions ... not supported for account" | Account lacks vector acceleration | Retry without `vectorOptions`, because acceleration needs account-level enablement |
+| `ConflictException` on `delete-collection` (status not ACTIVE/FAILED) | Collection still creating | Poll `batch-get-collection` until `status` is `ACTIVE`/`FAILED`, then retry, because a mid-creation collection cannot be deleted |
+| `ValidationException` "has collections associated" on `delete-collection-group` | Group still holds collections | Delete/await member collections first, because a non-empty group cannot be removed |
+| Partial-failure mid-provision (group created, collection failed) | One step failed after earlier steps succeeded | Report what exists, then use the deprovision flow to clean up, because orphaned policies/groups still bill and block name reuse |
+
+For the full teardown ordering, see [provisioning-serverless-deprovision.md](provisioning-serverless-deprovision.md).
 
 ## Debugging Domain Creation Failures
 

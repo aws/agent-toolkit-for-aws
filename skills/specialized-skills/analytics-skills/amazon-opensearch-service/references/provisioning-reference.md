@@ -19,7 +19,9 @@ After loading this entry, you can discover every provisioning-capability file fr
 | Deploy search config to a domain | [`provisioning-domain-deploy-search.md`](provisioning-domain-deploy-search.md) |
 | Create AOSS collection | [`provisioning-serverless-provision.md`](provisioning-serverless-provision.md) |
 | Deploy search config to a collection | [`provisioning-serverless-deploy-search.md`](provisioning-serverless-deploy-search.md) |
-| Configure agentic search on a domain | [`provisioning-agentic-setup.md`](provisioning-agentic-setup.md) |
+| Tear down (deprovision) an AOSS collection | [`provisioning-serverless-deprovision.md`](provisioning-serverless-deprovision.md) |
+| Configure agentic search on a domain (conversational, stateful) | [`provisioning-agentic-setup.md`](provisioning-agentic-setup.md) |
+| Configure agentic search on a serverless collection (flow agent, stateless) | [`provisioning-serverless-agentic-setup.md`](provisioning-serverless-agentic-setup.md) |
 | Upgrade domain version | [`provisioning-upgrades.md`](provisioning-upgrades.md) |
 | Storage tier management (UltraWarm, cold) | [`provisioning-storage-tiers.md`](provisioning-storage-tiers.md) |
 | CloudWatch alarms / monitoring | [`provisioning-monitoring.md`](provisioning-monitoring.md) |
@@ -29,7 +31,7 @@ Cross-cutting refs you may also load: [`sizing.md`](sizing.md) (instance/storage
 
 ## Sizing-related universal rules (apply when this capability sizes a domain)
 
-- **Current-generation instances.** Default to Graviton (`r7g`/`r8g` for memory-optimized; `m7g`/`m8g` for cluster managers). `r6g`/`r6gd` only with explicit justification (existing RIs, specific compatibility need). Full instance family list: see [supported-instance-types.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-instance-types.html); rule and rationale: [sizing.md §Instance family selection](sizing.md).
+- **Current-generation instances.** Prefer Graviton and the latest generation available. Always fetch the authoritative list for the target region and engine version with `aws opensearch list-instance-type-details --engine-version <version>` (or [supported-instance-types.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-instance-types.html)) — new generations supersede older ones and the supported set varies by region. As a fallback if the API is unavailable, prefer the latest Graviton memory-optimized family for data nodes and the latest Graviton general-purpose family for cluster managers; use earlier Graviton generations only with explicit justification (existing RIs, specific compatibility need). Rule and rationale: [sizing.md §Instance family selection](sizing.md).
 - **Input honesty.** When sizing on UNKNOWN inputs, lead with `[BLOCKER — need input]` OR present 2–3 tiered bands (small/medium/large workload assumption). Never present a single point estimate built on invented numbers.
 
 ## Cross-capability handoff

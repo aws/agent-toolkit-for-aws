@@ -170,6 +170,8 @@ OS 3.0 introduces GPU-accelerated index build, derived-source vectors (reduced s
 | Redundancy ON (production default) | 1 OCU (0.5 × 2) | 1 OCU (0.5 × 2) | 4 × 0.5 OCU |
 | Redundancy OFF (dev/test) | 0.5 OCU × 2 | 0.5 OCU × 2 | 2 × 0.5 OCU per workload type |
 
+> **Scale-to-zero:** Serverless NextGen collections scale to zero OCUs when idle (an idle NextGen collection bills nothing for compute), whereas Classic collections hold the minimum OCU floor above at all times because Classic keeps warm capacity provisioned. Minimum-billing behavior can change per generation, so verify it against [serverless-scaling.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-scaling.html) (as the Caps section also references) before relying on it for cost projections. Where it holds, factor it into cost projections for intermittently-used collections: NextGen is materially cheaper when traffic is bursty or dev/test.
+
 ### Caps
 
 For current OCU defaults and account-level caps, see [serverless-scaling.html](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-scaling.html).

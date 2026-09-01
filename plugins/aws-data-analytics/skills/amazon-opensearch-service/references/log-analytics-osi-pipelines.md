@@ -4,6 +4,8 @@
 
 OpenSearch Ingestion (OSI) is a fully managed, serverless pipeline service that delivers logs from sources like CloudWatch Logs, Fluent Bit, and HTTP into AOS/AOSS without managing infrastructure.
 
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax.
+
 ## Creating a Pipeline for CloudWatch Logs
 
 ### Step 1: Create Pipeline Role
@@ -24,7 +26,7 @@ aws iam create-role --role-name OSIPipelineRole \
   }'
 ```
 
-Both `aws:SourceAccount` and `aws:SourceArn` conditions are required to prevent the **confused-deputy** pattern: without `aws:SourceArn`, any OSIS pipeline in the same account could assume this role; the `ArnLike` condition narrows the trust to your OSIS pipelines only. For a single-pipeline trust, replace `pipeline/*` with the specific pipeline name.
+Both `aws:SourceAccount` and `aws:SourceArn` conditions are required to prevent the **confused-deputy** pattern: without `aws:SourceArn`, any OSI pipeline in the same account could assume this role; the `ArnLike` condition narrows the trust to your OSI pipelines only. For a single-pipeline trust, replace `pipeline/*` with the specific pipeline name.
 
 Attach policies for CloudWatch Logs source and OpenSearch sink:
 
@@ -132,13 +134,52 @@ aws logs put-subscription-filter \
 
 ## AOSS Considerations
 
-- Data access policy must grant the pipeline role `aoss:BatchGetCollection` and `aoss:APIAccessAll`
+- The pipeline role's **IAM policy** must grant `aoss:BatchGetCollection` and `aoss:APIAccessAll` (these are IAM data-plane permissions, not data access policy permissions)
+- The **data access policy** must grant the pipeline role the index/collection actions it needs (e.g. `aoss:CreateIndex`, `aoss:WriteDocument`) — see the merge step below
 - Network policy must allow OSI pipeline VPC access
 - Use `serverless: true` in the sink configuration
+
+### Adding the pipeline role to an AOSS data access policy
+
+You MUST merge the pipeline role into the existing policy rather than replacing it, because overwriting the policy would drop other principals and rules already granted on the collection.
+
+1. Get the current policy and note its `policyVersion`. Use the data access policy name created during provisioning — `<collection-name>-data` in [`provisioning-serverless-provision.md`](provisioning-serverless-provision.md) (Step 3); substitute your actual policy name if it differs:
+
+   ```bash
+   aws opensearchserverless get-access-policy --type data \
+     --name <collection-name>-data --region <region>
+   ```
+
+2. Append the pipeline role ARN to the existing `Principal` array (preserve all existing rules/principals). Grant it only the minimum actions the pipeline needs — scope index-level writes to the target index pattern rather than `aoss:*` on all resource types, because a broad grant lets the pipeline role read or delete unrelated data:
+   - `collection` rule: `aoss:DescribeCollectionItems` on `collection/<collection-name>`
+   - `index` rule: `aoss:CreateIndex`, `aoss:DescribeIndex`, `aoss:WriteDocument` on `index/<collection-name>/<target-index>*`
+   - The role also needs the IAM permissions `aoss:BatchGetCollection` and `aoss:APIAccessAll` (data-plane access), granted in its IAM policy — not the data access policy.
+3. Update with the captured version:
+
+   ```bash
+   aws opensearchserverless update-access-policy --type data \
+     --name <collection-name>-data \
+     --policy-version "<current-version>" \
+     --policy '<merged-policy-json>' --region <region>
+   ```
+
+4. Wait ~30 seconds for propagation, then stop/start the pipeline (see the gotcha below).
+
+## After Changing IAM or Data Access Policies
+
+> **After changing the pipeline role's IAM permissions or an AOSS data access policy, you MUST stop and restart the pipeline**, because OSI caches the assumed-role credentials and will keep failing on the stale permissions until it re-assumes the role:
+>
+> ```bash
+> aws osis stop-pipeline  --pipeline-name <pipeline-name> --region <region>   # wait for STOPPED
+> aws osis start-pipeline --pipeline-name <pipeline-name> --region <region>
+> ```
+>
+> After restart, confirm delivery has recovered rather than assuming success: verify CloudTrail recorded the `StopPipeline`/`StartPipeline` calls, and check that the pipeline's health metrics return to normal (e.g. `opensearch.documentsSuccess` climbing and `opensearch.documentErrors`/`dlqS3RecordsFailed` flat) via a CloudWatch alarm on the failure metrics, because a silent post-restart failure means data loss until the next manual check.
 
 ## Security Considerations
 
 - Apply least-privilege IAM policies: grant only the specific actions needed (e.g., `es:ESHttpPost`, `es:ESHttpPut`) scoped to the target domain/collection resource ARN.
 - All data in transit between OSI pipelines and OpenSearch is encrypted via TLS. Ensure domain or collection enforces HTTPS-only access.
 - Use dedicated IAM roles for pipeline execution rather than sharing roles across services.
-- Enable CloudTrail at the account level to audit all OSIS API calls (pipeline creation, modification, deletion) for compliance monitoring.
+- Enable CloudTrail at the account level to audit all OSI API calls (pipeline creation, modification, deletion) for compliance monitoring.
+- Encrypt the pipeline's CloudWatch log group with a customer-managed KMS key, because pipeline error logs and DLQ records may contain document field values from your data. Create the log group with encryption *before* pipeline creation so it applies from first write — `aws logs create-log-group --log-group-name /aws/vendedlogs/osi-pipeline --kms-key-id <key-arn>` — or attach a key to an existing group with `aws logs associate-kms-key`.
