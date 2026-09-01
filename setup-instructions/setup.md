@@ -73,7 +73,13 @@ Then:
 
 ### Step 2 (if using macOS or Linux):
 
-Download and run the shell installer:
+Determine if the user has the AWS CLI installed. Run a detection command:
+
+```bash
+aws --version
+```
+
+If the AWS CLI is installed, the step is complete. If the AWS CLI is not installed, download and run the shell installer:
 
 ```bash
 curl -fsSL 'https://awscli.amazonaws.com/v2/install.sh' | bash
@@ -213,7 +219,7 @@ aws configure agent-toolkit --yes --region us-east-1 --profile <profile_name>
 
 After the command completes, the Agent Toolkit writes an `aws-mcp` server entry into each detected AI tool's MCP configuration file. This entry does NOT reference the profile the user authenticated with in Step 3 — it falls back to the `default` profile. Because this set up file always authenticates under a named `<profile_name>`, you MUST propagate that profile into each generated `aws-mcp` entry, or the MCP server will fail to start with `JSON-RPC error: -32602: Invalid request parameters("")` (it cannot locate credentials under the `default` profile).
 
-For each MCP configuration file the Agent Toolkit updated, open the file, locate the `aws-mcp` entry under `mcpServers`, and add an `env` block that sets `AWS_MCP_PROXY_PROFILES` to `<profile_name>`. You MUST NOT remove or modify any other server entries. Only the `env` block is added — leave `command`, `args`, `timeout`, and `transport` exactly as generated:
+For each MCP configuration file the Agent Toolkit updated, open the file, locate the `aws-mcp` entry under `mcpServers`, and add an `env` block that sets `AWS_MCP_PROXY_PROFILES` to `<profile_name>`. You MUST NOT remove or modify any other server entries. Only add the `env` block — leave `command`, `args`, `timeout`, and `transport` exactly as generated:
 
 ```json
 "aws-mcp": {
@@ -227,7 +233,7 @@ For each MCP configuration file the Agent Toolkit updated, open the file, locate
 }
 ```
 
-MCP configuration file locations by tool:
+MCP configuration file locations by tool (Note: it is not an exhaustive list):
 
 | Agent       | MCP configuration file    |
 | ----------- | ------------------------- |
@@ -239,6 +245,8 @@ MCP configuration file locations by tool:
 Notes:
 
 - Use `AWS_MCP_PROXY_PROFILES` (not `AWS_PROFILE`) because it also enables cross-account switching later.
+- If you run into an existing entry for the aws-mcp, directly as the user how they want to reconsile the new changes.
+- If the MCP configuration file uses OpenCode, follow the OpenCode schema to modify the profile.
 
 After adding the `env` block, tell the user: "To use another AWS account later, run `aws login --profile <name>`, add that profile name to the space-separated `AWS_MCP_PROXY_PROFILES` list in each MCP configuration file above, and restart your AI tool."
 
@@ -261,7 +269,7 @@ aws agent-toolkit list-available-skills --region us-east-1 --profile <profile_na
 
 ### Step 7: Get AWS experience rule
 
-First, identify which AI coding tool is in use and its rules files per this table:
+First, identify which AI coding tool is in use and its rules files per this table (which is not an exhaustive list):
 
 | Agent       | Project rules        | Location                  |
 | ----------- | -------------------- | ------------------------- |
@@ -270,8 +278,8 @@ First, identify which AI coding tool is in use and its rules files per this tabl
 | Cursor      | .cursor/rules/\*.mdc | .cursor/rules/ directory  |
 | Kiro        | .kiro/steering/\*.md | .kiro/steering/ directory |
 
-Then retrieve the AWS experience rules file based on their AWS experience parameter. Read its full contents, and
-save them to that tool's rules file (creating the directory if needed):
+Retrieve the AWS experience rules file based on their AWS experience parameter. Read its full contents, and
+save them to each detected tool’s rules file (creating the directory if needed):
 
 If the AWS experience parameter is our new AWS experience, fetch the rule file. The rule file is located at:
 https://raw.githubusercontent.com/aws/agent-toolkit-for-aws/refs/heads/main/rules/aws-starter-rules.md
