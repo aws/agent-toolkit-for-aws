@@ -347,7 +347,7 @@ def resolve_one(ref):
                 if attempt < MCP_MAX_ATTEMPTS - 1:
                     time.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s, 2s, ...
                     continue
-                print(f'asm-exec: ERROR: Timed out resolving {ref} after '
+                print('asm-exec: ERROR: Timed out resolving secret reference after '
                       f'{MCP_MAX_ATTEMPTS} attempts ({MCP_TIMEOUT:.0f}s each) '
                       f'contacting the MCP endpoint. This is usually transient; '
                       f'retry, or raise ASM_EXEC_TIMEOUT.', file=sys.stderr)
