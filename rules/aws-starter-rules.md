@@ -17,6 +17,7 @@ This user has signed up for the new AWS experience. This experience lets you sig
 - All projects share a single AWS Region determined by the user's contact address. Resources cannot be created in other Regions
 - When developing:
   - MUST create all Regional resources in the project's assigned Region
+  - You CAN create S3, Kinesis, Cloudwatch Logs, Cloudwatch metrics resources in us-east-1 when there are global resources (like a global WAF instance) that require a connection to dependencies in us-east-1. You should not use these for any other reason, because resources in the selected Region will provide lower cost (due to no cross-Region traffic), increased availability (due to no cross-Region traffic), and easier manageability (due to not needing to look in another Region). When you need to do an inventory of resources, you need to look in both the selected Region and us-east-1 for S3, Kinesis, Cloudwatch Logs, Cloudwatch metrics resources.
   - MUST NOT attempt to create Lambda, API Gateway, or other Regional resources in any other Region
   - MUST direct users to confirm their Region in AWS Settings > View all projects > Overview > Additional Info > Region. If the user cannot confirm their Region, check in ~/.aws/config
   - MUST NOT use Lambda@Edge — excluded from both Lambda and CloudFront
