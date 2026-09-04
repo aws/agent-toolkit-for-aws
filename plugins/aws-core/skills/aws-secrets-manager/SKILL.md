@@ -83,7 +83,8 @@ asm-exec -- mysql \
 2. Resolves each reference through the first available backend, in order:
    1. **AWS Secrets Manager Agent (SMA)** on localhost:2773 (zero-latency, cached)
    2. **AWS MCP endpoint** (`https://aws-mcp.us-east-1.api.aws/mcp`), calling the
-      `aws___call_aws` tool over a SigV4-signed request
+      `aws___run_script` tool over a SigV4-signed request (the tool runs a short
+      server-side Python script that fetches the secret via `call_boto3`)
    3. Determines the secret's region from an ARN's region segment, or from
       `AWS_REGION` / `AWS_DEFAULT_REGION`, and passes it to the resolver
 3. Substitutes resolved values using `re.sub` with a callable (single-pass --
@@ -104,7 +105,8 @@ does **not** depend on botocore or spin up the `mcp-proxy-for-aws-cli` proxy, ke
 the wrapper a lightweight ephemeral process. The signing service and region are
 inferred from the endpoint hostname (e.g. `aws-mcp.us-east-1.api.aws` ->
 service `aws-mcp`, region `us-east-1`); this signing region is independent of the
-secret's own region, which is passed as `--region` to the server-side CLI command.
+secret's own region, which is passed as the `region_name` argument to the
+server-side `call_boto3` call.
 
 Credentials for signing are resolved in order: environment variables
 (`AWS_ACCESS_KEY_ID` etc.), `aws configure export-credentials` (AWS CLI v2), then
@@ -167,11 +169,16 @@ resolvable (see SigV4 signing above) so that backend can authenticate.
 
 ### "Failed to resolve" errors
 
-Both backends were unreachable or returned no value. Check that either SMA is
+Both backends were unreachable or returned no value. When MCP resolution fails,
+`asm-exec` prints the specific cause to stderr (`asm-exec: MCP resolution failed:
+...`) -- a timeout, an unreachable endpoint, an HTTP status, a denied permission,
+or a missing value -- so read that line first. Check that either SMA is
 running or AWS credentials are valid (`aws sts get-caller-identity`), that the
 secret's region is correct (set `AWS_REGION` or use a full ARN), and that your
 identity has `secretsmanager:GetSecretValue` on the secret. A `401` from the MCP
-endpoint indicates a SigV4 signing or credential problem, not a missing secret.
+endpoint indicates a SigV4 signing or credential problem, not a missing secret. If
+the failure is a timeout, the server-side call may need longer than the default
+30s -- raise it with `ASM_EXEC_MCP_TIMEOUT` (seconds).
 
 ### Resolution produces empty string
 
