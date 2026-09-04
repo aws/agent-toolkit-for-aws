@@ -14,7 +14,7 @@ description: >-
   Do NOT use for MSK or Managed Service for Apache Flink questions, prefer specific skills.
   Does not configure customer communication channels; defers to specific skills.
 metadata:
-  version: "3"
+  version: "4"
 ---
 
 # AWS Messaging & Streaming Services
@@ -116,7 +116,7 @@ The two groups are not interchangeable.
 |---|---|---|
 | Email | **Amazon SES** | `amazon-ses` |
 | WhatsApp | **AWS End User Messaging Social** | `aws-social-messaging` |
-| SMS, MMS, RCS, voice | **AWS End User Messaging SMS** | None |
+| SMS, MMS, RCS, voice | **AWS End User Messaging SMS** | `aws-sms-voice` |
 | Mobile push | **AWS End User Messaging Push** | None |
 
 Answer two kinds of question directly from this section: which group a workload belongs to, and which service owns a channel.
