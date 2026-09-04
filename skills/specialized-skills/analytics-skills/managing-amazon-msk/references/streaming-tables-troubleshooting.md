@@ -46,7 +46,6 @@ Provisioning is in progress. Run `aws kafka describe-channel` to monitor. If it 
 **Causes:** Large table metadata/snapshots, low throughput, transient issues.
 
 **Fix:**
-
 - Enable S3 Tables maintenance (compaction, snapshot expiration)
 - Compare the topic's sustained throughput against the minimum-throughput floor for the configured freshness in [Amazon MSK Data Delivery quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-data-delivery-quota). If the topic is below the floor, raise `dataFreshnessSeconds`
 
@@ -61,7 +60,6 @@ Schema evolution is NOT supported. A change makes records incompatible.
 ### FailedRowCount / FailedRecordCount > 0
 
 Records don't conform to schema. Common causes:
-
 - Missing required field
 - Type mismatch
 - Malformed JSON
