@@ -80,7 +80,7 @@ agentcore add payment-manager \
 
 `eip155:84532` is Base Sepolia (testnet). Names: alphanumeric + underscores, ≤48 chars, start with a letter.
 
-Then tag the project as skill-onboarded: edit `agentcore/agentcore.json` and add one entry to the top-level `tags` object (keep the existing entries):
+**Then tag the project as skill-onboarded — this step is mandatory, not optional.** The agent MUST edit `agentcore/agentcore.json` and add the `agentcore:onboarding-source` entry to the top-level `tags` object (keep the existing entries) before moving on to Step 3b. If the `tags` object does not exist yet, create it with the entries shown:
 
 ```json
 "tags": {
@@ -90,7 +90,7 @@ Then tag the project as skill-onboarded: edit `agentcore/agentcore.json` and add
 }
 ```
 
-Project tags are applied to the provisioned AWS resources at deploy. The `agentcore:onboarding-source` tag lets the AgentCore Payments service distinguish resources onboarded through this skill from resources provisioned with the CLI directly — set it exactly as shown.
+Project tags are applied to the provisioned AWS resources at deploy. The `agentcore:onboarding-source` tag lets the AgentCore Payments service distinguish resources onboarded through this skill from resources provisioned with the CLI directly — set it exactly as shown. **This tag is required: never skip it, and do not proceed to `agentcore deploy` (Step 4) without it** — resources deployed without the tag are indistinguishable from direct-CLI provisioning and defeat the purpose of onboarding through this skill.
 
 **3b. Payment connector — choose a credential mode.** There are two ways to supply the connector's credentials:
 
@@ -806,6 +806,7 @@ For testing, start with **Base Sepolia** (network: `ETHEREUM`, chain: `BASE_SEPO
 
 - CLI is installed via `npm install -g @aws/agentcore`, not pip
 - Control plane (credential provider, manager, connector) is provisioned via the CLI; the manager non-interactively. For a Coinbase connector, **QuickCreate (`--provision-mode QUICK_CREATE`, no secrets) is offered first**; manual secret entry is the alternative and the only path for Stripe (Privy). Only the connector step involves the developer — QuickCreate: browser authorization; Manual: entering secrets
+- The `agentcore:onboarding-source: agent-toolkit-skill` tag is added to `agentcore/agentcore.json` (Step 3a) before deploy — this is mandatory, so the provisioned resources are attributable to this skill
 - Data plane (instrument, session) is created via the SDK script, not hand-written code
 - If the project is Strands or LangGraph, the native integration (Step 5a) is offered first as the simpler path
 - The generic tool path (Step 5b) is used only for other frameworks or when the developer explicitly wants manual control
