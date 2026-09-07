@@ -2,9 +2,11 @@
 
 This file contains the per-step error handling for the setup runbook. Each section corresponds to a
 step in [setup.md](setup.md). When a step fails, find the matching section below, apply the
-resolution, and resume the runbook at that step.
+resolution, and resume the runbook at that step. Each section links back to its step.
 
 ## General error handling
+
+Return to [setup.md](setup.md).
 
 If any step fails with an error not covered in that step's table below, report the full error output
 to the user and do not proceed to the next step. If installation fails, tell the customer to re-run
@@ -12,11 +14,15 @@ the set up file.
 
 ## Step 1: Determine operating system
 
+Back to [Step 1 in setup.md](setup.md#step-1-determine-operating-system).
+
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
 | Cannot determine OS | No shell access or unknown environment | Ask the user what operating system they are using |
 
 ## Step 2 (macOS or Linux): Install the AWS CLI
+
+Back to [Step 2 (macOS or Linux) in setup.md](setup.md#step-2-if-using-macos-or-linux).
 
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
@@ -35,6 +41,8 @@ the set up file.
 
 ## Step 2 (Windows): Install the AWS CLI
 
+Back to [Step 2 (Windows) in setup.md](setup.md#step-2-if-using-windows).
+
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
 | `irm` or `iex` not recognized | Running in cmd.exe instead of PowerShell | Re-run from a PowerShell session |
@@ -47,6 +55,8 @@ the set up file.
 
 ## Step 3: Log in to AWS
 
+Back to [Step 3 in setup.md](setup.md#step-3-log-in-to-aws).
+
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
 | Region not provided in prompt | User pasted the prompt without region context | Ask the user the relevant follow up question depending on their AWS experience parameter. Then, set it with `aws configure set region <value> --profile <profile_name>` |
@@ -57,12 +67,16 @@ the set up file.
 
 ## Step 4: Verify access
 
+Back to [Step 4 in setup.md](setup.md#step-4-verify-access).
+
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
 | `Unable to locate credentials` or `ExpiredToken` | `aws login` did not complete successfully | Re-run Step 3 |
 | `command not found: aws` | PATH not set correctly | Re-run `export PATH="$HOME/.local/bin:$PATH"` and retry |
 
 ## Step 5: Set up the Agent Toolkit
+
+Back to [Step 5 in setup.md](setup.md#step-5-set-up-the-agent-toolkit).
 
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
@@ -73,12 +87,16 @@ the set up file.
 
 ## Step 6: Verify Agent Toolkit installation
 
+Back to [Step 6 in setup.md](setup.md#step-6-verify-agent-toolkit-installation).
+
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
 | `Unable to locate credentials` or `ExpiredToken` | Session expired | Re-run Step 3, then retry Step 6 |
 | `Invalid choice` or `argument not recognized` | AWS CLI version doesn't include agent-toolkit commands | Re-run Step 2 to update to the latest version, then retry |
 
 ## Step 7: Get AWS experience rule
+
+Back to [Step 7 in setup.md](setup.md#step-7-get-aws-experience-rule).
 
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
