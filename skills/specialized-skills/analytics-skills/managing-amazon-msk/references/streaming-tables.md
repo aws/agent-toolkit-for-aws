@@ -4,7 +4,7 @@ Streaming Tables for Amazon MSK Express brokers delivers topic data from Express
 
 Each record is delivered exactly once by the delivery pipeline. Streaming tables do not consume broker egress throughput or impact producer or consumer workloads. This optimizes cost as it enables delivery to Iceberg tables without requiring additional cluster capacity on MSK Express clusters. Additionally, you can fan out multiple streaming tables channels from the same topic.
 
-### Streaming Tables for Apache Iceberg on S3 Tables Constraints
+## Streaming Tables for Apache Iceberg on S3 Tables Constraints
 
 Check Streaming Tables documentation for constraints. Some key constraints are:
 
@@ -61,6 +61,7 @@ to deliver data to Iceberg tables on S3 Tables, so if it can be used it should b
 | `array` | — | `list<E>` |
 
 **Schema behavior:**
+
 - Extra fields in source data → silently dropped
 - Missing optional fields → written as `null`
 - Missing required fields → record sent to DLQ
@@ -68,6 +69,7 @@ to deliver data to Iceberg tables on S3 Tables, so if it can be used it should b
 - Partition column is automatically treated as required
 
 **Example schema:**
+
 ```json
 {
     "$schema": "http://json-schema.org/draft-04/schema#",
@@ -280,6 +282,7 @@ aws lakeformation grant-permissions \
 ```
 
 Then query via Athena (after data freshness interval):
+
 ```sql
 SELECT * FROM "s3tablescatalog/BUCKET"."DB_NAME"."TABLE_NAME" LIMIT 10;
 ```

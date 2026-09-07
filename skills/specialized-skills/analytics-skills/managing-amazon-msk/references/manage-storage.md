@@ -139,6 +139,7 @@ kafka-configs.sh --bootstrap-server <bootstrap> --alter --entity-type topics --e
 ```
 
 ## References
-* [Tiered storage for Standard brokers](https://docs.aws.amazon.com/msk/latest/developerguide/msk-tiered-storage.html) 
-* [Enable tiered storage on an existing cluster (CLI)](https://docs.aws.amazon.com/msk/latest/developerguide/msk-enable-cluster-tiered-storage-cli.html) 
-* [Topic-level configuration guidelines](https://docs.aws.amazon.com/msk/latest/developerguide/msk-guidelines-tiered-storage-topic-level-config.html)
+
+- [Tiered storage for Standard brokers](https://docs.aws.amazon.com/msk/latest/developerguide/msk-tiered-storage.html)
+- [Enable tiered storage on an existing cluster (CLI)](https://docs.aws.amazon.com/msk/latest/developerguide/msk-enable-cluster-tiered-storage-cli.html)
+- [Topic-level configuration guidelines](https://docs.aws.amazon.com/msk/latest/developerguide/msk-guidelines-tiered-storage-topic-level-config.html)

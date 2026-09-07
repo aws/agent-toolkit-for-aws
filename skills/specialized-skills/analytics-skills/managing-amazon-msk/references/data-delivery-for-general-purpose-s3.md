@@ -6,7 +6,7 @@ Serverless with no connectors to manage, minutes-level freshness, and auto-scali
 
 > **Note:** Records are batched into S3 objects — multiple Kafka records land in a single S3 object. The output key template determines the key for each object, and the `!{sequence-number}` token provides uniqueness across objects within the same prefix.
 
-### Data Delivery for General Purpose S3 Buckets Constraints
+## Data Delivery for General Purpose S3 Buckets Constraints
 
 Check Data Delivery for General Purpose S3 Buckets documentation for constraints. Some key constraints are:
 

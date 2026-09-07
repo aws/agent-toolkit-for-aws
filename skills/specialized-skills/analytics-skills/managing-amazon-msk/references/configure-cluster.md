@@ -6,7 +6,6 @@ For the client-side layer that fronts a custom domain (NLB, ACM certificate, Rou
 
 > **Note:** The AWS MCP server is the recommended way to run the AWS API interactions in this reference (`kafka` describe/update calls, `kafka-configs.sh`, etc.) — it provides sandboxed execution, audit logging, and observability. It is not a hard requirement; when the MCP server is unavailable, fall back to the AWS CLI or shell.
 
-
 ## Custom Domain Names (custom.advertised.listeners)
 
 Use a custom domain name (e.g., `b-1.example.com`) when clients need a static, customer-controlled endpoint that survives cluster recreation, migration, or DR failover, or must align with organizational DNS/naming. MSK brokers otherwise advertise AWS-generated addresses (`b-1.<cluster>.<id>.kafka.<region>.amazonaws.com`) that change when a cluster is recreated. This section covers the **cluster configuration** that sets the advertised address; the NLB / certificate / DNS layer that must exist first is in [configure-clients.md](configure-clients.md).
@@ -41,18 +40,22 @@ custom.advertised.listeners=CLIENT_IAM://b-{broker_id}.example.com:9000+{broker_
 
 1. Put the property in a file (leave `{broker_id}` **literal** — MSK resolves it per broker; do not substitute IDs yourself). It can live alongside other broker properties in a single configuration revision.
 2. Create/update the configuration, passing the file with **`fileb://`** (not `file://`) so the CLI reads it as bytes and base64-encodes it — passing inline or with `file://` is fragile because of the `{broker_id}` braces:
+
    ```
    aws kafka create-configuration --name custom-domain-iam \
      --server-properties fileb://custom-domain-config.txt
    ```
+
    (For an existing configuration, add the property and create a new revision with `update-configuration`.)
 3. Apply the returned configuration ARN and revision to the cluster:
+
    ```
    aws kafka update-cluster-configuration \
      --cluster-arn <arn> \
      --configuration-info arn=<config-arn>,revision=<revision> \
      --current-version <current-cluster-version>
    ```
+
    MSK validates, resolves the pattern per broker, and applies it via a **rolling restart**.
 4. Track the rollout with `describe-cluster-operation-v2` (or the `DescribeOperation` API): states go `UPDATE_IN_PROGRESS` -> `UPDATE_COMPLETE`/`SUCCESS` or `UPDATE_FAILED`/`FAILED`.
 
@@ -67,10 +70,12 @@ custom.advertised.listeners=CLIENT_IAM://b-{broker_id}.example.com:9000+{broker_
 Existing custom-domain setups configured the advertised address **dynamically, per broker**, with `kafka-configs.sh --alter --add-config advertised.listeners=[...]` — repeated on every broker and re-run whenever a broker was added, hand-preserving the `REPLICATION`/`REPLICATION_SECURE` (and any multi-VPC) entries each time. Migrating to the static `custom.advertised.listeners` property removes that per-broker toil, adds up-front validation, works on KRaft, and flows through IaC. The networking layer you already built (NLB, DNS, certificate) stays exactly as is — only *how* the advertised address is configured changes.
 
 1. **Capture the current pattern.** On each broker, read the existing dynamic value so you can reproduce it exactly:
+
    ```
    kafka-configs.sh --bootstrap-server $BS --entity-type brokers --entity-name <broker-id> \
      --command-config client.properties --all --describe | grep advertised.listeners
    ```
+
    Note the client listener name and the `host:port` each broker advertises (e.g., `CLIENT_SASL_SCRAM://b-1.example.com:9001`) and confirm it fits a `{broker_id}` template such as `b-{broker_id}.example.com:9000+{broker_id}`.
 2. **Include only the client listener in the property.** Unlike the dynamic override — where you had to include and preserve `REPLICATION`/`REPLICATION_SECURE` (and multi-VPC) entries yourself — `custom.advertised.listeners` manages only the named client listener, and MSK preserves the internal, multi-VPC (`CLIENT_IAM_VPCE`), and PrivateLink listeners for you. Do NOT put `REPLICATION`/`CONTROLLER` in the property (they are rejected).
 3. **Match the existing address for a zero-cutover migration.** Choose the template so each broker's resolved `host:port` equals what it already advertises. Then the advertised address does not change and clients keep connecting with no cutover. If you deliberately change the pattern, clients cut over on their next metadata refresh — build and verify the new NLB listeners, target groups, and DNS records first (see [configure-clients.md](configure-clients.md)).

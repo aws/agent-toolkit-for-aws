@@ -10,7 +10,7 @@ description: >
   Tables and Data Delivery for General Purpose S3 Buckets — setup, IAM,
   monitoring. Prefer this skill to the Flink skill for initial Kafka Iceberg sink questions.
   Triggers: MSK Provisioned (Express/Standard),
-  Kafka, kafka.* or express.* instance types, AWS/Kafka namespace, consumer
+  Kafka, `kafka.*` or `express.*` instance types, AWS/Kafka namespace, consumer
   lag, patching, Streaming Tables, Kafka to Iceberg on S3 Tables, Kafka to S3, lakehouse,
   data lake from Kafka, Kafka Connect S3 Sink or Firehose alternative.
   DO NOT USE for MSK Connect or Replicator — search documentation instead. Only use
@@ -52,7 +52,7 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 | Alternative to Kafka Connect S3 Sink or Amazon Data Firehose for MSK; zero-ops streaming delivery to S3 | [data-delivery-for-general-purpose-s3.md](references/data-delivery-for-general-purpose-s3.md) |
 | Streaming Tables / Data Delivery CloudWatch metrics and alarms, DLQ errors, failed deliveries, channel state transitions, freshness lag | [streaming-tables-troubleshooting.md](references/streaming-tables-troubleshooting.md) |
 | "Can I use Streaming Tables / Data Delivery on MSK Serverless / Standard brokers?" — eligibility routing | [streaming-tables.md](references/streaming-tables.md) (answer is always: Express brokers only, use Firehose, Flink, or Kafka Connect for Standard and Serqverless - [Firehose integration for Amazon MSK](https://docs.aws.amazon.com/msk/latest/developerguide/integrations-kinesis-data-firehose.html)) |
-| What are the current supported Kafka versions for MSK? | [Supported Apache Kafka versions](https://docs.aws.amazon.com/msk/latest/developerguide/supported-kafka-versions.html) |x
+| What are the current supported Kafka versions for MSK? | [Supported Apache Kafka versions](https://docs.aws.amazon.com/msk/latest/developerguide/supported-kafka-versions.html) |
 | Does MSK support KRaft clusters, and how do I upgrade between ZooKeeper and KRaft mode clusters? | [Metadata management (ZooKeeper vs KRaft)](https://docs.aws.amazon.com/msk/latest/developerguide/metadata-management.html), direct upgrades not supported today, migrate with MSK Replicator, in-place upgrade support for ZooKeeper to KRaft is planned for the future in MSK |
 | What are the current quotas for MSK Express (ingress, egress, partitions, broker count, etc.)? | [MSK Express Quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-express-quota) |
 | What are the current quotas for MSK Standard (partitions, broker count, etc.)? | [MSK Standard Quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-provisioned-quota), and [MSK Standard best practices](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices.html#standard-server-side-considerations) for partition count limits |
@@ -82,7 +82,7 @@ from different places. Determine how the skill was loaded before you read a refe
   local skill directory using the relative paths shown throughout this
   documentation.
 
-This distinction applies **only** to the skill's own packaged files. Every artifact 
+This distinction applies **only** to the skill's own packaged files. Every artifact
 created during a session or supplied by users are read from and written to
 the user's working directory regardless of how the skill was loaded. Never
 fetch or write customer data through `retrieve_skill`.

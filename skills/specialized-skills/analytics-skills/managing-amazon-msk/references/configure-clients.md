@@ -100,6 +100,7 @@ Because you cannot change the certificate MSK brokers present, custom domains ar
 The `custom.advertised.listeners` property only changes what brokers advertise. The client connectivity and trust layer is a **prerequisite, not a follow-up** — apply the property before it exists and you disconnect clients. Kafka clients do not keep using the address they bootstrapped with: on the next [metadata refresh](https://kafka.apache.org/documentation/#producerconfigs_metadata.max.age.ms) they learn the new advertised listener and use it for all subsequent connections, so if the custom domain isn't resolvable, reachable, and trusted, connected clients cannot reconnect.
 
 Safe two-phase cutover (also how you migrate from Amazon DNS to a custom domain):
+
 1. **Build the networking path first** — NLB, DNS (Route 53 private hosted zone), and TLS certificate — and point clients at the custom bootstrap endpoint while they still connect to brokers over the AWS-generated addresses.
 2. **Apply `custom.advertised.listeners`** (see [configure-cluster.md](configure-cluster.md)). At the next metadata refresh clients pick up the custom domain and cut over automatically, with no restart.
 
@@ -122,10 +123,12 @@ One TLS listener per target group; the client-facing ports (e.g., 9000 → boots
 ### Cross-zone load balancing
 
 Disabled by default on NLBs — each node only forwards to healthy targets in its own AZ, which drops connections (or causes noticeable connection delays as the client tries every IP Route 53 returns) when the healthy target is in another AZ. Enable it:
+
 ```
 aws elbv2 modify-load-balancer-attributes --load-balancer-arn <arn> \
   --attributes Key=load_balancing.cross_zone.enabled,Value=true
 ```
+
 Optionally set `dns_record.client_routing_policy=availability_zone_affinity` to reduce cross-AZ data charges.
 
 ### Networking does not auto-scale with brokers
