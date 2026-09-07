@@ -206,12 +206,20 @@ Identify which AI coding tool is in use and its rules file location (this is not
 | Cursor      | .cursor/rules/\*.mdc | .cursor/rules/ directory  |
 | Kiro        | .kiro/steering/\*.md | .kiro/steering/ directory |
 
-Retrieve the AWS experience rules file based on the AWS experience parameter, read its full contents, and save them to each detected tool's rules file (creating the directory if needed):
+Retrieve the AWS experience rules file based on the AWS experience parameter and read its full contents:
 
 - New AWS experience: <https://raw.githubusercontent.com/aws/agent-toolkit-for-aws/refs/heads/main/rules/aws-starter-rules.md>
 - Advanced AWS experience: <https://raw.githubusercontent.com/aws/agent-toolkit-for-aws/refs/heads/main/rules/aws-agent-rules.md>
 
-**Success:** Rule file is saved to the correct location for each AI tool. End the set up by telling the user:
+Then add the rules to each detected tool's rules file **without destroying existing content**. `CLAUDE.md`, `AGENTS.md`, and files under `.cursor/rules/` or `.kiro/steering/` are the project's own agent instructions — often committed to version control and carrying accumulated project rules. You MUST NOT overwrite them.
+
+- If the rules file does **not** exist, create it (creating the directory if needed) and write the retrieved rules.
+- If the rules file **already exists**, append the retrieved rules under a clearly delimited heading rather than replacing the file. Use a stable marker so the operation is idempotent — for example, wrap the content between `<!-- BEGIN AWS Agent Toolkit rules -->` and `<!-- END AWS Agent Toolkit rules -->`. If that marked block is already present, replace only the content between the markers instead of appending a second copy.
+- If you cannot determine whether appending is safe (for example, an unfamiliar rules format), ask the user how they want to proceed before writing.
+
+Where a project's own instructions conflict with the AWS rules, the project's instructions take precedence.
+
+**Success:** The AWS rules are present in the correct location for each AI tool, and any pre-existing project instructions are preserved. End the set up by telling the user:
 
 > Setup is complete! Close this session and start a new one. Your AI tool will automatically use the rules and skill files we just installed. Try this as your first prompt:
 >
