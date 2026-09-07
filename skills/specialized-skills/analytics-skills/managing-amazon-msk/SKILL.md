@@ -90,4 +90,3 @@ fetch or write customer data through `retrieve_skill`.
 ## Common Workflows
 
 **Create/apply Amazon MSK configurations and set custom domain names** — creating an Amazon MSK configuration (`server.properties` with the `fileb://` real-newline requirement), applying it with `update-cluster-configuration`, and setting broker custom domain names via `custom.advertised.listeners`: see [configure-cluster.md](references/configure-cluster.md). For the NLB/certificate/DNS connectivity that fronts a custom domain, see [configure-clients.md](references/configure-clients.md).
-
