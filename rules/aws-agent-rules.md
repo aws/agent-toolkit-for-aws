@@ -1,5 +1,7 @@
 # AWS Guidance
 
+- Where these AWS rules conflict with the project's own instructions, the
+  project's instructions take precedence.
 - Prefer the AWS MCP Server for AWS interactions — it provides sandboxed
   execution, observability, and audit logging. If unavailable, use the
   AWS CLI directly.

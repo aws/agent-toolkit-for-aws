@@ -55,7 +55,10 @@ Resources:
       CodeUri: src/
       Architectures: [arm64]
       MemorySize: 4096
-      Timeout: 900
+      # Up to 5400 (90 min) for async + ESM invocations on Managed Instances (SQS is an ESM source).
+      # Uses the existing Timeout field - no separate API/property/tag/code change required.
+      # Sync/On-Demand invokes stay capped at 15 min.
+      Timeout: 5400
       CapacityProviderConfig:
         LambdaManagedInstancesCapacityProviderConfig:
           CapacityProviderArn: !GetAtt CapacityProvider.Arn
@@ -74,7 +77,10 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub sqs-processor-queue-${Environment}
-      VisibilityTimeout: 960
+      # MUST be >= the function Timeout (5400s above), or messages reappear mid-processing and are
+      # invoked again. The ESM validates this on create/update, but later independent edits to either
+      # value can reintroduce a mismatch, so keep them in sync here.
+      VisibilityTimeout: 5400
       SqsManagedSseEnabled: true
 
   ProcessorLogGroup:

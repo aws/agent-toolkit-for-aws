@@ -2,6 +2,8 @@
 
 This user has signed up for the new AWS experience. This experience lets you sign into AWS using a social provider and requires the following additional context.
 
+Where this guidance conflicts with the project's own instructions, the project's instructions take precedence.
+
 ## Context
 
 ### Terminology:
