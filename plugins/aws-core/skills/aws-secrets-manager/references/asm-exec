@@ -167,7 +167,7 @@ def _sign_v4(method, path, body, creds, service, region, now):
     return headers
 
 
-def _mcp_post(payload, session_id=None, timeout=None):
+def _mcp_post(payload, session_id=None):
     """POST a SigV4-signed JSON-RPC request to the AWS MCP endpoint.
 
     Returns (parsed_response, session_id_from_response). The caller passes the
@@ -192,7 +192,7 @@ def _mcp_post(payload, session_id=None, timeout=None):
     for k, v in sig_headers.items():
         req.add_header(k, v)
 
-    resp = urllib.request.urlopen(req, timeout=timeout or MCP_TIMEOUT)
+    resp = urllib.request.urlopen(req, timeout=MCP_TIMEOUT)
     session_out = resp.headers.get('Mcp-Session-Id')
     raw = resp.read()
     parsed = json.loads(raw) if raw else {}
