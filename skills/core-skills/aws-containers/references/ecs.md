@@ -10,6 +10,7 @@ Load the appropriate reference file based on what the user is working on:
 
 - **cluster compute**, **managing nodes**, **managed instances**, **fargate**, or **amis** -> see [ecs-managing-compute.md](ecs-managing-compute.md)
 - **task definitions**, **task/execution IAM roles**, **secrets injection**, **volumes**, **managed daemons**, **daemon tasks**, or **agents on instances** -> see [ecs-workloads.md](ecs-workloads.md)
+- **Action Logs**, **control-plane troubleshooting**, **deployment rollback / circuit-breaker**, **task placement failures**, **scaling / task replacement visibility**, or **enabling or reading ECS Action Logs** -> see [action-logs.md](action-logs.md)
 
 ## Resources
 
