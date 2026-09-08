@@ -177,6 +177,22 @@ cdk deploy -e $PRODUCER_STACK   # then producer, removing the export
 
 A stack enters `UPDATE_ROLLBACK_FAILED` when CloudFormation cannot roll back a failed update. The stack is wedged and MUST be recovered before any further operations.
 
+### First: was the failed deployment an express mode deployment?
+
+If the failed operation was run with `--express`, the rollback-based recovery below does NOT apply. Express mode deployments cannot use the CloudFormation Rollback Stack API, and a standard CloudFormation deployment MUST NOT be used to recover a failed express mode deployment.
+
+Recover by rolling **forward** instead — make another express mode deployment that resolves the failure, either by reverting the resource to its last successful state in code or by making another change that fixes the cause:
+
+```bash
+cdk deploy $STACK --express
+```
+
+**Security note:** A failed express deployment may have left resources partially configured — potentially without intended encryption, access controls, or policy attachments. Inspect the stack's resources (`aws cloudformation list-stack-resources`) before reusing the environment.
+
+**Audit note:** Check CloudTrail logs for the failed deployment's API calls to determine which resources were created or modified and in what state they were left. This is the most reliable way to reconstruct exactly which create/update/delete operations succeeded or failed, since express mode reports the stack as failed without recording per-resource stabilization.
+
+Running `cdk deploy --express` or `cdk deploy --express --rollback` against an already-failed stack applies the changes without first attempting a rollback, unlike `cdk deploy` without express mode. See [fast-deployments](fast-deployments.md).
+
 ### Root causes
 
 - Resource deleted out-of-band (e.g., manually deleted in the console).
