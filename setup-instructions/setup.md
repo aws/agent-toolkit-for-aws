@@ -205,6 +205,7 @@ Identify which AI coding tool is in use and its rules file location (this is not
 | Codex       | AGENTS.md            | Project root              |
 | Cursor      | .cursor/rules/\*.mdc | .cursor/rules/ directory  |
 | Kiro        | .kiro/steering/\*.md | .kiro/steering/ directory |
+| fx          | AGENTS.md            | Project root              |
 
 Retrieve the AWS experience rules file based on the AWS experience parameter and read its full contents:
 

@@ -6,7 +6,7 @@
 
 Help AI coding agents build, deploy, and manage applications on AWS.
 
-The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, Cursor, and Kiro.
+The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, Cursor, Kiro, and fx.
 
 ## Quick start
 
@@ -111,6 +111,47 @@ npx skills add aws/agent-toolkit-for-aws/skills
 ```
 
 This installs skill files to `~/.kiro/skills/` (global) or `.kiro/skills/` (project-level). Each skill is a directory containing a `SKILL.md` file and optionally a `references/` subdirectory with additional context the agent reads from the local filesystem when needed. Kiro discovers installed skills automatically and activates them on demand when a task matches.
+
+> **Prerequisites:** You need [uv](https://docs.astral.sh/uv/) installed. An AWS account with credentials configured locally is required for API calls and script execution, but not for documentation search or skill discovery. See the [user guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) for detailed setup instructions.
+
+### fx
+
+[fx](https://fx.sh) setup has the same two independent parts as Kiro: the AWS MCP Server (for runtime AWS API access and documentation search) and local skills (for task-specific agent guidance). Skills don't require the MCP server, and the MCP server doesn't serve locally-installed skills.
+
+**1. Add the AWS MCP Server** from your terminal. fx stores MCP servers in `~/.fx/mcp.json`, so the server is available in every project:
+
+```
+fx mcp add aws uvx mcp-proxy-for-aws-cli@latest https://aws-mcp.us-east-1.api.aws/mcp --metadata AWS_REGION=us-west-2
+```
+
+Or add it to `~/.fx/mcp.json` by hand. fx uses the `mcp` key rather than `mcpServers`, `type` to select the transport, and a single `command` array holding the executable and its arguments:
+
+```json
+{
+  "mcp": {
+    "aws": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "mcp-proxy-for-aws-cli@latest",
+        "https://aws-mcp.us-east-1.api.aws/mcp",
+        "--metadata",
+        "AWS_REGION=us-west-2"
+      ]
+    }
+  }
+}
+```
+
+If a session is already open when you edit the file, run `/mcp reload` to pick up the change. The MCP server gives your agent access to AWS APIs, sandboxed script execution, and real-time documentation search.
+
+**2. Install skills** from this repository:
+
+```
+npx skills add aws/agent-toolkit-for-aws/skills -a fx
+```
+
+This installs skill files to `.fx/skills/` (project-level); add `-g` to install to `~/.fx/skills/` (global). fx also discovers skills already installed for other agents in `.agents/skills/`, `.claude/skills/`, and `.codex/skills/`, so a project set up for Codex or Claude Code needs no second copy. Each skill is a directory containing a `SKILL.md` file and optionally a `references/` subdirectory with additional context the agent reads from the local filesystem when needed. fx reads skill metadata at startup and loads a skill's instructions when you or the agent invokes it; type `$` in the composer or run `/skills` to browse what's installed.
 
 > **Prerequisites:** You need [uv](https://docs.astral.sh/uv/) installed. An AWS account with credentials configured locally is required for API calls and script execution, but not for documentation search or skill discovery. See the [user guide](https://docs.aws.amazon.com/agent-toolkit/latest/userguide/) for detailed setup instructions.
 

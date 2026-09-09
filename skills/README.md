@@ -20,6 +20,7 @@ To install skills locally, copy the skill directory to your agent's skills locat
 | Codex | `~/.codex/skills/` | `.agents/skills/` |
 | Cursor | `~/.cursor/skills/` | `.cursor/skills/` |
 | Kiro | `~/.kiro/skills/` | `.kiro/skills/` |
+| fx | `~/.fx/skills/` | `.fx/skills/` |
 
 ## Skill categories
 
