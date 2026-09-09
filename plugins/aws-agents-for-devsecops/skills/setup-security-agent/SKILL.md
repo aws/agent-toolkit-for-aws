@@ -99,20 +99,56 @@ Why minimal config: the role name and bucket name are deterministic, so storing 
      ```
 
 5. **S3 bucket** (`security-agent-scans-$ACCOUNT-$REGION`):
-   - Probe:
+
+   > **Bucket-ownership enforcement (required).** The bucket name is derived from
+   > the caller's AWS account ID and region — both non-secret and publicly
+   > derivable from ARNs / ECR URIs — so any third party can pre-register
+   > ("squat") the predictable name in their own account. Every S3 call MUST
+   > pass `--expected-bucket-owner "$ACCOUNT"` so the operation fails closed if
+   > the bucket is owned by someone else. A `403 Forbidden` on a bucket that
+   > exists but is foreign-owned is **fatal** — abort setup and never upload.
+
+   - Probe (asserts ownership):
 
      ```bash
      BUCKET="security-agent-scans-${ACCOUNT}-${REGION}"
-     aws s3api head-bucket --bucket "$BUCKET"
+     NEED_CREATE=0
+     if aws s3api head-bucket --bucket "$BUCKET" --expected-bucket-owner "$ACCOUNT" 2>/tmp/sa-head.err; then
+       : # bucket exists and is owned by this account — safe to reuse
+     elif grep -q '404' /tmp/sa-head.err; then
+       NEED_CREATE=1
+     elif grep -Eq '403|Forbidden' /tmp/sa-head.err; then
+       echo "FATAL: bucket $BUCKET exists but is owned by another account (403). Possible bucket-squatting — aborting. Nothing was uploaded." >&2
+       exit 1
+     else
+       cat /tmp/sa-head.err >&2; exit 1
+     fi
      ```
 
-   - If 404, create:
+   - If not found, create it. A `BucketAlreadyExists` error means another account
+     already holds the global name — treat it as **fatal** and distinct from
+     `BucketAlreadyOwnedByYou` (which is a safe no-op). Re-assert ownership after
+     creation before any further use:
 
      ```bash
-     # us-east-1: no LocationConstraint
-     aws s3api create-bucket --bucket "$BUCKET"
-     # other regions:
-     aws s3api create-bucket --bucket "$BUCKET" --create-bucket-configuration LocationConstraint="$REGION"
+     if [ "$NEED_CREATE" = "1" ]; then
+       if [ "$REGION" = "us-east-1" ]; then
+         # us-east-1: no LocationConstraint
+         aws s3api create-bucket --bucket "$BUCKET" 2>/tmp/sa-create.err || true
+       else
+         # other regions:
+         aws s3api create-bucket --bucket "$BUCKET" \
+           --create-bucket-configuration LocationConstraint="$REGION" 2>/tmp/sa-create.err || true
+       fi
+       if grep -q 'BucketAlreadyExists' /tmp/sa-create.err; then
+         echo "FATAL: bucket name $BUCKET is already owned by another account (BucketAlreadyExists). Possible bucket-squatting — aborting." >&2
+         exit 1
+       elif [ -s /tmp/sa-create.err ] && ! grep -q 'BucketAlreadyOwnedByYou' /tmp/sa-create.err; then
+         cat /tmp/sa-create.err >&2; exit 1
+       fi
+       # Confirm ownership of the freshly created bucket before using it.
+       aws s3api head-bucket --bucket "$BUCKET" --expected-bucket-owner "$ACCOUNT"
+     fi
      ```
 
    - Always (re)apply public access block + 30-day lifecycle:
@@ -166,6 +202,7 @@ Why minimal config: the role name and bucket name are deterministic, so storing 
 
 - Never auto-select an agent space when multiple exist — always ask the user
 - Never disable safety protections (the public-access-block stays on)
+- Every S3 call against the derived bucket MUST pass `--expected-bucket-owner "$ACCOUNT"`. The bucket name is derived from a non-secret account ID, so a third party can pre-register it; a `403`/`BucketAlreadyExists` on a foreign-owned bucket is fatal — abort and never upload.
 - Trust policy must allow `securityagent.amazonaws.com` (production service principal) and include the `aws:SourceAccount` confused-deputy guard
 - If the user provides their own role name or bucket name (different from the conventional defaults), tell them: this plugin uses convention-based defaults (`SecurityAgentScanRole` / `security-agent-scans-${ACCOUNT}-${REGION}`). Either accept those defaults or extend the skill — the other skills derive these names rather than reading them from config.
 - The scan and pentest skills can call this skill inline if `config.json` is missing — first-time users don't need to run setup separately.
@@ -176,5 +213,6 @@ Why minimal config: the role name and bucket name are deterministic, so storing 
 
 - **`AccessDenied` calling `iam:CreateRole`** → user lacks IAM permissions. Ask them to run setup with their own role ARN, or to grant `iam:CreateRole` + `iam:PutRolePolicy`.
 - **`AccessDenied` on `s3api create-bucket`** → either the bucket name is taken globally, or the user lacks `s3:CreateBucket`. Suggest using an existing bucket they own and pass it explicitly.
+- **`403 Forbidden` / `BucketAlreadyExists` on the derived bucket** → the predictable name is owned by a *different* account (bucket-squatting). This is fatal by design — do not upload. Have the user pick a bucket name they own (or run from the expected account/region) and re-run setup.
 - **Role exists but trust policy is wrong** → `update-assume-role-policy` (step 4 fallback). If they don't want that role updated, ask them for a different role ARN.
 - **Agent space exists but in a different region** → tell the user; suggest using the right region or creating a new space in the current region.

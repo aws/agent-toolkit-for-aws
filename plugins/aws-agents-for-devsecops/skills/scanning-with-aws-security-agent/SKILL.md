@@ -98,7 +98,7 @@ For scanning only changed code, use the `diff-scanning-with-aws-security-agent` 
 3. **Upload** to the per-workspace stable key (overwrites any prior upload):
 
    ```bash
-   aws s3 cp /tmp/source.zip s3://<bucket>/security-scans/source/<WORKSPACE_ID>/source.zip
+   aws s3 cp /tmp/source.zip s3://<bucket>/security-scans/source/<WORKSPACE_ID>/source.zip --expected-bucket-owner <account>
    ```
 
 4. **Get or create the per-workspace CodeReview.** Look up `config.json → code_reviews[<abs_path>]`.
@@ -308,6 +308,7 @@ Read `.security-agent/scans.json`. Show in a compact table:
 
 - **"Not configured" / `config.json` missing** → run `setup-security-agent` skill first
 - **`AccessDenied` on `s3 cp`** → bucket not registered on agent space, or trust policy wrong. Re-run setup.
+- **`403` / `ExpectedBucketOwner` mismatch on `s3 cp`** → the derived bucket is owned by a different account (bucket-squatting). The upload is rejected by design — do not retry without the guard. Re-run `setup-security-agent`, which aborts on foreign-owned buckets.
 - **`ResourceNotFoundException` on agent space** → it was deleted. Re-run setup.
 - **Scan stuck in PREFLIGHT for >10 min** → backend issue, not client. Show `batch-get-code-review-jobs` output and tell user to escalate.
 - **Code too large (zip > 2 GB)** → run on a subdirectory instead.
