@@ -88,3 +88,58 @@ If you don't have an existing CA, [AWS Private CA](https://docs.aws.amazon.com/m
 ## References
 
 - [MSK Client Best Practices](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-kafka-client.html)
+
+## Custom Domain Name Connectivity (NLB, certificate, DNS)
+
+Custom domain names for MSK brokers are set with the `custom.advertised.listeners` **cluster configuration** property — see [configure-cluster.md](configure-cluster.md) for that property, its validation rules, and the apply/rollback workflow. This section covers the client-facing networking and trust layer you own, which must be in place **before** that property is applied.
+
+Because you cannot change the certificate MSK brokers present, custom domains are fronted by a Network Load Balancer (NLB). See [Configure a custom domain name for your Amazon MSK cluster](https://aws.amazon.com/blogs/big-data/configure-a-custom-domain-name-for-your-amazon-msk-cluster/) for the full walkthrough.
+
+### Prerequisite: build the networking/trust layer BEFORE the property is applied
+
+The `custom.advertised.listeners` property only changes what brokers advertise. The client connectivity and trust layer is a **prerequisite, not a follow-up** — apply the property before it exists and you disconnect clients. Kafka clients do not keep using the address they bootstrapped with: on the next [metadata refresh](https://kafka.apache.org/documentation/#producerconfigs_metadata.max.age.ms) they learn the new advertised listener and use it for all subsequent connections, so if the custom domain isn't resolvable, reachable, and trusted, connected clients cannot reconnect.
+
+Safe two-phase cutover (also how you migrate from Amazon DNS to a custom domain):
+
+1. **Build the networking path first** — NLB, DNS (Route 53 private hosted zone), and TLS certificate — and point clients at the custom bootstrap endpoint while they still connect to brokers over the AWS-generated addresses.
+2. **Apply `custom.advertised.listeners`** (see [configure-cluster.md](configure-cluster.md)). At the next metadata refresh clients pick up the custom domain and cut over automatically, with no restart.
+
+### TLS handshake and mTLS
+
+The NLB is a Layer 4 load balancer with **TLS listeners**: it **terminates** the client's TLS connection (presenting the ACM certificate for your custom domain, which the client validates against the cert's CN/SAN), then opens a **separate, independent TLS negotiation** to the target broker. That is two TLS sessions, not one end-to-end session. Because TLS terminates at the NLB and is re-negotiated to the broker, a client certificate presented in the client->NLB handshake is **NOT passed through to the broker** — so MSK **TLS mutual authentication (mTLS) does not work** through this NLB-termination pattern. Use **SASL/SCRAM or IAM** instead; they authenticate above the TLS transport (SCRAM challenge / IAM SASL token) and work correctly through the NLB.
+
+### Certificate
+
+Import a **single** certificate into ACM and associate it with **every** TLS listener on the NLB. Set CN = `bootstrap.example.com` (valid for the bootstrap address) and add SANs for each broker name (`b-1.example.com`, `b-2.example.com`, …). The DNS name a client connects with must match the CN or a SAN or the handshake fails hostname validation. Reference the returned `CertificateArn` on each listener with an ssl-policy. For a private/self-signed CA, clients must import the root and intermediate CA certificates into their trust store (`ssl.truststore.location`); with a public CA they are already in the default trust store.
+
+### Target groups
+
+For an N-broker cluster create N+1 target groups: one bootstrap group containing all brokers, plus one per broker. Each uses **protocol `TLS`**, **target-type `ip`**, is associated with the MSK VPC, and its port is the broker **authentication port** — `9096` for SASL/SCRAM, `9098` for IAM (do NOT use a plaintext/`TCP` target group). Get broker IPs with `aws kafka list-nodes` (`ClientVpcIpAddress`), register each broker's IP into its own target group, and register **all** broker IPs into the bootstrap group.
+
+### Listeners
+
+One TLS listener per target group; the client-facing ports (e.g., 9000 → bootstrap, 9001/9002/9003 → b-1/b-2/b-3) are distinct from the broker auth target port (9096/9098).
+
+### Cross-zone load balancing
+
+Disabled by default on NLBs — each node only forwards to healthy targets in its own AZ, which drops connections (or causes noticeable connection delays as the client tries every IP Route 53 returns) when the healthy target is in another AZ. Enable it:
+
+```
+aws elbv2 modify-load-balancer-attributes --load-balancer-arn <arn> \
+  --attributes Key=load_balancing.cross_zone.enabled,Value=true
+```
+
+Optionally set `dns_record.client_routing_policy=availability_zone_affinity` to reduce cross-AZ data charges.
+
+### Networking does not auto-scale with brokers
+
+When you add or replace brokers, MSK applies `custom.advertised.listeners` to the new broker automatically (see [configure-cluster.md](configure-cluster.md)), but the networking layer does NOT auto-scale — add the corresponding NLB listener, target group, and DNS record for each new broker, matching the `host:port` pattern. Skip that and clients resolve the new broker's custom address but cannot reach it.
+
+### Reference ports
+
+PLAINTEXT/`CLIENT` 9092, TLS/`CLIENT_SECURE` 9094, SASL/SCRAM/`CLIENT_SASL_SCRAM` 9096, IAM/`CLIENT_IAM` 9098 (public variants 9194/9196/9198).
+
+### References
+
+- [Configure a custom domain name for your Amazon MSK cluster](https://aws.amazon.com/blogs/big-data/configure-a-custom-domain-name-for-your-amazon-msk-cluster/) — NLB, Route 53, and ACM walkthrough
+- [Amazon MSK simplifies configuring custom domain names](https://aws.amazon.com/blogs/big-data/amazon-msk-simplifies-configuring-custom-domain-names/) — the `custom.advertised.listeners` property (see [configure-cluster.md](configure-cluster.md))

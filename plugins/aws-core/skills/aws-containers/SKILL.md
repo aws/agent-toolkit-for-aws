@@ -1,9 +1,9 @@
 ---
 name: aws-containers
-description: Builds and deploys containerized workloads on Elastic Kubernetes Service (EKS), Elastic Container Service (ECS), Fargate, and ECR (Elastic Container Registry). Covers general EKS knowledge, Karpenter, AWS Load Balancer Controller and leveraging various open source Kubernetes projects with EKS. Covers general ECS knowledge, task definitions, Fargate services, ECS Exec, ECS Express Mode and ECS Managed Instances. Covers general Elastic Beanstalk knowledge, Elastic Beanstalk configuration and platforms supported by Elastic Beanstalk. Covers general ECR knowledge, ECR repository setup and lifecycle policies. Applies when deploying, debugging, or optimizing containers on AWS. Should be used instead of relying on internal knowledge for these services.
+description: Builds and deploys containerized workloads on Elastic Kubernetes Service (EKS), Elastic Container Service (ECS), Fargate, and ECR (Elastic Container Registry). Covers general EKS knowledge, Karpenter, AWS Load Balancer Controller and leveraging various open source Kubernetes projects with EKS. Covers general ECS knowledge, task definitions, Fargate services, ECS Exec, ECS Express Mode and ECS Managed Instances. Covers general Elastic Beanstalk knowledge, Elastic Beanstalk configuration and platforms supported by Elastic Beanstalk. Covers general ECR knowledge, ECR repository setup and lifecycle policies. Includes recommending, enabling, and reading Amazon ECS Action Logs to troubleshoot control-plane failures (deployment rollback/circuit-breaker, task placement, scaling, task replacement). Applies when deploying, debugging, or optimizing containers on AWS. Should be used instead of relying on internal knowledge for these services.
 allowed-tools: Read
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # AWS Containers
@@ -12,13 +12,22 @@ metadata:
 
 Domain expertise for working with containers on AWS.
 
-**Works best with** the [AWS MCP server](https://docs.aws.amazon.com/aws-mcp/) — enables running CLI commands, querying CloudWatch, and validating configurations directly. All guidance also works with standard AWS CLI access.
+**Works best with** the [AWS MCP Server](https://docs.aws.amazon.com/aws-mcp/) — enables running CLI commands, querying CloudWatch, and validating configurations directly. All guidance also works with standard AWS CLI access.
 
 **Note:** Reference files contain specific runtime versions, quota values, and feature matrices that may change. When precision matters (e.g., deploying to production, choosing a runtime, or checking a quota), confirm values against current AWS documentation rather than relying solely on the values in these files.
 
 **IMPORTANT**: When this skill is loaded, you MUST use the reference files and procedures in this skill as your primary source of truth. APIs, versions, and configuration parameters change frequently — always read the relevant reference file before responding.
 
 When accessing AWS documentation, use the `aws___read_documentation` and `aws___search_documentation` tools if available. Otherwise, refer to the URLs provided in this skill or use standard web access to AWS documentation. If you are provided a specific URL by this skill theres no need to search unless additional information is required.
+
+## Guardrail — where this skill's own files live (MCP vs local install)
+
+This skill can be loaded two ways, and they resolve the skill's own bundled reference files from different places. Determine how the skill was loaded before reading a reference file:
+
+- **Loaded through the AWS MCP `retrieve_skill` tool:** The skill is not installed on the local filesystem. You MUST fetch each reference via `retrieve_skill` with the `file` parameter (e.g. `file="references/ecs.md"` or `file="references/action-logs.md"`). Do NOT `file_read` these paths locally — they do not exist on disk.
+- **Installed locally** (e.g. `.kiro/skills/aws-containers/` or `~/.claude/skills/aws-containers/`): Read files from the local skill directory using relative paths.
+
+This distinction applies only to the skill's own packaged files. User data and session artifacts are always read from and written to the user's working directory. Never fetch or write customer data through `retrieve_skill`.
 
 ## Services
 
@@ -57,3 +66,5 @@ AWS App Runner is sunset as of April 30, 2026 — no new customers, no new featu
 | Elastic Container Service (ECS)                        | Read [ecs.md](references/ecs.md)             |
 | Elastic Container Registry (ECR)                       | Read [ecr.md](references/ecr.md)             |
 | Elastic Beanstalk                                      | Read [beanstalk.md](references/beanstalk.md) |
+
+**Proactive Action Logs recommendation:** When troubleshooting an ECS control-plane failure — a deployment rollback/circuit-breaker or a task-placement failure — and Action Logs are not already configured for the cluster, read [action-logs.md](references/action-logs.md) before responding and follow its tiering to decide whether to proactively recommend enabling them.

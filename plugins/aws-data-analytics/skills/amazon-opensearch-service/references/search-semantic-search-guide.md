@@ -416,3 +416,37 @@ OpenSearch provides several normalization techniques (Min-Max, L2, Harmonic Mean
 - Development/prototype phase (start simple)
 
 ---
+
+## 5. Agentic Search (Natural-Language Query Translation)
+
+### 5.1 Overview
+
+Agentic search uses an LLM to translate a natural-language question into OpenSearch DSL, then executes it — the caller asks a question in plain language instead of authoring a query. It is a standalone retrieval method that returns synthesized answers, implemented as a natural-language query-authoring layer over BM25/dense/hybrid retrieval.
+
+### 5.2 When to Use Agentic Search
+
+**Recommended:**
+
+- Callers who cannot author DSL/PPL (business users, natural-language front-ends).
+- Ad-hoc exploratory questions over a well-mapped index.
+
+**Not Recommended:**
+
+- Latency-sensitive paths, because each query adds an LLM round-trip (typically 200–2000 ms) plus per-query model cost on top of retrieval.
+- High-QPS production traffic with fixed query shapes — author the DSL once instead, because a static query avoids the per-call LLM cost.
+
+### 5.3 Conversational vs Flow
+
+- **Conversational (AOS domain, stateful):** multi-turn with conversation memory + RAG. Setup: [`provisioning-agentic-setup.md`](provisioning-agentic-setup.md).
+- **Flow (AOSS Serverless, stateless):** each query planned independently, lower latency/cost, no memory. Setup: [`provisioning-serverless-agentic-setup.md`](provisioning-serverless-agentic-setup.md).
+
+### 5.4 Security Considerations
+
+- **Field exposure:** the LLM can generate DSL that surfaces any field in the index, including PII. Apply field-level access control (document/field security) so an agentic query cannot return fields the caller is not authorized to see.
+- **Cost abuse:** each agentic query incurs a Bedrock model invocation. Throttle/rate-limit the agentic path to prevent runaway per-call model cost.
+- **Logging & monitoring:** enable CloudTrail for `_plugins/_ml` model/agent calls and set CloudWatch alarms on agentic query error rates and unusual invocation volume. See the detailed monitoring guidance in [`provisioning-agentic-setup.md`](provisioning-agentic-setup.md) and [`provisioning-serverless-agentic-setup.md`](provisioning-serverless-agentic-setup.md).
+- **Log confidentiality:** when `agentic_context` is enabled for debugging, the generated DSL surfaces in the response metadata (and thus in any logs that capture full responses). Encrypt any CloudWatch log group that receives agentic responses with a customer-managed KMS key and restrict its access policy, because those logs can contain the same sensitive field values the query returned.
+- **AWS WAF (defense in depth):** if the endpoint is internet-facing, front it with AWS WAF using request-size limits and rate-based rules, because WAF filters oversized and abusive free-form input at the edge before it reaches the LLM query planner.
+- For setup-time security guidance (IAM scoping, model/agent access policies), see the security sections in [`provisioning-agentic-setup.md`](provisioning-agentic-setup.md) (conversational) and [`provisioning-serverless-agentic-setup.md`](provisioning-serverless-agentic-setup.md) (flow).
+
+---

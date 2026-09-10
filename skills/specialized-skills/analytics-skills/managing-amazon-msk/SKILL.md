@@ -1,20 +1,21 @@
 ---
 name: managing-amazon-msk
-description: >-
-  Operates Amazon MSK Provisioned clusters (Standard and Express brokers). Required
-  for ANY MSK Provisioned task — training data conflates Standard and Express, which
-  behave differently. Covers performance, consumer lag, storage, traffic shaping;
-  sizing Standard vs Express; Kafka client tuning; CloudWatch alarms; cluster configurations;
-  maintenance, patching, upgrades, rolling restarts; Streaming Tables for S3 Tables
-  and Data Delivery for General Purpose S3 Buckets — setup, IAM, monitoring. Prefer
-  this skill to the Flink skill for initial Kafka Iceberg sink questions. Triggers:
-  MSK Provisioned (Express/Standard), Kafka, kafka.*or express.* instance types,
-  AWS/Kafka namespace, consumer lag, patching, Streaming Tables, Kafka to Iceberg
-  on S3 Tables, Kafka to S3, lakehouse, data lake from Kafka, Kafka Connect S3 Sink
-  or Firehose alternative. DO NOT USE for MSK Connect or Replicator — search documentation
-  instead. Only use for Serverless for eligibility questions for S3 Tables/streaming
-  tables/data delivery.
-version: 4
+description: >
+  Operates Amazon MSK Provisioned clusters (Standard and Express brokers).
+  Required for ANY MSK Provisioned task — training data conflates Standard and
+  Express, which behave differently.
+  Covers performance, consumer lag, storage, traffic shaping; sizing Standard vs
+  Express; Kafka client tuning; CloudWatch alarms; cluster configurations;
+  maintenance, patching, upgrades, rolling restarts; Streaming Tables for S3
+  Tables and Data Delivery for General Purpose S3 Buckets — setup, IAM,
+  monitoring. Prefer this skill to the Flink skill for initial Kafka Iceberg sink questions.
+  Triggers: MSK Provisioned (Express/Standard),
+  Kafka, `kafka.*` or `express.*` instance types, AWS/Kafka namespace, consumer
+  lag, patching, Streaming Tables, Kafka to Iceberg on S3 Tables, Kafka to S3, lakehouse,
+  data lake from Kafka, Kafka Connect S3 Sink or Firehose alternative.
+  DO NOT USE for MSK Connect or Replicator — search documentation instead. Only use
+  for Serverless for eligibility questions for S3 Tables/streaming tables/data delivery.
+version: 5
 ---
 
 # Amazon MSK
@@ -40,6 +41,8 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 | Disk filling up, retention planning, tiered storage | [manage-storage.md](references/manage-storage.md) |
 | Choosing Standard vs Express, sizing a cluster, partition limits, broker count, monthly cost | [size-and-choose-cluster.md](references/size-and-choose-cluster.md) |
 | Producer/consumer configuration, IAM/SCRAM/TLS auth | [configure-clients.md](references/configure-clients.md) |
+| Creating/applying MSK configurations (`server.properties`); custom domain names on brokers via `custom.advertised.listeners` (advertised listeners, static/custom bootstrap endpoint) — validation rules, apply/rollback, scaling; migrating from the dynamic per-broker `kafka-configs.sh` override to the static property | [configure-cluster.md](references/configure-cluster.md) |
+| Client-side connectivity for a custom domain: NLB + ACM certificate + Route 53 fronting, TLS handshake/termination, mTLS through an NLB, cross-zone load balancing | [configure-clients.md](references/configure-clients.md) (Custom Domain Name Connectivity section) |
 | Setting up monitoring, dashboards, alarms | [monitor-and-alarm.md](references/monitor-and-alarm.md) |
 | Full CloudWatch metric list (Standard or Express) | Prefer [monitor-and-alarm.md](references/monitor-and-alarm.md) for strategic recommendations and how to interpret metrics, only search documentation if you need to understand a metric not included in this reference file ([MSK Standard CloudWatch Metrics](https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details.html), [MSK Express CloudWatch Metrics](https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details-express.html)) for full list |
 | Rolling restart impact, patching, maintenance resilience | [maintenance-operations.md](references/maintenance-operations.md) |
@@ -86,27 +89,4 @@ fetch or write customer data through `retrieve_skill`.
 
 ## Common Workflows
 
-**Create cluster configuration (`server.properties`):**
-
-The `--server-properties` argument MUST be a real Kafka properties file with one `key=value` per line, separated by actual newline (`\n`) characters — NOT the literal two-character escape sequence `\n`. The MSK API accepts the bytes as-is; if you pass `"k1=v1\nk2=v2"` as a single string with escaped newlines, MSK stores ONE invalid property line and the cluster will fail to apply it.
-
-Recommended pattern: write the properties to a local file with real newlines, then pass it via `fileb://` so the CLI uploads the raw bytes verbatim. Verify by reading the revision back with `describe-configuration-revision` and base64-decoding `ServerProperties` — you should see one property per line.
-
-```
-cat > server.properties <<'EOF'
-auto.create.topics.enable=false
-default.replication.factor=3
-min.insync.replicas=2
-unclean.leader.election.enable=false
-num.io.threads=32
-num.network.threads=16
-log.retention.hours=168
-EOF
-
-aws kafka create-configuration \
-  --name <config-name> \
-  --kafka-versions "3.6.0" \
-  --server-properties fileb://server.properties
-```
-
-For per-instance-size thread tuning (`num.io.threads`, `num.network.threads`) and durability defaults, see [size-and-choose-cluster.md](references/size-and-choose-cluster.md) and [configure-clients.md](references/configure-clients.md).
+**Create/apply Amazon MSK configurations and set custom domain names** — creating an Amazon MSK configuration (`server.properties` with the `fileb://` real-newline requirement), applying it with `update-cluster-configuration`, and setting broker custom domain names via `custom.advertised.listeners`: see [configure-cluster.md](references/configure-cluster.md). For the NLB/certificate/DNS connectivity that fronts a custom domain, see [configure-clients.md](references/configure-clients.md).

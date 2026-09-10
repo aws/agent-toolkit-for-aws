@@ -1,5 +1,7 @@
 # Trace-analytics capability — entry point and query templates
 
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard `awscurl` / AWS CLI syntax.
+
 This file is the **entry point** for the `trace-analytics` capability. It covers distributed traces with OpenTelemetry — span queries, service maps, latency analysis (p50/p95/p99), error rate by service, and root-cause via parent/child spans.
 
 ## When to use this capability
@@ -25,9 +27,26 @@ Cross-cutting refs you may also load: [`security.md`](security.md), [`personas.m
 - For **provisioning the trace-collector infra** (Data Prepper / OSI / IAM): see [`provisioning-reference.md`](provisioning-reference.md).
 - For **OSI pipeline configuration shared with logs**: see [`log-analytics-osi-pipelines.md`](log-analytics-osi-pipelines.md).
 
+## Query discipline (MUST follow)
+
+For the full PPL command and function catalog, see [`observability-ppl-reference.md`](observability-ppl-reference.md).
+
+- **Unknown command → upstream grammar.** If a PPL command or function is not in
+  [`observability-ppl-reference.md`](observability-ppl-reference.md), or an emitted query fails with a
+  syntax error, you MUST fetch the raw upstream doc from `opensearch-project/sql` under `docs/user/ppl/`
+  before answering. You MUST NOT invent PPL syntax, because OpenSearch PPL has version-specific commands
+  that do not exist in other query languages.
+- **Verify or disclose.** When the domain/collection endpoint is reachable, you MUST validate every
+  emitted query against `_plugins/_ppl`; on 0 rows, fall back to `_plugins/_ppl/_explain` to confirm the
+  plan and surface the empty result; on error, fix and re-validate. When no endpoint is reachable, you
+  MUST state that the query is unverified, because an untested query can silently reference a
+  non-existent field.
+
 ## Data Plane Access with awscurl
 
 All queries below use the PPL API at `/_plugins/_ppl`. Use `awscurl` for SigV4-authenticated requests:
+
+> **Credentials & monitoring:** source the SigV4 signing credentials from an IAM role (instance profile, ECS task role, or SSO session), not static access keys. Enable CloudTrail for management-plane audit and OpenSearch audit logs for data-plane access (to attribute PPL queries to callers), and alarm on `_plugins/_ppl` error rates.
 
 ### Base Command (AOS)
 
