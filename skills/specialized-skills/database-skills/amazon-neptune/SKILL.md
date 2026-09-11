@@ -1,6 +1,6 @@
 ---
 name: amazon-neptune
-version: 2
+version: 3
 description: Provides authoritative guidance on Amazon Neptune Database and Neptune Analytics for graph, knowledge-graph, and relationship-heavy workloads — fraud detection / fraud rings, agentic memory / chatbot context across sessions, recommendations, identity resolution, Gremlin / openCypher / SPARQL queries, supernode / slow traversal, Neo4j to Neptune migration / APOC compatibility, Neptune Database vs Analytics engine selection, PageRank / community detection, GraphRAG, and connectivity from Lambda / EC2 / applications. Creates and modifies Neptune Database clusters/instances and Neptune Analytics graphs on explicit user confirmation; blocks destructive operations (delete, reset-graph, failover, major upgrade) and redirects to change-control.
 ---
 
