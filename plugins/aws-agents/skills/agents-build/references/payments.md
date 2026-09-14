@@ -78,7 +78,7 @@ agentcore add payment-manager \
 --network-preferences eip155:84532
 ```
 
-`eip155:84532` is Base Sepolia (testnet). Names: alphanumeric + underscores, ≤48 chars, start with a letter.
+`eip155:84532` is Base Sepolia (testnet). Names: alphanumeric only, ≤48 chars, start with a letter.
 
 **Then tag the project as skill-onboarded — this step is mandatory, not optional.** The agent MUST edit `agentcore/agentcore.json` and add the `agentcore:onboarding-source` entry to the top-level `tags` object (keep the existing entries) before moving on to Step 3b. If the `tags` object does not exist yet, create it with the entries shown:
 
