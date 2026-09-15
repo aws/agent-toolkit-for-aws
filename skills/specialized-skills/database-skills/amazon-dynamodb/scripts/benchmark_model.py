@@ -33,7 +33,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 # Import the sibling calculator for exact per-op CU parity in the spend
 # estimate — same module generate_perf_report.py uses, so the guardrail's
@@ -58,7 +58,14 @@ _FALLBACK_WRITE_OPS = {
 }
 
 
-def _die(msg: str, code: int = 2) -> None:
+def _die(msg: str, code: int = 2) -> NoReturn:
+    """Exit with a message. Annotated NoReturn so callers narrow correctly.
+
+    Without NoReturn a type-checker cannot know `_die()` ends the program, so the
+    common `x = next(..., None); if x is None: _die(...)` guard leaves `x` optional
+    for everything after it. Matches iterate_design.py, which already declares it
+    this way.
+    """
     print(f"ERROR: {msg}", file=sys.stderr)
     sys.exit(code)
 
@@ -196,8 +203,31 @@ def _validate(model: dict) -> None:
                 f"Defined tables: {sorted(tables_by_name)}."
             )
         idx = ap.get("index")
-        if idx:
-            gsi_names = {g.get("index_name") for g in ((td or {}).get("gsis") or [])}
+        op = ap.get("operation")
+        gsi_names = {g.get("index_name") for g in ((td or {}).get("gsis") or [])}
+        vec_names = {v.get("index_name") for v in ((td or {}).get("vector_indexes") or [])}
+
+        # SearchVectors reads a VECTOR index, never a GSI, and Query/Scan cannot read a
+        # vector index at all. Checking each operation against the right index family
+        # matters more than usual here: a mismatch fails 100% of calls while the observed
+        # capacity reads as 0, which a naive report then presents as a free pattern.
+        if op == "SearchVectors":
+            if not idx:
+                _die(f'pattern {pid} is a SearchVectors but names no "index".')
+            if idx not in vec_names:
+                _die(
+                    f"pattern {pid} searches vector index {idx!r} on table {tn!r}, but "
+                    f"that table defines no such vector index. Defined vector indexes: "
+                    f"{sorted(n for n in vec_names if n)}. Fix the design JSON."
+                )
+        elif idx:
+            if idx in vec_names:
+                _die(
+                    f"pattern {pid} targets {idx!r} on table {tn!r} with operation "
+                    f"{op!r}, but {idx!r} is a VECTOR index. Query and Scan are rejected "
+                    "against one ('Query operation not supported on this index type'). "
+                    'Use operation "SearchVectors".'
+                )
             if idx not in gsi_names:
                 _die(
                     f"pattern {pid} uses index {idx!r} on table {tn!r}, but that "
@@ -263,6 +293,61 @@ def _compute_split(cfg: dict, n_patterns: int) -> tuple[int, float]:
     return invocations, usable
 
 
+def _attach_vector_index_meta(model: dict) -> list:
+    """Resolve each SearchVectors pattern's target vector index onto the pattern.
+
+    The Lambda driver needs three things the pattern alone does not carry: the index's
+    `dimensions` (a query vector of the wrong length fails every call with
+    `Input search vector dimension N does not match vector index dimension M`), its
+    SearchSchema partition key (mandatory in SearchConditionExpression when the index
+    defines one — otherwise every call fails with `SearchConditionExpression must be
+    provided when SearchSchema has a HASH key`), and that key's type.
+
+    Resolved here rather than in the Lambda so a mis-referenced index is a local error
+    instead of a run where 100% of calls fail and the observed cost reads as zero.
+    """
+    tables_by_name = {t.get("table_name"): t for t in model.get("tables") or []}
+    out = []
+    for ap in model.get("access_patterns") or []:
+        if ap.get("operation") != "SearchVectors":
+            out.append(ap)
+            continue
+        td = tables_by_name.get(ap.get("table")) or {}
+        vi = next(
+            (v for v in (td.get("vector_indexes") or []) if v.get("index_name") == ap.get("index")),
+            None,
+        )
+        if vi is None:
+            _die(
+                f"access pattern {ap.get('pattern_id')} searches vector index "
+                f"{ap.get('index')!r} on table {ap.get('table')!r}, which declares no "
+                "such vector index. Fix the model before benchmarking — otherwise every "
+                "call fails and the run reports the pattern as free."
+            )
+        schema = vi.get("search_schema") or {}
+        pk = schema.get("partition_key")
+        pk_type = "S"
+        for ent in td.get("entities") or []:
+            for a in ent.get("attributes") or []:
+                if a.get("name") == pk:
+                    pk_type = a.get("type", "S")
+        for a in td.get("attribute_definitions") or []:
+            name = a.get("attribute_name") or a.get("name")
+            if name == pk:
+                pk_type = a.get("attribute_type") or a.get("type") or pk_type
+        enriched = dict(ap)
+        enriched["vector_index"] = {
+            "index_name": vi.get("index_name"),
+            "vector_attribute": vi.get("vector_attribute"),
+            "dimensions": vi.get("dimensions"),
+            "partition_key": pk,
+            "pk_type": pk_type,
+            "inline_filters": list(schema.get("inline_filters") or []),
+        }
+        out.append(enriched)
+    return out
+
+
 def _invoke_lambda(lambda_client, function_name: str, payload: dict):
     raw = json.dumps(payload).encode()
     resp = lambda_client.invoke(
@@ -320,6 +405,7 @@ def _estimate_bench_spend(model: dict, cfg: dict) -> dict:
     window = warmup + duration
 
     driven_cost = 0.0
+    vector_cost = 0.0
     per_pattern = []
     for ap in aps:
         rps = _bench_rps(ap, cfg)
@@ -338,11 +424,38 @@ def _estimate_bench_spend(model: dict, cfg: dict) -> dict:
         else:
             cu_per_call = 1.0
             unit = 0.625 / 1_000_000 if is_write else 0.125 / 1_000_000
-        c = calls * cu_per_call * unit
+        # Vector capacity is metered in bytes, so it contributes nothing to cu_per_call. A
+        # SearchVectors pattern would otherwise estimate at exactly $0 and the gate would
+        # wave through a run that does incur charges. Search uses the deliberately-high
+        # gate bound (the reported driver is a LOWER bound — wrong direction for a guard);
+        # writes use the same per-call figure the cost report uses, validated to 2.1%.
+        v_per_call = 0.0
+        if cc:
+            td = table_map.get(ap.get("table", ""))
+            vidx = {v["index_name"]: v for v in ((td or {}).get("vector_indexes") or [])}
+            try:
+                if op == cc.VECTOR_SEARCH_OP:
+                    vi = vidx.get(ap.get("index"))
+                    if vi:
+                        v_per_call = (
+                            cc.vector_search_bytes_spend_gate_upper(ap, vi, td or {})
+                            / cc.BYTES_PER_GB
+                            * cc.VECTOR_SEARCH_PRICE_PER_GB
+                        )
+                elif is_write and vidx:
+                    wb, _ = cc.vector_write_bytes_per_call(ap, td or {})
+                    v_per_call = wb / cc.BYTES_PER_GB * cc.VECTOR_WRITE_PRICE_PER_GB
+            except Exception:
+                v_per_call = 0.0
+        v_cost = calls * v_per_call
+        vector_cost += v_cost
+
+        c = calls * cu_per_call * unit + v_cost
         driven_cost += c
-        per_pattern.append(
-            {"pattern_id": ap.get("pattern_id"), "bench_rps": rps, "calls": calls, "cost": c}
-        )
+        entry = {"pattern_id": ap.get("pattern_id"), "bench_rps": rps, "calls": calls, "cost": c}
+        if v_cost:
+            entry["vector_cost"] = v_cost
+        per_pattern.append(entry)
 
     # Seeding cost: writes are billed ⌈item_size/1KB⌉ WRU each. run_seed seeds
     # PER PATTERN, not per table — every seeded key embeds the pattern_id
@@ -371,15 +484,43 @@ def _estimate_bench_spend(model: dict, cfg: dict) -> dict:
             continue
         item_kb = max(1, -(-table_max_size[tn] // 1024))  # ceil KB
         seed_cost += seed_items * item_kb * wru_price
+        # Seeded items on a vector-index table carry the embedding, so every seed write
+        # also meters vector write bytes. On a 1024-dim KEYS_ONLY index that is ~4 KB per
+        # item at $0.52/GB — small, but it is the same order as the base-table seed cost
+        # and would otherwise be invisible to the gate.
+        td = table_map.get(tn)
+        vis = (td or {}).get("vector_indexes") or []
+        if cc and vis:
+            try:
+                wb, _ = cc.vector_write_bytes_per_call(
+                    {
+                        "operation": "PutItem",
+                        "estimated_item_size_bytes": table_max_size[tn],
+                        "attributes_written": [
+                            v["vector_attribute"] for v in vis if v.get("vector_attribute")
+                        ],
+                    },
+                    td or {},
+                )
+                v = seed_items * wb / cc.BYTES_PER_GB * cc.VECTOR_WRITE_PRICE_PER_GB
+                seed_cost += v
+                vector_cost += v
+            except Exception:
+                pass
 
     total = driven_cost + seed_cost
-    return {
+    out = {
         "total_usd": total,
         "driven_usd": driven_cost,
         "seed_usd": seed_cost,
         "per_pattern": per_pattern,
         "window_seconds": window,
     }
+    # Only surfaced for designs that actually use vectors, so the gate's output for every
+    # other design is unchanged.
+    if vector_cost:
+        out["vector_usd"] = vector_cost
+    return out
 
 
 def _percentile(values, q):
@@ -414,6 +555,10 @@ def _aggregate(
     for t in tables:
         for g in t.get("gsis") or []:
             gsi_index_names[g["index_name"]] = g
+    vector_index_names = {}
+    for t in tables:
+        for vi in t.get("vector_indexes") or []:
+            vector_index_names[vi["index_name"]] = vi
 
     out = []
     for p in patterns:
@@ -497,6 +642,40 @@ def _aggregate(
             "error_codes": error_codes,
             "cancellation_reason_codes": cancellation_reason_codes,
         }
+
+        # Vector capacity is metered in BYTES, not capacity units, so it cannot ride the
+        # consumed_cu / gsi_cu fields — a SearchVectors pattern reports 0 CU and would
+        # otherwise look free. These are the figures calculate_costs.py deliberately
+        # REFUSES to model for search (the fraction of an index examined varies ~10x with
+        # configuration), so an observed per-call number is the only honest source.
+        #
+        # Emitted only when the design declares a vector index, so perf_summary.json for
+        # a non-vector model is unchanged.
+        #
+        # Means are over non-errored calls: a failed call reports 0 bytes, and averaging
+        # those in would understate the per-call cost used for extrapolation. The error
+        # count sits alongside in the same block, so a partly-failed pattern is still
+        # visible rather than silently flattered.
+        if vector_index_names:
+            vs_vals = [
+                r["vector_search_bytes"]
+                for r in measure
+                if r.get("vector_search_bytes") is not None and not r.get("error")
+            ]
+            vw_sum: dict = {}
+            vw_calls: dict = {}
+            for r in measure:
+                if r.get("error"):
+                    continue
+                for name, v in (r.get("vector_write_bytes") or {}).items():
+                    vw_sum[name] = vw_sum.get(name, 0.0) + v
+                    vw_calls[name] = vw_calls.get(name, 0) + 1
+            steady["mean_vector_search_bytes"] = sum(vs_vals) / len(vs_vals) if vs_vals else 0.0
+            steady["vector_search_bytes_total"] = sum(vs_vals)
+            steady["vector_write_bytes_by_index"] = vw_sum
+            steady["mean_vector_write_bytes_by_index"] = {
+                name: vw_sum[name] / vw_calls[name] for name in vw_sum if vw_calls[name]
+            }
 
         # Key-distribution histogram → drives the key_skew_patterns signal
         # (hot-partition risk, Mechanics #3). Emitted ONLY for skewed (zipf)
@@ -738,7 +917,7 @@ def main():
             "phase_plan": phase_plan,
             "invocation_index": idx,
             "invocations_total": invocations_total,
-            "patterns": model["access_patterns"],
+            "patterns": _attach_vector_index_meta(model),
             "tables": model["tables"],
             "manifest": manifest,
             "config": cfg,

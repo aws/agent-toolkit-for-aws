@@ -1,0 +1,38 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aws-data-analytics",
+  "version": "1.0.0",
+  "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. Covers managed Iceberg tables on S3 Tables, ingestion from JDBC databases, Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, and vector storage and semantic search on Amazon S3 Vectors.",
+  "author": {
+    "name": "Amazon Web Services"
+  },
+  "homepage": "https://aws.amazon.com/products/developer-tools/agent-toolkit-for-aws/",
+  "repository": "https://github.com/aws/agent-toolkit-for-aws",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aws",
+    "amazon",
+    "amazon-web-services",
+    "iam",
+    "analytics",
+    "data-lake",
+    "lakehouse",
+    "athena",
+    "glue",
+    "aws-glue",
+    "data-catalog",
+    "s3",
+    "s3-tables",
+    "s3-vectors",
+    "iceberg",
+    "apache-iceberg",
+    "etl",
+    "redshift",
+    "snowflake",
+    "bigquery",
+    "dynamodb",
+    "jdbc",
+    "vector-search",
+    "rag"
+  ]
+}

@@ -66,16 +66,17 @@ Resources:
       VpcId: !Ref Vpc
       CidrBlock: 10.0.0.0/24
       AvailabilityZone: !Select [0, !GetAZs ""]
-      MapPublicIpOnLaunch: true
+      # No public IP auto-assignment: only the NAT Gateway lives here and it gets an
+      # explicit EIP (see Eip/NatGateway below); no other resource is launched in this subnet.
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
-    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.1.0/24, AvailabilityZone: !Select [0, !GetAZs ""]}
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.1.0/24, AvailabilityZone: !Select [0, !GetAZs ""], MapPublicIpOnLaunch: false}
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
-    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.2.0/24, AvailabilityZone: !Select [1, !GetAZs ""]}
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.2.0/24, AvailabilityZone: !Select [1, !GetAZs ""], MapPublicIpOnLaunch: false}
   PrivateSubnet3:
     Type: AWS::EC2::Subnet
-    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.3.0/24, AvailabilityZone: !Select [2, !GetAZs ""]}
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.0.3.0/24, AvailabilityZone: !Select [2, !GetAZs ""], MapPublicIpOnLaunch: false}
   Eip:
     Type: AWS::EC2::EIP
     Properties: {Domain: vpc}
@@ -86,6 +87,10 @@ Resources:
   PublicRt:
     Type: AWS::EC2::RouteTable
     Properties: {VpcId: !Ref Vpc}
+  # Risk acceptance: a 0.0.0.0/0 route to the IGW in the public subnet is the standard,
+  # required AWS pattern that lets the NAT Gateway below reach the internet on behalf of the
+  # private subnets. No workload is deployed in PublicSubnet; restricting this route would
+  # break NAT egress for the whole stack. Accepted as-is.
   PublicRoute:
     Type: AWS::EC2::Route
     DependsOn: IgwAttach
@@ -117,6 +122,11 @@ Resources:
       VpcId: !Ref Vpc
       SecurityGroupEgress:
         - {IpProtocol: tcp, FromPort: 9098, ToPort: 9098, DestinationSecurityGroupId: !Ref MskSg, Description: MSK IAM auth}
+        # Risk acceptance: egress to 0.0.0.0/0 on 443 is required because SSM, CloudWatch,
+        # STS, and the Kafka control-plane API do not publish fixed IP ranges reachable via
+        # prefix lists in all Regions. Scoping this to VPC interface endpoints per service is
+        # the full remediation but is out of scope for this ephemeral load-test stack; accepted
+        # as-is for this template.
         - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: "HTTPS to AWS APIs (SSM, CloudWatch, STS, Kafka)"}
   MskSg:
     Type: AWS::EC2::SecurityGroup
@@ -138,12 +148,17 @@ Resources:
     Type: AWS::KMS::Key
     Properties:
       Description: Encrypts MSK simulation CloudWatch log group
+      EnableKeyRotation: true
       KeyPolicy:
         Version: "2012-10-17"
         Statement:
           - Sid: AllowAccountRoot
             Effect: Allow
             Principal: {AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"}
+            # Full KMS admin access for account root is the standard AWS pattern for CMK key
+            # policies. Production deployments should evaluate narrowing this to specific
+            # kms:Create*/Describe*/Enable*/List*/Put*/Update*/Revoke*/Disable*/Delete*/
+            # ScheduleKeyDeletion/CancelKeyDeletion actions for the intended admin scope.
             Action: kms:*
             Resource: "*"
           - Sid: AllowCloudWatchLogs
@@ -177,17 +192,20 @@ Resources:
               StringEquals: {"aws:SourceAccount": !Ref "AWS::AccountId"}
               ArnLike:
                 "aws:SourceArn": !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:vpc-flow-log/*"
-      Policies:
-        - PolicyName: flow-log-delivery
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
-                # Log-stream actions require the log-group ARN with a :* suffix.
-                Resource: !Sub "${FlowLogGroup.Arn}:*"
+  FlowLogDeliveryPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles: [!Ref FlowLogRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+            # Log-stream actions require the log-group ARN with a :* suffix.
+            Resource: !Sub "${FlowLogGroup.Arn}:*"
   VpcFlowLog:
     Type: AWS::EC2::FlowLog
+    DependsOn: FlowLogDeliveryPolicy
     Properties:
       ResourceId: !Ref Vpc
       ResourceType: VPC
@@ -233,34 +251,37 @@ Resources:
               StringEquals:
                 aws:SourceAccount: !Ref AWS::AccountId
       ManagedPolicyArns: [!Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"]
-      Policies:
-        - PolicyName: simulation-kafka
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: [kafka-cluster:Connect, kafka-cluster:DescribeCluster]
-                Resource: !Ref MskCluster
-              - Effect: Allow
-                Action: [kafka-cluster:CreateTopic, kafka-cluster:DescribeTopic, kafka-cluster:WriteData, kafka-cluster:ReadData]
-                Resource: !Sub "arn:${AWS::Partition}:kafka:${AWS::Region}:${AWS::AccountId}:topic/${AWS::StackName}-express/*"
-              - Effect: Allow
-                Action: [kafka-cluster:AlterGroup, kafka-cluster:DescribeGroup]
-                Resource: !Sub "arn:${AWS::Partition}:kafka:${AWS::Region}:${AWS::AccountId}:group/${AWS::StackName}-express/*"
-              - Effect: Allow
-                Action: [kafka:GetBootstrapBrokers, kafka:DescribeCluster, kafka:DescribeClusterV2, kafka:ListNodes]
-                Resource: !Ref MskCluster
-              # Broker Restart Under Load test — scoped to this cluster only.
-              - Effect: Allow
-                Action: kafka:RebootBroker
-                Resource: !Ref MskCluster
-              # PutMetricData has no resource-level scoping; restrict by namespace.
-              - Effect: Allow
-                Action: cloudwatch:PutMetricData
-                Resource: "*"
-                Condition: {StringEquals: {"cloudwatch:namespace": MSKSimulation}}
+  InstanceKafkaPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles: [!Ref InstanceRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: [kafka-cluster:Connect, kafka-cluster:DescribeCluster]
+            Resource: !Ref MskCluster
+          - Effect: Allow
+            Action: [kafka-cluster:CreateTopic, kafka-cluster:DescribeTopic, kafka-cluster:WriteData, kafka-cluster:ReadData]
+            Resource: !Sub "arn:${AWS::Partition}:kafka:${AWS::Region}:${AWS::AccountId}:topic/${AWS::StackName}-express/*"
+          - Effect: Allow
+            Action: [kafka-cluster:AlterGroup, kafka-cluster:DescribeGroup]
+            Resource: !Sub "arn:${AWS::Partition}:kafka:${AWS::Region}:${AWS::AccountId}:group/${AWS::StackName}-express/*"
+          - Effect: Allow
+            Action: [kafka:GetBootstrapBrokers, kafka:DescribeCluster, kafka:DescribeClusterV2, kafka:ListNodes]
+            Resource: !Ref MskCluster
+          # Broker Restart Under Load test — scoped to this cluster only.
+          - Effect: Allow
+            Action: kafka:RebootBroker
+            Resource: !Ref MskCluster
+          # PutMetricData has no resource-level scoping; restrict by namespace.
+          - Effect: Allow
+            Action: cloudwatch:PutMetricData
+            Resource: "*"
+            Condition: {StringEquals: {"cloudwatch:namespace": MSKSimulation}}
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
+    DependsOn: InstanceKafkaPolicy
     Properties: {Roles: [!Ref InstanceRole]}
 
   # ---------------- Client fleet ----------------

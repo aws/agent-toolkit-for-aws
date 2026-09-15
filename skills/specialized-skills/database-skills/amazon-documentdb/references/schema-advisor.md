@@ -26,11 +26,11 @@ Core principle: embed when data is always accessed together; reference when it's
 
 | Relationship | Cardinality | Access | Recommendation |
 |---|---|---|---|
-| User → profile | 1:1 | Always together | **Embed** |
-| Order → line items | 1:few (< 100) | Always together | **Embed array** |
-| User → orders | 1:many, unbounded | Often separate | **Reference** (orders collection with `userId`) |
-| Product → categories | many:many | Varies | **Two-way reference** |
-| Post → comments | 1:many, need latest N | Mixed | **Hybrid**: embed latest 3, reference the rest |
+| User -> profile | 1:1 | Always together | **Embed** |
+| Order -> line items | 1:few (< 100) | Always together | **Embed array** |
+| User -> orders | 1:many, unbounded | Often separate | **Reference** (orders collection with `userId`) |
+| Product -> categories | many:many | Varies | **Two-way reference** |
+| Post -> comments | 1:many, need latest N | Mixed | **Hybrid**: embed latest 3, reference the rest |
 
 **Anti-patterns:**
 
@@ -67,7 +67,7 @@ For every access pattern, produce a ready-to-run `createIndex`. Apply the **ESR 
 // Single field
 db.products.createIndex({ "category": 1 })
 
-// Compound — ESR: equality(userId) → sort(createdAt) → range(price)
+// Compound — ESR: equality(userId) -> sort(createdAt) -> range(price)
 db.orders.createIndex({ "userId": 1, "createdAt": -1, "price": 1 })
 
 // TTL — expire documents 30 days after createdAt

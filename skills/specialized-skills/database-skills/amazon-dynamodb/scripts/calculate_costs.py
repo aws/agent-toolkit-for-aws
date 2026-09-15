@@ -77,12 +77,109 @@ GLOBAL_TABLES_OVERHEAD = 48  # Additional bytes when global tables enabled
 PAGE_CAP_KB = 900
 
 # -----------------------------------------------------------------------------
+# Vector index pricing.
+#
+# Vector index capacity is metered in BYTES, not request units, across three
+# dimensions. Rates below are us-east-1 Standard, taken from the AWS Pricing API
+# (usage types VectorWriteRequest / VectorSearch) rather than from a worked example.
+# Standard-IA is 125% on both request dimensions (IA-VectorWriteRequest $0.65,
+# IA-VectorSearch $0.0025) and 40% on storage.
+#
+# There is NO separate vector-storage usage type: index storage rolls into ordinary
+# table storage at STORAGE_PRICE_PER_GB_MONTH.
+#
+# All three dimensions are modelled, but on different footings, and the report says
+# which is which:
+#   storage, writes — derived from the design (dimensions, projection, item counts)
+#   searches        — CALIBRATED against live measurements, because the metered bytes
+#                     depend on index traversal rather than anything in the design
+# Live validation supersedes the search figure with the observed
+# VectorSearchRequestBytes. See references/vector-search.md.
+# -----------------------------------------------------------------------------
+VECTOR_WRITE_PRICE_PER_GB = 0.52
+VECTOR_SEARCH_PRICE_PER_GB = 0.002
+IA_REQUEST_MULTIPLIER = 1.25  # applies to both vector request dimensions
+BYTES_PER_F32 = 4  # vectors are stored at 32-bit float precision
+
+# 1 KB minimum. Applied ONCE PER REQUEST, per the documentation.
+#
+# We follow the docs here, and a measurement caveat is worth recording because it is easy
+# to misread. `ConsumedCapacity` floors each index's REPORTED value at 1 KB independently
+# of the request total: in a probe where one PutItem touched four indexes and the request
+# total was ~26 KB (far above the floor), a 128-dimension index whose real content is 512 B
+# still reported 1024. So the per-index reported numbers are a display rounding and cannot
+# be summed to infer the billed total, and they cannot distinguish per-request from
+# per-index billing. Settling that would need Cost Explorer / CUR data, not
+# ConsumedCapacity.
+#
+# It barely matters in practice: the floor only binds below 256 dimensions (256 x 4 =
+# 1024 B), and real embedding models are 256-3072.
+VECTOR_METERING_MIN_BYTES = 1024
+
+# ---- Search metering: measured, and deliberately NOT priced -------------------
+# Measured us-west-2 2026-08-19 (see _research/verified-vector-facts.md). What is solid:
+#   * Metered bytes are EXACTLY linear in TopK within a configuration (0.0% midpoint error).
+#   * The PROJECTION is a ~170x multiplier on the per-result term: ~89 B for KEYS_ONLY,
+#     ~98 B for a narrow INCLUDE, and the whole projected item for ALL. A TopK=100 search
+#     on an ALL index measured 1.52 MB.
+#   * At a fixed index configuration, cost is linear in dimensions (~31 B per dimension
+#     measured at 256 / 1536 / 3072).
+#
+# What is NOT modellable, and why we refuse to emit a dollar figure: the fraction of the
+# index a search examines varies by an ORDER OF MAGNITUDE with index configuration —
+# 12.8% of all vector bytes on a 60-item unpartitioned index, but 1.3% on a 200-item
+# partitioned one. An earlier attempt to calibrate a traversal term linearly across two
+# probes was 51-69% low when tested at 256 / 1536 / 3072 dimensions, i.e. wrong at exactly
+# the dimensionalities real embedding models use (Titan Text Embeddings V2, OpenAI
+# text-embedding-3-large). A confidently wrong cost figure is worse than none, so the
+# report gives the drivers and tells the user to measure. Live validation supplies the
+# observed VectorSearchRequestBytes.
+# Key/search-schema overhead a KEYS_ONLY vector index carries on top of the vector.
+# Measured: a minimal single-vector item gave 4,105 B on a 1024-dim KEYS_ONLY index
+# (4,096 + 9); with a SearchSchema HASH + INLINE_FILTER it gave 4,130 (+34). Use the
+# larger, which is the conservative direction.
+VECTOR_KEY_OVERHEAD_BYTES = 35
+# A vector attribute copied into an index by ALL projection is carried in its base-table
+# representation, not as f32. Measured: an unindexed 1024-dim vector added 5,633 B to an
+# ALL index, i.e. ~5.5 B per number rather than 4.
+BYTES_PER_BASE_TABLE_NUMBER = 5.5
+
+VECTOR_RETURN_BYTES_KEYS_ONLY = 89
+VECTOR_RETURN_BYTES_INCLUDE_BASE = 89
+
+# Traversal slope used ONLY by the pre-spend gate in benchmark_model.py, never for a
+# reported cost. Two measured points: 128 dims -> 2,647 B (20.7 B/dim) and 1,024 dims ->
+# 10,588 B (10.3 B/dim) — traversal grows SUBLINEARLY in dimensions. Taking the steeper
+# low-dimension slope therefore overshoots at higher dimensions, which is the correct
+# direction for a guard whose job is to refuse a bill. See
+# vector_search_bytes_spend_gate_upper().
+VECTOR_TRAVERSAL_BYTES_PER_DIM_UPPER = 20.7
+
+# Safety factor on the spend-gate bound. Not decoration — unfactored, the bound had
+# essentially NO margin on two of the sixteen measured search points: 128-dim KEYS_ONLY at
+# TopK=1 came out 2,739 B against 2,736 B measured (1.001x), and 1024-dim ALL at TopK=100
+# came out 1,739,097 B against 1,524,351 B (1.14x) — i.e. thinnest exactly where the bill
+# is largest. The exposure is structural: for an ALL projection the per-result term IS the
+# declared item size, so the bound inherits the user's input error, and under-declaring
+# item size is a common mistake. 1.5x absorbs a ~33% input shortfall.
+# Applies ONLY to the gate, never to a reported cost.
+VECTOR_SPEND_GATE_SAFETY = 1.5
+
+# Service limits worth failing loudly on rather than silently mispricing.
+MAX_VECTOR_INDEXES_PER_TABLE = 5
+MAX_VECTOR_DIMENSIONS = 4096
+MAX_VECTOR_TOP_K = 100
+
+# -----------------------------------------------------------------------------
 # Operation sets.
 # -----------------------------------------------------------------------------
 READ_OPS = {"GetItem", "Query", "Scan", "BatchGetItem", "TransactGetItems"}
 WRITE_OPS = {"PutItem", "UpdateItem", "DeleteItem", "BatchWriteItem", "TransactWriteItems"}
 TRANSACTIONAL_OPS = {"TransactGetItems", "TransactWriteItems"}
 MULTI_ITEM_READ = {"Query", "Scan", "BatchGetItem", "TransactGetItems"}
+# SearchVectors is deliberately NOT in READ_OPS. It consumes no RCU — it is billed on
+# bytes examined — so routing it through the RCU path would silently misprice it.
+VECTOR_SEARCH_OP = "SearchVectors"
 
 # Default write_action when requirements aren't provided.
 DEFAULT_WRITE_ACTION = {
@@ -140,6 +237,22 @@ GSI_FOOTNOTE = (
     "item), which is why KEYS_ONLY / INCLUDE projections are cheaper. "
     "[Learn more](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.html"
     "#GSI.ThroughputConsiderations.Writes)"
+)
+
+# What a SearchVectors row shows in the Monthly Cost column. Never a dollar amount:
+# search consumes no RCU/WCU and its byte cost is deliberately unpriced, so any figure
+# there would be 0.00 — and "$0.00" in the table a reader scans to find expensive
+# patterns asserts that vector search is free. It is not; it is unmeasured.
+VECTOR_SEARCH_CELL = "not priced²"
+
+VECTOR_SEARCH_FOOTNOTE = (
+    "² **Vector search is not priced here, and is NOT $0** — `SearchVectors` consumes no "
+    "RCU/WCU; it bills on vector bytes examined plus bytes returned, at "
+    f"${VECTOR_SEARCH_PRICE_PER_GB:.3f}/GB. The examined fraction is not derivable from a "
+    "design (measured to vary by an order of magnitude across index configurations), so no "
+    "figure is emitted rather than a wrong one. **This means the headline total above "
+    "excludes vector search cost.** See *Vector Index Capacity* below for the measured "
+    "drivers and how to obtain the real number."
 )
 
 
@@ -718,6 +831,380 @@ def calc_gsi_amplification_wru(ap: dict, table_def: dict) -> tuple[float, list[s
     return total, details
 
 
+# =============================================================================
+# Vector index costs.
+#
+# Modelled honestly: storage and writes are derivable from the design, searches are
+# not. Every function here labels which side of that line it is on, and the report
+# carries the caveat so a user never mistakes the search figure for a measurement.
+# =============================================================================
+def _vector_indexes(table_def: dict | None) -> list:
+    return (table_def or {}).get("vector_indexes", []) or []
+
+
+def _ia_multiplier(table_def: dict | None) -> float:
+    """Standard-IA charges 125% on both vector request dimensions.
+
+    Matching on "IA" alone was wrong, and wrong in the silent direction. DynamoDB's actual
+    table-class enum is `STANDARD_INFREQUENT_ACCESS`, which does NOT contain the substring
+    "IA" -- so a model written with the real AWS value was priced at 1.0x and under-reported
+    Standard-IA vector requests by 25% with every other number looking correct. "INFREQUENT"
+    is the reliable token; "IA" stays for the shorthand spellings an author might reasonably
+    write by hand.
+    """
+    tclass = ((table_def or {}).get("table_class") or "STANDARD").upper()
+    return IA_REQUEST_MULTIPLIER if "INFREQUENT" in tclass or "IA" in tclass else 1.0
+
+
+def _vector_projection(vi: dict) -> dict:
+    """The index's projection block, accepting the bare-string shorthand.
+
+    `"projection": "KEYS_ONLY"` is the natural thing to write — it is how the API-level value
+    reads — and treating it as a dict raised a bare `AttributeError: 'str' object has no
+    attribute 'get'` that said nothing about the model. Normalised here rather than at each
+    call site, and it mirrors the `attribute_definitions` `{"name","type"}` shorthand these
+    scripts already accept.
+    """
+    proj = vi.get("projection", {}) or {}
+    return {"type": proj} if isinstance(proj, str) else proj
+
+
+def _vector_item_bytes(vi: dict, table_def: dict, entity_attr_sizes: dict | None) -> int:
+    """Bytes one item contributes to one vector index. Measured semantics, not a ratio.
+
+    A controlled probe (two indexes on the SAME attribute and dimensions, differing only in
+    projection) established:
+
+      KEYS_ONLY  flat. Insensitive to item content: 4,105 / 4,104 / 4,104 B on a 1024-dim
+                 index across a minimal item, a +10 KB item, and an item with a second
+                 vector. So it is dimensions x 4 plus a small key overhead — NOT a fraction
+                 of item size, which is what an earlier ratio-based model wrongly assumed.
+      ALL        dimensions x 4 plus essentially the whole rest of the item. Adding a
+                 10,240 B payload added 10,246 B. It also copies UNINDEXED vector
+                 attributes, in their base-table representation (an unindexed 1024-dim
+                 vector added 5,633 B, ~5.5 B/number rather than 4).
+      INCLUDE    dimensions x 4 plus the named attributes.
+
+    Consequence worth stating plainly: on a minimal item ALL costs the SAME as KEYS_ONLY.
+    The cost of ALL is entirely the cost of the rest of the item.
+
+    CONVENTION: `estimated_item_size_bytes` EXCLUDES the vector attributes. The ALL branch
+    adds the declared item size to this index's own `dimensions x 4`, so a declared size
+    that already counted the embedding bills it twice and overstates an ALL index by
+    roughly 2x. This is the direction the probe above was measured in, and it is the more
+    accurate one -- `dimensions` is exact where an item-size estimate is not. Documented in
+    references/cost-model-schema.md against both the field and the vector section; the
+    alternative (subtracting a vector footprint from the declared size) would silently
+    under-count every model that already follows the documented convention.
+    """
+    dims = int(vi.get("dimensions", 0) or 0)
+    vector_bytes = dims * BYTES_PER_F32
+    proj = _vector_projection(vi)
+    ptype = (proj.get("type") or "ALL").upper()
+
+    if ptype == "KEYS_ONLY":
+        return int(vector_bytes + VECTOR_KEY_OVERHEAD_BYTES)
+
+    if ptype == "INCLUDE":
+        named = proj.get("attributes", []) or []
+        extra, _ = _named_attr_bytes(table_def, named)
+        return int(vector_bytes + VECTOR_KEY_OVERHEAD_BYTES + extra)
+
+    # ALL: the whole rest of the item rides along on every vector write.
+    entities = table_def.get("entities", []) or []
+    if entities:
+        non_vector = sum(e.get("estimated_item_size_bytes", 1024) for e in entities) / len(entities)
+    else:
+        non_vector = 1024.0
+    # Other vector attributes declared on this table also get copied, in base-table form.
+    own_attr = vi.get("vector_attribute")
+    others = 0.0
+    for other in table_def.get("vector_indexes", []) or []:
+        if other.get("vector_attribute") and other.get("vector_attribute") != own_attr:
+            others += int(other.get("dimensions", 0) or 0) * BYTES_PER_BASE_TABLE_NUMBER
+    return int(vector_bytes + VECTOR_KEY_OVERHEAD_BYTES + non_vector + others)
+
+
+def _vector_indexed_item_count(vi: dict, table_def: dict) -> tuple[int, bool]:
+    """(item count in this vector index, was it declared explicitly?).
+
+    Only items carrying the vector attribute — and the SearchSchema partition key, if
+    one is defined — are replicated into the index. The model can declare that directly
+    with `estimated_indexed_items`; otherwise we fall back to the table's entity counts,
+    which is a conservative upper bound, and say so in the report.
+    """
+    declared = vi.get("estimated_indexed_items")
+    if declared is not None:
+        return int(declared), True
+    total = sum(
+        e.get("estimated_item_count", 100_000) for e in (table_def.get("entities", []) or [])
+    )
+    return int(total or 100_000), False
+
+
+def vector_write_bytes_per_call(ap: dict, table_def: dict) -> tuple[float, list[str]]:
+    """Bytes replicated into a table's vector indexes by one write call.
+
+    Mirrors the GSI amplification gate: a write only pays for an index whose vector
+    attribute it actually touched. When `attributes_written` is absent we cannot tell,
+    so we stay at the conservative upper bound (assume it did) and flag it — the same
+    convention the GSI path uses.
+
+    The 1 KB minimum is applied ONCE across all of the table's vector indexes, because
+    the floor is per request, not per index.
+    """
+    vis = _vector_indexes(table_def)
+    if not vis:
+        return 0.0, []
+
+    written = ap.get("attributes_written")
+    details: list[str] = []
+    raw_bytes = 0.0
+    for vi in vis:
+        attr = vi.get("vector_attribute") or ""
+        touched = True
+        if written is not None:
+            touched = attr in set(written)
+        if not touched:
+            details.append(f"{vi.get('index_name')}: not touched by this write")
+            continue
+        b = _vector_item_bytes(vi, table_def, None)
+        raw_bytes += b
+        note = "" if written is not None else " (upper bound: attributes_written absent)"
+        details.append(f"{vi.get('index_name')}: {b:,} B{note}")
+
+    if raw_bytes <= 0:
+        return 0.0, details
+    return max(float(raw_bytes), float(VECTOR_METERING_MIN_BYTES)), details
+
+
+def _named_attr_bytes(table_def: dict, names: list) -> tuple[float, bool]:
+    """(summed size of the named attributes, were they all actually declared?).
+
+    Uses the sizes declared in entities[].attributes[] where available. Falls back to the
+    generic S=100 heuristic for anything undeclared, which is coarse — measurement showed
+    a 6-character Title contributes ~9 B per result, not 100 — so an undeclared attribute
+    list overstates INCLUDE cost. The report flags when the fallback was used.
+    """
+    type_sizes = {
+        "S": 100,
+        "N": 8,
+        "BOOL": 1,
+        "B": 256,
+        "L": 200,
+        "M": 200,
+        "SS": 200,
+        "NS": 200,
+        "BS": 200,
+        "NULL": 1,
+    }
+    declared = {}
+    for ent in table_def.get("entities", []) or []:
+        for a in ent.get("attributes", []) or []:
+            if a.get("name"):
+                declared[a["name"]] = type_sizes.get(a.get("type", "S"), 100)
+    total, all_declared = 0.0, True
+    for n in names:
+        if n in declared:
+            total += declared[n]
+        else:
+            total += 100.0
+            all_declared = False
+    return total, all_declared
+
+
+def _vector_return_bytes_per_result(vi: dict, table_def: dict) -> tuple[float, str]:
+    """Bytes returned per search result, driven by the index projection.
+
+    Measured per result: ~89 B for KEYS_ONLY, ~98 B for a narrow INCLUDE, and the whole
+    projected item for ALL (15,243 B on the probe item — roughly 170x KEYS_ONLY). This is
+    the dominant term for ALL and negligible for KEYS_ONLY, which is why projection choice
+    drives search cost far more than index size does.
+    """
+    proj = _vector_projection(vi)
+    ptype = (proj.get("type") or "ALL").upper()
+    if ptype == "KEYS_ONLY":
+        return float(VECTOR_RETURN_BYTES_KEYS_ONLY), "KEYS_ONLY, keys only (~89 B measured)"
+    if ptype == "INCLUDE":
+        named = proj.get("attributes", []) or []
+        extra, all_declared = _named_attr_bytes(table_def, named)
+        note = "" if all_declared else " (some sizes defaulted to 100 B — declare them to tighten)"
+        return (
+            VECTOR_RETURN_BYTES_INCLUDE_BASE + extra,
+            f"INCLUDE, keys + {len(named)} attribute(s){note}",
+        )
+    return (
+        float(_vector_item_bytes(vi, table_def, None)),
+        "ALL, the whole projected item is returned per result",
+    )
+
+
+def vector_search_bytes_per_call(ap: dict, vi: dict, table_def: dict) -> tuple[float, str]:
+    """Bytes RETURNED by one SearchVectors call — the part that is soundly measurable.
+
+    This is deliberately NOT the full metered figure. Metering also includes the vector
+    data the search examines during traversal, and measurement showed that term varies by
+    an order of magnitude with index configuration (see the constants block). So this
+    returns only the returned-data component, which is exactly linear in TopK and driven by
+    the projection, and the caller reports it as a DRIVER rather than a cost.
+    """
+    top_k = int(ap.get("top_k", 10) or 10)
+    per_result, proj_basis = _vector_return_bytes_per_result(vi, table_def or {})
+    return top_k * per_result, f"TopK {top_k} x {per_result:,.0f} B/result — {proj_basis}"
+
+
+def vector_search_bytes_spend_gate_upper(ap: dict, vi: dict, table_def: dict) -> float:
+    """Deliberately HIGH byte estimate for one SearchVectors call — pre-spend gate ONLY.
+
+    Do not use this for a reported cost. vector_search_bytes_per_call() is the reported
+    driver and is a LOWER bound: returned data only, no traversal term. A spend gate that
+    under-estimates fails in the expensive direction, so this adds a traversal term at the
+    steeper of the two measured dimension slopes, then a safety factor.
+
+    Measured against the search points from the live probe (declared item size set to the
+    13,048 B the ALL index actually copies — non-vector payload plus the other vector
+    attributes in base-table form — so the estimate is not fed the measured answer):
+
+      projection   dims  TopK  bound      measured   ratio
+      ALL          1024   100  2,608,645  1,524,351  1.71x
+      ALL          1024     1     57,564     15,276  3.77x
+      KEYS_ONLY    1024   100     45,145     19,488  2.32x
+      KEYS_ONLY    1024     1     31,929     10,677  2.99x
+      KEYS_ONLY     128     1      4,108      2,736  1.50x
+      INCLUDE      1024   100     60,145     20,437  2.94x
+
+    Loosest where the absolute cost is trivial, tightest where the money is — the same
+    shape the cost model has. See VECTOR_SPEND_GATE_SAFETY for why the factor is load-
+    bearing rather than padding. The gate is allowed to be loose. It is not allowed to be
+    low.
+    """
+    returned, _ = vector_search_bytes_per_call(ap, vi, table_def)
+    dims = int(vi.get("dimensions") or 0)
+    traversal = dims * VECTOR_TRAVERSAL_BYTES_PER_DIM_UPPER
+    bound = (returned + traversal) * VECTOR_SPEND_GATE_SAFETY
+    return max(float(VECTOR_METERING_MIN_BYTES), bound)
+
+
+def _as_int(value: object) -> int | None:
+    """``int(value)`` or None. Never raises.
+
+    Everything this function's callers inspect is user-authored JSON, so a non-numeric
+    value has to become an actionable error string rather than a traceback. A bare
+    ``not dims`` guard does not achieve that: ``"dimensions": "1k"`` is truthy, so it
+    short-circuits past the guard and reaches ``int("1k")``, crashing the one function
+    whose whole contract is to fail loudly instead of pricing something impossible.
+
+    ``bool`` is rejected on purpose. ``int(True)`` is 1, so ``"dimensions": true`` would
+    otherwise validate as a legal 1-dimension index.
+    """
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return None
+
+
+def validate_vector_model(tables: list, access_patterns: list) -> list[str]:
+    """Hard validation. These are service constraints, so a violation means the design
+    cannot be deployed — better to fail loudly than to price something impossible."""
+    errors: list[str] = []
+    for t in tables:
+        vis = _vector_indexes(t)
+        if not vis:
+            continue
+        tname = t.get("table_name", "<unnamed>")
+
+        if len(vis) > MAX_VECTOR_INDEXES_PER_TABLE:
+            errors.append(
+                f"{tname}: {len(vis)} vector indexes exceeds the per-table "
+                f"limit of {MAX_VECTOR_INDEXES_PER_TABLE}"
+            )
+        if t.get("provisioned_capacity"):
+            errors.append(
+                f"{tname}: vector indexes require on-demand capacity; this "
+                f"table declares provisioned_capacity"
+            )
+
+        by_attr: dict[str, set] = {}
+        for vi in vis:
+            name = vi.get("index_name", "<unnamed>")
+            # `index_name` is what a SearchVectors pattern's `index` resolves against, so
+            # a missing one is unpriceable rather than merely untidy. Called out on its own
+            # because the plausible wrong spelling is a bare `name`, which leaves every
+            # other field looking correct — observed in a real run.
+            if not vi.get("index_name"):
+                errors.append(
+                    f"{tname}: a vector index is missing `index_name` "
+                    f"(found keys: {sorted(vi)}) — the field is `index_name`, not `name`"
+                )
+            dims = vi.get("dimensions")
+            dims_int = _as_int(dims)
+            if dims_int is None or not (1 <= dims_int <= MAX_VECTOR_DIMENSIONS):
+                errors.append(
+                    f"{tname}.{name}: dimensions must be an integer 1-"
+                    f"{MAX_VECTOR_DIMENSIONS}, got {dims!r}"
+                )
+            fn = (vi.get("distance_function") or "").upper()
+            if fn not in {"COSINE", "EUCLIDEAN", "DOT_PRODUCT"}:
+                errors.append(
+                    f"{tname}.{name}: distance_function must be COSINE, "
+                    f"EUCLIDEAN or DOT_PRODUCT, got {vi.get('distance_function')!r}"
+                )
+            if not vi.get("vector_attribute"):
+                errors.append(f"{tname}.{name}: vector_attribute is required")
+            by_attr.setdefault(vi.get("vector_attribute") or "", set()).add(dims_int or 0)
+
+        for attr, dimset in by_attr.items():
+            if len(dimset) > 1:
+                errors.append(
+                    f"{tname}: indexes on attribute {attr!r} declare differing "
+                    f"dimensions {sorted(dimset)} — DynamoDB rejects this "
+                    f"('Attributes cannot be redefined')"
+                )
+
+    # Only NAMED indexes are resolvable targets. Including unnamed ones would put
+    # (table, None) in this set, and a pattern that omits `index` also looks up
+    # (table, None) — so a missing target would silently MATCH a missing name and the
+    # error below would never fire. Two bugs cancelling out is not a passing design.
+    index_names = {
+        (t.get("table_name"), vi.get("index_name"))
+        for t in tables
+        for vi in _vector_indexes(t)
+        if vi.get("index_name")
+    }
+    for ap in access_patterns:
+        if ap.get("operation") != VECTOR_SEARCH_OP:
+            continue
+        pid = ap.get("pattern_id", "<unnamed>")
+        top_k = ap.get("top_k", 10)
+        top_k_int = _as_int(top_k)
+        if top_k_int is None or not (1 <= top_k_int <= MAX_VECTOR_TOP_K):
+            errors.append(f"{pid}: top_k must be an integer 1-{MAX_VECTOR_TOP_K}, got {top_k!r}")
+        if not ap.get("table"):
+            errors.append(
+                f"{pid}: operation SearchVectors has no `table` (found keys: "
+                f"{sorted(ap)}) — a vector index belongs to a table, so the pattern must "
+                f"name it just as every other access pattern does"
+            )
+            continue
+        if not ap.get("index"):
+            errors.append(
+                f"{pid}: operation SearchVectors has no `index` "
+                f"(found keys: {sorted(ap)}) — the field is `index`, not `vector_index`; "
+                f"it must name an entry in the table's vector_indexes"
+            )
+            continue
+        key = (ap.get("table"), ap.get("index"))
+        if key not in index_names:
+            errors.append(
+                f"{pid}: operation SearchVectors targets "
+                f"{ap.get('table')}.{ap.get('index')}, which is not declared "
+                f"in that table's vector_indexes"
+            )
+    return errors
+
+
 def pattern_monthly_cost(
     ap: dict,
     table_def: dict | None,
@@ -744,6 +1231,11 @@ def pattern_monthly_cost(
 
     No AWS calls; no side effects. The same formulas the CLI uses.
     """
+    # SearchVectors consumes no RCU/WCU — it is billed on bytes examined — so it takes
+    # its own path rather than going through calc_pattern_capacity.
+    if ap["operation"] == VECTOR_SEARCH_OP:
+        return _search_vectors_monthly_cost(ap, table_def)
+
     if ap["operation"] in ("Query", "Scan") and entity_attr_sizes is not None:
         capped = _cap_items_per_request(ap, entity_attr_sizes)
         ap = dict(ap, items_per_request=capped)
@@ -776,6 +1268,20 @@ def pattern_monthly_cost(
         expected_base_cost *= 1.0 + fail_multiplier
         expected_gsi_amp_cost *= 1.0 + fail_multiplier
 
+    # Vector write capacity, if this write touches a vector-indexed attribute. Billed in
+    # bytes at a different rate from WCU, so it is a separate line rather than folded in.
+    vec_write_bytes = 0.0
+    vec_write_details: list[str] = []
+    vec_write_cost = expected_vec_write_cost = 0.0
+    if ap["operation"] in WRITE_OPS and table_def and _vector_indexes(table_def):
+        vec_write_bytes, vec_write_details = vector_write_bytes_per_call(ap, table_def)
+        rate = (VECTOR_WRITE_PRICE_PER_GB / BYTES_PER_GB) * _ia_multiplier(table_def)
+        vec_write_cost = vec_write_bytes * rate * rps * SECONDS_PER_MONTH
+        expected_vec_write_cost = vec_write_bytes * rate * avg_rps * SECONDS_PER_MONTH
+        if cond_fail_rate:
+            vec_write_cost *= 1.0 + cond_fail_rate
+            expected_vec_write_cost *= 1.0 + cond_fail_rate
+
     return {
         "ap": ap,
         "cap": cap,
@@ -783,8 +1289,83 @@ def pattern_monthly_cost(
         "gsi_amp_wru": gsi_amp_wru,
         "gsi_amp_details": gsi_amp_details,
         "gsi_amp_cost": gsi_amp_cost,
-        "total_cost": base_cost + gsi_amp_cost,
-        "expected_cost": expected_base_cost + expected_gsi_amp_cost,
+        "vector_write_bytes": vec_write_bytes,
+        "vector_write_details": vec_write_details,
+        "vector_write_cost": vec_write_cost,
+        "total_cost": base_cost + gsi_amp_cost + vec_write_cost,
+        "expected_cost": expected_base_cost + expected_gsi_amp_cost + expected_vec_write_cost,
+    }
+
+
+def _vector_search_cap(ap: dict, notes: list[str]) -> dict:
+    """A zero-capacity `cap` matching calc_pattern_capacity's shape.
+
+    SearchVectors consumes no RCU/WCU, but the report renders every pattern through
+    the same columns, so the shape must match or rendering breaks.
+    """
+    return {
+        "op": ap.get("operation", VECTOR_SEARCH_OP),
+        "rcus": 0.0,
+        "wcus": 0.0,
+        "strong": False,
+        "transactional": False,
+        "notes": notes,
+    }
+
+
+def _search_vectors_monthly_cost(ap: dict, table_def: dict | None) -> dict:
+    """Monthly cost for one SearchVectors pattern.
+
+    The dollar figure here is an UPPER BOUND, not a model — see
+    vector_search_bytes_per_call. It is surfaced with its basis string so the report can
+    say plainly how it was derived and that live validation supersedes it.
+    """
+    # No rate needed: search contributes no priced line, only reported drivers.
+    vi = next(
+        (v for v in _vector_indexes(table_def) if v.get("index_name") == ap.get("index")), None
+    )
+    if vi is None:
+        return {
+            "ap": ap,
+            "cap": _vector_search_cap(
+                ap, ["SearchVectors target index not found in the model — cost not estimated"]
+            ),
+            "base_cost": 0.0,
+            "gsi_amp_wru": 0.0,
+            "gsi_amp_details": [],
+            "gsi_amp_cost": 0.0,
+            "vector_write_bytes": 0.0,
+            "vector_write_details": [],
+            "vector_write_cost": 0.0,
+            "vector_search_bytes": 0.0,
+            "vector_search_basis": "target index not declared",
+            "vector_search_cost": 0.0,
+            "is_vector_search": True,
+            "total_cost": 0.0,
+            "expected_cost": 0.0,
+        }
+
+    per_call, basis = vector_search_bytes_per_call(ap, vi, table_def or {})
+    # No dollar figure: the examined-data term is not modellable from a design.
+    cost = expected = 0.0
+    return {
+        "ap": ap,
+        "cap": _vector_search_cap(
+            ap, ["SearchVectors consumes no RCU/WCU — billed on vector bytes examined"]
+        ),
+        "base_cost": 0.0,
+        "gsi_amp_wru": 0.0,
+        "gsi_amp_details": [],
+        "gsi_amp_cost": 0.0,
+        "vector_write_bytes": 0.0,
+        "vector_write_details": [],
+        "vector_write_cost": 0.0,
+        "vector_search_bytes": per_call,
+        "vector_search_basis": basis,
+        "vector_search_cost": cost,
+        "is_vector_search": True,
+        "total_cost": cost,
+        "expected_cost": expected,
     }
 
 
@@ -879,6 +1460,19 @@ def _storage_cost(tables: list, by_table: dict) -> tuple[list, float]:
             rows.append([g["index_name"], "GSI", f"{ggb:.2f}", _fmt(gsc)])
             total += gsc
 
+        # Vector index storage. Sized from item COUNT rather than base-table bytes,
+        # because the vector portion is a fixed dimensions × 4 regardless of how large
+        # the rest of the item is. Priced at the same per-GB rate as table storage —
+        # there is no separate vector-storage usage type.
+        for vi in _vector_indexes(t):
+            n_items, declared = _vector_indexed_item_count(vi, t)
+            per_item = _vector_item_bytes(vi, t, None)
+            vgb = (n_items * per_item) / BYTES_PER_GB
+            vsc = vgb * STORAGE_PRICE_PER_GB_MONTH
+            label = "Vector index" if declared else "Vector index*"
+            rows.append([vi.get("index_name", "<unnamed>"), label, f"{vgb:.2f}", _fmt(vsc)])
+            total += vsc
+
     return rows, total
 
 
@@ -919,6 +1513,15 @@ def calculate_and_report(model: dict, requirements: dict | None = None) -> str:
                 "total_cost": pc["total_cost"],
                 "expected_cost": pc["expected_cost"],
                 "notes": cap["notes"],
+                # Vector capacity. Writes and storage are priced into the headline;
+                # search is carried through as a diagnostic ceiling only.
+                "vector_write_bytes": pc.get("vector_write_bytes", 0.0),
+                "vector_write_cost": pc.get("vector_write_cost", 0.0),
+                "vector_write_details": pc.get("vector_write_details", []),
+                "is_vector_search": pc.get("is_vector_search", False),
+                "vector_search_bytes": pc.get("vector_search_bytes", 0.0),
+                "vector_search_basis": pc.get("vector_search_basis", ""),
+                "vector_search_cost": pc.get("vector_search_cost", 0.0),
             }
         )
 
@@ -1067,6 +1670,7 @@ def calculate_and_report(model: dict, requirements: dict | None = None) -> str:
     ]
 
     has_gsi_footnote = False
+    has_vector_search_footnote = False
     detail_headers = ["Pattern", "Operation", "Table/Index", "Peak RPS", "RRU/WRU", "Monthly Cost"]
     detail_rows = []
     for r in results:
@@ -1086,9 +1690,17 @@ def calculate_and_report(model: dict, requirements: dict | None = None) -> str:
                 target,
                 f"{r['rps']:.1f}",
                 f"{ru:.2f}",
-                _fmt(r["base_cost"]),
+                # SearchVectors consumes no RCU/WCU AND its capacity is deliberately
+                # not priced, so BOTH base_cost and vector_search_cost are 0. Rendering
+                # either as "$0.00" states that search is free — in the one table a
+                # reader scans to find the expensive patterns. Render the carve-out
+                # instead and footnote it. This is the whole point of the section below:
+                # do not let an unpriced dimension read as a free one.
+                (VECTOR_SEARCH_CELL if r.get("is_vector_search") else _fmt(r["base_cost"])),
             ]
         )
+        if r.get("is_vector_search"):
+            has_vector_search_footnote = True
         if r["gsi_amp_cost"] > 0:
             detail_rows.append(
                 [
@@ -1107,7 +1719,108 @@ def calculate_and_report(model: dict, requirements: dict | None = None) -> str:
     if has_gsi_footnote:
         lines += ["", GSI_FOOTNOTE]
 
+    if has_vector_search_footnote:
+        lines += ["", VECTOR_SEARCH_FOOTNOTE]
+
+    lines += _vector_report_section(results)
+
     return "\n".join(lines)
+
+
+def _vector_report_section(results: list) -> list[str]:
+    """The vector-capacity section: what was priced, and what deliberately was not.
+
+    Vector index storage and vector WRITE capacity are modelled and already included in
+    the headline. Vector SEARCH capacity is not, and this section says so explicitly
+    rather than leaving a $0.00 row unexplained. It reports a byte ceiling as a
+    diagnostic and tells the user how to obtain the real figure.
+    """
+    searches = [r for r in results if r.get("is_vector_search")]
+    writes = [
+        r for r in results if r.get("vector_write_bytes", 0) and not r.get("is_vector_search")
+    ]
+    if not searches and not writes:
+        return []
+
+    out = ["", "## Vector Index Capacity", ""]
+
+    if writes:
+        out += [
+            "Vector **write** capacity is metered in bytes at "
+            f"${VECTOR_WRITE_PRICE_PER_GB:.2f}/GB, separately from base-table WCU, and "
+            "**is included** in the headline above. A 1 KB minimum applies per request "
+            "(not per index), so low-dimension vectors do not meter proportionally lower.",
+            "",
+        ]
+        rows = [
+            [
+                r.get("pattern_id", "?"),
+                f"{r['vector_write_bytes']:,.0f}",
+                _fmt(r["vector_write_cost"]),
+                "; ".join(r.get("vector_write_details") or []) or "-",
+            ]
+            for r in writes
+        ]
+        out.append(
+            _padded_table(["Pattern", "Bytes/write", "Monthly Cost", "Per-index detail"], rows)
+        )
+        out.append("")
+
+    if searches:
+        out += [
+            "Vector **search** capacity is **not priced here**, and that is deliberate. It "
+            "is metered on the vector data a search examines inside the index plus the data "
+            "returned, and measurement showed the examined fraction varies by an order of "
+            "magnitude with index configuration — 12.8% of all vector bytes on a 60-item "
+            "unpartitioned index against 1.3% on a 200-item partitioned one. A calibration "
+            "fitted across configurations came out 51-69% low when tested at 256 / 1536 / "
+            "3072 dimensions, which is exactly where real embedding models sit. A "
+            "confidently wrong figure is worse than none.",
+            "",
+            "What IS measured, and what you can act on:",
+            "",
+            "- **`TopK` is exactly linear.** Halving `TopK` halves the returned-data term.",
+            "- **The projection is a ~170x multiplier** on bytes returned per result: ~89 B "
+            "for `KEYS_ONLY`, ~98 B for a narrow `INCLUDE`, and the whole projected item "
+            "for `ALL`. A `TopK=100` search on an `ALL` index measured **1.52 MB**; the same "
+            "search on `KEYS_ONLY` measured **19 KB**.",
+            "- **Dimensions scale it linearly** at a fixed index configuration (~31 B per "
+            "dimension measured at 256 / 1536 / 3072).",
+            "- **Index size is not a linear driver.** ANN prunes: within one index, going "
+            "from 10 to 200 vectors in the searched partition barely moved the figure. "
+            'That is not the same as "population never matters" — an EMPTY 1024-dim '
+            "index measured ~2x a populated one, so do not extrapolate this shape down "
+            "to a sparse or freshly-created index.",
+            "",
+            "The returned-data component below is the part that follows soundly from your "
+            "design. Treat it as a **lower bound on bytes**, not a cost.",
+            "",
+        ]
+        rows = [
+            [
+                r.get("pattern_id", "?"),
+                f"{r['vector_search_bytes'] / 1_000:,.1f} KB",
+                r.get("vector_search_basis", "-"),
+            ]
+            for r in searches
+        ]
+        out.append(_padded_table(["Pattern", "Returned bytes/search", "Basis"], rows))
+        out += [
+            "",
+            f"**Get the real number before you quote one.** Vector search bills at "
+            f"${VECTOR_SEARCH_PRICE_PER_GB:.3f}/GB. Set `ReturnConsumedCapacity` on your "
+            "`SearchVectors` calls and read `VectorSearchRequestBytes`, or chart the "
+            "`VectorSearchRequestBytes` CloudWatch metric (dimensioned by `TableName` and "
+            "`VectorIndexName`). A live validation run measures it against your own data "
+            "and reports the observed value.",
+            "",
+            "**The cheapest lever is the projection.** If search cost turns out to matter, "
+            "narrowing an `ALL` vector index to `KEYS_ONLY` or a tight `INCLUDE` and "
+            "hydrating the rest with `BatchGetItem` cuts search bytes by orders of "
+            "magnitude. The projection is immutable, so that is a new-index migration.",
+        ]
+
+    return out
 
 
 # =============================================================================
@@ -1142,6 +1855,67 @@ def main():
 
     if not model.get("access_patterns"):
         print("Error: No access patterns found in the data model.", file=sys.stderr)
+        sys.exit(1)
+
+    # Hard-fail a malformed or impossible vector design BEFORE pricing it. Without this
+    # gate the failure is silent and expensive: a vector index missing `vector_attribute`,
+    # or a SearchVectors pattern whose `index` does not resolve, still produces a
+    # plausible-looking report with vector write capacity priced at $0 — and $0 on the
+    # line that is usually the largest in the estimate reads as "vectors are cheap"
+    # rather than "the model is wrong". Observed exactly that: a model using `name`
+    # instead of `index_name`, omitting `vector_attribute`, and `vector_index` instead of
+    # `index` costed the whole vector dimension at zero without a word of complaint.
+    vector_errors = validate_vector_model(
+        model.get("tables") or [], model.get("access_patterns") or []
+    )
+    if vector_errors:
+        print(
+            "Error: the vector portion of this data model cannot be priced as written.",
+            file=sys.stderr,
+        )
+        # Not `e`: this function already binds `e` in two `except ... as e` blocks above,
+        # and Python deletes that name on leaving the handler.
+        for problem in vector_errors:
+            print(f"  - {problem}", file=sys.stderr)
+        # Print the correct shape, not just the complaint. Observed recovery behaviour
+        # when given only an error: the vector index gets DELETED from the model so the
+        # calculator will run, and the vector cost silently leaves the estimate — a worse
+        # outcome than the original mistake. A copyable snippet makes fixing the field
+        # names the path of least resistance.
+        print(
+            "\nFix the model — do NOT delete the vector index to get past this, and do "
+            "NOT estimate the vector cost by hand. Both drop a real cost that is often "
+            "the largest line in the estimate. The correct shape is:\n"
+            '\n  "tables": [{\n'
+            '    "table_name": "Products",\n'
+            '    "vector_indexes": [{\n'
+            '      "index_name": "ProductEmbeddingIndex",\n'
+            '      "vector_attribute": "Embedding",\n'
+            '      "dimensions": 1024,\n'
+            '      "distance_function": "COSINE",\n'
+            '      "projection": { "type": "ALL" },\n'
+            '      "search_schema": { "partition_key": "category" }\n'
+            "    }]\n"
+            "  }],\n"
+            '  "access_patterns": [{\n'
+            '    "pattern_id": "FindSimilarProducts",\n'
+            '    "operation": "SearchVectors",\n'
+            '    "table": "Products",\n'
+            '    "index": "ProductEmbeddingIndex",\n'
+            '    "peak_rps": 60,\n'
+            '    "top_k": 50\n'
+            "  }, {\n"
+            '    "pattern_id": "PutProduct",\n'
+            '    "operation": "PutItem",\n'
+            '    "table": "Products",\n'
+            '    "peak_rps": 200,\n'
+            '    "attributes_written": ["Embedding"]\n'
+            "  }]\n"
+            "\nNote `index_name` (not `name`), `index` (not `vector_index`), and that a "
+            "write storing the embedding lists it in `attributes_written`. Full schema: "
+            "references/cost-model-schema.md ('Vector index' and 'Access pattern').",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     report = calculate_and_report(model, requirements)

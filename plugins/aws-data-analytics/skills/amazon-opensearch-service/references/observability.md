@@ -154,14 +154,14 @@ source=logs-app-2026-06-01 | where status >= 500 | stats count() by service | so
 ```
 
 ```ppl
-source=logs-app-* | where @timestamp >= now() - 1h | parse uri "(?<endpoint>/api/[^?]+)" | stats avg(latency_ms), p99(latency_ms) by endpoint
+source=logs-app-* | where @timestamp >= now() - 1h | parse uri "(?<endpoint>/api/[^?]+)" | stats avg(latency_ms), percentile(latency_ms, 99) by endpoint
 ```
 
 ```ppl
 source=logs-app-* | eval is_error = if(status >= 500, 1, 0) | stats sum(is_error) as errors, count() as total by service | eval error_rate = errors / total | where error_rate > 0.01
 ```
 
-PPL operators: `where`, `stats`, `fields`, `eval`, `dedup`, `sort`, `head`, `tail`, `parse`, `rename`, `top`.
+Common PPL operators: `where`, `stats`, `fields`, `eval`, `dedup`, `sort`, `head`, `tail`, `parse`, `rename`, `top`. For the full command and function catalog (time-series, join/transform, all function families, `_explain`), see [`observability-ppl-reference.md`](observability-ppl-reference.md).
 
 ## Replacing Splunk
 

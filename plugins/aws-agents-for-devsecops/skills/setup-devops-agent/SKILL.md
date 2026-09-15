@@ -115,11 +115,11 @@ echo "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"
 sleep 0.5
 echo "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}"
 sleep 8
-} | uvx mcp-proxy-for-aws@latest "https://connect.aidevops.${DEVOPS_AGENT_REGION}.api.aws/mcp" --service aidevops --region "$DEVOPS_AGENT_REGION"
+} | uvx mcp-proxy-for-aws-cli@latest "https://connect.aidevops.${DEVOPS_AGENT_REGION}.api.aws/mcp" --service aidevops --region "$DEVOPS_AGENT_REGION"
 '
 ```
 
-> **Note:** The first run may take 10-15s as `uvx` downloads `mcp-proxy-for-aws` and its dependencies. Subsequent runs are near-instant.
+> **Note:** The first run may take 10-15s as `uvx` downloads `mcp-proxy-for-aws-cli` and its dependencies. Subsequent runs are near-instant.
 
 | Result | Meaning | Action |
 |--------|---------|--------|
@@ -170,7 +170,7 @@ Replace `<REGION>` with the user's actual region:
       "command": "uvx",
       "timeout": 120000,
       "args": [
-        "mcp-proxy-for-aws@latest",
+        "mcp-proxy-for-aws-cli@latest",
         "https://connect.aidevops.<REGION>.api.aws/mcp",
         "--service", "aidevops",
         "--region", "<REGION>"
@@ -191,7 +191,7 @@ Only add if the primary `aws-devops-agent` endpoint is unreachable AND SigV4 cre
       "command": "uvx",
       "timeout": 100000,
       "args": [
-        "mcp-proxy-for-aws@latest",
+        "mcp-proxy-for-aws-cli@latest",
         "https://aws-mcp.us-east-1.api.aws/mcp",
         "--metadata",
         "AWS_REGION=us-east-1"

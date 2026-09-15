@@ -46,14 +46,14 @@ Read `.security-agent/config.json` for `agent_space_id` and `region`. If missing
    ```bash
    SCAN_ID="tm-$(date +%s)-$(openssl rand -hex 3)"
    WORKSPACE_ID=$(printf '%s' "$(pwd)" | md5sum | cut -c1-12)
-   aws s3 cp /tmp/source.zip s3://<bucket>/security-scans/source/${WORKSPACE_ID}/source.zip
+   aws s3 cp /tmp/source.zip s3://<bucket>/security-scans/source/${WORKSPACE_ID}/source.zip --expected-bucket-owner <account>
    ```
 
 5. **Upload spec files:**
 
    ```bash
-   aws s3 cp /path/to/requirements.md s3://<bucket>/security-scans/threat-models/${SCAN_ID}/specs/requirements.md
-   aws s3 cp /path/to/design.md s3://<bucket>/security-scans/threat-models/${SCAN_ID}/specs/design.md
+   aws s3 cp /path/to/requirements.md s3://<bucket>/security-scans/threat-models/${SCAN_ID}/specs/requirements.md --expected-bucket-owner <account>
+   aws s3 cp /path/to/design.md s3://<bucket>/security-scans/threat-models/${SCAN_ID}/specs/design.md --expected-bucket-owner <account>
    ```
 
 6. **Create threat model:**

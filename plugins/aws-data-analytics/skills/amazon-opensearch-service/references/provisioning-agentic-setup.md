@@ -1,6 +1,10 @@
 # Amazon OpenSearch Service Domain — Agentic Search Setup
 
-Configure conversational agents with QueryPlanningTool for natural language search. Requires OpenSearch 3.3+ on a managed AOS domain. Uses Bedrock Claude as reasoning model.
+Configure conversational agents with QueryPlanningTool for natural language search on a managed AOS domain. QueryPlanningTool requires OpenSearch 3.3+; verify the minimum version against the AWS docs or `aws opensearch list-versions`. Uses Bedrock Claude as the reasoning model.
+
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax.
+>
+> **Scope: managed AOS domains (conversational, stateful agents).** Amazon OpenSearch Serverless also supports agentic search — via a **flow agent** (`type: flow`, stateless), configured separately. For a Serverless VECTORSEARCH collection, follow [`provisioning-serverless-agentic-setup.md`](provisioning-serverless-agentic-setup.md); that path covers the flow-agent shape and the `agent` data access policy ResourceType required to avoid a `403 Forbidden` on pipeline queries.
 
 ## Step 1: Create IAM Role for Bedrock Access
 

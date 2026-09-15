@@ -1,12 +1,45 @@
 ---
 name: amazon-dynamodb
-description: Designs, reviews, and debugs DynamoDB data layers from design axioms — enumerates access patterns, chooses partition/sort keys and GSIs, decides single-table vs. multi-table, configures Streams, Global Tables, TTL, and zero-ETL integrations to OpenSearch/Redshift/SageMaker Lakehouse, and produces a defensible data-layer design with a monthly cost estimate and optional live validation. Applies whenever a user is designing, reviewing, or refactoring anything backed by DynamoDB — schemas, access patterns, GSIs, single- vs. multi-table choices, Streams consumers, transactional outboxes, Global Tables, zero-ETL pipelines — even when they don't say "axioms" or "design review." Also applies when debugging hot partitions, throttling, unbounded Scans, LWW conflicts, or surprise bills on DynamoDB workloads.
-version: 1
+description: Designs, reviews, and debugs DynamoDB data layers from design axioms — enumerates access patterns, chooses partition/sort keys and GSIs, decides single-table vs. multi-table, configures Streams, Global Tables, TTL, vector indexes for similarity search, and zero-ETL integrations to OpenSearch/Redshift/SageMaker Lakehouse, and produces a defensible data-layer design with a monthly cost estimate and optional live validation. Applies whenever a user is designing, reviewing, or refactoring anything backed by DynamoDB — schemas, access patterns, GSIs, single- vs. multi-table choices, Streams consumers, transactional outboxes, Global Tables, zero-ETL pipelines, or storing embeddings and running semantic/vector similarity search with SearchVectors on items already in DynamoDB — even when they don't say "axioms" or "design review." Also applies when debugging hot partitions, throttling, unbounded Scans, LWW conflicts, or surprise bills on DynamoDB workloads.
+version: 2
 ---
 
 # DynamoDB Axioms
 
 This document is a set of design axioms for DynamoDB applications. It is intended to be read by an agent with no other context about the application and used to produce a defensible data-layer design.
+
+## Guardrail — where this skill's own files live (MCP vs local install)
+
+This skill can be loaded two ways, and they resolve the skill's own bundled
+files from different places. Determine how the skill was loaded before reading
+a reference or running a script:
+
+- **Loaded through the AWS MCP `retrieve_skill` tool:** The skill is not
+  installed on the local filesystem. You MUST fetch each reference or script
+  via `retrieve_skill` with the `file` parameter (e.g.
+  `file="references/vector-search.md"` or `file="scripts/calculate_costs.py"`), and
+  run the script from the returned content. Do NOT `file_read` these paths
+  locally — they do not exist on disk.
+- **Installed locally** (e.g. `.kiro/skills/amazon-dynamodb/` or
+  `~/.claude/skills/amazon-dynamodb/`): Read and run files from the local skill
+  directory using relative paths.
+
+This distinction applies only to the skill's own packaged files. User data and
+session artifacts are always read from and written to the user's working
+directory. Never fetch or write customer data through `retrieve_skill`.
+
+Separately from where these files live: this skill calls real AWS APIs when it
+validates a design, deploys a scratch table or benchmarks one. **The AWS MCP
+server is recommended for those AWS interactions where it is available** — it
+gives consistent credential handling and region resolution across hosts. It is
+**not required**: every script here uses boto3 and the AWS CLI against the
+ambient credential chain, so the skill works unchanged when no MCP server is
+present.
+
+The `${SKILL_DIR}` resolution below applies to the **locally installed** case: over
+MCP there is no directory to resolve, and the scripts this skill ships cannot be
+executed from a returned string — so a cost estimate or live validation requires
+the locally installed form.
 
 ## Resolving the skill's own paths
 
@@ -105,7 +138,17 @@ When your training-data priors conflict with the facts below, the facts win. Eac
 
 9. **A GSI's key schema (partition key / sort key) is immutable once the GSI is created.** `UpdateTable` can add a new GSI or drop an existing one, but it cannot alter the KeySchema of an existing GSI. Re-keying an index — including write-sharding a hot GSI partition key by adding a hash suffix — is therefore an **additive migration**, not a code-only change: create a new GSI with the new key → let it populate → cut reads over → drop the old GSI. A *historical* backfill is needed only when the new index must cover items that were already written and won't be touched again; a sparse or small in-flight index (e.g. one holding only active orders) populates from ongoing writes alone and needs no backfill. Do NOT describe a GSI key change as "just a code change" or "no schema migration."
 
-These nine facts are not the full axiom set — they are the subset where LLM prior is most likely to be wrong. When a user's question intersects one of them, state the correct fact plainly and move on; do not hedge with "I think" or "typically."
+10. **DynamoDB has native vector search. Semantic similarity does NOT require a second datastore.** A **vector index** is a third index type alongside GSIs and LSIs: declare it with the `VectorIndexes` parameter on `CreateTable` or the `VectorIndexUpdates` parameter on `UpdateTable`, store embeddings as a list of numbers on your items, and query it with the **`SearchVectors`** API (approximate nearest neighbour). Do NOT say DynamoDB cannot do vector or similarity search, and do NOT route a semantic-search requirement to OpenSearch, pgvector, or S3 Vectors by default — the vectors live on the same items as the operational data, with no replication pipeline (Integration #8 routes the workload types). `Query`, `Scan`, PartiQL and DAX do **not** work against a vector index; `Query` is rejected with `ValidationException: Query operation not supported on this index type.` A vector index is NOT a GSI and is NOT configured through one — there is no `VectorIndexConfig` and no vector block on a secondary index. Vector indexes require **on-demand capacity** (Mechanics #19).
+
+    **DynamoDB does NOT recompute embeddings, and the index cannot fix a stale one.** The vector is ordinary item data: DynamoDB indexes the numbers you wrote and nothing more. Edit the source text and the stored embedding still describes the *old* text, so it keeps matching the old meaning — indefinitely, with no error and no staleness signal anywhere. This is **not** index-propagation lag, and vector-index write propagation does not "close the window": no amount of waiting regenerates a vector. Whenever content behind an embedding is mutable, say so explicitly and give the fix — detect the content change and re-embed with the *same* model, then write the new vector back (DynamoDB Streams into a re-embedding consumer is the usual shape; synchronous regeneration in the write path is also fine). Never imply the index refreshes vectors on its own.
+
+    **`Dimensions`, `DistanceFunction`, `Projection` and `SearchSchema` are ALL immutable** — every one of them is fixed at `CreateTable`, not just the projection. Changing any single one means creating a replacement index and migrating; there is no in-place `UpdateTable` for them (Mechanics #7).
+
+    **A stale SDK is not evidence the feature is missing.** The operations ship in **botocore/boto3 ≥ 1.43.64** and **AWS CLI v2 ≥ 2.36.16**. Below those versions they are absent from the client entirely — `aws dynamodb search-vectors` fails with `Found invalid choice` and `hasattr(client, "search_vectors")` is `False`. Testing for that `hasattr` is better than comparing version strings: it checks the capability directly and cannot go stale. If it is absent, tell the user to upgrade; do NOT conclude the feature does not exist. Full API surface, sharp edges and troubleshooting: `${SKILL_DIR}/references/vector-search.md`.
+
+    **Quoted service limits are a design envelope, not a fact to argue with.** The per-table index count, maximum dimensions, `TopK` range and inline-filter count quoted in this skill are subject to change, and quotas of this kind generally rise. Design inside them, but before telling a user their design exceeds a limit, confirm the current value in AWS Service Quotas or the DynamoDB developer guide — a raised quota that this skill has not caught up with should not become a wrongly rejected design.
+
+These ten facts are not the full axiom set — they are the subset where LLM prior is most likely to be wrong. When a user's question intersects one of them, state the correct fact plainly and move on; do not hedge with "I think" or "typically."
 
 ## The access-pattern list
 
@@ -195,7 +238,13 @@ Two concrete examples:
 - **Item collection** — the set of items sharing a single partition-key value. Queries against an item collection are constant-partition and cheap; cross-partition reads are not.
 - **Identifying relationship** — a data model in which a child entity is keyed by its parent's identifier plus its own. The child has no independent existence outside the parent.
 - **Overloaded key** — a partition or sort key whose value encodes a type prefix (e.g. `USER#42`, `ORDER#42`) so that one physical key holds multiple logical entity types.
-- **Sparse GSI** — a GSI whose indexed attribute is present on only a subset of base-table items, so the index projects only those items. Useful when an access pattern would otherwise filter out most items at read time.
+- **Sparse GSI** — a GSI whose indexed attribute is present on only a subset of base-table items, so the index projects only those items. Useful when an access pattern would otherwise filter out most items at read time. The same semantics apply to a vector index and are the mechanism behind **silent de-indexing**.
+- **Vector index** — a third index type alongside GSIs and LSIs, holding vector embeddings from a named item attribute and read with `SearchVectors` rather than `Query`/`Scan`. Declared via `VectorIndexes` on `CreateTable` or `VectorIndexUpdates` on `UpdateTable`. On-demand capacity only; up to 5 per table.
+- **ANN** (approximate nearest neighbour) — the search strategy a vector index uses. It trades exactness for speed, so results and their ordering can vary slightly between runs or Regions over identical data.
+- **SearchSchema** — a vector index's optional schema, listing at most one `HASH` element (the vector index partition key, which scopes and scales each search and MUST be supplied on every call) and up to 18 `INLINE_FILTER` elements (optional equality filters applied at the storage layer). Fixed at creation. Every SearchSchema attribute must also appear in the table's `AttributeDefinitions`.
+- **Distance function** — `COSINE`, `EUCLIDEAN` or `DOT_PRODUCT`, chosen at index creation and immutable. It determines both the `Score` and the sort order: lower is more similar for `COSINE`/`EUCLIDEAN`, higher for `DOT_PRODUCT`, whose scores can be negative.
+- **Silent de-indexing** — an item written without the vector index's SearchSchema `HASH` attribute is accepted on the base table with no error but never replicated into the index, so it vanishes from `SearchVectors` results while `GetItem` still returns it intact. Expected behaviour, not a defect; see `${SKILL_DIR}/references/vector-search.md`.
+- **VS / VWR** — Vector Search and Vector Write request units. Vector index capacity is metered in **bytes**, reported as `VectorSearchRequestBytes` and `VectorWriteRequestBytes`, separately from base-table RCU/WCU, with a 1 KB per-request minimum.
 - **GSI write amplification** — the property that every write to a base-table item with projected GSI attributes produces one write per matching GSI, each billed in WCU.
 - **LWW** (last-writer-wins) — the conflict resolution strategy used by standard Global Tables: the write with the newest timestamp wins; earlier writes are silently discarded.
 - **MRSC** (Multi-Region Strong Consistency) — an opt-in Global Tables mode that provides strong consistency across replicas via consensus, at higher write latency and cost.
@@ -217,6 +266,8 @@ Two concrete examples:
 5. Design for recovery granularity. Point-in-time recovery operates at the table level; partial restores are not supported. If two entities would never be recovered together, they should not share a table. The cost of an incident scales with the volume of unrelated data the restore has to carry.
 
 6. Prefer additional GSIs to overloaded keys. The constraints that historically motivated index overloading — a low per-table GSI ceiling, per-index provisioned capacity, and no on-demand mode — generally do not apply to modern DynamoDB, which supports many GSIs per table with shared capacity and on-demand billing (consult the current AWS service-quota docs for the exact per-table GSI limit). Choose a dedicated GSI per access pattern unless a specific, measured reason argues otherwise.
+
+    **Vector indexes are scarcer and serialize with GSIs.** A table supports at most **5** vector indexes, against a far higher GSI allowance, so budget them deliberately rather than adding one per query shape. More importantly, only **one** online index operation — create or delete — runs at a time per table, and that limit is **shared between GSIs and vector indexes**. Two `Create` actions in a single `UpdateTable` fail with `LimitExceededException: Subscriber limit exceeded: Only 1 online index can be created or deleted simultaneously per table`. Sequence index work one at a time, and note this makes any vector index migration (Mechanics #7) slow, because each new index must finish backfilling before the next can start.
 
 7. Name keys for what they represent. Use `customer_id`, `order_created_at`, and `OrdersByCustomer` rather than `PK`, `SK`, and `GSI1`. Self-describing keys reduce onboarding time, make code reviewable without a schema reference, and let tooling introspect the model. Reserve generic overloaded keys for genuinely polymorphic hierarchies.
 
@@ -282,14 +333,17 @@ Two concrete examples:
 
 7. Distinguish TTL-driven deletes from user-driven deletes. DynamoDB delivers TTL deletions through Streams with `userIdentity.principalId` set to `dynamodb.amazonaws.com`. Consumers should branch on this attribute to route TTL events separately — typically to archival or audit pipelines — rather than treating them as ordinary user deletes.
 
-8. Match the analytical or search workload to the supported zero-ETL integration; do not reshape the operational table to serve either. DynamoDB is an OLTP store. The supported path from the operational table to any read-optimized system is a managed integration, not a `Scan` and not a bespoke GSI. Route by workload type:
+8. Match the analytical or search workload to the right target; do not reshape the operational table to serve either. DynamoDB is an OLTP store for *analytical* workloads, and the supported path to a read-optimized system is a managed integration, not a `Scan` and not a bespoke GSI. **Semantic similarity is the exception and stays in DynamoDB** (Fact #10). Route by workload type:
 
-    - **Full-text, vector, geospatial, or fuzzy search** → zero-ETL to Amazon OpenSearch Service. Initial load from a PITR snapshot, ongoing change capture via DynamoDB Streams, near real-time freshness (seconds). Requires PITR enabled on the source and Streams enabled with `NEW_AND_OLD_IMAGES`.
+    - **Semantic similarity — "find similar", "more like this", RAG retrieval, recommendations, AI-agent memory, embedding-based anomaly detection** → a **vector index on the DynamoDB table itself**, queried with `SearchVectors`. No second datastore, no replication pipeline, no PITR prerequisite. This is the default for anything expressed as similarity over embeddings. See `${SKILL_DIR}/references/vector-search.md`.
+    - **Full-text, keyword, typo-tolerant or fuzzy matching, faceting, aggregations, geospatial/radius search** → zero-ETL to Amazon OpenSearch Service. Initial load from a PITR snapshot, ongoing change capture via DynamoDB Streams, near real-time freshness (seconds). Requires PITR enabled on the source and Streams enabled with `NEW_AND_OLD_IMAGES`.
     - **SQL analytics, BI, materialized views, data sharing** → zero-ETL to Amazon Redshift. Initial load from a PITR export, ongoing change capture via incremental exports every 15–30 minutes. Requires PITR enabled on the source and KMS configured with an AWS-owned or customer-managed key (AWS-managed KMS is not supported).
     - **Open-format data lake, Apache Iceberg, multi-engine analytics (Athena, EMR, Spark, Redshift), or ML feature stores** → zero-ETL to Amazon SageMaker Lakehouse. Glue-orchestrated initial export plus incremental exports that write Iceberg tables to S3 or S3 Tables, typically 15–30 minutes fresh. Requires PITR enabled and a resource-based policy granting Glue the export actions.
     - **Point-in-time batch dump with custom downstream processing and no freshness requirement** → DynamoDB export to S3 (not branded zero-ETL, but the correct fallback when no zero-ETL target fits). Consumes no RCU.
 
-    In every zero-ETL path above, PITR on the source table is a hard prerequisite. Do not approximate search with `begins_with` queries and bespoke GSIs. Do not scan the operational table for analytics. The integrations exist because these workloads compose with a column store, a search engine, or an Iceberg table and do not compose with a NoSQL key-value store.
+    In every zero-ETL path above, PITR on the source table is a hard prerequisite — this does NOT apply to the vector-index path, which is not an integration. Do not approximate search with `begins_with` queries and bespoke GSIs. Do not scan the operational table for analytics. The integrations exist because these workloads compose with a column store, a search engine, or an Iceberg table and do not compose with a NoSQL key-value store.
+
+    **Split a bundled ask; do not send it all to one place.** A request for "search" often bundles several kinds. Semantic similarity goes to a vector index; lexical, fuzzy and geo go to OpenSearch; SQL goes to Redshift. A workload legitimately needing both semantic and full-text search uses both a vector index and OpenSearch. Two directions are both wrong: routing semantic similarity out to OpenSearch by reflex, and routing typo-tolerant keyword or geo-radius search *into* a vector index. ANN over embeddings does no substring, prefix or edit-distance matching.
 
     When one operational table feeds BOTH the Redshift (SQL/BI) and SageMaker Lakehouse (Iceberg) paths, prefer a single DynamoDB→Lakehouse Iceberg export and have Redshift read the same Iceberg tables (Redshift Spectrum / native Iceberg support) rather than running two parallel zero-ETL integrations — this avoids a second incremental export and the duplicate per-GB charge with no loss of SQL/join capability. Use two separate integrations only when the consumers genuinely need divergent freshness or isolation.
 
@@ -308,6 +362,8 @@ Two concrete examples:
 6. Consider a sparse GSI when 50% or more of items would be filtered out. Indexing the presence of an attribute is materially cheaper than indexing all items and filtering at read time. Sparse indexes also reduce write amplification, since only items carrying the indexed attribute are projected.
 
 7. Project only the attributes the access pattern reads. An `ALL` projection roughly doubles storage cost and write amplification for every base-table update. Use `ALL` if read latency is important, or if your application is read heavy in comparison to writes. If item sizes are large or the table is write heavy, use `INCLUDE`, and if latency warrants it, use `KEYS_ONLY` with a reverse table lookup.
+
+    **On a vector index, projection is a hard read boundary and it is immutable.** `SearchVectors` cannot return an attribute that is not projected into the index, and asking for one is **silently ignored** — no error, the attribute is simply absent from the result. The projection cannot be changed after creation, so under-projecting means either creating a replacement index and migrating (an additive migration, cf. Fact #9) or hydrating the missing attributes from the base table with `GetItem`/`BatchGetItem` after the search. **And it is not only the projection: `Dimensions`, `DistanceFunction` and `SearchSchema` are equally immutable.** So "switch this index to COSINE" or "add a partition key to the search schema" is a new-index migration too, never an `UpdateTable` — when a debugging thread lands on the wrong distance function, say that explicitly rather than describing only the projection case. Note also that the vector attribute itself is excluded from results by default even under `ALL`, since vector data is large — request it explicitly with `ProjectionExpression` only if you actually need it back.
 
 8. Avoid using mutable attributes as GSI keys. DynamoDB implements a key-attribute change as a delete followed by an insert in the index, doubling the write cost for that update. Fields that change frequently should not appear as GSI partition or sort keys.
 
@@ -360,6 +416,8 @@ Two concrete examples:
 
 19. Use on-demand capacity by default; switch to provisioned on evidence. On-demand removes a class of capacity-related incidents and is the correct default for new or variable workloads. At sustained high throughput with predictable patterns, provisioned capacity with autoscaling delivers a lower unit cost. The switch should be triggered by measured traffic, not anticipation.
 
+    **For a table carrying a vector index, on-demand is not a default — it is mandatory.** Vector indexes are not supported on provisioned tables at all. A provisioned table must be switched to `PAY_PER_REQUEST` before the index can be created, and that switch is subject to the 24-hour capacity-mode cooldown (Fact #3), so it is a scheduling constraint rather than an instant step. This also removes the provisioned-capacity option from any design that includes semantic search, so do not later propose moving such a table to provisioned for unit-cost reasons.
+
 ## Patterns
 
 These are concrete implementation patterns that sit alongside the axioms. They are not axioms in the "correctness/operational/cost/style" sense — they are load-bearing details that a complete design needs even when no axiom explicitly requires them. Each one is worked out in full in the reference architecture; this section is the short form so the agent recognizes when it applies.
@@ -398,7 +456,11 @@ The calculator is at `${SKILL_DIR}/scripts/calculate_costs.py`. The JSON schema 
 
 The workflow:
 
-1. **Serialize the design to `dynamodb_data_model.json`.** The calculator does not reinvent the design — it reads what you already produced. The access-pattern list you built (per Mechanics #2, #18) is a near-literal translation into the JSON's `access_patterns` array; the schema you built (per Data modeling #3, #7, Mechanics #4, #7) translates into `tables` and `gsis`. If a field the calculator wants is missing (most commonly `peak_rps` on a pattern), that is a gap in the design itself — close it by asking the user or by making a defensible assumption and labeling it as one, not by writing `0`.
+1. **Serialize the design to `dynamodb_data_model.json`.** The calculator does not reinvent the design — it reads what you already produced. The access-pattern list you built (per Mechanics #2, #18) is a near-literal translation into the JSON's `access_patterns` array; the schema you built (per Data modeling #3, #7, Mechanics #4, #7) translates into `tables`, `gsis`, and — when the design has one — `vector_indexes`. If a field the calculator wants is missing (most commonly `peak_rps` on a pattern), that is a gap in the design itself — close it by asking the user or by making a defensible assumption and labeling it as one, not by writing `0`.
+
+   **A vector index goes into the model as a `vector_indexes` entry, and its search goes in as a `SearchVectors` access pattern carrying `top_k`.** The calculator supports both (full shape in `${SKILL_DIR}/references/cost-model-schema.md`). Mind the asymmetry with the service API: you *create* an index with the `VectorIndexes` **CreateTable parameter** (Fact #10), but you *cost* it with the `vector_indexes` **model field**. Knowing the API shape is not the same as knowing the model shape, and conflating the two is how a vector index ends up costed at zero.
+
+   **If you catch yourself concluding "the calculator doesn't support vector search," the vector index is missing from your model — fix the model, do not fall back to arithmetic.** The calculator prices vector index storage and vector **write** capacity and includes both in the headline; it deliberately declines to price vector **search**, printing `not priced` with a footnote and the measured drivers instead. Both halves are already handled, so hand-computing either is exactly the inline arithmetic the rule above forbids. This is not a small slip: on a 1024-dimension `ALL`-projected index over ~3 KB items, vector writes are typically the **largest single line in the estimate** — measured at **$1,942/month** at 200 rps against **$972/month** for the base-table writes themselves — because `ALL` copies the entire item into the index on every write. Eyeballing that figure can understate the true top cost driver by more than an order of magnitude.
 
    **When the user states an average or daily volume, set `avg_rps` on the pattern — do not hand-compute a "realistic" figure.** The headline is peak-sustained (every pattern at `peak_rps`, 24/7); a user who hears a large peak-sustained monthly figure for a 15K-orders/day workload needs the expected number too. Setting `avg_rps` (e.g. 15,000 orders/day ÷ 86,400 s ≈ 0.17 rps average, vs a 600 rps Black-Friday peak) makes the calculator emit a second **Expected Monthly Cost** headline at that average rate. This is the *only* sanctioned way to produce a realistic-volume number — reconciling the peak headline against a daily volume with mental arithmetic is exactly the inline-arithmetic the rule above forbids.
 
@@ -604,6 +666,14 @@ Security is woven through the axioms above (authorization-aligned keys in Data m
 
 5. **Credential hygiene.** Never persist AWS profiles, access keys, session tokens, or `credential_process` blobs into any file the skill generates, and never echo them to output. The scripts authenticate from the ambient AWS credential chain (a named profile, SSO, or environment credentials); they neither read arbitrary environment variables wholesale nor record what they resolved. When you write `benchmark_config.json`, store only the profile *name* and region — not the resolved credentials behind them.
 
+6. **Vector search does not honour fine-grained access control, and a vector index partition key is not a tenant boundary.** Two distinct hazards, both of which MUST be surfaced on any multi-tenant design that includes semantic search — followed by the compensating detective control they require.
+
+    First, the `dynamodb:` FGAC condition keys — `dynamodb:LeadingKeys`, `dynamodb:Attributes`, `dynamodb:Select` — are absent from the `SearchVectors` request context. A statement whose `Condition` references one therefore does not match, and the outcome is denial rather than a grant. Adding `dynamodb:SearchVectors` to an existing FGAC-conditioned statement silently breaks vector search while that statement's other actions keep working normally, which presents as a broken index rather than a policy fault. Grant `dynamodb:SearchVectors` in its **own** statement, scoped to the index resource ARN (`arn:aws:dynamodb:<region>:<account-id>:table/<table>/index/<index>`), with no `dynamodb:` FGAC conditions attached.
+
+    Second, scoping searches to one tenant's partition-key value is a data-locality and performance optimization, **not** an access-control mechanism. Any principal holding `dynamodb:SearchVectors` on the index can search any partition-key value, and because the FGAC condition keys do not apply you cannot constrain which values they reach at the IAM layer. Where strict tenant isolation at the data layer is required, use separate tables or separate indexes with distinct per-tenant IAM grants; an application layer that injects the caller's tenant identifier and never accepts it from the client is a complement, not a substitute. This is the vector-search form of the authorization-boundary check in item 1 — and unlike the base table, the key schema does **not** make foreign data unaddressable here, so the structural fix is grant separation rather than partitioning. Encryption at rest is inherited from the base table; there is no separate setting for a vector index.
+
+    Third, because grant separation constrains which *index* a principal may search but never which partition-key values, recommend **CloudTrail data-event logging** on any multi-tenant vector-indexed table as the compensating detective control. It is the only record of which value each principal searched — the precise dimension IAM cannot gate — so a cross-tenant search from a compromised principal or a failed application-layer injection is otherwise unobservable. A CloudWatch alarm on per-principal `VectorSearchRequestBytes` catches partition enumeration as a volume anomaly. Note also that the embeddings are themselves sensitive: similarity results disclose that two records are semantically close even when no raw text is returned, so the vector attribute's exclusion from results by default is a security default worth keeping, and anything logging whole items needs the same care as the table. Full treatment: `${SKILL_DIR}/references/vector-search.md § Security`.
+
 ## Best practices
 
 These are recommended defaults, not axioms. They do not shape the design; they are operational safeguards that should be enabled unless a specific reason argues against them. An agent producing a design should turn each of these on unless the justification for disabling is explicit in the artifacts.
@@ -629,6 +699,7 @@ These are recommended defaults, not axioms. They do not shape the design; they a
 Worked examples that apply these axioms end-to-end to a concrete application. Consult when a design question is easier to answer against a running model than against the axioms alone.
 
 - `${SKILL_DIR}/references/reference-architecture.md` — a multi-tenant kanban task-board ("TaskBoard") SaaS on AWS backed by DynamoDB. Covers the access-pattern list, table and GSI layout, Streams fan-out to OpenSearch and EventBridge, authorization-aligned partitioning, real-time delivery, and the trade-offs made at each step. Start here when a user asks about a full-stack DynamoDB design, multi-tenancy, or end-to-end composition of the services around the database.
+- `${SKILL_DIR}/references/vector-search.md` — the vector index API surface (`VectorIndexes`, `VectorIndexUpdates`, `SearchVectors`), SearchSchema design, distance functions and score direction, the readiness predicate, projection and immutability rules, silent de-indexing, IAM including the fine-grained-access-control gap, the byte-based cost dimensions, and a troubleshooting table keyed on the service's verbatim error strings. Read this whenever a design or debugging thread involves semantic similarity, RAG retrieval, recommendations, or AI-agent memory (Fact #10, Integration #8). Skip it otherwise.
 - `${SKILL_DIR}/references/cost-model-schema.md` — the JSON shape consumed by `${SKILL_DIR}/scripts/calculate_costs.py`. Read this the first time you produce a monthly cost estimate (see *Cost estimation* above). Skip it for non-cost questions.
 - `${SKILL_DIR}/references/performance-model-schema.md` — the JSON shape of `benchmark_config.json` consumed by the live-validation scripts. Read this the first time you run a live validation (see *Live validation* above). Skip it when live validation is not on the table.
 - `${SKILL_DIR}/references/performance-report-format.md` — the structure of `performance_report.md` generated by `${SKILL_DIR}/scripts/generate_perf_report.py`. Read this before interpreting the report or drafting the design-reflection section.

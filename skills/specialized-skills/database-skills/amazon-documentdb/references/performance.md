@@ -37,7 +37,7 @@ db.runCommand({
 
 ### Step 3: Apply the fix
 
-**COLLSCAN → create a missing index (ESR rule — equality first, sort, then range):**
+**COLLSCAN -> create a missing index (ESR rule — equality first, sort, then range):**
 
 ```javascript
 // Query: db.orders.find({ userId, status })
@@ -46,11 +46,11 @@ db.orders.createIndex({ userId: 1, status: 1 })
 // Query with sort: include sort field in the same direction
 db.products.createIndex({ category: 1, price: -1 })
 
-// Full ESR: equality → sort → range
+// Full ESR: equality -> sort -> range
 db.orders.createIndex({ userId: 1, createdAt: -1, price: 1 })
 ```
 
-**Aggregation pipeline not using an index → put `$match` first:**
+**Aggregation pipeline not using an index -> put `$match` first:**
 
 ```javascript
 // BAD — $project before $match destroys indexed field paths
@@ -60,9 +60,9 @@ db.orders.createIndex({ userId: 1, createdAt: -1, price: 1 })
 [{ $match: { price: { $gt: 10 } } }, { $project: { total: ... } }]
 ```
 
-**IXSCAN with high docs-examined / returned ratio → add selective fields to the compound index.**
+**IXSCAN with high docs-examined / returned ratio -> add selective fields to the compound index.**
 
-**Long-running queries (> 30 minutes) → kill them:**
+**Long-running queries (> 30 minutes) -> kill them:**
 
 ```javascript
 db.adminCommand({ aggregate: 1, pipeline: [
@@ -71,7 +71,7 @@ db.adminCommand({ aggregate: 1, pipeline: [
 ], cursor: {} })
 ```
 
-Long queries block MVCC garbage collection → storage growth → CPU/memory pressure. Recommend application-level query timeouts.
+Long queries block MVCC garbage collection -> storage growth -> CPU/memory pressure. Recommend application-level query timeouts.
 
 ### Step 4: Verify
 

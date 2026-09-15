@@ -87,6 +87,19 @@ def assess_topology(cfg: dict) -> tuple[str, list[dict]]:
     az = topology.get("num_azs")
     coordination = cfg["kafka"].get("coordination_mechanism", "Unknown")
     ver = parse_version(cfg["kafka"]["version"])
+    if ver is None:
+        evidence.append(
+            _ev(
+                "VERSION_UNKNOWN",
+                ADVISORY,
+                "We couldn't determine your cluster's Apache Kafka version, so "
+                "we can't check the KRaft-on-3.9 transition or the supported "
+                "version set. Provide `kafka.version` for a complete "
+                "assessment.",
+            )
+        )
+        verdict = worst(verdict, ADVISORY)
+        ver = (0, 0)  # neutral placeholder; skips the version-specific check below
 
     # AZ count
     if az is None:
@@ -174,10 +187,25 @@ def assess_kafka_version(cfg: dict) -> tuple[str, list[dict]]:
     evidence: list[dict] = []
     verdict = INFO
     raw = cfg["kafka"]["version"]
-    mm = parse_version(raw)[:2]
     supported_sorted = sorted(EXPRESS_SUPPORTED_VERSIONS)
     supported_str = [f"{m}.{n}" for m, n in supported_sorted]
 
+    parsed = parse_version(raw)
+    if parsed is None:
+        evidence.append(
+            _ev(
+                "VERSION_UNKNOWN",
+                ADVISORY,
+                "We couldn't determine your cluster's Apache Kafka version, so "
+                "we can't confirm it's in the set MSK Express supports (3.6, "
+                "3.8, and 3.9). Provide `kafka.version` for a complete "
+                "assessment.",
+                supported=supported_str,
+            )
+        )
+        return ADVISORY, evidence
+
+    mm = parsed[:2]
     if mm in EXPRESS_SUPPORTED_VERSIONS:
         evidence.append(
             _ev(
@@ -199,7 +227,7 @@ def assess_kafka_version(cfg: dict) -> tuple[str, list[dict]]:
             "Kafka upgrade notes at https://kafka.apache.org/documentation/#upgrade "
             "for details."
         )
-        if parse_version(raw) < MSK_REPLICATOR_MIN_SOURCE_VERSION:
+        if parsed < MSK_REPLICATOR_MIN_SOURCE_VERSION:
             msg += (
                 " If intending to migrate your data along with your cluster, "
                 "please note that MSK Replicator can only copy data from "
@@ -523,9 +551,25 @@ def assess_configs(cfg: dict) -> tuple[str, list[dict]]:
     verdict = INFO
 
     parsed = parse_version(cfg["kafka"]["version"])
-    ver: tuple[int, int] = (parsed[0], parsed[1])
-    broker_defaults = BROKER_DEFAULTS_BY_VERSION.get(ver, _BROKER_DEFAULTS_COMMON)
-    topic_defaults = TOPIC_DEFAULTS_BY_VERSION.get(ver, _TOPIC_DEFAULTS_COMMON)
+    if parsed is None:
+        evidence.append(
+            _ev(
+                "VERSION_UNKNOWN",
+                ADVISORY,
+                "We couldn't determine your cluster's Apache Kafka version, so "
+                "config defaults are compared against a generic baseline "
+                "instead of your source version's actual defaults. Some "
+                "config divergences may be under- or over-reported as a "
+                "result. Provide `kafka.version` for a complete assessment.",
+            )
+        )
+        verdict = worst(verdict, ADVISORY)
+        broker_defaults = _BROKER_DEFAULTS_COMMON
+        topic_defaults = _TOPIC_DEFAULTS_COMMON
+    else:
+        ver: tuple[int, int] = (parsed[0], parsed[1])
+        broker_defaults = BROKER_DEFAULTS_BY_VERSION.get(ver, _BROKER_DEFAULTS_COMMON)
+        topic_defaults = TOPIC_DEFAULTS_BY_VERSION.get(ver, _TOPIC_DEFAULTS_COMMON)
 
     # 3a. Broker-level configs.
     for key, val in (cfg.get("broker_configs") or {}).items():
@@ -963,8 +1007,18 @@ def assess_quotas(cfg: dict) -> tuple[str, list[dict]]:
 _VERSION_RE = re.compile(r"^\s*(\d+)\.(\d+)(?:\.(\d+))?")
 
 
-def parse_version(raw: str) -> tuple[int, ...]:
-    """Parse '3.6', '3.6.0', '3.6.1' → (3, 6, ...)."""
+def parse_version(raw: str | None) -> tuple[int, ...] | None:
+    """Parse '3.6', '3.6.0', '3.6.1' → (3, 6, ...).
+
+    Returns None when raw is None — the discovery contract allows
+    `kafka.version` to be null when it could not be determined (see
+    references/discovery.md). Callers must handle a None return the same
+    way they already handle other unknown discovery fields (e.g.
+    `topology.num_azs`): emit an ADVISORY and skip version-specific checks
+    rather than raising.
+    """
+    if raw is None:
+        return None
     m = _VERSION_RE.match(raw)
     if not m:
         raise ValueError(f"Unparseable Kafka version: {raw!r}")
@@ -1022,6 +1076,27 @@ def validate_input(cfg: dict) -> None:
                 f"security.authentication={authentication!r} is not in the "
                 f"allowed enum {sorted(AUTHENTICATION_VALUES)}"
             )
+
+    # The target block carries sizing cost assumptions, not compatibility inputs.
+    # No pillar reads it, but validate it here so a malformed discovery contract
+    # fails before Assessment reaches the sizing step.
+    target = cfg.get("target")
+    if target is not None:
+        rack = target.get("rack_affined_consumers")
+        if rack is not None and not isinstance(rack, bool):
+            raise ValueError(
+                f"target.rack_affined_consumers must be true, false, or null; got {rack!r}"
+            )
+        discount = target.get("pricing_discount_pct")
+        if discount is not None:
+            if isinstance(discount, bool) or not isinstance(discount, (int, float)):
+                raise ValueError(
+                    f"target.pricing_discount_pct must be a number or null; got {discount!r}"
+                )
+            if not 0 <= discount < 100:
+                raise ValueError(
+                    f"target.pricing_discount_pct must be >= 0 and < 100; got {discount!r}"
+                )
 
 
 # ---------------------------------------------------------------------------

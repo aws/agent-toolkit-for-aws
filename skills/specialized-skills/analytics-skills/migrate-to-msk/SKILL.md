@@ -5,13 +5,15 @@ description: >-
   the source cluster (from IaC files, Kafka CLI output, or manual input), assesses
   MSK Express compatibility across topology, Kafka version, configs, auth, and quotas,
   produces a target Express specification (instance type, broker count, monthly cost)
-  by filling the AWS-published MSK Sizing/Pricing workbook, and guides migration execution
-  using MSK Replicator. Applicable when the user mentions migrating Kafka, MSK, MSK
-  Express, Kafka migration, analyzing Kafka infrastructure, moving to MSK, moving
-  streaming platform to MSK, streaming migration, moving streaming workloads to AWS,
-  MSK workload compatibility, choosing an MSK cluster type, or MSK Replicator.
-  Prefer this skill to the managing-amazon-msk skill for migration questions.
-version: 2
+  by using the managing-amazon-msk Skill's pricing logic, optionally stands up a trial
+  Express cluster to load-test it against your workload before you commit, and guides
+  migration execution using MSK Replicator. Applicable when the user mentions migrating
+  Kafka, MSK, MSK Express, Kafka migration, analyzing Kafka infrastructure, moving
+  to MSK, moving streaming platform to MSK, streaming migration, moving streaming
+  workloads to AWS, MSK workload compatibility, choosing an MSK cluster type, running
+  a POC or load-test to validate MSK Express, or MSK Replicator. Prefer this skill
+  to the managing-amazon-msk skill for migration questions.
+version: 3
 ---
 
 # Migrating to MSK Express
@@ -45,16 +47,17 @@ Explain what this skill offers:
 > This skill helps you migrate to MSK Express in three phases:
 >
 > **Phase 1 — Discovery:** Inventory your source Kafka cluster — brokers, topics,
-> partition counts, configs, authentication, and workload metrics.
+> partition counts, configs, authentication, and workload metrics — plus two target
+> decisions that drive cost: consumer rack affinity and any negotiated AWS pricing.
 > I can discover this from IaC files (Terraform, CDK, Docker Compose, Kubernetes
 > manifests), provide commands for you to run on your cluster, or you can provide the
 > information manually. Output: `migrate-to-msk-skill-artifacts/<cluster_name>/cluster-config.json`.
 >
 > **Phase 2 — Assessment:** Validate your cluster against MSK Express across 5
 > compatibility pillars (topology, Kafka version, configs, auth, quotas) and produce
-> a target Express specification using the AWS-published MSK Sizing/Pricing workbook.
+> a target Express specification using the managing-amazon-msk Skill's pricing logic.
 > I'll flag what Express will refuse vs what Express will silently convert. Outputs:
-> `compatibility.<cluster_name>.json`, the filled `MSK_Sizing_Pricing.<cluster_name>.xlsx`,
+> `compatibility.<cluster_name>.json`, the pricing results in Markdown `msk_sizing_pricing.md`,
 > and `msk-sizing-inputs.<cluster_name>.json`.
 >
 > **Phase 3 — Simulation:** Spin up an MSK Express cluster with load-testing
@@ -74,7 +77,7 @@ Explain what this skill offers:
 
 - This response is an overview and a routing question only. Do NOT begin, simulate, or pre-empt any phase.
 - Do NOT produce or estimate assessment output here — no verdicts, pillar findings, compatibility conclusions, broker counts, instance recommendations, or cost figures. Those values exist only after you run the Phase 2 scripts against a real `cluster-config.json`.
-- Do NOT open, read, or summarize the internals of `compatibility.py`, `sizing.py`, `simulation_load_test_config.py`, or the reference files to explain how a phase works. Describe the phases at the level shown above; do not walk the customer through the implementation.
+- Do NOT open, read, or summarize the internals of `compatibility.py`, `simulation_load_test_config.py`, or the reference files to explain how a phase works. Describe the phases at the level shown above; do not walk the customer through the implementation.
 - When the customer chooses a phase, run that phase's scripts or flow to produce real results. Always operate the skill to answer — never answer from having read its source. For the exact commands, see "Running the assessment" in [references/assessment-compatibility.md](references/assessment-compatibility.md) for Phase 2, and [references/simulation.md](references/simulation.md) for Phase 3.
 
 ### 2. Discovery intent (DEFAULT when IaC files are provided)
@@ -132,32 +135,13 @@ and answer based on knowledge of AWS MSK.
 
 **Output:** `migrate-to-msk-skill-artifacts/<cluster_name>/cluster-config.json` — saved to the working directory.
 
-### MANDATORY first step for discovery
-
-Before doing ANYTHING else in discovery, you MUST read the reference file:
-`references/discovery.md` (located at the skill path shown above).
-
-Use `file_read` to read the full content of `references/discovery.md`. This file
-contains the REQUIRED response template and JSON schema. You MUST follow the
-template exactly — your response format, forbidden content, and JSON structure
-are all defined there. Do NOT respond until you have read this file.
-
-### Discovery methods
-
-1. **IaC analysis** — Read infrastructure files and extract cluster metadata.
-
-2. **Kafka CLI commands** — Display standard Kafka CLI commands for the customer to run on
-   their cluster (kafka-topics.sh, kafka-configs.sh, kafka-broker-api-versions.sh).
-   Do NOT generate or offer Python scripts.
-
-3. **Runtime metrics intake** — Ingest metrics provided by the customer.
-
-4. **Manual conversation** — Ask the customer for cluster details.
-
 ### Discovery rules
 
-- You MUST read `references/discovery.md` before responding.
-- Follow the response template from that file EXACTLY.
+- Before doing ANYTHING else in discovery, you MUST read
+  [references/discovery.md](references/discovery.md) in full. It defines the
+  input methods, the REQUIRED response template, the forbidden content, and the
+  `cluster-config.json` schema. Do NOT respond until you have read it, and follow
+  its template EXACTLY.
 - ALWAYS save `migrate-to-msk-skill-artifacts/<cluster_name>/cluster-config.json` in the working directory.
 - Do NOT proceed to Phase 2 without explicit customer confirmation.
 
@@ -173,78 +157,41 @@ Express specification (instance type, broker count, monthly cost projection).
 **Outputs:**
 
 - `migrate-to-msk-skill-artifacts/<cluster_name>/compatibility.<cluster_name>.json` — five-pillar verdict.
-- `migrate-to-msk-skill-artifacts/<cluster_name>/MSK_Sizing_Pricing.<cluster_name>.xlsx` — the AWS-published MSK Sizing/Pricing workbook (downloaded by the agent) with the six workload inputs filled into the `MSK Provisioned` sheet. Open it to read the broker count and cost recommendations.
-- `migrate-to-msk-skill-artifacts/<cluster_name>/msk-sizing-inputs.<cluster_name>.json` — a record of the six input values and the cell each maps to.
+- `migrate-to-msk-skill-artifacts/<cluster_name>/msk_sizing_pricing.md` — the managing-amazon-msk Skill's pricing report with broker count and cost recommendations.
+- `migrate-to-msk-skill-artifacts/<cluster_name>/msk-sizing-inputs.<cluster_name>.json` — a record of the six input values for sizing logic.
 
-Assessment is implemented as two file processors (no live AWS API calls):
+Assessment has two independent halves; run them in either order, and a failure in
+one does not block the other:
 
-- `scripts/compatibility.py` — five-pillar compatibility assessment.
-- `scripts/sizing.py` — computes the six workbook inputs from the discovery contract and fills them into the AWS-published workbook the agent downloads.
-
-Both run via `uv run` with PEP 723 inline dependencies. For the exact
-invocation commands, see "Running the assessment" in
-[references/assessment-compatibility.md](references/assessment-compatibility.md).
-
-### Compatibility pillars
-
-`compatibility.py` validates the source against MSK Express across five pillars:
-
-1. **Topology** — AZ count, broker count, KRaft vs ZooKeeper, per-cluster broker quota.
-2. **Kafka version** — source version against the Express supported set (3.6, 3.8, 3.9).
-3. **Configs** — broker- and topic-level configs against Express's editable, read-only,
-   range-restricted, and enforced-value sets (sourced from the Express broker configuration
-   documentation on `docs.aws.amazon.com/msk`).
-4. **Auth** — checks the source's authentication mechanism against those MSK Express supports and surfaces any incompatibilities.
-5. **Quotas** — peak workload against absolute Express ceilings (per-broker ingress/
-   egress, partition count, IAM connection cap, per-partition throughput).
-
-See [references/assessment-compatibility.md](references/assessment-compatibility.md)
-for the full pseudocode, evidence codes, and verdict mapping.
-
-### Verdict vocabulary
-
-Each pillar emits one of three verdicts; the overall is the worst across pillars.
-
-| Verdict | Meaning |
-|---|---|
-| `INFO` | Your source cluster already lines up with MSK Express here. Surfaced for informational purposes. No action needed. |
-| `ADVISORY` | Your source cluster differs from MSK Express here, but Express handles this for you at the target by adjusting or replacing the setting. Migration can proceed; review it so the resulting behavior change is expected. |
-| `ACTION_REQUIRED` | Identifies a configuration or condition that MSK Express is not expected to accept in its current form. Remediation on the source prior to migration is recommended. |
-
-### Sizing
-
-`sizing.py` computes the six workbook inputs from the source workload (peak
-in/out, total partitions, retention). The agent downloads the AWS-published
-workbook by reading the Express best-practices page and following its workbook
-hyperlink, then runs `sizing.py --workbook <downloaded.xlsx>`, which fills the
-`MSK Provisioned` sheet and writes the filled
-`MSK_Sizing_Pricing.<cluster_name>.xlsx` (plus a
-`msk-sizing-inputs.<cluster_name>.json` record). Open the filled workbook to
-read the per-instance broker count and monthly cost; its formulas recalculate
-on open. The workbook is downloaded at assessment time, not packaged with the
-skill, and the script itself performs no network access (it fills a workbook
-the agent already downloaded, using the Python standard library). See
-[references/assessment-sizing.md](references/assessment-sizing.md) for the cell
-mapping, the download flow, and caveats.
+- **Compatibility** — `scripts/compatibility.py`, a pure file processor (no live
+  AWS API calls) run via `uv run` with PEP 723 inline dependencies. It validates
+  the source across five pillars — topology, Kafka version, configs, auth, and
+  quotas — and emits one verdict per pillar (`INFO`, `ADVISORY`, or
+  `ACTION_REQUIRED`, worst-of for the overall). Use those three strings verbatim.
+- **Sizing** — not a script in this skill. Load the managing-amazon-msk Skill and
+  run its `scripts/msk_sizing.py` with the workload inputs derived from
+  `cluster-config.json`, passing `--broker-classes express`.
 
 ### Assessment rules
 
-- Run `compatibility.py` and `sizing.py` independently; neither blocks the other.
+- Read [references/assessment-compatibility.md](references/assessment-compatibility.md)
+  before responding. It carries the invocation commands, the per-pillar thresholds
+  and evidence codes, the verdict definitions, the full forbidden-behavior list,
+  and the **required response template** covering both artifacts. Do not freestyle
+  the post-script summary.
+- Read [references/assessment-sizing.md](references/assessment-sizing.md) before
+  running sizing. It carries the input derivations (several are not one-to-one —
+  getting them wrong silently produces a wrong broker count), the `target`-block
+  flags for rack affinity and negotiated discounts, the Express-only presentation
+  rule, and the source-footprint comparison.
 - Surface any `ACTION_REQUIRED` evidence to the user for awareness, but do not gate further phases on it. Express may still accept the workload with mitigations.
 - **Do NOT pivot back into discovery.** Assessment operates on the existing
-  `cluster-config.json` as-is. Partial data is fine — the scripts emit
-  ADVISORY evidence (`METRICS_MISSING`, `AZ_COUNT_UNKNOWN`, etc.) for
-  missing fields; surface those findings and stop. Do not propose Kafka CLI
-  commands, IaC walks, scripts, or questionnaires to fill the gaps. Full
-  forbidden-behavior list in
-  [references/assessment-compatibility.md](references/assessment-compatibility.md).
-- **Your response MUST follow the assessment response template** in
-  [references/assessment-compatibility.md](references/assessment-compatibility.md)
-  (section "Response Template"). One template covers both artifacts. Do
-  not freestyle the post-script summary — the template defines required
-  sections, mandatory vocabulary (use the verdict strings verbatim), and
-  forbidden content (no scores, no narrative editorializing, no in-prose
-  cost / instance recommendations — the user reads those from the filled workbook).
+  `cluster-config.json` as-is. Partial data is fine — the scripts emit ADVISORY
+  evidence (`METRICS_MISSING`, `AZ_COUNT_UNKNOWN`, etc.) for missing fields;
+  surface those findings and stop. Do not propose Kafka CLI commands, IaC walks,
+  scripts, or questionnaires to fill the gaps.
+- Report broker counts and costs only as read verbatim from the sizing script
+  output. Never round, re-derive, or estimate them.
 
 ---
 
@@ -304,16 +251,6 @@ and [MSK IAM access control](https://docs.aws.amazon.com/msk/latest/developergui
 
 ## Troubleshooting
 
-**Single-broker / single-AZ source.** Topology pillar emits `BROKER_COUNT_LT_3` /
-`AZ_COUNT_NOT_3` ADVISORY — Express auto-fixes at the target by deploying across 3
-AZs with ≥3 brokers regardless of source.
-
-**Out-of-range topic configs.** `max.compaction.lag.ms < 1 day` is the only
-Express-rejected topic-config bound encoded in compatibility.py. Adjust on the
-source before migration.
-
-**Workbook recommendations look blank or stale.** The recommendation and cost
-cells are workbook formulas; they populate once the filled workbook is opened
-in Excel / LibreOffice / Sheets and its formulas recalculate. `sizing.py` sets
-`fullCalcOnLoad` so this happens automatically on open — if your spreadsheet
-app has automatic recalculation disabled, trigger a manual recalculation.
+Per-pillar findings, including the source topology and out-of-range config cases,
+are explained in
+[references/assessment-compatibility.md](references/assessment-compatibility.md).

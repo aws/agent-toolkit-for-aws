@@ -11,9 +11,9 @@ The script is the source of truth for broker counts and costs in this skill — 
 Required workflow for any sizing answer:
 
 1. Translate the user's inputs (avg/peak ingress, avg/peak egress, partitions, retention, primary retention, RF, PST, rack affinity) into the script's flags. If a value is missing, ask before guessing.
-2. Run the script with `--explain`. Always pass `--retention-hours` and `--primary-retention-hours` — set them equal to disable Tiered Storage; set retention > primary to enable it.
+2. Run the script. Always pass `--retention-hours` and `--primary-retention-hours` — set them equal to disable Tiered Storage; set retention > primary to enable it.
 3. Read the "Recommended pick per class" section.
-4. Use the `--explain` per-instance breakdown only to explain *why* the script picked what it did, never to override the recommendation.
+4. Use the "Broker sizing" table and the `bottleneck` column only to explain *why* the script picked what it did, never to override the recommendation.
 
 You may suggest a larger size than the recommended pick only when (a) the user explicitly asks for one, or (b) the workload exceeds the broker quota and a quota increase is impractical. In both cases, name the recommended pick first and the alternative second.
 
@@ -22,41 +22,75 @@ python scripts/msk_sizing.py \
   --avg-data-in-mbs 100  --peak-data-in-mbs 500 \
   --avg-data-out-mbs 200 --peak-data-out-mbs 1000 \
   --num-partitions 1000 \
-  --retention-hours 720  --primary-retention-hours 24 \
-  --explain
+  --retention-hours 720  --primary-retention-hours 24
 ```
+
+Every run prints the sizing inputs it used, the shared monthly costs per broker class, a
+"Broker sizing" table with one row per instance type (required brokers, bottleneck, broker
+cost, total cost), and the recommended pick per class. Check the "Sizing inputs" block
+against what you intended to pass — it is how you catch a bad unit conversion before
+reporting a wrong broker count.
 
 Flag reference:
 
-- `--explain` — print per-constraint analysis (which dimension is the bottleneck and by how much) and per-cost-factor breakdown (brokers, storage, Tiered Storage, Provisioned ST, Express data-in, cross-AZ) for every instance and the recommended pick per class. **Always include this flag.**
+- `--discount-pct N` — apply a Private Pricing Agreement (PPA) or Enterprise Discount Program (EDP) discount of N percent uniformly to every cost dimension (brokers, storage, Tiered Storage, PST, Express data-in, cross-AZ). Default 0, meaning public on-demand pricing. Broker counts and bottlenecks are unaffected. See "Pricing considerations" below.
+- `--broker-classes standard|express|standard,express` — which broker classes to size and report. Default is both. Pass `express` to suppress Standard sizing and Standard recommendations entirely — use this when the customer has already chosen Express or is migrating to Express, so Standard numbers do not appear in the output at all. Pass `standard,express` when the customer asks for a comparison.
 - `--broker-quota N` — change the per-cluster broker quota used to pick a "recommended" instance per class. Default is 60 (the MSK Provisioned default soft quota). The script picks the cheapest instance per class whose broker count fits within the quota.
 - `--use-max-partitions` — size against the hard partition cap instead of the recommended cap (use only when the user accepts the operational risk).
 - `--pst-per-broker-mbs` — apply a Provisioned Storage Throughput limit (4xlarge+ Standard only). Pass when the user mentions PST, gp3 provisioned throughput, or EBS write IO bottleneck.
 - `--utilization-standard` / `--utilization-express` — override the headroom factor (defaults: 0.50 / 0.75). Do not change unless the user explicitly asks.
-- `--no-rack-affined-consumers` — include consumer fetch traffic in the cross-AZ cost (use when consumers fetch from any leader rather than local-AZ replicas). Affects cost only, not broker count. Run the script both with and without the flag to show the customer the concrete monthly delta; the `--explain` output breaks out each pricing dimension line by line, and `scripts/msk_sizing.py` itself is the source of truth if the customer needs the exact per-GiB rate or formula. To eliminate this cost, enable rack-aware Kafka consumer fetching — see [configure-clients.md](configure-clients.md) for `client.rack` and `replica.selector.class` guidance.
+- `--no-rack-affined-consumers` — include consumer fetch traffic in the cross-AZ cost (use when consumers fetch from any leader rather than local-AZ replicas). Affects cost only, not broker count. Run the script both with and without the flag to show the customer the concrete monthly delta; the "Shared monthly costs" block breaks out each pricing dimension, and `scripts/msk_sizing.py` itself is the source of truth if the customer needs the exact per-GiB rate or formula. To eliminate this cost, enable rack-aware Kafka consumer fetching — see [configure-clients.md](configure-clients.md) for `client.rack` and `replica.selector.class` guidance.
 
-The narrative steps below explain what the script computes and when each constraint dominates. Use them to interpret `--explain` output, **never as a substitute for running the script**.
+## Pricing considerations
+
+Include this whenever you report cost figures from a default run:
+
+> **Note on pricing:** All cost estimates are based on AWS public on-demand pricing. If your organization has a Private Pricing Agreement (PPA), Enterprise Discount Program (EDP), or other negotiated pricing, your actual costs will differ. Contact your AWS account team for pricing that reflects your agreements.
+
+Ask for the discount percentage whenever the customer mentions a PPA, EDP, or other negotiated rates, then re-run with `--discount-pct N` and report the discounted figures. Do not guess a discount, and do not apply one the customer did not state. The discount changes cost only — broker counts and bottlenecks are identical.
+
+All figures are us-east-1. Other Regions differ; see the [Amazon MSK pricing page](https://aws.amazon.com/msk/pricing/).
+
+The narrative steps below explain what the script computes and when each constraint dominates. Use them to interpret the script's output, **never as a substitute for running the script**.
 
 ## Standard vs Express: Decision Framework
 
+**Default to Express.** Recommend it for every new cluster and every Standard cluster being re-sized, unless a Standard-only condition below applies. AWS guidance is Express for [almost all MSK workloads](https://aws.amazon.com/blogs/big-data/simplifying-kafka-operations-with-amazon-msk-express-brokers/).
+
+Express usually costs less, not just less effort:
+
+- **Fewer brokers for the same load.** Up to 3x ingress per broker ([MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)) — 500 MiB/s on `express.m7g.16xlarge` vs 153.8 MiB/s on the [equivalent Standard broker](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html).
+- **Storage is billed on what is retained, not what is provisioned.** Standard requires `ingress × retention × RF` plus a growth buffer up front, and EBS cannot shrink — once a volume grows, the customer pays for it permanently even after the workload shrinks. 7 days at 1 MiB/s is ~590 GiB of data but over 2 TiB of provisioned EBS with replicas and buffer. Express scales storage down with the workload automatically.
+- **Nothing to buy around the storage bottleneck.** No EBS throughput ceiling, no Provisioned Storage Throughput, no `num.replica.fetchers` / `num.io.threads` tuning, no tiered-storage decision.
+
+Operationally: 20x faster scaling, 180x faster partition rebalancing ([Intelligent Rebalancing](https://docs.aws.amazon.com/msk/latest/developerguide/intelligent-rebalancing-self-balancing-paritions.html)), 90% faster broker recovery ([MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)), no maintenance windows, Intelligent Rebalancing, and a single connection string that survives scaling — adding brokers needs no DNS or client config changes. Monitoring reduces to `BytesInPerSec` and `BytesOutPerSec` as the primary pair.
+
+Express fixes RF=3, `min.insync.replicas=2`, `unclean.leader.election=false`, and enforces client throughput quotas. These are guardrails plus reserved capacity for replication, rebalancing, and unplanned repairs. Do not present them to the customer as lost capability.
+
+**Choose Standard only when:**
+
+- A 2-AZ deployment is required (Express is 3-AZ only)
+- The workload needs KIP-932 queues
+- `kafka.t3` is wanted for dev or small non-production clusters
+- The customer has a hard, documented requirement for a broker config that Express manages read-only
+
 | Factor | Standard | Express |
 |---|---|---|
-| Storage | Customer-managed EBS (1 GiB - 16 TiB per broker) | Fully managed, pay-as-you-go, unlimited |
-| Throughput per broker | Depends on instance type + EBS volume type + provisioned throughput | Defined per broker size (up to 500 MiB/s ingress); up to 3x more throughput per broker than equivalent Standard instance sizes |
-| Maintenance windows | Yes — cluster enters MAINTENANCE state during patching | No maintenance windows — stays ACTIVE |
-| Scaling speed | Hours for partition rebalancing | Up to 20x faster scaling |
-| Storage management | Manual or auto-scaling EBS; optional tiered storage | No storage management required |
-| Replication factor | Configurable (default 3) | Fixed at 3 |
-| min.insync.replicas | Configurable (default 2) | Fixed at 2 |
-| unclean.leader.election | Configurable (default true for non-tiered) | Fixed at false |
+| Storage | Customer-provisioned EBS (1 GiB - 16 TiB per broker), cannot shrink | Fully managed, pay-per-GB-hour, virtually unlimited |
+| Throughput per broker | Depends on instance type + EBS volume type + provisioned throughput | Defined per broker size, up to 500 MiB/s ingress |
+| Maintenance windows | Yes — cluster enters MAINTENANCE state during patching | None — stays ACTIVE |
+| Scaling | Hours to days; manual rebalance | 20x faster scaling; Intelligent Rebalancing + 180x faster rebalancing [^1] |
+| Broker recovery | Rebalance required after replacement | 90% faster, no significant rebalance [^2] |
 | Instance families | kafka.t3, kafka.m5, kafka.m7g | express.m7g only |
 | Availability zones | 2 or 3 AZs | 3 AZs only |
+| RF / min.insync.replicas / unclean.leader.election | Configurable | Fixed at 3 / 2 / false |
 
-**Choose Express for most workloads.** Express provides fully managed storage, no maintenance windows, faster scaling, up to 3x more throughput per broker, and managed best-practice defaults — making it the right choice for the majority of use cases.
-
-**Choose Standard only when:** You need fine-grained control over broker configuration (e.g., custom `min.insync.replicas`, `unclean.leader.election`, replication factor other than 3) or you require a 2-AZ deployment.
+[^1]: [Intelligent Rebalancing](https://docs.aws.amazon.com/msk/latest/developerguide/intelligent-rebalancing-self-balancing-paritions.html)
+[^2]: [MSK Express broker types](https://docs.aws.amazon.com/msk/latest/developerguide/msk-broker-types-express.html)
 
 ## Sizing Standard Clusters
+
+Work this section only when a Standard-only condition from the decision framework applies. Every step here is work Express removes.
 
 ### Step 1: Determine throughput requirement
 
@@ -96,7 +130,7 @@ Without provisioned throughput, a broker with RF=3 and 83 MiB/s client ingress a
 
 For M7g sizes, use the value for the equivalent M5 size as a starting point. After flipping PST on, expect a transitional period (up to 24 hours; ~6 hours per fully utilized 1 TiB volume) where the new throughput ramps in.
 
-**Important**: Maintain CPU utilization (CpuUser + CpuSystem) under 60% to retain headroom for operational events. For a precise per-instance broker count and cost breakdown, run [`scripts/msk_sizing.py`](../scripts/msk_sizing.py) with `--explain` (see top of this document). The [MSK Sizing and Pricing spreadsheet](https://view.officeapps.live.com/op/view.aspx?src=https%3A%2F%2Fdy7oqpxkwhskb.cloudfront.net%2FMSK_Sizing_Pricing.xlsx) is an alternative for offline what-if analysis.
+**Important**: Maintain CPU utilization (CpuUser + CpuSystem) under 60% to retain headroom for operational events. For a precise per-instance broker count and cost breakdown, run [`scripts/msk_sizing.py`](../scripts/msk_sizing.py) (see top of this document). The [MSK Sizing and Pricing spreadsheet](https://view.officeapps.live.com/op/view.aspx?src=https%3A%2F%2Fdy7oqpxkwhskb.cloudfront.net%2FMSK_Sizing_Pricing.xlsx) is an alternative for offline what-if analysis.
 
 ### Step 4: Size EBS storage
 
@@ -116,7 +150,7 @@ Size using the **sustained performance** values. If throughput exceeds sustained
 
 Divide total required ingress/egress by per-broker sustained limits. Use whichever dimension (ingress or egress) requires more brokers. **The broker count must be a multiple of 3 (Express requires 3 AZs).** Round up to the next multiple of 3.
 
-Run [`scripts/msk_sizing.py`](../scripts/msk_sizing.py) with `--explain` to get the precise broker count, bottleneck, and cost breakdown across every Express size. The "Recommended pick per class" section names the lowest-cost Express size that fits within the broker quota.
+Run [`scripts/msk_sizing.py`](../scripts/msk_sizing.py) to get the precise broker count, bottleneck, and cost breakdown across every Express size. The "Recommended pick per class" section names the lowest-cost Express size that fits within the broker quota.
 
 **Example**: 100 MiB/s ingress, 5 consumer groups → 500 MiB/s egress. Using express.m7g.2xlarge (125 MiB/s sustained egress): 500/125 = 4 brokers minimum → round up to **6 brokers** (next multiple of 3).
 

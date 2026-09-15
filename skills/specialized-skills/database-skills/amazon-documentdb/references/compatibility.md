@@ -154,7 +154,7 @@ Check the [MongoDB API compatibility page](https://docs.aws.amazon.com/documentd
 
 ```javascript
 // If unsupported: create explicit indexes for the specific fields you filter on
-// db.col.createIndex({ "$**": 1 })  ← check support status before attempting
+// db.col.createIndex({ "$**": 1 })  <- check support status before attempting
 ```
 
 ### 2d (legacy) geospatial indexes

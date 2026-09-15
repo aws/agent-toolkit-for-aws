@@ -87,7 +87,7 @@ list my AWS DevOps agent spaces
 | Mode | Config | Use case |
 |------|--------|----------|
 | **Bearer token** (default) | `DEVOPS_AGENT_TOKEN` env var | Single AgentSpace |
-| **SigV4** | Local signing proxy via `mcp-proxy-for-aws` | Multiple AgentSpaces, Admin tooling |
+| **SigV4** | Local signing proxy via `mcp-proxy-for-aws-cli` | Multiple AgentSpaces, Admin tooling |
 
 See the `setup-devops-agent` skill for detailed configuration of either mode.
 

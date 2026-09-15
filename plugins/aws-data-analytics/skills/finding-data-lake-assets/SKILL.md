@@ -7,8 +7,9 @@ description: >-
   table, lakehouse table, data lake table, warehouse table, reverse lookup S3 path.
   Do NOT use for: full catalog audits (use exploring-data-catalog), running queries
   (use querying-data-lake), creating tables (use creating-data-lake-table).
-version: 2
-argument-hint: '[table-name|keyword|column-name|s3://path]'
+metadata:
+  version: "2"
+  argument-hint: "'[table-name|keyword|column-name|s3://path]'"
 ---
 
 # Find Data Lake Assets

@@ -95,14 +95,14 @@ mongodb://adminuser:<password>@<endpoint>:27017/?tls=true&tlsCAFile=global-bundl
 
 | Param | Why |
 |---|---|
-| `tls=true` + `tlsCAFile` | TLS is required; absent → connection refused |
+| `tls=true` + `tlsCAFile` | TLS is required; absent -> connection refused |
 | `replicaSet=rs0` | Without this, the driver connects to one node only |
 | `retryWrites=false` | DocumentDB does not support retryable writes |
 | `readPreference=secondaryPreferred` | Distributes reads to replicas |
 
 The string above uses the **primary (master) user**, which is always password-based.
 
-**IAM authentication is also supported** for application / non-admin users (not the primary user) on cluster version 5.0+. It is password-less — connections use short-lived STS tokens — suiting Lambda/ECS/EC2 workloads that run with an IAM role. Trade-offs: requires instance-based 5.0+, a `MONGODB-AWS`-capable driver (`pip install 'pymongo[aws]'`; Node.js ≥ 6.13.1), and an STS dependency at connect time (watch STS throttling at high connection rates).
+**IAM authentication is also supported** for application / non-admin users (not the primary user) on cluster version 5.0+. It is password-less — connections use short-lived STS tokens — suiting Lambda/ECS/EC2 workloads that run with an IAM role. Trade-offs: requires instance-based 5.0+, a `MONGODB-AWS`-capable driver (`pip install 'pymongo[aws]'`; Node.js >= 6.13.1), and an STS dependency at connect time (watch STS throttling at high connection rates).
 
 Create an IAM-backed user as the master user in the `$external` database, then connect with `authSource=$external&authMechanism=MONGODB-AWS` (no credentials in the URI — the driver fetches them from the attached role):
 

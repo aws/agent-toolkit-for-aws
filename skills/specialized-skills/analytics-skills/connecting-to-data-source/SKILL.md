@@ -10,8 +10,9 @@ description: >-
   Do NOT use for moving data (use ingesting-into-data-lake), creating tables (use
   creating-data-lake-table), queries (use querying-data-lake), catalog exploration
   (use exploring-data-catalog), or SaaS (Salesforce, ServiceNow, SAP, MongoDB, Kafka).
-version: 1
-argument-hint: '[source-type|connection-name|hostname]'
+metadata:
+  version: "1"
+  argument-hint: "'[source-type|connection-name|hostname]'"
 ---
 
 # Connect to Data Source

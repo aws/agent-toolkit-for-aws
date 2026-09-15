@@ -1,0 +1,50 @@
+{
+  "requestUrl": "https://merchant.example/pay/weather?city=sydney",
+  "merchant": "0x1111111111111111111111111111111111111111",
+  "asset": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+  "config": {
+    "region": "us-east-1",
+    "paymentManagerArn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/example",
+    "paymentInstrumentId": "instrument-example",
+    "userId": "user-example",
+    "payment_session_id": "session-example",
+    "networkPreferences": ["eip155:84532"],
+    "allowedOrigins": ["https://merchant.example"],
+    "allowedRecipients": ["0x1111111111111111111111111111111111111111"],
+    "allowedAssetsByNetwork": {
+      "eip155:84532": ["0x036cbd53842c5426634e7929541ec2318f3dcf7e"]
+    },
+    "maxPaymentAmountAtomic": "100000"
+  },
+  "challenge": {
+    "x402Version": 2,
+    "resource": {
+      "url": "https://merchant.example/pay/weather?city=sydney",
+      "description": "Weather result",
+      "mimeType": "application/json"
+    },
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "amount": "1",
+        "asset": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+        "payTo": "0x9999999999999999999999999999999999999999",
+        "extra": {
+          "nonce": "hostile-first-offer"
+        }
+      },
+      {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "amount": "1000",
+        "asset": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+        "payTo": "0x1111111111111111111111111111111111111111",
+        "maxTimeoutSeconds": 60,
+        "extra": {
+          "nonce": "publisher-nonce-1"
+        }
+      }
+    ]
+  }
+}

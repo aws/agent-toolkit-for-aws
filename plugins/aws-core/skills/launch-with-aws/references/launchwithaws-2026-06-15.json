@@ -93,10 +93,13 @@
                     "shape": "ValidationException"
                 },
                 {
+                    "shape": "ServiceUnavailableException"
+                },
+                {
                     "shape": "InternalServerException"
                 }
             ],
-            "documentation": "<p>Delete a launch. Transitions to DELETING status and triggers async cleanup.</p>",
+            "documentation": "<p>Delete a launch. Marks the launch DELETING and cancels its in-flight Step Functions execution and execution runtime. The record expires through its 24-hour TTL. Right to be forgotten (RTBF) performs user-wide erasure.</p>",
             "idempotent": true
         },
         "GetLaunch": {
@@ -755,8 +758,10 @@
             "documentation": "<p>Sections that can be included in the GetLaunch response.</p>",
             "enum": [
                 "analysis",
+                "context_inputs",
                 "plan",
                 "execution",
+                "task_logs",
                 "cost_estimate",
                 "preview_url",
                 "download_url"
@@ -901,6 +906,10 @@
                 },
                 "order": {
                     "shape": "Integer"
+                },
+                "outputLog": {
+                    "shape": "LaunchTaskOutputLogString",
+                    "documentation": "<p>Execution output hydrated on demand when GetLaunch includes task_logs. Truncated to approximately 10,000 characters by the backend.</p>"
                 }
             }
         },
@@ -910,6 +919,11 @@
                 "shape": "LaunchTask"
             },
             "max": 100,
+            "min": 0
+        },
+        "LaunchTaskOutputLogString": {
+            "type": "string",
+            "max": 10000,
             "min": 0
         },
         "ListLaunchesInput": {
@@ -1151,5 +1165,5 @@
             "exception": true
         }
     },
-    "documentation": "<p>Launch with AWS API surface for the AWS MCP Server and AWS Agent Toolkit.</p>"
+    "documentation": "<p>Launch with AWS API surface for the AWS MCP Server and AWS Agent Toolkit. Uses Bearer auth (BuilderID PKCE flow) for CLI/IDE plugin callers.</p>"
 }

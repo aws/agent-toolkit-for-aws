@@ -63,8 +63,8 @@ Track scans in `.security-agent/scans.json`.
 
    ```bash
    SCAN_ID="diff-$(date +%s)-$(openssl rand -hex 3)"
-   aws s3 cp /tmp/source.zip s3://<bucket>/security-scans/source/<WORKSPACE_ID>/source.zip
-   aws s3 cp /tmp/diff.patch s3://<bucket>/security-scans/diffs/${SCAN_ID}/diff.patch
+   aws s3 cp /tmp/source.zip s3://<bucket>/security-scans/source/<WORKSPACE_ID>/source.zip --expected-bucket-owner <account>
+   aws s3 cp /tmp/diff.patch s3://<bucket>/security-scans/diffs/${SCAN_ID}/diff.patch --expected-bucket-owner <account>
    ```
 
 6. **Get or create per-workspace CodeReview** (same logic as full scan — lookup `config.json → code_reviews[<abs_path>]`, create if absent):

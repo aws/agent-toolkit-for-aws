@@ -1,5 +1,7 @@
 # Amazon OpenSearch Serverless — Deploy Search Configuration
 
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard AWS CLI syntax.
+
 Deploy indices, ML models, and pipelines to a provisioned serverless collection.
 
 ## Route by Strategy
@@ -131,15 +133,23 @@ PUT <collection-endpoint>/_ingest/pipeline/bedrock-embedding-pipeline
 ```
 PUT <collection-endpoint>/<index-name>
 {
-  "settings": { "index": { "knn": true, "default_pipeline": "bedrock-embedding-pipeline" } },
+  "settings": {
+    "index.knn": true,
+    "index.default_pipeline": "bedrock-embedding-pipeline"
+  },
   "mappings": {
     "properties": {
       "<text-field>": { "type": "text" },
-      "<vector-field>": { "type": "knn_vector", "dimension": 1024, "method": { "name": "hnsw", "engine": "faiss" } }
+      "<vector-field>": {
+        "type": "knn_vector",
+        "dimension": 1024
+      }
     }
   }
 }
 ```
+
+> **Note:** Omit `engine`/`mode` unless you have confirmed support for your collection generation — NextGen rejects them (`Field parameter 'engine' is not supported`) and auto-selects the engine. NextGen support can change over time, so rather than treating this as a fixed prohibition, prefer omitting these fields and, if you need to set them, attempt creation and handle any validation error (same pattern used for OCU values in [provisioning-serverless-provision.md](provisioning-serverless-provision.md)). `space_type` is optional (defaults to L2); to use another metric, add it at the field level, e.g. `"space_type": "cosinesimil"`.
 
 ### 6. Search Pipeline (hybrid only)
 
@@ -177,3 +187,13 @@ After index creation (all paths):
    - Neural Sparse: standard `match` queries (auto-rewritten)
    - Dense Vector: `neural` query with `model_id`
    - BM25: standard `match` queries
+
+## Next Step (optional)
+
+- **Agentic search** (natural-language query → DSL, flow agent): see [provisioning-serverless-agentic-setup.md](provisioning-serverless-agentic-setup.md).
+
+## Security Considerations
+
+- **Encryption in transit:** all data-plane calls (index creation, indexing, search) MUST use HTTPS. Verify the collection endpoint starts with `https://`, because an unencrypted request exposes documents and queries in transit.
+- **Encryption at rest:** indexed embeddings and document content are sensitive; AOSS encrypts at rest by default, and compliance workloads should use a customer-managed KMS key on the encryption policy (see [provisioning-serverless-provision.md](provisioning-serverless-provision.md)).
+- **Least-privilege connector role:** scope the ML model connector role to the minimum data-access actions and the specific model ARN it invokes, because a broad connector role is a standing path into the data plane.

@@ -1,5 +1,7 @@
 # Log-analytics capability — entry point and guide
 
+> The AWS MCP server is recommended for executing these commands but is not required — all steps use standard `awscurl` / AWS CLI syntax.
+
 This file is the **entry point** for the `log-analytics` capability. It covers log search at scale, observability, PPL queries, anomaly detection, OpenSearch Dashboards, alerting, and SIEM patterns — including replatforming from Splunk, Datadog, or self-managed ELK.
 
 ## When to use this capability
@@ -30,6 +32,24 @@ Cross-cutting refs you may also load: [`observability.md`](observability.md) (IS
 
 This guide instructs you on how to perform log analytics against an existing OpenSearch domain or collection. The approach is discovery-first: understand what indices exist, learn the schema, sample the data, then build queries. Do not assume any particular index pattern or field names — discover them.
 
+For the full PPL command and function catalog, see [`observability-ppl-reference.md`](observability-ppl-reference.md).
+
+## Query discipline (MUST follow)
+
+- **Unknown command → upstream grammar.** If a PPL command or function is not in
+  [`observability-ppl-reference.md`](observability-ppl-reference.md), or an emitted query fails with a
+  syntax error, you MUST fetch the raw upstream doc from `opensearch-project/sql` under `docs/user/ppl/`
+  before answering. You MUST NOT invent PPL syntax, because OpenSearch PPL has version-specific commands
+  that do not exist in other query languages.
+- **Verify or disclose.** When the domain/collection endpoint is reachable, you MUST validate every
+  emitted query against `_plugins/_ppl`; on 0 rows, fall back to `_plugins/_ppl/_explain` to confirm the
+  plan and surface the empty result; on error, fix and re-validate. When no endpoint is reachable, you
+  MUST state that the query is unverified, because an untested query can silently reference a
+  non-existent field.
+- **Backtick-quote dotted fields.** Field names containing a dot MUST be backtick-quoted (`` `log.level` ``,
+  `` `host.name` ``), because an unquoted dot is parsed as a path separator and silently resolves to a
+  non-existent field.
+
 ## Data Plane Access with awscurl
 
 Use `awscurl` for SigV4-authenticated HTTP requests to AOS/AOSS endpoints.
@@ -39,6 +59,8 @@ Use `awscurl` for SigV4-authenticated HTTP requests to AOS/AOSS endpoints.
 ```bash
 pip install awscurl
 ```
+
+> **Credentials:** source SigV4 signing credentials from an IAM role (instance profile, ECS task role, or an SSO session) rather than static access keys, and keep endpoints and other config in AWS Secrets Manager or SSM Parameter Store rather than hardcoding them.
 
 ### Environment Variables
 

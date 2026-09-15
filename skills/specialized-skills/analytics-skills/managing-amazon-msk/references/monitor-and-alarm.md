@@ -29,6 +29,12 @@ aws kafka update-monitoring --cluster-arn <cluster-arn> --current-version <clust
 
 Follow [SNS security best practices](https://docs.aws.amazon.com/sns/latest/dg/sns-security-best-practices.html) when wiring alarm actions to an SNS topic (e.g. `--alarm-actions` for `aws cloudwatch put-metric-alarm` calls).
 
+## CloudWatch Controller Metric Reporting Issues
+
+Metrics like `GlobalPartitionCount` count the partitions across all topics in the cluster, excluding replicas, and require the `Maximum` statistic to interpret correctly. CloudWatch's default `Average` therefore spreads the true value across all brokers and returns roughly `true_count / broker_count` — so on an N-broker cluster it reads about 1/N of reality. Use the `Maximum` to see the true cluster-wide metrics.
+
+MSK cluster-level metrics (DEFAULT level, dimension: `Cluster Name`) are emitted by the controller broker. Every broker emits them, but only the active controller reports the real value while the other brokers report 0.  The same controller-metric behavior applies to `GlobalTopicCount`, `OfflinePartitionsCount`, and `PreferredReplicaImbalanceCount`: never use `Average`. Use `Maximum` to read the true value; `Sum` also works for a simple "> 0" breach check (the non-controller zeros contribute nothing), which is why the `OfflinePartitionsCount` critical alarm below is expressed as `Sum > 0`.
+
 ## Recommended Alarms
 
 ### Critical alarms (set these for every cluster)

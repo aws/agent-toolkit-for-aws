@@ -9,6 +9,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 - **Vector Storage** — Store and query vector embeddings using Amazon S3 Vectors for cost-effective semantic search and RAG workloads.
 - **External Connectivity** — Create and troubleshoot AWS Glue connections to JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift, Snowflake, and BigQuery.
 - **Search & Observability (OpenSearch)** — Migrate from Solr/Elasticsearch/self-managed OpenSearch into Amazon OpenSearch Service or Serverless, provision domains and collections, and build vector/semantic/hybrid search, log analytics, and trace analytics.
+- **Data Warehouse (Amazon Redshift)** — Write Redshift SQL on a provisioned cluster or Serverless workgroup: DDL and distribution/sort keys, COPY/UNLOAD, system views, and the Data API.
 
 ## Agent Skills
 
@@ -22,6 +23,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 | 6 | `storing-and-querying-vectors` | Store and query vector embeddings using Amazon S3 Vectors for semantic search and RAG workloads | [SKILL.md](skills/storing-and-querying-vectors/SKILL.md) |
 | 7 | `connecting-to-data-source` | Create and troubleshoot AWS Glue connections to JDBC databases, Amazon Redshift, Snowflake, and BigQuery | [SKILL.md](skills/connecting-to-data-source/SKILL.md) |
 | 8 | `amazon-opensearch-service` | Migration, provisioning, vector/semantic/hybrid search, log analytics, and trace analytics for Amazon OpenSearch Service and Serverless | [SKILL.md](skills/amazon-opensearch-service/SKILL.md) |
+| 9 | `redshift-guide` | Amazon Redshift SQL dialect, system views, metadata discovery, and Data API patterns, correcting common agent mistakes | [SKILL.md](skills/redshift-guide/SKILL.md) |
 
 ## MCP Servers
 

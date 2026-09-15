@@ -162,3 +162,9 @@ kafka-consumer-groups.sh --bootstrap-server <bootstrap> --describe --group <grou
 ```
 
 The output shows the coordinator. If the group is stuck in `PreparingRebalance` on older Kafka versions, restarting the coordinator broker can unblock it.
+
+## References
+
+- [MSK Client Best Practices](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-kafka-client.html)
+- [MSK Best Practices - Standard](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices.html)
+- [MSK Best Practices - Express](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices-express.html)

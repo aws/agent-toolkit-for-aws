@@ -13,8 +13,9 @@ description: >-
   running queries (use querying-data-lake), finding tables by fuzzy name (use finding-data-lake-assets),
   catalog audit (use exploring-data-catalog), or SaaS platforms like Salesforce, ServiceNow,
   SAP, MongoDB, Kafka.
-version: 1
-argument-hint: '[source-path|connection-name|table-name] [--target s3-tables|iceberg|parquet]'
+metadata:
+  version: "1"
+  argument-hint: "'[source-path|connection-name|table-name] [--target s3-tables|iceberg|parquet]'"
 ---
 
 # Ingest into Data Lake

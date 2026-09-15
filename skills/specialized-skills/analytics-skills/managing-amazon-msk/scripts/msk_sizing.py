@@ -202,6 +202,18 @@ EXPRESS_DATA_IN_PER_GB = 0.01
 CROSS_AZ_COST_PER_GB = 0.02
 PST_COST_PER_MBS_MONTH = 0.08
 
+
+def discount_multiplier(discount_pct: float) -> float:
+    """Convert a PPA / EDP discount percentage into a cost multiplier.
+
+    Applies uniformly to every cost dimension: broker hours, storage, Tiered
+    Storage, Provisioned Storage Throughput, Express data-in, and cross-AZ transfer.
+    """
+    if not 0 <= discount_pct < 100:
+        raise ValueError(f"discount_pct must be >= 0 and < 100; got {discount_pct}")
+    return 1 - discount_pct / 100
+
+
 # NOTE: EBS volumes are provisioned with a 50% utilization buffer because a disk-full
 # event on a Kafka broker is catastrophic (broker stops accepting writes and
 # can corrupt segments).
@@ -347,8 +359,11 @@ def _brokers_for(demand: float, per_broker_capacity: float) -> int:
 # ─── Sizing Logic ──────────────────────────────────────────────────────────────
 
 
-def calculate_standard_sizing(inputs: SizingInputs) -> List[SizingResult]:
+def calculate_standard_sizing(
+    inputs: SizingInputs, discount_pct: float = 0.0
+) -> List[SizingResult]:
     """Calculate sizing for all Standard (M5 / M7g) instance types."""
+    discount = discount_multiplier(discount_pct)
     results = []
 
     ebs_gb_data = (
@@ -375,8 +390,8 @@ def calculate_standard_sizing(inputs: SizingInputs) -> List[SizingResult]:
     else:
         ts_gb = 0.0
 
-    monthly_ebs_cost = ebs_gb * EBS_COST_PER_GB_MONTH
-    monthly_ts_cost = ts_gb * TIERED_STORAGE_COST_PER_GB_MONTH
+    monthly_ebs_cost = ebs_gb * EBS_COST_PER_GB_MONTH * discount
+    monthly_ts_cost = ts_gb * TIERED_STORAGE_COST_PER_GB_MONTH * discount
 
     pst_mbs_per_broker = inputs.pst_per_broker_mbs or 0.0
 
@@ -384,7 +399,7 @@ def calculate_standard_sizing(inputs: SizingInputs) -> List[SizingResult]:
     if not inputs.rack_affined_consumers:
         cross_az_mbs += inputs.avg_data_out_mbs * (NUM_AZS - 1) / NUM_AZS
     cross_az_gb_mo = cross_az_mbs * 3600 * HOURS_PER_MONTH / 1024
-    monthly_cross_az_cost = cross_az_gb_mo * CROSS_AZ_COST_PER_GB
+    monthly_cross_az_cost = cross_az_gb_mo * CROSS_AZ_COST_PER_GB * discount
 
     fan_out = inputs.peak_data_out_mbs / inputs.peak_data_in_mbs
     network_factor = fan_out * AZ_SCALE_FACTOR + network_base
@@ -450,17 +465,17 @@ def calculate_standard_sizing(inputs: SizingInputs) -> List[SizingResult]:
                 brokers_needed=brokers_for_pst,
                 demand=inputs.avg_data_out_mbs,
                 per_broker_capacity=effective_pst,
-                unit=f"MiB/s avg egress (PST cap {effective_pst:.0f}; instance max {specs['ebs_throughput_mbs']:.0f})",
+                unit="MiB/s avg egress (capacity = PST cap, clamped to instance EBS max)",
             )
 
         broker_count = max(d.brokers_needed for d in details.values())
         bottleneck = max(details, key=lambda k: details[k].brokers_needed)
 
-        monthly_broker_cost = broker_count * specs["price_per_hr"] * HOURS_PER_MONTH
+        monthly_broker_cost = broker_count * specs["price_per_hr"] * HOURS_PER_MONTH * discount
 
         if pst_mbs_per_broker > 0 and instance_type in PST_ELIGIBLE:
             effective_pst_mbs = min(pst_mbs_per_broker, specs["ebs_throughput_mbs"])
-            monthly_pst_cost = broker_count * effective_pst_mbs * PST_COST_PER_MBS_MONTH
+            monthly_pst_cost = broker_count * effective_pst_mbs * PST_COST_PER_MBS_MONTH * discount
         else:
             monthly_pst_cost = 0.0
 
@@ -491,21 +506,22 @@ def calculate_standard_sizing(inputs: SizingInputs) -> List[SizingResult]:
     return results
 
 
-def calculate_express_sizing(inputs: SizingInputs) -> List[SizingResult]:
+def calculate_express_sizing(inputs: SizingInputs, discount_pct: float = 0.0) -> List[SizingResult]:
     """Calculate sizing for all Express (M7g) instance types."""
+    discount = discount_multiplier(discount_pct)
     results = []
 
     cross_az_mbs = inputs.avg_data_in_mbs * (NUM_AZS - 1) / NUM_AZS
     if not inputs.rack_affined_consumers:
         cross_az_mbs += inputs.avg_data_out_mbs * (NUM_AZS - 1) / NUM_AZS
     cross_az_gb_mo = cross_az_mbs * 3600 * HOURS_PER_MONTH / 1024
-    monthly_cross_az_cost = cross_az_gb_mo * CROSS_AZ_COST_PER_GB
+    monthly_cross_az_cost = cross_az_gb_mo * CROSS_AZ_COST_PER_GB * discount
 
     data_in_gb_mo = inputs.avg_data_in_mbs * 3600 * HOURS_PER_MONTH / 1024
-    monthly_data_in_cost = data_in_gb_mo * EXPRESS_DATA_IN_PER_GB
+    monthly_data_in_cost = data_in_gb_mo * EXPRESS_DATA_IN_PER_GB * discount
 
     express_storage_gb = inputs.avg_data_in_mbs * inputs.retention_hours * 3600 / 1024
-    monthly_express_storage_cost = express_storage_gb * EBS_COST_PER_GB_MONTH
+    monthly_express_storage_cost = express_storage_gb * EBS_COST_PER_GB_MONTH * discount
 
     partition_key = "max_partitions" if inputs.use_max_partitions else "rec_partitions"
 
@@ -549,7 +565,7 @@ def calculate_express_sizing(inputs: SizingInputs) -> List[SizingResult]:
         broker_count = max(d.brokers_needed for d in details.values())
         bottleneck = max(details, key=lambda k: details[k].brokers_needed)
 
-        monthly_broker_cost = broker_count * specs["price_per_hr"] * HOURS_PER_MONTH
+        monthly_broker_cost = broker_count * specs["price_per_hr"] * HOURS_PER_MONTH * discount
 
         results.append(
             SizingResult(
@@ -614,6 +630,39 @@ _CLASS_LABELS = {
     "express": "Express M7g",
 }
 
+# Broker classes selectable via --broker-classes, mapped to the recommendation classes
+# they cover.
+BROKER_CLASS_GROUPS = {
+    "standard": ("m5_standard", "m7g_standard"),
+    "express": ("express",),
+}
+
+
+def parse_broker_classes(value: str) -> List[str]:
+    """Parse a --broker-classes value into an ordered, de-duplicated list.
+
+    Accepts "standard", "express", or any comma-separated combination.
+    """
+    selected: List[str] = []
+    for raw in value.split(","):
+        token = raw.strip().lower()
+        if not token:
+            continue
+        if token not in BROKER_CLASS_GROUPS:
+            valid = ", ".join(sorted(BROKER_CLASS_GROUPS))
+            raise argparse.ArgumentTypeError(
+                f"invalid broker class {raw.strip()!r}; choose from: {valid} "
+                "(comma-separate to select both)"
+            )
+        if token not in selected:
+            selected.append(token)
+    if not selected:
+        raise argparse.ArgumentTypeError(
+            "--broker-classes requires at least one of: "
+            f"{', '.join(sorted(BROKER_CLASS_GROUPS))}"
+        )
+    return selected
+
 
 def _format_summary_line(r: SizingResult) -> str:
     return (
@@ -622,49 +671,203 @@ def _format_summary_line(r: SizingResult) -> str:
     )
 
 
-def _format_explain_block(r: SizingResult) -> str:
-    lines = [f"\n{r.instance_type}: {r.broker_count} brokers (bottleneck: {r.bottleneck})"]
+# Cost dimensions that may be identical across every instance in a class, in which
+# case they are printed once per class instead of once per instance. Broker cost is
+# never hoisted — it scales with broker count and instance price.
+_SHAREABLE_COST_FIELDS = (
+    ("Storage", "monthly_ebs_cost"),
+    ("Tiered Storage", "monthly_ts_cost"),
+    ("PST", "monthly_pst_cost"),
+    ("Express data-in", "monthly_data_in_cost"),
+    ("Cross-AZ", "monthly_cross_az_cost"),
+)
 
-    lines.append("  Constraint analysis (brokers needed, rounded up to multiple of AZs):")
 
-    sorted_details = sorted(
-        r.bottleneck_details.values(),
-        key=lambda d: d.brokers_needed,
-        reverse=True,
-    )
-    for d in sorted_details:
-        marker = " ← bottleneck" if d.name == r.bottleneck else ""
-        lines.append(
-            f"    {d.name:<11} {d.brokers_needed:>5} brokers  "
-            f"(demand {d.demand:,.2f} / capacity {d.per_broker_capacity:,.2f} per broker) "
-            f"[{d.unit}]{marker}"
+def _shared_costs(results: List[SizingResult]) -> Dict[str, tuple]:
+    """Cost fields that are non-zero and identical across every result.
+
+    Keyed by attribute name, valued as (label, amount).
+    """
+    shared: Dict[str, tuple] = {}
+    for label, attr in _SHAREABLE_COST_FIELDS:
+        values = {round(getattr(r, attr), 6) for r in results}
+        if len(values) == 1:
+            (value,) = tuple(values)
+            if value > 0:
+                shared[attr] = (label, value)
+    return shared
+
+
+def _shared_subtotal(shared: Dict[str, tuple]) -> float:
+    """Sum of the shared cost rows as displayed, so the printed column adds up."""
+    return sum(round(value, 2) for _, value in shared.values())
+
+
+def _format_inputs_block(
+    inputs: SizingInputs, results: List[SizingResult], discount_pct: float
+) -> str:
+    """Echo every setting that shaped the numbers below. Printed once."""
+    present = {name for r in results for name in r.bottleneck_details}
+    has_standard = any("Express" not in r.instance_type for r in results)
+    has_express = any("Express" in r.instance_type for r in results)
+    partition_limit = "maximum" if inputs.use_max_partitions else "recommended"
+
+    rows = [
+        ("average ingress", f"{inputs.avg_data_in_mbs:,.2f}", "MiB/s"),
+        ("peak ingress", f"{inputs.peak_data_in_mbs:,.2f}", "MiB/s"),
+        ("average egress", f"{inputs.avg_data_out_mbs:,.2f}", "MiB/s"),
+        ("peak egress", f"{inputs.peak_data_out_mbs:,.2f}", "MiB/s"),
+        (
+            "partitions",
+            f"{inputs.num_partitions:,}",
+            f"total including replicas, sized against the {partition_limit} per-broker limit",
+        ),
+        (
+            "retention",
+            f"{inputs.retention_hours:,}",
+            f"hours total, of which {inputs.primary_retention_hours:,} are primary",
+        ),
+    ]
+
+    if has_standard:
+        rows.append(
+            (
+                "replication factor",
+                f"{inputs.replication_factor}",
+                "Standard; Express always replicates 3 ways",
+            )
+        )
+        rows.append(
+            (
+                "utilization",
+                f"{inputs.utilization_standard:.2f}",
+                "capacity buffer for headroom (Standard)",
+            )
+        )
+    if has_express:
+        rows.append(
+            (
+                "utilization (Express)" if has_standard else "utilization",
+                f"{inputs.utilization_express:.2f}",
+                "capacity buffer for headroom (Express)",
+            )
         )
 
-    lines.append("  Monthly cost breakdown:")
-    cost_rows = [
-        ("Brokers", r.monthly_broker_cost),
-        ("Storage", r.monthly_ebs_cost),
-        ("Tiered Storage", r.monthly_ts_cost),
-        ("Provisioned ST", r.monthly_pst_cost),
-        ("Express data-in", r.monthly_data_in_cost),
-        ("Cross-AZ", r.monthly_cross_az_cost),
-    ]
-    for label, cost in cost_rows:
-        if cost > 0:
-            pct = (cost / r.total_monthly_cost * 100) if r.total_monthly_cost else 0
-            lines.append(f"    {label:<16} ${cost:>14,.2f}  ({pct:5.1f}%)")
-    lines.append(f"    {'Total':<16} ${r.total_monthly_cost:>14,.2f}")
+    if "storage" in present:
+        storage_gb = next(
+            r.bottleneck_details["storage"].demand
+            for r in results
+            if "storage" in r.bottleneck_details
+        )
+        rows.append(
+            (
+                "storage",
+                f"{storage_gb:,.2f}",
+                f"GiB EBS primary (average ingress x {inputs.primary_retention_hours}h primary "
+                f"retention x RF{inputs.replication_factor} x {EBS_HEADROOM_FACTOR:g} headroom)",
+            )
+        )
+    if "pst" in present and inputs.pst_per_broker_mbs is not None:
+        rows.append(
+            (
+                "provisioned storage throughput",
+                f"{inputs.pst_per_broker_mbs:,.2f}",
+                "MiB/s per broker requested, clamped to each instance's EBS max; "
+                "sized against average egress",
+            )
+        )
+
+    rows.append(
+        (
+            "consumer rack awareness",
+            "yes" if inputs.rack_affined_consumers else "no",
+            (
+                "consumers fetch from local-AZ replicas, so cross-AZ cost excludes consumer fetch"
+                if inputs.rack_affined_consumers
+                else "consumers fetch across AZs, so cross-AZ cost includes consumer fetch"
+            ),
+        )
+    )
+    rows.append(
+        (
+            "pricing",
+            f"-{discount_pct:g}%" if discount_pct else "list",
+            (
+                f"{PRICING_REGION} on-demand with a {discount_pct:g}% negotiated discount "
+                "applied to every cost dimension"
+                if discount_pct
+                else f"{PRICING_REGION} public on-demand, no negotiated discount applied"
+            ),
+        )
+    )
+
+    label_w = max(len(label) for label, _, _ in rows)
+    value_w = max(len(value) for _, value, _ in rows)
+    return "\n".join(
+        f"  {label:<{label_w}}  {value:>{value_w}}  {note}" for label, value, note in rows
+    )
+
+
+def _format_shared_costs(shared: Dict[str, tuple]) -> str:
+    lines = [f"  {label:<16} ${value:>14,.2f}" for label, value in shared.values()]
+    lines.append(f"  {'Subtotal':<16} ${_shared_subtotal(shared):>14,.2f}")
     return "\n".join(lines)
+
+
+def _format_broker_table(results: List[SizingResult], shared: Dict[str, tuple]) -> str:
+    """One Markdown row per instance.
+
+    `required brokers` is the maximum across every constraint; `bottleneck` names the
+    constraint that produced it.
+    """
+    headers = ["broker type", "required brokers", "bottleneck"]
+
+    # Any non-zero cost dimension that varies across instances needs its own column,
+    # otherwise broker cost + shared costs will not add up to the total.
+    per_instance_costs = [
+        (label, attr)
+        for label, attr in _SHAREABLE_COST_FIELDS
+        if attr not in shared and any(getattr(r, attr) > 0 for r in results)
+    ]
+
+    headers.append("broker cost / mo")
+    headers += [f"{label} / mo" for label, _ in per_instance_costs]
+    headers.append("total cost / mo incl. shared" if shared else "total cost / mo")
+
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "|" + "|".join(["---"] * len(headers)) + "|",
+    ]
+    for r in results:
+        cells = [r.instance_type, f"{r.broker_count}", r.bottleneck]
+        cells.append(f"${r.monthly_broker_cost:,.2f}")
+        cells += [f"${getattr(r, attr):,.2f}" for _, attr in per_instance_costs]
+        cells.append(f"${r.total_monthly_cost:,.2f}")
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def _print_sizing_section(title: str, results: List[SizingResult]) -> None:
+    print(f"\n=== {title} ===")
+    shared = _shared_costs(results)
+    if shared:
+        print("\nShared monthly costs (same for every instance in this section):")
+        print(_format_shared_costs(shared))
+        print("\nBroker sizing:")
+    print(_format_broker_table(results, shared))
 
 
 def _print_recommendations(
     results: List[SizingResult],
     broker_quota: int,
-    explain: bool,
+    broker_classes: Optional[List[str]] = None,
 ) -> None:
+    selected = broker_classes or list(BROKER_CLASS_GROUPS)
+    classes = [cls for group in selected for cls in BROKER_CLASS_GROUPS[group]]
     recs = recommend_per_class(results, broker_quota=broker_quota)
     print(f"\n=== Recommended pick per class (≤ {broker_quota} brokers, lowest monthly cost) ===")
-    for cls in ("m5_standard", "m7g_standard", "express"):
+    print("  Cost breakdown for each pick is in the sizing sections above.")
+    for cls in classes:
         label = _CLASS_LABELS[cls]
         rec = recs[cls]
         if rec is None:
@@ -673,8 +876,6 @@ def _print_recommendations(
             )
         else:
             print(f"  {label}: {_format_summary_line(rec)}")
-            if explain:
-                print(_format_explain_block(rec))
 
 
 def _parse_args():
@@ -742,9 +943,17 @@ def _parse_args():
         help="Include cross-AZ consumer fetch traffic in the cost estimate (assumes consumers fetch across AZs instead of from local-AZ replicas). Does NOT change broker count.",
     )
     p.add_argument(
-        "--explain",
-        action="store_true",
-        help="Print per-constraint and per-cost-factor breakdown for every instance",
+        "--discount-pct",
+        type=parse_discount_pct,
+        default=0.0,
+        help="Private Pricing Agreement (PPA) or Enterprise Discount Program (EDP) discount percentage, applied to every cost dimension (e.g. 15 for 15%% off)",
+    )
+    p.add_argument(
+        "--broker-classes",
+        type=parse_broker_classes,
+        default="standard,express",
+        metavar="standard|express|standard,express",
+        help="Broker classes to size and report. Pass 'express' to suppress Standard results entirely",
     )
     p.add_argument(
         "--broker-quota",
@@ -753,6 +962,36 @@ def _parse_args():
         help="Per-cluster broker quota used to pick a 'recommended' instance per class (default 60 for KRaft clusters, 30 for Zookeeper, can be increased via AWS Support case)",
     )
     return p.parse_args()
+
+
+def parse_discount_pct(value: str) -> float:
+    """Validate a --discount-pct value as a percentage in [0, 100)."""
+    try:
+        pct = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"invalid discount percentage {value!r}; expected a number"
+        )
+    if not 0 <= pct < 100:
+        raise argparse.ArgumentTypeError(f"discount percentage must be >= 0 and < 100; got {value}")
+    return pct
+
+
+def _format_pricing_banner(discount_pct: float) -> str:
+    if discount_pct == 0:
+        return (
+            f"\nNOTE: all cost figures below use {PRICING_REGION} public on-demand pricing; "
+            "other regions will differ.\n"
+            "If your organization has a Private Pricing Agreement (PPA), Enterprise Discount\n"
+            "Program (EDP), or other negotiated pricing, your actual costs will differ. Contact\n"
+            "your AWS account team for pricing that reflects your agreements, then re-run with\n"
+            "--discount-pct to model them."
+        )
+    return (
+        f"\nNOTE: cost figures below apply a {discount_pct:g}% negotiated discount to every cost\n"
+        f"dimension, based on {PRICING_REGION} on-demand pricing. Confirm the discount against\n"
+        "your agreement with your AWS account team before sharing these figures."
+    )
 
 
 def _inputs_from_args(a) -> SizingInputs:
@@ -776,26 +1015,33 @@ def _inputs_from_args(a) -> SizingInputs:
 if __name__ == "__main__":
     args = _parse_args()
     inputs = _inputs_from_args(args)
-    partition_mode = "max" if inputs.use_max_partitions else "recommended"
+    partition_mode = "maximum" if inputs.use_max_partitions else "recommended"
 
-    standard_results = calculate_standard_sizing(inputs)
-    express_results = calculate_express_sizing(inputs)
+    broker_classes = args.broker_classes
+    standard_results = (
+        calculate_standard_sizing(inputs, args.discount_pct) if "standard" in broker_classes else []
+    )
+    express_results = (
+        calculate_express_sizing(inputs, args.discount_pct) if "express" in broker_classes else []
+    )
     all_results = standard_results + express_results
 
-    print(
-        f"\nNOTE: all cost figures below use {PRICING_REGION} on-demand pricing; other regions will differ."
+    print(_format_pricing_banner(args.discount_pct))
+
+    if all_results:
+        print("\n=== Sizing inputs ===")
+        print(_format_inputs_block(inputs, all_results, args.discount_pct))
+
+    section_suffix = f"using {partition_mode} partition limits per broker"
+
+    if standard_results:
+        _print_sizing_section(f"Standard Sizing ({section_suffix})", standard_results)
+
+    if express_results:
+        _print_sizing_section(f"Express Sizing ({section_suffix})", express_results)
+
+    _print_recommendations(
+        all_results,
+        broker_quota=args.broker_quota,
+        broker_classes=broker_classes,
     )
-
-    print(f"\n=== Standard Sizing ({partition_mode} partitions) ===")
-    for r in standard_results:
-        print(_format_summary_line(r))
-        if args.explain:
-            print(_format_explain_block(r))
-
-    print(f"\n=== Express Sizing ({partition_mode} partitions) ===")
-    for r in express_results:
-        print(_format_summary_line(r))
-        if args.explain:
-            print(_format_explain_block(r))
-
-    _print_recommendations(all_results, broker_quota=args.broker_quota, explain=args.explain)

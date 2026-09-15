@@ -1,6 +1,8 @@
 [tools]
 node = "24"
+python = "3.12"
 gitleaks = "latest"
+uv = "latest"
 
 [tools."npm:markdownlint-cli2"]
 version = "0.18"
@@ -21,9 +23,13 @@ run = "python3 tools/validate.py"
 description = "Check plugin skills are in sync with canonical sources"
 run = "python3 tools/sync-plugin-skills.py --check"
 
+[tasks."lint:spec"]
+description = "Validate Agent Plugins v1.0.0 conformance (plugins/)"
+run = "uv run --with jsonschema --with pyyaml python tools/validate_spec.py"
+
 [tasks.validate]
 description = "Run all validation"
-depends = ["lint:manifests", "lint:skill-parity"]
+depends = ["lint:manifests", "lint:skill-parity", "lint:spec"]
 
 [tasks.security]
 description = "Run security scans"
