@@ -439,7 +439,9 @@ Using the `wallet_address` / `redirect_url` the script printed:
 
       **Deployed alternative:** For production, deploy the frontend (e.g. to Vercel: `vercel --prod`) and direct end users to the hosted URL. The same `.env.local` values go into Vercel's environment variables settings, and the **deployed origin must be added to Allowed origins** the same way `http://localhost:3000` was in Step 7d (`https://your-app.vercel.app`, no trailing slash). Privy does not allow generic preview-deployment wildcards like `https://*.vercel.app`, so map previews to a subdomain you control if they need to work. Each end user logs in with their own email, delegates once, and is then ready for agent-initiated payments.
 
-2. **Funding** — send testnet USDC to `wallet_address` via the Circle faucet (<https://faucet.circle.com/>), Base Sepolia.
+2. **Funding** — fund `wallet_address` on the network your target merchant settles on:
+    - **x402 (Base Sepolia)**: send testnet USDC via the Circle faucet (<https://faucet.circle.com/>).
+    - **MPP on Tempo Moderato** (StripePrivy instruments only): send the canonical test stablecoin **pathUSD** via the Tempo faucet (<https://tempo.xyz/developers/docs/quickstart/faucet>). AgentCore accepts only the network's canonical token — the faucet's other stablecoins (AlphaUSD/BetaUSD/ThetaUSD) are rejected with `MPP_EVM_NON_CANONICAL_USDC`. For buyer-pays challenges (`buyerPaysGasFees: true`) the wallet also needs native Tempo gas. See [MPP networks, providers, and funding](#mpp-networks-providers-and-funding).
 
 ### Step 8: Set env vars and test — agent runs
 
@@ -549,6 +551,23 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 **MPP: `ProcessPayment` fails with `SubscriptionRequiredException` (403):**
 
 - The account is not subscribed to the required AWS Marketplace offering. Follow the `subscriptionUrl` in the error to subscribe, then retry.
+
+**MPP: `ProcessPayment` fails with `AccessDeniedException` (`MPP_ACCESS_NOT_ALLOWLISTED`, 403):**
+
+- MPP is gated by a **fail-closed account allowlist** ("Access to MPP … is not enabled for this account. Contact AWS Support for access."), separate from the Marketplace subscription gate above. Request MPP access for the account through AWS Support — this is not a wiring bug, and it cannot be worked around.
+
+**MPP on Tempo: `ProcessPayment` fails with `ValidationException` (`MPP_EVM_NON_CANONICAL_USDC`):**
+
+- The Tempo charge currency is not the network's canonical USD stablecoin. On Moderato, fund and pay with **pathUSD** — the faucet's other test tokens (AlphaUSD/BetaUSD/ThetaUSD) are rejected.
+
+**MPP on Tempo: `ProcessPayment` fails with `TEMPO_INSUFFICIENT_BALANCE` or a memo error:**
+
+- `TEMPO_INSUFFICIENT_BALANCE` — the buyer wallet is underfunded for a buyer-pays charge (`eth_estimateGas` reverted). Top it up with pathUSD via the Tempo faucet (Step 7); the wallet also needs native Tempo gas for buyer-pays.
+- "Tempo server memo must be exactly 32 bytes" — the merchant's `methodDetails.memo` is malformed. This is a seller-side error; do not try to fix it by editing the challenge (that breaks the HMAC binding).
+
+**MPP on Tempo: `ProcessPayment` fails with "Tempo payments are not supported for Coinbase-managed payment instruments":**
+
+- Tempo requires a **StripePrivy** connector/instrument. Provision the connector with `--provider StripePrivy` (Step 3b) and create the instrument on it — Coinbase-managed instruments cannot pay Tempo at all.
 
 **ProcessPayment fails with "Payment session not found":**
 
@@ -779,6 +798,20 @@ Agent GETs https://paid-api.example.com/data
   └─ 4. Return content to agent
 ```
 
+### MPP networks, providers, and funding
+
+MPP is method-agnostic, but the one crypto network AgentCore adds *beyond* the x402 chains is **Tempo** — a stablecoin chain from Stripe and Tempo, reachable **only via MPP**. Tempo never appears in an x402 challenge, so it is deliberately **not** a row in the x402 Chains table below.
+
+| Tempo network | CAIP-2 id | Type |
+|---|---|---|
+| Tempo Mainnet | `eip155:4217` | Mainnet |
+| Tempo Moderato | `eip155:42431` | Testnet |
+
+- **Provider — StripePrivy only.** Tempo is not supported on Coinbase-managed instruments (`ValidationException("Tempo payments are not supported for Coinbase-managed payment instruments.")`). To pay Tempo/MPP endpoints, provision the connector with `--provider StripePrivy` (Step 3b) and create the instrument on it.
+- **No up-front network choice.** As with x402, you do not "target" Tempo when provisioning — AgentCore maps the MPP challenge to Tempo automatically (a `method="evm"` challenge carrying `chainId=42431` maps to Moderato). Provision once with a StripePrivy connector; the agent then pays x402 *and* Tempo/MPP merchants through the same manager/instrument/session.
+- **Asset — the network's canonical stablecoin.** AgentCore validates the charge against the network's canonical USD stablecoin (`MPP_EVM_NON_CANONICAL_USDC` otherwise). On **Moderato** that canonical token is **pathUSD**; fund the wallet with pathUSD from the Tempo faucet (<https://tempo.xyz/developers/docs/quickstart/faucet>) — see Step 7.
+- **Access gate.** MPP (including Tempo) is behind a fail-closed account allowlist — a first call may return `AccessDeniedException(MPP_ACCESS_NOT_ALLOWLISTED)`. Request access via AWS Support (see Debugging).
+
 ## Supported Networks
 
 Two concepts: **network** (blockchain family, used when creating instruments) and **chain** (specific chain, used in x402 challenges and balance queries).
@@ -802,6 +835,8 @@ Two concepts: **network** (blockchain family, used when creating instruments) an
 
 For testing, start with **Base Sepolia** (network: `ETHEREUM`, chain: `BASE_SEPOLIA`) — free testnet tokens from https://faucet.circle.com/.
 
+> **These are the x402 chains.** The table above lists chains that appear in **x402** challenges. **Tempo** (`eip155:4217` mainnet, `eip155:42431` Moderato testnet) is reachable only via **MPP**, is StripePrivy-only, and settles in the network's canonical stablecoin (pathUSD on Moderato). It is documented separately in [MPP networks, providers, and funding](#mpp-networks-providers-and-funding).
+
 ## Quality criteria
 
 - CLI is installed via `npm install -g @aws/agentcore`, not pip
@@ -812,5 +847,6 @@ For testing, start with **Base Sepolia** (network: `ETHEREUM`, chain: `BASE_SEPO
 - The generic tool path (Step 5b) is used only for other frameworks or when the developer explicitly wants manual control
 - Payments are wired via the framework-native integration (Step 5a) or the framework-agnostic `x402_fetch` tool (Step 5b)
 - Both x402 and MPP merchants are payable through the same manager/connector/instrument/session and the same `ProcessPayment` API — no protocol is chosen up front
+- Tempo/MPP endpoints are paid on a **StripePrivy** connector (Coinbase-managed instruments cannot pay Tempo), funded with the network's canonical stablecoin (pathUSD on Moderato via the Tempo faucet) — not the x402 Base Sepolia + Circle path
 - For MPP, the raw `WWW-Authenticate: Payment` header is forwarded verbatim (one per call) and the returned `paymentCredential` is attached as `Authorization: Payment <token>` unchanged
 - Credentials never pass through the agent or the chat
