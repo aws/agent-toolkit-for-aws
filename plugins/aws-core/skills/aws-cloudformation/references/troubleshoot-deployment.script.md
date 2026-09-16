@@ -11,7 +11,6 @@ Deterministic procedure for diagnosing a CloudFormation stack deployment failure
 - **include_cloudtrail** (optional, default: "true"): Whether to correlate with CloudTrail events. Set to "false" to skip CloudTrail lookup (faster but less context).
 
 **Constraints for parameter acquisition:**
-
 - You MUST ask for all required parameters upfront in a single prompt
 - You MUST support multiple input methods for the stack identifier:
   - Stack name (if the stack still exists)
@@ -25,7 +24,6 @@ Deterministic procedure for diagnosing a CloudFormation stack deployment failure
 Check that AWS CLI and credentials are usable, and that the principal has required read permissions.
 
 **Constraints:**
-
 - You MUST check in this order of preference:
   1. `call_aws` tool from the AWS MCP Server (preferred for sandboxed execution, audit logging, and observability)
   2. AWS CLI (`aws`) available on the user's system (verify with `which aws` or `aws --version`)
@@ -41,7 +39,6 @@ Check that AWS CLI and credentials are usable, and that the principal has requir
 Fetch the current stack state.
 
 **Constraints:**
-
 - You MUST call `aws cloudformation describe-stacks --stack-name <name_or_arn> --region <region>`
 - You MUST capture the `StackStatus`, `StackStatusReason`, `LastUpdatedTime`, and `StackId` fields
 - If the stack is not found and the user provided a name, You MUST ask whether the stack may have been deleted (in which case the user needs to provide the Stack ARN)
@@ -52,7 +49,6 @@ Fetch the current stack state.
 Retrieve only the failed events using the `FailedEvents` filter.
 
 **Constraints:**
-
 - You MUST call `aws cloudformation describe-events --stack-name <name_or_arn> --filters FailedEvents=true --region <region>` because the filter returns only `PROVISIONING_ERROR` and `VALIDATION_ERROR` event types which are the relevant signals for root-cause analysis
 - You MUST NOT use `aws cloudformation describe-stack-events` for root-cause analysis because it returns every event without filtering and buries the actual failures in noise
 - You MUST capture for each failed event: `LogicalResourceId`, `PhysicalResourceId`, `ResourceType`, `ResourceStatus`, `ResourceStatusReason`, `Timestamp`, `EventType`
@@ -65,7 +61,6 @@ Retrieve only the failed events using the `FailedEvents` filter.
 Compare the failure message against known patterns to propose a diagnosis.
 
 **Constraints:**
-
 - You MUST evaluate each failure message against these common patterns:
   - `is not authorized to perform` → IAM permission gap
   - `already exists` → resource name conflict
@@ -83,7 +78,6 @@ Compare the failure message against known patterns to propose a diagnosis.
 Pull CloudTrail events in a ±60 second window around the first failure to find the underlying AWS API error.
 
 **Constraints:**
-
 - You MUST skip this step if the user set `include_cloudtrail=false` or if `cloudtrail:LookupEvents` permission is missing
 - You MUST compute the time window as `Timestamp - 60s` to `Timestamp + 60s` using the first failed event's timestamp, because CloudFormation issues API calls within seconds of recording the failure
 - You MUST call `aws cloudtrail lookup-events --start-time <start> --end-time <end> --region <region> --max-results 50`
@@ -100,7 +94,6 @@ Pull CloudTrail events in a ±60 second window around the first failure to find 
 Synthesize the stack event, pattern match, and CloudTrail correlation into a prioritized diagnosis.
 
 **Constraints:**
-
 - You MUST lead with the root cause of the FIRST failed event, because cascading failures often disappear once the first is fixed
 - You MUST classify each fix as either:
   - **Template-level** (change the template, redeploy): missing required property, invalid enum, name conflict, cyclic `DependsOn`
@@ -116,7 +109,6 @@ Synthesize the stack event, pattern match, and CloudTrail correlation into a pri
 Guide the user toward recovery.
 
 **Constraints:**
-
 - If the fix is template-level, You SHOULD recommend running a pre-deployment validation pipeline (cfn-lint → cfn-guard → change set validation) on the corrected template before redeploying, because re-deploying a broken template reruns the failure cycle
 - If the fix is environment-level, You MUST NOT recommend redeploying until the environment issue is confirmed resolved
 - If the stack is in `UPDATE_ROLLBACK_FAILED`, You MUST warn before recommending `continue-update-rollback` that it is a one-way operation and resources listed in `--resources-to-skip` will desynchronize from the template
@@ -189,7 +181,6 @@ The `--filters` parameter requires a recent AWS CLI version. Upgrade with `pip i
 
 ### CloudTrail lookup returns nothing for a known failure
 Causes:
-
 - The failure was older than 90 days (CloudTrail Events history limit)
 - The CloudTrail trail is in a different region than the stack
 - The failing API call was made from a service that does not source from `cloudformation.amazonaws.com` (e.g., a Lambda-backed custom resource calls AWS APIs from its own execution role, so `sourceIPAddress` will differ)
