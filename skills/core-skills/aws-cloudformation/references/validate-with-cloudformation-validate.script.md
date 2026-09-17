@@ -16,6 +16,7 @@ This SOP also provides concise guidance for embedding validation in an applicati
   `cfn-validate --help` output, such as rule sources, schema overlays, exclusions, or severity controls.
 
 **Constraints for parameter acquisition:**
+
 - If all required parameters are already provided, You MUST proceed to the Steps
 - If any required parameters are missing, You MUST ask for them before proceeding
 - When asking for parameters, You MUST request all parameters in a single prompt
@@ -30,6 +31,7 @@ This SOP also provides concise guidance for embedding validation in an applicati
 Read the selected template without modifying it.
 
 **Constraints:**
+
 - You MUST use the appropriate tool for direct content, a local path, or the user-provided URL
 - You MUST confirm the content is non-empty and parseable as YAML or JSON before invoking the validator
 - If the template cannot be read or parsed, You MUST report the specific error and stop because later findings would not
@@ -41,6 +43,7 @@ Read the selected template without modifying it.
 Check whether `cfn-validate` is available and identify the installed release.
 
 **Constraints:**
+
 - You MUST check for `cfn-validate` with the platform-appropriate command lookup and then run its version command if
   supported
 - If it is unavailable, You MUST read the
@@ -59,6 +62,7 @@ Check whether `cfn-validate` is available and identify the installed release.
 Read the installed CLI's help before constructing the command.
 
 **Constraints:**
+
 - You MUST run `cfn-validate --help` and use the flags, input forms, report formats, and exit behavior documented by that
   installed release
 - You MUST consult the
@@ -75,6 +79,7 @@ Read the installed CLI's help before constructing the command.
 Validate the unchanged template with the installed CLI.
 
 **Constraints:**
+
 - You MUST use the invocation syntax confirmed in Step 3
 - If `regions` contains multiple entries, You MUST run one validation per region and preserve each report separately so
   region-specific findings are not merged or hidden
@@ -89,6 +94,7 @@ Validate the unchanged template with the installed CLI.
 Report the local validation result in a form the user can act on.
 
 **Constraints:**
+
 - You MUST count findings by the severities emitted by the installed release
 - You MUST group findings by logical resource or template section
 - For each finding, You MUST include its rule identifier, property path, source location, and message when available
@@ -103,6 +109,7 @@ Report the local validation result in a form the user can act on.
 After local validation has no blocking findings, continue with the default security and compliance layer.
 
 **Constraints:**
+
 - You SHOULD run the
   [cfn-guard security and compliance SOP](check-cloudformation-template-compliance.script.md) by default rather than
   requiring the user to opt in
@@ -118,6 +125,7 @@ After local validation has no blocking findings, continue with the default secur
 Guide the user after completing local validation and the security and compliance layer.
 
 **Constraints:**
+
 - If blocking findings from either layer remain, You MUST recommend fixing them and re-running the applicable check
 - When account-aware checks are needed, You SHOULD recommend the
   [CloudFormation service pre-deployment validation SOP](cloudformation-pre-deploy-validation.script.md)

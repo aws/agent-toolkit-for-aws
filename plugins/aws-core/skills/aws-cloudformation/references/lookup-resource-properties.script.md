@@ -14,6 +14,7 @@ Deterministic procedure for looking up the authoritative schema for a CloudForma
   - `property:<PropertyName>` — deep-dive on a single property including nested sub-properties
 
 **Constraints for parameter acquisition:**
+
 - You MUST ask for the resource type upfront if not provided
 - You SHOULD infer the resource type from the user's question when possible (e.g., "what properties does a Lambda function have" → `AWS::Lambda::Function`)
 - You MUST confirm the inferred resource type with the user before looking up if there is any ambiguity
@@ -25,6 +26,7 @@ Deterministic procedure for looking up the authoritative schema for a CloudForma
 Check which lookup mechanism is available.
 
 **Constraints:**
+
 - You MUST check for web access (agent's web fetch or equivalent capability) to retrieve the public CloudFormation documentation
 - You MUST ONLY check for availability and MUST NOT execute lookups during this step
 - If web access is not available, You MUST inform the user that offline lookup requires a locally-cached schema (e.g., `cfn-lint`'s bundled schema via `cfn-lint --info`) and ask whether to use the local fallback or abort
@@ -34,6 +36,7 @@ Check which lookup mechanism is available.
 Derive the authoritative CloudFormation documentation URL from the resource type.
 
 **Constraints:**
+
 - You MUST use the URL pattern: `https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-<service>-<resource>.html`
 - Examples:
   - `AWS::Lambda::Function` → `aws-resource-lambda-function.html`
@@ -47,6 +50,7 @@ Derive the authoritative CloudFormation documentation URL from the resource type
 Retrieve the documentation and extract the relevant sections.
 
 **Constraints:**
+
 - You MUST fetch the documentation page
 - You MUST extract, based on the `focus` parameter:
   - **properties**: the "Properties" section with each property's name, required/optional status, type, allowed values, update requirements
@@ -62,6 +66,7 @@ Retrieve the documentation and extract the relevant sections.
 Return the schema information in a format that is directly usable for template authoring.
 
 **Constraints:**
+
 - You MUST present properties as a table or bullet list with columns/fields: Name, Required, Type, Default (if any), Allowed Values (if an enum), Update Requires
 - For the `required` focus, You MUST list ONLY required properties and explicitly state "the remaining properties are optional" rather than omitting them silently
 - For complex nested types, You MUST link to the nested type's documentation URL so the user can dig deeper
@@ -73,6 +78,7 @@ Return the schema information in a format that is directly usable for template a
 Guide the user on how to use the information.
 
 **Constraints:**
+
 - If the user was authoring a template, You SHOULD offer to draft the resource block using the schema
 - You SHOULD recommend running cfn-lint and cfn-guard after authoring because they catch remaining schema and security issues
 - If the user asked about a specific property that has nested complex types, You SHOULD offer to recursively look up the nested types on request
@@ -80,12 +86,14 @@ Guide the user on how to use the information.
 ## Examples
 
 ### Example Input
+
 ```
 resource_type: AWS::Lambda::Function
 focus: required
 ```
 
 ### Example Output
+
 ```
 Required properties for AWS::Lambda::Function
 Source: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-lambda-function.html

@@ -13,6 +13,7 @@ Deterministic procedure for applying CloudFormation authoring best practices to 
   - `strict` — recommended + opinionated improvements
 
 **Constraints for parameter acquisition:**
+
 - You MUST ask for the template upfront
 - You SHOULD default to `strictness=recommended` unless the user specifies otherwise
 
@@ -23,6 +24,7 @@ Deterministic procedure for applying CloudFormation authoring best practices to 
 No external tools required. This SOP is purely analytical.
 
 **Constraints:**
+
 - You MUST be able to read and parse the template as YAML or JSON
 
 ### 2. Check Resource Naming
@@ -30,6 +32,7 @@ No external tools required. This SOP is purely analytical.
 **Rule:** Avoid hardcoded physical resource names (e.g., `BucketName`, `TableName`, `FunctionName`) when they are not required, because hardcoded names prevent multiple deployments and block blue/green replacement.
 
 **Constraints:**
+
 - You MUST flag any resource where a physical name is hardcoded as a literal string
 - You MUST recommend using `!Sub "${AWS::StackName}-<suffix>"` or omitting the name to let CloudFormation generate it
 - You MUST NOT flag names that are references (`!Ref`, `!Sub` with parameters) because those are already dynamic
@@ -40,6 +43,7 @@ No external tools required. This SOP is purely analytical.
 **Rule:** Parameters MUST have sensible constraints and defaults where possible.
 
 **Constraints:**
+
 - You MUST flag parameters without a `Type` (the implicit default `String` is legal but loses validation)
 - You MUST flag `String` parameters without `AllowedValues` or `AllowedPattern` when the parameter represents an enum (e.g., environment names like prod/staging/dev)
 - You MUST flag parameters with `NoEcho: true` that are not sensitive and flag sensitive parameters (`DbPassword`, `ApiKey`, etc.) missing `NoEcho: true`
@@ -50,6 +54,7 @@ No external tools required. This SOP is purely analytical.
 **Rule:** Prefer cross-stack references via `Export`/`ImportValue` OR parameter passing. Avoid hardcoding ARNs from other stacks.
 
 **Constraints:**
+
 - You MUST flag hardcoded ARNs or resource IDs that reference resources likely in other stacks (e.g., `arn:aws:ec2:us-east-1:123456789012:vpc/vpc-0abc12345` or a literal VPC ID like `vpc-0abc12345`)
 - You MUST recommend either exporting from the producing stack and using `!ImportValue`, or passing the value as a parameter
 - You SHOULD warn that `!ImportValue` creates a tight coupling (the exporting stack cannot delete the export while it is imported)
@@ -59,6 +64,7 @@ No external tools required. This SOP is purely analytical.
 **Rule (critical tier):** Apply secure-by-default settings for stateful and network-facing resources.
 
 **Constraints:**
+
 - For `AWS::S3::Bucket`, You MUST flag:
   - Missing `PublicAccessBlockConfiguration` with all four sub-properties true
   - Missing `BucketEncryption`
@@ -75,6 +81,7 @@ No external tools required. This SOP is purely analytical.
 **Rule:** Organize the template sections in a consistent order and limit template size.
 
 **Constraints:**
+
 - You SHOULD recommend the canonical section order: `AWSTemplateFormatVersion`, `Description`, `Metadata`, `Parameters`, `Mappings`, `Conditions`, `Transform`, `Resources`, `Outputs`
 - You MUST flag templates exceeding 51,200 bytes (the `--template-body` inline limit) and recommend using `--template-url` with S3, or splitting into nested stacks
 - You SHOULD recommend splitting templates exceeding 200 resources into nested stacks because large single stacks slow down deploy times and complicate rollback
@@ -84,6 +91,7 @@ No external tools required. This SOP is purely analytical.
 **Rule:** Stateful resources (databases, buckets with data, tables with data) MUST have an explicit `DeletionPolicy`.
 
 **Constraints:**
+
 - You MUST flag `AWS::S3::Bucket`, `AWS::DynamoDB::Table`, `AWS::RDS::DBInstance`, `AWS::RDS::DBCluster`, `AWS::EFS::FileSystem` resources without `DeletionPolicy`
 - You MUST recommend `DeletionPolicy: Retain` for production stateful resources and `DeletionPolicy: Snapshot` for databases where point-in-time recovery is desired
 - You SHOULD also recommend `UpdateReplacePolicy: Retain` on the same resources because replacement (not just deletion) can cause data loss
@@ -93,6 +101,7 @@ No external tools required. This SOP is purely analytical.
 **Rule:** Conditions must be string references to named conditions, not inline intrinsic functions.
 
 **Constraints:**
+
 - You MUST flag resources with `Condition: !Not [...]` or any inline intrinsic in the `Condition` key (this is a common mistake that cfn-lint catches as E3001)
 - You MUST recommend defining a named condition in the `Conditions:` section and referencing it by name
 
@@ -101,6 +110,7 @@ No external tools required. This SOP is purely analytical.
 **Rule:** Outputs should be named consistently and exported only if intended for cross-stack use.
 
 **Constraints:**
+
 - You SHOULD note exported outputs and remind the user that exports create cross-stack coupling — confirm each export has a known consumer. Single-template analysis cannot determine whether an export is consumed by another stack, so this is advisory rather than a hard failure.
 - You SHOULD recommend adding a `Description` to every output
 
@@ -109,6 +119,7 @@ No external tools required. This SOP is purely analytical.
 Report the checklist results.
 
 **Constraints:**
+
 - You MUST group findings by severity: Critical (security, will-fail-deployment) → Recommended → Strict
 - You MUST provide the specific template change for each finding
 - You MUST show line numbers where applicable
@@ -118,6 +129,7 @@ Report the checklist results.
 ## Examples
 
 ### Example Input
+
 ```yaml
 Parameters:
   Environment:
@@ -130,6 +142,7 @@ Resources:
 ```
 
 ### Example Output (strictness=recommended)
+
 ```
 2 critical, 2 recommended findings.
 
@@ -157,6 +170,7 @@ Recommended:
 
 ### User disagrees with a finding
 Best practices are not absolutes. If the user explains a deliberate deviation, You MUST record the reason and not keep re-flagging it in subsequent runs. Some exceptions are valid:
+
 - Hardcoded names for resources referenced by external systems
 - Missing encryption for resources storing only non-sensitive public data
 - Missing DLQ on functions that are synchronously-invoked only

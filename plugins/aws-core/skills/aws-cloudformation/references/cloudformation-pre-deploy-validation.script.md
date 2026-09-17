@@ -41,6 +41,7 @@ Validation results are exposed through the `describe-events` API. This procedure
 - **capabilities** (optional): CloudFormation capabilities (e.g., `CAPABILITY_IAM`, `CAPABILITY_NAMED_IAM`) if the template creates IAM resources.
 
 **Constraints for parameter acquisition:**
+
 - You MUST ask for all required parameters upfront in a single prompt
 - You MUST support multiple input methods for the template (direct input, file path, S3 URL)
 - You MUST confirm successful acquisition of all parameters before proceeding
@@ -52,6 +53,7 @@ Validation results are exposed through the `describe-events` API. This procedure
 Check which mechanism is available to invoke AWS APIs.
 
 **Constraints:**
+
 - You MUST check in this order of preference:
   1. `call_aws` tool from the AWS MCP Server (preferred for sandboxed execution, audit logging, and observability)
   2. AWS CLI (`aws`) available on the user's system (verify with `which aws` or `aws --version`)
@@ -67,6 +69,7 @@ Check which mechanism is available to invoke AWS APIs.
 Catch issues locally before consuming CloudFormation API quota.
 
 **Constraints:**
+
 - You SHOULD recommend running the project-selected local validation SOP first: either the [cloudformation-validate SOP](validate-with-cloudformation-validate.script.md) or the [cfn-lint SOP](validate-with-cfn-lint.script.md), never both by default
 - You SHOULD recommend running the `check-cloudformation-template-compliance` SOP by default to catch security violations locally
 - If the user has already run these checks or explicitly skips them, You MUST proceed to the next step
@@ -76,6 +79,7 @@ Catch issues locally before consuming CloudFormation API quota.
 Prepare the template for the operation.
 
 **Constraints:**
+
 - If the template is small (≤ 51,200 bytes) and provided as content or a local file, You MAY pass it inline via `--template-body`
 - If the template exceeds 51,200 bytes, You MUST upload it to S3 and use `--template-url` because `--template-body` has a size limit
 - If the template is already at an S3 URL, You MUST use `--template-url` directly
@@ -85,13 +89,16 @@ Prepare the template for the operation.
 Trigger pre-deployment validation. Validation runs automatically — no opt-in is required because it is enabled by default on all stack operations.
 
 **Constraints:**
+
 - You MUST NOT pass `--disable-validation` (or the `DisableValidation` API parameter) unless the user explicitly requests skipping validation, because validation is what this procedure exists to run. If the user does request it, You MUST warn that disabling validation removes the safety check that catches preventable failures before provisioning.
 
 **Path A — Change set creation (recommended pre-flight, provisions nothing):**
+
 - You MUST use a unique, descriptive change set name (e.g., `pre-deploy-validation-<timestamp>`)
 - You MUST use the appropriate `--change-set-type` (`CREATE` for new stacks, `UPDATE` for existing)
 - You MUST include `--capabilities` if the template creates IAM resources
 - Example CLI form:
+
   ```
   aws cloudformation create-change-set \
     --stack-name <stack_name> \
@@ -101,6 +108,7 @@ Trigger pre-deployment validation. Validation runs automatically — no opt-in i
     --region <region> \
     --capabilities CAPABILITY_IAM
   ```
+
   > **Notes:** Use `--template-url s3://...` instead of `--template-body` for templates exceeding 51,200 bytes. Include `--capabilities` only if the template creates IAM resources. When using `call_aws`, pass the template content inline in the `TemplateBody` parameter — the `file://` syntax is AWS CLI-specific and does not work with `call_aws`.
 - You MUST capture the returned change set ARN (Id) for the next step
 - You MUST explain to the user that creating a change set does NOT modify any resources because it only plans the changes and runs validation
@@ -108,10 +116,12 @@ Trigger pre-deployment validation. Validation runs automatically — no opt-in i
 - This path surfaces ALL validation checks, including the three `WARN`-only checks (service quota, AWS Config Recorder conflict, ECR delete readiness).
 
 **Path B — Direct create/update stack (validates as part of a real deployment):**
+
 - You MUST obtain explicit user approval before running `create-stack` or `update-stack`, because these operations provision or modify live infrastructure once validation passes.
 - Validation runs automatically before provisioning. If a `FAIL`-mode check fails, the operation stops before any resource is provisioned.
 - You MUST capture the operation ID returned by the operation for the next step.
 - Example CLI form:
+
   ```
   aws cloudformation create-stack \
     --stack-name <stack_name> \
@@ -119,6 +129,7 @@ Trigger pre-deployment validation. Validation runs automatically — no opt-in i
     --region <region> \
     --capabilities CAPABILITY_IAM
   ```
+
   > **Note:** When using `call_aws`, pass the template content inline in the `TemplateBody` parameter — the `file://` syntax is AWS CLI-specific and does not work with `call_aws`.
 
 ### 5. Retrieve Validation Results via describe-events
@@ -126,6 +137,7 @@ Trigger pre-deployment validation. Validation runs automatically — no opt-in i
 Fetch validation results from the `describe-events` API.
 
 **Constraints:**
+
 - You MUST use `aws cloudformation describe-events` (via `call_aws` or CLI) scoped to the operation you triggered:
   - For Path A (change set): `describe-events --change-set-name <arn> --region <region>`
   - For Path B (direct operation): `describe-events --operation-id <operation-id> --region <region>` (or `--stack-name <stack_name>` to scope by stack)
@@ -145,6 +157,7 @@ Fetch validation results from the `describe-events` API.
 Report validation results grouped by type and help the user fix issues.
 
 **Constraints:**
+
 - You MUST present results grouped by `ValidationName`:
   - **Property syntax validation** (FAIL) — invalid property values or formats
   - **Resource name conflict validation** (FAIL) — resources that conflict with existing resources
@@ -165,6 +178,7 @@ Report validation results grouped by type and help the user fix issues.
 Guide the user on next steps after validation.
 
 **Constraints:**
+
 - If all validations passed (or only `WARN`-mode results that the user accepts) and validation was done via a change set, You MUST ask the user for explicit approval before executing the change set
 - You MUST NOT execute a change set or run a stack operation without explicit user approval because this will modify live infrastructure
 - You MUST NOT delete a stack without explicit user approval. Before deleting, You MUST verify the stack status is `REVIEW_IN_PROGRESS` by calling `describe-stacks`
@@ -180,6 +194,7 @@ Guide the user on next steps after validation.
 When the user is deploying with the AWS CDK rather than raw CloudFormation, pre-deployment validation surfaces through CDK directly.
 
 **Constraints:**
+
 - You SHOULD inform the user that both `cdk deploy` and `cdk validate` surface pre-deployment validation results in a unified report with construct-level tracing, mapping each result back to the originating CDK construct
 - You SHOULD prefer `cdk validate` when the user wants to validate without deploying
 - You MUST treat the structured CDK validation report the same way as `describe-events` results: enumerate every `FAIL` result before recommending a deploy, and surface `WARN` results for the user to evaluate
@@ -193,6 +208,7 @@ Follow the [shared security guidance](security-considerations.md) when handling 
 ## Examples
 
 ### Example: Successful Validation (change set path)
+
 ```
 Change set "pre-deploy-validation-1713580000" created for stack "my-app-stack".
 
@@ -208,6 +224,7 @@ The change set is ready to execute. Would you like to execute it now?
 ```
 
 ### Example: Failed Validation
+
 ```
 Change set "pre-deploy-validation-1713580000" created for stack "my-app-stack".
 

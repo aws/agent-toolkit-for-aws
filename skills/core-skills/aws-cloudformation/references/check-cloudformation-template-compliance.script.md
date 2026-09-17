@@ -10,6 +10,7 @@ Deterministic procedure for validating a CloudFormation template against securit
 - **rules_file_path** (optional): Path to a custom cfn-guard rules file. If omitted, you MUST obtain rules separately because cfn-guard has no built-in rule set. Recommended source: https://github.com/aws-cloudformation/aws-guard-rules-registry
 
 **Constraints for parameter acquisition:**
+
 - You MUST ask for all required parameters upfront in a single prompt rather than one at a time
 - You MUST support multiple input methods for the template:
   - Direct input: Template content pasted directly
@@ -24,6 +25,7 @@ Deterministic procedure for validating a CloudFormation template against securit
 Check which compliance mechanism is available.
 
 **Constraints:**
+
 - You MUST check in this order of preference:
   1. `cfn-guard` CLI available on the user's system (verify with `which cfn-guard` or `cfn-guard --version`)
   2. Python `guardpycfn` library (verify by attempting `import guardpycfn` in a throwaway Python command)
@@ -37,6 +39,7 @@ Check which compliance mechanism is available.
 Obtain the CloudFormation template from the user.
 
 **Constraints:**
+
 - You MUST ask the user which template(s) to check even if templates are discoverable in the working directory, because the user may only want a subset checked
 - You MUST read the template content from the provided source (file path, direct input, or URL)
 - You MUST confirm the template is non-empty and parseable as YAML or JSON before proceeding
@@ -48,6 +51,7 @@ Obtain the CloudFormation template from the user.
 Determine which rules to apply.
 
 **Constraints:**
+
 - If the CLI or `guardpycfn` library is used, You MUST obtain a rules file because cfn-guard requires explicit rules:
   - If the user provided `rules_file_path`, You MUST use it
   - Otherwise, You MUST recommend the user download the AWS managed rules from https://github.com/aws-cloudformation/aws-guard-rules-registry
@@ -58,6 +62,7 @@ Determine which rules to apply.
 Execute cfn-guard against the template using the best available mechanism.
 
 **Constraints:**
+
 - If `cfn-guard` CLI is available, You MUST invoke it with the template and rules file:
   - Example: `cfn-guard validate --rules rules.guard --data template.yaml --output-format json`
   - You MUST use `--output-format json` for structured output
@@ -70,6 +75,7 @@ Execute cfn-guard against the template using the best available mechanism.
 Report compliance findings to the user.
 
 **Constraints:**
+
 - You MUST start the summary with: "Your template has X violations"
 - You MUST group related violations together (e.g., all PublicAccessBlock settings for an S3 bucket)
 - You MUST prioritize by severity: critical security issues first (encryption, public access), then best-practice recommendations (versioning, logging, replication)
@@ -85,6 +91,7 @@ Report compliance findings to the user.
 Guide the user after compliance results.
 
 **Constraints:**
+
 - If critical security violations were found, You MUST recommend fixing them before deployment
 - You SHOULD help the user understand which violations are mandatory fixes versus optional improvements based on their use case
 - After fixes are applied, You SHOULD recommend re-running this SOP to confirm all violations are resolved
@@ -97,6 +104,7 @@ Follow the [shared security guidance](security-considerations.md) when handling 
 ## Examples
 
 ### Example Input
+
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Resources:
@@ -107,6 +115,7 @@ Resources:
 ```
 
 ### Example Output
+
 ```
 Your template has 4 violations.
 

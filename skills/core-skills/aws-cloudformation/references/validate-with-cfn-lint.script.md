@@ -11,6 +11,7 @@ Deterministic procedure for local CloudFormation template validation with `cfn-l
 - **ignore_checks** (optional): List of cfn-lint rule IDs to suppress (e.g., `["W2001", "E3012"]`).
 
 **Constraints for parameter acquisition:**
+
 - You MUST ask for all required parameters upfront in a single prompt rather than one at a time
 - You MUST support multiple input methods for the template:
   - Direct input: Template content pasted directly in the conversation
@@ -26,6 +27,7 @@ Deterministic procedure for local CloudFormation template validation with `cfn-l
 Check which validation mechanism is available.
 
 **Constraints:**
+
 - You MUST check in this order of preference:
   1. `cfn-lint` CLI available on the user's system (verify with `which cfn-lint` or `cfn-lint --version`)
   2. Python `cfnlint` library (verify by attempting `import cfnlint` in a throwaway Python command)
@@ -41,6 +43,7 @@ Check which validation mechanism is available.
 Obtain the CloudFormation template from the user.
 
 **Constraints:**
+
 - You MUST ask the user which template(s) to validate even if templates are discoverable in the working directory, because the user may only want a subset validated
 - You MUST read the template content from the provided source (file path, direct input, or URL)
 - You MUST confirm the template is non-empty and parseable as YAML or JSON before proceeding
@@ -51,6 +54,7 @@ Obtain the CloudFormation template from the user.
 Execute cfn-lint against the template using the best available mechanism.
 
 **Constraints:**
+
 - If `cfn-lint` CLI is available, You MUST invoke it on the template file with appropriate flags:
   - Regions: `--regions us-east-1 eu-west-1`
   - Ignore checks: `--ignore-checks W2001 E3012`
@@ -65,6 +69,7 @@ Execute cfn-lint against the template using the best available mechanism.
 Report validation findings to the user.
 
 **Constraints:**
+
 - You MUST start the summary with the total count: "Your template has X errors, Y warnings, Z info messages"
 - You MUST group related issues by resource or template section (e.g., all `MyBucket` errors together)
 - You MUST prioritize errors first, then warnings, then informational messages
@@ -79,6 +84,7 @@ Report validation findings to the user.
 Guide the user on what to do after validation.
 
 **Constraints:**
+
 - If errors were found, You MUST recommend fixing all errors before proceeding to other checks
 - Once the template is error-free, You SHOULD run the [cfn-guard security and compliance SOP](check-cloudformation-template-compliance.script.md) by default to check security and compliance
 - You MUST skip the security and compliance SOP only when the user explicitly requests it or confirms that an equivalent project security and compliance check already passed
@@ -91,6 +97,7 @@ Follow the [shared security guidance](security-considerations.md) when handling 
 ## Examples
 
 ### Example Input
+
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Resources:
@@ -108,6 +115,7 @@ Resources:
 ```
 
 ### Example Output
+
 ```
 Your template has 1 error, 0 warnings, 0 info messages.
 

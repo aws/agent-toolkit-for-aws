@@ -12,6 +12,7 @@ Use this script for failed-event diagnosis. Use the broader [troubleshoot deploy
 - **region** (required): AWS Region where the stack operation ran, for example `us-east-1`.
 
 **Constraints for parameter acquisition:**
+
 - If all required parameters are already provided, You MUST proceed to the Steps
 - If any required parameters are missing, You MUST ask for them before proceeding
 - When asking for parameters, You MUST request all parameters in a single prompt
@@ -25,6 +26,7 @@ Use this script for failed-event diagnosis. Use the broader [troubleshoot deploy
 Confirm that a read-only AWS API mechanism and valid credentials are available.
 
 **Constraints:**
+
 - You SHOULD use the AWS MCP server `call_aws` tool when available for sandboxed execution and audit logging, but it is not required; every step in this procedure also works with the AWS CLI
 - When using the AWS CLI, You MUST verify it is available and confirm the caller identity for `region`
 - You MUST use read-only or least-privilege credentials because this procedure requires only diagnostic access
@@ -36,6 +38,7 @@ Confirm that a read-only AWS API mechanism and valid credentials are available.
 Retrieve the stack's failed-event evidence without the noise of successful lifecycle events.
 
 **Constraints:**
+
 - You MUST call the CloudFormation `DescribeEvents` operation with `stack_name`, `region`, and the `FailedEvents=true` filter
 - With the AWS CLI, You MUST use `aws cloudformation describe-events --stack-name <stack_name> --filters FailedEvents=true --region <region>`
 - You MUST NOT use `describe-stack-events` because it does not support the failed-event filter
@@ -49,6 +52,7 @@ Retrieve the stack's failed-event evidence without the noise of successful lifec
 Classify each failed event before selecting root-cause candidates.
 
 **Constraints:**
+
 - You MUST inspect every event's `ResourceStatusReason`; You MUST NOT stop after the first failure because CloudFormation can create resources in parallel
 - You MUST classify an event with a specific service error, such as an authorization denial, invalid property, name conflict, missing resource, quota error, or dependency error, as an **actionable failure**
 - You MUST classify an event whose only reason is `Resource creation cancelled` or an equivalent cancellation with no specific service error as a **cascade cancellation**
@@ -60,6 +64,7 @@ Classify each failed event before selecting root-cause candidates.
 Determine whether actionable failures are independent, parallel symptoms of one cause, or downstream effects.
 
 **Constraints:**
+
 - You MUST sort events chronologically for context, but You MUST NOT assume the earliest timestamp is the only root cause because parallel provisioning can produce independent failures
 - You MUST preserve every actionable failure in the diagnosis, even when several failures appear related
 - When multiple resources fail with authorization errors, You MUST enumerate every denied action and affected resource or resource pattern; You MUST NOT report only the first permission gap because incomplete permission reporting forces repeated deployment attempts
@@ -72,6 +77,7 @@ Determine whether actionable failures are independent, parallel symptoms of one 
 Map each actionable failure to the location where remediation belongs.
 
 **Constraints:**
+
 - You MUST classify a fix as **template-level** when the template must change, such as an invalid property, missing required value, resource-name conflict, or dependency definition error
 - You MUST classify a fix as **environment-level** when the account or deployment environment must change, such as an IAM permission gap, quota, missing external resource, deletion protection, or existing resource state
 - You MUST NOT propose a template change for an environment-level failure because it does not resolve the underlying account condition
@@ -82,6 +88,7 @@ Map each actionable failure to the location where remediation belongs.
 Report the complete triage result in a form that supports one-pass remediation.
 
 **Constraints:**
+
 - You MUST report all actionable failures before cascade cancellations
 - For every actionable failure, You MUST include the logical resource, resource type, status reason, root-cause group, fix classification, and concrete next action
 - For permission failures, You MUST include the complete set of visible missing actions and affected resources or resource patterns
@@ -99,6 +106,7 @@ Follow the [shared security guidance](security-considerations.md) when handling 
 ### Parallel permission failures
 
 **Input:**
+
 - **stack_name**: `orders-dev`
 - **region**: `us-east-1`
 
@@ -108,6 +116,7 @@ The agent retrieves all failed events and finds `dynamodb:CreateTable` denied fo
 ### Template failure plus cascade cancellations
 
 **Input:**
+
 - **stack_name**: `analytics-test`
 - **region**: `eu-west-1`
 

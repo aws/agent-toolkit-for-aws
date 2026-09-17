@@ -7,6 +7,7 @@ Deterministic procedure for deploying CloudFormation stacks using **Express mode
 Express mode works with all existing CloudFormation templates and requires no template changes. It is recommended for development workflows where you iterate frequently and need fast deployment confirmation.
 
 **When to use Express mode:**
+
 - Iterating on infrastructure configurations during development
 - Deploying individual components of your application
 - Deploying dependent stacks that only need resource outputs (VPC IDs, endpoints, ARNs) to proceed
@@ -14,15 +15,18 @@ Express mode works with all existing CloudFormation templates and requires no te
 - Prototyping and experimenting with new architectures
 
 **When NOT to use Express mode:**
+
 - Production workflows that require resources to serve traffic immediately after stack completion
 - Deployments where downstream consumers immediately hit endpoints (load balancers, CloudFront distributions, ECS services) after the operation completes
 
 **What Express mode skips:**
+
 1. Traffic readiness (e.g., EC2 instance reaching `running` state)
 2. Region propagation (e.g., CloudFront propagating to all edge locations, 5-10 minutes)
 3. Cleanup (e.g., network interface removal before Lambda function deletion)
 
 **What does NOT change:**
+
 - CloudFormation still processes all resources in dependency order
 - CloudFormation still retries dependent resources that encounter transient failures
 - CloudFormation still handles dependent resource failures
@@ -41,6 +45,7 @@ Express mode works with all existing CloudFormation templates and requires no te
 - **capabilities** (optional): CloudFormation capabilities (e.g., `CAPABILITY_IAM`, `CAPABILITY_NAMED_IAM`) if the template creates IAM resources.
 
 **Constraints for parameter acquisition:**
+
 - You MUST ask for all required parameters upfront in a single prompt
 - You MUST support multiple input methods for the template (direct input, file path, S3 URL)
 - You MUST confirm successful acquisition of all parameters before proceeding
@@ -52,6 +57,7 @@ Express mode works with all existing CloudFormation templates and requires no te
 Check which mechanism is available to invoke AWS APIs.
 
 **Constraints:**
+
 - You MUST check in this order of preference:
   1. `call_aws` tool from the AWS MCP Server (preferred for sandboxed execution, audit logging, and observability)
   2. AWS CLI (`aws`) available on the user's system (verify with `which aws` or `aws --version`)
@@ -66,6 +72,7 @@ Check which mechanism is available to invoke AWS APIs.
 Verify with the user that Express mode is the right choice for their use case.
 
 **Constraints:**
+
 - You MUST inform the user that Express mode completes when resource configuration is applied, and resources continue stabilizing in the background
 - You MUST ask whether the user's workflow requires resources to serve traffic immediately after the stack operation completes
 - If the user's workflow DOES require immediate traffic readiness (production serving, endpoint availability), You MUST recommend using the default deployment behavior instead
@@ -77,6 +84,7 @@ Verify with the user that Express mode is the right choice for their use case.
 Prepare the template for the operation.
 
 **Constraints:**
+
 - If the template is small (≤ 51,200 bytes) and provided as content or a local file, You MAY pass it inline via `--template-body`
 - If the template exceeds 51,200 bytes, You MUST upload it to S3 and use `--template-url` because `--template-body` has a size limit
 - If the template is already at an S3 URL, You MUST use `--template-url` directly
@@ -87,6 +95,7 @@ Prepare the template for the operation.
 Run the stack operation with the `--deployment-config` parameter set to Express mode.
 
 **Constraints:**
+
 - You MUST obtain explicit user approval before executing the operation because it creates, modifies, or deletes live infrastructure
 - You MUST use `--deployment-config '{"mode": "EXPRESS"}'` on the stack operation
 - If the user requested rollback, You MUST use `--deployment-config '{"mode": "EXPRESS", "disableRollback": false}'`
@@ -96,6 +105,7 @@ Run the stack operation with the `--deployment-config` parameter set to Express 
 > **Note:** When using `call_aws`, pass the template content inline in the `TemplateBody` parameter — the `file://` syntax is AWS CLI-specific and does not work with `call_aws`.
 
 **Create a stack:**
+
 ```
 aws cloudformation create-stack \
   --stack-name <stack_name> \
@@ -106,6 +116,7 @@ aws cloudformation create-stack \
 ```
 
 **Update a stack:**
+
 ```
 aws cloudformation update-stack \
   --stack-name <stack_name> \
@@ -116,6 +127,7 @@ aws cloudformation update-stack \
 ```
 
 **Delete a stack:**
+
 ```
 aws cloudformation delete-stack \
   --stack-name <stack_name> \
@@ -124,6 +136,7 @@ aws cloudformation delete-stack \
 ```
 
 **With rollback enabled:**
+
 ```
 aws cloudformation create-stack \
   --stack-name <stack_name> \
@@ -138,7 +151,9 @@ aws cloudformation create-stack \
 Express mode also works with change sets. The deployment configuration is stored with the change set and applied when executed.
 
 **Constraints:**
+
 - To use Express mode with a change set, supply `--deployment-config` at `create-change-set` time:
+
   ```
   aws cloudformation create-change-set \
     --stack-name <stack_name> \
@@ -148,6 +163,7 @@ Express mode also works with change sets. The deployment configuration is stored
     --region <region> \
     --capabilities CAPABILITY_IAM
   ```
+
 - You MUST NOT specify `--deployment-config` again at `execute-change-set` time because it is already stored with the change set
 - You SHOULD recommend the change set path when the user also wants pre-deployment validation before deploying with Express mode (change set creation runs all validation checks before execution)
 
@@ -156,6 +172,7 @@ Express mode also works with change sets. The deployment configuration is stored
 When the user is deploying with the AWS CDK, Express mode is activated with the `--express` flag.
 
 **Constraints:**
+
 - You MUST use `cdk deploy --express` to deploy with Express mode
 - To re-enable rollback: `cdk deploy --express --rollback`
 - Express mode applies to all CloudFormation deployments triggered by CDK, including multi-stack deployments
@@ -168,6 +185,7 @@ When the user is deploying with the AWS CDK, Express mode is activated with the 
 Guide the user on what to expect after Express mode completes.
 
 **Constraints:**
+
 - You MUST inform the user that resources continue stabilizing in the background after the operation reports complete
 - You SHOULD provide guidance on typical background stabilization timelines:
   - CloudFront distribution: propagation to all edge locations (5-10 minutes)
@@ -190,6 +208,7 @@ The following are NOT supported with Express mode. You MUST inform the user if t
 ## Examples
 
 ### Example: Create a stack with Express mode
+
 ```
 $ aws cloudformation create-stack \
     --stack-name my-dev-vpc \
@@ -207,6 +226,7 @@ Background stabilization (route propagation, NAT gateway activation) continues.
 ```
 
 ### Example: CDK deploy with Express mode
+
 ```
 $ cdk deploy --express
 
@@ -221,6 +241,7 @@ Resources continue stabilizing in the background.
 ```
 
 ### Example: Express mode with rollback enabled
+
 ```
 $ aws cloudformation update-stack \
     --stack-name my-dev-vpc \
