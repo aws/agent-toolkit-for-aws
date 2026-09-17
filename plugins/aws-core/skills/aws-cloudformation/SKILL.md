@@ -2,7 +2,7 @@
 name: aws-cloudformation
 description: Authors, validates, and troubleshoots AWS CloudFormation templates. Covers template authoring with secure defaults, local validation with either cfn-lint or cloudformation-validate, cfn-guard security and compliance checks as a recommended default, account-aware CloudFormation service pre-deployment validation, CloudFormation Express mode for faster deployments, and root-cause diagnosis of failed stacks using CloudFormation events and CloudTrail correlation. Also covers author-time template intelligence with the CloudFormation Language Server and published cloudformation-validate libraries.
 metadata:
-  version: 3
+  version: "3"
 ---
 # CloudFormation
 
