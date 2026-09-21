@@ -24,7 +24,7 @@ when no other convention exists:
   `must-never-change|change-with-constraints|review-required|free-to-tune`),
   `mutability` (OPTIONAL sparse override map — keys = CFN property names, only
   properties that DEVIATE from the `mutable` default, same enum), `trust`,
-  `ops`, `gaps`, `deps`.
+  `deps`.
 
 **Decision rule:** Will violating it break something? → `must`. Otherwise →
 `why`. There is no separate decisions/constraints split.
@@ -36,8 +36,8 @@ property.
 
 **Tiers:** Always emit T1 (`why` + `must` on significant resources; Description
 for stack purpose). Add T2 (`mutable`, `arch` in `why`) if budget allows. Add T3
-(`trust`, `ops`, `gaps`, `deps`) when warranted. If the template nears 1 MB,
-shed in order: `trust` → `ops` → `gaps` → `deps` → `mutable` on non-critical →
+(`trust`, `deps`) when warranted. If the template nears 1 MB,
+shed in order: `trust` → `deps` → `mutable` on non-critical →
 trim `why` to significant resources → last resort externalize via `ref`. NEVER
 drop `must` on coupled/security/stateful resources. Measure the current template
 body in bytes (`wc -c <template>` on Unix/macOS or Git Bash, or `(Get-Item
@@ -153,8 +153,6 @@ Constraints:
 - You MAY add T3 when warranted:
   - `trust`: `{ src: comment|authored|commit|infer, conf: high|medium|low,
     cite?: "file:line", note?: <reason for low confidence> }`
-  - `ops`: Operational hint before changing (what to check pre-modification)
-  - `gaps`: Explicit unknowns (array) — honest beats fabricated
   - `deps`: Cross-stack producers (array)
 - You SHOULD omit the `com.aws.cloudformation.Context` key on trivial resources
   where the Type and logical name make the purpose obvious (e.g., a
@@ -213,7 +211,7 @@ Description: >-
 
 Metadata:
   AWSToolsMetrics:
-    AWSAgentToolkit: aws-cloudformation@2
+    AWSAgentToolkit: aws-cloudformation@3
 
 Resources:
   OrderQueue:
@@ -228,7 +226,6 @@ Resources:
         mutability:
           QueueName: must-never-change
         trust: { src: authored, conf: high }
-        ops: check ApproxAgeOfOldestMsg before cutting VisTimeout
     Properties:
       FifoQueue: true
       ContentBasedDeduplication: true
@@ -300,7 +297,7 @@ resource-level `Metadata."com.aws.cloudformation.Context"` context.
 
 Metadata is included in the template body. If the template exceeds 51KB (inline
 limit), upload via S3. If approaching 1MB (S3 limit), apply the drop order: shed
-`trust` → `ops` → `gaps` → `deps` → `mutable` on non-critical → trim `why` to
+`trust` → `deps` → `mutable` on non-critical → trim `why` to
 significant resources → last resort externalize via `ref`. Never drop `must` on
 coupled/security/stateful resources.
 

@@ -51,6 +51,7 @@ This plugin includes the following default skills:
 | storage | Store and manage data with AWS storage services |
 | aws-blocks | Build full-stack applications with AWS Blocks |
 | aws-database | Route any AWS database task to the right service and skill |
+| aws-well-architected-review | Review a workload against the Well-Architected Framework across all six pillars |
 
 ### Rules files
 

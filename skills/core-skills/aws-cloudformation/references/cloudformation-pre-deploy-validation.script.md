@@ -70,8 +70,8 @@ Catch issues locally before consuming CloudFormation API quota.
 
 **Constraints:**
 
-- You SHOULD recommend running the `validate-cloudformation-template` SOP first to catch cfn-lint syntax and schema errors locally
-- You SHOULD recommend running the `check-cloudformation-template-compliance` SOP to catch security violations locally
+- You SHOULD recommend running the project-selected local validation SOP first: either the [cloudformation-validate SOP](validate-with-cloudformation-validate.script.md) or the [cfn-lint SOP](validate-with-cfn-lint.script.md), never both by default
+- You SHOULD recommend running the `check-cloudformation-template-compliance` SOP by default to catch security violations locally
 - If the user has already run these checks or explicitly skips them, You MUST proceed to the next step
 
 ### 3. Upload Template (if needed)
@@ -198,6 +198,12 @@ When the user is deploying with the AWS CDK rather than raw CloudFormation, pre-
 - You SHOULD inform the user that both `cdk deploy` and `cdk validate` surface pre-deployment validation results in a unified report with construct-level tracing, mapping each result back to the originating CDK construct
 - You SHOULD prefer `cdk validate` when the user wants to validate without deploying
 - You MUST treat the structured CDK validation report the same way as `describe-events` results: enumerate every `FAIL` result before recommending a deploy, and surface `WARN` results for the user to evaluate
+- You MUST distinguish CDK's local `CloudFormationValidatePlugin` integration from CloudFormation service pre-deployment validation
+- See [validate-with-cloudformation-validate.script.md](validate-with-cloudformation-validate.script.md) for library APIs, custom rules, and CDK integration guidance
+
+## Security Considerations
+
+Follow the [shared security guidance](security-considerations.md) when handling templates, outputs, secrets, tools, and installation artifacts.
 
 ## Examples
 

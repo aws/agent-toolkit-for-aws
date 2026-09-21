@@ -1,8 +1,8 @@
 ---
 name: aws-cloudformation
-description: Authors, validates, and troubleshoots AWS CloudFormation templates. Covers template authoring with secure defaults, pre-deployment validation (cfn-lint, cfn-guard, change sets), CloudFormation Express mode for faster deployments, and root-cause diagnosis of failed stacks using CloudFormation events and CloudTrail correlation.
+description: Authors, validates, and troubleshoots AWS CloudFormation templates. Covers template authoring with secure defaults, local validation with either cfn-lint or cloudformation-validate, cfn-guard security and compliance checks as a recommended default, account-aware CloudFormation service pre-deployment validation, CloudFormation Express mode for faster deployments, and root-cause diagnosis of failed stacks using CloudFormation events and CloudTrail correlation. Also covers author-time template intelligence with the CloudFormation Language Server and published cloudformation-validate libraries.
 metadata:
-  version: "2"
+  version: "3"
 ---
 # CloudFormation
 
@@ -41,6 +41,13 @@ fetch or write customer data through `retrieve_skill`.
 **AWS MCP server:** For steps that call AWS APIs, the AWS MCP server (`call_aws`
 tool) is recommended for sandboxed execution and audit logging, but not required
 — every step also works with the AWS CLI.
+
+### Configure author-time template intelligence
+
+Use the [CloudFormation Language Server guide](references/cloudformation-language-server.md) for completion,
+diagnostics, hover documentation, navigation, refactoring, and code actions in editors and AI clients. Follow the
+AWS Toolkit or standalone installation documentation for the selected client rather than relying on runtime,
+build, package, or release-asset details copied into this skill.
 
 ### Understand, explain, or document a template
 
@@ -97,25 +104,14 @@ PII into Metadata.
 **Attribution marker.** On any template you create or modify, ensure a top-level
 `Metadata.AWSToolsMetrics.AWSAgentToolkit` marker whose value is
 `aws-cloudformation@<version>`, taking `<version>` from this skill's frontmatter
-`version` field (for example `aws-cloudformation@2`). The marker is idempotent:
+`version` field (for example `aws-cloudformation@3`). The marker is idempotent:
 do not duplicate it, and preserve any other keys already under `AWSToolsMetrics`
 (for example another tool's `IaC_Generator`). Add it regardless of which context
 convention the template uses.
 
 ### Validate a template before deployment
 
-Run three validation layers in order — each catches different classes of errors:
-
-1. **Syntax and schema** — [validate-cloudformation-template SOP](references/validate-cloudformation-template.script.md) (cfn-lint)
-2. **Security and compliance** — [check-cloudformation-template-compliance SOP](references/check-cloudformation-template-compliance.script.md) (cfn-guard)
-3. **Pre-deployment** — [cloudformation-pre-deploy-validation SOP](references/cloudformation-pre-deploy-validation.script.md) (`describe-events` API)
-
-**Critical:** Pre-deployment validation is enabled by default on Create Stack,
-Update Stack, and change set creation. A `FAIL`-mode finding halts the operation
-before any resource is provisioned. Retrieve results via `aws cloudformation
-describe-events` (see
-[SOP](references/cloudformation-pre-deploy-validation.script.md) for scoping
-options). Do NOT use `describe-stack-events`.
+Use the [CloudFormation validation workflow guide](references/validation-tool-selection.md) to choose and sequence local validation, cfn-guard security and compliance checks, and account-aware CloudFormation service pre-deployment validation. The guide covers tool selection, skip and approval conditions, in-process validation, audit logging, and result retrieval.
 
 ### Deploy faster with Express mode
 
@@ -135,24 +131,18 @@ Key points:
 
 ### Troubleshoot a failed deployment
 
-When a stack is in a failed state (`CREATE_FAILED`, `ROLLBACK_COMPLETE`, `UPDATE_ROLLBACK_FAILED`, etc.), follow the [troubleshoot-deployment SOP](references/troubleshoot-deployment.script.md).
-
-Key points:
-
-- Use `aws cloudformation describe-events --stack-name <name> --filters FailedEvents=true --region <region>` to get only failure events. Do NOT use `describe-stack-events` — that API does not support the `--filters` parameter. Do NOT use `--query` JMESPath filters as a substitute — use the `--filters` parameter directly.
-- Examine EVERY failed event's `ResourceStatusReason`. If a failure has a specific error message (e.g., "not authorized to perform", "already exists"), it is a real failure. If a failure says "Resource creation cancelled" with no specific error, it is a cascade caused by rollback — it does not tell you what would have gone wrong.
-- When multiple resources have their own specific errors, they are parallel failures from a shared root cause (e.g., an IAM role missing permissions for multiple services). Enumerate ALL the specific permission gaps, not just the first one, so the developer can fix everything in one pass.
-- Cancelled resources may have their own issues that only surface on the next deployment attempt. Warn the developer that additional failures may appear after fixing the visible ones.
-- Classify the fix as **template-level** (change the template) or **environment-level** (fix IAM, quotas, resource state) — do not propose template changes for environment issues
+When a stack enters a failed state, use the [troubleshoot failed stack SOP](references/troubleshoot-failed-stack.script.md) to classify all actionable failures, rollback cascades, and template-level versus environment-level fixes. Use the broader [troubleshoot deployment SOP](references/troubleshoot-deployment.script.md) when deeper CloudTrail correlation or recovery guidance is needed.
 
 ## Decision Guide
 
 | User intent | Action |
 |-------------|--------|
+| Configure author-time template intelligence in an editor or AI client | CloudFormation Language Server guide |
 | Write or modify a template | Author task + best-practices checklist |
-| Check a template before deploying | Validation pipeline (3 layers) |
+| Check a template before deploying | CloudFormation validation workflow guide |
+| Run validation in code or in process | Use a published cloudformation-validate library for the application language |
 | Deploy faster during development | Deploy-with-express-mode SOP |
-| Stack failed or is stuck | Troubleshoot-deployment SOP |
+| Stack failed or is stuck | Troubleshoot-failed-stack SOP |
 | Unsure about a resource property | Resource property lookup SOP |
 | Explain or understand what a template does (and why) | Retrieve-template-context SOP |
 | Document design decisions in a template | Persist-template-context SOP |

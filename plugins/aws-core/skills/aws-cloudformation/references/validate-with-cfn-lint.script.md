@@ -1,8 +1,8 @@
-# Validate CloudFormation Template
+# Validate with cfn-lint
 
 ## Overview
 
-Deterministic procedure for validating a CloudFormation template's syntax, schema, and resource properties using cfn-lint. Works via the `cfn-lint` CLI or Python API.
+Deterministic procedure for local CloudFormation template validation with `cfn-lint`. Use this SOP when the user explicitly requests cfn-lint, the project configures it, or it is already installed. Prefer the CLI; the Python API is also available for local validation.
 
 ## Parameters
 
@@ -31,20 +31,11 @@ Check which validation mechanism is available.
 - You MUST check in this order of preference:
   1. `cfn-lint` CLI available on the user's system (verify with `which cfn-lint` or `cfn-lint --version`)
   2. Python `cfnlint` library (verify by attempting `import cfnlint` in a throwaway Python command)
-- If cfn-lint is not installed, You MUST ask the user: "I can install
-  `cfn-lint` from PyPI via `pip install 'cfn-lint>=1,<2'`. Do you want me to
-  install it, or would you prefer to install it manually?"
-- You MUST install ONLY the `cfn-lint` package from PyPI, with no extra
-  packages. If installation is not possible — pip missing, PyPI unreachable, or
-  the user declines — You MUST NOT attempt an alternative installation
-  mechanism. Tell the user that cfn-lint cannot be installed and note the
-  reduced validation coverage. If the environment still has AWS connectivity,
-  continue with the validation steps that do not need cfn-lint: the
-  `aws cloudformation validate-template` and change-set paths. If AWS API calls
-  are also unreachable, no validation layer can run — say so and stop rather
-  than reporting an unvalidated template as validated.
-- You MUST NOT execute validation or run any install command without the user's explicit approval because this changes the user's environment
-- If no mechanism is available and the user declines installation, You MUST ask whether to abort or proceed anyway (knowing the SOP cannot complete)
+- If cfn-lint is not installed, You MUST consult the [cfn-lint installation documentation](https://github.com/aws-cloudformation/cfn-lint#install) and authoritative package registry, resolve a compatible release, and ask the user: "I can install the exact cfn-lint version `<resolved-version>` from PyPI. Do you want me to install it, or would you prefer to install it manually?"
+- You MUST install ONLY the exact user-approved `cfn-lint` version from PyPI, with no extra packages. If installation is not possible — pip missing, PyPI unreachable, or the user declines — You MUST NOT attempt another cfn-lint installation mechanism. Tell the user that cfn-lint cannot run, note the reduced local validation coverage, and ask whether to use the [cloudformation-validate SOP](validate-with-cloudformation-validate.script.md) as the alternate local validator or stop.
+- When a supported cfn-lint mechanism is available, You SHOULD proceed with local validation without asking the user to opt in
+- You MUST NOT run an install command without the user's explicit approval because it changes the user's environment
+- If no cfn-lint mechanism is available and the user declines both installation and the alternate local validator, You MUST stop and state that local validation did not run
 - You MUST respect the user's decision to proceed, install, or abort
 
 ### 2. Acquire Template Content
@@ -71,7 +62,7 @@ Execute cfn-lint against the template using the best available mechanism.
   - Example: `cfn-lint --format json --regions us-east-1 template.yaml`
 - Otherwise, if the Python `cfnlint` library is available, You MUST invoke `cfnlint.api.lint(s=template_content, config={"regions": [...], "ignore_checks": [...]})`
 - You MUST NOT modify the template content before validation because the user needs to see errors against their actual template
-- You MUST capture the full output including rule IDs, severity levels (E=error, W=warning, I=info), line numbers, and messages
+- You MUST capture validator output for local parsing, including rule IDs, severity levels (E=error, W=warning, I=info), line numbers, and messages
 
 ### 4. Present Results
 
@@ -95,9 +86,13 @@ Guide the user on what to do after validation.
 **Constraints:**
 
 - If errors were found, You MUST recommend fixing all errors before proceeding to other checks
-- Once the template is error-free, You SHOULD recommend running the `check-cloudformation-template-compliance` SOP to check security and compliance
-- After compliance passes, You SHOULD recommend the `cloudformation-pre-deploy-validation` SOP for final pre-deployment readiness
+- Once the template is error-free, You SHOULD run the [cfn-guard security and compliance SOP](check-cloudformation-template-compliance.script.md) by default to check security and compliance
+- You MUST skip the security and compliance SOP only when the user explicitly requests it or confirms that an equivalent project security and compliance check already passed
 - You MUST explain what each recommended next step does so the user can make an informed decision
+
+## Security Considerations
+
+Follow the [shared security guidance](security-considerations.md) when handling templates, outputs, secrets, tools, and installation artifacts.
 
 ## Examples
 
@@ -143,11 +138,4 @@ If cfn-lint reports errors you believe are incorrect, suppress specific rules us
 Some resource properties are only valid in certain regions. If you see region-related errors, pass the target deployment region in the `regions` parameter to get accurate validation.
 
 ### cfn-lint not installed
-Install ONLY the `cfn-lint` package from PyPI with
-`pip install 'cfn-lint>=1,<2'`; do not install extra packages. If installation
-is not possible (pip missing, PyPI unreachable, or the user declines), do not
-try another installation mechanism. Tell the user cfn-lint cannot be installed
-and note the reduced coverage. With AWS connectivity still available, continue
-with `aws cloudformation validate-template` and the change-set path; if AWS API
-calls are also unreachable, no validation layer can run — report that instead of
-treating the template as validated.
+Resolve a compatible cfn-lint release from the official installation documentation and authoritative PyPI metadata, then install that exact user-approved version. Do not encode a version range in this SOP. If installation is not possible (pip missing, PyPI unreachable, or the user declines), do not try another cfn-lint installation mechanism. Ask whether to use the [cloudformation-validate SOP](validate-with-cloudformation-validate.script.md) as the alternate local validator or stop. Never report the template as locally validated when no local validator ran.

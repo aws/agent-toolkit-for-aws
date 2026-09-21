@@ -118,7 +118,7 @@ Constraints:
     `mutability` — OPTIONAL sparse per-property override map (keys = CFN
     property names that deviate from the default, same enum) — You MUST check
     these before modifying any property
-  - `trust`, `ops`, `gaps`, `deps` — present if available (T3 fields)
+  - `trust`, `deps` — present if available (T3 fields)
 - You MUST honor `mutable`/`mutability` flags: `must-never-change` = never
   alter; `change-with-constraints` = change only if the associated `must` rule
   is preserved; `review-required` = needs review; `free-to-tune` = safe to tune

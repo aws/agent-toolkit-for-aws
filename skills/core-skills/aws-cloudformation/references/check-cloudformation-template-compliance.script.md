@@ -2,7 +2,7 @@
 
 ## Overview
 
-Deterministic procedure for validating a CloudFormation template against security and compliance rules using cfn-guard. Works via the `cfn-guard` CLI or the Python `guardpycfn` binding.
+Deterministic procedure for validating a CloudFormation template against security and compliance rules using cfn-guard. Works via the `cfn-guard` CLI or the Python `guardpycfn` library.
 
 ## Parameters
 
@@ -30,7 +30,7 @@ Check which compliance mechanism is available.
   1. `cfn-guard` CLI available on the user's system (verify with `which cfn-guard` or `cfn-guard --version`)
   2. Python `guardpycfn` library (verify by attempting `import guardpycfn` in a throwaway Python command)
 - If cfn-guard is not installed, You MUST ask the user: "I can install `cfn-guard` (see https://docs.aws.amazon.com/cfn-guard/latest/ug/setting-up.html for install options). Do you want me to install it, or would you prefer to install it manually?"
-- You MUST NOT execute compliance checks or run any install command without the user's explicit approval because this changes the user's environment
+- You SHOULD run the compliance check by default when a supported mechanism is available; You MUST NOT run an install command without the user's explicit approval because installation changes the user's environment
 - If no mechanism is available and the user declines installation, You MUST ask whether to abort or proceed anyway (knowing the SOP cannot complete)
 - You MUST respect the user's decision to proceed, install, or abort
 
@@ -44,7 +44,7 @@ Obtain the CloudFormation template from the user.
 - You MUST read the template content from the provided source (file path, direct input, or URL)
 - You MUST confirm the template is non-empty and parseable as YAML or JSON before proceeding
 - If the template cannot be read or parsed, You MUST inform the user with the specific error and stop
-- You SHOULD recommend running the `validate-cloudformation-template` SOP first if the user has not already done so, because compliance checks assume a syntactically valid template
+- You SHOULD recommend running the project-selected local validation SOP first if the user has not already done so: either the [cfn-lint SOP](validate-with-cfn-lint.script.md) or the [cloudformation-validate SOP](validate-with-cloudformation-validate.script.md), never both by default, because compliance checks assume a syntactically valid template
 
 ### 3. Acquire Rules File (if needed)
 
@@ -96,6 +96,10 @@ Guide the user after compliance results.
 - You SHOULD help the user understand which violations are mandatory fixes versus optional improvements based on their use case
 - After fixes are applied, You SHOULD recommend re-running this SOP to confirm all violations are resolved
 - Once compliance passes, You SHOULD recommend the `cloudformation-pre-deploy-validation` SOP for final pre-deployment readiness
+
+## Security Considerations
+
+Follow the [shared security guidance](security-considerations.md) when handling templates, outputs, secrets, tools, and installation artifacts.
 
 ## Examples
 
