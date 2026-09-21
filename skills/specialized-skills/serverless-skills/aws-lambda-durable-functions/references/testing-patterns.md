@@ -18,7 +18,7 @@ Test durable functions locally and in the cloud with comprehensive test runners.
 - ✅ Python: Use `result.get_step("name")` to find step operations by name
 - ✅ Python: Use `result.operations` to iterate and filter operations by type
 - ✅ Python: Instantiate `DurableFunctionTestRunner(handler=my_handler)` directly
-- ✅ Python: Use `runner.run(input={...}, timeout=10)` — note `input=` not `payload`
+- ✅ Python: Use `runner.run(input={...}, execution_timeout=10)` — note `input=` not `payload`, and `execution_timeout` (`timeout` is deprecated)
 - ✅ Python: The value of result.result is serialized. Deserialize using the appropriate SerDes or default json deserializer.
 
 ### DON'T:
@@ -88,7 +88,7 @@ def test_workflow():
     runner = DurableFunctionTestRunner(handler=handler)
     
     with runner:
-        result = runner.run(input='{"user_id": "123"}', timeout=10)
+        result = runner.run(input='{"user_id": "123"}', execution_timeout=10)
 
     assert result.status is InvocationStatus.SUCCEEDED
 ```
@@ -126,7 +126,7 @@ def test_steps_execute():
     runner = DurableFunctionTestRunner(handler=handler)
     
     with runner:
-        result = runner.run(input={'test': True}, timeout=10)
+        result = runner.run(input={'test': True}, execution_timeout=10)
 
     # ✅ CORRECT: Get step by name
     fetch_step = result.get_step('fetch-user')
@@ -169,12 +169,9 @@ it('should wait for specified duration', async () => {
     handlerFunction: handler 
   });
 
-  const executionPromise = runner.run({ payload: {} });
-
-  // Advance time by 60 seconds
-  await runner.skipTime({ seconds: 60 });
-
-  const execution = await executionPromise;
+  // With skipTime: true in setupTestEnvironment, waits fast-forward
+  // automatically (to ~1ms) — no manual time advance is needed.
+  const execution = await runner.run({ payload: {} });
   expect(execution.getStatus()).toBe('SUCCEEDED');
 
   const waitOp = runner.getOperation('delay');
@@ -275,10 +272,10 @@ it('should handle callback failure', async () => {
   const callbackOp = runner.getOperation('wait-for-approval');
   await callbackOp.waitForData(WaitingOperationStatus.STARTED);
 
-  await callbackOp.sendCallbackFailure(
-    'ApprovalDenied',
-    'Request was rejected'
-  );
+  await callbackOp.sendCallbackFailure({
+    ErrorType: 'ApprovalDenied',
+    ErrorMessage: 'Request was rejected',
+  });
 
   const execution = await executionPromise;
   expect(execution.getStatus()).toBe('FAILED');
@@ -296,7 +293,7 @@ def test_callback_creation():
     runner = DurableFunctionTestRunner(handler=handler)
     
     with runner:
-        result = runner.run(input={'approver': '[email]'}, timeout=10)
+        result = runner.run(input={'approver': '[email]'}, execution_timeout=10)
 
     # Find callback operations in the result
     callback_ops = [
@@ -321,12 +318,11 @@ it('should handle callback heartbeats', async () => {
   const callbackOp = runner.getOperation('long-running-process');
   await callbackOp.waitForData(WaitingOperationStatus.STARTED);
 
-  // Send heartbeats
+  // Send heartbeats. With skipTime: true, the intervals between them
+  // fast-forward automatically — no manual time advance is needed.
   await callbackOp.sendCallbackHeartbeat();
-  await runner.skipTime({ minutes: 2 });
   await callbackOp.sendCallbackHeartbeat();
-  await runner.skipTime({ minutes: 2 });
-  
+
   // Complete callback
   await callbackOp.sendCallbackSuccess(JSON.stringify({ status: 'completed' }));
 
@@ -420,12 +416,12 @@ describe('Integration Tests', () => {
   it('should execute in real Lambda', async () => {
     const runner = new CloudDurableTestRunner({
       functionName: 'my-durable-function:1',  // Qualified ARN required
-      client: new LambdaClient({ region: 'us-east-1' })
+      client: new LambdaClient({ region: 'us-east-1' }),
+      config: { pollInterval: 1000 }  // config is a constructor parameter
     });
 
     const execution = await runner.run({
-      payload: { userId: '123' },
-      config: { pollInterval: 1000 }
+      payload: { userId: '123' }
     });
 
     expect(execution.getStatus()).toBe('SUCCEEDED');
@@ -438,19 +434,8 @@ describe('Integration Tests', () => {
 
 **Python:**
 
-Cloud mode uses `DurableFunctionCloudTestRunner` with the same API:
-
-```bash
-# Set environment variables for cloud mode
-export AWS_REGION=us-west-2
-export QUALIFIED_FUNCTION_NAME="my-durable-function:$LATEST"
-export LAMBDA_FUNCTION_TEST_NAME="my_function"
-
-# Run in cloud mode
-pytest --runner-mode=cloud -k test_workflow
-```
-
-The same test works in both modes:
+Cloud mode uses `DurableFunctionCloudTestRunner`. Instantiate it directly with the
+qualified function name and region:
 
 ```python
 def test_workflow_cloud():
@@ -465,6 +450,12 @@ def test_workflow_cloud():
 
     assert result.status is InvocationStatus.SUCCEEDED
 ```
+
+To drive cloud tests from `pytest` (mode selection, function-name mapping), use the SDK
+examples repo's `conftest.py` as the reference implementation — it defines the
+`--runner-mode` option and the `durable_execution` marker, and reads
+`PYTEST_FUNCTION_NAME_MAP` and `AWS_REGION`. The testing SDK itself ships no pytest
+plugin or `--runner-mode` option.
 
 ## Test Assertions
 

@@ -209,7 +209,8 @@ console.log(results.hasFailure);     // Boolean
 **TypeScript:**
 
 ```typescript
-// Get all results (throws if any failed)
+// Get the successful results. getResults() does NOT throw — call
+// results.throwIfError() first if a failed item should stop the workflow.
 const allResults = results.getResults();
 
 // Get successful results only

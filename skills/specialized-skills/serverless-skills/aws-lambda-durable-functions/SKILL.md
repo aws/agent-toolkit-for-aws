@@ -1,7 +1,7 @@
 ---
 name: aws-lambda-durable-functions
 description: Builds resilient, long-running, multi-step applications with AWS Lambda durable functions with automatic state persistence, retry logic, and orchestration for long-running executions. Covers the critical replay model, step operations, wait/callback patterns, error handling with saga pattern, testing with LocalDurableTestRunner. Triggers on phrases like lambda durable functions, durable execution, workflow orchestration, state machines, retry/checkpoint patterns, long-running stateful Lambda functions, saga pattern, human-in-the-loop callbacks, reliable serverless applications, context.step, context.wait, context.invoke, context.runInChildContext, withDurableExecution, DurableContext, UnrecoverableInvocationError, durable-execution-sdk, qualified ARN invocation, and durable handler replay.
-version: 1
+version: 2
 ---
 
 # AWS Lambda durable functions
@@ -14,12 +14,12 @@ Build resilient multi-step applications and AI workflows that can execute for up
 
 Read these before writing any code. Each one is a constraint that will silently break a function if violated.
 
-1. **Durable execution must be enabled at function creation time — it cannot be retrofitted.** A new Lambda function must be created with durable execution turned on. Migrate the logic into the new function; do not attempt to install the SDK and wrap the handler of the existing function and expect it to work.
+1. **Durable execution is enabled via a function's `DurableConfig`, and turning it on replaces the function.** In IaC, adding `DurableConfig` to an existing function triggers a resource replacement, which succeeds as long as the function name is not explicitly set in the template; changing values inside an existing `DurableConfig` does not require replacement. You cannot simply install the SDK and wrap the handler of a running function and expect durability — the function must be (re)created with durable execution configured.
 2. **Durable functions must be invoked with a qualified ARN** — a specific version, an alias, or the literal `$LATEST` suffix. An unqualified function name will fail. See the *Invocation Requirements* section below for examples.
 3. **Durable operations cannot be nested.** You cannot call `context.step()`, `context.wait()`, or `context.invoke()` from inside another step's callback. Use `context.runInChildContext()` to group operations instead.
 4. **All non-deterministic code must run inside steps.** `Date.now()`, `Math.random()`, UUID generation, API calls, and database queries outside a step will produce different values on replay and corrupt execution state.
-5. **Closure mutations are lost on replay** - return values from steps
-6. **Side effects outside steps repeat** - use `context.logger` (replay-aware)
+5. **Closure mutations are lost on replay.** Return values from steps instead of mutating variables in the enclosing scope.
+6. **Side effects outside steps repeat on every replay.** Use `context.logger`, which is replay-aware, rather than unguarded logging or other side effects outside a step.
 
 ## When to Load Reference Files
 
