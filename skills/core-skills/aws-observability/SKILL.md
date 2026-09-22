@@ -70,10 +70,12 @@ Decide this before routing. The natural wording ("set up an alert for high laten
    [concepts.md](references/cloudwatch-omni/concepts.md) carries the full feature-equivalence matrix.
 3. **Request that must act on live data, and the wording is ambiguous** → probe the target
    Region before acting:
+
    ```
    aws___call_aws → aws cloudwatch-omni list-domains
    aws___call_aws → aws cloudwatch-omni list-spaces        # scope to the target Region
    ```
+
    - A Domain and a Space exist in that Region → **Omni**.
    - No Space → **CloudWatch**: alarms → [cloudwatch/alarms.md](references/cloudwatch/alarms.md),
      dashboards → [cloudwatch/dashboards.md](references/cloudwatch/dashboards.md), queries →

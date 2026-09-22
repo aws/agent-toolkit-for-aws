@@ -149,6 +149,7 @@ The Java agent adds noticeably more cold-start latency than the other runtimes, 
 "I've added ADOT Java instrumentation to your Lambda function.
 
 **Changes:**
+
 - Added the `AWSOpenTelemetryDistroJava` layer (version looked up from the ADOT source of truth for your region)
 - Enabled X-Ray active tracing
 - Set `AWS_LAMBDA_EXEC_WRAPPER`, `OTEL_SERVICE_NAME`, and `OTEL_AWS_APPLICATION_SIGNALS_ENABLED=false`
@@ -157,6 +158,7 @@ The Java agent adds noticeably more cold-start latency than the other runtimes, 
 **Not changed:** your handler source and build config. No Application Signals policy was added.
 
 **Next steps:**
+
 1. Review the diff and confirm the layer version and region are right.
 2. Deploy, then invoke the function once to trigger a cold start. Expect the first invocation to be slower while the agent initializes.
 3. **Traces land in X-Ray**, by way of the execution environment's X-Ray receiver, which is where the layer sends them by default. If they should go somewhere else instead — such as your own collector — that destination needs different permissions from the X-Ray ones added here.

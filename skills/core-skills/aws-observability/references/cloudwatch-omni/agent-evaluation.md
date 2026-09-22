@@ -124,6 +124,7 @@ This skill **bundles a tested helper**, [`scripts/cloudwatch-omni/evaluate_trace
 1. **Pick the evaluator** (Section 3) — e.g. `Builtin.Helpfulness` (TRACE level). A raw trace has no ground truth, so pick a ground-truth-free evaluator; ground-truth evaluators belong to dataset-based evaluation (Section 6).
 2. **Resolve the trace ids** if the user named traces by symptom rather than id (see "Query → evaluate chaining" below).
 3. **Retrieve and run the helper** (this skill's supplementary file — fetch it, then run it with your shell):
+
    ```
    # one trace, one evaluator
    python evaluate_traces.py --trace-id <traceId> --evaluator-id Builtin.Helpfulness \
@@ -133,6 +134,7 @@ This skill **bundles a tested helper**, [`scripts/cloudwatch-omni/evaluate_trace
    python evaluate_traces.py --trace-ids <id1>,<id2>,… \
      --evaluator-ids Builtin.Helpfulness,Builtin.ToolSelectionAccuracy --level TRACE --region <region> --include-explanations
    ```
+
    It accepts one or many trace ids (`--trace-id` / `--trace-ids`) and one or many evaluator ids (`--evaluator-id` / `--evaluator-ids`), auto-resolves each trace's session (`--session-id` pins it for a single trace), fetches every session's spans from CloudWatch Omni (`traces.default`) via Omni SQL **once**, normalizes every span's `kind`, scores each (trace, evaluator) pair via `evaluate` (level → target: TRACE → `traceIds`; TOOL_CALL → `spanIds`; SESSION → no target), and prints a compact JSON **receipt** — a per-(trace, evaluator) `results` matrix (`traceId` / `evaluatorId` / `value` / `label` / `explanation`, plus `errorCode` if the evaluator returned one) with a small rollup. Raw spans never enter the conversation.
 4. **Report the receipt** — carry `value` / `label` and the `explanation` as the "why." You are **not done** until the helper prints a `results` array (or an error).
 
@@ -348,6 +350,7 @@ A dataset is a versioned collection of schema-typed **examples** — the target 
 ### Example shapes
 
 PREDEFINED example (the trace-derived shape):
+
 ```json
 {
   "scenario_id": "checkout_happy_path",
@@ -357,9 +360,11 @@ PREDEFINED example (the trace-derived shape):
   "metadata": { "sourceTraceId": "<traceId>" }
 }
 ```
+
 `scenario_id` + `turns` (each `input` non-empty) are the minimum. Optional ground-truth fields gate which evaluators can score the example: `expected_response` → correctness; `expected_trajectory` (ordered tool names) → tool-trajectory; `assertions` → goal-success. Omit them for ground-truth-free scoring.
 
 SIMULATED example (author-supplied only — an LLM actor drives the turns, so this shape cannot come from a trace); `input`, `actor_profile.goal`, and `actor_profile.context` are required:
+
 ```json
 {
   "scenario_id": "refund_dispute",
@@ -379,6 +384,7 @@ aws bedrock-agentcore-control create-dataset \
   --schema-type AGENTCORE_EVALUATION_PREDEFINED_V1 \
   --source '{"inlineExamples":{"examples":[ … ]}}'
 ```
+
 Returns a `datasetId`; the dataset may be `CREATING` briefly — re-check `get-dataset` until `status` is `ACTIVE`. Then `create-dataset-version --dataset-id <id>` to publish the immutable version a repeatable evaluation targets.
 
 ### Build a dataset from traces
@@ -386,10 +392,12 @@ Returns a `datasetId`; the dataset may be `CREATING` briefly — re-check `get-d
 There is no server-side "trace → example" operation, so this skill **bundles a tested helper**, [`scripts/cloudwatch-omni/capture_dataset_from_traces.py`](../../scripts/cloudwatch-omni/capture_dataset_from_traces.py), that does the whole fetch → reshape → validate → write. **Do not hand-reshape spans in the conversation** — the one-shot flow is error-prone and bloats context.
 
 1. **Retrieve and run the helper** (this skill's supplementary file — fetch it, then run it with your shell). It queries each trace's spans from CloudWatch Omni (`traces.default`), converts each into a PREDEFINED example (root-span input/output, ordered tool trajectory), validates every example, and writes the batch:
+
    ```
    python capture_dataset_from_traces.py --mode create \
      --dataset-name checkout_regressions --trace-ids <id1>,<id2>,… --region <region>
    ```
+
    Append to an existing dataset with `--mode add --dataset-id <id>` (an id or a name; a name is resolved via `list-datasets`). It looks back 30 days (`--window-days`) and prints a compact JSON **receipt** (`datasetId`, `examplesWritten`, any per-trace `conversionErrors`) — raw spans never enter the conversation, and a partial/invalid batch never lands.
 2. **Report the receipt** — the returned `datasetId` and counts. You are **not done** until the helper prints a `datasetId`. Relay it honestly: if the receipt lists per-trace `conversionErrors`, say which traces did not become examples rather than reporting only the successes; and when an example is stamped `metadata.partial = true` (its trace's span set was truncated, so the turns/trajectory may be incomplete), tell the user which ones are partial instead of presenting the set as complete.
 
@@ -508,6 +516,7 @@ A single-comparison bad-end query must be **polarity-homogeneous** — do not mi
 All over `FROM "logs.default"`, filtering `attributes['gen_ai.evaluation.name'] IS NOT NULL` and a bounded `` `@timestamp` `` window (relative form `NOW() - INTERVAL 'N HOUR'` — never a bare integer; see [`query/sql-logs-traces.md`](query/sql-logs-traces.md)). Score queries also add `AND attributes['error.type'] IS NULL`.
 
 **Recent scores for an agent:**
+
 ```sql
 SELECT `@timestamp`,
        attributes['gen_ai.evaluation.name']        AS evaluator,
@@ -524,6 +533,7 @@ LIMIT 100
 ```
 
 **Q1 — per-evaluator rollup: avg + spread + errored SIDECAR in ONE query.** Do NOT filter `error.type` in `WHERE`; split it INSIDE the aggregates and always `GROUP BY` the evaluator name. The `CAST` sits INSIDE the scored `CASE`, so it never runs on an errored row (no cast failure); `AVG` skips a categorical evaluator's NULL value → `avg_score = NULL` for it (read those by label with Q2) instead of dropping the evaluator. `MIN`/`MAX` give the spread without a dialect-specific `STDDEV`:
+
 ```sql
 SELECT attributes['gen_ai.evaluation.name'] AS evaluator,
        AVG(CASE WHEN attributes['error.type'] IS NULL
@@ -540,9 +550,11 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '7 DAY' AND NOW()
   AND resource['attributes']['service.name'] IN ('<service>', '<service>.DEFAULT')
 GROUP BY evaluator
 ```
+
 `failed_to_run` is the per-evaluator sidecar (it covers categorical evaluators too, since their errored rows have no label). For a strictly scored-only view with no sidecar, add `AND attributes['error.type'] IS NULL` to the `WHERE` and drop the `CASE` wrappers.
 
 **Average score per session (or any break-down dimension) AND evaluator.** `GROUP BY` the dimension **AND** the evaluator name, and SELECT the evaluator name so the breakdown is legible. **Never `GROUP BY session_id` alone** — that silently averages a session's Helpfulness, Correctness, Toxicity, … into one meaningless number. Swap `session.id` for any other dimension the same way:
+
 ```sql
 SELECT attributes['session.id']                 AS session_id,
        attributes['gen_ai.evaluation.name']     AS evaluator,
@@ -556,9 +568,11 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '7 DAY' AND NOW()
 GROUP BY session_id, evaluator
 ORDER BY session_id, evaluator
 ```
+
 Categorical evaluators come back with `avg_score = NULL` here — roll those up with Q2, adding `session_id` to its `GROUP BY` the same way. **For a NUMERICAL evaluator never add `label` to the `GROUP BY`** — that's the categorical shape only, and it multiplies rows past the display cap.
 
 **Q2 — categorical label distribution per evaluator** (for the evaluators Q1 returned with `avg_score = NULL`). One query returns every categorical evaluator's label breakdown:
+
 ```sql
 SELECT attributes['gen_ai.evaluation.name']        AS evaluator,
        attributes['gen_ai.evaluation.score.label'] AS label,
@@ -572,9 +586,11 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '7 DAY' AND NOW()
 GROUP BY evaluator, label
 ORDER BY evaluator, n DESC
 ```
+
 `GROUP BY evaluator, label` keeps each evaluator's own label set separate. **Never `GROUP BY label` alone** — that mixes distinct evaluators' categories. **And never run this pattern for an evaluator already known to be NUMERICAL:** if a previous query returned a real `avg_score` for it, it has scores, so this query is the wrong shape for it (its `label` is a gloss on the number). The `score.value IS NULL` predicate would return zero rows for it anyway — don't spend a query round proving that.
 
 **Q3 — results at the bad end of the scale + why** (pull `explanation` for the bad results). The comparison is **per-evaluator polarity**: the example assumes higher-is-better (`< 0.5`, `ASC`); for an inverted evaluator flip **both** the comparison to `> 0.5` **and** the `ORDER BY` to `DESC` so `LIMIT` returns the actual worst, not the least-bad breachers near the threshold; for a categorical one filter `score.label` instead. Scope with `IN (...)` to evaluators of **one** polarity:
+
 ```sql
 SELECT attributes['session.id']                    AS session_id,
        attributes['gen_ai.evaluation.name']        AS evaluator,
@@ -595,6 +611,7 @@ LIMIT 50
 **Multi-evaluator drill — top-N PER evaluator.** The default drill is **one Q3 per drilled evaluator, issued together as a batch** (Retrieval plan, second pass): each query filters to a single evaluator and ranks by its own polarity, so nothing starves. When several evaluators must share ONE query anyway, a single flat `LIMIT`/`ORDER BY` STARVES later-sorted ones — all rows land on the first evaluator, and "no bad results for evaluator X" becomes indistinguishable from "truncated by the LIMIT" — so cap PER evaluator with `QUALIFY ROW_NUMBER() OVER (PARTITION BY evaluator …)`, and remember a fused result is still read from the top, so later partitions can be cut by the row cap. Two rules: (1) inside `QUALIFY` reference the SELECT **aliases** (`evaluator`, `score`), NOT the raw `attributes['…']` — post-projection the raw expression is out of scope and errors `No field named attributes`. (2) size N so `N × (num evaluators) ≤ ~50` so the default row cap never truncates the union (e.g. ~15 each for 3 evaluators).
 
 Numerical evaluators — rank "worst" polarity-aware (a plain `ORDER BY score` ranks one polarity backwards):
+
 ```sql
 SELECT attributes['session.id']                    AS session_id,
        attributes['gen_ai.evaluation.name']        AS evaluator,
@@ -618,6 +635,7 @@ QUALIFY ROW_NUMBER() OVER (
 ```
 
 Categorical evaluators — no numeric value, so filter/rank by LABEL, never a threshold:
+
 ```sql
 SELECT attributes['session.id']                    AS session_id,
        attributes['gen_ai.evaluation.name']        AS evaluator,
@@ -636,9 +654,11 @@ QUALIFY ROW_NUMBER() OVER (
   ORDER BY ts DESC          -- no numeric severity to rank on; sample by recency (or per chosen label)
 ) <= 15
 ```
+
 **Do NOT combine numeric and categorical bad-ends in ONE query** — a numeric `score > 0.5` predicate silently drops every categorical row (its value is NULL). Run them as separate queries.
 
 **Evaluations that failed to run** (run this ONLY when the request is about evals that errored / did not run — `error.type IS NOT NULL`, the inverse of the score gate):
+
 ```sql
 SELECT attributes['gen_ai.evaluation.name']  AS evaluator,
        attributes['error.type']              AS error_type,
@@ -654,6 +674,7 @@ ORDER BY n DESC
 ```
 
 **Traces behind low-scoring evals** (two steps). Each bad-end eval record already carries the scored trace's id as top-level `traceId` — the bad-end queries above already select it, so the `traceId`s ARE the trace list; a next step that only needs the ids (add to a dataset, re-evaluate) needs **no** further query. To show the actual traces (prompt / response / spans), take those `traceId`s and query **`traces.default`**:
+
 ```sql
 SELECT traceId, name, `@timestamp`
 FROM "traces.default"

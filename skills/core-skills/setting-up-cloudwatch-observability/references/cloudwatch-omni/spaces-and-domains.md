@@ -12,6 +12,7 @@ Domain first, then Space, because the Space is created against a domain ID.
 > needs the customer's confirmation.
 
 ## Contents
+
 - [Which path](#which-path)
 - [What you get when setup completes](#what-you-get-when-setup-completes)
 - [Prerequisites](#prerequisites)
@@ -45,30 +46,41 @@ anything.
 | IAM Identity Center | `["IAM", "IDC"]` | An Identity Center instance ARN, and the Domain MUST be created in that instance's primary Region |
 
 **Constraints:**
+
 - You MUST establish account-scoped versus org-scoped before calling anything. An
+
   org customer who gets an account-scoped Domain has to delete it and start over,
   and an account Domain blocks the org Domain from being created.
+
 - You MUST NOT mix the two operation families. `create-domain` and
+
   `create-domain-for-organization` produce different Domains with different
   deletion operations.
 
 ## What you get when setup completes
 
 - A **domain ID** shaped `d-` followed by up to 25 lowercase alphanumerics, a
+
   **domain ARN**, and a **domain endpoint URL**. The endpoint URL derives from the
   domain name, which is why the name is not cosmetic.
+
 - A **space ID** (a UUID), a **space ARN**, and the Space's **Region**.
 
 Quotas to state up front:
 
 - **One Domain per account.** A second `create-domain` conflicts.
 - **One Space per account per Region.** A second Space in the same Region
+
   conflicts; a Space in a different Region is a different Space.
 
 **Constraints:**
+
 - You MUST tell the customer the domain name becomes part of the endpoint URL
+
   before they choose it.
+
 - You MUST state both quotas explicitly in any setup plan or answer you give —
+
   one Domain per account, and one Space per account per Region. Naming them is
   not optional detail: a customer who expects several Spaces in one Region will
   read the resulting conflict as a failure.
@@ -77,16 +89,22 @@ Quotas to state up front:
 
 - **The AWS Region**, confirmed with the customer rather than inferred.
 - **For an Identity Center Domain**, the instance ARN and its **primary Region**.
+
   The Domain must be created in that Region.
+
 - **`iam:PassRole`** on the space access role, for whoever creates the Space.
+
   Without it the create fails after the role already exists.
 
 **Region rules differ by provider, and the difference matters:**
 
 - An **IAM-only Domain** supports Spaces in Regions other than the Domain's.
 - An **Identity Center Domain** requires the Space in the **same Region** as the
+
   Domain. This is not relaxable.
+
 - If the customer needs Identity Center *and* Spaces in more than one Region, the
+
   **org-scoped Domain** is the way to do it — see `references/cloudwatch-omni/org-domains.md`.
 
 Never answer "yes, Spaces can be in other Regions" without naming which provider
@@ -94,7 +112,9 @@ that holds for. It is true for IAM-only and false for account-scoped Identity
 Center.
 
 **Constraints:**
+
 - You MUST NOT promise a cross-Region Space under an account-scoped Identity
+
   Center Domain. If the customer needs Identity Center together with Spaces in
   more than one Region, the org-scoped Domain path supports that — see
   `references/cloudwatch-omni/org-domains.md`.
@@ -154,18 +174,27 @@ default silently.
 
 1. **Region?**
 2. **Domain name?** It becomes part of the endpoint URL. Lowercase letters, digits,
+
    and single hyphens between them; 3–63 characters.
+
 3. **Authorization provider** — IAM, Identity Center, or both?
 4. **If Identity Center:** the instance ARN, and confirmation that the Region from
+
    question 1 is that instance's primary Region.
+
 5. **Space name?** Same character rules as the domain name; 3–64 characters.
 6. **Space access role** — should the agent **create a new role** with the correct
+
    trust policy and managed policies, or will the customer **supply an existing
    role ARN**? Recommend creating one.
+
 7. **AgentCore evaluation role ARN?** `create-space` requires this as well as the
+
    space access role, and the agent cannot create it. Ask for an existing ARN, or
    offer to look for a reusable one — see Step 3.
+
 8. **Encryption** — service-owned, or a customer managed KMS key? If a customer
+
    managed key, the key ARN. It must be a symmetric `ENCRYPT_DECRYPT` key in the
    caller's account and Region, and its **key policy** must allow
    `cloudwatch.amazonaws.com` to perform `kms:Decrypt` and `kms:GenerateDataKey`.
@@ -184,10 +213,14 @@ reference for this operation is
 [sso-admin list-instances](https://docs.aws.amazon.com/cli/latest/reference/sso-admin/list-instances.html).
 
 **Constraints:**
+
 - You SHOULD recommend creating the role rather than reusing one. The Space cannot
+
   function correctly unless the role's trust policy and permissions are right, and
   a purpose-built role is easier to verify and to clean up.
+
 - You MUST confirm the key policy grants both KMS actions before offering
+
   customer managed encryption. A key the service cannot use produces a Space that
   cannot write.
 
@@ -208,14 +241,20 @@ customer — its name and ID from the summary, and its endpoint URL from
 confirmation, take its `domainId` and continue from Step 3.
 
 **Constraints:**
+
 - You MUST run this check before `create-domain`.
 - You MUST state the one-Domain-per-account limit to the customer as part of this
+
   step, not only when the check finds one. A customer who does not know the limit
   reads the resulting conflict as a failure.
+
 - You MUST confirm with the customer before reusing an existing Domain. It may
+
   belong to someone else in the account, and its authorization provider may not be
   the one they asked for.
+
 - If the check cannot be completed — access denied, or an ambiguous response — you
+
   MUST treat the result as **inconclusive, not negative**. Report that and stop.
   You MUST NOT create a Domain on that basis.
 
@@ -244,14 +283,22 @@ Capture `domainId`, `domainArn`, and `domainEndpointUrl` from the `domain` objec
 in the response. `domainId` is the input to `create-space` in Step 4.
 
 **Constraints:**
+
 - You MUST create an Identity Center Domain in the instance's **primary** Region.
+
   Creating it elsewhere is rejected, and the rejection describes the Region rather
   than the mistake.
+
 - `identityProviders` accepts one or two values from `IAM` and `IDC`, and they must
+
   be distinct. You MUST NOT send a repeated value.
+
 - You MUST capture `domainEndpointUrl` and give it to the customer. It is how they
+
   reach Omni, and it is not derivable from the domain name alone.
+
 - If the customer does not have the Identity Center instance ARN, You SHOULD offer to
+
   look it up with `list-instances` on `sso-admin` rather than leaving
   `<idc-instance-arn>` for them to resolve.
 
@@ -265,7 +312,9 @@ editing their role.
 This is the role the service assumes to operate on the Space.
 
 **Constraints:**
+
 - You SHOULD run the `list-spaces` check from [Step 4](#step-4--create-the-space)
+
   before creating a role. If a Space already exists in the target Region, no role
   is needed, and creating one leaves an unused IAM role behind.
 
@@ -303,13 +352,19 @@ aws___call_aws → aws iam create-role --role-name <role-name> --assume-role-pol
 ```
 
 **Constraints:**
+
 - All three `sts` actions are required. `sts:TagSession` and `sts:SetContext` carry
+
   the session context the Space needs; a role trusted for `sts:AssumeRole` alone
   is accepted at create time and fails later when the Space is used.
+
 - The `aws:SourceArn` pattern MUST stay wildcarded across Region and space ID
+
   (`space/*`). The space ID does not exist yet when the role is created, so a
   narrower pattern cannot match.
+
 - You MUST create the role in the same account as the caller. `create-space`
+
   rejects a `dataAccessRoleArn` from another account.
 
 ### Attach the managed policies
@@ -327,9 +382,13 @@ aws___call_aws → aws iam attach-role-policy --role-name <role-name> --policy-a
 ```
 
 **Constraints:**
+
 - You MUST NOT substitute a `*FullAccess` policy or hand-write a broad inline
+
   policy. The Space's permissions are defined by these managed policies.
+
 - You MUST NOT attach these policies to a role the customer supplied without
+
   asking. They may be reusing it, and widening someone else's role is not yours
   to do.
 
@@ -340,6 +399,7 @@ not the space access role and is not created here. Resolve it now rather than at
 call:
 
 1. **Reuse an existing role.** List roles and offer any whose name starts with
+
    `AgentCoreEvaluationRole` or `AgentCoreEvalRole`, or whose trust policy principal
    is `bedrock-agentcore.amazonaws.com`. An account already running evaluations
    usually has one — show the matches and let the customer pick.
@@ -349,15 +409,22 @@ aws___call_aws → aws iam list-roles
 ```
 
 2. **Otherwise have the customer create one** — the AgentCore Evaluations console
+
    ("Create and use a new service role") or the AgentCore CLI/SDK
    (`auto_create_execution_role=True`) — then use the ARN it returns.
 
 **Constraints:**
+
 - You MUST have both role ARNs before calling `create-space`. Omitting either is
+
   rejected by the client before the request is sent.
+
 - You MUST NOT hardcode this role's IAM policy. The console and CLI build the
+
   authoritative policy on creation.
+
 - You MUST NOT attach the Space's managed policies to it. It is a different role
+
   with a different trust principal.
 
 ## Step 4 — Create the Space
@@ -376,13 +443,19 @@ If a Space already exists in the target Region, do NOT create another. Report it
 to the customer — its name, ID, and Region — and confirm they want to use it.
 
 **Constraints:**
+
 - You MUST run this check before `create-space`.
 - You MUST state the one-Space-per-account-per-Region limit to the customer as
+
   part of this step. It is what determines whether they need a Space in more than
   one Region.
+
 - A Space in a different Region is a different Space and does not conflict. You
+
   MUST compare Regions rather than treating any returned Space as a conflict.
+
 - If the check cannot be completed, you MUST treat the result as **inconclusive,
+
   not negative**, report that, and stop.
 
 ### Create it
@@ -433,16 +506,24 @@ the response.
 > successfully and fails the moment anything uses it.
 
 **Constraints:**
+
 - You MUST use `encryptionConfiguration`; it is the only create-time encryption
+
   input. `create-space` has no top-level `kmsKeyArn` member (the CLI has no
   `--kms-key-arn` flag). There is no top-level `kmsKeyArn` on read either:
   `get-space` always reports `encryptionConfiguration`, and `list-spaces` summaries
   carry no encryption fields at all.
+
 - A customer managed key MUST be a symmetric `ENCRYPT_DECRYPT` key in the caller's
+
   account and Region.
+
 - You MUST NOT author or modify the KMS key policy yourself. Show the customer the
+
   statement above and direct them to whoever administers the key.
+
 - `create-space` does not verify that the role can actually be assumed. It checks
+
   only that the ARN is present and in the caller's account, so a role with a wrong
   trust policy creates a Space that fails in use. You MUST NOT treat a successful
   create as proof the role is correct — verify per the next section.
@@ -464,7 +545,9 @@ Then report to the customer, in one line: the domain endpoint URL, the space ID,
 and the Region.
 
 **Constraints:**
+
 - You MUST NOT begin dependent setup — such as telemetry forwarding — until the
+
   Space reports `ACTIVE`.
 
 ## Cleanup
@@ -481,6 +564,7 @@ Space is destructive and its telemetry goes with it.
 Order matters. Delete the Space first.
 
 1. **Confirm first, then delete the Space.** Deleting a Space is destructive: the
+
    Space's telemetry goes with it and cannot be recovered. Get the customer's
    explicit confirmation before running this call.
 
@@ -496,18 +580,27 @@ Order matters. Delete the Space first.
 
 3. The space access role — branch on who created it:
    - **The agent created it in Step 3:** detach both managed policies with
+
      `detach-role-policy`, then `delete-role`. A role with policies attached
      cannot be deleted.
+
    - **The customer supplied it:** do NOT delete or modify it. Tell them the Space
+
      is gone and the role is untouched.
 
 **Constraints:**
+
 - You MUST delete Spaces before the Domain. `delete-domain` returns a conflict
+
   naming the number of remaining Spaces, and the fix is always to delete those
   first — never to retry the Domain delete.
+
 - Deleting a Space is destructive. You MUST confirm with the customer first and
+
   say plainly that the Space's telemetry goes with it.
+
 - You MUST NOT poll `get-space` after `delete-space` to confirm removal. Once
+
   delete returns success the Space is gone, and a follow-up read can fail in ways
   that look like the delete did not work.
 
@@ -551,8 +644,11 @@ expect this one to validate too.
 **Telling this apart from a missing grant** is a matter of timing:
 
 - The Space **was created and then failed in use** — suspect the role's trust policy.
+
   Check the service principal, all three `sts` actions, and both condition keys.
+
 - **Nobody could ever reach the Space**, from the start, for everyone — suspect
+
   missing access grants. See `references/cloudwatch-omni/access-grants.md`.
 
 You MUST check the trust policy before proposing new grants. Creating a grant to fix a
@@ -561,35 +657,54 @@ trust-policy problem leaves the customer with the same error and two things to u
 ### Expectations that look like faults
 
 - **`create-space` succeeded but using the Space fails with an authorization
+
   error.** The create does not verify the role is assumable. Check the trust
   policy's principal, all three `sts` actions, and both condition keys.
+
 - **A Space encrypted with a customer managed key cannot write.** The key policy
+
   does not allow `cloudwatch.amazonaws.com` the required KMS actions. Nothing about
   the Space or the role is wrong.
+
 - **A second Space in the same Region conflicts.** One Space per account per
+
   Region. This is the quota, not an error in the request.
 
 ## Security considerations
 
 - Keep both `aws:SourceAccount` and `aws:SourceArn` conditions on the space access
+
   role's trust policy. They are the confused-deputy protection.
+
 - The `aws:SourceArn` wildcard covers Region and space ID because neither is known
+
   when the role is created. Do not widen it further — the account ID and the
   `space/` resource type MUST stay pinned.
+
 - If the customer supplied the role, attach only these two managed policies and change
+
   nothing else about its existing permissions.
+
 - Do not attach `*FullAccess` policies to the space access role. Its permissions
+
   come from the Omni managed policies and nothing else.
+
 - A Space encrypted with a customer managed key needs the key policy to grant the
+
   service `kms:Decrypt` and `kms:GenerateDataKey`. Do not author or modify the key
   policy; if it needs changing, direct the customer to their key administrator.
+
 - Access to query a Space is granted separately through access grants and access
+
   profiles, so read access can be given without the ability to change the Space.
 
 ## Additional resources
 
 - `references/cloudwatch-omni/org-domains.md` — Domains shared across an AWS Organization
 - `references/cloudwatch-omni/instrumentation/collector.md` — deploying a collector that exports to
+
   CloudWatch's OTLP endpoints, for telemetry not yet reaching CloudWatch
+
 - `references/cloudwatch-omni/data-forwarding-and-centralization.md` — forwarding telemetry that is
+
   already in CloudWatch log groups into the Dataset

@@ -262,7 +262,6 @@ kubectl -n amazon-cloudwatch delete pod -l app.kubernetes.io/name=cloudwatch-age
 
 ### Backup: upstream otelcol-contrib
 
-
 ```yaml
 apiVersion: v1
 kind: Namespace

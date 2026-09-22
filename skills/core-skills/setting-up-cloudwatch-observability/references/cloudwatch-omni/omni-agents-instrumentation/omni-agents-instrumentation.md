@@ -53,6 +53,7 @@ Let me start by scanning your project...
 ## Phase 1: Detect Framework and Platform
 
 Identify the AI framework and language from the project's dependency files:
+
 - Python: `pyproject.toml`, `requirements.txt`, `setup.py`
 - TypeScript: `package.json`
 
@@ -61,6 +62,7 @@ Confirm by scanning source file imports.
 ### Detect AgentCore CLI platform
 
 After identifying the framework and language, check whether this project uses the **new AgentCore CLI** (`agentcore dev`). The ONLY reliable signal is:
+
 - An `agentcore/` directory containing `agentcore.json` at the project root
 
 **Important:** The `bedrock-agentcore` Python package or `@aws/bedrock-agentcore` npm package alone does NOT mean the new CLI is in use — those are SDK dependencies that exist in both old-CLI and new-CLI projects. Only the `agentcore/agentcore.json` config file indicates the new CLI structure.
@@ -80,10 +82,12 @@ Then STOP. Do NOT proceed with further phases if no framework was found.
 ### If an agent project IS detected
 
 Report the detection (including platform) and persist it to `.omni/server-config.json`:
+
 - Create `.omni/` directory if it doesn't exist
 - Preserve any existing keys already in the file
 - Set `framework`, `language`, and `platform`
 - If the file does not exist yet, initialize it with:
+
   ```json
   {
     "platform": "<agentcore|generic>",
@@ -157,6 +161,7 @@ Based on scan results, follow ONE of these cases:
 2. **Add ADOT dependency** — `aws-opentelemetry-distro>=0.20.0` in requirements
 3. **Install into venv** — `uv pip install --python .venv/bin/python "aws-opentelemetry-distro>=0.20.0" setuptools`
 4. **Start command** — use PYTHONPATH injection (NOT `opentelemetry-instrument` wrapper):
+
    ```bash
    source .venv/bin/activate
    export PYTHONPATH="$(python -c 'import opentelemetry.instrumentation.auto_instrumentation.sitecustomize as s; import os; print(os.path.dirname(s.__file__))')"${PYTHONPATH:+:$PYTHONPATH}
@@ -164,18 +169,23 @@ Based on scan results, follow ONE of these cases:
    export OTEL_SERVICE_NAME="<agent-name>"
    python <entry-point>
    ```
+
    **Windows:** PYTHONPATH injection works the same way. If you must use programmatic loading instead (e.g., `execl()` breaks process tracking on Windows), add before any instrumented imports:
+
    ```python
    from opentelemetry.instrumentation.auto_instrumentation import initialize
    initialize()
    ```
+
 5. **Add input/output attributes** in the request handler:
+
    ```python
    from opentelemetry import trace
    span = trace.get_current_span()
    span.set_attribute("input.value", user_prompt)
    span.set_attribute("output.value", agent_response[:4000])
    ```
+
 6. **Add agent step spans (custom agents only)** — wrap orchestration steps with spans using `openinference.span.kind` attributes (`AGENT`, `LLM`, `RETRIEVER`, `TOOL`)
 
 #### ADOT (Zero-Code) — TypeScript
@@ -186,21 +196,26 @@ Based on scan results, follow ONE of these cases:
 2. **Remove only self-owned OTel setup — KEEP the framework's `@arizeai/openinference-instrumentation-*` instrumentor AND its registration call** — remove the packages `@opentelemetry/sdk-node`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/resources`, `@vercel/otel` (keep `@opentelemetry/api`). Inside `tracing.ts`/`instrumentation.ts`, remove **only** the self-owned provider/exporter wiring — `NodeSDK` init, `registerOTel` against a self-owned provider, `OTLPTraceExporter` setup, `SimpleSpanProcessor` imports — but do **NOT** delete the file wholesale and do **NOT** remove the instrumentor's registration call. Unlike Python (where ADOT auto-discovers the instrumentor's OTel entry point with no wiring), the JS OpenInference instrumentors require an explicit registration call — e.g. `manuallyInstrument(CallbackManager)` / `registerInstrumentations(...)` — registered against ADOT's global provider (bring-your-own-provider). Keep both the `@arizeai/openinference-instrumentation-<framework>` package and that registration call; removing either leaves the instrumentor inert and ADOT emitting zero LLM/agent spans.
 3. **Add ADOT dependency** — `@aws/aws-distro-opentelemetry-node-autoinstrumentation` (use `--legacy-peer-deps` for Strands)
 4. **Verify ADOT supports your framework version** — check SUPPORTED_VERSIONS in the installed distro:
+
    ```bash
    grep -A 5 "SUPPORTED_VERSIONS" node_modules/@aws/aws-distro-opentelemetry-node-autoinstrumentation/build/src/patches/*.js
    ```
+
    ADOT silently won't attach outside supported ranges — you get HTTP spans but **no AGENT/LLM/TOOL spans and zero tokens, with no error**. If out of range, bump the framework to a supported version.
+
 5. **Start command** (detect ESM vs CJS from `"type": "module"` in package.json):
    - CommonJS: `node --require @aws/aws-distro-opentelemetry-node-autoinstrumentation/register <entry-point>`
    - ESM: `node --experimental-loader=@opentelemetry/instrumentation/hook.mjs --import @aws/aws-distro-opentelemetry-node-autoinstrumentation/register <entry-point>`
    - With build step: prepend `npm run build &&`
 6. **Add input/output attributes** in the request handler:
+
    ```typescript
    import { trace } from "@opentelemetry/api";
    const span = trace.getActiveSpan();
    span?.setAttribute("input.value", prompt);
    span?.setAttribute("output.value", result.slice(0, 4000));
    ```
+
 7. **`@opentelemetry/api` version conflict** — if you see `Cannot read properties of undefined (reading 'getActiveSpan')`, check for version duplication: `npm ls @opentelemetry/api`. Fix with `npm dedupe` or pin a single version in `package.json` resolutions.
 
 #### OpenInference — Framework-Specific
@@ -237,6 +252,7 @@ Read `references/cloudwatch-omni/omni-agents-instrumentation/openinference-frame
 Use `"adot"` or `"openinference"` as the approach value.
 
 Persist instrumentation state to `.omni/server-config.json`:
+
 - Preserve existing keys
 - Set `instrumentationComplete: true`
 - Set `instrumentationApproach` to `"adot"` or `"openinference"`
@@ -260,10 +276,12 @@ This phase configures the start command, starts the server, and runs a test invo
 ### Step 3.1: Detect Start Command and Port
 
 Determine the entry point:
+
 - Python: `main.py`, `app.py`, `src/main.py`, or `pyproject.toml` `[project.scripts]`
 - TypeScript: `package.json` `main` field, `tsconfig.json` `outDir`
 
 Build the command based on platform and instrumentation approach:
+
 - **AgentCore CLI platform:** `agentcore dev -l --skip-deploy` (PYTHONPATH injection handles instrumentation; `-l` = local mode, `--skip-deploy` = don't deploy to cloud)
 - **Generic Python:** PYTHONPATH injection + project's natural server command
 - **TypeScript:** `--require`/`--import` flags for ADOT, or normal run command for OpenInference
@@ -271,12 +289,14 @@ Build the command based on platform and instrumentation approach:
 Detect port from code or `.env` file.
 
 Persist the start command to `.omni/server-config.json`:
+
 - Set `startCommand` to the full command string
 - Set `devServerPort` if detected
 
 ### Step 3.2: Install Dependencies
 
 **Python venv rule** — NEVER bare `pip`:
+
 1. `uv pip install --python .venv/bin/python -r requirements.txt`
 2. `.venv/bin/python -m pip install -r requirements.txt`
 
@@ -287,6 +307,7 @@ Persist the start command to `.omni/server-config.json`:
 Start the server in background with shell commands:
 
 **Python (PYTHONPATH injection):**
+
 ```bash
 source .venv/bin/activate
 export PYTHONPATH="$(python -c 'import opentelemetry.instrumentation.auto_instrumentation.sitecustomize as s; import os; print(os.path.dirname(s.__file__))')"${PYTHONPATH:+:$PYTHONPATH}
@@ -297,6 +318,7 @@ echo $! > .omni/server.pid
 ```
 
 Wait for the port to open (max 30s):
+
 ```bash
 for i in $(seq 1 30); do
   nc -z localhost <port> 2>/dev/null && echo "Server ready" && break
@@ -307,6 +329,7 @@ done
 ### Step 3.3b: Verify Collector is Reachable
 
 Before testing the agent, confirm the OTLP collector is listening on the same `<OTLP_PORT>` used above:
+
 ```bash
 nc -z localhost <OTLP_PORT> 2>/dev/null && echo "Collector reachable" || echo "WARNING: No collector on :<OTLP_PORT> — traces will be silently dropped"
 ```
@@ -327,6 +350,7 @@ Read source code to identify route definitions and expected payload shape. Use t
 For LangGraph, check `langgraph.json` for the `assistant_id` value.
 
 Persist the detected schema to `.omni/server-config.json`:
+
 - Set `protocolTemplate` to the detected protocol (e.g., `"AgentCore"`, `"LangGraph"`, `"AG-UI"`, `"custom"`)
 
 ### Step 3.5: Test Invocation
@@ -353,9 +377,11 @@ Then verify a trace was captured. HTTP 2xx + non-empty response does NOT mean tr
 If ANY check fails → do NOT declare success. Diagnose the root cause (wrong PYTHONPATH, missing package, version mismatch, conflicting instrumentation), fix, and re-invoke.
 
 **How to verify traces:** Check `.omni/traces.jsonl` directly after the invocation:
+
 ```bash
 wc -l .omni/traces.jsonl 2>/dev/null || echo "0"
 ```
+
 If the file exists and has content, parse the last few lines for a fresh trace matching your invocation timestamp. If `.omni/traces.jsonl` does not exist or is empty, the collector may not be running — warn the user but do not block.
 
 ### Diagnosing Startup Failures
@@ -408,6 +434,7 @@ After any credential fix, ALWAYS restart the server — env vars are read at sta
 ### On Success
 
 Persist completion to `.omni/server-config.json`:
+
 - Set `onboardingComplete: true`
 
 If the detected schema didn't match a preset (`AgentCore`, `LangGraph`, `AG-UI`), write the custom schema to `.omni/agent-api-spec-custom.json` with the full endpoint, headers, and body template. Set `protocolTemplate: "custom"` in `server-config.json`.
@@ -417,6 +444,7 @@ Tell the user they're all set — they can interact with their agent and explore
 ### After 3 Unsuccessful Attempts
 
 Ask the user:
+
 1. **Run your own server** — give the command with environment variables
 2. **Configure manually** — point them to relevant documentation
 

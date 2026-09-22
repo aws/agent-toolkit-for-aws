@@ -50,6 +50,7 @@ under their own IAM (see [Security considerations](#security-considerations)).
 >   the CLI answers directly.
 
 ## Contents
+
 - [What an access grant is](#what-an-access-grant-is)
   - [Grants, IAM, and Access Profiles](#grants-iam-and-access-profiles)
   - [What a grant reaches](#what-a-grant-reaches)
@@ -86,6 +87,7 @@ creating a Domain and Space.
 Every grant names three things, and every lookup answers a question about one of them:
 
 - **A principal** — `principalType` plus, normally, `principalId`. What `principalId`
+
   holds depends on the type:
 
   | `principalType` | `principalId` |
@@ -97,8 +99,11 @@ Every grant names three things, and every lookup answers a question about one of
   | `AGENT` | An agent workload principal — a service-defined identifier for the agent, not an IAM ARN |
 
 - **A permission** — one of `READ`, `READ_WRITE_DELETE`, `SPACE_ADMIN`, or `CUSTOM`.
+
   See [Permission levels](#permission-levels).
+
 - **A scope** — the actions and resources a `CUSTOM` grant allows, or the narrowing
+
   applied to a named permission. Scope is **not** on a list summary; it is only on a
   single grant's detail (`get-access-grant`).
 
@@ -119,6 +124,7 @@ Three mechanisms sit near each other and are routinely confused. Keep them apart
 | **Access Profile** | A named container a workload (an alert, agent, or integration) **assumes**; it does nothing until grants are attached to it | [access-profiles.md](access-profiles.md) |
 
 - **Grants are not IAM, and they bind the two caller types differently.** A human
+
   identity — an IAM Identity Center user, a console session, or a workload that has
   assumed an Access Profile — must hold a matching grant: with none, the Space denies
   the call regardless of IAM. An IAM principal calling the API directly with its own
@@ -129,11 +135,15 @@ Three mechanisms sit near each other and are routinely confused. Keep them apart
   restriction applied. Direct IAM callers reach only Spaces owned by their own account.
   So "who has access to this Space" is the grants for people and profiles, plus IAM
   policy for direct IAM callers that hold no grant — check both.
+
 - **Grants are not Access Profiles.** A profile bounds what a workload may do; it is
+
   itself the *principal* of the grants that describe its permissions, and the *target*
   of trust grants that say which workloads may assume it. Give a person or a team
   access with a grant directly — never by creating a profile for them.
+
 - **Deny-by-default.** A human principal or profile with no matching grant can do
+
   nothing in the Space (a direct IAM caller with no grant is governed by IAM, above).
   There is nothing to "lock down" after creating a Space; there is only access to open,
   one grant at a time.
@@ -148,19 +158,28 @@ surface as conflicts rather than as advice:
 
 - **50 grants per principal**, and **500 grants per Space**.
 - **10 `CUSTOM` grants per principal per Space.** Named-permission grants are
+
   additionally **one per principal per Space per level** — a second `READ` grant for
   the same principal conflicts rather than replacing the first.
+
 - A grant may carry up to **20 scoped-action entries**, each naming up to **50
+
   actions**.
 
 **Constraints:**
+
 - You MUST tell the customer that a grant covers one Space only. A customer with
+
   Spaces in several Regions needs a grant per Space, and will otherwise read the
   missing access as a bug.
+
 - You MUST NOT create a second grant at the same named permission for a principal
+
   already holding one. Read the existing grant instead — see
   [Step 2](#step-2--identify-the-principal).
+
 - You MUST NOT create a Space grant when the customer describes organization-wide
+
   administration. A grant here names exactly one Space; a Domain grant is a different
   operation in [org-domains.md](org-domains.md).
 
@@ -191,23 +210,33 @@ a separate decision from the permission itself.
 **What a caller may delegate** is bounded by what the caller holds:
 
 - A caller with Domain administration may grant any of the four requestable
+
   permissions. **No caller can grant `ADMIN`** — it is not requestable through the API
   at all, whatever the caller holds.
+
 - A caller with `SPACE_ADMIN` on the Space may grant `SPACE_ADMIN`, `READ`,
+
   `READ_WRITE_DELETE`, and `CUSTOM` within it.
+
 - A caller with a lesser grant may not manage grants.
 
 **Least privilege** is per-grant narrowing: prefer several narrow grants over one broad
 one, and the narrowest named level over `CUSTOM`.
 
 **Constraints:**
+
 - You MUST NOT offer a write-only or delete-only grant. There is no caller-usable
+
   `WRITE` or `DELETE` permission — `READ_WRITE_DELETE` is the only value that conveys
   mutation.
+
 - You SHOULD start from the narrowest named permission that satisfies the request and
+
   reach for `CUSTOM` only when no named level fits. `CUSTOM` grants carry more ways to
   be wrong and count against a tighter quota.
+
 - You MUST NOT attempt to grant a permission broader than the caller holds. The
+
   rejection names both levels, so read it rather than retrying.
 
 ## Operations you will call
@@ -240,14 +269,21 @@ means revoking it and creating a new one — see [Changing a grant](#changing-a-
 ## Prerequisites
 
 - **The Space's `spaceId` and its Domain's `domainId`.** Both are required on the
+
   create. See [spaces-and-domains.md](spaces-and-domains.md) if the Space does not
   exist yet. Lookups need the `spaceId`; `search-principals` needs the `domainId`.
+
 - **A `SPACE_ADMIN` grant on that Space, or an administrative grant on the Domain.** A
+
   caller holding neither cannot manage grants at all.
+
 - **For Identity Center principals**, the Domain must use Identity Center, and the
+
   principal must exist in the Domain's identity store. The service verifies this at
   create time.
+
 - **Cross-account IAM grants are not supported at the Space grant level.** No caller,
+
   at any permission level, can create a Space access grant for a principal outside
   their own account. Say this plainly rather than implying it by describing the
   principal as being "in your account". Scope the claim to Space grants — it is not
@@ -258,7 +294,9 @@ means revoking it and creating a new one — see [Changing a grant](#changing-a-
   them it is impossible.
 
 **Constraints:**
+
 - You MUST NOT create grants for principals in another account. Cross-account IAM
+
   grants are not supported, and the rejection says so explicitly.
 
 ## Granting access
@@ -278,25 +316,38 @@ default silently.
 
 1. **Which Space?** The `spaceId`, and the `domainId` it belongs to.
 2. **Who is getting access?** A person or group in Identity Center, an IAM role or
+
    user, or a workload such as an alert or an Access Profile.
+
 3. **What do they need to do?** Map the answer to one of the four permissions in
+
    [Permission levels](#permission-levels). Ask what they need to *do*, not which
    permission they want — customers routinely ask for more than the task requires.
+
 4. **If `CUSTOM`:** exactly which actions. Wildcards are not accepted, so the list has
+
    to be explicit.
+
 5. **Should the grant be limited to particular resources?** Optional, and only worth
+
    raising if the customer has a reason — see
    [Step 4](#step-4--narrow-the-grant-with-scoped-actions).
+
 6. **A name for the grant?** Required. Letters, digits, underscores and hyphens; 1–64
+
    characters. Pick one that tells the grant apart when a principal holds several.
 
 Confirm the choices back in one line, then execute.
 
 **Constraints:**
+
 - You MUST ask what the principal needs to do before proposing a permission. A
+
   customer asking for "admin" usually needs `READ_WRITE_DELETE`, and `SPACE_ADMIN`
   lets them re-grant access to others.
+
 - You MUST NOT assume `CUSTOM`. Reach for it only when the customer's answer to
+
   question 3 does not fit a named level.
 
 ### Step 2 — Identify the principal
@@ -327,11 +378,17 @@ already exists, report it and stop — a duplicate conflicts rather than replaci
 the customer wants a *different* level, see [Changing a grant](#changing-a-grant).
 
 **Constraints:**
+
 - You MUST run this check before `create-access-grant`. A conflict after the fact is
+
   avoidable and confusing.
+
 - You MUST prefer `IDC_GROUP` over `IDC_USER` when the customer is describing a team
+
   or a role rather than one person. Group membership changes without touching grants.
+
 - If the check cannot be completed — access denied, or an ambiguous response — you
+
   MUST treat the result as **inconclusive, not negative**. Report that and stop. You
   MUST NOT create a grant on that basis.
 
@@ -368,17 +425,27 @@ Capture the grant ID from the response. It is what `get-access-grant` and
 `delete-access-grant` take.
 
 **Constraints:**
+
 - `permission` is always required. There is no default, and `CUSTOM` is never inferred
+
   from the presence of `scopedActions`.
+
 - You MUST NOT attempt a wildcard action. Expand the customer's intent into an explicit
+
   list, and if they cannot enumerate it, a named permission is the right answer
   instead.
+
 - The action prefix MUST match the service's vendor code. A prefix that does not is
+
   rejected, and the message names the expected one.
+
 - With a named permission, every action you name in `scopedActions` MUST be within
+
   that permission's tier. Naming a mutating action under `READ` is rejected, and the
   message names both the action and the permission.
+
 - You MUST NOT grant administrative actions to an `ACCESS_PROFILE` principal. The
+
   service rejects it, and a profile is not the right place for administration.
 
 ### Step 4 — Narrow the grant with scoped actions
@@ -387,8 +454,11 @@ Capture the grant ID from the response. It is what `get-access-grant` and
 permission:
 
 - With **`CUSTOM`**, it defines the grant. The principal may perform exactly the
+
   actions named and nothing else.
+
 - With a **named permission**, it narrows that permission. The actions named are
+
   restricted to the resources listed in the same entry, rather than applying across the
   whole Space.
 
@@ -397,6 +467,7 @@ requires a `resourceType`, and may add:
 
 - **`resourceArns`** — up to 5 ARNs. Omit to cover every resource of that type.
 - **`signalTypes`** and **`rowScopeGroups`** — row-level filtering, and only on the
+
   `DataSet` resource type. See below.
 
 `resourceType` is a plain string, not an enum, and the service validates it **per
@@ -408,10 +479,13 @@ on that kind of resource. The types the service knows are `AccessGrant`, `DataSt
 `Evaluator`, `OnlineEvaluation`, `View`, `IngestionEndpoint`.
 
 - `Space` and `Domain` are **not** valid here. A grant is already scoped to a single
+
   Space or Domain, so a parent-typed scope is rejected with a 400. To cover the whole
   Space, omit `resources` instead.
+
 - Casing matters: `DataSet` is accepted, `Dataset` is rejected.
 - The Console's scope picker offers only four of these types; its "Dashboard" entry
+
   sends `OmniDashboard`.
 
 ```
@@ -451,18 +525,28 @@ that a filter removed anything.
 ```
 
 **Constraints:**
+
 - `signalTypes` and `rowScopeGroups` MUST both be present or both absent, and MUST
+
   appear only on a `DataSet` scope. Either half alone is rejected, and so is their use
   on any other resource type.
+
 - `IN` is the only operator. There is no negation, no comparison, and no pattern match,
+
   so a row scope can only ever be an allowlist of values.
+
 - You MUST NOT use row scoping to restrict metrics. The `METRICS` signal type is not
+
   supported and the grant is rejected.
+
 - You MUST explain the any-group / all-conditions structure back to the customer before
+
   creating it. A customer who reads the groups as "and" will believe the grant is
   broader than it is, and one who reads the conditions as "or" will believe it is
   narrower.
+
 - You SHOULD skip scoping entirely unless the customer has a specific reason. A
+
   narrowed grant that excludes the wrong thing is indistinguishable from a broken one.
 
 ### Verifying the grant
@@ -478,10 +562,14 @@ scoped actions and resources are what the customer asked for. Then report in one
 who now has what, on which Space.
 
 **Constraints:**
+
 - You MUST report the permission in the customer's own terms as well as the API value.
+
   "Can read telemetry in this Space" is checkable by the customer;
   `READ_WRITE_DELETE` is not.
+
 - A grant taking effect is not instantaneous for a principal whose credentials are
+
   already vended. You SHOULD tell the customer that an existing session may need to be
   re-established before the change is visible.
 
@@ -491,7 +579,9 @@ There is no update operation. To change a grant's permission level, its scope, o
 name, revoke the existing grant and create a new one:
 
 1. Read the existing grant with `get-access-grant` and confirm with the customer which
+
    grant is changing and what it currently conveys.
+
 2. Revoke it with `delete-access-grant` — see [Revoking a grant](#revoking-a-grant).
 3. Create the replacement with `create-access-grant` (Step 3), then verify it.
 
@@ -501,9 +591,13 @@ level, so tell the customer there is a brief gap, and do it at a time that gap i
 acceptable.
 
 **Constraints:**
+
 - You MUST NOT try to change a level by creating a second grant alongside the first at
+
   the same named permission — it conflicts. Revoke first.
+
 - You MUST NOT revoke a customer's grant to "change" it without first confirming the
+
   replacement's exact permission and scope; a revoke with no agreed replacement is
   simply a revocation.
 
@@ -523,12 +617,18 @@ Revocation is the *only* way a grant ends — grants carry no expiry, so "remove
 access" always means a `delete-access-grant`.
 
 **Constraints:**
+
 - You MUST confirm which grant is being revoked before revoking it, by grant ID and by
+
   what it conveys. A principal often holds several, and "remove their access" rarely
   means all of them — list them first ([What a given principal holds](#what-a-given-principal-holds)).
+
 - You MUST NOT revoke the caller's own `SPACE_ADMIN` grant without warning them that
+
   they may lose the ability to manage grants in that Space.
+
 - Deleting a Space's last administrative grant leaves the Space unreachable. You MUST
+
   say so before doing it.
 
 ## Looking up access
@@ -628,9 +728,13 @@ When the name cannot be resolved — the Domain does not use Identity Center,
 `search-principals` returns nothing, or the caller cannot run it:
 
 - **Say so plainly.** Identity Center principals appear as UUIDs, and this lookup could
+
   not resolve the alias to one.
+
 - **Offer to list the Space's Identity Center grants** (`--principal-type IDC_USER` or
+
   `IDC_GROUP`) so the customer can identify the principal from the UUIDs and names.
+
 - **Never pretend an alias was resolved**, and never invent or guess a UUID.
 
 ### How a specific grant is scoped
@@ -644,14 +748,21 @@ actions and resources it allows — or **who created it and when**. Neither is o
 summary. Read the detail and report from it:
 
 - A grant's scope is `scopedActions` — each entry a set of `actions` over `resources`,
+
   with optional `contextConditions` — and it comes back exactly as the service holds
   it. That is the only scope field on a grant.
+
 - A grant with **no** scope fields grants its permission level **unscoped** across the
+
   whole Space — say that, rather than reading the absence as an error or as "no
   access".
+
 - The detail carries `createdBy`, `createdAt`, and `updatedAt` — use these to answer
+
   "who granted this / when". There is still no expiry.
+
 - A grant ID that matches **no** grant comes back from `get-access-grant` as
+
   `ResourceNotFoundException`. That is a successful lookup whose finding is "nothing
   found" — the ID is wrong, or the grant was revoked — not a failure of the lookup. Say
   so and offer to list the Space's grants; do not retry with a guessed ID.
@@ -660,16 +771,23 @@ summary. Read the detail and report from it:
 ### Reporting a lookup
 
 - **Answer in the customer's terms**, from the operation's own output — "jdoe has
+
   `READ_WRITE_DELETE` on this Space, granted as an IAM role: they can read, write, and
   delete within it" — not a dump of the raw JSON. Report the permission in plain
   language alongside the API value.
+
 - **Only report what you read.** A summary gives you the principal and permission; you
+
   do not know a grant's scope until `get-access-grant` has returned it. Do not describe
   a scope you have not fetched, and do not describe an expiry that does not exist.
+
 - **Say what you narrowed over.** If you filtered server-side, or matched client-side,
+
   or stopped before the last page, tell the customer how many grants you looked at — a
   filtered answer presented as complete is worse than an honest partial one.
+
 - **A lookup that fails, fails.** `AccessDeniedException`, expired credentials, a
+
   missing `--space-id`, or a service error is a broken call, never a conclusion about
   the Space. Never report "nobody has access" or "X has no access" from a failed call;
   say the lookup failed, quote the error, and — when it points at expired credentials
@@ -726,46 +844,76 @@ the customer how to proceed.
 ## Gotchas — expectations that look like faults
 
 - **A principal with a grant still cannot see anything.** Check the Space, not the
+
   grant. A grant names one Space, and a principal working in a different Region is
   working against a different Space.
+
 - **A second grant at the same level is rejected.** Named-permission grants are one per
+
   principal per Space per level. Revoke and re-create to change a level.
+
 - **There is no write-only permission.** `READ_WRITE_DELETE` is the only mutating named
+
   level. A customer expecting to grant writes without deletes needs `CUSTOM`.
+
 - **There is no update operation.** Renaming, re-leveling, or re-scoping a grant is a
+
   revoke plus a create, and the grant ID changes.
+
 - **A narrowed grant appears to be missing data.** Row scoping is an allowlist with `IN`
+
   only. Anything not named in `values` is excluded, and excluded data is
   indistinguishable from absent data.
+
 - **A revoked grant seems to still work.** Credentials already issued to the principal
+
   stay valid until they expire or the session is re-established.
+
 - **A grant "should have expired" by now.** Grants never expire. If access was meant to
+
   be temporary, someone has to revoke it; nothing does so automatically.
+
 - **The list shows no scope for a `CUSTOM` grant.** Summaries never carry scope. Read
+
   the grant with `get-access-grant`.
+
 - **A person's alias matches nothing.** Identity Center principals are UUIDs in the
+
   grant; resolve the name with `search-principals` first, and remember access may
   arrive through an `IDC_GROUP` grant that shows only the group ID.
+
 - **An empty list looks like an error.** It is not. `list-access-grants` returning no
+
   grants is a successful answer: nothing matched. Only an actual error (access denied,
   not found, throttled) is a failed lookup — and a failed lookup says nothing about who
   has access.
+
 - **The caller has valid credentials and is still denied.** Credentials say who the
+
   caller is; grants say what they may do in the Space. Check for a grant before
   suspecting IAM — see `aws-observability` → `references/cloudwatch-omni/programmatic-access.md`.
 
 ## Security considerations
 
 - Grant to Identity Center groups rather than individual users where possible.
+
   Offboarding a person then requires no change to grants.
+
 - Prefer the narrowest named permission over `CUSTOM` with a long action list. A named
+
   level is auditable at a glance; a list of 50 actions is not.
+
 - `SPACE_ADMIN` conveys the ability to grant access to others. Treat it as delegation of
+
   administration, not as a higher read level. Reviewing who holds it
   (`--permission SPACE_ADMIN`) is the first question of any access audit.
+
 - `IAM_ROOT` has no session identity to attribute actions to. Avoid it unless the
+
   customer explicitly asks.
+
 - **Grants do not bound the CloudWatch Logs plane.** Row scoping is an access control,
+
   not a redaction, and it binds one plane only. It restricts which records a principal
   can retrieve **through the Space's DataSet**; it does not remove sensitive fields from
   records they can retrieve, and it does not touch the CloudWatch log groups the Dataset
@@ -774,21 +922,34 @@ the customer how to proceed.
   Account-wide `log-group:*` forwarding is the onboarding default and every record
   carries `@logGroupName`, so a row-scoped grant is **not sufficient on its own**:
   restrict the principal's `logs:*` on the source log groups too.
+
 - Review grants periodically with `list-access-grants`. Grants never expire and the
+
   per-Space limit of 500 is high enough that unused grants accumulate unnoticed. Use
   `createdBy` / `createdAt` on the detail to find who added a grant nobody remembers.
+
 - Grants are per Space by design. Resist the temptation to give a principal a broader
+
   permission in one Space to avoid creating grants in others.
 
 ## Additional resources
 
 - [spaces-and-domains.md](spaces-and-domains.md) — creating the Domain and Space a
+
   grant applies to
+
 - [org-domains.md](org-domains.md) — Domain access grants, for administration across an
+
   organization, and the cross-account credential path
+
 - [access-profiles.md](access-profiles.md) — bounding what an agent, alert, or
+
   integration can do, and the permission and trust grants that make a profile work
+
 - `aws-observability` → `references/cloudwatch-omni/concepts.md` — how Domains, Spaces, grants, and profiles fit
+
   together, and the setup order
+
 - `aws-observability` → `references/cloudwatch-omni/programmatic-access.md` — calling Omni from the CLI,
+
   SDKs, or code, and why an IAM caller still needs a grant

@@ -54,6 +54,7 @@ ADOT's zero-code loader auto-discovers the `openinference-instrumentation-openai
 ### Common False Positives
 
 These are NOT sufficient on their own:
+
 - `openai` package without `openinference-instrumentation-openai-agents`
 - `openinference-instrumentation-openai` alone (only instruments raw API calls, not agent orchestration)
 - `aws-opentelemetry-distro` without the required packages (only sends to CloudWatch)
@@ -89,6 +90,7 @@ instrumentation.manuallyInstrument(agents); // REQUIRED — registers the OI pro
 ### Common False Positives
 
 These are NOT sufficient on their own:
+
 - OpenTelemetry packages without `@arizeai/openinference-instrumentation-openai-agents`
 - `registerInstrumentations()` without `manuallyInstrument(agents)` (registers the instrumentor but no spans reach it)
 - `@arizeai/openinference-instrumentation-openai` alone (raw API calls only, not agent orchestration)

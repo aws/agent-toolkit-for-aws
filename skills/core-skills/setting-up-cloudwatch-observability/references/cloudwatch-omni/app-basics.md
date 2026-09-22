@@ -22,6 +22,7 @@ CloudWatch one. Every procedure lives in a sibling reference, linked below.
 >   inconclusive.
 
 ## Contents
+
 - [The concepts](#the-concepts)
 - [How the pieces connect](#how-the-pieces-connect)
 - [Setup order](#setup-order)
@@ -70,18 +71,27 @@ The relationships matter more than the definitions, because each of them determi
 something a customer will otherwise get wrong.
 
 - A **Domain contains Spaces**. The Domain decides who can authenticate; the Space
+
   decides who reads the account's Dataset in its Region. Deleting a Domain requires
   deleting its Spaces first.
+
 - A **Space is per account and per Region**. This is the single most common source of
+
   surprise: access that works in one Region appears broken in another, because a
   different Region means a different Space and therefore different grants.
+
 - **Grants attach principals to a Space**, not to a Domain. Domain-wide
+
   administration exists, but only for organization Domains, and it is `ADMIN` over
   every Space in the Domain.
+
 - An **Access Profile sits between a workload and a Space**. The workload gets a
+
   grant that lets it assume the profile; the profile gets grants describing what it
   may do. Both are required, and missing either produces a different failure.
+
 - **Telemetry reaches the Dataset, not the Space directly.** Setting up a Space does
+
   not make data appear. Ingestion or forwarding is a separate step, and because the
   Dataset is CloudWatch's, both work with no Space in the account — but nothing in
   Omni can read the result until a Space exists.
@@ -91,12 +101,19 @@ something a customer will otherwise get wrong.
 Working from nothing, the sequence is:
 
 1. **Domain** — account-scoped, or shared across an organization. See
+
    `references/cloudwatch-omni/spaces-and-domains.md` or `references/cloudwatch-omni/org-domains.md`.
+
 2. **Space** — under the Domain, in the Region the customer wants. Covered in the
+
    same two files.
+
 3. **Access grants** — so people can reach the Space. See
+
    `references/cloudwatch-omni/access-grants.md`.
+
 4. **Telemetry in** — get telemetry into CloudWatch through the standard per-signal
+
    OTLP endpoints (deploy a collector that exports to them — see
    `references/cloudwatch-omni/instrumentation/collector.md`), and create the dataset integration
    so logs and traces are copied into the Dataset
@@ -105,7 +122,9 @@ Working from nothing, the sequence is:
    traces are part of it, **Transaction Search must be enabled in that Region first** —
    Omni reads spans from the `aws/spans` log group, and without it traces never arrive
    while everything else looks healthy (account-level, per Region).
+
 5. **Instrumentation** — so applications and agents emit telemetry in the first
+
    place. See `references/cloudwatch-omni/instrumentation/instrumentation.md` for applications and
    `references/cloudwatch-omni/omni-agents-instrumentation/omni-agents-instrumentation.md` for AI
    agents.
@@ -113,18 +132,25 @@ Working from nothing, the sequence is:
 Two things are conditional rather than sequential:
 
 - **Access Profiles** — only when async workloads are involved. See
+
   `references/cloudwatch-omni/access-profiles.md`.
 
 **Constraints:**
+
 - You MUST establish where in this sequence the customer already is before starting
+
   anything. Most requests join partway through, and re-running an earlier step
   conflicts rather than being idempotent.
+
 - You SHOULD create the Space before instrumentation or forwarding. Neither
+
   technically requires one — both write to the account's CloudWatch Dataset and
   succeed without a Space — but nothing in Omni can read the result until a Space
   exists, so a customer who checks Omni first sees an empty product and reads it as a
   failure.
+
 - You SHOULD tell the customer the whole sequence when they are starting from
+
   nothing, so a working Space with no telemetry in it does not read as a failure.
 
 ## Is this the right skill
@@ -154,37 +180,54 @@ in `aws-observability`:
 | To investigate a live problem | `aws-observability` |
 
 **Constraints:**
+
 - You MUST decide which skill applies before doing anything else. A request to "set
+
   up monitoring" or "instrument my service" is ambiguous: you MUST NOT assume Omni, and
   you MUST NOT ask before you have probed. First probe the target Region — the same
   probe `aws-observability`'s Step 0 runs, so both skills reach the same answer:
+
   ```
   aws cloudwatch-omni list-domains
   aws cloudwatch-omni list-spaces --region <target-region>
   ```
+
   - A Domain and a Space exist there → **Omni**. The customer has adopted it; continue
+
     here for a setup step, or route to `aws-observability` for use.
+
   - Neither exists → the customer has **not** adopted Omni. If they named Omni,
+
     Application Observability, Agent Observability, a Space, or a Domain, this is
     first-time Omni setup — this skill. If they did not, it is CloudWatch — route to
     `aws-observability`.
+
   - The probe itself errors ("not yet supported", unknown service, endpoint does not
+
     resolve) → the CLI/SDK model in use lacks `cloudwatch-omni`. That is a CLI-version
     issue, **not** evidence Omni is absent, and you MUST NOT report it as "Omni is
     unavailable". Fall back to the customer's own wording, and ask only if that is
     still inconclusive.
+
 - When you do ask, you MUST frame the choice as **product versus product**:
+
   **CloudWatch Omni** (Application/Agent Observability — Spaces, Domains, a Dataset)
   versus **CloudWatch** (log groups, alarms, Log Insights, Application Signals). That
   is the framing `aws-observability` → `references/cloudwatch-omni/concepts.md` uses,
   so the customer hears one question whichever skill asks it. Do not describe it only
   as a difference in interaction style.
+
 - Having asked, you MUST then **stop and wait**. Do NOT go on to give the Omni setup
+
   sequence in the same reply; that is the same as assuming Omni and it wastes the
   question.
+
 - If the customer already has a working Space and is asking about queries,
+
   dashboards, or alerts, you MUST stop and route to `aws-observability`.
+
 - If the request names Application Signals, ServiceEvents, or Dynamic
+
   Instrumentation, you MUST stop and route to `aws-observability`. Those are CloudWatch
   features and are not part of Omni setup.
 
@@ -195,9 +238,14 @@ in `aws-observability`:
 - `references/cloudwatch-omni/access-grants.md` — giving principals access to a Space
 - `references/cloudwatch-omni/access-profiles.md` — bounding what an async workload may do
 - `references/cloudwatch-omni/instrumentation/collector.md` — deploying a collector that exports to
+
   CloudWatch's OTLP endpoints
+
 - `references/cloudwatch-omni/data-forwarding-and-centralization.md` — forwarding telemetry already
+
   in CloudWatch into the Dataset
+
 - `references/cloudwatch-omni/instrumentation/instrumentation.md` — instrumenting applications
 - `references/cloudwatch-omni/omni-agents-instrumentation/omni-agents-instrumentation.md` —
+
   instrumenting AI agents

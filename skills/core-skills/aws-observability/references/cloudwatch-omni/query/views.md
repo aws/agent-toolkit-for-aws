@@ -14,6 +14,7 @@ ORDER BY `@timestamp` DESC
 ```
 
 Views behave like inline subqueries:
+
 - They **inherit the outer query's `@timestamp` bounds** — no need to specify a time range inside the view definition
 - They can be used anywhere a table is used: JOINs, subqueries, UNION, etc.
 - They can reference other views (up to 32 levels of nesting)
@@ -62,6 +63,7 @@ Creates a new named view.
 | `clientToken` | No | Idempotency token, 1–64 chars |
 
 Example:
+
 ```
 CreateView
   name: "view.error-logs-last-hour"
@@ -113,11 +115,13 @@ View names must match `^view\.[a-z0-9][a-z0-9_-]{0,250}$` and be **6–256 chara
 - The remaining characters use the lowercase set `[a-z0-9_-]` (letters, digits, hyphen, underscore) — a **second `.` is NOT allowed** (only the `view.` prefix contains a dot), and **uppercase is NOT allowed**
 
 Examples of valid names:
+
 - `view.my-error-logs`
 - `view.checkout-slow-requests`
 - `view.team_dashboard_metrics`
 
 Examples of invalid names:
+
 - `view.checkout.slow-requests` (a second dot is not allowed)
 - `view.Checkout` (uppercase not allowed)
 
@@ -148,6 +152,7 @@ CreateView
 ```
 
 Then query it:
+
 ```sql
 SELECT COUNT(*) AS error_count, resource['attributes']['service.name'] AS service
 FROM view.production-errors
@@ -173,6 +178,7 @@ CreateView
 ```
 
 Then alert or dashboard on it:
+
 ```sql
 SELECT `@timestamp`, `@resource.service.name`, name, duration_ms
 FROM view.slow-spans
@@ -180,4 +186,3 @@ WHERE `@timestamp` > NOW() - INTERVAL '1 HOUR'
 ORDER BY duration_ms DESC
 LIMIT 50
 ```
-

@@ -139,12 +139,14 @@ A successfully instrumented Node.js process logs that the ADOT/OpenTelemetry ins
 "I've wired ADOT Node.js auto-instrumentation into your EKS Deployment.
 
 **Changes:**
+
 - Added an `emptyDir` volume and an `otel-auto-instrumentation` init container that copies the ADOT Node.js SDK into the pod
 - Added `NODE_OPTIONS` (module format: CommonJS/ESM) and `OTEL_SERVICE_NAME` to the application container, plus the shared volume mount
 
 **Not changed:** your application image, your application source, and cluster-level components — no add-on or operator was installed, and no IAM changes were needed.
 
 **Next steps:**
+
 1. Review the manifest diff.
 2. Apply it and let the pods roll.
 3. **Telemetry has nowhere to go yet.** No OTLP endpoint was configured, so the SDK is using its default (`localhost:4318`). Two ways to fix that: deploy an OTel Collector alongside it and export to that ([collector-eks.md](collector-eks.md)), or point `OTEL_EXPORTER_OTLP_ENDPOINT` at an OTLP endpoint you already have.

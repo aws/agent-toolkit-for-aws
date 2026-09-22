@@ -118,6 +118,7 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ```
 
 **Key rules:**
+
 - The root-level field is referenced as-is (or backtick-quoted if it has special characters)
 - Nested keys use `['key']` with single-quoted string literals
 - Special characters inside the bracket string are fine — no backticks needed there:
@@ -392,6 +393,7 @@ WHERE a.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 - `pattern(string)` — log clustering (groups similar text into patterns)
 
 All aggregate functions support the `FILTER (WHERE condition)` clause:
+
 ```sql
 SUM(tokens) FILTER (WHERE kind = 'CLIENT') as client_tokens
 ```
@@ -399,6 +401,7 @@ SUM(tokens) FILTER (WHERE kind = 'CLIENT') as client_tokens
 ### Window
 
 All aggregate functions can be used as window functions with `OVER (...)`:
+
 - `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)`
 - `RANK()` / `DENSE_RANK()` — ranking with/without gaps
 - `LAG(expr, offset)` / `LEAD(expr, offset)` — access previous/next rows
@@ -411,7 +414,6 @@ All aggregate functions can be used as window functions with `OVER (...)`:
 - `md5(s)` — MD5 hash
 - `sha256(s)` / `sha512(s)` — SHA hashes
 - `digest(s, algorithm)` — generic hash
-
 
 ---
 

@@ -133,7 +133,6 @@ rather than floating `latest`.
 
 Skip this entire step if you are using the CloudWatch Agent — its JSON above is the config.
 
-
 **CloudWatch's own endpoints,** traces + metrics. Each signal needs its own
 exporter and its own `sigv4auth`, because the signing service differs:
 

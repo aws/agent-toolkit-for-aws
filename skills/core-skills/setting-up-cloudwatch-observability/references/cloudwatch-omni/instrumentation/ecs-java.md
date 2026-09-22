@@ -123,7 +123,6 @@ resource "aws_ecs_task_definition" "app" {
 }
 ```
 
-
 ```json
 {
   "volumes": [{ "name": "opentelemetry-auto-instrumentation-java" }],
@@ -171,6 +170,7 @@ Then check the application container's CloudWatch Logs. The JVM prints a `Picked
 "I've wired the ADOT Java auto-instrumentation agent into your ECS task definition.
 
 **Changes:**
+
 - Added a bind mount volume, `opentelemetry-auto-instrumentation-java`
 - Added a non-essential `init` container that copies `javaagent.jar` into that volume
 - Added `JAVA_TOOL_OPTIONS` (appended to any existing value) and `OTEL_SERVICE_NAME` to the application container, plus the volume mount and a `SUCCESS` dependency on `init`
@@ -178,6 +178,7 @@ Then check the application container's CloudWatch Logs. The JVM prints a `Picked
 **Not changed:** your application image, your application source and build config, the task role's IAM policies, and the service's sidecars — no CloudWatch Agent or collector was added.
 
 **Next steps:**
+
 1. Review the diff — confirm `JAVA_TOOL_OPTIONS` preserves any JVM flags the container already set.
 2. Deploy and let the tasks recycle. Look for the `Picked up JAVA_TOOL_OPTIONS:` line in the logs.
 3. **Telemetry has nowhere to go yet.** No OTLP endpoint was configured, so the agent is using its default (`localhost:4317`, gRPC — the Java agent's default, not 4318). Two ways to fix that: deploy an OTel Collector alongside it and export to that ([collector-ecs.md](collector-ecs.md)), or point `OTEL_EXPORTER_OTLP_ENDPOINT` at an OTLP endpoint you already have.

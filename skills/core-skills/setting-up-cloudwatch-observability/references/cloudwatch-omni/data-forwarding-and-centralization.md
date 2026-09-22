@@ -28,6 +28,7 @@ natively via the CloudWatch metrics OTLP endpoint and need no forwarding.
 >   managed key are excluded from it.
 
 ## Contents
+
 - [Which path](#which-path)
 - [What arrives when forwarding starts](#what-arrives-when-forwarding-starts)
 - [Prerequisites](#prerequisites)
@@ -67,7 +68,9 @@ produces a working integration with nothing flowing through it, which reads as a
 failure even though every call succeeded.
 
 **Constraints:**
+
 - You MUST establish which path applies rather than assuming. Setting up forwarding
+
   for a customer whose application is not sending to CloudWatch produces a working
   integration with nothing flowing through it, which reads as a failure.
 
@@ -81,29 +84,43 @@ Region, CloudWatch performs a one-time import of the previous week of existing l
 data. After that:
 
 - The import runs **once**. Deleting and recreating the integration does not
+
   repeat it.
+
 - Log groups encrypted with a customer managed AWS KMS key are **not** included in
+
   the import. Their forwarding still begins normally from creation onward.
+
 - Adding a log group to the integration's scope later forwards its records from
+
   that point on, not its existing contents.
 
 **Constraints:**
+
 - You MUST set this expectation before creating the integration. A customer who
+
   expects all of their history, or none of it, will misread a correctly working
   integration.
+
 - You MUST tell a customer with customer managed key encryption that their
+
   encrypted log groups are excluded from the initial import, because the result
   otherwise looks like a partial failure.
+
 - You MUST tell the customer that metrics do not arrive through this integration.
+
   Expecting metrics because forwarding is on is a reasonable and common
   misunderstanding.
 
 ## Prerequisites
 
 - The AWS Region, confirmed with the customer rather than inferred. Forwarding is
+
   **same-account and same-Region**, and a Region mismatch produces an integration
   that forwards nothing.
+
 - `iam:PassRole` on the execution role, for whoever runs Step 3. Without it the
+
   create call fails after the role already exists.
 
 A Space is not a technical prerequisite — forwarding can be set up without one, but
@@ -167,12 +184,18 @@ A successful response means forwarding already exists. A not-found error means i
 does not.
 
 **Constraints:**
+
 - You MUST run this check before creating an integration. There is one per account
+
   per Region, so a second create conflicts.
+
 - If one exists, you MUST report what the call returns and stop. The remaining work
+
   is scoping (see [Changing what is forwarded](#changing-what-is-forwarded)), not
   creation.
+
 - If you cannot determine whether an integration exists — access is denied, or the
+
   response is ambiguous — you MUST treat the result as **inconclusive, not
   negative**. Report that the check could not be completed and stop. You MUST NOT
   create an integration on that basis.
@@ -187,9 +210,13 @@ managed KMS key. If it is, the execution role needs `kms:Decrypt` on that key, o
 forwarded telemetry cannot be written.
 
 **Constraints:**
+
 - You MUST ask before creating the role. A missing `kms:Decrypt` produces an
+
   integration that reports success and silently writes nothing.
+
 - You MUST ask about the **Dataset's** key specifically. Log group encryption is a
+
   separate matter and has no bearing on this role's permissions.
 
 ### Create the role
@@ -258,11 +285,15 @@ aws___call_aws → aws iam put-role-policy \
 ```
 
 **Constraints:**
+
 - You SHOULD use the account-wide `log-group:*` resource shown above.
 - If the customer asks to forward only specific log groups, replace `log-group:*`
+
   with their ARNs, and tell them log groups created later will not forward until
   the policy is updated.
+
 - You MUST NOT add actions beyond these two. This role exists solely to move
+
   telemetry into the Dataset.
 
 ### Attach KMS decrypt, only if the Dataset uses a customer managed key
@@ -286,8 +317,10 @@ aws___call_aws → aws iam put-role-policy \
 ```
 
 **Constraints:**
+
 - You MUST scope this to the Dataset's key ARN. Do not use `"Resource": "*"`.
 - You MUST NOT author or modify the KMS key policy. This grants the role permission
+
   to use the key; it does not change who the key trusts. If the key policy needs
   changing, direct the customer to their key administrator.
 
@@ -299,9 +332,13 @@ aws___call_aws → aws observabilityadmin create-dataset-integration \
 ```
 
 **Constraints:**
+
 - Creating the integration starts forwarding logs and traces together. There is no
+
   per-signal switch at create time; scope is controlled by the role's permissions.
+
 - If the call fails on `iam:PassRole`, you MUST report which principal lacks it and
+
   stop. Do not attach permissions to your own caller to get past it.
 
 Forwarding begins on creation. Allow a few minutes before telemetry appears in the
@@ -315,19 +352,26 @@ Scope is the execution role's `logs:IntegrateWithDataset` permissions, not a
 setting on the integration.
 
 - Narrowing or widening the role's log group ARNs takes effect within a few
+
   minutes.
+
 - Scope changes are forward-only in both directions. **Adding** a log group
+
   forwards its records from that point on, not its existing contents. **Removing**
   one stops future records, while records already in the Dataset remain until they
   pass their retention period.
+
 - To change which role the integration uses, or to stop forwarding entirely, use
+
   `update-dataset-integration` or `delete-dataset-integration`.
 
 Retention in the Dataset mirrors each record's source retention, so records with
 different retention periods coexist. It is not configured on the Dataset.
 
 **Constraints:**
+
 - You MUST state which direction applies. A customer who widens scope expecting the
+
   new log group's history, or narrows it expecting forwarded records to disappear,
   will be wrong in both cases.
 
@@ -347,7 +391,9 @@ services centralize into a monitoring account — that pattern does not exist he
 proposing it recommends an architecture that cannot work.
 
 **Constraints:**
+
 - You MUST NOT compose a cross-account or monitoring-account forwarding pattern
+
   from how other AWS services centralize. Doing so recommends a plausible
   architecture that does not work here.
 
@@ -361,6 +407,7 @@ proposing it recommends an architecture that cannot work.
    ```
 
 2. Detach the inline policies, then delete the execution role. A role with inline
+
    policies attached cannot be deleted:
 
    ```
@@ -379,10 +426,14 @@ Deleting the integration stops future forwarding. It does not remove records
 already in the Dataset — those age out under their source retention.
 
 **Constraints:**
+
 - You MUST warn the customer that deleting the integration is not reversible in
+
   effect: recreating it restores forwarding, but the one-time import does not run
   again.
+
 - You MUST NOT delete and recreate the integration to try to obtain missing
+
   history. The import runs only on first creation, so recreating gains nothing and
   interrupts working forwarding.
 
@@ -398,8 +449,11 @@ causes and different fixes, and treating one as the other wastes the whole
 diagnosis:
 
 - **The API call was rejected** — creating, reading, or deleting the integration
+
   failed. The cause is the caller's own permissions or a bad argument.
+
 - **The API call succeeded but telemetry is not appearing** — the integration
+
   exists. The cause is almost always the execution role's contents, or a Region
   mismatch.
 
@@ -413,7 +467,9 @@ diagnosis:
 | Conflict on create | An integration already exists for this account and Region | Read it instead — see [Step 1](#step-1--check-whether-forwarding-already-exists). Do NOT retry the create |
 
 **Constraints:**
+
 - You MUST report the principal and the action, and direct the customer to whoever
+
   administers their IAM permissions. You cannot widen your own access.
 
 ### The integration exists but telemetry is not appearing
@@ -422,54 +478,84 @@ Work through these in order. Each is cheap to check and rules out the ones below
 it.
 
 - **Is anything reaching CloudWatch at all?** Confirm the source log group is
+
   receiving records. If it is empty, the problem is upstream of forwarding — see
   `references/cloudwatch-omni/instrumentation/collector.md`.
+
 - **Is everything in the same Region?** Forwarding is same-Region. A mismatch fails
+
   silently, with no error anywhere.
+
 - **Can `logs.amazonaws.com` assume the execution role?** Check the trust policy's
+
   principal, and that `aws:SourceAccount` and `aws:SourceArn` match this account and
   the `dataset-integration/default` ARN. A condition that does not match blocks the
   assume, and nothing surfaces on the create call.
+
 - **Does the role cover the log groups in question?** `logs:IntegrateWithDataset`
+
   must include their ARNs. A role scoped to specific log groups forwards only those.
+
 - **Does the role have `cloudwatch:PutRecords`?** Without it there is nowhere to
+
   write.
+
 - **Does the Dataset use a customer managed key?** If so the role needs
+
   `kms:Decrypt` on that key. Without it the integration reports healthy and silently
   writes nothing.
 
 **Constraints:**
+
 - You MUST change one thing at a time and recheck. Stacked fixes hide which one
+
   worked, and some conflict.
 
 ### Expectations that look like faults
 
 - **Metrics are missing.** Metrics do not flow through this integration; they become
+
   available through metric enrichment.
+
 - **Only part of the expected history appeared.** The one-time import covers the
+
   previous week and excludes log groups encrypted with a customer managed key.
+
 - **Recent records appear but older ones do not.** Scope changes are forward-only.
+
   Adding a log group forwards its records from that point on, not its existing
   contents.
 
 ## Security considerations
 
 - The `logs:IntegrateWithDataset` resource controls what enters the Dataset.
+
   Account-wide forwarding is the onboarding default; restrict it to specific log
   group ARNs only when a customer needs particular log groups kept out.
+
 - Keep both `aws:SourceAccount` and `aws:SourceArn` conditions in the trust policy.
+
   They are the confused-deputy protection.
+
 - Do not attach `*FullAccess` managed policies to the execution role. It needs the
+
   dataset-integration actions and nothing else.
+
 - Forwarded telemetry is encrypted at rest in the Dataset. When a customer managed
+
   key is in use, the execution role needs `kms:Decrypt` on it.
+
 - Access to query the Dataset is controlled separately from ingestion, so read
+
   access can be granted without granting the ability to change forwarding.
 
 ## Additional resources
 
 - `references/cloudwatch-omni/instrumentation/collector.md` — deploying a collector that exports to
+
   CloudWatch's OTLP endpoints, for telemetry not already reaching CloudWatch
+
 - `references/cloudwatch-omni/spaces-and-domains.md` — creating a Space and configuring access
 - [CloudWatch Dataset](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch-dataset.html)
+
   — forwarding setup, policies, retention, encryption

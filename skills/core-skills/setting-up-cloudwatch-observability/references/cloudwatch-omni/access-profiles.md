@@ -21,6 +21,7 @@ Both are described below, and neither is optional.
 > unique within a Space.
 
 ## Contents
+
 - [Which path](#which-path)
 - [How a profile actually works](#how-a-profile-actually-works)
 - [Prerequisites](#prerequisites)
@@ -46,9 +47,13 @@ Both are described below, and neither is optional.
 A profile is not a way to give people access. Its principals are workloads.
 
 **Constraints:**
+
 - You MUST NOT create an Access Profile to grant a person or a team access. Grant
+
   them directly — see `references/cloudwatch-omni/access-grants.md`.
+
 - You MUST NOT treat a profile as an administrative role. The service refuses to
+
   grant administrative actions to a profile.
 
 ## How a profile actually works
@@ -58,9 +63,12 @@ the failure surfaces when the workload runs rather than when the profile was set
 
 1. **The profile** — a name in a Space. Carries no permissions of its own.
 2. **Permission grants** — access grants whose principal is the profile. These
+
    define what the profile can do. Without them the workload assumes the profile
    successfully and is then permitted nothing.
+
 3. **Trust grants** — access grants whose principal is the workload, carrying the
+
    action that lets it assume the profile, scoped to the profile itself. Without
    them the workload cannot assume the profile at all. A trust grant uses `ALL` to
    cover every alert in the Space, which is what an alert needs to be created at all,
@@ -79,9 +87,13 @@ workload implicitly, and there is no separate bind operation — the profile's I
 field on the workload's own configuration.
 
 **Constraints:**
+
 - You MUST complete all of Steps 2 through 5. Stopping after creating the profile
+
   produces something that looks configured and does nothing.
+
 - You MUST explain the two grant kinds to the customer as separate things. A
+
   customer who creates only permission grants will see the workload fail to assume
   the profile; one who creates only trust grants will see it assume the profile and
   then be denied everything. The two failures look nothing alike.
@@ -89,14 +101,21 @@ field on the workload's own configuration.
 ## Prerequisites
 
 - **The Space's `spaceId`**, and the `domainId` for creating grants. See
+
   `references/cloudwatch-omni/spaces-and-domains.md` if the Space does not exist.
+
 - **A grant of your own that permits managing grants** in that Domain. Both grant
+
   kinds below require it.
+
 - **The workload's identifier** — `ALL`, or an existing alert's ARN. Trust grants
+
   are keyed on it, and never on the alert's name.
 
 **Constraints:**
+
 - You MUST have the workload's identifier before Step 4. A trust grant cannot be
+
   written against a workload that has not been named, and creating the workload
   first will fail if its profile has no trust grant yet.
 
@@ -128,23 +147,34 @@ default silently.
 1. **Which Space?** The `spaceId`, and the `domainId`.
 2. **What workload is being bounded?** Which alert — and its identifier.
 3. **What should that workload be allowed to do?** Ask in terms of the task, not in
+
    terms of actions. This becomes the permission grant in Step 3.
+
 4. **A name for the profile?** 1–256 characters, and unique within the Space.
+
    Something that describes the boundary rather than the workload, since one profile
    can serve several workloads.
+
 5. **A description?** Optional, up to 1024 characters. Worth having — a profile's
+
    purpose is not evident from its grants.
+
 6. **Which alerts will run under this profile?** Useful context for naming and for
+
    Step 5, but it does not change the trust grant: an alert cannot be created unless the
    trust grant uses `ALL`. See Step 4.
 
 Confirm the choices back in one line, then execute.
 
 **Constraints:**
+
 - You MUST ask question 3 in terms of the task the workload performs. A customer
+
   asked which actions to grant will over-grant, and the whole point of a profile is
   the boundary.
+
 - You SHOULD name the profile after the boundary it expresses rather than after one
+
   workload. Several workloads can share a profile, and a profile named for one of
   them becomes misleading.
 
@@ -174,9 +204,13 @@ the response (the same object `get-access-profile` and `update-access-profile` r
 from the response rather than assembling it.
 
 **Constraints:**
+
 - You MUST run the existence check first. A name collision is rejected, and the
+
   message names the profile that already holds it.
+
 - `create-access-profile` accepts no permissions, no actions, and no resource
+
   scopes. You MUST NOT look for a scoping parameter here or report the profile as
   configured once it exists.
 
@@ -186,13 +220,18 @@ This is an ordinary access grant whose principal is the profile. Three things ab
 it matter:
 
 - `principalType` is `ACCESS_PROFILE` and `principalId` is the **profile's ID** —
+
   not a user, and not the workload.
+
 - This grant is the **profile's** entire boundary. Anything it permits, the workload
+
   can do unattended, so grant the narrowest permission that lets it do its job. It bounds what runs
   *under this profile* — not everything the principal can do: the same `ALERT`
   principal may also hold its own direct grants on the Space, which this profile does not constrain.
   When reviewing what a workload can reach, check `list-access-grants` for that principal too.
+
 - **Administrative actions cannot be granted to a profile.** The service rejects
+
   them.
 
 ```
@@ -206,12 +245,16 @@ workload needs. The permission model, the action format, and resource narrowing 
 work exactly as described in `references/cloudwatch-omni/access-grants.md`.
 
 **Constraints:**
+
 - You SHOULD grant the profile the narrowest permission that lets the workload do
+
   its job. This grant is the entire boundary **of the profile** — anything it permits, the workload
   can do unattended. It is not the whole of what the principal can reach: the same principal may
   also hold direct grants on the Space, which the profile does not constrain.
+
 - You MUST NOT grant administrative actions to a profile. The service rejects it.
 - You MUST NOT skip this step on the assumption that the trust grant in Step 4 also
+
   conveys permissions. It does not. A profile with only a trust grant is assumable
   and permitted nothing.
 
@@ -265,21 +308,33 @@ alert needs to be created under this profile — creating the next one requires 
 again.
 
 **Constraints:**
+
 - The trust grant MUST be `CUSTOM`, MUST carry only the assume action, and MUST be
+
   scoped to the profile's ARN with `resourceType` `AccessProfile`. An unscoped trust
   grant lets the workload assume any profile in the Space, which defeats the point of
   having a boundary.
+
 - You MUST take the ARN from the profile's own response rather than assembling it.
+
   The ARN's service segment must match the service's vendor code, and a hand-built
   ARN is the usual way that goes wrong.
+
 - The trust grant MUST use `principalId` `ALL`. Do NOT offer an alert's name as an
+
   alternative, and do NOT ask the customer to choose between `ALL` and a named alert
   before the alert exists — `ALL` is the only value that lets the alert be created.
+
 - `ALL` is accepted only for `ALERT`, and only on a `CUSTOM` grant carrying only the
+
   assume action. Any other use is rejected.
+
 - The action prefix MUST match the service's vendor code. If the grant is rejected
+
   on the prefix, use the one the message names.
+
 - You MUST NOT add other actions to a trust grant. Whatever the workload should be
+
   able to *do* belongs on the profile in Step 3, not here.
 
 ## Step 5 — Bind the profile to the workload
@@ -292,9 +347,13 @@ Because the binding lives on the workload, this step happens in whichever setup 
 creates that workload rather than here.
 
 **Constraints:**
+
 - You MUST complete Steps 3 and 4 before the workload is created. Some workloads
+
   validate the trust grant at creation time and refuse to be created without it.
+
 - You MUST NOT report the profile as in effect until a workload names it. An
+
   unbound profile with both grants in place still does nothing.
 
 ## Verifying the setup
@@ -316,7 +375,9 @@ least one grant in each set. Then report to the customer, in one
 line: which workload is bounded, what the profile permits, and which Space it is in.
 
 **Constraints:**
+
 - You MUST confirm both sets are non-empty before declaring the setup complete. One
+
   empty set is the single most common way this configuration fails, and it fails
   silently until the workload runs.
 
@@ -333,15 +394,19 @@ same name after deleting it works, but creating a second one alongside it confli
 Two things follow from how the delete behaves, and both belong in any answer about it:
 
 - **The profile's own permission grants go with it.** A grant whose `principalType` is
+
   `ACCESS_PROFILE` and whose `principalId` is this profile has no subject once the
   profile is gone, so the delete removes those grants for you. You do not need to revoke
   them first, and the delete is not rejected if you don't.
+
 - **Trust grants that name the profile survive.** A grant whose principal is an `ALERT`
+
   and whose resource scope names the profile's ARN is left in place: it can carry other
   resources, and profile IDs are never reused. If the workload is going away too, revoke
   those separately.
 
 1. List the grants that reference the profile (`get-access-profile` does not report
+
    them), and confirm the deletion with the customer:
 
    ```
@@ -364,15 +429,23 @@ Two things follow from how the delete behaves, and both belong in any answer abo
    ```
 
 **Constraints:**
+
 - You MUST tell the customer the delete is immediate and takes the profile's own
+
   permission grants with it. You MUST NOT present revoking them as a precondition, and
   MUST NOT say the delete is rejected while grants exist — it is not.
+
 - You MUST state that trust grants naming the profile's ARN are left behind, and revoke
+
   them separately when the workload is going away too.
+
 - You MUST check whether any workload still names this profile before deleting it.
+
   Removing a profile a live alert depends on breaks that workload,
   and the breakage appears the next time it runs rather than now.
+
 - You MUST NOT delete a profile to "reset" it. Renaming or re-granting is
+
   non-destructive; deleting requires unwinding every workload that names it.
 
 ## Troubleshooting
@@ -411,44 +484,68 @@ and ask the customer how to proceed.
 ### Expectations that look like faults
 
 - **The workload assumes the profile and then can do nothing.** The trust grant
+
   exists but the permission grant does not. Step 3 is missing.
+
 - **The workload cannot assume the profile at all.** The permission grant exists but
+
   the trust grant does not. Step 4 is missing.
+
 - **Creating the profile appeared to do nothing.** It did nothing on purpose. A
+
   profile carries no permissions until grants reference it.
+
 - **A profile with both grants still has no effect.** No workload names it. The
+
   binding lives on the workload, not on the profile.
+
 - **`create-access-profile` has no scoping parameters.** That is the design. Scope
+
   comes from grants.
+
 - **A newly created alert works but an older one does not.** A grant narrowed to one
+
   alert's ARN does not cover others. `ALL` covers every alert, including future ones,
   and is what a new alert needs at create time.
 
 ## Security considerations
 
 - The permission grant on a profile is the entire boundary for anything running
+
   under it, unattended and without a person to notice. Grant the narrowest
   permission that lets the workload do its job. When you audit what a workload can reach, check the
   principal's own grants too (`list-access-grants`) — the profile bounds what runs under the profile,
   not everything that principal holds.
+
 - Trust grants and permission grants do different things and should be reviewed
+
   separately. A broad trust grant with a narrow permission grant is usually fine; a
   narrow trust grant with a broad permission grant is not.
+
 - `ALL` is a standing trust for alerts that do not exist yet, and it is required to
+
   create an alert at all — so the boundary that matters is the profile ARN scope on the
   trust grant and the permission grant in Step 3, not the breadth of the principal. Where
   a customer wants a tighter principal, narrow to the alert's ARN after it exists.
+
 - One profile per boundary, not one per workload. Several workloads sharing a
+
   profile is the intended pattern and keeps the number of grants reviewable.
+
 - A profile's name and description are the only human-readable record of what the
+
   boundary is for. Write the description.
+
 - Review profiles and their grants with `list-access-profiles` and
+
   `get-access-profile` periodically. A profile whose workloads were deleted keeps
   its grants and remains assumable by anything still trusted.
 
 ## Additional resources
 
 - `references/cloudwatch-omni/access-grants.md` — the permission model, action format, and resource
+
   narrowing used by both grant kinds above
+
 - `references/cloudwatch-omni/spaces-and-domains.md` — creating the Space a profile lives in
 - `references/cloudwatch-omni/org-domains.md` — Domain-wide administration across an organization

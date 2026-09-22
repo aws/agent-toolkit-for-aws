@@ -125,7 +125,7 @@ template {
 > IRSA-style role; the Terraform path attaches it to the **node** role, which extends it to every pod
 > scheduled on those nodes. Also state that the CDK role's trust policy has no `:sub` condition
 > unless one was added, so as written neither path confines the policy to the agent. The summary
-> bullet has a `<role>` slot — fill it in with the role this change actually used before reciting.
+> bullet has a ``your-node-role`` slot — fill it in with the role this change actually used before reciting.
 
 **Tell the user:**
 
@@ -133,7 +133,7 @@ template {
 
 **Files Changed:**
 
-- IAM role: Added CloudWatchAgentServerPolicy to <role>
+- IAM role: Added CloudWatchAgentServerPolicy to `your-node-role`
 - CloudWatch Observability EKS add-on: Added to the EKS Cluster
 - Kubernetes Deployment: Instrumentation annotation added with inject-dotnet set to true
 

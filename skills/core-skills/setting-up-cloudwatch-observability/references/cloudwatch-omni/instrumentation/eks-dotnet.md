@@ -82,6 +82,7 @@ spec:
 
 - **Architecture**, from the node: `linux-x64` on x86-64, `linux-arm64` on ARM64/Graviton.
 - **libc, from the application's base image** — not the node. `linux-<arch>` for glibc bases
+
   (`mcr.microsoft.com/dotnet/aspnet:*`, Debian, Ubuntu); **`linux-musl-<arch>` for Alpine bases.**
 
 Do not infer it. List what the image actually shipped and read the app's libc:
@@ -176,12 +177,14 @@ The `printenv` check matters more for .NET than for other languages: if any Core
 "I've wired ADOT .NET auto-instrumentation into your EKS Deployment.
 
 **Changes:**
+
 - Added an `emptyDir` volume and an `otel-auto-instrumentation` init container that copies the ADOT .NET SDK into the pod
 - Added the CoreCLR profiler variables, the SDK location variables, and `OTEL_SERVICE_NAME` to the application container, plus the shared volume mount
 
 **Not changed:** your application image, your application source and `.csproj`, and cluster-level components — no add-on or operator was installed, and no IAM changes were needed.
 
 **Next steps:**
+
 1. Review the manifest diff — confirm `CORECLR_PROFILER_PATH` matches your node architecture **and the application image's libc**: `linux-x64` or `linux-arm64` for glibc bases, `linux-musl-<arch>` for Alpine. A wrong path means the profiler silently never attaches.
 2. Apply it and let the pods roll.
 3. **Telemetry has nowhere to go yet.** No OTLP endpoint was configured, so the SDK is using its default (`localhost:4318`). Two ways to fix that: deploy an OTel Collector alongside it and export to that ([collector-eks.md](collector-eks.md)), or point `OTEL_EXPORTER_OTLP_ENDPOINT` at an OTLP endpoint you already have.

@@ -122,12 +122,14 @@ The JVM prints a `Picked up JAVA_TOOL_OPTIONS:` line on startup listing the `-ja
 "I've wired the ADOT Java auto-instrumentation agent into your EKS Deployment.
 
 **Changes:**
+
 - Added an `emptyDir` volume and an `otel-auto-instrumentation` init container that copies `javaagent.jar` into the pod
 - Added `JAVA_TOOL_OPTIONS` (appended to any existing value) and `OTEL_SERVICE_NAME` to the application container, plus the shared volume mount
 
 **Not changed:** your application image, your application source and build config, and cluster-level components — no add-on or operator was installed, and no IAM changes were needed.
 
 **Next steps:**
+
 1. Review the manifest diff — confirm `JAVA_TOOL_OPTIONS` preserves any JVM flags the container already set.
 2. Apply it and let the pods roll. Look for the `Picked up JAVA_TOOL_OPTIONS:` line in the logs.
 3. **Telemetry has nowhere to go yet.** No OTLP endpoint was configured, so the agent is using its default (`localhost:4317`, gRPC — the Java agent's default, not 4318). Two ways to fix that: deploy an OTel Collector alongside it and export to that ([collector-eks.md](collector-eks.md)), or point `OTEL_EXPORTER_OTLP_ENDPOINT` at an OTLP endpoint you already have.

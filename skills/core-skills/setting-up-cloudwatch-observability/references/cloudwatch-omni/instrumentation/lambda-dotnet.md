@@ -181,6 +181,7 @@ from the wrapper's glibc/musl detection, not a failure.
 "I've added ADOT .NET instrumentation to your Lambda function.
 
 **Changes:**
+
 - Added the `AWSOpenTelemetryDistroDotNet` layer (version looked up from the ADOT source of truth for your region)
 - Enabled X-Ray active tracing
 - Set `AWS_LAMBDA_EXEC_WRAPPER`, `OTEL_SERVICE_NAME`, and `OTEL_AWS_APPLICATION_SIGNALS_ENABLED=false`
@@ -189,6 +190,7 @@ from the wrapper's glibc/musl detection, not a failure.
 **Not changed:** your handler source and `.csproj`. The CoreCLR profiler variables are configured by the layer's wrapper, so none were written into your IaC, and no Application Signals policy was added.
 
 **Next steps:**
+
 1. Review the diff and confirm the layer version and region are right.
 2. Deploy, then invoke the function once to trigger a cold start.
 3. **No traces will appear yet, and that is expected for .NET specifically.** The .NET layer's wrapper forces `OTEL_TRACES_EXPORTER=none` while no OTLP endpoint is set, so spans are created and dropped rather than exported. Configuring a destination — such as a collector — is what turns traces on, and its permissions differ from the X-Ray ones added here.

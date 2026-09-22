@@ -236,6 +236,7 @@ This check matters more for .NET than for other languages: if any variable is mi
 "I've wired ADOT .NET auto-instrumentation into your EC2 deployment.
 
 **Changes:**
+
 - UserData: installed the ADOT .NET auto-instrumentation to `/opt/otel-dotnet-auto` (Linux) or via the PowerShell module (Windows)
 - Set the CoreCLR profiler variables, the SDK location variables, and `OTEL_SERVICE_NAME` — your startup command is unchanged
 - systemd unit, if the app runs as a service: added `Environment=` lines. Sourcing `instrument.sh` in UserData would not have reached the service process, so the variables have to live on the unit
@@ -244,6 +245,7 @@ This check matters more for .NET than for other languages: if any variable is mi
 **Not changed:** your application source and `.csproj`, the instance role's IAM policies, and the instance's monitoring software — no CloudWatch Agent or collector was installed.
 
 **Next steps:**
+
 1. Review the diff — confirm `CORECLR_PROFILER_PATH` matches the host's architecture **and libc** (`linux-x64` / `linux-arm64` / `linux-musl-x64` / `win-x64`), and that the directory exists.
 2. Deploy and replace the instance (UserData runs at first boot only), then confirm the variables reached the process.
 3. **Telemetry has nowhere to go yet.** No OTLP endpoint was configured, so the SDK is using its default (`localhost:4318`). Two ways to fix that: deploy an OTel Collector alongside it and export to that ([collector-ec2.md](collector-ec2.md)), or point `OTEL_EXPORTER_OTLP_ENDPOINT` at an OTLP endpoint you already have.

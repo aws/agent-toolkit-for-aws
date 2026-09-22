@@ -53,5 +53,6 @@ ADOT's zero-code loader auto-discovers the `openinference-instrumentation-crewai
 ## Common False Positives
 
 These are NOT sufficient on their own:
+
 - `crewai` package without `openinference-instrumentation-crewai`
 - `aws-opentelemetry-distro` without the required packages (only sends to CloudWatch)

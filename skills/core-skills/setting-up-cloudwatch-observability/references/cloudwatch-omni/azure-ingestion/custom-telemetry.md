@@ -114,7 +114,6 @@ the tenant ID from step 1.
 > before running it, then narrow it afterwards by adding `"<issuer-host>:sub"` to the existing
 > `StringEquals` block (save-first / confirm procedure below). Or use the manual commands, which set
 > both conditions on the first write.
-
 > **STOP if `CloudWatchAgentServerRole` already exists.** It is the default name for every
 > CloudWatch agent setup, so an account already running the agent has it, with trust the fleet
 > depends on. The script's header states that trust statements and policies are merged per principal,

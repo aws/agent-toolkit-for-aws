@@ -139,7 +139,6 @@ binds to) is the first *essential* container added.
 
 ### Backup: upstream otelcol-contrib sidecar
 
-
 Image: `otel/opentelemetry-collector-contrib:<version>` — the upstream **contrib** distribution
 (`sigv4auth` is a contrib component; the core image fails at startup without it). Pin a version from
 [the releases page](https://github.com/open-telemetry/opentelemetry-collector-releases/releases/latest);

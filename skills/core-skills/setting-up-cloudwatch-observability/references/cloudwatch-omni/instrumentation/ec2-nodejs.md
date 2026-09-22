@@ -169,6 +169,7 @@ Until a receiver exists at the default OTLP endpoint, exporter connection errors
 "I've wired ADOT Node.js auto-instrumentation into your EC2 deployment.
 
 **Changes:**
+
 - UserData: installed the ADOT Node.js SDK (or staged it on the host for a bind mount, for the Docker path)
 - Startup: added the `node` loader flags — or `NODE_OPTIONS` for the container — and `OTEL_SERVICE_NAME`
 - systemd unit, if the app runs as a service: added `Environment=` and updated `ExecStart` (an `export` in UserData would not reach it)
@@ -176,6 +177,7 @@ Until a receiver exists at the default OTLP endpoint, exporter connection errors
 **Not changed:** your application source, the instance role's IAM policies, and the instance's software — no CloudWatch Agent or collector was installed.
 
 **Next steps:**
+
 1. Review the diff.
 2. Deploy and replace the instance (UserData runs at first boot only).
 3. **Telemetry has nowhere to go yet.** No OTLP endpoint was configured, so the SDK is using its default (`localhost:4318`). Two ways to fix that: deploy an OTel Collector alongside it and export to that ([collector-ec2.md](collector-ec2.md)), or point `OTEL_EXPORTER_OTLP_ENDPOINT` at an OTLP endpoint you already have.

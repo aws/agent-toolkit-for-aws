@@ -62,6 +62,7 @@ Import this module first in the entry point (`import tracing`), before framework
 ### Common False Positives
 
 These are NOT sufficient on their own:
+
 - `strands-agents[otel]` without `openinference-instrumentation-strands-agents`
 - `aws-opentelemetry-distro` without the required packages (only sends to CloudWatch)
 

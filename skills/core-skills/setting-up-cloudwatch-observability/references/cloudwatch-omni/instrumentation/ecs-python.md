@@ -120,7 +120,6 @@ resource "aws_ecs_task_definition" "app" {
 }
 ```
 
-
 ```json
 {
   "volumes": [{ "name": "opentelemetry-auto-instrumentation-python" }],
@@ -174,6 +173,7 @@ Then check the application container's CloudWatch Logs. **ADOT Python prints no 
 "I've wired ADOT Python auto-instrumentation into your ECS task definition.
 
 **Changes:**
+
 - Added a bind mount volume, `opentelemetry-auto-instrumentation-python`
 - Added a non-essential `init` container that copies the ADOT Python SDK into that volume
 - Added `PYTHONPATH` (prepended to any existing value) and `OTEL_SERVICE_NAME` to the application container, plus the volume mount and a `SUCCESS` dependency on `init`
@@ -181,6 +181,7 @@ Then check the application container's CloudWatch Logs. **ADOT Python prints no 
 **Not changed:** your application image, your application source, the task role's IAM policies, and the service's sidecars — no CloudWatch Agent or collector was added.
 
 **Next steps:**
+
 1. Review the diff — confirm the `PYTHONPATH` value preserves any path the container already relied on.
 2. Deploy and let the tasks recycle.
 3. **Telemetry has nowhere to go yet.** No OTLP endpoint was configured, so the SDK is using its default (`localhost:4318`). Two ways to fix that: deploy an OTel Collector alongside it and export to that ([collector-ecs.md](collector-ecs.md)), or point `OTEL_EXPORTER_OTLP_ENDPOINT` at an OTLP endpoint you already have.

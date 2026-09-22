@@ -4,17 +4,17 @@ Use this when building, saving, reading back, or fixing a CloudWatch Omni dashbo
 — "build me a dashboard for checkout", "show what's most critical for this
 service", "lay this out", "which chart for this signal?", "why is that panel
 empty?", "why did that field drop on save?" — and for the dashboard API itself
-(`CreateOmniDashboard` and its siblings, `aws cloudwatch-omni *-omni-dashboard*`).
+(`CreateOmniDashboard`and its siblings,`aws cloudwatch-omni *-omni-dashboard*`).
 
 A CloudWatch Omni dashboard is a set of **panels** laid out on a fixed 60-column
 grid, most of them charts over CloudWatch Omni queries. The dashboard **body is
-JSON** — a `panels[]` array (plus an optional `scope`) that the Omni UI renders. It
+JSON** — a `panels[]`array (plus an optional`scope`) that the Omni UI renders. It
 belongs to a **Space** and is stored, as a JSON string, in the `body` field of a
 dashboard resource you create and update through the API (section 7). The
 deliverable is therefore two things: a valid, grounded body, and the API call that
 saves it.
 
-**Contents**
+## Contents
 
 1. [Omni dashboard vs. CloudWatch dashboard](#1-omni-dashboard-vs-cloudwatch-dashboard)
 2. [Decide what the dashboard shows](#2-decide-what-the-dashboard-shows)
@@ -46,7 +46,7 @@ whenever you author, explain, or debug a body:
   silently ignored on save; nothing errors, the value just never persists (a field
   you set "doesn't take effect"). Validate every key's spelling against section 4.
 - **`queryLanguage` must be set explicitly per panel; a mismatch fails silently.**
-  Set each `explore` panel's `queryLanguage` to `'sql'` or `'promql'` yourself — it
+  Set each `explore`panel's`queryLanguage`to`'sql'`or`'promql'` yourself — it
   is **not** inferred from the query text, and a language that doesn't match the
   query is a silent failure, not an error. (Metrics → `promql`; log/trace content →
   `sql`.)
@@ -64,14 +64,14 @@ resources with different bodies, different APIs, and different query languages:
 | | CloudWatch Omni dashboard (this file) | CloudWatch dashboard |
 |---|---|---|
 | Lives in | An Omni **Space** (`spaceId` on every call) | The AWS account/Region |
-| API / CLI | `CreateOmniDashboard` etc. — `aws cloudwatch-omni …` | `PutDashboard` etc. — `aws cloudwatch …` |
-| Body | `{ "panels": [...], "scope": {...} }` — panel `type`, `config`, `layout {x,y,w,h}` | `{ "widgets": [...] }` — widget `type`, `properties`, `x/y/width/height` |
+| API / CLI | `CreateOmniDashboard`etc. —`aws cloudwatch-omni …`|`PutDashboard`etc. —`aws cloudwatch …` |
+| Body | `{ "panels": [...], "scope": {...} }`— panel`type`,`config`,`layout {x,y,w,h}`|`{ "widgets": [...] }`— widget`type`,`properties`,`x/y/width/height` |
 | Grid | **60** columns; `y`/`h` in **pixels** | 24 columns; all four in grid units |
 | Panel queries | Omni SQL (logs/traces) and PromQL (metrics), one query per panel | CloudWatch metric definitions, Metrics Insights, Logs Insights |
 | Identity | `dashboardId` (system-minted UUID); the name is metadata | The dashboard name |
 
 The two bodies are **not** interchangeable — a CloudWatch `widgets[]` body pasted into
-`CreateOmniDashboard` is rejected, and an Omni `panels[]` body means nothing to
+`CreateOmniDashboard`is rejected, and an Omni`panels[]` body means nothing to
 `PutDashboard`. CloudWatch dashboards are documented in
 [../cloudwatch/dashboards.md](../cloudwatch/dashboards.md).
 
@@ -116,7 +116,7 @@ Every dashboard reads top-to-bottom as **summary → trend → breakdown → raw
 
 1. **KPI row** — a few `number` panels with the headline figures (availability,
    error rate, p99 latency, request rate). The fast "is it healthy?" read.
-2. **Trend charts** — `line` / `area` / `bar` time series for the golden signals.
+2. **Trend charts** — `line`/`area`/`bar` time series for the golden signals.
 3. **Ranked breakdown** — a `table` (top-N by the primary signal) so the worst
    offenders surface.
 4. **Raw / drill-down** — logs, spans, alerts, or an application map. Optional
@@ -135,24 +135,24 @@ set in the [Appendix](#8-appendix--archetype-templates), then ground and lay it 
 ### Recipes (for a general intent)
 
 - **Golden-signals service health (the default when the ask is vague).** For
-  "build a dashboard for `<service>`" / "how is `<service>` doing?". Use RED
+  "build a dashboard for `<service>`" / "how is`<service>` doing?". Use RED
   (rate/errors/duration) for a request-serving service, USE (utilization,
   saturation, errors) for an infrastructure resource. CORE (~6–8): a KPI row
   (availability %, error rate, p99 latency, request rate); a request-rate `line`;
-  an errors `bar` (stacked) or `area`; a latency `line` (p50/p90/p99) **when a real
+  an errors `bar`(stacked) or`area`; a latency`line` (p50/p90/p99) **when a real
   percentile source exists** (section 3); and a top-N `table`. Build each family
   from the service's OWN grounded metric first, falling back to a generic OTel
   metric, then a span / log derivation, only when no higher tier grounds it.
-- **Errors-focused.** A headline error-rate `number`; a stacked `bar`/`area` of the
+- **Errors-focused.** A headline error-rate `number`; a stacked`bar`/`area` of the
   status-code or fault/error breakdown over time; a `table` of top error sources.
   Offer a recent-error log panel and — if the space has alerts — an `alerts` panel
-  filtered to `CRITICAL` (or `WARNING`) as a follow-up.
-- **Latency-focused.** A p99 `number`; a `line` of p50/p90/p99 together; a `table`
+  filtered to `CRITICAL`(or`WARNING`) as a follow-up.
+- **Latency-focused.** A p99 `number`; a`line`of p50/p90/p99 together; a`table`
   of the slowest operations. If the service exposes no percentile-capable source,
   chart the average with an honest title — never a fake p99.
-- **Throughput-focused.** A request/message-rate `number`; a `line` over time
+- **Throughput-focused.** A request/message-rate `number`; a`line` over time
   grouped by the identity label — read the aggregation off the counter's
-  temporality (`sum_over_time` for a delta Sum, `rate()` / `increase()` for a
+  temporality (`sum_over_time`for a delta Sum,`rate()`/`increase()` for a
   cumulative Sum), not a uniform `rate()`; for a queue, pair inbound vs. outbound
   counters and add the backlog gauges (depth, age).
 - **Saturation / capacity.** Utilization gauges (`solidgauge` for a bounded %
@@ -162,13 +162,13 @@ set in the [Appendix](#8-appendix--archetype-templates), then ground and lay it 
 - **Incident review (a fixed past window).** Open with a `markdown` summary, set a
   **fixed** `scope.timeRange` (absolute start and end) on the dashboard so every
   panel covers the incident, then golden-signal charts plus a `spans` panel — or
-  a `dashboard` panel with `source.id: "trace-details"` — for the offending path.
+  a `dashboard`panel with`source.id: "trace-details"` — for the offending path.
   Find the offending trace with a span query per
   [sql-logs-traces.md](query/sql-logs-traces.md) and pin its `traceId` in that
   panel's `source.params.traceConfig`.
 - **Multi-service overview (a fleet or whole space).** One compact row per service
-  — a `number` KPI plus a small `line` — under a `divider` per service, or a single
-  wide `table` ranking all services by health. Prefer a `table` or `topk(...)` over
+  — a `number`KPI plus a small`line`— under a`divider` per service, or a single
+  wide `table`ranking all services by health. Prefer a`table`or`topk(...)` over
   a `line` with more than ~25 series.
 
 One query per `explore` panel. To compare two signals, emit two side-by-side
@@ -188,7 +188,7 @@ body. The query languages themselves are deferred to
 
 1. **Discover what exists.** Run discovery queries against the Space — don't guess
    service names, field names, or metric names.
-   - Logs and traces: `EXPLAIN (ANALYZE_FIELDS)` or `SELECT `@record` … LIMIT 10`,
+   - Logs and traces: `EXPLAIN (ANALYZE_FIELDS)`or`SELECT`@record`… LIMIT 10`,
      narrowed to the service and telemetry type (see *Schema Discovery* in
      [sql-logs-traces.md](query/sql-logs-traces.md)). Interactive discovery queries
      **need** a `` `@timestamp` `` bound — only the final panel query is windowless
@@ -205,19 +205,19 @@ body. The query languages themselves are deferred to
    invent them. Nouns in the request ("throttles", "5xx", "timeouts") describe
    *what to aggregate*, not field names — map them to a real grounded name.
    **Metric names are emitter/OTel-specific — they are NOT Prometheus
-   conventions.** Do not assume `requests_total`, `http_requests_total`, `*_total`,
-   `*_seconds`, `*_count`, or `*_bucket`; a PromQL selector MUST name a metric from
+   conventions.** Do not assume `requests_total`,`http_requests_total`,`*_total`,
+   `*_seconds`,`*_count`, or`*_bucket`; a PromQL selector MUST name a metric from
    the grounded list verbatim. If the list lacks the metric you wanted, it does not
    exist here — use a fallback surface (step 4), never a guessed name.
    **Pick the SOURCE per signal by a strict 3-tier priority — reach for a lower
    tier only when no higher tier grounds the signal:** (1) the service's OWN domain
    metric it emits (a business counter / gauge / histogram) FIRST; (2) a generic
-   OTel metric (e.g. `Count` / `Errors`) as a fallback; (3) a trace-span / log
+   OTel metric (e.g. `Count`/`Errors`) as a fallback; (3) a trace-span / log
    derivation (span `durationNano` percentiles, log counts) LAST.
 3. **Pick the surface and set `queryLanguage` to match.** Metrics → **PromQL**; log
    or trace content → **SQL**. Metrics execute as NATIVE PromQL
-   (`queryLanguage: "promql"`), NEVER SQL — there is **no** `metrics.default` SQL
-   table; a SQL `FROM` is only `default`, `logs.default`, or `traces.default`. Set
+   (`queryLanguage: "promql"`), NEVER SQL — there is **no**`metrics.default` SQL
+   table; a SQL `FROM`is only`default`,`logs.default`, or`traces.default`. Set
    the panel's `queryLanguage` explicitly — it is **not** inferred from the query
    text, and a mismatch is a silent failure.
 4. **Fall back to a lower tier before dropping.** The same RED signal can come from
@@ -236,24 +236,24 @@ body. The query languages themselves are deferred to
 **Bind panels to the grounded metric identity.** Vended AWS metrics carry an
 instrumentation scope (`@instrumentation.@name="cloudwatch.aws/<service>"`) plus a
 datapoint attribute (e.g. `FunctionName`); OTLP-native signals carry
-`@resource.*` labels. Select the metric by name — use an `{__name__="<exact>"}`
-matcher for a name that starts with a digit or contains `%`, `.`, or spaces (e.g.
-`4xxErrors`, `traces.span.metrics.*`); a plain non-dotted name may be used bare.
-A bare Prometheus `job=` / `service=` selector is an ungrounded reference — drop
+`@resource.*`labels. Select the metric by name — use an`{__name__="<exact>"}`
+matcher for a name that starts with a digit or contains `%`,`.`, or spaces (e.g.
+`4xxErrors`,`traces.span.metrics.*`); a plain non-dotted name may be used bare.
+A bare Prometheus `job=`/`service=` selector is an ungrounded reference — drop
 panels that use one. The per-service scope + datapoint-attribute matrix lives in
 [promql-metrics.md](query/promql-metrics.md).
 
 **Pick the aggregation from the metric's type.** Read it off the grounded
 instrument type and temporality — `sum_over_time(<m>[w])` for a DELTA Sum,
-`rate()` / `increase()` for a CUMULATIVE Sum, `avg()` / `max()` for a Gauge, and
+`rate()`/`increase()`for a CUMULATIVE Sum,`avg()`/`max()` for a Gauge, and
 `histogram_quantile(0.99, rate(<base>[5m]))` for a Histogram (use the BASE metric
-name — NO `_bucket`, NO `by (le)`). Never label an average as a percentile, and
+name — NO `_bucket`, NO`by (le)`). Never label an average as a percentile, and
 never chart a counter as a raw value.
 
 **Two grounding cautions:**
 
 - **Keep every panel query WINDOWLESS.** Never embed a time window in the
-  `queryString` — no `` `@timestamp` `` bound, no `NOW() - INTERVAL`, no PromQL
+  `queryString`— no`` `@timestamp` ``bound, no`NOW() - INTERVAL`, no PromQL
   range that pins an absolute time. The panel (or dashboard) `scope` drives the
   time range; a hard-coded window fights the time picker and freezes the panel.
   (This is the one place a dashboard query differs from an interactive one, which
@@ -286,9 +286,9 @@ the API's `body` string (section 7).
 - **`scope.timeRange`** is the window the whole dashboard opens under. Omit it to
   inherit whatever range is already active.
 
-> There is no `views`, no `layout: { columns: 60 }`, no per-panel `id`, no
-> `refreshInterval`, and no top-level `owner`. Older bodies that carried those are
-> upgraded on read (`views` → `panels`, legacy relative ranges → `{ start, end }`,
+> There is no `views`, no`layout: { columns: 60 }`, no per-panel`id`, no
+> `refreshInterval`, and no top-level`owner`. Older bodies that carried those are
+> upgraded on read (`views`→`panels`, legacy relative ranges →`{ start, end }`,
 > the rest dropped) — so a body you read back may differ from what was saved.
 > Author new bodies in the `panels[]` form only.
 
@@ -306,11 +306,11 @@ the API's `body` string (section 7).
 }
 ```
 
-Only `type` is required — a panel with no `layout` is accepted and renders
+Only `type`is required — a panel with no`layout` is accepted and renders
 full-width, but its vertical placement relative to layout-carrying siblings is not
 defined; the renderer does not reflow overlaps (section 5), so author `layout` on
 every panel in a mixed body to keep placement deterministic. An untitled panel takes
-a heading from its content. `variant` accepts `"transparent"` (drops the card frame)
+a heading from its content. `variant`accepts`"transparent"` (drops the card frame)
 or `"default"` (explicit no-op) — omit the key for the default card frame. Any other
 value is one of the "bad values" that saves with HTTP 200 and blanks the whole canvas
 (see "API save semantics" below); other `variant` values you read back in
@@ -330,20 +330,20 @@ scope overrides the dashboard's for that panel only (e.g. a 7-day baseline besid
 ```
 
 Each bound is independently an ISO-8601 instant, the literal `now`, or a relative
-`now-<N><unit>`. Units: `m` minutes, `h` hours, `d` days, `w` weeks, `mo` months.
+`now-<N><unit>`. Units:`m`minutes,`h`hours,`d`days,`w`weeks,`mo` months.
 There is no seconds or years unit and no rounding syntax — use an absolute instant
 for a calendar boundary. The scope drives a query's time range; never embed a
 window in a `queryString` (section 3).
 
 ### Panel types
 
-`alerts` · `explore` · `markdown` · `divider` · `spans` · `application-map` ·
-`dashboards-list` · `investigation-list` · `dashboard` · `agent-kpi-strip` ·
-`recent-error-traces-table` · `agent-health-table` · `agent-playground`. **Author
+`alerts`·`explore`·`markdown`·`divider`·`spans`·`application-map` ·
+`dashboards-list`·`investigation-list`·`dashboard`·`agent-kpi-strip` ·
+`recent-error-traces-table`·`agent-health-table`·`agent-playground`. **Author
 only these thirteen** — this is the public authoring contract. `dashboard` and
 `agent-playground` are full-bleed surfaces (public and hand-authorable, but not
-offered for free composition; a `dashboard` panel is always `x: 0, w: 60`). There
-is no `navigation` type. `alert-detail` and `trace-details` are **withdrawn**: a
+offered for free composition; a `dashboard`panel is always`x: 0, w: 60`). There
+is no `navigation`type.`alert-detail`and`trace-details` are **withdrawn**: a
 saved body that already holds one still reads back, but do not author them in a
 new body — see below for the `dashboard`-panel replacement. Other product-authored
 types you read back are private; leave them as they are and do not author new ones.
@@ -369,14 +369,14 @@ below).
   clause (SQL) or metric selector (PromQL); there is no separate source field.
 - **Always set `autoRun: true`** on a panel meant to show data without a click —
   otherwise it opens showing its query, not its result.
-- **Match `step` to the range vector.** A `[5m]` window sampled at the default 60s
-  over-samples 5×; set `promqlQueryOptions.step` to `300` (SECONDS).
-- **`inputMode`.** Omit for a chart tile (the default). Set `"inputMode": "editor"`
+- **Match `step`to the range vector.** A`[5m]` window sampled at the default 60s
+  over-samples 5×; set `promqlQueryOptions.step`to`300` (SECONDS).
+- **`inputMode`.** Omit for a chart tile (the default). Set`"inputMode": "editor"`
   **only** when authoring a full Explore-surface panel — that is the one accepted
   value, and it is load-bearing on read (a saved Explore surface with `inputMode`
   dropped reopens as a tile).
 - The `@`-labels are double-quoted PromQL selectors, so they are JSON-escaped
-  (`\"`) once more inside the `queryString`; and because the whole body is itself
+  (`\"`) once more inside the`queryString`; and because the whole body is itself
   passed to the API as a JSON **string**, it is escaped a third time on the wire —
   build the body as an object and let your JSON library serialize it (section 7)
   rather than hand-escaping.
@@ -387,7 +387,7 @@ below).
 "config": { "content": "## On call\n\n1. Check error rate.\n2. Open the failing trace." }
 ```
 
-Pair with `"h": "auto"` and `"variant": "transparent"` for prose that reads as
+Pair with `"h": "auto"`and`"variant": "transparent"` for prose that reads as
 part of the canvas.
 
 #### divider — collapsible section heading
@@ -402,7 +402,7 @@ panels beneath it, down to the next divider, into a collapsible section.
 #### alerts
 
 ```jsonc
-{ "type": "alerts", "config": { "state": "CRITICAL" } }  // OK | WARNING | CRITICAL | NODATA (the Omni alert states); omit for all. Not the classic alarm states `ALERT` / `INSUFFICIENT_DATA` — an unknown state value silently blanks the canvas
+{ "type": "alerts", "config": { "state": "CRITICAL" } }  // OK | WARNING | CRITICAL | NODATA (the Omni alert states); omit for all. Not the classic alarm states `ALERT`/`INSUFFICIENT_DATA` — an unknown state value silently blanks the canvas
 ```
 
 **One alert's detail** is not a panel type of its own any more — `alert-detail` is
@@ -418,12 +418,12 @@ withdrawn (readable, not authorable). Author a `dashboard` panel instead:
 The required parameter is the alert's **name**, but alert names are **not** unique
 within a space — two alerts can share one name. The stable identity is the
 `alertId` (see [alerts.md](alerts.md)); pass it too so the panel is unambiguous.
-Resolve a name to its `alertId`s with `ListAlerts` (`filterCriteria.names`) first,
+Resolve a name to its `alertId`s with`ListAlerts`(`filterCriteria.names`) first,
 and rename one via `UpdateAlert` if two collide.
 
 #### application-map / spans
 
-Both take a public `config`; either also renders correctly with no `config` and
+Both take a public `config`; either also renders correctly with no`config` and
 picks up the dashboard's time range.
 
 ```jsonc
@@ -442,12 +442,12 @@ state — is per-user console state, not saved.
 
 `"config": {}` — a list of the Space's saved dashboards.
 
-#### one trace's detail — a `dashboard` panel, not `trace-details`
+#### one trace's detail — a `dashboard`panel, not`trace-details`
 
 `trace-details` is a **withdrawn** panel type: a saved body that holds one still
 reads back, but do not author it in a new body — like any unrecognised `type` it
 saves with HTTP 200 and blanks the canvas. Author a `dashboard` panel whose
-`source.id` is `trace-details`:
+`source.id`is`trace-details`:
 
 ```jsonc
 { "type": "dashboard",
@@ -455,39 +455,39 @@ saves with HTTP 200 and blanks the canvas. Author a `dashboard` panel whose
               "params": { "traceConfig": {
                 "traceId": "…",                                    // required
                 "startTime": 1730000000000, "endTime": 1730000600000,
-                "initialMode": "waterfall",  // waterfall | graph | flame | raw (`flamegraph` is a legacy alias read as `graph`)
+                "initialMode": "waterfall",  // waterfall | graph | flame | raw (`flamegraph`is a legacy alias read as`graph`)
                 "focusSpanId": "…" } } },    // optional — deep-link to a specific span
   "layout": { "x": 0, "y": 0, "w": 60, "h": "auto" } }
 ```
 
-`startTime`/`endTime` are epoch **milliseconds** in `traceConfig` (not the panel
+`startTime`/`endTime`are epoch **milliseconds** in`traceConfig` (not the panel
 scope), fixed at author time. A pinned trace is useful only while it is still
 retained — prefer a `spans` panel for a durable dashboard.
 
 ### Visualizations — exactly nine legal values
 
-`line` · `area` · `bar` · `scatter` · `pie` · `table` · `number` · `solidgauge` ·
+`line`·`area`·`bar`·`scatter`·`pie`·`table`·`number`·`solidgauge` ·
 `heatmap`.
 
-> `stacked-bar`, `single-metric`, and `donut` are **not** valid — use `bar` with a
-> stacking flag, `number`, and `pie` respectively. `visualization` is REQUIRED and
+> `stacked-bar`,`single-metric`, and`donut`are **not** valid — use`bar` with a
+> stacking flag, `number`, and`pie`respectively.`visualization` is REQUIRED and
 > there is no fallback default that renders: a missing value, an unknown value such
-> as `stacked-bar`, or the empty string `""` saves with HTTP 200 but silently blanks
+> as `stacked-bar`, or the empty string`""` saves with HTTP 200 but silently blanks
 > the panel at render.
 
-**`number` tile trap (known product bug).** A `number` panel driven by a
-`SELECT count(*) AS n` (or similar `COUNT(*)`) query currently renders the ROW
+**`number`tile trap (known product bug).** A`number` panel driven by a
+`SELECT count(*) AS n`(or similar`COUNT(*)`) query currently renders the ROW
 COUNT of the result set — usually `1` when the query aggregates to one row —
 instead of the value in the aliased column. Author the query so the aggregate
 value is the first column of the first row (e.g. `SELECT <aggregate_expression>`),
-and reserve `COUNT(*)`-shaped queries for `table` panels until the bug is fixed.
+and reserve `COUNT(*)`-shaped queries for`table` panels until the bug is fixed.
 
 Pick by signal kind:
 
 | Signal | Visualization |
 |--------|---------------|
 | Time series, ≤ ~25 series, comparable units | `line` |
-| Additive series / discrete buckets (2xx/4xx/5xx, per-AZ) | `bar` (stacked) or `area` |
+| Additive series / discrete buckets (2xx/4xx/5xx, per-AZ) | `bar`(stacked) or`area` |
 | Correlation point cloud (no connecting line) | `scatter` |
 | One number, with a delta | `number` |
 | Resources ranked by a metric | `table` (default sort: descending on the primary signal) |
@@ -495,19 +495,19 @@ Pick by signal kind:
 | A bounded ratio against thresholds (availability %) | `solidgauge` |
 
 Two shapes authors most often get wrong — check them explicitly: a **scalar
-aggregate** (one number, no `by` / no `GROUP BY` over time) should be a `number`
-tile, not a table; a **top-N ranking** (`ORDER BY … LIMIT` / `topk(...)`) should be
+aggregate** (one number, no `by`/ no`GROUP BY`over time) should be a`number`
+tile, not a table; a **top-N ranking** (`ORDER BY … LIMIT`/`topk(...)`) should be
 a `table`, not a line.
 
-Anti-patterns: no `line` past ~25 series (use `topk(...)` or a `table`); don't
+Anti-patterns: no `line`past ~25 series (use`topk(...)`or a`table`); don't
 stack a `bar` whose series go negative; don't put two units on one chart — split
-into two `w: 30` panels. `heatmap` does not yet ingest histogram-bucket output —
-for a latency distribution use `line` with a `histogram_quantile`.
+into two `w: 30`panels.`heatmap` does not yet ingest histogram-bucket output —
+for a latency distribution use `line`with a`histogram_quantile`.
 
 ### Chart options
 
-`chartOptions` sets appearance and is a discriminated union keyed on `view`, which
-must match the panel's `visualization` (when both are present, `view` wins — so
+`chartOptions`sets appearance and is a discriminated union keyed on`view`, which
+must match the panel's `visualization`(when both are present,`view` wins — so
 setting only `visualization` is the simpler, recommended form).
 
 ```jsonc
@@ -521,23 +521,23 @@ setting only `visualization` is the simpler, recommended form).
 }
 ```
 
-- **Cartesian** (`line`/`area`/`bar`/`scatter`): `legend`, `stacking`, `xAxis`, and
+- **Cartesian** (`line`/`area`/`bar`/`scatter`):`legend`,`stacking`,`xAxis`, and
   `yAxis` as a **tuple** of one or two axes (the second is the right-hand axis). Use
-  `type: 'datetime'` for a time axis (not `'time'`).
-- **`solidgauge`**: `yAxis` is an **object** `{ min, max }` (not a tuple), plus
+  `type: 'datetime'`for a time axis (not`'time'`).
+- **`solidgauge`**:`yAxis`is an **object**`{ min, max }` (not a tuple), plus
   `plotBands: [{ from, to, color }]`.
-- **`heatmap`**: `xAxis`/`yAxis` with `categories`, and `colorScale`.
-- **`table`**: `hiddenColumns`, `summaryColumns` (`MIN`/`MAX`/`SUM`/`AVG`),
-  `layout` (`horizontal`/`vertical`), `stickySummary`, `showTimeSeriesData`,
-  `formatJson` (`true` | `'raw'` | `'raw-single-line'`). Column order is **not** a
-  chart option — the console does not save it. `number` and `pie` take little
+- **`heatmap`**:`xAxis`/`yAxis`with`categories`, and`colorScale`.
+- **`table`**:`hiddenColumns`,`summaryColumns`(`MIN`/`MAX`/`SUM`/`AVG`),
+  `layout`(`horizontal`/`vertical`),`stickySummary`,`showTimeSeriesData`,
+  `formatJson`(`true`|`'raw'`|`'raw-single-line'`). Column order is **not** a
+  chart option — the console does not save it. `number`and`pie` take little
   beyond the base fields.
 - **Stacking depends on the view.** For `line`/`area`, set
-  `plotOptions.stacking: "normal"` (or `"percent"`) — an **enum**, not a boolean,
+  `plotOptions.stacking: "normal"`(or`"percent"`) — an **enum**, not a boolean,
   keyed directly on `plotOptions`; it wins over the equivalent
   `plotOptions.style.lineOptions.stacked: true`. A **`bar`** panel does not read
   `stacking` at all — the only stacking field the bar renderer reads is
-  `plotOptions.style.barOptions.stacked: true`. There is **no** `plotOptions.stacked`
+  `plotOptions.style.barOptions.stacked: true`. There is **no**`plotOptions.stacked`
   field; a flag placed there is an unknown key, silently dropped on save, and the
   chart will not stack.
 
@@ -553,12 +553,12 @@ API neither rejects nor coerces it. (That is the *storage* path; the *renderer* 
 what ignores unknown keys and blanks on bad values, below.) Consequences:
 
 - **Do not rely on a 200 to confirm renderability.** Validate the body against this
-  reference before the save call; a `200` + a `dashboardId` proves only that the
+  reference before the save call; a `200`+ a`dashboardId` proves only that the
   JSON parsed and persisted.
 - **One bad value on one panel blanks the whole canvas.** A single unknown enum (a
-  `variant` or `visualization` outside its legal set, an unknown `alerts` state), a
-  negative `layout.x`, `x + w > 60`, `now-30s` / `now-1y` (no seconds/years unit), a
-  missing `panels` key, `panels` set to an object, or a panel with no `type` —
+  `variant`or`visualization`outside its legal set, an unknown`alerts` state), a
+  negative `layout.x`,`x + w > 60`,`now-30s`/`now-1y` (no seconds/years unit), a
+  missing `panels`key,`panels`set to an object, or a panel with no`type` —
   beside otherwise valid siblings — makes the whole dashboard render as an empty
   page. The valid siblings do not survive the bad neighbor.
 - **A panel with no `layout` is accepted** and drawn full-width (it is NOT rejected).
@@ -569,7 +569,7 @@ what ignores unknown keys and blanks on bad values, below.) Consequences:
 - **`queryLanguage` mismatches are silent failures**, not errors. Set it per panel.
 - **Dashboard names** (the API's `name`, not part of the body) must be 1–256 chars
   matching `^[a-zA-Z0-9_.@~()-]+$`. Nothing is trimmed: surrounding whitespace,
-  spaces, `/`, `:`, `#`, `+`, accented letters and emoji all fail the pattern, and
+  spaces, `/`,`:`,`#`,`+`, accented letters and emoji all fail the pattern, and
   257+ chars fails the length check. The body itself must be 1–1,048,576 bytes
   once serialized.
 
@@ -582,16 +582,16 @@ and no overflow. This is the single most error-prone part of a body.
 
 ### The two-unit rule (memorize this)
 
-`x`/`w` and `y`/`h` do **not** share a unit:
+`x`/`w`and`y`/`h` do **not** share a unit:
 
 | Field | Unit | Rule |
 |-------|------|------|
-| `x` | grid **column** | integer `0`–`59`; `x: 0` is the left edge |
-| `w` | grid **columns** | integer `1`–`60`; **`x + w` must not exceed `60`** — nothing enforces this for you; an overflow saves with HTTP 200 and blanks the canvas |
-| `y` | **pixels** | integer pixels from the top (`0` or greater), not a row index |
-| `h` | **pixels** or `'auto'` | integer pixels within roughly `100`–`2000` (`divider` `40` is the sanctioned sub-100 row), or the literal `'auto'`; never fractional; never a relative CSS unit (`vh` / `%` / `vw`) |
+| `x`| grid **column** | integer`0`–`59`;`x: 0` is the left edge |
+| `w`| grid **columns** | integer`1`–`60`; **`x + w`must not exceed`60`** — nothing enforces this for you; an overflow saves with HTTP 200 and blanks the canvas |
+| `y`| **pixels** | integer pixels from the top (`0` or greater), not a row index |
+| `h`| **pixels** or`'auto'`| integer pixels within roughly`100`–`2000`(`divider` `40`is the sanctioned sub-100 row), or the literal`'auto'`; never fractional; never a relative CSS unit (`vh`/`%`/`vw`) |
 
-Mixing the units (treating `y` as a row index, or `w` as pixels) is the most common
+Mixing the units (treating `y`as a row index, or`w` as pixels) is the most common
 authoring bug. Prefer `'auto'` for content-sized panels (markdown, lists, nested
 `dashboard` panels) and a fixed pixel height where the content needs one; a relative
 CSS unit such as `'80vh'` is an unknown value that blanks the canvas.
@@ -603,7 +603,7 @@ shape yourself — nothing re-shapes it for you.
 
 | Row count | Width per panel (`w`) | Use for |
 |-----------|-----------------------|---------|
-| 1 panel | `60` | full-width strip (hero chart, table, status strip, divider, application-map, `dashboard`) |
+| 1 panel | `60`| full-width strip (hero chart, table, status strip, divider, application-map,`dashboard`) |
 | 2 panels | `30` each | two halves side-by-side (most time-series pairs) |
 | 3 panels | `20` each | three thirds (read/write/idle, 2xx/4xx/5xx) |
 | 4 panels | `15` each | four quarters (KPI row) |
@@ -611,15 +611,15 @@ shape yourself — nothing re-shapes it for you.
 **Hard rules — all MUST:**
 
 - A row's widths sum to **EXACTLY 60**, with `x` as the cumulative sum from 0
-  (`0, 30`; `0, 20, 40`; `0, 15, 30, 45`).
-- Every panel in a row shares the **same `y`** AND the **same `h`**.
+  (`0, 30`;`0, 20, 40`;`0, 15, 30, 45`).
+- Every panel in a row shares the **same `y`** AND the **same`h`**.
 - **Never more than 4 panels in one row.** A 5th starts a new row below: 5 panels =
   3 then 2; 6 = 3+3; 7 = 4+3. Five across does not fit the 60-column grid and the
   overflow lands on top of its neighbours.
 - **No mixed-width rows** except an intentional hero-supporting layout, which uses
-  TWO rows: row 1 is one `w: 60` hero, row 2 is `w: 30`×2 or `w: 20`×3 supporting
+  TWO rows: row 1 is one `w: 60`hero, row 2 is`w: 30`×2 or`w: 20`×3 supporting
   panels — never side-by-side with the hero.
-- **No heterogeneous chart/table rows.** A `line` chart and a `table` on the same
+- **No heterogeneous chart/table rows.** A `line`chart and a`table` on the same
   row read badly — split them into two rows (chart row above, table row below).
 
 ### Stacking rows with `y`
@@ -627,11 +627,11 @@ shape yourself — nothing re-shapes it for you.
 `y` is the pixel offset from the top and it orders rows. Give successive rows
 **increasing `y`** equal to the running sum of prior row heights:
 
-- KPI row (`h: 120`) at `y: 0`
-- first chart row (`h: 320`) at `y: 120`
+- KPI row (`h: 120`) at`y: 0`
+- first chart row (`h: 320`) at`y: 120`
 - next chart row at `y: 440`, and so on.
 
-When a row uses `'auto'` heights, still give the next row a larger `y`; the renderer
+When a row uses `'auto'`heights, still give the next row a larger`y`; the renderer
 resolves final positions from each row's height, so approximate but
 monotonically-increasing `y` values are fine.
 
@@ -639,23 +639,23 @@ monotonically-increasing `y` values are fine.
 
 | Panel kind | Suggested `h` |
 |------------|---------------|
-| `number` KPI tile | `120` (short — one figure) |
+| `number`KPI tile |`120` (short — one figure) |
 | Time-series (`line`/`area`/`bar`/`scatter`) | ~`320` |
-| `table` | ~`320`–`400`, taller for many rows |
-| `pie` / `solidgauge` | ~`280`–`320` (roughly square reads best) |
-| `divider` | `40` (always full width, `x: 0, w: 60`) |
-| `dashboard` (nested system dashboard) | `'auto'` (always full width, `x: 0, w: 60`) |
-| `markdown` runbook | `'auto'` (pair with `variant: 'transparent'`) |
-| `application-map` / `spans` | full width, tall (~`480`) |
+| `table`| ~`320`–`400`, taller for many rows |
+| `pie`/`solidgauge`| ~`280`–`320` (roughly square reads best) |
+| `divider`|`40`(always full width,`x: 0, w: 60`) |
+| `dashboard`(nested system dashboard) |`'auto'`(always full width,`x: 0, w: 60`) |
+| `markdown`runbook |`'auto'`(pair with`variant: 'transparent'`) |
+| `application-map`/`spans`| full width, tall (~`480`) |
 
 ### Layout shortcuts
 
 - **Full-width strip** — `{ x: 0, y: <row>, w: 60, h: <h> }`.
-- **Two halves** — `{ x: 0, …, w: 30 }` and `{ x: 30, …, w: 30 }`, same `y`.
-- **Three thirds** — `x: 0`, `x: 20`, `x: 40`, each `w: 20`, same `y`.
-- **KPI row of four** then a wide chart — four tiles at `y: 0`, `w: 15`,
-  `x: 0/15/30/45`, `h: 120`; one chart at `y: 120`, `x: 0`, `w: 60`, `h: 320`.
-- **Divider-led section** — a full-width `divider` (`h: 40`) at the row's `y`, then
+- **Two halves** — `{ x: 0, …, w: 30 }`and`{ x: 30, …, w: 30 }`, same`y`.
+- **Three thirds** — `x: 0`,`x: 20`,`x: 40`, each`w: 20`, same`y`.
+- **KPI row of four** then a wide chart — four tiles at `y: 0`,`w: 15`,
+  `x: 0/15/30/45`,`h: 120`; one chart at`y: 120`,`x: 0`,`w: 60`,`h: 320`.
+- **Divider-led section** — a full-width `divider`(`h: 40`) at the row's`y`, then
   the section's panels at a larger `y` beneath it.
 
 ### Overflow and overlap
@@ -678,23 +678,23 @@ Work down this list in order; the first match is usually the cause.
 
 1. **An ungrounded name.** A metric, field, or label that does not exist returns
    nothing, not an error. Re-run discovery (section 3) for exactly the names in
-   the `queryString`; a `*_total` / `*_seconds` Prometheus-convention name, or a
-   bare `job=` / `service=` selector, is the CloudWatch tell.
-2. **`queryLanguage` mismatch.** A PromQL selector under `"queryLanguage": "sql"`
+   the `queryString`; a`*_total`/`*_seconds` Prometheus-convention name, or a
+   bare `job=`/`service=` selector, is the CloudWatch tell.
+2. **`queryLanguage`mismatch.** A PromQL selector under`"queryLanguage": "sql"`
    (or SQL under `promql`) fails silently. Check the language against the text.
 3. **A time window embedded in the query.** A `` `@timestamp` `` bound, a
    `NOW() - INTERVAL`, or an absolute PromQL range pins the panel to a window the
    time picker no longer covers. Remove it; the `scope` drives the range.
 4. **The panel's or dashboard's `scope` excludes the data.** A fixed incident-window
    scope, or a per-panel override, can legitimately show nothing outside its range.
-5. **`autoRun` is not `true`.** The panel opens showing its query, not its result —
+5. **`autoRun`is not`true`.** The panel opens showing its query, not its result —
    it looks empty until clicked.
 6. **The metric selector's identity is wrong.** A vended metric without its
    `@instrumentation.@name` scope, or the wrong datapoint attribute
-   (`FunctionName` vs. `ApiName`), matches nothing. Compare against the archetype
+   (`FunctionName`vs.`ApiName`), matches nothing. Compare against the archetype
    identity forms and [promql-metrics.md](query/promql-metrics.md).
 7. **The series is genuinely empty — and that is correct.** Conditional signals
-   (`IteratorAge` for a non-stream consumer, `RunningTaskCount` without Container
+   (`IteratorAge`for a non-stream consumer,`RunningTaskCount` without Container
    Insights, burst-credit metrics on a non-burstable instance) return nothing when
    the condition is absent. Say so, and either drop the panel or retitle it.
 8. **A `step` far coarser than the window.** With a very large
@@ -706,36 +706,36 @@ Work down this list in order; the first match is usually the cause.
   ignored by the renderer — the save succeeds, the key is stored verbatim, and the
   value simply never takes effect. Check each ineffective key's spelling against
   section 4. The frequent offenders: `plotOptions.stacked` (should be
-  `plotOptions.stacking: "normal"` or `plotOptions.style.<view>Options.stacked`),
-  `layout.columns`, per-panel `id`, `refreshInterval`, `owner`, `views`.
+  `plotOptions.stacking: "normal"`or`plotOptions.style.<view>Options.stacked`),
+  `layout.columns`, per-panel`id`,`refreshInterval`,`owner`,`views`.
 - **`inputMode` was omitted from an Explore-surface panel.** It reopens as a tile.
 - **The whole canvas is blank after a 200.** Nothing was rejected — the save
   returned HTTP 200 — but one panel carries a bad value: a missing `panels` array, a
   panel without `type`, a withdrawn or private panel type, an unknown enum
-  (`variant`, `visualization`, `alerts` state), a coordinate outside the grid rules
-  (negative `x`, `x + w > 60`, a fractional or `vh` height), a `timeRange` bound with
-  a seconds/years unit, a `source` on a non-`dashboard` panel, or a `dashboard` panel
+  (`variant`,`visualization`,`alerts` state), a coordinate outside the grid rules
+  (negative `x`,`x + w > 60`, a fractional or`vh`height), a`timeRange` bound with
+  a seconds/years unit, a `source`on a non-`dashboard`panel, or a`dashboard` panel
   without one. The valid siblings do not render until it is fixed — validate each
   panel against section 4 to find the offender.
 - **A panel is blank but the rest render.** A missing or invalid `visualization`
-  (`stacked-bar`, `donut`, `single-metric`, `""`) does not fall back to `table` — it
+  (`stacked-bar`,`donut`,`single-metric`,`""`) does not fall back to`table` — it
   blanks that panel.
-- **Legacy keys were rewritten.** `views` became `panels`, old relative ranges
+- **Legacy keys were rewritten.** `views`became`panels`, old relative ranges
   became `{ start, end }` — that is the read-time upgrade, not data loss.
 
 ### Reading back a body (pasted into chat, or fetched with GetOmniDashboard)
 
 1. **Get the JSON.** From the API, `omniDashboard.body` is a JSON **string** —
    parse it before inspecting it. From a paste, strip any surrounding prose.
-2. **Check the top level.** `panels` must be an array; note any `scope.timeRange`
+2. **Check the top level.** `panels`must be an array; note any`scope.timeRange`
    (a fixed absolute window means an incident dashboard).
 3. **Walk each panel** and describe it in the user's terms — what it shows, from
    which telemetry, over what range — while checking, for each:
-   `type` is one of the thirteen authorable types; `layout` uses the two units correctly
-   and stays inside 60 columns; rows share `y` and `h`; for `explore`,
-   `queryLanguage` matches the query text, `visualization` is one of the nine, the
+   `type`is one of the thirteen authorable types;`layout` uses the two units correctly
+   and stays inside 60 columns; rows share `y`and`h`; for`explore`,
+   `queryLanguage`matches the query text,`visualization` is one of the nine, the
    query is windowless, and every name in it is plausible for the grounded catalog;
-   `chartOptions.view` matches `visualization`; no unknown keys.
+   `chartOptions.view`matches`visualization`; no unknown keys.
 4. **Explain the two silent failures** (unknown keys dropped; `queryLanguage` not
    inferred) whenever you find an instance of either, because the user will not
    have seen an error.
@@ -747,7 +747,7 @@ Work down this list in order; the first match is usually the cause.
 ## 7. API reference
 
 Five operations manage dashboards. They are exposed by the CloudWatch Omni service
-(endpoint prefix `cloudwatch-omni`, SigV4 signing name `cloudwatch` — see
+(endpoint prefix `cloudwatch-omni`, SigV4 signing name`cloudwatch` — see
 [programmatic-access.md](programmatic-access.md)) and reachable from the AWS CLI as
 `aws cloudwatch-omni <kebab-case-operation>`, from every AWS SDK, or through an AWS
 MCP `aws___call_aws` tool with the same operation and parameter names.
@@ -761,17 +761,17 @@ MCP `aws___call_aws` tool with the same operation and parameter names.
   caller-supplied `name` is metadata, is **not** unique, and is **not** part of the
   id — renaming never changes the id or the ARN.
 - **ARN:** `arn:<partition>:cloudwatch:<region>:<account-id>:omni-dashboard/<dashboardId>`
-  — the `cloudwatch` vendor namespace with an `omni-dashboard/` resource type, the
+  — the `cloudwatch`vendor namespace with an`omni-dashboard/` resource type, the
   same convention as alerts. Neither the Space nor the name appears in it.
 - **`body` is a string**, 1–1,048,576 bytes, containing the serialized JSON from
   section 4. The service stores it opaquely — it does not merge, reformat, or
   partially accept it — so validation of the panel schema happens when the UI reads
-  it, not at the API. An API `ValidationException` on `body` is a length or type
+  it, not at the API. An API `ValidationException`on`body` is a length or type
   problem, not a panel-schema one.
-- **`name`:** 1–256 chars, `^[a-zA-Z0-9_.@~()-]+$` (section 4's rule).
+- **`name`:** 1–256 chars,`^[a-zA-Z0-9_.@~()-]+$` (section 4's rule).
   **`description`:** 1–1024 chars, optional.
 - **Errors** every operation can return: `ValidationException`,
-  `AccessDeniedException`, `InternalServerException`, `ThrottlingException`.
+  `AccessDeniedException`,`InternalServerException`,`ThrottlingException`.
   Per-operation additions are noted below.
 - **Authorization** is the Space's access grants, exactly as for a console user. A
   correctly-signed call returning `AccessDeniedException` usually means the caller
@@ -781,19 +781,19 @@ MCP `aws___call_aws` tool with the same operation and parameter names.
 ### CreateOmniDashboard
 
 Creates a dashboard in a Space. Returns the full **`omniDashboard`** — read
-`dashboardId` and `arn` from it; you do not need a follow-up `GetOmniDashboard`.
+`dashboardId`and`arn`from it; you do not need a follow-up`GetOmniDashboard`.
 
 | Input | Required | Notes |
 |---|---|---|
 | `spaceId` | ✔ | The Space to create the dashboard in |
-| `name` | ✔ | Display name, 1–256 chars, `^[a-zA-Z0-9_.@~()-]+$`. Not unique |
-| `body` | ✔ | The serialized `{ "panels": [...] }` JSON, 1–1,048,576 bytes |
+| `name`| ✔ | Display name, 1–256 chars,`^[a-zA-Z0-9_.@~()-]+$`. Not unique |
+| `body`| ✔ | The serialized`{ "panels": [...] }` JSON, 1–1,048,576 bytes |
 | `description` | | 1–1024 chars |
 | `tags` | | Key/value map |
 | `clientToken` | | Idempotency token — a retry with the same token returns the original result instead of creating a duplicate. SDKs and the CLI fill it automatically |
 
 Errors beyond the common set: `ServiceQuotaExceededException` (the Space's
-dashboard limit), `ResourceNotFoundException` (unknown Space), `ConflictException`.
+dashboard limit), `ResourceNotFoundException`(unknown Space),`ConflictException`.
 
 ```bash
 # body.json holds the panels[] object from section 4; file:// passes its text as the string value
@@ -819,9 +819,9 @@ saved body — list results do not carry it.
 | `spaceId` | ✔ |
 | `dashboardId` | ✔ |
 
-Returns **`omniDashboard`**: `dashboardId`, `arn`, `name`, `body` (a JSON string —
-parse it), `createdBy` (the creating principal), `description`, `tags`, `createdAt`,
-`updatedAt`. Read-only. Errors beyond the common set: `ResourceNotFoundException`.
+Returns **`omniDashboard`**:`dashboardId`,`arn`,`name`,`body` (a JSON string —
+parse it), `createdBy`(the creating principal),`description`,`tags`,`createdAt`,
+`updatedAt`. Read-only. Errors beyond the common set:`ResourceNotFoundException`.
 
 ```bash
 aws cloudwatch-omni get-omni-dashboard --region us-east-1 \
@@ -837,17 +837,17 @@ pagination.
 | Input | Notes |
 |---|---|
 | `spaceId` | Required |
-| `namePrefix` | 1–256 chars, same character set as `name`; matches names that start with it |
+| `namePrefix`| 1–256 chars, same character set as`name`; matches names that start with it |
 | `maxResults` | 1–100 per page |
 | `nextToken` | Pagination token |
 
-**Read the summaries from `items`** and page with `nextToken` — `items` is the only
+**Read the summaries from `items`** and page with`nextToken`—`items` is the only
 list member the response carries. Each entry is an
-`OmniDashboardSummary`: `dashboardId`, `arn`, `name`, `createdBy`, `description`,
-`tags`, `createdAt`, `updatedAt` — **no `body`**. Because names are not unique, a
+`OmniDashboardSummary`:`dashboardId`,`arn`,`name`,`createdBy`,`description`,
+`tags`,`createdAt`,`updatedAt`— **no`body`**. Because names are not unique, a
 `namePrefix` (or an exact-name match on the client side) can return several
 dashboards; this is the usual way to resolve a name to a `dashboardId` before
-`Get`/`Update`/`Delete`. Follow `nextToken` rather than treating the first page as
+`Get`/`Update`/`Delete`. Follow`nextToken` rather than treating the first page as
 the complete set. Errors beyond the common set: `ResourceNotFoundException`
 (unknown Space).
 
@@ -867,14 +867,14 @@ call. `@idempotent`.
 |---|---|---|
 | `spaceId` | ✔ | |
 | `dashboardId` | ✔ | The dashboard to update |
-| `body` | | Full replacement body, 1–1,048,576 bytes. There is no partial-panel patch — send the complete `panels[]` |
+| `body`| | Full replacement body, 1–1,048,576 bytes. There is no partial-panel patch — send the complete`panels[]` |
 | `name` | | Renaming is supported; the id and ARN do not change |
 | `description` | | 1–1024 chars |
 
 `tags` cannot be changed through this operation. Errors beyond the common set:
-`ResourceNotFoundException`, `ConflictException`, `ServiceQuotaExceededException`.
+`ResourceNotFoundException`,`ConflictException`,`ServiceQuotaExceededException`.
 
-**To edit one panel:** `GetOmniDashboard` → parse `body` → change the panel →
+**To edit one panel:** `GetOmniDashboard`→ parse`body` → change the panel →
 serialize → `UpdateOmniDashboard` with the whole body. Because a body is replaced,
 not merged, an update built from a stale copy silently discards someone else's
 edits — fetch immediately before you write.
@@ -914,13 +914,13 @@ aws cloudwatch-omni delete-omni-dashboard --region us-east-1 \
 
 ### End-to-end: build, save, verify
 
-1. Probe: `aws cloudwatch-omni list-spaces` — pick the `spaceId` (section 1).
+1. Probe: `aws cloudwatch-omni list-spaces`— pick the`spaceId` (section 1).
 2. Plan, ground, author, lay out (sections 2–5) → a `panels[]` object.
-3. Serialize it to `body.json`; `create-omni-dashboard` with a valid `name`.
-4. Read back with `get-omni-dashboard`, parse `body`, and run the read-back checks
+3. Serialize it to `body.json`;`create-omni-dashboard`with a valid`name`.
+4. Read back with `get-omni-dashboard`, parse`body`, and run the read-back checks
    in section 6 — the API accepts any well-sized string, so this is where a
    panel-schema slip would surface.
-5. Report the `dashboardId`, `arn`, and a one-line description of each panel.
+5. Report the `dashboardId`,`arn`, and a one-line description of each panel.
 
 **CLI says `cloudwatch-omni` is not a valid choice.** The local AWS CLI predates
 Omni's service model; upgrade it. The failure is client-side argument parsing and
@@ -944,14 +944,14 @@ is left.
 
 Every template binds to the `@`-label identity (section 3) — vended AWS metrics on
 `@instrumentation.@name="cloudwatch.aws/<svc>"` + datapoint attribute, OTLP /
-span-RED on `@resource.*`. Set `queryLanguage` explicitly, `autoRun: true` on every
+span-RED on `@resource.*`. Set`queryLanguage`explicitly,`autoRun: true` on every
 data panel, and `promqlQueryOptions.step` to match the range vector; keep every
 query windowless. `…` in a template stands for the identity labels shown in that
 archetype's first row.
 
 ### Lambda
 
-Serverless function — RED-shaped; scope `cloudwatch.aws/lambda` by `FunctionName`.
+Serverless function — RED-shaped; scope `cloudwatch.aws/lambda`by`FunctionName`.
 `Duration` is a gauge with no percentile label; the error-rate tile is the derived
 `Errors / Invocations`.
 
@@ -959,24 +959,24 @@ Serverless function — RED-shaped; scope `cloudwatch.aws/lambda` by `FunctionNa
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Invocations/s | `number` | `sum(rate({__name__="Invocations", "@instrumentation.@name"="cloudwatch.aws/lambda", FunctionName="<fn>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
-| Error rate | `number` | `sum(rate({__name__="Errors", …, FunctionName="<fn>"}[5m])) / sum(rate({__name__="Invocations", …, FunctionName="<fn>"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
-| Throttles/s | `number` | `sum(rate({__name__="Throttles", …, FunctionName="<fn>"}[5m]))` | `{x:30,y:0,w:15,h:120}` |
-| Concurrency | `number` | `max({__name__="ConcurrentExecutions", …, FunctionName="<fn>"})` | `{x:45,y:0,w:15,h:120}` |
-| Invocation rate | `line` | `sum by (FunctionName) (rate({__name__="Invocations", …, FunctionName="<fn>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
-| Errors/s | `line` | `sum by (FunctionName) (rate({__name__="Errors", …, FunctionName="<fn>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Duration (ms) | `line` | `{__name__="Duration", …, FunctionName="<fn>"}` | `{x:0,y:440,w:60,h:320}` |
-| Recent errors | `table` (SQL) | scope to `/aws/lambda/<fn>` with a grounded log-group filter; `queryLanguage:'sql'` | `{x:0,y:760,w:60,h:360}` |
+| Invocations/s | `number`|`sum(rate({__name__="Invocations", "@instrumentation.@name"="cloudwatch.aws/lambda", FunctionName="<fn>"}[5m]))`|`{x:0,y:0,w:15,h:120}` |
+| Error rate | `number`|`sum(rate({__name__="Errors", …, FunctionName="<fn>"}[5m])) / sum(rate({__name__="Invocations", …, FunctionName="<fn>"}[5m]))`|`{x:15,y:0,w:15,h:120}` |
+| Throttles/s | `number`|`sum(rate({__name__="Throttles", …, FunctionName="<fn>"}[5m]))`|`{x:30,y:0,w:15,h:120}` |
+| Concurrency | `number`|`max({__name__="ConcurrentExecutions", …, FunctionName="<fn>"})`|`{x:45,y:0,w:15,h:120}` |
+| Invocation rate | `line`|`sum by (FunctionName) (rate({__name__="Invocations", …, FunctionName="<fn>"}[5m]))`|`{x:0,y:120,w:30,h:320}` |
+| Errors/s | `line`|`sum by (FunctionName) (rate({__name__="Errors", …, FunctionName="<fn>"}[5m]))`|`{x:30,y:120,w:30,h:320}` |
+| Duration (ms) | `line`|`{__name__="Duration", …, FunctionName="<fn>"}`|`{x:0,y:440,w:60,h:320}` |
+| Recent errors | `table`(SQL) | scope to`/aws/lambda/<fn>`with a grounded log-group filter;`queryLanguage:'sql'`|`{x:0,y:760,w:60,h:360}` |
 
-**Optional depth (follow-up):** Throttles `line`; Concurrent executions `line`;
-Stream-consumer lag `line` (`IteratorAge` — only for a stream/event-source
-consumer, empty otherwise). Append two-up (`w:30,h:320`) and re-sequence `y`.
+**Optional depth (follow-up):** Throttles `line`; Concurrent executions`line`;
+Stream-consumer lag `line`(`IteratorAge` — only for a stream/event-source
+consumer, empty otherwise). Append two-up (`w:30,h:320`) and re-sequence`y`.
 
 ### Kubernetes/EKS
 
 OTLP-native — no vended scope. **RED** from the span metrics grouped by
 `@resource.service.name`; **USE** from the OTLP Kubernetes resource metrics grouped
-by `@resource.k8s.*`. The span-metric names, span-status attribute, and `k8s.*`
+by `@resource.k8s.*`. The span-metric names, span-status attribute, and`k8s.*`
 resource-metric names are ingestion-path-dependent — ground them against the live
 catalog (section 3).
 
@@ -984,48 +984,48 @@ catalog (section 3).
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Request rate | `number` | `sum(rate({__name__="traces.span.metrics.calls", "@resource.service.name"="<svc>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
-| Error rate | `number` | ratio of `…calls, "@status.code"="ERROR"` to all calls | `{x:15,y:0,w:15,h:120}` |
-| p99 latency | `number` | `histogram_quantile(0.99, rate({__name__="traces.span.metrics.duration", …}[5m]))` | `{x:30,y:0,w:15,h:120}` |
-| Running pods | `number` | `count({"k8s.pod.phase", "@resource.k8s.namespace.name"="<ns>", "@resource.k8s.deployment.name"="<deploy>"})` | `{x:45,y:0,w:15,h:120}` |
-| Request rate | `line` | `sum by ("@resource.service.name") (rate({__name__="traces.span.metrics.calls", …}[5m]))` | `{x:0,y:120,w:30,h:320}` |
-| Errors by status | `bar` | `sum by ("@status.code") (rate({__name__="traces.span.metrics.calls", …}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Latency p50/p90/p99 | `line` | `histogram_quantile(0.99, rate({__name__="traces.span.metrics.duration", …}[5m]))` — one series per quantile (0.50, 0.90, 0.99) | `{x:0,y:440,w:60,h:320}` |
-| Top services by errors | `table` | `topk(10, sum by ("@resource.service.name") (rate({__name__="traces.span.metrics.calls", "@status.code"="ERROR"}[5m])))` | `{x:0,y:760,w:60,h:360}` |
+| Request rate | `number`|`sum(rate({__name__="traces.span.metrics.calls", "@resource.service.name"="<svc>"}[5m]))`|`{x:0,y:0,w:15,h:120}` |
+| Error rate | `number`| ratio of`…calls, "@status.code"="ERROR"`to all calls |`{x:15,y:0,w:15,h:120}` |
+| p99 latency | `number`|`histogram_quantile(0.99, rate({__name__="traces.span.metrics.duration", …}[5m]))`|`{x:30,y:0,w:15,h:120}` |
+| Running pods | `number`|`count({"k8s.pod.phase", "@resource.k8s.namespace.name"="<ns>", "@resource.k8s.deployment.name"="<deploy>"})`|`{x:45,y:0,w:15,h:120}` |
+| Request rate | `line`|`sum by ("@resource.service.name") (rate({__name__="traces.span.metrics.calls", …}[5m]))`|`{x:0,y:120,w:30,h:320}` |
+| Errors by status | `bar`|`sum by ("@status.code") (rate({__name__="traces.span.metrics.calls", …}[5m]))`|`{x:30,y:120,w:30,h:320}` |
+| Latency p50/p90/p99 | `line`|`histogram_quantile(0.99, rate({__name__="traces.span.metrics.duration", …}[5m]))`— one series per quantile (0.50, 0.90, 0.99) |`{x:0,y:440,w:60,h:320}` |
+| Top services by errors | `table`|`topk(10, sum by ("@resource.service.name") (rate({__name__="traces.span.metrics.calls", "@status.code"="ERROR"}[5m])))`|`{x:0,y:760,w:60,h:360}` |
 
 **Optional depth (follow-up "infra / USE health"):** Pod CPU usage, Pod memory
-usage, Container restarts — grouped by `@resource.k8s.*` (`k8s.pod.cpu.usage`,
-`k8s.pod.memory.usage`, `increase(k8s.container.restarts[15m])`). Append two-up and
+usage, Container restarts — grouped by `@resource.k8s.*`(`k8s.pod.cpu.usage`,
+`k8s.pod.memory.usage`,`increase(k8s.container.restarts[15m])`). Append two-up and
 re-sequence `y`.
 
 ### RDS/database
 
 Infrastructure resource — USE/saturation; scope `cloudwatch.aws/rds` by
-`DBInstanceIdentifier`. Reading rules: IOPS is already per-second → never `rate()`;
-latency is in seconds → × 1000 for ms; mind `FreeStorageSpace` / `FreeableMemory`
+`DBInstanceIdentifier`. Reading rules: IOPS is already per-second → never`rate()`;
+latency is in seconds → × 1000 for ms; mind `FreeStorageSpace`/`FreeableMemory`
 polarity (higher is healthier).
 
 **CORE (~7 panels — the default build):**
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| CPU % | `number` | `max({__name__="CPUUtilization", "@instrumentation.@name"="cloudwatch.aws/rds", DBInstanceIdentifier="<db>"})` | `{x:0,y:0,w:15,h:120}` |
-| Connections | `number` | `max({__name__="DatabaseConnections", …, DBInstanceIdentifier="<db>"})` | `{x:15,y:0,w:15,h:120}` |
-| Free storage | `number` | `min({__name__="FreeStorageSpace", …, DBInstanceIdentifier="<db>"})` | `{x:30,y:0,w:15,h:120}` |
-| Read latency (ms) | `number` | `max({__name__="ReadLatency", …, DBInstanceIdentifier="<db>"}) * 1000` | `{x:45,y:0,w:15,h:120}` |
-| CPU % | `line` | `{__name__="CPUUtilization", …, DBInstanceIdentifier="<db>"}` | `{x:0,y:120,w:30,h:320}` |
-| Connections | `line` | `{__name__="DatabaseConnections", …, DBInstanceIdentifier="<db>"}` | `{x:30,y:120,w:30,h:320}` |
-| Top instances by CPU | `table` | `topk(10, max by (DBInstanceIdentifier) ({__name__="CPUUtilization", …}))` | `{x:0,y:440,w:60,h:360}` |
+| CPU % | `number`|`max({__name__="CPUUtilization", "@instrumentation.@name"="cloudwatch.aws/rds", DBInstanceIdentifier="<db>"})`|`{x:0,y:0,w:15,h:120}` |
+| Connections | `number`|`max({__name__="DatabaseConnections", …, DBInstanceIdentifier="<db>"})`|`{x:15,y:0,w:15,h:120}` |
+| Free storage | `number`|`min({__name__="FreeStorageSpace", …, DBInstanceIdentifier="<db>"})`|`{x:30,y:0,w:15,h:120}` |
+| Read latency (ms) | `number`|`max({__name__="ReadLatency", …, DBInstanceIdentifier="<db>"}) * 1000`|`{x:45,y:0,w:15,h:120}` |
+| CPU % | `line`|`{__name__="CPUUtilization", …, DBInstanceIdentifier="<db>"}`|`{x:0,y:120,w:30,h:320}` |
+| Connections | `line`|`{__name__="DatabaseConnections", …, DBInstanceIdentifier="<db>"}`|`{x:30,y:120,w:30,h:320}` |
+| Top instances by CPU | `table`|`topk(10, max by (DBInstanceIdentifier) ({__name__="CPUUtilization", …}))`|`{x:0,y:440,w:60,h:360}` |
 
 **Optional depth (follow-up "infra / USE health"):** Read IOPS `line`; Read latency
-(ms) `line`; add the `WriteIOPS` / `WriteLatency` counterparts for a full
+(ms) `line`; add the`WriteIOPS`/`WriteLatency` counterparts for a full
 read+write view. Append two-up and re-sequence `y`.
 
 ### ECS/web service
 
 Cross-signal — **USE** from the ECS service tier combined with **RED** from the
 load balancer in front (or from Application Signals). Identity + reading rules: ECS
-scopes by `ClusterName` + a non-empty `ServiceName`; ALB `TargetResponseTime` is a
+scopes by `ClusterName`+ a non-empty`ServiceName`; ALB`TargetResponseTime` is a
 gauge in seconds with no percentile label; the target status-code metrics carry the
 `_Count` suffix.
 
@@ -1033,39 +1033,39 @@ gauge in seconds with no percentile label; the target status-code metrics carry 
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Request rate | `number` | `sum(rate({__name__="RequestCount", "@instrumentation.@name"="cloudwatch.aws/applicationelb", LoadBalancer="<lb>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
-| 5xx rate | `number` | `sum(rate({__name__="HTTPCode_Target_5XX_Count", …, LoadBalancer="<lb>"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
-| Peak response (ms) | `number` | `max({__name__="TargetResponseTime", …, LoadBalancer="<lb>"}) * 1000` | `{x:30,y:0,w:15,h:120}` |
-| Service CPU % | `number` | `max({__name__="CPUUtilization", "@instrumentation.@name"="cloudwatch.aws/ecs", ClusterName="<cluster>", ServiceName="<svc>"})` | `{x:45,y:0,w:15,h:120}` |
-| Request rate | `line` | `sum(rate({__name__="RequestCount", …, LoadBalancer="<lb>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
-| Status codes | `bar` | `sum by (__name__) (rate({__name__=~"HTTPCode_Target_..._Count", …, LoadBalancer="<lb>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Response time (ms) | `line` | `{__name__="TargetResponseTime", …, LoadBalancer="<lb>"} * 1000` | `{x:0,y:440,w:60,h:320}` |
+| Request rate | `number`|`sum(rate({__name__="RequestCount", "@instrumentation.@name"="cloudwatch.aws/applicationelb", LoadBalancer="<lb>"}[5m]))`|`{x:0,y:0,w:15,h:120}` |
+| 5xx rate | `number`|`sum(rate({__name__="HTTPCode_Target_5XX_Count", …, LoadBalancer="<lb>"}[5m]))`|`{x:15,y:0,w:15,h:120}` |
+| Peak response (ms) | `number`|`max({__name__="TargetResponseTime", …, LoadBalancer="<lb>"}) * 1000`|`{x:30,y:0,w:15,h:120}` |
+| Service CPU % | `number`|`max({__name__="CPUUtilization", "@instrumentation.@name"="cloudwatch.aws/ecs", ClusterName="<cluster>", ServiceName="<svc>"})`|`{x:45,y:0,w:15,h:120}` |
+| Request rate | `line`|`sum(rate({__name__="RequestCount", …, LoadBalancer="<lb>"}[5m]))`|`{x:0,y:120,w:30,h:320}` |
+| Status codes | `bar`|`sum by (__name__) (rate({__name__=~"HTTPCode_Target_..._Count", …, LoadBalancer="<lb>"}[5m]))`|`{x:30,y:120,w:30,h:320}` |
+| Response time (ms) | `line`|`{__name__="TargetResponseTime", …, LoadBalancer="<lb>"} * 1000`|`{x:0,y:440,w:60,h:320}` |
 
 **Optional depth (follow-up "infra / USE health"):** Memory util % `line`; Running
-tasks `line` (`RunningTaskCount` — needs ECS Container Insights or OTel enrichment,
+tasks `line`(`RunningTaskCount` — needs ECS Container Insights or OTel enrichment,
 empty otherwise). If the space runs Application Signals, swap the RED panels for
-`Service`/`Fault`/`Error` and the availability formula `(1 − Fault/Total) × 100`.
+`Service`/`Fault`/`Error`and the availability formula`(1 − Fault/Total) × 100`.
 Append two-up and re-sequence `y`.
 
 ### API Gateway
 
-Request-serving — RED. Identity split: REST v1 on `ApiName` with `4XXError` /
-`5XXError`, HTTP v2 on `ApiId` with `4xx` / `5xx`; gateway overhead is the formula
+Request-serving — RED. Identity split: REST v1 on `ApiName`with`4XXError` /
+`5XXError`, HTTP v2 on`ApiId`with`4xx`/`5xx`; gateway overhead is the formula
 `Latency − IntegrationLatency`.
 
 **CORE (~8 panels — the default build):**
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Request count/s | `number` | `sum(rate({__name__="Count", "@instrumentation.@name"="cloudwatch.aws/apigateway", ApiName="<api>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
-| 5xx rate | `number` | `sum(rate({__name__="5XXError", …, ApiName="<api>"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
-| 4xx rate | `number` | `sum(rate({__name__="4XXError", …, ApiName="<api>"}[5m]))` | `{x:30,y:0,w:15,h:120}` |
-| Peak latency (ms) | `number` | `max({__name__="Latency", …, ApiName="<api>"})` | `{x:45,y:0,w:15,h:120}` |
-| Request count | `line` | `sum(rate({__name__="Count", …, ApiName="<api>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
-| Errors 4xx/5xx | `bar` | `sum by (__name__) (rate({__name__=~"[45]XXError", …, ApiName="<api>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Latency (ms) | `line` | `{__name__="Latency", …, ApiName="<api>"}` | `{x:0,y:440,w:60,h:320}` |
-| Top resources by 5xx | `table` | `topk(10, sum by (Resource) (rate({__name__="5XXError", …, ApiName="<api>"}[5m])))` | `{x:0,y:760,w:60,h:360}` |
+| Request count/s | `number`|`sum(rate({__name__="Count", "@instrumentation.@name"="cloudwatch.aws/apigateway", ApiName="<api>"}[5m]))`|`{x:0,y:0,w:15,h:120}` |
+| 5xx rate | `number`|`sum(rate({__name__="5XXError", …, ApiName="<api>"}[5m]))`|`{x:15,y:0,w:15,h:120}` |
+| 4xx rate | `number`|`sum(rate({__name__="4XXError", …, ApiName="<api>"}[5m]))`|`{x:30,y:0,w:15,h:120}` |
+| Peak latency (ms) | `number`|`max({__name__="Latency", …, ApiName="<api>"})`|`{x:45,y:0,w:15,h:120}` |
+| Request count | `line`|`sum(rate({__name__="Count", …, ApiName="<api>"}[5m]))`|`{x:0,y:120,w:30,h:320}` |
+| Errors 4xx/5xx | `bar`|`sum by (__name__) (rate({__name__=~"[45]XXError", …, ApiName="<api>"}[5m]))`|`{x:30,y:120,w:30,h:320}` |
+| Latency (ms) | `line`|`{__name__="Latency", …, ApiName="<api>"}`|`{x:0,y:440,w:60,h:320}` |
+| Top resources by 5xx | `table`|`topk(10, sum by (Resource) (rate({__name__="5XXError", …, ApiName="<api>"}[5m])))`|`{x:0,y:760,w:60,h:360}` |
 
 **Optional depth (follow-up "per-service latency"):** Integration latency (ms)
-`line` (`IntegrationLatency`) — chart it beside `Latency` so the gap reads as
+`line`(`IntegrationLatency`) — chart it beside`Latency` so the gap reads as
 gateway overhead. Append two-up and re-sequence `y`.
