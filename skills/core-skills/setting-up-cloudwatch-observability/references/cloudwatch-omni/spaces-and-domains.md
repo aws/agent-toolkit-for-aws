@@ -408,7 +408,7 @@ call:
 aws___call_aws → aws iam list-roles
 ```
 
-2. **Otherwise have the customer create one** — the AgentCore Evaluations console
+1. **Otherwise have the customer create one** — the AgentCore Evaluations console
 
    ("Create and use a new service role") or the AgentCore CLI/SDK
    (`auto_create_execution_role=True`) — then use the ARN it returns.

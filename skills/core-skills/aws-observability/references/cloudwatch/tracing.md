@@ -83,6 +83,7 @@ Format: `1-{8 hex epoch}-{24 hex unique}`. W3C trace IDs are supported (reformat
 - First matching rule wins
 
 ### Rule parameters
+
 | Parameter | Description |
 |-----------|-------------|
 | Priority | 1–9999 (lower = higher priority) |

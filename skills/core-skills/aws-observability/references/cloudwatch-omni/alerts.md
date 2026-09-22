@@ -645,8 +645,7 @@ An alert with no notification is valid and common — it shows state in the cons
 **Do this step only when the user asked to be told somewhere when the alert
 fires.** If they did not, skip it and send no `notificationRules`.
 
-Infer intent; the word "notification" is often absent. "Send a slack message to
-# oncall when this fires", "ping the team on Slack", and "publish to my SNS topic"
+Infer intent; the word "notification" is often absent. "Send a slack message to #oncall when this fires", "ping the team on Slack", and "publish to my SNS topic"
 are all notification requests.
 
 Two target types are supported for GA — `sns` and `slack` — and they can be
@@ -657,7 +656,7 @@ webhook, PagerDuty) is not a supported target type; PagerDuty is present in the
 supported target they did name, otherwise with no notification. **Do not invent an
 unsupported notification provider or fabricate a config for one.**
 
-#### 5a. SNS topic
+## 5a. SNS topic
 
 - **A topic ARN is REQUIRED and MUST come from the user.** Never invent a topic ARN.
   If they asked for an SNS notification but did not give the ARN, ask for it — one
@@ -678,7 +677,7 @@ unsupported notification provider or fabricate a config for one.**
   "target":  { "type": "sns", "arn": "arn:aws:sns:us-east-1:123456789012:oncall" } }
 ```
 
-#### 5b. Slack channel
+### 5b. Slack channel
 
 - **A channel name is REQUIRED and MUST come from the user.** Never invent a channel.
   If they asked for Slack but did not name a channel, ask which channel — one

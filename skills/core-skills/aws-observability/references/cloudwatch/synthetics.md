@@ -103,7 +103,7 @@ Canaries in VPCs must run in **private subnets** (Lambda ENIs don't get public I
 - Option B: VPC endpoints — Interface endpoint for `monitoring`, Gateway endpoint for `s3`
 
 **VPC endpoint policy constraint**: The S3 gateway endpoint policy must include `s3:ListAllMyBuckets`, `s3:GetBucketLocation`, and `s3:PutObject` — separate from the IAM role policy.
- 
+
 **DNS**: Both DNS Resolution and DNS Hostnames must be enabled on the VPC.
 
 **Silent failure mode**: If the VPC has no internet access and no VPC endpoints, the canary runs but cannot upload metrics or artifacts — it appears as if it never ran.

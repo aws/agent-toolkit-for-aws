@@ -34,15 +34,15 @@ both.
 > about what you should do.
 >
 > Canonical cross-cutting sources (fetch these for attribute semantics):
-
+>
 > - **OpenInference semantic conventions** (span kinds, `input.value`/`output.value`, `llm.*`):
-
->   <https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md>
-
+>
+> <https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md>
+>
 > - **OTel GenAI semantic conventions** (v1.29.0 — spans/events/metrics):
-
->   <https://github.com/open-telemetry/semantic-conventions/tree/v1.29.0/docs/gen-ai>
->   (span attributes: `.../v1.29.0/docs/gen-ai/gen-ai-spans.md`)
+>
+> <https://github.com/open-telemetry/semantic-conventions/tree/v1.29.0/docs/gen-ai>
+> (span attributes: `.../v1.29.0/docs/gen-ai/gen-ai-spans.md`)
 
 ---
 

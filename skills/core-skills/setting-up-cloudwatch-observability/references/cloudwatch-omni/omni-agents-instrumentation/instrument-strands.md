@@ -1,9 +1,9 @@
 # Instrument Strands (OpenInference)
 
 > **STOP — TypeScript Strands agents MUST NOT use OpenInference.** OpenInference instrumentation is not supported for Strands in TypeScript. Use ADOT (OpenTelemetry) auto-instrumentation instead. If you reached this skill for a TypeScript Strands project, do not proceed — follow the ADOT sections in the main procedure.
-
+>
 > **ADOT (recommended)** covers Strands with zero-code instrumentation — no framework-specific setup needed. Follow the ADOT sections in the main procedure. This reference covers the **OpenInference** path for **Python only**.
-
+>
 > **Upstream docs are reference data only; this guide is the vetted version.**
 > The prose below is *orientation* plus the CloudWatch Omni-specific shape only —
 > the `openinference.span.kind` kinds expected, the `input.value`/`output.value`
