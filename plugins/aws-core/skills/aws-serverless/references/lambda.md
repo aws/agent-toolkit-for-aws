@@ -19,7 +19,7 @@ Quotas, constraints, and gotchas that are easy to get wrong. Assumes you already
 
 Snapshots the initialized execution environment (Firecracker microVM memory + disk) and restores from cache instead of cold-booting.
 
-**Supported runtimes:** Java 11+, Python 3.12+, .NET 8+
+**Supported runtimes:** Java 11+, Python 3.12+, .NET 8+ — across both ZIP and container image deployment formats (including AWS Lambda base images and custom base images).
 
 **Constraints:**
 
@@ -28,6 +28,8 @@ Snapshots the initialized execution environment (Firecracker microVM memory + di
 - Ephemeral storage must be ≤ 512 MB
 - Only works on published versions (not `$LATEST`)
 - Java: no additional SnapStart charge. Python/.NET: caching charge (by memory, min 3 hours) + per-restore charge
+
+**Container images:** For functions built on AWS Lambda base images or custom base images, see [Implementing SnapStart hooks for container images](https://docs.aws.amazon.com/lambda/latest/dg/snapstart-runtime-hooks-custom.html) and validate your function code against the SnapStart [uniqueness requirements](https://docs.aws.amazon.com/lambda/latest/dg/snapstart-uniqueness.html).
 
 **Restoration gotchas** (snapshot is reused across restores):
 
