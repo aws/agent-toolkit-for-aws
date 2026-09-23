@@ -1,0 +1,41 @@
+{
+  "$comment": "schema_version: 1; contract source: agents/llm2bedrock-log-ingestor.md §15 — 'Always populate every required field' + 'the strict schema rejects missing keys' on the zero-cases payload make every typed field required. No blocked/partial branch: the ingestor's failure mode IS the zero-cases payload (§15).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "golden_dataset_path",
+    "prompt_template_path",
+    "total_golden_cases",
+    "golden_from_logs",
+    "golden_from_user",
+    "golden_from_code_confirmed",
+    "vision_test_images",
+    "log_format",
+    "coverage_level",
+    "use_case_type",
+    "gaps",
+    "pii_detected",
+    "pii_action",
+    "errors"
+  ],
+  "properties": {
+    "summary": { "type": "string" },
+    "golden_dataset_path": { "type": "string" },
+    "prompt_template_path": { "type": "string" },
+    "total_golden_cases": { "type": "integer", "minimum": 0 },
+    "golden_from_logs": { "type": "integer", "minimum": 0 },
+    "golden_from_user": { "type": "integer", "minimum": 0 },
+    "golden_from_code_confirmed": { "type": "integer", "minimum": 0 },
+    "vision_test_images": { "type": "integer", "minimum": 0 },
+    "log_format": { "type": "string" },
+    "coverage_level": { "type": "string", "enum": ["production-logs", "user-provided", "code-confirmed", "none"] },
+    "use_case_type": {
+      "type": "string",
+      "enum": ["text-only", "vision", "tool-calls", "embeddings", "multi-modal", "unknown"]
+    },
+    "gaps": { "type": "array", "items": { "type": "string" } },
+    "pii_detected": { "type": "boolean" },
+    "pii_action": { "type": "string" },
+    "errors": { "type": "string" }
+  }
+}

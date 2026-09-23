@@ -1,0 +1,78 @@
+{
+  "id": "lambda_microvms",
+  "display_name": "Lambda MicroVMs",
+  "status": "ga",
+  "launched": "2026-06-22",
+  "service_card": "lambda-microvms.md",
+  "hard_constraints": [
+    {
+      "field": "session_duration",
+      "value": "over_8hr",
+      "reason": "Lambda MicroVMs max session is 8 hours",
+      "verification_required": true,
+      "verification_key": "lambda_microvms.session_cap",
+      "verification_expected_value": "8h",
+      "verification_sources": ["https://docs.aws.amazon.com/lambda/latest/dg/"]
+    },
+    {
+      "field": "compute_tier",
+      "value": "gpu",
+      "reason": "Lambda MicroVMs has no documented GPU support",
+      "verification_required": true,
+      "verification_key": "lambda_microvms.gpu_support",
+      "verification_expected_value": "unsupported",
+      "verification_sources": ["https://docs.aws.amazon.com/lambda/latest/dg/"]
+    },
+    {
+      "field": "instance_type_requirement",
+      "value": "yes",
+      "reason": "Lambda MicroVMs offers no instance-type selection (fixed microVM sizes)"
+    }
+  ],
+  "selection_verification_requirements": [
+    {
+      "field": "launch_concurrency",
+      "value": "high",
+      "reason": "Lambda MicroVMs launch capacity must be verified before selection for high launch concurrency",
+      "verification_key": "lambda_microvms.launch_tps",
+      "verification_expected_value": "5 (not adjustable)",
+      "verification_sources": ["https://docs.aws.amazon.com/lambda/latest/dg/"]
+    }
+  ],
+  "affinities": {
+    "session_duration": { "under_15min": 3, "15min_to_8hr": 5, "over_8hr": 0, "unknown": 3 },
+    "traffic_pattern": { "bursty": 4, "steady": 3, "idle": 5, "unknown": 3 },
+    "platform_fit": { "ecs": 1, "eks": 1, "lambda": 3, "none": 3, "unknown": 2 },
+    "session_state": { "stateless": 3, "stateful": 5, "hitl": 5, "unknown": 3 },
+    "ops_preference": { "minimal": 2, "moderate": 5, "full_control": 3, "unknown": 2 },
+    "isolation": { "required": 4, "nice_to_have": 3, "not_needed": 2, "unknown": 2 },
+    "memory_needs": { "cross_session": 2, "session_only": 3, "none": 2, "unknown": 2 },
+    "multi_agent": { "yes": 2, "no": 2, "unknown": 2 },
+    "framework": { "strands": 2, "langgraph": 2, "crewai": 2, "custom": 3, "none": 2, "unknown": 2 },
+    "existing_cluster": { "eks": 1, "ecs": 1, "none": 3, "unknown": 2 },
+    "multi_cloud": { "yes": 2, "no": 2, "unknown": 2 },
+    "idle_resume": { "process_level": 5, "filesystem": 3, "none": 1, "unknown": 2 },
+    "compute_tier": { "light": 2, "heavy_non_gpu": 7, "gpu": 0, "unknown": 2 },
+    "launch_concurrency": { "high": 0, "moderate": 2, "low": 3, "unknown": 2 },
+    "instance_type_requirement": { "yes": 0, "no": 3, "unknown": 2 }
+  },
+  "deployment_models": [],
+  "volatile_facts": [
+    { "key": "session_cap", "verification_key": "lambda_microvms.session_cap", "value": "8h", "verify_via_mcp": true },
+    { "key": "max_compute", "value": "16vCPU/32GB", "verify_via_mcp": true },
+    {
+      "key": "gpu_support",
+      "verification_key": "lambda_microvms.gpu_support",
+      "value": "verify current GPU support",
+      "verify_via_mcp": true
+    },
+    {
+      "key": "launch_tps",
+      "verification_key": "lambda_microvms.launch_tps",
+      "value": "5 (not adjustable)",
+      "verify_via_mcp": true
+    },
+    { "key": "fedramp", "value": "unknown", "verify_via_mcp": true },
+    { "key": "regions", "value": [], "verify_via_mcp": true }
+  ]
+}

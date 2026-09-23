@@ -1,0 +1,16 @@
+{
+  "migration_id": "0801-nonweb",
+  "run_id": "4e8a1c5d-9b3f-4d6e-8a2c-7f5b1e9d3a72",
+  "owning_skill": "HEROKU_TO_AWS",
+  "last_updated": "2026-08-01T10:00:00Z",
+  "current_phase": "design",
+  "phases": {
+    "discover": "completed",
+    "clarify": "completed",
+    "design": "pending",
+    "estimate": "pending",
+    "workshop": "pending",
+    "generate": "pending",
+    "feedback": "pending"
+  }
+}

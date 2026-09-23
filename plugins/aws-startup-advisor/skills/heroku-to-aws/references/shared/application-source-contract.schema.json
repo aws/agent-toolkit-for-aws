@@ -1,0 +1,782 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration-to-aws:heroku-to-aws:application-source-contract",
+  "$comment": "The $id URN uses 'migration-to-aws' as a stable schema namespace identity — it is NOT a plugin name or skill invocation prefix. Do not rename it when the schema moves between plugins.",
+  "title": "Heroku application-source request and findings",
+  "description": "Contract-only definitions for a future application-source review.",
+  "oneOf": [{ "$ref": "#/definitions/request" }, { "$ref": "#/definitions/findings" }],
+  "definitions": {
+    "question": {
+      "type": "string",
+      "enum": [
+        "runtime_framework",
+        "build_method",
+        "build_time_settings",
+        "process_commands",
+        "runtime_settings",
+        "network_listeners",
+        "port_host_binding",
+        "heroku_runtime_behavior",
+        "native_dependencies",
+        "release_setup_commands",
+        "recurring_jobs",
+        "health_routes",
+        "local_file_writes",
+        "network_protocols",
+        "potential_private_endpoints",
+        "logs_telemetry",
+        "postgresql_extensions",
+        "redis_usage",
+        "external_services",
+        "application_connections",
+        "addon_usage",
+        "webhooks"
+      ]
+    },
+    "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$" },
+    "sourcePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^(?![~/])(?![A-Za-z]:)(?!\\s)(?!.*\\\\)(?!.*//)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*[/]\\s)(?!.*\\s(?:/|$)).+$"
+    },
+    "stringList": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/definitions/name" } },
+    "configurationNameList": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/name" }
+    },
+    "identifierList": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/identifier" }
+    },
+    "application": {
+      "type": "object",
+      "required": ["app_id", "app_name"],
+      "additionalProperties": false,
+      "properties": { "app_id": { "$ref": "#/definitions/identifier" }, "app_name": { "$ref": "#/definitions/name" } }
+    },
+    "context": {
+      "type": "object",
+      "required": [
+        "process_types",
+        "configuration_names",
+        "postgres_attachment_present",
+        "redis_attachment_present",
+        "addon_ids",
+        "private_space_present",
+        "selected_estate_application_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "process_types": { "$ref": "#/definitions/stringList" },
+        "configuration_names": { "$ref": "#/definitions/configurationNameList" },
+        "postgres_attachment_present": { "type": "boolean" },
+        "redis_attachment_present": { "type": "boolean" },
+        "addon_ids": { "$ref": "#/definitions/identifierList" },
+        "private_space_present": { "type": "boolean" },
+        "selected_estate_application_ids": { "$ref": "#/definitions/identifierList" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["application", "requested_questions", "context"],
+      "additionalProperties": false,
+      "properties": {
+        "application": { "$ref": "#/definitions/application" },
+        "requested_questions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 22,
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/question" }
+        },
+        "context": { "$ref": "#/definitions/context" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/definitions/sourcePath" },
+        "line_start": { "type": "integer", "minimum": 1, "maximum": 10000000 },
+        "line_end": { "type": "integer", "minimum": 1, "maximum": 10000000 }
+      }
+    },
+    "limitation": {
+      "type": "object",
+      "required": ["kind", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["SKIPPED_SOURCE", "UNREADABLE_SOURCE", "TRUNCATED_SOURCE", "DYNAMIC_SOURCE", "OTHER"]
+        },
+        "detail": { "$ref": "#/definitions/text" }
+      }
+    },
+    "findingBase": {
+      "type": "object",
+      "required": ["question", "status", "value", "limitations"],
+      "additionalProperties": false,
+      "properties": {
+        "question": { "$ref": "#/definitions/question" },
+        "status": {
+          "type": "string",
+          "enum": ["PRESENT", "ABSENT_WITHIN_REVIEWED_SCOPE", "UNKNOWN", "NOT_APPLICABLE"]
+        },
+        "value": {},
+        "sources": { "type": "array", "maxItems": 32, "items": { "$ref": "#/definitions/source" } },
+        "limitations": { "type": "array", "maxItems": 16, "items": { "$ref": "#/definitions/limitation" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "PRESENT" } } },
+          "then": { "properties": { "value": { "not": { "type": "null" } } } },
+          "else": { "properties": { "value": { "type": "null" } } }
+        },
+        {
+          "if": { "required": ["status"], "properties": { "status": { "const": "UNKNOWN" } } },
+          "then": { "properties": { "limitations": { "minItems": 1 } } }
+        }
+      ]
+    },
+    "records": { "oneOf": [{ "type": "null" }, { "type": "array", "minItems": 1, "maxItems": 256 }] },
+    "runtimeFrameworkRecord": {
+      "type": "object",
+      "required": ["component_id", "root", "runtime"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "root": { "oneOf": [{ "const": "." }, { "$ref": "#/definitions/sourcePath" }] },
+        "runtime": { "$ref": "#/definitions/name" },
+        "runtime_version": { "$ref": "#/definitions/name" },
+        "framework": { "$ref": "#/definitions/name" }
+      }
+    },
+    "buildMethodRecord": {
+      "type": "object",
+      "required": ["component_id", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "method": { "$ref": "#/definitions/name" },
+        "authority_path": { "$ref": "#/definitions/sourcePath" },
+        "context_path": { "$ref": "#/definitions/sourcePath" }
+      }
+    },
+    "buildSettingRecord": {
+      "type": "object",
+      "required": ["component_id", "setting_name", "stage", "required"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "stage": { "$ref": "#/definitions/name" },
+        "required": { "type": "boolean" }
+      }
+    },
+    "processCommandRecord": {
+      "type": "object",
+      "required": ["process_id", "component_id", "type", "name", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "process_id": { "$ref": "#/definitions/identifier" },
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "type": { "$ref": "#/definitions/name" },
+        "name": { "$ref": "#/definitions/name" },
+        "command": { "$ref": "#/definitions/text" },
+        "entrypoint": { "$ref": "#/definitions/sourcePath" }
+      }
+    },
+    "runtimeSettingRecord": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "process_ids",
+        "setting_name",
+        "use",
+        "required",
+        "default_present",
+        "loaded_dynamically"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "use": { "$ref": "#/definitions/text" },
+        "required": { "type": "boolean" },
+        "default_present": { "type": "boolean" },
+        "loaded_dynamically": { "type": "boolean" }
+      }
+    },
+    "listenerRecord": {
+      "type": "object",
+      "required": ["listener_id", "component_id", "process_id", "transport", "intended_traffic"],
+      "additionalProperties": false,
+      "properties": {
+        "listener_id": { "$ref": "#/definitions/identifier" },
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_id": { "$ref": "#/definitions/identifier" },
+        "transport": { "type": "string", "enum": ["TCP", "UDP"] },
+        "port_setting_name": { "$ref": "#/definitions/name" },
+        "default_port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "intended_traffic": { "$ref": "#/definitions/name" }
+      }
+    },
+    "portHostBindingRecord": {
+      "type": "object",
+      "required": ["listener_id", "host_configurable", "port_configurable", "beyond_loopback"],
+      "additionalProperties": false,
+      "properties": {
+        "listener_id": { "$ref": "#/definitions/identifier" },
+        "host_setting_name": { "$ref": "#/definitions/name" },
+        "port_setting_name": { "$ref": "#/definitions/name" },
+        "fixed_host": { "$ref": "#/definitions/name" },
+        "fixed_port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "host_configurable": { "type": "boolean" },
+        "port_configurable": { "type": "boolean" },
+        "beyond_loopback": { "type": "boolean" }
+      }
+    },
+    "herokuBehaviorRecord": {
+      "type": "object",
+      "required": ["component_id", "process_ids", "metadata_name", "use", "effect"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "metadata_name": { "$ref": "#/definitions/name" },
+        "use": { "$ref": "#/definitions/text" },
+        "effect": { "$ref": "#/definitions/text" }
+      }
+    },
+    "nativeDependencyRecord": {
+      "type": "object",
+      "required": ["component_id", "kind", "name", "phase", "process_ids"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "kind": { "$ref": "#/definitions/name" },
+        "name": { "$ref": "#/definitions/name" },
+        "phase": { "$ref": "#/definitions/name" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "os_constraints": { "$ref": "#/definitions/stringList" },
+        "architecture_constraints": { "$ref": "#/definitions/stringList" }
+      }
+    },
+    "deploymentCommandRecord": {
+      "type": "object",
+      "required": ["component_id", "command", "timing", "purpose"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_id": { "$ref": "#/definitions/identifier" },
+        "command": { "$ref": "#/definitions/text" },
+        "timing": { "$ref": "#/definitions/name" },
+        "purpose": { "$ref": "#/definitions/text" }
+      }
+    },
+    "recurringJobRecord": {
+      "type": "object",
+      "required": ["job_id", "component_id", "process_ids", "name", "mechanism", "command", "coordination"],
+      "additionalProperties": false,
+      "properties": {
+        "job_id": { "$ref": "#/definitions/identifier" },
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "name": { "$ref": "#/definitions/name" },
+        "mechanism": { "$ref": "#/definitions/name" },
+        "command": { "$ref": "#/definitions/text" },
+        "schedule": { "$ref": "#/definitions/name" },
+        "coordination": { "$ref": "#/definitions/text" }
+      }
+    },
+    "healthRouteRecord": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "process_id",
+        "listener_id",
+        "path",
+        "methods",
+        "success_statuses",
+        "redirects",
+        "authentication",
+        "required_headers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_id": { "$ref": "#/definitions/identifier" },
+        "listener_id": { "$ref": "#/definitions/identifier" },
+        "path": { "$ref": "#/definitions/name" },
+        "methods": { "$ref": "#/definitions/stringList" },
+        "success_statuses": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 100, "maximum": 599 }
+        },
+        "redirects": { "type": "boolean" },
+        "authentication": { "$ref": "#/definitions/name" },
+        "required_headers": { "$ref": "#/definitions/stringList" }
+      }
+    },
+    "localFileRecord": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "process_ids",
+        "read_after_write",
+        "purpose",
+        "required_lifetime",
+        "cross_instance_required"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "default_path": { "$ref": "#/definitions/sourcePath" },
+        "read_after_write": { "type": "boolean" },
+        "purpose": { "$ref": "#/definitions/text" },
+        "required_lifetime": { "$ref": "#/definitions/name" },
+        "cross_instance_required": { "type": "boolean" }
+      }
+    },
+    "protocolRecord": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "process_ids",
+        "direction",
+        "transport",
+        "application_protocol",
+        "application_managed_tls"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "direction": { "type": "string", "enum": ["INBOUND", "OUTBOUND", "BIDIRECTIONAL"] },
+        "listener_id": { "$ref": "#/definitions/identifier" },
+        "transport": { "type": "string", "enum": ["TCP", "UDP"] },
+        "application_protocol": { "$ref": "#/definitions/name" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "application_managed_tls": { "type": "boolean" }
+      }
+    },
+    "privateEndpointRecord": {
+      "type": "object",
+      "required": ["component_id", "process_ids", "reference_kind", "reference_id", "protocol"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "reference_kind": { "type": "string", "enum": ["DEPENDENCY", "APPLICATION"] },
+        "reference_id": { "$ref": "#/definitions/identifier" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "literal_host": { "$ref": "#/definitions/name" },
+        "host_pattern": { "$ref": "#/definitions/name" },
+        "protocol": { "$ref": "#/definitions/name" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "observabilityRecord": {
+      "type": "object",
+      "required": ["component_id", "process_ids", "signal", "destination"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "signal": { "type": "string", "enum": ["LOG", "METRIC", "TRACE"] },
+        "destination": { "$ref": "#/definitions/name" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "file_path": { "$ref": "#/definitions/sourcePath" }
+      }
+    },
+    "postgresExtensionRecord": {
+      "type": "object",
+      "required": ["component_id", "database_setting_name", "extension", "declaration_kind", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "database_setting_name": { "$ref": "#/definitions/name" },
+        "extension": { "$ref": "#/definitions/name" },
+        "declaration_kind": { "$ref": "#/definitions/name" },
+        "action": { "$ref": "#/definitions/name" }
+      }
+    },
+    "redisUsageRecord": {
+      "type": "object",
+      "required": ["component_id", "setting_name", "roles", "disposability"],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "roles": { "$ref": "#/definitions/stringList" },
+        "disposability": { "type": "string", "enum": ["DISPOSABLE", "DURABLE", "UNKNOWN"] }
+      }
+    },
+    "externalServiceRecord": {
+      "type": "object",
+      "required": [
+        "dependency_id",
+        "component_id",
+        "process_ids",
+        "direction",
+        "category",
+        "service_reference",
+        "role",
+        "protocol",
+        "authentication_mechanism",
+        "allowlist_behavior"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "dependency_id": { "$ref": "#/definitions/identifier" },
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_ids": { "$ref": "#/definitions/identifierList" },
+        "direction": { "type": "string", "enum": ["INBOUND", "OUTBOUND", "BIDIRECTIONAL"] },
+        "category": { "$ref": "#/definitions/name" },
+        "service_reference": { "$ref": "#/definitions/name" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "role": { "$ref": "#/definitions/text" },
+        "protocol": { "$ref": "#/definitions/name" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "authentication_mechanism": { "$ref": "#/definitions/name" },
+        "allowlist_behavior": { "$ref": "#/definitions/name" }
+      }
+    },
+    "applicationConnectionRecord": {
+      "type": "object",
+      "required": [
+        "relationship_id",
+        "caller_component_id",
+        "caller_process_ids",
+        "callee_application_id",
+        "protocol",
+        "ports",
+        "mechanism"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "relationship_id": { "$ref": "#/definitions/identifier" },
+        "caller_component_id": { "$ref": "#/definitions/identifier" },
+        "caller_process_ids": { "$ref": "#/definitions/identifierList" },
+        "callee_application_id": { "$ref": "#/definitions/identifier" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "protocol": { "$ref": "#/definitions/name" },
+        "ports": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+        },
+        "mechanism": { "$ref": "#/definitions/name" }
+      }
+    },
+    "addonUsageRecord": {
+      "type": "object",
+      "required": ["inventory_addon_id", "component_id", "usage", "roles"],
+      "additionalProperties": false,
+      "properties": {
+        "inventory_addon_id": { "$ref": "#/definitions/identifier" },
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "setting_name": { "$ref": "#/definitions/name" },
+        "usage": { "type": "string", "enum": ["RETAINED_EXTERNAL", "CUSTOMER_OWNED_FOLLOW_UP", "BLOCKING", "UNKNOWN"] },
+        "roles": { "$ref": "#/definitions/stringList" }
+      }
+    },
+    "webhookRecord": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "process_id",
+        "listener_id",
+        "path",
+        "methods",
+        "provider_reference",
+        "verification_mechanism",
+        "required_headers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "$ref": "#/definitions/identifier" },
+        "process_id": { "$ref": "#/definitions/identifier" },
+        "listener_id": { "$ref": "#/definitions/identifier" },
+        "path": { "$ref": "#/definitions/name" },
+        "methods": { "$ref": "#/definitions/stringList" },
+        "provider_reference": { "$ref": "#/definitions/name" },
+        "verification_mechanism": { "$ref": "#/definitions/name" },
+        "verification_setting_name": { "$ref": "#/definitions/name" },
+        "required_headers": { "$ref": "#/definitions/stringList" }
+      }
+    },
+    "finding": {
+      "allOf": [
+        { "$ref": "#/definitions/findingBase" },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "question": { "const": "runtime_framework" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/runtimeFrameworkRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "build_method" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/buildMethodRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "build_time_settings" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/buildSettingRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "process_commands" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/processCommandRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "runtime_settings" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/runtimeSettingRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "network_listeners" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/listenerRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "port_host_binding" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/portHostBindingRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "heroku_runtime_behavior" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/herokuBehaviorRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "native_dependencies" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/nativeDependencyRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "release_setup_commands" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/deploymentCommandRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "recurring_jobs" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/recurringJobRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "health_routes" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/healthRouteRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "local_file_writes" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/localFileRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "network_protocols" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/protocolRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "potential_private_endpoints" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/privateEndpointRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "logs_telemetry" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/observabilityRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "postgresql_extensions" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/postgresExtensionRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "redis_usage" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/redisUsageRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "external_services" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/externalServiceRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "application_connections" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/applicationConnectionRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "addon_usage" },
+                "value": {
+                  "allOf": [
+                    { "$ref": "#/definitions/records" },
+                    { "items": { "$ref": "#/definitions/addonUsageRecord" } }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "question": { "const": "webhooks" },
+                "value": {
+                  "allOf": [{ "$ref": "#/definitions/records" }, { "items": { "$ref": "#/definitions/webhookRecord" } }]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "findings": {
+      "type": "object",
+      "required": ["findings"],
+      "additionalProperties": false,
+      "properties": {
+        "findings": { "type": "array", "minItems": 1, "maxItems": 22, "items": { "$ref": "#/definitions/finding" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "migration_id": "0801-nonweb",
+  "skill": "heroku-to-aws",
+  "metadata": {
+    "discovery_sources": ["live"]
+  },
+  "resources": [
+    {
+      "resource_id": "formation:acme-jobs:web",
+      "resource_type": "formation",
+      "heroku_app": "acme-jobs",
+      "config": {
+        "process_type": "web",
+        "command": "bundle exec puma -C config/puma.rb",
+        "dyno_type": "basic",
+        "quantity": 1
+      }
+    },
+    {
+      "resource_id": "formation:acme-jobs:worker",
+      "resource_type": "formation",
+      "heroku_app": "acme-jobs",
+      "config": {
+        "process_type": "worker",
+        "command": "bundle exec sidekiq",
+        "dyno_type": "basic",
+        "quantity": 2
+      }
+    },
+    {
+      "resource_id": "formation:acme-jobs:mailer",
+      "resource_type": "formation",
+      "heroku_app": "acme-jobs",
+      "config": {
+        "process_type": "mailer",
+        "command": "bundle exec rake mailer:run",
+        "dyno_type": "eco",
+        "quantity": 2
+      }
+    }
+  ],
+  "billing_profile": null
+}

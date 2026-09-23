@@ -51,6 +51,18 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Cloud"
+    },
+    {
+      "name": "aws-startup-advisor",
+      "source": {
+        "source": "local",
+        "path": "./plugins/aws-startup-advisor"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Cloud"
     }
   ]
 }

@@ -1,0 +1,17 @@
+[
+  {
+    "name": "orders-db",
+    "region": "us-central1",
+    "databaseVersion": "POSTGRES_16",
+    "settings": {
+      "tier": "db-custom-2-8192",
+      "availabilityType": "ZONAL",
+      "dataDiskSizeGb": "50",
+      "ipConfiguration": {
+        "privateNetwork": "projects/acme-prod/global/networks/main",
+        "ipv4Enabled": false
+      },
+      "backupConfiguration": { "enabled": true }
+    }
+  }
+]

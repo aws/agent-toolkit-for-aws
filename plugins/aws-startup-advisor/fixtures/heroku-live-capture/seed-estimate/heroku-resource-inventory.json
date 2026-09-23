@@ -1,0 +1,271 @@
+{
+  "_comment": "Seed for the Estimate-phase replay (scenario C in README.md). This is the assembled scenario-B inventory (live + stale Terraform, drift merged) — the shape a real Discover run of these fixtures produces. NO billing_profile on purpose: the estimate must build its baseline from the live-captured monthly_price_usd values plus the dyno pricing cache.",
+  "metadata": {
+    "discovery_timestamp": "2026-07-15T18:25:00Z",
+    "total_apps_discovered": 3,
+    "discovery_sources": ["terraform", "live"],
+    "confidence": "reduced",
+    "confidence_note": "acme-data-team captures failed (403 team app); its resources are not in this inventory"
+  },
+  "apps": [
+    {
+      "app_name": "acme-web",
+      "app_id": "a1b2c3d4-0001-4a5b-8c6d-0123456789ab",
+      "heroku_generation": "cedar",
+      "generation_action": "detect_only",
+      "generation_diagnostics": [],
+      "space": null,
+      "discovery_status": "success",
+      "failure_reason": null,
+      "procfile_parse_warning": null,
+      "app_json_parse_warning": null
+    },
+    {
+      "app_name": "acme-staging",
+      "app_id": "a1b2c3d4-0002-4a5b-8c6d-0123456789ab",
+      "heroku_generation": "cedar",
+      "generation_action": "detect_only",
+      "generation_diagnostics": [],
+      "space": null,
+      "discovery_status": "success",
+      "failure_reason": null,
+      "procfile_parse_warning": null,
+      "app_json_parse_warning": null
+    },
+    {
+      "app_name": "acme-data-team",
+      "app_id": "a1b2c3d4-0003-4a5b-8c6d-0123456789ab",
+      "heroku_generation": "unknown",
+      "generation_action": "detect_only",
+      "generation_diagnostics": [],
+      "space": null,
+      "discovery_status": "discovery_failed",
+      "failure_reason": "per-app captures failed: 403 (team app not readable by the captured account)",
+      "procfile_parse_warning": null,
+      "app_json_parse_warning": null
+    }
+  ],
+  "resources": [
+    {
+      "resource_id": "formation:acme-web:web",
+      "resource_type": "formation",
+      "heroku_app": "acme-web",
+      "source": "live+terraform",
+      "config": {
+        "process_type": "web",
+        "command": "npm start",
+        "dyno_type": "standard-2x",
+        "quantity": 2
+      }
+    },
+    {
+      "resource_id": "formation:acme-web:worker",
+      "resource_type": "formation",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "process_type": "worker",
+        "command": "node worker.js",
+        "dyno_type": "standard-1x",
+        "quantity": 1
+      }
+    },
+    {
+      "resource_id": "formation:acme-web:release",
+      "resource_type": "formation",
+      "heroku_app": "acme-web",
+      "source": "terraform",
+      "config": {
+        "process_type": "release",
+        "command": null,
+        "dyno_type": "standard-1x",
+        "quantity": 0
+      }
+    },
+    {
+      "resource_id": "addon:acme-web:heroku-postgresql:standard-2",
+      "resource_type": "addon",
+      "heroku_app": "acme-web",
+      "source": "live+terraform",
+      "config": {
+        "addon_service": "heroku-postgresql",
+        "plan": "standard-2",
+        "provider": "heroku",
+        "monthly_price_usd": 200.0,
+        "pg_version": "16.4",
+        "data_size_gb": 42.3,
+        "table_count": 58,
+        "connection_pooling": true
+      }
+    },
+    {
+      "resource_id": "addon:acme-web:scheduler:standard",
+      "resource_type": "addon",
+      "heroku_app": "acme-web",
+      "source": "terraform",
+      "not_found_live": true,
+      "config": {
+        "addon_service": "scheduler",
+        "plan": "standard",
+        "provider": "scheduler"
+      }
+    },
+    {
+      "resource_id": "addon:acme-web:heroku-redis:premium-0",
+      "resource_type": "addon",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "addon_service": "heroku-redis",
+        "plan": "premium-0",
+        "provider": "heroku",
+        "monthly_price_usd": 15.0,
+        "redis_version": "7.2.5",
+        "maxmemory_policy": "noeviction",
+        "ha_enabled": true,
+        "encryption_in_transit": true
+      }
+    },
+    {
+      "resource_id": "addon:acme-web:papertrail:choklad",
+      "resource_type": "addon",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "addon_service": "papertrail",
+        "plan": "choklad",
+        "provider": "papertrail",
+        "monthly_price_usd": 0.0
+      }
+    },
+    {
+      "resource_id": "addon:acme-staging:heroku-postgresql:essential-0",
+      "resource_type": "addon",
+      "heroku_app": "acme-staging",
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "addon_service": "heroku-postgresql",
+        "plan": "essential-0",
+        "provider": "heroku",
+        "monthly_price_usd": 5.0,
+        "pg_version": "16.4",
+        "data_size_gb": 0.4,
+        "table_count": 12,
+        "connection_pooling": false
+      }
+    },
+    {
+      "resource_id": "formation:acme-staging:web",
+      "resource_type": "formation",
+      "heroku_app": "acme-staging",
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "process_type": "web",
+        "command": "npm start",
+        "dyno_type": "basic",
+        "quantity": 1
+      }
+    },
+    {
+      "resource_id": "config:acme-web",
+      "resource_type": "config",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "config": {
+        "config_var_keys": [
+          "DATABASE_URL",
+          "LANG",
+          "NODE_ENV",
+          "OPENAI_API_KEY",
+          "REDIS_TLS_URL",
+          "REDIS_URL",
+          "SENTRY_DSN",
+          "SESSION_SECRET",
+          "STRIPE_SECRET_KEY"
+        ]
+      }
+    },
+    {
+      "resource_id": "config:acme-staging",
+      "resource_type": "config",
+      "heroku_app": "acme-staging",
+      "source": "live",
+      "config": {
+        "config_var_keys": ["DATABASE_URL", "LANG", "NODE_ENV", "SESSION_SECRET"]
+      }
+    },
+    {
+      "resource_id": "domain:acme-web:www.acme-demo.com",
+      "resource_type": "domain",
+      "heroku_app": "acme-web",
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "hostname": "www.acme-demo.com",
+        "sni_endpoint": "tokyo-1234"
+      }
+    },
+    {
+      "resource_id": "pipeline:acme",
+      "resource_type": "pipeline",
+      "heroku_app": "unassociated",
+      "source": "live",
+      "config": {
+        "pipeline_name": "acme",
+        "stages": [
+          { "stage": "staging", "app": "acme-staging" },
+          { "stage": "production", "app": "acme-web" }
+        ],
+        "review_apps_enabled": false,
+        "detection_status": "detect-only"
+      }
+    }
+  ],
+  "terraform_metadata": {
+    "found": true,
+    "tf_files_scanned": 1,
+    "resource_types_extracted": ["heroku_app", "heroku_formation", "heroku_addon"],
+    "parse_warnings": []
+  },
+  "live_metadata": {
+    "found": true,
+    "captured_at": "2026-07-15T18:20:00Z",
+    "apps_captured": 2,
+    "apps_failed": 1,
+    "capture_warnings": [
+      "acme-data-team: all per-app captures failed (403)",
+      "kafka capture skipped: heroku-kafka plugin not installed"
+    ],
+    "limitations": ["formations scaled to zero are not visible to live discovery"],
+    "default_heroku_domains_skipped": 1,
+    "drift": {
+      "resources_live_only": 7,
+      "resources_terraform_only": 1,
+      "config_conflicts": [
+        {
+          "resource_id": "formation:acme-web:web",
+          "field": "quantity",
+          "terraform_value": 1,
+          "live_value": 2
+        },
+        {
+          "resource_id": "formation:acme-web:web",
+          "field": "dyno_type",
+          "terraform_value": "standard-1x",
+          "live_value": "standard-2x"
+        },
+        {
+          "resource_id": "addon:acme-web:heroku-postgresql:standard-2",
+          "field": "plan",
+          "terraform_value": "standard-0",
+          "live_value": "standard-2"
+        }
+      ]
+    }
+  }
+}

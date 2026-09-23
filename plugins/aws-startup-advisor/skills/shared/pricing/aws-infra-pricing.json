@@ -1,0 +1,207 @@
+{
+  "_comment": "Shared AWS infrastructure pricing rates (us-east-1, USD) for the estimate phase. Rates evolve on AWS's cadence, independent of the cost algorithm, so they live here as DATA and the estimate procedure does a lookup, not a guess. Each service carries its rates + a multi_az_handling key; the cost FORMULAS live in the estimate phase's prose (the algorithm is not data). Currently consumed by the heroku-to-aws skill; intended to be shared with gcp-to-aws. AI-model / Lambda / DynamoDB / Redshift / Athena / SageMaker rates are NOT here (gcp-specific; they remain in the gcp-to-aws pricing cache).",
+  "_meta": {
+    "last_updated": "2026-07-19",
+    "region": "us-east-1",
+    "currency": "USD",
+    "accuracy": "\u00b15-10% infrastructure",
+    "hours_per_month": 730,
+    "staleness_days": 30,
+    "staleness_note": "If more than staleness_days past last_updated, infrastructure rates remain reliable; set pricing_source=cached_stale and note it. AI-model rates (not used for heroku->aws) may have drifted.",
+    "last_verification": "2026-07-19 spot-check against published pricing pages: Fargate Linux/x86 us-east-1 ($0.000011244/vCPU-s = $0.04048/hr; $0.000001235/GB-s = the published $0.004445/hr GB rate) matches, and Heroku dyno flat rates match devcenter; no rate changes applied this refresh."
+  },
+  "_multi_az_convention": {
+    "_comment": "THE TRAP: a design's multi_az:true means different things per service. Each service rate below carries multi_az_handling so the formula applies the RIGHT adjustment, never a blanket multiplier.",
+    "baked_in": "rate already INCLUDES multi-AZ; NEVER apply a multiplier (multi_az flag is informational)",
+    "multiplier_x2": "rate is single-AZ; multiply by 2 when design multi_az == true",
+    "intrinsic": "service is inherently multi-AZ; no adjustment; multi_az flag informational"
+  },
+  "fargate": {
+    "per_vcpu_hour": 0.04048,
+    "per_gb_mem_hour": 0.004445,
+    "multi_az_handling": "n/a (Fargate cost is task-size driven, not AZ-driven)",
+    "per_vcpu_hour_arm64": 0.03238,
+    "per_gb_mem_hour_arm64": 0.003556
+  },
+  "alb": {
+    "monthly_fixed": 16.43,
+    "per_lcu_hour": 0.008
+  },
+  "rds_postgresql": {
+    "multi_az_handling": "baked_in",
+    "_note": "pricing-cache RDS PostgreSQL table is labeled (On-Demand, Multi-AZ) \u2014 the rate ALREADY includes multi-AZ. Do NOT double for multi_az.",
+    "instances": {
+      "db.t4g.micro": 0.032,
+      "db.t4g.small": 0.065,
+      "db.t4g.medium": 0.129,
+      "db.t4g.large": 0.258,
+      "db.t4g.xlarge": 0.517,
+      "db.t4g.2xlarge": 1.034,
+      "db.m6g.large": 0.356,
+      "db.m6g.xlarge": 0.712,
+      "db.m6g.2xlarge": 1.424,
+      "db.m6g.4xlarge": 2.848,
+      "db.m6g.8xlarge": 5.696,
+      "db.m6g.16xlarge": 11.392,
+      "db.r6g.16xlarge": 14.5,
+      "db.x2g.16xlarge": 18.05
+    },
+    "storage_per_gb_month": 0.23,
+    "_instances_note": "Multi-AZ on-demand hourly, us-east-1. t4g.* verified from the pricing cache; m6g/r6g/x2g families added to MATCH the instance classes the postgres design table can emit \u2014 approximate (~2x single-AZ), verify against the public AWS pricing pages for a large estimate. Every rds_instance_class the design can emit MUST have a rate here (no unpriced production DBs)."
+  },
+  "aurora_postgresql": {
+    "multi_az_handling": "intrinsic",
+    "_note": "Aurora replicates across 3 AZs by default; rate is as-listed, no multi-AZ adjustment.",
+    "instances": {
+      "db.t4g.medium": 0.073,
+      "db.t4g.large": 0.146,
+      "db.r6g.large": 0.26,
+      "db.r6g.xlarge": 0.553,
+      "db.r6g.2xlarge": 1.104,
+      "db.r6g.4xlarge": 2.208,
+      "db.r6g.8xlarge": 4.416,
+      "db.r6g.16xlarge": 8.832
+    },
+    "_instances_note": "r6g.16xlarge extrapolated 2x from 8xlarge; verify via MCP if it drives a large estimate.",
+    "storage_per_gb_month": 0.1,
+    "io_per_million": 0.2
+  },
+  "elasticache": {
+    "multi_az_handling": "multiplier_x2",
+    "_note": "pricing-cache ElastiCache is Single-AZ; apply x2 when design multi_az == true.",
+    "nodes": {
+      "cache.t4g.micro": 0.016,
+      "cache.t4g.small": 0.032,
+      "cache.t4g.medium": 0.065,
+      "cache.t3.micro": 0.017,
+      "cache.t3.small": 0.034,
+      "cache.t3.medium": 0.068,
+      "cache.m6g.large": 0.206,
+      "cache.m6g.xlarge": 0.412,
+      "cache.m6g.2xlarge": 0.824,
+      "cache.m6g.4xlarge": 1.648,
+      "cache.m6g.8xlarge": 3.296,
+      "cache.m6g.12xlarge": 4.944,
+      "cache.m6g.16xlarge": 6.592
+    },
+    "_nodes_note": "m6g sizes above large extrapolated by doubling; verify via MCP if large."
+  },
+  "msk": {
+    "multi_az_handling": "intrinsic",
+    "_note": "broker_count already spans AZs (2 or 3 per design); cost is per-broker, no extra multi-AZ multiplier.",
+    "brokers": {
+      "kafka.t3.small": 0.0456,
+      "kafka.m5.large": 0.21,
+      "kafka.m5.xlarge": 0.42,
+      "kafka.m5.2xlarge": 0.84,
+      "kafka.m5.4xlarge": 1.68,
+      "kafka.m5.8xlarge": 3.36,
+      "kafka.m5.12xlarge": 5.04
+    },
+    "_brokers_note": "MSK broker rates approximate; verify via MCP for a kafka-heavy estimate.",
+    "storage_per_gb_month": 0.1
+  },
+  "eks": {
+    "_comment": "EKS cost = control plane (once) + EC2 nodes; PODS COST $0 (compute billed via nodes \u2014 charging pods double-counts). Added per EKS cluster in the design. ALB (web) and NAT are added by their own lines, NOT re-added here.",
+    "control_plane_monthly": 73,
+    "node_rates_monthly": {
+      "m6i.large": 70.08,
+      "m6i.xlarge": 140.16,
+      "m6i.4xlarge": 560.64,
+      "r6i.4xlarge": 735.84,
+      "m6i.8xlarge": 1121.28,
+      "m6i.16xlarge": 2242.56
+    },
+    "pod_cost": 0
+  },
+  "nat_gateway": {
+    "monthly_fixed": 32.85,
+    "per_gb_processed": 0.045
+  },
+  "ebs": {
+    "_comment": "EBS volume pricing (us-east-1). Used to price EC2-backed compute root volumes (Elastic Beanstalk instances, EKS nodes) so EB estimates need no known-omission caveat.",
+    "gp3_per_gb_month": 0.08,
+    "eb_root_volume_gb_default": 8,
+    "_default_note": "eb_root_volume_gb_default is the AL2023 EB default root size; use aws_config.root_volume_gb when the design specifies one."
+  },
+  "rds_proxy": {
+    "per_vcpu_hour": 0.015
+  },
+  "route53": {
+    "hosted_zone_monthly": 0.5,
+    "per_million_queries": 0.4
+  },
+  "fast_path_services": {
+    "_comment": "Flat monthly_baseline_est per fast-path add-on \u2014 PINNED stated assumptions for the stopgap (these are estimates, not measured rates; an external pricing source will replace them). per-unit rates kept as documentation of the basis. Use monthly_baseline_est as the breakdown mid; mark the line as an estimate.",
+    "s3": {
+      "storage_per_gb_month": 0.023,
+      "monthly_baseline_est": 5,
+      "_basis": "assumes ~50GB + light requests; storage_per_gb_month is the rate basis"
+    },
+    "ses": {
+      "per_1000_emails": 0.1,
+      "monthly_baseline_est": 5,
+      "_basis": "assumes <50k emails/mo @ per_1000_emails; flat placeholder pending usage data"
+    },
+    "eventbridge": {
+      "per_million_events": 1,
+      "monthly_baseline_est": 1,
+      "_basis": "assumes ~1M cron-scale events/mo @ per_million_events"
+    },
+    "amazon_mq": {
+      "instance_monthly_est": 130
+    },
+    "opensearch": {
+      "instance_monthly_est": 100
+    },
+    "cloudfront": {
+      "per_gb_first_10tb": 0.085,
+      "monthly_baseline_est": 10,
+      "_basis": "assumes ~100GB egress/mo @ per_gb_first_10tb + light requests"
+    },
+    "secrets_manager": {
+      "per_secret_month": 0.4,
+      "per_10k_api_calls": 0.05,
+      "monthly_baseline_est": 2,
+      "_basis": "assumes ~3 secrets @ per_secret_month + light API calls"
+    },
+    "elasticache_memcached": {
+      "_use": "same node rates as elasticache (Memcachier mapping)"
+    }
+  },
+  "cloudwatch": {
+    "log_ingestion_per_gb": 0.5,
+    "log_storage_per_gb_month": 0.03,
+    "custom_metric_month": 0.3,
+    "standard_alarm_month": 0.1,
+    "xray_per_million_traces": 5
+  },
+  "ec2": {
+    "_comment": "EC2 On-Demand hourly rates (Linux/x86, us-east-1). Used by the Elastic Beanstalk cost formula to price underlying instances. Every instance_type the EB design can emit MUST have a rate here.",
+    "instances": {
+      "t3.micro": 0.0104,
+      "t3.small": 0.0208,
+      "t3.medium": 0.0416,
+      "t3.large": 0.0832,
+      "m5.large": 0.096,
+      "m5.xlarge": 0.192,
+      "m5.2xlarge": 0.384,
+      "m5.4xlarge": 0.768,
+      "r5.xlarge": 0.252,
+      "m5.8xlarge": 1.536,
+      "t4g.micro": 0.0083,
+      "t4g.small": 0.0166,
+      "t4g.medium": 0.0333,
+      "t4g.large": 0.0666,
+      "m6g.large": 0.0768,
+      "m6g.xlarge": 0.1536,
+      "m6g.2xlarge": 0.3072,
+      "m6g.4xlarge": 0.6144,
+      "m6g.8xlarge": 1.2288,
+      "m6g.16xlarge": 2.4576,
+      "r6g.xlarge": 0.2016,
+      "r6g.4xlarge": 0.8064
+    },
+    "_instances_note": "x86 rates match dyno-eb-sizing ec2_instance_type; Graviton rates ~20% below x86 counterparts for workshop arm64 path \u2014 verify via MCP for large estimates."
+  }
+}

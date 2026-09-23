@@ -1,0 +1,53 @@
+{
+  "_comment": "Assertions for the Horizontal Non-Web Capacity Guard + the eco/basic sizing-table rows it depends on. A persistent non-web formation with quantity > 1 is routed off Elastic Beanstalk onto Fargate (design-mapping.md 'Horizontal Non-Web Capacity Guard'), so the Fargate table must carry every dyno tier the EB table carries — otherwise the lookup misses and the formation is dropped from the design with only a warning.",
+  "every_formation_must_map": true,
+  "guard_rule_from_inventory": "process_type != 'web' AND quantity > 1 MUST map to Fargate",
+  "expected_services": [
+    {
+      "source_resource_id": "formation:acme-jobs:web",
+      "dyno_type": "basic",
+      "aws_service": "Elastic Beanstalk",
+      "aws_config": { "instance_type": "t3.micro", "environment_type": "LoadBalanced" }
+    },
+    {
+      "source_resource_id": "formation:acme-jobs:worker",
+      "dyno_type": "basic",
+      "aws_service": "Fargate",
+      "aws_config": { "task_cpu": 256, "task_memory": 512, "desired_count": 2, "load_balancer": false }
+    },
+    {
+      "source_resource_id": "formation:acme-jobs:mailer",
+      "dyno_type": "eco",
+      "aws_service": "Fargate",
+      "aws_config": { "task_cpu": 256, "task_memory": 512, "desired_count": 2, "load_balancer": false }
+    }
+  ],
+  "required_warning_substrings": [
+    "acme-jobs:worker` has quantity=2",
+    "acme-jobs:mailer` has quantity=2"
+  ],
+  "forbidden_warning_substrings": ["Unsupported dyno type"],
+  "sizing_tables": {
+    "_comment": "Cross-table regression guard: the guard can move a formation from the EB table to the Fargate table, and the EKS branch reuses the same tier names, so the three tables must agree on the tier set.",
+    "eb": "skills/heroku-to-aws/knowledge/design/dyno-eb-sizing.json",
+    "fargate": "skills/heroku-to-aws/knowledge/design/dyno-fargate-sizing.json",
+    "eks": "skills/heroku-to-aws/knowledge/design/eks-pod-sizing.json",
+    "required_tiers_in_every_table": ["eco", "basic"],
+    "fargate_and_eks_tiers_must_be_identical": true,
+    "eb_tiers_must_cover_fargate_tiers": true
+  },
+  "fargate_cpu_memory_matrix": {
+    "_source": "https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-tasks-services.html — 'Task CPU and memory' (verified 2026-08-01). Fargate rejects any other pairing at RunTask time.",
+    "256": { "values": [512, 1024, 2048] },
+    "512": { "values": [1024, 2048, 3072, 4096] },
+    "1024": { "min": 2048, "max": 8192, "step": 1024 },
+    "2048": { "min": 4096, "max": 16384, "step": 1024 },
+    "4096": { "min": 8192, "max": 30720, "step": 1024 },
+    "8192": { "min": 16384, "max": 61440, "step": 4096 },
+    "16384": { "min": 32768, "max": 122880, "step": 8192 }
+  },
+  "fargate_matrix_baseline": {
+    "_comment": "PRE-EXISTING violations, not introduced by this fixture: 8192 CPU units cap at 61440 MiB (60 GB), but these rows request 65536 MiB (64 GB). Fixing them is a sizing decision (drop to 60 GB or move up to 16384 CPU) tracked separately. Every other row — and every new row — is checked against the matrix.",
+    "exempt_rows": ["performance-xl", "private-xl", "shield-xl"]
+  }
+}

@@ -1,0 +1,105 @@
+"""
+Bedrock Vision API Service Template
+Replace Gemini/other AI vision API with this implementation.
+
+INSTRUCTIONS:
+1. Copy this pattern into your service file
+2. Keep your existing PROMPT and response parsing logic
+3. The key addition is the _normalize_image() function — Bedrock is stricter
+   than Gemini about image formats and will reject non-standard JPEGs.
+4. Ensure 'pillow>=10.0.0' is in your dependencies
+"""
+
+import base64
+import io
+import json
+import boto3
+from PIL import Image
+from app.config import settings
+
+# === YOUR EXISTING PROMPT GOES HERE ===
+# Keep the same prompt you had for Gemini — just the API call changes
+PROMPT = """YOUR ANALYSIS PROMPT HERE"""
+
+
+def get_client():
+    return boto3.client("bedrock-runtime", region_name=settings.aws_region)
+
+
+def _normalize_image(image_bytes: bytes) -> str:
+    """
+    Normalize image for Bedrock Claude vision API.
+
+    Bedrock is stricter than Gemini about image formats:
+    - Rejects CMYK, Grayscale with alpha, some progressive JPEGs
+    - Requires clean RGB JPEG or PNG
+
+    This function:
+    1. Opens image with PIL to validate it's a real image
+    2. Converts to RGB (handles PNG transparency, CMYK, etc.)
+    3. Re-encodes as standard JPEG at 95% quality
+    4. Returns base64-encoded string ready for Bedrock API
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+
+        # Convert to RGB — handles CMYK, RGBA, Grayscale, Palette
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Re-encode as clean JPEG
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=95)
+        normalized_bytes = buffer.getvalue()
+
+        return base64.b64encode(normalized_bytes).decode("utf-8")
+    except Exception as e:
+        raise ValueError(f"Invalid image file: {e}")
+
+
+def analyze_image(image_bytes: bytes) -> dict:
+    """Send image to Bedrock Claude for analysis."""
+    client = get_client()
+
+    # Normalize image — critical for Bedrock compatibility
+    img_b64 = _normalize_image(image_bytes)
+
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 2048,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": img_b64,
+                    },
+                },
+                {"type": "text", "text": PROMPT},
+            ],
+        }],
+    })
+
+    response = client.invoke_model(
+        modelId=settings.bedrock_model_id,
+        body=body,
+    )
+    response_body = json.loads(response["body"].read())
+    result_text = response_body["content"][0]["text"]
+
+    # === YOUR EXISTING RESPONSE PARSING GOES HERE ===
+    return _parse_response(result_text)
+
+
+def _parse_response(text: str) -> dict:
+    """Parse Claude JSON response. Customize for your app's data model."""
+    cleaned = text.strip()
+    # Remove markdown code blocks if present
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[1]
+        cleaned = cleaned.rsplit("```", 1)[0]
+    cleaned = cleaned.strip()
+    return json.loads(cleaned)

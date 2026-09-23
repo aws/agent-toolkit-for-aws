@@ -1,0 +1,57 @@
+{
+  "migration_id": "0801-nonweb",
+  "skill": "heroku-to-aws",
+  "metadata": {
+    "timestamp": "2026-08-01T10:00:00Z",
+    "clarify_mode": "fast_path",
+    "questions_asked": ["Q1", "Q3", "Q12c", "Q15"],
+    "questions_defaulted": [],
+    "questions_skipped_not_applicable": []
+  },
+  "global": {
+    "target_region": "us-east-1",
+    "compliance": "none",
+    "availability": "single-az",
+    "maintenance_window": "sun:05:00-sun:06:00",
+    "environment_naming": "acme",
+    "migration_approach": "full_cutover",
+    "interim_cutover": false,
+    "target_exit_date": null,
+    "ktlo_warning": null,
+    "fir_intent": null
+  },
+  "data": {},
+  "operational": {
+    "container_registry": "ecr",
+    "containerization_status": "containerized",
+    "log_retention_days": 30,
+    "alerting": "cloudwatch",
+    "cost_optimization": "balanced"
+  },
+  "design_constraints": {
+    "compute_target": {
+      "default": "elastic_beanstalk",
+      "overrides": [],
+      "chosen_by": "system_recommended",
+      "recommendation": {
+        "value": "elastic_beanstalk",
+        "confidence": "high",
+        "reasons": ["small app, lowest operational burden"]
+      }
+    },
+    "eb_deploy_method": {
+      "value": "github_actions",
+      "chosen_by": "default"
+    }
+  },
+  "workshop": {
+    "cpu_architecture": "x86_64"
+  },
+  "defaults_applied": [],
+  "sources": {
+    "Q1": "user",
+    "Q3": "user",
+    "Q12c": "default",
+    "Q15": "default"
+  }
+}

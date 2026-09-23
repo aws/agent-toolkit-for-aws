@@ -1,0 +1,16 @@
+{
+  "migration_id": "0719-workshop",
+  "run_id": "b7d3e9a1-6c2f-4b8d-a5e4-9f1c3d7e2b60",
+  "owning_skill": "HEROKU_TO_AWS",
+  "last_updated": "2026-07-19T18:30:00Z",
+  "current_phase": "estimate",
+  "phases": {
+    "discover": "completed",
+    "clarify": "completed",
+    "design": "completed",
+    "estimate": "completed",
+    "workshop": "pending",
+    "generate": "pending",
+    "feedback": "pending"
+  }
+}

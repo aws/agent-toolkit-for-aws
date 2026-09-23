@@ -1,0 +1,10 @@
+[
+  {
+    "name": "projects/acme-prod/locations/us-central1/instances/cache",
+    "tier": "BASIC",
+    "memorySizeGb": 1,
+    "redisVersion": "REDIS_7_2",
+    "authorizedNetwork": "projects/acme-prod/global/networks/main",
+    "locationId": "us-central1-a"
+  }
+]

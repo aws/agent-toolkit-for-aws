@@ -1,0 +1,16 @@
+=== DATABASE_URL
+Plan:                  Standard 2
+Status:                Available
+Data Size:             42.3 GB / 256 GB (16.52%)
+Tables:                87
+PG Version:            16.4
+Connections:           38/400
+Connection Pooling:    Available
+Credentials:           1
+Fork/Follow:           Available
+Rollback:              earliest from 2026-07-11 18:00 UTC
+Created:               2024-05-01 12:10 UTC
+Region:                us
+Data Encryption:       In Use
+Continuous Protection: On
+Maintenance:           not required

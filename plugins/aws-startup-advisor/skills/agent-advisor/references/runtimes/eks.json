@@ -1,0 +1,27 @@
+{
+  "id": "eks",
+  "display_name": "Amazon EKS",
+  "status": "ga",
+  "launched": "2018-06-01",
+  "service_card": "eks.md",
+  "hard_constraints": [],
+  "affinities": {
+    "session_duration": { "under_15min": 1, "15min_to_8hr": 3, "over_8hr": 4, "unknown": 2 },
+    "traffic_pattern": { "bursty": 1, "steady": 4, "idle": 0, "unknown": 2 },
+    "platform_fit": { "ecs": 1, "eks": 4, "lambda": 0, "none": 1, "unknown": 1 },
+    "session_state": { "stateless": 3, "stateful": 3, "hitl": 1, "unknown": 2 },
+    "ops_preference": { "minimal": 0, "moderate": 2, "full_control": 4, "unknown": 1 },
+    "isolation": { "required": 2, "nice_to_have": 2, "not_needed": 2, "unknown": 2 },
+    "memory_needs": { "cross_session": 1, "session_only": 2, "none": 2, "unknown": 2 },
+    "multi_agent": { "yes": 2, "no": 2, "unknown": 2 },
+    "framework": { "strands": 2, "langgraph": 2, "crewai": 2, "custom": 3, "none": 1, "unknown": 2 },
+    "existing_cluster": { "eks": 5, "ecs": 1, "none": 1, "unknown": 1 },
+    "multi_cloud": { "yes": 4, "no": 1, "unknown": 2 },
+    "idle_resume": { "process_level": 1, "filesystem": 1, "none": 2, "unknown": 2 },
+    "compute_tier": { "light": 1, "heavy_non_gpu": 4, "gpu": 5, "unknown": 2 },
+    "launch_concurrency": { "high": 3, "moderate": 2, "low": 2, "unknown": 2 },
+    "instance_type_requirement": { "yes": 5, "no": 2, "unknown": 2 }
+  },
+  "deployment_models": [],
+  "volatile_facts": [{ "key": "regions", "value": "all", "verify_via_mcp": false }]
+}

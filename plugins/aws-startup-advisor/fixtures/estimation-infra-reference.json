@@ -1,0 +1,125 @@
+{
+  "projected_costs": {
+    "aws_monthly_balanced": 112,
+    "aws_monthly_premium": 198,
+    "aws_monthly_optimized": 82,
+    "breakdown": {
+      "security_baseline": {
+        "service": "AWS Security Baseline (Tier 1)",
+        "mid": 15,
+        "components": {
+          "cloudtrail_s3": 1.5,
+          "guardduty": 13,
+          "budgets": 0,
+          "free_controls": 0.5
+        }
+      }
+    },
+    "scenario_deltas": {
+      "premium": [
+        "RDS Multi-AZ instead of single-AZ (+$21/mo) - removes the single-AZ assumption",
+        "Fargate provisioned headroom, 2x task count (+$12/mo)"
+      ],
+      "optimized": [
+        "Drops NAT Gateway (-$18/mo) - tasks move to public subnets or VPC endpoints; security-posture change, not just savings",
+        "Assumes 1-year Compute Savings Plan (-$12/mo) - requires an upfront commitment decision"
+      ]
+    }
+  },
+  "current_costs": {
+    "gcp_monthly": 165
+  },
+  "recommendation": {
+    "path_label": "migrate_phased",
+    "outcome": "conditional_go",
+    "outcome_label": "Go, with conditions",
+    "conditions": [
+      "Confirm database availability \u2014 Multi-AZ was assumed, not confirmed (roughly 2x database cost factor)"
+    ],
+    "decision_basis": {
+      "measured": [
+        "GCP billing baseline ($165/mo infra)",
+        "Cloud SQL disk size (10 GB)"
+      ],
+      "assumed": [
+        "Database availability (Multi-AZ default)",
+        "Cloud Run traffic (24/7 default)"
+      ],
+      "unknown": []
+    },
+    "would_flip_if": [
+      "Single-AZ acceptable: AWS estimate drops further, strengthens go",
+      "BigQuery must cut over in the same window: defer for specialist evidence"
+    ],
+    "migrate_if": [
+      "unified AWS operations"
+    ],
+    "stay_if": [
+      "BigQuery must cut over in the same window as app infra and cannot use a phased analytics track"
+    ],
+    "track_outcomes": [
+      {
+        "track": "compute_database",
+        "outcome": "go",
+        "note": "Fargate + RDS; the phased backbone"
+      },
+      {
+        "track": "ai_text",
+        "outcome": "go",
+        "note": "Nova Lite via provider adapter"
+      },
+      {
+        "track": "ai_image",
+        "outcome": "conditional_go",
+        "note": "Keeps current provider via the adapter until the image-quality eval passes; does not gate other tracks"
+      },
+      {
+        "track": "analytics",
+        "outcome": "defer_for_evidence",
+        "note": "BigQuery - specialist engagement, parallel track"
+      }
+    ]
+  },
+  "cost_comparison": {
+    "option_b_balanced": {
+      "aws_monthly": 112,
+      "percent_change": "-32%"
+    }
+  },
+  "optimization_opportunities": [
+    {
+      "opportunity": "Compute Savings Plans",
+      "type": "compute_savings_plan",
+      "target_services": ["Fargate"],
+      "savings_percent": "20–40%",
+      "commitment": "1-year no-upfront",
+      "implementation_effort": "Low (post-migration)",
+      "description": "Commit Fargate usage after 30–90 days of Cost Explorer data."
+    },
+    {
+      "opportunity": "Database Savings Plans",
+      "type": "database_savings_plan",
+      "target_services": ["RDS"],
+      "savings_percent": "~20%",
+      "commitment": "1-year no-upfront",
+      "implementation_effort": "Low",
+      "description": "Covers provisioned RDS. Mutually exclusive with RDS Reserved Instances on the same workload."
+    },
+    {
+      "opportunity": "S3 Infrequent Access",
+      "target_services": ["S3"],
+      "savings_percent": "38%",
+      "savings_monthly": 1,
+      "commitment": "None",
+      "implementation_effort": "Low"
+    },
+    {
+      "opportunity": "Fargate Spot",
+      "target_services": ["Fargate"],
+      "savings_percent": "70%",
+      "savings_monthly": 8,
+      "commitment": "None",
+      "implementation_effort": "Medium"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+[
+  {
+    "metadata": {
+      "name": "orders-api",
+      "labels": {
+        "cloud.googleapis.com/location": "us-central1"
+      },
+      "annotations": {
+        "serving.knative.dev/creator": "founder@acme-demo.com"
+      }
+    },
+    "spec": {
+      "template": {
+        "metadata": {
+          "annotations": {
+            "run.googleapis.com/cloudsql-instances": "acme-prod:us-central1:orders-db",
+            "autoscaling.knative.dev/maxScale": "10"
+          }
+        },
+        "spec": {
+          "serviceAccountName": "app-sa@acme-prod.iam.gserviceaccount.com",
+          "containerConcurrency": 80,
+          "timeoutSeconds": 300,
+          "containers": [
+            {
+              "image": "us-central1-docker.pkg.dev/acme-prod/apps/orders-api:v42",
+              "resources": { "limits": { "cpu": "2", "memory": "1Gi" } },
+              "env": [
+                { "name": "DATABASE_URL" },
+                { "name": "REDIS_URL" },
+                { "name": "STRIPE_SECRET_KEY" },
+                { "name": "NODE_ENV" }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "status": { "url": "https://orders-api-h4x2k3q-uc.a.run.app" }
+  },
+  {
+    "metadata": {
+      "name": "web-frontend",
+      "labels": {
+        "cloud.googleapis.com/location": "us-central1"
+      },
+      "annotations": {}
+    },
+    "spec": {
+      "template": {
+        "metadata": { "annotations": { "autoscaling.knative.dev/maxScale": "4" } },
+        "spec": {
+          "serviceAccountName": "app-sa@acme-prod.iam.gserviceaccount.com",
+          "containerConcurrency": 200,
+          "timeoutSeconds": 60,
+          "containers": [
+            {
+              "image": "us-central1-docker.pkg.dev/acme-prod/apps/web-frontend:v17",
+              "resources": { "limits": { "cpu": "1", "memory": "512Mi" } },
+              "env": [{ "name": "API_BASE_URL" }, { "name": "NODE_ENV" }]
+            }
+          ]
+        }
+      }
+    },
+    "status": { "url": "https://web-frontend-h4x2k3q-uc.a.run.app" }
+  }
+]

@@ -18,4 +18,4 @@ config:
   MD040: false
   MD041: false
   MD060: false
-frontMatter: "^---\\s*$[\\s\\S]*?^---\\s*$"
+frontMatter: "^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n"
