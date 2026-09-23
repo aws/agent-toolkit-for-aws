@@ -1,0 +1,1850 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AWS Marketplace SaaS Metering Integration - Main Stack (seller region)
+
+Parameters:
+  ProductCode:
+    Type: String
+    Description: AWS Marketplace metering product code (NOT the entity ID)
+  DeploymentMode:
+    Type: String
+    Default: full
+    AllowedValues: [full, direct-submit]
+    Description: >-
+      full: the seller writes RAW per-second usage rows and the pipeline
+      (discoverer/aggregator/cleanup) aggregates them. direct-submit: the seller writes
+      FINALIZED hourly aggregated records straight into the aggregated_usage table; only the
+      submitter + submission-expiry are created (no raw usage table, work/cleanup queues, or
+      discoverer/aggregator/cleanup). In direct-submit mode a record MUST be final before
+      insert — any record present may be submitted on the next 5-minute run, and a second
+      write for the same (licenseArn, account, dimension, hour) returns DuplicateRecord.
+  MeteringMode:
+    Type: String
+    Default: live
+    AllowedValues: [live, dry-run]
+    Description: >-
+      live (production): the submitter calls the real BatchMeterUsage (real billing).
+      dry-run (non-production sandbox): the submitter runs the FULL pipeline + client-side
+      validation but NEVER calls BatchMeterUsage — it logs/EMF-emits the records it would have
+      sent and writes meteringStatus=DryRunSubmitted. A dry-run stage REQUIRES a
+      TestAccountAllowlist and may deploy the test event publisher; a live stage does neither.
+      Prod vs non-prod is decided by THIS switch, NOT by the free-form StageName.
+  TestAccountAllowlist:
+    Type: CommaDelimitedList
+    Default: ''
+    Description: >-
+      For a dry-run (non-prod) stage ONLY: the seller's TEST buyer AWS account IDs. The
+      non-prod events rule + test event publisher are scoped to these accounts so a non-prod
+      stack never processes production buyers. MUST be non-empty when MeteringMode=dry-run and
+      MUST be empty when MeteringMode=live (enforced by deploy.sh).
+  StackPrefix:
+    Type: String
+    Default: awsmp
+    Description: Prefix for resource names to avoid collisions
+  SubscribersTableName:
+    Type: String
+    Description: Name of the unified subscribers table in us-east-1 (from events stack output)
+  AlertsTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional SNS topic ARN (in THIS region) for metering error alarms. A CloudWatch
+      alarm can only notify an SNS topic in its own region, so this must be a
+      seller-region topic — not the us-east-1 events-stack topic. Leave empty to skip.
+  StageName:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9_-]+$'
+    ConstraintDescription: >-
+      StageName is mandatory and must be a non-empty API Gateway stage name
+      (letters, digits, '-' or '_'), e.g. 'v1', 'live', or 'prod'.
+    Description: >-
+      API Gateway stage name for the registration endpoint. TODO(seller): this is a
+      MANDATORY value you must supply (e.g. `v1`, `live`, or `prod` — your choice). There
+      is NO default and no fallback to `prod`: the parameter has no Default, so a direct
+      `sam deploy` with no override fails fast at the template level (and AllowedPattern
+      rejects an empty/invalid value) rather than creating a malformed empty stage.
+      deploy.sh performs the same non-empty check before deploying.
+  WebAclArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional override: ARN of a seller-supplied AWS WAFv2 WebACL (REGIONAL scope) to
+      associate with the registration API stage instead of the baseline WebACL this stack
+      creates. Leave empty to use the built-in baseline WebACL (rate-based + common-exploit
+      rules) that the stack creates and attaches by default.
+  LogsKmsKeyArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional KMS key ARN to encrypt the Lambda + API access log groups (logs contain
+      customer AWS account IDs / license ARNs). Leave empty for CloudWatch
+      default encryption. The key policy MUST allow logs.<region>.amazonaws.com.
+  LogRetentionInDays:
+    Type: Number
+    Default: 90
+    Description: Retention (days) for the Register/Meter Lambda and API access log groups.
+  MeteringLockHours:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 20
+    Description: >-
+      How many hours a metering hour stays OPEN for late usage before it is
+      aggregated and submitted. The discoverer's meter mode no-ops for hour offsets below
+      this value, so an hour is first submitted at age MeteringLockHours. Default 1 (submit
+      a fully-complete hour: at 12:20 only 11:00-11:59:59 is processed). Bounded 1..20: an
+      hour is first submitted at age MeteringLockHours, leaving 24 - MeteringLockHours hours
+      inside the 24h billable window before age-out, so the cap of 20 leaves >=4h of
+      margin — room for >=3 hourly submission retries of a transient failure AND for the
+      seller to inspect + re-drive a client-side rejection before the hour ages out at 24h.
+      TODO(seller): ask the seller how long to keep an hour open for late events.
+  UsageTableTtlDays:
+    Type: Number
+    Default: 365
+    MinValue: 0
+    MaxValue: 3650
+    Description: >-
+      TTL retention (in DAYS) for RAW usage-table rows, via a numeric `ttl` epoch-seconds
+      attribute. The raw usage table is the HIGH-VOLUME table (one row per second per group),
+      so a TTL is RECOMMENDED here to control storage cost. Set 0 to DISABLE TTL entirely
+      (the TimeToLiveSpecification is then omitted via a CloudFormation Condition).
+      CORRECTNESS FLOOR: when ENABLED the value must exceed MeteringLockHours + the 24h
+      age-out window with margin, so the accepted set is 0 (disabled) OR >= 2 days — a
+      value of 1 is rejected by deploy.sh (CloudFormation MinValue cannot express a disjoint
+      "0 or >= 2" range, so MinValue is 0 here and the >= 2 floor is enforced in deploy.sh).
+      IMPORTANT: the seller's usage WRITER sets the `ttl` attribute (writer logic is out of
+      scope); enabling TTL here only makes DynamoDB honor a `ttl` the writer populates. If
+      the writer does not set `ttl`, no raw row expires (TTL is a no-op) — that is safe, just
+      not cost-optimal. TODO(seller): confirm the retention that satisfies your audit needs.
+  AggregatedUsageTableTtlDays:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 3650
+    Description: >-
+      TTL retention (in DAYS) for the AGGREGATED usage table, via a numeric `ttl`
+      epoch-seconds attribute the submitter sets on FINALIZED rows. Defaults to 0 (DISABLED
+      = retain), which is RECOMMENDED: this table is one small row per group per hour (not
+      high-volume) and is a billing AUDIT trail (MeteringRecordId + status), so keeping it
+      aids auditing/debugging. Set a LARGE value only if you want eventual pruning; the
+      submitter sets `ttl` ONLY on rows that reached a terminal Success state, never on
+      pending/failed rows. TODO(seller): confirm whether aggregated-usage pruning is wanted.
+  CreateDashboard:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      Whether to create the per-product CloudWatch HEALTH dashboard for the metering
+      pipeline (default true). The dashboard gives complete pipeline visibility in one place
+      (per-Lambda errors/throttles/invocations/duration, queue + DLQ depths + oldest-message
+      age, and the granular EMF error/status metrics) without drilling into individual
+      alarms. It is health-only (no business metrics). Set 'false' to skip it; you can also
+      delete or customize the dashboard after deployment.
+  AllowedRegistrationFields:
+    Type: String
+    Default: ''
+    Description: >-
+      Comma-separated allowlist of registration-form fields the Register Lambda may
+      persist. The public endpoint persists ONLY these fields, each
+      length-bounded. Leave empty to persist no custom fields. Example:
+      "company_name,email,team_size".
+  PromotedProfileFields:
+    Type: String
+    Default: ''
+    Description: >-
+      Comma-separated SUBSET of AllowedRegistrationFields to PROMOTE to top-level
+      attributes on the customer-profile table so a GSI can look profiles up by that
+      field (e.g. "email"). Each promoted field is written both into the registrationData
+      map AND as a top-level attribute; define a matching GSI in the CustomerProfileTable
+      TODO(seller) block. Leave empty for none. Example: "email,company_name".
+  PermissionsBoundaryName:
+    Type: String
+    Default: awsmp-metering-boundary
+    Description: >-
+      Name of the IAM permissions-boundary policy applied to the SAM-generated Lambda
+      execution roles. This MUST match the boundary the deployer role's iam:CreateRole
+      condition requires, and the boundary policy MUST already exist in the account
+      before deployment (see references/iam-credentials.md). The Lambda roles are
+      auto-generated by SAM from the inline Policies below; without this boundary,
+      role creation is denied by the deployer role.
+
+Conditions:
+  HasAlertsTopic: !Not [!Equals [!Ref AlertsTopicArn, '']]
+  # Full pipeline (raw table + discoverer/aggregator/cleanup + work/cleanup queues) vs
+  # direct-submit (seller writes finalized records straight to aggregated_usage).
+  IsFullPipeline: !Equals [!Ref DeploymentMode, full]
+  IsDirectSubmit: !Equals [!Ref DeploymentMode, direct-submit]
+  # Non-production sandbox stage: submitter dry-runs (no real BatchMeterUsage) and the test
+  # event publisher is created. live = production (real billing).
+  IsDryRun: !Equals [!Ref MeteringMode, dry-run]
+  # TTL is included only when the retention (days) parameter is > 0 (0 = disabled).
+  UsageTableTtlEnabled: !And [!Equals [!Ref DeploymentMode, full], !Not [!Equals [!Ref UsageTableTtlDays, 0]]]
+  AggregatedUsageTableTtlEnabled: !Not [!Equals [!Ref AggregatedUsageTableTtlDays, 0]]
+  CreateHealthDashboard: !Equals [!Ref CreateDashboard, 'true']
+  CreateFullDashboard: !And [!Equals [!Ref CreateDashboard, 'true'], !Equals [!Ref DeploymentMode, full]]
+  CreateDirectDashboard: !And [!Equals [!Ref CreateDashboard, 'true'], !Equals [!Ref DeploymentMode, direct-submit]]
+  HasWebAcl: !Not [!Equals [!Ref WebAclArn, '']]
+  # When no seller WebACL ARN is provided, create + attach the built-in baseline WebACL.
+  UseBaselineWebAcl: !Equals [!Ref WebAclArn, '']
+  HasLogsKmsKey: !Not [!Equals [!Ref LogsKmsKeyArn, '']]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    # Apply the permissions boundary to the SAM-auto-generated Lambda execution roles so
+    # iam:CreateRole succeeds under the deployer role (whose iam:CreateRole is gated on a
+    # matching iam:PermissionsBoundary). The boundary policy must exist before deployment.
+    PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/${PermissionsBoundaryName}
+    Environment:
+      Variables:
+        PRODUCT_CODE: !Ref ProductCode
+        SUBSCRIBERS_TABLE: !Ref SubscribersTableName
+        SUBSCRIBERS_TABLE_REGION: us-east-1
+        AGGREGATED_USAGE_TABLE: !Ref AggregatedUsageTable
+
+Resources:
+  # In-region customer-profile table (buyer PII / registration data). Present in BOTH
+  # deployment modes (registration happens regardless of full vs direct-submit). Keeps buyer
+  # PII in THIS Region — the register Lambda writes the allowlisted registration fields here as
+  # a `registrationData` map (+ any promoted top-level fields), never to the us-east-1
+  # subscribers table (which stays PII-free). Keyed to match the subscriber identity.
+  CustomerProfileTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${StackPrefix}-customer-profile
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: licenseArn
+          AttributeType: S
+        - AttributeName: customerAWSAccountId
+          AttributeType: S
+        # TODO(seller): for each PROMOTED registration field (PromotedProfileFields), add its
+        # AttributeDefinition here and a matching GSI below. Example for an `email` field:
+        # - AttributeName: email
+        #   AttributeType: S
+      KeySchema:
+        - AttributeName: licenseArn
+          KeyType: HASH
+        - AttributeName: customerAWSAccountId
+          KeyType: RANGE
+      # TODO(seller): define one GSI per promoted registration field so profiles can be looked
+      # up by that field WITHOUT a Scan (the register Lambda writes each promoted field as a
+      # top-level attribute in addition to the registrationData map). Example:
+      # GlobalSecondaryIndexes:
+      #   - IndexName: email-index
+      #     KeySchema:
+      #       - AttributeName: email
+      #         KeyType: HASH
+      #     Projection:
+      #       ProjectionType: ALL
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  UsageTable:
+    Type: AWS::DynamoDB::Table
+    Condition: IsFullPipeline
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${StackPrefix}-usage
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      # TTL (seller-configurable via UsageTableTtlDays; RECOMMENDED on this high-volume
+      # table to control cost). Only DynamoDB-honored; the seller's WRITER must set the
+      # numeric `ttl` epoch-seconds attribute (writer logic is out of scope), and MUST set
+      # it beyond MeteringLockHours + the 24h billable window so a row is never deleted
+      # before it is metered. Omitted entirely when UsageTableTtlDays = 0.
+      TimeToLiveSpecification: !If
+        - UsageTableTtlEnabled
+        - AttributeName: ttl
+          Enabled: true
+        - !Ref 'AWS::NoValue'
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+      # Usage table key schema: licenseArn (HASH) + customerAWSAccountId_dimension_timestamp
+      # (RANGE). The RANGE attribute value is the '#'-delimited composite
+      # "{customerAWSAccountId}#{dimension}#{timestamp}" where timestamp is an exact
+      # SECOND-precision UTC value "YYYY-MM-DDTHH:MM:SS" (whole seconds, NOT millisecond/
+      # fractional and NOT hour-truncated). Second precision lets multiple usage rows exist
+      # for the same (licenseArn, customerAWSAccountId, dimension, hour) — each distinct
+      # second is a distinct row (bounded at <=3600 rows/hour). The aggregator validates the
+      # sort key at the fold and rejects a bad one client-side with EXACTLY ONE reason code
+      # per condition, checked in order: MalformedSortKey (empty or fewer than the 3
+      # '#'-segments) -> SortKeyMismatch (account or dimension segment != the row's own
+      # attribute) -> MalformedTimestamp (timestamp segment not exact whole-second
+      # YYYY-MM-DDTHH:MM:SS, incl. a millisecond/fractional or hour-truncated suffix).
+      # Write whole seconds only.
+      # customerAWSAccountId, dimension, and timestamp are ALSO stored as separate
+      # top-level attributes on each item so the pipeline reads them without parsing
+      # the sort key (in particular customerAWSAccountId is on every row, so a CA
+      # UsageRecord is built without a subscriber-table lookup). The aggregator reads a
+      # group via begins_with(sortKey, "{customerAWSAccountId}#{dimension}#{hourPrefix}")
+      # and aggregates the hour's rows into one UsageRecord.
+      # TODO(seller): your usage-writer (ingestion) must populate licenseArn, the composite
+      # sort key (whole-second UTC timestamp), and the customerAWSAccountId / dimension /
+      # timestamp / quantity attrs, plus set meteringPending to the "%Y-%m-%dT%H" hour bucket
+      # (matching the row's own timestamp hour) while the row awaits metering. Additional
+      # seller-defined attributes (e.g. eventId) are preserved. RECOMMENDED: stamp ISO-8601
+      # UTC createdAt (once, at insert) + updatedAt (on any rewrite) audit timestamps on each
+      # row; the pipeline stamps updatedAt when it finalizes a row.
+      AttributeDefinitions:
+        - AttributeName: licenseArn
+          AttributeType: S
+        - AttributeName: customerAWSAccountId_dimension_timestamp
+          AttributeType: S
+        - AttributeName: meteringPending
+          AttributeType: S
+      KeySchema:
+        - AttributeName: licenseArn
+          KeyType: HASH
+        - AttributeName: customerAWSAccountId_dimension_timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        # metering_pending GSI: lets the meter Lambda find usage awaiting metering
+        # WITHOUT depending on the subscribers/registration table. Sellers who obtain
+        # the LicenseArn via EventBridge or SDDS (bypassing ResolveCustomer) still get
+        # metered. Set meteringPending="<hourBucket>" when writing usage; the meter
+        # Lambda queries this GSI, meters, then clears the attribute (removing the item
+        # from the sparse index).
+        - IndexName: metering_pending
+          KeySchema:
+            - AttributeName: meteringPending
+              KeyType: HASH
+            - AttributeName: licenseArn
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # Aggregated-usage table: the submission source of truth for the decoupled
+  # metering pipeline. The Aggregator folds all raw usage rows of a
+  # (licenseArn, customerAWSAccountId, dimension, hour) group into ONE record here via a
+  # CONDITIONAL PutItem (attribute_not_exists(licenseArn)) — the idempotency commit point.
+  # The Submitter reads pending records via the metering_pending GSI, calls
+  # BatchMeterUsage, and writes meteringRecordId/meteringStatus + REMOVEs meteringPending
+  # ON THIS table (never the raw usage table). TTL is seller-configurable via
+  # AggregatedUsageTableTtlDays but DEFAULTS OFF (0): this is a small billing audit trail
+  # (MeteringRecordId + status), so retaining it aids auditing/debugging. When enabled, the
+  # submitter sets the `ttl` epoch ONLY on finalized Success rows.
+  AggregatedUsageTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${StackPrefix}-aggregated-usage
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification: !If
+        - AggregatedUsageTableTtlEnabled
+        - AttributeName: ttl
+          Enabled: true
+        - !Ref 'AWS::NoValue'
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+      # PK licenseArn (HASH) + account#dimension#hour (RANGE). meteringPending (hour
+      # bucket) drives the submitter's sparse-GSI discovery, mirroring the raw usage table.
+      AttributeDefinitions:
+        - AttributeName: licenseArn
+          AttributeType: S
+        - AttributeName: account_dimension_hour
+          AttributeType: S
+        - AttributeName: meteringPending
+          AttributeType: S
+      KeySchema:
+        - AttributeName: licenseArn
+          KeyType: HASH
+        - AttributeName: account_dimension_hour
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: metering_pending
+          KeySchema:
+            - AttributeName: meteringPending
+              KeyType: HASH
+            - AttributeName: licenseArn
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # ── SQS: decoupled pipeline queues ─────────────────────────────────────
+  # Work queue (discoverer -> aggregator): one message per pending group. Standard queue
+  # (idempotency is enforced downstream by the aggregator's conditional PutItem).
+  MeteringWorkQueue:
+    Type: AWS::SQS::Queue
+    Condition: IsFullPipeline
+    Properties:
+      QueueName: !Sub ${StackPrefix}-metering-work
+      SqsManagedSseEnabled: true
+      VisibilityTimeout: 360 # >= 6x aggregator Timeout (60s) per SQS ESM guidance
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt MeteringWorkDLQ.Arn
+        maxReceiveCount: 5
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  MeteringWorkDLQ:
+    Type: AWS::SQS::Queue
+    Condition: IsFullPipeline
+    Properties:
+      QueueName: !Sub ${StackPrefix}-metering-work-dlq
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600 # 14 days
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  # Dedicated deprovision-work queue (flush-deprovisioning sweep -> aggregator). Separate from
+  # the regular work queue so a deprovisioning backlog is isolated from — and never queued
+  # behind — the regular hourly backlog; feeds the SAME aggregator function via its own ESM.
+  DeprovisionWorkQueue:
+    Type: AWS::SQS::Queue
+    Condition: IsFullPipeline
+    Properties:
+      QueueName: !Sub ${StackPrefix}-deprovision-work
+      SqsManagedSseEnabled: true
+      VisibilityTimeout: 360 # >= 6x aggregator Timeout (60s) per SQS ESM guidance
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeprovisionWorkDLQ.Arn
+        maxReceiveCount: 5
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  DeprovisionWorkDLQ:
+    Type: AWS::SQS::Queue
+    Condition: IsFullPipeline
+    Properties:
+      QueueName: !Sub ${StackPrefix}-deprovision-work-dlq
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600 # 14 days
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  # Cleanup queue (aggregator -> cleanup): each message carries <=100 raw row keys whose
+  # meteringPending must be cleared on the raw usage table.
+  MeteringCleanupQueue:
+    Type: AWS::SQS::Queue
+    Condition: IsFullPipeline
+    Properties:
+      QueueName: !Sub ${StackPrefix}-metering-cleanup
+      SqsManagedSseEnabled: true
+      VisibilityTimeout: 720  # >= 6x cleanup Timeout (120s) per SQS ESM guidance
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt MeteringCleanupDLQ.Arn
+        maxReceiveCount: 5
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  MeteringCleanupDLQ:
+    Type: AWS::SQS::Queue
+    Condition: IsFullPipeline
+    Properties:
+      QueueName: !Sub ${StackPrefix}-metering-cleanup-dlq
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  RegistrationApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub ${StackPrefix}-registration-api
+      StageName: !Ref StageName
+      Auth:
+        DefaultAuthorizer: NONE
+      # API Gateway access logging: all requests to the public registration
+      # endpoint are auditable. Log group is KMS-encrypted + retention-bounded below.
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
+      MethodSettings:
+        - HttpMethod: '*'
+          ResourcePath: '/*'
+          ThrottlingBurstLimit: 10
+          ThrottlingRateLimit: 5
+      Tags:
+        ManagedBy: marketplace-metering-skill
+
+  # Access log group for the registration API: explicit, KMS-encrypted,
+  # retention-bounded — not an auto-created, unencrypted, never-expiring default.
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/${StackPrefix}-registration-api/access
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # WAF for the unauthenticated registration endpoint (DefaultAuthorizer: NONE — Marketplace
+  # POSTs the token unauthenticated). By default the stack CREATES a baseline REGIONAL WebACL
+  # (rate-based + AWS common-exploit managed rules) and attaches it to the stage, so the public
+  # endpoint is protected out of the box. A seller-supplied WebAclArn overrides the baseline.
+  BaselineWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Condition: UseBaselineWebAcl
+    Properties:
+      Name: !Sub ${StackPrefix}-registration-waf
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub ${StackPrefix}-registration-waf
+      Rules:
+        - Name: RateLimit
+          Priority: 0
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: 2000
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub ${StackPrefix}-registration-waf-ratelimit
+        - Name: CommonRuleSet
+          Priority: 1
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub ${StackPrefix}-registration-waf-common
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  # Attach the baseline WebACL (created above) when no seller override is provided.
+  RegistrationApiWafAssociationBaseline:
+    Type: AWS::WAFv2::WebACLAssociation
+    Condition: UseBaselineWebAcl
+    # depend on the SAM-generated stage, else the association may run before the
+    # stage exists and WAF returns NotFound (the !Sub only implies a dep on the RestApi).
+    DependsOn: RegistrationApiStage
+    Properties:
+      ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${RegistrationApi}/stages/${StageName}
+      WebACLArn: !GetAtt BaselineWebAcl.Arn
+
+  # Attach the seller-supplied WebACL instead, when WebAclArn is provided.
+  RegistrationApiWafAssociationProvided:
+    Type: AWS::WAFv2::WebACLAssociation
+    Condition: HasWebAcl
+    DependsOn: RegistrationApiStage
+    Properties:
+      ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${RegistrationApi}/stages/${StageName}
+      WebACLArn: !Ref WebAclArn
+
+  RegisterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-register
+      Handler: handlers/register.handler
+      CodeUri: src/
+      MemorySize: 128
+      Environment:
+        Variables:
+          # Registration input allowlist. The Globals block already sets
+          # PRODUCT_CODE / SUBSCRIBERS_TABLE / SUBSCRIBERS_TABLE_REGION.
+          ALLOWED_REGISTRATION_FIELDS: !Ref AllowedRegistrationFields
+          # In-region customer-profile table where buyer PII (registrationData map +
+          # any promoted top-level fields) is stored — NOT the us-east-1 subscribers table.
+          CUSTOMER_PROFILE_TABLE: !Ref CustomerProfileTable
+          # Comma-separated subset of ALLOWED_REGISTRATION_FIELDS the seller promoted to
+          # top-level attributes (for the GSIs defined on the customer-profile table).
+          PROMOTED_PROFILE_FIELDS: !Ref PromotedProfileFields
+      Policies:
+        - Statement:
+            # Buyer PII (registrationData + promoted fields) goes to the IN-REGION
+            # customer-profile table only.
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt CustomerProfileTable.Arn
+                - !Sub ${CustomerProfileTable.Arn}/index/*
+        - Statement:
+            # us-east-1 subscribers table: PII-FREE. The register Lambda only reads the row
+            # (idempotent registeredRegions check) and appends its Region — no PII write.
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource:
+                - !Sub arn:aws:dynamodb:us-east-1:${AWS::AccountId}:table/${SubscribersTableName}
+                # Query the customerAWSAccountId GSI to find the subscriber row
+                # (Query, not a full-table Scan). No dynamodb:Scan is granted.
+                - !Sub arn:aws:dynamodb:us-east-1:${AWS::AccountId}:table/${SubscribersTableName}/index/customerAWSAccountId-index
+        - Statement:
+            - Effect: Allow
+              Action: aws-marketplace:ResolveCustomer
+              # Resource '*' required — ResolveCustomer does not support resource-level ARNs.
+              Resource: '*'
+      Tags:
+        ManagedBy: marketplace-metering-skill
+      Events:
+        PostRegistration:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RegistrationApi
+            Path: /register
+            Method: POST
+
+  RegisterLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-register
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # ── Decoupled metering pipeline ────────────────────────────────────────
+  # Replaces the single hourly meter Lambda. Discoverer (30 invocations via 6 rules x 5
+  # targets) -> work queue -> Aggregator (parallel) -> aggregated_usage + cleanup queue;
+  # Cleanup clears raw-row meteringPending; Submitter (reserved=1, scheduled) reads
+  # aggregated_usage and calls BatchMeterUsage.
+
+  # Discoverer: one function, ReservedConcurrentExecutions=30. Each invocation owns one
+  # slice via its constant EventBridge target Input ({mode:meter,hourOffset} or
+  # {mode:ageout,shard}). Reads the metering_pending GSI and enqueues one work message per
+  # pending group; age-out invocations expire >24h rows directly.
+  DiscovererFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsFullPipeline
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-discoverer
+      Handler: handlers/discoverer.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 300
+      ReservedConcurrentExecutions: 30
+      Environment:
+        Variables:
+          WORK_QUEUE_URL: !Ref MeteringWorkQueue
+          DEPROVISION_WORK_QUEUE_URL: !Ref DeprovisionWorkQueue
+          METERING_LOCK_HOURS: !Ref MeteringLockHours
+          USAGE_TABLE: !Ref UsageTable
+          METRIC_NAMESPACE: AwsMarketplace/Metering
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                # Discovery queries the metering_pending GSI (and the base table).
+                - !GetAtt UsageTable.Arn
+                - !Sub ${UsageTable.Arn}/index/metering_pending
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem # age-out terminal update on raw rows
+              Resource:
+                # Writes authorize against the table ARN only, never an index ARN.
+                - !GetAtt UsageTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                # flush-deprovisioning sweep queries the sparse deprovisioning index on the
+                # (us-east-1) subscribers table to find licenses in their ~1h flush window.
+                # Query, not Scan.
+                - !Sub arn:aws:dynamodb:us-east-1:${AWS::AccountId}:table/${SubscribersTableName}/index/deprovisioning-pending-index
+        - Statement:
+            - Effect: Allow
+              Action: sqs:SendMessage
+              Resource:
+                - !GetAtt MeteringWorkQueue.Arn
+                - !GetAtt DeprovisionWorkQueue.Arn
+      Tags:
+        ManagedBy: marketplace-metering-skill
+
+  DiscovererLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: IsFullPipeline
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-discoverer
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # Permission for EventBridge rules to invoke the discoverer.
+  DiscovererInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: IsFullPipeline
+    Properties:
+      FunctionName: !Ref DiscovererFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${StackPrefix}-meter-dispatch-*
+
+  # Aggregator: SQS-triggered (work queue). Reads one group, folds + validates, rejects
+  # client-side OR conditional-PutItem into aggregated_usage, then enqueues cleanup.
+  AggregatorFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsFullPipeline
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-aggregator
+      Handler: handlers/aggregator.handler
+      CodeUri: src/
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          CLEANUP_QUEUE_URL: !Ref MeteringCleanupQueue
+          USAGE_TABLE: !Ref UsageTable
+          METRIC_NAMESPACE: AwsMarketplace/Metering
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem # client-side reject writes terminal status on raw rows
+              Resource:
+                # Base table only: the aggregator reads a group via a base-table
+                # begins_with Query (never the metering_pending GSI — that's the
+                # discoverer's), and UpdateItem authorizes against the table ARN, not an
+                # index ARN.
+                - !GetAtt UsageTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem # conditional put (commit point)
+              Resource:
+                - !GetAtt AggregatedUsageTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: sqs:SendMessage
+              Resource: !GetAtt MeteringCleanupQueue.Arn
+      Tags:
+        ManagedBy: marketplace-metering-skill
+      Events:
+        WorkQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MeteringWorkQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+            ScalingConfig:
+              # Option A ( decision 1): cap fan-out so downstream stays within limits.
+              MaximumConcurrency: 50
+        DeprovisionWorkQueue:
+          Type: SQS
+          Properties:
+            # Dedicated deprovisioning flush queue — SAME aggregator function, isolated ESM so
+            # a deprovisioning backlog drains independently of the regular work backlog.
+            Queue: !GetAtt DeprovisionWorkQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+            ScalingConfig:
+              MaximumConcurrency: 50
+
+  AggregatorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: IsFullPipeline
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-aggregator
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # Cleanup: SQS-triggered (cleanup queue). Finalizes raw usage rows: clears
+  # meteringPending and stamps meteringStatus=Aggregated + "Aggregated total quantity <sum>"
+  # (per-key UpdateItem; DynamoDB BatchWriteItem cannot partially update an attribute).
+  CleanupFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsFullPipeline
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-cleanup
+      Handler: handlers/cleanup.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 120
+      Environment:
+        Variables:
+          # Bounded thread-pool size for parallel per-key UpdateItem REMOVE; guards
+          # the ~1000 WCU/sec per-partition limit (all rows share the licenseArn partition).
+          CLEANUP_MAX_WORKERS: '10'
+          USAGE_TABLE: !Ref UsageTable
+          METRIC_NAMESPACE: AwsMarketplace/Metering
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt UsageTable.Arn
+      Tags:
+        ManagedBy: marketplace-metering-skill
+      Events:
+        CleanupQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MeteringCleanupQueue.Arn
+            BatchSize: 10
+            # Drain as fast as the DynamoDB hot-partition limit allows (the real bound, NOT
+            # SQS): pick messages up immediately (no batching wait) and raise the concurrency
+            # cap. The global instantaneous writer count is still MaximumConcurrency ×
+            # CLEANUP_MAX_WORKERS; keep it under the ~1000 WCU/s per-licenseArn-partition
+            # limit. 10 × 10 = 100 concurrent surgical UpdateItems, which drains the queue
+            # quickly while a per-invocation backoff absorbs any transient throttling.
+            MaximumBatchingWindowInSeconds: 0
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+            ScalingConfig:
+              # Bound GLOBAL cleanup concurrency, not just the per-invocation thread pool.
+              # All rows of a group share the licenseArn partition (~1000 WCU/s); a hot
+              # license fans out into up to ~36 cleanup messages, so without this cap many
+              # invocations (each with CLEANUP_MAX_WORKERS threads) could hammer one
+              # partition. Global writers ≈ MaximumConcurrency × CLEANUP_MAX_WORKERS.
+              MaximumConcurrency: 10
+
+  CleanupLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: IsFullPipeline
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-cleanup
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # Submitter: EventBridge-scheduled, ReservedConcurrentExecutions=1 (single serial
+  # submitter — safe vs. the BatchMeterUsage rate limit). Reads aggregated_usage pending,
+  # coalesces <=25 -> BatchMeterUsage, writes back to aggregated_usage.
+  SubmitterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-submitter
+      Handler: handlers/submitter.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 300
+      ReservedConcurrentExecutions: 1
+      Environment:
+        Variables:
+          # >0 => set a `ttl` epoch on finalized Success rows (AggregatedUsageTableTtlDays);
+          # 0 => never set ttl (table has no TTL spec, so this is a no-op anyway).
+          AGGREGATED_USAGE_TTL_DAYS: !Ref AggregatedUsageTableTtlDays
+          METRIC_NAMESPACE: AwsMarketplace/Metering
+          # live => real BatchMeterUsage; dry-run => full pipeline but NO real submit
+          # (writes DryRunSubmitted). Non-prod sandbox stages set dry-run.
+          METERING_MODE: !Ref MeteringMode
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                # Query the sparse deprovisioning index to prioritize deprovisioning-license
+                # records first (submitter no longer finalizes subscribers — that moved to the
+                # events-stack deprovision-cleanup Lambda). Query, not Scan; index only.
+                - dynamodb:Query
+              Resource:
+                - !Sub arn:aws:dynamodb:us-east-1:${AWS::AccountId}:table/${SubscribersTableName}/index/deprovisioning-pending-index
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt AggregatedUsageTable.Arn
+                - !Sub ${AggregatedUsageTable.Arn}/index/metering_pending
+        - Statement:
+            - Effect: Allow
+              Action: aws-marketplace:BatchMeterUsage
+              # Resource '*' required — BatchMeterUsage does not support resource-level ARNs.
+              Resource: '*'
+      Tags:
+        ManagedBy: marketplace-metering-skill
+      # NOTE: no SAM Schedule event here — the submitter is a target of the shared
+      # SubmitDispatchRule below (same rate(5 minutes) rule that also fires the expiry
+      # Lambda), so the two run independently off ONE rule.
+
+  SubmitterLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-submitter
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # Submission-expiry: scheduled (shared rule below), reserved=1. Sweeps aggregated_usage and
+  # terminally expires pending records past the 24h submittable window (and, once the
+  # month-end grace closes at 06:00 UTC on the 1st, previous-month records) — so a record
+  # the submitter never drained is never left pending forever, and the loss is alarmed via
+  # the UsageSubmissionExpired metric (distinct from the raw table's UsageAggregationExpired
+  # age-out). aggregated_usage only; the raw table's age-out is the discoverer's ageout shards.
+  SubmissionExpiryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-submission-expiry
+      Handler: handlers/expiry.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 300
+      ReservedConcurrentExecutions: 1
+      Environment:
+        Variables:
+          METRIC_NAMESPACE: AwsMarketplace/Metering
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                - !GetAtt AggregatedUsageTable.Arn
+                - !Sub ${AggregatedUsageTable.Arn}/index/metering_pending
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem   # terminal SubmissionExpired write; table ARN only
+              Resource:
+                - !GetAtt AggregatedUsageTable.Arn
+      Tags:
+        ManagedBy: marketplace-metering-skill
+
+  SubmissionExpiryLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-submission-expiry
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # One rate(5 minutes) rule fires BOTH the submitter and the submission-expiry Lambda
+  # (independent targets, each reserved=1). Submitter drains the now-23h..now-1h window
+  # oldest-first; expiry sweeps aggregated_usage for records past the window.
+  SubmitDispatchRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${StackPrefix}-submit-dispatch
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Id: submitter
+          Arn: !GetAtt SubmitterFunction.Arn
+        - Id: expiry
+          Arn: !GetAtt SubmissionExpiryFunction.Arn
+
+  SubmitterInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SubmitterFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SubmitDispatchRule.Arn
+
+  SubmissionExpiryInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SubmissionExpiryFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SubmitDispatchRule.Arn
+
+  # Expedited deprovisioning flush: a rate(5m) rule invokes the EXISTING discoverer
+  # in flush-deprovisioning mode. It queries the sparse deprovisioning-pending-index and
+  # enqueues each deprovisioning license's now-23h..now-1h pending groups to the work queue,
+  # BYPASSING MeteringLockHours so the ~1h flush window is met. This is ADDITIVE and
+  # independent of the ordinary hourly meter/ageout rules (which are unchanged).
+  FlushDeprovisioningRule:
+    Type: AWS::Events::Rule
+    Condition: IsFullPipeline
+    Properties:
+      Name: !Sub ${StackPrefix}-flush-deprovisioning
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Id: discoverer-flush-deprovisioning
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"flush-deprovisioning"}'
+
+  FlushDeprovisioningInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: IsFullPipeline
+    Properties:
+      FunctionName: !Ref DiscovererFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt FlushDeprovisioningRule.Arn
+
+  # ── Discoverer schedule: 6 rules x 5 constant-Input targets = 30 invocations ──────
+  # 23 meter-hour offsets + 7 age-out shards. Slice identity is baked into each target's
+  # Input (single source of truth); the discoverer derives the hour as floor(now,h)-offset,
+  # so buckets are disjoint and gap-free. EventBridge caps a rule at 5 targets, so
+  # 30 invocations require 6 rules.
+  MeterDispatchRule1:
+    Type: AWS::Events::Rule
+    Condition: IsFullPipeline
+    Properties:
+      Name: !Sub ${StackPrefix}-meter-dispatch-1
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: h1
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":1}'
+        - Id: h2
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":2}'
+        - Id: h3
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":3}'
+        - Id: h4
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":4}'
+        - Id: h5
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":5}'
+
+  MeterDispatchRule2:
+    Type: AWS::Events::Rule
+    Condition: IsFullPipeline
+    Properties:
+      Name: !Sub ${StackPrefix}-meter-dispatch-2
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: h6
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":6}'
+        - Id: h7
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":7}'
+        - Id: h8
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":8}'
+        - Id: h9
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":9}'
+        - Id: h10
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":10}'
+
+  MeterDispatchRule3:
+    Type: AWS::Events::Rule
+    Condition: IsFullPipeline
+    Properties:
+      Name: !Sub ${StackPrefix}-meter-dispatch-3
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: h11
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":11}'
+        - Id: h12
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":12}'
+        - Id: h13
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":13}'
+        - Id: h14
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":14}'
+        - Id: h15
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":15}'
+
+  MeterDispatchRule4:
+    Type: AWS::Events::Rule
+    Condition: IsFullPipeline
+    Properties:
+      Name: !Sub ${StackPrefix}-meter-dispatch-4
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: h16
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":16}'
+        - Id: h17
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":17}'
+        - Id: h18
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":18}'
+        - Id: h19
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":19}'
+        - Id: h20
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":20}'
+
+  MeterDispatchRule5:
+    Type: AWS::Events::Rule
+    Condition: IsFullPipeline
+    Properties:
+      Name: !Sub ${StackPrefix}-meter-dispatch-5
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: h21
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":21}'
+        - Id: h22
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":22}'
+        - Id: h23
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"meter","hourOffset":23}'
+        - Id: a0
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"ageout","shard":0}'
+        - Id: a1
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"ageout","shard":1}'
+
+  MeterDispatchRule6:
+    Type: AWS::Events::Rule
+    Condition: IsFullPipeline
+    Properties:
+      Name: !Sub ${StackPrefix}-meter-dispatch-6
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: a2
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"ageout","shard":2}'
+        - Id: a3
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"ageout","shard":3}'
+        - Id: a4
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"ageout","shard":4}'
+        - Id: a5
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"ageout","shard":5}'
+        - Id: a6
+          Arn: !GetAtt DiscovererFunction.Arn
+          Input: '{"mode":"ageout","shard":6}'
+
+  # ── Monitoring & Alarms (created in the SELLER's account) ─────────────────────────
+  # These alarms cover the minimum revenue-loss signals. Alarms are ALWAYS created; each
+  # alarm's AlarmActions wire to an OPTIONAL seller-supplied in-region SNS topic
+  # (AlertsTopicArn) so observability does not depend on pre-supplying a topic.
+  #
+  # Handling alarms and acting on failures is the SELLER's responsibility — AWS
+  # Marketplace and this skill do NOT track or act on client-side (seller-account)
+  # errors. TODO(seller): supply AlertsTopicArn (an in-region SNS topic) and set your own
+  # thresholds/actions; neither the deployer role nor any Lambda publishes to the topic
+  # (CloudWatch fires the action). Business-status metrics are emitted via EMF from the
+  # meter Lambda logs (below) to avoid extra runtime IAM.
+
+  # 1) Pipeline Lambda Errors — the discoverer, submitter, and expiry RAISE on failure, so
+  # their Lambda Errors metric increments and this alarm fires. NOTE: the aggregator and
+  # cleanup use ReportBatchItemFailures, so a per-message failure does NOT increment their
+  # Errors metric (only a top-level config error would) — their real failure signal is the
+  # work/cleanup DLQ-depth + work-queue-backlog alarms below. This metric-math alarm sums
+  # the raising functions' Errors.
+  MeteringErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-meter-errors
+      AlarmDescription: Metering pipeline Lambda errors (discoverer/submitter/expiry raise; aggregator/cleanup via DLQ alarms) - potential revenue loss
+      Metrics:
+        - Id: e1
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref DiscovererFunction
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: e2
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref AggregatorFunction
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: e3
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref SubmitterFunction
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: e4
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref SubmissionExpiryFunction
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: total
+          Expression: e1 + e2 + e3 + e4
+          Label: PipelineErrors
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # Direct-submit mode: only the submitter + submission-expiry exist, so the Errors alarm
+  # covers just those two.
+  MeteringErrorAlarmDirect:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsDirectSubmit
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-meter-errors
+      AlarmDescription: Metering Lambda errors (submitter/submission-expiry) - potential revenue loss
+      Metrics:
+        - Id: e3
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref SubmitterFunction
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: e4
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref SubmissionExpiryFunction
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: total
+          Expression: e3 + e4
+          Label: PipelineErrors
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 2) Submitter Throttles — the submitter is reserved=1 (safe vs. BatchMeterUsage rate
+  # limit); throttling here means aggregated usage is not being submitted promptly.
+  MeteringThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-meter-throttles
+      AlarmDescription: Submitter throttled - aggregated usage may not be submitted in time
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SubmitterFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3) "Submitter did not run" — the submitter runs on a schedule; if it stops being
+  # invoked (a silent scheduler failure emits no error) aggregated usage silently stops
+  # being submitted. Missing data is treated as BREACHING so a total stall is caught.
+  MeteringDidNotRunAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-meter-not-run
+      AlarmDescription: Submitter has not run recently - aggregated usage is not being submitted
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SubmitterFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3-disc) "Discoverer did not run" — CRITICAL: the 6 EventBridge dispatch rules drive the
+  # discoverer, which is the ONLY thing that enqueues work AND the ONLY thing that ages
+  # out >24h usage. If the rules stop firing (disabled, PutTargets regression, permission
+  # removed) NOTHING is enqueued and NOTHING ages out — yet the submitter keeps running
+  # on an empty aggregated_usage, so every other alarm stays green. Without this alarm a
+  # total metering stall is SILENT. 30 invocations/hour are expected; alarm if fewer than
+  # 1 in a 2h window. Missing data is BREACHING so a full stop is caught.
+  DiscovererDidNotRunAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-discoverer-not-run
+      AlarmDescription: Discoverer has not run recently - usage is neither being metered nor aged out (silent stall)
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref DiscovererFunction
+      Statistic: Sum
+      Period: 7200
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3a) Work DLQ depth — a message that fails the aggregator maxReceiveCount times lands
+  # here; it represents a group that could not be aggregated (investigate + redrive).
+  WorkDLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-work-dlq-depth
+      AlarmDescription: Metering work DLQ has messages - groups failed aggregation
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt MeteringWorkDLQ.QueueName
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3a-ii) Deprovision-work DLQ depth — a deprovisioning-flush group that failed aggregation
+  # maxReceiveCount times. Higher urgency than the regular work DLQ: these are licenses in
+  # their ~1h flush window, so a stuck message risks missing the window (lost revenue).
+  DeprovisionWorkDLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-deprovision-work-dlq-depth
+      AlarmDescription: Deprovision-work DLQ has messages - a deprovisioning flush failed aggregation (risks missing the ~1h window)
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeprovisionWorkDLQ.QueueName
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3b) Cleanup DLQ depth — a cleanup message that fails maxReceiveCount times lands here;
+  # raw-row meteringPending was not cleared (rows re-discovered next hour, but the
+  # aggregator's conditional put no-ops, so this is a health signal, not revenue loss).
+  CleanupDLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-cleanup-dlq-depth
+      AlarmDescription: Metering cleanup DLQ has messages - raw-row meteringPending not cleared
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt MeteringCleanupDLQ.QueueName
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3c) Work queue oldest-message age — a STUCK aggregator (event source mapping disabled,
+  # account-level concurrency starvation, or persistent aggregator throttling) leaves
+  # messages sitting in the WORK queue (not the DLQ) and aging. Waiting for them to hit
+  # maxReceiveCount and DLQ would delay detection; this catches the backlog directly.
+  # Threshold 3h (10800s) tolerates the MeteringLockHours delay + normal drain.
+  WorkQueueBacklogAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-work-queue-backlog
+      AlarmDescription: Work queue messages aging - aggregator may be stuck (usage not being aggregated)
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt MeteringWorkQueue.QueueName
+      Statistic: Maximum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 10800
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # Deprovision-work queue oldest-message-age. Higher urgency than the regular work queue:
+  # a stuck message risks missing the ~1h flush window (CustomerNotSubscribed = lost revenue).
+  # A DLQ-depth signal alone fires too late (maxReceiveCount 5 x VisibilityTimeout 360s ~= 30
+  # min already consumes half the window), so alarm on age at 15 min — well under the ~1h
+  # window — to catch a stalled aggregator ESM before the window closes.
+  DeprovisionWorkQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-deprovision-work-queue-age
+      AlarmDescription: Deprovision-work queue messages aging - a deprovisioning flush is stalled and risks missing the ~1h window
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeprovisionWorkQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 900
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3d) Aggregator throttles — the aggregator has no reserved concurrency (only an ESM
+  # MaximumConcurrency cap), so account-level concurrency pressure can throttle it,
+  # stalling aggregation. Caught here directly rather than only via the eventual DLQ.
+  AggregatorThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-aggregator-throttles
+      AlarmDescription: Aggregator throttled - usage may not be aggregated in time
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AggregatorFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3e) CustomerNotSubscribed — a TERMINAL per-record BatchMeterUsage status (NOT retried,
+  # so it never raises a Lambda error). A spike means real usage is being dropped
+  # (mass cancellation window, or a bug submitting for inactive licenses) — revenue
+  # loss that would otherwise be SILENT. EMF metric emitted by the submitter.
+  CustomerNotSubscribedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-customer-not-subscribed
+      AlarmDescription: BatchMeterUsage returned CustomerNotSubscribed - usage dropped for inactive/expired licenses
+      Namespace: AwsMarketplace/Metering
+      MetricName: CustomerNotSubscribed
+      Dimensions:
+        - Name: ProductCode
+          Value: !Ref ProductCode
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 3f) BatchMeterUsageException — a REQUEST-level BatchMeterUsage exception
+  # (InvalidUsageDimensionException, TimestampOutOfBoundsException, InvalidTagException,
+  # InvalidProductCodeException, InvalidLicenseException, InvalidUsageAllocationsException, ...) that does NOT raise a Lambda error. The submitter isolates the
+  # offending record (bisect) and, when it stamps that record's real terminal status, emits this
+  # metric dimensioned by [Exception, ProductCode]. Any of these means usage was NOT billed
+  # (mis-config / bad input) — silent revenue loss without this alarm. The alarm sums across all
+  # exception types via a Metrics Insights expression (the per-exception breakdown is on the
+  # dashboard "BatchMeterUsage exceptions by type" widget).
+  BatchMeterUsageExceptionAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-batchmeterusage-exception
+      AlarmDescription: BatchMeterUsage returned a request-level exception (dimension/timestamp/tag/product-code/license) - usage not billed
+      Metrics:
+        - Id: e1
+          Expression: !Sub "SELECT SUM(BatchMeterUsageException) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}'"
+          Label: BatchMeterUsageException (all types)
+          ReturnData: true
+          Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 4a) Raw usage aged out BEFORE aggregation (>24h) — a raw row the discoverer aged out
+  # because it was never rolled into an aggregated record. The discoverer emits the EMF
+  # `UsageAggregationExpired` metric (namespace AwsMarketplace/Metering, dimension
+  # ProductCode), CloudWatch auto-publishes it (no MetricFilter — that would double-ingest),
+  # and this alarm watches it. Distinct from 4b so an operator sees WHICH stage lost revenue.
+  UsageAggregationExpiredAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-usage-aggregation-expired
+      AlarmDescription: Raw usage aged out past 24h before it was aggregated (lost before aggregation)
+      Namespace: AwsMarketplace/Metering
+      MetricName: UsageAggregationExpired
+      Dimensions:
+        - Name: ProductCode
+          Value: !Ref ProductCode
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 4b) Aggregated record expired BEFORE submission — a record that WAS aggregated but the
+  # submitter never drained before the 24h window (or the month-end grace) closed. The
+  # submission-expiry Lambda emits the EMF `UsageSubmissionExpired` metric. Distinct from 4a.
+  UsageSubmissionExpiredAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-usage-submission-expired
+      AlarmDescription: Aggregated record aged out before submission (aggregated but never billed)
+      Namespace: AwsMarketplace/Metering
+      MetricName: UsageSubmissionExpired
+      Dimensions:
+        - Name: ProductCode
+          Value: !Ref ProductCode
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # 5) Client-side rejections — usage rejected before submit for a specific,
+  # correctable reason (bad quantity/dimension/timestamp/identifier/allocation). The
+  # meter Lambda emits the EMF `UsageRecordRejected` metric on the [ProductCode]
+  # dimension (this alarm) AND on [Reason, ProductCode] so the seller can slice by
+  # reason, then fix at their source and resubmit (the row was never sent, so it is
+  # still meterable within 24h). Seller-owned action, like the other alarms.
+  UsageRecordRejectedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsFullPipeline
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-usage-rejected
+      AlarmDescription: Usage rejected client-side before metering - seller must fix the source rows and resubmit
+      # UsageRecordRejected is emitted on a single [Reason, MeteringMode, ProductCode] dimension set
+      # (no bare [ProductCode] series — that would resurface an "Other" bucket on the by-Reason
+      # widget and, if also emitted, double-count it). Sum across all reasons via Metrics Insights
+      # so the alarm still fires regardless of which reason codes are present (the per-reason
+      # breakdown is on the "Client-side rejections by reason" dashboard widget).
+      Metrics:
+        - Id: e1
+          Expression: !Sub "SELECT SUM(UsageRecordRejected) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}'"
+          Label: UsageRecordRejected (all reasons)
+          ReturnData: true
+          Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  UsageRecordUnprocessedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-usage-unprocessed
+      AlarmDescription: >-
+        BatchMeterUsage returned UnprocessedRecords that were STILL unprocessed after the
+        submitter's one automatic retry. These records were NOT metered on this run; they are
+        left pending and retried on the next submitter cycle. A persistent (repeating) breach
+        means records are being rejected/failing to meter and need investigation (throttling,
+        timestamp bounds, or a downstream issue) - the seller may lose revenue if it does not clear.
+      # UsageRecordUnprocessed is emitted on the bare [ProductCode] dimension (count of
+      # still-unprocessed records after the single retry). Sum across the product via Metrics
+      # Insights so the alarm is robust regardless of dimension presence, consistent with the
+      # UsageRecordRejected alarm above. The submitter does NOT raise on this (it returns and
+      # leaves the records pending), so this metric is the ONLY alarm-able signal for it -
+      # it does not trip the Lambda Errors alarm.
+      Metrics:
+        - Id: e1
+          Expression: !Sub "SELECT SUM(UsageRecordUnprocessed) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}'"
+          Label: UsageRecordUnprocessed (still unprocessed after retry)
+          ReturnData: true
+          Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # ── Health dashboard (per-product; ) ─────────────────────────────────────
+  # Complete pipeline visibility in ONE place so an operator sees health without drilling
+  # into individual alarms. HEALTH-only (no business metrics). Created by default; set
+  # CreateDashboard=false to skip, or delete/customize after deploy.
+  MeteringHealthDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Condition: CreateFullDashboard
+    Properties:
+      # Dashboard names are account-global (NOT scoped per region), so the same
+      # per-product StackPrefix deployed to two Regions would collide. Keep the
+      # Region in the name to make it unique per Region.
+      DashboardName: !Sub ${StackPrefix}-metering-health-${AWS::Region}
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text", "x": 0, "y": 0, "width": 24, "height": 1,
+              "properties": {"markdown": "# Metering pipeline health — ${StackPrefix} (product ${ProductCode})"}
+            },
+            {
+              "type": "metric", "x": 0, "y": 1, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda Errors (all stages)",
+                "region": "${AWS::Region}", "stat": "Sum", "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Errors", "FunctionName", "${DiscovererFunction}", {"label": "discoverer"}],
+                  ["...", "${AggregatorFunction}", {"label": "aggregator"}],
+                  ["...", "${CleanupFunction}", {"label": "cleanup"}],
+                  ["...", "${SubmitterFunction}", {"label": "submitter"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 1, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda Throttles (all stages)",
+                "region": "${AWS::Region}", "stat": "Sum", "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Throttles", "FunctionName", "${DiscovererFunction}", {"label": "discoverer"}],
+                  ["...", "${AggregatorFunction}", {"label": "aggregator"}],
+                  ["...", "${CleanupFunction}", {"label": "cleanup"}],
+                  ["...", "${SubmitterFunction}", {"label": "submitter"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 7, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda Invocations (all stages)",
+                "region": "${AWS::Region}", "stat": "Sum", "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${DiscovererFunction}", {"label": "discoverer"}],
+                  ["...", "${AggregatorFunction}", {"label": "aggregator"}],
+                  ["...", "${CleanupFunction}", {"label": "cleanup"}],
+                  ["...", "${SubmitterFunction}", {"label": "submitter"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 7, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda Duration p95 (ms)",
+                "region": "${AWS::Region}", "stat": "p95", "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${DiscovererFunction}", {"label": "discoverer"}],
+                  ["...", "${AggregatorFunction}", {"label": "aggregator"}],
+                  ["...", "${CleanupFunction}", {"label": "cleanup"}],
+                  ["...", "${SubmitterFunction}", {"label": "submitter"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 13, "width": 12, "height": 6,
+              "properties": {
+                "title": "Queue depth (visible messages)",
+                "region": "${AWS::Region}", "stat": "Maximum", "period": 300,
+                "metrics": [
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${MeteringWorkQueue.QueueName}", {"label": "work"}],
+                  ["...", "${DeprovisionWorkQueue.QueueName}", {"label": "deprovision-work"}],
+                  ["...", "${MeteringCleanupQueue.QueueName}", {"label": "cleanup"}],
+                  ["...", "${MeteringWorkDLQ.QueueName}", {"label": "work-DLQ"}],
+                  ["...", "${DeprovisionWorkDLQ.QueueName}", {"label": "deprovision-work-DLQ"}],
+                  ["...", "${MeteringCleanupDLQ.QueueName}", {"label": "cleanup-DLQ"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 13, "width": 12, "height": 6,
+              "properties": {
+                "title": "Work queue oldest-message age (s)",
+                "region": "${AWS::Region}", "stat": "Maximum", "period": 300,
+                "metrics": [
+                  ["AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", "${MeteringWorkQueue.QueueName}", {"label": "work"}],
+                  ["...", "${DeprovisionWorkQueue.QueueName}", {"label": "deprovision-work"}],
+                  ["...", "${MeteringCleanupQueue.QueueName}", {"label": "cleanup"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 19, "width": 12, "height": 6,
+              "properties": {
+                "title": "Client-side rejections by reason (UsageRecordRejected)",
+                "region": "${AWS::Region}", "period": 3600, "view": "timeSeries",
+                "metrics": [
+                  [ { "expression": "SELECT SUM(UsageRecordRejected) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}' GROUP BY Reason ORDER BY SUM() DESC", "label": "by reason", "id": "q1", "period": 3600 } ]
+                ],
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 19, "width": 12, "height": 6,
+              "properties": {
+                "title": "Terminal statuses (submit outcomes + expiry by stage)",
+                "region": "${AWS::Region}", "stat": "Sum", "period": 3600,
+                "metrics": [
+                  ["AwsMarketplace/Metering", "CustomerNotSubscribed", "ProductCode", "${ProductCode}", {"label": "CustomerNotSubscribed"}],
+                  ["AwsMarketplace/Metering", "UsageAggregationExpired", "ProductCode", "${ProductCode}", {"label": "AggregationExpired (raw, never aggregated)"}],
+                  ["AwsMarketplace/Metering", "UsageSubmissionExpired", "ProductCode", "${ProductCode}", {"label": "SubmissionExpired (aggregated, never submitted)"}],
+                  ["AwsMarketplace/Metering", "DuplicateRecord", "ProductCode", "${ProductCode}", {"label": "DuplicateRecord"}],
+                  ["AwsMarketplace/Metering", "UsageRecordUnprocessed", "ProductCode", "${ProductCode}", {"label": "UnprocessedAfterRetry"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 25, "width": 12, "height": 6,
+              "properties": {
+                "title": "BatchMeterUsage exceptions by type (request-level, usage NOT billed)",
+                "region": "${AWS::Region}", "period": 3600, "view": "timeSeries",
+                "metrics": [
+                  [ { "expression": "SELECT SUM(BatchMeterUsageException) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}' GROUP BY Exception ORDER BY SUM() DESC", "label": "by exception", "id": "x1", "period": 3600 } ]
+                ],
+                "yAxis": {"left": {"min": 0}}
+              }
+            }
+          ]
+        }
+
+  # Direct-submit health dashboard: the seller writes finalized records straight to
+  # aggregated_usage, so only the submitter + submission-expiry exist. No discoverer/
+  # aggregator/cleanup, no work/cleanup queues, no aggregation-stage metrics.
+  MeteringHealthDashboardDirect:
+    Type: AWS::CloudWatch::Dashboard
+    Condition: CreateDirectDashboard
+    Properties:
+      # Account-global name; keep the Region so the same StackPrefix in another
+      # Region does not collide. (Full vs direct are mutually exclusive by
+      # Condition, so they intentionally share the same per-Region name.)
+      DashboardName: !Sub ${StackPrefix}-metering-health-${AWS::Region}
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric", "x": 0, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "title": "Submitter / submission-expiry Lambda health",
+                "region": "${AWS::Region}", "stat": "Sum", "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Errors", "FunctionName", "${SubmitterFunction}", {"label": "submitter errors"}],
+                  ["AWS/Lambda", "Throttles", "FunctionName", "${SubmitterFunction}", {"label": "submitter throttles"}],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${SubmitterFunction}", {"label": "submitter invocations"}],
+                  ["AWS/Lambda", "Errors", "FunctionName", "${SubmissionExpiryFunction}", {"label": "expiry errors"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "title": "Terminal statuses (submit outcomes + submission-expiry)",
+                "region": "${AWS::Region}", "stat": "Sum", "period": 3600,
+                "metrics": [
+                  ["AwsMarketplace/Metering", "CustomerNotSubscribed", "ProductCode", "${ProductCode}", {"label": "CustomerNotSubscribed"}],
+                  ["AwsMarketplace/Metering", "DuplicateRecord", "ProductCode", "${ProductCode}", {"label": "DuplicateRecord"}],
+                  ["AwsMarketplace/Metering", "UsageSubmissionExpired", "ProductCode", "${ProductCode}", {"label": "SubmissionExpired (never submitted)"}],
+                  ["AwsMarketplace/Metering", "UsageRecordUnprocessed", "ProductCode", "${ProductCode}", {"label": "UnprocessedAfterRetry"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "BatchMeterUsage exceptions by type (request-level, usage NOT billed)",
+                "region": "${AWS::Region}", "period": 3600, "view": "timeSeries",
+                "metrics": [
+                  [ { "expression": "SELECT SUM(BatchMeterUsageException) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}' GROUP BY Exception ORDER BY SUM() DESC", "label": "by exception", "id": "x1", "period": 3600 } ]
+                ],
+                "yAxis": {"left": {"min": 0}}
+              }
+            }
+          ]
+        }
+
+Outputs:
+  RegistrationUrl:
+    Description: Set this as your SaaS fulfillment URL in AWS Marketplace Management Portal
+    Value: !Sub https://${RegistrationApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/register
+  UsageTableName:
+    Condition: IsFullPipeline
+    Value: !Ref UsageTable
+  AggregatedUsageTableName:
+    Value: !Ref AggregatedUsageTable
+  DiscovererFunctionName:
+    Condition: IsFullPipeline
+    Value: !Ref DiscovererFunction
+  AggregatorFunctionName:
+    Condition: IsFullPipeline
+    Value: !Ref AggregatorFunction
+  CleanupFunctionName:
+    Condition: IsFullPipeline
+    Value: !Ref CleanupFunction
+  SubmitterFunctionName:
+    Value: !Ref SubmitterFunction
+  SubmissionExpiryFunctionName:
+    Value: !Ref SubmissionExpiryFunction
