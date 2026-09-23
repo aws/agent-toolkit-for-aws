@@ -126,9 +126,9 @@ Write `corpus/manifest.json` with counts, per-pillar question counts, provenance
 `mcp_fallback_traversal` / `https_fallback_traversal` / `internal_knowledge_disclosed`),
 and a validation verdict. The validator MUST confirm:
 
-- Every pillar discovered in the TOC top-level entries is represented, and each
-  discovered pillar carries at least one best practice (do not assert a fixed pillar
-  count — a newly added pillar must not fail this check).
+- Every pillar discovered among the Appendix node's direct children is represented, and
+  each discovered pillar carries at least one best practice (do not assert a fixed
+  pillar count — a newly added pillar must not fail this check).
 - Every BP ID matches canonical `PILLAR##-BP##`; BP IDs are unique after dedupe.
 - Question IDs are unique; every question has at least one BP.
 - Every BP refers to a discovered question and pillar.
@@ -169,6 +169,16 @@ If `toc-contents.json` is unavailable (HTTP/parse error) or yields no best pract
    distinguishes an interior gap from a real boundary. Each question page lists its
    `PILLAR##-BP##` IDs as text; derive `question_id` from the BP prefix (not the
    heading, which varies: `SEC 2.` vs `SUS 6`).
+
+   **Residual gap:** the lookahead window fixes boundary *detection* — it stops the
+   traversal from terminating early at the `sus-01` 404 — but it does not recover SUS
+   1's *content*. Because SUS 1 ships at an opaque generated slug rather than a
+   `sus-NN` URL, this stem-based iteration never fetches it, and step 3's relocation
+   search below is scoped to relocating a moved page, never to supplying BP IDs
+   directly. If this fallback path is used, record in `corpus/manifest.json` and the
+   coverage audit that SUS 1's best practices could not be retrieved via this path and
+   are Cannot Determine — do not let a fallback-completed run appear fully covered
+   when SUS 1 is actually missing.
 
    **The page suffix and missing-page signal are the same for both retrieval tools —
    use the `.md` form for both, never `.html`, for this fallback traversal** (verified

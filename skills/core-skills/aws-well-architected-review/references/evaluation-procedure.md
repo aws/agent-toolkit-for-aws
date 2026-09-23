@@ -92,22 +92,22 @@ Ledger row meaning by status: **Implemented** (workload demonstrates it, cite ev
 Before producing the final report, self-audit and iterate if coverage is incomplete:
 
 1. **Count** unique BP IDs evaluated (canonical `PILLAR##-BP##`), across all five statuses.
-2. **Compare against the target**, which is mode-dependent: full review targets the manifest's total BP count (`corpus/best-practices.jsonl` row count); pillar-scoped review targets the BP count filtered to the requested pillar(s), not the full 307; quick review targets the manifest's total question count (`corpus/questions.jsonl` row count), since quick mode assesses at question level only. Anything less than the applicable target is incomplete.
-3. **If below the manifest total, you MUST NOT proceed.** Compare your evaluated set against the manifest, evaluate each missing BP (fetch its `bp_url` if the title is not enough), and repeat the count.
-4. **Continue** until every BP in the manifest has an entry. A genuinely Not Applicable BP is marked Not Applicable with a one-line rationale — never silently skipped.
+2. **Compare against the target**, which is mode-dependent: full review targets the manifest's total BP count (`corpus/best-practices.jsonl` row count); pillar-scoped review targets the BP count filtered to the requested pillar(s), not the full manifest BP total; quick review targets the manifest's total question count (`corpus/questions.jsonl` row count), since quick mode assesses at question level only. Anything less than the applicable target is incomplete.
+3. **If below the applicable target from point 2, you MUST NOT proceed.** Compare your evaluated set against the manifest (or the question inventory, for quick mode), evaluate each missing BP or question (fetch its `bp_url` if the title is not enough), and repeat the count.
+4. **Continue** until every BP (or, for quick mode, every question) in the applicable target has an entry. A genuinely Not Applicable BP/question is marked Not Applicable with a one-line rationale — never silently skipped.
 
 **Audit output format** (include before the executive summary):
 
 ```
 ## Coverage audit
-- BPs evaluated: {count} / {manifest total}
+- BPs evaluated: {count} / {applicable target from point 2 — manifest BP total for full/pillar-scoped, manifest question total for quick}
 - Framework version source: live documentation via ACQUIRE_CORPUS
 - Corpus provenance: {URL and UTC retrieval time from corpus/manifest.json — the TOC-index URL (toc-contents.json) on the normal path; the appendix/landing-page URL only if the fallback traversal was used} · Retrieval method: {retrieval_method from corpus/manifest.json}
 - Pillars: {n} · Questions: {n} · Best practices: {manifest total}
 - Status distribution: {implemented} Implemented, {partial} Partially Implemented, {not_impl} Not Implemented, {na} Not Applicable, {cd} Cannot Determine
 ```
 
-If `BPs evaluated` is less than the manifest total, the review is not finished — return to step 3 above.
+If `BPs evaluated` is less than the applicable target from point 2, the review is not finished — return to step 3 above.
 
 ## Retrieval economics per mode
 
