@@ -182,7 +182,7 @@ If `toc-contents.json` is unavailable (HTTP/parse error) or yields no best pract
 
    **The page suffix and missing-page signal are the same for both retrieval tools —
    use the `.md` form for both, never `.html`, for this fallback traversal** (verified
-   live): `<base>appendix.md`, then `<base><stem>-NN.md`.
+   live): `<base><stem>-NN.md`.
    - **`aws___read_documentation`:** stops when a read returns the reader's sentinel
      string `"Documentation page not found."`.
    - **Non-MCP HTTPS web-fetch fallback:** requesting the `.md` form returns a clean
