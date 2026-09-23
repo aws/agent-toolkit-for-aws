@@ -56,9 +56,9 @@ Walk the tree recursively. Classify nodes structurally — by parent/child
 relationship, not by matching URL patterns — so opaque or renamed hrefs never break
 discovery:
 
-- **Pillar node** — a direct child of the "Appendix" node. There are six today; do
-  not hardcode which six — discover them structurally so a newly added pillar is
-  still covered. Pillar hrefs carry an "a-" prefix (`a-operational-excellence.html`);
+- **Pillar node** — a direct child of the "Appendix" node. Do not hardcode which
+  pillars exist or how many — discover them structurally so a newly added or renamed
+  pillar is still covered. Pillar hrefs carry an "a-" prefix (`a-operational-excellence.html`);
   strip it if you need the bare stem for a URL elsewhere, it carries no other meaning.
 - **Best-practice node** — `title` matches `^[A-Z]{2,5}\d{2}-BP\d{2}\b`.
   Record: `bp_id` (the matched ID), `bp_title` (the remainder of the title),
