@@ -160,11 +160,16 @@ for the caller, so a false positive would block a real migration).
   fires (RDS defaults to unencrypted), variable-driven fails open. S3 is not checked (default
   SSE-S3 since Jan 2023).
 
-**ElastiCache encryption** (`aws_elasticache_replication_group`):
+**ElastiCache encryption** (`aws_elasticache_replication_group`, Redis `aws_elasticache_cluster`):
 
-- **`elasticache_encryption_at_rest`** — must set `at_rest_encryption_enabled = true`; missing
-  or literal `false` fires, variable-driven fails open. `aws_elasticache_cluster` (Memcached)
-  not checked.
+- **`elasticache_encryption_at_rest`** — a replication group must set
+  `at_rest_encryption_enabled = true`; missing or literal `false` fires, variable-driven fails
+  open.
+- **`elasticache_cluster_encryption`** — a Redis-engine `aws_elasticache_cluster` (single-node:
+  `engine = "redis"`, no `replication_group_id`) must set BOTH `at_rest_encryption_enabled = true`
+  and `transit_encryption_enabled = true`; missing or literal `false` on either fires,
+  variable-driven fails open. `engine = "memcached"` clusters (and variable-driven/absent engine)
+  are exempt — Memcached does not support these attributes.
 
 **Security group ingress:**
 

@@ -15,7 +15,7 @@ The parent `estimate.md` selects the pricing mode before loading this file.
 
 For typical migrations (Claude, Llama, Nova, Mistral, DeepSeek, Gemma, OpenAI gpt-oss, Gemini source pricing), ALL prices are in `pricing-cache.md`. Zero MCP calls needed.
 
-**Model lifecycle:** When building the model comparison table, check `references/shared/ai-model-lifecycle.md` and apply the 90-day exclusion rule:
+**Model lifecycle:** When building the model comparison table, check `references/vendored/ai/ai-model-lifecycle.md` and apply the 90-day exclusion rule:
 
 - **Excluded** (≤90 days to EOL): omit entirely from `model_comparison`, `recommended_model`, and `backup_model`.
 - **Legacy** (>90 days to EOL): include in `model_comparison` with `(Legacy — EOL YYYY-MM-DD)` annotation. Do not select as `recommended_model` unless no Active alternative exists.
@@ -104,7 +104,7 @@ From `ai-workload-profile.json`, record non-monetary factors in `migration_cost_
 - `integration.pattern = "direct_sdk"` → moderate SDK and API pattern changes
 - `integration.pattern = "rest_api"` → higher endpoint, auth, and parsing changes
 - `summary.total_models_detected` > 3 → multi-model coordination
-- `quota_risk = "high"` (from `aws-design-ai.json`) → Bedrock quota increase required before migration; allow 1–5 business days (see `shared/bedrock-quotas.md`)
+- `quota_risk = "high"` (from `aws-design-ai.json`) → Bedrock quota increase required before migration; allow 1–5 business days (see `vendored/ai/bedrock-quotas.md`)
 
 Do **not** repeat these as "costs" in the user-facing summary.
 
@@ -280,7 +280,7 @@ All cost values are numbers, not strings. Output must be valid JSON.
 - [ ] `recommendation.path` is one of: `migrate_optimized`, `migrate_phased`, `stay`
 - [ ] If Design `honest_assessment` = `recommend_stay`, then `recommendation.path` = `stay`
 - [ ] `model_comparison` includes ALL viable Bedrock models, not just recommended
-- [ ] Legacy models in `model_comparison` are annotated with EOL dates (per `shared/ai-model-lifecycle.md`)
+- [ ] Legacy models in `model_comparison` are annotated with EOL dates (per `vendored/ai/ai-model-lifecycle.md`)
 - [ ] `recommended_model` is an Active model (not Legacy) unless no Active alternative exists
 - [ ] Neither `recommended_model` nor `backup_model` carries a `restricted (…)` Status in `shared/pricing-cache.md`
 - [ ] Every model has `capabilities_match` checked against `ai_capabilities_required`

@@ -1,0 +1,45 @@
+{
+  "_what_this_is": "AKS cluster and node pool -> EKS cluster and managed node groups. Consumed by design-refs/compute.md; Microsoft.ContainerService/managedClusters is a Direct Mapping to EKS, so this file sizes and never selects.",
+  "_delegates": "Node VM sizes resolve through knowledge/design/vm-ec2-sizing.json. This file carries only what differs BETWEEN the two managed-Kubernetes products.",
+  "_provenance": "Authored from published AKS and EKS documentation. NOT verified against a live API.",
+
+  "control_plane": {
+    "aks": "Free tier has no SLA and no charge; Standard tier is charged per cluster-hour; Premium adds long-term support.",
+    "eks": "Charged per cluster-hour, always. There is no free control plane.",
+    "_finding": "A customer on the AKS FREE tier gains a control-plane charge on EKS. It is small but it is a new line item that did not exist, and an estimate that omits it is wrong in the flattering direction. State it."
+  },
+
+  "system_node_pool": {
+    "aks": "AKS requires a system node pool to host CoreDNS, metrics-server, konnectivity and the rest of the addon set.",
+    "eks": "EKS runs the control plane fully managed, but CoreDNS, kube-proxy and the VPC CNI still run as addons ON YOUR NODES.",
+    "rule": "Do NOT drop the system pool and do NOT map it 1:1. The addon workload is real but smaller than an AKS system pool is usually provisioned for. Map it to a small managed node group -- 2 nodes for single-AZ, 3 for multi-AZ, at the source pool's instance size or one step down -- and say in the rationale that the pool shrank because the control plane no longer runs on it.",
+    "_trap": "Mapping a 3-node D4s_v5 system pool to a 3-node m6i.xlarge node group carries over capacity that existed to host a control plane the customer no longer operates. Silently dropping it instead leaves the addons homeless. Both errors are common."
+  },
+
+  "user_node_pools": {
+    "rule": "One AKS node pool becomes one EKS managed node group. node_count -> desired size; min_count/max_count -> the node group's scaling config.",
+    "instance_size": "Resolve vm_size through vm-ec2-sizing.json. Record sizing_provenance from THAT lookup, not from this file.",
+    "spot": "An AKS pool with priority Spot maps to a managed node group with capacityType SPOT. Carry it across -- dropping it turns a deliberately cheap pool into an on-demand line item and can double the cluster's cost in the estimate.",
+    "taints_and_labels": "node_taints and node_labels carry across verbatim. A GPU pool's taint is what keeps general workloads off it; losing it is a correctness change, not a cosmetic one.",
+    "os_type": "A Windows node pool maps to a Windows managed node group. Windows containers on EKS have their own licensing implication -- route it to Clarify's licensing category rather than treating it as a size."
+  },
+
+  "max_pods_per_node": {
+    "aks_azure_cni": 30,
+    "aks_kubenet": 110,
+    "eks_vpc_cni": "ENI-limited and therefore INSTANCE-TYPE dependent, not a flat number. An m6i.large supports far fewer pods than an m6i.4xlarge.",
+    "_finding": "This is the sizing input most likely to be missed. A pool sized purely on CPU and memory can be pod-count-bound on EKS: if the source ran 110 pods per node under kubenet, the equivalent instance may support 29, and the node COUNT has to rise even though CPU and memory match. Check pod density before accepting a node count, and state the assumption when pod counts are unknown -- which, from Terraform alone, they always are.",
+    "prefix_delegation": "VPC CNI prefix delegation raises the per-node pod ceiling substantially and is the usual answer. Name it rather than silently inflating the node count."
+  },
+
+  "networking": {
+    "azure_cni": "Pods get VNet IPs. The EKS VPC CNI behaves the same way, so subnet SIZING carries over as a real constraint -- an undersized subnet exhausts pod IPs.",
+    "kubenet": "Pods get overlay IPs from a separate CIDR. There is no default EKS equivalent; the VPC CNI is the default. This is an architecture change, and subnet sizing must be recalculated from pod count rather than carried over.",
+    "network_policy": "azure or calico network policy maps to the VPC CNI's network policy support or to Calico on EKS. Carry the intent; the implementation differs."
+  },
+
+  "acr_and_identity": {
+    "acr": "Microsoft.ContainerRegistry/registries is a Direct Mapping to ECR. Image references inside manifests and Helm values must be rewritten -- that is Generate's work, not a sizing concern, but it belongs in the migration guide.",
+    "workload_identity": "An AKS workload-identity federation (federated identity credential + user-assigned identity) maps to EKS IRSA or EKS Pod Identity. The shape is genuinely equivalent. This does NOT change Clarify category J's default: the human sign-in story is still a fresh IAM Identity Center re-invite (decision 13.5f), and the presence of workload federation is not consent to federate human identity."
+  }
+}

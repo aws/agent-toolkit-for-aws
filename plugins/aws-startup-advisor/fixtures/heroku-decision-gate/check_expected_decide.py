@@ -21,7 +21,9 @@ import sys
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-VALIDATOR = PLUGIN_ROOT / "scripts" / "validate-heroku-migration-report.py"
+VALIDATOR = (
+    PLUGIN_ROOT / "skills" / "heroku-to-aws" / "scripts" / "validate-heroku-migration-report.py"
+)
 FAILS: list[str] = []
 
 

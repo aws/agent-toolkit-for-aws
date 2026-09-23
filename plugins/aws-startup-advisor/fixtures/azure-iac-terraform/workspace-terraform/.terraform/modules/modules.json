@@ -1,0 +1,11 @@
+{
+  "Modules": [
+    { "Key": "", "Source": "", "Dir": "." },
+    {
+      "Key": "naming",
+      "Source": "registry.terraform.io/Azure/naming/azurerm",
+      "Version": "0.4.0",
+      "Dir": ".terraform/modules/naming"
+    }
+  ]
+}

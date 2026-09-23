@@ -1,0 +1,816 @@
+{
+  "_comment": "Pass-1 disposition table for Design, keyed by CANONICAL ARM resource type. Three dispositions live in one file on purpose: they are all lookups on the same key, and the precedence invariant (a type resolves to AT MOST ONE of them) is only mechanically checkable when they sit together. The rubric rules live in references/design-refs/*.md; only the lookup data lives here.",
+  "_match": "EXACT full-string match of a resource's azure_type against a key, with case FOLDED on both sides. Never substring-match. ARM compares type strings case-insensitively and Microsoft's own sources disagree on display casing, so a case-only difference must NEVER fall through to the unknown-type policy \u2014 see references/shared/arm-type-canonicalization.md section 'Casing is a convention, not a fact'. Keys here use that file's spelling as a convention, because azure_id strings are joined by exact match.",
+  "_precedence": "Evaluated in this order, per design-refs/fast-path.md: skip_mappings, then specialist_gates, then eliminators (in the category rubric), then direct_mappings. A type present in more than one of those three tables here is a DEFECT in this file, not a runtime choice. If none matched, route via design-refs/index.md. If index.md has no row either, apply child_type_rule, then namespace_routing, and only then the unknown-type policy. An explicit row ALWAYS beats a derived rule, and a derived rule always beats a STOP.",
+  "_invariant": "A pattern constraint may narrow the candidate set for a rubric decision. It may NEVER change the aws_service of a direct_mappings row. A genuine pattern/fast-path conflict means the row does not belong here \u2014 demote the row, never let the pattern win.",
+  "_on_not_found": "The type is not in this file. Route via references/design-refs/index.md. If index.md has no row either, apply child_type_rule and then namespace_routing -- both record routing_provenance so a derived disposition is visible in review. Only if all of those miss does the unknown-type policy in references/phases/design/design-infra.md apply (benign -> warn and skip; cost-bearing -> STOP).",
+  "direct_mappings": {
+    "_comment": "confidence: deterministic. Admission test: is this target correct REGARDLESS of the surrounding architecture? All rows are infrastructure primitives; there is deliberately NO compute here. A row may carry a mechanical condition on a single config field (a protocol, an API, an account kind) and still be architecture-invariant, because the condition reads a property of the resource itself and not of its neighbours.",
+    "_add_ons_do_not_break_determinism": "A deterministic row's target may be ACCOMPANIED by additional AWS services contributed by other resources or by the pattern layer (S3 + CloudFront for a static website; EBS + an ASG). Additive company is not a target change, so the row stays deterministic. Only a substituted aws_service would violate the invariant.",
+    "Microsoft.Storage/storageAccounts": {
+      "aws_service": "S3",
+      "condition": "Always, UNLESS config.account_kind is \"FileStorage\" \u2014 such an account has no blob surface at all and emits no target of its own (its shares are mapped by the fileServices/shares row).",
+      "notes": "The account maps to S3 for its BLOB surface only. Its fileServices / queueServices / tableServices children are separate inventory resources with their own rows below, and they do NOT inherit this target. A static_website block adds CloudFront at the pattern layer; that is additive and the row stays deterministic."
+    },
+    "Microsoft.Storage/storageAccounts/blobServices/containers": {
+      "aws_service": "S3",
+      "condition": "Always",
+      "notes": "One bucket, or a prefix inside the parent account's bucket. Preserve public-access posture and lifecycle rules."
+    },
+    "Microsoft.Storage/storageAccounts/queueServices/queues": {
+      "aws_service": "SQS",
+      "condition": "Always",
+      "notes": "Storage queues are a simple point-to-point queue; SQS Standard is the match. Service Bus is the richer broker and is NOT this row."
+    },
+    "Microsoft.Storage/storageAccounts/tableServices/tables": {
+      "aws_service": "DynamoDB",
+      "condition": "Always",
+      "notes": "Key/attribute store with a partition+row key; maps to a DynamoDB table with partition+sort key."
+    },
+    "Microsoft.Storage/storageAccounts/fileServices/shares": {
+      "aws_service": "FSx for Windows File Server",
+      "condition": "config.enabled_protocol == \"SMB\" (or absent \u2014 SMB is the Azure Files default)",
+      "alternatives": [
+        {
+          "aws_service": "EFS",
+          "condition": "config.enabled_protocol == \"NFS\""
+        }
+      ],
+      "notes": "Protocol-driven and nothing else (owner decision 11.5). The protocol is a property of the share, so the row stays architecture-invariant. SMB shares are usually AD-joined, which is why FSx for Windows File Server rather than FSx for OpenZFS. If enabled_protocol is missing from the inventory entry, do NOT guess: that is a discovery defect (extract-terraform.md is required to carry it) and it must be reported, not inferred from the share name."
+    },
+    "Microsoft.Compute/disks": {
+      "aws_service": "EBS",
+      "condition": "Always",
+      "notes": "Volume TYPE (gp3 up to 80K IOPS, then io2) is post-selection sizing from knowledge/design/disk-ebs-sizing.json, not part of this row. Sizing after the fact does not compromise the Always condition."
+    },
+    "Microsoft.Network/virtualNetworks": {
+      "aws_service": "VPC",
+      "condition": "Always",
+      "notes": "Preserve the address space."
+    },
+    "Microsoft.Network/virtualNetworks/subnets": {
+      "aws_service": "VPC subnet",
+      "condition": "Always",
+      "notes": "Added beyond the plan's original 10 rows, and REQUIRED: the canonicalization table emits subnets as their own child-typed resources, so without this row every subnet falls to the unknown-type policy, lands in a network provider namespace, and STOPs the design on every real estate. Delegations and service endpoints become route-table / VPC-endpoint notes, not separate targets."
+    },
+    "Microsoft.Network/networkSecurityGroups": {
+      "aws_service": "Security Group",
+      "condition": "Always",
+      "notes": "Rule-for-rule. NSGs are stateless with explicit priorities and deny rules; security groups are stateful and allow-only, so any DENY rule needs a NACL note in the rationale."
+    },
+    "Microsoft.Network/dnsZones": {
+      "aws_service": "Route 53 hosted zone",
+      "condition": "Always",
+      "notes": "Public zone. Microsoft.Network/privateDnsZones is a SKIP row \u2014 a private hosted zone is created implicitly by the VPC design."
+    },
+    "Microsoft.KeyVault/vaults": {
+      "aws_service": "Secrets Manager",
+      "condition": "Always",
+      "notes": "Add KMS when the vault holds keys rather than only secrets (a Microsoft.KeyVault/vaults/keys child, or an inventory note that key operations are in use). Certificates go to ACM. The additional services are additive; the row stays deterministic."
+    },
+    "Microsoft.Cache/Redis": {
+      "aws_service": "ElastiCache Redis",
+      "condition": "Always",
+      "notes": "Spelled with a capital R by this skill's emission convention, not by ARM \u2014 see arm-type-canonicalization.md section 'Casing is a convention, not a fact'; matching folds case. Microsoft.Cache/redisEnterprise is NOT this row; it goes through the rubric (modules such as RediSearch have no ElastiCache equivalent)."
+    },
+    "Microsoft.ContainerRegistry/registries": {
+      "aws_service": "ECR",
+      "condition": "Always",
+      "notes": "Private registry, 1:1."
+    },
+    "Microsoft.ManagedIdentity/userAssignedIdentities": {
+      "aws_service": "IAM Role",
+      "condition": "Always",
+      "notes": "The role's trust policy and the workload identity binding are Generate's problem, not a target change."
+    },
+    "Microsoft.ContainerService/managedClusters": {
+      "aws_service": "EKS",
+      "condition": "Always",
+      "notes": "Kubernetes is preserved; this is the one compute-adjacent row that IS architecture-invariant, because a team already running Kubernetes does not stop. Node-pool sizing is post-selection from knowledge/design/aks-eks-sizing.json. Microsoft.ContainerService/managedClusters/agentPools is a SKIP row \u2014 a node pool is EKS node-group config, not a separate target."
+    },
+    "Microsoft.EventHub/namespaces": {
+      "aws_service": "MSK",
+      "condition": "config.kafka_enabled == true",
+      "alternatives": [
+        {
+          "aws_service": "Kinesis Data Streams",
+          "condition": "config.kafka_enabled is false or absent"
+        }
+      ],
+      "notes": "Protocol is the WHOLE rubric and there is no throughput threshold (owner decision 11.4). Protocol drives migration friction \u2014 a code rewrite versus a broker endpoint change \u2014 and throughput drives sizing, which is an Estimate concern. Both branches are fully determined by one config field, which is why this is a row and not a rubric entry."
+    },
+    "Microsoft.DocumentDB/databaseAccounts": {
+      "aws_service": "DocumentDB",
+      "condition": "the account's API is Mongo \u2014 config.kind == \"MongoDB\", or config.capabilities contains \"EnableMongo\"",
+      "alternatives": [
+        {
+          "aws_service": "Amazon Keyspaces",
+          "condition": "config.capabilities contains \"EnableCassandra\""
+        },
+        {
+          "aws_service": "Neptune",
+          "condition": "config.capabilities contains \"EnableGremlin\""
+        },
+        {
+          "aws_service": "DynamoDB",
+          "condition": "config.capabilities contains \"EnableTable\""
+        }
+      ],
+      "route_to_rubric": {
+        "condition": "the account is Core (SQL) API \u2014 no capability flag and kind is \"GlobalDocumentDB\"",
+        "ref_file": "database.md",
+        "reason": "Core API is the one Cosmos surface with full depth: the RU/s -> WCU/RCU conversion is assumption-sensitive and the target is not a lookup. The four wire-protocol APIs above ARE lookups, because the protocol determines the only drop-in target."
+      },
+      "notes": "Provider is Microsoft.DocumentDB, NOT Microsoft.CosmosDB \u2014 the product was renamed, the ARM provider never was."
+    },
+    "Microsoft.Network/routeTables": {
+      "aws_service": "VPC route table",
+      "condition": "Always",
+      "notes": "Routes become route-table entries. A route table is a route table regardless of what it serves."
+    },
+    "Microsoft.Network/virtualNetworks/virtualNetworkPeerings": {
+      "aws_service": "VPC peering connection",
+      "condition": "Always",
+      "notes": "Note in the rationale that Azure charges for VNet peering and AWS does not charge for same-AZ peering traffic \u2014 a 'free on AWS' finding."
+    },
+    "Microsoft.Network/bastionHosts": {
+      "aws_service": "Systems Manager Session Manager",
+      "condition": "Always",
+      "notes": "Azure Bastion exists to give browser-based RDP/SSH without public IPs; Session Manager is the direct analogue, needs no host, and is free. Emit no EC2 instance for it."
+    },
+    "Microsoft.Network/azureFirewalls": {
+      "aws_service": "AWS Network Firewall",
+      "condition": "Always",
+      "notes": "Its firewallPolicies child is a config source, not a second target."
+    },
+    "Microsoft.Network/trafficManagerProfiles": {
+      "aws_service": "Route 53 routing policy",
+      "condition": "Always",
+      "notes": "DNS-based global routing maps to a Route 53 latency/weighted/geolocation policy on an existing hosted zone, not to a new service."
+    },
+    "Microsoft.KeyVault/vaults/keys": {
+      "aws_service": "KMS key",
+      "condition": "Always",
+      "notes": "This row is what makes the parent vault's `kms_added` condition decidable \u2014 the vault maps to Secrets Manager, its KEYS map to KMS."
+    },
+    "Microsoft.KeyVault/vaults/certificates": {
+      "aws_service": "ACM certificate",
+      "condition": "Always",
+      "notes": "Re-issued for the target's own hostnames rather than imported."
+    },
+    "Microsoft.AppConfiguration/configurationStores": {
+      "aws_service": "AWS AppConfig",
+      "condition": "Always",
+      "notes": "Feature flags and typed config, 1:1."
+    },
+    "Microsoft.Compute/snapshots": {
+      "aws_service": "EBS snapshot",
+      "condition": "Always",
+      "notes": ""
+    },
+    "Microsoft.Compute/images": {
+      "aws_service": "AMI",
+      "condition": "Always",
+      "notes": "The image itself is re-created by MGN or Image Builder; this row records that it exists and is referenced."
+    },
+    "Microsoft.RecoveryServices/vaults": {
+      "aws_service": "AWS Backup vault",
+      "condition": "Always",
+      "notes": "Its backupPolicies child becomes an AWS Backup plan."
+    },
+    "Microsoft.EventGrid/topics": {
+      "aws_service": "EventBridge",
+      "condition": "Always",
+      "notes": "Custom topic \u2192 custom event bus."
+    },
+    "Microsoft.EventGrid/systemTopics": {
+      "aws_service": "EventBridge",
+      "condition": "Always",
+      "notes": "A system topic is an AWS-service event source on the default bus."
+    }
+  },
+  "skip_mappings": {
+    "_comment": "No AWS target. Record in aws-design.json warnings[] with the reason; never send through the rubric and never through the unknown-type STOP. A skipped resource must still be present in the INVENTORY: a resource absent from the inventory cannot be reported as skipped.",
+    "_config_source_vs_noise": "Two different kinds of skip live here. A CONFIG SOURCE is read for its properties or its edges before being skipped, and its warnings[] entry must name what it contributed. NOISE is skipped outright.",
+    "Microsoft.Resources/resourceGroups": {
+      "reason": "AWS has no resource-group equivalent. Becomes account structure and resource tags, applied manually.",
+      "kind": "noise"
+    },
+    "Microsoft.Resources/deployments": {
+      "reason": "An ARM deployment record \u2014 history, not infrastructure.",
+      "kind": "noise"
+    },
+    "Microsoft.Insights/components": {
+      "reason": "Application Insights. Observability is RE-ESTABLISHED on the target, not migrated (owner decision 11.6). Note in the report that CloudWatch (metrics, Logs, Application Signals) is where it lands, without claiming a mapping \u2014 there is no import path for the existing telemetry.",
+      "kind": "noise",
+      "report_note": "cloudwatch_fallback"
+    },
+    "Microsoft.Insights/diagnosticSettings": {
+      "reason": "Diagnostic routing. Re-established as CloudWatch log groups and metric filters on the target.",
+      "kind": "noise",
+      "report_note": "cloudwatch_fallback"
+    },
+    "Microsoft.Insights/actionGroups": {
+      "reason": "Alert routing. Re-established as SNS topics wired to CloudWatch alarms.",
+      "kind": "noise",
+      "report_note": "cloudwatch_fallback"
+    },
+    "Microsoft.Insights/metricAlerts": {
+      "reason": "Alert rules. Re-established as CloudWatch alarms on the target's own metrics, which are not the same metrics.",
+      "kind": "noise",
+      "report_note": "cloudwatch_fallback"
+    },
+    "Microsoft.OperationalInsights/workspaces": {
+      "reason": "Log Analytics workspace. Same as Application Insights \u2014 re-established as CloudWatch Logs, with no import path for retained data.",
+      "kind": "noise",
+      "report_note": "cloudwatch_fallback"
+    },
+    "Microsoft.Authorization/roleAssignments": {
+      "reason": "Becomes IAM policy, authored against the AWS design rather than translated. A one-to-one translation of Azure RBAC would encode Azure's scope hierarchy into IAM, which is the wrong shape.",
+      "kind": "noise"
+    },
+    "Microsoft.Authorization/roleDefinitions": {
+      "reason": "Custom RBAC role. Same as roleAssignments.",
+      "kind": "noise"
+    },
+    "Microsoft.Network/publicIPAddresses": {
+      "reason": "Elastic IPs are managed by the ALB / NAT Gateway the design already creates; a standalone public IP is not a target.",
+      "kind": "noise"
+    },
+    "Microsoft.Network/networkInterfaces": {
+      "reason": "An ENI is created by the EC2 instance or the service that owns it; a NIC is never a standalone target.",
+      "kind": "config_source",
+      "contributes": "its subnet_id is the VNet-colocation edge for the resource that owns it"
+    },
+    "Microsoft.Network/privateDnsZones": {
+      "reason": "A private hosted zone is created implicitly by the VPC design, and private-endpoint DNS has no separate target.",
+      "kind": "noise"
+    },
+    "Microsoft.Network/privateEndpoints": {
+      "reason": "EDGE-BEARING CONFIG SOURCE, not a target. Structurally the same case as gcp's *_app_version resources.",
+      "kind": "config_source",
+      "contributes": "its private_connection_resource_id / privateLinkServiceId is the explicit app-to-data edge, and that edge is what merges resource groups during clustering. One warnings[] entry per consumed endpoint, naming the edge it produced."
+    },
+    "Microsoft.Web/certificates": {
+      "reason": "Becomes an ACM certificate issued for the target's own hostnames; the Azure certificate object itself does not move.",
+      "kind": "noise"
+    },
+    "Microsoft.Compute/availabilitySets": {
+      "reason": "An availability set is an Azure placement construct. Its intent is expressed on AWS by spreading an Auto Scaling group across Availability Zones, which the compute mapping already does; there is no standalone target.",
+      "kind": "config_source",
+      "contributes": "records that the member VMs are intended to be fault-isolated, on the members' own mappings"
+    },
+    "Microsoft.ContainerService/managedClusters/agentPools": {
+      "reason": "CONFIG SOURCE for the parent cluster's EKS mapping \u2014 it carries the VM size and node count. Not a separate target.",
+      "kind": "config_source",
+      "contributes": "vm_size and node_count feed the parent managedClusters entry's node-group sizing"
+    },
+    "Microsoft.KeyVault/vaults/secrets": {
+      "reason": "CONFIG SOURCE. The secret NAME contributes to the parent vault's Secrets Manager mapping; the value was never discovered and never will be.",
+      "kind": "config_source",
+      "contributes": "secret names feed the parent vault entry"
+    },
+    "Microsoft.Web/sites/slots": {
+      "reason": "A deployment slot is a deployment strategy, not compute. Becomes an Elastic Beanstalk swap-URL / blue-green note on the parent plan's mapping.",
+      "kind": "config_source",
+      "contributes": "records that blue-green deployment is in use, on the parent plan's entry"
+    },
+    "Microsoft.Network/routeTables/routes": {
+      "reason": "CONFIG SOURCE for the parent route table \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "route-table entries on the parent's mapping"
+    },
+    "Microsoft.Network/networkSecurityGroups/securityRules": {
+      "reason": "CONFIG SOURCE for the parent NSG \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "the individual rules of the parent's Security Group mapping"
+    },
+    "Microsoft.Network/loadBalancers/backendAddressPools": {
+      "reason": "CONFIG SOURCE for the parent load balancer \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "target-group membership on the parent's mapping"
+    },
+    "Microsoft.Network/loadBalancers/probes": {
+      "reason": "CONFIG SOURCE for the parent load balancer \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "target-group health-check config"
+    },
+    "Microsoft.Network/loadBalancers/loadBalancingRules": {
+      "reason": "CONFIG SOURCE for the parent load balancer \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "listener and target-group config"
+    },
+    "Microsoft.Network/firewallPolicies": {
+      "reason": "CONFIG SOURCE for the parent Azure Firewall \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "rule groups on the parent firewall's mapping"
+    },
+    "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies": {
+      "reason": "CONFIG SOURCE for the parent Application Gateway \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "the AWS WAF web ACL attached to the parent's ALB"
+    },
+    "Microsoft.Network/privateDnsZones/virtualNetworkLinks": {
+      "reason": "CONFIG SOURCE for the parent private DNS zone \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "VPC association on the private hosted zone"
+    },
+    "Microsoft.Cdn/profiles/endpoints": {
+      "reason": "CONFIG SOURCE for the parent CDN profile \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "origins and behaviours on the parent's CloudFront distribution"
+    },
+    "Microsoft.Cdn/profiles/afdEndpoints": {
+      "reason": "CONFIG SOURCE for the parent Front Door profile \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "origins and behaviours on the parent's CloudFront distribution"
+    },
+    "Microsoft.Sql/servers/firewallRules": {
+      "reason": "CONFIG SOURCE for the parent SQL server \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "security-group ingress rules on the parent RDS instance"
+    },
+    "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules": {
+      "reason": "CONFIG SOURCE for the parent flexible server \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "security-group ingress rules on the parent RDS instance"
+    },
+    "Microsoft.DBforPostgreSQL/flexibleServers/databases": {
+      "reason": "CONFIG SOURCE for the parent flexible server \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "database names created inside the parent RDS instance"
+    },
+    "Microsoft.DBforMySQL/flexibleServers/databases": {
+      "reason": "CONFIG SOURCE for the parent flexible server \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "database names created inside the parent RDS instance"
+    },
+    "Microsoft.DocumentDB/databaseAccounts/sqlDatabases": {
+      "reason": "CONFIG SOURCE for the parent Cosmos account \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "logical databases inside the parent account's target"
+    },
+    "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers": {
+      "reason": "CONFIG SOURCE for the parent Cosmos account \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "throughput and partition key \u2014 the RU/s conversion input"
+    },
+    "Microsoft.DocumentDB/databaseAccounts/mongodbDatabases": {
+      "reason": "CONFIG SOURCE for the parent Cosmos account \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "logical databases inside the parent's DocumentDB cluster"
+    },
+    "Microsoft.DocumentDB/databaseAccounts/cassandraKeyspaces": {
+      "reason": "CONFIG SOURCE for the parent Cosmos account \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "keyspaces inside the parent's Keyspaces target"
+    },
+    "Microsoft.ServiceBus/namespaces/topics/subscriptions": {
+      "reason": "CONFIG SOURCE for the parent Service Bus topic \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "SNS subscriptions or SQS queues fed by the parent topic"
+    },
+    "Microsoft.EventHub/namespaces/eventhubs/consumergroups": {
+      "reason": "CONFIG SOURCE for the parent Event Hub \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "Kafka consumer groups or Kinesis applications on the parent"
+    },
+    "Microsoft.EventHub/namespaces/eventhubs/authorizationRules": {
+      "reason": "CONFIG SOURCE for the parent Event Hub \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "IAM policy scope on the parent's target"
+    },
+    "Microsoft.Storage/storageAccounts/managementPolicies": {
+      "reason": "CONFIG SOURCE for the parent storage account \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "S3 lifecycle rules on the parent bucket"
+    },
+    "Microsoft.Compute/virtualMachines/extensions": {
+      "reason": "CONFIG SOURCE for the parent VM \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "what is installed on the guest \u2014 an SSM document or user-data on the parent's EC2 mapping"
+    },
+    "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials": {
+      "reason": "CONFIG SOURCE for the parent managed identity \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "the IAM role trust policy \u2014 OIDC federation on the parent role"
+    },
+    "Microsoft.RecoveryServices/vaults/backupPolicies": {
+      "reason": "CONFIG SOURCE for the parent Recovery Services vault \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "an AWS Backup plan inside the parent vault"
+    },
+    "Microsoft.EventGrid/eventSubscriptions": {
+      "reason": "CONFIG SOURCE for the parent Event Grid topic \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "EventBridge rules and targets on the parent bus"
+    },
+    "Microsoft.Compute/galleries/images": {
+      "reason": "CONFIG SOURCE for the parent shared image gallery \u2014 it carries settings the parent's mapping needs, and is not a separate target.",
+      "kind": "config_source",
+      "contributes": "image definitions inside the parent gallery"
+    },
+    "Microsoft.Compute/proximityPlacementGroups": {
+      "reason": "An Azure placement construct. Expressed on AWS by a cluster placement group or AZ pinning on the members' own mappings; not a standalone target.",
+      "kind": "noise"
+    },
+    "Microsoft.Compute/galleries": {
+      "reason": "A Shared Image Gallery is an image-distribution pipeline, re-established with EC2 Image Builder rather than migrated. Its images are separate rows.",
+      "kind": "noise"
+    },
+    "Microsoft.Authorization/locks": {
+      "reason": "A management lock is an Azure governance control with no IAM equivalent; the intent is re-expressed as an SCP or a resource policy, authored not translated.",
+      "kind": "noise"
+    },
+    "Microsoft.Authorization/policyAssignments": {
+      "reason": "Azure Policy becomes SCPs, Config rules, or guardrails authored against the AWS design \u2014 a one-to-one translation would encode Azure's scope hierarchy.",
+      "kind": "noise"
+    },
+    "Microsoft.Insights/autoscaleSettings": {
+      "reason": "Autoscale rules are re-expressed as the target's own scaling policy, on whatever compute service was selected. The source thresholds are worth carrying into the rationale.",
+      "kind": "noise"
+    },
+    "Microsoft.Insights/dataCollectionRules": {
+      "reason": "Agent data-collection routing. Re-established as CloudWatch agent config.",
+      "kind": "noise"
+    },
+    "Microsoft.Insights/webtests": {
+      "reason": "Availability tests. Re-established as CloudWatch Synthetics canaries; no import path.",
+      "kind": "noise"
+    }
+  },
+  "specialist_gates": {
+    "_comment": "aws_service is always the literal string \"Deferred \u2014 specialist engagement\", and the entry goes in aws-design.json deferred[], not services[]. A gate means WE DO NOT KNOW, and precedence puts it above everything except skip_mappings precisely so that nothing below can overwrite an honest admission of ignorance with a confident guess.",
+    "_confidence": "deferred[] entries carry no confidence label. Do not write \"inferred\" on a deferral \u2014 it did not come from a rubric.",
+    "_cluster_level_gate": "The data-pipeline PATTERN is this same mechanism one layer up: a cluster recognized as Data Factory / Synapse / Event Hubs + storage + analytics defers as a WHOLE, rather than deferring resource by resource. That gate lives in design-refs/patterns.md and lands in build step 4.",
+    "Microsoft.Sql/managedInstances": {
+      "reason": "SQL Managed Instance has no AWS equivalent with the same surface: VNet injection, cross-database queries, SQL Agent, CLR, and instance-scoped logins. RDS SQL Server covers a database, not an instance.",
+      "why_not_a_default": "Owner decision 11.3 defaults plain Azure SQL Database to RDS SQL Server precisely so the skill does not look weak on the easy case. MI is the genuinely hard case and stays gated."
+    },
+    "Microsoft.Sql/servers/elasticPools": {
+      "reason": "An elastic pool is a bin-packing consolidation decision \u2014 N databases sharing a purchased eDTU/vCore budget. Splitting it onto RDS requires per-database utilization and packing math this skill deliberately does not carry.",
+      "why_not_a_default": "Sizing the pool as one instance overprovisions; sizing each database separately multiplies the estimate. Both are wrong, so neither is offered."
+    },
+    "Microsoft.Synapse/workspaces": {
+      "reason": "Synapse spans dedicated SQL pools, serverless SQL, and Spark pools, which land on three different AWS services with different migration paths. There is no single automated target.",
+      "why_not_a_default": "Redshift is only correct for the dedicated-pool half."
+    },
+    "Microsoft.DataFactory/factories": {
+      "reason": "Pipeline-for-pipeline translation of ADF activities, linked services, and integration runtimes is an engagement, not a mapping. Glue, Step Functions, and MWAA each cover part of it.",
+      "why_not_a_default": "Naming one of the three would understate the work by a large factor."
+    },
+    "Microsoft.Compute/virtualMachines#sql_on_vm": {
+      "_note": "A CONDITIONAL gate on a type that is otherwise a rubric row. It fires on the image, not the type.",
+      "condition": "config.source_image_reference.publisher is \"MicrosoftSQLServer\", OR the offer/sku names a SQL Server edition, OR the inventory records a SQL Server workload on the VM",
+      "reason": "SQL Server on an Azure VM carries its own licensing posture (Azure Hybrid Use Benefit, core minimums) and often a clustered / Always-On configuration. Lift-and-shift to EC2 is usually correct but the licence decision is not this skill's to make.",
+      "why_not_a_default": "The VM itself still maps to EC2 via the compute rubric; it is the DATABASE that defers. Emit both: the EC2 mapping for the host and a deferred[] entry for the SQL workload."
+    },
+    "Microsoft.Logic/workflows": {
+      "reason": "A Logic App is a workflow graph with hundreds of managed connectors. Step Functions, EventBridge Pipes, and AppFlow each cover part of it, and which one depends on the connectors actually used.",
+      "why_not_a_default": "Naming one would understate the work the way naming one ADF target would."
+    },
+    "Microsoft.Batch/batchAccounts": {
+      "reason": "Azure Batch pools, job schedules, and task dependencies map onto AWS Batch compute environments, but the pool autoscale formula is a bespoke expression language with no translation.",
+      "why_not_a_default": "A lift that silently drops the autoscale formula produces a batch estate that does not scale."
+    },
+    "Microsoft.MachineLearningServices/workspaces": {
+      "reason": "An ML workspace spans compute instances, pipelines, registered models, and endpoints. SageMaker covers all four with different migration paths per component.",
+      "why_not_a_default": "Mapping the workspace to 'SageMaker' names a service without describing any of the work."
+    },
+    "Microsoft.StreamAnalytics/streamingjobs": {
+      "reason": "A Stream Analytics job is a SQL-dialect query over a stream. Managed Flink and Kinesis Data Analytics are the targets, and the query has to be rewritten.",
+      "why_not_a_default": "The rewrite is the entire cost, and it is not estimable from the resource."
+    },
+    "Microsoft.DevTestLab/labs": {
+      "reason": "DevTest Labs wraps VM provisioning with policies, schedules, and cost caps. There is no AWS equivalent product; the intent is re-expressed with an account strategy, budgets, and instance scheduling.",
+      "why_not_a_default": "It is cost-bearing, so warn-and-skip would silently understate the estate."
+    }
+  },
+  "hard_blockers": {
+    "_comment": "Not a gate and not a skip: the resource maps normally, but the migration cannot proceed as-is and the user must be told without being asked to choose. Recorded in aws-design.json warnings[] with severity \"blocker\".",
+    "azure_edition_windows_server": {
+      "detect": "config.source_image_reference.sku contains \"azure-edition\" on a Microsoft.Compute/virtualMachines resource",
+      "message": "AWS Application Migration Service (MGN) refuses an Azure Edition Windows Server image \u2014 it carries Azure-specific platform integration and must be re-imaged to a standard Windows Server edition before any replication can start.",
+      "why_not_a_question": "There is no option to weigh. Presenting it as a choice implies one of the answers works."
+    }
+  },
+  "_coverage_contract": "EVERY canonical type must resolve to a disposition: a row here, a Reference row in design-refs/index.md, child_type_rule, or namespace_routing. Adding a canonicalization row WITHOUT one makes the inventory better and Design worse - the type is discovered, matches nothing, and reaches the unknown-type policy. That regression happened once: a coverage pass took the table from 77 to 137 types and left 53 orphans, any one of which halted Design on a real repo. The orphan count must be ZERO. REVISED 2026-09-07: requiring a per-type row made coverage growth O(n) in authored judgement - 143 types against a provider surface past 1000 - so the two derived rules carry the tail and the authored rows carry the opinions. These are normative rules, enforced in CI. Do not read the asserter to find out what they are: everything it checks is stated in a skill file, and reading it invalidates a capability run.",
+  "namespace_routing": {
+    "_what_this_is": "Category routing by PROVIDER NAMESPACE, for a canonical type that has no row of its own. The namespace is a structural, authoritative segment of an ARM type string, so this is a rule rather than a per-type table -- 39 namespaces cover a provider surface of 1000+ types.",
+    "_when": "Consulted ONLY after a type has missed skip_mappings, specialist_gates, direct_mappings AND has no Reference row in design-refs/index.md. Never before. An explicit row ALWAYS wins over a namespace rule.",
+    "_why_this_exists": "gcp-to-aws routes an unknown type to a category by substring-matching its NAME ('log' -> monitoring), which also matches google_diaLOGflow_agent. Azure has a better signal for free: the namespace. Before this rule, azure went straight from 'no row' to the cost-bearing STOP, which made it stricter than gcp on a smaller-coverage basis -- a type we could name, in a namespace we understand, still halted the design.",
+    "_provenance": "A resource routed here records routing_provenance: \"namespace_rule\" on its services[] entry. It is visible in review rather than indistinguishable from a curated row.",
+    "_invariant": "A namespace-routed resource can NEVER carry confidence: deterministic. That tier requires a direct_mappings row and a fast_path_row naming it. Namespace routing produces confidence: inferred at best, because the rubric decided.",
+    "_still_stops": "A cost-bearing type whose NAMESPACE is also unrecognised still STOPs with halt.kind unmapped_canonical_type. That is now a genuinely rare case rather than the common one.",
+    "rules": {
+      "Microsoft.Network": {
+        "route": "networking.md",
+        "kind": "rubric",
+        "reason": "Load balancers, gateways, NAT, firewalls, DNS, peerings, endpoints."
+      },
+      "Microsoft.Cdn": {
+        "route": "networking.md",
+        "kind": "rubric",
+        "reason": "CDN and Front Door profiles are edge delivery."
+      },
+      "Microsoft.ApiManagement": {
+        "route": "networking.md",
+        "kind": "rubric",
+        "reason": "API gateway surface."
+      },
+      "Microsoft.Compute": {
+        "route": "compute.md",
+        "kind": "rubric",
+        "reason": "VMs, scale sets, disks, images, galleries."
+      },
+      "Microsoft.Web": {
+        "route": "compute.md",
+        "kind": "rubric",
+        "reason": "App Service plans and sites. NOTE: Microsoft.Web/sites still never gets its own entry -- the plan is the compute unit (7a.6)."
+      },
+      "Microsoft.App": {
+        "route": "compute.md",
+        "kind": "rubric",
+        "reason": "Container Apps and managed environments."
+      },
+      "Microsoft.ContainerService": {
+        "route": "compute.md",
+        "kind": "rubric",
+        "reason": "AKS and its node pools."
+      },
+      "Microsoft.ContainerInstance": {
+        "route": "compute.md",
+        "kind": "rubric",
+        "reason": "One-shot container groups."
+      },
+      "Microsoft.ContainerRegistry": {
+        "route": "compute.md",
+        "kind": "rubric",
+        "reason": "ECR sits with the container platform."
+      },
+      "Microsoft.Sql": {
+        "route": "database.md",
+        "kind": "rubric",
+        "reason": "Azure SQL. MI and elastic pools have explicit gate rows that win over this."
+      },
+      "Microsoft.DBforPostgreSQL": {
+        "route": "database.md",
+        "kind": "rubric",
+        "reason": "Flexible and Single Server."
+      },
+      "Microsoft.DBforMySQL": {
+        "route": "database.md",
+        "kind": "rubric",
+        "reason": "Flexible and Single Server."
+      },
+      "Microsoft.DBforMariaDB": {
+        "route": "database.md",
+        "kind": "rubric",
+        "reason": "Retired Azure service; still appears in older IaC."
+      },
+      "Microsoft.DocumentDB": {
+        "route": "database.md",
+        "kind": "rubric",
+        "reason": "Cosmos, all APIs. The per-API routing is inside database.md."
+      },
+      "Microsoft.Cache": {
+        "route": "database.md",
+        "kind": "rubric",
+        "reason": "Redis and Redis Enterprise."
+      },
+      "Microsoft.Storage": {
+        "route": "storage.md",
+        "kind": "rubric",
+        "reason": "Accounts and their four service children."
+      },
+      "Microsoft.NetApp": {
+        "route": "storage.md",
+        "kind": "rubric",
+        "reason": "NetApp Files -> FSx for NetApp ONTAP."
+      },
+      "Microsoft.ServiceBus": {
+        "route": "messaging.md",
+        "kind": "rubric",
+        "reason": "Namespaces, queues, topics, subscriptions."
+      },
+      "Microsoft.EventHub": {
+        "route": "messaging.md",
+        "kind": "rubric",
+        "reason": "Namespaces and hubs. The namespace itself has a direct row that wins."
+      },
+      "Microsoft.EventGrid": {
+        "route": "messaging.md",
+        "kind": "rubric",
+        "reason": "Topics and subscriptions. Topics have direct rows that win."
+      },
+      "Microsoft.SignalRService": {
+        "route": "messaging.md",
+        "kind": "rubric",
+        "reason": "Real-time messaging."
+      },
+      "Microsoft.Relay": {
+        "route": "messaging.md",
+        "kind": "rubric",
+        "reason": "Hybrid Connections and WCF Relay."
+      },
+      "Microsoft.NotificationHubs": {
+        "route": "messaging.md",
+        "kind": "rubric",
+        "reason": "Push notification fan-out -> SNS mobile push."
+      },
+      "Microsoft.Search": {
+        "route": "analytics.md",
+        "kind": "rubric",
+        "reason": "AI Search."
+      },
+      "Microsoft.Databricks": {
+        "route": "analytics.md",
+        "kind": "rubric",
+        "reason": "Databricks workspaces."
+      },
+      "Microsoft.Kusto": {
+        "route": "analytics.md",
+        "kind": "rubric",
+        "reason": "Data Explorer. Likely a gate once analytics.md covers it -- KQL is a query rewrite."
+      },
+      "Microsoft.HDInsight": {
+        "route": "analytics.md",
+        "kind": "rubric",
+        "reason": "Managed Hadoop/Spark -> EMR."
+      },
+      "Microsoft.KeyVault": {
+        "route": "identity.md",
+        "kind": "rubric",
+        "reason": "Vaults, secrets, keys, certificates. The vault itself has a direct row that wins."
+      },
+      "Microsoft.ManagedIdentity": {
+        "route": "identity.md",
+        "kind": "rubric",
+        "reason": "Managed identities -> IAM roles."
+      },
+      "Microsoft.CognitiveServices": {
+        "route": "ai.md",
+        "kind": "rubric",
+        "reason": "Cognitive Services accounts. kind=OpenAI routes to the shared Bedrock guide instead; see index.md."
+      },
+      "Microsoft.Insights": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Observability is RE-ESTABLISHED on the target, not migrated (owner decision 11.6).",
+        "skip_kind": "config_source",
+        "report_note": "cloudwatch_fallback"
+      },
+      "Microsoft.OperationalInsights": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Log Analytics workspaces. Same as Microsoft.Insights.",
+        "skip_kind": "config_source",
+        "report_note": "cloudwatch_fallback"
+      },
+      "Microsoft.AlertsManagement": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Alert processing rules and smart groups. CloudWatch alarms are authored on the target.",
+        "skip_kind": "noise",
+        "report_note": "cloudwatch_fallback"
+      },
+      "Microsoft.Monitor": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Azure Monitor workspaces (Prometheus). Amazon Managed Prometheus is the counterpart but is authored, not translated.",
+        "skip_kind": "noise",
+        "report_note": "cloudwatch_fallback"
+      },
+      "Microsoft.Authorization": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Role assignments, definitions, locks and policy. IAM is AUTHORED on the target from intent, never translated from Azure RBAC.",
+        "skip_kind": "config_source"
+      },
+      "Microsoft.PolicyInsights": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Policy evaluation records -- state, not infrastructure.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.Resources": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Resource groups and deployment records. AWS has no resource-group equivalent; it becomes account structure and tags.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.Consumption": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Budgets and usage details. AWS Budgets is authored on the target; a source budget is not infrastructure.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.CostManagement": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Exports and views. Cost Explorer is configured, not migrated.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.Advisor": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Recommendations and suppressions -- advice about the source estate, with no target meaning.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.Portal": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Dashboards. CloudWatch dashboards are authored.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.Maintenance": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Maintenance configurations -> Systems Manager patch baselines, authored.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.Security": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Defender for Cloud settings -> Security Hub / GuardDuty, enabled not translated.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.SecurityInsights": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Sentinel -> Security Lake / a SIEM decision. Out of a per-resource mapping's scope.",
+        "skip_kind": "noise"
+      },
+      "Microsoft.RecoveryServices": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Vaults and backup policies -> AWS Backup, authored from the retention intent.",
+        "skip_kind": "config_source"
+      },
+      "Microsoft.AppConfiguration": {
+        "route": null,
+        "kind": "skip",
+        "reason": "Configuration stores -> AppConfig or Parameter Store. Values are not read (secret boundary).",
+        "skip_kind": "config_source"
+      },
+      "Microsoft.DataFactory": {
+        "route": null,
+        "kind": "gate",
+        "reason": "Pipeline orchestration is a rewrite the resource does not describe."
+      },
+      "Microsoft.Synapse": {
+        "route": null,
+        "kind": "gate",
+        "reason": "Warehouse plus Spark plus pipelines in one workspace."
+      },
+      "Microsoft.StreamAnalytics": {
+        "route": null,
+        "kind": "gate",
+        "reason": "The migration cost IS the streaming-query rewrite."
+      },
+      "Microsoft.MachineLearningServices": {
+        "route": null,
+        "kind": "gate",
+        "reason": "Workspace, compute, pipelines and registries -- a SageMaker engagement."
+      },
+      "Microsoft.Logic": {
+        "route": null,
+        "kind": "gate",
+        "reason": "Logic App workflows are a Step Functions rewrite, connector by connector."
+      },
+      "Microsoft.Batch": {
+        "route": null,
+        "kind": "gate",
+        "reason": "Pool, job and task model differs enough from AWS Batch to need design."
+      },
+      "Microsoft.Devices": {
+        "route": null,
+        "kind": "gate",
+        "reason": "IoT Hub / DPS -> AWS IoT Core. Device provisioning and fleet identity are their own project, and IoT is out of this skill's stated scope."
+      },
+      "Microsoft.Purview": {
+        "route": null,
+        "kind": "gate",
+        "reason": "Data governance and catalog -- a DataZone / Glue Catalog engagement."
+      },
+      "Microsoft.DevTestLab": {
+        "route": null,
+        "kind": "skip",
+        "skip_kind": "config_source",
+        "reason": "A DevTest Lab is a management wrapper around VMs, schedules and policies. The VMs it contains are the real resources and are inventoried in their own right; the lab itself has no AWS counterpart. Its auto-shutdown schedules are a cost-optimisation finding, not a mapping."
+      }
+    },
+    "_unrecognised_namespace": "The namespace is not listed above. This is NOT a stop. Choose the best-fit category from the rubric files on disk (compute, database, networking, messaging, analytics, storage, identity) using what the Azure service actually IS, load that rubric, and apply its six criteria like any other pass-2 resource. Record routing_provenance: \"model_category\" and emit a routed_by_model_category warning naming the namespace and the category chosen. Confidence is inferred, never deterministic. Prefer the PROVIDER NAMESPACE and the service's actual function as the signal - not a substring of the type name. gcp-to-aws routes on a substring ('log' -> monitoring), which also matches google_dialogflow_agent; the namespace does not have that failure mode. STOP only when you genuinely cannot say what the service does. That is a real answer and it is rare - and it is the ONLY route to a halt here.",
+    "_why_not_a_stop": "This mirrors gcp-to-aws, whose workflow serves customers today. gcp lists 28 google_* types and has NO namespace gate and NO missing-rubric halt: an unknown type is routed to one of its nine categories and the rubric answers. It handles every case not because its mapping knowledge is complete but because a rubric is ALWAYS reachable. An earlier version of this file said 'Do NOT guess a category from the type NAME', which combined with the 55-entry list to veto types the model can name perfectly well - Microsoft.Maps/accounts among them. A 55-namespace gate is the same failure as a 1089-type table, one level up.",
+    "_what_the_list_is_for_now": "The 55 rules are a CURATED SHORTCUT, not a gate. A listed namespace routes without judgement and records routing_provenance: \"namespace_rule\"; an unlisted one is reasoned about and records \"model_category\". Both produce an answer. The list earns its place by being faster and reviewable, not by being complete - and it does not need to grow."
+  },
+  "child_type_rule": {
+    "_what_this_is": "A canonical type with two or more segments after the provider (Microsoft.Sql/servers/databases) is a CHILD of the type formed by dropping its last segment (Microsoft.Sql/servers).",
+    "_rule": "If a child type has no row of its own anywhere AND its parent type resolves to a disposition, the child is a config_source of that parent: emit no target of its own, contribute its attributes to the parent's aws_config, and emit one skipped_config_source warning whose detail names what it contributed.",
+    "_evidence": "27 of the 33 config_source rows in skip_mappings are child types, and 0 of the 19 noise rows are. The disposition was always derivable from the type path; only the description of WHAT it contributes needed authoring.",
+    "_exceptions": "An explicit row always wins. Eight child types have their own direct_mappings row (a storage container is its own bucket or prefix) and one has its own gate row (elasticPools). Those are not covered by this rule.",
+    "_does_not_apply_when": "The PARENT has no disposition either. Then the child inherits nothing and falls through to namespace_routing, and then to the unknown-type policy.",
+    "_provenance": "routing_provenance: \"child_type_rule\".",
+    "_why_it_matters": "Child types are a large fraction of the provider surface -- every firewall rule, database, container, route, probe, consumer group and subscription. Without this rule each one needs an authored row, which is what left 53 orphans after a coverage pass and made growing coverage O(n) in judgement."
+  }
+}

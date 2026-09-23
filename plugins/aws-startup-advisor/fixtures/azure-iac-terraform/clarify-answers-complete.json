@@ -1,0 +1,24 @@
+{
+  "_what_this_is": "The COMPLETING scripted answer set, sibling to clarify-answers.json. That one declines to state Azure spend, leaving an ESSENTIAL row null so the phase BLOCKS \u2014 which is what proves the completion gate. This one answers it, which is what makes design reachable. Both are real states and both have a golden.",
+  "_produced": "after-clarify-complete/preferences.json, by capability run 4 (fresh isolated agent, answer keys prohibited, pointed only at SKILL.md).",
+  "sheet_response": "looks right",
+  "_sheet_response_why": "Accept every DETECTED and PROPOSED row unchanged, so the golden shows the DEFAULTS. A run that silently promotes a default to a user decision is one of the failures this catches.",
+  "essential_answers": {
+    "design_constraints.vm_cutover": "mgn",
+    "design_constraints.compliance": [],
+    "data.availability": "single-az",
+    "data.db_cutover": "dms",
+    "licensing.windows_model": "license_included",
+    "baseline.azure_monthly_spend": 4200
+  },
+  "_vm_cutover_answer_why": "DELIBERATELY CONFLICTING. The estate's only VM runs 2022-datacenter-azure-edition, which the azure_edition_windows_server hard_blocker suppresses MGN for. Answering mgn anyway tests what the skill does when a user picks an option a blocker forbids: record the answer AS GIVEN with a sibling conflict key, put the blocker in licensing.blockers[] with severity blocker, and keep clarify_status COMPLETE \u2014 because the customer answered and the blocker is a PREREQUISITE, not a competing preference. Silently rewriting the answer, or faking a gate failure, would both hide a decision they need to make.",
+  "_availability_answer_why": "single-az against a ZoneRedundant source, deliberately, so the golden must carry the availability_downgrade_from_source finding. Answering multi-az would hide the one case where the skill has to say something uncomfortable out loud.",
+  "_spend_answer_why": "4200 USD/month. Stated rather than declined, which is the ONLY difference from clarify-answers.json and the whole reason this branch exists.",
+  "_compliance_answer_why": "Canonical explicit-none is [] (clarify-compliance.md answer 1). [\"none\"] is an accepted alias from the AI-only path, not what a full-infrastructure completing run writes.",
+  "_not_asked": {
+    "cosmos_read_write_split": "N/A \u2014 the account is kind MongoDB (EnableMongo), which fast-paths to DocumentDB. No RU/s -> WCU/RCU conversion happens, so the question must not be asked. Run 4 correctly declined to answer it even though an answer was offered.",
+    "sql_licensing": "N/A \u2014 no Microsoft.Sql/* resource and no SQL-on-VM image signature.",
+    "plan_isolation": "N/A for the 1-app and 0-app plans \u2014 a plan hosting 0 or 1 app gets no isolation row."
+  },
+  "_no_golden_yet": "There is deliberately NO after-clarify-complete/ golden yet. Capability run 4 produced one, but it predates two rules the run itself exposed as unstated: clarify-compute.md now requires ONE app_service_plans row PER PLAN (run 4 wrote only the plan it questioned), and clarify-licensing.md now requires _fired and _firing_reason (run 4 wrote neither, because nothing asked it to). Both were the oracle asserting what no skill file taught. Hand-editing run 4's output to satisfy the new rules would be authoring a golden by intuition, which is the failure mode 13.4e and section 15.4 both warn about and which has already bitten three times. The next capability run against the corrected files produces this golden properly."
+}

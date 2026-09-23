@@ -30,6 +30,13 @@ BAD_SG_PUBLIC_IPV6 = FIXTURES / "bad-sg-public-ipv6"
 GOOD_SG_IPV6_SCOPED = FIXTURES / "good-sg-ipv6-scoped"
 BAD_ELASTICACHE_UNENCRYPTED = FIXTURES / "bad-elasticache-unencrypted"
 GOOD_ELASTICACHE_ENCRYPTED = FIXTURES / "good-elasticache-encrypted"
+BAD_ELASTICACHE_CLUSTER_REDIS_UNENCRYPTED = (
+    FIXTURES / "bad-elasticache-cluster-redis-unencrypted"
+)
+GOOD_ELASTICACHE_CLUSTER_REDIS_ENCRYPTED = (
+    FIXTURES / "good-elasticache-cluster-redis-encrypted"
+)
+GOOD_ELASTICACHE_CLUSTER_MEMCACHED = FIXTURES / "good-elasticache-cluster-memcached"
 GOOD_QUOTED_PORT_HTTPS = FIXTURES / "good-quoted-port-https"
 BAD_DB_SG_PUBLIC_QUOTED_PORT = FIXTURES / "bad-db-sg-public-quoted-port"
 GOOD_HEROKU_EB_LB = FIXTURES / "good-heroku-eb-loadbalanced"
@@ -502,6 +509,28 @@ def test_elasticache_encrypted_passes() -> None:
     assert "POLICY_OK" in out
 
 
+def test_elasticache_cluster_redis_unencrypted_fails() -> None:
+    # Single-node Redis aws_elasticache_cluster with no encryption must fail.
+    code, out = run_policy_validator(BAD_ELASTICACHE_CLUSTER_REDIS_UNENCRYPTED)
+    assert code == 1, out
+    assert "elasticache_encryption_at_rest" in out
+
+
+def test_elasticache_cluster_redis_encrypted_passes() -> None:
+    # Redis aws_elasticache_cluster with transit_encryption_enabled on must pass
+    # (at_rest_encryption_enabled is not valid on this resource).
+    code, out = run_policy_validator(GOOD_ELASTICACHE_CLUSTER_REDIS_ENCRYPTED)
+    assert code == 0, out
+    assert "POLICY_OK" in out
+
+
+def test_elasticache_cluster_memcached_exempt_passes() -> None:
+    # A Memcached cluster stays exempt (fail open) and must not be flagged.
+    code, out = run_policy_validator(GOOD_ELASTICACHE_CLUSTER_MEMCACHED)
+    assert code == 0, out
+    assert "POLICY_OK" in out
+
+
 def test_block_form_forward_https_listener_does_not_false_fail() -> None:
     """Regression: a valid HTTPS listener whose default_action uses a NESTED
     forward { ... } block before `type` must NOT be misparsed as missing/wrong.
@@ -804,7 +833,7 @@ def test_every_fixture_matches_its_good_bad_prefix() -> None:
     # Exact, not `>=`: a floor cannot detect fixtures being deleted down to it,
     # which is the removal this assertion exists to catch. Update deliberately
     # when adding or removing a fixture.
-    assert len(fixture_dirs) == 28, f"fixture count changed: {[d.name for d in fixture_dirs]}"
+    assert len(fixture_dirs) == 31, f"fixture count changed: {[d.name for d in fixture_dirs]}"
     for fixture in fixture_dirs:
         code, out = run_policy_validator(fixture)
         if fixture.name.startswith("bad-"):

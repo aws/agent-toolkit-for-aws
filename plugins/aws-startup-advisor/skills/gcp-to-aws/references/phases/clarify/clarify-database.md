@@ -1,8 +1,23 @@
+---
+_fragment: database
+_of_phase: clarify
+_contributes:
+  - preferences.json (design_constraints section: database_traffic, db_io_workload, db_size)
+---
+
 # Category D — Database Model (If Database Resources Present)
+
+> **Fragment unit.** See `clarify.md` for how it is composed into the phase.
+>
+> **This fragment asks nothing.** It reads the inventory, resolves what it can, assigns a
+> disposition per row, and returns rows. `clarify-assemble.md` presents them.
 
 _Fire when:_ Database resources present (Cloud SQL, Spanner, Memorystore).
 
-**Q6 (`availability`) selects RDS vs Aurora** for Cloud SQL PostgreSQL/MySQL — see `clarify-global.md` Q6. Q12–Q13 tune sizing and storage **within** the family Q6 chose. **Q12–Q13 never override Q6.**
+**Q6 (`availability`, in `clarify-global.md`) selects RDS vs Aurora** for Cloud SQL
+PostgreSQL/MySQL — see `clarify-global.md` § Q6 (the canonical availability question,
+shared with `azure-to-aws`). Q12–Q13 tune sizing and storage **within** the family Q6 chose.
+**Q12–Q13 never override Q6.**
 
 ---
 
@@ -153,3 +168,31 @@ Interpret:
 ```
 
 Default: 5 — `design_constraints.db_size: { value: "unknown", chosen_by: "default" }` (default to pgcopydb; safer than pg_dump at unknown scale).
+
+## Rows returned
+
+```jsonc
+"design_constraints": {
+  "database_traffic": { "disposition": "PROPOSED", "value": null, "default": "steady" },
+  "db_io_workload":   { "disposition": "PROPOSED", "value": null, "default": "medium" },
+  "db_size":          { "disposition": "PROPOSED", "value": null, "default": "unknown" }
+}
+```
+
+`availability` is **not** here — it is resolved once in `clarify-global.md` (the canonical
+availability question) and consumed by this fragment's engine-detection table, never
+re-asked or re-resolved per database category.
+
+## Who consumes these
+
+| Row                | Consumer                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `database_traffic` | Design's read-replica / write-capacity sizing, within the family `availability` chose |
+| `db_io_workload`   | Design's storage type selection (gp3 / io2 / Provisioned IOPS / I/O-Optimized)        |
+| `db_size`          | Generate's migration tooling selection (pg_dump / pgcopydb / DMS)                     |
+
+## Status — build step 5 (restructure)
+
+Implemented. Restructured into the fragment-returns-rows pattern; no change to firing rules,
+defaults, or interpretation — only the presentation split (this fragment computes,
+`clarify-assemble.md` presents).

@@ -67,7 +67,9 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "MIGRATION_GUIDE.md has Prerequisites and Verification sections; README.md lists the artifacts"
     _on_failure: _halt_and_inform
-  - _assert: "migration-report.html has decision-summary, exec-costs, next-steps, and draft-for-review footer; if scenarios/index.json has ≥2 scenarios, also what-if-scenarios"
+  - _assert: "migration-report.html has decision-summary, exec-costs, cost-optimization, next-steps, and draft-for-review footer; if scenarios/index.json has ≥2 scenarios, also what-if-scenarios"
+    _on_failure: _halt_and_inform
+  - _assert: "report-validation-status.json exists and its report_status is 'REPORT_OK', stamped by the main-window 'Finish Generate' report-validation step (described below, run BEFORE this gate); a REPORT_FAIL, a missing/not_run stamp (validator could not run), or a missing file blocks completion. This gate is READ-ONLY: do not run the validator or edit the report/stamp here."
     _on_failure: _halt_and_inform
   - _assert: "if Postgres is in the design, scripts/migrate-postgres.sh exists; if Redis is in the design, scripts/migrate-redis.sh exists"
     _on_failure: _halt_and_inform
@@ -136,8 +138,52 @@ FORBIDDEN — Do NOT include ANY of:
 - Discovering new Heroku resources (Phase 1 is done)
 - Feedback collection (Phase 6 handles this)
 
-**Your ONLY job: Transform the design into migration artifacts. Nothing else.** Running the
-tf-best-practices policy checker and applying its `fix_hint`s to the generated `terraform/` is
-part of _producing_ the artifacts, so it happens in the assembler after all
-Terraform-producing fragments (Generate is dispatched at `_exec._agent: rwx`,
-which grants the scoped shell the checker needs). Design/estimate decisions stay final.
+**Your ONLY job: Transform the design into migration artifacts. Nothing else** — with two
+exceptions. Running the tf-best-practices policy checker against the generated `terraform/` and
+applying its `fix_hint`s is part of _producing_ the artifacts: the assembler does this after all
+Terraform-producing fragments (Generate is dispatched at `_exec._agent: rwx`, which grants exactly
+the scoped shell the checker needs — nothing else). Running the report validator over
+`migration-report.html` is a separate, main-window exception: the dispatched worker's shell is
+scoped to the policy checker only (it cannot run the report validator), so that check is part of
+_finishing_ the artifacts and happens in the "Finish Generate" step below, after the worker
+returns. Design/estimate decisions stay final.
+
+---
+
+## Finish Generate in the main window (report validation) — BEFORE the gate
+
+This is **leftover Generate work**, not a gate check: the dispatched `_exec._agent: rw` worker
+that assembled the report has no shell (`INTERPRETER.md` § capability tiers — `rw` excludes Bash),
+so it could not run the report validator. The interpreter finishes that work in the MAIN window
+(the only place with a shell), **after the worker returns and before running `_postconditions`**.
+
+1. Run the report validator (**required, blocking**):
+
+   ```
+   python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
+     "$MIGRATION_DIR/migration-report.html" --migration-dir "$MIGRATION_DIR"
+   ```
+
+2. `REPORT_OK` → **stamp the durable result** so the gate reads an artifact, not conversation
+   memory: write `$MIGRATION_DIR/report-validation-status.json` as
+   `{"report_status": "REPORT_OK"}`, then continue to the gate. `REPORT_FAIL` → write
+   `{"report_status": "REPORT_FAIL", "errors": [ … ]}` and **emit `GATE_FAIL`, pasting the
+   validator's `errors[]` verbatim** so the user knows exactly what failed (missing scope id,
+   empty `cost-optimization`, a banned `badge-verdict-*` pill class, a `<th>` without `scope`,
+   missing `<html lang>`, etc.). This step does **not** edit the HTML.
+
+3. If the validator cannot run at all (no shell on the host), do **not** write
+   `report_status: "REPORT_OK"` — leave the stamp absent (or `not_run`) so the gate fails closed.
+
+Then the `_postconditions` gate runs (read-only): the section-id `_assert` plus the
+`report-validation-status.json` `_assert` above. The gate runs no validator and edits nothing (per
+`INTERPRETER.md` § `_postconditions`, a gate never mutates artifacts to pass).
+
+**Recovery on `GATE_FAIL`:** fix the report from the pasted `errors[]` — either hand-edit
+`migration-report.html`, re-run the validator directly, and re-stamp `report-validation-status.json`
+on `REPORT_OK`; or a maintainer re-runs Generate for a clean rebuild. Do **not** rely on "just
+re-run Generate" as the fix path in prose: re-dispatch re-authors the report under the shell-less
+worker, so the pasted error list is what makes the next attempt actionable.
+
+`report-validation-status.json` is a temp status sidecar (like the policy sidecar) — not a
+`_produces` artifact; it exists only to carry the validator result across the worker→gate boundary.

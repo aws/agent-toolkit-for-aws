@@ -1,0 +1,174 @@
+{
+  "_comment": "Pinned facts for azure-to-aws CLARIFY over the azure-iac-terraform corpus, with clarify-answers.json standing in for the user. Same selection rule as the sibling asserters: only facts where a plausible improvisation and the correct answer DIVERGE.",
+  "_limitation": "This tests BRANCHING, not conversation. Wording, batching and tone need a human. Which rows fire, which are ESSENTIAL, and which are N/A is what a scripted user can check \u2014 and it is where the defects live, because a firing rule is a judgement.",
+  "preferences_file": "preferences.json",
+  "inventory_file": "azure-resource-inventory.json",
+  "row_dispositions": {
+    "global.target_region": {
+      "disposition": "DETECTED",
+      "value": "eu-west-1",
+      "must_not_be_disposition": [
+        "PROPOSED"
+      ],
+      "why": "every resource is westeurope, so the region is MAPPED from the estate, not proposed. The wrong answer is the repo-wide us-east-1 default, which would silently move a European estate to Virginia."
+    },
+    "global.user_geography": {
+      "disposition": "PROPOSED",
+      "value": "single-region",
+      "must_not_be_disposition": [
+        "ESSENTIAL",
+        "N/A"
+      ],
+      "why": "one Azure region, so Q-A1b defaults to single-region. Design's CDN/Route 53 path and Q-D1's Catastrophic branch read this row; omitting it still passed the golden until it was pinned."
+    },
+    "design_constraints.compliance": {
+      "disposition": "ESSENTIAL",
+      "value": null,
+      "must_not_be_disposition": [
+        "PROPOSED",
+        "DETECTED"
+      ],
+      "why": "Compliance status is never inferable from ARM/Bicep/Terraform, so this question always fires for a full-infrastructure migration and is never silently defaulted to 'none'. The scripted user declines to answer it on this branch, mirroring the spend row, so it must also block the phase."
+    },
+    "design_constraints.cpu_architecture": {
+      "disposition": "DETECTED",
+      "value": "x86_64",
+      "must_not_be_disposition": [
+        "PROPOSED"
+      ],
+      "requires_keys": [
+        "forced_by"
+      ],
+      "why": "a Windows VM is present, so x86_64 is not a CHOICE \u2014 graviton.md's escape path applies. Offering it as PROPOSED implies Graviton is available for that VM, and it is not.",
+      "_requires_keys_why": "forced_by, not source: x86_64 here is not a free reading of the estate, it is FORCED by a Windows workload that removes Graviton as an option. schema-preferences.md gives forced_by precedence over the disposition's usual key for exactly this case."
+    },
+    "design_constraints.compute_target": {
+      "disposition": "PROPOSED",
+      "value": "elastic_beanstalk",
+      "must_not_be_disposition": [
+        "DETECTED",
+        "ESSENTIAL"
+      ],
+      "why": "the user accepted the sheet unchanged, so this is the skill's DEFAULT and must still read PROPOSED. Promoting it to DETECTED would claim the estate said Elastic Beanstalk; it did not."
+    },
+    "design_constraints.vm_cutover": {
+      "disposition": "ESSENTIAL",
+      "value": "mgn",
+      "must_not_be_disposition": [
+        "PROPOSED"
+      ],
+      "why": "MGN and a rebuild produce different RUNBOOKS, not different numbers, so there is no defensible default. A PROPOSED row here would guess a migration strategy."
+    },
+    "data.availability": {
+      "disposition": "ESSENTIAL",
+      "value": "single-az",
+      "must_not_be_disposition": [
+        "PROPOSED",
+        "DETECTED"
+      ],
+      "requires_keys": [
+        "context"
+      ],
+      "why": "THE most consequential row in the phase. The source is ZoneRedundant, so it must be ESSENTIAL \u2014 silently downgrading resilience someone pays for today is the expensive mistake. It must NOT be DETECTED either: the source says what they bought, not what they need."
+    },
+    "data.db_cutover": {
+      "disposition": "ESSENTIAL",
+      "value": "dms",
+      "why": "DMS versus dump-and-restore is a different runbook, so no default."
+    },
+    "data.cosmos_rw_split": {
+      "disposition": "N/A",
+      "requires_keys": [
+        "reason"
+      ],
+      "must_not_be_disposition": [
+        "ESSENTIAL",
+        "PROPOSED"
+      ],
+      "why": "the only Cosmos account is Mongo API, which is a fast-path row to DocumentDB with no RU/s conversion. Asking for a read/write split here is the obvious wrong behaviour \u2014 the question is real, but only for the Core API."
+    },
+    "data.redis_modules": {
+      "disposition": "DETECTED",
+      "value": false,
+      "requires_keys": [
+        "source"
+      ],
+      "why": "the source is Microsoft.Cache/Redis, not redisEnterprise, so plain Azure Cache has no modules and the answer is readable from the estate."
+    },
+    "baseline.azure_monthly_spend": {
+      "disposition": "ESSENTIAL",
+      "value": null,
+      "why": "no billing export was discovered, so there is nothing to detect it from, and spend cannot be inferred. It stays ESSENTIAL and unanswered \u2014 see the essential gate."
+    },
+    "identity": {
+      "disposition": "PROPOSED",
+      "value": "identity_center_reinvite",
+      "must_not_be_disposition": [
+        "N/A"
+      ],
+      "why": "Category J ALWAYS fires \u2014 every Azure estate has an Entra tenant even when no identity resource appears in the inventory. Marking it N/A because no managed identities were found is the trap. The default is a fresh directory, not federation, because federation would leave the migration depending on the cloud being left."
+    },
+    "licensing.sql_model": {
+      "disposition": "N/A",
+      "requires_keys": [
+        "reason"
+      ],
+      "why": "the licensing CATEGORY fires (a Windows VM) while this SUB-QUESTION does not (no SQL anywhere). Category and sub-question have different triggers, and conflating them either asks a question with no subject or skips licensing entirely."
+    },
+    "_requires_keys_why": "requires_keys follows the DISPOSITION, per schema-preferences.md: DETECTED needs `source` (what in the estate was read), N/A needs `reason`, ESSENTIAL needs `context`. Aligned 2026-09-08 - several rows demanded `reason` on a DETECTED row, which is the N/A key, so the assertion was asking for the wrong field."
+  },
+  "essential_gate": {
+    "_why": "An ESSENTIAL row with a null value IS the completion gate. The scripted user declines to state spend AND compliance, so the phase must NOT complete. A run that emits HANDOFF_OK here has invented consent, and no shape assertion can catch that \u2014 the artifact is perfectly well-formed.",
+    "expected_unanswered": [
+      "baseline.azure_monthly_spend",
+      "design_constraints.compliance"
+    ],
+    "expected_status": "BLOCKED_ON_ESSENTIAL"
+  },
+  "defaults_not_promoted": {
+    "_why": "A value taken from its default must still read PROPOSED. DETECTED means READ FROM THE ESTATE. Design's rationale prints 'you chose Elastic Beanstalk' differently from 'we assumed Elastic Beanstalk', and the report prints the difference \u2014 but only if this file recorded which happened. A row that is DETECTED with value == default and no stated source is a promoted default.",
+    "accepted_keys": [
+      "source",
+      "forced_by"
+    ],
+    "_accepted_keys_why": "schema-preferences.md now names them. `reason` was accepted until 2026-09-08 and is no longer: it is the N/A key. Accepting a family of aliases is how nine different justification key names ended up in play across two runs and a golden - the same failure as service_id, where an unspecified identifier made two valid runs disagree."
+  },
+  "isolation_rows": {
+    "_why": "One row per plan, and the disposition depends on the app count. Asking about all three plans is the obvious wrong behaviour and would put two meaningless questions in front of the user.",
+    "expected": {
+      "azurerm_service_plan.web": {
+        "hosted_app_count": 5,
+        "disposition": "PROPOSED",
+        "why": "5 apps share this plan, so isolation is a real question and the largest estimate swing in the phase \u2014 splitting multiplies the compute line by 5."
+      },
+      "azurerm_service_plan.func": {
+        "hosted_app_count": 1,
+        "disposition": "N/A",
+        "why": "one app: there is nothing to isolate it FROM."
+      },
+      "azurerm_service_plan.legacy": {
+        "hosted_app_count": 0,
+        "disposition": "N/A",
+        "why": "zero apps. It gets the idle-capacity finding, not an isolation question."
+      }
+    }
+  },
+  "licensing_firing": {
+    "_why": "The category is CONDITIONAL \u2014 the only Clarify fragment that can legitimately not load. It must fire here (one Windows VM), and when it does not fire elsewhere it must be written as N/A with a reason rather than omitted.",
+    "expected_fired": true,
+    "expected_blocker_code": "azure_edition_windows_server",
+    "_blocker_why": "image_sku 2022-datacenter-azure-edition. MGN REFUSES the image until it is re-imaged. A run that maps the VM to EC2 and says nothing produces a migration that fails at replication time, and it is stated rather than asked because there is no option to weigh."
+  },
+  "cluster_rows": {
+    "clusters_file": "azure-resource-clusters.json",
+    "_why": "preferences.clusters[] must key exactly to the clusters artifact. A mismatch means the pattern confirmation the user gave is recorded against a cluster_id Design will not look up, so it is silently discarded \u2014 and cluster_id stability across runs is the whole reason the id is derived from the primary rather than from iteration order."
+  },
+  "forbidden_substrings": {
+    "values": [
+      "FIXTURE_SENTINEL_MUST_NOT_APPEAR",
+      "SecretUri",
+      "primary_access_key"
+    ],
+    "_why": "preferences has no reason to hold even app-setting NAMES, let alone values. The inventory already discards values; copying anything secret-shaped out of it here would reintroduce the exposure."
+  }
+}

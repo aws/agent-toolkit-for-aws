@@ -6,8 +6,8 @@
 
 If the detected AI workload is LLM-based (generative models), load the source-specific design reference instead of this file:
 
-- If `ai-workload-profile.json` → `summary.ai_source` = `"gemini"`: load `ai-gemini-to-bedrock.md`
-- If `ai-workload-profile.json` → `summary.ai_source` = `"openai"`: load `ai-openai-to-bedrock.md`
+- If `ai-workload-profile.json` → `summary.ai_source` = `"gemini"`: load `references/design-refs/ai-gemini-to-bedrock.md`
+- If `ai-workload-profile.json` → `summary.ai_source` = `"openai"`: load `references/vendored/ai/ai-openai-to-bedrock.md`
 - If `ai-workload-profile.json` → `summary.ai_source` = `"both"`: load both files
 - If `ai-workload-profile.json` → `summary.ai_source` = `"other"` or absent, OR if the workload is traditional ML (custom models, Vision API, Speech API): use the SageMaker/Rekognition/Textract rubric below.
 

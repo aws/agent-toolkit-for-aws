@@ -1,0 +1,455 @@
+{
+  "_comment": "Pinned facts for azure-to-aws ESTIMATE over the azure-iac-terraform corpus, downstream of after-clarify-complete/ and after-design/. Same selection rule as its sibling expected files: pin only where a plausible improvisation and the correct answer DIVERGE, and record the wrong answer in must_not_* so the failure message can name it.",
+  "_tolerance_model": {
+    "_why": "Estimate is the first phase whose fixtures cannot use exact assertions: AWS rates change on AWS's cadence, so a committed exact total would go permanently red on the next rate refresh and teach everyone to ignore the oracle. But a blanket percentage on the grand total is worse than useless — it is the one number where two compensating errors cancel, and where a single rate change fails everything. So tolerance is applied in three tiers, by what KIND of thing is being checked.",
+    "tier_1_exact": "Everything that is not a dollar figure: which lines exist, which are excluded and why, which pricing_source each carries, whether the licensing line rendered, run_mode, the tier, the floor flags, the sign conventions. Rates drift; CONTRACTS do not. Every defect the capability runs have found was of this kind.",
+    "tier_2_relational": "Arithmetic identities, asserted EXACTLY (1e-6 relative): each total equals the sum of its own non-excluded lines; the rightsizing delta equals lift minus right_sized; per-cluster figures plus the unattributed line equal the right-sized total. These are properties of the ARTIFACT, not of AWS's price list, so they survive any rate refresh — which is the whole reason to prefer relationships over values.",
+    "tier_3_banded": "Per-line dollar figures, against a [min, max] band RECORDED below rather than computed at assert time. Recording it means a rate refresh that moves a line out of band is a deliberate expected-file edit with a reviewable diff, not a silent pass.",
+    "_why_bands_are_recorded_not_computed": "An asserter that recomputes expected values from the same vendored rate card the run read shares the run's input. It would then catch an arithmetic slip and NOTHING ELSE — not a wrong instance type, not a Linux rate used for a Windows box, not an rds_postgresql class read for a DocumentDB line. Those are exactly the defects this fixture exists to catch, so the numbers must be recorded independently.",
+    "_why_the_envelopes_differ": "A band tighter than the coarsest input is theatre. _meta.accuracy on the rate card is +/-5-10%, but that is the RATE's accuracy, not the estimate's: an estimate stacks the rate on instance counts, LCU guesses and a log-volume heuristic that carries its own +/-35%. So the envelope is set per line by what the line is made of, and recorded on the line, so a reviewer can see which figures are arithmetic and which are guesses.",
+    "envelopes": {
+      "rate_times_count": 10,
+      "stated_baseline": 10,
+      "heuristic": 35,
+      "total": 15
+    },
+    "_total_envelope_why": "15% rather than 10%: the total is dominated by rate_times_count lines but includes one +/-35% heuristic line at roughly 8% of the sum. 15% covers that without being so loose that a materially wrong total passes."
+  },
+  "estimate_file": "estimation-infra.json",
+  "design_file": "aws-design.json",
+  "preferences_file": "preferences.json",
+  "phase_status_file": ".phase-status.json",
+  "pricing_file_relpath": "../../skills/azure-to-aws/references/vendored/pricing/aws-infra-pricing.json",
+  "defaults_file_relpath": "../../skills/azure-to-aws/knowledge/estimate/estimate-defaults.json",
+  "_not_asserted": "The prose of any note, rationale or description. The exact wording of the decision-gate pack (it is chat output, not an artifact). The optimization_opportunities descriptions and reference URLs. The migration-cost category prose. Those are judgement and wording, which this oracle cannot evaluate and must not pretend to.",
+  "dual_output": {
+    "_why": "The DEFAULT SHAPE of this phase, so its absence is the first thing to check. An implementation under any pressure to simplify emits one total — and one total either overstates the bill (lift only) or hides the work that produced the saving (right-sized only).",
+    "required_paths": [
+      "projected_costs.lift.monthly",
+      "projected_costs.right_sized.monthly",
+      "cost_comparison.rightsizing_delta.monthly"
+    ],
+    "must_not_be": "a single projected_costs total with no lift/right_sized split"
+  },
+  "line_bands": {
+    "_why": "One entry per designed service. basis records what the figure is made of, which is what sets its envelope; must_not_be records the specific wrong answer a plausible improviser produces, so a failure message can name the rule violated rather than just the delta.",
+    "priced": [
+      {
+        "service_id": "elasticache-redis-session",
+        "expected": 24.82,
+        "min": 22.34,
+        "max": 27.3,
+        "basis": "rate_times_count",
+        "must_not_be": 49.64,
+        "must_not_be_why": "49.64 is the x2 multi-AZ multiplier applied. elasticache carries multi_az_handling multiplier_x2, but preferences.data.availability is single-az, so it must NOT be applied. Doubling here is the single easiest cost error in the estate."
+      },
+      {
+        "service_id": "msk-telemetry",
+        "expected": 66.58,
+        "min": 59.92,
+        "max": 73.24,
+        "basis": "rate_times_count",
+        "must_not_be": 133.16,
+        "must_not_be_why": "133.16 is a multi-AZ multiplier applied to MSK. msk carries multi_az_handling 'intrinsic' — broker_count already spans AZs — so no multiplier is correct."
+      },
+      {
+        "service_id": "rds-postgresql-store",
+        "expected": 274.6,
+        "min": 247.14,
+        "max": 302.06,
+        "basis": "rate_times_count",
+        "must_not_be": 534.48,
+        "must_not_be_why": "534.48 doubles the instance component for multi_az. rds_postgresql carries multi_az_handling 'baked_in': the rate ALREADY includes Multi-AZ. Doubling it is the trap _multi_az_convention exists to prevent, and this design is single-AZ anyway."
+      },
+      {
+        "service_id": "elastic-beanstalk-web",
+        "expected": 53.92,
+        "min": 48.53,
+        "max": 59.31,
+        "basis": "rate_times_count",
+        "must_not_be": 134.8,
+        "must_not_be_why": "Roughly 134.80 is five EB environments instead of one — the App Service Plan fan-in error. Five web apps share ONE S1 plan, so they are one compute unit at 2 instances, not five. The design already collapses them; the estimate must not re-expand them."
+      },
+      {
+        "service_id": "secrets-manager-main",
+        "expected": 2.0,
+        "min": 1.8,
+        "max": 2.2,
+        "basis": "stated_baseline"
+      },
+      {
+        "service_id": "s3-assets",
+        "expected": 5.0,
+        "min": 4.5,
+        "max": 5.5,
+        "basis": "stated_baseline"
+      },
+      {
+        "service_id": "observability-cloudwatch",
+        "expected": 38.17,
+        "min": 24.81,
+        "max": 51.54,
+        "basis": "heuristic",
+        "must_not_be": 0,
+        "must_not_be_why": "Omitting observability entirely. Azure bundles a Log Analytics allowance and CloudWatch charges from the first GB, so a $0 observability line is a post-cutover surprise, not a saving."
+      }
+    ],
+    "zero_cost": {
+      "_why": "These lines must be PRESENT at 0.00, not absent. A missing line is indistinguishable from a forgotten one, and 'is the VPC free?' is a question a reader should see answered rather than have to assume.",
+      "service_ids": [
+        "vpc-core",
+        "vpc-subnet-apps",
+        "vpc-subnet-data",
+        "vpc-route-table-egress",
+        "systems-manager-session-manager-jump"
+      ],
+      "expected": 0.0,
+      "must_not_be_absent": true
+    },
+    "excluded": [
+      {
+        "service_id": "ec2-reporting",
+        "exclusion_reason": "partial_rate",
+        "pricing_source": "partial",
+        "floor": 140.16,
+        "floor_min": 126.14,
+        "floor_max": 154.18,
+        "missing_component_substring": "licence",
+        "must_not_be_included_in_total": true,
+        "_why": "THE MOST CONSEQUENTIAL LINE IN THE ESTATE. The design states operating_system 'Windows Server 2022' and license_model 'License Included', and Clarify's licensing category fired with windows_model license_included. ec2.instances rates are LINUX (the section's own _comment says so) and no Windows rate or per-vCPU licence adder exists anywhere available. Pricing this at 140.16 and calling it done understates the estate's most expensive compute line by roughly 2x, in the direction that flatters AWS. It must be labeled partial and excluded, with the figure kept as a floor.",
+        "must_not_be_why": "A run that emits pricing_source 'cached' here, or includes 140.16 in the total, has produced a plausible number that is roughly half right and says so nowhere."
+      },
+      {
+        "service_id": "elastic-beanstalk-legacy",
+        "exclusion_reason": "partial_rate",
+        "pricing_source": "partial",
+        "floor": 70.72,
+        "floor_min": 63.65,
+        "floor_max": 77.79,
+        "missing_component_substring": "licence",
+        "must_not_be_included_in_total": true,
+        "_why": "The SECOND Windows line, and the one that gets missed: its design entry carries no license_model field at all, only platform_family 'Windows Server (IIS)'. An implementation that keys the partial rule literally on license_model will price this at the Linux rate. Windows licensing on the target follows from the platform, not from the presence of a field."
+      },
+      {
+        "service_id": "documentdb-catalog",
+        "exclusion_reason": "no_rate",
+        "pricing_source": "unavailable",
+        "floor": null,
+        "must_not_be_included_in_total": true,
+        "must_not_be_priced_from": "rds_postgresql.instances",
+        "_why": "db.t3.medium is a DOCUMENTDB instance class. rds_postgresql.instances has no db.t3.medium row today, but if one is ever added, reading it here would be wrong twice: wrong service, and those rates are baked-in Multi-AZ. No documentdb section exists in the rate card or in the gcp-to-aws cache. Substituting a neighbouring rate is the failure the _do_not_paper_over key exists to forbid."
+      },
+      {
+        "service_id": "fsx-for-windows-file-server-reports",
+        "exclusion_reason": "no_rate",
+        "pricing_source": "unavailable",
+        "floor": null,
+        "must_not_be_included_in_total": true,
+        "_why": "No fsx section in the rate card or the gcp-to-aws cache. The QUANTITY is known (512 GiB SSD SINGLE_AZ_2) which makes inventing a per-GiB rate especially tempting — the arithmetic would look complete."
+      },
+      {
+        "service_id": "lambda-func",
+        "exclusion_reason": "no_quantity",
+        "pricing_source": "cached",
+        "floor": null,
+        "must_not_be_included_in_total": true,
+        "_why": "The one exclusion that is NOT about a missing rate — Lambda rates ARE in the card. Cost is invocation-driven and no invocation count exists: Terraform declares none, and the source Y1 consumption plan provisions no capacity. A run that emits any dollar figure here invented a request volume. Its pricing_source is legitimately 'cached' (the rate resolved) while its exclusion_reason is 'no_quantity', and a run that conflates the two has not understood the distinction."
+      }
+    ]
+  },
+  "totals": {
+    "_why": "Banded for sanity, but the load-bearing checks are the RELATIONAL ones below — those hold across any rate refresh.",
+    "lift_expected": 465.09,
+    "right_sized_expected": 465.09,
+    "min": 395.33,
+    "max": 534.85,
+    "basis": "total",
+    "must_not_be": 675.97,
+    "must_not_be_why": "675.97 is 465.09 plus the two Windows floors (140.16 + 70.72) — i.e. what the total becomes if the partial lines are folded in as if they were fully priced. It is the most plausible wrong total in this estate, and it is wrong in the direction that looks MORE complete.",
+    "reconciles_exactly": true,
+    "excluded_from_sum": [
+      "ec2-reporting",
+      "elastic-beanstalk-legacy",
+      "documentdb-catalog",
+      "fsx-for-windows-file-server-reports",
+      "lambda-func"
+    ]
+  },
+  "floor_propagation": {
+    "_why": "Five of seventeen lines are excluded, so neither total is a total — both are lower bounds. Presenting a floor as a total is the most misleading single thing this phase can do, and it is invisible in the number itself.",
+    "expected_is_floor": true,
+    "required_paths": [
+      "projected_costs.lift.is_floor",
+      "projected_costs.right_sized.is_floor"
+    ],
+    "must_not_be": false
+  },
+  "rightsizing_delta": {
+    "_why": "The delta is legitimately ZERO on this corpus, and a zero is exactly what an incomplete implementation also produces. So the assertion is not on the value — it is on the EXPLANATION being present and non-trivial. This is the check that distinguishes 'computed, and correctly zero' from 'never computed'.",
+    "expected_monthly": 0.0,
+    "explanation_required": true,
+    "explanation_min_length": 80,
+    "explanation_must_mention_any": [
+      "utilization",
+      "utilisation",
+      "metrics",
+      "P95",
+      "like-for-like"
+    ],
+    "expected_basis": "none",
+    "allowed_basis": [
+      "none",
+      "declared_waste",
+      "utilization",
+      "both"
+    ],
+    "must_not_be_bare_zero": "A delta of 0 with an empty, absent or one-word explanation. Indistinguishable from an uncomputed delta, and it reads to a customer as a broken calculation.",
+    "declared_waste_must_be_recorded": true,
+    "declared_waste_why": "The idle P1v3 Windows plan with zero apps IS real waste and must be recorded somewhere — losing it entirely because it happens not to move a dollar figure would drop the estate's clearest cost finding.",
+    "declared_waste_must_not_be_double_counted": "The same idle plan appearing BOTH as a rightsizing saving and as an optimization_opportunities entry double-counts one saving, presenting it twice."
+  },
+  "licensing_delta": {
+    "_why": "Rendered if and only if Clarify's licensing category fired. Both directions are errors: a licensing line on an estate with no Windows is noise, and its absence here loses the fact that 6 vCPU of Windows compute is unpriced.",
+    "preferences_gate_path": "licensing._fired",
+    "expected_fired": true,
+    "expected_present": true,
+    "expected_windows_model": "license_included",
+    "expected_monthly_delta": null,
+    "monthly_delta_must_be_null_why": "No Windows rate and no per-vCPU licence adder exists in the rate card or in the gcp-to-aws cache, and pricing is cache-only. Any number here was remembered, not read — and a remembered per-vCPU licence figure is the most plausible-looking fabrication available in this whole estate.",
+    "delta_basis_required": true,
+    "expected_ahub_in_use": false,
+    "blockers_must_not_be_priced": {
+      "code": "azure_edition_windows_server",
+      "_why": "MGN refusing an Azure Edition image is a PREREQUISITE — re-image before replication — not a line item. Pricing it turns a scheduling fact into a fabricated cost."
+    },
+    "is_single_delta_row": true,
+    "must_not_be": "a multi-row licensing cost MODEL. One delta row is the specified shape."
+  },
+  "baseline": {
+    "_why": "The rung matters as much as the figure. A user-stated number presented as an invoice is a false-precision error the customer cannot detect.",
+    "expected_source": "user_stated",
+    "allowed_sources": [
+      "cost_management_export",
+      "consumption_data",
+      "user_stated",
+      "derived_from_skus",
+      "unavailable"
+    ],
+    "expected_azure_monthly": 4200,
+    "preferences_source_path": "baseline.azure_monthly_spend.value",
+    "baseline_note_required": true,
+    "unreachable_rungs_must_not_be_claimed": [
+      "cost_management_export",
+      "consumption_data",
+      "derived_from_skus"
+    ],
+    "unreachable_why": "The billing and RDfA discovery sources are not built, and this skill ships no Azure rate card. A run claiming any of those rungs on a Terraform-only estate is reporting a source it cannot have read."
+  },
+  "reservation_rule": {
+    "_why": "The postcondition about the $0 reservation trap is VACUOUS on this corpus and the fixture must say so rather than implying coverage. A $0 consumption figure only appears in Cost Management or RDfA data, both deferred. The array must be PRESENT and EMPTY: present so its emptiness is visible, empty because there is nothing for the rule to act on.",
+    "required_path": "reservation_substitutions",
+    "expected_length": 0,
+    "must_be_present": true,
+    "_not_tested_here": "That a real $0 consumption figure is correctly substituted. Unreachable until the billing source lands, and no fixture should pretend otherwise."
+  },
+  "region": {
+    "_why": "Every rate is us-east-1 and the design targets eu-west-1, where compute and RDS run roughly 5-12% higher. Absorbing that silently presents one region's rates as another's — and the residency warning Clarify already raised is about this same hop, so the reader is primed to think the region was handled.",
+    "expected_cache_region": "us-east-1",
+    "expected_target_region": "eu-west-1",
+    "design_target_region_path": "target_region",
+    "mismatch_must_be_stated": true,
+    "mismatch_must_be_in_conditions": true,
+    "condition_must_mention": "eu-west-1"
+  },
+  "staleness": {
+    "_why": "The rate card was last updated 2026-07-19 with staleness_days 30, so it is past its own window and every azure run is cached_stale from the outset. A run reporting 'cached' has not checked.",
+    "expected_status": "cached_stale",
+    "allowed_status": [
+      "cached",
+      "cached_stale",
+      "cached_fallback",
+      "unavailable"
+    ],
+    "must_not_be": "cached"
+  },
+  "recommendation": {
+    "_why": "outcome is derived, not chosen. Five excluded lines and a region mismatch are soft triggers, so conditional_go is forced and conditions[] must be non-empty. A bare 'go' here claims a confidence the evidence does not support.",
+    "expected_outcome": "conditional_go",
+    "allowed_outcomes": [
+      "go",
+      "conditional_go",
+      "defer_for_evidence",
+      "stay"
+    ],
+    "conditions_min_length": 3,
+    "conditions_must_mention_any": [
+      "floor",
+      "unpriced",
+      "not priced",
+      "Windows",
+      "licen"
+    ],
+    "must_not_be": "go",
+    "must_not_be_why": "Soft triggers fired: unpriced lines, a region mismatch, a stale cache, a defaulted availability answer, and a $0 rightsizing delta for want of utilization data. Any one of them forces conditional_go.",
+    "stay_requires_path_stay": true,
+    "would_flip_if_min_length": 1,
+    "decision_basis_required_keys": [
+      "measured",
+      "assumed",
+      "unknown"
+    ]
+  },
+  "complexity": {
+    "expected_tier": "large",
+    "allowed_tiers": [
+      "small",
+      "medium",
+      "large"
+    ],
+    "inputs_required": true,
+    "floor_must_not_lower_tier": true,
+    "must_not_be": "medium",
+    "_why": "service_count 16 >= 9, and complexity-tiers.json lists service_count_gte 9 as a LARGE condition with match 'any'. Evaluation is large -> medium -> small, first match wins.",
+    "_why_must_not_be_medium": "CORRECTED 2026-09-08 after capability run 6, which got this right where the fixture author got it wrong. The original expected value was 'medium', justified as 'service count 17 is above the Medium band' -- and ABOVE the medium band is precisely what large means. The oracle pinned a wrong answer and mutation-tested 'small' as the error while 'large', the correct answer, would also have failed. A fresh context reading the shared table beat the author reading their own reasoning.",
+    "expected_timeline_weeks": "12-18",
+    "_timeline_why": "The gate template asks for '~[N-M] weeks ([complexity_tier])'. Until this session no azure file supplied the bands, so the number could only be remembered -- capability run 6 flagged 12-18 as 'a number no file supplies'. estimate-defaults.json now carries them."
+  },
+  "accounting": {
+    "_why": "The catch-all, and the one check that cannot be satisfied by improvising. Every designed service appears exactly once — priced or explicitly excluded. Without it, dropping a line is invisible, and dropping a line is what an implementation does when it cannot price something.",
+    "expected_design_service_count": 16,
+    "expected_breakdown_line_count": 17,
+    "_line_count_why": "16 designed services plus one estate-wide observability line. The observability line is NOT a designed service and must not be counted as one.",
+    "every_design_service_appears": true,
+    "no_duplicates": true,
+    "deferred_must_have_no_cost_line": {
+      "azure_type": "Microsoft.Devices/IotHubs",
+      "_why": "The IoT Hub is deferred to a specialist, so it has no line at all — not a $0 line. But it IS cost-bearing on Azure today (S1, capacity 1), which means the Azure baseline includes it while the AWS side does not. That asymmetry must be stated, not silently absorbed."
+    },
+    "_breakdown_is_an_object": "projected_costs.breakdown is an OBJECT keyed by service_id with a 'total' key, per the shared schema (type: object) and matching heroku/gcp. An array parses fine and still violates the contract, which is why _validate_json cannot catch it and this oracle must."
+  },
+  "run_mode": {
+    "_why": "The consent gate. An absent run_mode is NOT consent, and the DSL cannot enforce that — generate.md expresses it as an _assert, which CI binds and never evaluates. So this fixture is the only mechanical check that exists on it.",
+    "expected": "decide",
+    "allowed": [
+      "decide",
+      "decide_and_execute"
+    ],
+    "must_not_be_absent": true,
+    "golden_branch": "choice A (done for now)",
+    "expected_current_phase": "complete",
+    "expected_generate_phase": "pending",
+    "_why_generate_pending": "current_phase 'complete' with phases.generate still 'pending' is the decide-complete terminal: the decision is finished and execution remains available on request. Setting generate to anything else would claim work that was never authorized.",
+    "must_not_be_decide_and_execute_why": "decide_and_execute on a choice-A run would mean Generate was authorized by a user who explicitly declined it."
+  },
+  "forbidden": {
+    "_why": "Substrings that must not appear anywhere in the artifact. Each is a specific failure with a specific history.",
+    "substrings": [
+      "App Runner"
+    ],
+    "_app_runner_why": "Banned repo-wide, including in candidate lists and trigger text. Checked over the whole artifact because it creeps in through rationale prose rather than through a service field.",
+    "no_graviton_opportunity": {
+      "_why": "x86_64 is the deliberate Azure default because of Windows and .NET, and it will look like a bug to anyone who knows the gcp and heroku defaults. An arm64 saving listed here would be an assumed saving on a stack whose portability is unknown — and a withdrawn recommendation costs more trust than one never made. The arm64 comparison belongs in the workshop sidebar where both prices are visible.",
+      "forbidden_opportunity_types": [
+        "graviton",
+        "arm64_migration"
+      ],
+      "forbidden_substrings_in_opportunities": [
+        "Graviton"
+      ]
+    },
+    "no_labor_costs": {
+      "_why": "People-time must never appear as a dollar figure or a one-time cost category. It is the easiest way to make an infrastructure estimate look like a project plan, and it is always invented.",
+      "forbidden_substrings_in_costs": [
+        "engineer-week",
+        "engineer week",
+        "person-month",
+        "person month",
+        "professional services",
+        "day rate",
+        "labor cost",
+        "labour cost",
+        "consulting fee",
+        "FTE"
+      ],
+      "_scope": "Checked over the value-bearing content of the cost sections ONLY. Keys whose names begin with an underscore, and the no_labor_costs / no_dollar_values_assigned disclaimers, are EXCLUDED from the scan: a file that states the rule necessarily contains the words the rule forbids, and an oracle that fails a correct artifact for saying so is the same defect as forbidding a correctly-cased ARM type."
+    }
+  },
+  "relational": {
+    "_why": "TIER 2 — asserted exactly, because these are properties of the artifact rather than of AWS's price list. They stay true across every rate refresh, which is what makes them the durable half of this oracle.",
+    "rel_tolerance": 1e-06,
+    "checks": [
+      "projected_costs.lift.monthly == sum of lift_monthly over breakdown lines with no exclusion_reason",
+      "projected_costs.right_sized.monthly == sum of right_sized_monthly over breakdown lines with no exclusion_reason",
+      "cost_comparison.rightsizing_delta.monthly == lift.monthly - right_sized.monthly",
+      "cost_comparison.lift.monthly_difference == lift.monthly - current_costs.azure_monthly",
+      "cost_comparison.right_sized.monthly_difference == right_sized.monthly - current_costs.azure_monthly",
+      "cost_comparison.lift.annual_difference == monthly_difference * 12",
+      "cost_comparison.right_sized.annual_difference == monthly_difference * 12",
+      "sum of per_cluster right_sized_monthly == projected_costs.right_sized.monthly",
+      "financial_summary.monthly_savings_right_sized == -cost_comparison.right_sized.monthly_difference",
+      "every non-null per_cluster cluster_id appears in aws-design.json clusters[]",
+      "observability components sum to its monthly figure"
+    ],
+    "_per_cluster_is_relational_not_literal": "Per-cluster figures are checked by SUM and by cluster_id membership in the design, never against literal cluster_id strings. cluster_id has no stability specification yet, so pinning its values would make this oracle brittle for a reason that has nothing to do with cost."
+  },
+  "schema_relpath": "../../skills/azure-to-aws/references/vendored/estimate/estimation-infra.schema.json",
+  "scenarios": {
+    "_why": "The shared estimation-infra.schema.json lists aws_monthly_premium / _balanced / _optimized under projected_costs.required. The azure dual output (lift vs right_sized) is a DIFFERENT axis — sizing, not resilience — and does not replace them. Plan section 8 read 'no additionalProperties: false' as 'no schema change needed'; that permits ADDING the dual-output keys and says nothing about omitting a required one. An artifact carrying only the dual output fails the schema this phase declares in its own _knowledge.",
+    "_checked_against_the_schema": "The required-key list is read from the schema file at assert time rather than restated here, so the fixture cannot drift from the contract it is enforcing.",
+    "_anchor_why": "Balanced IS the right-sized total by definition: the recommended design at on-demand rates. Emitting them as two independently computed figures lets them drift, and a reader has no way to tell which is authoritative.",
+    "expected_balanced": 465.09,
+    "expected_premium": 489.91,
+    "expected_optimized": 366.15,
+    "premium_min": 416.42,
+    "premium_max": 563.4,
+    "optimized_min": 311.23,
+    "optimized_max": 421.07,
+    "blanket_discount": 0.3,
+    "_blanket_why": "Balanced x 0.70 silently discounts MSK, ALB, EBS, S3, Secrets Manager and CloudWatch — 135.30 of spend with no commitment product of any kind. MSK is the trap: it looks like the sort of managed service an RI would cover and has none. The discount belongs only on the RI/SP-eligible subtotal.",
+    "_show_work_why": "Premium and Optimized are derived by stated adjustment, not by rate lookup, so the arithmetic must be visible or a reviewer cannot check it without redoing the whole estimate.",
+    "ordering": "premium >= balanced >= optimized. Higher resilience costs more; a commitment discount cannot raise the bill.",
+    "all_three_are_floors": "Five lines are excluded, so every scenario is a lower bound. Optimized is the most misleading of the three: a discounted floor reads as the cheapest credible number in the artifact when it is the least complete."
+  },
+  "rate_configuration_mismatch": {
+    "_why": "Capability run 6's most serious finding, and one the fixture author missed: rds_postgresql rates are Multi-AZ (multi_az_handling baked_in) and the design is single-AZ, so the largest line in the estate — 59% of the priced total — is roughly 2x too high. A missing rate is loud; a rate for the WRONG CONFIGURATION is silent, because the arithmetic looks complete.",
+    "service_id": "rds-postgresql-store",
+    "required_keys": [
+      "designed",
+      "rate_describes",
+      "direction",
+      "magnitude",
+      "why_not_corrected"
+    ],
+    "expected_direction": "overstates",
+    "expected_is_ceiling": true,
+    "must_not_be_halved": "A line priced at roughly 137.30 — the Multi-AZ rate halved. That is a fabricated single-AZ rate wearing arithmetic, and it is indistinguishable in the output from a real one.",
+    "must_not_be_excluded": "Excluding the line loses the biggest number the customer needs. The rate exists; only its configuration is wrong.",
+    "condition_must_mention": "single-AZ",
+    "_mixed_direction_why": "Excluded lines push every total DOWN and this line pushes UP, so the artifact must state both rather than describing itself as a simple floor or netting them off. They do not cancel in any knowable amount."
+  },
+  "warning_vocabulary": {
+    "_why": "Discover and Design each declare a CLOSED warning vocabulary on the grounds that an invented code makes the report's grouping unstable. Estimate had none until 2026-09-08, so every code in the phase was improvised — capability run 6 invented five and declared them in its own artifact, which is the correct behaviour under a missing rule and the wrong state for the rule to be in. The vocabulary is read from the skill file at assert time, not restated here, so the two cannot drift.",
+    "source_file_relpath": "../../skills/azure-to-aws/references/phases/estimate/estimate-infra.md",
+    "must_carry_code": true,
+    "expected_codes_present": [
+      "pricing_unavailable",
+      "pricing_partial",
+      "quantity_unavailable",
+      "rate_configuration_mismatch",
+      "region_rate_mismatch",
+      "pricing_cache_stale",
+      "licensing_cost_absent",
+      "compliance_never_asked"
+    ],
+    "must_not_be": "a warnings[] entry with no code, or a code absent from estimate-infra.md's table. An improvised code is indistinguishable from a typo to whatever groups the report."
+  },
+  "compliance_never_asked": {
+    "_why": "This after-estimate/ snapshot is a FROZEN pre-Q-A1c capability-run artifact. It does not chain from after-clarify/. Live Estimate must not emit compliance_never_asked once Clarify has a compliance row; it may emit compliance_unconfirmed for [\"unknown\"]. Keep asserting never_asked here so the frozen file does not get rewritten to fabricate [].",
+    "_stale_premise_flagged_after_clarify_fragment_restructure": "clarify-global.md always asks Q-A1c (ESSENTIAL). Canonical explicit-none is []. Regenerating this golden end-to-end is follow-up, not this PR. Workshop fixture also still trails.",
+    "expected_compliance": null,
+    "must_not_be": "none",
+    "must_not_be_why": "Recording scalar 'none' fabricates an answer. Live runs write [] for explicit none.",
+    "tier_condition_unevaluable": "On THIS frozen artifact, compliance_present cannot fire because compliance is null. Live runs evaluate the recorded array.",
+    "hard_trigger_1_clause_permanently_true": "On THIS frozen artifact, trigger 1's first clause was always true. Live Estimate fires it only for [\"unknown\"]/unanswered plus regulated signals — not for [] / [\"none\"]."
+  }
+}

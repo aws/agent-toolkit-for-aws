@@ -8,7 +8,7 @@
 > Prices may vary by region and change over time. Use for estimation only; there is no live pricing lookup — for the latest rates, check the public AWS pricing pages (e.g. https://aws.amazon.com/bedrock/pricing). **Amazon Nova** figures in the Bedrock subsection often reference **US East (Ohio)** and **inference mode** (global vs geo); other services in this file default to **us-east-1** unless noted.
 > **Staleness warning:** If today's date is more than 30 days after the **Last updated** date above, treat AI model prices as potentially stale (±15-25% accuracy may widen). Infrastructure prices (Fargate, RDS, S3, etc.) change rarely and remain reliable longer. When staleness is detected, keep `pricing_source.status: "cached"` (the schema enum is `cached | cached_fallback | unavailable` — there is no `cached_stale` status) and record the staleness in the dedicated `pricing_source.fallback_staleness` object: set `is_stale: true` and `staleness_warning: "Pricing cache is more than 30 days old — AI model prices may have changed. Verify against [aws.amazon.com/bedrock/pricing](https://aws.amazon.com/bedrock/pricing/)."` Surface that same warning to the user in the estimate output.
 >
-> **Lifecycle is not a cached price field.** The `Status` column below is a dated snapshot, not permission to skip the lifecycle check. Before selecting any model, call `GetFoundationModel` or `ListFoundationModels` and read `modelLifecycle.status`. For a model launched on or after 2026-09-07, also read its model card: its Legacy period may be 45 days rather than 6 months, and it will never appear in the Legacy/EOL table. See `shared/ai-model-lifecycle.md`.
+> **Lifecycle is not a cached price field.** The `Status` column below is a dated snapshot, not permission to skip the lifecycle check. Before selecting any model, call `GetFoundationModel` or `ListFoundationModels` and read `modelLifecycle.status`. For a model launched on or after 2026-09-07, also read its model card: its Legacy period may be 45 days rather than 6 months, and it will never appear in the Legacy/EOL table. See `vendored/ai/ai-model-lifecycle.md`.
 
 ---
 
@@ -389,7 +389,7 @@ Serverless inference: $0.0000200 per second per GB memory.
 
 ### Multi-provider quick reference (per 1M tokens)
 
-See `shared/ai-model-lifecycle.md` for lifecycle details. **Do not recommend Legacy models for new migrations.** Rows whose Status is `restricted (…)` are never `recommended_model` / `backup_model` and never a default (Covered Models, gated previews).
+See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommend Legacy models for new migrations.** Rows whose Status is `restricted (…)` are never `recommended_model` / `backup_model` and never a default (Covered Models, gated previews).
 
 | Model                            | Model ID                                 | Provider  | Input $/1M | Output $/1M | Context | Tier      | Status                                                       |
 | -------------------------------- | ---------------------------------------- | --------- | ---------- | ----------- | ------- | --------- | ------------------------------------------------------------ |
@@ -631,7 +631,7 @@ Per [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) (Meta). Pr
 
 #### Llama 3.2 — US East (Ohio), on-demand and batch
 
-> **Lifecycle note:** All Llama 3.2 Instruct models reached **EOL on Jul 7, 2026** and are no longer available for inference on Bedrock. Do not select for any migrations. Use **Llama 4 Scout / Maverick** instead. See `shared/ai-model-lifecycle.md`.
+> **Lifecycle note:** All Llama 3.2 Instruct models reached **EOL on Jul 7, 2026** and are no longer available for inference on Bedrock. Do not select for any migrations. Use **Llama 4 Scout / Maverick** instead. See `vendored/ai/ai-model-lifecycle.md`.
 
 | Model                    | On-demand in | On-demand out | Batch in | Batch out |
 | ------------------------ | ------------ | ------------- | -------- | --------- |
@@ -662,7 +662,7 @@ Per [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) (Meta). Pr
 
 #### Llama 3.1 — US East (Ohio), on-demand and batch
 
-> **Lifecycle note:** Llama 3.1 405B Instruct reached **EOL on Jul 7, 2026** and is no longer available for inference on Bedrock. Do not select for any migrations. Use **Llama 4 Maverick** instead. See `shared/ai-model-lifecycle.md`.
+> **Lifecycle note:** Llama 3.1 405B Instruct reached **EOL on Jul 7, 2026** and is no longer available for inference on Bedrock. Do not select for any migrations. Use **Llama 4 Maverick** instead. See `vendored/ai/ai-model-lifecycle.md`.
 
 | Model                                              | On-demand in | On-demand out | Batch in | Batch out |
 | -------------------------------------------------- | ------------ | ------------- | -------- | --------- |
@@ -788,7 +788,7 @@ Per 1M tokens. **Nova 2 Omni** and **Nova 2 Pro** are **Preview**. Image column 
 
 #### Creative — US East (N. Virginia)
 
-> **Lifecycle note:** Nova Canvas v1 and Nova Reel v1 are **excluded** — both are Legacy with EOL 2026-09-30, inside the 90-day exclusion zone. Do not list them in recommendation or comparison tables. Rates are retained for users already on them. See `shared/ai-model-lifecycle.md`.
+> **Lifecycle note:** Nova Canvas v1 and Nova Reel v1 are **excluded** — both are Legacy with EOL 2026-09-30, inside the 90-day exclusion zone. Do not list them in recommendation or comparison tables. Rates are retained for users already on them. See `vendored/ai/ai-model-lifecycle.md`.
 
 **Amazon Nova Canvas** (on-demand, per image): up to **1024×1024** — Standard **$0.04**, Premium **$0.06**; up to **2048×2048** — Standard **$0.06**, Premium **$0.08**.
 
@@ -798,7 +798,7 @@ Per 1M tokens. **Nova 2 Omni** and **Nova 2 Pro** are **Preview**. Image column 
 
 #### Speech — US East (N. Virginia)
 
-> **Lifecycle note:** Nova Sonic v1 reached **EOL on 2026-09-14** and its requests now fail. Rates are retained only to explain the migration to **Nova 2 Sonic**. See `shared/ai-model-lifecycle.md`.
+> **Lifecycle note:** Nova Sonic v1 reached **EOL on 2026-09-14** and its requests now fail. Rates are retained only to explain the migration to **Nova 2 Sonic**. See `vendored/ai/ai-model-lifecycle.md`.
 
 Per 1M tokens.
 

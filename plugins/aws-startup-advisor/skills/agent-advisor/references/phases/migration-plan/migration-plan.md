@@ -111,7 +111,7 @@ that does NOT go under `$GCP_BASE`is`$MIGRATION_DIR`, which stays under the targ
 Examples:
 
 - `shared/pricing-cache.md` → `$GCP_BASE/references/shared/pricing-cache.md`
-- `data/sdk-capability-map.json` → `$GCP_BASE/data/sdk-capability-map.json`
+- `references/vendored/ai/sdk-capability-map.json` → `$GCP_BASE/references/vendored/ai/sdk-capability-map.json`
 - `references/clustering/terraform/classification-rules.md` → `$GCP_BASE/references/clustering/terraform/classification-rules.md`
 
 ## Step 0 — Update agent-advisor state immediately

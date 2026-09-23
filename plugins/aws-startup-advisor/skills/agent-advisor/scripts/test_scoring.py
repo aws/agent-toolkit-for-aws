@@ -705,12 +705,12 @@ def test_profile_is_well_formed(profile):
 
 # --- Drift detection: our model pool must stay Active vs the source lifecycle file ---
 
-# The authoritative Active/Legacy/EOL list lives in the sibling gcp-to-aws skill
-# (same plugin). From this scripts/ dir, .parent.parent.parent == the plugin's
-# skills/ dir, then into gcp-to-aws/references/shared/.
+# The authoritative Active/Legacy/EOL list is the plugin-neutral canonical file under
+# skills/shared/ai/ (vendored byte-identically into each consuming skill). From this
+# scripts/ dir, .parent.parent.parent == the plugin's skills/ dir, then into shared/ai/.
 _LIFECYCLE_FILE = (
     pathlib.Path(scoring.__file__).parent.parent.parent
-    / "gcp-to-aws" / "references" / "shared" / "ai-model-lifecycle.md"
+    / "shared" / "ai" / "ai-model-lifecycle.md"
 )
 
 # Map each internal model id in our selection pool to a substring that identifies it

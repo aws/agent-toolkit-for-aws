@@ -1,0 +1,415 @@
+{
+  "_comment": "Pinned facts for azure-to-aws DESIGN pass 1 over the azure-iac-terraform corpus. Same selection rule as expected-iac-terraform.json: only facts where a plausible improvisation and the correct answer DIVERGE. Identity is the Terraform ADDRESS, resolved to an azure_id through the run's own inventory, so these expectations survive any change to azure_id reconstruction.",
+  "_not_asserted": "Cluster MEMBERSHIP, tier, and pattern_id's value set (build step 4 \u2014 real clustering is not built, so only pattern_status and the target_architecture-is-null rule are checked); the specialist-gate rows (the corpus contains no Managed Instance, elastic pool, Synapse workspace, Data Factory, or SQL Server VM image, so no gate fires and none can be verified here); right-sizing and any dollar figure (Estimate, with tolerances).",
+  "design_file": "aws-design.json",
+  "inventory_file": "azure-resource-inventory.json",
+  "fast_path_table_relpath": "../../skills/azure-to-aws/knowledge/design/fast-path-services.json",
+  "table_self_checks": {
+    "_why": "The design is only as trustworthy as the table it claims to have read. These checks run on the table itself, so a design that cites a row cannot be trusted more than the row's existence.",
+    "required_direct_rows": [
+      "Microsoft.Storage/storageAccounts",
+      "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "Microsoft.Storage/storageAccounts/fileServices/shares",
+      "Microsoft.Storage/storageAccounts/queueServices/queues",
+      "Microsoft.Storage/storageAccounts/tableServices/tables",
+      "Microsoft.Compute/disks",
+      "Microsoft.Network/virtualNetworks",
+      "Microsoft.Network/virtualNetworks/subnets",
+      "Microsoft.Network/networkSecurityGroups",
+      "Microsoft.Network/dnsZones",
+      "Microsoft.KeyVault/vaults",
+      "Microsoft.Cache/Redis",
+      "Microsoft.ContainerRegistry/registries",
+      "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "Microsoft.ContainerService/managedClusters",
+      "Microsoft.EventHub/namespaces",
+      "Microsoft.DocumentDB/databaseAccounts",
+      "Microsoft.Network/routeTables",
+      "Microsoft.Network/bastionHosts",
+      "Microsoft.KeyVault/vaults/keys"
+    ],
+    "_required_direct_rows_why": "Microsoft.Network/virtualNetworks/subnets and the three storage-service children are the load-bearing entries: canonicalization emits them as their own child-typed resources, so removing a row does not merely lose a mapping \u2014 the type reaches the unknown-type policy, matches 'sits in a network/data provider namespace', and STOPS the design on every real estate.",
+    "must_not_be_direct_rows": [
+      "Microsoft.Web/sites",
+      "Microsoft.Web/serverfarms",
+      "Microsoft.Compute/virtualMachines",
+      "Microsoft.DBforPostgreSQL/flexibleServers",
+      "Microsoft.Sql/servers/databases"
+    ],
+    "_must_not_be_direct_rows_why": "All compute, and any database whose target depends on the availability answer, must stay on the rubric path. Promoting one to Direct Mappings would stamp `deterministic` on a target a pattern or a Clarify answer can legitimately change, which is exactly the invariant violation the tier exists to prevent.",
+    "required_skip_rows": [
+      "Microsoft.Resources/resourceGroups",
+      "Microsoft.Network/networkInterfaces",
+      "Microsoft.Network/privateEndpoints",
+      "Microsoft.Insights/components",
+      "Microsoft.OperationalInsights/workspaces"
+    ],
+    "required_gate_rows": [
+      "Microsoft.Sql/managedInstances",
+      "Microsoft.Sql/servers/elasticPools",
+      "Microsoft.Synapse/workspaces",
+      "Microsoft.DataFactory/factories"
+    ],
+    "banned_substring": "App Runner",
+    "_banned_substring_why": "App Runner stopped accepting new customers in April 2026 and is banned repo-wide, including in trigger text. A candidate list is the likeliest place for it to creep back in."
+  },
+  "deterministic_mappings": {
+    "_why": "Each row below is a target that a plausible improviser gets WRONG, and the wrong answer is recorded in must_not_be so the failure message can name it.",
+    "azurerm_virtual_network.core": {
+      "aws_service": "VPC",
+      "must_not_be": []
+    },
+    "azurerm_subnet.apps": {
+      "aws_service": "VPC subnet",
+      "must_not_be": []
+    },
+    "azurerm_subnet.data": {
+      "aws_service": "VPC subnet",
+      "must_not_be": []
+    },
+    "azurerm_redis_cache.session": {
+      "aws_service": "ElastiCache Redis",
+      "must_not_be": [
+        "MemoryDB"
+      ]
+    },
+    "azurerm_key_vault.main": {
+      "aws_service": "Secrets Manager",
+      "must_not_be": [
+        "Parameter Store",
+        "SSM Parameter Store"
+      ]
+    },
+    "azurerm_storage_account.assets": {
+      "aws_service": "S3",
+      "must_not_be": [
+        "FSx for Windows File Server",
+        "EFS"
+      ],
+      "why": "The account's blob surface maps to S3 with condition Always. Its account_kind is StorageV2, so the FileStorage exception does not apply. The presence of an SMB file share on this account must NOT drag the account itself to FSx \u2014 owner decision 11.5 disturbs no row, because the share is a separate resource."
+    },
+    "azurerm_storage_share.reports": {
+      "aws_service": "FSx for Windows File Server",
+      "must_not_be": [
+        "EFS",
+        "S3"
+      ],
+      "why": "enabled_protocol is SMB, and protocol is the whole rubric (decision 11.5). EFS is the NFS branch and is the improviser's answer because EFS is the better-known file service. S3 would mean the share inherited its parent account's target, which children never do."
+    },
+    "azurerm_cosmosdb_account.catalog": {
+      "aws_service": "DocumentDB",
+      "must_not_be": [
+        "DynamoDB",
+        "Keyspaces",
+        "Amazon Keyspaces",
+        "Neptune"
+      ],
+      "why": "kind MongoDB / capability EnableMongo. DynamoDB is the improviser's answer because Cosmos-to-DynamoDB is the famous pairing, but it is only correct for the Core (SQL) API. The Mongo wire protocol makes DocumentDB a drop-in and DynamoDB a rewrite."
+    },
+    "azurerm_eventhub_namespace.telemetry": {
+      "aws_service": "MSK",
+      "must_not_be": [
+        "Kinesis",
+        "Kinesis Data Streams",
+        "Amazon Kinesis"
+      ],
+      "why": "kafka_enabled is true, and protocol is the whole rubric with no throughput threshold (decision 11.4). Kinesis is the improviser's answer because Event Hubs is usually described as Azure's Kinesis; it is correct only for native AMQP/SDK consumers, and it would be a code rewrite for a Kafka client."
+    },
+    "azurerm_route_table.egress": {
+      "aws_service": "VPC route table",
+      "must_not_be": [],
+      "why": "Also proves the module fix end-to-end at Design: this resource only exists in the inventory because .terraform/modules/ was read."
+    },
+    "azurerm_bastion_host.jump": {
+      "aws_service": "Systems Manager Session Manager",
+      "must_not_be": [
+        "EC2",
+        "EC2 bastion instance",
+        "bastion host",
+        "EC2 bastion"
+      ],
+      "why": "The improviser's answer is a bastion EC2 instance, because 'bastion host' names the pattern. Session Manager needs no host and is free, so the wrong answer adds a permanent cost line the target architecture does not have."
+    }
+  },
+  "confidence": {
+    "expected_value": "deterministic",
+    "allowed_values": [
+      "deterministic",
+      "measured",
+      "inferred",
+      "billing_inferred"
+    ],
+    "_why": "A deterministic label claims the target came from a table row and no rubric ran. The asserter therefore checks BOTH directions: every expected row carries the label, and every entry carrying the label names a type that actually exists in direct_mappings. The second half is the one that catches an improvised label."
+  },
+  "app_service_plan_fan_in": {
+    "_why": "The single most expensive error in the whole skill. Five apps on one S1 plan cost one S1; five compute line items would be a 5x estimate error that Estimate cannot recover from, because by then the apps look like independent workloads.",
+    "plan_tf_addresses": [
+      "azurerm_service_plan.web",
+      "azurerm_service_plan.func",
+      "azurerm_service_plan.legacy"
+    ],
+    "expected_compute_unit_count": 3,
+    "expected_site_entry_count": 0,
+    "_expected_site_entry_count_why": "Microsoft.Web/sites must produce ZERO entries in services[] and ZERO in pending_rubric[]. An app is a deployment onto its plan, not a compute unit.",
+    "web_plan_tf_address": "azurerm_service_plan.web",
+    "web_plan_expected_hosted_app_count": 5,
+    "web_plan_expected_sku": "S1",
+    "web_plan_expected_worker_count": 2,
+    "idle_plan_tf_address": "azurerm_service_plan.legacy",
+    "idle_plan_expected_hosted_app_count": 0,
+    "idle_plan_warning_code": "idle_app_service_plan",
+    "consumed_app_warning_code": "app_consumed_by_plan",
+    "expected_consumed_app_count": 6
+  },
+  "unknown_type_stop": {
+    "_why": "INVERTED 2026-09-07. This block used to require a halt on azurerm_iothub. Derivation now resolves it to Microsoft.Devices/iothubs, Microsoft.Devices is a namespace_routing gate, and it defers cleanly - so the halt is UNREACHABLE on this corpus and asserting it would pin behaviour the skill cannot produce. What is worth pinning is the inverse: the type must be DEFERRED, not silently skipped and not halted.",
+    "halt_required": false,
+    "forbidden_halt_kind": "untranslated_terraform_type",
+    "_forbidden_halt_why": "A halt naming a type the skill can NAME is stale by construction. untranslated_types now means 'cannot name the service at all', and check_halt_not_stale guards the general case.",
+    "derived_type_disposition": {
+      "azure_type": "Microsoft.Devices/iothubs",
+      "expected_in": "deferred",
+      "_why": "Microsoft.Devices routes to a specialist gate: IoT Hub and DPS to AWS IoT Core is a device-provisioning and fleet-identity project, and IoT is out of this skill's stated scope. So the resource is DEFERRED - which is the honest answer, distinct from both 'mapped' and 'halted'."
+    },
+    "must_not_appear_as_benign_skip_codes": [
+      "skipped_no_aws_equivalent",
+      "skipped_config_source",
+      "skipped_observability",
+      "benign_unknown_type"
+    ],
+    "_must_not_appear_why": "Unchanged, and still the sharpest assertion here. The failure to fear is the SILENT one: recording a cost-bearing derived type as an ordinary skip satisfies every shape assertion, lets the phase emit HANDOFF_OK, and produces an estimate quietly missing a resource. Deferring is fine. Skipping is not.",
+    "identifier_substring": "iothub",
+    "_identifier_substring_why": "Still needed by the benign-skip guard: whatever disposition the derived type reaches, it must NOT be recorded under a benign skip code. That assertion survives the inversion unchanged."
+  },
+  "missing_rubric_halt": {
+    "_why": "compute.md and database.md landed in build step 5, so pending_rubric[] must now be EMPTY and no missing_rubric_file blocker may remain. This block guards the REVERSE direction from before: a run that still parks these five resources as pending is one that did not load the rubric files that are now on disk.",
+    "expected_pending_rubric_count": 0,
+    "forbidden_halt_kind": "missing_rubric_file",
+    "require_halt_entry_per_ref_file": true,
+    "_require_halt_entry_why": "Retained for the case where a rubric IS missing: pending_rubric[] records which resources are affected, halt records that the phase is unfinished. A design carrying pending_rubric[] and no halt reads as complete to anything that only inspects services[]."
+  },
+  "skips": {
+    "_why": "A skipped resource must be RECORDED, never silently absent: a resource with no warnings[] entry is indistinguishable from one the design forgot. Conversely it must produce no services[] entry \u2014 an observability resource given a CloudWatch target would be a mapping claim there is no import path for.",
+    "expected_skipped_tf_addresses": [
+      "azurerm_resource_group.app",
+      "azurerm_resource_group.data",
+      "azurerm_resource_group.shared",
+      "azurerm_network_interface.reporting",
+      "azurerm_private_endpoint.store",
+      "azurerm_log_analytics_workspace.core",
+      "azurerm_application_insights.storefront"
+    ],
+    "config_source_tf_addresses": [
+      "azurerm_network_interface.reporting",
+      "azurerm_private_endpoint.store"
+    ],
+    "_config_source_why": "These two are read for their edges BEFORE being skipped, so their warning must say what they contributed. A bare 'skipped' loses the app-to-data edge's provenance, and that edge is what merges rg-app and rg-data during clustering."
+  },
+  "hard_blocker": {
+    "_why": "Azure Edition Windows Server is a statement, not a question: MGN refuses the image until it is re-imaged, so there is no option to weigh. A plausible improviser maps the VM to EC2 and says nothing, which is a migration that fails at replication time.",
+    "tf_address": "azurerm_windows_virtual_machine.reporting",
+    "expected_warning_code": "azure_edition_windows_server",
+    "expected_severity": "blocker"
+  },
+  "deferred_shape": {
+    "expected_aws_service": "Deferred \u2014 specialist engagement",
+    "forbidden_field": "confidence",
+    "_why": "A deferral did not come from a rubric, so labelling it `inferred` would claim reasoning that did not happen. The corpus fires no gate, so this check is vacuous today and exists to bind the shape before a gate fixture lands."
+  },
+  "accounting": {
+    "_why": "The catch-all. Every inventory resource must appear somewhere \u2014 mapped, pending, deferred, or explicitly skipped. Without this, dropping a resource is invisible: the design still parses, every other assertion still passes, and the estimate is simply missing a line.",
+    "expected_inventory_resource_count": 30
+  },
+  "forbidden_substrings": {
+    "values": [
+      "App Runner"
+    ],
+    "_why": "Banned repo-wide. Checked over the whole artifact, not just aws_service, because it creeps in through rationale prose and candidate lists."
+  },
+  "schema_file_relpath": "../../skills/azure-to-aws/references/shared/schema-design-aws.md",
+  "cluster_pattern_status": {
+    "_why": "Closes a named false-green hole. design.md's cluster postcondition demands target_architecture, and design-refs/patterns.md does not exist \u2014 so an agent optimising for a green gate writes a plausible architecture string and nothing downstream can catch it. A capability run wrote 'UNDETERMINED' instead and flagged the hazard. schema-design-aws.md now gives the honest state a defined value, and this asserts it: pattern_status catalog_absent, target_architecture strictly null.",
+    "expected_status": "catalog_absent",
+    "target_architecture_must_be_null": true,
+    "expected_cluster_ids": [
+      "rg-app-tf-web",
+      "rg-app-tf-func",
+      "rg-shared-tf-reporting",
+      "rg-shared-tf-legacy"
+    ]
+  },
+  "compute_unit_required_fields": {
+    "_why": "These were asserted by the oracle and required by NO skill file \u2014 the same golden-over-delivers-vs-ref defect diagnosed for extract-terraform.md, reintroduced in design-infra.md in the same session. schema-design-aws.md now requires them, so this assertion has a contract behind it instead of just a golden tree.",
+    "azure_type": "Microsoft.Web/serverfarms",
+    "required": [
+      "hosted_app_azure_ids",
+      "sizing_source"
+    ]
+  },
+  "rubric_mappings": {
+    "_why": "Pass-2 outcomes. Each is a target a plausible improviser gets wrong in a SPECIFIC way, and the wrong answer is recorded so the failure message names it. All are confidence 'inferred', never 'deterministic' \u2014 no compute or availability-dependent database decision is architecture-invariant.",
+    "expected_confidence": "inferred",
+    "azurerm_service_plan.web": {
+      "aws_service": "Elastic Beanstalk",
+      "must_not_be": [
+        "Fargate",
+        "AWS App Runner",
+        "App Runner",
+        "EKS",
+        "Lambda"
+      ],
+      "why": "Criterion 2.2: App Service is a managed platform, so EB preserves the posture the customer already pays for. Fargate is the improviser's answer because containers feel more modern, but it hands them a container lifecycle they did not own and changes two variables at once mid-migration."
+    },
+    "azurerm_service_plan.func": {
+      "aws_service": "Lambda",
+      "must_not_be": [
+        "Elastic Beanstalk",
+        "Fargate",
+        "EKS"
+      ],
+      "why": "sku_name Y1 is a CONSUMPTION plan and every hosted site is a function app, so criterion 2.2 takes the consumption branch. The entry is on the PLAN, not the function app."
+    },
+    "azurerm_windows_virtual_machine.reporting": {
+      "aws_service": "EC2",
+      "must_not_be": [
+        "Fargate",
+        "Elastic Beanstalk",
+        "Lightsail"
+      ],
+      "why": "A VM lifts to EC2 via MGN. Fargate would require containerising a Windows VM, which is a re-architecture the customer did not ask for."
+    },
+    "azurerm_postgresql_flexible_server.store": {
+      "aws_service": "RDS PostgreSQL",
+      "must_not_be": [
+        "Aurora PostgreSQL",
+        "Aurora Serverless v2",
+        "Aurora PostgreSQL Multi-AZ",
+        "RDS PostgreSQL Multi-AZ"
+      ],
+      "why": "THE most valuable assertion in this block. No availability answer was recorded, so the documented default is RDS single-AZ. Aurora is the improviser's answer because the SOURCE is high_availability { mode = ZoneRedundant } \u2014 but the source says what they bought, not what they need, and inferring Aurora from silence inflates the estimate with no visible cause. The source HA posture must surface as a FINDING instead."
+    }
+  },
+  "architecture_default": {
+    "_why": "x86_64 is the Azure default and it diverges from the rest of the repo on purpose. It will look like a bug to anyone who knows the gcp/heroku skills, so it is pinned. On the Windows VM it is not merely the default but required by graviton.md's escape path.",
+    "expected_value": "x86_64",
+    "tf_addresses": [
+      "azurerm_service_plan.web",
+      "azurerm_windows_virtual_machine.reporting"
+    ],
+    "forbidden_values": [
+      "arm64",
+      "aarch64",
+      "Graviton",
+      "graviton"
+    ]
+  },
+  "source_ha_finding": {
+    "_why": "database.md \u00a71 requires the source's zone-redundancy to surface as a finding when the target is single-AZ. Without it the customer silently loses HA they were paying for, and nothing in the artifact says so \u2014 a shape assertion cannot catch an absent finding.",
+    "tf_address": "azurerm_postgresql_flexible_server.store",
+    "expected_warning_code": "availability_downgrade_from_source"
+  },
+  "canonical_type_coverage": {
+    "_why": "EVERY canonical type in arm-type-canonicalization.md must resolve to a disposition \u2014 a fast-path row or an index.md Reference row. A canonicalization row WITHOUT one makes the inventory better and Design WORSE: the type is now discovered, reaches the unknown-type policy, matches a provider-namespace clause, and STOPs. That regression really happened: a coverage pass took the table 77 -> 137 types and left 53 orphans, any one of which halted Design on a real repo. Nothing else would have caught it \u2014 the corpus contains only a handful of types, so every oracle stayed green.",
+    "canon_relpath": "../../skills/azure-to-aws/references/shared/arm-type-canonicalization.md",
+    "index_relpath": "../../skills/azure-to-aws/references/design-refs/index.md",
+    "max_orphans": 0,
+    "exempt": [
+      "Microsoft.Web/functionApps",
+      "Microsoft.Web/serverFarms",
+      "Microsoft.Cache/redis",
+      "Microsoft.CosmosDB/accounts",
+      "Microsoft.OpenAI/accounts",
+      "Microsoft.Resources/resourceGroups/rg"
+    ],
+    "_exempt_why": "These are the WRONG column of the \u00a7 Traps table \u2014 strings the file exists to warn against. They are not canonical types and must never get a disposition."
+  },
+  "index_reference_files": {
+    "_comment": "INTENSIONAL check: no run input. index.md's HALT rule says a resource routed to a Reference file that is not on disk stops the design. So every .md named in a ROUTING ROW must exist, or be declared pending here.",
+    "_why": "Nothing distinguished 'this rubric is deliberately pending' from 'someone typo'd the filename'. Both read as a HALT at runtime, and a typo would be diagnosed as missing content that already exists. known_pending is checked in BOTH directions: a file listed here that now EXISTS also fails, so the list cannot rot the way a fixture depending on an absent type does.",
+    "index_relpath": "../../skills/azure-to-aws/references/design-refs/index.md",
+    "design_refs_relpath": "../../skills/azure-to-aws/references/design-refs",
+    "known_pending": [],
+    "_known_pending_why": "Empty: ai.md landed in the AI build (plan §19.2, step 2), so no index.md Reference file is deliberately pending. The asserter fails a known_pending entry that now EXISTS, which is what pruned this list when ai.md was created."
+  },
+  "sizing_provenance": {
+    "_comment": "Every services[] entry whose aws_config carries a SIZE must declare where the number came from. Also pins the two sizes that a sizing table contradicted, because they were model priors before the tables existed.",
+    "_why": "Until 2026-09-07 no knowledge/design sizing table existed, so every instance size was a pretrained association. sizing_source recorded only the Azure INPUT, which made the output look sourced. The oracle pinned no sizes at all, so two runs could disagree on every number and both stay green. This check makes an unsourced number VISIBLE rather than indistinguishable from a looked-up one.",
+    "size_keys": [
+      "instance_type",
+      "instance_class",
+      "node_type",
+      "broker_instance_type",
+      "shard_count",
+      "volume_type"
+    ],
+    "allowed_provenance": [
+      "table",
+      "measured",
+      "user_stated",
+      "model_prior"
+    ],
+    "pinned": {
+      "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:web": {
+        "instance_type": "t3.small",
+        "_why": "S1 plan is 1 vCPU / 1.75 GiB. appservice-eb-sizing.json gives t3.small (2/2). The golden previously said t3.medium (2/4) - double the source memory, and a pure model prior."
+      },
+      "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.DBforPostgreSQL/flexibleServers/tf:store": {
+        "instance_class": "db.m6g.large",
+        "_why": "GP_Standard_D2s_v3 is 2 vCPU / 8 GiB. flexible-server-rds-sizing.json gives db.m6g.large (2/8). The golden previously said db.t4g.medium (2/4) - HALF the source memory."
+      },
+      "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Compute/virtualMachines/tf:reporting": {
+        "instance_type": "m6i.xlarge",
+        "_why": "Standard_D4s_v5 is 4 vCPU / 16 GiB, and m6i.xlarge is 4/16. This one the prior got right, which is exactly why an unasserted number is not the same as a correct one."
+      }
+    },
+    "pinned_by": "azure_id",
+    "_pinned_by_why": "Pins keyed on azure_id, not service_id. service_id was specified only as 'stable slug, unique within the artifact', so capability run 4 produced 8 of 14 ids differently from the golden - all valid - and the pin failed on a naming difference rather than a wrong size. azure_id is built by a stated rule and is the same string in every artifact."
+  },
+  "routing_provenance": {
+    "_comment": "Every services[] entry must say HOW its disposition was reached, and no DERIVED route may claim confidence: deterministic. model_category is the gcp-mimicking fallback: an unrecognised namespace is reasoned into a category rather than halting.",
+    "_why": "namespace_routing and child_type_rule let coverage grow without an authored row per type - the fix for coverage being O(n) in judgement. The risk they introduce is that a derived mapping becomes indistinguishable from a curated one in the artifact. This field makes the difference visible, and the deterministic guard stops a derived route inheriting a tier it did not earn.",
+    "allowed": [
+      "table",
+      "index_md",
+      "child_type_rule",
+      "namespace_rule",
+      "model_category"
+    ],
+    "derived": [
+      "child_type_rule",
+      "namespace_rule",
+      "model_category"
+    ],
+    "namespace_routing_relpath": "../../skills/azure-to-aws/knowledge/design/fast-path-services.json",
+    "design_refs_relpath": "../../skills/azure-to-aws/references/design-refs",
+    "_corpus_expectation": "This corpus routes NOTHING through a derived rule - every type has an authored row or an index.md row. So the derived counts are expected to be ZERO here, and the check is guarding the contract rather than exercising it. Extending the corpus with a type that only a namespace rule can place is the follow-up."
+  },
+  "canonicalization_governance": {
+    "_comment": "GOVERNANCE check on arm-type-canonicalization.md. It is an EXCEPTION list, not a coverage list: a row is admissible only where derivation would be wrong. This caps the DERIVABLE row count so the file cannot drift back toward chasing the provider surface.",
+    "_why": "The file reached 132 rows of which 104 were fully redundant - resource segment derivable by pattern AND namespace already declared in namespace_routing. It was at 13% of the azurerm surface and decaying every provider release. Capping the derivable count is what makes 'stop building this mapping over time' mechanical rather than aspirational: adding a divergent row is free, adding a derivable one fails.",
+    "canon_relpath": "../../skills/azure-to-aws/references/shared/arm-type-canonicalization.md",
+    "namespace_table_relpath": "../../skills/azure-to-aws/knowledge/design/fast-path-services.json",
+    "max_derivable_rows": 105,
+    "min_divergent_rows": 27,
+    "_max_derivable_why": "105 is where the file stood when it was redesigned. It is a CEILING, not a target - it should fall as redundant rows are pruned, never rise. A new row must be divergent.",
+    "_min_divergent_why": "A floor, so pruning cannot accidentally delete the rows that carry information. These are the traps: linux_web_app -> sites, service_plan -> serverfarms, public_ip -> publicIPAddresses, lb -> loadBalancers, application_insights -> components, api_management -> service, and the rest.",
+    "require_all_namespaces_routable": true,
+    "_require_all_namespaces_routable_why": "Derivation's namespace half is cross-checked against namespace_routing. If a namespace appearing in this table is absent from that one, the cross-check would REJECT a type the table itself asserts is real - the two artefacts would contradict each other.",
+    "assert_halt_not_stale": true,
+    "_assert_halt_not_stale_why": "A golden cannot notice that a PROSE rule changed underneath it. When derivation landed, azurerm_iothub stopped being unresolvable -- it derives to Microsoft.Devices/iotHubs, and Microsoft.Devices IS a namespace_routing gate -- so this golden's halt describes behaviour the skill no longer produces, while every shape assertion still passes. That is the exact hand-authored-golden-drifts-from-a-prose-ref trap, in the dangerous direction: green and wrong. This check reads the rule and the golden together and fails when they disagree. REVISED 2026-09-07 (second pass): an unrecognised NAMESPACE no longer halts either - it routes to a model-chosen category, mimicking gcp-to-aws, which has no namespace gate and no missing-rubric halt and therefore always reaches a rubric. So untranslated_types is now only for a type the skill cannot NAME, and a halt naming a type it can name is stale by definition."
+  },
+  "inline_os_disk": {
+    "_comment": "The VM's root volume must be present in aws_config. It comes from an INLINE os_disk block, so no Microsoft.Compute/disks resource exists for it and a resource-block walk misses it entirely.",
+    "_why": "Capability run 4 found the root volume ABSENT from the design and from any cost derived from it - it recorded a prose note because no rule let it do better. Every VM estate was being understated. The volume_type is a table lookup (Premium_LRS -> gp3); size_gib must be NULL with size_source image_default_unstated, because the source sets no disk_size_gb and a remembered image default would be priced as fact.",
+    "aws_service": "EC2",
+    "required_aws_config_key": "root_volume",
+    "expected_volume_type": "gp3",
+    "size_gib_must_be_null": true,
+    "forbidden_keys": [
+      "root_volume_note"
+    ],
+    "_forbidden_why": "A prose note is what the run produced when the rule was missing. A structured root_volume is what Estimate can price.",
+    "must_not_be_own_service_entry": "Microsoft.Compute/disks",
+    "_must_not_why": "Counting the OS disk twice - once inside the instance and once as a standalone volume - is the commonest way a VM estate's storage cost is inflated (disk-ebs-sizing.json os_disk_vs_data_disk)."
+  }
+}

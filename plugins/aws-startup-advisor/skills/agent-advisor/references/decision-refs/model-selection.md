@@ -3,7 +3,7 @@
 Distilled from the `gcp-to-aws` skill's Q16/Q17 tables and `ai-model-lifecycle.md`.
 **Source:** `skills/gcp-to-aws/references/phases/clarify/clarify-ai.md` (Q16/Q17)
 
-- `.../shared/ai-model-lifecycle.md`. Last aligned: 2026-06-30.
+- `skills/shared/ai/ai-model-lifecycle.md`. Last aligned: 2026-06-30.
 
 The tables below remain a **coarse compatibility hint** for old scoring-result consumers.
 The authoritative deterministic implementation is the
@@ -62,6 +62,6 @@ model: `image_generation` (image model/service), `speech` (STT/TTS services), `e
 (a Bedrock embedding model). Detailed pricing/TCO → the `llm-to-bedrock` skill.
 
 The selectable model pool is drift-guarded against the sibling skill's lifecycle registry at
-`skills/gcp-to-aws/references/shared/ai-model-lifecycle.md` (a Legacy/EOL model entering the
+`skills/shared/ai/ai-model-lifecycle.md` (a Legacy/EOL model entering the
 pool fails CI; the check lives in `test_scoring.py` and skips gracefully when the sibling
 skill is not present).

@@ -114,16 +114,28 @@ only on a literal `publicly_accessible = true` / missing-or-`false` `storage_enc
 variable-driven value fails open (not flagged). S3 is not checked — buckets have default SSE-S3
 since Jan 2023, so a missing SSE block is not an unencrypted bucket.
 
-## ElastiCache — encryption at rest
+## ElastiCache — encryption
 
-**Applies to:** `aws_elasticache_replication_group`.
+**Applies to:** `aws_elasticache_replication_group` and Redis-engine `aws_elasticache_cluster`.
 
-**Rule:** set `at_rest_encryption_enabled = true` (and consider
-`transit_encryption_enabled = true`). ElastiCache does not encrypt at rest by default.
+**Rule:**
 
-**Gate mapping:** `elasticache_encryption_at_rest`. Fires on missing-or-`false`; variable-driven
-fails open. `aws_elasticache_cluster` (standalone Memcached) is not checked — that attribute is
-configured on the replication group.
+- `aws_elasticache_replication_group`: set `at_rest_encryption_enabled = true` (and consider
+  `transit_encryption_enabled = true`). ElastiCache does not encrypt at rest by default.
+- `aws_elasticache_cluster` in the Redis single-node form (`engine = "redis"`, no
+  `replication_group_id`): MUST set `transit_encryption_enabled = true`. Note that
+  `at_rest_encryption_enabled` is NOT a valid argument on `aws_elasticache_cluster`
+  (AWS provider schema) — at-rest encryption requires an
+  `aws_elasticache_replication_group`. So the cluster form is gated on transit
+  encryption; when at-rest is needed, emit a replication group instead. (This does NOT
+  prescribe cluster-vs-replication-group for HA — that choice is deferred; when the
+  cluster form is emitted, it must set transit encryption.)
+- `engine = "memcached"` clusters remain exempt — Memcached does not support these attributes.
+
+**Gate mapping:** `elasticache_encryption_at_rest` (replication group) and
+`elasticache_cluster_encryption` (Redis cluster). Both fire on missing-or-`false`; variable-driven
+values (and a variable-driven or absent `engine`) fail open. A Memcached `aws_elasticache_cluster`
+is exempt.
 
 ## Database security group — no public ingress on DB ports
 

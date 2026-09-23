@@ -1,9 +1,16 @@
 ---
 name: heroku-to-aws
-description: "Migrate workloads from Heroku to AWS. Triggers on: migrate from Heroku, Heroku to AWS, move off Heroku, migrate Heroku Postgres to RDS, migrate Heroku Redis to ElastiCache, migrate Heroku Kafka to MSK, migrate dynos to Elastic Beanstalk, migrate dynos to Fargate, migrate Heroku Private Space, Heroku to ECS, leave Heroku, what-if workshop, compare migration scenarios, workshop mode. Runs a 6-phase process: discover Heroku resources live via the authenticated Heroku CLI (read-only, consent-gated) and/or from Terraform, Procfile/app.json, and billing exports, then clarify requirements, design AWS architecture, estimate costs, generate migration artifacts, and collect optional feedback. Clarify must finish before Design, Estimate, or Generate. An optional post-Estimate what-if workshop reprices region/HA/compute/Graviton scenarios. Do not use for: GCP or Azure migrations, AWS-to-Heroku reverse migration, general AWS architecture advice without migration intent, or Heroku-to-Heroku refactoring."
+description: "Migrate workloads from Heroku to AWS. Triggers on: migrate from Heroku, Heroku to AWS, move off Heroku, migrate Heroku Postgres to RDS, migrate Heroku Redis to ElastiCache, migrate Heroku Kafka to MSK, migrate dynos to Elastic Beanstalk, migrate dynos to Fargate, migrate Heroku Private Space, Heroku to ECS, leave Heroku, what-if workshop, compare migration scenarios, workshop mode. Runs a 6-phase process: discover Heroku resources live via the authenticated Heroku CLI (read-only, consent-gated) and/or from Terraform, Procfile/app.json, and billing exports, then clarify, design, estimate costs, generate artifacts, and collect feedback. Clarify must finish before Design, Estimate, or Generate. An optional post-Estimate what-if workshop reprices region/HA/compute/Graviton scenarios. Do not use for: GCP migrations (see gcp-to-aws), Azure migrations (see azure-to-aws), AWS-to-Heroku reverse migration, general AWS architecture advice without migration intent, or Heroku-to-Heroku refactoring."
 ---
 
 # Heroku-to-AWS Migration Skill
+
+The skill base directory is given in the "Base directory for this skill: X" line the
+harness emits at load time. Call it `<SKILL_BASE>`. The report validator lives at
+`<SKILL_BASE>/scripts/validate-heroku-migration-report.py` — resolve it relative to
+`<SKILL_BASE>`, never assume a plugin-root `scripts/` directory, since a standalone
+`npx skills add --skill heroku-to-aws` install carries only this skill's own
+directory tree, not the plugin's top-level `scripts/`.
 
 ## Philosophy
 
@@ -97,10 +104,12 @@ uvx --version 2>/dev/null || echo "UVX_MISSING"
   **Do not hard-stop** an infrastructure migration for missing `uv`.
 - If both are present: proceed without nagging.
 - Soft-warn once if `python3` is missing (Heroku report validation at Generate
-  uses `$PLUGIN_ROOT/scripts/validate-heroku-migration-report.py`). Generate can
-  still complete, but the validator must still be attempted and its exit code
-  handled per its docs — if it does not run, tell the user validation did not
-  occur. Never report an unvalidated report as passing.
+  uses `<SKILL_BASE>/scripts/validate-heroku-migration-report.py`). Earlier phases
+  (Discover → Estimate) may continue after the warning, but **Generate does not
+  complete until the report validator runs successfully** — install `python3`
+  before Generate. This matches `generate.md`'s Finish-Generate step and its
+  `report-validation-status.json` postcondition: absent or `not_run` validation is a
+  blocking `GATE_FAIL`, not a pass. Never report an unvalidated report as passing.
 
 **Clarify is mandatory (heroku policy).** Do not skip Clarify or jump straight to
 Design, Estimate, or Generate even if the user asks — there is no exception for

@@ -257,7 +257,7 @@
     },
     {
       "category": "cloud",
-      "description": "Personalized AWS guidance built on patterns from 350,000+ startups—architecture, cost, security, and migration, from day-one account setup to production-ready infrastructure. Migrate to AWS from GCP or Heroku—including your entire AI stack: OpenAI/Gemini/Anthropic SDK rewrites to Amazon Bedrock, agentic systems (LangChain, CrewAI, AutoGen) to AWS-native runtimes, and Temporal workers. Includes AWS Activate credits eligibility and 60+ exclusive startup offers. Built by AWS Startup Solutions Architects, with multi-account, multi-region support.",
+      "description": "Personalized AWS guidance built on patterns from 350,000+ startups—architecture, cost, security, and migration, from day-one account setup to production-ready infrastructure. Migrate to AWS from Azure, GCP, or Heroku—including your entire AI stack: Azure OpenAI/OpenAI/Gemini/Anthropic SDK rewrites to Amazon Bedrock, agentic systems (LangChain, CrewAI, AutoGen) to AWS-native runtimes, and Temporal workers. Includes AWS Activate credits eligibility and 60+ exclusive startup offers. Built by AWS Startup Solutions Architects, with multi-account, multi-region support.",
       "keywords": [
         "aws",
         "startups",
@@ -322,7 +322,18 @@
         "bedrock-migration",
         "rewrite-sdk-calls",
         "deploy-ai-agent",
-        "choose-agent-runtime"
+        "choose-agent-runtime",
+        "azure",
+        "azure-to-aws",
+        "aks",
+        "app-service",
+        "azure-sql",
+        "cosmos-db",
+        "azure-openai",
+        "entra-id",
+        "blob-storage",
+        "bicep",
+        "arm-template"
       ],
       "name": "aws-startup-advisor",
       "source": "./plugins/aws-startup-advisor",

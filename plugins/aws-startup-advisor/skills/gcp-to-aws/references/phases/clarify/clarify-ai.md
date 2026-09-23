@@ -1,6 +1,31 @@
+---
+_fragment: ai
+_of_phase: clarify
+_contributes:
+  - preferences.json (ai_constraints section, startup_constraints.startup_program_status)
+---
+
 # Category F — AI/Bedrock (If `ai-workload-profile.json` Exists)
 
+> **Fragment unit.** See `clarify.md` for how it is composed into the phase.
+>
+> **This fragment asks nothing on the wizard path.** It reads the AI workload profile,
+> resolves what it can, assigns a disposition per row, and returns rows.
+> `clarify-assemble.md` presents them. (The "ask me everything" Full Flow variant in
+> `clarify.md` presents these questions directly in batches — see that file — because the
+> user explicitly opted out of the sheet-first wizard.)
+
 _Fire when:_ `ai-workload-profile.json` exists in `$MIGRATION_DIR/`.
+
+No canonical shared file governs this category — `azure-to-aws`'s `clarify-ai.md` asks a
+closely parallel but independently-maintained question set for the same reason
+`clarify-ai-only.md` on both skills does: AI/Bedrock model selection, capability matching,
+and agentic-framework questions are close in shape between GCP and Azure sources, but every
+answer option and consequence line here was authored against GCP-sourced signals
+(`ai-workload-profile.json`'s `integration.pattern`/`gateway_type`, Vertex/Gemini detection).
+Unifying this category into a shared file is future scope, not part of this restructure —
+see `references/vendored/clarify/` for the categories that already are shared (region,
+compliance, availability, cost-appetite, multi-cloud).
 
 ---
 
@@ -584,7 +609,15 @@ Category G answers are stored in `preferences.json` → `ai_constraints.agentic`
 
 **Field contract (consumed by Design phase):**
 
-- `migration_approach` — Routes Design to the correct path: `"retarget"` uses existing model-swap flow, `"harness"` loads `design-ref-harness.md`, `"strands"` loads `design-ref-agentic-to-agentcore.md`
+- `migration_approach` — Routes Design to the correct path: `"retarget"` uses existing model-swap flow, `"harness"` loads `vendored/ai/design-ref-harness.md`, `"strands"` loads `vendored/ai/design-ref-agentic-to-agentcore.md`
 - `memory_requirement` — Determines whether AgentCore Memory is included in design
 - `task_duration` — Determines AgentCore Runtime recommendation and session limit warnings
 - `incremental_migration` — Determines whether incremental migration artifacts are generated
+
+## Status — build step 5 (restructure)
+
+Implemented. Frontmatter and fragment framing added for consistency with the other
+`clarify-*.md` fragments; no change to firing rules, question text, defaults, or
+interpretation. The wizard path's presentation moved to `clarify-assemble.md`; the Full Flow
+("ask me everything") variant continues to present these questions directly, unchanged, as
+documented in `clarify.md`.

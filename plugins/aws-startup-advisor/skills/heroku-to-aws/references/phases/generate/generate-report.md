@@ -156,6 +156,13 @@ Omit the section when workshop was declined or never entered.
   before sign-off.
 - Title: `Heroku to AWS Migration Assessment`.
 - Cost labeling: every dollar figure is an **estimated monthly** cost.
+- **Whole-dollar monthly figures (blocking).** Render every monthly-scale dollar
+  figure ($2 or more) as a **whole dollar** — `$112/mo`,` $25,684/mo` — never with
+  cents (`$112.34/mo`fails the report validator's currency gate and blocks
+  Generate). Cents are allowed only for genuinely sub-dollar precision (` $1.50`,
+  `$0.40`) or an explicit per-unit rate (` $0.018/hr`, `$5.00/mo per policy`). Round
+  the`projected_costs.*`tiers and the Heroku baseline to the nearest dollar when
+  you write them into`exec-costs`, the cost one-liner, and the what-if table.
 - Reader vocabulary: no `*.json` filenames or `aws_*.` resource IDs in
   `decision-summary` / `exec-costs` / `what-if-scenarios` (name things the
   reader controls).
@@ -167,6 +174,15 @@ tables with borders, `.active-scenario` or bold active row,
 `.verdict-headline` (large display type for the outcome — **not** a colored
 pill badge row), `.toc` list. Keep visual noise low — this is a one-pager for
 stakeholders, not a design system.
+
+### Table & figure accessibility (REQUIRED — the blocking validator enforces these)
+
+- **Every `<th>` must declare `scope="col"` or `scope="row"`.** The report's tables
+  (`exec-costs`, `cost-optimization` when opportunities exist, `what-if-scenarios`) are
+  column-headed, so emit `<th scope="col">…</th>` for each header cell.
+- **If you emit a `<figure>`, it must carry a non-empty `aria-label` and a `<figcaption>`.**
+  The one-pager normally has no figures; this only applies if you add one.
+- `<html>` carries `lang="en"` (the skeleton already does).
 
 ### Skeleton
 
@@ -184,7 +200,13 @@ stakeholders, not a design system.
     <nav class="toc">…</nav>
     <section id="decision-summary">…</section>
     <!-- <section id="decision-basis"> when recommendation.decision_basis exists -->
-    <section id="exec-costs">…</section>
+    <section id="exec-costs">
+      <!-- every <th> declares scope; copy this header pattern for cost-optimization + what-if too -->
+      <table>
+        <thead><tr><th scope="col">Service</th><th scope="col">Heroku</th><th scope="col">AWS (Balanced)</th></tr></thead>
+        <tbody>…</tbody>
+      </table>
+    </section>
     <section id="cost-optimization">…</section>
     <!-- <section id="what-if-scenarios"> when ≥2 scenarios -->
     <section id="next-steps">…</section>
@@ -196,36 +218,52 @@ stakeholders, not a design system.
 
 ---
 
-## Step 3: Soft gate
+## Step 3: Self-check (in-fragment) + blocking validation (main window)
 
-Before returning:
+**In-fragment self-check (this fragment, no shell).** Before returning, confirm the HTML you
+wrote satisfies the contract, and if not, **fix and rewrite it here** (this is the one place
+the report is edited — a stub is never acceptable):
 
 1. File exists and is non-empty.
 2. Contains `decision-summary`, `exec-costs`, `cost-optimization`, `next-steps`, and `draft for review`.
-3. When `recommendation.outcome` exists: `decision-summary` contains the
-   `outcome_label` text (or a `verdict-headline` element) — not a row of colored
-   pill badges as the sole verdict carrier.
+3. `decision-summary` must **not contain** any `badge-verdict-*` class; when
+   `recommendation.outcome` exists it must render a `verdict-headline` element.
 4. When `recommendation.decision_basis` exists: contains `decision-basis`.
 5. If `scenarios/index.json` has ≥2 scenarios, contains `what-if-scenarios`.
-6. `cost-optimization` is non-empty — either the table or the explicit
-   no-eligible-commitment sentence, never a blank section.
+6. `cost-optimization` is non-empty — the table or the explicit no-eligible-commitment
+   sentence, never a blank section. If you wrote the sentence, it renders as visible
+   text (not only inside a comment/`<template>`) and reads verbatim once entities decode.
+7. Every `<th>` declares `scope="col"`/`"row"`; any `<figure>` has `aria-label` + `<figcaption>`.
+8. **No monthly-scale dollar figure renders with cents.** Scan every `$` figure: any
+   monthly total $2 or more must be whole-dollar (`$112/mo`, not` $112.34/mo`) — the
+   validator's currency gate is blocking. Round any cents you find on a monthly figure
+   before returning. (Cents are fine only on sub-$2 amounts or explicit per-unit rates.)
 
-On failure: fix and rewrite — do **not** leave a stub. Report generation is
-part of Generate for heroku-to-aws (stakeholder deliverable), but a report
-failure should not delete Terraform/docs; repair the HTML and continue.
+A report failure must not delete the Terraform/docs — repair the HTML in this fragment. Fixing
+the report is **only** done here, before control returns; the completion gate never edits it.
 
-Optional (non-blocking): if
-`$PLUGIN_ROOT/scripts/validate-heroku-migration-report.py` exists, run:
+**Blocking validation runs in the MAIN window, not here.** This fragment runs in a dispatched
+`_exec._agent: rw` worker with no shell (`INTERPRETER.md` § capability tiers), so it cannot run
+the validator. The interpreter runs it in `generate.md`'s **"Finish Generate in the main window
+(report validation)"** step — which executes **after** this worker returns and **before** the
+read-only `_postconditions` gate (per `INTERPRETER.md` § `_exec` step 4, gates are never
+dispatched):
 
 ```
-python3 scripts/validate-heroku-migration-report.py \
+python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
   "$MIGRATION_DIR/migration-report.html" --mode full --migration-dir "$MIGRATION_DIR"
 ```
 
-Exit 0 (`REPORT_OK`) → continue. Non-zero (`REPORT_FAIL | ...`) → repair the
-named section(s) and re-run once; if it still fails, keep the best HTML, record
-the failure line in `generation-warnings.json`, and continue (never a
-generation halt).
+`REPORT_OK` → the report gate passes. `REPORT_FAIL` → the main-window step emits `GATE_FAIL` **and
+pastes the validator's `errors[]` verbatim**; the gate does not edit the HTML itself. The pasted
+errors are what make recovery actionable — a bare "re-run Generate" is not a fix, since re-dispatch
+re-authors the report under this shell-less worker. On `REPORT_OK` the finish step stamps
+`report-validation-status.json` (the durable result the read-only gate asserts). Recovery is a
+hand-edit of the report from those errors + a direct validator re-run and re-stamp (or a maintainer
+re-running Generate for a clean rebuild).
+The validator enforces the required sections, the `draft for review` footer, the typography-first
+verdict rules, non-empty `cost-optimization`, and the a11y subset the report emits (`<th scope>`,
+`<figure>` labels).
 
 ---
 

@@ -1,0 +1,92 @@
+{
+  "_what_this_is": "Azure Database for PostgreSQL / MySQL Flexible Server SKU -> RDS instance class. Consumed by design-refs/database.md section 6 after the availability gate and the rubric have chosen RDS or Aurora.",
+  "_selection_rule": "Nearest-not-smaller on BOTH vCPU and memory, staying in the matching class: Burstable -> db.t4g, General Purpose -> db.m6g, Memory Optimized -> db.r6g. Both sides' specs are recorded per row.",
+  "_architecture": "Graviton (db.t4g / db.m6g / db.r6g) IS the default here, and that does NOT contradict compute.md section 4's x86 default. graviton.md's escape path lists RDS SQL SERVER, not PostgreSQL or MySQL; both run on Graviton with no source-code implication because the engine is AWS-managed. x86_equivalent is recorded per row for the cases where a customer requires it.",
+  "_provenance": "Authored from published Flexible Server compute tiers and published RDS instance class specs. NOT verified against a live API.",
+
+  "skus": {
+    "B_Standard_B1ms": {
+      "azure": { "vcpu": 1, "memory_gib": 2 },
+      "aws": { "instance_class": "db.t4g.small", "vcpu": 2, "memory_gib": 2 },
+      "x86_equivalent": "db.t3.small"
+    },
+    "B_Standard_B2s": {
+      "azure": { "vcpu": 2, "memory_gib": 4 },
+      "aws": { "instance_class": "db.t4g.medium", "vcpu": 2, "memory_gib": 4 },
+      "x86_equivalent": "db.t3.medium"
+    },
+    "B_Standard_B2ms": {
+      "azure": { "vcpu": 2, "memory_gib": 8 },
+      "aws": { "instance_class": "db.t4g.large", "vcpu": 2, "memory_gib": 8 },
+      "x86_equivalent": "db.t3.large"
+    },
+    "B_Standard_B4ms": {
+      "azure": { "vcpu": 4, "memory_gib": 16 },
+      "aws": { "instance_class": "db.t4g.xlarge", "vcpu": 4, "memory_gib": 16 },
+      "x86_equivalent": "db.t3.xlarge"
+    },
+    "GP_Standard_D2s_v3": {
+      "azure": { "vcpu": 2, "memory_gib": 8 },
+      "aws": { "instance_class": "db.m6g.large", "vcpu": 2, "memory_gib": 8 },
+      "x86_equivalent": "db.m6i.large",
+      "note": "The committed golden had db.t4g.medium here: 2 vCPU / 4 GiB against a source of 2 vCPU / 8 GiB. HALF the memory, and nothing caught it because no table existed and the oracle pins no sizes."
+    },
+    "GP_Standard_D4s_v3": {
+      "azure": { "vcpu": 4, "memory_gib": 16 },
+      "aws": { "instance_class": "db.m6g.xlarge", "vcpu": 4, "memory_gib": 16 },
+      "x86_equivalent": "db.m6i.xlarge"
+    },
+    "GP_Standard_D8s_v3": {
+      "azure": { "vcpu": 8, "memory_gib": 32 },
+      "aws": { "instance_class": "db.m6g.2xlarge", "vcpu": 8, "memory_gib": 32 },
+      "x86_equivalent": "db.m6i.2xlarge"
+    },
+    "GP_Standard_D16s_v3": {
+      "azure": { "vcpu": 16, "memory_gib": 64 },
+      "aws": { "instance_class": "db.m6g.4xlarge", "vcpu": 16, "memory_gib": 64 },
+      "x86_equivalent": "db.m6i.4xlarge"
+    },
+    "GP_Standard_D32s_v3": {
+      "azure": { "vcpu": 32, "memory_gib": 128 },
+      "aws": { "instance_class": "db.m6g.8xlarge", "vcpu": 32, "memory_gib": 128 },
+      "x86_equivalent": "db.m6i.8xlarge"
+    },
+    "MO_Standard_E2s_v3": {
+      "azure": { "vcpu": 2, "memory_gib": 16 },
+      "aws": { "instance_class": "db.r6g.large", "vcpu": 2, "memory_gib": 16 },
+      "x86_equivalent": "db.r6i.large"
+    },
+    "MO_Standard_E4s_v3": {
+      "azure": { "vcpu": 4, "memory_gib": 32 },
+      "aws": { "instance_class": "db.r6g.xlarge", "vcpu": 4, "memory_gib": 32 },
+      "x86_equivalent": "db.r6i.xlarge"
+    },
+    "MO_Standard_E8s_v3": {
+      "azure": { "vcpu": 8, "memory_gib": 64 },
+      "aws": { "instance_class": "db.r6g.2xlarge", "vcpu": 8, "memory_gib": 64 },
+      "x86_equivalent": "db.r6i.2xlarge"
+    },
+    "MO_Standard_E16s_v3": {
+      "azure": { "vcpu": 16, "memory_gib": 128 },
+      "aws": { "instance_class": "db.r6g.4xlarge", "vcpu": 16, "memory_gib": 128 },
+      "x86_equivalent": "db.r6i.4xlarge"
+    },
+    "MO_Standard_E32s_v3": {
+      "azure": { "vcpu": 32, "memory_gib": 256 },
+      "aws": { "instance_class": "db.r6g.8xlarge", "vcpu": 32, "memory_gib": 256 },
+      "x86_equivalent": "db.r6i.8xlarge"
+    }
+  },
+
+  "storage": {
+    "rule": "storage_mb from the source, converted to GiB and rounded UP to the RDS minimum of 20 GiB. Never round down: Flexible Server storage cannot be shrunk either, so a smaller number is not a saving the customer can realise.",
+    "iops": "Flexible Server IOPS are provisioned separately from storage. Carry the source's iops into aws_config; RDS gp3 provides a baseline for the volume size and charges for provisioned IOPS above it. Do NOT translate Azure IOPS into an instance class.",
+    "autogrow": "storage_auto_grow enabled maps to RDS storage autoscaling with a max threshold. If the source has it on and the target does not, the estimate is priced against a floor the workload will exceed."
+  },
+
+  "engine_version": {
+    "rule": "Carry the source major version. If RDS does not offer it, name the nearest offered version and flag the gap as an upgrade the migration forces -- that is a real project cost and it is invisible in a size table."
+  },
+
+  "_aurora_note": "This table sizes RDS. When database.md's availability gate selects Aurora, the unit is an Aurora instance class (db.r6g.*) plus the cluster's storage-and-IO model, which is priced per-request rather than provisioned. Do not reuse the RDS storage rows for Aurora."
+}

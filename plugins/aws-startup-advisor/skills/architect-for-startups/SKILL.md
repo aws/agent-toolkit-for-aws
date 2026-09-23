@@ -1,7 +1,7 @@
 ---
 name: architect-for-startups
 description: >-
-  Startup-tailored AWS architecture advice that adjusts recommendations to the company's stage (pre-revenue through Series B+), team size, runway, and available credits. Use when a founder wants guidance or a recommendation rather than code changes: which services to choose, how to plan or review an architecture, how to stretch credits and control cost, or how to prepare architecture for a fundraise or technical diligence. For an interactive discovery flow that scaffolds and writes the architecture into the codebase, use start-building-for-startups. For AI-agent runtime selection or agentic architecture recommendations specifically, use agent-advisor. Do not use for: writing or scaffolding code, factual AWS Activate / programs / credits lookups (see knowledge-base-for-startups), a single copy-paste prompt (see prompt-library-for-startups), or migration intent such as GCP-to-AWS or Heroku-to-AWS (see the migration skills: `gcp-to-aws`, `heroku-to-aws`, `llm-to-bedrock`).
+  Startup-tailored AWS architecture advice that adjusts recommendations to the company's stage (pre-revenue through Series B+), team size, runway, and available credits. Use when a founder wants guidance or a recommendation rather than code changes: which services to choose, how to plan or review an architecture, how to stretch credits and control cost, or how to prepare architecture for a fundraise or technical diligence. For an interactive discovery flow that scaffolds and writes the architecture into the codebase, use start-building-for-startups. For AI-agent runtime selection or agentic architecture recommendations specifically, use agent-advisor. Do not use for: writing or scaffolding code, factual AWS Activate / programs / credits lookups (see knowledge-base-for-startups), a single copy-paste prompt (see prompt-library-for-startups), or migration intent such as GCP-to-AWS, Azure-to-AWS, or Heroku-to-AWS (see the migration skills: `gcp-to-aws`, `azure-to-aws`, `heroku-to-aws`, `llm-to-bedrock`).
 ---
 
 # Architect for Startups
@@ -109,7 +109,7 @@ guidance.
 
 ### Migration
 
-- [Azure to AWS](references/migration-azure-to-aws.md)
+- [Azure to AWS](references/migration-azure-to-aws.md) — for the PRE-decision advisory conversation only ("should we leave Azure?", "what would this look like on AWS?"). Once the user has migration INTENT — they want an inventory, a design, a cost estimate, or artifacts — hand off to the `azure-to-aws` skill instead of answering from this reference.
 - [App Runner to ECS](references/migration-apprunner-to-ecs-express.md)
 
 ### IoT

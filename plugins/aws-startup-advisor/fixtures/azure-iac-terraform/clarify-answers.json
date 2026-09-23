@@ -1,0 +1,16 @@
+{
+  "_what_this_is": "A SCRIPTED ANSWER SET. Clarify is _interactive: true, so the capability-test method cannot reach it \u2014 a dispatched agent has no user to answer the assumption sheet. This file substitutes for that user, which makes the sheet's BRANCHING testable even though the interaction is not.",
+  "_what_it_does_not_test": "Wording, batching, tone, and whether the sheet reads well. Those need a human. What it does test is which rows FIRE, which are ESSENTIAL versus PROPOSED, and which are N/A \u2014 and that is where the defects live, because a firing rule is a judgement and prose cannot check itself.",
+  "sheet_response": "looks right",
+  "_sheet_response_why": "Accept every DETECTED and PROPOSED row unchanged, so the golden shows the DEFAULTS. A run that silently promotes a default to a user decision is one of the failures this catches.",
+  "essential_answers": {
+    "design_constraints.vm_cutover": "mgn",
+    "design_constraints.compliance": null,
+    "data.availability": "single-az",
+    "data.db_cutover": "dms",
+    "licensing.windows_model": "license_included",
+    "baseline.azure_monthly_spend": null
+  },
+  "_availability_answer_why": "single-az is answered DELIBERATELY against a ZoneRedundant source, so the golden must carry the availability_downgrade_from_source finding. Answering multi-az would hide the one case where the skill has to say something uncomfortable out loud.",
+  "_spend_answer_why": "null models a user who declines to say. The row stays ESSENTIAL and unanswered, which must BLOCK the phase \u2014 an ESSENTIAL row with a null value IS the completion gate, and a run that completes anyway has invented consent."
+}

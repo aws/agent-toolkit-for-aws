@@ -53,13 +53,14 @@
 
 ## AI/ML Services
 
-| GCP Service                | Resource Type       | Reference File            | Typical AWS target      |
-| -------------------------- | ------------------- | ------------------------- | ----------------------- |
-| Vertex AI (LLM/Gemini)     | (generative models) | `ai-gemini-to-bedrock.md` | Bedrock                 |
-| OpenAI (in GCP env)        | (openai SDK)        | `ai-openai-to-bedrock.md` | Bedrock                 |
-| Vertex AI (traditional ML) | (custom endpoints)  | `ai.md`                   | SageMaker               |
-| Vertex AI (pipelines)      | (custom config)     | `ai.md`                   | SageMaker Pipelines     |
-| Cloud Vision API           | (managed API)       | `ai.md`                   | Textract or Rekognition |
+| GCP Service                | Resource Type       | Reference File                           | Typical AWS target      |
+| -------------------------- | ------------------- | ---------------------------------------- | ----------------------- |
+| Vertex AI (LLM/Gemini)     | (generative models) | `ai-gemini-to-bedrock.md`                | Bedrock                 |
+| OpenAI (in GCP env)        | (openai SDK)        | `vendored/ai/ai-openai-to-bedrock.md`    | Bedrock                 |
+| Anthropic SDK (in GCP env) | (anthropic SDK)     | `vendored/ai/ai-anthropic-to-bedrock.md` | Bedrock                 |
+| Vertex AI (traditional ML) | (custom endpoints)  | `ai.md`                                  | SageMaker               |
+| Vertex AI (pipelines)      | (custom config)     | `ai.md`                                  | SageMaker Pipelines     |
+| Cloud Vision API           | (managed API)       | `ai.md`                                  | Textract or Rekognition |
 
 ## Secondary/Infrastructure Services
 

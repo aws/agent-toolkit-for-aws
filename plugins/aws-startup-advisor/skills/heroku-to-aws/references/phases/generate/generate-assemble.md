@@ -16,9 +16,11 @@ _produces:
 > **Assembler unit.** Runs after the generation fragments (`generate-terraform.md`,
 > `generate-docs.md`, `generate-report.md`, and `generate-eks.md` when EKS is in
 > the design) have written their artifacts. It runs the cross-artifact validation
-> (every-service-generated-or-warned, reference integrity, no `{{VAR}}` leak),
-> enforces the completion handoff gate, and updates `.phase-status.json`. It owns
-> the phase's final artifact-level contract.
+> (every-service-generated-or-warned, reference integrity, no `{{VAR}}` leak) and
+> emits the handoff signal, then updates `.phase-status.json` in Step 4. The
+> report validator itself runs later, in the main-window "Finish Generate" step
+> (this assembler is dispatched and has no shell). It owns the phase's final
+> artifact-level contract.
 
 ---
 
@@ -72,11 +74,17 @@ manifests, every service accounted for, no `{{VARIABLE}}` placeholders), then em
 `GATE_FAIL` (STOP) or
 `HANDOFF_OK | phase=generate | artifacts=terraform/,MIGRATION_GUIDE.md,README.md,migration-report.html,validation-report.json`.
 
-Optionally run
-`python3 "$PLUGIN_ROOT/scripts/validate-heroku-migration-report.py" \
-  "$MIGRATION_DIR/migration-report.html" --mode full --migration-dir "$MIGRATION_DIR"`
-and treat exit `1` as `GATE_FAIL` for the report (repair HTML; do not delete
-Terraform/docs).
+The report validator (**required, blocking**) runs in the **main window**, not here — this
+assembler is dispatched to the shell-less `rw` worker along with the fragments (`INTERPRETER.md`
+§ `_exec`), so it cannot run `python3`. `generate.md`'s "Finish Generate in the main window
+(report validation)" step runs
+`validate-heroku-migration-report.py` over `migration-report.html` **after this assembler
+returns and before** the read-only `_postconditions` gate; on `REPORT_OK` it stamps
+`report-validation-status.json` (the durable result the gate asserts), and on `REPORT_FAIL` it
+emits `GATE_FAIL` and pastes the validator's `errors[]`. Per `INTERPRETER.md` § `_postconditions`,
+the gate does **not** edit the HTML, artifacts, or state — it halts. Recovery is a hand-edit of
+`migration-report.html` from the pasted errors + a direct re-run of the validator and re-stamp (or
+a maintainer re-running Generate for a clean rebuild), not this assembler repairing the report.
 
 The Terraform **policy gate** is not optional, and it is enforced by `generate.md`
 `_postconditions` — a **read-only** gate the interpreter runs in the **main window**

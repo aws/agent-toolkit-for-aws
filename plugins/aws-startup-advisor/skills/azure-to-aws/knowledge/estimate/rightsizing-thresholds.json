@@ -1,0 +1,51 @@
+{
+  "_what_this_is": "P95 utilization bands and the aggressiveness slider, used by the 'Right-Sizing' section of every design-refs rubric and by the Estimate phase's right-sized total.",
+  "_precondition": "This file is only reachable when OBSERVED utilization exists -- an RDfA 31-day rollup or az monitor metrics list. With no metrics, a rubric states the table default from its own sizing table and stamps confidence 'inferred'. Never apply these bands to a declared SKU: a SKU is what was bought, not what is used.",
+  "_provenance": "The band boundaries and slider values are the product owner's chosen defaults (plan section 0), not measurements. They are tunable constants and this file is the only place they may be changed.",
+
+  "p95_bands": [
+    {
+      "max_p95_percent": 35,
+      "action": "quarter",
+      "_meaning": "Drop to roughly one quarter of the source's vCPU/memory, floored by the smallest instance that meets the memory requirement."
+    },
+    { "max_p95_percent": 70, "action": "half", "_meaning": "Drop to roughly half." },
+    {
+      "max_p95_percent": 100,
+      "action": "same",
+      "_meaning": "Keep the like-for-like size. A workload at or above 70% P95 has no headroom to give up."
+    }
+  ],
+
+  "aggressiveness": {
+    "_what_it_is": "The target post-migration utilization the customer is willing to run at. Higher means smaller instances and less headroom.",
+    "_default": "medium",
+    "levels": {
+      "low": {
+        "target_utilization_percent": 50,
+        "_for": "Regulated or spiky workloads, or a first migration where confidence matters more than cost."
+      },
+      "medium": { "target_utilization_percent": 60, "_for": "The default. Balances saving against burst headroom." },
+      "high": { "target_utilization_percent": 70, "_for": "Cost-sensitive, steady traffic, autoscaling in place." },
+      "aggressive": {
+        "target_utilization_percent": 90,
+        "_for": "Only with autoscaling AND a stated tolerance for saturation. Say out loud that this trades resilience for cost."
+      }
+    }
+  },
+
+  "confidence_rules": {
+    "min_window_days": 14,
+    "_why": "Below roughly 14 days the window can sit entirely inside a quiet period. Size from it, but keep confidence 'inferred' rather than 'measured', and say why -- a workload sized for a trough it will leave is worse than one sized from its SKU.",
+    "measured_requires": "A window of at least min_window_days AND the evidence cited on the services[] entry. Both, per design.md's postcondition that every 'measured' entry cites its utilization evidence.",
+    "reservation_baseline": "A resource showing $0 in consumption data is RESERVED, not free. Price the baseline at the RI-equivalent rate and record the substitution. Never at literal $0."
+  },
+
+  "floors": {
+    "never_below_memory_requirement": "Right-sizing may reduce vCPU aggressively and must NEVER reduce memory below the source's working set. An OOM is not a saving.",
+    "never_below_family_minimum": "The smallest instance in the chosen family, e.g. do not right-size an m6i workload below m6i.large.",
+    "burstable_caution": "Right-sizing a steady workload onto a burstable (t3/t4g) instance to hit a target is only valid if the P95 is genuinely below the baseline credit rate. Otherwise it throttles, and the throttle looks like an application fault."
+  },
+
+  "_what_this_does_not_do": "Right-sizing NEVER revisits the service choice. The six criteria pick a service; this file picks a size within it (plan section 7a.5). If no size in the chosen service fits, that is a finding for the report, not a reason to re-run the rubric."
+}

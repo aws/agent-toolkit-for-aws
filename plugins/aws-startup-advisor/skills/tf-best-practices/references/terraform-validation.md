@@ -116,8 +116,10 @@ top-level status.
 
 ### Stage E — Emit validation-report.json
 
-Write `validation-report.json` (path chosen by the caller, e.g. `$MIGRATION_DIR/`) per the
-schema below.
+Write the report to the single canonical path the caller pins, e.g.
+`$MIGRATION_DIR/validation-report.json` — slash-joined, never a bare `$MIGRATION_DIR/`
+directory (a bare dir invites a missing-slash `<ts>validation-report.json` sibling) — per
+the schema below.
 
 ## Offline Detection
 

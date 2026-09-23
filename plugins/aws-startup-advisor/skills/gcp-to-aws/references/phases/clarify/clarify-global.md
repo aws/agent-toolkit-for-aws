@@ -1,93 +1,76 @@
+---
+_fragment: global
+_of_phase: clarify
+_contributes:
+  - preferences.json (global section, design_constraints section; created here, finalized by the assembler)
+---
+
 # Category A — Global/Strategic (Always Fires)
 
-These foundational constraints gate everything downstream — region selection, service catalog, data residency, credits eligibility, compute platform, availability topology, and migration strategy.
-
-Present questions with a conversational tone and brief context explaining why each matters.
-
----
-
-## Q1 — Where are your users located?
-
-**Auto-extract signal:** When `gcp-resource-inventory.json` shows a **single** GCP region among PRIMARY compute/database resources, map to the closest AWS region and **skip Q1** with `target_region` `chosen_by: "extracted"`. When multiple regions are present, suggest the closest AWS region as default but still ask Q1.
-
-**Rationale:** Geography drives AWS region selection and CDN strategy.
-
-> I need to understand your user base to recommend the right AWS region and CDN strategy.
-> (This question is about where your **users** are — latency and placement. If you have **data residency** obligations, GDPR or similar, that's handled by the compliance question, not this one.)
+> **Fragment unit.** See `clarify.md` for how it is composed into the phase.
 >
-> 1. Single region (e.g., US-only, EU-only)
-> 2. Multi-region (2–3 regions, e.g., US + EU)
-> 3. Global (users worldwide, latency critical)
-> 4. I don't know
+> **This fragment asks nothing.** It reads discovery, resolves what it can, assigns a
+> disposition per row, and returns rows. `clarify-assemble.md` presents them.
 
-| Answer        | Recommendation Impact                                                                                                                                                                                                                     |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Single region | Deploy in closest AWS region to users; standard Route 53 routing                                                                                                                                                                          |
-| Multi-region  | Primary region closest to majority; CloudFront for static assets and API caching; Route 53 latency-based routing — multi-region infrastructure deferred to Q6                                                                             |
-| Global        | Primary region by largest user concentration; CloudFront globally distributed; Route 53 geolocation routing — Aurora Global Database and multi-region compute only if Q6 = Catastrophic AND write latency is a confirmed hard requirement |
+These foundational constraints gate everything downstream — region selection, service
+catalog, data residency, credits eligibility, compute platform, availability topology, and
+migration strategy.
 
-Interpret:
+**Five of these questions are canonical, shared with `azure-to-aws`** — see
+`references/vendored/clarify/`. Read the linked file for the question text, options, and
+interpretation rule; this fragment supplies only GCP's auto-extraction signal, default, and
+disposition escalation. Q3 (GCP spend) and Q3.5 (CUDs) are GCP-specific — no shared file, no
+Azure equivalent (Azure's commitment story is Reservations/Savings Plans, framed as a finding
+in Estimate rather than a Clarify question — see `estimate-infra.md`).
 
-```
-1 -> target_region: "<closest AWS region to GCP region in inventory>"
-2 -> target_region: "<closest AWS region>", replication: "cross-region"
-3 -> target_region: "<closest AWS region>", replication: "cross-region", cdn: "required"
-4 -> same as default (1)
-```
+## Step 1: Extract before proposing
 
-Default: 1 — single region, closest AWS region to GCP region in inventory.
+Resolve from discovery first — a DETECTED row costs the user nothing to confirm, and a
+question discovery could have answered is a question that should not have been asked.
 
----
+| Read from discovery                                                                                                | Resolves                                                                              |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| GCP regions across all PRIMARY compute/database resources in `gcp-resource-inventory.json`                         | single-region vs multi-region — the input to Q1 / Q1b                                 |
+| `billing-profile.json → summary.total_monthly_spend`                                                               | GCP spend band (Q3)                                                                   |
+| `billing-profile.json → commitments.has_active_cuds`                                                               | whether Q3.5 fires at all                                                             |
+| each `google_sql_database_instance`'s `availability_type` / `config.availability_type`                             | context for the availability question (Q6) — **never the answer**, same rule as Azure |
+| Cloud Run `min_instance_count` / `min_instances` (context only, not extracted here — see `clarify-compute.md` Q10) | whether Category C's traffic question can auto-resolve                                |
 
-## Q2 — Do you have any compliance or regulatory requirements?
+## Step 2: The rows
 
-**Rationale:** Compliance requirements gate entire service categories and regions. A HIPAA customer cannot use the same architecture as an unconstrained startup.
+### Q1 — Target AWS region + user geography
 
-> Compliance requirements determine which AWS services, regions, and configurations are available to you. This gates the entire architecture.
->
-> 1. None — No specific compliance requirements
-> 2. SOC 2 / ISO 27001 — Security and availability standards
-> 3. PCI DSS — Payment card data handling
-> 4. HIPAA — Healthcare data
-> 5. FedRAMP / Government — Federal compliance
-> 6. GDPR / Data residency — EU data sovereignty requirements
-> 7. CCPA / CPRA — California Consumer Privacy Act / California Privacy Rights Act
-> 8. I don't know
->
-> _(Multiple selections allowed)_
+Canonical question: `references/vendored/clarify/clarify-region.md`.
 
-| Answer            | Recommendation Impact                                                                                                                                                                                                                                                                                                                                          |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| None              | Full service catalog available, any region                                                                                                                                                                                                                                                                                                                     |
-| SOC 2 / ISO 27001 | CloudTrail, Config, Security Hub enabled by default; encryption at rest required                                                                                                                                                                                                                                                                               |
-| PCI DSS           | CloudTrail, Config, Security Hub + PCI DSS standard enabled by default; dedicated VPC with strict segmentation; WAF required; no shared tenancy for cardholder data; specific RDS encryption config                                                                                                                                                            |
-| HIPAA             | CloudTrail, Config, Security Hub (FSBP only — Security Hub does not provide a HIPAA-specific standard) enabled by default; BAA-eligible services only; encryption in transit and at rest mandatory; specific logging requirements; us-east-1/us-west-2 preferred; engage a qualified HIPAA auditor for end-to-end posture validation                           |
-| FedRAMP           | CloudTrail, Config, Security Hub (FSBP only — NIST 800-53 is the target control set but is not directly subscribable in Security Hub the way PCI DSS is; engage your AWS account team for agency-level attestation) enabled by default; GovCloud regions required (us-gov-east-1, us-gov-west-1); GovCloud-specific service endpoints; limited service catalog |
-| GDPR              | EU regions required (eu-west-1, eu-central-1), data residency constraints, no cross-region replication outside EU without explicit consent                                                                                                                                                                                                                     |
-| CCPA / CPRA       | Consumer privacy posture: data inventory, access/deletion workflows, opt-out of sale/sharing where applicable, retention minimization, encryption and audit logging (CloudTrail); prefer documenting data flows and subprocessors — confirm target regions with legal/compliance (often US)                                                                    |
+**Disposition:** DETECTED when the inventory has a **single** GCP region among PRIMARY
+compute/database resources — map to the closest AWS region and record
+`chosen_by: "extracted"`. **ESSENTIAL** when multiple regions are present, or when there is
+no infrastructure inventory at all (billing-only or AI-only mode reaching this fragment).
 
-Interpret:
+**GCP's auto-extraction shortcut:** unlike Azure (which asks a separate user-geography
+question whenever the map alone can't decide a CDN strategy), GCP treats a single detected
+GCP region as sufficient to resolve BOTH the region mapping AND `user_geography:
+"single-region"` in one extraction — this is a documented shortcut, not a claim that GCP has
+independently verified where end users are. State this on the sheet row's source field
+(`"terraform:single-region-assumed-single-geography"`) rather than a bare `"extracted"`, so a
+reader can tell the assumption apart from a genuine multi-signal confirmation.
 
-```
-1 -> (no constraint written — user explicitly confirmed no requirements; full service catalog, any region)
-2 -> compliance: ["soc2"] — CloudTrail, Config, Security Hub enabled; encryption at rest required
-3 -> compliance: ["pci"] — Dedicated VPC, WAF required, strict segmentation
-4 -> compliance: ["hipaa"] — BAA-eligible services only, encryption mandatory, us-east-1/us-west-2 preferred
-5 -> compliance: ["fedramp"] — GovCloud regions required (us-gov-east-1, us-gov-west-1)
-6 -> compliance: ["gdpr"] — EU regions required (eu-west-1, eu-central-1), data residency constraints
-7 -> compliance: ["ccpa"] — CCPA/CPRA: logging, retention, consumer-request readiness; document data flows; align region/subprocessor choices with legal review
-8 -> compliance: ["unknown"] — not confirmed; verify with compliance team before production
-```
+**Default when ESSENTIAL and skipped:** answer 1 (single region, closest AWS region to the
+GCP region present in the inventory).
 
-**Defaulted / "I don't know" semantics:** When Q2 resolves without an explicit user selection — answer 8, or "use defaults for the rest" — write `compliance: ["unknown"]` (`chosen_by: "user"` for 8, `"default"` with `source: "default:Q2"` for defaults). Never silently record "no requirements". Downstream, `["unknown"]` behaves exactly like "none" for architecture and service selection (no speculative BAA-only stack), but it triggers the report's compliance caveat and counts as unverified in decision confidence.
+### Q2 — Compliance and regulatory requirements — **ESSENTIAL, always**
 
-Default: `compliance: ["unknown"]` — unconfirmed, with report caveat (only reachable via "use defaults for the rest"; Q2 is otherwise always asked).
+Canonical question: `references/vendored/clarify/clarify-compliance.md`. No GCP-specific
+auto-extraction signal exists (compliance status is never inferable from Terraform), so this
+fragment supplies no override to the canonical file's disposition, options, or default. Ask
+it exactly as written there — always ESSENTIAL, never skipped, never silently defaulted to
+"none."
 
----
+### Q3 — Approximately how much are you spending on GCP per month in total? — GCP-specific
 
-## Q3 — Approximately how much are you spending on GCP per month in total?
-
-**Auto-extract signal:** If `billing-profile.json` exists, map `summary.total_monthly_spend` to the spend band below and **skip Q3** when unambiguous (`chosen_by: "extracted"`). If billing is absent or ambiguous, ask Q3.
+**Auto-extract signal:** If `billing-profile.json` exists, map `summary.total_monthly_spend`
+to the spend band below and **skip Q3** when unambiguous (`chosen_by: "extracted"`). If
+billing is absent or ambiguous, ask Q3.
 
 | Monthly USD   | `gcp_monthly_spend` |
 | ------------- | ------------------- |
@@ -97,9 +80,12 @@ Default: `compliance: ["unknown"]` — unconfirmed, with report caveat (only rea
 | 20,000–99,999 | `"$20K-$100K"`      |
 | ≥ 100,000     | `">$100K"`          |
 
-**Rationale:** Total GCP spend is the primary input for ARR estimation, which determines credits eligibility tier. Also provides a sanity check for cost estimates when billing data is not uploaded.
+**Rationale:** Total GCP spend is the primary input for ARR estimation, which determines
+credits eligibility tier. Also provides a sanity check for cost estimates when billing data is
+not uploaded.
 
-> Total GCP spend helps me estimate AWS credits eligibility and provides a cost baseline for the migration plan.
+> Total GCP spend helps me estimate AWS credits eligibility and provides a cost baseline for
+> the migration plan.
 >
 > 1. < $1,000/month
 > 2. $1,000–$5,000/month
@@ -108,7 +94,8 @@ Default: `compliance: ["unknown"]` — unconfirmed, with report caveat (only rea
 > 5. $100,000/month
 > 6. I don't know
 
-**Billing enrichment (when Q3 is not skipped):** If `billing-profile.json` exists but extraction was skipped due to ambiguity, show:
+**Billing enrichment (when Q3 is not skipped):** If `billing-profile.json` exists but
+extraction was skipped due to ambiguity, show:
 
 > Your billing data shows ~$[total_monthly_spend]/month. Does this match your expectation?
 
@@ -131,17 +118,24 @@ Interpret:
 6 -> same as default (2)
 ```
 
-Default: 2 — `gcp_monthly_spend: "$1K-$5K"`.
+**Default:** 2 — `gcp_monthly_spend: "$1K-$5K"`.
 
----
+### Q3.5 — Do you have active GCP Committed Use Discounts (CUDs)? — GCP-specific
 
-## Q3.5 — Do you have active GCP Committed Use Discounts (CUDs)?
+**Conditional:** Only fires if `billing-profile.json` exists AND
+`commitments.has_active_cuds == true`. N/A otherwise. GCP's CUD product has no Azure
+analogue in Clarify — Azure's Reservations/Savings Plan continuity is surfaced as a finding
+in `estimate-infra.md` Part 6, not a question here, because AHUB/Reservations are
+architecturally different from GCP CUDs (see that file for why).
 
-**Rationale:** Active CUDs affect migration timing and cost comparison accuracy. If a customer has unexpired CUDs, they'll continue paying commitment fees even after migrating — this is a sunk cost that affects the migration ROI timeline. Also determines whether to compare against GCP list price or committed rate.
+**Rationale:** Active CUDs affect migration timing and cost comparison accuracy. If a
+customer has unexpired CUDs, they'll continue paying commitment fees even after migrating —
+this is a sunk cost that affects the migration ROI timeline. Also determines whether to
+compare against GCP list price or committed rate.
 
-**Conditional:** Only ask if `billing-profile.json` exists AND `commitments.has_active_cuds == true`. If billing data shows active CUDs, present the detected information and ask for confirmation/details.
-
-> Your billing data shows active Committed Use Discounts (~[effective_discount_percent]% effective discount). CUD timing affects migration ROI — commitment fees continue regardless of usage until the term expires.
+> Your billing data shows active Committed Use Discounts (~[effective_discount_percent]%
+> effective discount). CUD timing affects migration ROI — commitment fees continue regardless
+> of usage until the term expires.
 >
 > 1. Yes, and they expire within 6 months
 > 2. Yes, and they expire in 6–12 months
@@ -170,112 +164,90 @@ Interpret:
 6 -> cud_status: "not_renewing" — Align migration completion with expiration
 ```
 
-Default: 5 — `cud_status: "none"` (no constraint on migration timing).
+**Default:** 5 — `cud_status: "none"`.
 
-If `billing-profile.json` does not exist or `commitments.has_active_cuds == false`, **skip this question entirely**.
+### Q5 — Multi-cloud portability
 
----
+Canonical question: `references/vendored/clarify/clarify-multicloud.md`. **Disposition:**
+PROPOSED when compute resources are present; N/A otherwise. **Default:** per the canonical
+file — no constraint, full compute decision tree.
 
-## Q4 — _(Skipped in wizard mode)_
+GCP's early exit skips `clarify-compute.md`'s **Q8** (Kubernetes sentiment) and **Q7b**
+(App Engine compute-operational-model) — App Engine routes to EKS instead of its normal
+Elastic Beanstalk default, overriding the Q7b default the same way it overrides Q8's.
 
-**Do not infer funding stage or AWS Activate tier from GCP spend (Q3) or AI spend (Q15).** Self-funded and VC-backed startups can have identical monthly bills.
+### Q6 — Availability / downtime tolerance
 
-Activate package selection is owned by **Q27** (`startup_program_status`) when Category H fires. In full Clarify flow, Q4 may be asked explicitly if product adds a standalone funding-stage question; until then, `funding_stage` is not set.
+Canonical question: `references/vendored/clarify/clarify-availability.md`.
 
----
+**Disposition:** DETECTED when all Cloud SQL PostgreSQL/MySQL instances agree on the mapped
+`availability_type`; **ESSENTIAL** on conflict or when `availability_type` is missing on any
+instance; PROPOSED when no Cloud SQL signal exists but a database resource is present some
+other way.
 
-## Q5 — Do you need to run workloads across multiple cloud providers?
+**GCP's auto-extraction signal** (per the canonical file's "what a consuming skill supplies"
+§1): read each `google_sql_database_instance`'s `availability_type` (or
+`config.availability_type`):
 
-**Rationale:** Multi-cloud portability is an early exit condition that immediately determines the compute recommendation without needing further questions. If multi-cloud is required, Kubernetes (EKS) is the only portable abstraction layer.
+| GCP value  | `availability` extracted |
+| ---------- | ------------------------ |
+| `ZONAL`    | `"single-az"`            |
+| `REGIONAL` | `"multi-az"`             |
 
-> Multi-cloud portability is an immediate decision point — if required, Kubernetes (EKS) is the only portable abstraction, and we can skip several compute questions.
->
-> 1. Yes, multi-cloud required
-> 2. No, AWS-only is acceptable
-> 3. I don't know
+Resolve this question only when **all** Cloud SQL PostgreSQL/MySQL instances agree on the
+same mapped value. `multi-az-ha` and `multi-region` are **never** auto-extracted — those
+require this question's Mission-Critical / Catastrophic answers. Cloud SQL `REGIONAL` maps to
+`multi-az` (RDS Multi-AZ), not `multi-az-ha` (Aurora) — GCP's `REGIONAL` HA is not the same
+tier as Aurora's HA.
 
-| Answer                    | Recommendation Impact                                                                                                |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Yes, multi-cloud required | **Immediate EKS recommendation** — Kubernetes is the only portable abstraction layer. Skip Q8. ECS Fargate excluded. |
-| No, AWS-only acceptable   | Full compute decision tree continues — EKS vs ECS Fargate evaluated based on K8s sentiment (Q8)                      |
+**GCP's default (per the canonical file's §2 — a deliberate, documented choice, not
+convergence with Azure's Single-AZ default):** **Multi-AZ** (answer 2) when unanswered. This
+is a conservative middle ground: GCP customers arriving with no HA signal at all (billing-only
+mode, or Cloud SQL absent) are defaulted to a safer tier than Azure's Single-AZ default,
+because GCP's typical inbound estate (Cloud Run / Cloud Functions-heavy) carries less
+already-provisioned HA context to escalate against than Azure's VM/Flexible-Server-heavy
+estates do.
 
-Interpret:
+**GCP's escalation rule (per the canonical file's §3):** when Cloud SQL instances disagree, or
+when `availability_type` is missing on any instance, escalate to ESSENTIAL rather than
+defaulting — the multi-instance conflict handling in `clarify-assemble.md` covers the
+per-instance breakdown presentation.
 
-```
-1 -> compute: "eks" — Immediate EKS recommendation. EARLY EXIT: skip Q8.
-2 -> (no constraint written — full compute decision tree continues)
-3 -> same as default (2) — assume AWS-only
-```
+### Q7 — Maintenance window / cutover strategy — **ESSENTIAL, always**
 
-Default: 2 — no constraint, evaluate full compute options.
+**No GCP↔Azure canonical file** — GCP asks this as one unified question (a single cutover
+decision governs both compute and database cutover); Azure splits it into two ESSENTIAL
+questions (VM cutover in `clarify-compute.md` Q-C6, DB cutover in `clarify-database.md` Q-D2)
+because Azure's VM-replication runbook (MGN) and its database-replication runbook (DMS) are
+different tools answering different questions. GCP's compute targets (Cloud Run, GKE, Cloud
+Functions) do not have an Azure-VM-style "replicate the guest" option, so one cutover question
+suffices here. This divergence is intentional, not drift — do not unify these into a shared
+file; the underlying decision shapes are different.
 
----
-
-## Q6 — If your application went down unexpectedly right now, what would happen?
-
-**Auto-extract signal (Cloud SQL PostgreSQL/MySQL only):** Read `availability_type` from `google_sql_database_instance` (`config.availability_type` or top-level). When unambiguous:
-
-| GCP value  | `availability` extracted | Skip Q6?                       |
-| ---------- | ------------------------ | ------------------------------ |
-| `ZONAL`    | `"single-az"`            | Yes — `chosen_by: "extracted"` |
-| `REGIONAL` | `"multi-az"`             | Yes — `chosen_by: "extracted"` |
-
-**Never auto-extract:** `multi-az-ha` and `multi-region` require Q6 user answers (Mission-Critical / Catastrophic) — IaC cannot infer these. Cloud SQL `REGIONAL` is RDS Multi-AZ (`multi-az`), not Aurora (`multi-az-ha`). Skip Q6 only when **all** instances agree. When instances disagree or `availability_type` is missing on any instance, ask Q6.
-
-**Rationale:** Availability requirements drive database engine selection, deployment topology, and whether multi-AZ is mandatory. Aurora Global Database and multi-region compute are only recommended when Catastrophic is selected AND Q1 confirms global users — both signals are required.
-
-**Cloud SQL PostgreSQL / MySQL → RDS vs Aurora (decision order):** For customers on Cloud SQL (PostgreSQL or MySQL), **Q6 is the only question that selects the AWS product family** — **RDS** (PostgreSQL or MySQL, matching the Cloud SQL engine) vs **Aurora** (Aurora PostgreSQL or Aurora MySQL). **Q12–Q13 never override Q6**; they tune sizing, replicas, storage/I/O billing, and Aurora variants **after** Q6 has chosen RDS or Aurora. When Cloud SQL is detected, you may add: _"For dev/staging or workloads where brief outage is tolerable, RDS PostgreSQL is usually simpler and cheaper; Aurora is for mission-critical HA needs."_
-
-**Context for user:** When asking, include these descriptions so the user can self-select accurately:
-
-- **Inconvenient** — users can wait, no revenue impact (e.g., internal tool, dev/staging environment, hobby project)
-- **Significant Issue** — users notice and complain, some revenue impact, but workarounds exist (e.g., B2B SaaS with email support SLA)
-- **Mission-Critical** — direct revenue loss per minute of downtime, SLA obligations to customers, needs fast recovery (e.g., e-commerce checkout, paid API)
-- **Catastrophic** — regulatory, safety, or major financial consequences; every minute of downtime is measurable loss (e.g., financial transactions, healthcare systems, real-time trading)
-
-> Availability requirements drive database engine selection, deployment topology, and whether multi-AZ is mandatory.
->
-> 1. INCONVENIENT — Users can wait, brief outages tolerable (5–30 min)
-> 2. SIGNIFICANT ISSUE — Customers frustrated, revenue loss
-> 3. MISSION-CRITICAL — Cannot tolerate outages, SLA violations
-> 4. CATASTROPHIC — Regulatory, safety, or major financial consequences per minute of downtime
-> 5. I don't know
-
-| Answer            | Recommendation Impact                                                                                                                                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Inconvenient      | Single-AZ RDS acceptable, standard ECS/EKS deployment, no special HA requirements                                                                                                                                                                      |
-| Significant Issue | Multi-AZ RDS required, ALB with health checks, auto-scaling groups                                                                                                                                                                                     |
-| Mission-Critical  | Aurora Multi-AZ (higher availability than RDS), multi-AZ mandatory, Route 53 health checks; single-region with fast failover is sufficient for most mission-critical workloads                                                                         |
-| Catastrophic      | If Q1 = Global: Aurora Global Database + active-active multi-region + Route 53 failover routing; If Q1 = Single/Multi-region: Aurora Multi-AZ with aggressive RTO/RPO targets is sufficient — global infrastructure not warranted without global users |
-
-Interpret:
-
-```
-1 -> availability: "single-az" — Single-AZ RDS acceptable, standard deployment
-2 -> availability: "multi-az" — Multi-AZ RDS required, ALB with health checks, auto-scaling
-3 -> availability: "multi-az-ha" — Aurora Multi-AZ, multi-AZ mandatory, Route 53 health checks
-4 -> IF Q1 = 3 (Global): availability: "multi-region" — Aurora Global Database + active-active multi-region + Route 53 failover
-     IF Q1 = 1 or 2: availability: "multi-az-ha" — Aurora Multi-AZ with aggressive RTO/RPO (global infra not warranted without global users)
-5 -> same as default (2) — assume multi-AZ for safety
-```
-
-Default: 2 — `availability: "multi-az"`.
-
----
-
-## Q7 — Do you have a scheduled maintenance window where downtime is acceptable?
-
-**Rationale:** Determines cutover strategy and which database migration tooling is recommended. Zero-downtime migrations require significantly more complex infrastructure (blue/green, traffic shifting). With a maintenance window, databases can be taken offline briefly and migrated with native tools — without one, live replication via DMS is required.
+**Rationale:** Determines cutover strategy and which database migration tooling is
+recommended. Zero-downtime migrations require significantly more complex infrastructure
+(blue/green, traffic shifting). With a maintenance window, databases can be taken offline
+briefly and migrated with native tools — without one, live replication via DMS is required.
 
 **Database migration tooling notes:**
 
-- Use the **in-flight resolved Q13b value** (`db_size` from Step 2 extraction, the confirmed Assumption Sheet, or `preferences-draft.json` — Q13b is defined in `clarify-database.md`) to select the right tool. Do NOT read `preferences.json` here: mid-Clarify it does not exist yet (it is written at Step 5), and on a re-run any file present is a prior run's stale answers. If Q13b is not yet resolved, fall back to the size thresholds below.
-- For PostgreSQL databases `db_size: "<10GB"` or unknown-small: **pg_dump/pg_restore** is sufficient.
-- For PostgreSQL databases `db_size: "10-100GB"` or `"100-500GB"`: **pgcopydb** offers parallel table copying and index rebuilding, significantly reducing migration time within the same maintenance window.
-- For PostgreSQL databases `db_size: ">500GB"`: **AWS DMS strongly recommended** regardless of maintenance window — single-pass export/import at this scale is high-risk.
-- pgcopydb's CDC mode requires `wal_level=logical` on Cloud SQL, which must be enabled explicitly.
+- Use the **in-flight resolved Q13b value** (`db_size` — resolved in `clarify-database.md`)
+  to select the right tool. Do NOT read `preferences.json` here: mid-Clarify it does not exist
+  yet, and on a re-run any file present is a prior run's stale answers. If Q13b is not yet
+  resolved, fall back to the size thresholds below.
+- For PostgreSQL databases `db_size: "<10GB"` or unknown-small: **pg_dump/pg_restore** is
+  sufficient.
+- For PostgreSQL databases `db_size: "10-100GB"` or `"100-500GB"`: **pgcopydb** offers parallel
+  table copying and index rebuilding, significantly reducing migration time within the same
+  maintenance window.
+- For PostgreSQL databases `db_size: ">500GB"`: **AWS DMS strongly recommended** regardless of
+  maintenance window — single-pass export/import at this scale is high-risk.
+- pgcopydb's CDC mode requires `wal_level=logical` on Cloud SQL, which must be enabled
+  explicitly.
 
-> The maintenance window determines your migration cutover strategy and which database migration tooling we recommend. Zero-downtime migrations require significantly more complex infrastructure.
+> The maintenance window determines your migration cutover strategy and which database
+> migration tooling we recommend. Zero-downtime migrations require significantly more complex
+> infrastructure.
 >
 > 1. Yes — weekly maintenance window (e.g., Sunday 2–4am)
 > 2. Yes — monthly maintenance window only
@@ -300,4 +272,56 @@ Interpret:
 5 -> same as default (4) — assume flexible
 ```
 
-Default: 4 — `cutover_strategy: "flexible"`.
+**Default:** 4 — `cutover_strategy: "flexible"`.
+
+## Step 3: Rows returned
+
+```jsonc
+"global": {
+  "target_region":     { "disposition": "DETECTED", "value": "us-west-2", "default": "us-west-2",
+                         "source": "terraform:single-region-assumed-single-geography" },
+  "user_geography":    { "disposition": "DETECTED", "value": "single-region", "default": "single-region",
+                         "source": "terraform:single-region-assumed-single-geography" }
+},
+"design_constraints": {
+  "compliance":        { "disposition": "ESSENTIAL", "value": null, "default": null },
+  "availability":      { "disposition": "DETECTED", "value": "single-az", "default": "multi-az",
+                         "source": "terraform:availability_type=ZONAL" },
+  "compute":           { "disposition": "PROPOSED", "value": null, "default": null,
+                         "reason": "no multi-cloud requirement stated" },
+  "cutover_strategy":  { "disposition": "ESSENTIAL", "value": null, "default": "flexible" }
+},
+"baseline": {
+  "gcp_monthly_spend": { "disposition": "DETECTED", "value": "$1K-$5K", "default": "$1K-$5K",
+                         "source": "billing:summary.total_monthly_spend" },
+  "cud_status":        { "disposition": "N/A", "value": null, "default": null,
+                         "reason": "no active CUDs in billing-profile.json" }
+}
+```
+
+`cpu_architecture` is **not** here — it belongs to `clarify-compute.md`, same reasoning as
+Azure's fragment: whether it is a question at all depends on which compute is present.
+
+## Who consumes these
+
+| Row                 | Consumer                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------- |
+| `target_region`     | Design's region selection; every downstream cost figure                               |
+| `user_geography`    | Design's CDN / Route 53 strategy, and the availability question's Catastrophic branch |
+| `compliance`        | Design's service catalog, region gate, and security-baseline defaults                 |
+| `availability`      | `clarify-database.md`'s RDS-vs-Aurora family selection (post-rubric override)         |
+| `compute`           | `clarify-compute.md`'s Q7b/Q8 early-exit check                                        |
+| `cutover_strategy`  | Generate's migration runbook shape, and the DMS-versus-pg_dump tooling choice         |
+| `gcp_monthly_spend` | Estimate's migrate-vs-stay comparison and Activate credits tier                       |
+| `cud_status`        | Estimate's commitment-overlap ROI framing                                             |
+
+## Status — build step 5 (restructure)
+
+Implemented. Restructured from the pre-fragment monolithic `clarify.md` into the
+fragment-returns-rows / assembler-owns-conversation pattern shared with `azure-to-aws`. Five
+of these seven questions (region, compliance, availability, multi-cloud, cost-appetite — the
+last lives in Category E below, not in this fragment, per
+`references/vendored/clarify/clarify-cost-appetite.md` § "What a consuming skill supplies")
+now read their question text and options from the canonical `references/vendored/clarify/`
+files instead of carrying an independent copy. Q3/Q3.5/Q7 remain GCP-owned with no shared
+file, because they have no Azure equivalent or a genuinely different decision shape.

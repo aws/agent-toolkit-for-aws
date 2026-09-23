@@ -1,0 +1,233 @@
+{
+  "_what_this_is": "GOLDEN preferences.json for the azure-iac-terraform corpus, with clarify-answers.json as the user. It is a BLOCKED Clarify: baseline.azure_monthly_spend is ESSENTIAL and unanswered, so the phase must emit GATE_FAIL. That is deliberate \u2014 it pins the completion gate rather than only the happy path.",
+  "phase": "clarify",
+  "clarify_status": "BLOCKED_ON_ESSENTIAL",
+  "global": {
+    "target_region": {
+      "disposition": "DETECTED",
+      "value": "eu-west-1",
+      "default": "eu-west-1",
+      "source": "every resource is westeurope; MAPPED, not assumed us-east-1"
+    },
+    "environment_scope": {
+      "disposition": "DETECTED",
+      "value": [
+        "prod"
+      ],
+      "default": [
+        "prod"
+      ],
+      "source": "name-pattern heuristic over resource groups \u2014 a strong hint, not a fact"
+    },
+    "migration_window": {
+      "disposition": "PROPOSED",
+      "value": null,
+      "default": null
+    },
+    "user_geography": {
+      "disposition": "PROPOSED",
+      "value": "single-region",
+      "default": "single-region"
+    }
+  },
+  "design_constraints": {
+    "compliance": {
+      "disposition": "ESSENTIAL",
+      "value": null,
+      "default": null,
+      "unanswered": true,
+      "blocks_phase": true
+    },
+    "cpu_architecture": {
+      "disposition": "DETECTED",
+      "value": "x86_64",
+      "default": "x86_64",
+      "forced_by": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Compute/virtualMachines/tf:reporting",
+      "source": "Windows guest \u2014 graviton.md's escape path applies, so this is not a choice"
+    },
+    "compute_target": {
+      "disposition": "PROPOSED",
+      "value": "elastic_beanstalk",
+      "default": "elastic_beanstalk"
+    },
+    "cost_optimization": {
+      "disposition": "PROPOSED",
+      "value": "balanced",
+      "default": "balanced"
+    },
+    "traffic_pattern": {
+      "disposition": "PROPOSED",
+      "value": "steady",
+      "default": "steady"
+    },
+    "long_lived_connections": {
+      "disposition": "PROPOSED",
+      "value": false,
+      "default": false
+    },
+    "vm_cutover": {
+      "disposition": "ESSENTIAL",
+      "value": "mgn",
+      "default": null
+    }
+  },
+  "data": {
+    "availability": {
+      "disposition": "ESSENTIAL",
+      "value": "single-az",
+      "default": null,
+      "source_ha_context": "tf:store: high_availability mode ZoneRedundant, standby zone 2",
+      "context": "The source PostgreSQL flexible server is zone-redundant (high_availability.mode ZoneRedundant). Choosing single-az is a deliberate downgrade and Design will surface it as a finding; multi-az-ha would select Aurora instead of RDS."
+    },
+    "db_cutover": {
+      "disposition": "ESSENTIAL",
+      "value": "dms",
+      "default": null
+    },
+    "traffic_pattern": {
+      "disposition": "PROPOSED",
+      "value": "steady",
+      "default": "steady"
+    },
+    "storage_io": {
+      "disposition": "PROPOSED",
+      "value": "medium",
+      "default": "medium"
+    },
+    "cosmos_rw_split": {
+      "disposition": "N/A",
+      "value": null,
+      "default": null,
+      "reason": "the only Cosmos account is Mongo API (kind MongoDB / EnableMongo), a fast-path row to DocumentDB. No RU/s conversion happens, so there is nothing to split."
+    },
+    "redis_modules": {
+      "disposition": "DETECTED",
+      "value": false,
+      "default": false,
+      "source": "source is Microsoft.Cache/Redis, not redisEnterprise \u2014 plain Azure Cache has no modules"
+    }
+  },
+  "baseline": {
+    "azure_monthly_spend": {
+      "disposition": "ESSENTIAL",
+      "value": null,
+      "default": null,
+      "unanswered": true,
+      "blocks_phase": true,
+      "reason": "the user declined to state it, and no billing export was discovered, so there is nothing to detect it from. The migrate-versus-stay comparison is absent from the report."
+    }
+  },
+  "identity": {
+    "disposition": "PROPOSED",
+    "value": "identity_center_reinvite",
+    "default": "identity_center_reinvite",
+    "context": "0 user-assigned managed identities, 0 role assignments, 1 Key Vault"
+  },
+  "licensing": {
+    "_fired": true,
+    "_firing_reason": "one Windows VM (azurerm_windows_virtual_machine.reporting, image_publisher MicrosoftWindowsServer). No Microsoft.Sql/* resource is present, which is why sql_model is N/A while the category still fires.",
+    "windows_model": {
+      "disposition": "ESSENTIAL",
+      "value": "license_included",
+      "default": null,
+      "context": "1 Windows VM, 4 vCPUs (Standard_D4s_v5)"
+    },
+    "sql_model": {
+      "disposition": "N/A",
+      "value": null,
+      "default": null,
+      "reason": "no SQL-on-VM image signature and no Microsoft.Sql/* resource"
+    },
+    "ahub_in_use": {
+      "disposition": "DETECTED",
+      "value": false,
+      "default": false,
+      "source": "no Azure Hybrid Benefit signal in the inventory. Recorded because AHUB does NOT travel: if it were in use, the customer pays a reduced Azure rate with no AWS equivalent, so the honest comparison is against the UNREDUCED rate. Comparing against the discounted rate makes AWS look worse than it is."
+    },
+    "blockers": [
+      {
+        "azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Compute/virtualMachines/tf:reporting",
+        "code": "azure_edition_windows_server",
+        "severity": "blocker",
+        "detail": "image_sku 2022-datacenter-azure-edition. MGN refuses the image until it is re-imaged. Not a licensing choice \u2014 a prerequisite. Suppresses option [A] on Q-C6 for this VM."
+      }
+    ]
+  },
+  "app_service_plans": [
+    {
+      "plan_azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:web",
+      "hosted_app_count": 5,
+      "isolation_split": {
+        "disposition": "PROPOSED",
+        "value": false,
+        "default": false
+      }
+    },
+    {
+      "plan_azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:func",
+      "hosted_app_count": 1,
+      "isolation_split": {
+        "disposition": "N/A",
+        "value": null,
+        "default": null,
+        "reason": "one app \u2014 nothing to isolate from"
+      }
+    },
+    {
+      "plan_azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Web/serverfarms/tf:legacy",
+      "hosted_app_count": 0,
+      "isolation_split": {
+        "disposition": "N/A",
+        "value": null,
+        "default": null,
+        "reason": "zero apps \u2014 gets the idle-capacity finding instead"
+      }
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "rg-app-tf-web",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "patterns.md is absent (build step 4), so there is no recognised pattern to confirm"
+      }
+    },
+    {
+      "cluster_id": "rg-app-tf-func",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "patterns.md is absent (build step 4), so there is no recognised pattern to confirm"
+      }
+    },
+    {
+      "cluster_id": "rg-shared-tf-reporting",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "patterns.md is absent (build step 4), so there is no recognised pattern to confirm"
+      }
+    },
+    {
+      "cluster_id": "rg-shared-tf-legacy",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "patterns.md is absent (build step 4), so there is no recognised pattern to confirm"
+      }
+    },
+    {
+      "cluster_id": "rg-data-tf-catalog",
+      "pattern_id": null,
+      "pattern_status": "catalog_absent",
+      "confirmed": true,
+      "_note": "Added 2026-09-07 when after-discover/ was regenerated from capability run 4 and the Cosmos account became its own cluster. preferences.clusters[] must key exactly to the clusters artifact, so this is a mechanically forced edit, not a judgement about the pattern."
+    }
+  ],
+  "workshop": {}
+}

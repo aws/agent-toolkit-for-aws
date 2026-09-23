@@ -56,6 +56,24 @@ DECISION_REQUIRED_SECTION_IDS = [
     "decision-cta",
 ]
 
+# AI-only mode (migration-report.html for an app-code-only / AI-workload repo with
+# NO infrastructure track — no aws-design.json / estimation-infra.json / terraform/).
+# The report is rendered from the AI artifacts (ai-workload-profile.json,
+# aws-design-ai.json, estimation-ai.json, generation-ai.json) so it MUST NOT require
+# the infra executive/appendix sections (exec-services, exec-costs, appendix-costs,
+# appendix-services, appendix-steps) that an AI-only run cannot populate. It still
+# requires the decision core, the assumptions panel, the risk panel, and the AI
+# appendices so the customer always receives a structured report, never a stub.
+AI_ONLY_REQUIRED_SECTION_IDS = [
+    "decision-summary",
+    "exec-assumptions",
+    "exec-risks",
+    "appendix-ai",
+    "appendix-artifacts",
+    "appendix-config",
+    "appendix-glossary",
+]
+
 OPTIONAL_SECTION_IDS = [
     "exec-share",
     "exec-tco",
@@ -1291,7 +1309,12 @@ def validate_report(
 ) -> list[str]:
     errors: list[str] = []
 
-    required_ids = DECISION_REQUIRED_SECTION_IDS if mode == "decision" else REQUIRED_SECTION_IDS
+    if mode == "ai_only":
+        required_ids = AI_ONLY_REQUIRED_SECTION_IDS
+    elif mode == "decision":
+        required_ids = DECISION_REQUIRED_SECTION_IDS
+    else:
+        required_ids = REQUIRED_SECTION_IDS
     errors.extend(_validate_required_sections(html, required_ids))
 
     if mode == "decision":
@@ -1377,7 +1400,7 @@ def validate_report(
     errors.extend(_validate_activate_link(html))
     if require_toc:
         errors.extend(_validate_share_section(html, estimation_infra, estimation_ai))
-    if mode == "full" and require_toc:
+    if mode in ("full", "ai_only") and require_toc:
         errors.extend(_validate_glossary_table(html))
 
     # Ordered action lists and configuration provenance (when sections present).
@@ -1452,7 +1475,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["full", "decision"],
+        choices=["full", "decision", "ai_only"],
         default="full",
         help="full = migration-report.html (default); decision = decision-report.html "
         "written at the post-Estimate Decision gate (exec sections + CTA, no appendices)",
@@ -1496,7 +1519,11 @@ def main() -> int:
     counts = _section_id_counts(html)
     optional_present = [sid for sid in OPTIONAL_SECTION_IDS if counts.get(sid, 0) >= 1]
     required_count = len(
-        DECISION_REQUIRED_SECTION_IDS if args.mode == "decision" else REQUIRED_SECTION_IDS
+        AI_ONLY_REQUIRED_SECTION_IDS
+        if args.mode == "ai_only"
+        else DECISION_REQUIRED_SECTION_IDS
+        if args.mode == "decision"
+        else REQUIRED_SECTION_IDS
     )
     mode_tag = "" if args.mode == "full" else f"mode={args.mode} | "
     print(

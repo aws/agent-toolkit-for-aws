@@ -1,4 +1,16 @@
+---
+_fragment: compute
+_of_phase: clarify
+_contributes:
+  - preferences.json (design_constraints section: compute_model, kubernetes, cpu_architecture; metadata.inventory_clarifications for Category B)
+---
+
 # Category B — Configuration Gaps + Category C — Compute Model
+
+> **Fragment unit.** See `clarify.md` for how it is composed into the phase.
+>
+> **This fragment asks nothing.** It reads the inventory, resolves what it can, assigns a
+> disposition per row, and returns rows. `clarify-assemble.md` presents them.
 
 This file covers two related categories:
 
@@ -37,7 +49,11 @@ _Fire when:_ Compute resources present (Cloud Run, Cloud Functions, GKE, GCE, Ap
 
 ## Q7b — What compute operational model do you prefer for your App Engine workloads?
 
-_Fire when:_ App Engine present in inventory (`google_app_engine_application`) AND Q5 != 1 (multi-cloud). Skip when: no App Engine in inventory, or Q5 = 1 (multi-cloud already resolved compute to EKS — App Engine routes to EKS, overriding the EB default; same portability override as Q8).
+_Fire when:_ App Engine present in inventory (`google_app_engine_application`) AND
+`clarify-global.md`'s multi-cloud row (`design_constraints.compute`) did NOT resolve to
+`"eks"`. Skip when: no App Engine in inventory, or the multi-cloud row already resolved
+compute to EKS — App Engine routes to EKS, overriding the EB default; same portability
+override as Q8 below.
 
 **Rationale:** GCP App Engine is a PaaS that can map to different AWS compute targets depending on whether the user wants to preserve the managed platform model (Elastic Beanstalk), switch to direct container control (Fargate/ECS), or go serverless (Lambda). This drives the fundamental routing decision for App Engine resources.
 
@@ -264,3 +280,49 @@ Interpret:
 ```
 
 Default (if skipped/unsure): `{"value": "graviton", "chosen_by": "default"}` when all-ready; otherwise `{"value": "mixed", "chosen_by": "default"}`. See `references/shared/graviton.md` and `references/shared/schema-graviton.md`.
+
+## Rows returned
+
+```jsonc
+"design_constraints": {
+  "compute_model":  { "disposition": "PROPOSED", "value": null, "default": "managed_platform",
+                      "reason": "App Engine present, no multi-cloud requirement" },
+  "kubernetes":     { "disposition": "PROPOSED", "value": null, "default": "ecs-fargate" },
+  "websocket":      { "disposition": "PROPOSED", "value": null, "default": null },
+  "cloud_run_traffic_pattern":  { "disposition": "DETECTED", "value": "constant-24-7",
+                                   "default": "constant-24-7",
+                                   "source": "terraform:min_instance_count>0" },
+  "cloud_run_monthly_spend":    { "disposition": "PROPOSED", "value": null, "default": "$100-$500" },
+  "cpu_architecture": { "disposition": "PROPOSED", "value": null, "default": "graviton" }
+},
+"metadata": {
+  "inventory_clarifications": {
+    "cloud_sql_ha": null,
+    "cloud_run_service_count": null,
+    "memorystore_memory_gb": null,
+    "cloud_functions_generation": null
+  }
+}
+```
+
+Category B rows (`cloud_sql_ha`, `cloud_run_service_count`, `memorystore_memory_gb`,
+`cloud_functions_generation`) are recorded under `metadata.inventory_clarifications` — they
+fill inventory gaps, not design constraints, and Category B and Category C never both fire
+(Category B requires the inventory to be absent).
+
+## Who consumes these
+
+| Row                         | Consumer                                                                   |
+| --------------------------- | -------------------------------------------------------------------------- |
+| `compute_model`             | Design's App Engine → Elastic Beanstalk/Fargate/Lambda routing decision    |
+| `kubernetes`                | Design's GKE → EKS vs ECS Fargate routing decision                         |
+| `websocket`                 | Design's ALB configuration (WebSocket support)                             |
+| `cloud_run_traffic_pattern` | Estimate's migrate-vs-stay analysis for Cloud Run                          |
+| `cloud_run_monthly_spend`   | Estimate's migrate-vs-stay analysis for Cloud Run                          |
+| `cpu_architecture`          | Design's instance-family selection; Estimate's pricing; the Workshop sheet |
+
+## Status — build step 5 (restructure)
+
+Implemented. Restructured into the fragment-returns-rows pattern; no change to firing rules,
+defaults, or interpretation — only the presentation split (this fragment computes,
+`clarify-assemble.md` presents).

@@ -7,7 +7,7 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 - **Startup Architecture Advice** — Recommend and review AWS architectures against a company's stage (pre-revenue through Series B+), team size, runway, and available credits, including preparing an architecture for a fundraise or technical diligence.
 - **Guided Building** — Run an interactive discovery flow (intent, scope, constraints, preferences), scan what the codebase already implies, then write an AWS architectural scaffold and implementation into the project.
 - **AI Agent Runtimes** — Choose a runtime for an agentic workload (Amazon Bedrock AgentCore, Amazon ECS, Amazon EKS, AWS Lambda), plan a migration for agents already running elsewhere, and build an executable proof of concept.
-- **Cloud Migration** — Migrate from Google Cloud Platform or Heroku to AWS through a six-phase flow: discover, clarify, design, estimate, generate artifacts, and collect feedback.
+- **Cloud Migration** — Migrate from Microsoft Azure, Google Cloud Platform, or Heroku to AWS through a phased flow: discover, clarify, design, estimate, generate artifacts, and collect feedback.
 - **AI Stack Migration** — Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate output quality against a golden prompt set, and deliver a ready-to-review git branch.
 - **Terraform Quality Gate** — Apply AWS Terraform authoring posture and a security baseline while generating a `terraform/` directory, then run a read-only policy verdict over what was written.
 - **Startup Reference Content** — Answer factual questions about AWS Activate, credits, programs, and partner offers, and serve AWS-curated learn articles, sample architectures, and copy-paste prompts for AI coding agents.
@@ -19,13 +19,14 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 | 1 | `architect-for-startups` | Stage-aware AWS architecture guidance and reviews tuned to team size, runway, and credits — advice rather than code changes | [SKILL.md](skills/architect-for-startups/SKILL.md) |
 | 2 | `start-building-for-startups` | Interactive discovery flow that gathers requirements, scans the codebase, then writes an AWS scaffold and implementation into the project | [SKILL.md](skills/start-building-for-startups/SKILL.md) |
 | 3 | `agent-advisor` | Runtime selection, migration planning, and an executable proof of concept for AI-agent workloads on AWS | [SKILL.md](skills/agent-advisor/SKILL.md) |
-| 4 | `gcp-to-aws` | Six-phase Google Cloud to AWS migration: discover, clarify, design, estimate, generate artifacts, feedback | [SKILL.md](skills/gcp-to-aws/SKILL.md) |
-| 5 | `heroku-to-aws` | Six-phase Heroku to AWS migration with deterministic add-on mapping and an optional what-if repricing workshop | [SKILL.md](skills/heroku-to-aws/SKILL.md) |
-| 6 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
-| 7 | `tf-best-practices` | AWS Terraform authoring posture, security-baseline spec, and a read-only policy gate over generated Terraform | [SKILL.md](skills/tf-best-practices/SKILL.md) |
-| 8 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
-| 9 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
-| 10 | `contextual-offers-for-startups` | Appends at most one relevant AWS Activate partner offer as optional context after another skill's output is final | [SKILL.md](skills/contextual-offers-for-startups/SKILL.md) |
+| 4 | `azure-to-aws` | Seven-phase Microsoft Azure to AWS migration over canonical `Microsoft.*` ARM resource types, with an opt-in generate gate and a what-if repricing workshop | [SKILL.md](skills/azure-to-aws/SKILL.md) |
+| 5 | `gcp-to-aws` | Six-phase Google Cloud to AWS migration: discover, clarify, design, estimate, generate artifacts, feedback | [SKILL.md](skills/gcp-to-aws/SKILL.md) |
+| 6 | `heroku-to-aws` | Six-phase Heroku to AWS migration with deterministic add-on mapping and an optional what-if repricing workshop | [SKILL.md](skills/heroku-to-aws/SKILL.md) |
+| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
+| 8 | `tf-best-practices` | AWS Terraform authoring posture, security-baseline spec, and a read-only policy gate over generated Terraform | [SKILL.md](skills/tf-best-practices/SKILL.md) |
+| 9 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
+| 10 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
+| 11 | `contextual-offers-for-startups` | Appends at most one relevant AWS Activate partner offer as optional context after another skill's output is final | [SKILL.md](skills/contextual-offers-for-startups/SKILL.md) |
 
 `contextual-offers-for-startups` is consulted by the other skills rather than invoked directly: it runs only after a recommendation, plan, or build is already final, and it never influences the technical advice.
 
@@ -33,10 +34,10 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 
 Alongside the skills, the plugin ships supporting material the skills load on demand:
 
-- [`skills/shared/`](skills/shared/) — Reference material shared across skills rather than an invocable skill of its own: the phase-workflow interpreter contract, estimation schemas and complexity tiers, a snapshot of AWS infrastructure rates, phase-status schema, and what-if workshop invariants.
+- [`skills/shared/`](skills/shared/) — Canonical reference material shared across skills rather than an invocable skill of its own: the phase-workflow interpreter contract, estimation schemas and complexity tiers, a snapshot of AWS infrastructure rates, phase-status schema, what-if workshop invariants, shared Clarify question fragments, and the AI-migration guardrails and Bedrock model references. Each consuming skill carries a byte-identical copy under its own `references/vendored/` so the skill folder stays self-contained.
 - [`agents/`](agents/) — Seven Claude Code subagent definitions: two generic, phase-agnostic migration phase workers (read/write and read/write/shell tiers) plus five specialists for the Bedrock rewrite flow (code analyzer, code rewriter, log ingestor, prompt evaluator, report generator).
-- [`scripts/`](scripts/) — Four Python helpers that validate generated artifacts and emit run summaries: migration report validators for the GCP and Heroku flows, a startup-program artifact check, and a plan summary emitter.
-- [`fixtures/`](fixtures/) — Reference and regression fixtures for the migration report and estimation artifacts, used to keep generated output within the documented contract.
+- [`scripts/`](scripts/) — Three Python helpers that validate generated artifacts and emit run summaries: a migration report validator, a startup-program artifact check, and a plan summary emitter. The Heroku flow's report validator ships inside `skills/heroku-to-aws/scripts/`.
+- [`fixtures/`](fixtures/) — Reference and regression fixtures for the migration report and estimation artifacts, used to keep generated output within the documented contract. `fixtures/azure-iac-terraform/` additionally carries deterministic asserters that pin the Azure Discover, Clarify, Design, and Estimate contracts against a committed synthetic estate.
 
 ## MCP Servers
 
@@ -90,7 +91,7 @@ The `agent-advisor` skill is the entry point for agentic work on AWS. It covers 
 - **Durable execution** — Covers running Temporal workers on AWS and the Temporal Cloud versus self-hosted decision. Temporal workflow code is not rewritten into another orchestrator.
 - **Proof of concept** — Produces a runnable POC rather than a slide-level recommendation.
 
-The skill requires at least one agentic component. Non-agent compute or data migrations route to `gcp-to-aws` or `heroku-to-aws`, and a pure LLM SDK rewrite routes to `llm-to-bedrock`.
+The skill requires at least one agentic component. Non-agent compute or data migrations route to `azure-to-aws`, `gcp-to-aws`, or `heroku-to-aws`, and a pure LLM SDK rewrite routes to `llm-to-bedrock`.
 
 ### Examples
 
@@ -101,20 +102,21 @@ The skill requires at least one agentic component. Non-agent compute or data mig
 
 ## Cloud Migration
 
-The `gcp-to-aws` and `heroku-to-aws` skills run the same six-phase migration flow: **discover**, **clarify**, **design**, **estimate**, **generate**, and **feedback**. Clarify must finish before design, estimate, or generate, so the plan is never built on unstated assumptions.
+The `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` skills run the same migration flow: **discover**, **clarify**, **design**, **estimate**, **generate**, and **feedback**. Clarify must finish before design, estimate, or generate, so the plan is never built on unstated assumptions. `azure-to-aws` adds a seventh phase — an optional what-if **workshop** between estimate and generate — and makes generate opt-in behind a post-estimate decision gate.
 
 ### How It Works
 
-- **Discover** — `gcp-to-aws` reads Terraform files, application code, and billing exports. `heroku-to-aws` can additionally discover live through the authenticated Heroku CLI (read-only and consent-gated) or from `Procfile` and `app.json`.
+- **Discover** — `azure-to-aws` and `gcp-to-aws` read Terraform files, application code, and billing exports. `heroku-to-aws` can additionally discover live through the authenticated Heroku CLI (read-only and consent-gated) or from `Procfile` and `app.json`.
 - **Clarify** — Resolves the requirements that change the target architecture: availability, compliance, data residency, cutover tolerance, and team capacity.
-- **Design** — Maps source resources to AWS services using deterministic mapping tables — for example Heroku dynos to AWS Elastic Beanstalk, Heroku Postgres to Amazon RDS or Aurora, Heroku Redis to Amazon ElastiCache, Heroku Kafka to Amazon MSK, Cloud SQL to Amazon RDS, GKE to Amazon EKS, and Cloud Run to AWS Fargate.
+- **Design** — Maps source resources to AWS services using deterministic mapping tables — for example Heroku dynos to AWS Elastic Beanstalk, Heroku Postgres to Amazon RDS or Aurora, Heroku Redis to Amazon ElastiCache, Heroku Kafka to Amazon MSK, Cloud SQL to Amazon RDS, GKE to Amazon EKS, Cloud Run to AWS Fargate, Azure App Service to AWS Elastic Beanstalk, AKS to Amazon EKS, Azure SQL to Amazon RDS, and Cosmos DB to Amazon DynamoDB or DocumentDB.
 - **Estimate** — Costs the target architecture from the plugin's bundled rate reference data and a documented cost algorithm, with an estimation schema and complexity tiers so two runs of the same workload agree. Estimates are planning figures; confirm them against the [AWS Pricing Calculator](https://calculator.aws/) before committing budget.
 - **Generate** — Emits migration artifacts, including Terraform, gated by the `tf-best-practices` policy check and a validated migration report.
-- **Workshop mode** — After estimate, `heroku-to-aws` and `gcp-to-aws` can reprice region, high-availability, compute, and AWS Graviton scenarios without repeating discovery.
+- **Workshop mode** — After estimate, `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` can reprice region, high-availability, compute, and AWS Graviton scenarios without repeating discovery.
 
 ### Examples
 
 - "Migrate us off Heroku to AWS"
+- "Move our Azure estate to AWS — map AKS onto EKS"
 - "We want to move from GCP — what would this cost on AWS?"
 - "Map our Cloud Run services onto Fargate"
 - "Reprice the migration with Graviton in us-west-2"

@@ -39,11 +39,11 @@ Conditional files (load ONLY when condition is true):
 | File                                             | Condition                                                                          |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | `design-refs/ai-gemini-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"gemini"` or `"both"` |
-| `design-refs/ai-openai-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"openai"` or `"both"` |
-| `design-refs/ai-anthropic-to-bedrock.md`         | `ai-workload-profile.json` exists AND `summary.ai_source` = `"anthropic"`          |
+| `vendored/ai/ai-openai-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"openai"` or `"both"` |
+| `vendored/ai/ai-anthropic-to-bedrock.md`         | `ai-workload-profile.json` exists AND `summary.ai_source` = `"anthropic"`          |
 | `design-refs/ai.md`                              | `ai-workload-profile.json` exists AND `summary.ai_source` = `"other"`              |
-| `design-refs/design-ref-harness.md`              | `agentic_profile.is_agentic == true` AND `migration_approach == "harness"`         |
-| `design-refs/design-ref-agentic-to-agentcore.md` | `agentic_profile.is_agentic == true` AND `migration_approach == "strands"`         |
+| `vendored/ai/design-ref-harness.md`              | `agentic_profile.is_agentic == true` AND `migration_approach == "harness"`         |
+| `vendored/ai/design-ref-agentic-to-agentcore.md` | `agentic_profile.is_agentic == true` AND `migration_approach == "strands"`         |
 | `shared/retarget-gotchas.md`                     | `agentic_profile.is_agentic == true` AND `migration_approach == "retarget"`        |
 
 All paths above are relative to `$GCP_BASE/references/` (defined in migration-plan.md).
