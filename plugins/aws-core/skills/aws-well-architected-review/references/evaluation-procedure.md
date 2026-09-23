@@ -40,7 +40,7 @@ BPs in this pillar (from the frozen manifest): {N}
 - One row per BP in this pillar's manifest set — the row count MUST equal the `{N}` header line (which is the count of `corpus/best-practices.jsonl` rows with this `pillar_id`)
 - Status: exactly one of `Implemented` / `Partially Implemented` / `Not Implemented` / `Not Applicable` / `Cannot Determine`
 - Risk Level: `Critical` / `High` / `Medium` / `Low` (or blank for Implemented/Not Applicable/Cannot Determine)
-- Evidence: specific file:line references when code was analyzed, or "Based on description" when reviewing verbally
+- Evidence: specific file:line references when code was analyzed, or "Based on description" when reviewing verbally — in both cases, tag the evidence with one of the five provenance labels defined below (e.g. "src/orders.py:42 [Observed in code/IaC]" or "no automated backups stated [User stated]")
 - BP ID in canonical `PILLAR##-BP##` format, copied verbatim from the manifest
 
 **Pillar pass instructions** — use as the subagent prompt (adapt the dispatch syntax to your environment), or as your own working instructions per pillar when running sequentially:
@@ -68,7 +68,11 @@ Run it for every pillar in the manifest, using the pillar names and prefixes rec
 
 **Cost/latency:** per-pillar assessment uses more tokens than a single pass because each pass carries the workload context; with parallel dispatch, wall-clock is bounded by the slowest pillar. On slower-generating models a scoped pass also keeps each response small, which is where element-drop is avoided.
 
-**When to skip the per-pillar pass pattern:** the user asked for a **quick review** / **score mode** / **pillar-scoped review** (those apply their mode adjustments), or a **cost-constrained** single-pass review is explicitly requested (be explicit it does not guarantee full-inventory coverage).
+**When to skip the per-pillar pass pattern:** the user asked for a **quick review** / **pillar-scoped review** (those apply their mode adjustments), or a **cost-constrained** single-pass review is explicitly requested (be explicit it does not guarantee full-inventory coverage).
+
+### Evidence provenance
+
+Evidence-provenance vocabulary (five tags): "Verified live" (confirmed via live AWS API/console/resource inspection during the review), "Observed in code/IaC" (seen directly in analyzed code, config, or IaC), "User stated" (the user's architecture description asserted it, no code available), "Not observed within declared scope" (the analyzed code/IaC/description simply doesn't address this — absence of mention, not confirmed absence), "Cannot determine" (evidence conflicts, is ambiguous, or is genuinely insufficient even after checking). Rule: the "Not Implemented" status requires either explicit negative evidence (code/IaC/description affirmatively shows the control is absent/disabled) or an exhaustive mechanically-observable check that came back negative. If the declared scope simply never mentions the practice, use "Cannot Determine" status + "Not observed within declared scope" provenance — never default an unmentioned practice to "Not Implemented."
 
 ## Step 5c — Aggregate the pillar-pass findings (PRESERVE citations verbatim)
 
@@ -81,14 +85,14 @@ Once every pillar pass is complete, merge their findings into a single structure
 3. **Verify count before writing.** Count **distinct** BP IDs in the **Full BP Ledger section only** (`PILLAR##-BP##` form) — do NOT also count the Critical/High narrative, which repeats ledger rows and would inflate the total into a false pass. It MUST equal the manifest total. If lower, you dropped some — add them back.
 4. **Cross-pillar patterns and prioritization** are additive analyses that reference the ledger; they do NOT replace it.
 
-Ledger row meaning by status: **Implemented** (workload demonstrates it, cite evidence) · **Partially Implemented** (gaps, cite the gap) · **Not Implemented** (absent, cite as missing — a valid, valuable finding) · **Not Applicable** (doesn't apply, brief why) · **Cannot Determine** (evidence insufficient, state what runtime/interview data is needed).
+Ledger row meaning by status: **Implemented** (workload demonstrates it, cite evidence) · **Partially Implemented** (gaps, cite the gap) · **Not Implemented** (explicit negative evidence, or an exhaustive mechanical check came back negative — cite the evidence, this is a valid, valuable finding; do NOT use this status just because the workload description never mentions the practice) · **Not Applicable** (doesn't apply, brief why) · **Cannot Determine** (evidence insufficient or the declared scope never addressed this at all — state what runtime/interview data is needed; this is the correct status for an unmentioned practice, not Not Implemented).
 
 ## Step 5d — MANDATORY coverage audit (do NOT skip)
 
 Before producing the final report, self-audit and iterate if coverage is incomplete:
 
 1. **Count** unique BP IDs evaluated (canonical `PILLAR##-BP##`), across all five statuses.
-2. **Compare against the target**: the manifest total (`corpus/best-practices.jsonl` row count). Anything less is incomplete.
+2. **Compare against the target**, which is mode-dependent: full review targets the manifest's total BP count (`corpus/best-practices.jsonl` row count); pillar-scoped review targets the BP count filtered to the requested pillar(s), not the full 307; quick review targets the manifest's total question count (`corpus/questions.jsonl` row count), since quick mode assesses at question level only. Anything less than the applicable target is incomplete.
 3. **If below the manifest total, you MUST NOT proceed.** Compare your evaluated set against the manifest, evaluate each missing BP (fetch its `bp_url` if the title is not enough), and repeat the count.
 4. **Continue** until every BP in the manifest has an entry. A genuinely Not Applicable BP is marked Not Applicable with a one-line rationale — never silently skipped.
 
@@ -98,7 +102,7 @@ Before producing the final report, self-audit and iterate if coverage is incompl
 ## Coverage audit
 - BPs evaluated: {count} / {manifest total}
 - Framework version source: live documentation via ACQUIRE_CORPUS
-- Corpus provenance: {URL and UTC retrieval time from corpus/manifest.json — the TOC-index URL (toc-contents.json) on the normal path; the appendix/landing-page URL only if the fallback traversal was used}
+- Corpus provenance: {URL and UTC retrieval time from corpus/manifest.json — the TOC-index URL (toc-contents.json) on the normal path; the appendix/landing-page URL only if the fallback traversal was used} · Retrieval method: {retrieval_method from corpus/manifest.json}
 - Pillars: {n} · Questions: {n} · Best practices: {manifest total}
 - Status distribution: {implemented} Implemented, {partial} Partially Implemented, {not_impl} Not Implemented, {na} Not Applicable, {cd} Cannot Determine
 ```
@@ -107,5 +111,5 @@ If `BPs evaluated` is less than the manifest total, the review is not finished �
 
 ## Retrieval economics per mode
 
-- **Quick review / score mode**: assess at the question level using `corpus/questions.jsonl`; fetch a BP detail page only when a specific finding needs a canonical BP ID's guidance.
+- **Quick review**: assess at the question level using `corpus/questions.jsonl`; fetch a BP detail page only when a specific finding needs a canonical BP ID's guidance.
 - **Pillar-scoped review**: filter the frozen manifest to the requested pillar(s) and apply full BP-level detail for those pillars only.

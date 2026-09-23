@@ -30,7 +30,7 @@ Produce the final report with this exact structure. Do not drop sections. The Co
 | {pillar from live inventory} | {score} | {n}/{n} | {strength} | {gap} |
 | ...one row per discovered pillar... | ... | ... | ... | ... |
 
-{Denominators come from the Step 5a question inventory — use the live counts derived from the appendix pages}
+{Denominators come from the Step 5a question inventory — use the live counts recorded in corpus/manifest.json}
 
 ## Per-Question Assessment
 | ID | Question | Status | Risk Level | Key Evidence |
@@ -38,7 +38,7 @@ Produce the final report with this exact structure. Do not drop sections. The Co
 | {question ID from live inventory} | {question} | {status} | {risk or Not Applicable} | {evidence} |
 | ...one row per discovered question... | ... | ... | ... | ... |
 
-{Complete this table for every question in the Step 5a inventory — use the live count from the appendix; do not truncate}
+{Complete this table for every question in the Step 5a inventory — use the live count recorded in corpus/manifest.json; do not truncate}
 
 ## Full BP Ledger (MANDATORY)
 
