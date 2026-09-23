@@ -1,0 +1,44 @@
+{
+  "app": {
+    "id": "a1b2c3d4-0001-4a5b-8c6d-0123456789ab",
+    "name": "acme-web",
+    "region": { "name": "us" },
+    "stack": { "name": "heroku-22" },
+    "space": null,
+    "buildpack_provided_description": "Node.js",
+    "web_url": "https://acme-web-1a2b3c4d5e6f.herokuapp.com/"
+  },
+  "addons": [
+    {
+      "id": "ad-0001",
+      "name": "postgresql-cubed-12345",
+      "addon_service": { "name": "heroku-postgresql" },
+      "plan": { "name": "heroku-postgresql:standard-2" }
+    },
+    {
+      "id": "ad-0002",
+      "name": "redis-fluffy-67890",
+      "addon_service": { "name": "heroku-redis" },
+      "plan": { "name": "heroku-redis:premium-0" }
+    },
+    {
+      "id": "ad-0003",
+      "name": "papertrail-solid-11111",
+      "addon_service": { "name": "papertrail" },
+      "plan": { "name": "papertrail:choklad" }
+    }
+  ],
+  "collaborators": [{ "email": "founder@acme-demo.com" }],
+  "dynos": [
+    { "id": "d-0001", "name": "web.1", "type": "web", "size": "Standard-2X", "state": "up", "command": "npm start" },
+    { "id": "d-0002", "name": "web.2", "type": "web", "size": "Standard-2X", "state": "up", "command": "npm start" },
+    {
+      "id": "d-0003",
+      "name": "worker.1",
+      "type": "worker",
+      "size": "Standard-1X",
+      "state": "up",
+      "command": "node worker.js"
+    }
+  ]
+}

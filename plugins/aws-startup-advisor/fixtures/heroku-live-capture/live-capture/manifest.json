@@ -1,0 +1,68 @@
+{
+  "captured_at": "2026-07-15T18:20:00Z",
+  "cli_version": "heroku/10.12.0 darwin-arm64 node-v20.19.0",
+  "account": "founder@acme-demo.com",
+  "apps_selected": ["acme-web", "acme-staging", "acme-data-team"],
+  "captures": [
+    { "command": "heroku apps --all --json", "file": "apps.json", "status": "ok", "note": null },
+    { "command": "heroku apps:info -a acme-web --json", "file": "app-acme-web.json", "status": "ok", "note": null },
+    {
+      "command": "heroku apps:info -a acme-staging --json",
+      "file": "app-acme-staging.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "heroku apps:info -a acme-data-team --json",
+      "file": "app-acme-data-team.json",
+      "status": "failed",
+      "note": "403 Forbidden — no access to team app"
+    },
+    { "command": "heroku ps -a acme-web --json", "file": "ps-acme-web.json", "status": "ok", "note": null },
+    { "command": "heroku ps -a acme-staging --json", "file": "ps-acme-staging.json", "status": "ok", "note": null },
+    {
+      "command": "heroku ps -a acme-data-team --json",
+      "file": "ps-acme-data-team.json",
+      "status": "failed",
+      "note": "403 Forbidden — no access to team app"
+    },
+    { "command": "heroku addons --all --json", "file": "addons.json", "status": "ok", "note": null },
+    {
+      "command": "heroku config -a acme-web --json | jq 'keys'",
+      "file": "config-keys-acme-web.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "heroku config -a acme-staging --json | jq 'keys'",
+      "file": "config-keys-acme-staging.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "heroku config -a acme-data-team --json | jq 'keys'",
+      "file": "config-keys-acme-data-team.json",
+      "status": "failed",
+      "note": "403 Forbidden — no access to team app"
+    },
+    { "command": "heroku domains -a acme-web --json", "file": "domains-acme-web.json", "status": "ok", "note": null },
+    {
+      "command": "heroku domains -a acme-staging --json",
+      "file": "domains-acme-staging.json",
+      "status": "ok",
+      "note": null
+    },
+    { "command": "heroku pg:info -a acme-web", "file": "pg-acme-web.out", "status": "ok", "note": null },
+    { "command": "heroku pg:info -a acme-staging", "file": "pg-acme-staging.out", "status": "ok", "note": null },
+    { "command": "heroku redis:info -a acme-web", "file": "redis-acme-web.out", "status": "ok", "note": null },
+    {
+      "command": "heroku kafka:info -a acme-web",
+      "file": "kafka-acme-web.out",
+      "status": "skipped",
+      "note": "kafka CLI plugin not installed; no kafka add-on detected"
+    },
+    { "command": "heroku pipelines --json", "file": "pipelines.json", "status": "ok", "note": null },
+    { "command": "heroku pipelines:info acme --json", "file": "pipeline-acme.json", "status": "ok", "note": null },
+    { "command": "heroku spaces --json", "file": "spaces.json", "status": "ok", "note": null }
+  ]
+}

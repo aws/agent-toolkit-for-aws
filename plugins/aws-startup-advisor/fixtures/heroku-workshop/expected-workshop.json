@@ -1,0 +1,15 @@
+{
+  "inventory_must_match_seed_bytes": true,
+  "min_scenarios": 2,
+  "baseline_scenario_id": "scenario-001",
+  "active_scenario_id": "scenario-002",
+  "active_cpu_architecture": "arm64",
+  "active_eb_instance_type": "t4g.small",
+  "baseline_eb_instance_type": "t3.small",
+  "design_must_differ_from_baseline": true,
+  "balanced_must_differ_from_baseline": true,
+  "generate_must_not_be_completed": true,
+  "current_phase_must_be": "estimate",
+  "workshop_phase_must_be": "in_progress",
+  "max_scenarios": 5
+}

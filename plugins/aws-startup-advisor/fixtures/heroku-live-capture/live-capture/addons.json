@@ -1,0 +1,50 @@
+[
+  {
+    "id": "ad-0001",
+    "name": "postgresql-cubed-12345",
+    "app": { "id": "a1b2c3d4-0001-4a5b-8c6d-0123456789ab", "name": "acme-web" },
+    "addon_service": { "id": "as-0001", "name": "heroku-postgresql", "human_name": "Heroku Postgres" },
+    "plan": {
+      "id": "p-0001",
+      "name": "heroku-postgresql:standard-2",
+      "price": { "cents": 20000, "unit": "month", "contract": false }
+    },
+    "state": "provisioned"
+  },
+  {
+    "id": "ad-0002",
+    "name": "redis-fluffy-67890",
+    "app": { "id": "a1b2c3d4-0001-4a5b-8c6d-0123456789ab", "name": "acme-web" },
+    "addon_service": { "id": "as-0002", "name": "heroku-redis", "human_name": "Heroku Data for Redis" },
+    "plan": {
+      "id": "p-0002",
+      "name": "heroku-redis:premium-0",
+      "price": { "cents": 1500, "unit": "month", "contract": false }
+    },
+    "state": "provisioned"
+  },
+  {
+    "id": "ad-0003",
+    "name": "papertrail-solid-11111",
+    "app": { "id": "a1b2c3d4-0001-4a5b-8c6d-0123456789ab", "name": "acme-web" },
+    "addon_service": { "id": "as-0003", "name": "papertrail", "human_name": "Papertrail" },
+    "plan": {
+      "id": "p-0003",
+      "name": "papertrail:choklad",
+      "price": { "cents": 0, "unit": "month", "contract": false }
+    },
+    "state": "provisioned"
+  },
+  {
+    "id": "ad-0004",
+    "name": "postgresql-round-22222",
+    "app": { "id": "a1b2c3d4-0002-4a5b-8c6d-0123456789ab", "name": "acme-staging" },
+    "addon_service": { "id": "as-0001", "name": "heroku-postgresql", "human_name": "Heroku Postgres" },
+    "plan": {
+      "id": "p-0004",
+      "name": "heroku-postgresql:essential-0",
+      "price": { "cents": 500, "unit": "month", "contract": false }
+    },
+    "state": "provisioned"
+  }
+]

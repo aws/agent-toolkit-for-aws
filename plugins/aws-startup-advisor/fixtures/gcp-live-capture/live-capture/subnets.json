@@ -1,0 +1,8 @@
+[
+  {
+    "name": "app",
+    "region": "https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1",
+    "network": "https://www.googleapis.com/compute/v1/projects/acme-prod/global/networks/main",
+    "ipCidrRange": "10.0.0.0/24"
+  }
+]

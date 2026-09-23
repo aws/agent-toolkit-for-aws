@@ -1,0 +1,39 @@
+{
+  "migration_id": "0719-workshop",
+  "phase": "design",
+  "services": [
+    {
+      "service_id": "eb:acme-web:web",
+      "source_resource_id": "acme-web:web",
+      "heroku_app": "acme-web",
+      "aws_service": "Elastic Beanstalk",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "platform": "Docker running on 64bit Amazon Linux 2023",
+        "instance_type": "t4g.small",
+        "cpu_architecture": "arm64",
+        "environment_type": "LoadBalanced",
+        "tier": "WebServer",
+        "min_instances": 1,
+        "max_instances": 2,
+        "process_type": "web",
+        "deployment_policy": "Rolling"
+      }
+    },
+    {
+      "service_id": "rds:acme-web:postgres",
+      "source_resource_id": "acme-web:postgres",
+      "heroku_app": "acme-web",
+      "aws_service": "RDS PostgreSQL",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "instance_class": "db.t4g.medium",
+        "multi_az": false,
+        "storage_gb": 64
+      }
+    }
+  ],
+  "warnings": []
+}

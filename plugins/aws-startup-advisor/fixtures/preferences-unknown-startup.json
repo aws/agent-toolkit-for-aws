@@ -1,0 +1,31 @@
+{
+  "metadata": {
+    "migration_type": "full",
+    "questions_asked": ["Q2", "Q7", "Q15"],
+    "questions_defaulted": ["Q27"]
+  },
+  "design_constraints": {
+    "target_region": {
+      "value": "us-east-1",
+      "chosen_by": "user",
+      "question_id": "Q1"
+    }
+  },
+  "ai_constraints": {
+    "ai_monthly_spend": {
+      "value": "$500-$2K",
+      "chosen_by": "user",
+      "question_id": "Q15"
+    }
+  },
+  "startup_constraints": {
+    "startup_program_status": {
+      "value": "unknown",
+      "chosen_by": "default",
+      "source": "default:Q27",
+      "question_id": "Q27",
+      "prompt": "Have you applied for AWS Activate credits?",
+      "design_consequence": "Report includes both Activate tiers until funding stage is confirmed."
+    }
+  }
+}

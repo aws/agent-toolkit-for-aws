@@ -1,0 +1,9 @@
+[
+  {
+    "id": "do-0003",
+    "hostname": "acme-staging-9f8e7d6c5b4a.herokuapp.com",
+    "kind": "heroku",
+    "status": "none",
+    "sni_endpoint": null
+  }
+]

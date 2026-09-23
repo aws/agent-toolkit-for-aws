@@ -1,0 +1,97 @@
+{
+  "_comment": "Dyno type -> Fargate sizing. DIRECT LOOKUP: read fargate_cpu/fargate_memory columns; do NOT recompute them. heroku_cpu_share/heroku_memory_mb are PROVENANCE ONLY (why this row meets-or-exceeds the source) — never derive the fargate values from them. fargate_cpu in CPU units (1024 = 1 vCPU); fargate_memory in MiB. All rows are valid Fargate CPU/memory pairings.",
+  "_match": "exact, case-insensitive, on formation config.dyno_type",
+  "_on_not_found": "reject the formation; produce NO Fargate entry; append warning 'Unsupported dyno type: {dyno_type}. Cannot map to Fargate. Please contact support or provide manual sizing.'; continue",
+  "_desired_count": {
+    "from": "formation config.quantity",
+    "min": 0,
+    "max": 100,
+    "on_out_of_range": "clamp to nearest boundary AND append a warning naming the clamp"
+  },
+  "_load_balancer": "true iff process_type == 'web' (also emits a separate ALB service entry); false otherwise",
+  "rows": {
+    "eco": {
+      "heroku_cpu_share": "1x",
+      "heroku_memory_mb": 512,
+      "fargate_cpu": 256,
+      "fargate_memory": 512,
+      "_note": "Smallest legal Fargate task size (256 CPU units permits 512/1024/2048 MiB only). Heroku Eco is a shared $5/month 1000 dyno-hour pool and Eco dynos sleep when idle; the Fargate task is always-on and billed per second, so the cost SHAPE changes even though the size matches. See the Eco dyno rule in references/shared/heroku-pricing-cache.md."
+    },
+    "basic": {
+      "heroku_cpu_share": "1x",
+      "heroku_memory_mb": 512,
+      "fargate_cpu": 256,
+      "fargate_memory": 512,
+      "_note": "Smallest legal Fargate task size (256 CPU units permits 512/1024/2048 MiB only). Basic dynos never sleep, so this is a like-for-like always-on mapping."
+    },
+    "standard-1x": { "heroku_cpu_share": "1x", "heroku_memory_mb": 512, "fargate_cpu": 256, "fargate_memory": 512 },
+    "standard-2x": { "heroku_cpu_share": "2x", "heroku_memory_mb": 1024, "fargate_cpu": 512, "fargate_memory": 1024 },
+    "performance-m": {
+      "heroku_cpu_share": "6x",
+      "heroku_memory_mb": 2560,
+      "fargate_cpu": 1024,
+      "fargate_memory": 2048
+    },
+    "performance-l": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 14336,
+      "fargate_cpu": 4096,
+      "fargate_memory": 16384
+    },
+    "performance-l-ram": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 30720,
+      "fargate_cpu": 4096,
+      "fargate_memory": 30720
+    },
+    "performance-xl": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 63488,
+      "fargate_cpu": 8192,
+      "fargate_memory": 65536
+    },
+    "performance-2xl": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 129024,
+      "fargate_cpu": 16384,
+      "fargate_memory": 122880
+    },
+    "private-s": { "heroku_cpu_share": "1x", "heroku_memory_mb": 1024, "fargate_cpu": 512, "fargate_memory": 1024 },
+    "private-m": { "heroku_cpu_share": "6x", "heroku_memory_mb": 2560, "fargate_cpu": 1024, "fargate_memory": 2048 },
+    "private-l": { "heroku_cpu_share": "12x", "heroku_memory_mb": 14336, "fargate_cpu": 4096, "fargate_memory": 16384 },
+    "private-l-ram": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 30720,
+      "fargate_cpu": 4096,
+      "fargate_memory": 30720
+    },
+    "private-xl": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 63488,
+      "fargate_cpu": 8192,
+      "fargate_memory": 65536
+    },
+    "private-2xl": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 129024,
+      "fargate_cpu": 16384,
+      "fargate_memory": 122880
+    },
+    "shield-s": { "heroku_cpu_share": "1x", "heroku_memory_mb": 1024, "fargate_cpu": 512, "fargate_memory": 1024 },
+    "shield-m": { "heroku_cpu_share": "6x", "heroku_memory_mb": 2560, "fargate_cpu": 1024, "fargate_memory": 2048 },
+    "shield-l": { "heroku_cpu_share": "12x", "heroku_memory_mb": 14336, "fargate_cpu": 4096, "fargate_memory": 16384 },
+    "shield-l-ram": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 30720,
+      "fargate_cpu": 4096,
+      "fargate_memory": 30720
+    },
+    "shield-xl": { "heroku_cpu_share": "12x", "heroku_memory_mb": 63488, "fargate_cpu": 8192, "fargate_memory": 65536 },
+    "shield-2xl": {
+      "heroku_cpu_share": "12x",
+      "heroku_memory_mb": 129024,
+      "fargate_cpu": 16384,
+      "fargate_memory": 122880
+    }
+  }
+}

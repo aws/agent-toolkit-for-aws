@@ -1,0 +1,23 @@
+{
+  "scenario_id": "scenario-002",
+  "label": "graviton (caveat: 1 incompatible \u2014 graviton applies where tier: ready; incompatible entries stay x86)",
+  "created_at": "2026-07-19T19:05:00Z",
+  "source": "workshop",
+  "preferences_subset": {
+    "design_constraints.cpu_architecture.value": "graviton"
+  },
+  "estimation_summary": {
+    "aws_monthly_premium": 110.0,
+    "aws_monthly_balanced": 85.0,
+    "aws_monthly_optimized": 62.0,
+    "complexity_tier": "small",
+    "pricing_source": "cached",
+    "region_note": null
+  },
+  "paths": {
+    "preferences": "scenarios/scenario-002.preferences.json",
+    "aws_design": "scenarios/scenario-002.aws-design.json",
+    "estimation_infra": "scenarios/scenario-002.estimation-infra.json"
+  },
+  "graviton_note": "1 incompatible \u2014 graviton applies where tier: ready; incompatible entries stay x86"
+}

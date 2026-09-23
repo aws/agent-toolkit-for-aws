@@ -1,0 +1,18 @@
+[project]
+name = "ai-to-bedrock-scripts"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3>=1.35,<2",
+    "botocore>=1.35,<2",
+    "jsonschema>=4,<5",
+    # Required to preflight OpenAI's proprietary GPT models, which are
+    # bedrock-mantle-only and speak neither Converse nor InvokeModel. Without
+    # these, probe_mantle_model cannot run and preflight cannot verify
+    # endpoint/model/IAM access for any openai.gpt-5* target.
+    "openai>=2.45.0,<3",
+    "aws-bedrock-token-generator>=1,<2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]

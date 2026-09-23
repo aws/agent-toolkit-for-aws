@@ -26,6 +26,11 @@
       "name": "aws-agents-for-devsecops",
       "source": "./plugins/aws-agents-for-devsecops",
       "description": "Investigate incidents, scan code for vulnerabilities, and run penetration tests with AWS DevOps Agent and AWS Security Agent."
+    },
+    {
+      "name": "aws-startup-advisor",
+      "source": "./plugins/aws-startup-advisor",
+      "description": "Personalized AWS guidance built on patterns from 350,000+ startups—architecture, cost, security, and migration, from day-one account setup to production-ready infrastructure. Migrate to AWS from GCP or Heroku—including your entire AI stack: OpenAI/Gemini/Anthropic SDK rewrites to Amazon Bedrock, agentic systems (LangChain, CrewAI, AutoGen) to AWS-native runtimes, and Temporal workers. Includes AWS Activate credits eligibility and 60+ exclusive startup offers. Built by AWS Startup Solutions Architects, with multi-account, multi-region support."
     }
   ]
 }

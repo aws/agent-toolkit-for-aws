@@ -1,0 +1,164 @@
+{
+  "_comment": "Seed design output for the Estimate-phase replay (scenario C). Hand-assembled by following design-mapping.md rules against seed-estimate/heroku-resource-inventory.json with the seed preferences (EB default target, multi-az). Every entry is priceable from aws-infra-pricing.json so the replay needs zero MCP calls.",
+  "phase": "design",
+  "design_source": "terraform+live",
+  "timestamp": "2026-07-15T18:35:00Z",
+  "metadata": {
+    "total_services": 9,
+    "total_apps_migrated": 2,
+    "fir_workloads_detected": [],
+    "fir_generation_note": ""
+  },
+  "services": [
+    {
+      "service_id": "eb:acme-web:web",
+      "source_resource_id": "formation:acme-web:web",
+      "heroku_app": "acme-web",
+      "aws_service": "Elastic Beanstalk",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "platform": "Docker running on 64bit Amazon Linux 2023",
+        "instance_type": "t3.medium",
+        "environment_type": "LoadBalanced",
+        "tier": "WebServer",
+        "min_instances": 1,
+        "max_instances": 2,
+        "process_type": "web",
+        "deployment_policy": "Rolling"
+      }
+    },
+    {
+      "service_id": "eb:acme-web:worker",
+      "source_resource_id": "formation:acme-web:worker",
+      "heroku_app": "acme-web",
+      "aws_service": "Elastic Beanstalk",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "platform": "Docker running on 64bit Amazon Linux 2023",
+        "instance_type": "t3.small",
+        "environment_type": "SingleInstance",
+        "tier": "WebServer",
+        "min_instances": 1,
+        "max_instances": 1,
+        "process_type": "worker",
+        "deployment_policy": "Rolling"
+      }
+    },
+    {
+      "service_id": "eb:acme-staging:web",
+      "source_resource_id": "formation:acme-staging:web",
+      "heroku_app": "acme-staging",
+      "aws_service": "Elastic Beanstalk",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "platform": "Docker running on 64bit Amazon Linux 2023",
+        "instance_type": "t3.micro",
+        "environment_type": "LoadBalanced",
+        "tier": "WebServer",
+        "min_instances": 1,
+        "max_instances": 2,
+        "process_type": "web",
+        "deployment_policy": "Rolling"
+      }
+    },
+    {
+      "service_id": "rds:acme-web:postgres",
+      "source_resource_id": "addon:acme-web:heroku-postgresql:standard-2",
+      "heroku_app": "acme-web",
+      "aws_service": "RDS PostgreSQL",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "instance_class": "db.m6g.large",
+        "multi_az": true,
+        "storage_gb": 256,
+        "engine_version": "15",
+        "rds_proxy": true
+      }
+    },
+    {
+      "service_id": "rds:acme-staging:postgres",
+      "source_resource_id": "addon:acme-staging:heroku-postgresql:essential-0",
+      "heroku_app": "acme-staging",
+      "aws_service": "RDS PostgreSQL",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "instance_class": "db.t4g.micro",
+        "multi_az": true,
+        "storage_gb": 1,
+        "engine_version": "15",
+        "rds_proxy": false
+      }
+    },
+    {
+      "service_id": "elasticache:acme-web:redis",
+      "source_resource_id": "addon:acme-web:heroku-redis:premium-0",
+      "heroku_app": "acme-web",
+      "aws_service": "ElastiCache Redis",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "node_type": "cache.t4g.micro",
+        "multi_az": true,
+        "automatic_failover": true,
+        "transit_encryption": true,
+        "engine_version": "7.0"
+      }
+    },
+    {
+      "service_id": "cloudwatch_logs:acme-web:papertrail",
+      "source_resource_id": "addon:acme-web:papertrail:choklad",
+      "heroku_app": "acme-web",
+      "aws_service": "CloudWatch Logs",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "log_group": "/heroku/acme-web",
+        "retention_days": 30
+      }
+    },
+    {
+      "service_id": "eventbridge_scheduler:acme-web:scheduler",
+      "source_resource_id": "addon:acme-web:scheduler:standard",
+      "heroku_app": "acme-web",
+      "aws_service": "EventBridge Scheduler",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "schedule_count_estimate": 3
+      }
+    },
+    {
+      "service_id": "secrets_manager:acme-web:config",
+      "source_resource_id": "config:acme-web",
+      "heroku_app": "acme-web",
+      "aws_service": "Secrets Manager",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "secret_count": 9
+      }
+    }
+  ],
+  "deferred": [
+    {
+      "source_resource_id": "pipeline:acme",
+      "reason": "Pipeline detected (staging -> production). Detect-only in v1; recreate as separate environments/CI-CD post-migration."
+    }
+  ],
+  "warnings": [
+    "Heroku release process `acme-web:release` is a run-once deployment hook and was not mapped to persistent AWS compute. Implement it as a deployment hook or manual migration step.",
+    "Custom domain www.acme-demo.com uses manual DNS cutover per preferences; no Route 53 hosted zone designed."
+  ],
+  "vpc_design": {
+    "create_new_vpc": true,
+    "cidr": "10.0.0.0/16",
+    "az_count": 2,
+    "nat_gateways": 0,
+    "note": "EB-managed environments in public subnets with security groups; databases in private subnets reached via EB instance SGs. No NAT gateway required for this design."
+  }
+}

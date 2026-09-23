@@ -1,0 +1,31 @@
+{
+  "_comment": "Expected Estimate-phase outcomes for scenario C (seed-estimate/ inputs: live-discovered inventory WITHOUT billing_profile). Asserts the live_prices_plus_cache baseline rung: add-ons priced exactly from config.monthly_price_usd, dynos from heroku-pricing-cache.md, mandatory derived-baseline caveat, comparison + migration considerations present for the derived source. Checked by check_expected_estimate.py.",
+  "baseline": {
+    "source": "live_prices_plus_cache",
+    "monthly_total": 352.0,
+    "_math": "add-ons exact from live prices: 200 (pg standard-2) + 15 (redis premium-0) + 0 (papertrail choklad) + 5 (pg essential-0) = 220; scheduler:standard has no live price (terraform-only) and falls through to the cache = 0; dynos from cache: 2x standard-2x (50) + 1x standard-1x (25) + 1x basic (7) = 132; release formation quantity 0 = 0. Total 352.",
+    "baseline_note_must_mention": ["invoice", "usage"],
+    "must_not_fabricate_billing": true
+  },
+  "cost_comparison": {
+    "heroku_monthly_baseline": 352.0,
+    "baseline_source": "live_prices_plus_cache",
+    "required_options": ["option_a_premium", "option_b_balanced", "option_c_optimized"],
+    "required_option_fields": ["aws_monthly", "monthly_difference", "annual_difference", "percent_change"]
+  },
+  "migration_cost_considerations": {
+    "baseline_available": true,
+    "baseline_source": "live_prices_plus_cache",
+    "categories_min": 1
+  },
+  "projected_costs": {
+    "balanced_positive": true,
+    "balanced_equals_breakdown_sum": true,
+    "every_design_service_priced_or_warned": true
+  },
+  "warnings_must_not_contain": ["unpriced_heroku"],
+  "must_not_exist_anywhere": [
+    "billing_period (no invoice data exists in this scenario)",
+    "any config var VALUE (STRIPE_SECRET_KEY etc. are key names only)"
+  ]
+}

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>GCP to AWS Migration Assessment — stub (intentionally non-compliant)</title>
+</head>
+<body>
+  <!--
+    Regression fixture: this is the kind of incomplete / pre-PR-78 report an agent
+    might still emit. It MUST fail scripts/validate-migration-report.py. It trips,
+    among others: numbered "Section 0" headings, a bare "Rubric:" scoring trace,
+    no exec-security-teaser, no verdict banner, and a stub appendix that only links
+    to JSON. Do NOT "fix" this fixture — the regression test asserts it FAILS.
+  -->
+  <nav class="toc" aria-label="Table of contents">
+    <strong>Contents</strong>
+    <ol>
+      <li><a href="#decision-summary">Migration Decision Summary</a></li>
+      <li><a href="#exec-services">Current Stack Overview</a></li>
+      <li><a href="#exec-costs">Cost Comparison</a></li>
+      <li><a href="#exec-timeline">Timeline</a></li>
+      <li><a href="#exec-risks">Risks</a></li>
+      <li><a href="#appendix-services">Appendix A</a></li>
+      <li><a href="#appendix-costs">Appendix B</a></li>
+      <li><a href="#appendix-steps">Appendix C</a></li>
+      <li><a href="#appendix-artifacts">Appendix E</a></li>
+    </ol>
+  </nav>
+
+  <section id="decision-summary">
+    <h2>Section 0 — Migration Decision Summary</h2>
+    <p><span class="badge">Phased Migration</span></p>
+  </section>
+
+  <section id="exec-services">
+    <h2>Section 1 — Current Stack Overview</h2>
+    <table><tbody><tr><td>Cloud Run</td></tr></tbody></table>
+  </section>
+
+  <section id="exec-costs">
+    <h2>Section 1c — Cost Comparison</h2>
+    <p>See estimation-infra.json for the full breakdown.</p>
+  </section>
+
+  <section id="exec-timeline"><h2>Section 6 — Timeline</h2></section>
+  <section id="exec-risks"><h2>Section 7 — Top Risks</h2></section>
+
+  <section id="appendix-services">
+    <h2>Appendix A — Service Recommendations</h2>
+    <p>See aws-design.json</p>
+    <p>Rubric: Eliminators PASS · Operational Model S3 policy · Simplicity bucket policy</p>
+  </section>
+
+  <section id="appendix-costs">
+    <h2>Appendix B — Cost Estimates</h2>
+    <p>Full artifacts: <code>estimation-infra.json</code></p>
+  </section>
+
+  <section id="appendix-steps"><h2>Appendix C — Migration Steps</h2></section>
+  <section id="appendix-artifacts"><h2>Appendix E — Artifacts</h2></section>
+
+  <footer>draft for review</footer>
+</body>
+</html>

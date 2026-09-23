@@ -1,0 +1,75 @@
+{
+  "id": "agentcore",
+  "display_name": "AgentCore Runtime",
+  "status": "ga",
+  "launched": "2025-12-01",
+  "service_card": "agentcore.md",
+  "hard_constraints": [],
+  "affinities": {
+    "session_duration": { "under_15min": 3, "15min_to_8hr": 5, "over_8hr": 4, "unknown": 3 },
+    "traffic_pattern": { "bursty": 5, "steady": 2, "idle": 4, "unknown": 3 },
+    "platform_fit": { "ecs": 1, "eks": 1, "lambda": 2, "none": 3, "unknown": 2 },
+    "session_state": { "stateless": 2, "stateful": 4, "hitl": 5, "unknown": 3 },
+    "ops_preference": { "minimal": 4, "moderate": 3, "full_control": 1, "unknown": 3 },
+    "isolation": { "required": 4, "nice_to_have": 3, "not_needed": 1, "unknown": 2 },
+    "memory_needs": { "cross_session": 4, "session_only": 3, "none": 1, "unknown": 2 },
+    "multi_agent": { "yes": 3, "no": 1, "unknown": 2 },
+    "framework": { "strands": 3, "langgraph": 3, "crewai": 3, "custom": 2, "none": 3, "unknown": 2 },
+    "existing_cluster": { "eks": 1, "ecs": 1, "none": 3, "unknown": 2 },
+    "multi_cloud": { "yes": 1, "no": 3, "unknown": 2 },
+    "idle_resume": { "process_level": 1, "filesystem": 4, "none": 2, "unknown": 2 },
+    "compute_tier": { "light": 4, "heavy_non_gpu": 3, "gpu": 3, "unknown": 2 },
+    "launch_concurrency": { "high": 5, "moderate": 3, "low": 2, "unknown": 2 },
+    "instance_type_requirement": { "yes": 3, "no": 3, "unknown": 2 }
+  },
+  "deployment_models": ["harness", "framework_on_runtime"],
+  "compute_types": ["microvms", "instances"],
+  "volatile_facts": [
+    {
+      "key": "microvms_session_cap",
+      "verification_key": "agentcore.microvms_session_cap",
+      "value": "8h",
+      "verify_via_mcp": true
+    },
+    {
+      "key": "microvms_compute_cap",
+      "verification_key": "agentcore.microvms_compute_cap",
+      "value": "2vCPU/8GB",
+      "verify_via_mcp": true
+    },
+    {
+      "key": "microvms_gpu_support",
+      "verification_key": "agentcore.microvms_gpu_support",
+      "value": "unsupported",
+      "verify_via_mcp": true
+    },
+    {
+      "key": "instances_session_cap",
+      "verification_key": "agentcore.instances_session_cap",
+      "value": "14d",
+      "verify_via_mcp": true
+    },
+    {
+      "key": "instances_regions",
+      "verification_key": "agentcore.instances_regions",
+      "value": [],
+      "verify_via_mcp": true
+    },
+    {
+      "key": "registry_regions",
+      "verification_key": "agent_registry.regions",
+      "value": ["us-east-1", "us-west-2", "ap-northeast-1", "ap-southeast-2", "eu-west-1"],
+      "as_of": "2026-08-31",
+      "source": "https://aws.amazon.com/about-aws/whats-new/2026/08/aws-agent-registry-generally-available",
+      "verify_via_mcp": true
+    },
+    {
+      "key": "io_wait_billing",
+      "verification_key": "agentcore.io_wait_billing",
+      "value": "verify current I/O-wait billing behavior (microVMs compute type only)",
+      "verify_via_mcp": true
+    },
+    { "key": "fedramp", "value": "in_progress (WIP — verify current status)", "verify_via_mcp": true },
+    { "key": "regions", "value": [], "verify_via_mcp": true }
+  ]
+}

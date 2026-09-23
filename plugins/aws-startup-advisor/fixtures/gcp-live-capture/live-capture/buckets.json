@@ -1,0 +1,10 @@
+[
+  {
+    "name": "acme-prod-uploads",
+    "location": "US-CENTRAL1",
+    "storageClass": "STANDARD",
+    "timeCreated": "2024-06-01T10:00:00Z",
+    "iamConfiguration": { "uniformBucketLevelAccess": { "enabled": true } },
+    "versioning": { "enabled": true }
+  }
+]

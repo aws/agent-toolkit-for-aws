@@ -1,0 +1,105 @@
+{
+  "phase": "discover",
+  "timestamp": "2026-07-22T14:00:00Z",
+  "checks": [
+    {
+      "id": "M1",
+      "detected": true,
+      "severity": "HIGH",
+      "applies_to": [
+        "A",
+        "B",
+        "C"
+      ],
+      "confidence": "HIGH"
+    },
+    {
+      "id": "M2",
+      "detected": false,
+      "severity": "MEDIUM",
+      "applies_to": [
+        "A",
+        "B",
+        "C"
+      ],
+      "confidence": "HIGH"
+    },
+    {
+      "id": "B1",
+      "detected": false,
+      "severity": "HIGH",
+      "applies_to": [
+        "A"
+      ],
+      "confidence": "HIGH"
+    },
+    {
+      "id": "B2",
+      "detected": false,
+      "severity": "MEDIUM",
+      "applies_to": [
+        "A"
+      ],
+      "confidence": "HIGH"
+    },
+    {
+      "id": "B3",
+      "detected": false,
+      "severity": "LOW",
+      "applies_to": [
+        "A"
+      ],
+      "confidence": "HIGH"
+    },
+    {
+      "id": "B4",
+      "detected": false,
+      "severity": "LOW",
+      "applies_to": [
+        "A"
+      ],
+      "confidence": "HIGH"
+    },
+    {
+      "id": "S1",
+      "detected": false,
+      "severity": "MEDIUM",
+      "applies_to": [
+        "A"
+      ],
+      "confidence": "HIGH"
+    },
+    {
+      "id": "I1",
+      "detected": true,
+      "severity": "HIGH",
+      "applies_to": [
+        "A",
+        "B"
+      ],
+      "confidence": "MEDIUM",
+      "upgrade_input": "confirm autoscaling instance count"
+    },
+    {
+      "id": "O1",
+      "detected": false,
+      "severity": "advisory",
+      "applies_to": [
+        "A"
+      ],
+      "confidence": "HIGH"
+    },
+    {
+      "id": "U1",
+      "detected": true,
+      "severity": "informational",
+      "applies_to": [
+        "A",
+        "B",
+        "C"
+      ],
+      "confidence": "LOW",
+      "upgrade_input": "7-14 day log drain export"
+    }
+  ]
+}

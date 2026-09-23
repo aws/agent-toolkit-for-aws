@@ -1,0 +1,340 @@
+{
+  "_comment": "Heroku Postgres plan -> RDS/Aurora sizing. DIRECT LOOKUP: read the recommended instance class column for the selected engine. ram/storage_gb/connections/ha/src_connection_pooling are PROVENANCE ONLY (why the row was chosen / source plan facts) — do not recompute the instance class from them, and do NOT use src_connection_pooling for rds_proxy. storage_gb is the minimum storage to allocate (configure >= this).",
+  "_match": "exact, case-insensitive, on addon config.plan",
+  "_on_not_found": "defer to specialist gate; append warning 'Unrecognized heroku-postgresql plan tier: {plan}. Cannot determine AWS sizing. Deferring to specialist engagement.'; continue",
+  "_engine_selection": {
+    "single-az": "RDS PostgreSQL (use rds_instance_class)",
+    "multi-az": "RDS PostgreSQL (use rds_instance_class)",
+    "multi-az-ha": "Aurora PostgreSQL (use aurora_instance_class)",
+    "multi-region": "Aurora PostgreSQL (use aurora_instance_class)",
+    "_source": "preferences.data.database_ha if set else preferences.global.availability",
+    "_on_unset_or_unrecognized": "default to multi-az + RDS PostgreSQL + warning"
+  },
+  "_multi_az": "true when the selected availability is multi-az, multi-az-ha, or multi-region",
+  "_rds_proxy": "true when the INVENTORY addon's config.connection_pooling == true (the discovered source fact). NOT the row's src_connection_pooling provenance column.",
+  "_shield_note": "shield-* plans are HIPAA/PCI equivalents of private-*; map identically but note the compliance requirement",
+  "rows": {
+    "essential-0": {
+      "ram": "0 MB (shared)",
+      "storage_gb": 1,
+      "connections": 20,
+      "ha": false,
+      "src_connection_pooling": false,
+      "rds_instance_class": "db.t4g.micro",
+      "aurora_instance_class": "db.t4g.medium"
+    },
+    "essential-1": {
+      "ram": "0 MB (shared)",
+      "storage_gb": 10,
+      "connections": 20,
+      "ha": false,
+      "src_connection_pooling": false,
+      "rds_instance_class": "db.t4g.micro",
+      "aurora_instance_class": "db.t4g.medium"
+    },
+    "essential-2": {
+      "ram": "0 MB (shared)",
+      "storage_gb": 32,
+      "connections": 40,
+      "ha": false,
+      "src_connection_pooling": false,
+      "rds_instance_class": "db.t4g.micro",
+      "aurora_instance_class": "db.t4g.medium"
+    },
+    "hobby-dev": {
+      "ram": "0 MB (shared)",
+      "storage_gb": 1,
+      "connections": 20,
+      "ha": false,
+      "src_connection_pooling": false,
+      "rds_instance_class": "db.t4g.micro",
+      "aurora_instance_class": "db.t4g.medium"
+    },
+    "hobby-basic": {
+      "ram": "0 MB (shared)",
+      "storage_gb": 10,
+      "connections": 20,
+      "ha": false,
+      "src_connection_pooling": false,
+      "rds_instance_class": "db.t4g.micro",
+      "aurora_instance_class": "db.t4g.medium"
+    },
+    "standard-0": {
+      "ram": "4 GB",
+      "storage_gb": 64,
+      "connections": 120,
+      "ha": false,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.t4g.medium",
+      "aurora_instance_class": "db.t4g.medium"
+    },
+    "standard-2": {
+      "ram": "8 GB",
+      "storage_gb": 256,
+      "connections": 400,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.large",
+      "aurora_instance_class": "db.r6g.large"
+    },
+    "standard-3": {
+      "ram": "15 GB",
+      "storage_gb": 512,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.xlarge",
+      "aurora_instance_class": "db.r6g.xlarge"
+    },
+    "standard-4": {
+      "ram": "30 GB",
+      "storage_gb": 1024,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.2xlarge",
+      "aurora_instance_class": "db.r6g.2xlarge"
+    },
+    "standard-5": {
+      "ram": "61 GB",
+      "storage_gb": 1024,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.4xlarge",
+      "aurora_instance_class": "db.r6g.4xlarge"
+    },
+    "standard-6": {
+      "ram": "122 GB",
+      "storage_gb": 1536,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge"
+    },
+    "standard-7": {
+      "ram": "244 GB",
+      "storage_gb": 2048,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "premium-0": {
+      "ram": "4 GB",
+      "storage_gb": 64,
+      "connections": 120,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.t4g.medium",
+      "aurora_instance_class": "db.t4g.medium"
+    },
+    "premium-2": {
+      "ram": "8 GB",
+      "storage_gb": 256,
+      "connections": 400,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.large",
+      "aurora_instance_class": "db.r6g.large"
+    },
+    "premium-3": {
+      "ram": "15 GB",
+      "storage_gb": 512,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.xlarge",
+      "aurora_instance_class": "db.r6g.xlarge"
+    },
+    "premium-4": {
+      "ram": "30 GB",
+      "storage_gb": 1024,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.2xlarge",
+      "aurora_instance_class": "db.r6g.2xlarge"
+    },
+    "premium-5": {
+      "ram": "61 GB",
+      "storage_gb": 1024,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.4xlarge",
+      "aurora_instance_class": "db.r6g.4xlarge"
+    },
+    "premium-6": {
+      "ram": "122 GB",
+      "storage_gb": 1536,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge"
+    },
+    "premium-7": {
+      "ram": "244 GB",
+      "storage_gb": 2048,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "premium-8": {
+      "ram": "488 GB",
+      "storage_gb": 3072,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.r6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "premium-9": {
+      "ram": "768 GB",
+      "storage_gb": 4096,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.x2g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "private-0": {
+      "ram": "4 GB",
+      "storage_gb": 64,
+      "connections": 120,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.t4g.medium",
+      "aurora_instance_class": "db.t4g.medium"
+    },
+    "private-2": {
+      "ram": "8 GB",
+      "storage_gb": 256,
+      "connections": 400,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.large",
+      "aurora_instance_class": "db.r6g.large"
+    },
+    "private-3": {
+      "ram": "15 GB",
+      "storage_gb": 512,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.xlarge",
+      "aurora_instance_class": "db.r6g.xlarge"
+    },
+    "private-4": {
+      "ram": "30 GB",
+      "storage_gb": 1024,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.2xlarge",
+      "aurora_instance_class": "db.r6g.2xlarge"
+    },
+    "private-5": {
+      "ram": "61 GB",
+      "storage_gb": 1024,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.4xlarge",
+      "aurora_instance_class": "db.r6g.4xlarge"
+    },
+    "private-6": {
+      "ram": "122 GB",
+      "storage_gb": 1536,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge"
+    },
+    "private-7": {
+      "ram": "244 GB",
+      "storage_gb": 2048,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge"
+    },
+    "shield-0": {
+      "ram": "4 GB",
+      "storage_gb": 64,
+      "connections": 120,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.t4g.medium",
+      "aurora_instance_class": "db.t4g.medium",
+      "compliance": "hipaa/pci"
+    },
+    "shield-2": {
+      "ram": "8 GB",
+      "storage_gb": 256,
+      "connections": 400,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.large",
+      "aurora_instance_class": "db.r6g.large",
+      "compliance": "hipaa/pci"
+    },
+    "shield-3": {
+      "ram": "15 GB",
+      "storage_gb": 512,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.xlarge",
+      "aurora_instance_class": "db.r6g.xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-4": {
+      "ram": "30 GB",
+      "storage_gb": 1024,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.2xlarge",
+      "aurora_instance_class": "db.r6g.2xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-5": {
+      "ram": "61 GB",
+      "storage_gb": 1024,
+      "connections": 500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.4xlarge",
+      "aurora_instance_class": "db.r6g.4xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-6": {
+      "ram": "122 GB",
+      "storage_gb": 1536,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.8xlarge",
+      "aurora_instance_class": "db.r6g.8xlarge",
+      "compliance": "hipaa/pci"
+    },
+    "shield-7": {
+      "ram": "244 GB",
+      "storage_gb": 2048,
+      "connections": 1500,
+      "ha": true,
+      "src_connection_pooling": true,
+      "rds_instance_class": "db.m6g.16xlarge",
+      "aurora_instance_class": "db.r6g.16xlarge",
+      "compliance": "hipaa/pci"
+    }
+  }
+}

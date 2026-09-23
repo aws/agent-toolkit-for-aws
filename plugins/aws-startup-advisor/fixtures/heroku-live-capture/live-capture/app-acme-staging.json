@@ -1,0 +1,23 @@
+{
+  "app": {
+    "id": "a1b2c3d4-0002-4a5b-8c6d-0123456789ab",
+    "name": "acme-staging",
+    "region": { "name": "us" },
+    "stack": { "name": "heroku-22" },
+    "space": null,
+    "buildpack_provided_description": "Node.js",
+    "web_url": "https://acme-staging-9f8e7d6c5b4a.herokuapp.com/"
+  },
+  "addons": [
+    {
+      "id": "ad-0004",
+      "name": "postgresql-round-22222",
+      "addon_service": { "name": "heroku-postgresql" },
+      "plan": { "name": "heroku-postgresql:essential-0" }
+    }
+  ],
+  "collaborators": [{ "email": "founder@acme-demo.com" }],
+  "dynos": [
+    { "id": "d-0004", "name": "web.1", "type": "web", "size": "Basic", "state": "up", "command": "npm start" }
+  ]
+}

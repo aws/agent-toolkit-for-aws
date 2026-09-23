@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "apiPath": {
+      "enum": [
+        "mantle_messages",
+        "mantle_openai_chat",
+        "mantle_openai_responses",
+        "runtime_converse",
+        "runtime_invoke"
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "workload_id",
+        "decision_status",
+        "api_path",
+        "path_model_id",
+        "invocation_model_id",
+        "region",
+        "status",
+        "checked_at",
+        "response_model_id",
+        "error"
+      ],
+      "properties": {
+        "workload_id": {
+          "type": "string"
+        },
+        "decision_status": {
+          "enum": ["recommended", "decision_required"]
+        },
+        "api_path": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/apiPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path_model_id": {
+          "type": ["string", "null"]
+        },
+        "invocation_model_id": {
+          "type": ["string", "null"]
+        },
+        "region": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "not_run",
+            "passed",
+            "failed",
+            "needs_resolution",
+            "not_applicable"
+          ]
+        },
+        "checked_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "response_model_id": {
+          "type": ["string", "null"]
+        },
+        "error": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["type", "message"],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": [
+    "schema_version",
+    "recommendation_schema_version",
+    "generated_at",
+    "workloads"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "recommendation_schema_version": {
+      "const": 2
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workloads": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/verification"
+      }
+    }
+  },
+  "additionalProperties": false
+}

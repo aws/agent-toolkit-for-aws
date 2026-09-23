@@ -1,0 +1,35 @@
+[
+  {
+    "id": "a1b2c3d4-0001-4a5b-8c6d-0123456789ab",
+    "name": "acme-web",
+    "region": { "id": "r-0001", "name": "us" },
+    "stack": { "id": "s-0001", "name": "heroku-22" },
+    "space": null,
+    "web_url": "https://acme-web-1a2b3c4d5e6f.herokuapp.com/",
+    "maintenance": false,
+    "created_at": "2024-05-01T12:00:00Z",
+    "updated_at": "2026-07-01T08:15:00Z"
+  },
+  {
+    "id": "a1b2c3d4-0002-4a5b-8c6d-0123456789ab",
+    "name": "acme-staging",
+    "region": { "id": "r-0001", "name": "us" },
+    "stack": { "id": "s-0001", "name": "heroku-22" },
+    "space": null,
+    "web_url": "https://acme-staging-9f8e7d6c5b4a.herokuapp.com/",
+    "maintenance": false,
+    "created_at": "2024-05-01T12:05:00Z",
+    "updated_at": "2026-06-20T14:00:00Z"
+  },
+  {
+    "id": "a1b2c3d4-0003-4a5b-8c6d-0123456789ab",
+    "name": "acme-data-team",
+    "region": { "id": "r-0001", "name": "us" },
+    "stack": { "id": "s-0002", "name": "heroku-24" },
+    "space": null,
+    "web_url": "https://acme-data-team-3c4d5e6f7a8b.herokuapp.com/",
+    "maintenance": false,
+    "created_at": "2025-01-10T09:00:00Z",
+    "updated_at": "2026-07-10T11:30:00Z"
+  }
+]

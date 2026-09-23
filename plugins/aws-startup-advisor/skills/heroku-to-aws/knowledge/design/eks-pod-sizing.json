@@ -1,0 +1,300 @@
+{
+  "_comment": "Dyno type -> EKS pod sizing + node selection. Used by the design EKS branch when design_constraints.compute_target.value is eks-managed or eks-or-ecs. DIRECT LOOKUP: read req_cpu/req_mem/lim_cpu/lim_mem + node_type per dyno. This file holds DATA only (pod rows, node-rank, cluster constants); the node-group SIZING ALGORITHM lives in design-eks.md prose.",
+  "_match": "exact, case-insensitive, on formation config.dyno_type",
+  "_on_not_found": "reject the formation; produce NO entry; warn 'Unsupported dyno type: {dyno_type}. Cannot map to EKS.'; continue (same as the Fargate path)",
+  "rows": {
+    "eco": {
+      "req_cpu": "250m",
+      "req_mem": "512Mi",
+      "lim_cpu": "500m",
+      "lim_mem": "512Mi",
+      "node_type": "m6i.large",
+      "node_type_arm64": "m6g.large",
+      "_note": "Heroku Eco is a shared $5/month 1000 dyno-hour pool and Eco dynos sleep when idle; EKS pods run always-on, so the cost SHAPE changes even though the size matches. See the Eco dyno rule in references/shared/heroku-pricing-cache.md."
+    },
+    "basic": {
+      "req_cpu": "250m",
+      "req_mem": "512Mi",
+      "lim_cpu": "500m",
+      "lim_mem": "512Mi",
+      "node_type": "m6i.large",
+      "node_type_arm64": "m6g.large",
+      "_note": "Basic dynos never sleep, so this is a like-for-like always-on mapping."
+    },
+    "standard-1x": {
+      "req_cpu": "250m",
+      "req_mem": "512Mi",
+      "lim_cpu": "500m",
+      "lim_mem": "512Mi",
+      "node_type": "m6i.large",
+      "node_type_arm64": "m6g.large"
+    },
+    "standard-2x": {
+      "req_cpu": "500m",
+      "req_mem": "1024Mi",
+      "lim_cpu": "1000m",
+      "lim_mem": "1024Mi",
+      "node_type": "m6i.large",
+      "node_type_arm64": "m6g.large"
+    },
+    "performance-m": {
+      "req_cpu": "1000m",
+      "req_mem": "2560Mi",
+      "lim_cpu": "2000m",
+      "lim_mem": "2560Mi",
+      "node_type": "m6i.xlarge",
+      "node_type_arm64": "m6g.xlarge"
+    },
+    "performance-l": {
+      "req_cpu": "4000m",
+      "req_mem": "14336Mi",
+      "lim_cpu": "8000m",
+      "lim_mem": "14336Mi",
+      "node_type": "m6i.4xlarge",
+      "node_type_arm64": "m6g.4xlarge"
+    },
+    "performance-l-ram": {
+      "req_cpu": "4000m",
+      "req_mem": "30720Mi",
+      "lim_cpu": "8000m",
+      "lim_mem": "30720Mi",
+      "node_type": "r6i.4xlarge",
+      "node_type_arm64": "r6g.4xlarge"
+    },
+    "performance-xl": {
+      "req_cpu": "8000m",
+      "req_mem": "63488Mi",
+      "lim_cpu": "16000m",
+      "lim_mem": "63488Mi",
+      "node_type": "m6i.8xlarge",
+      "node_type_arm64": "m6g.8xlarge"
+    },
+    "performance-2xl": {
+      "req_cpu": "16000m",
+      "req_mem": "129024Mi",
+      "lim_cpu": "32000m",
+      "lim_mem": "129024Mi",
+      "node_type": "m6i.16xlarge",
+      "node_type_arm64": "m6g.16xlarge"
+    },
+    "private-s": {
+      "req_cpu": "500m",
+      "req_mem": "1024Mi",
+      "lim_cpu": "1000m",
+      "lim_mem": "1024Mi",
+      "node_type": "m6i.large",
+      "node_type_arm64": "m6g.large"
+    },
+    "private-m": {
+      "req_cpu": "1000m",
+      "req_mem": "2560Mi",
+      "lim_cpu": "2000m",
+      "lim_mem": "2560Mi",
+      "node_type": "m6i.xlarge",
+      "node_type_arm64": "m6g.xlarge"
+    },
+    "private-l": {
+      "req_cpu": "4000m",
+      "req_mem": "14336Mi",
+      "lim_cpu": "8000m",
+      "lim_mem": "14336Mi",
+      "node_type": "m6i.4xlarge",
+      "node_type_arm64": "m6g.4xlarge"
+    },
+    "private-l-ram": {
+      "req_cpu": "4000m",
+      "req_mem": "30720Mi",
+      "lim_cpu": "8000m",
+      "lim_mem": "30720Mi",
+      "node_type": "r6i.4xlarge",
+      "node_type_arm64": "r6g.4xlarge"
+    },
+    "private-xl": {
+      "req_cpu": "8000m",
+      "req_mem": "63488Mi",
+      "lim_cpu": "16000m",
+      "lim_mem": "63488Mi",
+      "node_type": "m6i.8xlarge",
+      "node_type_arm64": "m6g.8xlarge"
+    },
+    "private-2xl": {
+      "req_cpu": "16000m",
+      "req_mem": "129024Mi",
+      "lim_cpu": "32000m",
+      "lim_mem": "129024Mi",
+      "node_type": "m6i.16xlarge",
+      "node_type_arm64": "m6g.16xlarge"
+    },
+    "shield-s": {
+      "req_cpu": "500m",
+      "req_mem": "1024Mi",
+      "lim_cpu": "1000m",
+      "lim_mem": "1024Mi",
+      "node_type": "m6i.large",
+      "node_type_arm64": "m6g.large"
+    },
+    "shield-m": {
+      "req_cpu": "1000m",
+      "req_mem": "2560Mi",
+      "lim_cpu": "2000m",
+      "lim_mem": "2560Mi",
+      "node_type": "m6i.xlarge",
+      "node_type_arm64": "m6g.xlarge"
+    },
+    "shield-l": {
+      "req_cpu": "4000m",
+      "req_mem": "14336Mi",
+      "lim_cpu": "8000m",
+      "lim_mem": "14336Mi",
+      "node_type": "m6i.4xlarge",
+      "node_type_arm64": "m6g.4xlarge"
+    },
+    "shield-l-ram": {
+      "req_cpu": "4000m",
+      "req_mem": "30720Mi",
+      "lim_cpu": "8000m",
+      "lim_mem": "30720Mi",
+      "node_type": "r6i.4xlarge",
+      "node_type_arm64": "r6g.4xlarge"
+    },
+    "shield-xl": {
+      "req_cpu": "8000m",
+      "req_mem": "63488Mi",
+      "lim_cpu": "16000m",
+      "lim_mem": "63488Mi",
+      "node_type": "m6i.8xlarge",
+      "node_type_arm64": "m6g.8xlarge"
+    },
+    "shield-2xl": {
+      "req_cpu": "16000m",
+      "req_mem": "129024Mi",
+      "lim_cpu": "32000m",
+      "lim_mem": "129024Mi",
+      "node_type": "m6i.16xlarge",
+      "node_type_arm64": "m6g.16xlarge"
+    }
+  },
+  "node_size_rank": {
+    "_comment": "Rank for the 'largest-pod-class-wins' node selection: pick the node_type of the largest dyno present across all formations. Higher rank = larger. Tie at rank 3 (m6i.4xlarge vs r6i.4xlarge): prefer m6i.4xlarge UNLESS a RAM-optimized dyno (*-l-ram) is the only dyno at that rank, in which case use r6i.4xlarge.",
+    "m6i.large": 1,
+    "m6i.xlarge": 2,
+    "m6i.4xlarge": 3,
+    "r6i.4xlarge": 3,
+    "m6i.8xlarge": 4,
+    "m6i.16xlarge": 5
+  },
+  "system_overhead_per_node": {
+    "cpu": "500m",
+    "memory": "512Mi"
+  },
+  "_node_capacity_note": "PROVENANCE / verification-only \u2014 NOT read at runtime. The node-group sizing algorithm (design-eks.md) selects instance type by node_size_rank and computes node count as ceil(total_pods / 4) with min_size=2; it does NOT bin-pack against these allocatable figures. This block records WHY each node_type was chosen and why '>=4 pods per node' holds, so the node_type recommendations, the system_overhead totals, and the /4 divisor can be re-derived if dyno classes or overhead change. Allocatable = total minus system_overhead_per_node. Migrated from the former design-refs/eks-mapping-table.md 'Node Capacity Validation' + 'System Overhead Per Node' tables.",
+  "_system_overhead_breakdown": {
+    "kubelet": {
+      "cpu": "~100m",
+      "memory": "256Mi"
+    },
+    "kube-proxy": {
+      "cpu": "~100m",
+      "memory": "128Mi"
+    },
+    "aws-vpc-cni": {
+      "cpu": "~10m per ENI",
+      "memory": "128Mi"
+    },
+    "daemonsets_total": {
+      "cpu": "~290m",
+      "memory": "-"
+    },
+    "total": {
+      "cpu": "500m",
+      "memory": "512Mi"
+    }
+  },
+  "_node_capacity": {
+    "m6i.large": {
+      "vcpu": 2,
+      "memory": "8192Mi",
+      "allocatable_cpu": "1500m",
+      "allocatable_memory": "7680Mi",
+      "fits_ge_4_pods_of": [
+        "eco",
+        "basic",
+        "standard-1x",
+        "standard-2x",
+        "private-s",
+        "shield-s"
+      ]
+    },
+    "m6i.xlarge": {
+      "vcpu": 4,
+      "memory": "16384Mi",
+      "allocatable_cpu": "3500m",
+      "allocatable_memory": "15872Mi",
+      "fits_ge_4_pods_of": [
+        "performance-m",
+        "private-m",
+        "shield-m"
+      ]
+    },
+    "m6i.4xlarge": {
+      "vcpu": 16,
+      "memory": "65536Mi",
+      "allocatable_cpu": "15500m",
+      "allocatable_memory": "65024Mi",
+      "fits_ge_4_pods_of": [
+        "performance-l",
+        "private-l",
+        "shield-l"
+      ]
+    },
+    "r6i.4xlarge": {
+      "vcpu": 16,
+      "memory": "131072Mi",
+      "allocatable_cpu": "15500m",
+      "allocatable_memory": "130560Mi",
+      "fits_ge_4_pods_of": [
+        "performance-l-ram",
+        "private-l-ram",
+        "shield-l-ram"
+      ]
+    },
+    "m6i.8xlarge": {
+      "vcpu": 32,
+      "memory": "131072Mi",
+      "allocatable_cpu": "31500m",
+      "allocatable_memory": "130560Mi",
+      "fits_ge_4_pods_of": [
+        "performance-xl",
+        "private-xl",
+        "shield-xl"
+      ]
+    },
+    "m6i.16xlarge": {
+      "vcpu": 64,
+      "memory": "262144Mi",
+      "allocatable_cpu": "63500m",
+      "allocatable_memory": "261632Mi",
+      "fits_ge_4_pods_of": [
+        "performance-2xl",
+        "private-2xl",
+        "shield-2xl"
+      ]
+    }
+  },
+  "cluster": {
+    "cluster_name": "heroku-migration-cluster",
+    "kubernetes_version_fallback": "1.31",
+    "_kubernetes_version_note": "FALLBACK only. The design-eks procedure should query the latest EKS-supported stable version at generation time (aws eks describe-addon-versions) and use this value only when the query is unavailable. Do NOT treat 1.31 as pinned.",
+    "node_group_type_by_pref": {
+      "eks-managed": "self-managed",
+      "eks-or-ecs": "managed"
+    },
+    "_node_group_note": "eks-managed -> self-managed node groups (full K8s control); eks-or-ecs -> managed node groups (less operational burden).",
+    "addons": [
+      "vpc-cni",
+      "coredns",
+      "kube-proxy",
+      "aws-load-balancer-controller"
+    ]
+  }
+}
