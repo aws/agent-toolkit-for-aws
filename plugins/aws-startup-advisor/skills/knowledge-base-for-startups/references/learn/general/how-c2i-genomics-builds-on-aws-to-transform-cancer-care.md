@@ -23,7 +23,7 @@ Beyond that, C2i Genomics faced a complicated legal landscape. Genomic data is s
 
 By working with Amazon Web Services (AWS), C2i Genomics found assistance with both of these complicating factors. It's a collaboration that enabled C2i Genomics to manage potential issues efficiently and cost effectively, and it put the company on track to impact healthcare worldwide.
 
-> _"Utilization of the AWS platform was really a key factor in our success," says Boris._
+> _Boris says that building on AWS was "really a key factor in our success."_
 
 ## Activating success
 

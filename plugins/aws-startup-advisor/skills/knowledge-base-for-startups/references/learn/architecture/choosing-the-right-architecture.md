@@ -11,7 +11,7 @@ title: "Choosing the Right Architecture"
 
 ## Overview
 
-Discover the advantages of AWS compute models and serverless architecture for your startup to accelerate time to market and ensure high availability.
+Discover the advantages of AWS compute models and serverless architecture for your startup to accelerate time to market and support high availability.
 
 ---
 

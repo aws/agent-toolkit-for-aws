@@ -87,7 +87,7 @@ Establish lean yet rigorous processes to verify your application works reliably 
 
 ## Deployment and serving
 
-Start with the simplest deployment option based on your technical requirements and team capabilities, then evolve your architecture as you grow. The AWS ecosystem provides natural upgrade paths between these deployment patterns without requiring complete architectural rewrites.
+Start with the simplest deployment option based on your technical requirements and team capabilities, then evolve your architecture as you grow. AWS services provide natural upgrade paths between these deployment patterns without requiring complete architectural rewrites.
 
 **Model deployment:** Start with Amazon Bedrock for immediate access to FMs through a unified API. If you need specialized models not available in Bedrock, explore [Amazon Bedrock Marketplace](https://aws.amazon.com/blogs/aws/amazon-bedrock-marketplace-access-over-100-foundation-models-in-one-place/) or [Amazon SageMaker JumpStart](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-jumpstart.html) to discover and deploy your model directly on [SageMaker AI](https://docs.aws.amazon.com/sagemaker/latest/dg/how-it-works-deployment.html).
 

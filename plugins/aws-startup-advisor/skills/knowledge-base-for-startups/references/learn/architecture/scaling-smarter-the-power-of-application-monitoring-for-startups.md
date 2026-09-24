@@ -11,4 +11,4 @@ Drive your startup's growth with effective application monitoring on AWS. Achiev
 
 ## Content Type
 
-This resource is primarily a **video tutorial** hosted on the AWS Startups platform. The video player is embedded on the page using Vidyard.
+This resource is primarily a **video tutorial** hosted on the AWS Startups site. The video player is embedded on the page using Vidyard.

@@ -19,11 +19,11 @@ It offers powerful support for agile project development with tools like [AWS Co
 
 Amplify also has a large and responsive [community](https://amplify.aws/community/) of front-end and full stack app developers who offer support and insight, and a [collection of in-depth tutorials](https://docs.amplify.aws/?pg=ln&cp=bn).
 
-Startups like Duolingo and SmugMug used AWS to get to market much more quickly, and **on November 10 at 10:00AM PT** [in this VB Live event](https://www.bigmarker.com/VentureBeat/Putting-your-minimum-viable-product-MVP-on-the-path-to-success-with-AWS?utm_bmcr_source=AWS_BD), you can learn the secrets behind the platform. You'll hear how AWS enables startups to lower costs, become more agile, and innovate faster, learn how to navigate the AWS cloud platform, choose the right technology for your use case, and successfully develop a minimum viable product in order to propel your startup on the path to success.
+Startups like Duolingo and SmugMug used AWS to get to market much more quickly, and **on November 10 at 10:00AM PT** [in this VB Live event](https://www.bigmarker.com/VentureBeat/Putting-your-minimum-viable-product-MVP-on-the-path-to-success-with-AWS?utm_bmcr_source=AWS_BD), you can learn the secrets behind the platform. You'll hear how AWS enables startups to lower costs, become more agile, and innovate faster, learn how to navigate AWS services, choose the right technology for your use case, and successfully develop a minimum viable product in order to propel your startup on the path to success.
 
 Plus, by signing up for [AWS Activate](https://aws.amazon.com/activate/), you'll receive free tools, resources, architecture guidance, technical support, and info on how to access up to $100,000 in AWS credits. Want to get started on AWS Activate right now? [Head over here](https://aws.amazon.com/activate/).
 
-For startups, building a minimum viable product can be overwhelming, but the AWS cloud platform helps lower costs, improve agility, and speed up innovation. In this VB Live event, learn how to successfully develop an MVP with AWS and propel your company on the path to success.
+For startups, building a minimum viable product can be overwhelming, but the AWS cloud helps lower costs, improve agility, and speed up innovation. In this VB Live event, learn how to successfully develop an MVP with AWS and propel your company on the path to success.
 
 [Reserve your spot here for free](https://www.bigmarker.com/VentureBeat/Putting-your-minimum-viable-product-MVP-on-the-path-to-success-with-AWS?utm_bmcr_source=AWS_BD).
 

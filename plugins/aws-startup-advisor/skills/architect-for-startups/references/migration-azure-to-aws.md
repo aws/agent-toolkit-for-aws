@@ -4,7 +4,7 @@
 
 1. **AWS credits** — Activate Accelerate / startup program credits are often larger than Azure equivalents
 2. **Team hires** — new engineers know AWS, not Azure
-3. **Ecosystem** — most SaaS integrations, tutorials, and community support default to AWS
+3. **Community and integrations** — most SaaS integrations, tutorials, and community support default to AWS
 4. **Specific service** — need Bedrock, DynamoDB, Lambda ecosystem, or other AWS-specific capabilities
 
 ## Startup Migration Decision Framework

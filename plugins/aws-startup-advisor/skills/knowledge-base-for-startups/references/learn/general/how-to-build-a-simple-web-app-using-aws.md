@@ -13,7 +13,7 @@ Discover how AWS technologies empower startups to rapidly build and scale web ap
 
 ## About This Resource
 
-This page primarily contains a **video resource** hosted on the AWS Startups platform. The video content covers how startups can leverage AWS services to build simple web applications.
+This page primarily contains a **video resource** hosted on the AWS Startups site. The video content covers how startups can leverage AWS services to build simple web applications.
 
 ### Navigation Path
 
@@ -23,7 +23,7 @@ This page primarily contains a **video resource** hosted on the AWS Startups pla
 
 ## Related Resources
 
-The AWS Startups platform offers additional resources in the following categories:
+The AWS Startups site offers additional resources in the following categories:
 
 - [Generative AI Articles](/startups/learn/generative-ai) - Generative AI resources, use cases, and support for startups
 - [Startup Resources](/startups/learn/technical-resources) - Technical guides, learning resources, and strategies for startup growth

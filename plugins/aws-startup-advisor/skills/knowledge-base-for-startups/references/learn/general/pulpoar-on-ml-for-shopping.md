@@ -21,7 +21,7 @@ Soon after that, PulpoAR was born. "The shopping journey is broken," Godoi expla
 
 To build a service that could faithfully recreate the experience of trying on a beauty product in-store, the PulpoAR team had to gather countless images, then teach their machine-learning model to analyze and programmatically identify them. "We were using different platforms," CTO Bugrahan Bayat recalls. "We were training our model in different ways. We had people tagging the pictures and teaching it to watch and recognize the pictures. But we realized there was another way to do this—and then we started using the tools available from AWS."
 
-Today, the team runs its ML models using [Amazon SageMaker](https://aws.amazon.com/sagemaker/) and [AWS Lambda](https://aws.amazon.com/lambda/); SageMaker trains the algorithm in face detection, segmentation, and image processing, while Lambda acts as the service's serverless computing platform to enable seamless production and scale.
+Today, the team runs its ML models using [Amazon SageMaker](https://aws.amazon.com/sagemaker/) and [AWS Lambda](https://aws.amazon.com/lambda/); SageMaker trains the algorithm in face detection, segmentation, and image processing, while Lambda acts as the service's serverless compute layer to enable seamless production and scale.
 
 PulpoAR performs 100 percent of its operations with AWS. Photos taken by users are uploaded and analyzed with Lambda functions before being sent back to the customer's browser. "Cloud solutions are very important for us because our technology requires serious device processing power," Bayat explains. "With AWS, we were able to access the same processing power on every device, and thus our users achieved better results."
 
@@ -43,7 +43,7 @@ All of this is, in Godoi's mind, still just the beginning, both for the company 
 
 ### Mikey Tom
 
-Mikey works on the AWS Startup Marketing team to help highlight awesome founders leveraging the AWS ecosystem in interesting ways. Prior to his time at AWS, Mikey led the venture capital news coverage at PitchBook, researching and writing about industry trends and events.
+Mikey works on the AWS Startup Marketing team to help highlight awesome founders leveraging AWS services in interesting ways. Prior to his time at AWS, Mikey led the venture capital news coverage at PitchBook, researching and writing about industry trends and events.
 
 ---
 

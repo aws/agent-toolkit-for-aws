@@ -47,7 +47,7 @@ Before you know it, you'll be at your graduation day, surrounded by the communit
 
 During my time, one of my fellow founders worked on the graphics for our website, and in turn I helped him with a few pointers for his pitch. I flew around the country to support and brainstorm with cohort members, and stayed active in our incredible Slack channel, which was constantly buzzing with interactions.
 
-The last day of the program may be as overwhelming as the first. After eight weeks of an intense shared experience, saying goodbye felt a bit like letting go of your mom's hand the first time you cross the street alone. It's a bit scary, but trust that you're now equipped with the tools you need to take those steps on your own—and that the weight of the AWS ecosystem is behind you, ready to back your every move. Their support, and the fellowship with your cohort, does not end on graduation day.
+The last day of the program may be as overwhelming as the first. After eight weeks of an intense shared experience, saying goodbye felt a bit like letting go of your mom's hand the first time you cross the street alone. It's a bit scary, but trust that you're now equipped with the tools you need to take those steps on your own—and that the weight of the AWS community is behind you, ready to back your every move. Their support, and the fellowship with your cohort, does not end on graduation day.
 
 ## Making the most of your experience
 

@@ -30,9 +30,9 @@ Startups can apply for AWS Activate credits to offset costs on [more than 200 el
 
 ### What do credits have to do with Support?
 
-**AWS Activate Credits** can be applied to cover [AWS Developer](https://aws.amazon.com/developer/) and [AWS Business Support Plans](https://aws.amazon.com/premiumsupport/plans/). This is particularly valuable for startups balancing product development demands with infrastructure management. Our support team can provide invaluable assistance, ensuring your architecture is well-designed and cost-efficient from the outset.
+**AWS Activate Credits** can be applied to cover [AWS Developer](https://aws.amazon.com/developer/) and [AWS Business Support Plans](https://aws.amazon.com/premiumsupport/plans/). This is particularly valuable for startups balancing product development demands with infrastructure management. Our support team can provide invaluable assistance to help your architecture be well-designed and cost-efficient from the outset.
 
-Here is an overview of **guaranteed response times for each tier:**
+Here is an overview of **target response times for each tier:**
 
 | [AWS Developer Support](https://aws.amazon.com/premiumsupport/plans/developers/) | Support Time |
 | -------------------------------------------------------------------------------- | ------------ |

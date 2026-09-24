@@ -64,4 +64,4 @@ Justin is a Principal Solutions Architect at AWS, focused on fintech startups. H
 
 ### Zoran Nakev
 
-Zoran is a Senior Solutions Architect at AWS, working primarily with FinTech startups and helping them to build solutions on the AWS platform. He uses his experience and passion for technology to assist startups in delivering on their goals. He lives in New Jersey with his family and enjoys spending his free time watching movies, listening to music, and taking long walks with his family dog.
+Zoran is a Senior Solutions Architect at AWS, working primarily with FinTech startups and helping them to build solutions on AWS. He uses his experience and passion for technology to assist startups in delivering on their goals. He lives in New Jersey with his family and enjoys spending his free time watching movies, listening to music, and taking long walks with his family dog.

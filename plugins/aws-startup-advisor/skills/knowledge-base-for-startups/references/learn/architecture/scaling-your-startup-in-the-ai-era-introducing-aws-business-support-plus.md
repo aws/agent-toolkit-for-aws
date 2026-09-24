@@ -45,7 +45,7 @@ Achieving a competitive pace of innovation with a startup-sized budget needn't b
 
 Since its inception in 2013, AWS Activate has provided more than US $7 billion in credits to startups around the globe. The program already counts more than participating 330,000 startups and is the ideal entry point for early-stage founders seeking to grow their business with AWS Support Plans.
 
-Making AWS Support Plans more accessible ensures all founders can tap into new technologies and guidance, alleviating the pressures many are facing today. With the ability to experiment cost-effectively and the help and tools to build reliably, startups can turn ideas into impact and scale with confidence.
+Making AWS Support Plans more accessible can help all founders tap into new technologies and guidance, alleviating the pressures many are facing today. With the ability to experiment cost-effectively and the help and tools to build reliably, startups can turn ideas into impact and scale with confidence.
 
 ---
 

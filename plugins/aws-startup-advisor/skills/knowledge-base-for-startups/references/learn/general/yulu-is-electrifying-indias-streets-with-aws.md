@@ -37,7 +37,7 @@ With AWS, Yulu built a platform that could meet the demands of a rapidly growing
 
 "Performance improvement was one tangible result we saw," says Athrey. "Once we moved to AWS Graviton, we noticed a significant uptick, and that gave us the confidence to expand to even more cities."
 
-To maintain low latency across cities, Yulu containerized its platform using [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) (Amazon EKS). At the data layer, [Amazon Relational Database Service](https://aws.amazon.com/rds/) (Amazon RDS) provided operational reliability, while [Amazon Athena](https://aws.amazon.com/athena/) helped surface insights that made the user experience more intelligent and responsive. AWS engineers worked directly with Yulu's team to streamline code and reduce resource usage, ensuring the platform could scale affordably.
+To maintain low latency across cities, Yulu containerized its platform using [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) (Amazon EKS). At the data layer, [Amazon Relational Database Service](https://aws.amazon.com/rds/) (Amazon RDS) provided operational reliability, while [Amazon Athena](https://aws.amazon.com/athena/) helped surface insights that made the user experience more intelligent and responsive. AWS engineers worked directly with Yulu's team to streamline code and reduce resource usage, helping the platform scale more affordably.
 
 ## From green miles to real impact
 

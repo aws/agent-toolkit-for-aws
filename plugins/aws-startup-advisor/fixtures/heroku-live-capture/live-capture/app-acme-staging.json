@@ -16,7 +16,7 @@
       "plan": { "name": "heroku-postgresql:essential-0" }
     }
   ],
-  "collaborators": [{ "email": "founder@acme-demo.com" }],
+  "collaborators": [{ "email": "founder@example.com" }],
   "dynos": [
     { "id": "d-0004", "name": "web.1", "type": "web", "size": "Basic", "state": "up", "command": "npm start" }
   ]

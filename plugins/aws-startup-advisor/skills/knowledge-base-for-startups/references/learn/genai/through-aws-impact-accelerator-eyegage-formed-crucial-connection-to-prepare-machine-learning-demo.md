@@ -13,7 +13,7 @@ This published, patented, and licensed model has been applied to several use cas
 
 LaVonda used her expertise to launch EyeGage, a mobile app that applies eye-analysis techniques to evaluate whether individuals are under the influence of drugs and alcohol to help prevent fatal accidents.
 
-Eyegage planned to go to market with their mobile application in December 2022, but they had to deliver on a key requirement: getting the frontend app connected with [Amazon SageMaker](https://aws.amazon.com/pm/sagemaker/)—the backend cloud platform that enables app developers to create, train, and deploy machine learning models.
+Eyegage planned to go to market with their mobile application in December 2022, but they had to deliver on a key requirement: getting the frontend app connected with [Amazon SageMaker](https://aws.amazon.com/pm/sagemaker/)—the backend managed cloud service that enables app developers to create, train, and deploy machine learning models.
 
 "Our prototype worked well with Amazon Web Services (AWS), and our model was already trained," says LaVonda. "But we needed to expose the model to SageMaker to ensure we could scale our services as user activity spikes." But without prior experience with SageMaker, working through the documentation proved somewhat difficult for the Eyegage team. That's when LaVonda turned to AWS for help.
 

@@ -43,7 +43,7 @@ Each step happens asynchronously, triggered by events that are sent and via Kine
 
 Kinesis is particularly critical to Crate's tech stack because it enables the asynchronous processing of data in a robust and decoupled manner, allowing them to add or remove steps easily. Additionally, the Crate team shares that SageMaker is also useful for deploying smaller models in a hassle-free, robust way that saves their small team much time.
 
-> "What's beautiful about the AWS platform is that everything is already built and we don't have to spend time on the heavy lifting," says Anna. "AWS understands how systems come together—no matter what our need, AWS has something to meet it."
+> What Anna finds beautiful about building on AWS is that "everything is already built and we don't have to spend time on the heavy lifting." She adds: "AWS understands how systems come together—no matter what our need, AWS has something to meet it."
 
 ### Leveraging AWS programs
 

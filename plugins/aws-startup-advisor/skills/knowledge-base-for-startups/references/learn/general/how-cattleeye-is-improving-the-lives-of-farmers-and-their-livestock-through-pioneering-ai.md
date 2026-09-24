@@ -53,7 +53,7 @@ This was the core reason they chose AWS as their cloud partner, as they knew the
 
 As a member of [AWS Activate](/startups/credits)—an AWS program that continues to provide more than $6 billion in credits to help startups experiment on the AWS cloud with little-to-no upfront cost—they received AWS credits enabling them to test new features and services, work out architecture, and gain access to like-minded partners and solution architects.
 
-Terry states, "Right from the start, AWS formed a big part of our mission. In the AWS founders network, we became part of an ecosystem whereby startups spring up. Startups that know there's potential funding available because they're making a positive impact, and who know they're eventually likely to get bought over because big companies have the problems they are solving."
+Terry states, "Right from the start, AWS formed a big part of our mission." Through the AWS founders network, CattleEye joined a community of emerging startups—"startups that know there's potential funding available because they're making a positive impact, and who know they're eventually likely to get bought over because big companies have the problems they are solving."
 
 Importantly, AWS' disruptive approach also appealed. "We're striving to disrupt the whole dairy space, and they're disrupting the cloud," says Terry. "For us, time to market was really important, and I think everything AWS does focuses on speed and enabling customers to get there quickly."
 

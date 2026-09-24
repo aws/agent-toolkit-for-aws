@@ -15,4 +15,4 @@ Arcee AI is making generative AI more accessible to businesses of all sizes, by 
 
 Similarly, as a startup, Arcee AI sought a partner to help it to create and scale its offering and realize its goal of making AI available to all. "We've been working with AWS since our inception for our entire stack," says Mark McQuade, Co-founder, Arcee AI, a decision influenced by "their infrastructure availability, scalability, and uptime."
 
-It's not only the compute resources that have supported the company; "there's a lot more to the AWS startup ecosystem than that." From content marketing to go-to-market support, working with AWS, says McQuade, helps "show the world your capabilities as a startup and what you're building."
+It's not only the compute resources that have supported the company; there's a lot more to what AWS offers startups than that. From content marketing to go-to-market support, working with AWS, says McQuade, helps "show the world your capabilities as a startup and what you're building."

@@ -13,7 +13,7 @@ As microservices architectures gain prominence, [GitOps](https://www.gitops.tech
 
 ## Solution Overview
 
-To provide a comprehensive understanding of Landbay's GitOps implementation, let's review the key architectural components and their relationships within the AWS ecosystem:
+To provide a comprehensive understanding of Landbay's GitOps implementation, let's review the key architectural components and their relationships across AWS services:
 
 - [Amazon Elastic Container Registry](https://aws.amazon.com/ecr/) (ECR): Landbay leverages Amazon ECR for storing Helm charts, as well as Docker images.
 - External DNS & [AWS Elastic Load Balancing](https://aws.amazon.com/elasticloadbalancing/) Controllers: These controllers are used to configure Route53 and load balancers, ensuring external access into Kubernetes ingresses.
@@ -109,7 +109,7 @@ For example, within a Helm chart, the values can use post build variable substit
 
 ## Conclusion
 
-Landbay's decision to adopt GitOps through Flux, tightly integrated with both Amazon EKS and the broader AWS ecosystem, has proven to be a game-changer. By embracing this cutting-edge approach, Landbay has unlocked a myriad of benefits that have streamlined their operations and elevated its security posture. Perhaps one of the most significant advantages has been the realization of engineering efficiencies across the board. From faster deployments and reduced waiting times to seamless leveraging of third-party solutions, the integration of GitOps with EKS and AWS services has revolutionized Landbay's development processes.
+Landbay's decision to adopt GitOps through Flux, tightly integrated with both Amazon EKS and the broader set of AWS services, has proven to be a game-changer. By embracing this cutting-edge approach, Landbay has unlocked a myriad of benefits that have streamlined their operations and elevated its security posture. Perhaps one of the most significant advantages has been the realization of engineering efficiencies across the board. From faster deployments and reduced waiting times to seamless leveraging of third-party solutions, the integration of GitOps with EKS and AWS services has revolutionized Landbay's development processes.
 
 Moreover, Landbay's security landscape has been fortified, becoming more robust and cost-effective to maintain. By leveraging Bottlerocket, segregating duties via SCM/Git permissions and enabling effortless upgrades through Helm, Landbay has solidified its commitment to security while optimizing operational costs.
 

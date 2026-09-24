@@ -106,7 +106,7 @@ Alexis leads Product Partnerships at Ramp. She oversees some of Ramp's most crit
 
 ### Jun Isaji
 
-Jun Isaji is Director of Cloud Infrastructure at Ramp, responsible for managing the AWS infrastructure and for helping other software engineers utilize the platform. He was previously at Affirm, working on the checkout funnel, payment processing, and AWS infrastructure. Jun started his career at AWS, working on the Storage Gateway team in Boston. He lives in Miami.
+Jun Isaji is Director of Cloud Infrastructure at Ramp, responsible for managing the AWS infrastructure and for helping other software engineers utilize AWS services. He was previously at Affirm, working on the checkout funnel, payment processing, and AWS infrastructure. Jun started his career at AWS, working on the Storage Gateway team in Boston. He lives in Miami.
 
 ### Lewis Drummond
 

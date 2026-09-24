@@ -25,7 +25,7 @@ Storing, processing, and building models on multimodal data is a significant tec
 
 ![Noetik team member looks at data on screen](https://d22k7geae6sy8h.cloudfront.net/files/680906ff0d4846000b8e0fad/AWS_NVIDIA_Noetik_Web_Full_Cut_Still006.jpg)
 
-"One of the core reasons why we chose to work with AWS is the robustness of the ecosystem and the AWS cloud infrastructure that allowed us to build very quickly," says Alfa. "We were a very small team at the start with significant data needs. We had to build the infrastructure to process all those data sets very quickly. AWS allows us to do that."
+Alfa says one of the core reasons Noetik chose to work with AWS was the robustness of its services, together with "the AWS cloud infrastructure that allowed us to build very quickly." He continues: "We were a very small team at the start with significant data needs. We had to build the infrastructure to process all those data sets very quickly. AWS allows us to do that."
 
 Noetik leverages multiple AWS services for automated data processing and scalability. "We automate data ingestion from our lab, and we process it in automated pipelines that we've built in the cloud," says Padrón. Noetik uses [Amazon Elastic Compute Cloud (Amazon EC2)](https://aws.amazon.com/ec2/) instances, in combination with other AWS services and [Karpenter](https://karpenter.sh/), for secure and resizable compute capacity, as well as [Amazon Athena](https://aws.amazon.com/athena/) for serverless data analysis at scale. "This allows our scientists, our front end, and our machine learning models, to easily query that processed data and use it for downstream tasks," says Padrón.
 

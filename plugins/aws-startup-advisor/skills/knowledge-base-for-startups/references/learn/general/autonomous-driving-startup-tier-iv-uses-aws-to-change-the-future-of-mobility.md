@@ -31,7 +31,7 @@ AWS also helped the TIER IV team to optimize their cloud architecture: "Without 
 
 "Simulations can reduce the risk of accidents and reduce the cost of engineering," says Shinpei. "AWS is helping us develop a high-quality, low-cost, and high-class delivery product."
 
-When it comes to the role of machine learning, Shinpei believes that AI is necessary for the future of autonomous vehicles—and working with AWS to leverage [Amazon SageMaker](https://aws.amazon.com/sagemaker/) is key. "AWS is a one-stop platform for us to build intelligent autonomous vehicles," he explains.
+When it comes to the role of machine learning, Shinpei believes that AI is necessary for the future of autonomous vehicles—and working with AWS to leverage [Amazon SageMaker](https://aws.amazon.com/sagemaker/) is key. He explains that AWS gives TIER IV a single place to build intelligent autonomous vehicles.
 
 "AWS scalability is important for us. We can run thousands of instances of machine learning processes and simulation processes in parallel," says Shinpei. "This capability is key for us to build or mass produce autonomous vehicles in the future."
 

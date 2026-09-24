@@ -41,7 +41,7 @@ Success stories like these have helped AudioStack build its reputation and stand
 
 ## Pitch-perfect collaboration
 
-The world of generative AI is always changing. To be successful in the space, businesses need access to cutting-edge technology and expertise. AudioStack found both while working with AWS. "What initially attracted us to AWS was the security and scalability, as well as the vast ecosystem of partners and engineers," says Coyle. "I've been using AWS for my whole career as an engineer, and when we were looking at cloud providers, we decided to go with them because they had the biggest ecosystem, the biggest community—we felt like we were in good hands from day one."
+The world of generative AI is always changing. To be successful in the space, businesses need access to cutting-edge technology and expertise. AudioStack found both while working with AWS. Coyle says the company was initially drawn to AWS for "the security and scalability," and for the size of its partner and engineer network. He had used AWS throughout his career as an engineer, and when AudioStack was choosing a cloud provider, the breadth of services and the scale of the community decided it: "we felt like we were in good hands from day one."
 
 "One of the best things that happened to us in the early days was getting into the [AWS Activate](https://aws.amazon.com/startups) program," says Coyle. The AWS Activate program is designed to help startups get up and running on AWS as quickly as possible, and to provide support to early-stage disruptors at a time when funds can be scarce.
 
@@ -69,7 +69,7 @@ Going forward, AudioStack is continuing to raise the bar in AI audio production 
 
 "Being able to adjust something on the fly at any point, or to tap into social movements contextually is a fantastic opportunity for brands and advertisers to increase relevance," says Zetzsche. "It enables brands and marketeers to build more one-on-one conversations with potential and consumers, rather than one-to-many creative experiences."
 
-Together with AWS, the company is now turning its attention towards growth. "I'd recommend AWS to startups because of its vast ecosystem which has helped us access investors, customers, partners, and events that ultimately helped us get to market faster," says Coyle. "With support from AWS, we're looking at expanding into new markets internationally." Zetzsche adds: "We're very excited about growth, both from a commercial perspective but also from a regional perspective, as we begin working with more clients and brands across the globe."
+Together with AWS, the company is now turning its attention towards growth. Coyle recommends AWS to startups for its reach: it "helped us access investors, customers, partners, and events that ultimately helped us get to market faster," he says. "With support from AWS, we're looking at expanding into new markets internationally." Zetzsche adds: "We're very excited about growth, both from a commercial perspective but also from a regional perspective, as we begin working with more clients and brands across the globe."
 
 ---
 

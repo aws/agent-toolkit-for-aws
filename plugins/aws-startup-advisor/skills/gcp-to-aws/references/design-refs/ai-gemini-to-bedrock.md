@@ -26,12 +26,12 @@ Gemini 3.5 Flash is now GA (May 2026) — the current flagship Flash model. Gemi
 - Claude Sonnet 5 / Opus 4.x lead on real-world agentic tasks (GDPval evaluation) — the gap between benchmarks and production agent reliability is real
 - Claude prompt caching (90% savings on repeated content) has no Gemini equivalent
 - Claude function calling remains best-in-class for complex multi-turn tool use
-- AWS ecosystem integration (AgentCore, Knowledge Bases, Guardrails) has no Gemini equivalent
+- AWS service integration (AgentCore, Knowledge Bases, Guardrails) has no Gemini equivalent
 
 **Migration case by tier:**
 
 - Gemini 3.5 Flash → Bedrock: **strong cost case** — Nova Lite is 94% cheaper; even Claude Sonnet 5 is close at $2/$10 vs $1.50/$9.00
-- Gemini 3.1 Pro → Bedrock: driven by AWS consolidation, agentic reliability, or ecosystem; Sonnet 5 at $2/$10 adds a modest (~13%) cost edge, but the case is not cost-led and not general benchmarks
+- Gemini 3.1 Pro → Bedrock: driven by AWS consolidation, agentic reliability, or AWS service breadth; Sonnet 5 at $2/$10 adds a modest (~13%) cost edge, but the case is not cost-led and not general benchmarks
 - Gemini 3.1 Flash-Lite → Nova Lite/Micro: still 76-88% cheaper, strong cost case
 - Gemini 2.5 Pro → Bedrock: moderate case (older model)
 

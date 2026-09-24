@@ -28,7 +28,7 @@
       "plan": { "name": "papertrail:choklad" }
     }
   ],
-  "collaborators": [{ "email": "founder@acme-demo.com" }],
+  "collaborators": [{ "email": "founder@example.com" }],
   "dynos": [
     { "id": "d-0001", "name": "web.1", "type": "web", "size": "Standard-2X", "state": "up", "command": "npm start" },
     { "id": "d-0002", "name": "web.2", "type": "web", "size": "Standard-2X", "state": "up", "command": "npm start" },

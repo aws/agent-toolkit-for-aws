@@ -55,7 +55,7 @@ This Women's History Month, we chatted with three AWS Solutions Architects who a
 
 ## What advice do you have for startups across the board?
 
-**Skye:** Don't be afraid to ask for help. AWS for Startups is an ecosystem. It lives and breathes for startups everywhere. Ask us what you need, what you want, what you dream about, and we'll align the right things.
+**Skye:** Don't be afraid to ask for help. AWS for Startups is a community. It lives and breathes for startups everywhere. Ask us what you need, what you want, what you dream about, and we'll align the right things.
 
 **Jamila:** Please do thorough research before you actually invest or get credits to run your business. Search for which cloud provider is best for your startup, and you will see lots of forums and resources. You will discover a whole world where you will be able to book free tech and business consultations.
 

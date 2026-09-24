@@ -20,10 +20,10 @@ Read on to answer your most frequently asked questions about AWS Activate Credit
 AWS Activate Credits are promotional credits that startups can apply for and use to offset costs on eligible AWS services and products.
 
 - **Financial flexibility to innovate**: Gaining access to AWS Activate Credits helps you lower infrastructure costs and **stretch your runway**, so you can focus on **rapid product iterations** instead of monthly cloud bills. By freeing up financial resources, founders can hire critical team members or invest more in user acquisition at pivotal growth stages.
-- **Additional budget to offset startup costs**: Building a strong foundation requires a range of AWS services—from compute and databases to analytics and ML. AWS Activate Credits offset these expenses, ensuring you can allocate core funding to market research, customer development, and **scaling your MVP** without worrying about overhead.
+- **Additional budget to offset startup costs**: Building a strong foundation requires a range of AWS services—from compute and databases to analytics and ML. AWS Activate Credits offset these expenses, so you can allocate core funding to market research, customer development, and **scaling your MVP** without worrying about overhead.
 - **Budget to experiment**: Whether testing a new microservices architecture or exploring the **latest generative AI tools**, experimenting often means spinning up and tearing down multiple environments. With AWS Activate, the cost barrier is lowered, letting you refine ideas before committing to large-scale deployments.
 - **Compatibility with third-party AI models**: Thinking about harnessing foundation models? [AWS Activate Credits extend to Amazon Bedrock](https://aws.amazon.com/blogs/startups/aws-activate-credits-now-accepted-for-third-party-models-on-amazon-bedrock/), so you can evaluate, customize, and deploy third-party AI models without burning through precious capital. This flexibility empowers startups to identify the right AI model for their unique challenges quickly.
-- **Access to AWS Support**: Navigating cloud technologies can be tricky if you're new to AWS. With AWS Activate, you can apply credits toward [eligible AWS Support Plans](https://aws.amazon.com/premiumsupport/plans/), ensuring you have expert help on call—an invaluable resource when tackling everything from architectural reviews to cost-optimization strategies.
+- **Access to AWS Support**: Navigating cloud technologies can be tricky if you're new to AWS. With AWS Activate, you can apply credits toward [eligible AWS Support Plans](https://aws.amazon.com/premiumsupport/plans/), giving you access to expert help on call—an invaluable resource when tackling everything from architectural reviews to cost-optimization strategies.
 
 By tapping into these AWS Activate benefits, you transform the cloud from a cost center into a **springboard for innovation**, positioning your startup to iterate faster, engage customers better, and scale sustainably.
 
@@ -32,7 +32,7 @@ By tapping into these AWS Activate benefits, you transform the cloud from a cost
 AWS Activate Credits can be used on over 200 eligible AWS services. Examples of what's covered:
 
 - **Compute**: Ideal for running containerized microservices on [Amazon ECS](https://aws.amazon.com/ecs/) or [Amazon EKS](https://aws.amazon.com/eks/), or deploying machine learning pipelines on [Amazon EC2](https://aws.amazon.com/pm/ec2/).
-- **Database**: Helps cover the cost of managed databases, such as [Amazon RDS](https://aws.amazon.com/rds/) or [Amazon DynamoDB](https://aws.amazon.com/dynamodb/), ensuring consistent performance and simplified administration.
+- **Database**: Helps cover the cost of managed databases, such as [Amazon RDS](https://aws.amazon.com/rds/) or [Amazon DynamoDB](https://aws.amazon.com/dynamodb/), supporting consistent performance and simplified administration.
 - **Storage**: Lets you store large datasets, application artifacts, or customer-generated content in [Amazon S3](https://aws.amazon.com/s3/) without ballooning costs.
 - **Networking**: Supports traffic routing and distribution through services like [Amazon CloudFront](https://aws.amazon.com/cloudfront/) and [Amazon VPC](https://aws.amazon.com/vpc/), keeping latency low while maintaining robust security.
 
@@ -63,7 +63,7 @@ The Activate Portfolio Package offers up to $100,000 in AWS Activate Credits for
 
 The volume of credits varies based on your startup's stage, funding timeframe, and affiliation with an Activate Provider. [Activate Providers](https://aws.amazon.com/startups/lp/aws-activate-provider?lang=en-US) include thousands of **accelerators, angel investors, venture capital firms, and startup-enabling organizations** worldwide with a direct relationship with AWS.
 
-If your startup is affiliated with a provider, they can supply you with a unique Organization ID, which you'll enter during the AWS Activate application. This Organization ID confirms your eligibility for **the Portfolio Tier**, ensuring you receive the most relevant and beneficial support for your growth stage. Please contact [Activate support](https://aws.amazon.com/activate/contact-us/) if you have additional questions about Activate Providers.
+If your startup is affiliated with a provider, they can supply you with a unique Organization ID, which you'll enter during the AWS Activate application. This Organization ID confirms your eligibility for **the Portfolio Tier**, so you can access the most relevant support for your growth stage. Please contact [Activate support](https://aws.amazon.com/activate/contact-us/) if you have additional questions about Activate Providers.
 
 ## AWS Activate Credit Strategy
 
@@ -88,7 +88,7 @@ Approved credits and their expiration dates will appear in your [AWS Billing and
 
 - **Immediate offset**: Credits apply monthly to new AWS usage charges on eligible services. They do not retroactively cover past bills or any historical charges.
 - **Automatic allocation**: You cannot select or prioritize which service(s) your credits go toward. Credits apply automatically to all eligible charges until they're consumed or expire.
-- **Upfront coverage**: AWS applies credits before charging you out of pocket, ensuring every dollar counts toward your innovation.
+- **Upfront coverage**: AWS applies credits before charging you out of pocket, so every dollar goes toward your innovation.
 
 ### Maximizing your credits
 

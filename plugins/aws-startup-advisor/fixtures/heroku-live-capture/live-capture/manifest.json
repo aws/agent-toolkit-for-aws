@@ -1,7 +1,7 @@
 {
   "captured_at": "2026-07-15T18:20:00Z",
   "cli_version": "heroku/10.12.0 darwin-arm64 node-v20.19.0",
-  "account": "founder@acme-demo.com",
+  "account": "founder@example.com",
   "apps_selected": ["acme-web", "acme-staging", "acme-data-team"],
   "captures": [
     { "command": "heroku apps --all --json", "file": "apps.json", "status": "ok", "note": null },

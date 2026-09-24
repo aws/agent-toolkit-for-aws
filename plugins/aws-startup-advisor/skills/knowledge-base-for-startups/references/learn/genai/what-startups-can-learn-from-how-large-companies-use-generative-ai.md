@@ -52,7 +52,7 @@ This capability is essential in the volatile world of cryptocurrency, where mark
 
 With AWS, Crypto.com can process these vast datasets in seconds, delivering sentiment analysis results in less than 1 second. This enables users to make informed decisions based on up-to-the-minute data. Generative AI on AWS is key in transforming raw data into actionable insights, providing Crypto.com with a competitive edge in the fintech industry.
 
-Additionally, AWS's scalable infrastructure ensures that Crypto.com can handle spikes in data volume during peak trading periods, maintaining consistent performance and reliability for its users.
+Additionally, AWS's scalable infrastructure is designed to help Crypto.com handle spikes in data volume during peak trading periods, supporting consistent performance and reliability for its users.
 
 [Learn more about Crypto.com generative AI implementation](https://aws.amazon.com/solutions/case-studies/case-study-crypto/).
 

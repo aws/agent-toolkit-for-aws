@@ -75,7 +75,7 @@ Neeleman explains, "the best thing that AWS gives companies like ourselves is re
 
 Breeze Airways' story shows the value cloud-to-cloud migrations can offer, yet common misconceptions can prevent businesses from taking the leap themselves. Hart explains: "I think one of the most common misconceptions is that the lights will go off, that there will be outages. Businesses are understandably anxious about data loss and are hesitant to migrate away from a service that might be delivering—or mostly delivering—on their immediate requirements."
 
-She continues: "another misconception is that it takes a large team to complete a migration. A lot of startup founders may not realize that there's a whole ecosystem of solution architects, migration specialists, and qualified partners that can support them every step of the way."
+She continues: "another misconception is that it takes a large team to complete a migration." Many startup founders, she says, do not realize how many solution architects, migration specialists, and qualified partners are available to support them every step of the way.
 
 By working with AWS, Breeze Airways had access to all the resources, expertise, and experience needed to confidently navigate a cloud-to-cloud migration and rapidly reach their target destination. By taking advantage of infrastructure as code, and AWS managed services, the team were able to act quickly and without any outages. This was also helped by working to a well-defined strategy based on proven best practices outlined in the AWS Well Architected Framework.
 

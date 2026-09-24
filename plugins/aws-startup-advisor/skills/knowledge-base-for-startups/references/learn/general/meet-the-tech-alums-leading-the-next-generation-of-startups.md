@@ -49,13 +49,13 @@ What's more, she realized that by asking herself why she should go forward and l
 
 ### Fostering the tech alum to startup pipeline
 
-AWS is uniquely positioned to offer tech alums industry-leading support as they take the leap from tech worker to startup founder. We provide a platform to build any startup, along with the technical and business support they need from inception to IPO. Other tailored resources tech alums can take advantage of include:
+AWS is uniquely positioned to offer tech alums industry-leading support as they take the leap from tech worker to startup founder. We provide the tools and resources to build any startup, along with the technical and business support they need from inception to IPO. Other tailored resources tech alums can take advantage of include:
 
 - **AWS Activate:** Our [AWS Activate](https://aws.amazon.com/activate/) program gives founders free tools, resources, expert support, and AWS credits in order to build a scalable, reliable, and cost-optimized startup.
 - **Accelerators:** AWS understands that collaborating with like-minded founders can give startups an extra leg up as they enter the startup landscape. We offer [accelerators](https://aws.amazon.com/blogs/startups/tag/accelerators/) tailored to the unique experiences of different groups and industries, helping founders foster the connections that will allow them to thrive.
 - **AWS Connections:** When founders build on AWS, they gain immediate access to a global network of potential partners, mentors, investors, and experts who can become the missing link that helps their startup succeed.
 
-If you're a tech alum in a similar position—sitting on an idea that only you have the skill set, connections, and drive to make succeed—AWS wants to be your partner on this journey. We want to connect with potential founders in the ideation or inception phases, who haven't received VC funding yet. Through [Magnet](https://www.startupmagnet.co/), we provide a platform to build any startup, along with the technical and business support they need from inception to IPO.
+If you're a tech alum in a similar position—sitting on an idea that only you have the skill set, connections, and drive to make succeed—AWS wants to be your partner on this journey. We want to connect with potential founders in the ideation or inception phases, who haven't received VC funding yet. Through [Magnet](https://www.startupmagnet.co/), we provide the tools and resources to build any startup, along with the technical and business support they need from inception to IPO.
 
 ---
 

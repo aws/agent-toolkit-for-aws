@@ -228,4 +228,4 @@ By working with [AWS's dedicated network of startup partners](https://aws.amazon
 
 **Author:** Majid Shokrolahi
 
-_Majid is a Senior Solutions Architect at AWS, helping Startups to innovate and build their solutions on the AWS platform. He is passionate about Containers, Gen AI, Analytics and the Startup ecosystem._
+_Majid is a Senior Solutions Architect at AWS, helping Startups to innovate and build their solutions on AWS. He is passionate about Containers, Gen AI, Analytics and the Startup ecosystem._

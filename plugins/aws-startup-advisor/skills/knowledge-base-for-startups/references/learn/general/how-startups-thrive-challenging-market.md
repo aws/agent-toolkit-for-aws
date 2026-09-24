@@ -21,7 +21,7 @@ As startup fundraising landscape evolves, we see a renewed focus on a startup's 
 
 The biggest startup expenses include personnel, marketing, and cloud infrastructure, so we encourage founders to assess if they're using cloud services as efficiently as possible. By doing so, a startup can free up valuable resources and strengthen its financial posture while making the most of its investments in the cloud.
 
-At Amazon Web Services, our teams take active steps to help startups save money on their cloud spend. While it may seem counterintuitive, our teams are actually tasked with reducing our customers' cloud bills. This involves conducting regular account and architecture reviews to ensure that our customers are using the most cost-effective pricing models—and it prevents them from paying for more services than they actually need.
+At Amazon Web Services, our teams take active steps to help startups save money on their cloud spend. While it may seem counterintuitive, our teams are actually tasked with reducing our customers' cloud bills. This involves conducting regular account and architecture reviews to help our customers use the most cost-effective pricing models—and it prevents them from paying for more services than they actually need.
 
 One service that can clarify spending and illuminate areas for improvement is [AWS Cost Explorer](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/), which helps startups visualize, understand, and manage their AWS costs and usage over time. It also makes suggestions to help optimize performance. Other tools like [AWS Trusted Advisor](https://aws.amazon.com/premiumsupport/technology/trusted-advisor/) have helped our customers save up to 40% on their cloud costs by monitoring service usage.
 

@@ -17,7 +17,7 @@ It became clear that the best way to significantly grow revenue without interfer
 
 ## Enter Nimbus
 
-Utilizing their experience on the AWS platform from the initial creation of Timehop, the development team turned to AWS to create the Nimbus ad platform that serves programmatic ads, gives ad blocking control, and maximizes the companies' CPM.
+Utilizing their experience on AWS from the initial creation of Timehop, the development team turned to AWS to create the Nimbus ad platform that serves programmatic ads, gives ad blocking control, and maximizes the companies' CPM.
 
 > "By leveraging AWS, Timehop was able to pivot its business and generate a new revenue stream by productizing Nimbus very quickly" – David Leviev
 

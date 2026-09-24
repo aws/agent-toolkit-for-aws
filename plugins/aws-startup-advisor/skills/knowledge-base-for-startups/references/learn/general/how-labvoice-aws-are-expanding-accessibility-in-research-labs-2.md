@@ -37,7 +37,7 @@ LabVoice is available as both a smart device and a mobile app. The digital assis
 
 ![LabVoice](https://d22k7geae6sy8h.cloudfront.net/files/64a2f77e9449f00008ef2409/8ljn2ttg1-labvoice2.gif)
 
-All of this is made possible thanks to LabVoice's integration with AWS. According to Steve McCoy, Head of Sales at LabVoice, LabVoice's implementation of AWS services goes beyond cloud storage and computing—the AWS platform is fundamental to LabVoice's operations.
+All of this is made possible thanks to LabVoice's integration with AWS. According to Steve McCoy, Head of Sales at LabVoice, LabVoice's implementation of AWS services goes beyond cloud storage and computing—AWS services are fundamental to LabVoice's operations.
 
 In particular, LabVoice relies on conversational AI service [Amazon Lex](https://aws.amazon.com/lex/) and text-to-speech software [Amazon Polly](https://aws.amazon.com/polly/) to deliver a complete digital lab assistant experience. Steve explains that the team uses these tools as a foundation on which they develop additions and extensions that are science specific.
 
