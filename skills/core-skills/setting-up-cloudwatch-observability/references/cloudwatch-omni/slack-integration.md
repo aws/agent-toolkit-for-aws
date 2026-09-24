@@ -46,10 +46,10 @@ but cannot approve the requested scopes.
 
 | Action | CLI |
 |---|---|
-| Start the connection | `aws cloudwatch-omni create-integration --integration-type SLACK --name <name>` |
-| Check whether Slack is already connected | `aws cloudwatch-omni list-integrations` |
-| Read one integration's state | `aws cloudwatch-omni get-integration --identifier integrationId=<integration-id>` (`identifier` is a union; `integrationArn=<arn>` or `integrationName=<name>` also work) |
-| Disconnect | `aws cloudwatch-omni delete-integration --integration-id <integration-id>` |
+| Start the connection | `aws cloudwatchomni create-integration --integration-type SLACK --name <name>` |
+| Check whether Slack is already connected | `aws cloudwatchomni list-integrations` |
+| Read one integration's state | `aws cloudwatchomni get-integration --identifier integrationId=<integration-id>` (`identifier` is a union; `integrationArn=<arn>` or `integrationName=<name>` also work) |
+| Disconnect | `aws cloudwatchomni delete-integration --identifier integrationId=<integration-id>` |
 
 `CreateIntegration` returns `integration.authorizationUrl` (nested in the returned
 `integration` object, not top-level) when Slack needs interactive
