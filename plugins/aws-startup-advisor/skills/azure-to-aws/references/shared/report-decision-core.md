@@ -224,11 +224,11 @@ Resolve knobs from each scenario's preferences copy (or
 3. Mark the active row (`scenario_id == index.active_scenario_id`) with
 `class="active-scenario"` or an "(active)" label.
 4. Under the table: active vs baseline knob deltas (plain language); any
-`graviton_note` / `region_note`; for each scenario with a non-null
-`estimation_summary.calculator_url`, an "open in AWS Pricing Calculator" link
-(stakeholders can open and edit; AWS computes regional prices server-side);
+`graviton_note` / `region_note`;
 remind that discovery inventory is frozen
 and generated Terraform matches the **active** scenario only.
+`estimation_summary.calculator_url` is always `null` — render no "open in AWS
+Pricing Calculator" link.
 5. TOC: link `#what-if-scenarios` only when rendered. Place this section in the
 executive flow immediately after `exec-costs` (before security teaser /
 timeline). When `exec-optimization` is also rendered, place it after

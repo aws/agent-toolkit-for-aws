@@ -26,6 +26,6 @@ availability condition no longer applies." This is the compare view's most
 decision-relevant line; never bury it.
 
 Under the table: active vs baseline `preferences_subset`; any `region_note`;
-one `{scenario}: {url}` line per non-null `estimation_summary.calculator_url`
-(shareable, editable calculator.aws estimate — AWS computes regional prices
-server-side there); reminder that inventory is frozen. Keep under 25 lines.
+reminder that inventory is frozen. Keep under 25 lines.
+`estimation_summary.calculator_url` is always `null` — no shareable calculator
+link is produced, so do not emit one.
