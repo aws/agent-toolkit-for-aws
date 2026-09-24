@@ -453,7 +453,7 @@ There is no charge to use AWS Startup Advisor itself. Generating recommendations
 
 ### Where can I access AWS Startup Advisor?
 
-On the web at startups.aws, as an IDE extension for Kiro, VS Code, and Cursor, and as the `aws-startup-advisor` plugin in the [Agent Toolkit for AWS](https://github.com/aws/agent-toolkit-for-aws). In Claude Code, install it with `/plugin install aws-startup-advisor@claude-plugins-official`; Codex and Cursor install it from the same repository's plugin marketplace. All options deliver curated skills and recommendations. Use whichever fits your workflow.
+On the web at startups.aws, as an IDE extension for Kiro, VS Code, and Cursor, and as the `aws-startup-advisor` plugin in the [Agent Toolkit for AWS](https://github.com/aws/agent-toolkit-for-aws). In Claude Code, add that repository as a marketplace with `/plugin marketplace add aws/agent-toolkit-for-aws` and then install with `/plugin install aws-startup-advisor@agent-toolkit-for-aws`; Codex and Cursor install it from the same repository's plugin marketplace. All options deliver curated skills and recommendations. Use whichever fits your workflow.
 
 ### Do I need an AWS Account to use AWS Startup Advisor?
 

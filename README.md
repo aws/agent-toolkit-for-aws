@@ -64,10 +64,12 @@ For `aws-agents-for-devsecops` used to investigate incidents, review code and ex
 /aws-agents-for-devsecops:setup
 ```
 
-For `aws-startup-advisor` that covers startup-focused architecture, cost, security, and AWS Activate guidance, plus migrations to AWS from Azure, GCP, Heroku, and AI stacks such as OpenAI and Gemini:
+For `aws-startup-advisor` that covers startup-focused architecture, cost, security, and AWS Activate guidance, plus migrations to AWS from Azure, GCP, Heroku, and AI stacks such as OpenAI and Gemini, install from this repository's marketplace:
 
 ```
-/plugin install aws-startup-advisor@claude-plugins-official
+/plugin marketplace add aws/agent-toolkit-for-aws
+/plugin install aws-startup-advisor@agent-toolkit-for-aws
+/reload-plugins
 ```
 
 ### Codex

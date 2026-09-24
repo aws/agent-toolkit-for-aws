@@ -49,7 +49,23 @@ Alongside the skills, the plugin ships supporting material the skills load on de
 
 ## Installation
 
-See [Quick Start](../../README.md#quick-start).
+In Claude Code, install from this repository's marketplace:
+
+```
+/plugin marketplace add aws/agent-toolkit-for-aws
+/plugin install aws-startup-advisor@agent-toolkit-for-aws
+/reload-plugins
+```
+
+For Codex and Cursor, see [Quick start](../../README.md#quick-start).
+
+For standalone skill installs — Kiro, fx, and other hosts that consume skills directly — point the skills CLI at this plugin. The repository's top-level `skills/` tree does not contain these skills, so the command in Quick start will not install them:
+
+```sh
+npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill '*'
+```
+
+Install all 11 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
 ## Startup Architecture Advice
 
