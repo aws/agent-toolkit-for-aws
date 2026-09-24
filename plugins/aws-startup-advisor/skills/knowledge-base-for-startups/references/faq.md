@@ -161,7 +161,7 @@ Signing in with your AWS Activate account allows you to start and stop your appl
 
 Activate Providers can invite their portfolio companies to apply for AWS Activate Credits via email. The link is personalized and speeds up the application process by pre-validating your relationship with the provider.****
 
-**Important:** You must apply using the same email address that received the invitation from your Provider. For example, if the invite was sent to [john@appleseed.com](mailto:john@appleseed.com), you must submit your application using [john@appleseed.com](mailto:john@appleseed.com) for the pre-validation to work correctly.
+**Important:** You must apply using the same email address that received the invitation from your Provider. For example, if the invite was sent to [john@example.com](mailto:john@example.com), you must submit your application using [john@example.com](mailto:john@example.com) for the pre-validation to work correctly.
 
 ### What happens if I don't use my email invite?
 

@@ -7,7 +7,7 @@ description: "AWS Startups reference content — Activate FAQ, credits guide, pr
 
 Reference content from [aws.amazon.com/startups](https://aws.amazon.com/startups) for AWS Activate programs, credits, partner offers, sample build architectures, and a large learn-article corpus covering technical guides, business strategy, and real-world case studies.
 
-**Last updated:** 2026-07-22
+**Last updated:** 2026-09-09
 
 ---
 

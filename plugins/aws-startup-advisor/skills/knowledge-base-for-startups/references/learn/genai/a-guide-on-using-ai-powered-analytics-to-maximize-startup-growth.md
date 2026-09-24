@@ -68,6 +68,8 @@ A decision-making algorithm is designed to analyze data and generate insights in
 
 Decision-making algorithms are often engineered to identify a recommended decision or provide a quantitative score to inform the final choice. For instance, a fintech startup can develop a credit scoring algorithm to evaluate the credit risk of loan applicants.
 
+**AWS Startup Advisor safety note — credit decisions:** For credit or lending applications, model outputs must support qualified human reviewers and must not be the sole basis for approval or denial. Obtain legal and compliance review before deployment, test for fairness and bias across relevant applicant groups, and monitor outcomes throughout operation. See the [AWS Responsible AI guidance](https://aws.amazon.com/ai/responsible-ai/).
+
 **How AWS can help startups implement:**
 
 - A fintech startup aiming to evaluate loan applications more accurately could integrate [Amazon Fraud Detector](https://aws.amazon.com/fraud-detector/) into its platform, automating the risk assessment process.

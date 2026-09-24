@@ -1,6 +1,6 @@
 ---
 name: azure-to-aws
-description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrate from Azure, Azure to AWS, move off Azure, migrate AKS to EKS, migrate App Service or Azure VMs to AWS compute, migrate Azure SQL or Azure Database to RDS, migrate Cosmos DB to DynamoDB, migrate Azure OpenAI to Bedrock, move Azure AI or agentic workloads to AWS, estimate AWS costs for my Azure infrastructure, what-if workshop. Runs a 7-phase process: discover Azure resources from Terraform, app code, and billing exports, then clarify, design, estimate costs (1:1 lift and right-sized), optionally reprice scenarios, generate artifacts, and collect feedback. Clarify gates Design, Estimate, and Generate; Generate is opt-in at the post-Estimate decision gate. Bicep/ARM/live-`az` discovery is not yet implemented; such a workspace halts. Do not use for: GCP migrations (see gcp-to-aws), Heroku migrations (see heroku-to-aws), general AWS architecture advice (see architect-for-startups), AWS-to-Azure reverse migration, or Azure-to-Azure refactoring."
+description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrate from Azure, Azure to AWS, move off Azure, migrate AKS to EKS, migrate App Service or Azure VMs to AWS compute, migrate Azure SQL or Azure Database to RDS, migrate Cosmos DB to DynamoDB, migrate Azure OpenAI to Bedrock, move Azure AI or agentic workloads to AWS, estimate AWS costs for my Azure infrastructure, what-if workshop. Runs a 6-phase process: discover Azure resources from Terraform, app code, and billing exports, then clarify, design, estimate costs (1:1 lift and right-sized), optionally reprice scenarios, generate artifacts, and collect feedback. Clarify gates Design, Estimate, and Generate; Generate is opt-in at the post-Estimate decision gate. Bicep/ARM/live-`az` discovery is not yet implemented; such a workspace halts. Do not use for: GCP migrations (see gcp-to-aws), Heroku migrations (see heroku-to-aws), general AWS architecture advice (see architect-for-startups), AWS-to-Azure reverse migration, or Azure-to-Azure refactoring."
 ---
 
 # Azure-to-AWS Migration Skill
@@ -210,7 +210,7 @@ phase contract. Both are `_kind: sidebar` — off-backbone, trigger-entered, nev
 - **Region**: `us-east-1` unless the user specifies otherwise; Azure regions are mapped, not assumed
 - **Sizing**: Development tier, upgraded from measured utilization when RDfA or `az monitor` metrics are available
 - **CPU architecture**: `x86_64` (see Philosophy — Graviton is an offered optimization here, not the default)
-- **Migration mode**: adapts to available inputs — live `az` offered first, RDfA as the accuracy upgrade, IaC (Terraform/Bicep/ARM) fully supported, billing exports as the last-resort fallback
+- **Migration mode**: adapts to available inputs — Terraform (`azurerm_*`) IaC and application code are supported today, with billing exports as a fallback. Live `az` capture, RDfA, Bicep, and ARM templates are planned follow-ups, not yet available.
 - **Cost currency**: USD
 - **Timeline assumption**: 2–18 weeks depending on complexity. Tiers per `references/vendored/estimate/complexity-tiers.json`.
 
