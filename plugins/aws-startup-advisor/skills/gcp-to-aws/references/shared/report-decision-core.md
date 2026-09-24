@@ -179,6 +179,21 @@ _Decision mode:_ render the diagram from `aws-design.json` clusters only — **o
   and AWS baselines are not comparable; use an absolute estimated-cost card
   plus the not-comparable note instead.
 - **Cost labeling rule:** All dollar figures in cost tables and metrics MUST be labeled as estimated monthly costs. Use column headers like "Est. Monthly AWS" or "Estimated Monthly" — never present figures as exact amounts.
+- **Cost-figure anchors (machine-checkable, both modes).** Wrap the Balanced AWS
+  monthly figure and the current GCP monthly figure inside `exec-costs` with a
+  `data-cost-key` attribute, so `validate-migration-report.py` can confirm the
+  rendered dollars match the estimate: `data-cost-key="aws_monthly_balanced"` on
+  the element holding the Balanced dollar figure (value =
+  `projected_costs.aws_monthly_balanced`), and `data-cost-key="current_monthly"`
+  on the element holding the GCP figure (value = `current_costs.gcp_monthly`).
+  Optional per-tier: `data-cost-key="aws_monthly_premium"` /
+  `"aws_monthly_optimized"`. Example:
+  `<strong data-cost-key="aws_monthly_balanced">$155</strong>`. The attribute is
+  not reader-visible text. **Both required anchors are mandatory whenever their
+  JSON value exists and `exec-costs` is rendered — in decision mode as well as
+  full mode** — a missing required anchor is a validator FAIL, not a skip. The
+  anchor must sit inside `exec-costs` itself; a figure repeated elsewhere in the
+  decision summary (e.g. a hero metric) does not satisfy this rule.
 - **Not-comparable rendering:** the mandatory not-comparable warning is NOT collapsible and does not sit as a paragraph between the heading and the numbers — attach it to the GCP figure itself: a `.chip-warn` pill ("⚠ not comparable") on the metric card plus the one-line explanation in its `<small>` (what the figure measures, what the stated band measures, "do not read a savings %").
 - **How to read cost tiers (required when infra estimation with three tiers exists; rendered as a `<details class="reading-guide">` immediately AFTER the tier table — data first, explanation adjacent):** The three AWS monthly figures are **estimated monthly costs** for the **same** mapped architecture (same services in `aws-design.json`), not three different generated Terraform stacks. **Order = highest → middle → lowest** monthly estimate in this model. Use **Balanced** as the **primary** row vs GCP; **Premium** and **Optimized** are **bounds** (higher HA / newer skew vs cost-optimization skew). When `terraform/` is present, it implements **one** infrastructure baseline aligned with the **Balanced** cost scenario (see `terraform/README.md` and `migration_summary` output).
 - If 3 tiers available: show **Premium**, **Balanced**, and **Optimized** with **short subtitles** (second line or subtext under each label), plus a **"vs Balanced, for this stack" column** from `projected_costs.scenario_deltas` when present — the itemized differences are the decision content (a reader must be able to answer "what would I buy at Premium / give up at Optimized?" from the table alone). Architectural deltas carry their consequence verbatim from the artifact (e.g. "Drops NAT Gateway — tasks move to public subnets or VPC endpoints; posture change, not just savings"); commitment-based savings name the commitment. Balanced's cell is "— anchor; matches generated Terraform" (full mode) or "— anchor" (decision mode). When `scenario_deltas` is absent (pre-extension artifacts), omit the column — do not invent deltas. Do NOT expand the generic tier definitions to compensate; the reading-guide `<details>` already covers same-architecture semantics:

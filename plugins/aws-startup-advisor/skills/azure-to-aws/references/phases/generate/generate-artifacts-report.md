@@ -95,6 +95,21 @@ Present the Premium / Balanced / Optimized comparison from `estimation-infra.jso
   RI-equivalent rate (never presented as free).
 - The baseline provenance (user-stated bracket vs invoice) and the accuracy band.
 
+**Cost-figure anchor (machine-checkable, REQUIRED).** Wrap the Balanced AWS monthly figure
+inside `<section id="exec-costs">` in a `data-cost-key="aws_monthly_balanced"` attribute
+(value = `projected_costs.aws_monthly_balanced`), so `validate-migration-report.py` can
+confirm the rendered dollars match the estimate. Optional per-tier:
+`data-cost-key="aws_monthly_premium"` / `"aws_monthly_optimized"`. Example:
+`<strong data-cost-key="aws_monthly_balanced">Est. $155/mo</strong>`. The attribute is not
+reader-visible text. The anchor must sit on a rendered element inside `exec-costs` itself —
+not in an HTML comment, and not merely somewhere else in the document (a decision-summary
+hero metric does not satisfy this rule). **It is mandatory whenever
+`projected_costs.aws_monthly_balanced` exists and `exec-costs` is rendered — a missing
+anchor is a validator FAIL, not a skip.** The `current_monthly` anchor that the GCP and
+Heroku reports carry does not apply here: this skill records current spend under
+`current_costs.azure_monthly`, which the validator does not map, so only untagged
+illustrative figures remain unchecked.
+
 ## Step 3: Surface the rest
 
 - **Drift** between declared IaC and running state (when a live/RDfA source ran).

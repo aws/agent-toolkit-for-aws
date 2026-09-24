@@ -694,7 +694,26 @@ After generating the HTML file, verify:
 20. **Cost Optimization section**: When `optimization_opportunities[]` is
     non-empty, `exec-optimization` and `appendix-optimization` are present
     and TOC-linked. Do not bury the opportunity table only in Appendix B.
-21. **Whole-dollar monthly figures**: No monthly-scale dollar figure
+21. **Cost-figure anchors (machine-checkable).** Wrap the recommended AWS monthly
+    figure and the current-spend comparator in `exec-costs` with a `data-cost-key`
+    attribute so the validator can confirm the rendered dollars match the estimate:
+    - Projected AWS monthly (Balanced): `data-cost-key="aws_monthly_balanced"` on the
+      element containing that dollar figure (value = `projected_costs.aws_monthly_balanced`).
+    - Current GCP monthly: `data-cost-key="current_monthly"` (value = `current_costs.gcp_monthly`).
+    - Optional per-tier: `data-cost-key="aws_monthly_premium"` / `"aws_monthly_optimized"`.
+
+    Example: `<span data-cost-key="aws_monthly_balanced">$112/mo</span>`. The attribute
+    is not reader-visible text, so it does not violate rule 7 (reader vocabulary). The
+    validator asserts the rendered dollars equal the JSON for every anchor present.
+    **The anchor must sit inside `<section id="exec-costs">` on a rendered element —
+    not inside an HTML comment, and not merely present anywhere else in the document
+    (e.g. a decision-summary hero metric does not satisfy this rule even if its own
+    figure is correct — `exec-costs` is the section a validator holds to the estimate).**
+    **The two required anchors above (`aws_monthly_balanced` and `current_monthly`) are
+    mandatory whenever their JSON value exists and `exec-costs` is rendered — a missing
+    required anchor is a validator FAIL, not a skip.** Only _untagged illustrative_
+    numbers (and the optional per-tier figures when absent) are skipped.
+22. **Whole-dollar monthly figures**: No monthly-scale dollar figure
     (`$2.00` or higher) renders with cents unless it is a per-unit/hourly
     rate — see rule 19 above.
 

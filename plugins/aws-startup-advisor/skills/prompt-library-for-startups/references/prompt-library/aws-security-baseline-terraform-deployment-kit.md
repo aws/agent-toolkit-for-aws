@@ -40,7 +40,7 @@ Requirements:
 - Enable versioning and encryption on all S3 buckets
 - Set up metric filters for security event detection
 
-Output should be production-ready, well-documented, and deployable in under 10 minutes.
+Output should serve as a starting point for a production security baseline — well-documented and deployable in under 10 minutes. Review all generated resources against your organization's security requirements and conduct an application security review before deploying to production.
 
 ## How to use?
 

@@ -101,6 +101,9 @@ class _SectionParser(HTMLParser):
         if self._inert_depth > 0:
             return  # inside an inert subtree — not rendered
         if tag == "section":
+            # Keep nested section attributes in the containing fragment so a
+            # second parser retains cost anchors and hidden ancestry.
+            self._emit(self.get_starttag_text() or "")
             sid = dict(attrs).get("id")
             self._section_depth += 1
             if sid:
@@ -116,6 +119,7 @@ class _SectionParser(HTMLParser):
         if tag in _SECTION_INERT_TAGS or self._inert_depth > 0:
             return
         if tag == "section":
+            self._emit(self.get_starttag_text() or "")
             sid = dict(attrs).get("id")
             if sid:
                 self.counts[sid] = self.counts.get(sid, 0) + 1
@@ -137,6 +141,7 @@ class _SectionParser(HTMLParser):
                 self.fragments.setdefault(done["id"], []).append("".join(done["parts"]))
             if self._section_depth > 0:
                 self._section_depth -= 1
+            self._emit("</section>")
             return
         self._emit(f"</{tag}>")
 
@@ -174,6 +179,271 @@ def _section_html(html: str, section_id: str) -> str | None:
     if not frags:
         return None
     return frags[0]
+
+
+def _normalize_money(text: str) -> str | None:
+    """Reduce a rendered money string to its canonical display form for exact
+    comparison against the JSON figure (same normalization on both sides via
+    `_canonical_money`). '$1,415/mo' -> '1415'; '$112.90' -> '113'; '$0.40' ->
+    '0.40'. Returns None when no dollar amount is present. Cents are NO LONGER
+    truncated — a correctly rounded report figure must match, not be rejected."""
+    m = re.search(r"\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)", text)
+    if not m:
+        return None
+    try:
+        return _canonical_money(float(m.group(1).replace(",", "")))
+    except (TypeError, ValueError):
+        return None
+
+
+def _canonical_money(value: float) -> str:
+    """Canonical display form for a dollar amount, matching the emitter's own
+    rule (generate-report.md currency rule / the currency-formatting gate):
+    monthly-scale totals (>= $2 after rounding) round to the nearest whole
+    dollar; genuinely small totals keep two-decimal cents. Both the rendered
+    figure and the JSON figure pass through this SAME function before comparison,
+    so a correctly rounded `$113` for `112.90` matches (not truncated to `112`),
+    and the small-total exception (e.g. `$0.40`) is preserved instead of being
+    truncated to `0`. Decides precision on the ROUNDED magnitude so a value that
+    rounds up across the $2 threshold (e.g. 1.999) canonicalizes to `"2"`,
+    matching a displayed `$2`, instead of `"2.00"`."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        raise
+    rounded_whole = int(round(v))
+    if abs(rounded_whole) >= _CENTS_MEANINGFUL_BELOW:
+        return str(rounded_whole)  # nearest-dollar; 112.90->113, 112.4->112, 1.999->2
+    return f"{v:.2f}"  # genuinely small total: retain cents (0.40 -> "0.40")
+
+
+# Elements whose subtree the browser never renders — an anchor (or its text)
+# inside one must never stand in for the visible figure. Mirrors the currency
+# text parser's inert set so the anchor collector and the currency parser agree
+# on what "rendered" means.
+_ANCHOR_INERT_TAGS = {"script", "style", "template"}
+
+
+# data-cost-key anchor -> estimation-infra.json path. Heroku asserts the recommended
+# AWS monthly (Balanced) figure only; the current-spend comparator is a follow-up
+# (Heroku's current_costs key is not yet settled — heroku_monthly_baseline vs _estimated).
+_COST_ANCHORS = {
+    "aws_monthly_balanced": ("projected_costs", "aws_monthly_balanced"),
+}
+# Load-bearing key: when its JSON value exists AND exec-costs is present, the anchor
+# MUST be present (a missing anchor is a FAIL, not a skip — otherwise an un-anchored
+# wrong figure passes, the bug P1-C exists to catch).
+_REQUIRED_COST_KEYS = ("aws_monthly_balanced",)
+
+
+class _CostAnchorParser(HTMLParser):
+    """Collect the rendered text of every `data-cost-key="..."` element.
+
+    Ported from validate-migration-report.py's parser (GCP) so both providers
+    agree on what "rendered" means. Uses the stdlib HTML parser rather than a
+    regex so that:
+    (a) markup inside an HTML comment is never mistaken for a real anchor —
+        comments are a distinct token the parser never re-tokenizes as tags;
+    (b) nested child markup is read through the anchored element's OWN matching
+        close tag, not the first `</` encountered, by counting nested
+        opens/closes — and a NESTED `data-cost-key` element is collected as its
+        own anchor too (an outer anchor being open must not swallow a recognized
+        inner figure), tracked on a stack;
+    (c) inert subtrees (`<script>`, `<style>`, `<template>`) are skipped — their
+        content is never rendered by the browser, so an anchor or dollar token
+        placed there must not satisfy the visible-figure requirement, even when
+        the inert element itself carries `data-cost-key`;
+    (d) an element with a `hidden` attribute is skipped for the same reason —
+        its subtree is not rendered.
+    Character references are decoded automatically (`convert_charrefs=True`).
+    """
+
+    # Void elements never have an end tag, so they must not be pushed onto the
+    # element stack (doing so would desync every subsequent close).
+    _VOID_TAGS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: list[tuple[str, str]] = []  # (key, inner text), document order
+        # One frame per open non-void element, innermost last. Each frame:
+        #   {"tag", "inert": bool, "hidden": bool, "anchor": {key,parts}|None}
+        # `inert`/`hidden` are STICKY down the subtree (an element inside an inert
+        # or hidden ancestor is itself skipped) — computed as ancestor-or-self.
+        self._stack: list[dict] = []
+
+    def _in_skip(self) -> bool:
+        """True when the current point is inside an inert or hidden subtree."""
+        return bool(self._stack) and (self._stack[-1]["inert"] or self._stack[-1]["hidden"])
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        # `hidden` is a BOOLEAN attribute: its mere presence hides the subtree,
+        # regardless of value. In HTML `hidden="false"` is NOT a not-hidden value —
+        # "false" is an invalid value for a boolean attribute, whose invalid-value
+        # default is the Hidden state. So any `hidden` attribute (including
+        # `hidden=""`, `hidden="hidden"`, and `hidden="false"`) hides the element;
+        # only the attribute's ABSENCE leaves it visible.
+        return "hidden" in dict(attrs)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        parent = self._stack[-1] if self._stack else None
+        # inert/hidden are STICKY: an element inside an inert/hidden ancestor is
+        # itself inert/hidden. Kept as clean booleans (never a truthy list).
+        inert = bool(parent and parent["inert"]) or tag in _ANCHOR_INERT_TAGS
+        hidden = bool(parent and parent["hidden"]) or self._is_hidden(attrs)
+        anchor = None
+        key = dict(attrs).get("data-cost-key")
+        # Start a new anchor only when this element is actually rendered.
+        if key and not inert and not hidden:
+            anchor = {"key": key.lower(), "parts": []}
+        frame = {"tag": tag, "inert": inert, "hidden": hidden, "anchor": anchor}
+        if tag not in self._VOID_TAGS:
+            self._stack.append(frame)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in _ANCHOR_INERT_TAGS or self._in_skip():
+            return
+        parent_hidden = self._stack[-1]["hidden"] if self._stack else False
+        key = dict(attrs).get("data-cost-key")
+        # A self-closed anchor has no text content; record it (empty) only if rendered.
+        if key and not parent_hidden and not self._is_hidden(attrs):
+            self.results.append((key.lower(), ""))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._VOID_TAGS:
+            return
+        # Pop to the nearest matching open tag (tolerate minor misnesting). Every
+        # frame in the popped slice that carried an anchor is emitted — including
+        # any INNER anchors implicitly closed by an outer element's end tag — so a
+        # nested `data-cost-key` is never silently dropped. Emit innermost-first,
+        # then the matched frame, all in the order they closed.
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i]["tag"] == tag:
+                popped = self._stack[i:]
+                del self._stack[i:]
+                for frame in reversed(popped):  # innermost closes first
+                    if frame["anchor"] is not None:
+                        self.results.append(
+                            (frame["anchor"]["key"], "".join(frame["anchor"]["parts"]))
+                        )
+                return
+        # Unmatched close tag: ignore.
+
+    def handle_data(self, data: str) -> None:
+        if self._in_skip():
+            return
+        # Append rendered text to every open anchor on the stack (an outer
+        # anchor's text legitimately includes its children's text).
+        for frame in self._stack:
+            if frame["anchor"] is not None:
+                frame["anchor"]["parts"].append(data)
+
+
+def _cost_anchor_matches(html: str) -> list[tuple[str, str]]:
+    """Parse `html` and return every (data-cost-key, rendered text) pair found
+    outside comments and non-rendered markup (script/style/template/hidden),
+    including nested recognized anchors."""
+    parser = _CostAnchorParser()
+    parser.feed(html)
+    parser.close()
+    return parser.results
+
+
+def _dig(d: dict, path: tuple[str, ...]):
+    cur = d
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return None
+        cur = cur[key]
+    return cur
+
+
+def _validate_cost_figures(html: str, migration_dir: Path | None) -> list[str]:
+    """Assert the report's cost figures match estimation-infra.json (P1-C).
+
+    Fail direction:
+    - No estimation-infra.json / corrupt / not a dict -> skip (fail open on absence).
+    - aws_monthly_balanced present in JSON + exec-costs present -> an anchor MUST
+      exist INSIDE <section id="exec-costs">; a missing anchor there FAILs (an
+      un-anchored wrong figure, or an anchor placed elsewhere e.g. decision-summary,
+      must not pass) — mirrors validate-migration-report.py's required-anchors
+      section scoping.
+    - Anchor present anywhere + JSON value present but rendered dollars differ -> FAIL
+      (any anchor is still cross-checked against the estimate, even outside exec-costs).
+    - Anchored element with a real JSON value but no $ rendered -> FAIL.
+    - Non-numeric / non-whole-dollar JSON value -> FAIL (named), never a crash.
+    - Unknown anchor key -> skip.
+    """
+    if migration_dir is None:
+        return []
+    est_path = migration_dir / "estimation-infra.json"
+    if not est_path.is_file():
+        return []
+    try:
+        est = json.loads(est_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []  # fail open on ambiguity: a corrupt estimate does not gate the report
+    if not isinstance(est, dict):
+        return []
+    errors: list[str] = []
+
+    for key, text in _cost_anchor_matches(html):
+        key = key.lower()
+        path = _COST_ANCHORS.get(key)
+        if path is None:
+            continue
+        expected = _dig(est, path)
+        if expected is None:
+            continue
+        try:
+            # Normalize the JSON figure to the SAME display precision the emitter
+            # renders at (nearest dollar for monthly-scale, cents for small
+            # totals) so a correctly rounded report matches — not a truncation.
+            expected_dollars = _canonical_money(float(expected))
+        except (TypeError, ValueError):
+            errors.append(
+                f'estimation-infra.json {".".join(path)} is not a numeric dollar '
+                f"amount: {expected!r}"
+            )
+            continue
+        rendered = _normalize_money(text)
+        if rendered is None:
+            errors.append(
+                f'data-cost-key="{key}" element renders no dollar amount '
+                f"(expected ${expected_dollars} from {'.'.join(path)})"
+            )
+            continue
+        if expected_dollars != rendered:
+            errors.append(
+                f'cost figure mismatch: data-cost-key="{key}" renders "${rendered}" '
+                f'but estimation-infra.json {".".join(path)} = ${expected_dollars}'
+            )
+
+    # Required figures must be anchored INSIDE <section id="exec-costs"> when their
+    # JSON value exists and that section is rendered. A redundant anchor elsewhere
+    # (e.g. a decision-summary hero metric) is still cross-checked by the mismatch
+    # loop above, but does not satisfy this requirement: exec-costs is the section
+    # customers read as the authoritative cost comparison.
+    exec_costs_html = _section_html(html, "exec-costs")
+    if exec_costs_html is not None:
+        exec_costs_keys = {k.lower() for k, _ in _cost_anchor_matches(exec_costs_html)}
+        for key in _REQUIRED_COST_KEYS:
+            path = _COST_ANCHORS[key]
+            if _dig(est, path) is None:
+                continue
+            if key not in exec_costs_keys:
+                errors.append(
+                    f'missing data-cost-key="{key}" anchor inside '
+                    f'<section id="exec-costs">; cannot confirm the rendered figure '
+                    f"matches estimation-infra.json {'.'.join(path)} (wrap that "
+                    f'figure in <span data-cost-key="{key}">...</span> inside '
+                    f"exec-costs)"
+                )
+
+    return errors
 
 
 def _body_scope(html: str) -> str:
@@ -713,6 +983,7 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
         errors.append('footer must contain "draft for review" disclaimer')
 
     errors.extend(_validate_currency_formatting(html))
+    errors.extend(_validate_cost_figures(html, migration_dir))
 
     # cost-optimization must carry substantive content (generate-report.md Step 3
     # item 6: a table of real opportunity rows, or the explicit no-eligible-commitment

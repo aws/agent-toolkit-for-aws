@@ -61,7 +61,7 @@ fresh decision without being touched or archived.
   Markdown (Slack/GitHub-friendly): verdict headline, cost line/table,
   timeline band, `would_flip_if[]` when present, the CTA line. No HTML tags.
 - **Validation:** run
-  `python3 "$PLUGIN_ROOT/scripts/validate-heroku-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
+  `python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
   (absolute paths — cwd must not be load-bearing; `--migration-dir` is required so the
   decision-mode pre-execution checks run) and fix failures before presenting.
 - **Cost labeling, reader vocabulary:** unchanged from `generate-report.md` —

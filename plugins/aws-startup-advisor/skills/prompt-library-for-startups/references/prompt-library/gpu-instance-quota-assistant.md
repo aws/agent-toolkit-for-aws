@@ -249,11 +249,18 @@ Share this policy with the customer:
       "Effect": "Allow",
       "Action": [
         "servicequotas:GetServiceQuota",
-        "servicequotas:RequestServiceQuotaIncrease",
         "servicequotas:GetRequestedServiceQuotaChange",
         "servicequotas:ListServiceQuotas"
       ],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "servicequotas:RequestServiceQuotaIncrease",
+      "Resource": [
+        "arn:aws:servicequotas:*:*:ec2/*",
+        "arn:aws:servicequotas:*:*:sagemaker/*"
+      ]
     },
     {
       "Effect": "Allow",
@@ -392,13 +399,20 @@ Share this policy with the customer:
          "Effect": "Allow",
          "Action": [
            "servicequotas:GetServiceQuota",
-           "servicequotas:RequestServiceQuotaIncrease",
            "servicequotas:GetRequestedServiceQuotaChange",
            "servicequotas:ListServiceQuotas",
            "ec2:DescribeInstanceTypes",
            "ec2:DescribeInstanceTypeOfferings"
          ],
          "Resource": "*"
+       },
+       {
+         "Effect": "Allow",
+         "Action": "servicequotas:RequestServiceQuotaIncrease",
+         "Resource": [
+           "arn:aws:servicequotas:*:*:ec2/*",
+           "arn:aws:servicequotas:*:*:sagemaker/*"
+         ]
        }
      ]
    }

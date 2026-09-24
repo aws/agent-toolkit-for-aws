@@ -201,7 +201,7 @@ that case.
      mode — write `$MIGRATION_DIR/decision-report.html` and
      `$MIGRATION_DIR/DECISION.md` per that file's decision-mode rules (no
      appendices, no Terraform, CTA footer). Validate with
-     `python3 "$PLUGIN_ROOT/scripts/validate-heroku-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
+     `python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
      (absolute paths — cwd must not be load-bearing; `--migration-dir` is required
      so the decision-mode pre-execution check — `.phase-status.json`'s
      `phases.generate` must be `"pending"` or absent for THIS cycle, not raw

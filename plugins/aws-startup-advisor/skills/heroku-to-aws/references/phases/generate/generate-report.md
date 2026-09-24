@@ -65,6 +65,15 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
 
+**Cost-figure anchor (machine-checkable).** In `exec-costs`, wrap the recommended AWS
+monthly (Balanced) dollar figure in a `data-cost-key="aws_monthly_balanced"` attribute so
+the validator can confirm it matches `estimation-infra.json` `projected_costs.aws_monthly_balanced`
+— e.g. `<span data-cost-key="aws_monthly_balanced">$112/mo</span>`. The attribute is not
+reader-visible text. The validator asserts the rendered dollars equal the JSON for every
+anchor present. **The `aws_monthly_balanced` anchor is mandatory whenever that JSON value
+exists and `exec-costs` is rendered — a missing anchor is a validator FAIL, not a skip.**
+Only untagged _illustrative_ numbers are skipped.
+
 ### `decision-summary` content (REQUIRED)
 
 1. **Verdict (typography-first — the thesis of this section):** When
@@ -204,7 +213,9 @@ stakeholders, not a design system.
       <!-- every <th> declares scope; copy this header pattern for cost-optimization + what-if too -->
       <table>
         <thead><tr><th scope="col">Service</th><th scope="col">Heroku</th><th scope="col">AWS (Balanced)</th></tr></thead>
-        <tbody>…</tbody>
+        <tbody>…
+          <tr><td>Total</td><td>…</td><td><span data-cost-key="aws_monthly_balanced">$NNN/mo</span></td></tr>
+        </tbody>
       </table>
     </section>
     <section id="cost-optimization">…</section>
@@ -238,6 +249,10 @@ the report is edited — a stub is never acceptable):
    monthly total $2 or more must be whole-dollar (`$112/mo`, not` $112.34/mo`) — the
    validator's currency gate is blocking. Round any cents you find on a monthly figure
    before returning. (Cents are fine only on sub-$2 amounts or explicit per-unit rates.)
+9. When `projected_costs.aws_monthly_balanced` is present, `exec-costs` wraps that
+   figure in `<span data-cost-key="aws_monthly_balanced">$NNN/mo</span>` (the
+   validator FAILs on a missing anchor — it is how the rendered figure is confirmed
+   against the estimate). The attribute is not reader-visible text.
 
 A report failure must not delete the Terraform/docs — repair the HTML in this fragment. Fixing
 the report is **only** done here, before control returns; the completion gate never edits it.

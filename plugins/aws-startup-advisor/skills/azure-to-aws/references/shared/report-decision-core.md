@@ -21,6 +21,12 @@ output lives in the JSON artifacts.
 - **CTA footer (required, after the last section):** `<section id="decision-cta">` — "**Ready to execute?** Say \"generate the Terraform and migration scripts\" and I'll produce the full execution pack (Terraform, migration scripts, rollback runbook, fill-in checklist) from this same analysis." Plus one line: "This decision report was generated without execution artifacts; the full migration report replaces it if you proceed."
 - **`DECISION.md` (required twin):** same content as the HTML, as plain Markdown (Slack/GitHub-friendly): verdict headline, cost table, migrate-if/stay-if lists, timeline band, top risks, assumptions, CTA line. No HTML tags.
 - **Validation:** run `scripts/validate-migration-report.py $MIGRATION_DIR/decision-report.html --mode decision [--estimation-infra ...] [--estimation-ai ...] [--aws-design ...]` and fix failures before presenting. Pass the estimation (and design) files when they exist so the Cost Optimization gate can fire.
+- **Cost-figure anchor (machine-checkable, decision mode too):** the
+  `data-cost-key="aws_monthly_balanced"` anchor required by
+  `generate-artifacts-report.md` Step 2 applies here unchanged — wrap the Balanced dollar
+  figure inside `exec-costs` in it whenever `projected_costs.aws_monthly_balanced` exists.
+  A missing anchor is a validator FAIL, not a skip, and passing `--estimation-infra` is
+  what makes the gate fire.
 - All content rules below apply unchanged: baseline-quality badge + not-comparable rule, cost labeling ("Est."), readability (no artifact filenames in exec sections, no "Section N" headings, ordered action lists), Activate wording rules.
 
 ---

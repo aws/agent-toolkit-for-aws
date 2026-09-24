@@ -1,0 +1,14 @@
+{
+  "projected_costs": {
+    "aws_monthly_balanced": 155,
+    "aws_monthly_premium": 212,
+    "aws_monthly_optimized": 118
+  },
+  "current_costs": {
+    "source": "inventory_estimate"
+  },
+  "recommendation": {
+    "outcome": "conditional_go",
+    "outcome_label": "Go, with conditions"
+  }
+}

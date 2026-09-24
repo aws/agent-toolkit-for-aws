@@ -286,7 +286,7 @@ spec:
 
 - Verify the ALB is HTTPS-only: `kubectl get ingress vllm-ingress -o yaml`
 - Confirm no plaintext secrets in pod spec: `kubectl get deployment vllm -o yaml | grep -i "hf_token"` (should only show secretKeyRef)
-- Test the endpoint from an allowed IP: `curl -k https://<alb-dns>/v1/models`
+- Test the endpoint from an allowed IP: `curl https://<your-domain>/v1/models` — use the domain name on the ACM certificate, not the raw ALB DNS name, so TLS certificate validation succeeds. Do not pass `curl -k`: it disables certificate verification and leaves the connection open to interception.
 - Confirm network policy is active: `kubectl get networkpolicy`
 - Verify GPU node is running: `kubectl get nodes -l node-type=gpu`
   `</instructions>`

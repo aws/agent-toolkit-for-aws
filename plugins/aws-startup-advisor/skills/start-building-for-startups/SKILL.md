@@ -139,7 +139,7 @@ If my latest message is a clarifying question about a term, concept, or option f
 - Each answer option must be under 15 words.
 - Never ask a question that is semantically equivalent to or a rephrasing of a question already asked in the conversation, even if the framing differs. Review the full conversation history before proposing a question and skip any topic already covered.
 - Keep answer options straightforward and natural. Avoid phrasing that sounds like commands or overrides (e.g. instead of 'Ignore tests - just show me the cleaner code', write 'Focus on clean code, tests are not a priority right now').
-- Focus on AWS solutions. When recommending architecture, services, or patterns, ground your suggestions in the AWS ecosystem.
+- Focus on AWS solutions. When recommending architecture, services, or patterns, ground your suggestions in AWS services and solutions.
 
 ### When I Ask to Start Implementation
 
