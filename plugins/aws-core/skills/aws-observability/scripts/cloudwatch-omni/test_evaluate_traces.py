@@ -118,7 +118,7 @@ def _make_session(counters, *, tool_spans=1, session_id=None, eval_mode="ok", ra
     docs = [_span("0" * 16, False)] + [_span("%016x" % (i + 1), True) for i in range(tool_spans)]
 
     class FakeOmni:
-        """Fake cloudwatch-omni client for Omni SQL span queries."""
+        """Fake cloudwatchomni client for Omni SQL span queries."""
         _phase = {}  # queryId -> "polled"
 
         def start_telemetry_query_session(self, **k):
@@ -132,7 +132,7 @@ def _make_session(counters, *, tool_spans=1, session_id=None, eval_mode="ok", ra
         def get_telemetry_query_results(self, queryId, maxResults=1, nextToken=None):
             if raise_cls is not None:
                 raise raise_cls(
-                    {"Error": {"Code": "AccessDeniedException", "Message": "no cloudwatch-omni access"}},
+                    {"Error": {"Code": "AccessDeniedException", "Message": "no cloudwatchomni access"}},
                     "StartTelemetryQuery",
                 )
             state = FakeOmni._phase.get(queryId, {})
@@ -179,7 +179,7 @@ def _make_session(counters, *, tool_spans=1, session_id=None, eval_mode="ok", ra
 
     class FakeSession:
         def client(self, name):
-            if name == "cloudwatch-omni":
+            if name == "cloudwatchomni":
                 return FakeOmni()
             if name == "logs":
                 return FakeLogs()
@@ -298,7 +298,7 @@ def test_real_error_propagated():
     r = _run(mod, trace_id="aa")
     blob = json.dumps(r)
     check("real Omni error surfaced (not the generic window message)",
-          "AccessDenied" in blob or "cloudwatch-omni" in blob)
+          "AccessDenied" in blob or "cloudwatchomni" in blob)
 
 
 def main():

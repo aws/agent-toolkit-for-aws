@@ -783,13 +783,13 @@ def _run(args):
 
     session = boto3.Session(region_name=args.region)
     try:
-        omni = session.client("cloudwatch-omni")  # span queries via Omni SQL
+        omni = session.client("cloudwatchomni")  # span queries via Omni SQL
     except (
         Exception
     ) as e:  # noqa: BLE001 — e.g. UnknownServiceError on a boto3 too old for this service
         _die(
             {
-                "error": "could not create a cloudwatch-omni client (is boto3 recent enough?): %s"
+                "error": "could not create a cloudwatchomni client (is boto3 recent enough?): %s"
                 % e
             }
         )
