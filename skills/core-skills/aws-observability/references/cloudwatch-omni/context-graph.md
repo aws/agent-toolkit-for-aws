@@ -15,6 +15,7 @@ SDK access, and what to do when the CLI reports the service as unsupported.
 ---
 
 ## Contents
+
 - [Dependency / blast-radius question — facts you MUST surface](#dependency--blast-radius-question--facts-you-must-surface)
 - [What the context graph is](#what-the-context-graph-is)
 - [GetContextGraph API](#getcontextgraph-api)

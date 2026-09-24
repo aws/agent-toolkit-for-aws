@@ -110,10 +110,12 @@ Decide this before routing. The natural wording ("set up an alert for high laten
    alongside the query, never as the whole answer.
 3. **Request that must act on live data, and the wording is ambiguous** (not a Step 0.5
    content question, which is answered from the catalog) → probe the target Region first:
+
    ```
    aws___call_aws → aws cloudwatchomni list-domains
    aws___call_aws → aws cloudwatchomni list-spaces        # scope to the target Region
    ```
+
    - You MUST state, when resolving the ambiguity or asking the user, that a Space is
      **one per account per Region**, so the probe (and any Omni query) targets the Region
      the request concerns — not just the default Region — because an Omni query against the

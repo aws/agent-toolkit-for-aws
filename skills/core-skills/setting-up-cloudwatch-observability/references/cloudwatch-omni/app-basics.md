@@ -23,6 +23,7 @@ CloudWatch one. Every procedure lives in a sibling reference, linked below.
 >   **stop**. Do not assume Omni, and do not assume CloudWatch.
 
 ## Contents
+
 - [The concepts](#the-concepts)
 - [How the pieces connect](#how-the-pieces-connect)
 - [Setup order](#setup-order)
@@ -124,6 +125,7 @@ Two things are conditional rather than sequential:
   `references/cloudwatch-omni/access-profiles.md`.
 
 **Constraints:**
+
 - You MUST establish where in this sequence the customer already is before starting
   anything. Most requests join partway through, and re-running an earlier step
   conflicts rather than being idempotent.
@@ -162,6 +164,7 @@ in `aws-observability`:
 | To investigate a live problem | `aws-observability` |
 
 **Constraints:**
+
 - You MUST decide which skill applies before doing anything else. A request that
   names neither product — "add observability to my API", "how should I begin monitoring my workload" —
   is ambiguous, and you MUST NOT resolve it by assumption in either direction: not

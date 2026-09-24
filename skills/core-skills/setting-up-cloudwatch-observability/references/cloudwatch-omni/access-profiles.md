@@ -26,6 +26,7 @@ optional.
 > unique within a Space.
 
 ## Contents
+
 - [Which path](#which-path)
 - [How a profile actually works](#how-a-profile-actually-works)
 - [Prerequisites](#prerequisites)
@@ -51,6 +52,7 @@ optional.
 A profile is not a way to give people access. Its principals are workloads.
 
 **Constraints:**
+
 - You MUST NOT create an Access Profile to grant a person or a team access. Grant
   them directly — see `references/cloudwatch-omni/access-grants.md`.
 - You MUST NOT treat a profile as an administrative role. The service refuses to
@@ -84,6 +86,7 @@ workload implicitly, and there is no separate bind operation — the profile's I
 field on the workload's own configuration.
 
 **Constraints:**
+
 - You MUST complete all of Steps 2 through 5. Stopping after creating the profile
   produces something that looks configured and does nothing.
 - You MUST explain the two grant kinds to the customer as separate things. A
@@ -101,6 +104,7 @@ field on the workload's own configuration.
   are keyed on it, and never on the alert's name.
 
 **Constraints:**
+
 - You MUST have the workload's identifier before Step 4. A trust grant cannot be
   written against a workload that has not been named, and creating the workload
   first will fail if its profile has no trust grant yet.
@@ -146,6 +150,7 @@ default silently.
 Confirm the choices back in one line, then execute.
 
 **Constraints:**
+
 - You MUST ask question 3 in terms of the task the workload performs. A customer
   asked which actions to grant will over-grant, and the whole point of a profile is
   the boundary.
@@ -179,6 +184,7 @@ the response (the same object `get-access-profile` and `update-access-profile` r
 from the response rather than assembling it.
 
 **Constraints:**
+
 - You MUST run the existence check first. A name collision is rejected, and the
   message names the profile that already holds it.
 - `create-access-profile` accepts no permissions, no actions, and no resource
@@ -221,6 +227,7 @@ together, so give `rowScopeGroups` a condition that matches every record you wan
 to see.
 
 **Constraints:**
+
 - You SHOULD grant the profile the narrowest permission that lets the workload do
   its job. This grant is the entire boundary **of the profile** — anything it permits, the workload
   can do unattended. It is not the whole of what the principal can reach: the same principal may
@@ -284,6 +291,7 @@ alert needs to be created under this profile — creating the next one requires 
 again.
 
 **Constraints:**
+
 - The trust grant MUST be `CUSTOM`, MUST carry only the assume action, and MUST be
   scoped to the profile's ARN with `resourceType` `AccessProfile`. An unscoped trust
   grant lets the workload assume any profile in the Space, which defeats the point of
@@ -311,6 +319,7 @@ Because the binding lives on the workload, this step happens in whichever setup 
 creates that workload rather than here.
 
 **Constraints:**
+
 - You MUST complete Steps 3 and 4 before the workload is created. Some workloads
   validate the trust grant at creation time and refuse to be created without it.
 - You MUST NOT report the profile as in effect until a workload names it. An
@@ -335,6 +344,7 @@ least one grant in each set. Then report to the customer, in one
 line: which workload is bounded, what the profile permits, and which Space it is in.
 
 **Constraints:**
+
 - You MUST confirm both sets are non-empty before declaring the setup complete. One
   empty set is the single most common way this configuration fails, and it fails
   silently until the workload runs.
@@ -383,6 +393,7 @@ Two things follow from how the delete behaves, and both belong in any answer abo
    ```
 
 **Constraints:**
+
 - You MUST tell the customer the delete is immediate and takes the profile's own
   permission grants with it. You MUST NOT present revoking them as a precondition, and
   MUST NOT say the delete is rejected while grants exist — it is not.

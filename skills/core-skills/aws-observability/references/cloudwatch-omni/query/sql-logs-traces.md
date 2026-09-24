@@ -129,6 +129,7 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ```
 
 **Key rules:**
+
 - The root-level field is referenced as-is (or backtick-quoted if it has special characters)
 - Nested keys use `['key']` with single-quoted string literals
 - Special characters inside the bracket string are fine — no backticks needed there:
@@ -150,6 +151,7 @@ The field names shown here are **examples of the syntax**. The actual fields pre
 concluding the data is absent — not proof the name is wrong.** A correctly-named field can
 legitimately be NULL across every matching record, so rule out the three ways a field name
 can be wrong first:
+
 - **Misspelled or non-existent field** — permissive schema returns NULL, not an error.
   Re-discover the real names with [Schema Discovery](#5-schema-discovery).
 - **A root-level field quoted wrong** — a field starting with `@` or containing a `.`/`-` MUST
@@ -417,6 +419,7 @@ WHERE a.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 - `pattern(string)` — log clustering (groups similar text into patterns)
 
 All aggregate functions support the `FILTER (WHERE condition)` clause:
+
 ```sql
 SUM(tokens) FILTER (WHERE kind = 'CLIENT') as client_tokens
 ```
@@ -424,6 +427,7 @@ SUM(tokens) FILTER (WHERE kind = 'CLIENT') as client_tokens
 ### Window
 
 All aggregate functions can be used as window functions with `OVER (...)`:
+
 - `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)`
 - `RANK()` / `DENSE_RANK()` — ranking with/without gaps
 - `LAG(expr, offset)` / `LEAD(expr, offset)` — access previous/next rows
@@ -436,7 +440,6 @@ All aggregate functions can be used as window functions with `OVER (...)`:
 - `md5(s)` — MD5 hash
 - `sha256(s)` / `sha512(s)` — SHA hashes
 - `digest(s, algorithm)` — generic hash
-
 
 ---
 

@@ -122,7 +122,7 @@ under their own IAM (see [Security considerations](#security-considerations)).
 >   identity or IAM policy APIs (not even `sts get-caller-identity`), and never by
 >   sending the customer to the console when the CLI answers directly.
 
-### Where to look, by kind of question
+## Where to look, by kind of question
 
 Every access question is one of five kinds. Find the kind, read that section, and apply
 the rules in the block above — they hold for all five.
@@ -136,6 +136,7 @@ the rules in the block above — they hold for all five.
 | **Interpret an error or a surprise** | `AccessDeniedException`, `ResourceNotFoundException`, `ConflictException`, `ValidationException` on `scopedActions`; a grant that "does not work" in another Region; cross-account requests | [Troubleshooting](#troubleshooting), [Gotchas](#gotchas--expectations-that-look-like-faults) |
 
 ## Contents
+
 - [Where to look, by kind of question](#where-to-look-by-kind-of-question)
 - [What an access grant is](#what-an-access-grant-is)
   - [Grants, IAM, and Access Profiles](#grants-iam-and-access-profiles)
@@ -246,6 +247,7 @@ surface as conflicts rather than as advice:
   limits, so only the effective limits are worth telling a customer.)
 
 **Constraints:**
+
 - You MUST tell the customer that a grant covers one Space only. A customer with
   Spaces in several Regions needs a grant per Space, and will otherwise read the
   missing access as a bug.
@@ -298,6 +300,7 @@ write, and delete in the Space — which is what admin usually means — grant
 access."*
 
 **Constraints:**
+
 - You MUST put the question — what does the person need to *do*? — before any
   permission name, even when the customer asked you not to pause. Asking it and then
   answering both branches in the same message satisfies both. An answer that opens with
@@ -328,6 +331,7 @@ a separate decision from the permission itself.
 one, and the narrowest named level over `CUSTOM`.
 
 **Constraints:**
+
 - You MUST NOT offer a write-only or delete-only grant. There is no caller-usable
   `WRITE` or `DELETE` permission — `READ_WRITE_DELETE` is the only value that conveys
   mutation.
@@ -394,6 +398,7 @@ lookup is answered by the caller's own grant, not by their IAM identity.
   them it is impossible — and lead with it, rather than mentioning it as a footnote.
 
 **Constraints:**
+
 - You MUST NOT create grants for principals in another account. Cross-account IAM
   grants are not supported, and the rejection says so explicitly.
 - You MUST NOT present a workaround as the answer to a cross-account ask — neither
@@ -454,6 +459,7 @@ default silently.
 Confirm the choices back in one line, then execute.
 
 **Constraints:**
+
 - You MUST ask what the principal needs to do before proposing a permission. A
   customer asking for "admin" usually needs `READ_WRITE_DELETE`, and `SPACE_ADMIN`
   lets them re-grant access to others.
@@ -522,6 +528,7 @@ already exists, report it and stop — a duplicate conflicts rather than replaci
 the customer wants a *different* level, see [Changing a grant](#changing-a-grant).
 
 **Constraints:**
+
 - You MUST run this check before `create-access-grant`. A conflict after the fact is
   avoidable and confusing.
 - You MUST prefer `IDC_GROUP` over `IDC_USER` when the customer is describing a team
@@ -563,6 +570,7 @@ Capture the grant ID from the response. It is what `get-access-grant` and
 `delete-access-grant` take.
 
 **Constraints:**
+
 - `permission` is always required. There is no default, and `CUSTOM` is never inferred
   from the presence of `scopedActions`.
 - You MUST NOT attempt a wildcard action. Expand the customer's intent into an explicit
@@ -665,6 +673,7 @@ that a filter removed anything.
 ```
 
 **Constraints:**
+
 - `signalTypes` and `rowScopeGroups` MUST both be present or both absent, and MUST
   appear only on a `DataSet` scope. Either half alone is rejected, and so is their use
   on any other resource type.
@@ -711,9 +720,9 @@ There is no update operation. Changing a grant's permission level, its scope, or
 name is a revoke plus a create — but **the order depends on whether the new grant is at
 the same named level as the old one**, and getting it wrong either fails or opens a gap:
 
-**Changing to a _different_ level (an up- or downgrade, e.g. `READ` → `READ_WRITE_DELETE`,
+**Changing to a *different* level (an up- or downgrade, e.g. `READ` → `READ_WRITE_DELETE`,
 or `SPACE_ADMIN` → `READ`) — create first, then delete.** Named-permission grants are
-one per principal per Space _per level_, so a grant at a different level coexists with
+one per principal per Space *per level*, so a grant at a different level coexists with
 the old one. Create the new grant first, verify it, then revoke the old one. The
 principal is never without access. Two separate protections matter when the grant being
 removed is an administrative one:
@@ -732,7 +741,7 @@ removed is an administrative one:
    `get-access-grant`.
 3. Revoke the old grant with `delete-access-grant`.
 
-**Changing the scope or name at the _same_ level — revoke first, then create.** A second
+**Changing the scope or name at the *same* level — revoke first, then create.** A second
 grant at the same named level conflicts, so the old one has to go before the replacement
 can be made. This is the only case with an unavoidable brief gap; do it when the gap is
 acceptable.
@@ -771,6 +780,7 @@ Procedure for a self-downgrade (for example `SPACE_ADMIN` → `READ`, a differen
    console to show `READ` only.
 
 **Constraints:**
+
 - For a **same-level** change you MUST NOT create the second grant first — it conflicts;
   revoke first. For a **level change** you SHOULD create the new-level grant first and
   delete the old one after, so the principal is never without access and an admin
@@ -846,6 +856,7 @@ the answer names both:
    with no direct grant can still reach the Space through a group.
 
 **Constraints:**
+
 - You MUST confirm which grant is being revoked before revoking it, by grant ID and by
   what it conveys. A principal often holds several, and "remove their access" rarely
   means all of them — list them first ([What a given principal holds](#what-a-given-principal-holds)).
@@ -915,16 +926,20 @@ pull the Domain's whole roster once and join it to the grants yourself.
 
 1. List the grants (following `nextToken`). Each summary carries `principal.principalId`
    and the Space's `domainId`:
+
    ```
    aws cloudwatchomni list-access-grants --space-id <space-id> --principal-type IDC_USER
    aws cloudwatchomni list-access-grants --space-id <space-id> --principal-type IDC_GROUP
    ```
+
 2. Pull the roster with the match-all query `*`, paging until `nextToken` is absent
    (the console caps this at 20 pages of 50 — 1,000 principals):
+
    ```
    aws cloudwatchomni search-principals --domain-id <domain-id> --search-query '*' --max-results 50
    aws cloudwatchomni search-principals --domain-id <domain-id> --search-query '*' --max-results 50 --next-token <token>
    ```
+
    Each result carries `principalId` (the UUID), `principalType` (`USER` or `GROUP`),
    `displayName`, and — for users — `userName`. `--max-results` and `--next-token` are
    accepted **only** with `*`; a name search returns at most 10 results and does not
@@ -1056,6 +1071,7 @@ summary. Read the detail and report from it:
   | `READ_WRITE_DELETE` | can read, write, and delete within the Space |
   | `SPACE_ADMIN` | can manage grants — give or revoke others' access — and also read, write, and delete |
   | `CUSTOM` | can perform exactly the listed actions and nothing else (read the detail for the list) |
+
 - **Only report what you read.** A summary gives you the principal and permission; you
   do not know a grant's scope until `get-access-grant` has returned it. Do not describe
   a scope you have not fetched, and do not describe an expiry that does not exist.
@@ -1150,6 +1166,7 @@ Two error classes have more to them than one row can hold. When one of them is t
 question, the complete answer covers every point below:
 
 **A rejected `scopedActions` scope** (`ValidationException` on `resourceType`):
+
 - `Space` and `Domain` are both invalid as a scope's `resourceType` — name both. The
   grant is already bound to one Space or Domain; to cover the whole Space, omit
   `resources`.
@@ -1164,6 +1181,7 @@ question, the complete answer covers every point below:
 - Every action in an entry must be within the named permission's tier.
 
 **`ResourceNotFoundException` from `get-access-grant`:**
+
 - It is a successful lookup whose finding is "no such grant": the ID is wrong or the
   grant was already revoked. It is not an authorization problem and not a failed call.
 - Find the right ID with `list-access-grants`, optionally filtered by principal; never

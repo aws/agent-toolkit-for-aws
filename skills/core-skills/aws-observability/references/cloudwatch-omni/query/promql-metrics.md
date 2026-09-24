@@ -17,7 +17,7 @@ before putting it in a query, a dashboard panel, or an alert rule.
 
 1. [Metrics are PromQL, not SQL](#1-metrics-are-promql-not-sql)
 2. [What is queryable — and what is not](#2-what-is-queryable--and-what-is-not)
-- [Service-health question — facts you MUST surface](#service-health-question--facts-you-must-surface)
+   - [Service-health question — facts you MUST surface](#service-health-question--facts-you-must-surface)
 3. [Discovering metric names and labels](#3-discovering-metric-names-and-labels)
 4. [Query mechanics](#4-query-mechanics)
 5. [Per-service metric catalog](#5-per-service-metric-catalog)
@@ -401,7 +401,7 @@ Where the query runs decides how time is expressed:
 
 | Context | Time handling |
 |---|---|
-| **Interactive / ad hoc query** | `StartTelemetryQuery` takes only `queryString` and a `sessionId` (from `StartTelemetryQuerySession`); results come back through `GetTelemetryQueryResults`. There is no language or time-range parameter because the query string is always parsed as SQL — a bare PromQL expression fails with `ValidationException`. PromQL reaches this path only embedded as the table function `promql('<data set>', '<expression>', <step-seconds>)` inside a SQL statement, and the evaluation window is that relation's mandatory `WHERE \`@timestamp\` BETWEEN ... AND ...` predicate. Metrics through `StartTelemetryQuery` are disabled per account at GA (`ValidationException: Metrics queries are not supported.`, section 1), so for an ad hoc metric read use a dashboard panel or an alert rule, where the language is explicit and the service does the wrapping. |
+| **Interactive / ad hoc query** | `StartTelemetryQuery` takes only `queryString` and a `sessionId` (from `StartTelemetryQuerySession`); results come back through `GetTelemetryQueryResults`. There is no language or time-range parameter because the query string is always parsed as SQL — a bare PromQL expression fails with `ValidationException`. PromQL reaches this path only embedded as the table function `promql('<data set>', '<expression>', <step-seconds>)` inside a SQL statement, and the evaluation window is that relation's mandatory `WHERE \`@timestamp\` BETWEEN ... AND ...` predicate. Metrics through `StartTelemetryQuery`are disabled per account at GA (`ValidationException: Metrics queries are not supported.`, section 1), so for an ad hoc metric read use a dashboard panel or an alert rule, where the language is explicit and the service does the wrapping. |
 | **Dashboard panel** ([../dashboards.md](../dashboards.md)) | Keep the expression **windowless** — the panel/dashboard `scope` drives the range. Set `queryLanguage: "promql"` explicitly and match `promqlQueryOptions.step` (seconds) to the range vector — a `[5m]` window at the default 60 s step over-samples 5x; set `step: 300`. |
 | **Alert rule** ([../alerts.md](../alerts.md)) | The alert has no window of its own — the expression **must** carry its own range selector (`[5m]`). Do **not** bake the threshold comparison into the expression; the threshold is a separate field on the condition. Set `language: PROMQL`. |
 

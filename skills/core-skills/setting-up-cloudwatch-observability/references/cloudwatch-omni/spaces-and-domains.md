@@ -31,6 +31,7 @@ Domain first, then Space, because the Space is created against a domain ID.
 >   a new Space with the same role fails the same way.
 
 ## Contents
+
 - [Which path](#which-path)
 - [What you get when setup completes](#what-you-get-when-setup-completes)
 - [Prerequisites](#prerequisites)
@@ -64,6 +65,7 @@ anything.
 | IAM Identity Center | `["IAM", "IDC"]` | An Identity Center instance ARN, and the Domain MUST be created in that instance's primary Region |
 
 **Constraints:**
+
 - You MUST establish account-scoped versus org-scoped before calling anything. An
   org customer who gets an account-scoped Domain has to delete it and start over,
   and an account Domain blocks the org Domain from being created.
@@ -85,6 +87,7 @@ Quotas to state up front:
   conflicts; a Space in a different Region is a different Space.
 
 **Constraints:**
+
 - You MUST tell the customer the domain name becomes part of the endpoint URL
   before they choose it.
 - You MUST state both quotas explicitly in any setup plan or answer you give —
@@ -113,6 +116,7 @@ that holds for. It is true for IAM-only and false for account-scoped Identity
 Center.
 
 **Constraints:**
+
 - You MUST NOT promise a cross-Region Space under an account-scoped Identity
   Center Domain. If the customer needs Identity Center together with Spaces in
   more than one Region, the org-scoped Domain path supports that — see
@@ -203,6 +207,7 @@ reference for this operation is
 [sso-admin list-instances](https://docs.aws.amazon.com/cli/latest/reference/sso-admin/list-instances.html).
 
 **Constraints:**
+
 - You SHOULD recommend creating the role rather than reusing one. The Space cannot
   function correctly unless the role's trust policy and permissions are right, and
   a purpose-built role is easier to verify and to clean up.
@@ -227,6 +232,7 @@ customer — its name and ID from the summary, and its endpoint URL from
 confirmation, take its `domainId` and continue from Step 3.
 
 **Constraints:**
+
 - You MUST run this check before `create-domain`.
 - You MUST state the one-Domain-per-account limit to the customer as part of this
   step, not only when the check finds one. A customer who does not know the limit
@@ -263,6 +269,7 @@ Capture `domainId`, `domainArn`, and `domainEndpointUrl` from the `domain` objec
 in the response. `domainId` is the input to `create-space` in Step 4.
 
 **Constraints:**
+
 - You MUST create an Identity Center Domain in the instance's **primary** Region.
   Creating it elsewhere is rejected, and the rejection describes the Region rather
   than the mistake.
@@ -284,6 +291,7 @@ editing their role.
 This is the role the service assumes to operate on the Space.
 
 **Constraints:**
+
 - You SHOULD run the `list-spaces` check from [Step 4](#step-4--create-the-space)
   before creating a role. If a Space already exists in the target Region, no role
   is needed, and creating one leaves an unused IAM role behind.
@@ -322,6 +330,7 @@ aws___call_aws → aws iam create-role --role-name <role-name> --assume-role-pol
 ```
 
 **Constraints:**
+
 - All three `sts` actions are required. `sts:TagSession` and `sts:SetContext` carry
   the session context the Space needs; a role trusted for `sts:AssumeRole` alone
   is accepted at create time and fails later when the Space is used.
@@ -346,6 +355,7 @@ aws___call_aws → aws iam attach-role-policy --role-name <role-name> --policy-a
 ```
 
 **Constraints:**
+
 - You MUST NOT substitute a `*FullAccess` policy or hand-write a broad inline
   policy. The Space's permissions are defined by these managed policies.
 - You MUST NOT attach these policies to a role the customer supplied without
@@ -367,11 +377,12 @@ call:
 aws___call_aws → aws iam list-roles
 ```
 
-2. **Otherwise have the customer create one** — the AgentCore Evaluations console
+1. **Otherwise have the customer create one** — the AgentCore Evaluations console
    ("Create and use a new service role") or the AgentCore CLI/SDK
    (`auto_create_execution_role=True`) — then use the ARN it returns.
 
 **Constraints:**
+
 - You MUST have both role ARNs before calling `create-space`. Omitting either is
   rejected by the client before the request is sent.
 - You MUST NOT hardcode this role's IAM policy. The console and CLI build the
@@ -408,6 +419,7 @@ If a Space already exists in the target Region, do NOT create another. Report it
 to the customer — its name, ID, and Region — and confirm they want to use it.
 
 **Constraints:**
+
 - You MUST run this check before `create-space`.
 - You MUST state the one-Space-per-account-per-Region limit to the customer as
   part of this step. It is what determines whether they need a Space in more than
@@ -465,6 +477,7 @@ the response.
 > successfully and fails the moment anything uses it.
 
 **Constraints:**
+
 - You MUST use `encryptionConfiguration`; it is the only create-time encryption
   input. `create-space` has no top-level `kmsKeyArn` member (the CLI has no
   `--kms-key-arn` flag). There is no top-level `kmsKeyArn` on read either:
@@ -496,6 +509,7 @@ Then report to the customer, in one line: the domain endpoint URL, the space ID,
 and the Region.
 
 **Constraints:**
+
 - You MUST NOT begin dependent setup — such as telemetry forwarding — until the
   Space reports `ACTIVE`.
 
@@ -534,6 +548,7 @@ Order matters. Delete the Space first.
      is gone and the role is untouched.
 
 **Constraints:**
+
 - You MUST delete Spaces before the Domain. `delete-domain` returns a conflict
   naming the number of remaining Spaces, and the fix is always to delete those
   first — never to retry the Domain delete.

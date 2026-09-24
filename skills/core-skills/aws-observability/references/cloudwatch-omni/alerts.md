@@ -744,7 +744,7 @@ An alert with no notification is valid and common — it shows state in the cons
 fires.** If they did not, skip it and send no `notificationRules`.
 
 Infer intent; the word "notification" is often absent. "Send a slack message to
-#oncall when this fires", "ping the team on Slack", and "publish to my SNS topic"
+`#oncall when this fires`", "ping the team on Slack", and "publish to my SNS topic"
 are all notification requests.
 
 Two target types are supported for GA — `sns` and `slack` — and they can be

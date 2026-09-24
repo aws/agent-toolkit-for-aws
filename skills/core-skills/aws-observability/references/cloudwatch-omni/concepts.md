@@ -28,6 +28,7 @@ reference, linked from each section and indexed at the end.
 >   [How to tell which one the customer means](#how-to-tell-which-one-the-customer-means).
 
 ## Contents
+
 - [What CloudWatch Omni is](#what-cloudwatch-omni-is)
 - [Glossary](#glossary)
 - [Omni vs. CloudWatch: feature equivalence](#omni-vs-cloudwatch-feature-equivalence)
@@ -190,6 +191,7 @@ logs" — does not say which product the customer has in mind. Decide in this or
    is the same as assuming Omni and wastes the question.
 
 **Constraints:**
+
 - A Space is **one per account per Region**. You MUST probe the Region the request
   targets, not the default one. An Omni query against the wrong Region returns an
   empty result that is easily misread as "no data".
@@ -267,6 +269,7 @@ Two things are **conditional** rather than sequential:
   workspace. `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/slack-integration.md`.
 
 **Constraints:**
+
 - You MUST establish where in this sequence the customer already is before starting
   anything. Most requests join partway through, and re-running an earlier step
   conflicts rather than being idempotent (one Domain per account; one Space per

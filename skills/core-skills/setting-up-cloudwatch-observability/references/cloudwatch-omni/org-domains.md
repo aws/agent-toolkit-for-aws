@@ -22,6 +22,7 @@ prerequisite that lives in AWS Organizations rather than in Omni.
 >   the Domain removes its grants, so do not revoke them first.
 
 ## Contents
+
 - [Which path](#which-path)
 - [What you get when setup completes](#what-you-get-when-setup-completes)
 - [Prerequisites](#prerequisites)
@@ -58,6 +59,7 @@ account up front and match it against this table before calling anything:
 | `create-space` | The **member account** that will own the Space, or the management account using credentials vended for that account |
 
 **Constraints:**
+
 - You MUST confirm the caller is in the management account before attempting
   trusted access or `create-domain-for-organization`. A delegated administrator can
   do everything else but neither of those.
@@ -90,6 +92,7 @@ Quotas and scope rules to state up front:
   granted per Space.
 
 **Constraints:**
+
 - You MUST tell the customer the domain name becomes part of the endpoint URL
   before they choose it.
 - You MUST tell the customer that a Domain-level grant reaches every Space in the
@@ -117,6 +120,7 @@ Quotas and scope rules to state up front:
   rather than assume, and read the rejection message when one comes back.
 
 **Constraints:**
+
 - You MUST resolve trusted access before doing anything else. Every other failure
   mode in this document is easier to diagnose once it is ruled out.
 - You MUST NOT promise a Space in a given Region under an Identity Center org
@@ -214,6 +218,7 @@ reference for this operation is
 [sso-admin list-instances](https://docs.aws.amazon.com/cli/latest/reference/sso-admin/list-instances.html).
 
 **Constraints:**
+
 - You SHOULD recommend creating the role rather than reusing one. Unlike the
   account-scoped path, the service actually attempts to assume this role at create
   time, so a role with the wrong trust policy fails the create outright.
@@ -256,6 +261,7 @@ This call is **management account only** and returns no body. Re-run the check t
 confirm the principal now appears.
 
 **Constraints:**
+
 - You MUST ask before enabling, and you MUST ask even when the customer has already
   told you to proceed. It is an organization-wide change affecting every account in
   the organization, their administrator may need to authorize it, and "go ahead" on
@@ -323,6 +329,7 @@ aws___call_aws → aws iam attach-role-policy --role-name <role-name> --policy-a
 ```
 
 **Constraints:**
+
 - The role MUST be in the management account. A role in any other account is
   rejected, and the message names the management account requirement.
 - The `aws:SourceArn` pattern MUST use the `organization-domain` resource type and
@@ -365,6 +372,7 @@ Read the result before creating anything:
 - **Nothing comes back** — proceed.
 
 **Constraints:**
+
 - You MUST run this check before `create-domain-for-organization`.
 - If an account-scoped Domain occupies the management account, you MUST say plainly
   that it has to be **deleted** before an org Domain can be created, and that
@@ -401,6 +409,7 @@ Capture `domainId`, `domainArn`, `domainEndpointUrl`, `organizationId`, and
 object `get-domain-for-organization` and `update-domain-for-organization` return).
 
 **Constraints:**
+
 - You MUST create an Identity Center Domain in the instance's **primary** Region.
   The service verifies this; the rejection names the primary Region and the current
   Region, so read it rather than guessing.
@@ -451,6 +460,7 @@ aws___call_aws → aws cloudwatchomni list-spaces-for-organization
 ```
 
 **Constraints:**
+
 - You MUST NOT tell a member account to call `create-domain` first. The org Domain
   already exists and a second Domain in the member account is neither needed nor
   permitted alongside it.
@@ -494,6 +504,7 @@ aws___call_aws → aws cloudwatchomni list-domain-access-grants-for-organization
 ```
 
 **Constraints:**
+
 - `permission` is a single value and it must be `ADMIN`. The account-scoped
   permission values — `READ`, `READ_WRITE_DELETE`, `SPACE_ADMIN`, and `CUSTOM` — are
   not valid at the Domain level.
@@ -522,6 +533,7 @@ the organization ID, how many Spaces exist, and how many administrators were
 granted.
 
 **Constraints:**
+
 - You MUST confirm at least one `ADMIN` grant exists before declaring setup
   complete. A Domain nobody administers is not a working setup.
 
@@ -557,6 +569,7 @@ Order matters, and it spans accounts.
    controls rather than by disabling the Organizations integration directly.
 
 **Constraints:**
+
 - You MUST delete every Space before the Domain, and you MUST say plainly which
   accounts are involved. Spaces in member accounts need either that account's
   credentials or credentials vended for it.

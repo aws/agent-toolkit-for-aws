@@ -15,7 +15,7 @@ dashboard resource you create and update through the API (section 7). The
 deliverable is therefore two things: a valid, grounded body, and the API call that
 saves it.
 
-**Contents**
+## Contents
 
 1. [Omni dashboard vs. CloudWatch dashboard](#1-omni-dashboard-vs-cloudwatch-dashboard)
 2. [Decide what the dashboard shows](#2-decide-what-the-dashboard-shows)
@@ -253,7 +253,7 @@ body. The query languages themselves are deferred to
 
 1. **Discover what exists.** Run discovery queries against the Space — don't guess
    service names, field names, or metric names.
-   - Logs and traces: `EXPLAIN (ANALYZE_FIELDS)` or `SELECT `@record` … LIMIT 10`,
+   - Logs and traces: `EXPLAIN (ANALYZE_FIELDS)` or `SELECT`@record`… LIMIT 10`,
      narrowed to the service and telemetry type (see *Schema Discovery* in
      [sql-logs-traces.md](query/sql-logs-traces.md)). Interactive discovery queries
      **need** a `` `@timestamp` `` bound — only the final panel query is windowless

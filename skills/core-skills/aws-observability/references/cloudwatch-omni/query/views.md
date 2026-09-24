@@ -14,6 +14,7 @@ ORDER BY `@timestamp` DESC
 ```
 
 Views behave like inline subqueries:
+
 - They **inherit the outer query's `@timestamp` bounds** — no need to specify a time range inside the view definition
 - They can be used anywhere a table is used: JOINs, subqueries, UNION, etc.
 - They can reference other views (up to 32 levels of nesting)
@@ -64,6 +65,7 @@ Creates a new named view.
 | `clientToken` | No | Idempotency token, 1–64 chars |
 
 Example:
+
 ```
 CreateView
   name: "view.error_logs_last_hour"
@@ -117,11 +119,13 @@ View names must match `^view\.[a-z0-9][a-z0-9_-]{0,250}$` and be **6–256 chara
 Although a hyphen is legal in a view name, an unquoted hyphenated identifier in a `FROM` clause parses as subtraction (`view.checkout-slow` reads as `view.checkout` minus `slow`), so a hyphenated name must be quoted or escaped when referenced — which is why the examples below use underscores.
 
 Examples of valid names:
+
 - `view.my_error_logs`
 - `view.checkout_slow_requests`
 - `view.team_dashboard_metrics`
 
 Examples of invalid names:
+
 - `view.checkout.slow-requests` (a second dot is not allowed)
 - `view.Checkout` (uppercase not allowed)
 
@@ -165,6 +169,7 @@ CreateView
 ```
 
 Query the view for a running count of severe logs:
+
 ```sql
 SELECT COUNT(*) AS error_count
 FROM view.severe_logs
@@ -172,6 +177,7 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ```
 
 To group or filter those errors by a nested field — a service name or an environment — query the base table directly, because a view cannot reference a nested map field. Group severe-log counts by environment (`COALESCE` covers both attribute keys, `deployment.environment.name` and `deployment.environment`):
+
 ```sql
 SELECT COUNT(*) AS error_count,
        COALESCE(resource['attributes']['deployment.environment.name'],
@@ -187,6 +193,7 @@ ORDER BY error_count DESC
 ### Correlate errors across logs and traces
 
 A log error (`severityNumber`) and a span error (`status['code']`) live on different planes but share the unified `default` table. The span-error test reads the nested `status` field, so this cannot be a view (see [Views expose only bare top-level columns](#views-expose-only-bare-top-level-columns)) — run it as a direct query:
+
 ```sql
 SELECT COUNT(*) AS error_count
 FROM default
@@ -206,6 +213,7 @@ CreateView
 ```
 
 Then alert or dashboard on it:
+
 ```sql
 SELECT `@timestamp`, name, duration_ms
 FROM view.slow_spans
@@ -213,4 +221,3 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ORDER BY duration_ms DESC
 LIMIT 50
 ```
-

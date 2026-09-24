@@ -157,6 +157,7 @@ named `cloudwatch:PutMetricData`; that is the permission, not the API — a metr
 through the OTLP endpoint stays OTel-native.)
 
 **Constraints:**
+
 - You MUST NOT present `PutMetricData` or EMF as a way to get a custom metric into
   Omni. If the customer already publishes that way, the answer is to emit the metric
   through the OTel SDK (or a collector) as well — not to look for a setting that
