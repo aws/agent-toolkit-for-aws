@@ -11,7 +11,8 @@ description: >-
   from traces — on-demand and continuous online scoring of live agent traffic, readback, and custom trace
   evaluators. For first-time Omni setup — creating a Space, granting access, ingestion, or ADOT
   instrumentation — use setting-up-cloudwatch-observability. Not for app logging or threat detection.
-version: 6
+metadata:
+  version: "6"
 
 ---
 
