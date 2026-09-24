@@ -726,7 +726,7 @@ Limits and quotas change, so read them at the source rather than from a copy. Ea
 reference is where the required fields and value ranges live, and each service's quota page is where
 the numbers live.
 
-**Target APIs the service calls**
+### Target APIs the service calls
 
 * SQS `SendMessageBatch` — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_SendMessageBatch.html
 * SNS `PublishBatch` — https://docs.aws.amazon.com/sns/latest/api/API_PublishBatch.html
@@ -736,7 +736,7 @@ the numbers live.
 * Step Functions `StartExecution` — https://docs.aws.amazon.com/step-functions/latest/apireference/API_StartExecution.html
 * Step Functions `StartSyncExecution` — https://docs.aws.amazon.com/step-functions/latest/apireference/API_StartSyncExecution.html
 
-**Quotas and limits**
+### Quotas and limits
 
 * SQS — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-quotas.html
 * SNS — https://docs.aws.amazon.com/sns/latest/dg/sns-quotas.html
@@ -746,7 +746,7 @@ the numbers live.
 * Step Functions — https://docs.aws.amazon.com/step-functions/latest/dg/limits-overview.html
 * API Gateway — https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html
 
-**Reference material for the surrounding concepts**
+### Reference material for the surrounding concepts
 
 * FIFO queue message grouping and deduplication — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues.html
 * SNS FIFO topics — https://docs.aws.amazon.com/sns/latest/dg/fifo-topic-code-examples.html

@@ -60,12 +60,12 @@ This skill can be loaded two ways, and they resolve the skill's own bundled
 files from different places. Determine how the skill was loaded before reading
 a reference:
 
-- **Loaded through the AWS MCP `retrieve_skill` tool:** The skill is not
+* **Loaded through the AWS MCP `retrieve_skill` tool:** The skill is not
   installed on the local filesystem. You MUST fetch each reference via
   `retrieve_skill` with the `file` parameter (e.g.
   `file="references/setup-walkthroughs.md"`). Do NOT `file_read` these paths
   locally — they do not exist on disk.
-- **Installed locally** (e.g. `.kiro/skills/amazon-eventbridge-event-bus/` or
+* **Installed locally** (e.g. `.kiro/skills/amazon-eventbridge-event-bus/` or
   `~/.claude/skills/amazon-eventbridge-event-bus/`): Read files from the local
   skill directory using relative paths.
 
