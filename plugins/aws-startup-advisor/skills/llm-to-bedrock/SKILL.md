@@ -258,6 +258,38 @@ missing file(s), show the error, and stop. (A2 can now report `assess-ready` fro
 file + `phases.design` alone, so this step is the backstop that guarantees the other two
 artifacts Phase B needs are actually present before Execute reads them.)
 
+**Record the delegation and establish this skill's own run state** (read-merge-write). This
+skill keeps a thin run-state file of its own, separate from the delegated run's, so the AI
+migration appears in the usage funnel under its own name. It declares its own state shape
+(phases `assess`, `execute`); the shared DSL's read-merge-write rule applies.
+
+1. In the delegated run's `$MIGRATION_DIR/.phase-status.json`, add
+   `"initiated_by": "LLM_TO_BEDROCK"` if the key is absent — this keeps the delegated
+   Assess run out of gcp-to-aws's own funnel counts. Change nothing else in that file.
+2. Set `$BEDROCK_RUN_DIR` = `$REPO/.migration/.bedrock-<id>/`, where `<id>` is the basename
+   of `$MIGRATION_DIR` (e.g. `.migration/.bedrock-0910-1100/`). The leading dot keeps it out
+   of the `ls -td "$REPO/.migration"/*/` lookup above, so it can never be mistaken for the
+   Assess run directory; keying it to the delegated run means a resumed migration reuses it.
+   - If `$BEDROCK_RUN_DIR/.phase-status.json` already exists, this migration is being
+     resumed: keep the file (including its `run_id`) and continue.
+   - Otherwise create the directory and write `.phase-status.json`:
+
+     ```json
+     {
+       "migration_id": ".bedrock-<id>",
+       "last_updated": "<ISO 8601 now>",
+       "current_phase": "execute",
+       "run_id": "<fresh UUID from uuidgen>",
+       "owning_skill": "LLM_TO_BEDROCK",
+       "phases": { "assess": "completed", "execute": "in_progress" }
+     }
+     ```
+
+   The `assess`/`execute` phase names are not in the telemetry API model yet, so only the
+   run-level events (`RUN_STARTED`, `RUN_COMPLETED`) leave the machine for this run; the AI
+   journey's entry point is already visible through the delegated run's events, which carry
+   `initiatingSkill`.
+
 ---
 
 ## Phase B — Execute Prep
@@ -674,6 +706,10 @@ user's own pre-existing branch and deleting it would destroy their work):
 > To discard: `git checkout <your original branch>`, `git branch -D <rewrite.branch_name>`,
 > `git tag -d saws-migrate-baseline`, and `rm -rf .saws-migrate .migration` removes all
 > migration artifacts (including the API key file).
+
+**Close this skill's run state** (read-merge-write on `$BEDROCK_RUN_DIR/.phase-status.json`):
+set `phases.execute` to `"completed"`, `current_phase` to `"complete"`, and update
+`last_updated`. This is what marks the AI migration finished in the usage funnel.
 
 ---
 
