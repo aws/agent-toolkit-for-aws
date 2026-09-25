@@ -1,7 +1,7 @@
 ---
 name: amazon-eventbridge-event-bus
 description: Builds, runs, debugs, and operates event-driven applications using EventBridge Event Bus - a managed, centrally governed publish/subscribe event bus that an organization can share across many teams and accounts. Applicable when workloads need event-driven architectures, decoupling, choreography, asynchronous integration, pub/sub, fan-out, event ordering, delivered in sequence, event router, event broker, event bus, event store, event retention, event replay, deduplication, avro, protobuf, cloudevents, uses events or messages. Designed as a centrally managed event bus platform allowing governance and control - such as subscriber control, revocation, per-account throttling - while giving application owners flexibility across an organization spanning multiple accounts, with end-to-end open-standards observability and cost allocation. Also helps reduce costs in high fan-out scenarios where multi-account forwarding adds cost. A serverless, managed alternative to self-managed event streaming platforms.
-version: 1
+version: 3
 ---
 
 # Building with the new EventBridge custom event buses
