@@ -718,6 +718,95 @@ describe('telemetry emitter', () => {
     }
   });
 
+  it('reports a failed gate once per phase with its reason, and the later pass of that phase as its own event', async () => {
+    // Arrange: clarify's completion gate failed on a missing artifact
+    const p = makeProject(phaseStatus());
+    const writeGateFailures = (failures: unknown) =>
+      writeFileSync(join(p.runDir, '.gate-failures.json'), JSON.stringify(failures, null, 2));
+    const summary = (b: any) => [activity(b).eventName, activity(b).phase, activity(b).status];
+    writeGateFailures({ clarify: { reason: 'missing', field: 'preferences.json', at: '2026-02-26T15:40:00Z' } });
+    try {
+      // Act
+      const first = await reconcile(p);
+      writeGateFailures({ clarify: { reason: 'invalid', field: 'preferences.json', at: '2026-02-26T15:41:00Z' } });
+      const repeat = await reconcile(p);
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }), null, 2),
+      );
+      const passed = await reconcile(p);
+
+      // Assert
+      assert.deepEqual(first.map(summary).sort(), [
+        ['GATE_FAILED', 'CLARIFY', 'FAILED'],
+        ['PHASE_COMPLETED', 'DISCOVER', 'SUCCESS'],
+        ['RUN_STARTED', undefined, undefined],
+      ]);
+      const failed = first.map(activity).find((a) => a.eventName === 'GATE_FAILED');
+      assert.deepEqual(failed.attributes, { sourceProvider: 'GCP', failureReason: 'MISSING' });
+      assert.deepEqual(repeat, [], 'a second failure of the same phase is not a new event');
+      assert.deepEqual(passed.map(summary), [['PHASE_COMPLETED', 'CLARIFY', 'SUCCESS']]);
+      assert.deepEqual(snapshotOf(p).gateFailures, ['CLARIFY']);
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('sends nothing it cannot map: an unknown phase is skipped, an unknown reason drops only the attribute, a malformed record is ignored', async () => {
+    // Arrange
+    const partial = makeProject(phaseStatus());
+    writeFileSync(join(partial.runDir, '.gate-failures.json'), JSON.stringify({ bogus: { reason: 'missing' }, design: { reason: 'exploded' } }));
+    const malformed = makeProject(phaseStatus());
+    writeFileSync(join(malformed.runDir, '.gate-failures.json'), JSON.stringify(['design']));
+    const gateFailed = (bodies: any[]) => bodies.map(activity).filter((a) => a.eventName === 'GATE_FAILED');
+    try {
+      // Act
+      const fromPartial = gateFailed(await reconcile(partial));
+      const fromMalformed = gateFailed(await reconcile(malformed));
+
+      // Assert
+      assert.deepEqual(
+        fromPartial.map((a) => [a.phase, a.status, a.attributes]),
+        [['DESIGN', 'FAILED', { sourceProvider: 'GCP' }]],
+      );
+      assert.deepEqual(fromMalformed, []);
+      assert.deepEqual(snapshotOf(malformed).gateFailures, []);
+    } finally {
+      cleanup(partial);
+      cleanup(malformed);
+    }
+  });
+
+  it('baselines gate failures recorded before consent together with the phases, so only later failures are reported', async () => {
+    // Arrange: state and a recorded failure both predate the consent record;
+    // the state file stays old throughout, so the later failure is judged by
+    // the gate record's own mtime
+    const p = makeProject(phaseStatus());
+    const gateFile = join(p.runDir, '.gate-failures.json');
+    const clarify = { reason: 'missing', field: 'preferences.json', at: '2026-02-25T10:00:00Z' };
+    writeFileSync(gateFile, JSON.stringify({ clarify }));
+    const dayAgo = new Date(Date.now() - 24 * 3600 * 1000);
+    utimesSync(p.statusFile, dayAgo, dayAgo);
+    utimesSync(gateFile, dayAgo, dayAgo);
+    try {
+      // Act
+      const first = await reconcile(p);
+      const baselined = snapshotOf(p).gateFailures;
+      writeFileSync(gateFile, JSON.stringify({ clarify, design: { reason: 'invalid', field: 'design.json', at: '2026-02-26T16:00:00Z' } }));
+      const later = await reconcile(p);
+
+      // Assert
+      assert.deepEqual(first, []);
+      assert.deepEqual(baselined, ['CLARIFY'], 'the pre-consent failure is recorded as already known');
+      assert.deepEqual(
+        later.map((b) => [activity(b).eventName, activity(b).phase, activity(b).attributes?.failureReason]),
+        [['GATE_FAILED', 'DESIGN', 'INVALID']],
+      );
+    } finally {
+      cleanup(p);
+    }
+  });
+
   it('detects a Heroku database from the add-on service, not from the resource type', async () => {
     // Arrange: one formation and one Postgres add-on, as heroku discover writes them
     const heroku = (resources: unknown[]) =>
