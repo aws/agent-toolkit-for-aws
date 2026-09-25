@@ -18,7 +18,7 @@ CE='{"specversion":"1.0","id":"A234-1234-1234","source":"/example/orders","type"
 
 B64=$(printf '%s' "$CE" | base64 -w0)
 
-aws eventbridgev2 put-raw-events --event-bus-arn "$BUS_ARN" \
+aws eventsv2 put-raw-events --event-bus-arn "$BUS_ARN" \
   --entries "[{\"Data\":\"$B64\",\"SystemMetadata\":{\"ContentType\":\"application/json\"}}]"
 ```
 

@@ -11,7 +11,8 @@ only one of them belongs in a policy:
 | Where it appears | Name | Example |
 |---|---|---|
 | IAM actions and ARNs | `events` | `events:PutEvents`, `arn:aws:events:{region}:{account}:event-busv2/{name}/{id}` |
-| CLI command and every SDK client | `eventbridgev2` | `aws eventbridgev2 create-event-bus`, `boto3.client("eventbridgev2")` |
+| CLI command | `eventsv2` | `aws eventsv2 create-event-bus` |
+| Every SDK client | `eventbridgev2` | `boto3.client("eventbridgev2")` |
 | Endpoint host | `eventsv2` | `eventsv2.{region}.amazonaws.com` |
 
 A policy granting `eventbridgev2:PutEvents`, or `eventsv2:PutEvents`, names an action that does not exist,
@@ -32,7 +33,6 @@ in a batch. The condition keys available depend on which API you used:
 |---|---|
 | `events:source`, `events:detail-type` | `PutEvents` only |
 | `events:SystemMetadata/ContentType` | `PutRawEvents` only |
-| `events:SystemMetadata/EventGroupId` | both |
 | `events:Metadata/<key>` | `PutRawEvents`, one key per metadata entry |
 | `events:eventBusInvocation` | both: `false` on a direct publish, `true` on a forwarded delivery. An event source populates no key |
 

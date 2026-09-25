@@ -19,8 +19,8 @@ and a step-by-step migration sequence.
 | `AWS::Events::Rule` | `AWS::EventsV2::Subscriber` |
 
 The IAM namespace is `events` for both services, so a policy statement looks similar while naming a
-different API. The CLI command and SDK client name distinguishes them: `events` for classic,
-`eventbridgev2` for the new buses.
+different API. The CLI command distinguishes them: `events` for classic, `eventsv2` for the new buses.
+The SDK client name for the new buses is `eventbridgev2`.
 
 ## Four new-bus concepts with no classic analogue
 

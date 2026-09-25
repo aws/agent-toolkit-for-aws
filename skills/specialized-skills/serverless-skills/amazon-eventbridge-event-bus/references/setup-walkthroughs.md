@@ -9,10 +9,10 @@ the sequence around them.
 
 ### Prerequisites
 
-* The service must be available in your region; `aws eventbridgev2 list-event-buses` failing to resolve an
+* The service must be available in your region; `aws eventsv2 list-event-buses` failing to resolve an
   endpoint means it is not.
 * Your caller MUST have the `events:` actions used below (chapter 14; the namespace is `events:`, never
-  `eventbridgev2:`), plus `sqs:CreateQueue`, `iam:CreateRole`, `iam:PutRolePolicy`, and `iam:PassRole` for
+  `eventsv2:`), plus `sqs:CreateQueue`, `iam:CreateRole`, `iam:PutRolePolicy`, and `iam:PassRole` for
   the delivery role.
 
 ### 1. Create the target queue and the dead-letter queue
@@ -61,8 +61,8 @@ aws iam put-role-policy --role-name my-delivery-role --policy-name deliver \
 ### 3. Create the bus and wait for ACTIVE
 
 ```bash
-BUS_ARN=$(aws eventbridgev2 create-event-bus --name my-bus --query EventBusArn --output text)
-aws eventbridgev2 wait event-bus-active --event-bus-arn "$BUS_ARN"
+BUS_ARN=$(aws eventsv2 create-event-bus --name my-bus --query EventBusArn --output text)
+aws eventsv2 wait event-bus-active --event-bus-arn "$BUS_ARN"
 ```
 
 ### 4. Create the subscriber
@@ -71,7 +71,7 @@ Filter, target, delivery role, and dead-letter queue in one call; the exact shap
 in [code-samples.md](code-samples.md):
 
 ```bash
-SUBSCRIBER_ARN=$(aws eventbridgev2 create-subscriber --name orders-to-queue \
+SUBSCRIBER_ARN=$(aws eventsv2 create-subscriber --name orders-to-queue \
   --event-bus-arn "$BUS_ARN" \
   --filter-configuration '{"Filters":[{"Scope":"DATA","Pattern":"{\"detail\":{\"orderId\":[{\"exists\":true}]}}"}]}' \
   --invoke-configuration '{"TargetArn":"'"$QUEUE_ARN"'","RoleArn":"'"$ROLE_ARN"'"}' \
@@ -87,7 +87,7 @@ short delay
 matches:
 
 ```bash
-aws eventbridgev2 put-events --event-bus-arn "$BUS_ARN" --entries '[{
+aws eventsv2 put-events --event-bus-arn "$BUS_ARN" --entries '[{
   "Source": "com.example.orders",
   "DetailType": "OrderPlaced",
   "Detail": "{\"orderId\":\"walkthrough-1\"}"
@@ -113,9 +113,9 @@ delete the subscriber before the bus. The delivery role's policy names the queue
 before the queues to keep the teardown a strict reverse of the creation order.
 
 ```bash
-aws eventbridgev2 delete-subscriber --subscriber-arn "$SUBSCRIBER_ARN"
-aws eventbridgev2 delete-event-bus --event-bus-arn "$BUS_ARN"
-aws eventbridgev2 wait event-bus-deleted --event-bus-arn "$BUS_ARN"
+aws eventsv2 delete-subscriber --subscriber-arn "$SUBSCRIBER_ARN"
+aws eventsv2 delete-event-bus --event-bus-arn "$BUS_ARN"
+aws eventsv2 wait event-bus-deleted --event-bus-arn "$BUS_ARN"
 aws iam delete-role-policy --role-name my-delivery-role --policy-name deliver
 aws iam delete-role --role-name my-delivery-role
 aws sqs delete-queue --queue-url "$QUEUE_URL"
@@ -146,8 +146,8 @@ side.
 ### 1. Platform account: create the central bus
 
 ```bash
-BUS_ARN=$(aws eventbridgev2 create-event-bus --name company-events --query EventBusArn --output text)
-aws eventbridgev2 wait event-bus-active --event-bus-arn "$BUS_ARN"
+BUS_ARN=$(aws eventsv2 create-event-bus --name company-events --query EventBusArn --output text)
+aws eventsv2 wait event-bus-active --event-bus-arn "$BUS_ARN"
 ```
 
 ### 2. Platform account: share the bus, narrowest permission per principal

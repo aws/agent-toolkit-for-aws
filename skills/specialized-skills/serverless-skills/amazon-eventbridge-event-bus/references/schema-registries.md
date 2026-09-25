@@ -27,7 +27,7 @@ When you supply `SchemaRegistryConfiguration`, **it MUST sit on the `PutRawEvent
 sibling of `Entries` rather than inside an entry; one registry serves every entry in the request:
 
 ```bash
-aws eventbridgev2 put-raw-events --event-bus-arn "$BUS_ARN" \
+aws eventsv2 put-raw-events --event-bus-arn "$BUS_ARN" \
   --schema-registry-configuration '{"RegistryUri":"arn:aws:glue:us-east-1:111122223333:registry/orders"}' \
   --entries "[{\"Data\":\"$AVRO_B64\",\"SystemMetadata\":{\"ContentType\":\"application/avro\"}}]"
 ```

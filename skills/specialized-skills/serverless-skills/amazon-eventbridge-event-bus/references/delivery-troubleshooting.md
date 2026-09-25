@@ -419,7 +419,7 @@ marker unique to the run.
 
 Reliable sequence:
 
-1. Create the bus and wait with `aws eventbridgev2 wait event-bus-active`.
+1. Create the bus and wait with `aws eventsv2 wait event-bus-active`.
 2. Create the subscriber with `OnFailureConfiguration` and `LogConfiguration.Level: INFO` set from the
    start, so a failure is readable without a second attempt. Then allow a short delay before publishing.
 3. Publish with a unique marker inside the payload, and make the subscriber's filter match that marker,

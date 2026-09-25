@@ -11,8 +11,8 @@ creating many resources at once.
 `EventBusDeleted` are defined on `DescribeEventBus`, so every SDK and the CLI expose them:
 
 ```
-aws eventbridgev2 wait event-bus-active  --event-bus-arn "$BUS_ARN"
-aws eventbridgev2 wait event-bus-deleted --event-bus-arn "$BUS_ARN"
+aws eventsv2 wait event-bus-active  --event-bus-arn "$BUS_ARN"
+aws eventsv2 wait event-bus-deleted --event-bus-arn "$BUS_ARN"
 ```
 
 The active waiter beats a hand-rolled loop in one specific way: it fails fast on `CREATE_FAILED`,

@@ -11,10 +11,10 @@ A bus, the waiter (chapter 15), and one SQS-targeted subscriber with a filter an
 (chapters 7, 9, and 12):
 
 ```bash
-BUS_ARN=$(aws eventbridgev2 create-event-bus --name my-bus --query EventBusArn --output text)
-aws eventbridgev2 wait event-bus-active --event-bus-arn "$BUS_ARN"
+BUS_ARN=$(aws eventsv2 create-event-bus --name my-bus --query EventBusArn --output text)
+aws eventsv2 wait event-bus-active --event-bus-arn "$BUS_ARN"
 
-aws eventbridgev2 create-subscriber --name orders-to-queue \
+aws eventsv2 create-subscriber --name orders-to-queue \
   --event-bus-arn "$BUS_ARN" \
   --filter-configuration '{"Filters":[{"Scope":"DATA","Pattern":"{\"detail\":{\"orderId\":[{\"exists\":true}]}}"}]}' \
   --invoke-configuration '{"TargetArn":"arn:aws:sqs:us-east-1:111122223333:my-queue","RoleArn":"arn:aws:iam::111122223333:role/my-delivery-role"}' \
@@ -35,7 +35,7 @@ parameter block of its own (chapter 9).
 no JSON wrapper:
 
 ```bash
-aws eventbridgev2 create-subscriber --name orders-replay \
+aws eventsv2 create-subscriber --name orders-replay \
   --event-bus-arn "$BUS_ARN" \
   --starting-position POINT_IN_TIME \
   --point-in-time-configuration '{"PointType":"HORIZON"}' \
@@ -109,7 +109,7 @@ Share the bus through AWS RAM where possible; the managed permission names are i
 `--policy-document`:
 
 ```bash
-aws eventbridgev2 put-resource-policy \
+aws eventsv2 put-resource-policy \
   --resource-arn "$BUS_ARN" \
   --policy-document '{
     "Version": "2012-10-17",
@@ -125,7 +125,7 @@ aws eventbridgev2 put-resource-policy \
 
 Omitting `--policy-name` writes the customer-managed `default` policy; the `AWS_RAM` policy is written
 only by RAM. The principal must be a real account, and the actions use the `events:` namespace, never
-`eventbridgev2:` (see [authorization.md](authorization.md)).
+`eventsv2:` (see [authorization.md](authorization.md)).
 
 ## Publish with either API (CLI)
 
@@ -135,13 +135,13 @@ leave that mismatch in place, so both payload shapes stay visible. `Data` is bas
 base64 below decodes to `{"orderId":"123"}`:
 
 ```bash
-aws eventbridgev2 put-events --event-bus-arn "$BUS_ARN" --entries '[{
+aws eventsv2 put-events --event-bus-arn "$BUS_ARN" --entries '[{
   "Source": "com.example.orders",
   "DetailType": "OrderPlaced",
   "Detail": "{\"orderId\":\"123\"}"
 }]'
 
-aws eventbridgev2 put-raw-events --event-bus-arn "$BUS_ARN" --entries '[{
+aws eventsv2 put-raw-events --event-bus-arn "$BUS_ARN" --entries '[{
   "Data": "eyJvcmRlcklkIjoiMTIzIn0=",
   "SystemMetadata": { "ContentType": "application/json" }
 }]'

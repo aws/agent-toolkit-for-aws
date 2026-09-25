@@ -34,8 +34,8 @@ because it is a fact rather than an instruction to you.
 
 ## When not to use this skill
 
-This skill is only about the new custom event buses, the service you reach with the `eventbridgev2` CLI
-and SDK clients. It does not cover:
+This skill is only about the new custom event buses, the service you reach with the `eventsv2` CLI
+and the `eventbridgev2` SDK clients. It does not cover:
 
 * **Classic EventBridge**, meaning the `events` API with rules, targets, archives, and event patterns on
   `AWS::Events::Rule`. The two services share the `events:` IAM namespace and some vocabulary, which is
@@ -117,10 +117,10 @@ Names and identifiers:
   **Store the full ARN, not the name**, because the name alone does not identify the resource and
   re-creating a deleted bus with the same name yields a different id.
 * Event source names are unique per account, not per bus.
-* **Three names identify this service and they do not match.** The CLI command and every SDK client are
-  `eventbridgev2`, as in `aws eventbridgev2 create-event-bus`. IAM actions and ARNs are `events`, shared
-  with classic EventBridge, as in `events:PutEvents` and `arn:aws:events:...:event-busv2/...`. The
-  endpoint host is `eventsv2.{region}.amazonaws.com`. See chapter 14.
+* **Three names identify this service and they do not match.** The CLI command and the endpoint host
+  are `eventsv2`, as in `aws eventsv2 create-event-bus` and `eventsv2.{region}.amazonaws.com`. The SDK
+  clients are `eventbridgev2`. IAM actions and ARNs are `events`, shared with classic EventBridge, as
+  in `events:PutEvents` and `arn:aws:events:...:event-busv2/...`. See chapter 14.
 
 ## 2. A router with a durable log behind it
 
@@ -345,11 +345,11 @@ existence or reachability**: a well-formed ARN naming nothing is stored and fail
 Chapter 13 covers the role EventBridge assumes to invoke your target. This chapter covers what your
 caller needs to reach the API.
 
-**Every action name is `events:`.** The CLI command and the SDK clients are named `eventbridgev2`, and the
-endpoint host is `eventsv2`, but the IAM namespace is `events`, shared with classic EventBridge. **You
+**Every action name is `events:`.** The CLI command and the endpoint host are `eventsv2`, and the SDK
+clients are named `eventbridgev2`, but the IAM namespace is `events`, shared with classic EventBridge. **You
 MUST NOT write `eventbridgev2:` or `eventsv2:` in an IAM policy**, because neither names an action that
 exists, and both fail closed: the policy is accepted and grants nothing. A policy written from the command
-you just ran, granting `eventbridgev2:PutEvents`, is the usual way this happens. The name-by-name map is
+you just ran, granting `eventsv2:PutEvents`, is the usual way this happens. The name-by-name map is
 in [authorization.md](references/authorization.md).
 
 **Publishing** is authorized against the bus ARN, per entry, with no partial authorization: if one entry
@@ -372,7 +372,7 @@ usable later. **Use the waiter rather than a hand-rolled poll**, because it fail
 states and surfaces `StateReason` instead of spinning to a timeout:
 
 ```
-aws eventbridgev2 wait event-bus-active  --event-bus-arn "$BUS_ARN"
+aws eventsv2 wait event-bus-active  --event-bus-arn "$BUS_ARN"
 ```
 
 A bus has seven states, and the asymmetry that matters is between the two failure states: **`UPDATE_FAILED`
