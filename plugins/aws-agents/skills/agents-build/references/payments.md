@@ -547,6 +547,11 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 - The service role's trust policy is incorrect. Ensure it trusts `bedrock-agentcore.amazonaws.com` with the correct `aws:SourceAccount` condition.
 - Verify the role ARN passed to the Payment Manager matches the actual role.
 
+**`CreatePaymentManager` / `CreateWorkloadIdentity` fails with `AccessDenied` even though your IAM policy grants the action:**
+
+- The Payment Manager's underlying **WorkloadIdentity name is not the display name you supplied** — AgentCore derives it by **lowercasing** that name and appending a random suffix (e.g. `MyManager` → `mymanager-a1b2c3d4e5`). IAM authorizes on the resource **ARN**, and that ARN is built from the generated **id**, not your display name — so a policy scoped to the mixed-case display name never matches and the call is denied (ARNs are case-sensitive).
+- Fix: scope the policy to the **generated id/ARN**, not the display name — either read the real id back from the `CreatePaymentManager` response (or `GetPaymentManager`) and use it verbatim, or use a suffix wildcard such as `.../workload-identity/mymanager-*`.
+
 **ProcessPayment succeeds but merchant still returns 402:**
 
 - **Transient on‑chain settlement failure** (common on Base Sepolia): the tool already re‑settles up to `X402_MAX_PAYMENT_ATTEMPTS` times (default 5). If still 402s, raise the cap (`export X402_MAX_PAYMENT_ATTEMPTS=8`) or retry shortly.
@@ -703,6 +708,10 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 - **"Give access" succeeds but payments still fail with "Wallet policy denied"**: The `NEXT_PUBLIC_PRIVY_SIGNER_ID` in the frontend doesn't match the Authorization ID used in the payment connector (Step 3b). Re-derive it from the `*_STRIPE_PRIVY_AUTHORIZATION_ID` key in `agentcore/.env.local` rather than retyping it from the dashboard.
 - **User logged in with wrong email**: The email must match the one passed to `setup_payment_user.py --email`. If mismatched, the instrument points to a different Privy user's wallets. Log out, log back in with the correct email.
 - **Port conflict**: If the agent's own server is on port 3000, the frontend auto-selects another port. Check the terminal output for the actual URL — and allowlist that port (Step 7d), otherwise login fails.
+
+**None of the errors above match what you are seeing?**
+
+- Check the **CloudTrail** logs to debug further. Every `bedrock-agentcore` control-plane and data-plane call (`CreatePaymentManager`, `CreatePaymentConnector`, `ProcessPayment`, …) is recorded there with the exact request, the authenticated caller identity, and the real `errorCode` / `errorMessage`. Find the failing call in CloudTrail (Event history, or your trail's S3 / CloudWatch Logs destination) — the underlying error and principal there usually pinpoint the permission, resource-id, or input mismatch that the surfaced error only summarizes.
 
 ## Security Considerations
 
