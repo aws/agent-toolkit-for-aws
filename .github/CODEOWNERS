@@ -5,3 +5,4 @@
 /plugins/aws-agents-for-devsecops @aws/agent-toolkit-admins @aws/aws-agentic-devsecops @coffeencoke @tipuq @ljainiaz @adthiru @AhmetAhunbayAWS
 /plugins/aws-core                 @aws/agent-toolkit-admins
 /plugins/aws-data-analytics       @aws/agent-toolkit-admins @npmajisha @risears @mitczach @harshabattapady @shoukasg @sanjolia @dhruvyadav2007 @mukeshsahay
+/plugins/aws-startup-advisor      @aws/agent-toolkit-admins @aws/aws-startup-advisor

@@ -97,7 +97,19 @@ Project tags are applied to the provisioned AWS resources at deploy. The `agentc
 - **Coinbase — QuickCreate (recommended):** you authorize through Coinbase and AgentCore Payments provisions and stores the credentials for you — no keys to generate or paste. **Coinbase only.**
 - **Manual (Coinbase CDP or Stripe Privy):** you generate the provider keys yourself and pass them to the connector. **This is the only path for Stripe (Privy).**
 
-**Coinbase — QuickCreate (recommended). No secrets, so the agent can run this directly.** Prerequisite: an AWS Marketplace subscription to **"Coinbase Wallets for AgentCore Payments"**. Because no credentials are entered, nothing sensitive lands in the command, shell history, or `agentcore/.env.local`, and you skip the "get your provider credentials" step below.
+**Coinbase prerequisite — AWS Marketplace subscription (required for BOTH QuickCreate and Manual).** Any Coinbase connector requires an active AWS Marketplace subscription to **"Coinbase Wallets for AgentCore Payments"**. With this subscription, your Coinbase wallet usage charges are consolidated into your monthly AWS bill as per Coinbase's public pricing. Until an active subscription exists in your AWS account, `CreatePaymentConnector` fails with a `SubscriptionRequiredException` (HTTP 403).
+
+Subscribe once per AWS account, before creating a Coinbase connector — [Coinbase Wallets for AgentCore Payments](https://aws.amazon.com/marketplace/pp/prodview-ia2zd5puqyi7g):
+
+1. **Prerequisite:** be logged in to your AWS Console.
+2. Open the link above — it takes you to the **"Coinbase Wallets for AgentCore Payments"** product listing page.
+3. Click **View purchase options**.
+4. Review the listing details (terms and conditions, etc.), then click **Subscribe**.
+5. You are now subscribed to Coinbase — proceed with Coinbase connector creation (QuickCreate or Manual, below).
+
+> A missing subscription 403s at `agentcore deploy` (when the connector is actually created). Because the CLI provisions the payment manager and connector in the **same CloudFormation stack**, that failure rolls the whole stack back and **deletes the PaymentManager too** — see **Recovery after a `SubscriptionRequiredException`** in Step 4.
+
+**Coinbase — QuickCreate (recommended). No secrets, so the agent can run this directly.** Prerequisite: the Coinbase AWS Marketplace subscription above. Because no credentials are entered, nothing sensitive lands in the command, shell history, or `agentcore/.env.local`, and you skip the "get your provider credentials" step below.
 
 ```bash
 agentcore add payment-connector \
@@ -107,19 +119,21 @@ agentcore add payment-connector \
 --provision-mode QUICK_CREATE
 ```
 
-This records a QuickCreate Coinbase connector locally with **no secrets**. When the connector is created at `agentcore deploy` (Step 4), the CLI opens the Coinbase authorization flow in your browser; the developer signs in and authorizes, and the connector moves `PENDING_AUTHENTICATION` → `READY` — there is no API Key ID, API Key Secret, or Wallet Secret to obtain or store. Present the command (the agent may run it — no secrets are involved), then have the developer complete the browser authorization at deploy and confirm the connector is `READY` before continuing. (Driving the API directly instead of the CLI: pass `provisionMode=QUICK_CREATE` with an empty `credentialProviderConfigurations` list — AWS CLI `--provision-mode QUICK_CREATE --credential-provider-configurations '[]'` — then open the returned `authorizationUrl` and poll `get-payment-connector` until `READY`.)
+This records a QuickCreate Coinbase connector locally with **no secrets**. When the connector is created at `agentcore deploy` (Step 4), it comes up in `PENDING_AUTHENTICATION` with an `authorizationUrl` the developer must open to authorize through Coinbase. **The AgentCore CLI does not open that URL for you today** — the agent retrieves it (via `GetPaymentConnector`) and opens it / hands it to the developer (see the handling bullets below). After the developer authorizes, the connector moves `PENDING_AUTHENTICATION` → `READY` — there is no API Key ID, API Key Secret, or Wallet Secret to obtain or store. Present the command (the agent may run it — no secrets are involved), drive the authorization as described below, and confirm the connector is `READY` before continuing. (Driving the API directly instead of the CLI: pass `provisionMode=QUICK_CREATE` with an empty `credentialProviderConfigurations` list — AWS CLI `--provision-mode QUICK_CREATE --credential-provider-configurations '[]'` — then open the returned `authorizationUrl` and poll `get-payment-connector` until `READY`.)
 
 **Handling the `authorizationUrl` (short-lived + single-use).** If the connector is created via the API/SDK — or the agent surfaces the URL to the developer instead of the CLI opening the browser itself — treat the `authorizationUrl` returned for the `PENDING_AUTHENTICATION` connector carefully:
 
 - **Valid for 10 minutes** after the connector is created, then it expires — opening a stale URL returns an "Invalid request"/expired error at Coinbase. Open it promptly.
-- **Open it exactly once, directly in a browser.** It carries a one-time OAuth consent session. Do NOT paste it anywhere that auto-previews or "unfurls" links (Slack, Teams, other chat tools), and the agent must NOT fetch or open it — a link-preview fetch can consume the one-time session, so the developer's later click fails with "Invalid request". Share it as plain/code text and have the developer open it.
-- **Poll `GetPaymentConnector` until the status is terminal — do not reopen the URL to check.** After the developer authorizes, poll the connector's `status` until it reaches one of `READY`, `AUTHENTICATION_EXPIRED`, or `AUTHENTICATION_FAILED` (space the calls out, e.g. every few seconds). While it is still `PENDING_AUTHENTICATION`, consent has not completed — keep polling.
+- **Open it exactly once, as a real browser navigation — never *fetch* or *preview* it.** It carries a one-time OAuth consent session, so no `curl`/`HEAD`/`WebFetch` of the URL, and don't paste it anywhere that auto-previews or "unfurls" links (Slack, Teams, other chat tools). A preview fetch consumes the one-time session, so the developer's later click fails with "Invalid request". (Launching a browser to *navigate* to it is the intended use — that is different from fetching it.)
+- **Opening it — the AgentCore CLI does NOT open it for you today, so the agent must drive this.** If you (the agent) are running on the developer's machine with a desktop browser, open it for them with the OS opener — `open "<url>"` (macOS), `xdg-open "<url>"` (Linux), `start "" "<url>"` (Windows); these navigate, they do not pre-fetch. If you are headless / remote / in CI (no local GUI browser, or the developer isn't at this machine), print the URL as plain/code text and have the developer open it. Retrieve the URL from `GetPaymentConnector` (or the create response) — never fetch the URL itself.
+- **Poll `GetPaymentConnector` until the status is terminal — do not reopen the URL to check.** After the developer authorizes, poll the connector's `status` until it reaches one of `READY`, `AUTHENTICATION_EXPIRED`, `AUTHENTICATION_FAILED`, or `AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED` (space the calls out, e.g. every few seconds). `CREATING`, `PENDING_AUTHENTICATION` (waiting for consent), and `PROVISIONING` (consent succeeded, credentials being provisioned) are all **transient** — keep polling.
 - **`READY`** — done. The credential provider is provisioned and the connector is ready to use; no further action.
 - **`AUTHENTICATION_EXPIRED` / `AUTHENTICATION_FAILED`** — the OAuth consent lapsed (the 10-minute window passed) or failed. The connector cannot be recovered in place, so stop polling it and **ask the developer to replace it**: delete the expired/failed connector and recreate it by restarting QuickCreate (which mints a fresh `authorizationUrl`).
+- **`AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED`** — the AWS account is not subscribed to **"Coinbase Wallets for AgentCore Payments"** (see the Coinbase prerequisite above). Have the developer subscribe, then replace the connector. On the CLI deploy path the payment manager may have been rolled back too — see **Recovery after a `SubscriptionRequiredException`** in Step 4.
 
 ```bash
-# Poll the connector status until READY / AUTHENTICATION_EXPIRED / AUTHENTICATION_FAILED
-# (also returns a still-valid authorizationUrl while PENDING_AUTHENTICATION):
+# Poll status until terminal: READY / AUTHENTICATION_EXPIRED / AUTHENTICATION_FAILED / AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED
+# (CREATING / PENDING_AUTHENTICATION / PROVISIONING = keep polling; a still-valid authorizationUrl is returned while PENDING_AUTHENTICATION):
 aws bedrock-agentcore-control get-payment-connector \
   --payment-manager-id "<PAYMENT_MANAGER_ID>" \
   --payment-connector-id "<PAYMENT_CONNECTOR_ID>" \
@@ -192,7 +206,18 @@ Security:
 agentcore deploy -y
 ```
 
-`agentcore deploy` provisions the project's resources to your AWS account: the payment manager/connector via the AgentCore control plane, and supporting IAM (the `Payment<Name>ProcessPaymentRole`) and any runtime via a CloudFormation stack (CDK). **Coinbase QuickCreate:** if you added the connector with `--provision-mode QUICK_CREATE`, deploy is when it is created — the CLI opens the Coinbase authorization flow in your browser; after the developer authorizes, the connector moves `PENDING_AUTHENTICATION` → `READY` (this is the developer-involved point from Step 3b). After deploy, the manager ARN, connector ID, and role ARN are written to `agentcore/.cli/deployed-state.json`. On CLI 0.20.x these live under `targets.<target>.resources.payments[]` (`managerArn`, `connectors[].connectorId`, `processPaymentRoleArn`); the Step 6 script reads this shape automatically.
+`agentcore deploy` provisions the project's resources to your AWS account: the payment manager/connector via the AgentCore control plane, and supporting IAM (the `Payment<Name>ProcessPaymentRole`) and any runtime via a CloudFormation stack (CDK). **Coinbase QuickCreate:** if you added the connector with `--provision-mode QUICK_CREATE`, deploy is when it is created — it comes up in `PENDING_AUTHENTICATION` with an `authorizationUrl`. **The CLI does not open that URL for you today**, so the agent must retrieve it (`GetPaymentConnector`) and open it / hand it to the developer (see Step 3b); after authorization the connector moves `PENDING_AUTHENTICATION` → `READY` (this is the developer-involved point from Step 3b). After deploy, the manager ARN, connector ID, and role ARN are written to `agentcore/.cli/deployed-state.json`. On CLI 0.20.x these live under `targets.<target>.resources.payments[]` (`managerArn`, `connectors[].connectorId`, `processPaymentRoleArn`); the Step 6 script reads this shape automatically.
+
+**Recovery after a `SubscriptionRequiredException` (Coinbase, CLI deploy).** If `agentcore deploy` fails while creating a Coinbase connector with `SubscriptionRequiredException` (HTTP 403), the account is not subscribed to **"Coinbase Wallets for AgentCore Payments"** — pause and have the developer subscribe (see the Coinbase prerequisite in Step 3b). **Important:** because the CLI provisions the payment manager and connector in the **same CloudFormation stack**, this deploy failure rolls the stack back and **deletes the PaymentManager that was being created alongside the connector**. So when the developer returns and confirms the subscription is active, do NOT just retry the connector — first recheck whether the manager still exists:
+
+```bash
+aws bedrock-agentcore-control get-payment-manager \
+  --payment-manager-id "<PAYMENT_MANAGER_ID>" \
+  --region <AWS_REGION>
+```
+
+- **Manager returned (still exists):** resume — create/deploy the connector (Step 3b → Step 4).
+- **Not found (`ResourceNotFoundException`):** the rollback removed it — **restart the flow from Step 3a**: recreate the payment manager (and re-apply the mandatory `agentcore:onboarding-source` tag), then create the connector (Step 3b), then `agentcore deploy` again.
 
 ### Step 5: Wire the agent
 
@@ -500,7 +525,7 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 
 - The `authorizationUrl` is valid for only **10 minutes** and is **single-use** — this error means it expired, was already used, or was consumed by a link preview before you clicked it.
 - **Link unfurling is the most common cause**: pasting the URL into Slack/Teams/chat (or letting the agent fetch it) fires a preview request that spends the one-time consent session. Share the URL as plain text and open it directly in a browser, once, promptly.
-- Check the connector with `GetPaymentConnector` (e.g. `aws bedrock-agentcore-control get-payment-connector --payment-manager-id <id> --payment-connector-id <id> --region <AWS_REGION>`) and poll until the status is terminal: `READY` = it already succeeded (no action); `AUTHENTICATION_EXPIRED`/`AUTHENTICATION_FAILED` = the consent window lapsed or failed — delete the connector and recreate it via QuickCreate to get a fresh URL; `PENDING_AUTHENTICATION` = still waiting, keep polling.
+- Check the connector with `GetPaymentConnector` (e.g. `aws bedrock-agentcore-control get-payment-connector --payment-manager-id <id> --payment-connector-id <id> --region <AWS_REGION>`) and poll until the status is terminal: `READY` = it already succeeded (no action); `AUTHENTICATION_EXPIRED`/`AUTHENTICATION_FAILED` = the consent window lapsed or failed — delete the connector and recreate it via QuickCreate to get a fresh URL; `AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED` = subscribe to "Coinbase Wallets for AgentCore Payments" then recreate (on the CLI deploy path the manager may have rolled back — see Step 4 recovery); `CREATING`/`PENDING_AUTHENTICATION`/`PROVISIONING` = still in progress, keep polling.
 
 **Agent sees 402 but does not pay:**
 
