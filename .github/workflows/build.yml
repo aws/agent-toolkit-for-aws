@@ -48,5 +48,8 @@ jobs:
       - name: Validate manifests, skills, and plugin parity
         run: mise run validate
 
+      - name: Test
+        run: mise run test
+
       - name: Security scan (gitleaks)
         run: mise run security
