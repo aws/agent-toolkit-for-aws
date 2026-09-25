@@ -1,0 +1,49 @@
+{
+  "description": "Migration telemetry. Consent-gated; reads only the migration skills' own state files, and each run names its owning skill on disk.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/emit.mjs"
+            ],
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/emit.mjs",
+              "--reconcile"
+            ],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/emit.mjs",
+              "--session-end"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

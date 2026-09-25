@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/emit.mjs\" --reconcile"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/emit.mjs\" --reconcile"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/emit.mjs\" --session-end"
+      }
+    ]
+  }
+}

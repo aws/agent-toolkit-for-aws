@@ -11,6 +11,10 @@ version = "0.18"
 description = "Run all linters"
 depends = ["lint:md", "lint:manifests"]
 
+[tasks.test]
+description = "Run executing-path tests (node --test)"
+run = "node --test plugins/aws-startup-advisor/tests/telemetry-emitter.test.ts"
+
 [tasks."lint:md"]
 description = "Lint markdown files"
 run = "npx markdownlint-cli2 '**/*.md' '#node_modules'"
@@ -37,4 +41,4 @@ run = "gitleaks detect --source . --verbose"
 
 [tasks.build]
 description = "Full build: lint + validate + security"
-depends = ["lint", "validate", "security"]
+depends = ["lint", "validate", "test", "security"]
