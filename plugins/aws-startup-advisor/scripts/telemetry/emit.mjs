@@ -361,6 +361,15 @@ const RUN_MODE = { decide: "DECIDE", decide_and_execute: "DECIDE_AND_EXECUTE" };
 
 const mapEnum = (table, value) => (value == null ? undefined : table[String(value).toLowerCase()]);
 
+// The skills write lowercase, hyphenated or spaced values ("multi-az-ha",
+// "us-east-1", "elastic_beanstalk"); the model spells the same members in
+// UPPER_SNAKE. Normalise, then admit only members the model declares.
+const toEnum = (members, value) => {
+  if (value == null) return undefined;
+  const key = String(value).trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return members.has(key) ? key : undefined;
+};
+
 const PRICING_SOURCE = {
   live: "LIVE",
   cached: "CACHED",
@@ -401,6 +410,34 @@ const SPEND_BASIS = {
 // infrastructure inventory. "both" names two providers and is omitted.
 const AI_SOURCE = { openai: "OPENAI", anthropic: "ANTHROPIC", gemini: "GCP", other: "OTHER" };
 
+const COMPLEXITY_TIER = new Set(["SMALL", "MEDIUM", "LARGE"]);
+// The discover preview's coarser signal, used before a tiered artifact exists.
+const COMPLEXITY_SIGNAL = { likely_simple: "SMALL", standard: "MEDIUM", complex: "LARGE" };
+const RECOMMENDATION_CONFIDENCE = new Set(["LOW", "MEDIUM", "HIGH"]);
+const VALIDATION_STATUS = new Set(["PASSED", "PASSED_DEGRADED_OFFLINE", "FAILED"]);
+const COMPLIANCE = new Set(["NONE", "UNKNOWN", "HIPAA", "PCI", "SOC2", "GDPR", "CCPA", "FEDRAMP"]);
+const COMPLIANCE_ALIAS = { PCI_DSS: "PCI", SOC_2: "SOC2", FED_RAMP: "FEDRAMP" };
+const COMPLIANCE_ACCEPTED = new Set([...COMPLIANCE, ...Object.keys(COMPLIANCE_ALIAS)]);
+const AVAILABILITY = new Set(["SINGLE_AZ", "MULTI_AZ", "MULTI_AZ_HA", "MULTI_REGION"]);
+const CUTOVER_STRATEGY = new Set(["MAINTENANCE_WINDOW_WEEKLY", "MAINTENANCE_WINDOW_MONTHLY", "FLEXIBLE", "ZERO_DOWNTIME"]);
+const DATABASE_TRAFFIC = new Set(["STEADY", "READ_HEAVY", "WRITE_HEAVY"]);
+const COMPUTE_POSTURE = new Set(["EKS_MANAGED", "EKS_OR_ECS", "ECS_FARGATE", "EKS", "ECS", "ELASTIC_BEANSTALK"]);
+const TARGET_REGION = new Set([
+  "US_EAST_1", "US_EAST_2", "US_WEST_1", "US_WEST_2", "CA_CENTRAL_1",
+  "EU_WEST_1", "EU_WEST_2", "EU_WEST_3", "EU_CENTRAL_1", "EU_NORTH_1",
+  "AP_SOUTH_1", "AP_SOUTHEAST_1", "AP_SOUTHEAST_2", "AP_NORTHEAST_1", "AP_NORTHEAST_2", "AP_NORTHEAST_3",
+  "SA_EAST_1",
+]);
+// The skills write db_size as a human range ("<10GB", "10-100GB"), not a token.
+const DB_SIZE = {
+  "<10gb": "DB_UNDER_10GB",
+  "10-100gb": "DB_10_100GB",
+  "100-500gb": "DB_100_500GB",
+  ">500gb": "DB_OVER_500GB",
+  unknown: "UNKNOWN",
+};
+const PROJECTED_COST_MAX = 10_000_000; // model @range
+
 // ------------------------------------------------------ attribute derivation
 
 // Pricing provenance is written either as a bare string or as an object
@@ -432,11 +469,15 @@ const resourceTypes = (resources) =>
     .toLowerCase();
 
 // Monthly spend on the SOURCE platform. The key name varies by skill, phase and
-// route; total_monthly_spend is the billing-only route's MEASURED figure.
+// route: gcp writes current_costs.gcp_monthly, heroku writes
+// heroku_monthly_baseline / current_heroku_monthly, the billing-only route
+// writes total_monthly_spend for a MEASURED figure.
 const SOURCE_SPEND_KEYS = [
   "gcp_monthly_spend",
   "gcp_monthly",
   "gcp_monthly_usd",
+  "gcp_monthly_baseline",
+  "current_gcp_monthly",
   "total_monthly_spend",
   "gcp_total_monthly",
   "total_monthly",
@@ -444,6 +485,8 @@ const SOURCE_SPEND_KEYS = [
   "total_current_ai_monthly",
   "heroku_monthly",
   "heroku_monthly_estimated",
+  "heroku_monthly_baseline",
+  "current_heroku_monthly",
 ];
 
 function toSpendBand(amount) {
@@ -452,6 +495,56 @@ function toSpendBand(amount) {
   if (amount < 1000) return "FROM_100_TO_1K";
   if (amount < 10000) return "FROM_1K_TO_10K";
   return "OVER_10K";
+}
+
+// Integer USD within the model's range; anything else is omitted rather than
+// clamped, since a clamped cost would read as a real figure.
+function toProjectedUsd(value) {
+  const n = typeof value === "string" ? Number(value) : value;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > PROJECTED_COST_MAX) return undefined;
+  return Math.round(n);
+}
+
+// "±5-10%", "±20-30%+", "±5% (billing)": the upper bound of the first range
+// decides the band. HIGH ≤10, MEDIUM ≤20, LOW beyond.
+function toAccuracyBand(text) {
+  if (typeof text !== "string") return undefined;
+  const m = text.match(/±?\s*(\d+)(?:\s*-\s*(\d+))?\s*%/);
+  if (!m) return undefined;
+  const upper = Number(m[2] ?? m[1]);
+  if (upper <= 10) return "HIGH";
+  if (upper <= 20) return "MEDIUM";
+  return "LOW";
+}
+
+// "100%", "97%", 100: FULL at 100, NEAR_COMPLETE from 90, PARTIAL below.
+function toCoverage(value) {
+  if (value == null || value === "") return undefined;
+  const n = typeof value === "number" ? value : Number(String(value).replace("%", "").trim());
+  if (!Number.isFinite(n)) return undefined;
+  if (n >= 100) return "FULL";
+  if (n >= 90) return "NEAR_COMPLETE";
+  return "PARTIAL";
+}
+
+// A design constraint is an object with the interpreted value under `value`
+// (gcp) or `default` (heroku's compute_target); older artifacts hold the bare
+// value.
+function constraintValue(preferences, key) {
+  const raw = preferences?.design_constraints?.[key];
+  if (raw == null) return undefined;
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw.value ?? raw.default;
+  return raw;
+}
+
+function toComplianceList(raw) {
+  const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  const out = new Set();
+  for (const v of values) {
+    const key = toEnum(COMPLIANCE_ACCEPTED, v);
+    if (key) out.add(COMPLIANCE_ALIAS[key] ?? key);
+  }
+  return out.size ? [...out] : undefined;
 }
 
 const SKILL_INVENTORY = {
@@ -478,14 +571,39 @@ const readEstimates = (dir) =>
     .map((name) => readJson(path.join(dir, name)))
     .filter(Boolean);
 
-// The infra and AI routes record source cost under current_costs; the
-// billing-only route under gcp_baseline.
-const costContainer = (estimate) => estimate.current_costs ?? estimate.gcp_baseline ?? {};
+// Where a route records the source-platform cost, in preference order: the
+// infra and AI routes use current_costs, the billing-only route gcp_baseline,
+// and heroku's assembler also rolls it into financial_summary.
+const costContainers = (estimate) =>
+  [estimate.current_costs, estimate.gcp_baseline, estimate.cost_comparison, estimate.financial_summary].filter(
+    (c) => c && typeof c === "object",
+  );
+
+// The three cost tiers are written flat (aws_monthly_*), with older shapes
+// nesting them under option_*/tiers.
+function projectedCost(estimate, tier, option) {
+  const pc = estimate.projected_costs ?? {};
+  return toProjectedUsd(pc[`aws_monthly_${tier}`] ?? pc[option]?.aws_monthly ?? pc.tiers?.[tier]?.monthly);
+}
+
+// The migration's complexity tier: written by generate (gcp) or estimate
+// (heroku); before either exists, the discover preview's coarser signal.
+function complexityTier(runDir) {
+  for (const name of ["generation-infra.json", "generation-billing.json", "generation-ai.json", "estimation-infra.json"]) {
+    const artifact = readJson(path.join(runDir, name));
+    const tier = toEnum(COMPLEXITY_TIER, artifact?.complexity_tier ?? artifact?.estimation_summary?.complexity_tier);
+    if (tier) return tier;
+  }
+  const preview = readJson(path.join(runDir, "migration-preview.json"));
+  return mapEnum(COMPLEXITY_SIGNAL, preview?.complexity_signal);
+}
 
 // Attributes are lookups over the run's own artifacts, no inference. Phase
 // facts attach only to the PHASE_COMPLETED event of the phase that produced
 // them, so a terminal event never restates them and no aggregation double
-// counts.
+// counts. complexityTier is the exception: it segments the funnel, so it rides
+// every event from DESIGN onward and the terminal, and an abandoned run still
+// carries it.
 function deriveAttributes(runDir, skill, event) {
   const attributes = {};
   const spec = SKILL_INVENTORY[skill];
@@ -493,8 +611,9 @@ function deriveAttributes(runDir, skill, event) {
   if (provider) attributes.sourceProvider = provider;
 
   const phaseEvent = event.eventName === "PHASE_COMPLETED";
+  const phase = event.phase;
 
-  if (phaseEvent && event.phase === "DISCOVER") {
+  if (phaseEvent && phase === "DISCOVER") {
     const inventory = spec ? readJson(path.join(runDir, spec.inventory)) : null;
     const resources = Array.isArray(inventory) ? inventory : inventory?.resources;
     // App-code AI detection lives only here; it is what lets an AI workload
@@ -512,23 +631,49 @@ function deriveAttributes(runDir, skill, event) {
     } else if (aiProfile) {
       attributes.hasAi = aiFromProfile;
     }
+    const coverage = toCoverage(inventory?.summary?.classification_coverage);
+    if (coverage) attributes.classificationCoverage = coverage;
   }
 
-  if (phaseEvent && event.phase === "CLARIFY") {
+  if (phaseEvent && phase === "CLARIFY") {
+    const preferences = readJson(path.join(runDir, "preferences.json"));
     // The AI-only route is its own mode; within it clarify_mode still records
     // fast_path or full, which AI_ONLY supersedes.
-    const metadata = readJson(path.join(runDir, "preferences.json"))?.metadata;
+    const metadata = preferences?.metadata;
     const clarifyMode =
       metadata?.migration_type === "ai-only" ? "AI_ONLY" : mapEnum(CLARIFY_MODE, metadata?.clarify_mode);
     if (clarifyMode) attributes.clarifyMode = clarifyMode;
+
+    const compliance = toComplianceList(constraintValue(preferences, "compliance"));
+    if (compliance) attributes.compliance = compliance;
+    const availability = toEnum(AVAILABILITY, constraintValue(preferences, "availability"));
+    if (availability) attributes.availability = availability;
+    const cutover = toEnum(CUTOVER_STRATEGY, constraintValue(preferences, "cutover_strategy"));
+    if (cutover) attributes.cutoverStrategy = cutover;
+    const dbSize = mapEnum(DB_SIZE, String(constraintValue(preferences, "db_size") ?? "").replace(/\s+/g, ""));
+    if (dbSize) attributes.dbSize = dbSize;
+    const traffic = toEnum(DATABASE_TRAFFIC, constraintValue(preferences, "database_traffic"));
+    if (traffic) attributes.databaseTraffic = traffic;
+    // gcp asks about kubernetes, heroku about a compute target; same decision.
+    const posture = toEnum(
+      COMPUTE_POSTURE,
+      constraintValue(preferences, "kubernetes") ?? constraintValue(preferences, "compute_target"),
+    );
+    if (posture) attributes.computePosture = posture;
+    const region = toEnum(TARGET_REGION, constraintValue(preferences, "target_region"));
+    if (region) attributes.targetRegion = region;
   }
 
-  if (phaseEvent && event.phase === "ESTIMATE") {
+  if (phaseEvent && phase === "ESTIMATE") {
     const estimates = readEstimates(runDir);
     for (const estimate of estimates) {
       if (!attributes.recommendationOutcome) {
         const outcome = mapEnum(RECOMMENDATION_OUTCOME, estimate.recommendation?.outcome);
         if (outcome) attributes.recommendationOutcome = outcome;
+      }
+      if (!attributes.recommendationConfidence) {
+        const confidence = toEnum(RECOMMENDATION_CONFIDENCE, estimate.recommendation?.confidence);
+        if (confidence) attributes.recommendationConfidence = confidence;
       }
       if (!attributes.pricingSource) {
         // The billing-only route records provenance under metadata.
@@ -537,16 +682,42 @@ function deriveAttributes(runDir, skill, event) {
         );
         if (pricing) attributes.pricingSource = pricing;
       }
+      if (!attributes.estimateAccuracyBand) {
+        const band = toAccuracyBand(estimate.current_costs?.accuracy ?? estimate.accuracy_confidence);
+        if (band) attributes.estimateAccuracyBand = band;
+      }
+      if (attributes.billingDataAvailable === undefined) {
+        const available = estimate.migration_cost_considerations?.billing_data_available;
+        if (typeof available === "boolean") attributes.billingDataAvailable = available;
+      }
+      if (attributes.awsProjectedCostBalanced === undefined) {
+        const optimized = projectedCost(estimate, "optimized", "option_c_optimized");
+        const balanced = projectedCost(estimate, "balanced", "option_b_balanced");
+        const premium = projectedCost(estimate, "premium", "option_a_premium");
+        if (optimized !== undefined) attributes.awsProjectedCostOptimized = optimized;
+        if (balanced !== undefined) attributes.awsProjectedCostBalanced = balanced;
+        if (premium !== undefined) attributes.awsProjectedCostPremium = premium;
+      }
     }
-    // spendBand and spendBasis travel as a pair from the same container: a
-    // band without its basis is indistinguishable from a measured figure. A
-    // basis alone is harmless and is still reported.
+    // spendBand and spendBasis travel as a pair: a band without its basis is
+    // indistinguishable from a measured figure. The basis comes from the cost
+    // container's own `source`; when a route omits it, confirmed billing data
+    // is the one case that can still be named. A basis alone is harmless and
+    // is still reported.
     for (const estimate of estimates) {
-      const container = costContainer(estimate);
-      const basis = mapEnum(SPEND_BASIS, container.source);
+      const containers = costContainers(estimate);
+      let basis;
+      for (const c of containers) {
+        basis = mapEnum(SPEND_BASIS, c.source);
+        if (basis) break;
+      }
+      if (!basis && estimate.migration_cost_considerations?.billing_data_available === true) basis = "BILLING_DATA";
       let band;
-      for (const key of SOURCE_SPEND_KEYS) {
-        band = toSpendBand(container[key]);
+      for (const c of containers) {
+        for (const key of SOURCE_SPEND_KEYS) {
+          band = toSpendBand(typeof c[key] === "string" ? Number(c[key]) : c[key]);
+          if (band) break;
+        }
         if (band) break;
       }
       if (basis && band) {
@@ -556,6 +727,18 @@ function deriveAttributes(runDir, skill, event) {
       }
       if (basis && !attributes.spendBasis) attributes.spendBasis = basis;
     }
+  }
+
+  if (phaseEvent && phase === "GENERATE") {
+    const report = readJson(path.join(runDir, "validation-report.json"));
+    const status = toEnum(VALIDATION_STATUS, report?.status);
+    if (status) attributes.validationStatus = status;
+  }
+
+  const fromDesignOnward = phaseEvent && ["DESIGN", "ESTIMATE", "WORKSHOP", "GENERATE", "FEEDBACK"].includes(phase);
+  if (fromDesignOnward || event.eventName === "RUN_COMPLETED") {
+    const tier = complexityTier(runDir);
+    if (tier) attributes.complexityTier = tier;
   }
 
   if (event.runMode) attributes.runMode = event.runMode;

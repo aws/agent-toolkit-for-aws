@@ -597,6 +597,127 @@ describe('telemetry emitter', () => {
     }
   });
 
+  it('derives the enriched attributes from the design constraints, estimates and generate artifacts', async () => {
+    // Arrange: a completed gcp run with the artifacts the later phases write
+    const gcp = makeProject(
+      phaseStatus({
+        current_phase: 'complete',
+        run_mode: 'decide_and_execute',
+        phases: {
+          discover: 'completed', clarify: 'completed', design: 'completed', estimate: 'completed',
+          workshop: 'skipped', generate: 'completed', feedback: 'not_applicable',
+        },
+      }),
+      'granted',
+      {
+        'gcp-resource-inventory.json': { ...GCP_INVENTORY, summary: { classification_coverage: '97%' } },
+        'migration-preview.json': { complexity_signal: 'complex' },
+        'preferences.json': {
+          metadata: { clarify_mode: 'full', migration_type: 'full' },
+          design_constraints: {
+            compliance: { value: ['pci-dss', 'soc-2', 'iso27001', 'PCI'] },
+            availability: { value: 'multi-az-ha' },
+            cutover_strategy: { value: 'zero-downtime' },
+            db_size: { value: '10-100 GB' },
+            database_traffic: { value: 'read-heavy' },
+            kubernetes: { value: 'ecs-fargate' },
+            target_region: { value: 'eu-west-1' },
+          },
+        },
+        'estimation-infra.json': {
+          recommendation: { outcome: 'conditional_go', confidence: 'medium' },
+          current_costs: { source: 'billing_data', gcp_monthly: '380', accuracy: '±5% (billing)' },
+          migration_cost_considerations: { billing_data_available: true },
+          projected_costs: { pricing_source: 'live', aws_monthly_optimized: 1003.4, aws_monthly_balanced: 1450, aws_monthly_premium: 12_000_000 },
+        },
+        'generation-infra.json': { complexity_tier: 'medium' },
+        'validation-report.json': { status: 'passed_degraded_offline' },
+      },
+    );
+    const byPhase = (bodies: any[]) =>
+      Object.fromEntries(bodies.map(activity).map((a) => [a.phase ?? a.eventName, a.attributes]));
+    try {
+      // Act
+      const events = byPhase(await reconcile(gcp));
+
+      // Assert
+      assert.deepEqual(events.DISCOVER, {
+        sourceProvider: 'GCP', resourceCount: 2, hasDatabase: true, hasAi: false, classificationCoverage: 'NEAR_COMPLETE',
+      });
+      assert.deepEqual(events.CLARIFY, {
+        sourceProvider: 'GCP',
+        clarifyMode: 'FULL',
+        compliance: ['PCI', 'SOC2'],
+        availability: 'MULTI_AZ_HA',
+        cutoverStrategy: 'ZERO_DOWNTIME',
+        dbSize: 'DB_10_100GB',
+        databaseTraffic: 'READ_HEAVY',
+        computePosture: 'ECS_FARGATE',
+        targetRegion: 'EU_WEST_1',
+      });
+      assert.deepEqual(events.ESTIMATE, {
+        sourceProvider: 'GCP',
+        recommendationOutcome: 'CONDITIONAL_GO',
+        recommendationConfidence: 'MEDIUM',
+        pricingSource: 'LIVE',
+        estimateAccuracyBand: 'HIGH',
+        billingDataAvailable: true,
+        awsProjectedCostOptimized: 1003,
+        awsProjectedCostBalanced: 1450,
+        spendBand: 'FROM_100_TO_1K',
+        spendBasis: 'BILLING_DATA',
+        complexityTier: 'MEDIUM',
+      }, 'a 12,000,000 premium figure is out of range and omitted, not clamped');
+      assert.deepEqual(events.GENERATE, { sourceProvider: 'GCP', validationStatus: 'PASSED_DEGRADED_OFFLINE', complexityTier: 'MEDIUM' });
+      assert.deepEqual(events.WORKSHOP, { sourceProvider: 'GCP', complexityTier: 'MEDIUM' }, 'the tier rides every event from DESIGN onward');
+      assert.deepEqual(events.RUN_COMPLETED, { sourceProvider: 'GCP', complexityTier: 'MEDIUM', runMode: 'DECIDE_AND_EXECUTE' });
+    } finally {
+      cleanup(gcp);
+    }
+  });
+
+  it('falls back to the discover preview for the complexity tier, and to confirmed billing data for the spend basis', async () => {
+    // Arrange: DESIGN done, no tiered artifact yet; heroku spend recorded without a source
+    const gcp = makeProject(
+      phaseStatus({ current_phase: 'estimate', phases: { ...phaseStatus().phases, clarify: 'completed', design: 'completed' } }),
+      'granted',
+      { 'gcp-resource-inventory.json': GCP_INVENTORY, 'migration-preview.json': { complexity_signal: 'likely_simple' } },
+    );
+    const heroku = makeProject(
+      phaseStatus({ owning_skill: 'HEROKU_TO_AWS', current_phase: 'workshop', phases: { ...phaseStatus().phases, clarify: 'completed', design: 'completed', estimate: 'completed' } }),
+      'granted',
+      {
+        'heroku-resource-inventory.json': { resources: [{ resource_type: 'formation' }] },
+        'estimation-infra.json': {
+          recommendation: { outcome: 'defer_for_evidence' },
+          cost_comparison: { heroku_monthly_baseline: 2200 },
+          migration_cost_considerations: { billing_data_available: true },
+          estimation_summary: { complexity_tier: 'large' },
+        },
+      },
+    );
+    const find = (bodies: any[], phase: string) => bodies.map(activity).find((a) => a.phase === phase)?.attributes;
+    try {
+      // Act
+      const g = await reconcile(gcp);
+      const h = await reconcile(heroku);
+
+      // Assert
+      assert.deepEqual(find(g, 'DESIGN'), { sourceProvider: 'GCP', complexityTier: 'SMALL' });
+      assert.deepEqual(find(h, 'ESTIMATE'), {
+        sourceProvider: 'HEROKU',
+        recommendationOutcome: 'DEFER',
+        billingDataAvailable: true,
+        spendBand: 'FROM_1K_TO_10K',
+        spendBasis: 'BILLING_DATA',
+        complexityTier: 'LARGE',
+      });
+    } finally {
+      cleanup(gcp);
+      cleanup(heroku);
+    }
+  });
+
   it('detects a Heroku database from the add-on service, not from the resource type', async () => {
     // Arrange: one formation and one Postgres add-on, as heroku discover writes them
     const heroku = (resources: unknown[]) =>
