@@ -29,7 +29,7 @@ const result = await context.step(
   {
     retryStrategy: createRetryStrategy({
       maxAttempts: 3,
-      delay: { seconds: 5 },
+      initialDelay: { seconds: 5 },
       backoffRate: 1
     })
   }

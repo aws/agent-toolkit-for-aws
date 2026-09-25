@@ -151,7 +151,9 @@ const durableFunction = new lambda.Function(this, 'DurableFunction', {
   }
 });
 
-// 3. Add durable execution policy (required with explicit log groups)
+// 3. (Optional) CDK already grants checkpoint permissions automatically when
+//    durableConfig is set — including when you supply an explicit log group.
+//    Attaching the managed policy yourself is harmless if you prefer to be explicit.
 durableFunction.role?.addManagedPolicy(
   iam.ManagedPolicy.fromAwsManagedPolicyName(
     'service-role/AWSLambdaBasicDurableExecutionRolePolicy'
@@ -172,7 +174,7 @@ durableFunction.role?.addManagedPolicy(
 - ✅ Development/test environments where automatic cleanup saves costs
 - ✅ Multi-function stacks where consistent log management is needed
 
-**Important:** Don't forget to add `AWSLambdaBasicDurableExecutionRolePolicy` when using explicit log groups.
+**Note:** CDK grants checkpoint permissions automatically when `durableConfig` is set — including when you supply an explicit log group. Attaching `AWSLambdaBasicDurableExecutionRolePolicy` yourself is optional and harmless.
 
 ## AWS SAM
 
@@ -353,7 +355,7 @@ new DurableFunctionStack(app, 'DurableFunction-Prod', {
 
 **⚠️ Important Invocation Rules:**
 
-1. **Qualified Function Name Required**: You MUST provide a qualified function name with version, alias, or `:$LATEST`
+1. **Qualified Function Name Required**: You MUST provide a qualified function name with version, alias, or `:$LATEST`. Prefer a specific version or alias in production — a runtime SDK update can change behavior for in-flight executions when invoking `:$LATEST`.
 2. **Idempotency with durable-execution-name**: Use this parameter to ensure the same execution name always refers to the same execution
 3. **Binary Format**: Use `--cli-binary-format raw-in-base64-out` to avoid base64 encoding issues
 
