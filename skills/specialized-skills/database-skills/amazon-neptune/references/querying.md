@@ -190,7 +190,7 @@ queries = {
   RETURN a1.id, a2.id, types
   ```
 
-`CALL { }` subqueries **are** supported (read-only; previously listed as incompatible in older migration guides).
+`CALL { }` subqueries **are** supported for read queries; `CREATE`, `SET`, `DELETE`, and `CALL IN TRANSACTIONS` are unsupported inside the subquery. Top-level Neptune Analytics `.mutate` procedures are separate and can write result properties.
 
 ## SPARQL (RDF graphs)
 

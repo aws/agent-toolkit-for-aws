@@ -198,16 +198,27 @@ def remember_with_embedding(
 
 def semantic_recall(graph_id: str, query_embedding: List[float], top_k: int = 10) -> List[Dict]:
     """Recall memories by vector similarity."""
+    entity_filter = json.dumps(
+        {"equals": {"property": "~label", "value": "Entity"}}
+    )
     return run_query(
         graph_id,
         """
-        CALL neptune.algo.vectors.topKByEmbedding($embedding, {topK: $top_k})
+        CALL neptune.algo.vectors.topK.byEmbedding({
+            embedding: $embedding,
+            topK: $top_k,
+            vertexFilter: $entity_filter
+        })
         YIELD node, score
         RETURN node.name AS name, node.type AS type,
                node.description AS description, score
         ORDER BY score DESC
     """,
-        parameters={"embedding": query_embedding, "top_k": top_k},
+        parameters={
+            "embedding": query_embedding,
+            "top_k": top_k,
+            "entity_filter": entity_filter,
+        },
     )
 
 
@@ -227,12 +238,25 @@ def hybrid_recall(graph_id: str, entity_name: str, query_embedding: List[float])
     vector_results = run_query(
         graph_id,
         """
-        CALL neptune.algo.vectors.topKByEmbedding($embedding, {topK: 10})
+        CALL neptune.algo.vectors.topK.byEmbedding({
+            embedding: $embedding,
+            topK: 10,
+            vertexFilter: $entity_filter
+        })
         YIELD node, score
-        WHERE node.name <> $name
         RETURN node.name AS name, node.type AS type, score
     """,
-        parameters={"embedding": query_embedding, "name": entity_name},
+        parameters={
+            "embedding": query_embedding,
+            "entity_filter": json.dumps(
+                {
+                    "andAll": [
+                        {"equals": {"property": "~label", "value": "Entity"}},
+                        {"notEquals": {"property": "name", "value": entity_name}},
+                    ]
+                }
+            ),
+        },
     )
 
     return {"graph_recall": graph_results, "semantic_recall": vector_results}
