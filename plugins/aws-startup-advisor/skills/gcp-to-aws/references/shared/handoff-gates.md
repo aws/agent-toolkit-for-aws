@@ -8,7 +8,7 @@ All phases MUST pass a handoff gate before marking `phases.<phase>` as `"complet
 
 1. **Re-read from disk** — Open each required artifact with the Read tool from `$MIGRATION_DIR/`. Do not rely on chat memory or prior summaries.
 2. **Check every item** in the phase-specific checklist (defined in that phase's orchestrator or sub-file).
-3. **On failure** — emit exactly one line per failure using the parseable format below. Do **NOT** mark the phase complete. Do **NOT** advance `current_phase`.
+3. **On failure** — emit exactly one line per failure using the parseable format below. Do **NOT** mark the phase complete. Do **NOT** advance `current_phase`. Record the failure (§ Recording a failed gate).
 4. **On success** — emit one success line, then update `.phase-status.json` in the same turn.
 
 ### Parseable failure format (required)
@@ -47,8 +47,27 @@ When any gate check fails:
 2. **Do NOT modify artifacts** to pass the gate (no inventing `recommendation`, no defaulting `availability`, no patching JSON inline).
 3. **Do NOT continue** to the next phase.
 4. Tell the user: **"Re-run Phase N (phase name) to produce the missing field, then continue."**
+5. Record the failure in `$MIGRATION_DIR/.gate-failures.json` (next section).
 
 Patching artifacts to satisfy a gate defeats fail-closed validation and produces reports that look complete but are not.
+
+---
+
+## Recording a failed gate
+
+A failed gate is where a run stalls, and the telemetry hooks can only report what is on disk, so every `GATE_FAIL` line (a completion gate or a re-entry STOP) is also recorded in `$MIGRATION_DIR/.gate-failures.json`. It is a separate file because a gate failure is not a phase transition: `.phase-status.json` stays untouched. The file is an object keyed by phase name (the same names as `phases` in `.phase-status.json`), one entry per phase; on a repeat failure overwrite that phase's entry and keep the others:
+
+```json
+{
+  "<phase>": {
+    "reason": "<missing|invalid|stale_downstream>",
+    "field": "<the field= value>",
+    "at": "<ISO 8601 now>"
+  }
+}
+```
+
+`reason` and `field` are the same values as the `GATE_FAIL` line. The file never leaves the customer's machine; telemetry reports only the phase and the reason, once per phase per run, and a later `HANDOFF_OK` for that phase is reported as its own success. Do not delete the file when the phase later passes.
 
 ---
 
@@ -65,7 +84,7 @@ Patching artifacts to satisfy a gate defeats fail-closed validation and produces
 | Re-run **Estimate** after **Generate** started       | Same — confirm with user; report and Terraform may be stale.                                                                                                          |
 | Re-run a phase **before** downstream phase completed | Allowed. Overwrite that phase's artifacts; downstream phases remain `"pending"` or must be re-run.                                                                    |
 
-When user confirms intentional re-run: set downstream phases back to `"pending"` in `.phase-status.json` before proceeding.
+A re-entry STOP is a `GATE_FAIL` line and is recorded like any other (§ Recording a failed gate). When user confirms intentional re-run: set downstream phases back to `"pending"` in `.phase-status.json` before proceeding.
 
 ---
 

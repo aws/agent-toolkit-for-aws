@@ -6,7 +6,8 @@
 //   node emit.mjs --session-end      teardown: final sweep for this session's runs
 //   node emit.mjs consent <get|grant|revoke|status>
 //
-// Reads .migration/<id>/.phase-status.json, diffs it against the co-located
+// Reads .migration/<id>/.phase-status.json (and .gate-failures.json, where the
+// skill records a failed gate), diffs them against the co-located
 // .telemetry-snapshot.json, and POSTs one event per transition to the endpoint
 // in AWS_STARTUP_ADVISOR_TELEMETRY_ENDPOINT. Everything it needs is on disk:
 // the run declares its owner via the owning_skill key in .phase-status.json,
@@ -358,6 +359,9 @@ const RESOLVED_STATUS = {
 };
 
 const RUN_MODE = { decide: "DECIDE", decide_and_execute: "DECIDE_AND_EXECUTE" };
+
+// Mirrors the reason= constants of the interpreter's GATE_FAIL line.
+const FAILURE_REASON = { missing: "MISSING", invalid: "INVALID", stale_downstream: "STALE_DOWNSTREAM" };
 
 const mapEnum = (table, value) => (value == null ? undefined : table[String(value).toLowerCase()]);
 
@@ -742,20 +746,39 @@ function deriveAttributes(runDir, skill, event) {
   }
 
   if (event.runMode) attributes.runMode = event.runMode;
+  if (event.failureReason) attributes.failureReason = event.failureReason;
 
   return Object.keys(attributes).length ? attributes : undefined;
 }
 
 // ------------------------------------------------------------------- the diff
 
-// One event per transition between the snapshot and .phase-status.json.
+// The skill records each failed gate in .gate-failures.json, keyed by phase
+// (see INTERPRETER.md, "Recording a failed gate"). Only phases the model knows
+// are reportable; the snapshot lists the phases already reported.
+function gateFailureEntries(gateFailures) {
+  if (!gateFailures || typeof gateFailures !== "object" || Array.isArray(gateFailures)) return [];
+  return Object.entries(gateFailures)
+    .map(([name, entry]) => ({ phase: String(name).toUpperCase(), entry }))
+    .filter(({ phase }) => PHASES.has(phase));
+}
+
+// One event per transition between the snapshot and .phase-status.json, plus
+// one GATE_FAILED per phase newly present in .gate-failures.json (a repeat
+// failure of the same phase is not a new event; its later success is).
 // Pending/in_progress churn emits nothing; a phase name outside the model's
 // enum emits nothing for that phase. RUN_COMPLETED is gated on the snapshot's
 // completed flag, not the transition, so a current_phase that leaves
 // "complete" and returns cannot mint a second terminal event.
-function diffEvents(status, snapshot) {
+function diffEvents(status, snapshot, gateFailures) {
   const events = [];
   if (!snapshot || snapshot.started === false) events.push({ eventName: "RUN_STARTED" });
+  const reported = new Set(snapshot?.gateFailures ?? []);
+  for (const { phase, entry } of gateFailureEntries(gateFailures)) {
+    if (reported.has(phase)) continue;
+    const failureReason = mapEnum(FAILURE_REASON, entry?.reason);
+    events.push({ eventName: "GATE_FAILED", phase, status: "FAILED", ...(failureReason ? { failureReason } : {}) });
+  }
   const before = snapshot?.phases ?? {};
   for (const [name, state] of Object.entries(status.phases ?? {})) {
     if (before[name] === state) continue;
@@ -831,6 +854,8 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
   const statusFile = path.join(runDir, ".phase-status.json");
   const status = readJson(statusFile);
   if (!status?.migration_id) return;
+  const gateFile = path.join(runDir, ".gate-failures.json");
+  const gateFailures = readJson(gateFile);
 
   // Attribution is read from disk, never from an argument: a run that declares
   // no owner, or an owner outside the migration set, emits nothing (fail closed)
@@ -861,41 +886,51 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
 
     // The snapshot mirrors the state last observed, whether or not anything
     // was sent for it. Written only when the observation changed.
-    const observe = (phases, completed) => {
+    const observe = (phases, completed, reportedGateFailures) => {
       const same =
         snapshot &&
         JSON.stringify(snapshot.phases ?? {}) === JSON.stringify(phases) &&
-        Boolean(snapshot.completed) === completed;
+        Boolean(snapshot.completed) === completed &&
+        JSON.stringify(snapshot.gateFailures ?? []) === JSON.stringify(reportedGateFailures);
       if (same) return;
       writeJson(snapshotFile, {
         runId,
         sessionId: validSessionId ?? snapshot?.sessionId,
         ...(snapshot?.started === false ? { started: false } : {}),
         phases,
+        gateFailures: reportedGateFailures,
         completed,
         via: viaMode(),
         updatedAt: new Date().toISOString(),
       });
     };
 
-    // Consent covers what happens from the moment it was given. State last
-    // written before the consent record is history the customer never agreed
-    // to report: a run that predates the first grant, or transitions made
-    // while consent was revoked and then granted again. Either way it is
-    // recorded as already known and nothing is sent, so only transitions from
-    // here on are reported.
-    if (predatesConsent(runDir, statusFile)) {
-      observe(status.phases ?? {}, Boolean(snapshot?.completed) || status.current_phase === "complete");
-      return;
-    }
+    // Consent covers what happens from the moment it was given. A file last
+    // written before the effective consent record is history the customer
+    // never agreed to report: a run that predates the first grant, or
+    // transitions made while consent was revoked and then granted again. The
+    // state file and the gate-failure record are judged separately, each by
+    // its own mtime, so a gate that fails after consent on a run that started
+    // before it is still reported. History is recorded as already known and
+    // never sent, so only what happens from here on is reported.
+    const stateIsHistory = predatesConsent(runDir, statusFile);
+    const gatesAreHistory = predatesConsent(runDir, gateFile);
+    const recordedGates = gateFailureEntries(gateFailures).map((e) => e.phase);
+    const knownGates = (sent) => [
+      ...new Set([...(snapshot?.gateFailures ?? []), ...(gatesAreHistory ? recordedGates : sent)]),
+    ];
+    const completedFromHistory = stateIsHistory && status.current_phase === "complete";
 
-    const events = diffEvents(status, snapshot);
+    const events = diffEvents(status, snapshot, gateFailures).filter((e) =>
+      e.eventName === "GATE_FAILED" ? !gatesAreHistory : !stateIsHistory,
+    );
     if (events.length === 0) {
-      // No transition to report, but a phase may have been reset (a confirmed
-      // re-entry sets downstream phases back to pending) or taken over by this
-      // session: record that, or the phase's next completion would read as
-      // already reported and this session's teardown would skip the run.
-      observe(status.phases ?? {}, Boolean(snapshot?.completed));
+      // Nothing to send, but the observation may have changed: history to
+      // record as known, a phase reset (a confirmed re-entry sets downstream
+      // phases back to pending), or a run taken over by this session. Record
+      // it, or the phase's next completion would read as already reported and
+      // this session's teardown would skip the run.
+      observe(status.phases ?? {}, Boolean(snapshot?.completed) || completedFromHistory, knownGates([]));
       return;
     }
 
@@ -938,12 +973,16 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
     // via/updatedAt are the hook-liveness tag: an instruction-driven caller can
     // read them to skip its call when a hook reported recently, and the
     // idempotent diff keeps the two paths safe even without that check.
+    // A held GATE_FAILED is not recorded either, so it is re-sent alone.
+    const sentGates = events.filter((e) => e.eventName === "GATE_FAILED" && !held.has(e)).map((e) => e.phase);
+
     writeJson(snapshotFile, {
       runId,
       sessionId: ctx.sessionId ?? snapshot?.sessionId,
       started: !(runStarted && held.has(runStarted)),
       phases,
-      completed: Boolean(snapshot?.completed) || Boolean(runCompleted && !held.has(runCompleted)),
+      gateFailures: knownGates(sentGates),
+      completed: Boolean(snapshot?.completed) || completedFromHistory || Boolean(runCompleted && !held.has(runCompleted)),
       via: viaMode(),
       updatedAt: new Date().toISOString(),
     });
