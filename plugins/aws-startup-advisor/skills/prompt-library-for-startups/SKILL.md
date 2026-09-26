@@ -7,7 +7,7 @@ description: "AWS-curated copy-paste prompts for AI coding agents (MVP scaffoldi
 
 Searchable index of AWS-curated prompts for AI coding tools (Kiro, Claude Code, Cursor, etc.) plus downloadable installable agents. Content is verbatim from [aws.amazon.com/startups/prompt-library](https://aws.amazon.com/startups/prompt-library).
 
-**Last updated:** 2026-07-22
+**Last updated:** 2026-09-24
 
 ---
 

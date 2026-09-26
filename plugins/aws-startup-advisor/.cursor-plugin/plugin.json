@@ -2,7 +2,7 @@
   "name": "aws-startup-advisor",
   "displayName": "AWS Startup Advisor",
   "description": "Personalized AWS guidance built on patterns from 350,000+ startups—architecture, cost, security, and migration, from day-one account setup to production-ready infrastructure. Migrate to AWS from GCP or Heroku—including your entire AI stack: OpenAI/Gemini/Anthropic SDK rewrites to Amazon Bedrock, agentic systems (LangChain, CrewAI, AutoGen) to AWS-native runtimes, and Temporal workers. Includes AWS Activate credits eligibility and 60+ exclusive startup offers. Built by AWS Startup Solutions Architects, with multi-account, multi-region support.",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "author": {
     "name": "Amazon Web Services"
   },
