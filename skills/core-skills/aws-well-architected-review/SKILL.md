@@ -97,11 +97,11 @@ Read and follow [the risk assessment procedure](references/risk-assessment.md), 
 5. **Risk-classified findings** (Critical/High expanded, Medium condensed, Low tabular)
 6. **Eisenhower-prioritized remediation plan** (Do First / Plan / Delegate / Defer) with SMART goals
 
-Emit the report inline as the final response, first line `# Well-Architected Review:`. Do not defer any section to a file.
+Emit the report inline as the final response, first line `# Well-Architected Review:`. Do not defer any section to a file. The complete report and the Step 8 follow-up offer MUST be **one single final message**, and that message MUST be the last thing you say. Never follow the report with a separate closing message that recaps, summarizes, or merely announces it ("the review is complete", "report delivered above", "key takeaway is ..."). Such a recap becomes your final message and displaces the report for anything that reads only the last message, so the report is effectively lost even though you produced it.
 
 ## Step 8: Offer follow-up
 
-After delivering the report, offer:
+At the end of that same message — never in a new one — offer:
 
 > Would you like me to:
 >
