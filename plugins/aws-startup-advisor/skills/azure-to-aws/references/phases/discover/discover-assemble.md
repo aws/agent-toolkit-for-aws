@@ -3,6 +3,7 @@ _assemble: assemble-inventory
 _of_phase: discover
 _reads:
   - iac (fragment contribution)
+  - live (fragment contribution, when a live-capture/manifest.json was written by the live-az pre-work)
   - app-code (fragment contribution, when source code with an AI signal is present)
 _produces:
   - azure-resource-inventory.json
