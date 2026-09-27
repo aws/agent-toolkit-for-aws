@@ -13,6 +13,7 @@ their single creator and owns the validation checklist at the bottom.
     "discovery_sources": ["terraform"], // only sources that CONTRIBUTED, never merely ran
     "subscriptions_discovered": ["<subscription id>"],
     "total_resources": 0,
+    "clustering_mode": "full", // "full" | "simplified_live" (live-only runs cluster in simplified mode)
     "confidence": "inferred" // deterministic | measured | inferred | billing_inferred
   },
   "resources": [
@@ -28,10 +29,13 @@ their single creator and owns the validation checklist at the bottom.
       "config": {}, // per-type; NAMES only for app settings, connection strings, Key Vault entries
       "tags": {},
       "edges": [], // see § Typed edges
-      "drift": [] // see § Drift records
+      "drift": [], // see § Drift records
+      "unmanaged_by_iac": false, // OPTIONAL — set true on a live/rdfa resource with no matching IaC entry
+      "not_found_live": false // OPTIONAL — set true on an IaC resource a SUCCESSFUL live capture did not find
     }
   ],
-  "iac_metadata": {}, // present only when a dialect actually contributed
+  "iac_metadata": {}, // present only when an IaC dialect (terraform/bicep/arm) actually contributed
+  "live_metadata": {}, // present only when live `az` capture contributed — see § live_metadata
   "warnings": [], // see § Warnings — ALWAYS present, `[]` when clean
   "unclustered": [] // azure_ids no cluster claimed
 }
@@ -118,6 +122,24 @@ was not verified.
   "namespace unrecognised" — both of those are derived and retained. This is the residual
   case where the skill genuinely cannot say what the service is, and it is the only route to
   a halt from Discover. Expect it to be empty on almost every repo.
+
+## live_metadata
+
+Present only when live `az` capture contributed (the live counterpart of `iac_metadata`;
+written by `phases/discover/discover-live.md`). It records live-capture provenance that has
+no home on the per-resource entries:
+
+- **`found`** — `true` when a capture manifest was read and produced ≥1 resource.
+- **`captured_at`** / **`subscription`** / **`method`** — from the capture manifest
+  (`resource_list` or `per_service`).
+- **`capture_warnings`** — failed/skipped capture rows (a missing Reader role, a permission
+  denial). These live here, NOT in `warnings[]` — that vocabulary is closed and
+  IaC-parse-shaped (see § Warnings).
+- **`derived_types`** — the live counterpart of `iac_metadata.derived_types`: captured ARM
+  types resolved by derivation rather than a table lookup.
+- **`drift`** — a run-level rollup `{ resources_live_only, resources_iac_only,
+  conflicted_resources }` for reporting. The per-field disagreements themselves live on each
+  resource as `resources[].drift` (see § Drift records), NOT here.
 
 ## Warnings
 
