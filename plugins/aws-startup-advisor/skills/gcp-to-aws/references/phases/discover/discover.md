@@ -176,7 +176,7 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
    - `gcp-resource-inventory.json` — IaC discovery succeeded
    - `gcp-resource-clusters.json` — IaC discovery produced clusters
    - `ai-workload-profile.json` — App code discovery (confidence ≥ 70%) and/or IaC Vertex-strong inference (`discover-iac.md` Step 7d)
-   - `billing-profile.json` — Billing data parsed
+   - `billing-profile.json` — Billing data parsed (or, when `services[]` is empty and `warnings[]` is non-empty, a skip record: billing files seen but not a GCP/BigQuery export)
    - `openai-usage-profile.json` — OpenAI Admin API usage captured
 2. **If NO artifacts were produced** (sub-discoveries ran but produced no output): STOP and output: "Discovery ran but produced no artifacts. Check that your input files contain valid GCP resources and try again."
 3. **Route output gate (fail closed):** For each triggered sub-discovery route, require the expected artifact(s) before completion:

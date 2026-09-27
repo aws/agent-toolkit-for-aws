@@ -66,7 +66,7 @@ should NOT be used to call any live pricing MCP (none is configured).
 
 Determine the current GCP monthly infrastructure costs. Use the best available source:
 
-1. **`billing-profile.json` (preferred)** — Use actual billing data as the GCP baseline. Highest confidence (±5%).
+1. **`billing-profile.json` (preferred)** — Use actual billing data as the GCP baseline. Highest confidence (±5%). **Only when it has non-empty `services[]`.** A **skip-record** profile (empty `services[]` with non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) is **not** usable spend: skip this source and fall through to the inventory rate card below. Never take a $0 baseline from a skip record.
 2. **`gcp-resource-inventory.json` (fallback)** — Derive costs from discovered
    resource sizing using `references/shared/gcp-infra-pricing-cache.md` — never
    from remembered GCP prices. Wider range (±20-30%). Procedure:
@@ -186,7 +186,7 @@ All rates from `pricing-cache.md § CloudWatch` and `§ X-Ray`. No MCP calls nee
 
 ### Step 1: Determine log volume
 
-**IF billing data IS available** (`billing-profile.json` exists):
+**IF billing data IS available** (`billing-profile.json` exists **with non-empty `services[]`** — a skip-record profile does not count):
 
 Check for Cloud Logging line items:
 
