@@ -60,6 +60,15 @@ expected columns/keys (any of `service_description` / `sku_description` /
   schema and leaves a durable record that billing files were seen and skipped,
   rather than silently vanishing. (Contrast the Step 0 exit gate, which fires
   only when NO billing file matched the glob at all.)
+  - **This is a SKIP RECORD, not parsed billing.** A profile with empty
+    `services[]` **and** non-empty `warnings[]` records that billing input was
+    seen and skipped — it must **not** be treated as usable spend data
+    downstream. It does **not** on its own satisfy the Discover completion gate
+    (`discover.md` Completion Handoff check 1), and it does **not** select the
+    billing-only Design route (`design.md` requires non-empty `services[]`).
+    Discover reports it as "Skipped N billing files," never "Parsed billing
+    data." A run whose only artifact is a skip-record profile has effectively no
+    billing signal — it must still anchor on IaC, code scan, or AI discovery.
 - **OpenRouter specifically:** OpenRouter is a multi-provider **transport**, not
   a billing source this flow ingests. It is detected from the application code
   (`discover-app-code.md`, `gateway_type: llm_router`); an OpenRouter billing

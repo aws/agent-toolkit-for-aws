@@ -719,7 +719,7 @@ Tell the user, before collecting models:
 
 > "A few things about 'model access' on Bedrock:
 >
-> - **Claude, Llama, Nova, Mistral, etc.** are Bedrock foundation models on the `bedrock-runtime` endpoint — inference uses `bedrock:InvokeModel` / `Converse`. Access is typically granted via the console **Model access** page (some models/regions auto-subscribe on first invoke with the right AWS Marketplace permissions).
+> - **Claude, Llama, Nova, Mistral, etc.** are Bedrock foundation models on the `bedrock-runtime` endpoint — inference uses `bedrock:InvokeModel` / `Converse`. In commercial Regions, access is **on by default** once the caller has the AWS Marketplace permissions (`aws-marketplace:Subscribe` / `Unsubscribe` / `ViewSubscriptions`) — the model auto-subscribes on first invoke. The console **Model access** page is the explicit enable/catalog step (and the required flow in GovCloud). **Anthropic** models also need a one-time First-Time-Use form (`PutUseCaseForModelAccess`) per account before invoke — except when reached via `bedrock-mantle`.
 > - **OpenAI on Bedrock comes in a few forms, all real** — and which endpoint they use is per-ID, not one blanket rule:
 >   - *Open-weight* `gpt-oss` (`openai.gpt-oss-20b-1:0`, `openai.gpt-oss-120b-1:0`) → `bedrock-runtime` via `bedrock:InvokeModel` / `Converse` (its Responses API is also offered on `bedrock-mantle`).
 >   - *Bare proprietary* GPT ids (`openai.gpt-5*`, not `gpt-oss`) → probed on the `bedrock-mantle` endpoint (Responses API).
@@ -762,15 +762,18 @@ account.)
 
 Then, per B4's branch table:
 
-- `reason: model_access` → the model exists but access is not enabled for this account. Foundation-model
-  access is granted through the console **Model access** page in `$REGION` (some models/regions
-  auto-subscribe on first invoke **once the caller has the AWS Marketplace permissions** —
-  `aws-marketplace:Subscribe` / `Unsubscribe` / `ViewSubscriptions`). For **Anthropic** models the
-  account must also complete the one-time First-Time-Use form (`PutUseCaseForModelAccess`) before
-  invoke — except when the Anthropic model is reached via the `bedrock-mantle` endpoint, which does
-  not require it. Point the user at the failing model(s) + the right prerequisite, and offer to
-  re-run AC4 after they enable it. This is the common, expected outcome for a user who came here to
-  "get access."
+- `reason: model_access` → the model exists but access is not enabled for this account. Name the
+  right prerequisite for the failing model(s):
+  - **Commercial Regions:** access is on by default once the caller has the AWS Marketplace
+    permissions (`aws-marketplace:Subscribe` / `Unsubscribe` / `ViewSubscriptions`) — the model
+    auto-subscribes on first invoke. If those permissions are missing, that is the fix.
+  - **GovCloud (and explicit enable):** use the console **Model access** page in `$REGION`.
+  - **Anthropic** models additionally need the one-time First-Time-Use form
+    (`PutUseCaseForModelAccess`) per account before invoke — except when reached via
+    `bedrock-mantle`.
+  Point the user at the failing model(s) + the applicable prerequisite, and offer to re-run AC4
+  after they enable it. This is the common, expected outcome for a user who came here to "get
+  access."
 - `reason: authz` → access is enabled but IAM denies inference. Name the action to grant — for a
   standard model `bedrock:InvokeModel`; for a mantle-only `openai.gpt-5*` target (bare proprietary
   GPT, not `gpt-oss`) the `bedrock-mantle:*` set (see **B4a**). The `detail` says which — follow it
@@ -784,8 +787,10 @@ Then, per B4's branch table:
 
 ### AC5 — Summarize and stop
 
-Give the user a per-model summary: `<model_id>` → `enabled & working` / `enable on the console
-Model access page` / `grant <action>` / `not available in <region>, use <candidate>`. Then run
+Give the user a per-model summary: `<model_id>` → `enabled & working` / `enable access` (naming
+the applicable prerequisite from the `model_access` branch — Marketplace permissions in
+commercial Regions, the console Model access page in GovCloud, plus the Anthropic FTU form where
+it applies) / `grant <action>` / `not available in <region>, use <candidate>`. Then run
 the **Contextual offers (final step)**. Do **not** continue into Assess, rewrite, or any code
 change — this mode is complete.
 
