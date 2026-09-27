@@ -131,7 +131,14 @@ def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
                 in_removed = False
                 continue
             if line.lstrip().startswith("-"):
-                removed_ids = _ID_IN_BACKTICKS.findall(line)
+                # Read IDs from the text BEFORE any "replacement:" clause — the
+                # replacement names an Active model (often in backticks), and
+                # scanning the whole bullet would ban it. Mirrors the excluded
+                # table reading the Model ID column only. A bullet with no
+                # "replacement:" (e.g. Command R / R+, two retired IDs) keeps
+                # them all.
+                head = re.split(r"replacement:", line, maxsplit=1)[0]
+                removed_ids = _ID_IN_BACKTICKS.findall(head)
                 removed_count += len(removed_ids)
                 ids.extend(removed_ids)
 
