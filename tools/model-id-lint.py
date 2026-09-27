@@ -1,97 +1,143 @@
 #!/usr/bin/env python3
 """Model-ID drift lint (CI).
 
-Fails when a known-bad Bedrock model ID appears in the aws-startup-advisor
-plugin outside the files whose JOB is to catalog it. Two classes today:
+Fails when a skill (or example, agent prompt, script, or fixture) names a
+Bedrock model the lifecycle registry has retired, outside the catalog files
+whose JOB is to record it.
 
-1. EOL-as-target: models that are past EOL or inside the 90-day exclusion
-   zone per ai-model-lifecycle.md — Claude Sonnet 4, Claude 3 Haiku, Nova
-   Premier v1, Nova Sonic v1. Each may appear in the model catalog / pricing
-   rate card (that's what a lifecycle table is for), but nowhere else: an
-   example or script carrying one becomes a rewrite target.
+The banned-as-target set is READ FROM THE REGISTRY, not hardcoded. The single
+source of truth is `skills/shared/ai/ai-model-lifecycle.md`:
 
-2. Fabricated hybrids: `claude-sonnet-4-6-<date>` / `claude-opus-4-8-<date>`
-   — Sonnet 4.6 and Opus 4.8 IDs are UNDATED; the dated forms graft a newer
-   model name onto an older model's date stamp and have never existed. One
-   allowlisted exception: the resolve-bedrock-model-id helper, whose input
-   example is intentionally invalid (repairing broken IDs is its purpose).
+- the Legacy/EOL table rows whose Status is **excluded** (inside the 90-day
+  exclusion zone — must not appear in any recommendation), and
+- every model in the **Removed** (past-EOL) list.
 
-Grep-once hygiene doesn't stick; this makes the sweep permanent. Extend
-BAD_PATTERNS when a model is EOL'd. Stdlib only. Exit 0 = clean.
+Deriving the set from the registry is the whole point: a new EOL row becomes
+enforced the moment someone edits the table, which is exactly the recurring
+model-currency churn this gate exists to collapse. A `legacy` row (e.g. Claude
+Opus 4.1, >90 days to EOL) is a valid target and is deliberately NOT banned.
 
-This is the model-reference half of the model-registry gate: model-staleness.py
-keeps the registry itself fresh and in sync; this keeps the rest of the plugin
-from naming a model the registry has already retired.
+Plus one heuristic the table cannot express — fabricated dated hybrids
+(`claude-sonnet-4-6-<date>` / `claude-opus-4-8-<date>`): those model IDs are
+undated; the dated forms graft a newer name onto an older date stamp and never
+existed.
+
+Catalog files whose job is to list retired models (the lifecycle registry
+itself and the pricing rate cards) are allowlisted. A vendored copy under
+`skills/<skill>/references/vendored/<rel>` collapses onto its canonical
+`skills/shared/<rel>` path so it inherits the canonical allowlist entry.
+
+Stdlib only. Exit 0 = clean.
 """
 
 import re
 import sys
 from pathlib import Path
 
-# This repo nests the plugin under plugins/; the sibling repo rooted at the
-# plugin dir directly. Everything below keys off PLUGIN, so this is the only
-# path that changes between the two homes.
 PLUGIN = Path(__file__).resolve().parent.parent / "plugins" / "aws-startup-advisor"
-EXTS = {".md", ".py", ".json", ".ts", ".tf", ".sh", ".template"}
+REGISTRY = PLUGIN / "skills" / "shared" / "ai" / "ai-model-lifecycle.md"
+EXTS = {".md", ".py", ".json", ".ts", ".tf", ".sh", ".template", ".html"}
 
-BAD_PATTERNS = [
-    (
-        re.compile(r"claude-sonnet-4-20250514"),
-        "Claude Sonnet 4 (EOL 2026-10-14, excluded) used outside the model catalog",
-        {  # allowlist: catalog files whose job is recording the model + its EOL status
-            "skills/gcp-to-aws/references/shared/pricing-cache.md",
-            "skills/shared/ai/ai-model-lifecycle.md",
-        },
-    ),
-    (
-        re.compile(r"anthropic\.claude-3-haiku-20240307-v1:0"),
-        "Claude 3 Haiku (EOL 2026-09-10, past EOL) used outside the model catalog",
-        {
-            "skills/shared/ai/ai-model-lifecycle.md",
-        },
-    ),
-    (
-        re.compile(r"amazon\.nova-premier-v1:0"),
-        "Nova Premier v1 (EOL 2026-09-14, past EOL) used outside the model catalog",
-        {
-            "skills/gcp-to-aws/references/shared/pricing-cache.md",
-            "skills/shared/ai/ai-model-lifecycle.md",
-        },
-    ),
-    (
-        re.compile(r"amazon\.nova-sonic-v1:0"),
-        "Nova Sonic v1 (EOL 2026-09-14, past EOL) used outside the model catalog",
-        {
-            "skills/gcp-to-aws/references/shared/pricing-cache.md",
-            "skills/shared/ai/ai-model-lifecycle.md",
-        },
-    ),
-    (
-        re.compile(r"claude-(?:sonnet-4-6|opus-4-8)-\d{8}"),
-        "fabricated dated ID — Sonnet 4.6 / Opus 4.8 Bedrock IDs are undated; this form never existed",
-        {  # allowlist: the broken-ID-repair helper's intentionally-invalid example
-            "skills/llm-to-bedrock/references/helpers/resolve-bedrock-model-id/resolve-bedrock-model-id.md",
-        },
-    ),
-]
+# Catalog files whose job is to record retired models. A model ID may appear
+# here; anywhere else it is a rewrite target. Vendored copies collapse onto the
+# canonical shared path (below), so only canonical paths are listed.
+CATALOG_ALLOWLIST = {
+    "skills/shared/ai/ai-model-lifecycle.md",
+    "skills/gcp-to-aws/references/shared/pricing-cache.md",
+    "skills/azure-to-aws/references/shared/pricing-cache.md",
+}
+
+# The broken-ID-repair helper's example is intentionally invalid.
+FABRICATED_ALLOWLIST = {
+    "skills/llm-to-bedrock/references/helpers/resolve-bedrock-model-id/resolve-bedrock-model-id.md",
+}
+
+FABRICATED_RE = re.compile(r"claude-(?:sonnet-4-6|opus-4-8)-\d{8}")
 
 SELF = Path(__file__).resolve()
-
-# A vendored copy under `skills/<skill>/references/vendored/<rel>` is a byte-identical
-# mirror of the canonical `skills/shared/<rel>` (enforced by model-staleness.py), so it
-# inherits the canonical file's allowlist entry. Collapsing the path here keeps the
-# allowlist a set of CANONICAL paths — otherwise every new skill that vendors a
-# catalog file would silently start failing this lint until someone remembered to
-# add its mirror, which is exactly the per-copy manifest the vendoring model exists
-# to avoid.
 _VENDORED = re.compile(r"^skills/[^/]+/references/vendored/")
+
+# A Bedrock model ID inside a backtick span: provider.model-name:rev (and the
+# bare `v1:1`-style continuation the Nova Reel row uses). `*` is a wildcard.
+_ID_IN_BACKTICKS = re.compile(r"`([a-z0-9][a-z0-9.\-]*(?:\*[a-z0-9.\-]*)*:[0-9]+|v[0-9]+:[0-9]+)`")
 
 
 def canonicalize(rel: str) -> str:
     return _VENDORED.sub("skills/shared/", rel)
 
 
+def _id_to_regex(model_id: str) -> re.Pattern:
+    """A retired model ID -> a matcher. `*` in the ID (e.g. the Llama 3.2 glob
+    `meta.llama3-2-*-instruct-v1:0`) becomes `.*`; everything else is literal."""
+    parts = [re.escape(p) for p in model_id.split("*")]
+    return re.compile(".*".join(parts))
+
+
+def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
+    """Parse ai-model-lifecycle.md. Returns (list of (model_id, regex), errors)."""
+    errors: list[str] = []
+    if not REGISTRY.is_file():
+        return [], [f"registry not found: {REGISTRY.relative_to(PLUGIN)}"]
+
+    text = REGISTRY.read_text(encoding="utf-8")
+    ids: list[str] = []
+
+    # 1) Legacy/EOL table rows whose Status cell is **excluded**.
+    for line in text.splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        if "excluded" not in line.lower():
+            continue
+        row_ids = _ID_IN_BACKTICKS.findall(line)
+        # The Nova Reel row lists `amazon.nova-reel-v1:0` / `v1:1` — rebuild the
+        # bare `v1:1` continuation against the preceding full ID's stem.
+        rebuilt: list[str] = []
+        last_full = None
+        for tok in row_ids:
+            if tok.startswith("v") and last_full and ":" in last_full:
+                stem = last_full.rsplit("-v", 1)[0]
+                rebuilt.append(f"{stem}-{tok}")
+            else:
+                rebuilt.append(tok)
+                last_full = tok
+        ids.extend(rebuilt)
+
+    # 2) The Removed (past-EOL) bullet list.
+    in_removed = False
+    for line in text.splitlines():
+        if line.startswith("**Removed"):
+            in_removed = True
+            continue
+        if in_removed:
+            # The section ends at the next blockquote / bold header / heading.
+            if line.startswith((">", "#")) or (line.startswith("**") and not line.startswith("**Removed")):
+                in_removed = False
+                continue
+            if line.lstrip().startswith("-"):
+                ids.extend(_ID_IN_BACKTICKS.findall(line))
+
+    # Dedupe, preserve order.
+    seen: set[str] = set()
+    uniq = [i for i in ids if not (i in seen or seen.add(i))]
+
+    # Guardrail: a parser that silently finds nothing is worse than a denylist.
+    if not uniq:
+        errors.append(
+            f"{REGISTRY.relative_to(PLUGIN)}: parsed ZERO retired model IDs — "
+            f"the table/Removed-list format may have changed. Refusing to run a no-op gate."
+        )
+
+    return [(i, _id_to_regex(i)) for i in uniq], errors
+
+
 def main() -> int:
+    banned, errors = load_banned_ids()
+    if errors:
+        print(f"model-id lint: {len(errors)} setup problem(s)", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        return 1
+
     failures = []
     for path in sorted(PLUGIN.rglob("*")):
         if not path.is_file() or path.suffix not in EXTS or path.resolve() == SELF:
@@ -99,23 +145,35 @@ def main() -> int:
         rel = str(path.relative_to(PLUGIN))
         if "node_modules" in rel:
             continue
+        canonical = canonicalize(rel)
         try:
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        canonical = canonicalize(rel)
-        for pattern, why, allow in BAD_PATTERNS:
-            if rel in allow or canonical in allow:
-                continue
-            for i, line in enumerate(text.splitlines(), 1):
-                if pattern.search(line):
-                    failures.append(f"{rel}:{i}: {why}")
+
+        in_catalog = canonical in CATALOG_ALLOWLIST or rel in CATALOG_ALLOWLIST
+        in_fab_allow = canonical in FABRICATED_ALLOWLIST or rel in FABRICATED_ALLOWLIST
+
+        for i, line in enumerate(text.splitlines(), 1):
+            if not in_catalog:
+                for model_id, pattern in banned:
+                    if pattern.search(line):
+                        failures.append(
+                            f"{rel}:{i}: retired Bedrock model `{model_id}` "
+                            f"(excluded/removed per ai-model-lifecycle.md) used outside the model catalog"
+                        )
+            if not in_fab_allow and FABRICATED_RE.search(line):
+                failures.append(
+                    f"{rel}:{i}: fabricated dated ID — Sonnet 4.6 / Opus 4.8 Bedrock IDs are undated; "
+                    f"this form never existed"
+                )
+
     if failures:
         print(f"model-id lint: {len(failures)} problem(s)", file=sys.stderr)
         for f in failures:
             print(f"  - {f}", file=sys.stderr)
         return 1
-    print("model-id lint: OK")
+    print(f"model-id lint: OK ({len(banned)} retired IDs enforced from the registry)")
     return 0
 
 
