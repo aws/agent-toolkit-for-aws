@@ -68,9 +68,14 @@ def canonicalize(rel: str) -> str:
 
 def _id_to_regex(model_id: str) -> re.Pattern:
     """A retired model ID -> a matcher. `*` in the ID (e.g. the Llama 3.2 glob
-    `meta.llama3-2-*-instruct-v1:0`) becomes `.*`; everything else is literal."""
+    `meta.llama3-2-*-instruct-v1:0`) becomes a TOKEN-BOUNDED wildcard `[^\\s`]*`,
+    not `.*` — a greedy `.*` runs across whitespace/backticks into a later model
+    ID on the same line (e.g. `...llama3-2-*...` matching through the
+    `meta.llama3-3-70b-instruct-v1:0` replacement named right after it), which
+    false-fails a line that mentions the retired glob and its Active replacement
+    together. Everything outside a `*` is literal."""
     parts = [re.escape(p) for p in model_id.split("*")]
-    return re.compile(".*".join(parts))
+    return re.compile(r"[^\s`]*".join(parts))
 
 
 def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
@@ -81,14 +86,26 @@ def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
 
     text = REGISTRY.read_text(encoding="utf-8")
     ids: list[str] = []
+    excluded_count = 0
+    removed_count = 0
 
     # 1) Legacy/EOL table rows whose Status cell is **excluded**.
+    #    Read IDs from the Model ID column (2nd cell) ONLY — not the whole row.
+    #    The Active Replacement column also holds a model ID; scanning the whole
+    #    row would ban the replacement (e.g. `stability.stable-image-core-v1:0`
+    #    in the Nova Canvas row), which is an Active model that legitimately
+    #    appears as a target elsewhere.
     for line in text.splitlines():
         if not line.lstrip().startswith("|"):
             continue
         if "excluded" not in line.lower():
             continue
-        row_ids = _ID_IN_BACKTICKS.findall(line)
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        excluded_ids = _ID_IN_BACKTICKS.findall(cells[1])
+        excluded_count += len(excluded_ids)
+        row_ids = excluded_ids
         # The Nova Reel row lists `amazon.nova-reel-v1:0` / `v1:1` — rebuild the
         # bare `v1:1` continuation against the preceding full ID's stem.
         rebuilt: list[str] = []
@@ -114,17 +131,27 @@ def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
                 in_removed = False
                 continue
             if line.lstrip().startswith("-"):
-                ids.extend(_ID_IN_BACKTICKS.findall(line))
+                removed_ids = _ID_IN_BACKTICKS.findall(line)
+                removed_count += len(removed_ids)
+                ids.extend(removed_ids)
 
     # Dedupe, preserve order.
     seen: set[str] = set()
     uniq = [i for i in ids if not (i in seen or seen.add(i))]
 
     # Guardrail: a parser that silently finds nothing is worse than a denylist.
-    if not uniq:
+    # Fire per-SECTION, not just on the grand total — a rename that stops only
+    # the Removed list matching (e.g. "**Removed" -> "**Archive") would still
+    # leave the excluded rows parsing, hiding the drop behind a non-zero total.
+    if excluded_count == 0:
         errors.append(
-            f"{REGISTRY.relative_to(PLUGIN)}: parsed ZERO retired model IDs — "
-            f"the table/Removed-list format may have changed. Refusing to run a no-op gate."
+            f"{REGISTRY.relative_to(PLUGIN)}: parsed ZERO **excluded** table rows — "
+            f"the Legacy/EOL table format may have changed. Refusing to run a no-op gate."
+        )
+    if removed_count == 0:
+        errors.append(
+            f"{REGISTRY.relative_to(PLUGIN)}: parsed ZERO IDs from the **Removed** (past-EOL) "
+            f"list — its header/format may have changed. Refusing to run a no-op gate."
         )
 
     return [(i, _id_to_regex(i)) for i in uniq], errors
