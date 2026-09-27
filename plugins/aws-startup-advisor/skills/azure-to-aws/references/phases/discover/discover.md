@@ -89,16 +89,16 @@ Two facts the frontmatter cannot express:
    subscription and resource group — one field supplies the cluster seed key, the
    environment scope, and uniqueness with no derivation.
 
-## Status — build steps 2 and 4 (partial)
+## Status — Terraform and app code
 
-Terraform discovery is real and clustering is real. One fragment (`discover-iac.md`,
-Terraform only) plus an assembler that writes both artifacts.
+Terraform discovery (`discover-iac.md`) and application-code discovery
+(`discover-app-code.md`) are wired in `_fragments`. Clustering is real.
 
-| Lands in | What                                                                                                                                                                                                                   |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| step 2   | Bicep + ARM inside `discover-iac.md`; the `billing` and `app-code` fragments                                                                                                                                           |
-| step 2   | The `rdfa` fragment, then the live `az` path — security contract, capture pre-work, parsing fragment, in that order                                                                                                    |
-| step 4   | `patterns.md` — pattern RECOGNITION only. Seed / split / merge / tier / primary / roles are implemented in `references/clustering/`; every cluster carries `pattern_status: "catalog_absent"` until the catalog exists |
+Not implemented: Bicep and ARM inside `discover-iac.md`, a billing fragment, the
+RDfA fragment, and the live `az` path. `patterns.md` is not on disk — pattern
+recognition only. Seed / split / merge / tier / primary / roles are implemented
+in `references/clustering/`; every cluster carries `pattern_status: "catalog_absent"`
+until that catalog exists.
 
 The live `az` path will NOT be a plain fragment. This phase runs under
 `_exec: { _agent: rw }` with `_interactive: false`, and a dispatched worker is

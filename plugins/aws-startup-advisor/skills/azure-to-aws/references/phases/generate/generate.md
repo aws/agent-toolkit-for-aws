@@ -131,12 +131,6 @@ pack when an AI design exists. The phase runs infra, AI-only (app-code-only), or
 `_produces` and the pre/postconditions are conditional on which track exists. Read each
 fragment's own `## Status`, not this line, for its emitter detail.
 
-| Lands in | What                                                                  |
-| -------- | --------------------------------------------------------------------- |
-| step 6   | The Terraform, script, doc, and report emitters                       |
-| step 6   | The report shape — cluster-level rationale first, rows to an appendix |
-| step 6   | The AI handoff summary, when the handoff offer is accepted            |
-
 ## Step: Run the phase
 
 Steps 2–3 are the phase's WORK and are dispatched to the file-only `rw` worker. Step 4
