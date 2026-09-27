@@ -44,9 +44,9 @@ enrichment rows for Container Apps (4a/4b), PostgreSQL Flexible Server (7), Stor
 deployments (16) were all run read-only and returned the projected fields intact —
 `az resource list`, `az acr`, `az monitor log-analytics`, and `az containerapp` all
 worked with NO extension installed. Rows for services not present in the test
-subscription (webapp, aks, vm, mysql, cosmos, redis, service bus, event hubs, vnet,
-key vault, ML workspace, dns) carry command shapes ported from the pattern and should
-get one live pass before they are relied on.
+subscription (webapp, aks, vm, sql, mysql, cosmos, redis, service bus, event hubs,
+vnet, key vault, ML workspace, dns) carry command shapes ported from the pattern and
+should get one live pass before they are relied on.
 
 ---
 
@@ -162,7 +162,7 @@ extension):**
 
 ```
 az resource list --subscription "$AZURE_SUBSCRIPTION" \
-  --query "[].{name:name, type:type, location:location, resourceGroup:resourceGroup, sku:sku.name, kind:kind}" \
+  --query "[].{id:id, name:name, type:type, location:location, resourceGroup:resourceGroup, sku:sku.name, kind:kind}" \
   --output json > $MIGRATION_DIR/live-capture/resources.json
 ```
 
@@ -184,10 +184,14 @@ real subscription: it returned `Microsoft.*` types directly (e.g.
 > let dynamic-install prompt.
 
 - Success → record `method: "resource_list"` in the manifest. `az resource list`
-  gives types/names/locations/sku but thin per-service config, so then run only the
-  **enrichment rows** (marked E) of the table below for the ARM types that were
-  found — those add the config fields (app-setting names, container images, network
-  wiring, versions) that edge inference and sizing need.
+  carries every resource's full ARM `id` (the fast-path projects `id:id`), which is
+  the required `azure_id` — enrichment rows then merge their extra config onto those
+  entries by name+type. `az resource list` gives types/names/locations/sku but thin
+  per-service config, so then run only the **enrichment rows** (marked E) of the table
+  below for the ARM types that were found — those add the config fields (app-setting
+  names, container images, network wiring, versions) that edge inference and sizing
+  need.
+
 - Failure → classify and branch:
   - **Permission denied** (the identity lacks Reader on the subscription) → tell the
     user briefly that live discovery needs the **Reader** role on subscription
@@ -199,6 +203,13 @@ real subscription: it returned `Microsoft.*` types directly (e.g.
   **Per-service fallthrough:** record `method: "per_service"` and run every applicable
   table row. Keep the failed `az resource list` entry in `captures[]` with
   `status: "failed"` and the stderr summary in `note`.
+
+**`id:id` on every per-service row (REQUIRED).** In the `per_service` fallthrough there
+is no fast-path inventory to supply `azure_id`, so each table row's `--query` MUST also
+project `id:id` (stated once here rather than repeated in every cell): a captured
+resource with no ARM `id` cannot satisfy the inventory's required `azure_id` and would
+fail the phase postcondition. When both the fast path and an enrichment row cover the
+same resource, the fast-path `id` is authoritative.
 
 **2b. Capture Command Table.** Each row redirects to the named file, always with
 `--subscription "$AZURE_SUBSCRIPTION"`. On permission/"not found" errors: record the
@@ -216,14 +227,14 @@ fast path for the ARM types it found; unmarked rows run in the per-service fallt
 | 4a  | `az containerapp list --query "[].{name:name, location:location, env:properties.managedEnvironmentId, image:properties.template.containers[].image, cpu:properties.template.containers[].resources.cpu, memory:properties.template.containers[].resources.memory, minReplicas:properties.template.scale.minReplicas, maxReplicas:properties.template.scale.maxReplicas, ingress:properties.configuration.ingress.external}"` | `containerapp.json`    | E    | `Microsoft.App/containerApps`                              |
 | 4b  | `az containerapp env list --query "[].{name:name, location:location}"` — the managed environment each Container App runs in (edge target for row 4a's `env`)                                                                                                                                                                                                                                                               | `containerappenv.json` | E    | `Microsoft.App/managedEnvironments`                        |
 | 5   | `az vm list --query "[].{name:name, location:location, size:hardwareProfile.vmSize, os:storageProfile.osDisk.osType, image:storageProfile.imageReference, subnet:networkProfile.networkInterfaces[0].id, tags:tags}"`                                                                                                                                                                                                      | `vm.json`              | E    | `Microsoft.Compute/virtualMachines`                         |
-| 6   | `az sql server list --query "[].{name:name, location:location, version:version}"` then `az sql db list --server <each> --query "[].{name:name, sku:currentSku.name, tier:currentSku.tier, capacity:currentSku.capacity, maxSizeBytes:maxSizeBytes}"`                                                                                                                                                                       | `sql.json`             | E    | `Microsoft.Sql/servers`, `Microsoft.Sql/servers/databases` |
+| 6   | `az sql server list --query "[].{id:id, name:name, resourceGroup:resourceGroup, location:location, version:version}"` then, per server, `az sql db list --resource-group <rg> --server <name> --query "[].{id:id, name:name, sku:currentSku.name, tier:currentSku.tier, capacity:currentSku.capacity, maxSizeBytes:maxSizeBytes}"` (`az sql db list` requires BOTH `--resource-group` and `--server`)                                                                                                                                                                       | `sql.json`             | E    | `Microsoft.Sql/servers`, `Microsoft.Sql/servers/databases` |
 | 7   | `az postgres flexible-server list --query "[].{name:name, location:location, sku:sku.name, tier:sku.tier, version:version, storageGb:storage.storageSizeGb, haMode:highAvailability.mode}"`                                                                                                                                                                                                                                | `postgres.json`        | E    | `Microsoft.DBforPostgreSQL/flexibleServers`                 |
 | 8   | `az mysql flexible-server list --query "[].{name:name, location:location, sku:sku.name, tier:sku.tier, version:version, storageGb:storage.storageSizeGb}"`                                                                                                                                                                                                                                                                 | `mysql.json`           | E    | `Microsoft.DBforMySQL/flexibleServers`                      |
 | 9   | `az cosmosdb list --query "[].{name:name, location:location, kind:kind, capabilities:capabilities[].name, apiKind:apiProperties.serverVersion, multiRegion:enableMultipleWriteLocations, locations:locations[].locationName}"`                                                                                                                                                                                             | `cosmos.json`          | E    | `Microsoft.DocumentDB/databaseAccounts`                     |
 | 10  | `az redis list --query "[].{name:name, location:location, sku:sku.name, family:sku.family, capacity:sku.capacity, version:redisVersion, subnet:subnetId}"`                                                                                                                                                                                                                                                                | `redis.json`           | E    | `Microsoft.Cache/redis`                                     |
 | 11  | `az storage account list --query "[].{name:name, location:location, sku:sku.name, kind:kind, tier:accessTier, https:enableHttpsTrafficOnly}"`                                                                                                                                                                                                                                                                             | `storage.json`         | E    | `Microsoft.Storage/storageAccounts`                         |
 | 11a | `az acr list --query "[].{name:name, location:location, sku:sku.name, adminEnabled:adminUserEnabled}"` — container registry (→ Amazon ECR)                                                                                                                                                                                                                                                                                | `acr.json`             | E    | `Microsoft.ContainerRegistry/registries`                    |
-| 11b | `az monitor log-analytics workspace list --query "[].{name:name, location:location, sku:sku.name, retentionDays:retentionInDays}"` — Log Analytics (→ CloudWatch Logs)                                                                                                                                                                                                                                                    | `loganalytics.json`    |      | `Microsoft.OperationalInsights/workspaces`                  |
+| 11b | `az monitor log-analytics workspace list --query "[].{name:name, location:location, sku:sku.name, retentionDays:retentionInDays}"` — Log Analytics (→ CloudWatch Logs)                                                                                                                                                                                                                                                    | `loganalytics.json`    | E    | `Microsoft.OperationalInsights/workspaces`                  |
 | 12  | `az servicebus namespace list --query "[].{name:name, location:location, sku:sku.name, tier:sku.tier}"`                                                                                                                                                                                                                                                                                                                   | `servicebus.json`      |      | `Microsoft.ServiceBus/namespaces`                           |
 | 13  | `az eventhubs namespace list --query "[].{name:name, location:location, sku:sku.name, capacity:sku.capacity, kafka:kafkaEnabled}"`                                                                                                                                                                                                                                                                                        | `eventhubs.json`       |      | `Microsoft.EventHub/namespaces`                             |
 | 14  | `az network vnet list --query "[].{name:name, location:location, addressSpace:addressSpace.addressPrefixes, subnets:subnets[].{name:name, prefix:addressPrefix}}"`                                                                                                                                                                                                                                                         | `vnet.json`            | E    | `Microsoft.Network/virtualNetworks`                         |
@@ -287,7 +298,11 @@ in `references/shared/schema-discover-azure.md`:
 - `azure_type` = the captured ARM `type` (case-folded per
   `arm-type-canonicalization.md`; kind-qualify where the table notes it — a
   `Microsoft.Web/sites` with `kind` containing `functionapp` is a Function App).
-- `azure_id` = the resource's ARM resource id (`/subscriptions/.../resourceGroups/.../providers/...`).
+- `azure_id` = the captured `id` field (the full ARM resource id
+  `/subscriptions/.../resourceGroups/.../providers/...` that `az resource list --query
+  "[].{id:id,...}"` and each per-service row's `id:id` projection return). REQUIRED on
+  every entry — the schema says live `az` supplies `azure_id` directly (only Terraform
+  reconstructs it), and the phase postcondition rejects an entry without a full ARM id.
   One resource → one id string (exact-match join key downstream).
 - `name` = the resource name.
 - `resource_group` = the captured `resourceGroup`.
@@ -308,13 +323,25 @@ the derived namespace is unrecognized), and record it in `live_metadata.derived_
 Never silently drop a resource.
 
 **Classification & clustering:** apply `discover-iac.md`'s PRIMARY/SECONDARY rules and
-`{category}_{type}_{region}_{sequence}` cluster naming (see Step 5), `confidence: 0.99`.
+`{category}_{type}_{region}_{sequence}` cluster naming (see Step 5). Set
+`metadata.confidence: "inferred"` — the confidence enum is
+`deterministic | measured | inferred | billing_inferred`, and live `az` without metrics
+is `inferred` (declared/observed config, no utilization rollup — see
+`discover-assemble.md`). It becomes `measured` only when `az monitor metrics list`
+utilization backs the sizing.
 
 **AI detection:** if any `Microsoft.CognitiveServices/accounts`,
 `.../accounts/deployments`, or `Microsoft.MachineLearningServices/workspaces` resource
 was captured, contribute the minimal `ai-workload-profile.json` exactly as
-`discover-iac.md` Step 4.5 would (signal method `"live_az"`, `profile_source:
-"iac_cognitive"`, validating against `schema-discover-ai.md`), so the AI track fires.
+`discover-iac.md` Step 4.5 would, validating against `schema-discover-ai.md`, so the AI
+track fires. Live-specific field values (a live-only run has no Terraform):
+`profile_source: "iac_cognitive"`; a `detection_signals[]` entry with
+`method: "live_az"` (the allowed live method — this carries the live signal);
+`summary.inferred_from_iac: false` and `metadata.sources_analyzed.terraform: false`;
+`infrastructure[]` keyed by `azure_id` (not `config.tf_address`). Put a captured
+deployment's `model.name` in `models[]` — but note `models[].detected_via` is limited to
+`code|terraform|billing` in the schema and has NO live value, so the live provenance is
+recorded on the `detection_signals[]` entry, not on `detected_via`.
 `Microsoft.Search/searchServices` alone is NOT a strong signal.
 
 > **`ai_source` keys off the DEPLOYMENT MODEL, not the account `kind`** (validated
@@ -337,13 +364,13 @@ must appear in `schema-discover-azure.md` § Typed edges — do not invent one:
 
 | Config field (captured)                                      | Edge                                                                                                                                                    |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| webapp/functionapp `virtualNetworkSubnetId` (row 1/3)        | site → vnet, `network_membership` (resolve subnet id → its parent vnet id)                                                                              |
+| webapp/functionapp `virtualNetworkSubnetId` (row 1/3)        | site → vnet, `network` (resolve subnet id → its parent vnet id)                                                                                         |
 | webapp/functionapp `sku`/plan id → plan (row 1/3 → row 2)    | site → App Service Plan, `hosted_on` (the plan-cost fan-in edge; see `schema-discover-azure.md`)                                                        |
-| AKS `agentPoolProfiles[].vnetSubnetId` (row 4)               | cluster → vnet, `network_membership`                                                                                                                    |
+| AKS `agentPoolProfiles[].vnetSubnetId` (row 4)               | cluster → vnet, `network`                                                                                                                               |
 | Container App `managedEnvironmentId` (row 4a → 4b)           | container app → managed environment, `hosted_on` (the env is the shared compute host — parity with App Service Plan fan-in)                             |
-| Container App `image` → registry login server (row 4a → 11a) | container app → registry, `data_dependency` when the image host matches a captured `acr` login server (`<name>.azurecr.io`)                             |
-| VM `networkProfile.networkInterfaces[0].id` (row 5)          | vm → vnet, `network_membership` (resolve NIC → subnet → vnet only if the NIC/subnet was also captured; else record the NIC id in `config` and emit NO edge) |
-| redis `subnetId` (row 10)                                    | redis → vnet, `network_membership`                                                                                                                      |
+| Container App `image` → registry login server (row 4a → 11a) | container app → registry, `data_ref` when the image host matches a captured `acr` login server (`<name>.azurecr.io`)                                     |
+| VM `networkProfile.networkInterfaces[0].id` (row 5)          | vm → vnet, `network` (resolve NIC → subnet → vnet only if the NIC/subnet was also captured; else record the NIC id in `config` and emit NO edge)         |
+| redis `subnetId` (row 10)                                    | redis → vnet, `network`                                                                                                                                 |
 | cosmos `locations[]` length > 1 or `enableMultipleWriteLocations` | annotate cosmos `config.multi_region: true` (drives DynamoDB Global Tables downstream) — not an edge                                              |
 
 No other inference — do not guess relationships from names, tags, or app-setting
@@ -379,18 +406,24 @@ Otherwise the IaC inventory + clusters are the BASE. Match live↔IaC entries by
 
 1. **Matched:** keep the IaC entry (its address/id, classification, cluster, depth).
    Overwrite `config` values where live disagrees — sizing, SKU, capacity, versions,
-   images (live reflects reality). Record every OVERWRITTEN field in
-   `live_metadata.drift.config_conflicts[]` as
-   `{ "azure_id", "field", "iac_value", "live_value" }`. Set `source: "live+terraform"`.
+   images (live reflects reality). Record every OVERWRITTEN field as a
+   `resources[].drift` entry on that resource, in the schema shape
+   (`schema-discover-azure.md` § Drift records): `{ "field": "<path>", "values": [{
+   "source": "terraform", "value": <iac> }, { "source": "live", "value": <live> }],
+   "won": "live" }` — `won` is `live` because live reflects current state. Set
+   `source: "live+terraform"`.
 2. **Live-only:** append with `unmanaged_by_iac: true`. Attach to an existing cluster
    of the same category+region when one exists; else append a new simplified cluster.
 3. **IaC-only:** set `source: "terraform"` (or the IaC dialect) on every unmatched IaC
    entry. Set `not_found_live: true` ONLY if the capture covering that resource's
    service succeeded (manifest `ok`). If the relevant capture failed/was skipped, leave
    it untouched — absence of evidence is not drift.
-4. **Drift summary:** `live_metadata.drift = { "resources_live_only": N,
-   "resources_iac_only": M, "config_conflicts": [...] }`. `resources_iac_only` counts
-   ONLY entries with `not_found_live: true`, never capture-failed unknowns.
+4. **Drift summary:** the per-field disagreements live on each resource as
+   `resources[].drift` (item 1). Record run-level counts in `live_metadata.drift` as
+   `{ "resources_live_only": N, "resources_iac_only": M, "conflicted_resources": K }`
+   (a live-only rollup for reporting — NOT the per-field record, which is
+   `resources[].drift`). `resources_iac_only` counts ONLY entries with
+   `not_found_live: true`, never capture-failed unknowns.
 5. **Merged metadata:** set `metadata.discovery_sources` to include both sources.
 
 Never silently resolve a disagreement — every conflict lands in the drift record. This
@@ -409,10 +442,14 @@ write/update:
      rule).
    - `metadata.discovery_timestamp`, `metadata.subscriptions_discovered: ["$AZURE_SUBSCRIPTION"]`
    - `metadata.clustering_mode`: `"simplified_live"` (live-only runs)
-   - `warnings[]` present (empty is fine); every entry carries a `code` from the closed
-     vocabulary in `schema-discover-azure.md` § Warnings, a `detail`, and an `azure_id`
-     or identifier (e.g. a `reader_role_missing` / capture-failure warning when a row
-     failed on permissions).
+   - `warnings[]` present (empty is fine); every entry MUST carry a `code` from the
+     **closed** vocabulary in `schema-discover-azure.md` § Warnings — the phase
+     postcondition rejects any other code. That vocabulary is IaC-parse-shaped
+     (`untranslated_terraform_type`, `name_expression_unresolved`, etc.); a **capture
+     failure / missing Reader role is NOT one of them**, so it does NOT go in
+     `warnings[]`. Record capture failures in the manifest `captures[].note` and in
+     `live_metadata.capture_warnings` (a live-only field) instead. Leave `warnings[]`
+     empty on a live-only run unless a genuine closed-vocabulary condition applies.
    - top-level `live_metadata`:
 
    ```json
@@ -423,7 +460,7 @@ write/update:
      "method": "resource_list|per_service",
      "capture_warnings": ["<failed/skipped manifest entries>"],
      "derived_types": { "<arm type>": 1 },
-     "drift": { "resources_live_only": 0, "resources_iac_only": 0, "config_conflicts": [] }
+     "drift": { "resources_live_only": 0, "resources_iac_only": 0, "conflicted_resources": 0 }
    }
    ```
 
