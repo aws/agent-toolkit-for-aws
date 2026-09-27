@@ -40,8 +40,10 @@ who only wants access enablement.
 Route to **Access-only mode** (jump to the "## Access-only mode" section below, skip 0b and
 Steps 1+) when either is true:
 
-- `$ARGUMENTS` contains an access intent — e.g. `access`, `preflight`, `enable`, `model access`,
-  `request access` (and no source-code path), **or**
+- `$ARGUMENTS` contains an explicit access-request phrase — `model access`, `request access`,
+  `enable model access`, `just access`, or `preflight` (and no source-code path). Do **not** route
+  on the bare words `enable` or `access` alone — "enable the Bedrock rewrite" is a full migration,
+  not an access request. When in doubt, use the AskUserQuestion below rather than the keyword. **Or**
 - the user's request is about *getting Bedrock model access enabled* rather than rewriting code —
   e.g. "help me request access to Claude on Bedrock", "enable GPT models on Bedrock", "which
   models do I need to turn on", "I just want access, my engineers will do the migration".
@@ -718,7 +720,11 @@ Tell the user, before collecting models:
 > "A few things about 'model access' on Bedrock:
 >
 > - **Claude, Llama, Nova, Mistral, etc.** are Bedrock foundation models on the `bedrock-runtime` endpoint — inference uses `bedrock:InvokeModel` / `Converse`. Access is typically granted via the console **Model access** page (some models/regions auto-subscribe on first invoke with the right AWS Marketplace permissions).
-> - **OpenAI models on Bedrock come in two forms, both real:** *open-weight* `gpt-oss` (`openai.gpt-oss-20b-1:0`, `openai.gpt-oss-120b-1:0`) and *hosted proprietary* GPT (GPT-5.4 / 5.5 / 5.6, GPT-6). The open-weight models run on `bedrock-runtime` via `bedrock:InvokeModel` / `Converse` **and** on the `bedrock-mantle` endpoint (Responses / Chat Completions API); the proprietary GPT models are served through `bedrock-mantle`. The `bedrock-mantle` path uses a **separate** action set — `bedrock-mantle:*` (e.g. the `AmazonBedrockMantleInferenceAccess` managed policy: `bedrock-mantle:CreateInference` + `CallWithBearerToken`) — distinct from `bedrock:InvokeModel`.
+> - **OpenAI on Bedrock comes in a few forms, all real** — and which endpoint they use is per-ID, not one blanket rule:
+>   - *Open-weight* `gpt-oss` (`openai.gpt-oss-20b-1:0`, `openai.gpt-oss-120b-1:0`) → `bedrock-runtime` via `bedrock:InvokeModel` / `Converse` (its Responses API is also offered on `bedrock-mantle`).
+>   - *Bare proprietary* GPT ids (`openai.gpt-5*`, not `gpt-oss`) → probed on the `bedrock-mantle` endpoint (Responses API).
+>   - A *GPT-5.6 CRIS profile* id prefixed `us.` / `in.` / `global.` (e.g. `global.openai.gpt-5.6-sol`) → a `bedrock-runtime` target where Converse is supported.
+>   - The `bedrock-mantle` path uses a **separate** action set — `bedrock-mantle:*` (e.g. the `AmazonBedrockMantleInferenceAccess` managed policy: `bedrock-mantle:CreateInference` + `CallWithBearerToken`) — distinct from `bedrock:InvokeModel`. The preflight decides per model; don't assume.
 > - What is **not** on Bedrock is calling OpenAI's own hosted API at api.openai.com — that stays with OpenAI. 'GPT on Bedrock' means the AWS-served models above, reached through AWS endpoints and IAM.
 >
 > The preflight probes each model by the right API automatically and reports exactly which access to enable per model; I'll relay that."
@@ -748,17 +754,27 @@ uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION 
 ```
 
 (`--dataset-size 0` — there is no golden dataset in this mode, so no quota-vs-dataset warning is
-meaningful; a plain quota note is still surfaced if present.)
+meaningful; a plain quota note is still surfaced if present. **Prepend
+`AWS_PROFILE=$AWS_PROFILE_CHOICE` inline if AC3/B2 chose a non-default profile** — env vars do
+not persist across Bash calls, so without the prefix this probes the DEFAULT identity, not the
+one the user just confirmed, and a `credentials`/`authz` failure would be about the wrong
+account.)
 
 Then, per B4's branch table:
 
-- `reason: model_access` → the model exists but console access is not enabled. Point the user at
-  the Bedrock **Model access** page for the failing model(s) in `$REGION`, tell them to request
-  access, and offer to re-run AC4 after they enable it. This is the common, expected outcome for
-  a user who came here to "get access."
+- `reason: model_access` → the model exists but access is not enabled for this account. Foundation-model
+  access is granted through the console **Model access** page in `$REGION` (some models/regions
+  auto-subscribe on first invoke **once the caller has the AWS Marketplace permissions** —
+  `aws-marketplace:Subscribe` / `Unsubscribe` / `ViewSubscriptions`). For **Anthropic** models the
+  account must also complete the one-time First-Time-Use form (`PutUseCaseForModelAccess`) before
+  invoke — except when the Anthropic model is reached via the `bedrock-mantle` endpoint, which does
+  not require it. Point the user at the failing model(s) + the right prerequisite, and offer to
+  re-run AC4 after they enable it. This is the common, expected outcome for a user who came here to
+  "get access."
 - `reason: authz` → access is enabled but IAM denies inference. Name the action to grant — for a
-  standard model `bedrock:InvokeModel`; for a mantle-only `openai.gpt-*` target the
-  `bedrock-mantle:*` set (see **B4a**). The `detail` says which.
+  standard model `bedrock:InvokeModel`; for a mantle-only `openai.gpt-5*` target (bare proprietary
+  GPT, not `gpt-oss`) the `bedrock-mantle:*` set (see **B4a**). The `detail` says which — follow it
+  rather than guessing from the ID, since gpt-oss fails on `bedrock:InvokeModel`, not mantle.
 - `reason: model_unavailable` → the ID isn't offered in `$REGION`. Use the
   `resolve-bedrock-model-id` procedure to suggest a cross-region inference-profile ID or a
   correct ID, re-confirm, and re-run AC4.

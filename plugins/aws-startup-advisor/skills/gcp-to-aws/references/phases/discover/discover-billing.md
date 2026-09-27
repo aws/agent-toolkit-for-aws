@@ -46,14 +46,20 @@ expected columns/keys (any of `service_description` / `sku_description` /
 `costAtListUSD`). Then:
 
 - **Recognized (GCP/BigQuery):** parse it per the fields below.
-- **Not recognized:** **skip that file** and record a `warnings[]` note naming
-  it — e.g. `"Found billing/usage file '<name>' but it is not a GCP/BigQuery
-  export (looks like <provider, if identifiable>). Skipped it — model/service
-  discovery relies on your IaC and code scan; if you want spend included, export
-  GCP billing to CSV or supply a BigQuery billing export."` Do **not** parse it,
-  and do **not** stop. If **every** matched file is unrecognized, exit this
-  sub-file cleanly (as if no billing file was found) — other discovery sources
-  still produce artifacts.
+- **Not recognized:** **skip that file** and append an entry to the
+  `billing-profile.json` `warnings[]` array (an optional field in
+  `schema-discover-billing.md`): `{ "file": "<name>", "code":
+  "unrecognized_billing_export", "detail": "not a GCP/BigQuery export (looks
+  like <provider, if identifiable>); skipped — model/service discovery relies on
+  IaC and the code scan. To include spend, export GCP billing to CSV or supply a
+  BigQuery billing export." }`. Do **not** parse it, and do **not** stop.
+- **If EVERY matched file is unrecognized:** still write `billing-profile.json`
+  in Step 4, with empty `services` (`total_monthly_spend: 0`,
+  `ai_signals.detected: false`) and the `warnings[]` entries above — do **not**
+  exit with no artifact. The empty-but-present profile validates against the
+  schema and leaves a durable record that billing files were seen and skipped,
+  rather than silently vanishing. (Contrast the Step 0 exit gate, which fires
+  only when NO billing file matched the glob at all.)
 - **OpenRouter specifically:** OpenRouter is a multi-provider **transport**, not
   a billing source this flow ingests. It is detected from the application code
   (`discover-app-code.md`, `gateway_type: llm_router`); an OpenRouter billing
