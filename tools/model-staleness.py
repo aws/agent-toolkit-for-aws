@@ -19,13 +19,20 @@ documents but that otherwise has no gate in this repo.
 This is the model-registry sibling of the pricing freshness idea: pricing has a
 cache with `_meta.last_updated`; the model registry now has the same contract.
 
+Two failure classes, gated differently:
+    - Drift (a vendored copy that differs from canonical) and a missing /
+      malformed freshness contract are correctness problems — the repo is
+      inconsistent right now. They fail ALWAYS (with or without --strict), so
+      the PR/build path catches them.
+    - Staleness (the snapshot aged past its window) is time-based. It fails
+      ONLY under --strict (the weekly job) and stays warn-only otherwise, so a
+      registry that quietly aged out does not sink unrelated PRs.
+
 Modes:
-    python3 tools/model-staleness.py            # report; ALWAYS exit 0 (safe in
-                                                # `build` — a stale registry must
-                                                # not fail unrelated PRs)
-    python3 tools/model-staleness.py --strict   # exit 1 on staleness OR a
-                                                # drifted vendored copy (for the
-                                                # scheduled freshness workflow)
+    python3 tools/model-staleness.py            # PR/build: exit 1 on drift or a
+                                                # malformed contract; staleness is
+                                                # warn-only (exit 0)
+    python3 tools/model-staleness.py --strict   # weekly: ALSO exit 1 on staleness
     python3 tools/model-staleness.py --plugin aws-startup-advisor
 
 Stdlib only. Matches tools/validate.py and tools/sync-plugin-skills.py.
@@ -55,62 +62,85 @@ def days_since(iso_date: str) -> int:
     return (date.today() - then).days
 
 
-def parse_contract(path: Path) -> tuple[str | None, int]:
-    """Return (last_updated_iso_or_None, window_days) declared in a registry file."""
-    text = path.read_text(encoding="utf-8")
-    m_date = LAST_UPDATED_RE.search(text)
-    m_win = WINDOW_RE.search(text)
-    last_updated = m_date.group(1) if m_date else None
-    window = int(m_win.group(1)) if m_win else DEFAULT_WINDOW_DAYS
-    return last_updated, window
+class Findings:
+    """Two classes of problem, gated differently.
+
+    - hard: the repo is internally inconsistent RIGHT NOW — a drifted vendored
+      copy, or a missing / malformed freshness contract. These fail ALWAYS
+      (with or without --strict), so a PR cannot merge a canonical edit that
+      forgot a vendored copy.
+    - stale: the snapshot has simply aged past its window. This is a
+      time-based failure, so it fails ONLY under --strict (the weekly job) and
+      stays warn-only in the PR/build path — a registry that quietly aged out
+      must not sink unrelated PRs.
+    """
+
+    def __init__(self) -> None:
+        self.hard: list[str] = []
+        self.stale: list[str] = []
+        self.notes: list[str] = []
 
 
-def check_plugin(plugin_dir: Path, strict: bool) -> tuple[list[str], list[str]]:
-    """Check one plugin's model registry. Returns (failures, notes)."""
-    failures: list[str] = []
-    notes: list[str] = []
-
+def check_plugin(plugin_dir: Path, findings: Findings) -> None:
+    """Check one plugin's model registry, appending to `findings`."""
     canonicals = sorted(plugin_dir.glob(CANONICAL_GLOB))
     if not canonicals:
         # Plugin ships no model-lifecycle registry — nothing to gate.
-        return failures, notes
+        return
 
     for canonical in canonicals:
         rel = canonical.relative_to(REPO_ROOT)
-        last_updated, window = parse_contract(canonical)
+        text = canonical.read_text(encoding="utf-8")
+        m_date = LAST_UPDATED_RE.search(text)
+        m_win = WINDOW_RE.search(text)
 
-        if last_updated is None:
-            failures.append(
-                f"{rel}: no '**Last updated:** YYYY-MM-DD' line — cannot enforce freshness."
+        # --- Freshness contract must be present AND well-formed (hard). ---
+        if m_date is None:
+            findings.hard.append(
+                f"{rel}: no '**Last updated:** YYYY-MM-DD' line — the freshness contract is missing."
+            )
+        elif m_win is None:
+            findings.hard.append(
+                f"{rel}: no '**Staleness window:** N days' line — the freshness contract is incomplete."
             )
         else:
-            age = days_since(last_updated)
-            stale_by = age - window
-            if stale_by > 0:
-                failures.append(
-                    f"{rel}: STALE — last updated {last_updated} ({age}d ago), "
-                    f"window {window}d, over by {stale_by}d. "
-                    f"Refresh the registry against the Bedrock model lifecycle page and bump 'Last updated'."
+            last_updated = m_date.group(1)
+            window = int(m_win.group(1))
+            try:
+                age = days_since(last_updated)
+            except ValueError:
+                findings.hard.append(
+                    f"{rel}: '**Last updated:** {last_updated}' is not a real calendar date."
                 )
             else:
-                notes.append(
-                    f"{rel}: fresh — {age}d old (window {window}d, {-stale_by}d of headroom)."
-                )
+                stale_by = age - window
+                if stale_by > 0:
+                    findings.stale.append(
+                        f"{rel}: STALE — last updated {last_updated} ({age}d ago), "
+                        f"window {window}d, over by {stale_by}d. "
+                        f"Refresh the registry against the Bedrock model lifecycle page and bump 'Last updated'."
+                    )
+                else:
+                    findings.notes.append(
+                        f"{rel}: fresh — {age}d old (window {window}d, {-stale_by}d of headroom)."
+                    )
 
-        # Every vendored copy must be byte-identical to this canonical file.
+        # --- Every vendored copy must be byte-identical to this canonical (hard). ---
         for vendored in sorted(plugin_dir.glob(VENDORED_GLOB)):
             if not filecmp.cmp(canonical, vendored, shallow=False):
-                failures.append(
+                findings.hard.append(
                     f"{vendored.relative_to(REPO_ROOT)}: DRIFTED from canonical {rel} — "
                     f"copy the canonical file over it (they must stay byte-identical)."
                 )
 
-    return failures, notes
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--strict", action="store_true", help="exit 1 when stale or drifted")
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="also fail on staleness (the weekly job). Drift / malformed contract fail regardless.",
+    )
     ap.add_argument("--plugin", help="check a single plugin by directory name")
     args = ap.parse_args()
 
@@ -123,26 +153,36 @@ def main() -> int:
     else:
         plugin_dirs = [p for p in sorted(PLUGINS_ROOT.iterdir()) if p.is_dir()]
 
-    all_failures: list[str] = []
-    all_notes: list[str] = []
+    findings = Findings()
     for plugin_dir in plugin_dirs:
         if not plugin_dir.is_dir():
             print(f"Plugin not found: {plugin_dir}", file=sys.stderr)
             return 2
-        failures, notes = check_plugin(plugin_dir, args.strict)
-        all_failures.extend(failures)
-        all_notes.extend(notes)
+        check_plugin(plugin_dir, findings)
 
-    for note in all_notes:
+    for note in findings.notes:
         print(f"  ok: {note}")
-    for failure in all_failures:
-        print(f"  {'ERROR' if args.strict else 'WARN'}: {failure}", file=sys.stderr)
 
-    if all_failures:
-        if args.strict:
-            print(f"\nmodel-staleness: {len(all_failures)} problem(s) — failing (--strict).", file=sys.stderr)
-            return 1
-        print(f"\nmodel-staleness: {len(all_failures)} problem(s) — warn-only (pass --strict to fail).")
+    # Drift / malformed contract always fail. Staleness fails only under --strict.
+    for failure in findings.hard:
+        print(f"  ERROR: {failure}", file=sys.stderr)
+    for failure in findings.stale:
+        label = "ERROR" if args.strict else "WARN"
+        print(f"  {label}: {failure}", file=sys.stderr)
+
+    should_fail = bool(findings.hard) or (args.strict and bool(findings.stale))
+
+    if should_fail:
+        n = len(findings.hard) + (len(findings.stale) if args.strict else 0)
+        print(f"\nmodel-staleness: {n} problem(s) — failing.", file=sys.stderr)
+        return 1
+
+    if findings.stale:
+        # Stale but not strict: reported as WARN above, exit 0 so unrelated PRs stay green.
+        print(
+            f"\nmodel-staleness: {len(findings.stale)} stale registry(ies) — warn-only "
+            f"(the weekly --strict job fails on these)."
+        )
         return 0
 
     print("\nmodel-staleness: all model registries fresh and in sync.")

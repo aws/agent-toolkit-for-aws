@@ -23,7 +23,7 @@ run = "python3 tools/validate.py"
 description = "Check plugin skills are in sync with canonical sources"
 run = "python3 tools/sync-plugin-skills.py --check"
 [tasks."lint:model-staleness"]
-description = "Report stale Bedrock model-lifecycle registries (warn-only; strict runs in the weekly workflow)"
+description = "Fail on Bedrock model-lifecycle registry drift / malformed contract; staleness is warn-only (the weekly workflow runs --strict)"
 run = "python3 tools/model-staleness.py"
 
 [tasks."lint:spec"]
