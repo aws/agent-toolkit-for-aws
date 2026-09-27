@@ -1,6 +1,6 @@
 ---
 name: llm-to-bedrock
-description: "Use when the user wants to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, then rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge git branch. Not for: agent runtime selection, agentic architecture decisions, or agent migration planning — use agent-advisor for those. Not for standalone Bedrock cost estimates or infrastructure-only migration. REQUIRES the gcp-to-aws skill installed alongside this one — Assess is delegated entirely to it via a cross-skill invocation, with no standalone fallback if gcp-to-aws is absent."
+description: "Use when the user wants to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge git branch. Also has an access-only mode for users who just want to check or enable Bedrock model access for specific models (e.g. 'request access to Claude on Bedrock', 'enable GPT models on Bedrock', 'which models do I turn on') with no code migration — it walks the console Model access page and IAM for the named models, then stops. Not for agent runtime selection or agent migration planning (use agent-advisor), nor standalone cost estimates or infra-only migration. The full migration REQUIRES gcp-to-aws installed alongside this skill (Assess is delegated to it, no standalone fallback if absent); access-only mode does not need gcp-to-aws."
 ---
 
 # Migrate to Bedrock (Assess + Execute)
@@ -30,6 +30,32 @@ uv --version 2>/dev/null || echo "MISSING"
 ```
 
 If missing: "Install uv first — see the official install guide: https://docs.astral.sh/uv/getting-started/installation/ (e.g. `brew install uv` or `pipx install uv`)". Stop.
+
+### 0a-bis. Route: full migration vs. access-only
+
+This skill has two modes. Decide which the user wants **before** the gcp-to-aws check (0b) —
+the access-only mode does not use `gcp-to-aws` at all, so requiring it there would block a user
+who only wants access enablement.
+
+Route to **Access-only mode** (jump to the "## Access-only mode" section below, skip 0b and
+Steps 1+) when either is true:
+
+- `$ARGUMENTS` contains an access intent — e.g. `access`, `preflight`, `enable`, `model access`,
+  `request access` (and no source-code path), **or**
+- the user's request is about *getting Bedrock model access enabled* rather than rewriting code —
+  e.g. "help me request access to Claude on Bedrock", "enable GPT models on Bedrock", "which
+  models do I need to turn on", "I just want access, my engineers will do the migration".
+
+If it is ambiguous (the user mentions both a codebase and access), **AskUserQuestion**:
+
+> "Two things I can do — which do you want?
+> [Full migration] Rewrite your OpenAI/Gemini/Anthropic calls for Bedrock end-to-end.
+> [Just model access] Check and walk you through enabling Bedrock access for specific models,
+> no code changes."
+
+`[Just model access]` → Access-only mode. `[Full migration]` → continue to 0b.
+
+Otherwise (a code path / clear rewrite intent) → continue to 0b for the full migration.
 
 ### 0b. Check that the gcp-to-aws sibling skill is installed
 
@@ -674,6 +700,77 @@ user's own pre-existing branch and deleting it would destroy their work):
 > To discard: `git checkout <your original branch>`, `git branch -D <rewrite.branch_name>`,
 > `git tag -d saws-migrate-baseline`, and `rm -rf .saws-migrate .migration` removes all
 > migration artifacts (including the API key file).
+
+---
+
+## Access-only mode
+
+Entered from Step 0a-bis when the user wants Bedrock **model access** checked/enabled for a
+named set of models, not a code migration. It reuses the identity check (B2) and the preflight
+(B4) but takes its model list from the user, and it never touches `gcp-to-aws`, Assess, the
+source key (B3), or Phase C. It answers "which models do I need to turn on, and how" — then
+stops. No git branch, no rewrite.
+
+### AC1 — Set expectations (accuracy — say this first)
+
+Tell the user, before collecting models:
+
+> "Two things to know about 'model access' on Bedrock:
+>
+> - **Claude, Llama, Nova, Mistral, etc.** are first-class Bedrock foundation models — you enable them on the console **Model access** page, and inference uses `bedrock:InvokeModel`.
+> - **'GPT on Bedrock' means OpenAI *open-weight* models** (the `openai.gpt-*` / `gpt-oss` family via the Mantle path), **not** the hosted GPT-4/5 API you'd call at api.openai.com. Those use a different action set (`bedrock-mantle:*`, e.g. the `AmazonBedrockMantleInferenceAccess` managed policy), which is separate from `bedrock:InvokeModel`. If you want the hosted OpenAI API, that stays with OpenAI — Bedrock doesn't resell it.
+>
+> I'll check each model you name and tell you exactly what to enable."
+
+### AC2 — Collect target models and region
+
+- **Models:** if `$ARGUMENTS` names model IDs, use them. Otherwise **AskUserQuestion**: "Which
+  models do you want access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-4-5-v1:0`,
+  `openai.gpt-oss-120b-1:0`) or provider + name and I'll resolve the ID." If the user gives a
+  friendly name, resolve it to a Bedrock model ID (read
+  `$HELPERS/resolve-bedrock-model-id/resolve-bedrock-model-id.md` and follow its procedure);
+  confirm the resolved IDs back to the user. Collect them into `$TARGET_MODELS`.
+- **Region:** **AskUserQuestion**: "Which AWS region? (default `us-east-1`)" → `$REGION`.
+
+### AC3 — AWS identity confirmation
+
+Run the **B2** identity-confirmation step exactly as written (including the profile-choice
+handling and `$AWS_PROFILE_CHOICE`). Do not proceed without a confirmed identity.
+
+### AC4 — Preflight the named models
+
+Run the **B4** preflight against `$TARGET_MODELS` and interpret its verdicts exactly as B4
+does, with these mode-specific differences:
+
+```bash
+uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION --models <comma-separated $TARGET_MODELS> --dataset-size 0
+```
+
+(`--dataset-size 0` — there is no golden dataset in this mode, so no quota-vs-dataset warning is
+meaningful; a plain quota note is still surfaced if present.)
+
+Then, per B4's branch table:
+
+- `reason: model_access` → the model exists but console access is not enabled. Point the user at
+  the Bedrock **Model access** page for the failing model(s) in `$REGION`, tell them to request
+  access, and offer to re-run AC4 after they enable it. This is the common, expected outcome for
+  a user who came here to "get access."
+- `reason: authz` → access is enabled but IAM denies inference. Name the action to grant — for a
+  standard model `bedrock:InvokeModel`; for a mantle-only `openai.gpt-*` target the
+  `bedrock-mantle:*` set (see **B4a**). The `detail` says which.
+- `reason: model_unavailable` → the ID isn't offered in `$REGION`. Use the
+  `resolve-bedrock-model-id` procedure to suggest a cross-region inference-profile ID or a
+  correct ID, re-confirm, and re-run AC4.
+- `reason: credentials` / `mantle_deps_missing` / other → surface `detail` and follow B4's rule
+  (fix and re-run; do not claim access is verified when it isn't).
+- `ok == true` for a model → tell the user access is confirmed working in `$REGION` for that ID.
+
+### AC5 — Summarize and stop
+
+Give the user a per-model summary: `<model_id>` → `enabled & working` / `enable on the console
+Model access page` / `grant <action>` / `not available in <region>, use <candidate>`. Then run
+the **Contextual offers (final step)**. Do **not** continue into Assess, rewrite, or any code
+change — this mode is complete.
 
 ---
 

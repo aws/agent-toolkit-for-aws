@@ -29,7 +29,37 @@ Supported formats:
 - GCP billing export CSV
 - BigQuery billing export JSON
 
-Extract from each line item:
+### Step 1.0: Schema check — fail open, never hard-stop
+
+The Step 0 glob matches on **filename** (`*billing*`, `*cost*`, `*usage*`), so a
+matched file is not guaranteed to be a GCP/BigQuery export — it may be an
+OpenAI/Anthropic invoice, an **OpenRouter usage export**, a Stripe payout, or a
+hand-rolled spreadsheet. Billing is an **optional, secondary** signal; the
+authoritative discovery inputs are IaC/live resources (infra migrations) and the
+**application code scan** (AI/LLM migrations). A billing file this sub-file
+cannot read must degrade gracefully — it must **never** halt the run or get
+parsed against GCP column names into empty/garbage service rows.
+
+Before parsing, confirm the file is a GCP/BigQuery export by checking for the
+expected columns/keys (any of `service_description` / `sku_description` /
+`service.description` / `sku.description`, plus a cost field such as `cost` /
+`costAtListUSD`). Then:
+
+- **Recognized (GCP/BigQuery):** parse it per the fields below.
+- **Not recognized:** **skip that file** and record a `warnings[]` note naming
+  it — e.g. `"Found billing/usage file '<name>' but it is not a GCP/BigQuery
+  export (looks like <provider, if identifiable>). Skipped it — model/service
+  discovery relies on your IaC and code scan; if you want spend included, export
+  GCP billing to CSV or supply a BigQuery billing export."` Do **not** parse it,
+  and do **not** stop. If **every** matched file is unrecognized, exit this
+  sub-file cleanly (as if no billing file was found) — other discovery sources
+  still produce artifacts.
+- **OpenRouter specifically:** OpenRouter is a multi-provider **transport**, not
+  a billing source this flow ingests. It is detected from the application code
+  (`discover-app-code.md`, `gateway_type: llm_router`); an OpenRouter billing
+  export is not needed and is skipped here per the rule above.
+
+Extract from each recognized line item:
 
 - `service_description` — GCP service name
 - `sku_description` — Specific SKU/resource
