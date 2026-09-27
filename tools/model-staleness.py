@@ -49,9 +49,19 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGINS_ROOT = REPO_ROOT / "plugins"
 
-DEFAULT_WINDOW_DAYS = 45
 CANONICAL_GLOB = "skills/shared/ai/ai-model-lifecycle.md"
 VENDORED_GLOB = "skills/*/references/vendored/ai/ai-model-lifecycle.md"
+
+# Vendored copies that MUST exist (relative to a plugin dir). The glob above
+# only iterates copies that are still present, so a deleted copy would pass
+# silently — yet these paths are real load targets (azure/gcp estimate-ai.md
+# and design.md read them). Require them explicitly so dropping one fails CI
+# instead of leaving the next AI estimate reading a missing file. Applies to
+# any plugin that ships the canonical registry.
+REQUIRED_VENDORED = (
+    "skills/gcp-to-aws/references/vendored/ai/ai-model-lifecycle.md",
+    "skills/azure-to-aws/references/vendored/ai/ai-model-lifecycle.md",
+)
 
 LAST_UPDATED_RE = re.compile(r"^\*\*Last updated:\*\*\s*(\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE)
 WINDOW_RE = re.compile(r"^\*\*Staleness window:\*\*\s*(\d+)\s*days?\s*$", re.MULTILINE)
@@ -114,7 +124,16 @@ def check_plugin(plugin_dir: Path, findings: Findings) -> None:
                 )
             else:
                 stale_by = age - window
-                if stale_by > 0:
+                if age < 0:
+                    # A future date is a malformed contract, not "extra fresh".
+                    # Treated as staleness (negative headroom) it would report
+                    # "fresh" forever and silently disable the weekly gate — so
+                    # it is a HARD error, not warn-only.
+                    findings.hard.append(
+                        f"{rel}: '**Last updated:** {last_updated}' is in the future "
+                        f"({-age}d from now) — a bad bump would disable the freshness gate. Fix the date."
+                    )
+                elif stale_by > 0:
                     findings.stale.append(
                         f"{rel}: STALE — last updated {last_updated} ({age}d ago), "
                         f"window {window}d, over by {stale_by}d. "
@@ -125,7 +144,19 @@ def check_plugin(plugin_dir: Path, findings: Findings) -> None:
                         f"{rel}: fresh — {age}d old (window {window}d, {-stale_by}d of headroom)."
                     )
 
-        # --- Every vendored copy must be byte-identical to this canonical (hard). ---
+        # --- Required vendored copies must EXIST (hard). ---
+        # The glob below only sees copies that are present, so a deleted copy is
+        # invisible to a byte-compare. Check the required paths explicitly first.
+        for req in REQUIRED_VENDORED:
+            req_path = plugin_dir / req
+            if not req_path.is_file():
+                findings.hard.append(
+                    f"{req_path.relative_to(REPO_ROOT)}: MISSING — a required vendored copy of the "
+                    f"model-lifecycle registry. AI estimate/design load this path; do not delete it. "
+                    f"Copy the canonical {rel} into place."
+                )
+
+        # --- Every vendored copy that exists must be byte-identical to canonical (hard). ---
         for vendored in sorted(plugin_dir.glob(VENDORED_GLOB)):
             if not filecmp.cmp(canonical, vendored, shallow=False):
                 findings.hard.append(
