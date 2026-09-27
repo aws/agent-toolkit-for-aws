@@ -715,12 +715,13 @@ stops. No git branch, no rewrite.
 
 Tell the user, before collecting models:
 
-> "Two things to know about 'model access' on Bedrock:
+> "A few things about 'model access' on Bedrock:
 >
-> - **Claude, Llama, Nova, Mistral, etc.** are first-class Bedrock foundation models — you enable them on the console **Model access** page, and inference uses `bedrock:InvokeModel`.
-> - **'GPT on Bedrock' means OpenAI *open-weight* models** (the `openai.gpt-*` / `gpt-oss` family via the Mantle path), **not** the hosted GPT-4/5 API you'd call at api.openai.com. Those use a different action set (`bedrock-mantle:*`, e.g. the `AmazonBedrockMantleInferenceAccess` managed policy), which is separate from `bedrock:InvokeModel`. If you want the hosted OpenAI API, that stays with OpenAI — Bedrock doesn't resell it.
+> - **Claude, Llama, Nova, Mistral, etc.** are Bedrock foundation models on the `bedrock-runtime` endpoint — inference uses `bedrock:InvokeModel` / `Converse`. Access is typically granted via the console **Model access** page (some models/regions auto-subscribe on first invoke with the right AWS Marketplace permissions).
+> - **OpenAI models on Bedrock come in two forms, both real:** *open-weight* `gpt-oss` (`openai.gpt-oss-20b-1:0`, `openai.gpt-oss-120b-1:0`) and *hosted proprietary* GPT (GPT-5.4 / 5.5 / 5.6, GPT-6). The open-weight models run on `bedrock-runtime` via `bedrock:InvokeModel` / `Converse` **and** on the `bedrock-mantle` endpoint (Responses / Chat Completions API); the proprietary GPT models are served through `bedrock-mantle`. The `bedrock-mantle` path uses a **separate** action set — `bedrock-mantle:*` (e.g. the `AmazonBedrockMantleInferenceAccess` managed policy: `bedrock-mantle:CreateInference` + `CallWithBearerToken`) — distinct from `bedrock:InvokeModel`.
+> - What is **not** on Bedrock is calling OpenAI's own hosted API at api.openai.com — that stays with OpenAI. 'GPT on Bedrock' means the AWS-served models above, reached through AWS endpoints and IAM.
 >
-> I'll check each model you name and tell you exactly what to enable."
+> The preflight probes each model by the right API automatically and reports exactly which access to enable per model; I'll relay that."
 
 ### AC2 — Collect target models and region
 
