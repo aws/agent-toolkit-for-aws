@@ -4,7 +4,14 @@
 > rule. Source-cloud agnostic: it is a property of Bedrock's model catalog.
 > Vendored into each consuming skill as
 > `references/vendored/ai/ai-model-lifecycle.md` and kept byte-identical by
-> `shared:check`; edit HERE, then run `shared:sync`.
+> `tools/model-staleness.py`; edit HERE, then copy over every vendored copy in
+> the same change.
+
+<!-- freshness-contract: enforced by tools/model-staleness.py -->
+
+**Last updated:** 2026-09-21
+
+**Staleness window:** 45 days
 
 References:
 
@@ -161,6 +168,6 @@ When refreshing the cache, recompute `days_to_eol` and refresh the `active` / `l
 
 **Newer models are not covered by the table.** A model launched on or after 2026-09-07 will never appear in the Legacy/EOL table above, and its absence is not evidence that it is Active. When a candidate is not in the table, verify it by calling `GetFoundationModel` (or `ListFoundationModels`) and reading `modelLifecycle.status`: `LEGACY` and `EOL` are never valid targets for a new migration. If the model is Legacy, read its model card for the actual EOL date and whether the Legacy period is 6 months or 45 days. If neither the API nor the card is reachable, treat the model's lifecycle as **unverified** and say so in the output rather than inferring `active` from a `Status` column in a pricing cache.
 
-**Periodic table refresh:** When the table itself needs updating (new models added, EOL dates changed by AWS, or past-EOL rows to remove), update this file and `pricing-cache.md` together. Edit the canonical `skills/shared/ai/ai-model-lifecycle.md`, then copy it over every vendored copy in the same change so they stay byte-identical.
+**Periodic table refresh:** When the table itself needs updating (new models added, EOL dates changed by AWS, or past-EOL rows to remove), update this file and `pricing-cache.md` together. Edit the canonical `skills/shared/ai/ai-model-lifecycle.md`, then copy it over every vendored copy in the same change so they stay byte-identical. Bump the **Last updated** line at the top of this file — `tools/model-staleness.py` fails the weekly freshness gate once this snapshot crosses the 45-day staleness window, and verifies every vendored copy is byte-identical to this canonical one.
 
 **Past-EOL rows:** Once `days_to_eol ≤ 0`, move the model out of the live table into **Removed**, and grep this plugin's skill trees for the model ID to catch any remaining reference to it as a target. Keep the Removed entry long enough that users already on the model still get a warning.
