@@ -1,0 +1,70 @@
+{
+  "_what_this_is": "Cosmos DB Core (SQL) API RU/s -> DynamoDB capacity. Consumed by design-refs/database.md section 4.",
+  "_health_warning": "This is the most assumption-sensitive conversion in the skill and the one most likely to be wrong by a multiple. RU/s is a single blended currency for reads, writes, queries and indexing; DynamoDB prices reads and writes separately at different item-size granularities. The conversion therefore CANNOT be done from RU/s alone -- it needs the read/write split, which is why that is an ESSENTIAL Clarify question with NO default (decision 13.5d). If the split is absent, do not guess it: say the conversion is unavailable.",
+  "_scope": "Core (SQL) API only. Mongo API routes to DocumentDB, Cassandra to Keyspaces, Gremlin to Neptune, Table to DynamoDB -- none of those use this table, and a Cosmos account whose kind is not GlobalDocumentDB must never reach it.",
+  "_provenance": "Authored from published Cosmos RU charge documentation and published DynamoDB capacity-unit definitions. The RU figures are the documented defaults and real charges vary with indexing policy and query shape.",
+
+  "ru_charges": {
+    "point_write_1kb_ru": 5,
+    "point_read_1kb_ru": 1,
+    "_note": "A point write of a 1 KB item costs ~5 RU with the DEFAULT indexing policy, which indexes every property. A point read of the same item costs 1 RU. These are the two anchors everything below derives from."
+  },
+
+  "dynamodb_units": {
+    "wcu": {
+      "write_kb": 1,
+      "_note": "1 WCU = one write per second of an item up to 1 KB. A 3 KB item costs 3 WCU per write."
+    },
+    "rcu": {
+      "strong_read_kb": 4,
+      "eventual_reads_per_rcu": 2,
+      "_note": "1 RCU = one strongly-consistent read per second of an item up to 4 KB, or two eventually-consistent reads. The 4 KB granularity is why small-item read workloads convert far more cheaply than the RU number suggests."
+    }
+  },
+
+  "formulas": {
+    "_order": "Convert RU/s to operations per second FIRST, then operations to capacity units. Converting RU directly to WCU/RCU with a single divisor is the error this file exists to prevent.",
+    "writes_per_second": "(provisioned_ru_per_s * write_fraction) / 5",
+    "reads_per_second": "(provisioned_ru_per_s * read_fraction) / 1",
+    "wcu": "writes_per_second * ceil(avg_item_kb / 1)",
+    "rcu_strong": "reads_per_second * ceil(avg_item_kb / 4)",
+    "rcu_eventual": "rcu_strong / 2",
+    "_avg_item_kb_default": 1,
+    "_avg_item_kb_note": "avg_item_kb is NOT discoverable from Terraform. Default to 1 KB, state that it is an assumption, and say plainly that a 4 KB average moves WCU by 4x. This single unknown dominates the result."
+  },
+
+  "multipliers": {
+    "consistency": {
+      "Strong": {
+        "read_multiplier": 2.0,
+        "_why": "Cosmos Strong reads cost roughly double, and on the DynamoDB side strongly-consistent reads consume a full RCU where eventual consumes half."
+      },
+      "BoundedStaleness": { "read_multiplier": 2.0 },
+      "Session": {
+        "read_multiplier": 1.0,
+        "_note": "The Cosmos default. Maps most naturally to DynamoDB eventually-consistent reads."
+      },
+      "ConsistentPrefix": { "read_multiplier": 1.0 },
+      "Eventual": { "read_multiplier": 1.0 }
+    },
+    "multi_region_writes": {
+      "write_multiplier": 2.0,
+      "_why": "Cosmos multi-region write accounts charge write RU per region. The DynamoDB counterpart is Global Tables, which charges rWCU per replica region -- the shape matches, the naming does not."
+    },
+    "indexing": {
+      "_note": "Cosmos indexes EVERY property by default and the write RU already includes that cost. DynamoDB charges index writes separately per GSI. So a naive RU->WCU conversion UNDERSTATES DynamoDB cost for any container that will need GSIs, because the source's index cost was hidden inside the 5 RU and the target's is a separate line. Name every GSI the access pattern requires; do not fold them into the base WCU."
+    }
+  },
+
+  "autoscale": {
+    "rule": "A container with autoscale_settings has a MAXIMUM RU/s, and Cosmos bills the max actually used per hour with a floor of 10% of the maximum. Converting the maximum to provisioned DynamoDB capacity prices a ceiling the workload may never reach.",
+    "recommendation": "Autoscale on Cosmos maps to DynamoDB ON-DEMAND, not to provisioned capacity. Say so, and price on-demand. Provisioned capacity plus application auto scaling is the cost-optimization path, and it is a workshop decision because it requires knowing the traffic shape."
+  },
+
+  "throughput_scope": {
+    "database_level": "throughput set on the database is SHARED by every container in it. Do not multiply it per container -- that is the Cosmos analogue of the App Service Plan fan-in, and it inflates the estimate by the container count.",
+    "container_level": "throughput set on the container is that container's alone and converts independently."
+  },
+
+  "_what_this_cannot_do": "Estimate the cost of a query workload. Cosmos cross-partition queries and aggregations consume RU that no per-operation formula here models, and DynamoDB has no query engine with comparable semantics -- Scan is not an equivalent. A container whose access pattern is query-heavy rather than key-value is a re-modelling exercise, and the honest output is a finding, not a number."
+}

@@ -1,0 +1,110 @@
+{
+  "_what_this_is": "Tunable estimate-phase assumptions for azure-to-aws: the heuristic knobs an org adjusts, independent of both the cost algorithm and the AWS rate table. AWS rates live in references/vendored/pricing/aws-infra-pricing.json; the cost FORMULAS live in references/phases/estimate/estimate-infra.md prose; complexity-tier bands live in references/vendored/estimate/complexity-tiers.json. Nothing in this file is a measurement.",
+  "_provenance": "These are the product owner's chosen defaults (plan section 0, 'where the tunable constants live'), not observations. This file is the only place they may be changed. The log-volume figures are aligned with the heroku-to-aws equivalents so the two skills do not report materially different observability costs for the same designed architecture.",
+  "_why_this_file_exists": "estimate-infra.md Part 2C must estimate a log volume, and an instruction to 'estimate per service' with no table to read is unsatisfiable — the model would supply a remembered number and no reviewer could tell. Same failure mode as the sizing tables that rubrics named before they existed.",
+  "log_volume_gb_per_service": {
+    "_comment": "Monthly CloudWatch log volume per DESIGNED service, in GB. Counted per instance/node/broker/environment, not per cluster. A heuristic: Azure Monitor's own ingestion figures are not discoverable from IaC, and Azure bundles a Log Analytics allowance that AWS does not, so there is no source-side number to carry across.",
+    "eb_environment": 3,
+    "ec2_instance": 2,
+    "rds_instance": 1,
+    "documentdb_instance": 1,
+    "alb": 2,
+    "nat_gateway": 1,
+    "elasticache_node": 0.5,
+    "msk_broker": 2,
+    "lambda_function": 0.5,
+    "fsx_file_system": 0.5,
+    "_accuracy": "This is the coarsest input in the whole estimate. The observability line carries a +/-35% band because of it, and that band is wider than the AWS rate accuracy on purpose."
+  },
+  "alb_lcu_estimate": {
+    "_comment": "Load Balancer Capacity Units assumed per ALB when no traffic data exists. One LCU covers roughly 25 new connections/sec, 3,000 active connections, 1 GB/hr processed, or 1,000 rule evaluations/sec -- whichever is highest, so a low-traffic app really does sit at 1.",
+    "default_lcus": 1,
+    "_when_traffic_known": "Replace with a computed figure whenever request-rate or bandwidth data exists. IaC never carries it.",
+    "_note": "An ALB's fixed monthly charge dominates at this level: the LCU component is a minority of the line, so this assumption is cheap to be wrong about. Say so rather than implying precision."
+  },
+  "cloudwatch_defaults": {
+    "custom_metrics_per_service": 5,
+    "custom_metrics_floor": 10,
+    "alarms_per_service": 2,
+    "alarms_floor": 5,
+    "log_retention_months_default": 1,
+    "_retention_source": "preferences.operational.log_retention_days / 30 when Clarify recorded one; this default otherwise.",
+    "_xray": "X-Ray is added ONLY when tracing is actually detected in the source. Otherwise it contributes a cost nobody asked for and cannot be traced back to any evidence."
+  },
+  "optimization_savings_ranges": {
+    "_comment": "Savings RANGES for post-migration optimization opportunities, beyond the right-sized on-demand baseline. Ranges only: the full optimization_opportunities[] entry (description, references, caveats) comes from estimate-infra.md prose, and ELIGIBILITY comes from references/vendored/estimate/ri-sp-eligibility.md, which wins on any disagreement.",
+    "compute_savings_plans": {
+      "savings_percent": "20-66%",
+      "target_services": [
+        "Elastic Beanstalk",
+        "EC2",
+        "Fargate"
+      ],
+      "timing": "Post-migration (after a 30-90 day usage baseline)"
+    },
+    "database_savings_plans": {
+      "_comment": "The full Database-SP-eligible list per ri-sp-eligibility.md. ElastiCache belongs here ONLY when the target engine is Valkey; azure-to-aws maps Azure Cache for Redis to Redis OSS by default, which is Database-SP-INELIGIBLE and falls through to elasticache_reserved_nodes instead.",
+      "savings_percent": "up to 35% (serverless) / ~20% (provisioned)",
+      "target_services": [
+        "RDS",
+        "Aurora",
+        "DocumentDB",
+        "DynamoDB",
+        "ElastiCache (Valkey only)"
+      ],
+      "timing": "Post-migration, or after right-sizing"
+    },
+    "rds_reserved_instances": {
+      "savings_percent": "up to 69%",
+      "target_services": [
+        "RDS",
+        "Aurora (provisioned)"
+      ],
+      "timing": "Post-migration (after the architecture stabilizes)"
+    },
+    "elasticache_reserved_nodes": {
+      "_comment": "The commitment lever when the ElastiCache target engine is Redis OSS or Memcached, which Database Savings Plans do not cover. Requires a node-based cluster: ElastiCache Serverless has no reservable nodes.",
+      "savings_percent": "30-55%",
+      "target_services": [
+        "ElastiCache (Redis OSS or Memcached, node-based only)"
+      ],
+      "timing": "Post-migration (after a usage baseline)"
+    },
+    "s3_intelligent_tiering": {
+      "savings_percent": "38-50%",
+      "target_services": [
+        "S3 storage"
+      ],
+      "timing": "During migration"
+    },
+    "ec2_spot": {
+      "savings_percent": "60-90%",
+      "target_services": [
+        "Interruption-tolerant EB worker environments",
+        "Batch EC2"
+      ],
+      "timing": "During migration, for fault-tolerant and idempotent workloads only"
+    },
+    "_no_graviton_entry": "There is deliberately NO arm64/Graviton savings entry here. The design defaults to x86_64 because of Windows and .NET prevalence, and an arm64 saving is only real for a workload whose stack is known to be portable. That belongs in the workshop sidebar, where the customer sees both prices, not in a list of assumed savings. A withdrawn recommendation costs more trust than one never made."
+  },
+  "_azure_specific_notes": {
+    "existing_azure_commitments": "A customer already holding Azure Reserved Instances or a savings plan is not being introduced to the idea of commitment pricing -- they already do it, and migrating resets the clock. An UNEXPIRED Azure commitment keeps costing after cutover: that is a real migration cost and belongs in estimate-infra.md Part 4, not here.",
+    "declared_waste_is_not_an_opportunity": "Waste the IaC itself declares (a plan with zero apps, an unattached disk, an idle flag) is already inside the right-sized total. Listing it as an optimization opportunity double-counts the saving."
+  },
+  "timeline_weeks_by_tier": {
+    "_comment": "Timeline BANDS per complexity tier, in weeks. The post-Estimate decision gate renders '~[N-M] weeks ([tier])', and until these existed the number could only be remembered — capability run 6 correctly flagged 12-18 as 'a number no file supplies'. Bands only: the tier BOUNDARIES live in references/vendored/estimate/complexity-tiers.json, and a week-by-week schedule belongs to Generate, never here.",
+    "small": {
+      "weeks": "2-6",
+      "approach": "Compressed"
+    },
+    "medium": {
+      "weeks": "6-12",
+      "approach": "Phased cluster migration"
+    },
+    "large": {
+      "weeks": "12-18",
+      "approach": "Phased cluster migration (extended)"
+    },
+    "_not_a_cost": "This is the ONLY place effort may be expressed. It is a duration, never a dollar figure and never people-time — see estimate-infra.md Part 4."
+  }
+}

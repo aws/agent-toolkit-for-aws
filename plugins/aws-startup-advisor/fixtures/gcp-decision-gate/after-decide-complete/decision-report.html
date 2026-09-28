@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GCP to AWS Migration Assessment — Decision Report</title>
+<style>
+  :root {
+    --green: #1a7f37; --blue: #0969da; --amber: #bf8700; --red: #cf222e;
+    --purple: #8250df; --bg: #f6f8fa; --surface: #fff; --text: #1f2328;
+    --muted: #656d76; --border: #d0d7de; --aws: #232f3e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); line-height: 1.55;
+    font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .report { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  h1 { font-size: 1.85rem; margin-bottom: 0.25rem; border-bottom: 3px solid #ff9900; padding-bottom: 0.5rem; }
+  h2 { font-size: 1.3rem; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 0.45rem; }
+  h3 { font-size: 1.05rem; margin: 1.1rem 0 0.4rem; color: #424a53; }
+  p, ul, ol { margin-top: 0.45rem; margin-bottom: 0.8rem; }
+  section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.25rem 1.5rem; margin-bottom: 1rem; scroll-margin-top: 1rem;
+  }
+  .verdict-headline {
+    display: inline-block; margin: 0.35rem 0 0.1rem; padding-bottom: 0.15rem;
+    border-bottom: 3px solid #0d7377; font-size: 2rem; font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .verdict-meta { color: var(--muted); font-size: 0.92rem; margin: 0.2rem 0 0.6rem; }
+  .verdict { background: #dafbe1; border: 1px solid #4ac26b; border-left: 4px solid var(--green); border-radius: 6px; padding: 0.85rem 1rem; margin: 0.85rem 0; }
+  .share-card { background: #f1f8ff; border: 1px solid #54aeff; border-left: 4px solid var(--blue); border-radius: 6px; padding: 0.9rem 1rem; font-size: 0.95rem; }
+  .savings { color: var(--green); font-weight: 700; }
+  .metrics {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem; margin: 0.85rem 0;
+  }
+  .metric {
+    background: #f8f9fa; border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.85rem 1rem;
+  }
+  .metric strong { display: block; font-size: 1.45rem; line-height: 1.2; }
+  .metric span { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.02em; }
+  .metric small { display: block; color: var(--muted); font-size: 0.78rem; margin-top: 0.2rem; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; background: #fff; font-size: 0.88rem; }
+  th, td { border: 1px solid var(--border); padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+  th { background: #f6f8fa; font-weight: 600; }
+  tbody tr:nth-child(even) td { background: #fafbfc; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .metric-hero { background: #fff; border: 2px solid #0d7377; }
+  .metric-hero strong { font-size: 1.9rem; }
+  .chip-warn { display: inline-block; background: #fff8c5; border: 1px solid #d4a72c; border-radius: 2rem; padding: 0.05rem 0.55rem; font-size: 0.72rem; font-weight: 600; }
+  .badge { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 2rem; font-size: 0.78rem; font-weight: 600; }
+  .badge-impact-critical { background: #fce8e6; color: #c5221f; }
+  .badge-impact-high { background: #fef7e0; color: #b05a00; }
+  .badge-like-low { background: #f1f3f4; color: #545b64; }
+  .badge-like-medium { background: #fef7e0; color: #b05a00; }
+  h2 .toplink { float: right; font-size: 0.75rem; font-weight: 400; color: #656d76; text-decoration: none; }
+  @media print { h2 .toplink { display: none; } }
+  .toc {
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.5rem; margin-bottom: 1rem;
+  }
+  .toc a { display: inline-block; margin: 0.2rem 0.65rem 0.2rem 0; color: var(--blue); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid #54aeff; outline-offset: 2px; border-radius: 2px; }
+  .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 0.85rem 0; font-size: 0.92rem; }
+  .callout-warning { background: #fff8c5; border: 1px solid #d4a72c; }
+  .callout-info { background: #ddf4ff; border: 1px solid #54aeff; }
+  .callout-ok { background: #dafbe1; border: 1px solid #4ac26b; }
+  .appendix-header { background: var(--aws); color: #fff; border-radius: 8px; padding: 1rem 1.5rem; margin: 2rem 0 1rem; }
+  footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+  @media (max-width: 700px) {
+    .report { padding: 1rem 0.75rem 2rem; }
+    section { padding: 1rem; }
+    .metrics { grid-template-columns: 1fr; }
+    .toc a { display: block; }
+    table { display: block; overflow-x: auto; }
+  }
+  @media print {
+    body { background: #fff; }
+    .report { max-width: none; padding: 0; }
+    .metric, .callout, tr { break-inside: avoid; }
+    .appendix { break-before: page; }
+  }
+</style>
+</head>
+<body>
+<div class="report"><div class="executive-summary">
+<h1>GCP to AWS Migration Assessment</h1>
+<section id="decision-summary">
+<h2>Migration Decision Summary <a class="toplink" href="#toc">↑ contents</a></h2>
+<p class="verdict-headline">Go, with conditions</p>
+<p class="verdict-meta">Execution shape: Phased migration · Complexity: Moderate</p>
+<div class="metrics" aria-label="Decision highlights">
+  <div class="metric metric-hero"><span>Balanced estimate</span><strong>Est. $155/mo</strong><small>Primary AWS comparison scenario</small></div>
+  <div class="metric metric-hero"><span>Shape if you execute</span><strong>Phased</strong><small>Long pole: database migration (medium-complexity drivers)</small></div>
+  <div class="metric"><span>Decision status</span><strong>Conditional go</strong><small>Confirm availability before cutover</small></div>
+</div>
+<div class="callout-info">💡 <strong>AWS Activate Founders:</strong> up to $5,000 in credits — <a href="https://aws.amazon.com/startups/credits/">Apply for AWS Activate credits</a> before incurring eligible charges.</div>
+<p>Confidence: Medium — full basis in <a href="#exec-assumptions">What This Assessment Rests On</a>.</p>
+<div class="verdict"><strong>Recommendation:</strong> Proceed with a phased migration on the Balanced cost scenario once the availability assumption is confirmed.</div>
+<h3>Migrate if</h3>
+<ul><li>You want managed compute without Kubernetes operations</li><li>Consolidating AI usage onto Bedrock matters this year</li></ul>
+<h3>Stay entirely if</h3>
+<ul><li>Your GCP committed-use discounts run through 2027</li></ul>
+</section>
+<nav class="toc" id="toc">
+<a href="#decision-summary">Migration Decision Summary</a>
+<a href="#exec-share">Share With Your CFO</a>
+<a href="#exec-services">Current Stack</a>
+<a href="#exec-costs">Cost Comparison</a>
+<a href="#exec-optimization">Cost Optimization</a>
+<a href="#exec-timeline">Timeline</a>
+<a href="#exec-risks">Top Risks</a>
+<a href="#exec-assumptions">What This Assessment Rests On</a>
+<a href="#decision-cta">Ready to Execute?</a>
+</nav>
+<section id="exec-share">
+<h2>Share With Your CFO <a class="toplink" href="#toc">↑ contents</a></h2>
+<p>The one-paragraph version, ready to forward:</p>
+<div class="share-card"><p><strong>GCP to AWS:</strong> Go, with conditions. The Balanced AWS scenario is estimated at $155/month; the current source baseline is not directly comparable because it covers standing charges rather than the whole GCP bill. The migration is phased in dependency order, with database migration as the binding duration driver. Confirm the availability posture and committed-use discount term before committing. Confidence: medium.</p></div>
+</section>
+<section id="exec-services">
+<h2>Current Stack <a class="toplink" href="#toc">↑ contents</a></h2>
+<table><caption>Primary GCP services detected</caption><thead><tr><th scope="col">Service</th><th scope="col">Type</th></tr></thead>
+<tbody><tr><td>Cloud Run</td><td>compute</td></tr><tr><td>Cloud SQL (PostgreSQL 15)</td><td>database</td></tr><tr><td>Cloud Storage</td><td>storage</td></tr></tbody></table>
+</section>
+<section id="exec-costs">
+<h2>Cost Comparison <a class="toplink" href="#toc">↑ contents</a></h2>
+<table><caption>Estimated monthly costs</caption><thead><tr><th scope="col">Tier</th><th scope="col" class="num">Est. Monthly AWS</th></tr></thead>
+<tbody><tr><td>Premium</td><td class="num">Est. $212/mo</td></tr><tr><td><strong>Balanced</strong> (compare GCP to this row first)</td><td class="num"><strong data-cost-key="aws_monthly_balanced">Est. $155/mo</strong></td></tr><tr><td>Optimized</td><td class="num">Est. $118/mo</td></tr></tbody></table>
+<p><span class="chip-warn">⚠ not comparable</span> Your GCP baseline: estimated from resource configs (±20–30%, standing charges only). Your stated spend band ($1K–$5K/mo) measures your whole bill and is not directly comparable to the AWS figure above.</p>
+</section>
+<section id="exec-optimization">
+<h2>Cost Optimization <a class="toplink" href="#toc">↑ contents</a></h2>
+<p>Savings Plans and Reserved Instances are incremental to the Balanced on-demand baseline (Est. $155/mo). Do not add those savings on top of Optimized (Est. $118/mo) — that tier already embeds reservation assumptions.</p>
+<table>
+<caption>Post-migration commitment options vs Balanced on-demand.</caption>
+<thead><tr><th scope="col">Optimization</th><th scope="col">Target</th><th scope="col">Est. savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
+<tbody>
+<tr><td>Compute Savings Plans</td><td>Fargate</td><td>20–40%</td><td>1-year no-upfront</td><td>Low</td></tr>
+<tr><td>Database Savings Plans</td><td>RDS</td><td>~20%</td><td>1-year no-upfront</td><td>Low</td></tr>
+</tbody>
+</table>
+</section>
+<section id="exec-timeline">
+<h2>Timeline <a class="toplink" href="#toc">↑ contents</a></h2>
+<p>Phased in dependency order if you execute — long pole: database migration, then cutover in a maintenance window (medium-complexity drivers; the plugin quotes no week estimates — uncalibrated).</p>
+</section>
+<section id="exec-risks">
+<h2>Top Risks <a class="toplink" href="#toc">↑ contents</a></h2>
+<table><caption>Highest-severity migration risks</caption>
+<thead><tr><th scope="col">Risk</th><th scope="col">Impact</th><th scope="col">Likelihood</th><th scope="col">Mitigation</th></tr></thead>
+<tbody>
+<tr><td>Availability posture assumed single-AZ</td><td><span class="badge badge-impact-high">High</span></td><td><span class="badge badge-like-medium">Medium</span></td><td>Confirm the availability requirement before cutover sizing</td></tr>
+<tr><td>BigQuery excluded from combined totals</td><td><span class="badge badge-impact-high">High</span></td><td><span class="badge badge-like-low">Low</span></td><td>Deferred to specialist engagement; plan the analytics track in parallel</td></tr>
+</tbody></table>
+</section>
+<section id="exec-assumptions">
+<h2>What This Assessment Rests On <a class="toplink" href="#toc">↑ contents</a></h2>
+<p>Region, database size, and model detection extracted from your Terraform and code; availability defaulted to single-AZ per dev-tier signals. Cached pricing dated 2026-07 (±5–10% infra).</p>
+</section>
+<section id="decision-cta">
+<h2>Ready to execute? <a class="toplink" href="#toc">↑ contents</a></h2>
+<p>Say "generate the Terraform and migration scripts" and I'll produce the full execution pack (Terraform, migration scripts, rollback runbook, fill-in checklist) from this same analysis.</p>
+<p>This decision report was generated without execution artifacts; the full migration report replaces it if you proceed.</p>
+</section>
+</div></div>
+<footer>Generated by GCP to AWS Migration Advisor — draft for review</footer>
+</body>
+</html>

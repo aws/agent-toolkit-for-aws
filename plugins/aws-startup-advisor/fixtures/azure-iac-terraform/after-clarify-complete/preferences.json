@@ -1,0 +1,256 @@
+{
+  "phase": "clarify",
+  "clarify_status": "COMPLETE",
+  "global": {
+    "target_region": {
+      "disposition": "DETECTED",
+      "value": "eu-west-1",
+      "default": "eu-west-1",
+      "residency_warning": "azure-region-map.json marks westeurope -> eu-west-1 as same_country: false (Netherlands -> Ireland). The move crosses a border and may breach a data-residency commitment. eu-central-1 (Frankfurt) is the listed alternative and is often the better latency choice for Dutch and German users.",
+      "source": "westeurope"
+    },
+    "environment_scope": {
+      "disposition": "DETECTED",
+      "value": [
+        "unlabelled"
+      ],
+      "default": [
+        "unlabelled"
+      ],
+      "source": "No environment markers were found: the three resource groups are rg-app, rg-data and rg-shared, with none of the -dev / -prod / -stage / d- / t- / s- name patterns clarify-global.md Q-A2 looks for and no prod_ / nonprod_ RDfA prefixes (no RDfA report was supplied). The estate presents as one unlabelled environment and all three resource groups are in scope. The token 'unlabelled' is not specified by any skill file \u2014 see NOTES.md."
+    },
+    "migration_window": {
+      "disposition": "PROPOSED",
+      "value": null,
+      "default": null
+    },
+    "user_geography": {
+      "disposition": "PROPOSED",
+      "value": "single-region",
+      "default": "single-region"
+    }
+  },
+  "design_constraints": {
+    "compliance": {
+      "disposition": "ESSENTIAL",
+      "value": [],
+      "default": null
+    },
+    "cpu_architecture": {
+      "disposition": "DETECTED",
+      "value": "x86_64",
+      "default": "x86_64",
+      "forced_by": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Compute/virtualMachines/tf:reporting (os_type Windows, image_publisher MicrosoftWindowsServer); also Microsoft.Web/serverfarms/tf:legacy (os_type Windows)"
+    },
+    "compute_target": {
+      "disposition": "PROPOSED",
+      "value": "elastic_beanstalk",
+      "default": "elastic_beanstalk"
+    },
+    "cost_optimization": {
+      "disposition": "PROPOSED",
+      "value": "balanced",
+      "default": "balanced",
+      "note": "No utilization data was discovered (Terraform only, no RDfA and no az monitor metrics), so this setting changes nothing in this run."
+    },
+    "traffic_pattern": {
+      "disposition": "PROPOSED",
+      "value": "steady",
+      "default": "steady"
+    },
+    "long_lived_connections": {
+      "disposition": "PROPOSED",
+      "value": false,
+      "default": false
+    },
+    "vm_cutover": {
+      "disposition": "ESSENTIAL",
+      "value": "mgn",
+      "default": null,
+      "conflict": {
+        "code": "azure_edition_windows_server",
+        "azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Compute/virtualMachines/tf:reporting",
+        "detail": "The user chose MGN replication. The only Microsoft.Compute/virtualMachines resource in this estate carries image_sku 2022-datacenter-azure-edition, and fast-path-services.json -> hard_blockers.azure_edition_windows_server says AWS Application Migration Service REFUSES that image until it is re-imaged to a standard Windows Server edition. The answer is recorded as given per clarify-assemble.md (a conflicting answer does not block); the blocker is a prerequisite, not a competing preference. Because that VM is the estate's only VM, the choice cannot be executed on any VM until the re-image is done.",
+        "suppressed_option": "clarify-compute.md Q-C6 option [A] (MGN) for this VM"
+      }
+    }
+  },
+  "data": {
+    "availability": {
+      "disposition": "ESSENTIAL",
+      "value": "single-az",
+      "default": null,
+      "source_ha_context": "Microsoft.DBforPostgreSQL/flexibleServers/tf:store (pg-${var.prefix}-store): high_availability.mode ZoneRedundant, standby_availability_zone 2, primary zone 1, backup_retention_days 14",
+      "note": "The source is zone-redundant and the answer is single-AZ, so Design must emit an availability_downgrade_from_source finding (clarify-database.md Q-D1).",
+      "context": "Microsoft.DBforPostgreSQL/flexibleServers/tf:store (pg-${var.prefix}-store): high_availability.mode ZoneRedundant, standby_availability_zone 2, primary zone 1, backup_retention_days 14"
+    },
+    "db_cutover": {
+      "disposition": "ESSENTIAL",
+      "value": "dms",
+      "default": null,
+      "context": "One relational database: Postgres 16 Flexible Server, GP_Standard_D2s_v3, storage_mb 65536 (64 GiB allocated)."
+    },
+    "traffic_pattern": {
+      "disposition": "PROPOSED",
+      "value": "steady",
+      "default": "steady",
+      "note": "Not DETECTED: GP_Standard_D2s_v3 is a General Purpose tier, not a burstable/dev tier, so Q-D3's DETECTED condition does not hold."
+    },
+    "storage_io": {
+      "disposition": "PROPOSED",
+      "value": "medium",
+      "default": "medium"
+    },
+    "cosmos_rw_split": {
+      "disposition": "N/A",
+      "value": null,
+      "default": null,
+      "reason": "The only Cosmos account (Microsoft.DocumentDB/databaseAccounts/tf:catalog) is Mongo API (kind MongoDB, capabilities EnableMongo), which is a fast-path row to DocumentDB. Q-D5 fires only for a Core (SQL) API account, where the RU/s -> WCU/RCU conversion needs the read/write mix."
+    },
+    "redis_modules": {
+      "disposition": "DETECTED",
+      "value": false,
+      "default": false,
+      "source": "Source is Microsoft.Cache/Redis (Standard C1), not Microsoft.Cache/redisEnterprise, and plain Azure Cache for Redis carries no modules."
+    }
+  },
+  "baseline": {
+    "azure_monthly_spend": {
+      "disposition": "ESSENTIAL",
+      "value": 4200,
+      "default": null,
+      "currency": "USD",
+      "period": "month",
+      "source": "user_stated",
+      "note": "No Azure Cost Management export was discovered, so this row was ESSENTIAL per clarify-global.md Q-A5. The numeric/currency encoding is not specified by any skill file - see NOTES.md.",
+      "context": "user_stated"
+    }
+  },
+  "identity": {
+    "disposition": "PROPOSED",
+    "value": "identity_center_reinvite",
+    "default": "identity_center_reinvite",
+    "context": "0 Microsoft.ManagedIdentity/userAssignedIdentities, 0 Microsoft.Authorization/roleAssignments, 1 Microsoft.KeyVault/vaults in the inventory. No heavy Entra investment is visible, so no separate identity workstream is flagged.",
+    "note": "clarify-identity.md states design-refs/identity.md does not exist yet, so this row is recorded for later and shapes nothing in this run's design."
+  },
+  "licensing": {
+    "_fired": true,
+    "_firing_reason": "One Microsoft.Compute/virtualMachines entry with os_type Windows and image_publisher MicrosoftWindowsServer (azurerm_windows_virtual_machine.reporting). No Microsoft.Sql/* resource is present and no SQL-Server-on-VM image signature was found, which is why sql_model is N/A while the category still fires.",
+    "windows_model": {
+      "disposition": "ESSENTIAL",
+      "value": "license_included",
+      "default": null,
+      "context": "1 Windows VM, 4 vCPUs total (Standard_D4s_v5 -> 4 vCPU per knowledge/design/vm-ec2-sizing.json). One additional Windows App Service Plan (asp-${var.prefix}-legacy, P1v3, os_type Windows, 0 apps) also carries Windows licensing on the target but is outside clarify-licensing.md's stated firing rule - see NOTES.md."
+    },
+    "sql_model": {
+      "disposition": "N/A",
+      "value": null,
+      "default": null,
+      "reason": "No Microsoft.Sql/* resource and no SQL-Server-on-VM image signature (image_publisher is MicrosoftWindowsServer, offer WindowsServer). The only SQL-adjacent workloads are Postgres Flexible Server and Cosmos Mongo, neither of which carries a Windows/SQL licence decision."
+    },
+    "ahub_in_use": {
+      "disposition": "DETECTED",
+      "value": false,
+      "default": false,
+      "source": "Nothing in the Terraform declares Azure Hybrid Use Benefit (no license_type attribute on the VM), so the Azure baseline is treated as an unreduced rate."
+    },
+    "blockers": [
+      {
+        "azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Compute/virtualMachines/tf:reporting",
+        "code": "azure_edition_windows_server",
+        "severity": "blocker",
+        "message": "Its image is 2022-datacenter-azure-edition. AWS Application Migration Service refuses an Azure Edition Windows Server image: it carries Azure-specific platform integration (Hotpatch, SMB over QUIC, Azure Extended Networking) and must be re-imaged to a standard Windows Server edition before replication can start. This is not a licensing choice. It is a prerequisite."
+      }
+    ]
+  },
+  "app_service_plans": [
+    {
+      "plan_azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:web",
+      "plan_name_expression": "asp-${var.prefix}-web",
+      "sku_name": "S1",
+      "worker_count": 2,
+      "hosted_app_count": 5,
+      "isolation_split": {
+        "disposition": "PROPOSED",
+        "value": false,
+        "default": false
+      }
+    },
+    {
+      "plan_azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:func",
+      "plan_name_expression": "asp-${var.prefix}-func",
+      "sku_name": "Y1",
+      "worker_count": 1,
+      "hosted_app_count": 1,
+      "isolation_split": {
+        "disposition": "N/A",
+        "value": null,
+        "default": null,
+        "reason": "one app - nothing to isolate from"
+      }
+    },
+    {
+      "plan_azure_id": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Web/serverfarms/tf:legacy",
+      "plan_name_expression": "asp-${var.prefix}-legacy",
+      "sku_name": "P1v3",
+      "worker_count": 1,
+      "hosted_app_count": 0,
+      "isolation_split": {
+        "disposition": "N/A",
+        "value": null,
+        "default": null,
+        "reason": "no apps - idle capacity, raised as a cost finding instead"
+      }
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "rg-app-tf-web",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "design-refs/patterns.md is absent, so no pattern was recognised and there is nothing for the user to confirm or correct. pattern_status is catalog_absent, which per decision 13.3c means the catalog was never consulted \u2014 distinct from unclassified, which means it was consulted and nothing matched."
+      }
+    },
+    {
+      "cluster_id": "rg-app-tf-func",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "design-refs/patterns.md is absent, so no pattern was recognised and there is nothing for the user to confirm or correct. pattern_status is catalog_absent, which per decision 13.3c means the catalog was never consulted \u2014 distinct from unclassified, which means it was consulted and nothing matched."
+      }
+    },
+    {
+      "cluster_id": "rg-data-tf-catalog",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "design-refs/patterns.md is absent, so no pattern was recognised and there is nothing for the user to confirm or correct. pattern_status is catalog_absent, which per decision 13.3c means the catalog was never consulted \u2014 distinct from unclassified, which means it was consulted and nothing matched."
+      }
+    },
+    {
+      "cluster_id": "rg-shared-tf-reporting",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "design-refs/patterns.md is absent, so no pattern was recognised and there is nothing for the user to confirm or correct. pattern_status is catalog_absent, which per decision 13.3c means the catalog was never consulted \u2014 distinct from unclassified, which means it was consulted and nothing matched."
+      }
+    },
+    {
+      "cluster_id": "rg-shared-tf-legacy",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "design-refs/patterns.md is absent, so no pattern was recognised and there is nothing for the user to confirm or correct. pattern_status is catalog_absent, which per decision 13.3c means the catalog was never consulted \u2014 distinct from unclassified, which means it was consulted and nothing matched."
+      }
+    }
+  ],
+  "workshop": {},
+  "_what_this_is": "GOLDEN \u2014 the COMPLETING clarify branch, from capability run 5 (fresh isolated agent, answer keys prohibited, pointed only at SKILL.md). Its sibling after-clarify/ is the BLOCKED branch, kept deliberately: the scripted user there declines to state Azure spend, which proves ESSENTIAL + value:null gates the phase. This branch answers it, which is what makes design reachable. The only edit to the run's output was renaming `note`/`mapped_from` to `source` on DETECTED rows \u2014 a mechanical key rename, because the run's CONTENT was correct and only the key name was unspecified at the time. schema-preferences.md now names it.",
+  "_source_added_note": "`source` was added to 5 cluster pattern_id rows after the run. The content is mechanically determined: 13.3c fixes catalog_absent's meaning and patterns.md's absence is a fact on disk, so there is exactly one possible reason. The run omitted it because schema-preferences.md did not require `source` on a DETECTED row until after the run started."
+}

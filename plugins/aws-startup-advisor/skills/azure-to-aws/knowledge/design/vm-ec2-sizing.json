@@ -1,0 +1,183 @@
+{
+  "_what_this_is": "Azure VM size -> EC2 instance type. Consumed by design-refs/compute.md section 5 after the rubric has chosen EC2 or an Auto Scaling group.",
+  "_selection_rule": "Nearest-not-smaller on BOTH vCPU and memory within the matching family class, so a general-purpose Azure size lands on a general-purpose EC2 family rather than being re-classed. Every row records both sides' specs; a row whose aws side is smaller on either axis is a bug.",
+  "_architecture": "x86_64 default. Azure VM fleets are the single biggest source of Windows workloads in this skill, and graviton.md's escape path (Windows, .NET Framework, GPU/CUDA, RDS SQL Server) fires routinely. graviton_alternative is an offer, gated on compute.md section 4.",
+  "_provenance": "Authored from published Azure VM series specs and published EC2 instance specs. NOT verified against a live API.",
+
+  "_family_classes": {
+    "B": {
+      "azure_class": "burstable",
+      "aws_family": "t3 / t3a",
+      "note": "Credit-based on both sides, so the operational model matches."
+    },
+    "D": { "azure_class": "general purpose", "aws_family": "m6i / m7i" },
+    "Da": { "azure_class": "general purpose AMD", "aws_family": "m6a / m7a" },
+    "Dp": {
+      "azure_class": "general purpose Arm",
+      "aws_family": "m7g",
+      "note": "Already Arm on Azure, so Graviton is the LIKE-FOR-LIKE here, not an upgrade. compute.md section 4's x86 default does not apply to a source that is already Arm."
+    },
+    "E": { "azure_class": "memory optimized", "aws_family": "r6i / r7i" },
+    "Ea": { "azure_class": "memory optimized AMD", "aws_family": "r6a / r7a" },
+    "F": { "azure_class": "compute optimized", "aws_family": "c6i / c7i" },
+    "Fa": { "azure_class": "compute optimized AMD", "aws_family": "c6a / c7a" },
+    "L": {
+      "azure_class": "storage optimized",
+      "aws_family": "i4i / i7ie",
+      "note": "Local NVMe is the defining feature. Mapping an L-series to an m-family silently removes the local disk the workload was chosen for."
+    },
+    "M": {
+      "azure_class": "memory optimized XL",
+      "aws_family": "x2iedn / u-7i",
+      "note": "SAP-class memory. Confirm the target instance exists in the chosen region before committing; the very large sizes are not in every region."
+    },
+    "NC": { "azure_class": "GPU compute", "aws_family": "p5 / p4d / g5", "note": "See _gpu_caveat." },
+    "ND": { "azure_class": "GPU training", "aws_family": "p5 / p4d", "note": "See _gpu_caveat." },
+    "NV": { "azure_class": "GPU visualization", "aws_family": "g5 / g6" },
+    "HB": { "azure_class": "HPC", "aws_family": "hpc7a / hpc6a" },
+    "HX": { "azure_class": "HPC memory", "aws_family": "hpc7a" }
+  },
+
+  "sizes": {
+    "Standard_B1s": {
+      "azure": { "vcpu": 1, "memory_gib": 1 },
+      "aws": { "instance_type": "t3.micro", "vcpu": 2, "memory_gib": 1 }
+    },
+    "Standard_B2s": {
+      "azure": { "vcpu": 2, "memory_gib": 4 },
+      "aws": { "instance_type": "t3.medium", "vcpu": 2, "memory_gib": 4 }
+    },
+    "Standard_B2ms": {
+      "azure": { "vcpu": 2, "memory_gib": 8 },
+      "aws": { "instance_type": "t3.large", "vcpu": 2, "memory_gib": 8 }
+    },
+    "Standard_B4ms": {
+      "azure": { "vcpu": 4, "memory_gib": 16 },
+      "aws": { "instance_type": "t3.xlarge", "vcpu": 4, "memory_gib": 16 }
+    },
+    "Standard_D2s_v3": {
+      "azure": { "vcpu": 2, "memory_gib": 8 },
+      "aws": { "instance_type": "m6i.large", "vcpu": 2, "memory_gib": 8 },
+      "graviton_alternative": "m7g.large"
+    },
+    "Standard_D2s_v5": {
+      "azure": { "vcpu": 2, "memory_gib": 8 },
+      "aws": { "instance_type": "m6i.large", "vcpu": 2, "memory_gib": 8 },
+      "graviton_alternative": "m7g.large"
+    },
+    "Standard_D4s_v3": {
+      "azure": { "vcpu": 4, "memory_gib": 16 },
+      "aws": { "instance_type": "m6i.xlarge", "vcpu": 4, "memory_gib": 16 },
+      "graviton_alternative": "m7g.xlarge"
+    },
+    "Standard_D4s_v5": {
+      "azure": { "vcpu": 4, "memory_gib": 16 },
+      "aws": { "instance_type": "m6i.xlarge", "vcpu": 4, "memory_gib": 16 },
+      "graviton_alternative": "m7g.xlarge"
+    },
+    "Standard_D8s_v5": {
+      "azure": { "vcpu": 8, "memory_gib": 32 },
+      "aws": { "instance_type": "m6i.2xlarge", "vcpu": 8, "memory_gib": 32 },
+      "graviton_alternative": "m7g.2xlarge"
+    },
+    "Standard_D16s_v5": {
+      "azure": { "vcpu": 16, "memory_gib": 64 },
+      "aws": { "instance_type": "m6i.4xlarge", "vcpu": 16, "memory_gib": 64 },
+      "graviton_alternative": "m7g.4xlarge"
+    },
+    "Standard_D32s_v5": {
+      "azure": { "vcpu": 32, "memory_gib": 128 },
+      "aws": { "instance_type": "m6i.8xlarge", "vcpu": 32, "memory_gib": 128 }
+    },
+    "Standard_E2s_v5": {
+      "azure": { "vcpu": 2, "memory_gib": 16 },
+      "aws": { "instance_type": "r6i.large", "vcpu": 2, "memory_gib": 16 },
+      "graviton_alternative": "r7g.large"
+    },
+    "Standard_E4s_v5": {
+      "azure": { "vcpu": 4, "memory_gib": 32 },
+      "aws": { "instance_type": "r6i.xlarge", "vcpu": 4, "memory_gib": 32 },
+      "graviton_alternative": "r7g.xlarge"
+    },
+    "Standard_E8s_v5": {
+      "azure": { "vcpu": 8, "memory_gib": 64 },
+      "aws": { "instance_type": "r6i.2xlarge", "vcpu": 8, "memory_gib": 64 },
+      "graviton_alternative": "r7g.2xlarge"
+    },
+    "Standard_E16s_v5": {
+      "azure": { "vcpu": 16, "memory_gib": 128 },
+      "aws": { "instance_type": "r6i.4xlarge", "vcpu": 16, "memory_gib": 128 }
+    },
+    "Standard_F2s_v2": {
+      "azure": { "vcpu": 2, "memory_gib": 4 },
+      "aws": { "instance_type": "c6i.large", "vcpu": 2, "memory_gib": 4 },
+      "graviton_alternative": "c7g.large"
+    },
+    "Standard_F4s_v2": {
+      "azure": { "vcpu": 4, "memory_gib": 8 },
+      "aws": { "instance_type": "c6i.xlarge", "vcpu": 4, "memory_gib": 8 },
+      "graviton_alternative": "c7g.xlarge"
+    },
+    "Standard_F8s_v2": {
+      "azure": { "vcpu": 8, "memory_gib": 16 },
+      "aws": { "instance_type": "c6i.2xlarge", "vcpu": 8, "memory_gib": 16 },
+      "graviton_alternative": "c7g.2xlarge"
+    },
+    "Standard_F16s_v2": {
+      "azure": { "vcpu": 16, "memory_gib": 32 },
+      "aws": { "instance_type": "c6i.4xlarge", "vcpu": 16, "memory_gib": 32 }
+    },
+    "Standard_L8s_v3": {
+      "azure": { "vcpu": 8, "memory_gib": 64, "local_nvme_gib": 1920 },
+      "aws": { "instance_type": "i4i.2xlarge", "vcpu": 8, "memory_gib": 64, "local_nvme_gib": 1875 }
+    },
+    "Standard_L16s_v3": {
+      "azure": { "vcpu": 16, "memory_gib": 128, "local_nvme_gib": 3840 },
+      "aws": { "instance_type": "i4i.4xlarge", "vcpu": 16, "memory_gib": 128, "local_nvme_gib": 3750 }
+    },
+    "Standard_NC6s_v3": {
+      "azure": { "vcpu": 6, "memory_gib": 112, "gpu": "1x V100 16GB" },
+      "aws": { "instance_type": "p3.2xlarge", "vcpu": 8, "memory_gib": 61, "gpu": "1x V100 16GB" },
+      "note": "GPU matches exactly; MEMORY DOES NOT - 61 GiB against 112. If the workload is host-memory bound this row under-provisions, and the GPU match is what makes it look safe."
+    },
+    "Standard_NC24ads_A100_v4": {
+      "azure": { "vcpu": 24, "memory_gib": 220, "gpu": "1x A100 80GB" },
+      "aws": { "instance_type": null, "gpu": "no single-A100 instance exists" },
+      "requires_decision": true,
+      "options": [
+        {
+          "instance_type": "p4d.24xlarge",
+          "gpu": "8x A100 40GB",
+          "note": "8x the GPU and 8x the price. Right only if the workload can use them."
+        },
+        {
+          "instance_type": "g5.12xlarge",
+          "vcpu": 48,
+          "memory_gib": 192,
+          "gpu": "4x A10G 24GB",
+          "note": "Cheaper, far less GPU memory. Fails if the model needs >24GB per device."
+        },
+        { "instance_type": "p5.48xlarge", "gpu": "8x H200", "note": "Newer generation, same 8-GPU floor." }
+      ],
+      "note": "AWS has no 1x A100 instance. This is a genuine architecture decision, not a size lookup: emit it as a decision for the report, never silently pick one."
+    },
+    "Standard_NV12ads_A10_v5": {
+      "azure": { "vcpu": 12, "memory_gib": 110, "gpu": "1/2 A10 12GB" },
+      "aws": { "instance_type": "g5.xlarge", "vcpu": 4, "memory_gib": 16, "gpu": "1x A10G 24GB" },
+      "note": "Azure fractional GPUs have no AWS equivalent; the smallest g5 is a whole A10G. GPU up, host memory sharply down."
+    },
+    "Standard_HB120rs_v3": {
+      "azure": { "vcpu": 120, "memory_gib": 456 },
+      "aws": { "instance_type": "hpc7a.96xlarge", "vcpu": 96, "memory_gib": 768 },
+      "note": "HPC sizing is bound by interconnect and core count, not by nearest-not-smaller. Treat as a decision, not a lookup."
+    },
+    "Standard_M128s": {
+      "azure": { "vcpu": 128, "memory_gib": 2048 },
+      "aws": { "instance_type": "x2iedn.16xlarge", "vcpu": 64, "memory_gib": 2048 },
+      "note": "Memory matches, vCPU halves. Confirm regional availability before committing."
+    }
+  },
+
+  "_gpu_caveat": "Azure and AWS do not offer the same GPU SKUs at the same granularity, and Azure sells fractional GPUs where AWS does not. Any NC/ND/NV row is a DECISION with named options and a stated trade-off, never a silent nearest-match. Route it to gpu-hpc.md when that file lands.",
+  "_unlisted_sizes": "For a size not enumerated here: read its vCPU and memory from the source, resolve its family class via _family_classes, and pick nearest-not-smaller on both axes within that AWS family. Record sizing_provenance as 'table' only if the family class was found here; otherwise 'model_prior' and say so."
+}

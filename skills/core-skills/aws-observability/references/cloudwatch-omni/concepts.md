@@ -40,14 +40,14 @@ reference, linked from each section and indexed at the end.
 
 **A separate service with its own control plane.** CloudWatch answers under
 `aws cloudwatch`, `aws logs`, `aws xray`, and friends. Omni answers under
-`aws cloudwatch-omni`: endpoint prefix `cloudwatch-omni`, regional endpoint
+`aws cloudwatchomni`: endpoint prefix `cloudwatch-omni`, regional endpoint
 `cloudwatch-omni.<region>.api.aws`, SigV4 signing name `cloudwatch`. The shared
 signing name is the only thing the two have in common at the wire level — a CloudWatch
 or X-Ray client cannot reach a Space, an Omni alert, a view, or an Omni
 dashboard at any version, and `aws cloudwatch <omni-operation>` always fails. The
 wire protocol is Smithy RPC v2 CBOR (`rpcv2Cbor`) — calls POST to
 `/service/CloudWatchOmniFrontend/operation/<Op>` with CBOR bodies — so a caller needs
-an AWS SDK or CLI that carries the `cloudwatch-omni` model; a hand-rolled
+an AWS SDK or CLI that carries the `cloudwatchomni` model; a hand-rolled
 JSON-over-SigV4 client cannot call it. The
 API, CLI/SDK, CloudFormation, and coding-agent paths are covered once, in
 [programmatic-access.md](programmatic-access.md); do not restate them here.
@@ -59,26 +59,17 @@ the account's CloudWatch **Dataset** — one per account per Region,
 exists whether or not a Space does. Through a Space the customer works with:
 
 - the **Dataset** — the correlated store that queries run against, owned by
-
   CloudWatch and read by the Space;
-
 - **SQL over logs and traces** (`logs.default`, `traces.default`) and **PromQL over
-
   metrics** — two query languages, one per signal shape, see
   [query/sql-logs-traces.md](query/sql-logs-traces.md) and
   [query/promql-metrics.md](query/promql-metrics.md);
-
 - **views** (named, reusable SQL), **alerts** (SQL or PromQL rules with
-
   OK/WARNING/CRITICAL/NODATA states), and **dashboards** (a JSON `panels[]` body on a
   fixed grid);
-
 - a **context graph** relating the services, resources, and deployments the telemetry
-
   describes;
-
 - for AI agents, **evaluation** of traces against evaluators, with stored scores that
-
   are themselves queryable.
 
 **What it is NOT.** Omni does not replace CloudWatch Logs log groups, metric
@@ -151,7 +142,6 @@ Natural wording — "set up an alert for high latency", "build a dashboard", "qu
 logs" — does not say which product the customer has in mind. Decide in this order.
 
 1. **A knowledge or how-to question needs no probe.** "What is an Omni alert", "how
-
    do I call Omni from code", "does Omni have an SDK", "what is a Space" — answer from
    the Omni references directly. Do NOT gate the answer behind an account check and do
    NOT divert it to CloudWatch. Whether a capability exists in the product is
@@ -159,7 +149,6 @@ logs" — does not say which product the customer has in mind. Decide in this or
    particular is **never** gated.
 
 2. **The customer's own words are the strongest signal.** "Omni", "Application
-
    Observability", "Agent Observability", a `spaceId`, a `profileId`, an alert ARN,
    `logs.default`, `FROM view.` — take that as Omni. "CloudWatch alarm", "metric alarm",
    "composite alarm", "anomaly alarm", "PromQL alarm", "log group", "namespace",
@@ -168,22 +157,18 @@ logs" — does not say which product the customer has in mind. Decide in this or
    or "alert" with no other product signal is ambiguous — go to step 3 and probe.
 
 3. **A request that must ACT on a Space is probed first.** Creating, reading, or
-
    querying an Omni alert, dashboard, or view, or running Omni SQL against live data,
    requires a Space to exist in the target Region. Check before acting rather than
    guess:
 
    ```bash
-   aws cloudwatch-omni list-domains
-   aws cloudwatch-omni list-spaces --region <target-region>
+   aws cloudwatchomni list-domains
+   aws cloudwatchomni list-spaces --region <target-region>
    ```
 
    - **A Domain and a Space exist in the target Region** → Omni is enabled; use the
-
      Omni column of the table above.
-
    - **No Space in that Region** → serve the same need from the CloudWatch column
-
      instead (alert → [../cloudwatch/alarms.md](../cloudwatch/alarms.md), dashboard →
      [../cloudwatch/dashboards.md](../cloudwatch/dashboards.md), query →
      [../cloudwatch/log-insights.md](../cloudwatch/log-insights.md), metrics →
@@ -191,9 +176,7 @@ logs" — does not say which product the customer has in mind. Decide in this or
      asked for Omni, say the Space does not exist yet and offer the
      [setup sequence](#setting-omni-up-from-nothing) rather than silently switching
      products.
-
    - **The probe itself errors** with "not yet supported", an unknown service, or an
-
      endpoint that does not resolve → the CLI/SDK in use predates Omni's service
      model. That is **not** evidence that Omni is disabled or that no Space exists,
      and must not be reported as "Omni is unavailable". Fall back to the customer's
@@ -202,7 +185,6 @@ logs" — does not say which product the customer has in mind. Decide in this or
      explanation.
 
 4. **Only if all of that is inconclusive, ask** — and frame the choice as *CloudWatch
-
    Omni (a Space, SQL/PromQL, alerts) versus CloudWatch (log groups, metric
    alarms, Log Insights)*, not as a difference in interaction style. Having asked,
    **stop and wait**. Do not also give the Omni setup sequence in the same reply; that
@@ -211,21 +193,14 @@ logs" — does not say which product the customer has in mind. Decide in this or
 **Constraints:**
 
 - A Space is **one per account per Region**. You MUST probe the Region the request
-
   targets, not the default one. An Omni query against the wrong Region returns an
   empty result that is easily misread as "no data".
-
 - If the customer already has a working Space and is asking about queries,
-
   dashboards, or alerts, you MUST NOT restart setup — go to the reference for that task.
-
 - If the request names Application Signals, ServiceEvents, Dynamic Instrumentation,
-
   Synthetics, or CloudTrail, you MUST route to the CloudWatch reference. Those are
   CloudWatch-only and have no Omni equivalent to substitute.
-
 - You MUST NOT answer an Omni programmatic question with the CloudWatch or
-
   X-Ray CLI/SDK, and you MUST NOT conclude from a failed probe that Omni has no API.
 
 ## Setting Omni up from nothing
@@ -236,27 +211,18 @@ The relationships matter more than the definitions, because each determines
 something a customer will otherwise get wrong.
 
 - A **Domain contains Spaces**. The Domain decides who can authenticate; the Space
-
   decides who reads the account's Dataset in its Region. Deleting a Domain requires
   deleting its Spaces first.
-
 - A **Space is per account and per Region**. This is the single most common source of
-
   surprise: access that works in one Region appears broken in another, because a
   different Region means a different Space and therefore different grants.
-
 - **Grants attach principals to a Space**, not to a Domain. Domain-wide
-
   administration exists only for organization Domains, and it is `ADMIN` over every
   Space in the Domain.
-
 - An **Access Profile sits between a workload and a Space**. The workload gets a grant
-
   that lets it assume the profile; the profile gets grants describing what it may do.
   Both are required, and missing either produces a different failure.
-
 - **Telemetry reaches the Dataset, not the Space directly**, and it reaches the
-
   Dataset by way of CloudWatch. Setting up a Space does not make data appear;
   ingestion and forwarding are separate steps. The Dataset is CloudWatch's, so both
   work with no Space in the account — but nothing in Omni can read the result until a
@@ -268,26 +234,19 @@ Working from nothing, the sequence is (first-time setup is owned by the
 `setting-up-cloudwatch-observability` skill):
 
 1. **Domain** — account-scoped (`setting-up-cloudwatch-observability` → `references/cloudwatch-omni/spaces-and-domains.md`)
-
    or shared across an AWS Organization (`setting-up-cloudwatch-observability` → `references/cloudwatch-omni/org-domains.md`).
-
 2. **Space** — under the Domain, in the Region the customer wants. Same two files.
 3. **Access grants** — so people can reach the Space.
-
    `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-grants.md`.
-
 4. **Telemetry in** — two halves, and most customers starting from nothing need both:
    - *Getting telemetry into CloudWatch.* Deploy a collector so an instrumented
-
      workload has somewhere to export to
      (`setting-up-cloudwatch-observability` → `references/cloudwatch-omni/instrumentation/collector.md` and the
      per-platform `collector-*.md`). The collector exports straight to
      CloudWatch's own per-signal OTLP endpoints.
      For traces, enabling Transaction Search (account-level, per Region) is a prerequisite
      before they reach Omni.
-
    - *Getting it from CloudWatch into the Dataset.* Create the dataset integration so
-
      logs and traces (including `aws/spans`) are copied into the Dataset the Space
      reads, including any log groups the customer already had
      (`setting-up-cloudwatch-observability` → `references/cloudwatch-omni/data-forwarding-and-centralization.md`).
@@ -295,9 +254,7 @@ Working from nothing, the sequence is (first-time setup is owned by the
      AWS-vended CloudWatch metrics get there through OTel enrichment
      (`aws observabilityadmin start-telemetry-enrichment`, then
      `aws cloudwatch start-otel-enrichment`).
-
 5. **Instrumentation** — so applications and agents emit telemetry in the first
-
    place. `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/instrumentation/instrumentation.md` for
    services (per-platform × language files alongside it);
    `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/omni-agents-instrumentation/omni-agents-instrumentation.md`
@@ -306,35 +263,25 @@ Working from nothing, the sequence is (first-time setup is owned by the
 Two things are **conditional** rather than sequential:
 
 - **Access Profiles** — only when async workloads are involved: an alert (every alert
-
   runs under a `profileId`) or an integration.
   `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-profiles.md`.
-
 - **Slack** — only if the customer wants alerts or investigations to reach a Slack
-
   workspace. `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/slack-integration.md`.
 
 **Constraints:**
 
 - You MUST establish where in this sequence the customer already is before starting
-
   anything. Most requests join partway through, and re-running an earlier step
   conflicts rather than being idempotent (one Domain per account; one Space per
   account per Region).
-
 - You SHOULD create the Space before instrumentation or forwarding. Neither
-
   technically requires one — both write to the account's CloudWatch Dataset and
   succeed without a Space — but nothing in Omni can read the result until a Space
   exists, so a customer who checks Omni first sees an empty product and reads it as a
   failure.
-
 - You SHOULD tell the customer the whole sequence when they are starting from
-
   nothing, so a working Space with no telemetry in it does not read as a failure.
-
 - You MUST NOT confuse Omni instrumentation with Application Signals onboarding. Omni
-
   instrumentation is the plain ADOT SDK plus a collector; the
   `amazon-cloudwatch-observability` add-on, ServiceEvents, and port 4316 belong to the
   CloudWatch path under [`../cloudwatch/`](../cloudwatch/).

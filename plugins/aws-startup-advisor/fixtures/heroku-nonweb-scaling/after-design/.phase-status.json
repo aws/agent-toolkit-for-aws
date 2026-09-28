@@ -1,0 +1,14 @@
+{
+  "migration_id": "0801-nonweb",
+  "last_updated": "2026-08-01T10:15:00Z",
+  "current_phase": "estimate",
+  "phases": {
+    "discover": "completed",
+    "clarify": "completed",
+    "design": "completed",
+    "estimate": "pending",
+    "workshop": "pending",
+    "generate": "pending",
+    "feedback": "pending"
+  }
+}

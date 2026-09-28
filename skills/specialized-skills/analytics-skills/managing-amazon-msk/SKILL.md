@@ -15,7 +15,7 @@ description: >
   data lake from Kafka, Kafka Connect S3 Sink or Firehose alternative.
   DO NOT USE for MSK Connect or Replicator — search documentation instead. Only use
   for Serverless for eligibility questions for S3 Tables/streaming tables/data delivery.
-version: 5
+version: 6
 ---
 
 # Amazon MSK
@@ -53,7 +53,7 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 | Streaming Tables / Data Delivery CloudWatch metrics and alarms, DLQ errors, failed deliveries, channel state transitions, freshness lag | [streaming-tables-troubleshooting.md](references/streaming-tables-troubleshooting.md) |
 | "Can I use Streaming Tables / Data Delivery on MSK Serverless / Standard brokers?" — eligibility routing | [streaming-tables.md](references/streaming-tables.md) (answer is always: Express brokers only, use Firehose, Flink, or Kafka Connect for Standard and Serqverless - [Firehose integration for Amazon MSK](https://docs.aws.amazon.com/msk/latest/developerguide/integrations-kinesis-data-firehose.html)) |
 | What are the current supported Kafka versions for MSK? | [Supported Apache Kafka versions](https://docs.aws.amazon.com/msk/latest/developerguide/supported-kafka-versions.html) |
-| Does MSK support KRaft clusters, and how do I upgrade between ZooKeeper and KRaft mode clusters? | [Metadata management (ZooKeeper vs KRaft)](https://docs.aws.amazon.com/msk/latest/developerguide/metadata-management.html), direct upgrades not supported today, migrate with MSK Replicator, in-place upgrade support for ZooKeeper to KRaft is planned for the future in MSK |
+| Does MSK support KRaft clusters, and how do I migrate between ZooKeeper and KRaft mode clusters? | [zk-to-kraft-migration.md](references/zk-to-kraft-migration.md) |
 | What are the current quotas for MSK Express (ingress, egress, partitions, broker count, etc.)? | [MSK Express Quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-express-quota) |
 | What are the current quotas for MSK Standard (partitions, broker count, etc.)? | [MSK Standard Quotas](https://docs.aws.amazon.com/msk/latest/developerguide/limits.html#msk-provisioned-quota), and [MSK Standard best practices](https://docs.aws.amazon.com/msk/latest/developerguide/bestpractices.html#standard-server-side-considerations) for partition count limits |
 | What broker-level configuration changes can I make on MSK Express or Standard brokers? | [MSK Configuration](https://docs.aws.amazon.com/msk/latest/developerguide/msk-configuration.html) |

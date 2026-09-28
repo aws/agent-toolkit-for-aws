@@ -1,0 +1,113 @@
+{
+  "_comment": "Heroku Kafka plan -> MSK sizing. DIRECT LOOKUP: read broker_instance_type / storage_per_broker_gb / max_topics / max_partitions. throughput/storage are PROVENANCE ONLY.",
+  "_match": "exact, case-insensitive, on addon config.plan",
+  "_on_not_found": "defer to specialist gate; append warning 'Unrecognized heroku-kafka plan tier: {plan}. Cannot determine MSK broker instance type. Deferring to specialist engagement.'; continue",
+  "_broker_count_and_azs": {
+    "basic": { "broker_count": 2, "availability_zones": 2 },
+    "standard|extended|private": { "broker_count": 3, "availability_zones": 3 },
+    "_floor": "never fewer than 2 brokers or 2 AZs"
+  },
+  "_topology_preservation": "max_topics from config.topics else row; max_partitions from config.partitions else row; replication_factor from config.replication_factor else default (3 for standard/extended/private, 2 for basic)",
+  "rows": {
+    "basic-0": {
+      "tier": "basic",
+      "max_topics": 20,
+      "max_partitions": 40,
+      "storage": "4 GB",
+      "throughput": "5 MB/s",
+      "broker_instance_type": "kafka.t3.small",
+      "storage_per_broker_gb": 10,
+      "default_replication_factor": 2
+    },
+    "standard-0": {
+      "tier": "standard",
+      "max_topics": 40,
+      "max_partitions": 160,
+      "storage": "50 GB",
+      "throughput": "20 MB/s",
+      "broker_instance_type": "kafka.m5.large",
+      "storage_per_broker_gb": 100,
+      "default_replication_factor": 3
+    },
+    "standard-1": {
+      "tier": "standard",
+      "max_topics": 100,
+      "max_partitions": 400,
+      "storage": "200 GB",
+      "throughput": "50 MB/s",
+      "broker_instance_type": "kafka.m5.xlarge",
+      "storage_per_broker_gb": 250,
+      "default_replication_factor": 3
+    },
+    "standard-2": {
+      "tier": "standard",
+      "max_topics": 200,
+      "max_partitions": 1600,
+      "storage": "1 TB",
+      "throughput": "100 MB/s",
+      "broker_instance_type": "kafka.m5.2xlarge",
+      "storage_per_broker_gb": 500,
+      "default_replication_factor": 3
+    },
+    "extended-0": {
+      "tier": "extended",
+      "max_topics": 200,
+      "max_partitions": 2000,
+      "storage": "2 TB",
+      "throughput": "150 MB/s",
+      "broker_instance_type": "kafka.m5.4xlarge",
+      "storage_per_broker_gb": 1024,
+      "default_replication_factor": 3
+    },
+    "extended-1": {
+      "tier": "extended",
+      "max_topics": 400,
+      "max_partitions": 4000,
+      "storage": "4 TB",
+      "throughput": "200 MB/s",
+      "broker_instance_type": "kafka.m5.8xlarge",
+      "storage_per_broker_gb": 2048,
+      "default_replication_factor": 3
+    },
+    "extended-2": {
+      "tier": "extended",
+      "max_topics": 600,
+      "max_partitions": 8000,
+      "storage": "8 TB",
+      "throughput": "300 MB/s",
+      "broker_instance_type": "kafka.m5.12xlarge",
+      "storage_per_broker_gb": 4096,
+      "default_replication_factor": 3
+    },
+    "private-extended-0": {
+      "tier": "private",
+      "max_topics": 200,
+      "max_partitions": 2000,
+      "storage": "2 TB",
+      "throughput": "150 MB/s",
+      "broker_instance_type": "kafka.m5.4xlarge",
+      "storage_per_broker_gb": 1024,
+      "default_replication_factor": 3
+    },
+    "private-extended-1": {
+      "tier": "private",
+      "max_topics": 400,
+      "max_partitions": 4000,
+      "storage": "4 TB",
+      "throughput": "200 MB/s",
+      "broker_instance_type": "kafka.m5.8xlarge",
+      "storage_per_broker_gb": 2048,
+      "default_replication_factor": 3
+    },
+    "private-extended-2": {
+      "tier": "private",
+      "max_topics": 600,
+      "max_partitions": 8000,
+      "storage": "8 TB",
+      "throughput": "300 MB/s",
+      "broker_instance_type": "kafka.m5.12xlarge",
+      "storage_per_broker_gb": 4096,
+      "default_replication_factor": 3
+    }
+  }
+}

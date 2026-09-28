@@ -1,0 +1,122 @@
+{
+  "_comment": "Dyno type -> Elastic Beanstalk EC2 instance sizing. DIRECT LOOKUP: read ec2_instance_type column; do NOT recompute it. heroku_memory_mb is PROVENANCE ONLY (why this row selects that instance type). All instance types are valid for EB Docker platform on AL2023. When preferences.workshop.cpu_architecture is arm64, Design uses ec2_instance_type_arm64 when present; otherwise falls back to ec2_instance_type with warning architecture_fallback_x86.",
+  "_match": "exact, case-insensitive, on formation config.dyno_type",
+  "_on_not_found": "reject the formation; produce NO EB entry; append warning 'Unsupported dyno type: {dyno_type}. Cannot map to Elastic Beanstalk. Please contact support or provide manual sizing.'; continue",
+  "_environment_type": {
+    "web": "LoadBalanced (WebServer tier, ALB auto-provisioned by EB)",
+    "non_web": "SingleInstance (WebServer tier, no ALB, persistent process via Docker CMD)"
+  },
+  "_scaling": {
+    "web": "min_instances=1, max_instances=max(config.quantity, 2)",
+    "non_web": "min_instances=1, max_instances=1 (SingleInstance cannot auto-scale; horizontal scaling of workers requires Fargate override path)"
+  },
+  "rows": {
+    "eco": {
+      "heroku_memory_mb": 512,
+      "ec2_instance_type": "t3.micro",
+      "_note": "Minimal dev workloads; t3.micro is marginal for Docker \u2014 consider t3.small for production",
+      "ec2_instance_type_arm64": "t4g.micro"
+    },
+    "basic": {
+      "heroku_memory_mb": 512,
+      "ec2_instance_type": "t3.micro",
+      "_note": "Minimal dev workloads; t3.micro is marginal for Docker \u2014 consider t3.small for production",
+      "ec2_instance_type_arm64": "t4g.micro"
+    },
+    "standard-1x": {
+      "heroku_memory_mb": 512,
+      "ec2_instance_type": "t3.small",
+      "ec2_instance_type_arm64": "t4g.small"
+    },
+    "standard-2x": {
+      "heroku_memory_mb": 1024,
+      "ec2_instance_type": "t3.medium",
+      "ec2_instance_type_arm64": "t4g.medium"
+    },
+    "performance-m": {
+      "heroku_memory_mb": 2560,
+      "ec2_instance_type": "m5.large",
+      "ec2_instance_type_arm64": "m6g.large"
+    },
+    "performance-l": {
+      "heroku_memory_mb": 14336,
+      "ec2_instance_type": "m5.xlarge",
+      "ec2_instance_type_arm64": "m6g.xlarge"
+    },
+    "performance-l-ram": {
+      "heroku_memory_mb": 30720,
+      "ec2_instance_type": "r5.xlarge",
+      "ec2_instance_type_arm64": "r6g.xlarge"
+    },
+    "performance-xl": {
+      "heroku_memory_mb": 63488,
+      "ec2_instance_type": "m5.4xlarge",
+      "ec2_instance_type_arm64": "m6g.4xlarge"
+    },
+    "performance-2xl": {
+      "heroku_memory_mb": 129024,
+      "ec2_instance_type": "m5.8xlarge",
+      "ec2_instance_type_arm64": "m6g.8xlarge"
+    },
+    "private-s": {
+      "heroku_memory_mb": 1024,
+      "ec2_instance_type": "t3.medium",
+      "ec2_instance_type_arm64": "t4g.medium"
+    },
+    "private-m": {
+      "heroku_memory_mb": 2560,
+      "ec2_instance_type": "m5.large",
+      "ec2_instance_type_arm64": "m6g.large"
+    },
+    "private-l": {
+      "heroku_memory_mb": 14336,
+      "ec2_instance_type": "m5.xlarge",
+      "ec2_instance_type_arm64": "m6g.xlarge"
+    },
+    "private-l-ram": {
+      "heroku_memory_mb": 30720,
+      "ec2_instance_type": "r5.xlarge",
+      "ec2_instance_type_arm64": "r6g.xlarge"
+    },
+    "private-xl": {
+      "heroku_memory_mb": 63488,
+      "ec2_instance_type": "m5.4xlarge",
+      "ec2_instance_type_arm64": "m6g.4xlarge"
+    },
+    "private-2xl": {
+      "heroku_memory_mb": 129024,
+      "ec2_instance_type": "m5.8xlarge",
+      "ec2_instance_type_arm64": "m6g.8xlarge"
+    },
+    "shield-s": {
+      "heroku_memory_mb": 1024,
+      "ec2_instance_type": "t3.medium",
+      "ec2_instance_type_arm64": "t4g.medium"
+    },
+    "shield-m": {
+      "heroku_memory_mb": 2560,
+      "ec2_instance_type": "m5.large",
+      "ec2_instance_type_arm64": "m6g.large"
+    },
+    "shield-l": {
+      "heroku_memory_mb": 14336,
+      "ec2_instance_type": "m5.xlarge",
+      "ec2_instance_type_arm64": "m6g.xlarge"
+    },
+    "shield-l-ram": {
+      "heroku_memory_mb": 30720,
+      "ec2_instance_type": "r5.xlarge",
+      "ec2_instance_type_arm64": "r6g.xlarge"
+    },
+    "shield-xl": {
+      "heroku_memory_mb": 63488,
+      "ec2_instance_type": "m5.4xlarge",
+      "ec2_instance_type_arm64": "m6g.4xlarge"
+    },
+    "shield-2xl": {
+      "heroku_memory_mb": 129024,
+      "ec2_instance_type": "m5.8xlarge",
+      "ec2_instance_type_arm64": "m6g.8xlarge"
+    }
+  }
+}

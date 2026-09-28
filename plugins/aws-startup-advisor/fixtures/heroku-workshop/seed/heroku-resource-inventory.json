@@ -1,0 +1,27 @@
+{
+  "migration_id": "0719-workshop",
+  "skill": "heroku-to-aws",
+  "resources": [
+    {
+      "resource_id": "acme-web:web",
+      "resource_type": "formation",
+      "heroku_app": "acme-web",
+      "config": {
+        "dyno_type": "standard-1x",
+        "quantity": 2,
+        "process_type": "web"
+      }
+    },
+    {
+      "resource_id": "acme-web:postgres",
+      "resource_type": "addon",
+      "heroku_app": "acme-web",
+      "config": {
+        "addon_service": "heroku-postgresql",
+        "plan": "standard-0",
+        "connection_pooling": true
+      }
+    }
+  ],
+  "billing_profile": null
+}

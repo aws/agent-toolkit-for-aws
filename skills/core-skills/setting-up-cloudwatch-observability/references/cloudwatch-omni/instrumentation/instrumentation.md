@@ -2,7 +2,7 @@
 
 Instrument an application that is **not yet instrumented** so it emits OpenTelemetry traces and metrics, using the AWS Distro for OpenTelemetry (ADOT) auto-instrumentation SDKs. This is plain OTel instrumentation — the ADOT SDK is wired into the workload and exports over OTLP to the SDK's default endpoint.
 
-**Before you start:** confirm a Space exists in the target Region (`aws cloudwatch-omni list-spaces --region <region>`); if none, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering telemetry nowhere the customer can see.
+**Before you start:** confirm a Space exists in the target Region (`aws cloudwatchomni list-spaces --region <region>`); if none, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering telemetry nowhere the customer can see.
 
 **Never modify application source code** (`.py`, `.js`, `.ts`, `.java`, `.cs`). Only edit infrastructure-as-code, Dockerfiles, CI/CD workflows, dependency files, and deployment manifests. Make the minimum change needed and preserve existing configuration. Present changes for the user to review; do not run `terraform apply`, `cdk deploy`, `kubectl apply`, `helm install`/`helm upgrade`, `kubectl annotate`, `kubectl delete`, or `aws ecs update-service` automatically. That applies to the collector step too: some of it is imperative commands rather than a diff, and those still belong to the user.
 
@@ -117,6 +117,64 @@ Every guide sets these two, and nothing else about export:
 | `OTEL_RESOURCE_ATTRIBUTES` | Optional additional resource attributes, e.g. `deployment.environment=production` |
 
 Derive `OTEL_SERVICE_NAME` from the existing workload name in the IaC (deployment name, ECS service name, or the application name) rather than inventing one. If it cannot be determined, ask.
+
+## Custom metrics: what makes a metric queryable in Omni
+
+Auto-instrumentation produces the standard request metrics on its own. A **custom**
+metric — a latency histogram, a queue depth, a business counter — is a code change the
+customer makes in the application, and this reference never edits source; so when the
+question is "how do I get my own metric to show up in Omni", hand them the rule and the
+instrument to use rather than a file diff.
+
+Omni serves metrics from a single **OpenTelemetry-native, PromQL-queryable surface**.
+A metric is on that surface when it arrives as an **OTLP metric** and carries the
+workload's OTel **resource attributes** — `service.name` above all, which Omni exposes
+as the label `"@resource.service.name"` and uses to tie the metric to the service.
+Two paths put a metric there, and they are the same two the rest of this file wires:
+
+- **OTel SDK in the application** — create the instrument through the OTel Metrics API
+  (`Meter` → `Histogram` for latency, `Counter` for counts, `Gauge` for levels) and
+  record to it. The ADOT SDK the guides above load already runs a `MeterProvider`
+  exporting over OTLP, so a custom instrument rides the same exporter, endpoint, and
+  resource as the auto-instrumented telemetry — no extra configuration in the app.
+- **An OTel Collector the application exports OTLP to** — the SDK sends to the
+  collector, which exports to CloudWatch's OTLP metrics endpoint
+  (`https://monitoring.<region>.amazonaws.com/v1/metrics`, [collector.md](collector.md)).
+
+Either way the exporter must reach a destination that delivers into the account's
+Dataset in a Region with a Space; an SDK left at its `localhost` default records the
+metric and delivers it nowhere.
+
+**What does not work, and why customers try it:** the CloudWatch `PutMetricData` API
+and Embedded Metric Format (EMF) log lines are the familiar CloudWatch ways to publish
+a custom metric — and they produce a **CloudWatch metric** in a CloudWatch namespace,
+which is a different surface. CloudWatch metrics are **not queryable in Omni PromQL**.
+The one bridge between the surfaces, OTel enrichment, projects AWS-vended service
+metrics (EC2, Lambda, RDS, ...) onto the OTel surface and does not apply to a custom
+application metric, so EMF or `PutMetricData` on its own never makes a custom metric
+visible in Omni. (The IAM action the OTLP metrics endpoint authorizes against is also
+named `cloudwatch:PutMetricData`; that is the permission, not the API — a metric sent
+through the OTLP endpoint stays OTel-native.)
+
+**Constraints:**
+
+- You MUST NOT present `PutMetricData` or EMF as a way to get a custom metric into
+  Omni. If the customer already publishes that way, the answer is to emit the metric
+  through the OTel SDK (or a collector) as well — not to look for a setting that
+  makes the CloudWatch metric appear.
+- You MUST NOT invent a metric namespace, a CloudWatch-side setting, or an exporter
+  option for this. OTLP metrics have no CloudWatch namespace; the SDK's standard
+  `OTEL_EXPORTER_OTLP_*` variables and the resource attributes from Step 3 are the
+  whole configuration.
+- For latency, use a **Histogram**, so percentiles can be computed at query time; a
+  gauge of the last value cannot be turned back into a distribution.
+- Metric attributes become queryable labels stored in the Dataset. Keep customer
+  identifiers, tokens, request payloads, and other sensitive or personal data out of
+  metric attributes and resource attributes — use coarse dimensions such as route,
+  method, or status — and keep cardinality bounded, since every distinct attribute value
+  is a separate series. CloudWatch encrypts metric data at rest; the Space's own
+  encryption (service-owned or a customer managed KMS key) is chosen at `create-space`
+  (`../spaces-and-domains.md`).
 
 ## Step 4: Review
 

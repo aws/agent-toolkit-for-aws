@@ -18,6 +18,11 @@ The SQL dialect for querying logs and traces in CloudWatch Omni. Both Omni exper
 
 Each `<type>.default` form is simply a convenience filter on `` `@telemetry_type` ``. Querying `default` and adding `WHERE \`@telemetry_type\` = 'logs'` is equivalent to querying `logs.default`.
 
+Agent-evaluation scores (`gen_ai.evaluation.*`) are **log records in `logs.default`**, never
+span columns on `traces.default`; filtering on them against `traces.default` returns zero rows
+without error, indistinguishable from "no evaluations ran" — see agent-evaluation.md's "Query
+surface" section.
+
 **Metrics are not in this table.** Metrics are not SQL — they are queried with PromQL, and there is no `metrics.default` `FROM` target. See [promql-metrics.md](promql-metrics.md) for the PromQL surface, label conventions, and per-service metric catalog.
 
 **FROM clause quoting is flexible** — all of these are equivalent:
@@ -57,6 +62,12 @@ WHERE `@timestamp` BETWEEN to_timestamp_nanos('2026-08-20T15:25:48.000Z')
 ```
 
 INTERVAL syntax: a quoted number followed by the time unit — `MINUTE`/`MINUTES`, `HOUR`/`HOURS`, or `DAY`/`DAYS`. Example: `INTERVAL '30 MINUTE'`, `INTERVAL '2 HOURS'`, `INTERVAL '7 DAYS'`.
+
+**Debugging a rejected or empty query (the three things that surprise people, together):**
+
+- **The time filter is mandatory.** A query with no `` `@timestamp` `` bound is rejected outright. This is the most common cause of a "why was this rejected?".
+- **`SELECT *` is not the wide row you expect.** It collapses to `` `@timestamp`, `@record` `` (see [System Fields](#3-system-fields)), not every discovered column.
+- **A bare top-level field name is often wrong.** A name like `service` or `host` is usually a *nested* resource attribute reached with bracket notation (e.g. `` resource['attributes']['service.name'] ``). Under the permissive schema, a field that does not exist **silently returns NULL** instead of erroring (see [Field Access](#4-field-access--quoting)), so a mistyped or wrong-level name gives empty results rather than a rejection.
 
 ---
 
@@ -135,6 +146,21 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 The field names shown here are **examples of the syntax**. The actual fields present depend entirely on the ingested data — use [Schema Discovery](#5-schema-discovery) to find what exists.
 
 **Permissive schema:** Referencing a field that doesn't exist in the data will **silently return NULL** rather than producing an error. This means typos in field names won't fail your query — they'll just give empty results. Always verify field names via schema discovery if results look unexpectedly empty.
+
+**An all-NULL column from a query that ran is a signal to verify the field name before
+concluding the data is absent — not proof the name is wrong.** A correctly-named field can
+legitimately be NULL across every matching record, so rule out the three ways a field name
+can be wrong first:
+
+- **Misspelled or non-existent field** — permissive schema returns NULL, not an error.
+  Re-discover the real names with [Schema Discovery](#5-schema-discovery).
+- **A root-level field quoted wrong** — a field starting with `@` or containing a `.`/`-` MUST
+  be backtick-quoted, and an *unquoted* `@`-prefixed field does not run empty — it is *rejected*
+  with a variable-reference error. So a query that ran at all had its `@`-fields quoted
+  correctly; the emptiness is in some non-`@` field.
+- **A nested key over-quoted** — inside bracket notation the key is a plain single-quoted
+  string; special characters *inside* the bracket string need no backticks
+  (`attrs['http.method']`). Adding backticks there changes the key and silently returns NULL.
 
 ---
 
@@ -497,24 +523,104 @@ LIMIT 1000
 ### Span Duration (traces.default)
 
 There is **no `duration_ms` column** on `traces.default`; a query that CASTs or aggregates
-`duration_ms` is rejected at planning time. The span duration field is `durationNano` in NANOseconds
-(string-typed; not milliseconds — a naive read is off by 1e6).
-Always `CAST(durationNano AS DOUBLE)` before comparing, ranking, or aggregating, and
-exclude NULL durations — under `ORDER BY … DESC`, NULLs sort **first**, so without the
-filter row 1 is not the slowest span.
+`duration_ms` is rejected at planning time. The span duration field is `durationNano` in
+NANOseconds (string-typed; not milliseconds — a naive read is off by 1e6). Always
+`CAST(durationNano AS DOUBLE)` before comparing, ranking, or aggregating — without the cast
+the engine cannot coerce the string for numeric ordering, so `ORDER BY durationNano DESC`
+on the raw field is wrong. Exclude NULL durations — under `ORDER BY … DESC`, NULLs sort
+**first**, so without `durationNano IS NOT NULL` row 1 is not the slowest span. Service
+identity is a resource attribute reached with bracket notation,
+`resource['attributes']['service.name']`, not a bare top-level column.
 
 ```sql
-SELECT `@timestamp`, name, `@resource.service.name`,
-       CAST(durationNano AS DOUBLE) / 1e6 AS duration_ms
+SELECT `@timestamp`, name, resource['attributes']['service.name'] AS service,
+       CAST(durationNano AS DOUBLE) / 1e6 AS duration_ms_derived
 FROM traces.default
-WHERE `@timestamp` > NOW() - INTERVAL '1 HOUR'
+WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+  AND resource['attributes']['service.name'] = '<service-name>'
   AND durationNano IS NOT NULL
 ORDER BY CAST(durationNano AS DOUBLE) DESC
 LIMIT 20
 ```
 
-`attributes['duration_ms']` is a valid but almost always empty per-customer attribute
-lookup, not the span duration.
+> **Slowest / longest / duration-ranked spans — state ALL of this in the answer, not just
+> the query:** the duration field is `durationNano` (there is no `duration_ms` column — it
+> fails at planning); it is NANOseconds, so a millisecond read is off by 1e6; it is
+> string-typed, so it needs `CAST(durationNano AS DOUBLE)`; NULL durations sort first under
+> `DESC`, so `durationNano IS NOT NULL` is required or the top row is not the slowest span;
+> the `` `@timestamp` `` filter with a relative window is mandatory; and the service is
+> `resource['attributes']['service.name']` (bracket notation), not a top-level field.
+
+The `duration_ms_derived` alias above is computed from `durationNano`; it is not a stored
+column and cannot be used in the same query's `WHERE`. `attributes['duration_ms']` is a
+valid but almost always empty per-customer attribute lookup, not the span duration.
+
+### Finding failed spans
+
+A span's failure is read from its **status code**, not an invented `is_error`/`success`
+boolean — no such top-level column exists. The OTel span status lives at `status['code']`, and an error is the ERROR status (OTel StatusCode
+enum value 2). The value may be ingested as the proto numeric enum (integer `2` or string `'2'`) or
+as the string `'ERROR'` or `'STATUS_CODE_ERROR'` in any letter case, so normalise before matching:
+`upper(TRY_CAST(status['code'] AS VARCHAR)) IN ('2', 'ERROR', 'STATUS_CODE_ERROR')` casts whatever type is present to
+text and folds case, catching every ingestion variant with a single-typed `IN` list (no
+engine-dependent mixed-type list). An HTTP status attribute such as
+`http.response.status_code` is **corroborating** evidence, reached with bracket notation
+(`attributes['http.response.status_code']`), never as a bare top-level field.
+
+```sql
+SELECT `@timestamp`, `@record`
+FROM traces.default
+WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+  AND upper(TRY_CAST(status['code'] AS VARCHAR)) IN ('2', 'ERROR', 'STATUS_CODE_ERROR')
+-- narrow to the service via a discovered resource attribute, e.g.
+--   AND resource['attributes']['service.name'] = '<your-service-name>'
+LIMIT 100
+```
+
+Under the permissive schema a misspelled status field silently returns NULL rather than
+erroring, so an empty result should prompt schema discovery (`ListTelemetryFields` /
+`EXPLAIN (ANALYZE_FIELDS)`), not a conclusion that nothing failed.
+
+> **Failed / erroring spans — state ALL of this in the answer, not just the query.** Open
+> the answer with the schema caveat, before any filter query: field names depend on what
+> was ingested, so first run `EXPLAIN (ANALYZE_FIELDS)` (or `ListTelemetryFields`) to
+> confirm which field carries the span status — `status['code']` is the OTel convention and
+> the usual answer, not a guarantee. Show that discovery query first, then the filter query.
+> Then: failure is read from that status field (ERROR / `2` / `STATUS_CODE_ERROR`, normalised
+> with `upper(TRY_CAST(... AS VARCHAR))`), never from an invented `is_error` column; an
+> HTTP or gRPC status attribute is corroborating evidence reached with bracket notation;
+> the `` `@timestamp` `` window is mandatory; the service is
+> `resource['attributes']['service.name']`; and an empty result under the permissive schema
+> means "check the field names", not "nothing failed".
+
+### Reading a span or trace you already have (pasted, or passed as UI context)
+
+When a span object is handed to you directly (the user pastes it, or the UI passes the
+currently open span as context), read it in place — the data is already supplied, so do
+**not** probe the account, run a query, or ask the user to fetch it again. Its own fields
+are the answer. **State all of these that apply, in the answer text:**
+
+- **Error state is `status.code`.** `STATUS_CODE_ERROR` (numeric `2` in some exports)
+  means the span failed, and `status.message` carries the reason. `STATUS_CODE_OK` is an
+  explicit success. `STATUS_CODE_UNSET` means the producer set no explicit status — it is
+  **not** an error signal, but it is not proof of success either: corroborating fields (an
+  HTTP 5xx `http.response.status_code`, a non-OK `rpc.grpc.status_code`) can still
+  indicate a failure on an UNSET span, so check them before calling it healthy.
+- **Corroborate with the protocol status.** `attributes['http.response.status_code']`
+  (a 5xx) or `attributes['rpc.grpc.status_code']` is supporting evidence for the same
+  error, not a second independent one — report it as corroboration.
+- **Service identity lives under `resource`** — `resource['attributes']['service.name']`,
+  not a top-level field. Attribute the span to that service.
+- **`durationNano` is NANOseconds, string-typed.** Convert it and show the arithmetic:
+  `durationNano / 1e9` = seconds, `/ 1e6` = milliseconds. Reading the raw value as
+  milliseconds is off by 1e6.
+- **Point downstream when the evidence does.** `attributes['rpc.service']`,
+  `attributes['peer.service']`, or `attributes['server.address']` names the callee; a
+  5xx gateway status (502/503/504) plus a timeout-shaped `status.message` indicates the
+  dependency did not respond in time rather than this service erroring internally.
+- **Do not invent** errors, attributes, or child spans the object does not contain, and
+  **do not claim a root cause from a single span** — say that confirming it needs the
+  downstream spans in the same trace (join on `traceId`).
 
 ### Numeric Comparison on String-Typed Fields
 
@@ -577,6 +683,43 @@ INNER JOIN candidates AS c
 WHERE t.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ORDER BY t.`@timestamp` ASC
 ```
+
+### Correlating logs with traces
+
+Logs and spans correlate through a **field they share** — commonly the trace identifier the
+logging library injected (`traceId` on OTel-shaped records, or a nested variant such as
+`attributes['trace_id']`), but the name is not guaranteed. Discover it on **both** tables
+first with `EXPLAIN (ANALYZE_FIELDS)`, then use either approach — **show both in the
+answer**, each with the mandatory `` `@timestamp` `` bound:
+
+1. **One unified query over `default`**, which holds both telemetry types, filtered by the
+   shared field and tagged with `` `@telemetry_type` ``:
+
+   ```sql
+   SELECT `@telemetry_type`, `@timestamp`, `@record`
+   FROM default
+   WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+     AND <shared_field> = '<trace-id>'
+   ORDER BY `@timestamp` ASC
+   ```
+
+2. **A `JOIN` of `logs.default` with `traces.default`** on the shared field, with the
+   `` `@timestamp` `` filter on **both** sides:
+
+   ```sql
+   SELECT l.`@timestamp` AS log_time, l.`@message`, t.name AS span_name
+   FROM logs.default AS l
+   INNER JOIN traces.default AS t
+     ON l.<shared_field> = t.<shared_field>
+   WHERE l.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+     AND t.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+     AND t.<shared_field> = '<trace-id>'
+   ORDER BY l.`@timestamp` ASC
+   ```
+
+If the log records carry no trace context at all, no query can associate them after
+ingestion — the fix is instrumentation (inject the active trace id into each log record),
+not a different SQL shape.
 
 ### Combining Telemetry Types
 

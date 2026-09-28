@@ -1,0 +1,15 @@
+{
+  "inventory_must_match_seed_bytes": true,
+  "min_scenarios": 2,
+  "baseline_scenario_id": "scenario-001",
+  "active_scenario_id": "scenario-002",
+  "active_cpu_architecture": "graviton",
+  "balanced_must_differ_from_baseline": true,
+  "generate_must_not_be_completed": true,
+  "current_phase_must_be": "estimate",
+  "workshop_phase_must_be": "in_progress",
+  "must_have_graviton_note": true,
+  "must_keep_incompatible_worker_x86": true,
+  "q11b_prompt_must_contain": "ARM64 compatibility",
+  "max_scenarios": 5
+}

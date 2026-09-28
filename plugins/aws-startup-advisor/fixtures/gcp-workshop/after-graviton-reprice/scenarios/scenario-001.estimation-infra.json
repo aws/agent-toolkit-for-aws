@@ -1,0 +1,22 @@
+{
+  "phase": "estimate",
+  "pricing_source": {
+    "status": "cached"
+  },
+  "projected_costs": {
+    "aws_monthly_premium": 120.0,
+    "aws_monthly_balanced": 95.0,
+    "aws_monthly_optimized": 70.0
+  },
+  "complexity_tier": "small",
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate optimized",
+    "migrate_if": [
+      "costs favor AWS"
+    ],
+    "stay_if": [
+      "heavy custom networking"
+    ]
+  }
+}

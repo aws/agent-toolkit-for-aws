@@ -1,0 +1,25 @@
+{
+  "$comment": "schema_version: 1; contract source: skills/behavior-delta-detection/SKILL.md 'Recording decisions'. Written by the ORCHESTRATOR at C4, not by an agent — no control-state union; [] is valid (zero user-visible deltas).",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["delta_type", "location", "resolution_chosen", "source"],
+    "properties": {
+      "delta_type": { "type": "string" },
+      "location": { "type": "string" },
+      "resolution_chosen": { "type": "string" },
+      "source": {
+        "type": "string",
+        "enum": [
+          "user_question",
+          "skill_default",
+          "fallback_question",
+          "ambiguous_user_answer_recommended",
+          "missing_confirmation_safe_default"
+        ]
+      },
+      "user_verbatim_answer": { "type": "string" }
+    },
+    "additionalProperties": false
+  }
+}

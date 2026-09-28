@@ -1,0 +1,72 @@
+{
+  "migration_id": "0801-nonweb",
+  "phase": "design",
+  "design_source": "live",
+  "timestamp": "2026-08-01T10:15:00Z",
+  "metadata": {
+    "total_services": 3,
+    "total_apps_migrated": 1,
+    "fir_workloads_detected": [],
+    "fir_generation_note": "No Fir workloads detected; all Cedar generation."
+  },
+  "services": [
+    {
+      "service_id": "eb:acme-jobs:web",
+      "source_resource_id": "formation:acme-jobs:web",
+      "heroku_app": "acme-jobs",
+      "aws_service": "Elastic Beanstalk",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "platform": "Docker running on 64bit Amazon Linux 2023",
+        "instance_type": "t3.micro",
+        "cpu_architecture": "x86_64",
+        "environment_type": "LoadBalanced",
+        "tier": "WebServer",
+        "min_instances": 1,
+        "max_instances": 2,
+        "process_type": "web",
+        "deployment_policy": "Rolling"
+      }
+    },
+    {
+      "service_id": "fargate:acme-jobs:worker",
+      "source_resource_id": "formation:acme-jobs:worker",
+      "heroku_app": "acme-jobs",
+      "aws_service": "Fargate",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "task_cpu": 256,
+        "task_memory": 512,
+        "cpu_architecture": "X86_64",
+        "desired_count": 2,
+        "container_image": "placeholder:acme-jobs-worker",
+        "process_type": "worker",
+        "load_balancer": false
+      }
+    },
+    {
+      "service_id": "fargate:acme-jobs:mailer",
+      "source_resource_id": "formation:acme-jobs:mailer",
+      "heroku_app": "acme-jobs",
+      "aws_service": "Fargate",
+      "confidence": "deterministic",
+      "aws_config": {
+        "region": "us-east-1",
+        "task_cpu": 256,
+        "task_memory": 512,
+        "cpu_architecture": "X86_64",
+        "desired_count": 2,
+        "container_image": "placeholder:acme-jobs-mailer",
+        "process_type": "mailer",
+        "load_balancer": false
+      }
+    }
+  ],
+  "deferred": [],
+  "warnings": [
+    "Heroku formation `acme-jobs:worker` has quantity=2. EB SingleInstance environments cannot preserve horizontal capacity for persistent non-web dynos, so this formation was routed to Fargate. Set quantity=1 or choose manual EB handling only if one worker instance is acceptable.",
+    "Heroku formation `acme-jobs:mailer` has quantity=2. EB SingleInstance environments cannot preserve horizontal capacity for persistent non-web dynos, so this formation was routed to Fargate. Set quantity=1 or choose manual EB handling only if one worker instance is acceptable."
+  ]
+}

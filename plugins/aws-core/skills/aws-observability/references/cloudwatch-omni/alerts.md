@@ -7,7 +7,7 @@ per API operation.
 On an Omni-enabled account "alert" and "alarm" both mean the Omni alert resource
 described here — a separate resource from a CloudWatch alarm, with its own API.
 
-Alert operations are part of the `cloudwatch-omni` service (`aws cloudwatch-omni
+Alert operations are part of the `cloudwatch-omni` service (`aws cloudwatchomni
 <operation>`) and are signed with the SigV4 signing name **`cloudwatch`** — see
 [programmatic-access.md](programmatic-access.md).
 
@@ -38,7 +38,7 @@ Two rules hold across every operation:
 
 | | CloudWatch Omni alert (this file) | CloudWatch alarm ([../cloudwatch/alarms.md](../cloudwatch/alarms.md)) |
 |---|---|---|
-| Service | `aws cloudwatch-omni` — `CreateAlert`, `GetAlert`, `ListAlerts`, `UpdateAlert`, `DeleteAlert` | `aws cloudwatch` — `PutMetricAlarm`, `PutCompositeAlarm`, `DescribeAlarms`, … |
+| Service | `aws cloudwatchomni` — `CreateAlert`, `GetAlert`, `ListAlerts`, `UpdateAlert`, `DeleteAlert` | `aws cloudwatch` — `PutMetricAlarm`, `PutCompositeAlarm`, `DescribeAlarms`, … |
 | Watches | One **query** — Omni SQL over logs/traces, or PromQL over metrics — evaluated on a schedule | A metric, metric-math expression, or anomaly band; composites combine alarms |
 | Scope | A **Space** (`spaceId` on every call); runs under an **access profile** (`profileId`) | The account and Region |
 | States | `OK`, `WARNING`, `CRITICAL`, `NODATA` | `OK`, `ALARM`, `INSUFFICIENT_DATA` |
@@ -134,32 +134,49 @@ on every alert operation, including the reads — there is no account-wide alert
 only per-space ones. An alert also carries the `accountId` that owns it.
 
 Each alert additionally references a **`profileId`** — the access profile the alert
-runs under. **A `profileId` must be provided when creating an alert.** The profile
-is used for two things:
+runs under. **A `profileId` must be provided when creating an alert; the service does
+not pick a default.** In one sentence: **the alert** must be able to assume the
+profile — an **`ALERT`-principal grant** — and **the caller** creating it must be able
+to assume it too, and the profile must itself **grant** the alert both **the data it
+queries, to run the query and read its results**, and **the Omni integration it
+notifies**, a connected **Slack** integration. Never describe a `profileId` without
+covering all four, and name the integration as an Omni integration (Slack): "a
+notification target" is too vague to be the answer.
 
-1. **Running the query.** It grants the alert access to execute its query and fetch
-   the query's results.
-2. **Reaching an Omni integration.** It grants the alert access to any notification
-   rule target that is an Omni integration — a connected Slack integration.
+**Four** things must hold, and a profile that satisfies only some of them is not
+enough:
 
-For the alert to work, the profile therefore needs the right grants for how the
-alert is configured:
+1. **An `ALERT`-principal grant must let the alert assume the profile.** An access
+   grant on the profile for principal type **`ALERT`**, keyed on **`ALL`** for a
+   create. Without such a grant `CreateAlert` fails access-denied. Required for
+   **every** alert, whatever else it is configured to do.
+2. **The caller creating the alert must be able to assume it too.** `CreateAlert`
+   checks this first, so a failure here is an access-denied about **the caller**, not
+   about the alert.
+3. **The profile must grant the data the alert queries, so it can run the query and
+   read its results.** Nothing verifies this when the alert is created, so a profile
+   missing it yields an alert that is accepted and then sits at `NODATA` forever.
+4. **The profile must grant the Omni integration the alert notifies — only when a
+   notification rule targets one.** An alert with no notification rules, or one whose
+   only target is an SNS topic, needs nothing from the profile here.
 
-- An access grant allowing the **`ALERT` principal** to assume the profile (a trust
-  grant keyed on the alert's name, or on `ALL`).
-- Grants allowing access to **the data the alert's query reads**.
-- Grants allowing access to **any Omni integration referenced in the alert's
-  `notificationRules`**.
-
-How to create and verify such a profile is covered in
-`setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-profiles.md`; how to choose one for a given
-alert is Creating, Step 6.
+The grant shapes, the exact action names, and which permission levels confer them are
+in Creating, Step 6; how to create and verify such a profile is covered in
+`setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-profiles.md`.
 
 ### Query languages
 
 An alert's rule carries a query **expression** plus the **language** it is written
-in (`rule.telemetryRule.query`, up to 10,000 characters). Both languages are
-accepted:
+in, both on `rule.telemetryRule.query`. Three facts about that pair, and all three
+belong in any answer about an alert's query language:
+
+- **Two languages are accepted — `SQL` and `PROMQL`.** A log or trace condition is
+  `SQL`; a metric condition is `PROMQL`.
+- **`language` is set explicitly on the rule.** It is never inferred from the
+  expression text.
+- **`expression` is capped at 10,000 characters.**
+
+The two languages in full:
 
 - **`SQL`** — the CloudWatch Omni SQL dialect over the Omni telemetry data sets:
   `logs.default`, `traces.default`, and views. Use it for log and trace
@@ -170,12 +187,14 @@ accepted:
   counters, and histogram percentiles via `histogram_quantile`. See
   [query/promql-metrics.md](query/promql-metrics.md).
 
-**A condition on a metric MUST use `PROMQL`.** Metrics have no SQL surface: there is
-no `metrics.default` data set, and a SQL query aimed at one is rejected by
-`StartTelemetryQuery` with `ValidationException: Metrics queries are not supported.`
-So whenever the user asks to **create or update** an alert on a metric — a gauge, a
-counter, or a percentile — write a raw PromQL expression and set `language` to
-`PROMQL`. A log or trace condition is `SQL`.
+**A condition on a metric MUST use `PROMQL`.** Metrics are the `metrics.default` data
+set, but it is not a queryable SQL target in CloudWatch Omni: SQL over it fails with
+`datastore not found`, and `StartTelemetryQuery` rejects metrics outright with
+`ValidationException: Metrics queries are not supported.` A metric condition is a
+**raw PromQL expression with no SQL `FROM`** — never `SELECT … FROM metrics.default`,
+never a `promql()` wrapper. So whenever the user asks to **create or update** an alert
+on a metric — a gauge, a counter, or a percentile — write the bare PromQL and set
+`language` to `PROMQL`. A log or trace condition is `SQL`.
 
 Pick the language that fits the signal and set `language` to match the expression;
 it is not inferred from the query text.
@@ -201,17 +220,20 @@ column named by **`thresholdField`** and compares that value against the thresho
 Because a row-per-entity query yields a value per entity, this mode produces
 **contributors** — each breaching row is one contributor: the state of that one
 breaching row/entity. The alert enters `WARNING` or `CRITICAL` as soon as the first
-contributor breaches. A contributor's own state is **`WARNING` or `CRITICAL` only** —
-an entity that recovers to `OK` is removed from the persisted set, so a contributor is
-never `OK` and never `NODATA` (this is distinct from the whole-alert state, which can be
-any of `OK`, `WARNING`, `CRITICAL`, or `NODATA`). Contributors are visible only as
-**counts**: `state.contributorSummary` (`warningCount`/`criticalCount`) on the alert's
-state, returned by `GetAlert` and `ListAlerts` and absent until the first contributor
-breaches `WARNING` or `CRITICAL`. There is **no customer-facing API that lists
-individual contributors**. For example: a query returning the CPU
-utilization of every instance in a fleet returns one row per instance; each
-instance's CPU value is compared against the threshold, and **any instance/row that
-breaches breaches the alert**.
+contributor breaches. An entity that recovers to `OK` is removed from the persisted
+set, so **a contributor is only ever `WARNING` or `CRITICAL` — never `OK`, never
+`NODATA`**. **The alert API exposes contributors only as counts:
+`state.contributorSummary.warningCount` and `state.contributorSummary.criticalCount`,
+on the alert's state from `GetAlert` and `ListAlerts`. Both counts read `0` when
+nothing is breaching, so read the counts — do not expect the summary to be
+absent.** **No alert operation lists them individually** — there is no
+`ListAlertContributors` operation, and naming the contributors means reconstructing the
+set from the alert events log, a procedure in its own right ([Naming the contributors
+that are firing](#naming-the-contributors-that-are-firing)). (The whole-alert state is
+a different thing and can be any of `OK`, `WARNING`, `CRITICAL`, or `NODATA`.) For
+example: a query returning the CPU utilization of every instance in a fleet returns
+one row per instance; each instance's CPU value is compared against the threshold, and
+**any instance/row that breaches breaches the alert**.
 
 **`COUNT_OF_RESULTS` — compare the number of rows.**
 
@@ -260,13 +282,17 @@ State is read-only and system-managed, returned as `AlertStateInfo`:
 - **`transitionedAt`** — when the alert last moved into that state.
 - **`contributorSummary`** — `warningCount` and `criticalCount`, the number of
   contributors currently breaching each tier (`FIELD_VALUE` alerts). Absent on
-  `CreateAlert` and absent from `GetAlert` until the first contributor breaches
-  `WARNING` or `CRITICAL` — an `OK` alert has no summary.
+  `CreateAlert`. On `GetAlert` an alert that is not breaching normally returns the
+  summary with **both counts `0`** rather than omitting it, so treat `0` counts and
+  an absent summary as the same answer and never read presence as "something is
+  firing".
 - **`data`** (`AlertStateData`) — structured detail on the current evaluation. It
   carries exactly one member, `thresholdBreached`: the row count that breached, for
   `COUNT_OF_RESULTS` alerts, and null for `FIELD_VALUE`. The per-contributor
-  breakdown is NOT here — `contributorSummary` above gives the counts, and nothing
-  returns the individual contributors.
+  breakdown is NOT here — `contributorSummary` above gives the counts, and no alert
+  operation returns the individual contributors; they are reconstructed from the alert
+  events log ([Naming the contributors that are
+  firing](#naming-the-contributors-that-are-firing)).
 
 Two things about `transitionedAt` matter whenever you report state:
 
@@ -359,7 +385,7 @@ an alert that cannot be brought back.
 | **[Updating an alert](#updating-an-alert)** — `GetAlert`, then `UpdateAlert` | update, change, edit, modify, adjust, bump, re-point, disable, enable, mute, silence, pause, stop notifying, remove (a part) | "change checkout-5xx-errors to 500" · "make it fire at 5 instead of 2" · "rename the alert I set up" · "stop it messaging the channel" |
 | **[Deleting an alert](#deleting-an-alert)** — `GetAlert`, confirm, then `DeleteAlert` | delete, remove it, get rid of, tear down, take down, drop the alert(s) | "delete the p99 alert" · "remove checkout-5xx-errors" · "delete these four alerts" · "tear down the alerts I set up for the demo" |
 | **[Tagging an alert](#tagging-an-alert)** — `aws cloudwatch tag-resource` / `untag-resource` / `list-tags-for-resource` on the alert ARN | tag, add a tag, change a tag, retag, remove a tag, untag, set the owner/team/environment tag, label it | "tag that alert with owner=payments" · "add env=prod to the checkout alarm" · "remove the team tag from it" · "what's it tagged with?" |
-| **[Fetching alerts](#fetching-alerts)** — `ListAlerts` / `GetAlert`, no confirmation | list, query, filter, get, fetch, show, describe, search, find, which alerts, how many, do I have, firing, breaching, status, starting with, tagged, for the *service*, on logs, PromQL, history, flapped, flapping, what changed, fired earlier, recovered, happened before | "what alerts do I have?" · "is anything firing?" · "what's the threshold on checkout-5xx-errors?" · "which alerts use PromQL?" · "do I already have an alert for this?" · "did checkout-5xx flap earlier today?" · "when did it last go critical?" |
+| **[Fetching alerts](#fetching-alerts)** — `ListAlerts` / `GetAlert`, no confirmation | list, query, filter, get, fetch, show, describe, search, find, which alerts, how many, do I have, firing, breaching, status, starting with, tagged, for the *service*, on logs, PromQL, history, flapped, flapping, what changed, fired earlier, recovered, happened before, contributors, which instances/hosts, who is breaching | "what alerts do I have?" · "is anything firing?" · "what's the threshold on checkout-5xx-errors?" · "which alerts use PromQL?" · "do I already have an alert for this?" · "did checkout-5xx flap earlier today?" · "when did it last go critical?" · "which instances are contributing to it?" |
 
 **List, filter, query, get, show, describe, search and find are all fetching.**
 They differ only in how many alerts come back and how much of each you report.
@@ -405,6 +431,63 @@ Step 1):
 6. **Resolve the access profile** the alert runs under.
 7. **Confirm, then `CreateAlert`.**
 
+### Facts you MUST surface when authoring an alert
+
+Author the query and condition, and surface the bullets below that are relevant to the
+task — each is a silent-failure trap the service does not catch, and each applies
+independently. The items marked **NON-OPTIONAL** are the rationale that terse answers drop
+first; when one is relevant, state its consequence, not just its rule. The following are
+pointers to the bullets below, which carry the detail — state the silently-dead
+invented-field consequence from the "Never invent a field or a threshold" bullet, the
+recovery-side damping and omitted-duration-reads-UNSET behavior from the "Cadence" bullet,
+and the `ORDER BY`-is-meaningless-for-`COUNT_OF_RESULTS` point from the `COUNT_OF_RESULTS`
+bullet. Surface what fits the request rather than reciting every bullet.
+
+- **Never invent a field or a threshold. — NON-OPTIONAL.** An alert on a non-existent
+  field is SILENTLY DEAD (sits at NODATA/OK forever) — worse than one that errors. A
+  guessed threshold fires never or always. Ask for the field and the number.
+- **Ground the query by running it once — NON-OPTIONAL.** Do it before proposing the
+  query — it proves the names resolve and shows the current value as context for the
+  threshold.
+- **Match the threshold's unit to the metric's unit. — NON-OPTIONAL.** ALB
+  `TargetResponseTime` and RDS `*Latency` are seconds; Lambda `Duration`, DynamoDB, EBS
+  `VolumeAvg*` are ms. 500 ms on a seconds metric is 0.5, not 500 — a unit-mismatched
+  threshold effectively never fires.
+- **COUNT_OF_RESULTS:** no `LIMIT` (caps the count → "more than N" never fires) and no
+  `ORDER BY` (cannot change a row count). Prefer `COUNT(*) AS n` + `FIELD_VALUE` on `n`.
+- **FIELD_VALUE (SQL):** a named numeric alias is required (it becomes `thresholdField`).
+  When the alert should evaluate the single current-worst row, `ORDER BY <alias> DESC` +
+  `LIMIT` are required so that is the row evaluated — but a per-entity alert that must
+  evaluate *every* entity should NOT `LIMIT` the entities away (each breaching row is its
+  own contributor). Either way, an ascending sort under `LIMIT` evaluates the OLDEST row
+  (stale, silent bug); never sort by `@timestamp` after aggregating (it is gone from the
+  result).
+- **Metric alert = raw PromQL — NON-OPTIONAL.** A condition on a metric is written as
+  PromQL because metrics are PromQL only — never SQL and never `FROM metrics.default`.
+  State each of these for any metric alert: `language` is set explicitly to `PROMQL` (it
+  is never inferred from the expression); the expression carries its own relative range
+  selector such as `[5m]` because the alert supplies no evaluation window and re-runs the
+  query every evaluation; it has NO `ORDER BY` and NO `LIMIT` (those are SQL log/trace
+  clause rules); a gauge (CPU %, latency, queue depth) is read with `avg`/`max`, never
+  `rate()`; and the comparison stays OUT of the expression — no PromQL comparison operator
+  — because the threshold is a separate condition field. Write the candidate expression
+  itself (a placeholder for a not-yet-grounded metric name is fine) — describing the query
+  in prose is not the query, and the user cannot confirm what was not written.
+- **Relative time window — NON-OPTIONAL.** Every alert query, SQL or PromQL, must carry
+  a window that moves with the clock (`` `@timestamp` > NOW() - INTERVAL '5' MINUTE `` or
+  a PromQL range like `[5m]`); the alert has no window of its own.
+- **Warning tier only when asked.** Never derive a `warningThreshold` from a single
+  published critical number; a single-tier alert is the default unless the user asks for
+  warning-and-critical.
+- **Reconcile the statistic with the query.** The statistic the guidance or the user
+  names is the aggregation the query must compute — a p90 recommendation means a p90
+  query, not an `AVG`. A user-supplied threshold is confirmed, with its unit, not
+  replaced or re-asked.
+- **Cadence: — NON-OPTIONAL.** `intervalSeconds` ∈ {30,60,120,300,600,900,1800,3600}
+  only; pending/recovery must be MULTIPLES of it; a non-zero pending damps single spikes
+  and recovery damps the return to OK; omitting either leaves the field UNSET on
+  read-back, **NOT 0**.
+
 ### Step 0 — Classify the ask
 
 One question, answerable from the user's phrasing alone: **is the measure a metric,
@@ -440,6 +523,13 @@ into an alert. An alert on a field that does not exist is silently dead — it s
   (no `_bucket`, no `by (le)`: Omni stores histograms in exponential form and
   exposes no `_bucket{le=…}` series, so a `_bucket`/`by (le)` query returns
   **empty** and the alert never fires).
+- **Disambiguate the percentile's source.** A percentile of a *stored/published metric*
+  (a histogram metric) → **PromQL** `histogram_quantile(...)` on the base metric name
+  (above). A percentile computed *from raw trace or log rows* ("p99 … from my trace
+  data", per-endpoint, `approx_percentile_cont` / `GROUP BY`) → **SQL FIELD_VALUE** over
+  `traces.default` / `logs.default`: a named numeric alias, `ORDER BY <alias> DESC` +
+  `LIMIT`, and per-dimension `GROUP BY`. Same word "percentile", two different routes —
+  the raw-rows case is NOT a metric.
 
 **Ground the names.** For SQL, discover the real field names with
 `EXPLAIN (ANALYZE_FIELDS)` and confirm any non-`@` field before using it — the
@@ -493,7 +583,10 @@ style issue:
   - **`ORDER BY <the value> DESC` and a `LIMIT`** are required so the evaluated row
     is the current, worst one — ascending + `LIMIT` would evaluate the *oldest* row
     in the window (stale data). Default `LIMIT 500` as a safety net; the preferred
-    shape returns one row.
+    shape returns one row. **This `LIMIT`/`ORDER BY` habit is `FIELD_VALUE`-only —
+    carrying either into a `COUNT_OF_RESULTS` query is a silent bug (a `LIMIT` caps the
+    count so a "more than N" alert can never fire; `ORDER BY` cannot change a row
+    count). See the `COUNT_OF_RESULTS` bullet below.**
   - Sort key: for a single bare aggregate use `ORDER BY <alias> DESC`; for a
     `GROUP BY` with a `date_bin` bucket use `ORDER BY bucket DESC`; for raw rows use
     ``ORDER BY `@timestamp` DESC``. `` `@timestamp` `` is **backtick-quoted**, and
@@ -550,6 +643,11 @@ from the *grounded* metric name and its labels (Step 1), never from the ask alon
 Do not guess a namespace from a metric name that could belong to several services —
 name the candidate to the user and confirm it.
 
+- **The user supplied the number** ("above 75 percent", "more than 500 ms") — take
+  `criticalThreshold` from it and `comparator` from the wording's direction, check the
+  unit matches the metric's unit, and still consult published guidance for the
+  **statistic** (2c). Restate the number and unit for confirmation; do not ask for it
+  again and do not replace it with a published value.
 - **AWS-vended metric** — consult AWS's **published recommended thresholds** for
   that service and metric (the service's monitoring page and CloudWatch's metric
   recommendations, via documentation search). Only the comparator, statistic, unit,
@@ -645,7 +743,8 @@ An alert with no notification is valid and common — it shows state in the cons
 **Do this step only when the user asked to be told somewhere when the alert
 fires.** If they did not, skip it and send no `notificationRules`.
 
-Infer intent; the word "notification" is often absent. "Send a slack message to #oncall when this fires", "ping the team on Slack", and "publish to my SNS topic"
+Infer intent; the word "notification" is often absent. "Send a slack message to
+`#oncall when this fires`", "ping the team on Slack", and "publish to my SNS topic"
 are all notification requests.
 
 Two target types are supported for GA — `sns` and `slack` — and they can be
@@ -656,7 +755,7 @@ webhook, PagerDuty) is not a supported target type; PagerDuty is present in the
 supported target they did name, otherwise with no notification. **Do not invent an
 unsupported notification provider or fabricate a config for one.**
 
-## 5a. SNS topic
+#### 5a. SNS topic
 
 - **A topic ARN is REQUIRED and MUST come from the user.** Never invent a topic ARN.
   If they asked for an SNS notification but did not give the ARN, ask for it — one
@@ -677,7 +776,7 @@ unsupported notification provider or fabricate a config for one.**
   "target":  { "type": "sns", "arn": "arn:aws:sns:us-east-1:123456789012:oncall" } }
 ```
 
-### 5b. Slack channel
+#### 5b. Slack channel
 
 - **A channel name is REQUIRED and MUST come from the user.** Never invent a channel.
   If they asked for Slack but did not name a channel, ask which channel — one
@@ -730,7 +829,7 @@ metrics alike; the service does not pick a default.
 below are for when they did not make one.
 
 **Otherwise, find one that qualifies — do NOT guess and do NOT ask first.** List the
-Space's profiles (`aws cloudwatch-omni list-access-profiles --space-id <space-id>`),
+Space's profiles (`aws cloudwatchomni list-access-profiles --space-id <space-id>`),
 read each candidate (`get-access-profile`, which reports both the permissions it
 confers and the trust grants naming who may assume it), and keep only profiles where
 **all** of the following hold — these mirror what the service itself enforces:
@@ -748,8 +847,8 @@ confers and the trust grants naming who may assume it), and keep only profiles w
    access-denied error.
 2. **It confers both telemetry query actions** — `cloudwatch:StartTelemetryQuery`
    AND `cloudwatch:GetTelemetryQueryResults`, whether spelled out in a `CUSTOM`
-   grant's scoped actions or conferred by `READ`/`SPACE_ADMIN`. Note that
-   `READ_WRITE_DELETE` does **not** confer them. This one matters most: the
+   grant's scoped actions or conferred by a read level — `READ`,
+   `READ_WRITE_DELETE` or `SPACE_ADMIN` all confer them. This one matters most: the
    evaluation calls both APIs under the profile every cycle and **nothing checks
    them when the alert is created**, so a profile missing them produces an alert
    that is accepted and then sits at `NODATA` forever with no error anywhere.
@@ -757,6 +856,18 @@ confers and the trust grants naming who may assume it), and keep only profiles w
    resource/tag/signal-type narrowing must include the rows the query needs.
 4. **It permits the Slack integration** — only when a rule targets one
    (`cloudwatch:InvokeIntegration` on that integration, plus the channel).
+5. **The caller can assume it as well** — `CreateAlert` checks the *caller's* own
+   ability to assume the profile before it checks the alert's, so that an alert cannot
+   be pointed at an identity its creator does not hold. This is the first check the
+   service runs; a profile the user cannot assume is unusable to them however well it
+   satisfies checks 1–4, and the resulting access-denied is about the caller, not the
+   alert. `get-access-profile` reports this outcome directly as **`assumeStatus`**,
+   which is `ALLOWED` or `DENIED` — read that field and fail the profile on
+   `DENIED`. The call merely returning the profile is **not** evidence the caller
+   may assume it, and the `list-access-profiles` summaries do not carry
+   `assumeStatus` at all, so this check needs a per-profile `get-access-profile`.
+   If a create still denies on delegation, say the caller needs to be able to
+   assume the profile and do not reinterpret it as a missing `ALERT` grant.
 
 Among profiles that all qualify, prefer the one with the least narrowed telemetry
 read, then one with an `ALL`-scoped trust grant (which for a create is a requirement
@@ -783,8 +894,10 @@ Resolve the profile **before** confirming, so the confirmation can name it.
 
 **Propose; let the user decide.** Restate the parts they are agreeing to — the
 **name**, what the query measures (quote the exact query text; do not paraphrase),
-the **threshold with its unit**, the **comparator**, the **evaluation interval**
-and **no-data treatment**, and the **access profile** the alert will run under —
+the **query `language`** and its **relative window** and **aggregation** (for PromQL:
+`PROMQL`, the `[5m]` range, `avg`/`max` for a gauge), the **threshold with its unit**,
+the **comparator**, the **evaluation interval** and **no-data treatment**, and the
+**access profile** the alert will run under —
 e.g. "…and I'll run it under profile `alert-profile`, which grants this data and
 the Slack integration". If a notification was requested, also restate **the
 target(s) and which states notify** — "and post to #oncall-alerts on WARNING and
@@ -795,7 +908,7 @@ Then call `CreateAlert`. The request, with every field from Steps 1–6 in the s
 the [API reference](#createalert) documents:
 
 ```bash
-aws cloudwatch-omni create-alert --region us-east-1 --cli-input-json '{
+aws cloudwatchomni create-alert --region us-east-1 --cli-input-json '{
   "spaceId": "<space-id>",
   "profileId": "<profile-id>",
   "name": "checkout-5xx-errors",
@@ -828,11 +941,25 @@ aws cloudwatch-omni create-alert --region us-east-1 --cli-input-json '{
 `rule.telemetryRule.query` has exactly two members in the service model:
 `language` (`SQL` or `PROMQL`) and `expression` (the query text, 1–10,000 characters).
 
-The response carries the created `alert` — `alertId`, `alertArn`, `name`,
-`profileId`, `rule`, `notificationRules`, `notificationStatus`, timestamps — so you
-do not need to read it back for its id. Tell the user the alert exists now, quoting
-the stored query from the response so they can see it matches. If the call fails,
-the error says why — a rejected definition (`ValidationException`, including
+**When the call succeeds, say so and NAME the alert.** The response carries the
+created `alert` — the same `Alert` shape `GetAlert` returns (`alertId`, `alertArn`,
+`name`, `profileId`, `rule`, `notificationRules`, `notificationStatus`, timestamps),
+minus the live `state` — so you need no follow-up read, and your last word on the
+create must quote it: the alert's **`name`**, its **`alertId`**, and the **threshold
+it fires on**, which is at **`rule.telemetryRule.condition`** (`comparator` plus
+`criticalThreshold` / `warningThreshold`), along with the stored query from
+`rule.telemetryRule.query` so the user can see it matches. Read every one of those
+from the RESPONSE, not from the proposal you sent, so a value the service
+canonicalized or defaulted is confirmed as stored rather than as requested. A create
+that lands and is never named back reads to the user as a create that did not happen:
+they have no name to search for and no id to re-open, so the only way to check is to
+go looking. Never close the turn on a bare "done", "the alert is created", or a
+restatement of the proposal alone. `state` is absent from the response and that is
+correct — a new alert has never been evaluated — so do not report a state, and do not
+read its absence as a problem.
+
+If the call fails, the error says why — a rejected definition
+(`ValidationException`, including
 `Access profile not found` for a bad `profileId`), the space's alert limit
 (`ServiceQuotaExceededException`), an unknown space (`ResourceNotFoundException`), a
 `ConflictException`, or missing permission — relay it and fix the specific problem
@@ -1115,7 +1242,7 @@ they confirm, call `UpdateAlert` with `spaceId`, `alertId`, and **only the field
 and sub-blocks that change — each sub-block sent complete**:
 
 ```bash
-aws cloudwatch-omni update-alert --region us-east-1 --cli-input-json '{
+aws cloudwatchomni update-alert --region us-east-1 --cli-input-json '{
   "spaceId": "<space-id>",
   "alertId": "6c8971b543d54148a26fc793f46db68c",
   "rule": { "telemetryRule": { "condition": {
@@ -1190,7 +1317,7 @@ user cannot confirm what was not restated, and this confirmation is not optional
 Only after they confirm:
 
 ```bash
-aws cloudwatch-omni delete-alert --region us-east-1 \
+aws cloudwatchomni delete-alert --region us-east-1 \
   --space-id <space-id> --alert-id 6c8971b543d54148a26fc793f46db68c
 ```
 
@@ -1274,8 +1401,12 @@ only its current `state.value` and `state.transitionedAt`, never the previous st
 (see [Alert state](#alert-state)). Answer with what the read gives — the state and
 how long it has been in it ("`OK` since 09:42, so it left its previous state 4
 minutes ago") — and say plainly that earlier transitions and the previous state are
-not available from the API. Do not infer a history from one timestamp. It concerns
-ONE alert at a time, so ask which alert when the user was not specific.
+not available from the API. Do not infer a history from one timestamp. The **alert
+events log** does carry the transitions themselves ([Naming the contributors that are
+firing](#naming-the-contributors-that-are-firing) reads the same log), so offer that
+when the user needs more than the current state — but never present a log-derived
+history as something the alert API returned. It concerns ONE alert at a time, so ask
+which alert when the user was not specific.
 
 ### Step 1 — list first, with every filter the ask supports
 
@@ -1302,7 +1433,7 @@ The server-side filters are the whole of what the service narrows on
 `nextToken`**: the first page is not the complete set. Say how many matched.
 
 ```bash
-aws cloudwatch-omni list-alerts --region us-east-1 --space-id <space-id> \
+aws cloudwatchomni list-alerts --region us-east-1 --space-id <space-id> \
   --filter-criteria '{"stateValue": ["WARNING", "CRITICAL"]}' --sort-by STATE
 ```
 
@@ -1359,6 +1490,114 @@ Rules for the fetch path:
   alerts" from one.
 - **Answer in the user's terms** — "checkout-5xx-errors has been critical for the
   last 12 minutes, the other four are OK" — not a dump of the API output.
+
+### Naming the contributors that are firing
+
+"Which instances are contributing?", "which hosts are breaching?", "who is firing on
+this alert?" — the **counts** come straight off `GetAlert`
+([Alert state](#alert-state)), but the **identities are not on the alert API at all**.
+There is no `ListAlertContributors` operation. The only place the individual
+contributors exist is the **alert events log** — an append-only log of state
+transitions the service writes into the space's `logs.default`, readable with the same
+`StartTelemetryQuery` / `GetTelemetryQueryResults` pair as any other log query. Answer
+from the counts alone when the user only asked how many.
+
+**It is a transition log, not a current-state table**, and that is the whole
+difficulty. No row lists who is firing now, and a contributor that is already firing
+emits **nothing** when the alert transitions again — there is no heartbeat, so a
+contributor breaching since day one has exactly **one** row, 90 days old. Two
+consequences drive every step below: the window must be the full retention period, and
+**the newest transition is not the answer**. A short window plus a breaching-state
+filter is the worst version of this query — fast, plausible, and wrong, with nothing in
+the result to say anything is missing.
+
+**Step 1 — `GetAlert` first, and let it gate the rest.** Issue it in parallel with the
+query; it decides whether the rows may be used at all, not how to shape them.
+
+- `state.value` is `OK` or `NODATA` → **nothing is firing**. Answer that, and do not
+  read the rows. This is the only thing that catches a **disabled or deleted alert**,
+  where evaluation has stopped, no recovery rows are ever written again, and every
+  contributor row stays frozen as breaching forever.
+- `state.contributorSummary` **absent, or present with both counts `0`**, on a
+  firing alert → there are no contributors to name (a `COUNT_OF_RESULTS` alert).
+  Test the counts, not whether the field is there.
+- Otherwise `N = warningCount + criticalCount` is the number the fold must land on.
+
+**Step 2 — read the whole log for that alert, in one query.** No `scope` filter: the
+fold needs the alert-level rows and the contributor rows together.
+
+```sql
+SELECT `@timestamp`,
+       scope,
+       contributorId,
+       json_get_str(alertState, 'value')                      AS state,
+       round(json_get_float(alertState, 'observedValue'), 2)   AS observedValue,
+       json_get_str(previousAlertState, 'value')               AS prevState
+FROM "logs.default"
+WHERE (`@data_source_name` = 'alert/events'
+       OR (`@data_source_name` = 'amazon_cloudwatch' AND `@data_source_type` = 'alert_events'))
+  AND eventType = 'STATE_TRANSITION'
+  AND alertId = '<alertId>'
+  AND `@timestamp` BETWEEN NOW() - INTERVAL '90 days' AND NOW()
+ORDER BY `@timestamp` DESC
+```
+
+Four things about that query are load-bearing:
+
+- **Both data source spellings must be OR'd.** The publisher used to tag these records
+  `alert/events` and now writes `amazon_cloudwatch` / `alert_events`; both spellings
+  coexist inside the retention window, so omitting either silently loses rows.
+- **Filter on the promoted columns** — `alertId`, `scope`, `eventType` and
+  `contributorId` are real columns. Pulling the same values out of `@message` instead
+  is not indexed and prunes nothing, which is the biggest cost driver here, well ahead
+  of the time range.
+- **`@timestamp` is the transition's own time, not when the record was written**, so
+  the range is mandatory and a "now minus a few minutes" window misses rows.
+- **Drain every page of `GetTelemetryQueryResults`.** With `ORDER BY @timestamp DESC`,
+  stopping at the first page drops the **oldest** rows — exactly the long-firing
+  contributors that matter most. Either page to the end, or drop the `ORDER BY` and
+  sort in code.
+
+**Step 3 — fold the rows, in this order.** The order is the correctness argument, not a
+style preference.
+
+1. **Find the episode start** — the newest row with `scope` other than `'CONTRIBUTOR'`
+   and `prevState = 'OK'`. Match on `prevState = 'OK'` **alone**; additionally
+   requiring a breaching new state loses the `OK → NODATA → CRITICAL` path and so
+   misses the current episode entirely. Pad it back about 15 minutes (or one evaluation
+   interval), because contributor rows carry the contributor's own transition time
+   rather than the alert's, then discard contributor rows older than that bound: the
+   alert was `OK` at that instant, so nothing was breaching, and a breaching row older
+   than it is **provably** stale. This is a correctness filter, not a cost
+   optimisation — it is the only thing that removes a contributor whose recovery row
+   was never written.
+2. **Keep the newest row per `contributorId`.**
+3. **Only then** filter to `CRITICAL` / `WARNING`. A recovered contributor's `OK` row
+   **is** its delete marker; filter to breaching states *during* the scan and you
+   delete the delete markers, so everything that fired at any point in the episode
+   reads as still firing. In SQL, the state predicate sits outside the deduplicating
+   CTE, never inside it.
+
+**Step 4 — check the count, and never repair with it.** If the folded set has `N`
+entries, report it. If it does not, say the roster is uncertain and in which direction:
+`N` proves **cardinality only** and can never identify which entry is wrong. **Never
+take "the most recent N"** — recency does not separate stale from real, because a
+contributor that is genuinely still firing has a row just as old as an abandoned one.
+Re-reading `GetAlert` only attributes the mismatch: a changed `N` means the alert
+churned mid-read, so retry; an unchanged one means a real gap, so report it as one.
+
+**When there is no episode start** — an alert firing continuously for longer than the
+retention window, or one flapping among `WARNING` / `CRITICAL` / `NODATA` without ever
+returning to `OK` — fold the whole window and filter to breaching, but say confidence
+is lower. The episode bound was the only thing excluding a contributor whose recovery
+row was lost, so here a contributor that has quietly settled reads as firing
+indefinitely. Do not trim the result to `N` to hide that.
+
+**For anything repeated**, establish the roster once as above, then poll with
+`@timestamp > <cursor>` and apply deltas — a breaching row adds or updates that
+contributor, an `OK` row removes it. Each poll is a small scan and it is strictly
+**more** accurate than any bounded re-fold, because an old contributor can never fall
+out of the window.
 
 ---
 

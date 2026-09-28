@@ -1,0 +1,66 @@
+{
+  "$comment": "schema_version: 1; contract source: agents/llm2bedrock-prompt-evaluator.md §14 — live_source_baseline / judge_model / source_baseline_quality are marked MANDATORY there (the old JS schema omitted them from required); notes carries the structured prefix lines. partial exists ONLY in this schema (the evaluator is the sole agent documented to emit it). blocked reasons per evaluator §14.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eval_report_path",
+        "pass_rate",
+        "total_cases",
+        "failures",
+        "notes",
+        "live_source_baseline",
+        "judge_model",
+        "source_baseline_quality"
+      ],
+      "properties": {
+        "summary": { "type": "string" },
+        "eval_report_path": { "type": "string" },
+        "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "total_cases": { "type": "integer", "minimum": 0 },
+        "failures": { "type": "integer", "minimum": 0 },
+        "notes": { "type": "string" },
+        "live_source_baseline": { "type": "boolean" },
+        "judge_model": { "type": "string" },
+        "source_baseline_quality": { "type": "string", "enum": ["good", "poor", "unknown"] }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocked"],
+      "properties": {
+        "blocked": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "detail"],
+          "properties": {
+            "reason": {
+              "type": "string",
+              "enum": ["model_access", "source_key_auth", "model_unresolvable", "authz", "mantle_deps_missing"]
+            },
+            "detail": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partial"],
+      "properties": {
+        "partial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["completed", "total", "reason"],
+          "properties": {
+            "completed": { "type": "integer", "minimum": 0 },
+            "total": { "type": "integer", "minimum": 0 },
+            "reason": { "type": "string", "enum": ["throttled"] }
+          }
+        }
+      }
+    }
+  ]
+}

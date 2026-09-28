@@ -42,6 +42,13 @@ the standard path and what the CloudWatch Agent uses.
 
 `CloudWatchAgentServerPolicy` covers all three and is what AWS's own collector docs recommend.
 
+`cloudwatch:PutMetricData` in that table is the IAM action the OTLP metrics endpoint authorizes
+against — it does not mean the collector calls the `PutMetricData` API. A metric that arrives
+through the OTLP endpoint stays OpenTelemetry-native, carries its resource attributes
+(`"@resource.service.name"`), and is PromQL-queryable in Omni. A metric published with the
+`PutMetricData` API itself, or with EMF log lines, is a CloudWatch metric and is not — see
+[instrumentation.md](instrumentation.md) (§ Custom metrics).
+
 Three things that are easy to get wrong:
 
 - **Transaction Search must be enabled in the Region before traces work.** This is a real
@@ -51,7 +58,21 @@ Three things that are easy to get wrong:
   account-level, per-Region change: the user enables it with
   `aws xray update-trace-segment-destination --destination CloudWatchLogs --region <region>` (which
   also requires a CloudWatch Logs resource policy letting `xray.amazonaws.com` call
-  `logs:PutLogEvents` on `aws/spans`). Tell the user to enable it; do not enable it for them.
+  `logs:PutLogEvents` on `aws/spans`). That resource policy grants a service principal, so it
+  MUST carry the confused-deputy conditions the Transaction Search documentation shows:
+  `aws:SourceAccount` equal to the account and `aws:SourceArn` matched with `ArnLike` against
+  `arn:aws:xray:<region>:<account-id>:*` — never a bare grant to the principal. Tell the user
+  to enable it; do not enable it for them. Spans carry request attributes, so treat `aws/spans`
+  (and any custom trace log group) as a log group holding application data: CloudWatch Logs
+  encrypts it at rest with a service-owned key by default, and a customer who must use their
+  own key associates a symmetric KMS key with `aws logs associate-kms-key`. That key policy
+  grants the CloudWatch Logs service principal (`logs.<region>.amazonaws.com`) the encrypt,
+  decrypt, and data-key actions, and — like every service-principal grant in this file — it
+  MUST be scoped, not bare: the CloudWatch Logs documentation's statement conditions it with
+  `ArnLike` on `kms:EncryptionContext:aws:logs:arn` matching
+  `arn:aws:logs:<region>:<account-id>:log-group:*` (or the one log group), so the key can
+  only be used for that account's log groups. Recommend it where the customer's data
+  classification calls for it; do not associate a key or edit a key policy for them.
 - **Each signal needs its OWN `sigv4auth` extension**, because the `service` differs
   (`xray` vs `monitoring` vs `logs`). One shared extension cannot sign for more than one.
 - **The logs endpoint needs `x-aws-log-group` and `x-aws-log-stream` headers.** The log group

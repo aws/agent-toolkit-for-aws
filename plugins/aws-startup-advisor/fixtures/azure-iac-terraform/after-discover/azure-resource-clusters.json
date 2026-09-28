@@ -1,0 +1,147 @@
+{
+  "phase": "discover",
+  "clusters": [
+    {
+      "cluster_id": "rg-app-tf-web",
+      "seed_resource_group": "rg-app",
+      "tier": "compute",
+      "members": [
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:web",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:storefront",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:admin",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:checkout",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:docs",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:webhooks",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.KeyVault/vaults/tf:main",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/virtualNetworks/tf:core",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/virtualNetworks/tf:core/subnets/snet-apps",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/virtualNetworks/tf:core/subnets/snet-data",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/routeTables/rt-egress",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/bastionHosts/bas-jump",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.OperationalInsights/workspaces/tf:core",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Insights/components/tf:storefront",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.DBforPostgreSQL/flexibleServers/tf:store",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.Cache/Redis/tf:session",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.EventHub/namespaces/tf:telemetry",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.Network/privateEndpoints/tf:store"
+      ],
+      "member_roles": {
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app": "idle",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:storefront": "deployment",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:admin": "deployment",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:checkout": "deployment",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:docs": "deployment",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:webhooks": "deployment",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.KeyVault/vaults/tf:main": "configuration",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/virtualNetworks/tf:core": "network",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/virtualNetworks/tf:core/subnets/snet-apps": "network",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/virtualNetworks/tf:core/subnets/snet-data": "network",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/routeTables/rt-egress": "network",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Network/bastionHosts/bas-jump": "network",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.OperationalInsights/workspaces/tf:core": "observability",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Insights/components/tf:storefront": "observability",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data": "idle",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.DBforPostgreSQL/flexibleServers/tf:store": "data",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.Cache/Redis/tf:session": "data",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.EventHub/namespaces/tf:telemetry": "data",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.Network/privateEndpoints/tf:store": "network"
+      },
+      "primary": "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:web",
+      "justification": "merge:cross_group_edges",
+      "edges": [
+        {
+          "type": "data_ref",
+          "from": "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:storefront",
+          "to": "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.DBforPostgreSQL/flexibleServers/tf:store",
+          "via": "app_settings.DATABASE_HOST"
+        },
+        {
+          "type": "data_ref",
+          "from": "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:storefront",
+          "to": "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.Cache/Redis/tf:session",
+          "via": "app_settings.CACHE_ENDPOINT"
+        }
+      ],
+      "pattern_id": "unclassified",
+      "pattern_confidence": "inferred",
+      "pattern_status": "catalog_absent"
+    },
+    {
+      "cluster_id": "rg-app-tf-func",
+      "seed_resource_group": "rg-app",
+      "tier": "compute",
+      "members": [
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:func",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:imageresize",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/tf:assets",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/tf:assets/fileServices/default/shares/reports"
+      ],
+      "member_roles": {
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/sites/tf:imageresize": "deployment",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/tf:assets": "data",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/tf:assets/fileServices/default/shares/reports": "data"
+      },
+      "primary": "/subscriptions/<subscription-unknown>/resourceGroups/rg-app/providers/Microsoft.Web/serverfarms/tf:func",
+      "justification": "split:no_internal_edges",
+      "edges": [],
+      "pattern_id": "unclassified",
+      "pattern_confidence": "inferred",
+      "pattern_status": "catalog_absent"
+    },
+    {
+      "cluster_id": "rg-data-tf-catalog",
+      "seed_resource_group": "rg-data",
+      "tier": "data",
+      "members": [
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.DocumentDB/databaseAccounts/tf:catalog"
+      ],
+      "member_roles": {},
+      "primary": "/subscriptions/<subscription-unknown>/resourceGroups/rg-data/providers/Microsoft.DocumentDB/databaseAccounts/tf:catalog",
+      "justification": "split:no_internal_edges",
+      "edges": [],
+      "pattern_id": "unclassified",
+      "pattern_confidence": "inferred",
+      "pattern_status": "catalog_absent"
+    },
+    {
+      "cluster_id": "rg-shared-tf-reporting",
+      "seed_resource_group": "rg-shared",
+      "tier": "compute",
+      "members": [
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Compute/virtualMachines/tf:reporting",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Network/networkInterfaces/tf:reporting",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Devices/IotHubs/tf:telemetry_ingest"
+      ],
+      "member_roles": {
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared": "idle",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Network/networkInterfaces/tf:reporting": "network",
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Devices/IotHubs/tf:telemetry_ingest": "idle"
+      },
+      "primary": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Compute/virtualMachines/tf:reporting",
+      "justification": "split:no_internal_edges",
+      "edges": [],
+      "pattern_id": "unclassified",
+      "pattern_confidence": "inferred",
+      "pattern_status": "catalog_absent"
+    },
+    {
+      "cluster_id": "rg-shared-tf-legacy",
+      "seed_resource_group": "rg-shared",
+      "tier": "compute",
+      "members": [
+        "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Web/serverfarms/tf:legacy"
+      ],
+      "member_roles": {},
+      "primary": "/subscriptions/<subscription-unknown>/resourceGroups/rg-shared/providers/Microsoft.Web/serverfarms/tf:legacy",
+      "justification": "split:no_internal_edges",
+      "edges": [],
+      "pattern_id": "unclassified",
+      "pattern_confidence": "inferred",
+      "pattern_status": "catalog_absent"
+    }
+  ],
+  "unclustered": []
+}

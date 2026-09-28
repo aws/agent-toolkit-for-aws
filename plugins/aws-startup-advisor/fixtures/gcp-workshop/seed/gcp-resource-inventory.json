@@ -1,0 +1,46 @@
+{
+  "migration_id": "0719-gcp-ws",
+  "resources": [
+    {
+      "id": "run:web",
+      "type": "google_cloud_run_v2_service",
+      "name": "web"
+    },
+    {
+      "id": "run:worker",
+      "type": "google_cloud_run_v2_service",
+      "name": "worker"
+    },
+    {
+      "id": "sql:main",
+      "type": "google_sql_database_instance",
+      "name": "main"
+    }
+  ],
+  "graviton_profile": [
+    {
+      "service_name": "web",
+      "tier": "ready",
+      "target_architecture": "arm64",
+      "signals": [
+        "python-3.11",
+        "no-native-extensions"
+      ],
+      "caveats": [],
+      "source": "app_code"
+    },
+    {
+      "service_name": "worker",
+      "tier": "incompatible",
+      "target_architecture": "x86_64",
+      "signals": [
+        "platform: linux/amd64",
+        "native-c-extension"
+      ],
+      "caveats": [
+        "Pinned linux/amd64 image; native extension lacks arm64 wheel"
+      ],
+      "source": "app_code"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "phase": "recommend",
+  "timestamp": "2026-07-22T14:00:00Z",
+  "outcome": "B",
+  "fired_rule": 3,
+  "tiebreak": false,
+  "separable": null,
+  "backend_shape": null,
+  "confidence": "high",
+  "reasons": [
+    "Sustained traffic (not spiky)",
+    "Team stated a debuggability preference over minimal ops overhead"
+  ],
+  "resolving_input": null
+}

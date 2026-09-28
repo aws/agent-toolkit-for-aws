@@ -1,0 +1,134 @@
+{
+  "_comment": "Seed for the derived-baseline validation (scenario C in README.md): the scenario-B acme-prod resources in schema shape, NO billing-profile.json on purpose — estimate-infra.md Part 1 rung 2 must derive the GCP baseline from sizing via gcp-infra-pricing-cache.md. Config uses capture-shaped field paths (settings.tier etc.) exactly as the live parse emits them.",
+  "metadata": {
+    "discovery_timestamp": "2026-07-20T18:30:00Z",
+    "discovery_sources": ["terraform", "live"],
+    "clustering_mode": "simplified_live",
+    "project": "acme-prod"
+  },
+  "resources": [
+    {
+      "address": "google_sql_database_instance.db",
+      "type": "google_sql_database_instance",
+      "name": "db",
+      "classification": "PRIMARY",
+      "tier": "data",
+      "confidence": 0.99,
+      "source": "live+terraform",
+      "config": {
+        "name": "orders-db",
+        "region": "us-central1",
+        "databaseVersion": "POSTGRES_16",
+        "settings.tier": "db-custom-2-8192",
+        "settings.availabilityType": "ZONAL",
+        "settings.dataDiskSizeGb": "50",
+        "settings.backupConfiguration.enabled": true
+      },
+      "depth": 3,
+      "cluster_id": "data_cloudsql_us-central1_001"
+    },
+    {
+      "address": "google_redis_instance.cache",
+      "type": "google_redis_instance",
+      "name": "cache",
+      "classification": "PRIMARY",
+      "tier": "data",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "name": "cache",
+        "tier": "BASIC",
+        "memorySizeGb": 1,
+        "redisVersion": "REDIS_7_2",
+        "locationId": "us-central1-a"
+      },
+      "depth": 3,
+      "cluster_id": "data_redis_us-central1_001"
+    },
+    {
+      "address": "google_cloud_run_service.orders_api",
+      "type": "google_cloud_run_service",
+      "name": "orders_api",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.99,
+      "source": "live+terraform",
+      "config": {
+        "live_type": "google_cloud_run_v2_service",
+        "image": "us-docker.pkg.dev/acme-prod/app/orders-api:v42",
+        "memory_mb": 512,
+        "concurrency": 100,
+        "timeoutSeconds": 60
+      },
+      "depth": 3,
+      "cluster_id": "compute_cloudrun_us-central1_001"
+    },
+    {
+      "address": "google_cloud_run_v2_service.web_frontend",
+      "type": "google_cloud_run_v2_service",
+      "name": "web_frontend",
+      "classification": "PRIMARY",
+      "tier": "compute",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "image": "us-docker.pkg.dev/acme-prod/app/web-frontend:v18",
+        "memory_mb": 256,
+        "concurrency": 80
+      },
+      "depth": 3,
+      "cluster_id": "compute_cloudrun_us-central1_001"
+    },
+    {
+      "address": "google_storage_bucket.acme_prod_uploads",
+      "type": "google_storage_bucket",
+      "name": "acme_prod_uploads",
+      "classification": "SECONDARY",
+      "tier": "storage",
+      "confidence": 0.95,
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "secondary_role": "storage",
+      "serves": ["google_cloud_run_service.orders_api"],
+      "config": {
+        "name": "acme-prod-uploads",
+        "location": "US-CENTRAL1",
+        "storageClass": "STANDARD"
+      },
+      "depth": 2,
+      "cluster_id": "compute_cloudrun_us-central1_001"
+    },
+    {
+      "address": "google_compute_network.main",
+      "type": "google_compute_network",
+      "name": "main",
+      "classification": "SECONDARY",
+      "tier": "networking",
+      "confidence": 0.99,
+      "source": "live+terraform",
+      "secondary_role": "networking",
+      "serves": ["google_sql_database_instance.db", "google_redis_instance.cache"],
+      "config": { "name": "main", "autoCreateSubnetworks": false },
+      "depth": 0,
+      "cluster_id": "networking_vpc_global_000"
+    }
+  ],
+  "edges": [
+    {
+      "from": "google_cloud_run_service.orders_api",
+      "to": "google_sql_database_instance.db",
+      "relationship_type": "data_dependency",
+      "evidence": "run.googleapis.com/cloudsql-instances annotation"
+    }
+  ],
+  "live_metadata": {
+    "found": true,
+    "captured_at": "2026-07-20T18:20:00Z",
+    "project": "acme-prod",
+    "method": "per_service",
+    "capture_warnings": [],
+    "unmapped_asset_types": {}
+  }
+}

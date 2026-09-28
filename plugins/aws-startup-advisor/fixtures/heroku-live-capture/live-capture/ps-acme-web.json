@@ -1,0 +1,29 @@
+[
+  {
+    "id": "d-0001",
+    "name": "web.1",
+    "type": "web",
+    "size": "Standard-2X",
+    "state": "up",
+    "command": "npm start",
+    "updated_at": "2026-07-15T06:00:00Z"
+  },
+  {
+    "id": "d-0002",
+    "name": "web.2",
+    "type": "web",
+    "size": "Standard-2X",
+    "state": "up",
+    "command": "npm start",
+    "updated_at": "2026-07-15T06:00:00Z"
+  },
+  {
+    "id": "d-0003",
+    "name": "worker.1",
+    "type": "worker",
+    "size": "Standard-1X",
+    "state": "up",
+    "command": "node worker.js",
+    "updated_at": "2026-07-15T06:00:00Z"
+  }
+]

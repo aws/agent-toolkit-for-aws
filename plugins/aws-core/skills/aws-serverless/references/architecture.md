@@ -10,7 +10,7 @@ Pattern selection and the opinionated service defaults / constraints for each. T
 | Processing events from a queue/stream/database | Event processing (SQS/Streams → Lambda) |
 | Multi-step workflow with branching/error handling | Orchestration (Step Functions) |
 | Real-time bidirectional / LLM streaming | WebSocket API or Function URL streaming |
-| One event → multiple independent consumers | Async fan-out (EventBridge / SNS) |
+| One event → multiple independent consumers | Async fan-out (EventBridge / SNS); for a governed, multi-team bus see amazon-eventbridge-event-bus |
 | Recurring task on a schedule | EventBridge Scheduler → Lambda / Step Functions |
 
 Most real apps combine several. Start with one (a CRUD API on DynamoDB covers most initial needs); add event processing for async work, orchestration for multi-step workflows, fan-out for cross-service comms.
@@ -94,6 +94,8 @@ One event → multiple independent actions; event-driven microservices.
 | Scheduling | EventBridge Scheduler (cron/rate) | EventBridge rules with schedule expression |
 
 Constraints: dedicated event bus per domain (not the default bus); be precise with patterns (broad patterns risk loops); DLQs on all targets.
+
+**For a new event-driven workload, or one shared across teams and accounts, use the amazon-eventbridge-event-bus skill** (see SKILL.md routing). The EventBridge enhanced custom event bus replaces rules and targets with subscribers that carry their own filtering, retention, replay, ordering, and transformation, and suits a platform team governing one bus that many teams publish to. The table above describes the classic bus.
 
 ---
 

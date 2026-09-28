@@ -1,0 +1,40 @@
+{
+  "phase": "design",
+  "services": [
+    {
+      "aws_service": "ECS Fargate",
+      "source_resource_id": "run:web",
+      "aws_config": {
+        "cpu_architecture": "ARM64",
+        "region": "us-east-1"
+      },
+      "graviton": {
+        "compatibility": "ready",
+        "target_architecture": "arm64",
+        "selected": true
+      }
+    },
+    {
+      "aws_service": "ECS Fargate",
+      "source_resource_id": "run:worker",
+      "aws_config": {
+        "cpu_architecture": "X86_64",
+        "region": "us-east-1"
+      },
+      "graviton": {
+        "compatibility": "incompatible",
+        "target_architecture": "x86_64",
+        "selected": false
+      }
+    },
+    {
+      "aws_service": "RDS PostgreSQL",
+      "source_resource_id": "sql:main",
+      "aws_config": {
+        "instance_class": "db.t4g.micro",
+        "multi_az": false,
+        "region": "us-east-1"
+      }
+    }
+  ]
+}

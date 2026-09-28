@@ -4,11 +4,11 @@ CloudWatch Omni is not console-only. A script, a service, a CI job, an infrastru
 
 ## 1. The Public API
 
-CloudWatch Omni exposes a standard **SigV4-signed AWS API**. No console session is required — but the wire protocol is Smithy RPC v2 CBOR (`rpcv2Cbor`), not JSON: each call is a POST to `/service/CloudWatchOmniFrontend/operation/<Op>` with a CBOR body. So the caller needs an AWS SDK or CLI that carries the `cloudwatch-omni` service model; a hand-rolled JSON-over-SigV4 client cannot call it.
+CloudWatch Omni exposes a standard **SigV4-signed AWS API**. No console session is required — but the wire protocol is Smithy RPC v2 CBOR (`rpcv2Cbor`), not JSON: each call is a POST to `/service/CloudWatchOmniFrontend/operation/<Op>` with a CBOR body. So the caller needs an AWS SDK or CLI that carries the `cloudwatchomni` service model; a hand-rolled JSON-over-SigV4 client cannot call it.
 
 | Property | Value |
 |---|---|
-| Service (endpoint prefix) | `cloudwatch-omni` |
+| Endpoint prefix | `cloudwatch-omni` |
 | SigV4 signing name | `cloudwatch` |
 | Regional endpoint | `cloudwatch-omni.<region>.api.aws` |
 | Protocol | Smithy RPC v2 CBOR (`rpcv2Cbor`); path `/service/CloudWatchOmniFrontend/operation/<Op>` |
@@ -32,21 +32,21 @@ So when a correctly signed call is denied, check both layers: the IAM policy on 
 
 ## 2. AWS CLI and AWS SDKs
 
-CloudWatch Omni is supported by the **AWS CLI** and the **AWS SDKs**, under the same `cloudwatch-omni` service name as the API: `aws cloudwatch-omni <operation>`, and the corresponding client in each SDK.
+CloudWatch Omni is supported by the **AWS CLI** and the **AWS SDKs**, under the `cloudwatchomni` service name: `aws cloudwatchomni <operation>`, and the corresponding client in each SDK.
 
 Two things to know when a call does not work:
 
-- **`aws cloudwatch-omni …` reporting that the service is not supported means the local CLI predates Omni's service model.** The AWS CLI and each SDK ship a snapshot of service models, so a version older than Omni's release has no `cloudwatch-omni` client. This is a client-version issue and says nothing about whether Omni is enabled on the account — the failure happens during argument parsing, before any request is sent. Upgrade to a version that carries it:
+- **`aws cloudwatchomni …` reporting that the service is not supported means the local CLI predates Omni's service model.** The AWS CLI and each SDK ship a snapshot of service models, so a version older than Omni's release has no `cloudwatchomni` client. This is a client-version issue and says nothing about whether Omni is enabled on the account — the failure happens during argument parsing, before any request is sent. Upgrade to a version that carries it:
   - **AWS CLI v2** — check `aws --version`, then reinstall/upgrade per <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>: macOS `brew upgrade awscli` or the `.pkg` installer; Linux re-run the zip installer with `--update`; Windows the MSI.
   - **boto3** — `pip install -U boto3 botocore`.
   - **Other SDKs** — upgrade to the latest release.
 
-  Then re-run `aws cloudwatch-omni list-domains`. If the command is still unknown after upgrading, the CLI build is older than the service launch — tell the customer that rather than substituting a CloudWatch or X-Ray command.
+  Give the customer that command; do **not** run `brew`, `pip install -U`, or an installer on the host yourself — a package-manager upgrade mutates their machine beyond the request (a Homebrew upgrade, for example, can replace the system Python other tools depend on). Then have them re-run `aws cloudwatchomni list-domains`. If the command is still unknown after upgrading, the CLI build is older than the service launch — tell the customer that rather than substituting a CloudWatch or X-Ray command.
 - **`aws cloudwatch <omni-operation>` will always fail**, at any version. Omni is a distinct service that shares only the `cloudwatch` signing name, so CloudWatch and X-Ray clients cannot reach Spaces, Omni alerts, views, dashboards, or Omni SQL. They are not a substitute, and must never be offered as one.
 
-Any SDK or CLI that carries the `cloudwatch-omni` model signs and encodes the request per section 1; there is no library-free path, because the `rpcv2Cbor` protocol needs the model to encode the body.
+Any SDK or CLI that carries the `cloudwatchomni` model signs and encodes the request per section 1; there is no library-free path, because the `rpcv2Cbor` protocol needs the model to encode the body.
 
-**Do not invent operation names, CLI subcommands, or SDK method names.** Naming the service is enough to answer "can I use the CLI or an SDK" — the operations themselves live in the per-resource references this file points to ([alerts.md](alerts.md), [views.md](query/views.md), [dashboards.md](dashboards.md), [sql-logs-traces.md](query/sql-logs-traces.md)). A fabricated subcommand or method that does not exist is worse than telling the reader where to look it up, because it fails at the point the reader trusts it most. When an example would help, show the SDK/CLI call shape from section 1 (SigV4 + `rpcv2Cbor` via the `cloudwatch-omni` model) with the operation left as a placeholder rather than guessing a real one.
+**Do not invent operation names, CLI subcommands, or SDK method names.** Naming the service is enough to answer "can I use the CLI or an SDK" — the operations themselves live in the per-resource references this file points to ([alerts.md](alerts.md), [views.md](query/views.md), [dashboards.md](dashboards.md), [sql-logs-traces.md](query/sql-logs-traces.md)). A fabricated subcommand or method that does not exist is worse than telling the reader where to look it up, because it fails at the point the reader trusts it most. When an example would help, show the SDK/CLI call shape from section 1 (SigV4 + `rpcv2Cbor` via the `cloudwatchomni` model) with the operation left as a placeholder rather than guessing a real one.
 
 ## 3. Infrastructure as Code
 
@@ -68,5 +68,5 @@ These are the specific wrong answers this reference exists to prevent:
 
 - **Never say Omni has no API, no SDK, no CLI, no endpoint, or no programmatic access.** All four paths above are supported. This is the most damaging error available here, because it tells a customer a supported capability does not exist.
 - **Never answer an Omni programmatic question with the CloudWatch or X-Ray CLI or SDK.** Those are different services and cannot reach Omni resources, at any client version.
-- **Never treat a failed `aws cloudwatch-omni` call as proof the API does not exist, or that Omni is not enabled.** An unsupported-service error means the local client predates Omni's service model — the fix is a client upgrade, and the call never reached AWS.
+- **Never treat a failed `aws cloudwatchomni` call as proof the API does not exist, or that Omni is not enabled.** An unsupported-service error means the local client predates Omni's service model — the fix is a client upgrade, and the call never reached AWS.
 - **Never invent** an endpoint hostname, a service or signing name, an SDK client name, an operation name, or a CloudFormation type name. Say the path exists, then point at the reference that carries the exact identifiers. A plausible-looking name that does not resolve is worse than sending the reader to look it up.

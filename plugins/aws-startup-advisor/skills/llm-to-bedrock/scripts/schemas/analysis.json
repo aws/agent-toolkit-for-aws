@@ -1,0 +1,96 @@
+{
+  "$comment": "schema_version: 1; contract source: agents/llm2bedrock-code-analyzer.md §14 — 'Always populate every required field' makes every typed field required; special_patterns MUST include all four booleans. blocked reasons per analyzer §6.3/§10/§14.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_code_path",
+        "migration_plan_path",
+        "app_language",
+        "ai_framework",
+        "ai_framework_version",
+        "source_provider",
+        "source_models",
+        "target_models",
+        "same_model_family",
+        "bedrock_provider_available",
+        "prompt_locations",
+        "prompt_patterns",
+        "special_patterns",
+        "code_change_sites",
+        "files_to_modify",
+        "dependencies_to_replace",
+        "log_files_found",
+        "errors",
+        "behavior_deltas",
+        "source_baseline_available"
+      ],
+      "properties": {
+        "summary": { "type": "string" },
+        "source_code_path": { "type": "string" },
+        "migration_plan_path": { "type": "string" },
+        "app_language": { "type": "string" },
+        "ai_framework": { "type": "string" },
+        "ai_framework_version": { "type": "string" },
+        "source_provider": { "type": "string" },
+        "source_models": { "type": "array", "items": { "type": "string" } },
+        "target_models": { "type": "array", "items": { "type": "string" } },
+        "same_model_family": { "type": "boolean" },
+        "bedrock_provider_available": { "type": "boolean" },
+        "prompt_locations": { "type": "array", "items": { "type": "string" } },
+        "prompt_patterns": { "type": "string" },
+        "special_patterns": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["streaming", "function_calling", "embeddings", "vision"],
+          "properties": {
+            "streaming": { "type": "boolean" },
+            "function_calling": { "type": "boolean" },
+            "embeddings": { "type": "boolean" },
+            "vision": { "type": "boolean" }
+          }
+        },
+        "code_change_sites": { "type": "integer", "minimum": 0 },
+        "files_to_modify": { "type": "array", "items": { "type": "string" } },
+        "dependencies_to_replace": { "type": "array", "items": { "type": "string" } },
+        "log_files_found": { "type": "string" },
+        "errors": { "type": "string" },
+        "behavior_deltas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["delta_type", "location", "user_visible", "resolution_kind"],
+            "properties": {
+              "delta_type": { "type": "string" },
+              "location": { "type": "string" },
+              "source_value": { "type": "string" },
+              "target_constraint": { "type": "string" },
+              "user_visible": { "type": "boolean" },
+              "resolution_kind": { "type": "string", "enum": ["ux_choice", "impl_path"] },
+              "option_set_id": { "type": "string" }
+            }
+          }
+        },
+        "source_baseline_available": { "type": "boolean" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocked"],
+      "properties": {
+        "blocked": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "detail"],
+          "properties": {
+            "reason": { "type": "string", "enum": ["model_access", "model_unresolvable", "assess_output_missing"] },
+            "detail": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

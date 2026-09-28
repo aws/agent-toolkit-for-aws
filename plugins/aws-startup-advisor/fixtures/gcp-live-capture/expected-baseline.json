@@ -1,0 +1,19 @@
+{
+  "_comment": "Expected Part 1 rung-2 derived baseline for seed-baseline/ (no billing-profile.json). Math from gcp-infra-pricing-cache.md: Cloud SQL db-custom-2-8192 ZONAL = (2 x 0.0413 + 8 x 0.0070) x 730 = 101.18 + 50 GB SSD x 0.17 = 8.50 + backup upper bound 50 x 0.08 = 4.00 -> 113.68; Memorystore BASIC 1 GB = 1 x 0.049 x 730 = 35.77. Derivable total 149.45. Cloud Run x2 and the bucket are usage-based -> EXCLUDED with warnings; the VPC network is excluded as no_standing_charge. Checked by check_expected_baseline.py.",
+  "current_costs": {
+    "source": "inventory_estimate",
+    "accuracy_contains": "20-30",
+    "monthly_total": 149.45,
+    "tolerance": 0.75,
+    "baseline_note_must_mention": ["not a bill", "usage-based"]
+  },
+  "per_resource": {
+    "google_sql_database_instance.db": { "monthly": 113.68, "tolerance": 0.6 },
+    "google_redis_instance.cache": { "monthly": 35.77, "tolerance": 0.25 }
+  },
+  "excluded_must_be_warned": ["orders_api", "web_frontend", "acme_prod_uploads"],
+  "must_not_exist": [
+    "a billing_data source claim (no billing-profile.json in this scenario)",
+    "any priced Cloud Run / bucket line inside the baseline total"
+  ]
+}

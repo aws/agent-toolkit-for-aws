@@ -1,0 +1,24 @@
+{
+  "scenario_id": "scenario-002",
+  "label": "arm64",
+  "created_at": "2026-07-19T19:05:00Z",
+  "source": "workshop",
+  "preferences_subset": {
+    "workshop.cpu_architecture": "arm64"
+  },
+  "preferences_fingerprint": "a5812e3a5608173fe95182172c1b2f5a6c3c5b082a19741a91533a1f39780ccc",
+  "aws_design_fingerprint": "b65ba356b775e52e42bcda6a566c05aa2d76e6b430abcf4190c26896c0e26b35",
+  "estimation_summary": {
+    "aws_monthly_premium": 120.0,
+    "aws_monthly_balanced": 88.0,
+    "aws_monthly_optimized": 78.0,
+    "complexity_tier": "small",
+    "pricing_source": "cached",
+    "region_note": null
+  },
+  "paths": {
+    "preferences": "scenarios/scenario-002.preferences.json",
+    "aws_design": "scenarios/scenario-002.aws-design.json",
+    "estimation_infra": "scenarios/scenario-002.estimation-infra.json"
+  }
+}

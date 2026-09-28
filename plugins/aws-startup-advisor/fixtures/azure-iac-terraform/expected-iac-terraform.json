@@ -1,0 +1,345 @@
+{
+  "_comment": "Pinned facts for the azure-iac-terraform fixture. Every entry is a decision where a plausible improvisation and the correct answer DIVERGE \u2014 a fact the model would get wrong by reasoning from the Terraform alone instead of consulting arm-type-canonicalization.md and extract-terraform.md. Facts a model gets right by accident are deliberately not asserted here; they cost review attention and prove nothing.",
+  "inventory_file": "azure-resource-inventory.json",
+  "discovery_sources": [
+    "terraform"
+  ],
+  "resource_counts": {
+    "declared_in_corpus": 31,
+    "expected_in_inventory": 30,
+    "_comment": "30, not 29. Before 2026-09-07 an unlisted azurerm type was DROPPED, so the count was '31 declared minus the untranslated one'. Derivation retains it: azurerm_iothub is now derived to Microsoft.Devices/iothubs and kept with its sku, which is what lets Design's cost-bearing test run at all."
+  },
+  "canonical_types": {
+    "_comment": "Keyed by the full Terraform ADDRESS (<azurerm_type>.<local_name>), because a bare local name is NOT unique \u2014 Terraform namespaces them per type. The ARM type is asserted as the exact spelling arm-type-canonicalization.md emits: matching folds case, but azure_id joins do not, so emission must be consistent.",
+    "azurerm_resource_group.app": "Microsoft.Resources/resourceGroups",
+    "azurerm_resource_group.data": "Microsoft.Resources/resourceGroups",
+    "azurerm_resource_group.shared": "Microsoft.Resources/resourceGroups",
+    "azurerm_service_plan.web": "Microsoft.Web/serverfarms",
+    "azurerm_service_plan.func": "Microsoft.Web/serverfarms",
+    "azurerm_service_plan.legacy": "Microsoft.Web/serverfarms",
+    "azurerm_linux_web_app.storefront": "Microsoft.Web/sites",
+    "azurerm_linux_web_app.admin": "Microsoft.Web/sites",
+    "azurerm_linux_web_app.checkout": "Microsoft.Web/sites",
+    "azurerm_linux_web_app.docs": "Microsoft.Web/sites",
+    "azurerm_linux_web_app.webhooks": "Microsoft.Web/sites",
+    "azurerm_linux_function_app.imageresize": "Microsoft.Web/sites",
+    "azurerm_windows_virtual_machine.reporting": "Microsoft.Compute/virtualMachines",
+    "azurerm_postgresql_flexible_server.store": "Microsoft.DBforPostgreSQL/flexibleServers",
+    "azurerm_redis_cache.session": "Microsoft.Cache/Redis",
+    "azurerm_cosmosdb_account.catalog": "Microsoft.DocumentDB/databaseAccounts",
+    "azurerm_storage_account.assets": "Microsoft.Storage/storageAccounts",
+    "azurerm_storage_share.reports": "Microsoft.Storage/storageAccounts/fileServices/shares",
+    "azurerm_eventhub_namespace.telemetry": "Microsoft.EventHub/namespaces",
+    "azurerm_log_analytics_workspace.core": "Microsoft.OperationalInsights/workspaces",
+    "azurerm_key_vault.main": "Microsoft.KeyVault/vaults",
+    "azurerm_virtual_network.core": "Microsoft.Network/virtualNetworks",
+    "azurerm_subnet.apps": "Microsoft.Network/virtualNetworks/subnets",
+    "azurerm_subnet.data": "Microsoft.Network/virtualNetworks/subnets",
+    "azurerm_network_interface.reporting": "Microsoft.Network/networkInterfaces",
+    "azurerm_private_endpoint.store": "Microsoft.Network/privateEndpoints",
+    "azurerm_application_insights.storefront": "Microsoft.Insights/components",
+    "azurerm_route_table.egress": "Microsoft.Network/routeTables",
+    "azurerm_bastion_host.jump": "Microsoft.Network/bastionHosts"
+  },
+  "forbidden_types": {
+    "_comment": "Plausible guesses that are not real ARM type strings, or not the spelling this skill emits. None may appear as any resource's azure_type. Wrong provider/segment entries pin a guessed translation; the two case-only entries (serverFarms, redis) pin the emission convention that keeps azure_id joinable \u2014 they are NOT claims that Microsoft spells them the other way. See arm-type-canonicalization.md section 'Casing is a convention, not a fact'.",
+    "values": [
+      "Microsoft.Web/functionApps",
+      "Microsoft.Web/serverFarms",
+      "Microsoft.Cache/redis",
+      "Microsoft.CosmosDB/databaseAccounts",
+      "Microsoft.CosmosDB/accounts",
+      "Microsoft.DocumentDB/accounts",
+      "Microsoft.Storage/fileShares",
+      "Microsoft.DBforPostgresql/flexibleServers",
+      "Microsoft.EventHubs/namespaces",
+      "Microsoft.KeyVault/Vaults",
+      "Microsoft.DevTestLab/labs"
+    ]
+  },
+  "function_app": {
+    "_comment": "The sharpest trap: a function app is a sites resource discriminated by kind, and Microsoft.Web/functionApps does not exist.",
+    "local_name": "azurerm_linux_function_app.imageresize",
+    "azure_type": "Microsoft.Web/sites",
+    "kind_contains": "functionapp",
+    "_key": "tf_address"
+  },
+  "azure_id": {
+    "_comment": "Terraform carries no ARM IDs, so these are reconstructed. The resource-group form is the exception that carries no /providers/ segment.",
+    "subscription_placeholder": "<subscription-unknown>",
+    "subscription_id_source": "unresolved",
+    "resource_group_form_has_no_providers_segment": true,
+    "standard_form_regex": "^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\\.[A-Za-z]+/.+$",
+    "resource_group_form_regex": "^/subscriptions/[^/]+/resourceGroups/[^/]+$"
+  },
+  "app_service_plan_fan_in": {
+    "_comment": "THE 5x cost trap. Five apps share one S1 plan with worker_count 2. A per-app mapping would emit five compute line items downstream; the hosted_on edges are what prevent it. Asserted at Discover because by Design it is already too late to recover the edge.",
+    "plan_local_name": "azurerm_service_plan.web",
+    "plan_sku_name": "S1",
+    "plan_worker_count": 2,
+    "expected_hosted_on_edge_count": 5,
+    "idle_plan_local_name": "azurerm_service_plan.legacy",
+    "idle_plan_expected_hosted_on_edge_count": 0
+  },
+  "cross_resource_group_edge": {
+    "_comment": "The app lives in rg-app and its database in rg-data, and the app's DATABASE_HOST setting interpolates the server's fqdn. RG-seeded clustering alone would split them; THIS edge is what later merges them. Asserted as a specific directed pair, not merely 'some edge crosses a boundary' \u2014 the corpus also contains crossing subnet edges, which are a far weaker signal and would let a broken extractor pass.",
+    "from_tf_address": "azurerm_linux_web_app.storefront",
+    "from_resource_group": "rg-app",
+    "to_tf_address": "azurerm_postgresql_flexible_server.store",
+    "to_resource_group": "rg-data",
+    "acceptable_edge_types": [
+      "data_ref",
+      "secret_ref",
+      "private_link"
+    ]
+  },
+  "private_endpoint": {
+    "_comment": "Edge-bearing config source, not a mapping target: inventoried so it can be reported as skipped, but its value is the private_link edge to the resource it fronts.",
+    "local_name": "azurerm_private_endpoint.store",
+    "azure_type": "Microsoft.Network/privateEndpoints",
+    "must_produce_edge_type": "private_link",
+    "must_appear_in_warnings": true
+  },
+  "secrets": {
+    "_comment": "Hard boundary. The corpus carries a greppable sentinel in three places: two app_settings values and a VM admin_password. None may appear anywhere in the artifact, not even redacted in place \u2014 a redaction placeholder still discloses that the field existed.",
+    "sentinel": "FIXTURE_SENTINEL_MUST_NOT_APPEAR",
+    "app_setting_names_expected": [
+      "CACHE_ENDPOINT",
+      "DATABASE_HOST",
+      "DATABASE_URL",
+      "STRIPE_SECRET_KEY",
+      "VAULT_TOKEN"
+    ],
+    "app_setting_names_owner_local_name": "azurerm_linux_web_app.storefront",
+    "forbidden_config_keys": [
+      "app_settings",
+      "connection_string",
+      "connection_strings",
+      "value",
+      "admin_password",
+      "primary_access_key",
+      "secondary_access_key"
+    ],
+    "_forbidden_config_keys_comment": "A VALUES container must not exist at all. Asserting only on the sentinel string missed a redaction-in-place mutation (a truncated sentinel plus '***'), which the rules forbid but the substring check could not see."
+  },
+  "untranslated_types": {
+    "_comment": "MUST BE EMPTY. Before 2026-09-07 this held azurerm_iothub. The field now means 'the skill cannot NAME the service' - not 'no table row' and not 'namespace unrecognised', both of which are derived and retained.",
+    "expected": [],
+    "must_be_empty_in_artifact": true,
+    "_why": "If this refills, derivation has regressed to dropping types, which silently understates the estate and destroys the sku evidence Design's cost-bearing test reads."
+  },
+  "unresolved_modules": {
+    "_comment": "A registry module whose content is not in the workspace. Silence here is how a Terraform-only inventory ends up confidently missing a third of the estate.",
+    "expected_substring": "Azure/cdn"
+  },
+  "routing_discriminators": {
+    "_comment": "Attributes that are the sole input to a later rubric decision. Dropping one does not fail any shape assertion \u2014 it just makes the rubric guess.",
+    "smb_share": {
+      "local_name": "azurerm_storage_share.reports",
+      "config_key": "enabled_protocol",
+      "value": "SMB"
+    },
+    "kafka_namespace": {
+      "local_name": "azurerm_eventhub_namespace.telemetry",
+      "config_key": "kafka_enabled",
+      "value": true
+    },
+    "cosmos_mongo_api": {
+      "local_name": "azurerm_cosmosdb_account.catalog",
+      "config_key": "kind",
+      "value": "MongoDB"
+    },
+    "windows_vm_image_sku": {
+      "local_name": "azurerm_windows_virtual_machine.reporting",
+      "config_key": "image_sku",
+      "value": "2022-datacenter-azure-edition"
+    }
+  },
+  "forbidden_artifact_substrings": {
+    "_comment": "Terraform type strings must never survive into the artifact; the canonical vocabulary is ARM.",
+    "values": [
+      "azurerm_"
+    ]
+  },
+  "identity_field": {
+    "_comment": "The asserter indexes resources by this config field. It must be unique per resource.",
+    "config_key": "tf_address"
+  },
+  "child_resource_group_inheritance": {
+    "_comment": "A child type carries no resource_group_name and references its parent instead. Treating that as unresolvable nulls the group for storage shares, SQL databases, Event Hubs, Service Bus queues and Cosmos databases \u2014 most of a real estate's child resources \u2014 and a resource with no group cannot be clustered.",
+    "tf_address": "azurerm_storage_share.reports",
+    "parent_tf_address": "azurerm_storage_account.assets",
+    "expected_resource_group": "rg-app"
+  },
+  "contract_vocabulary": {
+    "_why": "Added after a fresh-context capability run. The run was CORRECT by every rule the refs stated and still diverged from the golden tree on three unstated things: it wrote null for unset attributes, it invented warning codes, and it dropped three cost-relevant config fields that no per-type row asked for. None of those failed a single existing assertion. These checks turn 'the extraction ref is silent' from an invisible defect into a CI failure.",
+    "warning_codes": [
+      "untranslated_terraform_type",
+      "module_not_resolved",
+      "private_endpoint_consumed",
+      "resource_group_unresolved",
+      "name_expression_unresolved",
+      "subscription_id_unresolved",
+      "multiplicity_unresolved"
+    ],
+    "_warning_codes_why": "Closed vocabulary, defined in schema-discover-azure.md \u00a7 Warnings. An invented code makes the report's grouping unstable and every fixture assertion on a code unreliable \u2014 the fresh run emitted `module_not_discovered` where the contract says `module_not_resolved`, which no shape assertion could catch.",
+    "warning_required_keys": [
+      "code",
+      "detail"
+    ],
+    "warning_required_one_of": [
+      "azure_id",
+      "identifier"
+    ],
+    "edge_types": [
+      "hosted_on",
+      "network",
+      "private_link",
+      "secret_ref",
+      "data_ref",
+      "identity_grant",
+      "declared_affinity"
+    ],
+    "_edge_types_why": "Canonical set in schema-discover-azure.md \u00a7 Typed edges. A per-dialect ref maps its own syntax onto these and may not invent a type: step 4's clustering reads the edge TYPE to decide whether a merge is justified, so an unknown type is silently ignored there rather than rejected here.",
+    "forbid_null_config_values": true,
+    "_forbid_null_why": "`omit, do not null` (extract-terraform.md \u00a7 Per-type attributes). A null makes 'the customer did not set this' indistinguishable from 'the extractor found nothing to read', and it pads config with mostly-noise for every optional attribute in the table."
+  },
+  "required_config_fields": {
+    "_why": "The COST-BEARING and ROUTING fields, per canonical type. Each one is the sole input to a later sizing or mapping decision, so a missing field does not fail a shape assertion \u2014 it just makes Design or Estimate guess. Four of these rows exist because extract-terraform.md \u00a7 Per-type attributes had no entry for the type at all and a correct-by-the-ref extraction therefore dropped the field.",
+    "Microsoft.Web/serverfarms": [
+      "sku_name",
+      "worker_count",
+      "os_type"
+    ],
+    "Microsoft.Web/sites": [
+      "kind"
+    ],
+    "Microsoft.Compute/virtualMachines": [
+      "size",
+      "os_type",
+      "image_publisher",
+      "image_sku"
+    ],
+    "Microsoft.DBforPostgreSQL/flexibleServers": [
+      "sku_name",
+      "storage_mb",
+      "version"
+    ],
+    "Microsoft.Cache/Redis": [
+      "sku_name",
+      "family",
+      "capacity"
+    ],
+    "Microsoft.DocumentDB/databaseAccounts": [
+      "kind",
+      "capabilities"
+    ],
+    "Microsoft.Storage/storageAccounts": [
+      "account_kind",
+      "account_tier"
+    ],
+    "Microsoft.Storage/storageAccounts/fileServices/shares": [
+      "enabled_protocol"
+    ],
+    "Microsoft.EventHub/namespaces": [
+      "sku",
+      "kafka_enabled"
+    ],
+    "Microsoft.Network/virtualNetworks": [
+      "address_space"
+    ],
+    "Microsoft.Network/virtualNetworks/subnets": [
+      "address_prefixes"
+    ],
+    "Microsoft.KeyVault/vaults": [
+      "sku_name"
+    ],
+    "Microsoft.OperationalInsights/workspaces": [
+      "sku",
+      "retention_in_days"
+    ],
+    "Microsoft.Insights/components": [
+      "application_type",
+      "workspace_id"
+    ],
+    "Microsoft.Network/privateEndpoints": [
+      "subresource_names"
+    ]
+  },
+  "downloaded_module": {
+    "_why": "The single highest-value inventory fix, and it is invisible to every other assertion. `.terraform/modules/` holds downloaded module SOURCE, so it is readable; the old blanket `.terraform/` ban was written for state files and over-reached. Modern Azure Terraform leans hard on Azure Verified Modules, so under the ban a repo could declare almost its whole estate through registry modules and return a nearly empty inventory plus one warning \u2014 with every downstream phase then reasoning confidently about a fraction of the estate.",
+    "tf_addresses": [
+      "azurerm_route_table.egress",
+      "azurerm_bastion_host.jump"
+    ],
+    "expected_tf_module": "module.naming",
+    "must_not_be_warned_as": "module_not_resolved",
+    "_must_not_be_warned_why": "module.cdn in unsupported.tf is NOT on disk and MUST warn. module.naming IS on disk and must NOT \u2014 conflating them is how the fix silently reverts."
+  },
+  "association_only_resource": {
+    "_why": "An association has no ARM type at all. Reporting it as untranslated claims a gap in this skill and buries the real gaps, because associations outnumber genuinely-missing types on an IaC-heavy repo. Emitting an inventory entry for it would invent a resource that does not exist.",
+    "tf_address": "azurerm_subnet_route_table_association.apps",
+    "must_not_be_in_inventory": true,
+    "must_not_be_untranslated": true,
+    "expected_edge": {
+      "from_tf_address": "azurerm_subnet.apps",
+      "to_tf_address": "azurerm_route_table.egress",
+      "type": "network"
+    }
+  },
+  "clusters_file": "azure-resource-clusters.json",
+  "clustering": {
+    "_why": "Clustering was implemented and then completely UNGATED \u2014 no golden artifact existed at all, so the split/merge rules were reviewed prose and nothing more. Each fact below is one where the seed-only behaviour and the refined behaviour DIVERGE, which is the only interesting kind.",
+    "expected_cluster_count": 5,
+    "_expected_cluster_count_why": "Seed-only gives 3 (one per resource group). A first draft that split on edges alone and promoted singletons gave 16 - a capability run produced exactly that, with a VNet separated from its own subnets. 5 is seed, then split, then merge, with containment counting as connectivity and only primary-eligible components promoted. CORRECTED 2026-09-07 from 4: the hand-authored golden put the Cosmos account inside the 21-member merge cluster, but that account has ZERO edges in either direction and none of the cluster's three justifying edges touches it. Capability run 4 split it out, which is what the algorithm actually produces - an edgeless, primary-eligible resource in its own resource group is its own workload (13.4b). The old number was intuition ('the app must use the database'), and the corpus declares no such reference. This is 13.4e firing a third time: a worked example or golden must be TRACED against the algorithm, never written by hand.",
+    "expected_clusters": {
+      "rg-app-tf-web": {
+        "justification": "merge:cross_group_edges",
+        "primary_tf_address": "azurerm_service_plan.web",
+        "member_count": 20,
+        "must_contain_tf_addresses": [
+          "azurerm_postgresql_flexible_server.store",
+          "azurerm_service_plan.web",
+          "azurerm_virtual_network.core",
+          "azurerm_subnet.apps"
+        ],
+        "why": "THE merge case. rg-app and rg-data are separate resource groups, and the app-to-data data_ref edges are the only thing that joins them - Postgres and Redis, both referenced from the storefront app's settings. Seed-only clustering would cost this app without its database. The vnet and subnets are here too, NOT a cluster of their own, because containment counts as connectivity and a vnet is not primary-eligible. The Cosmos account is NOT here: nothing references it, so no edge justifies merging it (see rg-data-tf-catalog).",
+        "must_not_contain_tf_addresses": [
+          "azurerm_cosmosdb_account.catalog"
+        ],
+        "_must_not_why": "The correction. A member of a cluster justified 'merge:cross_group_edges' must be reachable by one of the justifying edges. Cosmos has none, so including it made the justification false."
+      },
+      "rg-app-tf-func": {
+        "justification": "split:no_internal_edges",
+        "primary_tf_address": "azurerm_service_plan.func",
+        "member_count": 4,
+        "why": "THE split case, and it is inside a resource group. The function plan's component shares rg-app with the web plan's and has no relationship to it, so they are two workloads. Seed-only clustering would report one."
+      },
+      "rg-shared-tf-legacy": {
+        "justification": "split:no_internal_edges",
+        "primary_tf_address": "azurerm_service_plan.legacy",
+        "member_count": 1,
+        "why": "A single-member cluster is legal and correct: an idle plan with zero edges is its own finding, not part of the reporting VM's workload that happens to share its resource group."
+      },
+      "rg-data-tf-catalog": {
+        "justification": "split:no_internal_edges",
+        "primary_tf_address": "azurerm_cosmosdb_account.catalog",
+        "member_count": 1,
+        "tier": "data",
+        "why": "The Cosmos account is edgeless - no app setting references it and no private endpoint fronts it - and it is primary-eligible, so it is its own workload rather than a member of the app cluster. A split is justified by an ABSENCE (13.3d), so its edges[] is legitimately EMPTY. This cluster exists because capability run 4 traced the algorithm where the golden had guessed."
+      }
+    },
+    "split_may_have_empty_edges": true,
+    "_split_edges_why": "A split is justified by an ABSENCE, so there is nothing to show. An earlier draft required a non-empty edges[] for every non-seed justification, which made a correct split unrepresentable \u2014 a capability run mislabelled nine clusters `seed:resource_group` to pass the gate, destroying the information the field exists to carry.",
+    "merge_must_have_edges": true,
+    "forbidden_primary_type": "Microsoft.Web/sites",
+    "_forbidden_primary_why": "A site is never primary even though a human would name the workload after it \u2014 the plan is the compute unit, and naming the cluster after one of five co-hosted apps implies the other four are subordinate."
+  },
+  "derived_types": {
+    "_comment": "Terraform types resolved by derivation rather than a table row.",
+    "expected": [
+      "azurerm_iothub"
+    ],
+    "_why": "The corpus's deliberate unlisted type, and the ONLY thing exercising the derivation path. If this empties, either the canonicalization table grew a row it should not have (see canonicalization_governance) or derivation stopped being reachable."
+  }
+}

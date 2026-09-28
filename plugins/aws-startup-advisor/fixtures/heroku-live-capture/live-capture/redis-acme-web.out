@@ -1,0 +1,13 @@
+=== redis-fluffy-67890 (REDIS_URL)
+Plan:               Premium 0
+Status:             available
+Created:            2024-06-15 10:00 UTC
+Version:            7.2.5
+Timeout:            300
+Maxmemory:          noeviction
+Maintenance:        not required
+Maintenance window: Mondays 22:00 to Tuesdays 02:00 UTC
+Persistence:        AOF
+HA Status:          Available
+Requires TLS:       Yes
+Keyspace Notifications: Disabled

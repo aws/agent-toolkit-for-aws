@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "agent-advisor run seed",
+  "description": "Machine-readable reusable workload answers for a non-interactive run. It supplies dimensions Clarify would otherwise ask a human for. It cannot contain current-run verification evidence; that evidence belongs only in the run-materialized current-run-verifications.json artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "entry_point": { "enum": ["build_scratch", "build_deploy", "migrate", "add_capabilities"] },
+    "audience": { "enum": ["technical", "business"] },
+    "target_maturity": {
+      "enum": ["prototype", "private_beta", "production"],
+      "description": "Target launch maturity. Intake persists this value in run state; it is not inferred from the chosen runtime."
+    },
+    "readiness": { "$ref": "#/definitions/readiness" },
+    "system": { "$ref": "#/definitions/systemDims" },
+    "units": {
+      "type": "object",
+      "description": "Per-unit dimensions keyed by unit id. Unit ids must match the ids Discover/Clarify assign.",
+      "additionalProperties": { "$ref": "#/definitions/unitDims" }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Answers for the optional gated stages. A gate absent here is DECLINED — never accepted by default.",
+      "properties": {
+        "migration_plan": { "enum": ["accept", "decline"] },
+        "poc": { "enum": ["accept", "decline"] }
+      }
+    },
+    "poc_mode": {
+      "enum": ["deliverables", "assisted_build"],
+      "description": "Gate 2b. Absent means `deliverables` — an assisted build in a real account requires an explicit opt-in here."
+    },
+    "probe": {
+      "enum": ["accept", "decline"],
+      "description": "Live Bedrock model probe in the target account. Absent means decline; verification.probe_status stays not_run."
+    },
+    "chosen_runtime": {
+      "enum": ["agentcore", "ecs", "eks", "lambda", "lambda_microvms"],
+      "description": "Tie-break for a co_recommend verdict, normally asked in Confirm. Ignored when the verdict is not a tie."
+    }
+  },
+  "definitions": {
+    "readiness": {
+      "type": "object",
+      "description": "Control evidence for the selected maturity. Keys are the controls named in maturity-readiness.md; omitted values remain unknown and become gaps for beta/production.",
+      "additionalProperties": { "enum": ["met", "gap", "not_applicable", "unknown"] }
+    },
+    "currentRunVerifications": {
+      "type": "object",
+      "description": "Current-run evidence only. A verified record must include a public AWS documentation URL and the non-empty observed canonical value; cached evidence cannot be marked verified.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "verified_this_run"],
+        "properties": {
+          "status": { "enum": ["verified", "not_verified", "failed"] },
+          "verified_this_run": { "type": "boolean" },
+          "source": { "type": "string", "pattern": "^https://([A-Za-z0-9-]+\\.)*aws\\.amazon\\.com(/|$)" },
+          "value": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [{
+          "if": { "properties": { "status": { "const": "verified" } } },
+          "then": { "required": ["source", "value"] }
+        }]
+      }
+    },
+    "systemDims": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "multi_cloud": { "enum": ["yes", "no", "unknown"] },
+        "compliance": {
+          "type": "array",
+          "items": { "enum": ["none", "soc2", "hipaa", "pci", "fedramp", "gdpr", "ccpa"] }
+        },
+        "region": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scope": { "enum": ["single", "multi", "global", "unknown"] },
+            "regions": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "existing_cluster": { "enum": ["eks", "ecs", "none", "unknown"] },
+        "platform_fit": { "enum": ["ecs", "eks", "lambda", "none", "unknown"] },
+        "ops_preference": { "enum": ["minimal", "moderate", "full_control", "unknown"] }
+      }
+    },
+    "unitDims": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workload_class": { "type": "string" },
+        "session_duration": { "enum": ["under_15min", "15min_to_8hr", "over_8hr", "unknown"] },
+        "traffic_pattern": { "enum": ["bursty", "steady", "idle", "unknown"] },
+        "session_state": { "enum": ["stateless", "stateful", "hitl", "unknown"] },
+        "isolation": { "enum": ["required", "nice_to_have", "not_needed", "unknown"] },
+        "memory_needs": { "enum": ["cross_session", "session_only", "none", "unknown"] },
+        "ops_preference": { "enum": ["minimal", "moderate", "full_control", "unknown"] },
+        "compute_tier": { "enum": ["light", "heavy_non_gpu", "gpu", "unknown"] },
+        "idle_resume": { "enum": ["process_level", "filesystem", "none", "unknown"] },
+        "launch_concurrency": { "enum": ["high", "moderate", "low", "unknown"] },
+        "multi_agent": { "enum": ["yes", "no", "unknown"] },
+        "deployment_preference": { "enum": ["harness", "framework", "either", "unknown"] },
+        "framework": { "enum": ["strands", "langgraph", "crewai", "custom", "none", "unknown"] },
+        "existing_cluster": { "enum": ["eks", "ecs", "none", "unknown"] },
+        "multi_cloud": { "enum": ["yes", "no", "unknown"] },
+        "platform_fit": { "enum": ["ecs", "eks", "lambda", "none", "unknown"] }
+      }
+    }
+  }
+}

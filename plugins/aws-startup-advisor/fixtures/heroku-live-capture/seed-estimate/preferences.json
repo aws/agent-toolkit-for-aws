@@ -1,0 +1,58 @@
+{
+  "_comment": "Seed clarify output for the Estimate-phase replay (scenario C). Values chosen to keep the design deterministic: default EB compute target, multi-az availability, plan-derived DB size from the live capture.",
+  "migration_id": "0715-1820",
+  "skill": "heroku-to-aws",
+  "metadata": {
+    "timestamp": "2026-07-15T18:30:00Z",
+    "clarify_mode": "full",
+    "questions_asked": ["Q1", "Q3", "Q6", "Q12c", "Q15"],
+    "questions_defaulted": ["Q2", "Q4", "Q5", "Q6b", "Q6c", "Q7", "Q10", "Q12", "Q12b", "Q13", "Q14"],
+    "questions_skipped_not_applicable": ["Q8", "Q9", "Q11"]
+  },
+  "global": {
+    "target_region": "us-east-1",
+    "compliance": "none",
+    "availability": "multi-az",
+    "maintenance_window": "sun:04:00-sun:06:00",
+    "environment_naming": "production",
+    "migration_approach": "all_at_once",
+    "interim_cutover": false,
+    "target_exit_date": null,
+    "ktlo_warning": null,
+    "fir_intent": null
+  },
+  "data": {
+    "database_ha": "multi-az",
+    "migration_method": "pg_dump_restore",
+    "estimated_db_size_gb": 42.3,
+    "db_size_source": "plan_derived",
+    "redis_ha": "multi-az",
+    "kafka_retention_days": null,
+    "dns_strategy": "manual_cutover"
+  },
+  "network": {
+    "existing_vpc_id": null,
+    "subnet_ids": [],
+    "private_space_detected": false
+  },
+  "operational": {
+    "container_registry": "ecr",
+    "containerization_status": "dockerfile_present",
+    "log_retention_days": 30,
+    "alerting": "basic",
+    "cost_optimization": "balanced"
+  },
+  "design_constraints": {
+    "compute_target": {
+      "default": "elastic_beanstalk",
+      "overrides": [],
+      "chosen_by": "default",
+      "recommendation": {
+        "value": "elastic_beanstalk",
+        "confidence": "high",
+        "reasons": ["Dockerfile present; small formation counts fit EB managed platform"]
+      }
+    },
+    "eb_deploy_method": { "value": "container", "chosen_by": "default" }
+  }
+}

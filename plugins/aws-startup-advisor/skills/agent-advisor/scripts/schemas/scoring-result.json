@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "scoring-result.json (the FILE clarify writes) — the flat fields mirror the primary agent unit, plus a non-empty units{} map whose values are each a scored per-unit result. agent-advisor is scoped to agentic systems (clarify scope gate), so there is always >=1 scored agent unit — no zero-agent variant.",
+  "$defs": {
+    "deferredVerificationRequirement": {
+      "type": "object",
+      "required": [
+        "runtime",
+        "field",
+        "value",
+        "reason",
+        "verification_key",
+        "verification_expected_value",
+        "verification_sources"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "runtime": { "type": "string" },
+        "field": { "type": "string" },
+        "value": {},
+        "reason": { "type": "string" },
+        "verification_key": { "type": "string" },
+        "verification_expected_value": { "type": "string" },
+        "verification_sources": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+    "scoredUnit": {
+      "type": "object",
+      "required": ["verdict", "scores", "eliminated", "deferred_verification_requirements", "recommendation_status"],
+      "properties": {
+        "verdict": {
+          "enum": ["agentcore", "lambda_microvms", "ecs", "eks", "lambda", "co_recommend", "no_viable_runtime"]
+        },
+        "scores": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "eliminated": { "type": "object", "additionalProperties": { "type": "string" } },
+        "deferred_verification_requirements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/deferredVerificationRequirement" }
+        },
+        "recommendation_status": { "enum": ["provisional", "final"] },
+        "deployment_model": { "type": ["string", "null"], "enum": ["harness", "framework_on_runtime", null] },
+        "agentcore_services": { "type": "array", "items": { "type": "string" } },
+        "assumptions_used": { "type": "array", "items": { "type": "string" } },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "co_recommend": { "type": "array", "items": { "type": "string" } },
+        "blocking_constraints": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "type": "object",
+  "required": [
+    "verdict",
+    "scores",
+    "eliminated",
+    "deferred_verification_requirements",
+    "recommendation_status",
+    "deployment_model",
+    "agentcore_services",
+    "assumptions_used",
+    "warnings",
+    "units"
+  ],
+  "properties": {
+    "verdict": {
+      "enum": ["agentcore", "lambda_microvms", "ecs", "eks", "lambda", "co_recommend", "no_viable_runtime"]
+    },
+    "scores": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "eliminated": { "type": "object", "additionalProperties": { "type": "string" } },
+    "deployment_model": { "type": ["string", "null"], "enum": ["harness", "framework_on_runtime", null] },
+    "agentcore_services": { "type": "array", "items": { "type": "string" } },
+    "assumptions_used": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "co_recommend": { "type": "array", "items": { "type": "string" } },
+    "blocking_constraints": { "type": "array", "items": { "type": "string" } },
+    "units": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/scoredUnit" }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "phase": "estimate",
+  "design_source": "aws-design.json",
+  "timestamp": "2026-07-19T19:05:00Z",
+  "pricing_source": {
+    "status": "cached",
+    "message": "us-east-1 cache"
+  },
+  "accuracy_confidence": "+/-5-10%",
+  "current_costs": {
+    "source": "unavailable",
+    "baseline_note": "no billing"
+  },
+  "projected_costs": {
+    "aws_monthly_premium": 120.0,
+    "aws_monthly_balanced": 88.0,
+    "aws_monthly_optimized": 78.0,
+    "aws_annual_optimized": 936.0,
+    "breakdown": {
+      "total": {
+        "premium": 120.0,
+        "mid": 88.0,
+        "low": 78.0
+      },
+      "Elastic Beanstalk": {
+        "premium": 60.0,
+        "mid": 43.0,
+        "low": 40.0,
+        "pricing_source": "cached"
+      },
+      "RDS PostgreSQL": {
+        "premium": 60.0,
+        "mid": 45.0,
+        "low": 38.0,
+        "pricing_source": "cached"
+      }
+    }
+  },
+  "complexity_tier": "small",
+  "complexity_inputs": {
+    "service_count": 2
+  },
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate with Optimized pricing scenario",
+    "migrate_if": [
+      "want AWS control plane"
+    ],
+    "stay_if": [
+      "need Heroku DX indefinitely"
+    ]
+  },
+  "workshop": {
+    "scenario_id": "scenario-002",
+    "region_note": null
+  }
+}

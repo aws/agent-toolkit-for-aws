@@ -1,0 +1,131 @@
+{
+  "captured_at": "2026-07-20T18:20:00Z",
+  "gcloud_version": "Google Cloud SDK 532.0.0",
+  "account": "founder@acme-demo.com",
+  "project": "acme-prod",
+  "method": "per_service",
+  "cai_enable_offered": true,
+  "cai_enable_accepted": false,
+  "captures": [
+    {
+      "command": "gcloud asset search-all-resources --scope=projects/acme-prod --format=json",
+      "file": "assets.json",
+      "status": "failed",
+      "note": "Cloud Asset API has not been used in project acme-prod before or it is disabled (user declined enable soft-ask)"
+    },
+    {
+      "command": "gcloud run services list --project=acme-prod --format=json(...)",
+      "file": "run.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud sql instances list --project=acme-prod --format=json(...)",
+      "file": "sql.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud container clusters list --project=acme-prod --format=json(...)",
+      "file": "gke.json",
+      "status": "ok",
+      "note": "empty result"
+    },
+    {
+      "command": "gcloud functions list --project=acme-prod --format=json(...)",
+      "file": "functions.json",
+      "status": "ok",
+      "note": "empty result"
+    },
+    {
+      "command": "gcloud storage buckets list --project=acme-prod --format=json(...)",
+      "file": "buckets.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud pubsub topics list --project=acme-prod --format=json(...)",
+      "file": "pubsub.json",
+      "status": "failed",
+      "note": "Cloud Pub/Sub API has not been used in project acme-prod before or it is disabled"
+    },
+    {
+      "command": "gcloud compute instances list --project=acme-prod --format=json(...)",
+      "file": "gce.json",
+      "status": "ok",
+      "note": "empty result"
+    },
+    {
+      "command": "gcloud compute networks list --project=acme-prod --format=json(...)",
+      "file": "networks.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud compute networks subnets list --project=acme-prod --format=json(...)",
+      "file": "subnets.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud compute regions list --project=acme-prod --format=json(name)",
+      "file": "regions.json",
+      "status": "ok",
+      "note": "per-service mode: enumerates the region walk for redis/vertex rows"
+    },
+    {
+      "command": "gcloud redis instances list --project=acme-prod --region=us-central1 --format=json(...)",
+      "file": "redis-us-central1.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud redis instances list --project=acme-prod --region=us-east1 --format=json(...)",
+      "file": "redis-us-east1.json",
+      "status": "ok",
+      "note": "empty result"
+    },
+    {
+      "command": "gcloud redis instances list --project=acme-prod --region=europe-west1 --format=json(...)",
+      "file": "redis-europe-west1.json",
+      "status": "ok",
+      "note": "empty result"
+    },
+    {
+      "command": "gcloud secrets list --project=acme-prod --format=json(...)",
+      "file": "secrets.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud iam service-accounts list --project=acme-prod --format=json(...)",
+      "file": "sa.json",
+      "status": "ok",
+      "note": null
+    },
+    {
+      "command": "gcloud dns managed-zones list --project=acme-prod --format=json(...)",
+      "file": "dns.json",
+      "status": "skipped",
+      "note": "Cloud DNS API not enabled"
+    },
+    {
+      "command": "gcloud spanner instances list --project=acme-prod --format=json(...)",
+      "file": "spanner.json",
+      "status": "skipped",
+      "note": "Spanner API not enabled"
+    },
+    {
+      "command": "gcloud firestore databases list --project=acme-prod --format=json(...)",
+      "file": "firestore.json",
+      "status": "skipped",
+      "note": "Firestore API not enabled"
+    },
+    {
+      "command": "gcloud ai endpoints list --project=acme-prod --region=us-central1 --format=json(...)",
+      "file": "vertex-us-central1.json",
+      "status": "skipped",
+      "note": "no aiplatform signal; Vertex AI API not enabled"
+    }
+  ]
+}

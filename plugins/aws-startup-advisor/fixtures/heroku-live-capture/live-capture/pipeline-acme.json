@@ -1,0 +1,7 @@
+{
+  "pipeline": { "id": "pl-0001", "name": "acme" },
+  "apps": [
+    { "id": "a1b2c3d4-0002-4a5b-8c6d-0123456789ab", "name": "acme-staging", "coupling": { "stage": "staging" } },
+    { "id": "a1b2c3d4-0001-4a5b-8c6d-0123456789ab", "name": "acme-web", "coupling": { "stage": "production" } }
+  ]
+}

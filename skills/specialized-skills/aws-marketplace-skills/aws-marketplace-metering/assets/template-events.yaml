@@ -1,0 +1,639 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AWS Marketplace SaaS Events - EventBridge + Subscribers (deploy to us-east-1)
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Default: awsmp-events
+    Description: Prefix for resource names to avoid collisions
+  MeteringMode:
+    Type: String
+    Default: live
+    AllowedValues: [live, dry-run]
+    Description: >-
+      live (production events stack): the marketplace-events rule matches all
+      aws.agreement-marketplace events. dry-run (non-production sandbox events stack): the rule
+      is SCOPED to the TestAccountAllowlist so it processes ONLY test-buyer events (never real
+      production traffic), and the test event publisher is created. Prod vs non-prod is decided
+      by THIS switch, not by the free-form stage name.
+  TestAccountAllowlist:
+    Type: CommaDelimitedList
+    Default: ''
+    Description: >-
+      For a dry-run (non-prod) events stack ONLY: the seller's TEST buyer AWS account IDs. The
+      marketplace-events rule and the test event publisher are scoped to these accounts so a
+      non-prod events stack never processes production buyers. MUST be non-empty when
+      MeteringMode=dry-run (enforced by deploy.sh).
+  EventSource:
+    Type: String
+    Default: aws.agreement-marketplace
+    Description: >-
+      The EventBridge `source` the marketplace-events rule matches. LIVE stacks use the real
+      `aws.agreement-marketplace`. A dry-run (non-prod) stack MUST use a STAGE-SCOPED source
+      (e.g. `<stageName>.agreement-marketplace`) — NOT the reserved `aws.` prefix (a custom
+      PutEvents cannot reliably deliver an `aws.` source) — which also makes it DISJOINT from the
+      production source, so a same-account non-prod stage's events can never be matched by the
+      production rule. deploy.sh sets this per stage/mode.
+  LogsKmsKeyArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional KMS key ARN to encrypt the Subscription Lambda's CloudWatch log group
+      (logs contain buyer AWS account IDs / agreement metadata). Leave empty
+      to use CloudWatch default encryption. The key policy MUST allow the CloudWatch Logs
+      service principal (logs.<region>.amazonaws.com) to use it.
+  LogRetentionInDays:
+    Type: Number
+    Default: 90
+    Description: Retention (days) for the Subscription Lambda log group.
+  AlertsTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional SNS topic ARN (in us-east-1, this stack's region) that alarm actions
+      notify. A CloudWatch alarm can only notify an SNS topic in its own region, so this
+      must be a us-east-1 topic. TODO(seller): supply your in-region alerts topic. Alarms
+      are always created; leaving this empty just means no notification action is wired.
+      Neither the deployer role nor any Lambda publishes to it (CloudWatch fires the
+      action); acting on alarms is the seller's responsibility.
+  PermissionsBoundaryName:
+    Type: String
+    Default: awsmp-metering-boundary
+    Description: >-
+      Name of the IAM permissions-boundary policy applied to the SAM-generated
+      Subscription Lambda execution role. MUST match the boundary the deployer role's
+      iam:CreateRole condition requires, and the boundary policy MUST already exist in
+      the account before deployment (see references/iam-credentials.md).
+  CreateDashboard:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      Whether to create the events-stack CloudWatch HEALTH dashboard (default true):
+      subscription Lambda errors/throttles/invocations + subscription queue/DLQ depth, so
+      an operator sees events-stack health in one place. Health-only (no business metrics),
+      shared across products (not per-product). Set 'false' to skip; delete/customize as needed.
+
+Conditions:
+  HasLogsKmsKey: !Not [!Equals [!Ref LogsKmsKeyArn, '']]
+  HasAlertsTopic: !Not [!Equals [!Ref AlertsTopicArn, '']]
+  CreateHealthDashboard: !Equals [!Ref CreateDashboard, 'true']
+  # Non-production sandbox events stack: the marketplace-events rule is scoped to the
+  # TestAccountAllowlist and the test event publisher is created.
+  IsDryRun: !Equals [!Ref MeteringMode, dry-run]
+
+# Template-level guard (defence in depth alongside deploy.sh + the publisher Lambda): a dry-run
+# (non-prod) events stack MUST NOT use the reserved production source aws.agreement-marketplace as
+# its EventSource — that would make the dry-run rule match REAL production events (e.g. if a stage
+# were literally named "aws"). Reject such a deploy at change-set creation.
+Rules:
+  DryRunEventSourceNotReserved:
+    RuleCondition: !Equals [!Ref MeteringMode, dry-run]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref EventSource, aws.agreement-marketplace]]
+        AssertDescription: >-
+          A dry-run (non-prod) events stack must use a STAGE-SCOPED EventSource
+          (e.g. <stageName>.agreement-marketplace), NOT the reserved production source
+          aws.agreement-marketplace (a stage named 'aws' would collide with it).
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    # Apply the permissions boundary to the SAM-auto-generated Subscription Lambda role
+    # so iam:CreateRole succeeds under the deployer role (gated on a matching
+    # iam:PermissionsBoundary). The boundary policy must exist before deployment.
+    PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/${PermissionsBoundaryName}
+
+Resources:
+  # Unified subscribers table (subscription/agreement STATE) — PII-FREE. Holds CA identity
+  # (licenseArn, customerAWSAccountId, productCode, agreementId), the two lifecycle statuses,
+  # and registeredRegions only. Buyer PII / registration data lives in the per-Region
+  # customer-profile table (main stack), NOT here — so this table is safe in us-east-1 even
+  # for opt-in-Region products.
+  # Lives in us-east-1 alongside EventBridge marketplace events.
+  # Schema follows the Serverless SaaS Integration reference (CA-aware):
+  # licenseArn (PK) + customerAWSAccountId (SK)
+  # GSIs: lookups by customerAWSAccountId (register) and by
+  # agreementId (Agreement Ended/Amended fallback) use a Query on these indexes —
+  # NOT a full-table Scan — so access is least-privilege and permission-consistent.
+  SubscribersTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${StackPrefix}-subscribers
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+      AttributeDefinitions:
+        - AttributeName: licenseArn
+          AttributeType: S
+        - AttributeName: customerAWSAccountId
+          AttributeType: S
+        - AttributeName: agreementId
+          AttributeType: S
+        - AttributeName: deprovisioningPendingFlag
+          AttributeType: S
+        - AttributeName: deprovisioningExpiry
+          AttributeType: S
+      KeySchema:
+        - AttributeName: licenseArn
+          KeyType: HASH
+        - AttributeName: customerAWSAccountId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        # Look up all rows for one buyer account (register Lambda). customerAWSAccountId
+        # is the base-table SORT key, so it cannot be queried alone without this GSI.
+        - IndexName: customerAWSAccountId-index
+          KeySchema:
+            - AttributeName: customerAWSAccountId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # Resolve licenseArn from agreementId for Agreement Ended/Amended events that
+        # omit license.arn (subscription Lambda). Sparse — only rows with agreementId.
+        - IndexName: agreementId-index
+          KeySchema:
+            - AttributeName: agreementId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # SPARSE index of licenses currently in their ~1-hour deprovisioning flush window.
+        # The subscription Lambda SETS `deprovisioningPendingFlag="1"` + `deprovisioningExpiry`
+        # (= event time + 1h, ISO-8601) on License Deprovisioned, and the events-stack cleanup
+        # Lambda REMOVEs both on finalize (deprovisioning->inactive once expired), so this index
+        # holds ONLY the licenses still in a flush window (self-emptying). Keyed HASH=constant
+        # flag + RANGE=expiry so the cleanup Lambda can Query "flag='1' AND deprovisioningExpiry
+        # <= now" to find expired ones; the main-stack discoverer's rate(5m) flush-deprovisioning
+        # sweep and the submitter Query "flag='1'" (all) to get the active set. Never a Scan.
+        # KEYS_ONLY keeps the index tiny (base keys licenseArn+customerAWSAccountId + the index
+        # keys deprovisioningPendingFlag+deprovisioningExpiry are projected). The flush sweep uses
+        # the projected deprovisioningExpiry to decide whether to also flush a license's CURRENT
+        # hour (once within ~10 min of the window close) — no base-table read needed.
+        - IndexName: deprovisioning-pending-index
+          KeySchema:
+            - AttributeName: deprovisioningPendingFlag
+              KeyType: HASH
+            - AttributeName: deprovisioningExpiry
+              KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
+
+  SubscriptionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${StackPrefix}-subscription-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  SubscriptionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${StackPrefix}-subscription-notifications
+      VisibilityTimeout: 60
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SubscriptionDLQ.Arn
+        maxReceiveCount: 3
+
+  MarketplaceEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${StackPrefix}-marketplace-events
+      # LIVE (prod): match the real AWS Marketplace source aws.agreement-marketplace.
+      # DRY-RUN (non-prod): match the STAGE-SCOPED EventSource (e.g. beta.agreement-marketplace)
+      # that the test event publisher emits — NOT aws.agreement-marketplace. Because the dry-run
+      # source is DISJOINT from the real production source, a same-account prod + non-prod split
+      # cannot cross-match: production events (aws.agreement-marketplace) are never seen by the
+      # dry-run rule, and the dry-run test events (<stage>.agreement-marketplace) are never seen
+      # by the production rule — no double-write, no anything-but exclusion needed. The
+      # TestAccountAllowlist detail filter is kept as defence-in-depth so the dry-run rule only
+      # accepts declared test buyers.
+      EventPattern: !If
+        - IsDryRun
+        - source:
+            - !Ref EventSource
+          detail:
+            acceptor:
+              accountId: !Ref TestAccountAllowlist
+        - source:
+            - aws.agreement-marketplace
+      Targets:
+        - Arn: !GetAtt SubscriptionQueue.Arn
+          Id: SubscriptionQueueTarget
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  EventBridgeToSqsPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref SubscriptionQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt SubscriptionQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt MarketplaceEventRule.Arn
+
+  # Explicit execution role with an awsmp-* name (single-prefix scope) so it is created
+  # within the deployer's role/awsmp-* write scope, and carries the permissions boundary.
+  SubscriptionFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${StackPrefix}-subscription-role
+      PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/${PermissionsBoundaryName}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: subscription-ddb-and-sqs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt SubscribersTable.Arn
+                  # Query the agreementId GSI to resolve licenseArn for Agreement
+                  # Ended/Amended events that omit license.arn.
+                  - !Sub ${SubscribersTable.Arn}/index/agreementId-index
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource:
+                  - !GetAtt SubscriptionQueue.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !GetAtt SubscriptionLogGroup.Arn
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  SubscriptionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-subscription-handler
+      Handler: handlers/subscription.handler
+      CodeUri: src/
+      MemorySize: 128
+      Role: !GetAtt SubscriptionFunctionRole.Arn
+      Environment:
+        Variables:
+          SUBSCRIBERS_TABLE: !Ref SubscribersTable
+      Tags:
+        ManagedBy: marketplace-metering-skill
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SubscriptionQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  # Explicit log group: KMS-encrypted + retention-bounded, instead of the
+  # auto-created, unencrypted, never-expiring default. Logs contain buyer AWS account
+  # IDs and agreement metadata.
+  SubscriptionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-subscription-handler
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # ── Deprovision cleanup (finalize expired deprovisioning licenses) ────────────────
+  # A rate(15m) EventBridge schedule invokes this Lambda; it Queries the sparse
+  # deprovisioning-pending-index for entries whose deprovisioningExpiry <= now and sets
+  # subscriptionStatus=inactive + REMOVEs both deprovisioning markers. Time-based finalization
+  # (not submitter-driven) is correct across multiple hours AND regions: once the ~1h flush
+  # window has elapsed no region can meter the license, so one us-east-1 finalize covers all.
+  DeprovisionCleanupFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${StackPrefix}-deprovision-cleanup-role
+      PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/${PermissionsBoundaryName}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: deprovision-cleanup-ddb
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt SubscribersTable.Arn
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                Resource:
+                  # Query the sparse deprovisioning index for expired entries. Query, not Scan.
+                  - !Sub ${SubscribersTable.Arn}/index/deprovisioning-pending-index
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !GetAtt DeprovisionCleanupLogGroup.Arn
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+
+  DeprovisionCleanupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-deprovision-cleanup
+      Handler: handlers/deprovision_cleanup.handler
+      CodeUri: src/
+      MemorySize: 128
+      Timeout: 60
+      Role: !GetAtt DeprovisionCleanupFunctionRole.Arn
+      Environment:
+        Variables:
+          SUBSCRIBERS_TABLE: !Ref SubscribersTable
+      Tags:
+        ManagedBy: marketplace-metering-skill
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(15 minutes)
+
+  DeprovisionCleanupLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-deprovision-cleanup
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # ── Test event publisher (NON-PROD / dry-run ONLY) ───────────────────────────────
+  # Simulates AWS Marketplace subscription events under a STAGE-SCOPED source (EventSource, e.g.
+  # beta.agreement-marketplace — never the reserved aws.* prefix) with randomized-but-valid
+  # values, using ONLY the TestAccountAllowlist accounts, so a seller can exercise the non-prod
+  # pipeline without real subscriptions. Created ONLY when MeteringMode=dry-run. Invoke manually
+  # with {"scenario":"...","count":N,"productCode":"<awsMarketplaceProductCode>"} — productCode is
+  # REQUIRED per invocation (no stack param / env), so this shared publisher can simulate any
+  # product in the stage.
+  TestEventPublisherRole:
+    Type: AWS::IAM::Role
+    Condition: IsDryRun
+    Properties:
+      RoleName: !Sub ${StackPrefix}-test-event-publisher-role
+      PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/${PermissionsBoundaryName}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: test-event-publisher-putevents
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: events:PutEvents
+                # Publish to the default bus in this (us-east-1) region — the same bus the
+                # scoped marketplace-events rule reads.
+                Resource: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt TestEventPublisherLogGroup.Arn
+      Tags:
+        - Key: ManagedBy
+          Value: marketplace-metering-skill
+        - Key: TestOnly
+          Value: 'true'
+
+  TestEventPublisherFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsDryRun
+    Properties:
+      FunctionName: !Sub ${StackPrefix}-test-event-publisher
+      Handler: handlers/test_event_publisher.handler
+      CodeUri: src/
+      MemorySize: 128
+      Timeout: 60
+      Role: !GetAtt TestEventPublisherRole.Arn
+      Environment:
+        Variables:
+          METERING_MODE: !Ref MeteringMode
+          TEST_ACCOUNT_ALLOWLIST: !Join [',', !Ref TestAccountAllowlist]
+          # Stage-scoped source the events rule matches (never aws.*); set by deploy.sh.
+          EVENT_SOURCE: !Ref EventSource
+          # NOTE: there is intentionally NO PRODUCT_CODE env. productCode is supplied PER INVOCATION
+          # (payload {"productCode": "..."}), so this SINGLE shared events-stack publisher can
+          # simulate ANY product in the stage and a second product's deploy can never overwrite a
+          # shared per-product value. See scripts/test_event_publisher.py handler() for the payload.
+      Tags:
+        ManagedBy: marketplace-metering-skill
+        TestOnly: 'true'
+
+  TestEventPublisherLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: IsDryRun
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackPrefix}-test-event-publisher
+      RetentionInDays: !Ref LogRetentionInDays
+      KmsKeyId: !If [HasLogsKmsKey, !Ref LogsKmsKeyArn, !Ref 'AWS::NoValue']
+
+  # ── Monitoring & Alarms (events stack, seller account, us-east-1) ─────────────────
+  # Alarms are ALWAYS created; their actions wire to an OPTIONAL seller-supplied in-region
+  # (us-east-1) SNS topic (AlertsTopicArn). Observability does not depend on the stack
+  # pre-creating a topic. Neither the deployer role nor any Lambda publishes to it
+  # (CloudWatch fires the action); acting on alarms is the seller's responsibility.
+
+  DLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-dlq-depth
+      AlarmDescription: Subscription lifecycle events failed processing - subscriber state may be stale
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt SubscriptionDLQ.QueueName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  SubscriptionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-subscription-errors
+      AlarmDescription: Subscription Lambda errors - lifecycle events may not be applied
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SubscriptionFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # Deprovision-cleanup Lambda Errors — this Lambda solely owns deprovisioning->inactive
+  # finalization AND removing the sparse-index markers. If it fails repeatedly, licenses stay
+  # `deprovisioning` and the sparse deprovisioning-pending-index never self-empties (grows
+  # unbounded), silently. Mirrors SubscriptionErrorAlarm (no-silent-failure coverage).
+  DeprovisionCleanupErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-deprovision-cleanup-errors
+      AlarmDescription: Deprovision-cleanup Lambda errors - deprovisioning licenses may not be finalized and the sparse index may grow unbounded
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref DeprovisionCleanupFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # Deprovision-cleanup "did not run" — the rate(15m) schedule stalled. Missing data = breaching
+  # so a full stop is caught (the index would otherwise silently stop self-emptying).
+  DeprovisionCleanupDidNotRunAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${StackPrefix}-deprovision-cleanup-did-not-run
+      AlarmDescription: Deprovision-cleanup Lambda has not been invoked - its rate(15m) schedule may be disabled/broken
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref DeprovisionCleanupFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+
+  # ── Events-stack health dashboard (shared; ) ─────────────────────────────
+  # Events-stack health in one place: subscription Lambda health + subscription queue/DLQ
+  # depth. HEALTH-only, shared across products (not per-product). Created by default;
+  # set CreateDashboard=false to skip, or delete/customize after deploy.
+  EventsHealthDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Condition: CreateHealthDashboard
+    Properties:
+      # Account-global name; keep the Region so the name is unique per Region
+      # (the events stack deploys to us-east-1, but the same prefix in another
+      # Region would otherwise collide on the account-global dashboard namespace).
+      DashboardName: !Sub ${StackPrefix}-health-${AWS::Region}
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text", "x": 0, "y": 0, "width": 24, "height": 1,
+              "properties": {"markdown": "# Events stack health — ${StackPrefix} (shared, us-east-1)"}
+            },
+            {
+              "type": "metric", "x": 0, "y": 1, "width": 12, "height": 6,
+              "properties": {
+                "title": "Subscription Lambda Errors / Throttles",
+                "region": "${AWS::Region}", "stat": "Sum", "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Errors", "FunctionName", "${SubscriptionFunction}", {"label": "errors"}],
+                  ["AWS/Lambda", "Throttles", "FunctionName", "${SubscriptionFunction}", {"label": "throttles"}]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 1, "width": 12, "height": 6,
+              "properties": {
+                "title": "Subscription Lambda Invocations",
+                "region": "${AWS::Region}", "stat": "Sum", "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${SubscriptionFunction}"]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 7, "width": 24, "height": 6,
+              "properties": {
+                "title": "Subscription queue depth + DLQ depth",
+                "region": "${AWS::Region}", "stat": "Maximum", "period": 300,
+                "metrics": [
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${SubscriptionQueue.QueueName}", {"label": "notifications"}],
+                  ["...", "${SubscriptionDLQ.QueueName}", {"label": "DLQ"}]
+                ]
+              }
+            }
+          ]
+        }
+
+Outputs:
+  SubscribersTableName:
+    Description: Pass this to the main stack SubscribersTableName parameter
+    Value: !Ref SubscribersTable
+  SubscribersTableArn:
+    Description: ARN of the unified subscribers table
+    Value: !GetAtt SubscribersTable.Arn
+  SubscriptionQueueArn:
+    Value: !GetAtt SubscriptionQueue.Arn
+  DLQUrl:
+    Value: !Ref SubscriptionDLQ

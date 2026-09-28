@@ -35,7 +35,7 @@ Every score — online, on-demand, or batch — lands as a `gen_ai.evaluation.re
 
 Before any action that **scores, creates, edits, or deletes**, confirm the specifics with the user first. This contract governs every step below, even where a step does not restate it:
 
-- **The evaluator set is the user's choice, never yours.** If the user named the evaluators or a clear dimension ("score for correctness", "helpfulness and goal success"), use exactly those and run. If they did NOT ("evaluate these traces", "check my agent", "the 3 slowest"), list the available evaluators, recommend the one or two that fit the trace and their question, and **ask which to run — then STOP** and wait. Never default to "all evaluators" or silently substitute one you think is close: scoring runs cost quota and money, and an unrequested evaluator produces a number the user did not ask for. If the id they gave is not an exact match to a `list-evaluators` id (a typo, different casing, or an encoded/escaped string), surface the id you resolved it to and confirm before scoring.
+- **The evaluator set is the user's choice, never yours.** If the user named the evaluators or a clear dimension ("score for correctness", "helpfulness and goal success"), use exactly those and run — unless the named evaluator cannot run on the target (a ground-truth-required evaluator against a raw trace; see "Ground-truth check" in Section 3): then say why it cannot run, recommend the evaluator that answers their question, offer the dataset path, and confirm before running — an open recommendation is not a silent substitution. If they did NOT ("evaluate these traces", "check my agent", "the 3 slowest"), list the available evaluators, recommend the one or two that fit the trace and their question, and **ask which to run — then STOP** and wait. Never default to "all evaluators" or silently substitute one you think is close: scoring runs cost quota and money, and an unrequested evaluator produces a number the user did not ask for. If the id they gave is not an exact match to a `list-evaluators` id (a typo, different casing, or an encoded/escaped string), surface the id you resolved it to and confirm before scoring.
 - **You MUST run the real evaluator — never judge quality yourself.** Reading a trace and assigning a number is wrong: the score has to come from the `evaluate` API or a stored result, not from you — even when the API errors (see "If the evaluator can't score the trace" in Section 4).
 - **Never blend evaluators into one combined score** — no overall average, no "pass rate", no "% good". Evaluators use different rubrics and scales; a 0.8 Helpfulness and a 0.8 Toxicity are opposite outcomes. Report each evaluator separately; if a single headline is wanted, name the weakest dimension.
 - **Never skip data-source verification when creating an online-eval config.** Run the `@logGroupName` query first — a user naming a log group is **not** permission to skip it. If the group isn't confirmed, do **not** create: report what you found and wait.
@@ -95,6 +95,8 @@ A live trace carries **no ground truth**, so an evaluator that needs an expected
 
 When a user's question maps only to a ground-truth-required evaluator, say the raw-trace path can't supply the expected values and offer the dataset path (Section 6) instead of substituting an evaluator that doesn't answer their question.
 
+> **When you redirect an evaluator, tell the user ALL of this:** which evaluator actually answers their question (for "does it pick the right tools?" that is `Builtin.ToolSelectionAccuracy`); that the trajectory matchers (exact-order, in-order, any-order) are ground-truth-required — they compare the actual tool sequence against an EXPECTED trajectory; that a live trace carries no ground truth, so a matcher cannot score raw traces on-demand and only works against a dataset whose examples carry an expected trajectory; that the dataset path (Section 6) is the alternative if they want the matcher; and that there is no machine-readable input-requirement flag on the detail API — an evaluator's ground-truth need is judged from its identity and description.
+
 ### Level → target rules
 
 Every scoring call runs at ONE level, and the level decides what gets scored:
@@ -103,7 +105,14 @@ Every scoring call runs at ONE level, and the level decides what gets scored:
 - `TOOL_CALL` — individual tool invocations within a trace. Use for "did it pick the right tool?" / "were the tool calls correct?". Only works when the trace actually has tool spans.
 - `SESSION` — the whole conversation across the trace.
 
-All evaluators in a single scoring call must share that one level. If the user wants different levels, run separate calls.
+All evaluators in a single scoring call must share that one level. The level is a property of the scoring call (the `--level` argument), set explicitly — it is not inferred from the evaluators; each evaluator's own `level` must match the call's level, which is why evaluators at different levels need separate calls.
+
+> **When a request implies more than one level (e.g. a request that names both a per-tool-call check
+> and a whole-conversation session-level check together), tell the user ALL of this:** every scoring call runs at exactly ONE level and all evaluators in
+> a call share it; the two asks map to different levels (TOOL_CALL vs SESSION) so they need SEPARATE
+> calls; briefly define the levels involved (TRACE = whole request/response, TOOL_CALL = individual tool
+> invocations, SESSION = whole conversation); and TOOL_CALL only scores when the trace actually has tool
+> spans. Then confirm the evaluator choice before running (operating contract).
 
 ### Recommend
 
@@ -132,7 +141,10 @@ This skill **bundles a tested helper**, [`scripts/cloudwatch-omni/evaluate_trace
    # many traces and/or many evaluators — ONE run, each trace fetched once, every
    # (trace, evaluator) pair scored:
    python evaluate_traces.py --trace-ids <id1>,<id2>,… \
-     --evaluator-ids Builtin.Helpfulness,Builtin.ToolSelectionAccuracy --level TRACE --region <region> --include-explanations
+     --evaluator-ids Builtin.Helpfulness,Builtin.Correctness --level TRACE --region <region> --include-explanations
+   # a different level is a separate run — tool judges score at TOOL_CALL, not alongside TRACE:
+   python evaluate_traces.py --trace-ids <id1>,<id2>,… \
+     --evaluator-ids Builtin.ToolSelectionAccuracy --level TOOL_CALL --region <region> --include-explanations
    ```
 
    It accepts one or many trace ids (`--trace-id` / `--trace-ids`) and one or many evaluator ids (`--evaluator-id` / `--evaluator-ids`), auto-resolves each trace's session (`--session-id` pins it for a single trace), fetches every session's spans from CloudWatch Omni (`traces.default`) via Omni SQL **once**, normalizes every span's `kind`, scores each (trace, evaluator) pair via `evaluate` (level → target: TRACE → `traceIds`; TOOL_CALL → `spanIds`; SESSION → no target), and prints a compact JSON **receipt** — a per-(trace, evaluator) `results` matrix (`traceId` / `evaluatorId` / `value` / `label` / `explanation`, plus `errorCode` if the evaluator returned one) with a small rollup. Raw spans never enter the conversation.
@@ -185,13 +197,28 @@ When the receipt has a top-level `error` (e.g. the `evaluate` call raised) or a 
 - `ValidationException: Failed to parse span data` — span payload malformed.
 - `ValidationException: Provided input has no spans with supported scope` — the trace has no span from an allowed agent-framework instrumentation scope, usually an HTTP-only shell trace picked up by a scope-blind "newest N" query. That rejection is deterministic per trace, so do **not** retry it: re-resolve the trace ids with `AND scope['name'] = '<supported scope>'` (the error lists the current allowlist) and score those.
 
-For other fixable span issues you may retry the helper **once**; if it still errors, report the error.
+For other fixable span issues you may retry the helper **once**; if it still errors, report the error. When you report an evaluator error — or, with no error text supplied, ask for it — say which of these three it is (or likely is) and, for the unsupported-scope one, state explicitly that it is deterministic per trace and will not be retried as-is; re-resolving to a supported scope is the only fix.
 
 ### Scores are persisted so they can be read back later
 
-`evaluate` returns a score inline but does not store it, so the helper also writes each one back as a `gen_ai.evaluation.result` telemetry record under `/aws/cloudwatch/evaluations/results/<service.name>` — the same shape online evaluation emits. A score therefore outlives this conversation and can be queried later (Section 7), by a later session or another user, alongside the online results. This is best-effort: the receipt reports `persistedTraces` (how many traces' scores were written) plus the `resultsLogGroupPrefix`, or carries a `notes` entry explaining why a write did not happen (for example the caller has no `logs:PutLogEvents` — the score is still in `results`, it just is not durable). Pass `--no-writeback` when the user does not want scores written into their logs. Writeback covers **numeric** scores only — a successful row whose `value` is `None` (categorical-only) is returned in the receipt but not written back; the helper also filters failed jobs on the write path so they never persist for on-demand.
+> **When the user asks to STORE / persist / "query later" scores, tell them ALL of this before writing:**
+>
+> 1. `evaluate` returns the score inline but does NOT store it — the helper writes each back as a
+>    `gen_ai.evaluation.result` record so it is queryable later (Section 7).
+> 2. NAME the results log group `/aws/cloudwatch/evaluations/results/<sanitized-service-name>` and say the
+>    helper CREATES it if absent. The helper sanitizes non-safe characters to `_` and truncates to the
+>    log-group name limit, so the final segment may not equal the literal service name.
+> 3. WARN it stores the judge's prose `explanation`, which quotes the agent's own inputs/outputs — the
+>    group inherits the conversations' sensitivity and is readable by anyone with log read access.
+> 4. RECOMMEND retention (`--retention-days`) and a customer-managed KMS key (`--kms-key-id`); note the
+>    data is billed like any other log data.
+> 5. Note writeback is BEST-EFFORT and NUMERIC-only — a categorical-only result stays in the receipt,
+>    not the log group; a missing `logs:PutLogEvents` leaves the score non-durable.
+> 6. Mention `--no-writeback` for users who do not want scores in their logs.
 
-**Writeback creates a log group, and what it stores is sensitive.** If `/aws/cloudwatch/evaluations/results/<service.name>` does not exist, the helper creates it — with 90-day retention by default (`--retention-days` to change; `0` opts out), and optionally a customer-managed KMS key if `--kms-key-id` is passed — and its stored data is billed like any other log data. The records include `gen_ai.evaluation.explanation`, the judge's prose, which quotes the agent's own inputs and outputs — so this log group inherits the sensitivity of the conversations being scored, and it is queryable later by anyone with read access to it. Name the results log group to the user before the first writeback (the receipt reports `resultsLogGroup` but cannot tell you whether it already existed — use `aws logs describe-log-groups --log-group-name-prefix` if you need to know), and recommend they set retention (`aws logs put-retention-policy`) and attach a KMS CMK (`aws logs associate-kms-key`) so scored prompt and completion text is not held indefinitely in plaintext.
+`evaluate` returns a score inline but does not store it, so the helper also writes each one back as a `gen_ai.evaluation.result` telemetry record under `/aws/cloudwatch/evaluations/results/<sanitized-service-name>` — the same shape online evaluation emits. A score therefore outlives this conversation and can be queried later (Section 7), by a later session or another user, alongside the online results. This is best-effort: the receipt reports `persistedTraces` (how many traces' scores were written) plus the `resultsLogGroupPrefix`, or carries a `notes` entry explaining why a write did not happen (for example the caller has no `logs:PutLogEvents` — the score is still in `results`, it just is not durable). Pass `--no-writeback` when the user does not want scores written into their logs. Writeback covers **numeric** scores only — a successful row whose `value` is `None` (categorical-only) is returned in the receipt but not written back; the helper also filters failed jobs on the write path so they never persist for on-demand.
+
+**Writeback creates a log group, and what it stores is sensitive.** If `/aws/cloudwatch/evaluations/results/<sanitized-service-name>` does not exist, the helper creates it — with 90-day retention by default (`--retention-days` to change; `0` opts out), and optionally a customer-managed KMS key if `--kms-key-id` is passed — and its stored data is billed like any other log data. The records include `gen_ai.evaluation.explanation`, the judge's prose, which quotes the agent's own inputs and outputs — so this log group inherits the sensitivity of the conversations being scored, and it is queryable later by anyone with read access to it. Name the results log group to the user before the first writeback (the receipt reports `resultsLogGroupPrefix` but cannot tell you whether it already existed — use `aws logs describe-log-groups --log-group-name-prefix` if you need to know), and recommend they set retention (`aws logs put-retention-policy`) and attach a KMS CMK (`aws logs associate-kms-key`) so scored prompt and completion text is not held indefinitely in plaintext.
 
 ### Synthesizing the receipt
 
@@ -237,7 +264,18 @@ Best for **continuously monitoring** a deployed agent — it samples live sessio
 | Change evaluators, sampling, or data source | `update-online-evaluation-config` (a data-source change re-runs the `@logGroupName` verification below) |
 | Delete | `delete-online-evaluation-config --online-evaluation-config-id <id>` — destructive; name the config and confirm first |
 
-`status` (ACTIVE / CREATING / …) is the provisioning state; `executionStatus` (ENABLED / DISABLED) is whether it is actively scoring. Online evaluation only scores sessions arriving **after** it is enabled. This sets up and manages scoring; to **report** what it found, query the evaluation-result telemetry (Section 7), not the config.
+`status` (ACTIVE / CREATING / …) is the provisioning state only; `executionStatus` (ENABLED / DISABLED) is the separate field that switches scoring on or off — ACTIVE says nothing about whether scoring is enabled. And neither field proves scores are being produced: a config with a misresolved data source goes ACTIVE/ENABLED and scores nothing (see the `@logGroupName` rule below). Online evaluation only scores sessions arriving **after** it is enabled. This sets up and manages scoring; to **report** what it found, query the evaluation-result telemetry (Section 7), not the config.
+
+> **When the user asks to set up online / continuous evaluation — whether or not they name a
+> log group — tell them ALL of this before any create:** you will run the `@logGroupName` query
+> against the agent's own spans first (a named group is the group you verify, not permission to
+> skip verification); the group must never be taken from
+> `resource['attributes']['aws.log.group.names']`, because that yields a config that goes
+> ACTIVE/ENABLED and silently scores nothing; you will show the candidate groups with their span
+> counts for approval; if the group is not confirmed you will not create — you report what you
+> found and wait; the create is a real write — draft → confirm the specifics → call → report the
+> returned `onlineEvaluationConfigId`; and you will never report it as created without that id.
+> Say this in the answer even when you cannot run the query yet (no Region or Space given).
 
 Gather before creating:
 
@@ -389,6 +427,19 @@ Returns a `datasetId`; the dataset may be `CREATING` briefly — re-check `get-d
 
 ### Build a dataset from traces
 
+> **When the user asks to turn traces into a re-runnable / regression set, tell them ALL of this:**
+> the capture helper builds the examples FROM the traces client-side (no server-side trace→example op);
+> a repeatable target MUST evaluate against a PUBLISHED IMMUTABLE version, not the mutable draft;
+> creation is a real write (draft → confirm → call) and you will report the returned `datasetId`;
+> and before writing, the service caps apply — ≤1 MB per example and ≤1000 examples per dataset — and
+> both caps reject the whole add rather than trimming it: a per-example >1 MB row fails the entire
+> `add-dataset-examples` batch with a `400`, because validation is all-or-nothing (nothing lands unless
+> every example passes), and the 1000-examples-per-dataset cap refuses the whole add up front with a
+> service-quota error (create a new dataset with `--mode create` for the remainder). Neither is auto-split;
+> and the capture helper itself caps each invocation at 25 traces (`MAX_TRACES`): if more than 25
+> unique trace ids are supplied, only the first 25 become examples and the receipt notes that the rest
+> need another run — so a large trace set needs multiple invocations.
+
 There is no server-side "trace → example" operation, so this skill **bundles a tested helper**, [`scripts/cloudwatch-omni/capture_dataset_from_traces.py`](../../scripts/cloudwatch-omni/capture_dataset_from_traces.py), that does the whole fetch → reshape → validate → write. **Do not hand-reshape spans in the conversation** — the one-shot flow is error-prone and bloats context.
 
 1. **Retrieve and run the helper** (this skill's supplementary file — fetch it, then run it with your shell). It queries each trace's spans from CloudWatch Omni (`traces.default`), converts each into a PREDEFINED example (root-span input/output, ordered tool trajectory), validates every example, and writes the batch:
@@ -435,6 +486,8 @@ Reading stored scores is a **two-part** job: the **retrieval plan and reporting*
 
 **Rollup first, whenever the evaluator scope is open.** The per-evaluator rollup (Q1) reveals WHICH evaluators sit at the bad end by polarity, so it runs first whenever the ask spans multiple or unnamed evaluators ("how are they doing", "why are they failing", "what's wrong", "which are worst"). You can't open with a drill / bad-end / `explanation` fetch — you don't yet know what to drill. A named **service, dataset, session, or time-window does NOT pin the evaluator** — the scope is still open, so rollup first. Two things do NOT let you skip it: (1) **a guessed evaluator set** — deciding yourself which evaluators are "failing" is not the user naming them; (2) **an invented score cutoff** — don't add a fixed `WHERE score < 0.5` to *define* "failing" (no universal pass mark; polarity may be inverted), and don't reproduce one as `SELECT` buckets either (`SUM(CASE WHEN score >= 0.5 …) AS pass_like` is the same invented pass mark, just moved out of the `WHERE`). Ranking by score is fine — sort by each evaluator's bad direction and take the worst N; just don't hard-code an absolute pass/fail line.
 
+**A missing region / `service.name` / time-window is NOT a precondition — lead with the rollup, then offer to scope down.** When the ask is to interpret or summarize an evaluation run and no region, service, or window was supplied ("how are my agents doing", "how did the run go"), run the rollup FIRST at the broadest reasonable scope — omit the `service.name` filter so it spans every scored agent, over a sensible default window (the 7-day window the patterns below use) in the Space already in context — then report it, drilling the WHY of any bad-end evaluator per the second pass below, and OFFER to narrow by region, service, or window. Region / `service.name` / window are inputs you gather to DRILL DEEPER, never a gate the first rollup waits behind; the placeholder filters in the query patterns below are scope-down options, not inputs you must collect before running. The user asked for a read, so lead with the read rather than stopping to ask for scope.
+
 **The number of rollup VIEWS is bounded by the intent the user EXPRESSED — but the WHY-drill is not optional once the rollup surfaces a bad-end evaluator.** A **status** ask ("how is X doing", "tell me about X performance", "average X", "what's our X") is answered by the per-evaluator rollup **plus a required WHY-drill into the worst 2–3 evaluators that sit at a bad end by polarity** (pull their `explanation` field — see the second pass below): run the rollup, and if any evaluator is at a bad end, drill the worst 2–3 of those by polarity for the WHY, report that, then *offer* the deeper cuts. If NO evaluator is at a bad end (all healthy, or only one evaluator and it is healthy), report the rollup, name the worst-by-polarity evaluator as healthy, and skip the `explanation` fetch. Do NOT add, on your own initiative, a time-bucket / trend view, a per-agent view, a per-session view, or any other break-down **dimension** the user did not name — each extra dimension is another query round, and the user asked a fast question. A break-down runs only when the user **named that slice** ("per session", "by day", "which agent", "break it down by …") or asked to go deeper. When they DID ask to drill or investigate, fan out properly — the multi-slice breakdown is the right answer there, and this ceiling is not a reason to under-answer a real investigation.
 
 **Once the evaluator scope IS pinned, answer it directly.** When the user named the evaluator(s), or the rollup has surfaced the bad ones, match the query to the ask: a **status/number** ask ("average Correctness") → the per-evaluator aggregate scoped to it, **plus the required WHY-drill when the pinned evaluator(s) sit at a bad end by polarity — pull the bad-end evaluator's `explanation` (Q3), the worst 2–3 by polarity when several are in scope (ceiling 4), so even a plain status answer carries the WHY; when the pinned evaluator(s) are healthy, report the number(s), name the result as healthy, and skip the `explanation` fetch**; a **"why"/deeper** ask ("why is Correctness failing", "which sessions") → the same bad-end `explanation` drill (Q3), read by polarity, widened as the ask warrants.
@@ -468,7 +521,15 @@ Reading stored scores is a **two-part** job: the **retrieval plan and reporting*
 
 ### Query surface — dataset and schema
 
-Each score is a **log record** in **`logs.default`** (query `FROM "logs.default"`, or the unscoped `"default"`) — **NOT `traces.default`**, where the agent's own request/response spans live. Identify eval-result records by the evaluator-name attribute:
+> **When the user asks to read eval scores or `gen_ai.evaluation.*` from `traces.default`, or
+> asks which table holds them, tell them ALL of this:** NO — evaluation results are LOG records
+> in `logs.default`, not spans in `traces.default`; on `traces.default` those attributes are not
+> span columns, so the query returns zero rows silently, with no error; that failure is silent —
+> zero rows is indistinguishable from "no evaluations ran" unless the table choice is checked;
+> what IS valid on `traces.default` is reading the scored trace's own spans by `traceId`; and the
+> eval-result field names live with the `logs.default` surface (table below).
+
+Each score is a **log record** in **`logs.default`** (query `FROM "logs.default"`, or the unscoped `"default"`) — **NOT `traces.default`**, where the agent's own request/response spans live. **Reading `gen_ai.evaluation.*` off `traces.default` is not an error — those attributes are not span columns, so they come back `NULL` for every span row.** The eval-read pattern *filters* on them (`WHERE attributes['gen_ai.evaluation.name'] IS NOT NULL`), so on `traces.default` that filter matches nothing and the query returns **zero rows** — indistinguishable from "no evaluations ran" unless you notice the wrong table. What *is* valid on `traces.default` is reading a scored trace's own spans by `traceId` (Section 7's trace-first join); the eval scores themselves live only in `logs.default`. Identify eval-result records by the evaluator-name attribute:
 
 ```
 attributes['gen_ai.evaluation.name'] IS NOT NULL

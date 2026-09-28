@@ -1,0 +1,37 @@
+{
+  "design_constraints": {
+    "target_region": {
+      "value": "us-east-1",
+      "chosen_by": "default",
+      "question_id": "Q1",
+      "prompt": "Where are your users located?",
+      "design_consequence": "All resources deploy in us-east-1; Bedrock model availability checked for this region"
+    },
+    "availability": {
+      "value": "single-az",
+      "chosen_by": "default",
+      "question_id": "Q6",
+      "prompt": "What level of uptime does your application require?",
+      "design_consequence": "single-az drives RDS single-AZ vs Multi-AZ vs Aurora selection"
+    },
+    "kubernetes": {
+      "value": "ecs-fargate",
+      "chosen_by": "user",
+      "question_id": "Q8",
+      "prompt": "How do you feel about Kubernetes?",
+      "design_consequence": "ecs-fargate selects EKS vs ECS Fargate vs mixed posture"
+    },
+    "cpu_architecture": {
+      "value": "x86",
+      "chosen_by": "user",
+      "question_id": "Q11b",
+      "prompt": "Some of your services have ARM64 compatibility considerations. Graviton (ARM64) instances are ~15\u201320% cheaper per hour. Your Python workloads appear compatible; worker has a linux/amd64 pin and native C extension. How would you like to proceed?",
+      "design_consequence": "x86 everywhere; forgoes the ~15\u201320% hourly discount on eligible compute"
+    }
+  },
+  "workshop": {
+    "active": true,
+    "last_sheet_at": "2026-07-19T18:30:00Z",
+    "active_scenario_id": "scenario-001"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "_comment": "Migration complexity-tier classification thresholds for DSL-driven migration skills. Data only: the tier BOUNDARY rules a skill's estimate phase evaluates to classify a migration as small/medium/large. The per-skill INPUTS (which artifacts/fields feed these rules) and the resulting TIMELINE guidance live in the consuming phase's prose, not here. Evaluate tiers from large down to small; the first matching tier wins (highest-matching-tier).",
+  "_meta": {
+    "unit": "monthly_spend is USD/month; service_count is metadata.total_services",
+    "evaluation_order": ["large", "medium", "small"]
+  },
+  "tiers": {
+    "large": {
+      "match": "any",
+      "conditions": {
+        "service_count_gte": 9,
+        "monthly_spend_gt": 10000,
+        "multi_region": true,
+        "compliance_present": true
+      }
+    },
+    "medium": {
+      "match": "any",
+      "not_higher": true,
+      "conditions": {
+        "service_count_range": [4, 8],
+        "monthly_spend_range": [1000, 10000],
+        "has_databases": true,
+        "availability_multi_az": true
+      }
+    },
+    "small": {
+      "match": "default",
+      "note": "Not large, not medium. Equivalently: service_count <= 3, monthly_spend < 1000, no databases or replicated stateful storage, availability single-az or unspecified, no compliance requirements."
+    }
+  }
+}

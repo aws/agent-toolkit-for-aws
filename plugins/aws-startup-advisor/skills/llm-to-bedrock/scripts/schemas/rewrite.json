@@ -1,0 +1,57 @@
+{
+  "$comment": "schema_version: 1; contract source: agents/llm2bedrock-code-rewriter.md §27, PLUS two fields this design adds for resume identity (design §5.1 rewriter exception): baseline_parent_sha, branch_tip_sha. notes carries test counts / collision detail per §27, so it is required. blocked reasons per rewriter §27 (shared enum: model_access, source_key_auth, model_unresolvable).",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "branch_name",
+        "files_changed",
+        "dependencies_updated",
+        "notes",
+        "behavior_delta_decisions",
+        "baseline_parent_sha",
+        "branch_tip_sha"
+      ],
+      "properties": {
+        "summary": { "type": "string" },
+        "branch_name": { "type": "string" },
+        "files_changed": { "type": "array", "items": { "type": "string" } },
+        "dependencies_updated": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" },
+        "behavior_delta_decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["delta_type", "location", "resolution_chosen", "source"],
+            "properties": {
+              "delta_type": { "type": "string" },
+              "location": { "type": "string" },
+              "resolution_chosen": { "type": "string" },
+              "source": { "type": "string" },
+              "user_verbatim_answer": { "type": "string" }
+            }
+          }
+        },
+        "baseline_parent_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "branch_tip_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocked"],
+      "properties": {
+        "blocked": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "detail"],
+          "properties": {
+            "reason": { "type": "string", "enum": ["model_access", "source_key_auth", "model_unresolvable"] },
+            "detail": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

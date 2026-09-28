@@ -1,0 +1,147 @@
+{
+  "_what_this_is": "App Service Plan SKU -> Elastic Beanstalk / EC2 instance type. Consumed by design-refs/compute.md section 5 (Right-Sizing) after the rubric has already chosen a service. It NEVER influences the service choice.",
+  "_selection_rule": "Nearest-not-smaller on BOTH vCPU and memory across the t3, c6i, m6i and r6i families, then cheapest of those that satisfy both axes. Every row records vCPU and memory for the Azure SKU AND the AWS instance so the arithmetic is checkable without trusting this file. If a row's aws side is smaller than its azure side on either axis, the row is a bug.",
+  "_architecture": "x86_64 by default, per compute.md section 4 (Windows/.NET prevalence on Azure). The graviton_alternative field names the Arm equivalent for the cases where compute.md section 4's conditions all hold; it is an OFFER, never the default.",
+  "_provenance": "Azure vCPU/memory figures are the published App Service plan specs; AWS figures are published instance specs. Authored, not machine-generated, and NOT verified against a live API. A row whose two sides do not justify each other should be corrected here rather than worked around downstream.",
+  "_when_absent": "There is no longer an 'absent' case for App Service plans. Before this file existed, compute.md told the model to state a dev-tier default while also forbidding it to invent a number, which was unsatisfiable, and every size in the committed golden was a pretrained association.",
+
+  "plans": {
+    "F1": {
+      "azure": { "vcpu": 1, "memory_gib": 1.0, "shared": true },
+      "aws": { "instance_type": "t3.micro", "vcpu": 2, "memory_gib": 1 },
+      "note": "Free tier. Map it, and flag that it has no production analogue."
+    },
+    "D1": {
+      "azure": { "vcpu": 1, "memory_gib": 1.0, "shared": true },
+      "aws": { "instance_type": "t3.micro", "vcpu": 2, "memory_gib": 1 },
+      "note": "Shared tier."
+    },
+    "B1": {
+      "azure": { "vcpu": 1, "memory_gib": 1.75 },
+      "aws": { "instance_type": "t3.small", "vcpu": 2, "memory_gib": 2 }
+    },
+    "B2": {
+      "azure": { "vcpu": 2, "memory_gib": 3.5 },
+      "aws": { "instance_type": "t3.medium", "vcpu": 2, "memory_gib": 4 }
+    },
+    "B3": {
+      "azure": { "vcpu": 4, "memory_gib": 7 },
+      "aws": { "instance_type": "c6i.xlarge", "vcpu": 4, "memory_gib": 8 },
+      "note": "t3.xlarge also satisfies both axes but carries 16 GiB, over double the source. c6i.xlarge is the tighter fit; if burstable-to-burstable matters more than the memory overshoot, that is a workshop decision."
+    },
+    "S1": {
+      "azure": { "vcpu": 1, "memory_gib": 1.75 },
+      "aws": { "instance_type": "t3.small", "vcpu": 2, "memory_gib": 2 },
+      "note": "The committed golden had t3.medium here, which is 2x the source memory. That number was a model prior, not a mapping."
+    },
+    "S2": {
+      "azure": { "vcpu": 2, "memory_gib": 3.5 },
+      "aws": { "instance_type": "t3.medium", "vcpu": 2, "memory_gib": 4 }
+    },
+    "S3": {
+      "azure": { "vcpu": 4, "memory_gib": 7 },
+      "aws": { "instance_type": "c6i.xlarge", "vcpu": 4, "memory_gib": 8 }
+    },
+    "P1v2": {
+      "azure": { "vcpu": 1, "memory_gib": 3.5 },
+      "aws": { "instance_type": "t3.medium", "vcpu": 2, "memory_gib": 4 }
+    },
+    "P2v2": {
+      "azure": { "vcpu": 2, "memory_gib": 7 },
+      "aws": { "instance_type": "t3.large", "vcpu": 2, "memory_gib": 8 }
+    },
+    "P3v2": {
+      "azure": { "vcpu": 4, "memory_gib": 14 },
+      "aws": { "instance_type": "m6i.xlarge", "vcpu": 4, "memory_gib": 16 },
+      "graviton_alternative": "m7g.xlarge"
+    },
+    "P0v3": {
+      "azure": { "vcpu": 1, "memory_gib": 4 },
+      "aws": { "instance_type": "t3.medium", "vcpu": 2, "memory_gib": 4 }
+    },
+    "P1v3": {
+      "azure": { "vcpu": 2, "memory_gib": 8 },
+      "aws": { "instance_type": "m6i.large", "vcpu": 2, "memory_gib": 8 },
+      "graviton_alternative": "m7g.large",
+      "note": "t3.large matches on both axes and is cheaper; m6i.large is chosen because Pv3 is a production tier and burstable credits are a poor fit for always_on. If the plan is dev/test, t3.large is defensible."
+    },
+    "P2v3": {
+      "azure": { "vcpu": 4, "memory_gib": 16 },
+      "aws": { "instance_type": "m6i.xlarge", "vcpu": 4, "memory_gib": 16 },
+      "graviton_alternative": "m7g.xlarge"
+    },
+    "P3v3": {
+      "azure": { "vcpu": 8, "memory_gib": 32 },
+      "aws": { "instance_type": "m6i.2xlarge", "vcpu": 8, "memory_gib": 32 },
+      "graviton_alternative": "m7g.2xlarge"
+    },
+    "P1mv3": {
+      "azure": { "vcpu": 2, "memory_gib": 16 },
+      "aws": { "instance_type": "r6i.large", "vcpu": 2, "memory_gib": 16 },
+      "graviton_alternative": "r7g.large"
+    },
+    "P2mv3": {
+      "azure": { "vcpu": 4, "memory_gib": 32 },
+      "aws": { "instance_type": "r6i.xlarge", "vcpu": 4, "memory_gib": 32 },
+      "graviton_alternative": "r7g.xlarge"
+    },
+    "P3mv3": {
+      "azure": { "vcpu": 8, "memory_gib": 64 },
+      "aws": { "instance_type": "r6i.2xlarge", "vcpu": 8, "memory_gib": 64 },
+      "graviton_alternative": "r7g.2xlarge"
+    },
+    "P4mv3": {
+      "azure": { "vcpu": 16, "memory_gib": 128 },
+      "aws": { "instance_type": "r6i.4xlarge", "vcpu": 16, "memory_gib": 128 },
+      "graviton_alternative": "r7g.4xlarge"
+    },
+    "P5mv3": {
+      "azure": { "vcpu": 32, "memory_gib": 256 },
+      "aws": { "instance_type": "r6i.8xlarge", "vcpu": 32, "memory_gib": 256 },
+      "graviton_alternative": "r7g.8xlarge"
+    },
+    "I1v2": {
+      "azure": { "vcpu": 2, "memory_gib": 8 },
+      "aws": { "instance_type": "m6i.large", "vcpu": 2, "memory_gib": 8 },
+      "note": "App Service Environment (isolated). The isolation is a networking property, not a size; it becomes a private subnet, not a bigger instance."
+    },
+    "I2v2": {
+      "azure": { "vcpu": 4, "memory_gib": 16 },
+      "aws": { "instance_type": "m6i.xlarge", "vcpu": 4, "memory_gib": 16 }
+    },
+    "I3v2": {
+      "azure": { "vcpu": 8, "memory_gib": 32 },
+      "aws": { "instance_type": "m6i.2xlarge", "vcpu": 8, "memory_gib": 32 }
+    },
+
+    "Y1": {
+      "azure": { "consumption": true },
+      "aws": { "instance_type": null, "target": "Lambda" },
+      "note": "Consumption plan. There is no instance: compute.md routes this to Lambda and there is nothing to size. Memory per function is a Lambda config, not an instance type."
+    },
+    "FC1": {
+      "azure": { "consumption": true },
+      "aws": { "instance_type": null, "target": "Lambda" },
+      "note": "Flex Consumption. Same as Y1."
+    },
+    "EP1": {
+      "azure": { "vcpu": 1, "memory_gib": 3.5 },
+      "aws": { "instance_type": null, "target": "Lambda with provisioned concurrency" },
+      "note": "Elastic Premium for Functions. The pre-warmed instance count maps to provisioned concurrency, NOT to an EC2 instance. Pricing it as an instance is the trap."
+    },
+    "EP2": {
+      "azure": { "vcpu": 2, "memory_gib": 7 },
+      "aws": { "instance_type": null, "target": "Lambda with provisioned concurrency" }
+    },
+    "EP3": {
+      "azure": { "vcpu": 4, "memory_gib": 14 },
+      "aws": { "instance_type": null, "target": "Lambda with provisioned concurrency" }
+    }
+  },
+
+  "instance_count": {
+    "rule": "From the plan's worker_count, NOT from the number of apps hosted on it. This is the App Service Plan fan-in (compute.md section 3): five apps on one S1 plan is one S1's worth of compute.",
+    "minimum": 1,
+    "zero_workers": "A plan with worker_count 0 or no apps is idle capacity. Map it, size it, and raise it as a cost-optimization finding rather than pricing it as running."
+  }
+}

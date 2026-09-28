@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "description": "Deterministic mapping from SDK method to AI capability. Used by Discover to disambiguate workloads by SDK call pattern rather than model ID alone.",
+  "entries": {
+    "ai.models.generateContent": "text_generation",
+    "ai.models.generateImages": "image_generation",
+    "ai.models.embedContent": "embedding",
+    "openai.chat.completions.create": "text_generation",
+    "openai.completions.create": "text_generation",
+    "openai.embeddings.create": "embedding",
+    "openai.images.generate": "image_generation",
+    "openai.audio.speech.create": "text_to_speech",
+    "openai.audio.transcriptions.create": "speech_to_text",
+    "anthropic.messages.create": "text_generation",
+    "bedrock.invoke_model": "unknown",
+    "cohere.embed": "embedding",
+    "cohere.generate": "text_generation",
+    "documentai.process_document": "document_extraction",
+    "documentai.batch_process_documents": "document_extraction",
+    "vision.annotate_image": "image_analysis",
+    "vision.text_detection": "image_analysis",
+    "vision.label_detection": "image_analysis",
+    "vision.face_detection": "image_analysis",
+    "speech.recognize": "speech_transcription",
+    "speech.long_running_recognize": "speech_transcription",
+    "speech.streaming_recognize": "speech_transcription"
+  },
+  "structured_output_trio": [
+    "openai.chat.completions.create",
+    "anthropic.messages.create",
+    "ai.models.generateContent"
+  ],
+  "structured_output_indicators": [
+    "response_format",
+    "responseSchema",
+    "responseMimeType"
+  ]
+}

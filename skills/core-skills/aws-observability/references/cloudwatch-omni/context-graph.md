@@ -8,7 +8,7 @@ telemetry query.
 
 The context graph is read through the same public SigV4 API as the rest of Omni:
 service `cloudwatch-omni`, signing name `cloudwatch`, invoked as
-`aws cloudwatch-omni get-context-graph` from the AWS CLI (through the `aws___call_aws`
+`aws cloudwatchomni get-context-graph` from the AWS CLI (through the `aws___call_aws`
 tool or a shell). See [programmatic-access.md](programmatic-access.md) for endpoints,
 SDK access, and what to do when the CLI reports the service as unsupported.
 
@@ -16,11 +16,60 @@ SDK access, and what to do when the CLI reports the service as unsupported.
 
 ## Contents
 
+- [Dependency / blast-radius question — facts you MUST surface](#dependency--blast-radius-question--facts-you-must-surface)
 - [What the context graph is](#what-the-context-graph-is)
 - [GetContextGraph API](#getcontextgraph-api)
 - [Reading the graph](#reading-the-graph)
 - [Using the graph in an investigation](#using-the-graph-in-an-investigation)
 - [Gotchas](#gotchas)
+
+---
+
+## Dependency / blast-radius question — facts you MUST surface
+
+"What does `<service>` depend on and which is broken," "what's broken downstream," "what
+is the blast radius," "who is affected if `<service>` fails," "`<service>` is slow or
+erroring — which way do I walk the graph," and "what does `CALLS` / `ACCESSES` /
+`RUNS_ON` mean" are **observability-data questions answered from the context graph**, not
+from the resource's control plane. Answering with the *methodology* is an output contract
+— surface every item below that applies, whether or not you also pull live numbers and
+even if no matching node exists yet. For a direction or edge-semantics question the
+deliverable IS the explanation below, stated in the answer text, whether or not
+`GetContextGraph` is run:
+
+- **Edges are directed `from` → `to`, and `from` depends on `to`.** Downstream of X = the
+  edges whose `from` is X (X's own `edges[]`); upstream of X = the edges whose `to` is X
+  (`edgeFilters.to = <X's nodeId>`, because `node.edges[]` is outbound only).
+- **A slow or erroring service is a DOWNSTREAM question.** The cause of X's latency or
+  errors lies among X's dependencies, so walk downstream, one hop at a time. Upstream tells
+  you blast radius — who is affected — not cause.
+- **A blast-radius / who-is-affected question is the REVERSE — traverse UPSTREAM**
+  (everything that transitively depends on `<service>`).
+- **Say what each edge type means and when to follow it:** `CALLS` — `from` invokes `to`,
+  a service dependency; follow it when tracing request-path latency or errors downstream.
+  `ACCESSES` — `from` reads or writes datastore `to` (database, queue, cache); follow it
+  when a service is slow or erroring on I/O. `RUNS_ON` — `from` executes on host or compute
+  `to`; follow it when suspecting an infrastructure cause shared by co-located services.
+- **Raise `depth` one hop at a time** rather than asking for `depth: 3` up front, and
+  **query telemetry at each hop before expanding** — the graph localizes, queries confirm.
+- **Compare each edge's `lastObservedAt` with the incident window.** An edge is returned if
+  it was observed anywhere in the query window; one last seen well before the incident is
+  history, not a live call path.
+- **A `to` nodeId that is not on the current page is not a missing node.** Pagination is by
+  node and edges are nested under their `from` node, so collect every page (and check
+  `depth`) before treating a dangling `to` as absent.
+- **An edge with no error fields is unreported, not proven healthy.** Only conclude
+  "healthy" from telemetry, never from a missing `errorCode` / `httpStatusCode`.
+- **Confirm the candidate path with traces** — parent-to-child spans mirror `CALLS` edges,
+  so query for slow or erroring spans along exactly that path to establish which hop
+  originates the latency or error.
+- **Use `GetContextGraph`, never X-Ray `GetServiceGraph`.** The Omni topology operation is
+  `GetContextGraph`; if the CLI/SDK errors with an unknown `cloudwatch-omni` service, that
+  is a client-version issue (upgrade botocore/AWS CLI), not a reason to switch products.
+
+The detailed traversal procedure, direction definitions, and symptom-vs-cause ranking are
+in [Reading the graph](#reading-the-graph) and
+[Using the graph in an investigation](#using-the-graph-in-an-investigation) below.
 
 ---
 
@@ -66,9 +115,19 @@ Every edge is **directed**, `from` → `to` (both are `nodeId`s), with an `edgeT
 `edgeProperties` carries whatever the producing source reported: `errorCode`,
 `httpStatusCode`, `httpMethod`, `protocol`, `sourcePort`/`destinationPort`,
 `blocked`, `serviceInitiated`, and `trafficStats` (`bytes`, `packets`, `flows`,
-`sentBytes`, `receivedBytes`). **The presence of `errorCode` means the edge exists
-but the dependency is failing** — a live failing call. Most edges carry only a few
-of these members.
+`sentBytes`, `receivedBytes`). **The presence of `errorCode` means the edge exists and
+the dependency was OBSERVED failing** on that call — a proven failure within the window,
+not necessarily one happening right now (check the edge's `lastObservedAt` before
+treating it as a live, current failure). The converse does **not** hold:
+**an absent `errorCode` is not evidence of health.** It means the producing source did
+not report one, not that the call succeeded, so a dependency cannot be called healthy
+from a missing field. The same reading applies to the other optional members —
+`blocked` absent means the edge did not come from network-flow data, not that traffic
+was allowed, and `nodeProperties.category` is absent on most nodes today. Conclude
+"healthy" only from actual telemetry (the caller's spans, metrics, or logs), and check
+the edge's `lastObservedAt` before trusting it as a live call path — an edge seen only
+early in the window may be history, not a live call. Most edges carry only a few of
+these members.
 
 ### Where nodes and edges come from
 
@@ -76,11 +135,9 @@ Each node and edge lists the `sources` that contributed it and the `signalTypes`
 observed on it:
 
 - `sources` — `TELEMETRY` (spans and metrics emitted by instrumented code),
-
   `VPC_FLOW_LOG`, `ELB_ACCESS_LOG`, `CLOUDFRONT_ACCESS_LOG`, `S3_ACCESS_LOG`,
   `WAF_ACCESS_LOG`, `CLOUDTRAIL`, `IAM_POLICY`, `CONFIG`, `AWS_INTEGRATION`,
   `CODE_SEMANTICS`, `AZURE_VNET_FLOW_LOG`.
-
 - `signalTypes` — `LOGS`, `METRICS`, `TRACES`, `CONFIG`, `UNKNOWN`.
 
 The request-path edges an investigation cares about (`CALLS`, `ACCESSES`) come
@@ -208,20 +265,15 @@ paginate and edges as relationship data attached to them.
 graph element to the exact telemetry behind it:
 
 - `metrics[]` — each metric observed on the node: `name`, `preferredStat` (e.g.
-
   `"p99"`, often absent), `metricType` (`gauge`, `sum`, `histogram`, ...),
   `semantics.description` / `semantics.unit`, and `attributes` — the **raw, stored**
   attribute values (`service.name`, `service.namespace`, `cloud.account.id`,
   `cloud.region`, ...) that select this metric's series. These are deliberately
   *not* the node's normalized identity, because a merged node can carry different
   raw values per metric.
-
 - `semantics` — on nodes only: `purpose`, `language`, `framework`, `kind`,
-
   `repository`.
-
 - `logs[]` / `traces[]` — per-signal query selectors: a list of blocks that are
-
   OR'ed together, each an AND of exact store column → raw values. `logs` is
   node-level only; `traces` appears on both nodes and edges.
 
@@ -240,28 +292,28 @@ operation is modeled as paginated, the CLI **auto-paginates** by default — pas
 
 ```bash
 # A service and its direct dependencies over the incident hour
-aws___call_aws → aws cloudwatch-omni get-context-graph \
+aws___call_aws → aws cloudwatchomni get-context-graph \
   --region us-east-1 \
   --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
   --node-filters '{"nodeType":"SERVICE","name":"checkout-service"}' \
   --depth 1 --max-results 200 --max-edges-per-node 50
 
 # Everything in one logical grouping, two hops out, with metadata for pivoting
-aws___call_aws → aws cloudwatch-omni get-context-graph \
+aws___call_aws → aws cloudwatchomni get-context-graph \
   --region us-east-1 \
   --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
   --node-filters '{"namespace":["ecommerce"]}' \
   --depth 2 --include-metadata
 
 # Who calls payments-service? (edges pointing INTO a node)
-aws___call_aws → aws cloudwatch-omni get-context-graph \
+aws___call_aws → aws cloudwatchomni get-context-graph \
   --region us-east-1 \
   --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
   --edge-filters '{"to":"svc:payments-service","edgeType":"CALLS"}' \
   --max-results 1000
 
 # Only nodes that talk to a datastore, failing or not
-aws___call_aws → aws cloudwatch-omni get-context-graph \
+aws___call_aws → aws cloudwatchomni get-context-graph \
   --region us-east-1 \
   --start-time 2026-09-16T00:00:00Z --end-time 2026-09-16T01:00:00Z \
   --node-filters '{"nodeType":"SERVICE"}' \
@@ -293,7 +345,7 @@ example):
       "nodeProperties": { "region": "us-east-1", "cloudProvider": "aws",
                           "sourceAccountId": "123456789012", "namespace": "ecommerce" } }
   ],
-  "nextToken": "<next-page-token>"
+  "nextToken": "<pagination-token>"
 }
 ```
 
@@ -303,20 +355,17 @@ example):
 
 ### Direction: upstream, downstream, blast radius
 
-Edges point in the direction of dependency: `from` depends on `to`.
+Edges point in the direction of dependency: `from` depends on `to`. Downstream = follow
+edges whose `from` is X; upstream = edges whose `to` is X. Walk downstream to find a
+cause; walk upstream to size blast radius.
 
 - **Downstream of X** — the nodes X's own `edges[]` point `to`. These are X's
-
   dependencies; if one of them is failing, X will look degraded.
-
 - **Upstream of X** — the nodes whose edges point `to` X. These are X's callers;
-
   if X is failing, they will look degraded. `node.edges[]` is outbound only, so
   callers are found with `edgeFilters.to = <X's nodeId>` (the third CLI example
   above), not by reading X.
-
 - **Blast radius of X** — everything transitively upstream of X: the set of
-
   services whose degradation X alone would explain. A node with a large blast
   radius and a failing edge beneath it is the shape a root cause usually takes.
 
@@ -330,20 +379,15 @@ which edges are *returned*, not which are traversed. To isolate callers, filter 
 ### Symptom vs. cause
 
 - A **symptom** is an upstream caller that looks degraded only because something it
-
   `CALLS` or `ACCESSES` downstream is failing.
-
 - A **cause** is a shared downstream dependency that *all* failing paths traverse.
 
 Prefer the cause. Rank candidates, in order, by:
 
 1. **Downstream fan-in explained** — the deepest node whose failure accounts for the
-
    most affected upstream services.
-
 2. **Shared dependency** across multiple *independently* failing services.
 3. **Temporal precedence** — the node whose failing edges or anomalies began first.
-
    On the graph itself, compare `firstObservedAt` of the failing edge (or of a
    newly-appeared node) against the incident window.
 
@@ -354,29 +398,20 @@ hypothesis — not the first degraded node you saw — and state the traversal p
 ### Hop-by-hop traversal
 
 1. **Locate the alarming node** — the service named by the alert, the Omni
-
    Intelligence insight shown in the console, or the user's symptom. Fetch it with
    `nodeFilters.name` (or `nodeId`), `depth: 1`, and a **narrow** window around the
    incident.
-
 2. **Read the edges.** Any `edgeProperties.errorCode` or a non-2xx
-
    `httpStatusCode` on a `CALLS`/`ACCESSES` edge is a live failing dependency —
    follow it first. Edges with no error fields are not proven healthy; they are
    unreported.
-
 3. **Walk outward along `CALLS` / `ACCESSES`** — not just immediate neighbors. At
-
    each hop, query telemetry for correlated errors or latency at that node **before**
    expanding further (see the next section for how).
-
 4. **Go deeper only where signal appears.** Stop a branch that is clean. Raise
-
    `depth` one hop at a time rather than asking for `depth: 3` up front — a dense
    graph at depth 3 is hundreds of nodes and hides the path you care about.
-
 5. **Confirm along the path with traces.** Parent → child spans mirror `CALLS`
-
    edges, so once a candidate path exists, query for slow or erroring spans along
    exactly that path to establish which hop *originates* the latency or error.
 
@@ -388,7 +423,6 @@ The graph localizes; queries confirm. Alternate between them, spending the cheap
 call (graph) before the expensive one (telemetry scan).
 
 1. **Start from the symptom.** An alert firing ([alerts.md](alerts.md)) names a
-
    query and a Space; a CloudWatch Omni Intelligence insight or anomaly in the console
    names the affected service(s), severity, and time; a user names a service. Any of
    these gives you a service name, a Region, and a time window. Listing insights and
@@ -396,24 +430,19 @@ call (graph) before the expensive one (telemetry scan).
    carry the affected service names into the graph call.
 
 2. **Fetch the neighborhood.** `get-context-graph` with `nodeFilters.name`,
-
    `depth: 1`, `includeMetadata: true`, and a window of roughly the incident ± 15
    minutes. Take `nodeProperties.region` and `nodeProperties.sourceAccountId` from
    the returned node for every subsequent call — **do not guess them** from the
    credentials you hold.
 
 3. **Pick the next node** by the rules above: follow the edge that carries an
-
    `errorCode`/`httpStatusCode`, else the shared `ACCESSES` datastore, else the
    `CALLS` edge with the most operations.
 
 4. **Pivot to telemetry at the suspected node**, using the `metadata` block so
-
    your query matches what is actually stored rather than the graph's normalized
    name:
-
    - **Traces and logs (SQL)** — `metadata.traces[]` / `metadata.logs[]` give the
-
      exact column → value selectors; `alternateNames` tells you which raw
      `service.name` values to include. Write the query per
      [query/sql-logs-traces.md](query/sql-logs-traces.md), always with a
@@ -433,25 +462,19 @@ call (graph) before the expensive one (telemetry scan).
 
      Then narrow with the status / error attributes that schema discovery shows are
      present for this service.
-
    - **Metrics (PromQL)** — `metadata.metrics[]` gives the metric `name`, its
-
      `preferredStat`, and the raw `attributes` (`service.name`, `service.namespace`,
      `cloud.region`, ...) to use as label matchers. Write the query per
      [query/promql-metrics.md](query/promql-metrics.md).
-
    - An edge's `operations[]` (e.g. `"POST /charges"`) is the operation name to
-
      filter spans or metrics on when you want just that call path.
 
 5. **Decide, then expand or stop.** Signal at this node → fetch *its* neighborhood
-
    (`nodeFilters.nodeId = <that node>`, `depth: 1`) and repeat from step 3. No
    signal → this branch is a symptom; go back to the last node with signal and try
    its next edge.
 
 6. **Report** the deepest node that explains the most upstream symptoms, the path you
-
    walked (`checkout-service —CALLS→ payments-service —ACCESSES→ payments-db`), the
    edge evidence (`errorCode`, `httpStatusCode`, `firstObservedAt`), and the query
    that confirmed it. If the cause is a `REMOTE_SERVICE` node you cannot query, say
@@ -463,7 +486,6 @@ call (graph) before the expensive one (telemetry scan).
 ## Gotchas
 
 - **Empty `nodes` is usually scope, not absence.** In order of likelihood: the
-
   Region is wrong (a Space is per Region — the call went to a Region with a
   different or no Space); the time window does not overlap any observation
   (`firstObservedAt`/`lastObservedAt` are minute-granular; widen the window before
@@ -472,66 +494,44 @@ call (graph) before the expensive one (telemetry scan).
   nothing is instrumented, or telemetry is not reaching this Space yet (see the
   setup order in [concepts.md](concepts.md) — instrumentation started before a
   Space exists delivers nowhere you can see).
-
 - **`AccessDeniedException` on an otherwise-correct call** means either the
-
   principal lacks `cloudwatch:GetContextGraph` or the account is not enabled for
   Omni Intelligence. Neither is fixed by changing the request.
-
 - **Edges can point at nodes that are not on this page.** Edges are nested under
-
   their `from` node and pagination is by node, so a `to` may reference a `nodeId`
   you have not received yet — or one past your `depth`. Collect every page (or let
   the CLI auto-paginate) before treating a dangling `to` as a missing node.
-
 - **`maxEdgesPerNode` silently truncates hubs.** A shared datastore or gateway with
-
   more outbound edges than the cap loses some of them from the response. If a
   dependency you expect is missing, raise the cap (max 50) or query it directly with
   `edgeFilters.from`/`to`.
-
 - **Stale edges.** An edge is returned if it was observed anywhere in your window.
-
   Compare its `lastObservedAt` with the incident: an edge last seen well before the
   incident is history, not a live call path — and a `CALLS` edge that stops
   appearing mid-window can itself be the signal (the caller stopped reaching the
   dependency).
-
 - **Absent is not negative.** `errorCode` absent means the source did not report
-
   one, not that the call succeeded. `blocked` absent means the edge did not come
   from network-flow data, not that traffic was allowed. `category` is absent on most
   nodes. Only conclude "healthy" from telemetry, never from a missing field.
-
 - **`namespace` is a logical service grouping, not a CloudWatch metric namespace.**
-
   Do not paste it into a metrics query as one. The metric's own
   `metadata.metrics[].attributes["service.namespace"]` is what selects series.
-
 - **Merged nodes do not match stored telemetry by `name`.** The graph's `name` is
-
   the resolved identity; the store still holds the raw values. Use
   `alternateNames`, `metadata.traces[]`/`logs[]` selectors, and
   `metadata.metrics[].attributes` for the values your queries must match.
-
 - **`telemetryAttributes` filters do not narrow results today** (both on
-
   `edgeFilters` and, per the model, `nodeFilters`). Filter server-side on `name`,
   `namespace`, `nodeType`, `sourceAccountId`, `region`, or `stage`, and post-filter
   on attributes client-side.
-
 - **`REMOTE_SERVICE` nodes have only a caller's-eye view.** There is no telemetry
-
   of their own in this Space to pivot to. Their edges' `errorCode`/`httpStatusCode`
   and the calling service's spans are all the evidence you will get.
-
 - **Cross-account nodes need the node's account, not yours.** When
-
   `nodeProperties.sourceAccountId` differs from the caller's account, the telemetry
   was forwarded in. Queries against this Space still work, but any per-account
   follow-up (IAM, resource configuration) must target `sourceAccountId`.
-
 - **`includeMetadata` is not free.** It adds a lookup per returned node. Use it on
-
   the small `depth: 1` neighborhood you are about to pivot from, not on a
   `depth: 3` sweep of the whole Space.

@@ -38,3 +38,17 @@ jobs:
         with:
           # Shared Amazon OSPO dependency-review config used across awslabs/aws repos.
           config-file: amazon-ospo/dependency-review-config/default/dependency-review-config.yml@8e4c9fdde54d2b7c6a3a28b97eddd26c4cd90a66 # main
+          # Licence-only exemption, merged on top of the shared config above
+          # (the action applies inline inputs per key, so `allow-licenses` is
+          # left untouched). Vulnerability checks still apply to this package.
+          #
+          # typing-extensions is PSF-licensed (Python-2.0), but its published
+          # metadata aggregates to "Python-2.0 AND GPL-1.0-or-later AND
+          # Python-2.0 AND BSD-3-Clause AND ... AND 0BSD" — the stray
+          # GPL-1.0-or-later term comes from the historical Python licence
+          # text bundled in its LICENSE file, not from an actual GPL grant.
+          # Because the shared config is an allowlist and every term in a
+          # composite expression must match, that one term fails the package.
+          # It reaches us only transitively (jsonschema -> referencing,
+          # openai -> pydantic/anyio, exceptiongroup).
+          allow-dependencies-licenses: "pkg:pypi/typing-extensions"

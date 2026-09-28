@@ -1,0 +1,47 @@
+{
+  "_comment": "Fast-path add-on -> AWS service mapping for non-core add-ons (anything that is NOT heroku-postgresql/heroku-redis/heroku-kafka). DIRECT LOOKUP on a normalized name. All matches get confidence 'deterministic'.",
+  "_match": "EXACT, case-insensitive, full-string match on the NORMALIZED add-on name against a rows key. Partial matches are INVALID (e.g. 'paper' does NOT match 'papertrail'; 'New Relic APM' does NOT match 'new relic').",
+  "_normalize": "from config.addon_service: strip a leading 'heroku-' prefix; replace hyphens with spaces; lowercase. Then apply the prefix aliases below before matching.",
+  "_prefix_aliases": {
+    "bonsai": "bonsai elasticsearch",
+    "scout": "scout apm",
+    "newrelic": "new relic",
+    "new-relic": "new relic"
+  },
+  "_on_not_found": "route to the specialist gate: append a deferred[] entry {addon_name, addon_plan, provider, reason: 'Not found in Fast_Path_Table', recommendation: 'Engage AWS account team for replacement selection'}; produce NO service entry; continue",
+  "rows": {
+    "papertrail": { "type": "single", "aws_services": ["CloudWatch Logs"], "notes": "Log aggregation and search" },
+    "sendgrid": { "type": "single", "aws_services": ["Amazon SES"], "notes": "Transactional and marketing email" },
+    "heroku scheduler": {
+      "type": "single",
+      "aws_services": ["EventBridge Scheduler"],
+      "notes": "Cron-style scheduled jobs"
+    },
+    "memcachier": {
+      "type": "single",
+      "aws_services": ["ElastiCache Memcached"],
+      "notes": "In-memory caching (Memcached protocol)"
+    },
+    "bucketeer": { "type": "single", "aws_services": ["S3"], "notes": "Object/file storage" },
+    "cloudamqp": { "type": "single", "aws_services": ["Amazon MQ"], "notes": "RabbitMQ-compatible message broker" },
+    "bonsai elasticsearch": {
+      "type": "single",
+      "aws_services": ["Amazon OpenSearch"],
+      "notes": "Full-text search and analytics"
+    },
+    "scout apm": { "type": "composite", "aws_services": ["CloudWatch", "X-Ray"], "notes": "APM + distributed tracing" },
+    "rollbar": { "type": "single", "aws_services": ["CloudWatch"], "notes": "Error tracking via structured logs" },
+    "new relic": {
+      "type": "composite",
+      "aws_services": ["CloudWatch", "X-Ray"],
+      "notes": "Full-stack observability + distributed tracing"
+    },
+    "twilio": { "type": "single", "aws_services": ["Amazon SNS (SMS)"], "notes": "SMS messaging" },
+    "cloudinary": {
+      "type": "composite",
+      "aws_services": ["S3", "CloudFront"],
+      "notes": "Media storage + CDN delivery"
+    },
+    "sentry": { "type": "single", "aws_services": ["CloudWatch"], "notes": "Error tracking via structured logs" }
+  }
+}

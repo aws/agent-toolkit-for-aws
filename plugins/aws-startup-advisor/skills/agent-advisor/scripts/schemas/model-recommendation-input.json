@@ -1,0 +1,207 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "featureName": {
+      "enum": [
+        "agent_infra",
+        "assistant_prefill",
+        "assistants_threads",
+        "audio_modality",
+        "budget_tokens",
+        "citations",
+        "conversation_state",
+        "embeddings",
+        "fallbacks",
+        "file_search_retrieval",
+        "files_api",
+        "image_input_vision",
+        "images",
+        "max_tokens",
+        "max_tokens_headroom",
+        "message_batches",
+        "models_api",
+        "multiple_candidates_n",
+        "prompt_caching",
+        "reasoning",
+        "refusal_handling",
+        "sampling_parameters",
+        "sampling_params",
+        "server_tools",
+        "streaming",
+        "structured_output",
+        "structured_output_json",
+        "tokenizer_rebaseline",
+        "tool_or_function_calling",
+        "tool_use",
+        "url_sources",
+        "vector_stores",
+        "vision",
+        "web_search"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": ["provider", "model_ids", "sdk", "api_surface", "source_paths"],
+      "properties": {
+        "provider": {
+          "enum": [
+            "anthropic",
+            "openai",
+            "azure_openai",
+            "google_genai",
+            "bedrock",
+            "none",
+            "unknown"
+          ]
+        },
+        "model_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sdk": {
+          "type": "string"
+        },
+        "api_surface": {
+          "type": "string"
+        },
+        "source_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": ["schema_version", "region", "primary_unit", "workloads"],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "region": {
+      "type": "string",
+      "minLength": 1
+    },
+    "primary_unit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workloads": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["workload_id", "source", "requirements"],
+        "properties": {
+          "workload_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "source": {
+            "$ref": "#/$defs/source"
+          },
+          "requirements": {
+            "type": "object",
+            "required": ["priority", "critical_features"],
+            "properties": {
+              "priority": {
+                "enum": ["quality", "balanced", "speed", "cost", "unknown"]
+              },
+              "critical_features": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "preserve_messages_api": {
+                "type": "boolean"
+              },
+              "newest_anthropic_betas": {
+                "type": "boolean"
+              },
+              "api_continuity": {
+                "enum": ["required", "preferred", "not_required", "unknown"]
+              },
+              "preserve_openai_api": {
+                "type": "boolean"
+              },
+              "uses_n": {
+                "type": "boolean"
+              },
+              "uses_hosted_state": {
+                "type": "boolean"
+              },
+              "governance": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": ["guardrails", "invocation_logging", "cloudwatch"]
+                }
+              },
+              "multi_model_converse": {
+                "type": "boolean"
+              },
+              "requires_native_payload": {
+                "type": "boolean"
+              },
+              "preferred_api_path": {
+                "enum": [
+                  "mantle_messages",
+                  "mantle_openai_chat",
+                  "mantle_openai_responses",
+                  "runtime_converse",
+                  "runtime_invoke"
+                ]
+              },
+              "min_context_tokens": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expected_output_tokens": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "thinking_enabled": {
+                "type": "boolean"
+              },
+              "data_residency": {
+                "enum": ["global_allowed", "geo_required", "unknown"]
+              },
+              "cris_geography": {
+                "enum": ["us", "eu", "jp", "au"]
+              },
+              "inference_profile_id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "detected_features": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/featureName"
+            }
+          },
+          "feature_status": {
+            "type": "object",
+            "propertyNames": {
+              "$ref": "#/$defs/featureName"
+            },
+            "additionalProperties": {
+              "enum": ["detected", "absent", "unknown"]
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

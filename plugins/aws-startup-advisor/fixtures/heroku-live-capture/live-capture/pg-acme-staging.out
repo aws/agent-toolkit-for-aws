@@ -1,0 +1,13 @@
+=== DATABASE_URL
+Plan:                  Essential 0
+Status:                Available
+Data Size:             0.4 GB / 1 GB (40.00%)
+Tables:                87
+PG Version:            16.4
+Connections:           3/20
+Credentials:           1
+Rollback:              Unsupported
+Created:               2024-05-01 12:15 UTC
+Region:                us
+Data Encryption:       In Use
+Maintenance:           not required

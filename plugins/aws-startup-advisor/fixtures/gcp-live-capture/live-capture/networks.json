@@ -1,0 +1,7 @@
+[
+  {
+    "name": "main",
+    "autoCreateSubnetworks": false,
+    "subnetworks": ["https://www.googleapis.com/compute/v1/projects/acme-prod/regions/us-central1/subnetworks/app"]
+  }
+]

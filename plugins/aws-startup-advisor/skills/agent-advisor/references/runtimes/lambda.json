@@ -1,0 +1,51 @@
+{
+  "id": "lambda",
+  "display_name": "AWS Lambda (standard)",
+  "status": "ga",
+  "launched": "2014-11-01",
+  "service_card": "lambda.md",
+  "hard_constraints": [
+    {
+      "field": "session_duration",
+      "value": "15min_to_8hr",
+      "reason": "Lambda has a 15-minute timeout",
+      "verification_required": true,
+      "verification_key": "lambda.timeout",
+      "verification_expected_value": "15m",
+      "verification_sources": ["https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html"]
+    },
+    {
+      "field": "session_duration",
+      "value": "over_8hr",
+      "reason": "Lambda has a 15-minute timeout",
+      "verification_required": true,
+      "verification_key": "lambda.timeout",
+      "verification_expected_value": "15m",
+      "verification_sources": ["https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html"]
+    },
+    {
+      "field": "instance_type_requirement",
+      "value": "yes",
+      "reason": "Lambda offers no instance-type selection (fixed function environment)"
+    }
+  ],
+  "affinities": {
+    "session_duration": { "under_15min": 5, "15min_to_8hr": 0, "over_8hr": 0, "unknown": 2 },
+    "traffic_pattern": { "bursty": 4, "steady": 1, "idle": 5, "unknown": 3 },
+    "platform_fit": { "ecs": 0, "eks": 0, "lambda": 4, "none": 2, "unknown": 2 },
+    "session_state": { "stateless": 5, "stateful": 1, "hitl": 1, "unknown": 2 },
+    "ops_preference": { "minimal": 3, "moderate": 2, "full_control": 1, "unknown": 2 },
+    "isolation": { "required": 3, "nice_to_have": 2, "not_needed": 2, "unknown": 2 },
+    "memory_needs": { "cross_session": 0, "session_only": 1, "none": 3, "unknown": 2 },
+    "multi_agent": { "yes": 1, "no": 2, "unknown": 2 },
+    "framework": { "strands": 2, "langgraph": 2, "crewai": 1, "custom": 2, "none": 2, "unknown": 2 },
+    "existing_cluster": { "eks": 0, "ecs": 0, "none": 3, "unknown": 2 },
+    "multi_cloud": { "yes": 1, "no": 2, "unknown": 2 },
+    "idle_resume": { "process_level": 0, "filesystem": 1, "none": 3, "unknown": 2 },
+    "compute_tier": { "light": 3, "heavy_non_gpu": 1, "gpu": 0, "unknown": 2 },
+    "launch_concurrency": { "high": 4, "moderate": 3, "low": 2, "unknown": 2 },
+    "instance_type_requirement": { "yes": 0, "no": 3, "unknown": 2 }
+  },
+  "deployment_models": [],
+  "volatile_facts": [{ "key": "timeout", "verification_key": "lambda.timeout", "value": "15m", "verify_via_mcp": true }]
+}

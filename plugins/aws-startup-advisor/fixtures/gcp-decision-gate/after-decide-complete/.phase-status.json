@@ -1,0 +1,15 @@
+{
+  "migration_id": "0723-1900",
+  "last_updated": "2026-07-23T19:22:00Z",
+  "current_phase": "complete",
+  "run_mode": "decide",
+  "phases": {
+    "discover": "completed",
+    "clarify": "completed",
+    "design": "completed",
+    "estimate": "completed",
+    "workshop": "completed",
+    "generate": "pending",
+    "feedback": "completed"
+  }
+}

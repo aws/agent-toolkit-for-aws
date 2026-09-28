@@ -8,7 +8,7 @@ Reference a view by its name with the `view.` prefix in the FROM clause:
 
 ```sql
 SELECT `@timestamp`, `@record`
-FROM view.my-error-logs
+FROM view.my_error_logs
 WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ORDER BY `@timestamp` DESC
 ```
@@ -25,8 +25,8 @@ Views behave like inline subqueries:
 
 ```sql
 SELECT e.`@timestamp`, e.`@record`
-FROM view.error-logs AS e
-INNER JOIN view.slow-traces AS s
+FROM view.error_logs AS e
+INNER JOIN view.slow_traces AS s
   ON e.traceId = s.traceId
 WHERE e.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
   AND s.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
@@ -37,12 +37,14 @@ WHERE e.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 A view can reference other views in its definition:
 
 ```sql
--- If view.base-errors is defined as:
---   SELECT * FROM logs.default WHERE severity = 'ERROR'
--- Then another view can build on it:
---   SELECT * FROM view.base-errors WHERE resource['attributes']['service.name'] = 'checkout'
+-- If view.base_errors is defined as (projecting severityNumber so it is exposed
+-- as a bare top-level column the composed view can narrow on):
+--   SELECT `@timestamp`, `@record`, severityNumber FROM logs.default WHERE TRY_CAST(severityNumber AS BIGINT) >= 17
+-- Then another view can build on it (a composed view may only narrow on bare
+-- top-level columns — see "Views expose only bare top-level columns" in section 4):
+--   SELECT * FROM view.base_errors WHERE TRY_CAST(severityNumber AS BIGINT) >= 21
 -- And queries can reference the composed view:
-SELECT COUNT(*) FROM view.checkout-errors
+SELECT COUNT(*) FROM view.fatal_errors
 WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ```
 
@@ -66,8 +68,8 @@ Example:
 
 ```
 CreateView
-  name: "view.error-logs-last-hour"
-  definition: "SELECT `@timestamp`, `@record` FROM logs.default WHERE severity = 'ERROR'"
+  name: "view.error_logs_last_hour"
+  definition: "SELECT `@timestamp`, `@record` FROM logs.default WHERE TRY_CAST(severityNumber AS BIGINT) >= 17"
   description: "All error-level log entries"
 ```
 
@@ -114,10 +116,12 @@ View names must match `^view\.[a-z0-9][a-z0-9_-]{0,250}$` and be **6–256 chara
 - The first character after `view.` must be alphanumeric (`[a-z0-9]`)
 - The remaining characters use the lowercase set `[a-z0-9_-]` (letters, digits, hyphen, underscore) — a **second `.` is NOT allowed** (only the `view.` prefix contains a dot), and **uppercase is NOT allowed**
 
+Although a hyphen is legal in a view name, an unquoted hyphenated identifier in a `FROM` clause parses as subtraction (`view.checkout-slow` reads as `view.checkout` minus `slow`), so a hyphenated name must be quoted or escaped when referenced — which is why the examples below use underscores.
+
 Examples of valid names:
 
-- `view.my-error-logs`
-- `view.checkout-slow-requests`
+- `view.my_error_logs`
+- `view.checkout_slow_requests`
 - `view.team_dashboard_metrics`
 
 Examples of invalid names:
@@ -130,9 +134,20 @@ Examples of invalid names:
 - Must be a single SQL SELECT statement
 - Cannot contain multiple statements (no semicolons)
 - Can reference any SQL table: `logs.default`, `traces.default`, `default`. Metrics are not SQL and cannot be wrapped in a view — they are queried with PromQL (see [promql-metrics.md](promql-metrics.md))
-- Can reference other views: `FROM view.other-view`
+- Can reference other views: `FROM view.other_view`
 - Does NOT need its own `@timestamp` filter — it inherits from the outer query
 - Can include any supported SQL: JOINs, CTEs, window functions, aggregations, etc.
+
+### Views expose only bare top-level columns
+
+A view's schema is limited to **bare top-level columns** — `@timestamp`, `@record`, and simple columns such as `severityNumber`, `name`, or `durationNano` (optionally wrapped in `CAST`/functions or given an alias). A view definition **cannot** reference a nested map or struct field with bracket access — `resource['attributes'][...]`, `status['code']`, `attributes[...]` — and a view does **not** expose those fields to the outer query either. Both fail to bind at planning:
+
+```
+Failed to bind view `view.<name>`: Schema error: No field named resource.
+Valid fields are "@timestamp", "@record", "severityNumber".
+```
+
+This holds even when the nested field is aliased in the view's SELECT (`status['code'] AS status_code` still fails to bind), and even when the outer query — not the view — does the bracket access over the view. The **same** bracket access works fine in a *direct* query against `logs.default` / `traces.default` / `default`; the restriction is specific to view definitions and to querying through a view. So to filter or group by a nested field (a service name, an environment, a span status code), query the base table directly rather than wrapping it in a view.
 
 ## 5. Constraints
 
@@ -145,44 +160,64 @@ Examples of invalid names:
 
 ### Encapsulate a filtered subset
 
+A view definition may only reference bare top-level columns (see [Views expose only bare top-level columns](#views-expose-only-bare-top-level-columns)), so encapsulate the part of the filter that uses one — here the error-severity threshold:
+
 ```
 CreateView
-  name: "view.production-errors"
-  definition: "SELECT * FROM logs.default WHERE environment = 'production' AND severity = 'ERROR'"
+  name: "view.severe_logs"
+  definition: "SELECT `@timestamp`, `@record` FROM logs.default WHERE TRY_CAST(severityNumber AS BIGINT) >= 17"
 ```
 
-Then query it:
+Query the view for a running count of severe logs:
 
 ```sql
-SELECT COUNT(*) AS error_count, resource['attributes']['service.name'] AS service
-FROM view.production-errors
+SELECT COUNT(*) AS error_count
+FROM view.severe_logs
 WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
-GROUP BY resource['attributes']['service.name']
+```
+
+To group or filter those errors by a nested field — a service name or an environment — query the base table directly, because a view cannot reference a nested map field. Group severe-log counts by environment (`COALESCE` covers both attribute keys, `deployment.environment.name` and `deployment.environment`):
+
+```sql
+SELECT COUNT(*) AS error_count,
+       COALESCE(resource['attributes']['deployment.environment.name'],
+                resource['attributes']['deployment.environment']) AS environment
+FROM logs.default
+WHERE TRY_CAST(severityNumber AS BIGINT) >= 17
+  AND `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+GROUP BY COALESCE(resource['attributes']['deployment.environment.name'],
+                  resource['attributes']['deployment.environment'])
 ORDER BY error_count DESC
 ```
 
-### Create a view for cross-telemetry correlation
+### Correlate errors across logs and traces
 
-```
-CreateView
-  name: "view.errors-with-traces"
-  definition: "SELECT * FROM default WHERE severity = 'ERROR' OR statusCode = 'ERROR'"
+A log error (`severityNumber`) and a span error (`status['code']`) live on different planes but share the unified `default` table. The span-error test reads the nested `status` field, so this cannot be a view (see [Views expose only bare top-level columns](#views-expose-only-bare-top-level-columns)) — run it as a direct query:
+
+```sql
+SELECT COUNT(*) AS error_count
+FROM default
+WHERE (TRY_CAST(severityNumber AS BIGINT) >= 17
+       OR upper(TRY_CAST(status['code'] AS VARCHAR)) IN ('2', 'ERROR', 'STATUS_CODE_ERROR'))
+  AND `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ```
 
 ### Create a view for slow spans
 
+`name` and `durationNano` are bare span columns, so this filter and projection can live in a view. The span's service lives in the nested `resource` map, which a view cannot expose, so it is not selected here — join or read it in a direct query if you need it:
+
 ```
 CreateView
-  name: "view.slow-spans"
-  definition: "SELECT `@timestamp`, name, `@resource.service.name`, CAST(durationNano AS DOUBLE) / 1e6 AS duration_ms FROM traces.default WHERE durationNano IS NOT NULL AND CAST(durationNano AS DOUBLE) > 2e9"
+  name: "view.slow_spans"
+  definition: "SELECT `@timestamp`, name, CAST(durationNano AS DOUBLE) / 1e6 AS duration_ms FROM traces.default WHERE durationNano IS NOT NULL AND CAST(durationNano AS DOUBLE) > 2e9"
 ```
 
 Then alert or dashboard on it:
 
 ```sql
-SELECT `@timestamp`, `@resource.service.name`, name, duration_ms
-FROM view.slow-spans
-WHERE `@timestamp` > NOW() - INTERVAL '1 HOUR'
+SELECT `@timestamp`, name, duration_ms
+FROM view.slow_spans
+WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ORDER BY duration_ms DESC
 LIMIT 50
 ```

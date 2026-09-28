@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GCP to AWS Migration Assessment — SF Beach (Comprehensive)</title>
+  <style>
+    :root {
+      --green: #1a7f37; --blue: #0969da; --amber: #bf8700; --red: #cf222e;
+      --purple: #8250df; --bg: #f6f8fa; --text: #1f2328; --border: #d0d7de;
+      --aws: #232f3e; --gcp: #4285f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text); line-height: 1.55; font-size: 15px;
+    }
+    .container { max-width: 1040px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+    h1 { font-size: 1.85rem; margin-bottom: 0.25rem; border-bottom: 3px solid #ff9900; padding-bottom: 0.5rem; }
+    h2 { font-size: 1.3rem; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 0.45rem; }
+    h3 { font-size: 1.05rem; margin-top: 1.25rem; color: #424a53; }
+    h4 { font-size: 0.95rem; margin: 1rem 0 0.4rem; color: #656d76; }
+    .subtitle { color: #656d76; margin-bottom: 1rem; }
+    .badge { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 2rem; font-weight: 600; font-size: 0.8rem; color: #fff; margin-right: 0.35rem; }
+    .badge-phased { background: var(--blue); }
+    .badge-complex { background: var(--purple); }
+    .verdict-headline { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin: 0.5rem 0 0.1rem; border-bottom: 3px solid #0d7377; display: inline-block; padding-bottom: 0.15rem; }
+    .verdict-meta { color: #57606a; font-size: 0.92rem; margin: 0.2rem 0 0.6rem; }
+    .badge-draft { background: #656d76; }
+    .verdict { background: #dafbe1; border: 1px solid #4ac26b; border-left: 4px solid var(--green); border-radius: 6px; padding: 0.85rem 1rem; margin: 1rem 0; font-size: 1rem; }
+    .callout { padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.92rem; }
+    .callout-warn { background: #fff8c5; border: 1px solid #d4a72c; }
+    .callout-info { background: #ddf4ff; border: 1px solid #54aeff; }
+    .callout-ok { background: #dafbe1; border: 1px solid #4ac26b; }
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1.25rem; background: #fff; font-size: 0.88rem; }
+    caption { text-align: left; font-size: 0.8rem; color: #656d76; padding: 0.25rem 0; caption-side: top; font-style: italic; }
+    th, td { border: 1px solid var(--border); padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+    th { background: #f6f8fa; font-weight: 600; }
+    tr:nth-child(even) td { background: #fafbfc; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.85rem; margin: 1rem 0; }
+    .metric { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; }
+    .metric strong { display: block; font-size: 1.45rem; line-height: 1.2; }
+    .metric span { font-size: 0.78rem; color: #656d76; text-transform: uppercase; letter-spacing: 0.02em; }
+    .metric small { display: block; color: #656d76; font-size: 0.78rem; margin-top: 0.2rem; }
+    .metric-hero { border: 2px solid #0d7377; }
+    .metric-hero strong { font-size: 1.9rem; }
+    .share-card { background: #f1f8ff; border: 1px solid #54aeff; border-left: 4px solid var(--blue); border-radius: 6px; padding: 0.9rem 1rem; font-size: 0.95rem; }
+    .savings { color: var(--green); font-weight: 600; }
+    .increase { color: var(--red); font-weight: 600; }
+    section { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 1.35rem 1.5rem; margin-bottom: 1.25rem; }
+    .appendix-header { background: var(--aws); color: #fff; border: none; padding: 1rem 1.5rem; border-radius: 8px; margin: 2.5rem 0 1.25rem; }
+    .appendix-header h2 { color: #fff; border: none; margin: 0; }
+    .appendix-header p { margin: 0.35rem 0 0; opacity: 0.85; font-size: 0.9rem; }
+    ul.compact { margin: 0.4rem 0; padding-left: 1.25rem; }
+    ul.compact li { margin: 0.25rem 0; }
+    .toc { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 1.25rem; }
+    .toc ol { margin: 0.5rem 0 0; padding-left: 1.25rem; columns: 2; column-gap: 2rem; }
+    .toc ul.toc-appendix { list-style: none; margin: 0.5rem 0 0; padding-left: 0; columns: 2; column-gap: 2rem; }
+    .toc li { margin: 0.2rem 0; font-size: 0.9rem; }
+    .toc a { color: var(--blue); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid #54aeff; outline-offset: 2px; border-radius: 2px; }
+    .toc .toc-group { font-weight: 600; margin-top: 0.75rem; font-size: 0.85rem; color: #656d76; text-transform: uppercase; letter-spacing: 0.02em; }
+    .tier-sub { font-size: 0.78rem; color: #656d76; font-style: italic; display: block; margin-top: 0.15rem; }
+    .badge-conf { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+    .badge-std { background: #e6f4ea; color: #137333; }
+    .badge-tail { background: #fef7e0; color: #b05a00; }
+    .badge-defer { background: #ffebe9; color: #cf222e; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; }
+    figure.diagram-fig { margin: 0.75rem 0 1.25rem; }
+    .diagram { background: #f6f8fa; border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; font-family: ui-monospace, monospace; font-size: 0.78rem; line-height: 1.45; white-space: pre; }
+    figure.diagram-fig figcaption { font-size: 0.8rem; color: #656d76; margin-top: 0.35rem; }
+    details.why { margin: 0.4rem 0; font-size: 0.82rem; color: #656d76; }
+    details.why summary { cursor: pointer; color: var(--blue); }
+    details.why ul { margin: 0.4rem 0; padding-left: 1.1rem; }
+    .glossary-table th:first-child, .glossary-table td:first-child { width: 27%; background: #f6f8fa; }
+    .glossary-table td:first-child { color: var(--aws); font-weight: 600; }
+    .cluster-block { border-left: 3px solid var(--blue); padding-left: 1rem; margin: 1rem 0; }
+    footer { text-align: center; color: #656d76; font-size: 0.8rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    @media (max-width: 700px) {
+      .container { padding: 1rem 0.75rem 2rem; }
+      section { padding: 1rem; }
+      .metrics { grid-template-columns: 1fr; }
+      .toc ol, .toc ul.toc-appendix { columns: 1; }
+      table, .diagram { display: block; overflow-x: auto; }
+    }
+    @media print {
+      body { background: #fff; }
+      .container { max-width: none; padding: 0; }
+      .metric, .callout, tr { break-inside: avoid; }
+      .appendix-header { break-before: page; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>GCP to AWS Migration Assessment</h1>
+    <p class="subtitle">
+      Comprehensive report — Migration ID <strong>0611-0606</strong> (internal run identifier) — Generated 2026-06-17<br />
+      Target region: <strong>us-west-2</strong> (from GCP us-west1) &nbsp;|&nbsp;
+      <span class="badge badge-draft">Draft preview — not plugin output</span>
+    </p>
+
+    <!-- EXECUTIVE SUMMARY -->
+    <section id="decision-summary">
+      <h2>Migration Decision Summary</h2>
+      <p class="verdict-headline">Go, with conditions</p>
+      <p class="verdict-meta">Execution shape: Phased Migration &middot; Complexity: Complex</p>
+      <p class="verdict-meta">By track: Compute + database: <strong>go</strong>. AI text: <strong>go</strong>. AI image: <strong>conditional</strong> — keeps the current provider via the adapter until the quality eval passes; does not gate the rest. Analytics: <strong>deferred</strong> — specialist track, parallel.</p>
+      <ul class="compact">
+        <li>Condition: confirm database availability — Multi-AZ was assumed, not confirmed (roughly 2x database cost factor)</li>
+        <li>Condition: confirm CUD expiration date before committing a migration start date</li>
+      </ul>
+      <p class="verdict-meta">Confidence: Medium — full basis in <a href="#exec-assumptions">What This Assessment Rests On</a>.</p>
+
+      <div class="verdict">
+        <strong>Recommendation:</strong> Migrate, phased in dependency order — long pole is the database cutover, with a parallel AI track; estimated monthly savings of ~$763/month
+        (-54%) combined infrastructure + AI, with BigQuery analytics deferred to a
+        specialist engagement. Eligible for up to $5K
+        <a href="https://aws.amazon.com/startups/credits/">AWS Activate credits</a>.
+      </div>
+
+      <div class="metrics">
+        <div class="metric metric-hero">
+          <span>Infra (Balanced vs GCP)</span>
+          <strong class="savings">-32%</strong>
+          <small>Est. $112/mo AWS vs $165/mo GCP infra</small>
+        </div>
+        <div class="metric metric-hero">
+          <span>Combined AWS run rate (Balanced)</span>
+          <strong class="savings">-54%</strong>
+          <small>Est. $652/mo AWS vs $1,415/mo GCP (excl. BigQuery)</small>
+        </div>
+        <div class="metric">
+          <span>Migration shape</span>
+          <strong>Phased</strong>
+          <small>Long pole: database cutover; AI track runs parallel</small>
+        </div>
+        <div class="metric">
+          <span>AI projection</span>
+          <strong class="savings">-57%</strong>
+          <small>Est. ~$540/mo Bedrock vs $1,250/mo GCP AI</small>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <strong>AWS Activate:</strong> Eligible for up to $5K in Founders credits.
+        <a href="https://aws.amazon.com/startups/credits/">Apply for AWS Activate credits</a>.
+      </div>
+
+      <div class="callout callout-warn">
+        <strong>Specialist engagement required:</strong> BigQuery (<code>sf_beach_analytics</code>) has no automated AWS mapping from this plugin — engage your AWS account team or a data partner to evaluate the best analytics migration path. Analytics costs are excluded from the estimated AWS monthly run rate until that path is defined. <strong>This does not block</strong> phased migration of compute, database, storage, and AI; BigQuery planning runs in parallel on the timeline below.
+      </div>
+
+      <div class="callout callout-info">
+        <strong>How to read cost tiers:</strong> Premium, Balanced, and Optimized are <em>pricing scenarios</em> for the same mapped architecture — not three Terraform stacks. Generated <code>terraform/</code> implements the <strong>Balanced</strong> baseline only.
+      </div>
+
+      <h3>Migrate if</h3>
+      <ul class="compact">
+        <li>You want unified AWS operations for containers, database, and Bedrock AI</li>
+        <li>Estimated combined cloud-service savings (~$763/month) and AWS Activate credits offset the cost of migrating</li>
+        <li>You can engage AWS account team for BigQuery analytics in parallel</li>
+      </ul>
+
+      <h3>Stay entirely if</h3>
+      <ul class="compact">
+        <li>You require BigQuery analytics in the <strong>same cutover window</strong> as app infra and cannot run a phased analytics track with specialist planning</li>
+        <li>GCP Committed Use Discounts (CUDs) or team GCP expertise outweigh savings</li>
+        <li>Cost is the only metric and a dual-run period must be avoided</li>
+      </ul>
+
+      <h3>Key decisions ahead</h3>
+      <ol class="compact">
+        <li>Target region and deployment model (Fargate vs EKS)</li>
+        <li>Database migration tooling and cutover window</li>
+        <li>Bedrock model selection for gemini-2.5-flash and imagen-3.0-generate-001</li>
+        <li>BigQuery analytics path with AWS account team or data partner</li>
+      </ol>
+
+      <h3>Next steps</h3>
+      <ol class="compact">
+        <li>Review financial case and security posture with stakeholders</li>
+        <li>Engage AWS account team for BigQuery analytics migration path</li>
+        <li>Confirm Bedrock model access and quota in us-west-2</li>
+        <li>Apply for AWS Activate Founders credits before ramping usage</li>
+        <li>Schedule phased cutover per cluster creation order</li>
+      </ol>
+    </section>
+
+    <nav class="toc" id="toc" aria-label="Table of contents">
+      <strong>Contents</strong>
+      <div class="toc-group">Executive summary</div>
+      <ol>
+        <li><a href="#decision-summary">Migration Decision Summary</a></li>
+        <li><a href="#exec-share">Share With Your CFO</a></li>
+        <li><a href="#exec-tco">Estimated AWS Monthly Run Rate</a></li>
+        <li><a href="#exec-services">Current Stack Overview</a></li>
+        <li><a href="#exec-costs">Infrastructure Cost Comparison</a></li>
+        <li><a href="#exec-optimization">Cost Optimization</a></li>
+        <li><a href="#exec-architecture">Architecture Overview</a></li>
+        <li><a href="#exec-security-teaser">Security Posture</a></li>
+        <li><a href="#exec-timeline">Migration Shape</a></li>
+        <li><a href="#exec-risks">Top Risks</a></li>
+        <li><a href="#exec-assumptions">What This Assessment Rests On</a></li>
+        <li><a href="#appendix-assumptions">Assumptions, Exclusions &amp; Validation</a></li>
+      </ol>
+      <div class="toc-group">Appendices</div>
+      <ul class="toc-appendix">
+        <li><a href="#appendix-services">Appendix A — Service Recommendations</a></li>
+        <li><a href="#appendix-costs">Appendix B — Cost Estimates</a></li>
+        <li><a href="#appendix-optimization">Appendix B.1 — Savings Plans and Reserved Instances</a></li>
+        <li><a href="#appendix-steps">Appendix C — Migration Steps &amp; Rollback</a></li>
+        <li><a href="#appendix-ai">Appendix D — AI Migration</a></li>
+        <li><a href="#appendix-config">Your Configuration Choices</a></li>
+        <li><a href="#appendix-security">Appendix E — AWS Security Posture</a></li>
+        <li><a href="#appendix-security-gap">Appendix F — Security Gap Analysis</a></li>
+        <li><a href="#appendix-artifacts">Appendix G — Generated Artifacts Catalog</a></li>
+        <li><a href="#appendix-glossary">Appendix H — Glossary</a></li>
+      </ul>
+    </nav>
+
+    <section id="exec-share">
+      <h2>Share With Your CFO</h2>
+      <p>The one-paragraph version, ready to forward:</p>
+      <div class="share-card">
+        <p><strong>SF Beach to AWS:</strong> Go, with conditions. The estimated
+        AWS monthly run rate is $652 for infrastructure and AI, compared with a
+        comparable $1,415 GCP baseline, excluding BigQuery on both sides. The
+        migration is phased in dependency order; the database cutover is the
+        binding duration driver and the AI track runs in parallel. Before
+        committing, confirm database availability, the GCP committed-use
+        discount expiration, and the specialist-led BigQuery plan. Confidence:
+        medium.</p>
+      </div>
+    </section>
+
+    <!-- Combined monthly cloud-service run rate (legacy exec-tco ID) -->
+    <section id="exec-tco">
+      <h2>Estimated AWS Monthly Run Rate</h2>
+      <p>Combined view of recurring infrastructure and AI cloud-service costs. BigQuery is excluded from both sides. This is not a total ownership-cost model: staffing, operations, support, and migration labor are not priced.</p>
+
+      <table>
+        <caption>Combined estimated monthly costs, GCP vs AWS (BigQuery excluded).</caption>
+        <thead>
+          <tr>
+            <th scope="col">Category</th>
+            <th scope="col">GCP (current est.)</th>
+            <th scope="col">AWS Balanced (est.)</th>
+            <th scope="col">AWS Optimized (est.)</th>
+            <th scope="col">Monthly &Delta; (Balanced)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Infrastructure</td>
+            <td>$165</td>
+            <td>$112</td>
+            <td>$82</td>
+            <td class="savings">-$53</td>
+          </tr>
+          <tr>
+            <td>AI / ML workloads</td>
+            <td>$1,250</td>
+            <td>$540</td>
+            <td>$34*</td>
+            <td class="savings">-$710</td>
+          </tr>
+          <tr>
+            <td><strong>Total (excl. BigQuery)</strong></td>
+            <td><strong>$1,415</strong></td>
+            <td><strong>$652</strong></td>
+            <td><strong>$116*</strong></td>
+            <td class="savings"><strong>-$763 (-54%)</strong></td>
+          </tr>
+          <tr>
+            <td>Annual (Balanced)</td>
+            <td>$16,980</td>
+            <td>$7,824</td>
+            <td>&mdash;</td>
+            <td class="savings">-$9,156</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><em>* Optimized AI assumes Nova Lite for text + Nova Canvas for images after A/B validation (see the optimized AI projection in Appendix D).</em></p>
+
+      <h3>GCP infrastructure breakdown (baseline)</h3>
+      <table>
+        <caption>Current GCP monthly infrastructure spend by category.</caption>
+        <thead><tr><th scope="col">Category</th><th scope="col">Monthly</th><th scope="col">Source</th></tr></thead>
+        <tbody>
+          <tr><td>Compute (Cloud Run)</td><td>$85</td><td>preferences + inventory sizing</td></tr>
+          <tr><td>Database (Cloud SQL)</td><td>$12</td><td>db-f1-micro dev tier</td></tr>
+          <tr><td>Storage (GCS)</td><td>$8</td><td>beach images + build artifacts</td></tr>
+          <tr><td>Networking</td><td>$45</td><td>egress + load balancing est.</td></tr>
+          <tr><td>Other</td><td>$15</td><td>misc. platform services</td></tr>
+          <tr><td><strong>Total</strong></td><td><strong>$165</strong></td><td>excludes AI and BigQuery</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- CURRENT STACK -->
+    <section id="exec-services">
+      <h2>Current Stack Overview</h2>
+      <p><strong>5 primary GCP services</strong> detected:</p>
+      <ul class="compact">
+        <li>Cloud Run (compute) — sf-beach-ratings</li>
+        <li>Cloud SQL PostgreSQL (database) — sf-beach-db</li>
+        <li>Cloud Storage (storage) — beach images + cloudbuild</li>
+        <li>BigQuery (analytics) — sf_beach_analytics <em>(deferred)</em></li>
+        <li>Vertex AI (AI) — Gemini + Imagen via application code</li>
+      </ul>
+    </section>
+
+    <!-- COST COMPARISON (canonical tier table) -->
+    <section id="exec-costs">
+      <h2>Infrastructure Cost Comparison</h2>
+      <p>Three pricing scenarios for the same mapped architecture. The generated
+         <code>terraform/</code> implements the <strong>Balanced</strong> tier. The full
+         per-service breakdown is in Appendix B.</p>
+      <table>
+        <caption>Estimated monthly AWS infrastructure costs vs current GCP (<span data-cost-key="current_monthly">$165/mo</span>). Annual difference included.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Tier</th>
+            <th scope="col">Est. Monthly AWS</th>
+            <th scope="col">vs GCP ($165/mo)</th>
+            <th scope="col">Annual difference</th>
+            <th scope="col">vs Balanced, for this stack</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Premium<br><span class="tier-sub">Highest resilience / highest monthly estimate</span></td>
+            <td>$198</td>
+            <td class="increase">+20% (+$33)</td>
+            <td class="increase">+$396</td>
+            <td>RDS Multi-AZ instead of single-AZ (+$21/mo) — removes the single-AZ assumption; Fargate provisioned headroom (+$12/mo)</td>
+          </tr>
+          <tr>
+            <td><strong>Balanced</strong><br><span class="tier-sub">Default scenario; Terraform implements this tier</span></td>
+            <td><strong data-cost-key="aws_monthly_balanced">$112</strong></td>
+            <td class="savings"><strong>-32% (-$53)</strong></td>
+            <td class="savings"><strong>-$636</strong></td>
+            <td>— anchor; matches generated Terraform</td>
+          </tr>
+          <tr>
+            <td>Optimized<br><span class="tier-sub">Spot, reservations, storage trade-offs assumed</span></td>
+            <td>$82</td>
+            <td class="savings">-50% (-$83)</td>
+            <td class="savings">-$996</td>
+            <td>Drops NAT Gateway (-$18/mo) — tasks move to public subnets or VPC endpoints, a posture change, not just savings; assumes a 1-year Compute Savings Plan (-$12/mo)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="exec-optimization">
+      <h2>Cost Optimization</h2>
+      <p>Generated Terraform is <strong>Balanced on-demand</strong> (Est. $112/mo).
+         Savings Plans and Reserved Instances are account-level purchases after you
+         have a usage baseline. Do not add these rows on top of the Optimized tier
+         (Est. $82/mo) — that tier already embeds illustrative Spot and 1-year
+         Savings Plan assumptions.</p>
+      <table>
+        <caption>How the estimated monthly run rate changes if this stack takes a commitment. Figures are incremental to Balanced on-demand.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Posture</th>
+            <th scope="col">Est. monthly</th>
+            <th scope="col">vs Balanced</th>
+            <th scope="col">What you commit to</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Balanced on-demand (this Terraform)</td>
+            <td>Est. $112</td>
+            <td>—</td>
+            <td>No term commitment. Pay list hourly rates.</td>
+          </tr>
+          <tr>
+            <td>Compute Savings Plan (1-year, no upfront)</td>
+            <td>Est. $100</td>
+            <td>−$12</td>
+            <td>Covers Fargate after 30–90 days of Cost Explorer data.</td>
+          </tr>
+          <tr>
+            <td>Database Savings Plan (1-year, no upfront)</td>
+            <td>Est. ~20% off RDS</td>
+            <td>Typical ~20% on provisioned RDS</td>
+            <td>Mutually exclusive with RDS Reserved Instances on the same workload.</td>
+          </tr>
+          <tr>
+            <td>Optimized composite (illustrative bound)</td>
+            <td>Est. $82</td>
+            <td>−$30</td>
+            <td>Already includes Spot and 1-year Savings Plan assumptions. Use as a floor, not a sum of extra discounts.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Line-level targets are in <a href="#appendix-optimization">Savings Plans and Reserved Instances</a>.</p>
+    </section>
+
+    <!-- ARCHITECTURE -->
+    <section id="exec-architecture">
+      <h2>Architecture Overview</h2>
+
+      <h3>High-level service mapping</h3>
+      <table>
+        <caption>GCP services mapped to AWS targets, with how each pairing was chosen.</caption>
+        <thead><tr><th scope="col">GCP Service</th><th scope="col">AWS Service</th><th scope="col">How we chose this</th></tr></thead>
+        <tbody>
+          <tr><td>Cloud Run</td><td>Fargate + ALB</td><td><span class="badge-conf badge-std">Standard pairing</span></td></tr>
+          <tr><td>Cloud SQL PostgreSQL</td><td>RDS PostgreSQL db.t4g.micro</td><td><span class="badge-conf badge-tail">Tailored to your setup</span> (single-AZ)</td></tr>
+          <tr><td>Cloud Storage</td><td>S3</td><td><span class="badge-conf badge-std">Standard pairing</span></td></tr>
+          <tr><td>BigQuery</td><td>Deferred — specialist engagement</td><td><span class="badge-conf badge-defer">Specialist required</span></td></tr>
+          <tr><td>Vertex AI / Gemini</td><td>Bedrock Claude Sonnet 5</td><td><span class="badge-conf badge-tail">Tailored to your setup</span> (quality priority)</td></tr>
+          <tr><td>Vertex AI Imagen</td><td>Bedrock Nova Canvas</td><td><span class="badge-conf badge-tail">Tailored to your setup</span></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Architecture diagram</h3>
+      <figure class="diagram-fig" role="img" aria-label="Proposed AWS architecture and migration cluster order">
+        <div class="diagram" role="img" aria-label="Internet users reach a public Application Load Balancer over HTTPS in AWS us-west-2. The ALB routes to ECS Fargate running sf-beach-ratings (1 vCPU, 512 MB, up to 10 tasks). Fargate connects to RDS PostgreSQL db.t4g.micro single-AZ, an S3 bucket for images and build artifacts, and Amazon Bedrock (Claude Sonnet plus Nova Canvas). An account-wide security baseline from baseline.tf provides CloudTrail, GuardDuty, Budgets, IAM roles, security groups, NAT Gateway and VPC. BigQuery sf_beach_analytics is deferred to a specialist engagement.">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;                         Internet / Users                                 &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+                                    &#9474; HTTPS
+                                    &#9660;
+  AWS us-west-2
+  [ ALB (public) ] &#9472;&#9472;&#9658; [ ECS Fargate (sf-beach-ratings) 1 vCPU / 512 MB / max 10 tasks ]
+                          &#9474;            &#9474;             &#9474;
+              [ RDS Postgres ]   [ S3 images +    [ Amazon Bedrock
+              [ db.t4g.micro ]   [ build artifacts ] Sonnet + Canvas ]
+              [ single-AZ    ]
+  Security Baseline (baseline.tf): CloudTrail &middot; GuardDuty &middot; Budgets &middot;
+  IAM roles &middot; Security Groups &middot; NAT Gateway &middot; VPC
+
+  Deferred: BigQuery sf_beach_analytics &rarr; specialist engagement required</div>
+        <figcaption>Users &rarr; public ALB &rarr; ECS Fargate &rarr; RDS / S3 / Bedrock, fronted by a
+          CloudTrail + GuardDuty security baseline. BigQuery analytics is deferred.</figcaption>
+      </figure>
+
+      <h3>Migration cluster order</h3>
+      <ol class="compact">
+        <li><code>networking_vpc_us-west1_001</code> — firewall rules &rarr; security groups</li>
+        <li><code>storage_gcs_us-west1_001</code> — beach images bucket</li>
+        <li><code>storage_gcs_us_001</code> — Cloud Build artifacts</li>
+        <li><code>database_sql_us-west1_001</code> — Cloud SQL &rarr; RDS</li>
+        <li><code>compute_cloudrun_us-west1_001</code> — Cloud Run &rarr; Fargate</li>
+        <li><em>Deferred:</em> <code>analytics_bigquery_us_001</code></li>
+      </ol>
+    </section>
+
+    <!-- SECURITY TEASER (full detail in Appendix E) -->
+    <section id="exec-security-teaser">
+      <h2>Security Posture</h2>
+      <p>The generated <code>terraform/baseline.tf</code> deploys an account-wide Tier 1 security
+         baseline — CloudTrail audit logging, GuardDuty threat detection, IAM password policy,
+         S3 public-access block, EBS default encryption, and AWS Budgets — for a
+         <strong>$15/mo</strong> mid estimate (range $3–$30, &plusmn;25%). GuardDuty is the dominant
+         cost at <strong>$13/mo</strong> after its 30-day free trial.</p>
+      <p>Full control-by-control detail, GCP equivalents, and the GCP&rarr;AWS gap analysis are in
+         <a href="#appendix-security">Appendix E</a> and <a href="#appendix-security-gap">Appendix F</a>.</p>
+      <div class="callout callout-info">
+        <strong>Compliance add-on (not applicable):</strong> No SOC 2, PCI, HIPAA, or FedRAMP declared in your migration preferences. If compliance is required later, add AWS Config + Security Hub (~$3–$25/mo additional per plugin estimates).
+      </div>
+    </section>
+
+    <!-- TIMELINE -->
+    <section id="exec-timeline">
+      <h2>Migration Shape</h2>
+
+      <h3>Infrastructure migration (phased, in dependency order)</h3>
+      <table>
+        <caption>Phased infrastructure migration schedule.</caption>
+        <thead><tr><th scope="col">Order</th><th scope="col">Phase</th><th scope="col">Activities</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Setup</td><td>VPC, IAM, security baseline, CI/CD for Terraform, Bedrock model access</td></tr>
+          <tr><td>2</td><td>PoC</td><td>Deploy networking + storage clusters; smoke test connectivity</td></tr>
+          <tr><td>3</td><td>Infrastructure Deployment</td><td>RDS, Fargate, ALB; cross-cluster security groups</td></tr>
+          <tr><td>4</td><td>Data Migration</td><td>Cloud SQL &rarr; RDS replication via Database Migration Service (DMS); GCS &rarr; S3 sync</td></tr>
+          <tr><td>5</td><td>Cutover</td><td>Weekly maintenance window; DNS/traffic switch</td></tr>
+          <tr><td>6</td><td>Validation</td><td>Cost validation; GCP teardown planning</td></tr>
+        </tbody>
+      </table>
+
+      <h3>AI migration (parallel track)</h3>
+      <table>
+        <caption>Parallel AI migration schedule.</caption>
+        <thead><tr><th scope="col">Order</th><th scope="col">Phase</th><th scope="col">Activities</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Bedrock setup</td><td>Enable model access, IAM role, provider adapter with feature flag</td></tr>
+          <tr><td>2</td><td>Staging validation</td><td>A/B comparison, prompt tuning, image quality review</td></tr>
+          <tr><td>3</td><td>Production rollout</td><td>10% &rarr; 50% &rarr; 100% traffic; monitor cost and latency</td></tr>
+        </tbody>
+      </table>
+
+      <p><strong>Duration drivers:</strong> database replication and cutover (binding), cross-cluster security groups, parallel AI evaluation per model. Stage order and go/no-go gates carry the schedule; the plugin quotes no week or hour estimates (uncalibrated).</p>
+      <p><strong>Cutover strategy:</strong> maintenance-window-weekly &nbsp;|&nbsp;
+         <strong>Rollback:</strong> revert DNS to GCP Cloud Run; keep RDS read replica 48h</p>
+    </section>
+
+    <!-- RISKS -->
+    <section id="exec-risks">
+      <h2>Top Risks</h2>
+      <table>
+        <caption>Highest-severity migration risks and mitigations.</caption>
+        <thead><tr><th scope="col">Risk</th><th scope="col">Severity</th><th scope="col">Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>BigQuery AWS target not yet selected</td><td>Medium</td><td>Engage AWS account team to define the analytics migration path; does not block phased migration of compute, database, and AI</td></tr>
+          <tr><td>Database replication lag at cutover</td><td>Medium</td><td>DMS with lag monitoring; maintenance window cutover</td></tr>
+          <tr><td>Public S3 bucket security</td><td>Medium</td><td>Add CloudFront with Origin Access Identity (OAI); restrict direct S3 public access post-migration</td></tr>
+          <tr><td>Subjective image quality (Imagen &rarr; Nova Canvas)</td><td>Medium</td><td>Human eval before cutover; feature-flag rollback</td></tr>
+          <tr><td>Claude cost vs Nova Lite if quality bar lower</td><td>Medium</td><td>A/B test; model downsizing saves ~$506/mo if Nova Lite sufficient</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- WHAT THIS ASSESSMENT RESTS ON -->
+    <section id="exec-assumptions">
+      <h2>What This Assessment Rests On</h2>
+      <p><strong>Assumptions applied by default</strong> — settings you never confirmed; each one shifts the numbers as described:</p>
+      <table>
+        <caption>Settings resolved by documented default rather than your answer or your Terraform.</caption>
+        <thead>
+          <tr><th scope="col">Setting</th><th scope="col">Assumed value</th><th scope="col">What it decides</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Database availability</td><td>Multi-AZ</td><td>Automatic failover; roughly 2x single-AZ database cost — confirm or compare a single-AZ scenario</td></tr>
+          <tr><td>AI priority</td><td>Balanced</td><td>Sonnet-class default model for the Bedrock mapping</td></tr>
+          <tr><td>Cloud Run traffic</td><td>Constant 24/7</td><td>Conservative (higher) AWS compute estimate</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Confidence:</strong> Medium — some material inputs assumed. Measured: GCP billing baseline ($165/mo infra), Cloud SQL disk size (10 GB). Assumed: database availability, Cloud Run traffic pattern. Unknown: none.</p>
+      <p><strong>Pricing provenance:</strong> Estimates based on cached AWS pricing (2026-03-07), accuracy ±5–10%. Cross-checked against the AWS Pricing Calculator for the Balanced scenario.</p>
+    </section>
+
+    <!-- ASSUMPTIONS (kept in executive flow by design; see note in spec) -->
+    <section id="appendix-assumptions">
+      <h2>Assumptions, Exclusions &amp; Validation</h2>
+
+      <h3>Pricing confidence</h3>
+      <table>
+        <caption>Pricing source and confidence band by cost domain.</caption>
+        <thead><tr><th scope="col">Domain</th><th scope="col">Source</th><th scope="col">Confidence</th><th scope="col">Last updated</th></tr></thead>
+        <tbody>
+          <tr><td>Infrastructure</td><td>Cached AWS pricing</td><td>&plusmn;5–10%</td><td>2026-05-20 (22 days old, not stale)</td></tr>
+          <tr><td>Security baseline</td><td>Cached per-unit rates</td><td>&plusmn;25%</td><td>us-east-1 reference, 2026-05-04</td></tr>
+          <tr><td>Observability</td><td>Heuristic volume</td><td>&plusmn;30%</td><td>Based on dev-tier assumptions</td></tr>
+          <tr><td>AI / Bedrock</td><td>Cached model rates</td><td>&plusmn;15–25%</td><td>Token volume from preferences (medium)</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Exclusions</h3>
+      <ul class="compact">
+        <li><strong>BigQuery analytics</strong> — AWS target path not yet selected by specialist; costs excluded from the estimated AWS monthly run rate (does not block other services)</li>
+        <li><strong>GCP egress during migration</strong> — billing export not available (<code>billing_data_available: false</code>)</li>
+        <li><strong>Professional services / labor</strong> — neither estimated nor priced (no calibrated effort data)</li>
+        <li><strong>Dual-run period</strong> — temporary cost of running GCP + AWS concurrently not modeled</li>
+        <li><strong>Dev-tier sizing</strong> — db.t4g.micro, single-AZ, on-demand Fargate unless upgraded</li>
+      </ul>
+
+      <h3>Terraform validation</h3>
+      <div class="callout callout-ok">
+        <strong>validation-report.json:</strong> Status <code>passed</code> — fmt, init, and validate all passed.
+        Provider: <code>hashicorp/aws v5.100.0</code>. Generated stack aligns with Balanced cost tier.
+      </div>
+
+      <h3>Design warnings</h3>
+      <ul class="compact">
+        <li>Architecture validation unavailable (AWS MCP Server not invoked — non-critical)</li>
+        <li>Public S3 access for beach images should use CloudFront in production</li>
+      </ul>
+    </section>
+
+    <!-- APPENDIX -->
+    <div class="appendix-header">
+      <h2>Appendix: Detailed Migration Analysis</h2>
+      <p>Expanded sections sourced from migration JSON artifacts and generated Terraform</p>
+    </div>
+
+    <section id="appendix-services">
+      <h2>Appendix A — Service Recommendations</h2>
+
+      <div class="cluster-block">
+        <h4>Cluster: networking_vpc_us-west1_001</h4>
+        <p><em>4 firewall rules &rarr; Security Group rules</em> — all <span class="badge-conf badge-std">Standard pairing</span></p>
+        <ul class="compact">
+          <li><code>default-allow-icmp</code>, <code>default-allow-internal</code>, <code>default-allow-rdp</code>, <code>default-allow-ssh</code></li>
+        </ul>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: storage_gcs_us-west1_001</h4>
+        <p><strong>GCS</strong> <code>sf-beach-app-beach-images</code> &rarr; <strong>S3</strong> <span class="badge-conf badge-std">Standard pairing</span></p>
+        <p>Public IAM (allUsers objectViewer) &rarr; S3 bucket policy. <span class="badge-conf badge-tail">Tailored to your setup</span></p>
+        <details class="why">
+          <summary>Why this mapping?</summary>
+          <ul>
+            <li>Eliminators: pass</li>
+            <li>Operational model: S3 bucket policy</li>
+            <li>User preference: single-AZ dev</li>
+            <li>Feature parity: public read</li>
+            <li>Cluster context: beach_images</li>
+            <li>Simplicity: bucket policy</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: storage_gcs_us_001</h4>
+        <p><strong>GCS</strong> <code>sf-beach-app_cloudbuild</code> &rarr; <strong>S3</strong> (build artifacts) <span class="badge-conf badge-std">Standard pairing</span></p>
+        <p>Recommend CodeBuild/CodePipeline for CI replacement.</p>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: database_sql_us-west1_001</h4>
+        <p><strong>Cloud SQL</strong> <code>sf-beach-db</code> (PostgreSQL 15, db-f1-micro, ZONAL) &rarr; <strong>RDS</strong> db.t4g.micro single-AZ <span class="badge-conf badge-tail">Tailored to your setup</span></p>
+        <p><strong>Cloud SQL client IAM</strong> &rarr; RDS IAM auth policy on ECS task role</p>
+        <details class="why">
+          <summary>Why this mapping?</summary>
+          <ul>
+            <li>Eliminators: pass</li>
+            <li>Operational model: managed RDS</li>
+            <li>User preference: availability = single-AZ</li>
+            <li>Feature parity: PostgreSQL 15</li>
+            <li>Cluster context: app database</li>
+            <li>Simplicity: db.t4g.micro dev tier</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: compute_cloudrun_us-west1_001</h4>
+        <p><strong>Cloud Run</strong> <code>sf-beach-ratings</code> (1 vCPU, 512Mi, max 10) &rarr; <strong>Fargate</strong> + ALB <span class="badge-conf badge-std">Standard pairing</span></p>
+        <p><strong>Service account</strong> vertex-ai-sa &rarr; IAM role (ECS task) &middot; <strong>Vertex AI user</strong> &rarr; Bedrock invoke policy &middot; <strong>Storage viewer</strong> &rarr; S3 read policy</p>
+        <p>Public invoker (allUsers) &rarr; internet-facing ALB.</p>
+        <details class="why">
+          <summary>Why this mapping?</summary>
+          <ul>
+            <li>Eliminators: pass</li>
+            <li>Operational model: ALB ingress</li>
+            <li>User preference: public web app</li>
+            <li>Feature parity: HTTP access</li>
+            <li>Simplicity: ALB + target group</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="cluster-block">
+        <h4>Cluster: analytics_bigquery_us_001 — <span class="badge-conf badge-defer">Deferred</span></h4>
+        <p><strong>BigQuery</strong> <code>sf_beach_analytics</code> / <code>beach_ratings_history</code> &rarr; specialist evaluates best AWS analytics path (no automated plugin mapping).</p>
+        <p>Contact AWS account team or data analytics migration partner to assess query patterns, data movement, and BI integration. Phased migration of other clusters can proceed in parallel.</p>
+      </div>
+    </section>
+
+    <section id="appendix-costs">
+      <h2>Appendix B — Cost Estimates</h2>
+
+      <h3>Per-service breakdown (AWS Balanced tier)</h3>
+      <table>
+        <caption>Estimated monthly AWS cost by service (Balanced tier), with calculation notes.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Category</th>
+            <th scope="col">AWS Service</th>
+            <th scope="col">Est. Monthly</th>
+            <th scope="col">Calculation / notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Compute</td>
+            <td>Fargate</td>
+            <td>$22</td>
+            <td class="mono">1 vCPU &times; $0.04048 &times; 511 hrs + 0.5 GB &times; $0.004445 &times; 511 hrs</td>
+          </tr>
+          <tr>
+            <td>Database</td>
+            <td>RDS PostgreSQL</td>
+            <td>$14</td>
+            <td class="mono">db.t4g.micro &times; 730 hrs + 10 GB storage</td>
+          </tr>
+          <tr>
+            <td>Storage</td>
+            <td>S3 Standard</td>
+            <td>$3</td>
+            <td>Beach images + build artifacts</td>
+          </tr>
+          <tr>
+            <td>Networking</td>
+            <td>ALB + NAT Gateway</td>
+            <td>$55</td>
+            <td>ALB $22 + NAT $33 for VPC-attached Fargate/RDS</td>
+          </tr>
+          <tr>
+            <td>Security</td>
+            <td>AWS Security Baseline (Tier 1)</td>
+            <td>$15</td>
+            <td>GuardDuty $13 &middot; CloudTrail S3 $1.50 &middot; free controls $0.50 &middot; Budgets $0</td>
+          </tr>
+          <tr>
+            <td>Observability</td>
+            <td>CloudWatch + X-Ray</td>
+            <td>$4</td>
+            <td>Logs $1 &middot; storage $0.06 &middot; metrics $3 &middot; alarms $0 &middot; tracing $0 (above 5 GB / 10 metric / 10 alarm free tier)</td>
+          </tr>
+          <tr>
+            <td>Supporting</td>
+            <td>Secrets Manager + ECR</td>
+            <td>$1.40</td>
+            <td>$0.40 secrets + $1.00 ECR</td>
+          </tr>
+          <tr>
+            <td><strong>Infra subtotal</strong></td>
+            <td>&mdash;</td>
+            <td><strong>$112</strong></td>
+            <td>Range $91–$146 (low/mid/high)</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Tier totals (Premium / Balanced / Optimized) and annual differences are in the
+         <a href="#exec-costs">Infrastructure Cost Comparison</a> above.
+         Commitment discounts are in <a href="#appendix-optimization">Savings Plans and Reserved Instances</a>.</p>
+
+      <h3>Non-cost benefits (from ROI analysis)</h3>
+      <ul class="compact">
+        <li>Reduced operational overhead from managed Fargate and RDS</li>
+        <li>AWS-managed patching and scaling for database and containers</li>
+        <li>Unified AWS billing and IAM for infra + Bedrock</li>
+        <li>30+ Bedrock models without multi-vendor API keys; Guardrails and Knowledge Bases for future Retrieval-Augmented Generation (RAG)</li>
+        <li>Vendor diversification away from single-cloud GCP dependency</li>
+      </ul>
+    </section>
+
+    <section id="appendix-optimization">
+      <h2>Savings Plans and Reserved Instances</h2>
+      <p>Incremental to Balanced on-demand (Est. $112/mo). Do not add these savings
+         onto Optimized (Est. $82/mo) — that tier already embeds reservation and Spot assumptions.</p>
+      <table>
+        <caption>Estimated cost savings available post-migration, infra and AI combined.</caption>
+        <thead><tr><th scope="col">Optimization</th><th scope="col">Target</th><th scope="col">Est. savings</th><th scope="col">Commitment</th><th scope="col">Effort</th></tr></thead>
+        <tbody>
+          <tr><td>Compute Savings Plans</td><td>Fargate</td><td>20–40%</td><td>1-year no-upfront</td><td>Low (post-migration)</td></tr>
+          <tr><td>Database Savings Plans</td><td>RDS</td><td>~20%</td><td>1-year no-upfront</td><td>Low</td></tr>
+          <tr><td>S3 Infrequent Access</td><td>S3 build artifacts</td><td>$1/mo (38%)</td><td>None</td><td>Low</td></tr>
+          <tr><td>Fargate Spot</td><td>Fargate dev/staging</td><td>$8/mo (70%)</td><td>None</td><td>Medium</td></tr>
+          <tr><td>Model downsizing (AI)</td><td>Bedrock text</td><td>$506/mo</td><td>None</td><td>Low (after A/B test)</td></tr>
+          <tr><td>Prompt caching (Claude)</td><td>Bedrock</td><td>Workload-dependent; measure cache hits and writes</td><td>None</td><td>Low</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-steps">
+      <h2>Appendix C — Migration Steps &amp; Rollback</h2>
+
+      <h3>Phase 1 — Prerequisites</h3>
+      <ul class="compact">
+        <li>AWS account with billing alerts; enable root MFA; restrict root to break-glass use</li>
+        <li>Apply for AWS Activate Founders ($5,000) — see <code>STARTUP_PROGRAMS.md</code></li>
+        <li>Run <code>scripts/01-validate-prerequisites.sh --execute</code></li>
+      </ul>
+
+      <h3>Phase 2 — Infrastructure (Terraform)</h3>
+      <pre class="diagram" style="white-space: pre-wrap; font-size: 0.85rem;">cd terraform
+terraform init -backend=false
+terraform apply -target=aws_s3_bucket.tfstate -target=aws_dynamodb_table.tfstate_lock
+terraform init
+terraform plan
+terraform apply</pre>
+      <p>Deploys Balanced-tier stack including <code>baseline.tf</code> security controls.</p>
+
+      <h3>Phase 3 — Data migration</h3>
+      <ul class="compact">
+        <li><code>./scripts/02-migrate-data.sh --execute</code> — GCS &rarr; S3, DMS for PostgreSQL</li>
+        <li><code>./scripts/03-migrate-containers.sh --execute</code> — GCR &rarr; ECR</li>
+      </ul>
+
+      <h3>Phase 4 — Cutover &amp; validation</h3>
+      <ul class="compact">
+        <li>Weekly maintenance window cutover per <code>generation-infra.json</code></li>
+        <li><code>./scripts/05-validate-migration.sh --execute</code></li>
+        <li>Keep GCP hot standby 48 hours</li>
+      </ul>
+
+      <h3>Rollback procedure</h3>
+      <table>
+        <caption>Rollback triggers and recovery time objectives (RTO) by track.</caption>
+        <thead><tr><th scope="col">Track</th><th scope="col">Trigger</th><th scope="col">Action</th><th scope="col">RTO</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Infrastructure</td>
+            <td>Cutover failure, data integrity issue</td>
+            <td>Revert DNS to GCP Cloud Run; RDS read replica retained 48h</td>
+            <td>Maintenance window</td>
+          </tr>
+          <tr>
+            <td>AI</td>
+            <td>Error rate &gt;1% for 5 min; P95 &gt;2&times; baseline; quality &lt;90%</td>
+            <td>Set <code>AI_PROVIDER=vertex_ai</code> (feature flag)</td>
+            <td>Instant</td>
+          </tr>
+          <tr>
+            <td>AI (critical)</td>
+            <td>Error rate &gt;5% for 2 min</td>
+            <td>Auto-rollback to Vertex AI</td>
+            <td>&lt;2 min</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-ai">
+      <h2>Appendix D — AI Migration</h2>
+
+      <h3>Model mappings</h3>
+      <table>
+        <caption>GCP AI models mapped to Amazon Bedrock targets.</caption>
+        <thead><tr><th scope="col">GCP model</th><th scope="col">Bedrock target</th><th scope="col">Workload</th><th scope="col">Complexity</th></tr></thead>
+        <tbody>
+          <tr><td>gemini-2.5-flash</td><td>anthropic.claude-sonnet-5</td><td>Text generation, structured output</td><td>Medium</td></tr>
+          <tr><td>imagen-3.0-generate-001</td><td>amazon.nova-canvas-v1:0</td><td>Image generation (~500/mo)</td><td>Medium</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Model cost comparison</h3>
+      <table>
+        <caption>Bedrock model options vs current GCP AI spend ($1,250/mo).</caption>
+        <thead><tr><th scope="col">Bedrock model</th><th scope="col">Monthly est.</th><th scope="col">vs GCP ($1,250/mo)</th><th scope="col">Quality</th><th scope="col">Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Claude Sonnet 5 (recommended)</strong></td><td>$520</td><td class="savings">-58%</td><td>High</td><td>Quality priority (Q16); selected target</td></tr>
+          <tr><td>Claude Haiku 4.5</td><td>$260</td><td class="savings">-79%</td><td>Medium-High</td><td>Balance of cost and quality</td></tr>
+          <tr><td>Nova Lite v1</td><td>$14</td><td class="savings">-99%</td><td>Medium</td><td>Backup if A/B test passes quality bar</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Recommended model token breakdown (Claude Sonnet 5)</h3>
+      <table>
+        <caption>Monthly token volume and cost for the recommended model.</caption>
+        <thead><tr><th scope="col">Component</th><th scope="col">Volume</th><th scope="col">Cost</th></tr></thead>
+        <tbody>
+          <tr><td>Input tokens</td><td>60,000,000 / month</td><td>$120</td></tr>
+          <tr><td>Output tokens</td><td>40,000,000 / month</td><td>$400</td></tr>
+          <tr><td>Images (Nova Canvas)</td><td>500 / month</td><td>$20</td></tr>
+          <tr><td><strong>Total (design target)</strong></td><td>&mdash;</td><td><strong>$540 projected</strong></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Code changes</h3>
+      <table>
+        <caption>Application code changes for the Bedrock migration.</caption>
+        <thead><tr><th scope="col">Action</th><th scope="col">Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Files to modify</td><td><code>lib/gemini.ts</code>, <code>lib/imagen.ts</code>, <code>app/api/search/route.ts</code></td></tr>
+          <tr><td>Remove dependency</td><td><code>@google/genai</code></td></tr>
+          <tr><td>Add dependency</td><td><code>@aws-sdk/client-bedrock-runtime</code></td></tr>
+          <tr><td>Migration pattern</td><td>Direct SDK &rarr; Converse API; feature flag <code>AI_PROVIDER</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Production readiness checklist</h3>
+      <ul class="compact">
+        <li>Bedrock model access enabled for Claude Sonnet 5 and Nova Canvas in us-west-2</li>
+        <li>IAM role with <code>bedrock:InvokeModel</code> on ECS task role</li>
+        <li>Provider adapter deployed with <code>AI_PROVIDER</code> feature flag</li>
+        <li>A/B test with &ge;100 representative prompts; image quality human evaluation</li>
+        <li>Monitoring: request volume, P50/P95 latency, token usage, daily cost</li>
+        <li>Rollback procedure tested</li>
+      </ul>
+
+      <h3>Success criteria</h3>
+      <ul class="compact">
+        <li>Response quality &ge; 90% of Gemini baseline</li>
+        <li>P95 latency within 2&times; of Gemini baseline</li>
+        <li>Monthly cost within 20% of <code>estimation-ai.json</code> projection</li>
+      </ul>
+    </section>
+
+    <section id="appendix-config">
+      <h2>Your Configuration Choices</h2>
+      <p>Questions and assumptions from the Clarify phase that shaped this migration plan.</p>
+      <table>
+        <caption>Configuration choices with design consequences (from preferences.json).</caption>
+        <thead>
+          <tr>
+            <th scope="col">Question / assumption</th>
+            <th scope="col">Your choice</th>
+            <th scope="col">Source</th>
+            <th scope="col">Design consequence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Do you have any compliance or regulatory requirements?</td>
+            <td>None</td>
+            <td>User answer</td>
+            <td>Tier 1 security baseline only; no Config/Security Hub add-on</td>
+          </tr>
+          <tr>
+            <td>Approximately how much are you spending on GCP per month in total?</td>
+            <td>&lt; $1K</td>
+            <td>User answer</td>
+            <td>Dev-tier sizing baseline for cost comparison</td>
+          </tr>
+          <tr>
+            <td>When can you accept downtime for cutover?</td>
+            <td>Weekly maintenance window</td>
+            <td>User answer</td>
+            <td>Phased cutover in week 3 during declared maintenance window</td>
+          </tr>
+          <tr>
+            <td>How does traffic to your Cloud Run services vary?</td>
+            <td>Active most of the day</td>
+            <td>User answer</td>
+            <td>Fargate hours estimate (~511 hrs/mo) in Balanced tier</td>
+          </tr>
+          <tr>
+            <td>What matters most for your AI workloads?</td>
+            <td>Quality</td>
+            <td>User answer</td>
+            <td>Claude Sonnet 5 recommended over lower-cost models</td>
+          </tr>
+          <tr>
+            <td>Detected: Cloud SQL ZONAL &rarr; single-AZ availability</td>
+            <td>Single-AZ</td>
+            <td>Extracted</td>
+            <td>RDS db.t4g.micro single-AZ (not Multi-AZ)</td>
+          </tr>
+          <tr>
+            <td>Detected: GCP region us-west1</td>
+            <td>us-west-2</td>
+            <td>Extracted</td>
+            <td>All resources deploy in us-west-2; Bedrock availability verified</td>
+          </tr>
+          <tr>
+            <td>Are you eligible for AWS startup programs?</td>
+            <td>Eligible Founders (not yet applied)</td>
+            <td>User answer</td>
+            <td>Up to $5K AWS Activate credits callout in report</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-security">
+      <h2>Appendix E — AWS Security Posture (Tier 1 Baseline)</h2>
+      <p>
+        The generated <code>terraform/baseline.tf</code> implements an account-wide security baseline.
+        Costs below from <code>estimation-infra.json</code> &rarr; <code>projected_costs.breakdown.security_baseline</code>
+        (Balanced mid estimate: <strong>$15/mo</strong>, range $3–$30, accuracy &plusmn;25%).
+      </p>
+
+      <table>
+        <caption>Account-wide security controls, monthly cost, and GCP equivalents.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Control</th>
+            <th scope="col">Terraform resource</th>
+            <th scope="col">Monthly cost (mid)</th>
+            <th scope="col">GCP equivalent</th>
+            <th scope="col">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>IAM password policy</td>
+            <td class="mono">aws_iam_account_password_policy.baseline</td>
+            <td>$0</td>
+            <td>Org policy (partial)</td>
+            <td>14-char min, rotation, complexity</td>
+          </tr>
+          <tr>
+            <td>S3 account public access block</td>
+            <td class="mono">aws_s3_account_public_access_block.baseline</td>
+            <td>$0</td>
+            <td>Org constraint</td>
+            <td>Blocks accidental public buckets account-wide</td>
+          </tr>
+          <tr>
+            <td>EBS encryption by default</td>
+            <td class="mono">aws_ebs_encryption_by_default.baseline</td>
+            <td>$0</td>
+            <td>GCE disk encryption</td>
+            <td>Defense-in-depth for any future EBS volumes</td>
+          </tr>
+          <tr>
+            <td>IAM Access Analyzer</td>
+            <td class="mono">aws_accessanalyzer_analyzer.baseline</td>
+            <td>$0</td>
+            <td>Policy Intelligence (partial)</td>
+            <td>External access detection on account resources</td>
+          </tr>
+          <tr>
+            <td>IMDSv2 required</td>
+            <td class="mono">aws_ec2_instance_metadata_defaults.baseline</td>
+            <td>$0</td>
+            <td>Metadata server controls</td>
+            <td>Defense-in-depth if EC2 is added later</td>
+          </tr>
+          <tr>
+            <td>CloudTrail + S3 log bucket</td>
+            <td class="mono">aws_cloudtrail.baseline</td>
+            <td>$1.50</td>
+            <td>Cloud Audit Logs</td>
+            <td>Multi-region trail; first trail free; S3 storage cost</td>
+          </tr>
+          <tr>
+            <td><strong>GuardDuty</strong></td>
+            <td class="mono">aws_guardduty_detector.baseline</td>
+            <td><strong>$13</strong></td>
+            <td>Security Command Center (SCC, partial)</td>
+            <td>30-day free trial; scales with VPC/API volume; dominant baseline cost</td>
+          </tr>
+          <tr>
+            <td>AWS Budgets</td>
+            <td class="mono">aws_budgets_budget.monthly_spend</td>
+            <td>$0</td>
+            <td>Billing budgets</td>
+            <td>Alerts at 50%, 80%, 100% of $142/mo limit</td>
+          </tr>
+          <tr>
+            <td>Free controls subtotal</td>
+            <td>&mdash;</td>
+            <td>$0.50</td>
+            <td>&mdash;</td>
+            <td>Misc. negligible charges</td>
+          </tr>
+          <tr>
+            <td><strong>Security baseline total</strong></td>
+            <td><code>baseline.tf</code></td>
+            <td><strong>$15</strong></td>
+            <td>&mdash;</td>
+            <td>Low $3 / Mid $15 / High $30</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Application-layer security (security.tf)</h3>
+      <table>
+        <caption>Application-scoped IAM roles and policies.</caption>
+        <thead><tr><th scope="col">Resource</th><th scope="col">Purpose</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">aws_iam_role.ecs_execution</td><td>ECS task execution role (image pull, logs)</td></tr>
+          <tr><td class="mono">aws_iam_role.ecs_task</td><td>Application runtime role</td></tr>
+          <tr><td class="mono">aws_iam_role_policy.ecs_task_bedrock</td><td>Scoped Bedrock invoke permissions</td></tr>
+          <tr><td class="mono">aws_iam_role_policy.ecs_task_s3</td><td>Read-only access to beach images bucket</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-security-gap">
+      <h2>Appendix F — GCP &rarr; AWS Security Gap Analysis</h2>
+      <table>
+        <caption>Security capability comparison: GCP detected vs AWS generated, with actions.</caption>
+        <thead><tr><th scope="col">Capability</th><th scope="col">GCP (detected)</th><th scope="col">AWS (generated)</th><th scope="col">Gap / action</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Network perimeter</td>
+            <td>4 default VPC firewall rules</td>
+            <td>VPC security groups</td>
+            <td>Mapped 1:1; review default-allow-ssh/rdp — restrict in production</td>
+          </tr>
+          <tr>
+            <td>Identity &amp; access</td>
+            <td>Service accounts + project IAM</td>
+            <td>IAM roles + scoped policies on ECS task</td>
+            <td>Least-privilege Bedrock and S3 policies generated</td>
+          </tr>
+          <tr>
+            <td>Audit logging</td>
+            <td>Cloud Audit Logs (platform default)</td>
+            <td>CloudTrail multi-region + S3</td>
+            <td><strong>Net-new explicit trail</strong> in baseline.tf</td>
+          </tr>
+          <tr>
+            <td>Threat detection</td>
+            <td>Security Command Center (optional/paid)</td>
+            <td>GuardDuty enabled</td>
+            <td><strong>Net-new</strong> — $13/mo mid estimate after trial</td>
+          </tr>
+          <tr>
+            <td>Public data exposure</td>
+            <td>GCS allUsers objectViewer on beach images</td>
+            <td>S3 public read bucket policy</td>
+            <td><span class="increase">Risk:</span> migrate to CloudFront + OAI post-cutover</td>
+          </tr>
+          <tr>
+            <td>Secrets management</td>
+            <td>Not detected in Terraform</td>
+            <td>Secrets Manager ($0.40/mo est.)</td>
+            <td>Add secrets migration script if app uses Secret Manager</td>
+          </tr>
+          <tr>
+            <td>Observability</td>
+            <td>Cloud Operations (50 GB logs free)</td>
+            <td>CloudWatch (~$4/mo mid)</td>
+            <td><span class="increase">Cost shift:</span> GCP logging free tier is larger (50 GB vs CloudWatch 5 GB always-free); estimate assumes usage above free-tier limits (especially custom metrics)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-artifacts">
+      <h2>Appendix G — Generated Artifacts Catalog</h2>
+      <table>
+        <caption>Artifacts produced by the migration assessment.</caption>
+        <thead><tr><th scope="col">Artifact</th><th scope="col">Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>aws-design.json</code></td><td>17 resource mappings across 6 clusters</td></tr>
+          <tr><td><code>aws-design-ai.json</code></td><td>Bedrock model selection and capability mapping</td></tr>
+          <tr><td><code>estimation-infra.json</code></td><td>Infrastructure cost tiers, security baseline, optimizations</td></tr>
+          <tr><td><code>estimation-ai.json</code></td><td>AI model comparison and token cost breakdown</td></tr>
+          <tr><td><code>generation-infra.json</code></td><td>10-week phased plan, risks, cutover/rollback</td></tr>
+          <tr><td><code>generation-ai.json</code></td><td>3-week AI plan, code changes, monitoring, checklist</td></tr>
+          <tr><td><code>preferences.json</code></td><td>Clarify phase answers and design constraints</td></tr>
+          <tr><td><code>validation-report.json</code></td><td>Terraform fmt/init/validate results</td></tr>
+          <tr><td><code>terraform/</code></td><td>baseline.tf, vpc.tf, compute.tf, database.tf, storage.tf, security.tf, monitoring.tf</td></tr>
+          <tr><td><code>scripts/</code></td><td>01 validate &middot; 02 data &middot; 03 containers &middot; 05 validate migration</td></tr>
+          <tr><td><code>ai-migration/</code></td><td>provider_adapter.js, setup_bedrock.sh, test_comparison.py, bedrock_monitoring.tf</td></tr>
+          <tr><td><code>MIGRATION_GUIDE.md</code></td><td>Step-by-step runbook</td></tr>
+          <tr><td><code>STARTUP_PROGRAMS.md</code></td><td>AWS Activate credits guidance</td></tr>
+          <tr><td><code>migration-report.html</code></td><td>This comprehensive report</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-glossary">
+      <h2>Appendix H — Glossary</h2>
+      <table class="glossary-table">
+        <caption>Terms used in this report.</caption>
+        <thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Monthly run rate</td><td>Estimated recurring cloud-service charges; excludes staffing, support, migration labor, and other ownership costs</td></tr>
+          <tr><td>DMS</td><td>AWS Database Migration Service</td></tr>
+          <tr><td>OAI</td><td>CloudFront Origin Access Identity</td></tr>
+          <tr><td>RTO</td><td>Recovery Time Objective</td></tr>
+          <tr><td>CUD</td><td>Committed Use Discount (GCP)</td></tr>
+          <tr><td>SCC</td><td>Security Command Center (GCP)</td></tr>
+          <tr><td>IMDSv2</td><td>EC2 Instance Metadata Service version 2</td></tr>
+          <tr><td>P95</td><td>95th-percentile latency</td></tr>
+          <tr><td>RAG</td><td>Retrieval-Augmented Generation</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      Generated by GCP to AWS Migration Advisor — draft for review; verify figures against source JSON artifacts before executive sign-off.<br />
+      Reference fixture from SF Beach migration artifacts 0611-0606. All figures sourced from estimation and design JSON artifacts.
+    </footer>
+  </div>
+</body>
+</html>

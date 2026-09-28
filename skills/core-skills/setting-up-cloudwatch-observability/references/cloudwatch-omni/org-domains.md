@@ -61,27 +61,19 @@ account up front and match it against this table before calling anything:
 **Constraints:**
 
 - You MUST confirm the caller is in the management account before attempting
-
   trusted access or `create-domain-for-organization`. A delegated administrator can
   do everything else but neither of those.
-
 - You MUST NOT use `create-domain` or `delete-domain` on an org Domain. Those are
-
   the account-scoped operations and the service rejects the mismatch.
 
 ## What you get when setup completes
 
 - A **domain ID** shaped `d-` followed by up to 25 lowercase alphanumerics, a
-
   **domain ARN**, and a **domain endpoint URL** derived from the domain name.
-
 - The Domain also reports the **organization ID** and the **owner account ID**,
-
   which is the management account.
-
 - A **Space per member account per Region**.
 - One or more **domain access grants**, each with a grant ID (a UUID), naming the
-
   principals who administer the Domain.
 
 An org Domain ARN uses the resource type `organization-domain`, where an
@@ -93,62 +85,45 @@ Quotas and scope rules to state up front:
 - **One Domain per organization**, keyed on the management account.
 - **One Space per account per Region**, unchanged from the account-scoped path.
 - A domain access grant applies to the **whole Domain**. It conveys access to every
-
   Space in the Domain, present and future — it is not scoped to one Space or one
   account.
-
 - Domain access grants carry exactly one permission and it is always `ADMIN`.
-
   There is no read-only or scoped variant at the Domain level; narrower access is
   granted per Space.
 
 **Constraints:**
 
 - You MUST tell the customer the domain name becomes part of the endpoint URL
-
   before they choose it.
-
 - You MUST tell the customer that a Domain-level grant reaches every Space in the
-
   organization's Domain and is `ADMIN`-only. A customer who expects it to be
   limited to one account or one Space has misunderstood the blast radius.
 
 ## Prerequisites
 
 - **Trusted access for CloudWatch Observability Admin enabled in AWS
-
   Organizations.** Step 2 checks and enables it. Without it every org operation
   fails authorization, and the failure does not name the missing prerequisite
   clearly.
-
 - **A caller in the management account** for trusted access and Domain creation.
 - **An IAM role in the management account** to pass as `domainAccessRoleArn`. See
-
   Step 3.
-
 - **For an Identity Center Domain**, the instance ARN. The Domain must be created
-
   in the instance's primary Region; the service verifies this.
 
 **Region rules:**
 
 - An org Domain supports Spaces in Regions other than the Domain's own.
 - If the Domain uses **Identity Center**, a Space's Region must also be one the
-
   Identity Center instance is replicated to.
-
 - Not every Region is available for Spaces under a given org Domain. Confirm
-
   rather than assume, and read the rejection message when one comes back.
 
 **Constraints:**
 
 - You MUST resolve trusted access before doing anything else. Every other failure
-
   mode in this document is easier to diagnose once it is ruled out.
-
 - You MUST NOT promise a Space in a given Region under an Identity Center org
-
   Domain without confirming Identity Center is replicated there.
 
 ### Operations you will call
@@ -165,22 +140,22 @@ as the corresponding flag value (`--assume-role-policy-document`).
 | Check whether trusted access is enabled | `aws organizations list-aws-service-access-for-organization` |
 | Enable trusted access | `aws organizations enable-aws-service-access` |
 
-**`aws cloudwatch-omni` operations:**
+**`aws cloudwatchomni` operations:**
 
 | Intent | Command |
 |---|---|
-| Discover which Domains exist, and of which scope | `aws cloudwatch-omni list-domains` |
-| Create the Domain | `aws cloudwatch-omni create-domain-for-organization` |
-| Read the Domain back | `aws cloudwatch-omni get-domain-for-organization` |
-| Change the Domain's name or providers | `aws cloudwatch-omni update-domain-for-organization` |
-| Delete the Domain | `aws cloudwatch-omni delete-domain-for-organization` |
-| List every Space across the organization | `aws cloudwatch-omni list-spaces-for-organization` |
-| Vend credentials for a member account | `aws cloudwatch-omni get-space-credentials-for-organization` |
-| Create a Space | `aws cloudwatch-omni create-space` — requires BOTH `--data-access-role-arn` and `--agent-core-evaluation-role-arn`; see `references/cloudwatch-omni/spaces-and-domains.md` |
-| Grant a principal Domain administration | `aws cloudwatch-omni create-domain-access-grant-for-organization` |
-| List Domain grants | `aws cloudwatch-omni list-domain-access-grants-for-organization` |
-| Read one Domain grant | `aws cloudwatch-omni get-domain-access-grant-for-organization` |
-| Revoke one Domain grant | `aws cloudwatch-omni delete-domain-access-grant-for-organization` |
+| Discover which Domains exist, and of which scope | `aws cloudwatchomni list-domains` |
+| Create the Domain | `aws cloudwatchomni create-domain-for-organization` |
+| Read the Domain back | `aws cloudwatchomni get-domain-for-organization` |
+| Change the Domain's name or providers | `aws cloudwatchomni update-domain-for-organization` |
+| Delete the Domain | `aws cloudwatchomni delete-domain-for-organization` |
+| List every Space across the organization | `aws cloudwatchomni list-spaces-for-organization` |
+| Vend credentials for a member account | `aws cloudwatchomni get-space-credentials-for-organization` |
+| Create a Space | `aws cloudwatchomni create-space` — requires BOTH `--data-access-role-arn` and `--agent-core-evaluation-role-arn`; see `references/cloudwatch-omni/spaces-and-domains.md` |
+| Grant a principal Domain administration | `aws cloudwatchomni create-domain-access-grant-for-organization` |
+| List Domain grants | `aws cloudwatchomni list-domain-access-grants-for-organization` |
+| Read one Domain grant | `aws cloudwatchomni get-domain-access-grant-for-organization` |
+| Revoke one Domain grant | `aws cloudwatchomni delete-domain-access-grant-for-organization` |
 
 **`aws iam` operations:**
 
@@ -217,24 +192,16 @@ default silently.
 
 1. **Region for the Domain?**
 2. **Domain name?** It becomes part of the endpoint URL. Lowercase letters, digits,
-
    and single hyphens between them; 3–63 characters.
-
 3. **Authorization provider** — IAM, Identity Center, or both?
 4. **If Identity Center:** the instance ARN. Also ask which Regions Spaces will be
-
    needed in, so replication can be checked before promises are made.
-
 5. **Domain access role** — should the agent **create a new role** in the
-
    management account, or will the customer **supply an existing role ARN**?
    Recommend creating one.
-
 6. **Which member accounts need Spaces, and in which Regions?** Also ask whether
-
    those accounts will create their own Spaces, or whether the management account
    should create them on their behalf.
-
 7. **Who administers the Domain?** The principals to grant `ADMIN` to in Step 6.
 
 Confirm the choices back in one line, then execute.
@@ -253,17 +220,12 @@ reference for this operation is
 **Constraints:**
 
 - You SHOULD recommend creating the role rather than reusing one. Unlike the
-
   account-scoped path, the service actually attempts to assume this role at create
   time, so a role with the wrong trust policy fails the create outright.
-
 - You MUST ask which Regions Spaces are needed in when the Domain uses Identity
-
   Center. Discovering a Region is unavailable after the Domain exists means the
   Domain has to be recreated elsewhere or the Region abandoned.
-
 - You MUST tell the customer in this same message that a Domain-level grant reaches
-
   every Space in the Domain, so they choose the Step 6 principals accordingly.
 
 ## Step 2 — Enable trusted access
@@ -301,24 +263,17 @@ confirm the principal now appears.
 **Constraints:**
 
 - You MUST ask before enabling, and you MUST ask even when the customer has already
-
   told you to proceed. It is an organization-wide change affecting every account in
   the organization, their administrator may need to authorize it, and "go ahead" on
   the overall task is not consent for this specific change. Surface the command and
   wait.
-
 - You MUST use exactly `observabilityadmin.amazonaws.com`. Do NOT use
-
   `telemetry-pipelines.observabilityadmin.amazonaws.com` — that is a different
   principal for a different purpose and enabling it does not grant trusted access.
-
 - If the check cannot be completed — access denied, or an ambiguous response — you
-
   MUST treat the result as **inconclusive, not negative**. Report that and stop.
   You MUST NOT enable trusted access on that basis.
-
 - If the enable call is denied, you MUST report that the caller is not in the
-
   management account and stop. A delegated administrator can read the setting but
   cannot change it.
 
@@ -376,29 +331,18 @@ aws___call_aws → aws iam attach-role-policy --role-name <role-name> --policy-a
 **Constraints:**
 
 - The role MUST be in the management account. A role in any other account is
-
   rejected, and the message names the management account requirement.
-
 - The `aws:SourceArn` pattern MUST use the `organization-domain` resource type and
-
   MUST stay wildcarded across Region and domain ID. The domain ID does not exist
   yet when the role is created, so a narrower pattern cannot match.
-
 - You MUST NOT substitute a `*FullAccess` policy or hand-write a broad inline
-
   policy. The Domain's permissions are defined by the managed policy above.
-
 - You MUST NOT skip creating the role and hope `create-domain-for-organization`
-
   provisions one. The role ARN is a required input.
-
 - If the create-time assume check fails, you MUST report the trust policy as the
-
   cause and stop. Do NOT retry the Domain create — it will fail identically until
   the trust policy is fixed.
-
 - You MUST NOT attach the managed policy to a role the customer supplied without
-
   asking. They may be reusing it, and widening someone else's role is not yours
   to do.
 
@@ -412,40 +356,31 @@ entry carries its ARN. Use the ARN's resource type to tell them apart —
 is the check to run when the customer has no domain ID yet.
 
 ```
-aws___call_aws → aws cloudwatch-omni list-domains
+aws___call_aws → aws cloudwatchomni list-domains
 ```
 
 Read the result before creating anything:
 
 - **An `organization-domain` entry exists** — the org Domain is already set up.
-
   Report its name and ID from the summary and its endpoint URL from
   `get-domain-for-organization` (summaries do not carry it), confirm the customer wants to use it, and
   continue from Step 5 with its `domainId`.
-
 - **Only a `domain` entry exists** — an account-scoped Domain occupies the
-
   management account, and **it blocks the org Domain**. **Tell the customer it must be deleted before an org Domain can
   be created, and that deleting it is their decision.** Then stop. Do not create
   anything, and do not describe the situation merely as blocking.
-
 - **Nothing comes back** — proceed.
 
 **Constraints:**
 
 - You MUST run this check before `create-domain-for-organization`.
 - If an account-scoped Domain occupies the management account, you MUST say plainly
-
   that it has to be **deleted** before an org Domain can be created, and that
   deleting it is the customer's decision. Do NOT describe it vaguely as blocking.
-
 - You MUST distinguish the two ARN resource types rather than treating any returned
-
   Domain as the org Domain. Acting on an account-scoped Domain as though it were
   org-scoped produces confusing failures several steps later.
-
 - If the check cannot be completed — access denied, or an ambiguous response — you
-
   MUST treat the result as **inconclusive, not negative**. Report that and stop.
   You MUST NOT create a Domain on that basis.
 
@@ -454,7 +389,7 @@ Read the result before creating anything:
 For an **IAM-only** Domain:
 
 ```
-aws___call_aws → aws cloudwatch-omni create-domain-for-organization \
+aws___call_aws → aws cloudwatchomni create-domain-for-organization \
   --name <domain-name> --identity-providers IAM \
   --domain-access-role-arn arn:aws:iam::<management-account-id>:role/<role-name>
 ```
@@ -463,7 +398,7 @@ For an **Identity Center** Domain, `identityProviderConfiguration` becomes
 required and carries the instance ARN:
 
 ```
-aws___call_aws → aws cloudwatch-omni create-domain-for-organization \
+aws___call_aws → aws cloudwatchomni create-domain-for-organization \
   --name <domain-name> --identity-providers IAM IDC \
   --domain-access-role-arn arn:aws:iam::<management-account-id>:role/<role-name> \
   --identity-provider-configuration '{"identityCenterConfiguration": {"identityCenterInstanceArn": "<idc-instance-arn>"}}'
@@ -476,12 +411,9 @@ object `get-domain-for-organization` and `update-domain-for-organization` return
 **Constraints:**
 
 - You MUST create an Identity Center Domain in the instance's **primary** Region.
-
   The service verifies this; the rejection names the primary Region and the current
   Region, so read it rather than guessing.
-
 - You MUST capture `domainEndpointUrl` and give it to the customer. Every member
-
   account reaches Omni through it.
 
 ## Step 5 — Create the Spaces
@@ -507,9 +439,14 @@ The management account, or a registered delegated administrator, vends credentia
 for the target account and uses them to create the Space:
 
 ```
-aws___call_aws → aws cloudwatch-omni get-space-credentials-for-organization \
-  --context '{"domainId": "<domain-id>", "targetAccountId": "<target-account-id>"}'
+aws___call_aws → aws cloudwatchomni get-space-credentials-for-organization \
+  --context '{"domainId": "<domain-id>", "targetAccountId": "<target-account-id>"}' \
+  --credential-type SPACE_OPERATION
 ```
+
+`--credential-type` is **required**, and `SPACE_OPERATION` is its only value — always
+pass it, and do not treat it as a choice to put to the customer. Omitting it is rejected
+by the client before the request is sent.
 
 The response carries temporary credentials for the target account. Use them to call
 `create-space` against that account. Once a Space exists, credentials can be vended
@@ -519,23 +456,18 @@ for it directly by passing `spaceId` in the `context` instead of the
 Enumerate what exists across the organization at any point:
 
 ```
-aws___call_aws → aws cloudwatch-omni list-spaces-for-organization
+aws___call_aws → aws cloudwatchomni list-spaces-for-organization
 ```
 
 **Constraints:**
 
 - You MUST NOT tell a member account to call `create-domain` first. The org Domain
-
   already exists and a second Domain in the member account is neither needed nor
   permitted alongside it.
-
 - On Path B you MUST use the vended credentials for the `create-space` call itself.
-
   Calling `create-space` with the management account's own credentials creates a
   Space in the management account, not the target account.
-
 - Region availability is narrower than it looks. A Space may live in a Region other
-
   than the Domain's, but not every Region is available, and under an Identity
   Center Domain the Region must also be one Identity Center is replicated to.
 
@@ -550,7 +482,7 @@ Domain-level grant to one account or one Space — that is what per-Space grants
 for.
 
 ```
-aws___call_aws → aws cloudwatch-omni create-domain-access-grant-for-organization \
+aws___call_aws → aws cloudwatchomni create-domain-access-grant-for-organization \
   --domain-id <domain-id> \
   --name <grant-name> \
   --principal '{"principalType": "<principal-type>", "principalId": "<principal-id>"}' \
@@ -568,26 +500,19 @@ revoking later.
 Review the grants with:
 
 ```
-aws___call_aws → aws cloudwatch-omni list-domain-access-grants-for-organization --domain-id <domain-id>
+aws___call_aws → aws cloudwatchomni list-domain-access-grants-for-organization --domain-id <domain-id>
 ```
 
 **Constraints:**
 
 - `permission` is a single value and it must be `ADMIN`. The account-scoped
-
   permission values — `READ`, `READ_WRITE_DELETE`, `SPACE_ADMIN`, and `CUSTOM` — are
   not valid at the Domain level.
-
 - You MUST state the blast radius when confirming a grant: the principal will
-
   administer every Space in the organization's Domain.
-
 - For an Identity Center Domain you SHOULD prefer `IDC_GROUP` over `IDC_USER`.
-
   Group membership changes without touching grants.
-
 - You MUST NOT grant `IAM_ROOT` unless the customer explicitly asks. It is the
-
   broadest principal available and rarely what they mean.
 
 ## Verifying the setup
@@ -596,11 +521,11 @@ Read the Domain back rather than trusting the create response, and confirm the
 Spaces and grants landed:
 
 ```
-aws___call_aws → aws cloudwatch-omni get-domain-for-organization --domain-id <domain-id>
+aws___call_aws → aws cloudwatchomni get-domain-for-organization --domain-id <domain-id>
 
-aws___call_aws → aws cloudwatch-omni list-spaces-for-organization
+aws___call_aws → aws cloudwatchomni list-spaces-for-organization
 
-aws___call_aws → aws cloudwatch-omni list-domain-access-grants-for-organization --domain-id <domain-id>
+aws___call_aws → aws cloudwatchomni list-domain-access-grants-for-organization --domain-id <domain-id>
 ```
 
 Then report to the customer, in one line: the domain endpoint URL, the domain ID,
@@ -610,7 +535,6 @@ granted.
 **Constraints:**
 
 - You MUST confirm at least one `ADMIN` grant exists before declaring setup
-
   complete. A Domain nobody administers is not a working setup.
 
 ## Cleanup
@@ -618,15 +542,13 @@ granted.
 Order matters, and it spans accounts.
 
 1. **Every Space is deleted.** The Domain cannot be deleted while any Space is
-
    associated with it. Use `list-spaces-for-organization` to enumerate what
    remains. A Space is deleted by its owning account, or by the management account
    using credentials vended through `get-space-credentials-for-organization`.
-
 2. Delete the Domain, from its **home Region** — the Region it was created in:
 
    ```
-   aws___call_aws → aws cloudwatch-omni delete-domain-for-organization --domain-id <domain-id>
+   aws___call_aws → aws cloudwatchomni delete-domain-for-organization --domain-id <domain-id>
    ```
 
    Use `delete-domain-for-organization`, not `delete-domain` — the account-scoped
@@ -638,38 +560,26 @@ Order matters, and it spans accounts.
 
 3. The domain access role — branch on who created it:
    - **The agent created it in Step 3:** detach the managed policy with
-
      `detach-role-policy`, then `delete-role`. A role with policies attached cannot
      be deleted.
-
    - **The customer supplied it:** do NOT delete or modify it.
 
 4. Trusted access can be left enabled. If the customer wants it off, that is an
-
    organization-wide change made through CloudWatch's own telemetry configuration
    controls rather than by disabling the Organizations integration directly.
 
 **Constraints:**
 
 - You MUST delete every Space before the Domain, and you MUST say plainly which
-
   accounts are involved. Spaces in member accounts need either that account's
   credentials or credentials vended for it.
-
 - You MUST delete the Domain from its home Region. A delete from anywhere else is
-
   rejected and the message names the home Region.
-
 - You MUST use `delete-domain-for-organization`. `delete-domain` rejects an org
-
   Domain and tells you to use this operation instead.
-
 - Deleting Spaces is destructive. You MUST confirm with the customer first and say
-
   plainly that each Space's telemetry goes with it.
-
 - You SHOULD NOT disable trusted access as part of cleaning up a Domain. It is
-
   organization-wide and other CloudWatch features depend on it.
 
 ## Troubleshooting
@@ -684,6 +594,7 @@ error that is not listed.
 | Authorization error stating trusted access is disabled | CloudWatch Observability Admin trusted access is not enabled for the organization | Run Step 2 — check with `list-aws-service-access-for-organization` and enable `observabilityadmin.amazonaws.com`. Nothing else works until it is on |
 | `AccessDeniedException` on `enable-aws-service-access` | Caller is not in the management account | Only the management account can enable trusted access. A delegated administrator can read the setting but not change it |
 | Authorization error stating only the management account can create an organization domain | Caller is a member account or a delegated administrator | Domain creation must run from the management account. A delegated administrator can perform every other org operation |
+| `ParamValidationError` naming a missing required parameter on `get-space-credentials-for-organization` | `credentialType` was omitted — it is required, and the client rejects the call before sending it | Resend with `--credential-type SPACE_OPERATION` |
 | `ValidationException` that the management account ID could not be resolved | Caller is not in an organization, or trusted access is off | Confirm the account belongs to an organization and that trusted access is enabled |
 | `ValidationException` that `domainAccessRoleArn` must be a role in the management account | Role lives in a member account | Create the role in the management account. A member-account role cannot be used |
 | An error stating the data access role could not be assumed, naming the trust policy | The create-time assume check failed | Fix the role's trust policy so the CloudWatch service can assume it, and confirm the `aws:SourceArn` uses the `organization-domain` resource type. Do NOT retry unchanged — it fails identically |
@@ -704,75 +615,48 @@ and ask the customer how to proceed.
 ### Expectations that look like faults
 
 - **Every org operation fails authorization at once.** That is trusted access being
-
   off, not a permissions problem on the caller.
-
 - **A Domain-level grant cannot be made read-only, or scoped to one account.**
-
   `ADMIN` over the whole Domain is the only shape. Narrower access is granted per
   Space.
-
 - **A Space cannot be created in some Region.** Region availability under an org
-
   Domain is narrower than it appears, and under an Identity Center Domain the
   Region must also have Identity Center replicated. Nothing about the Domain or the
   Space request is wrong.
-
 - **Grants disappear when the Domain is deleted.** That is expected — the service
-
   removes them with the Domain.
 
 ## Security considerations
 
 - The domain access role is assumed for callers across the whole organization. It
-
   is the broadest role in this setup — keep both `aws:SourceAccount` and
   `aws:SourceArn` conditions on its trust policy, keep the `organization-domain`
   resource type pinned, and keep the role out of any workflow that does not need
   it.
-
 - Keep the domain access role in the management account and nowhere else. The
-
   service requires this, and it keeps organization-wide capability from sitting in
   a member account.
-
 - A Domain access grant reaches every Space in the Domain. Treat it as an
-
   organization-wide grant, not an account-level one, and keep the list short.
-
 - Prefer `IDC_GROUP` over `IDC_USER` for Domain administrators so that offboarding
-
   a person does not require finding and revoking their grant.
-
 - Avoid `IAM_ROOT` as a grant principal. Root has no session identity to attribute
-
   actions to.
-
 - Credentials from `get-space-credentials-for-organization` are temporary and act
-
   in another account. Do not persist or log them, and do not reuse them beyond the
   operation they were vended for.
-
 - Enumerate grants with `list-domain-access-grants-for-organization` periodically.
 - Delegated administrator is a standing organization-wide capability. Register only
-
   accounts the customer intends to keep in that role.
-
 - Trusted access is organization-wide and shared with other CloudWatch features.
-
   Enabling it is a deliberate decision for the organization administrator, not a
   side effect of setting up one Domain.
 
 ## Additional resources
 
 - `references/cloudwatch-omni/spaces-and-domains.md` — account-scoped Domains, and the Space steps
-
   used under an org Domain
-
 - `references/cloudwatch-omni/instrumentation/collector.md` — deploying a collector that exports to
-
   CloudWatch's OTLP endpoints, for telemetry not yet reaching CloudWatch
-
 - `references/cloudwatch-omni/data-forwarding-and-centralization.md` — forwarding telemetry that is
-
   already in CloudWatch log groups into the Dataset

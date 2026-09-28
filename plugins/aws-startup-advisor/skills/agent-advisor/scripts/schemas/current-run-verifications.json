@@ -1,0 +1,29 @@
+{
+  "title": "agent-advisor current-run verification evidence",
+  "description": "Run-materialized evidence written only after this run observes a public AWS documentation result. This is not reusable seed input.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact_type", "schema_version", "run_id", "verifications"],
+  "properties": {
+    "artifact_type": { "const": "agent-advisor.current-run-verifications" },
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "verifications": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {
+          "status": { "enum": ["verified", "not_verified", "failed"] },
+          "source": { "type": "string", "pattern": "^https://([A-Za-z0-9-]+\\.)*aws\\.amazon\\.com(/|$)" },
+          "value": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [{
+          "if": { "properties": { "status": { "const": "verified" } } },
+          "then": { "required": ["source", "value"] }
+        }]
+      }
+    }
+  }
+}

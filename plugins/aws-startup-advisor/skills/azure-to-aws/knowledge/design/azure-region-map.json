@@ -1,0 +1,91 @@
+{
+  "_what_this_is": "Azure region -> default AWS region. Consumed by design-refs/index.md's region handling and by Clarify's global.target_region default.",
+  "_selection_rule": "Nearest AWS region by geography, preferring the same country where one exists and the same regulatory bloc otherwise. This is a DEFAULT, not a determination.",
+  "_override": "global.target_region in preferences.json ALWAYS wins. A customer with a data-residency obligation, an existing AWS footprint, or a latency requirement has a reason this table cannot see.",
+  "_residency_warning": "Several Azure regions have no AWS region in the same country. Where _same_country is false, the move crosses a border, and that can breach a residency commitment the customer has made to their own customers. Emit a warning; never resolve it silently.",
+  "_provenance": "Authored from published region geographies. Region availability changes; verify the target region offers the services in the design before committing.",
+
+  "regions": {
+    "eastus": { "aws": "us-east-1", "same_country": true, "geo": "Virginia, US" },
+    "eastus2": { "aws": "us-east-2", "same_country": true, "geo": "Columbus, Ohio, US" },
+    "centralus": { "aws": "us-east-2", "same_country": true, "geo": "Iowa / Ohio, US" },
+    "northcentralus": { "aws": "us-east-2", "same_country": true, "geo": "Illinois / Ohio, US" },
+    "southcentralus": { "aws": "us-east-1", "same_country": true, "geo": "Texas, US" },
+    "westus": { "aws": "us-west-1", "same_country": true, "geo": "California, US" },
+    "westus2": { "aws": "us-west-2", "same_country": true, "geo": "Washington, US" },
+    "westus3": { "aws": "us-west-2", "same_country": true, "geo": "Arizona / Oregon, US" },
+    "canadacentral": { "aws": "ca-central-1", "same_country": true, "geo": "Toronto, Canada" },
+    "canadaeast": { "aws": "ca-central-1", "same_country": true, "geo": "Quebec, Canada" },
+    "brazilsouth": { "aws": "sa-east-1", "same_country": true, "geo": "Sao Paulo, Brazil" },
+    "northeurope": { "aws": "eu-west-1", "same_country": true, "geo": "Ireland" },
+    "westeurope": {
+      "aws": "eu-west-1",
+      "same_country": false,
+      "geo": "Netherlands -> Ireland",
+      "note": "No AWS region in the Netherlands. eu-central-1 (Frankfurt) is the alternative and is often the better latency choice for Dutch and German users."
+    },
+    "uksouth": { "aws": "eu-west-2", "same_country": true, "geo": "London, UK" },
+    "ukwest": { "aws": "eu-west-2", "same_country": true, "geo": "Cardiff -> London, UK" },
+    "francecentral": { "aws": "eu-west-3", "same_country": true, "geo": "Paris, France" },
+    "germanywestcentral": { "aws": "eu-central-1", "same_country": true, "geo": "Frankfurt, Germany" },
+    "switzerlandnorth": { "aws": "eu-central-2", "same_country": true, "geo": "Zurich, Switzerland" },
+    "norwayeast": {
+      "aws": "eu-north-1",
+      "same_country": false,
+      "geo": "Oslo -> Stockholm",
+      "note": "No AWS region in Norway."
+    },
+    "swedencentral": { "aws": "eu-north-1", "same_country": true, "geo": "Stockholm, Sweden" },
+    "polandcentral": {
+      "aws": "eu-central-1",
+      "same_country": false,
+      "geo": "Warsaw -> Frankfurt",
+      "note": "No AWS region in Poland."
+    },
+    "italynorth": { "aws": "eu-south-1", "same_country": true, "geo": "Milan, Italy" },
+    "spaincentral": { "aws": "eu-south-2", "same_country": true, "geo": "Madrid, Spain" },
+    "uaenorth": { "aws": "me-central-1", "same_country": true, "geo": "Dubai -> UAE" },
+    "qatarcentral": {
+      "aws": "me-central-1",
+      "same_country": false,
+      "geo": "Doha -> UAE",
+      "note": "No AWS region in Qatar."
+    },
+    "israelcentral": { "aws": "il-central-1", "same_country": true, "geo": "Tel Aviv, Israel" },
+    "southafricanorth": { "aws": "af-south-1", "same_country": true, "geo": "Johannesburg / Cape Town, South Africa" },
+    "centralindia": { "aws": "ap-south-1", "same_country": true, "geo": "Pune -> Mumbai, India" },
+    "southindia": { "aws": "ap-south-1", "same_country": true, "geo": "Chennai -> Mumbai, India" },
+    "westindia": { "aws": "ap-south-1", "same_country": true, "geo": "Mumbai, India" },
+    "southeastasia": { "aws": "ap-southeast-1", "same_country": true, "geo": "Singapore" },
+    "eastasia": { "aws": "ap-east-1", "same_country": true, "geo": "Hong Kong" },
+    "japaneast": { "aws": "ap-northeast-1", "same_country": true, "geo": "Tokyo, Japan" },
+    "japanwest": { "aws": "ap-northeast-3", "same_country": true, "geo": "Osaka, Japan" },
+    "koreacentral": { "aws": "ap-northeast-2", "same_country": true, "geo": "Seoul, South Korea" },
+    "australiaeast": { "aws": "ap-southeast-2", "same_country": true, "geo": "Sydney, Australia" },
+    "australiasoutheast": { "aws": "ap-southeast-2", "same_country": true, "geo": "Melbourne -> Sydney, Australia" },
+    "australiacentral": { "aws": "ap-southeast-2", "same_country": true, "geo": "Canberra -> Sydney, Australia" },
+    "indonesiacentral": { "aws": "ap-southeast-3", "same_country": true, "geo": "Jakarta, Indonesia" },
+    "newzealandnorth": {
+      "aws": "ap-southeast-6",
+      "same_country": true,
+      "geo": "Auckland, New Zealand",
+      "note": "AWS Asia Pacific (New Zealand), ap-southeast-6, GA since 2025-09-30. Same-country default; confirm the specific services needed are available there and the account has opted in, otherwise fall back to ap-southeast-2 (Sydney)."
+    },
+    "chinanorth3": {
+      "aws": null,
+      "same_country": true,
+      "geo": "China",
+      "note": "Azure China is operated by 21Vianet under a separate tenant and separate ARM endpoints. AWS China (Beijing / Ningxia) is likewise operated separately and requires its own account and ICP filing. This is NOT a region mapping -- it is a separate migration with its own legal entity work. STOP and say so."
+    },
+    "chinaeast3": { "aws": null, "same_country": true, "geo": "China", "note": "See chinanorth3." },
+    "usgovvirginia": {
+      "aws": "us-gov-east-1",
+      "same_country": true,
+      "geo": "US Gov",
+      "note": "Azure Government to AWS GovCloud. Separate partition, separate credentials, and compliance scope carries over rather than being re-derived."
+    },
+    "usgovarizona": { "aws": "us-gov-west-1", "same_country": true, "geo": "US Gov", "note": "See usgovvirginia." }
+  },
+
+  "_unlisted_region": "Resolve by geography from the Azure region's published location, prefer the same country, and record sizing_provenance-style honesty: state that the region default was derived rather than looked up. Never invent an AWS region name -- an invalid region makes every downstream price wrong and the Terraform unapplyable."
+}

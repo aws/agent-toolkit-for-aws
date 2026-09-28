@@ -1,0 +1,554 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "catalogProvenance": {
+      "type": "object",
+      "required": ["provider", "verified_at", "verified_region", "source"],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "verified_at": {
+          "type": "string"
+        },
+        "verified_region": {
+          "type": "string"
+        },
+        "source": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "apiPath": {
+      "enum": [
+        "mantle_messages",
+        "mantle_openai_chat",
+        "mantle_openai_responses",
+        "runtime_converse",
+        "runtime_invoke"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": ["provider", "model_ids", "sdk", "api_surface", "source_paths"],
+      "properties": {
+        "provider": {
+          "enum": [
+            "anthropic",
+            "openai",
+            "azure_openai",
+            "google_genai",
+            "bedrock",
+            "none",
+            "unknown"
+          ]
+        },
+        "model_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sdk": {
+          "type": "string"
+        },
+        "api_surface": {
+          "type": "string"
+        },
+        "source_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": ["code", "tag", "message", "remediation"],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "tag": {
+          "enum": ["[BLOCKS]", "[TUNE]"]
+        },
+        "message": {
+          "type": "string"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "delta": {
+      "type": "object",
+      "required": ["code", "category", "description"],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "category": {
+          "enum": ["path", "version", "platform", "feature"]
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "model_key",
+        "model",
+        "api_path",
+        "invocation_model_id",
+        "requires_cris",
+        "reason"
+      ],
+      "properties": {
+        "model_key": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "api_path": {
+          "$ref": "#/$defs/apiPath"
+        },
+        "invocation_model_id": {
+          "type": ["string", "null"]
+        },
+        "requires_cris": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modelIdentity": {
+      "type": "object",
+      "required": [
+        "model_key",
+        "display_name",
+        "family",
+        "version",
+        "context_window",
+        "output_token_ceiling",
+        "path_model_id",
+        "requires_cris"
+      ],
+      "properties": {
+        "model_key": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "context_window": {
+          "oneOf": [
+            { "type": "integer", "minimum": 1 },
+            { "const": "unknown" }
+          ]
+        },
+        "output_token_ceiling": {
+          "oneOf": [
+            { "type": "integer", "minimum": 1 },
+            { "const": "unknown" }
+          ]
+        },
+        "path_model_id": {
+          "type": "string"
+        },
+        "requires_cris": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "additionalTarget": {
+      "type": "object",
+      "required": ["capability", "status", "candidate", "evidence"],
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "status": {
+          "enum": ["recommended", "unresolved"]
+        },
+        "candidate": {
+          "type": ["string", "null"]
+        },
+        "service": {
+          "type": ["string", "null"]
+        },
+        "evidence": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "region",
+        "catalog_verified_at",
+        "verified_at",
+        "probe_status",
+        "availability_claim",
+        "invocation_model_id",
+        "required_checks"
+      ],
+      "properties": {
+        "region": {
+          "type": "string"
+        },
+        "catalog_verified_at": {
+          "type": "string"
+        },
+        "verified_at": {
+          "type": ["string", "null"]
+        },
+        "probe_status": {
+          "enum": [
+            "not_run",
+            "passed",
+            "failed",
+            "needs_resolution",
+            "not_applicable"
+          ]
+        },
+        "availability_claim": {
+          "enum": [
+            "provisional",
+            "verified",
+            "unavailable",
+            "unresolved",
+            "not_selected"
+          ]
+        },
+        "invocation_model_id": {
+          "type": ["string", "null"]
+        },
+        "required_checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "recommendation": {
+      "type": "object",
+      "required": [
+        "workload_id",
+        "provider_module",
+        "decision_status",
+        "source",
+        "source_analysis",
+        "feature_assessment",
+        "primary_model",
+        "model_identity",
+        "api_path",
+        "invocation_model_id",
+        "decision_options",
+        "alternatives",
+        "rationale",
+        "blocks",
+        "tuning",
+        "compatibility",
+        "architecture_impacts",
+        "migration_deltas",
+        "evaluation",
+        "rollout",
+        "verification"
+      ],
+      "properties": {
+        "workload_id": {
+          "type": "string"
+        },
+        "provider_module": {
+          "enum": ["anthropic", "openai", "generic"]
+        },
+        "decision_status": {
+          "enum": ["recommended", "decision_required"]
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "source_analysis": {
+          "type": "object",
+          "required": ["detected_version", "target_version", "version_changed"],
+          "properties": {
+            "detected_version": {
+              "type": ["string", "null"]
+            },
+            "target_version": {
+              "type": ["string", "null"]
+            },
+            "version_changed": {
+              "type": ["boolean", "null"]
+            },
+            "source_family": {
+              "type": "string"
+            },
+            "source_api_surface": {
+              "type": ["string", "null"]
+            },
+            "model_generation_changes": {
+              "type": ["boolean", "null"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "feature_assessment": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["detected", "absent", "unknown"]
+          }
+        },
+        "primary_model": {
+          "type": ["string", "null"]
+        },
+        "model_identity": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/modelIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "api_path": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/apiPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "invocation_model_id": {
+          "type": ["string", "null"]
+        },
+        "decision_options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          }
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          }
+        },
+        "rationale": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "tuning": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "compatibility": {
+          "type": "object",
+          "required": ["native", "portable", "rearchitecture", "unsupported"],
+          "properties": {
+            "native": {
+              "$ref": "#/$defs/stringList"
+            },
+            "portable": {
+              "$ref": "#/$defs/stringList"
+            },
+            "rearchitecture": {
+              "$ref": "#/$defs/stringList"
+            },
+            "unsupported": {
+              "$ref": "#/$defs/stringList"
+            }
+          },
+          "additionalProperties": false
+        },
+        "architecture_impacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["feature", "impact", "recommendation"],
+            "properties": {
+              "feature": {
+                "type": "string"
+              },
+              "impact": {
+                "type": "string"
+              },
+              "recommendation": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additional_targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/additionalTarget"
+          }
+        },
+        "migration_deltas": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/delta"
+          }
+        },
+        "evaluation": {
+          "type": "object",
+          "required": ["mode", "gates"],
+          "properties": {
+            "mode": {
+              "enum": ["prompt", "trajectory"]
+            },
+            "gates": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "rollout": {
+          "type": "object",
+          "required": ["strategy", "gate"],
+          "properties": {
+            "strategy": {
+              "enum": ["canary", "decision_required"]
+            },
+            "gate": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "verification": {
+          "$ref": "#/$defs/verification"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "decision_status": {
+                "const": "recommended"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "primary_model": {
+                "type": "string"
+              },
+              "model_identity": {
+                "$ref": "#/$defs/modelIdentity"
+              },
+              "api_path": {
+                "$ref": "#/$defs/apiPath"
+              },
+              "decision_options": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "primary_model": {
+                "type": "null"
+              },
+              "model_identity": {
+                "type": "null"
+              },
+              "api_path": {
+                "type": "null"
+              },
+              "invocation_model_id": {
+                "type": "null"
+              },
+              "decision_options": {
+                "minItems": 2
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": [
+    "schema_version",
+    "catalog",
+    "catalog_provenance",
+    "primary_unit",
+    "workloads"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "catalog": {
+      "$ref": "#/$defs/catalogProvenance"
+    },
+    "catalog_provenance": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/catalogProvenance"
+      }
+    },
+    "primary_unit": {
+      "type": "string"
+    },
+    "workloads": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/recommendation"
+      }
+    }
+  },
+  "additionalProperties": false
+}

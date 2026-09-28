@@ -1,0 +1,93 @@
+{
+  "_what_this_is": "Azure Managed Disk -> EBS volume type and provisioning. Consumed by design-refs/compute.md and storage.md as POST-SELECTION sizing; Microsoft.Compute/disks is a Direct Mapping to EBS, so the service choice never reaches a rubric.",
+  "_provenance": "Authored from published Managed Disk tier specs and published EBS volume limits. NOT verified against a live API.",
+  "_plan_correction": "Plan section 0 records the breakpoint as 'gp3 to 80K IOPS, then io2'. That is WRONG: a single gp3 volume caps at 16,000 IOPS and 1,000 MiB/s. 80,000 is an instance-level aggregate, not a volume limit. The breakpoints below are per-volume, which is what a disk maps to.",
+  "tier_mapping": {
+    "Premium_LRS": {
+      "azure": "Premium SSD (P-tier)",
+      "aws": "gp3",
+      "note": "Default target. gp3's 3,000 IOPS / 125 MiB/s baseline is included at every size, where Azure's P-tier couples IOPS to disk size -- so a small Azure P-tier disk often gains performance on gp3 at lower cost."
+    },
+    "PremiumV2_LRS": {
+      "azure": "Premium SSD v2",
+      "aws": "gp3",
+      "note": "Premium v2 already decouples IOPS from capacity, exactly like gp3. Carry the source's provisioned IOPS and throughput across directly -- this is the cleanest disk mapping in the file."
+    },
+    "StandardSSD_LRS": {
+      "azure": "Standard SSD (E-tier)",
+      "aws": "gp3",
+      "note": "gp3 at baseline. Do not provision extra IOPS: the source tier does not have them."
+    },
+    "Standard_LRS": {
+      "azure": "Standard HDD (S-tier)",
+      "aws": "st1",
+      "note": "st1 for sequential/throughput workloads. For a genuinely cold volume use sc1. st1 and sc1 both have a 125 GiB MINIMUM -- a 32 GiB Azure HDD becomes a 125 GiB st1, so the estimate goes UP. Check whether gp3 is cheaper at the source size before defaulting to st1."
+    },
+    "UltraSSD_LRS": {
+      "azure": "Ultra Disk",
+      "aws": "io2 Block Express",
+      "note": "Ultra Disk is the only Azure tier with independently provisioned IOPS AND latency guarantees. io2 Block Express is the counterpart."
+    },
+    "Premium_ZRS": {
+      "azure": "Premium SSD zone-redundant",
+      "aws": "gp3",
+      "note": "EBS volumes are single-AZ. ZRS has NO EBS equivalent: zone redundancy on AWS comes from the workload (multi-AZ ASG, RDS Multi-AZ), not the volume. This is a resilience DOWNGRADE at the volume layer and must be stated, not absorbed."
+    },
+    "StandardSSD_ZRS": {
+      "azure": "Standard SSD zone-redundant",
+      "aws": "gp3",
+      "note": "See Premium_ZRS."
+    }
+  },
+  "breakpoints": {
+    "_rule": "Apply in order, first match wins. These are PER-VOLUME limits.",
+    "order": [
+      {
+        "if": "provisioned IOPS <= 16000 AND throughput <= 1000 MiB/s",
+        "then": "gp3",
+        "note": "Covers the overwhelming majority of real disks."
+      },
+      {
+        "if": "provisioned IOPS <= 64000 AND throughput <= 1000 MiB/s",
+        "then": "io2",
+        "note": "io2 also gives 99.999% durability, which gp3 does not."
+      },
+      {
+        "if": "provisioned IOPS > 64000 OR throughput > 1000 MiB/s",
+        "then": "io2 Block Express",
+        "note": "Up to 256,000 IOPS and 4,000 MiB/s per volume. Requires a Nitro instance -- check the chosen instance type supports it, or the design does not apply."
+      }
+    ],
+    "gp3_baseline": {
+      "iops": 3000,
+      "throughput_mib_s": 125,
+      "_note": "Included free at every volume size. Only provision above this when the source actually exceeded it."
+    },
+    "gp3_max": {
+      "iops": 16000,
+      "throughput_mib_s": 1000
+    },
+    "io2_max": {
+      "iops": 64000,
+      "throughput_mib_s": 1000
+    },
+    "io2_bx_max": {
+      "iops": 256000,
+      "throughput_mib_s": 4000
+    }
+  },
+  "size": {
+    "rule": "disk_size_gb from the source, carried across as GiB. EBS minimums: gp3 1 GiB, io2 4 GiB, st1 and sc1 125 GiB.",
+    "never_shrink": "Do not round down. An Azure disk cannot be shrunk in place either, so a smaller target is not a saving anyone can realise -- it is a migration that fails on first copy."
+  },
+  "os_disk_vs_data_disk": {
+    "os_disk": "Becomes the EC2 root volume. It is created by the instance, so it does NOT get its own services[] entry -- it is aws_config on the compute row, exactly as a network interface is.",
+    "data_disk": "A managed disk attached as a data disk is its own EBS volume and its own line item.",
+    "_why_this_matters": "Counting the OS disk twice -- once inside the instance and once as a standalone volume -- is the most common way a VM estate's storage cost gets inflated.",
+    "inline_os_disk": "MOST COMMON CASE, and the one that used to be lost entirely. A VM's os_disk is normally an INLINE BLOCK, not an azurerm_managed_disk, so no Microsoft.Compute/disks resource exists for it. extract-terraform.md section 'Inline blocks that are not resources' now carries it into config.os_disk; map it to the instance's root volume in aws_config using the tier_mapping above (Premium_LRS -> gp3), and NEVER to a services[] entry of its own.",
+    "absent_disk_size_gb": "When the inline block sets no disk_size_gb the size is the image default, which is NOT discoverable from Terraform. Carry size_gib null with size_source 'image_default_unstated' and surface it as a stated assumption. Substituting a remembered default (127 GiB for Windows marketplace images, 30 for many Linux ones) makes an invented number indistinguishable from a measured one, and Estimate would price it as fact."
+  },
+  "unattached_disks": {
+    "rule": "A managed disk with no VM attachment is paid-for capacity doing nothing. Map it, and raise it as a cost-optimization finding. Do NOT silently drop it: an unattached disk is often a forgotten snapshot source or a detached data volume someone still needs."
+  }
+}

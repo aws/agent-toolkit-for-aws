@@ -1,0 +1,82 @@
+{
+  "_comment": "Expected merge/drift outcomes when BOTH workspace-terraform/ and live-capture/ are used (scenario B in README.md). Not a full inventory — these are the assertions an eval run checks against heroku-resource-inventory.json.",
+  "metadata": {
+    "total_apps_discovered": 3,
+    "discovery_sources_must_include": ["terraform", "live"],
+    "confidence": "reduced",
+    "confidence_reason": "acme-data-team captures failed (403)"
+  },
+  "apps": {
+    "acme-web": {
+      "discovery_status": "success",
+      "heroku_generation": "cedar",
+      "app_id": "a1b2c3d4-0001-4a5b-8c6d-0123456789ab"
+    },
+    "acme-staging": { "discovery_status": "success", "heroku_generation": "cedar", "unmanaged_by_terraform": true },
+    "acme-data-team": { "discovery_status": "discovery_failed", "failure_reason_contains": "403" }
+  },
+  "merged_resources": {
+    "formation:acme-web:web": {
+      "source": "live+terraform",
+      "config": { "quantity": 2, "dyno_type": "standard-2x", "command": "npm start" },
+      "expected_config_conflicts": ["quantity", "dyno_type"]
+    },
+    "formation:acme-web:release": {
+      "source": "terraform",
+      "config": { "quantity": 0 },
+      "note": "gap-fill rule 4 — scaled to zero, invisible live, NOT drift"
+    },
+    "addon:acme-web:heroku-postgresql:standard-2": {
+      "source": "live+terraform",
+      "expected_config_conflicts": ["plan"],
+      "note": "rule 1a treats the plan change (tf standard-0 vs live standard-2) as ONE merged resource with a plan conflict, so source is live+terraform per rule 1",
+      "config": { "data_size_gb": 42.3, "pg_version": "16.4", "connection_pooling": true, "monthly_price_usd": 200.0 }
+    },
+    "addon:acme-web:scheduler:standard": { "source": "terraform", "not_found_live": true },
+    "addon:acme-web:heroku-redis:premium-0": {
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": {
+        "ha_enabled": true,
+        "encryption_in_transit": true,
+        "redis_version": "7.2.5",
+        "maxmemory_policy": "noeviction",
+        "monthly_price_usd": 15.0
+      }
+    },
+    "addon:acme-web:papertrail:choklad": { "source": "live", "unmanaged_by_terraform": true },
+    "addon:acme-staging:heroku-postgresql:essential-0": {
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": { "data_size_gb": 0.4 }
+    },
+    "formation:acme-staging:web": {
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "config": { "dyno_type": "basic", "quantity": 1 }
+    },
+    "config:acme-web": { "config": { "config_var_keys_count": 9 }, "must_not_contain_values": true },
+    "domain:acme-web:www.acme-demo.com": { "source": "live" },
+    "pipeline:acme": {
+      "source": "live",
+      "config": {
+        "stages": [{ "stage": "staging", "app": "acme-staging" }, { "stage": "production", "app": "acme-web" }]
+      }
+    }
+  },
+  "must_not_exist": [
+    "domain:acme-web:acme-web-1a2b3c4d5e6f.herokuapp.com (default herokuapp.com domains are counted, not resources)",
+    "any resource with cluster_id / edges / dependencies fields",
+    "any config var VALUE anywhere in the document"
+  ],
+  "live_metadata": {
+    "apps_captured": 2,
+    "apps_failed": 1,
+    "limitations_must_include": "formations scaled to zero are not visible to live discovery",
+    "drift": {
+      "resources_live_only_min": 5,
+      "resources_terraform_only": 1,
+      "config_conflicts_expected_fields": ["quantity", "dyno_type", "plan"]
+    }
+  }
+}

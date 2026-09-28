@@ -1,0 +1,16 @@
+{
+  "migration_id": "0719-gcp-ws",
+  "run_id": "8c1e4f2a-3b6d-4a7e-9f10-5d2c8b7a6e41",
+  "owning_skill": "GCP_TO_AWS",
+  "last_updated": "2026-07-19T18:30:00Z",
+  "current_phase": "estimate",
+  "phases": {
+    "discover": "completed",
+    "clarify": "completed",
+    "design": "completed",
+    "estimate": "completed",
+    "workshop": "pending",
+    "generate": "pending",
+    "feedback": "pending"
+  }
+}

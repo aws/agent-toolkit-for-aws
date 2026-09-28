@@ -1,0 +1,171 @@
+{
+  "_comment": "Heroku Redis plan -> ElastiCache sizing. DIRECT LOOKUP: read node_type column. memory_limit is PROVENANCE ONLY (encodes meets-or-exceeds) — do not recompute node_type from it.",
+  "_match": "exact, case-insensitive, on addon config.plan",
+  "_on_not_found": "defer to specialist gate; append warning 'Unrecognized heroku-redis plan tier: {plan}. Cannot determine ElastiCache node type. Deferring to specialist engagement.'; continue",
+  "_ha": "if row ha == true OR config.ha_enabled == true -> multi_az: true, automatic_failover: true; else both false",
+  "_transit_encryption": "if config.encryption_in_transit == true OR row encryption == true -> transit_encryption: true",
+  "_engine_version": "use design-defaults.json engine_versions.elasticache_redis (pinned); the row redis_version is PROVENANCE only (why the node meets the source) — do not derive the engine from it",
+  "rows": {
+    "hobby": {
+      "memory_limit": "25 MB",
+      "ha": false,
+      "encryption": false,
+      "redis_version": "6.2",
+      "node_type": "cache.t4g.micro"
+    },
+    "premium-0": {
+      "memory_limit": "50 MB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.micro"
+    },
+    "premium-1": {
+      "memory_limit": "100 MB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.micro"
+    },
+    "premium-2": {
+      "memory_limit": "250 MB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.micro"
+    },
+    "premium-3": {
+      "memory_limit": "500 MB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.small"
+    },
+    "premium-4": {
+      "memory_limit": "1 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.small"
+    },
+    "premium-5": {
+      "memory_limit": "2.5 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.medium"
+    },
+    "premium-6": {
+      "memory_limit": "5 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.large"
+    },
+    "premium-7": {
+      "memory_limit": "10 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.xlarge"
+    },
+    "premium-8": {
+      "memory_limit": "15 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.xlarge"
+    },
+    "premium-9": {
+      "memory_limit": "25 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.2xlarge"
+    },
+    "premium-10": {
+      "memory_limit": "50 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.4xlarge"
+    },
+    "premium-11": {
+      "memory_limit": "75 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.8xlarge"
+    },
+    "premium-12": {
+      "memory_limit": "100 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.8xlarge"
+    },
+    "premium-13": {
+      "memory_limit": "150 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.12xlarge"
+    },
+    "premium-14": {
+      "memory_limit": "200 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.16xlarge"
+    },
+    "private-1": {
+      "memory_limit": "1 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.small"
+    },
+    "private-2": {
+      "memory_limit": "2.5 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.t4g.medium"
+    },
+    "private-3": {
+      "memory_limit": "5 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.large"
+    },
+    "private-4": {
+      "memory_limit": "10 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.xlarge"
+    },
+    "private-5": {
+      "memory_limit": "25 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.2xlarge"
+    },
+    "private-6": {
+      "memory_limit": "50 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.4xlarge"
+    },
+    "private-7": {
+      "memory_limit": "100 GB",
+      "ha": true,
+      "encryption": true,
+      "redis_version": "7.0",
+      "node_type": "cache.m6g.8xlarge"
+    }
+  }
+}

@@ -103,6 +103,7 @@ All specified fields must match (AND); values within an array are OR'd. Operator
 3. **One target per rule** — simplifies debugging and IAM.
 4. **DLQs on all targets.**
 5. Use the EventBridge Sandbox to test patterns before deploying.
+6. For a **new** event-driven workload, evaluate the enhanced custom event bus first — see the **amazon-eventbridge-event-bus** skill (see SKILL.md routing). The practices above apply to the classic bus, whose rules and targets do not exist on the enhanced bus.
 
 ### Pipes vs Rules
 

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "do-0001",
+    "hostname": "acme-web-1a2b3c4d5e6f.herokuapp.com",
+    "kind": "heroku",
+    "status": "none",
+    "sni_endpoint": null
+  },
+  {
+    "id": "do-0002",
+    "hostname": "www.acme-demo.com",
+    "kind": "custom",
+    "status": "succeeded",
+    "sni_endpoint": { "id": "sni-0001", "name": "tokyo-1234" }
+  }
+]

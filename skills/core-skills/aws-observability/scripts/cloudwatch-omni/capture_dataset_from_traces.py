@@ -339,7 +339,7 @@ def main():
         uniq = uniq[:MAX_TRACES]
 
     session = boto3.Session(region_name=args.region)
-    omni = session.client("cloudwatch-omni")
+    omni = session.client("cloudwatchomni")
     ctl = session.client("bedrock-agentcore-control")
 
     by_trace, truncated, boundary = fetch_spans_by_trace(omni, uniq, args.window_days)

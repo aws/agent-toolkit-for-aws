@@ -1,0 +1,81 @@
+{
+  "_comment": "Expected outcomes when BOTH workspace-terraform/ and live-capture/ are used (scenario B in README.md). Assertions against gcp-resource-inventory.json + gcp-resource-clusters.json, not a full expected document.",
+  "metadata": {
+    "discovery_sources_must_include": ["terraform", "live"],
+    "clustering_mode_one_of": ["simplified", "simplified_live"]
+  },
+  "resources": {
+    "google_sql_database_instance.db": {
+      "source": "live+terraform",
+      "config_must_include": { "tier_or_settings.tier": "db-custom-2-8192" },
+      "expected_config_conflict_fields": ["settings.tier"],
+      "must_not_have": ["not_found_live", "unmanaged_by_terraform"]
+    },
+    "google_cloud_run_service.orders_api": {
+      "source": "live+terraform",
+      "classification": "PRIMARY",
+      "config_must_include": { "live_type": "google_cloud_run_v2_service" },
+      "must_not_have": ["not_found_live", "unmanaged_by_terraform"],
+      "note": "TYPE-ALIAS LOCK: Terraform declares the LEGACY v1 type; live maps to v2. Step 6 aliasing must merge them as ONE resource keeping the IaC address — a not_found_live/unmanaged pair here is the exact real-project false-drift bug. Live image v42 overrides tf v40 (config conflict recorded)."
+    },
+    "google_storage_bucket.assets": {
+      "not_found_live": true,
+      "note": "buckets capture succeeded and the bucket is absent live"
+    },
+    "google_pubsub_topic.events": {
+      "must_not_have": ["not_found_live"],
+      "note": "pubsub capture FAILED — absence of evidence is not drift"
+    },
+    "google_redis_instance.cache": {
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "classification": "PRIMARY"
+    },
+    "google_cloud_run_v2_service.web_frontend": {
+      "source": "live",
+      "unmanaged_by_terraform": true,
+      "classification": "PRIMARY"
+    },
+    "google_storage_bucket.acme_prod_uploads": {
+      "source": "live",
+      "unmanaged_by_terraform": true
+    },
+    "google_compute_network.main": {
+      "must_not_have": ["not_found_live", "unmanaged_by_terraform"]
+    }
+  },
+  "edges_must_include": [
+    {
+      "from_contains": "orders_api",
+      "to_contains": "google_sql_database_instance",
+      "relationship_type": "data_dependency",
+      "evidence_contains": "cloudsql-instances"
+    },
+    {
+      "from_contains": "google_sql_database_instance",
+      "to_contains": "google_compute_network",
+      "relationship_type": "network_membership"
+    }
+  ],
+  "clusters": {
+    "every_resource_in_exactly_one_cluster": true,
+    "networking_cluster_at_depth_0": true,
+    "unmanaged_primaries_have_clusters": ["google_redis_instance.cache", "google_cloud_run_v2_service.web_frontend"]
+  },
+  "ai_detection": { "has_ai_workload": false, "confidence": 0 },
+  "live_metadata": {
+    "method": "per_service",
+    "project": "acme-prod",
+    "capture_warnings_must_mention": ["pubsub", "asset"],
+    "drift": {
+      "resources_terraform_only_max": 1,
+      "resources_live_only_min": 4,
+      "config_conflict_fields_must_include": ["settings.tier"]
+    }
+  },
+  "must_not_exist_anywhere": [
+    "any env var VALUE (fixture env entries carry names only: DATABASE_URL, STRIPE_SECRET_KEY, etc.)",
+    "any secret VALUE or gcloud access token",
+    "AWS service names (discover scope boundary)"
+  ]
+}
