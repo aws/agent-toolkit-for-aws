@@ -92,22 +92,18 @@ the total quietly too low.
 The `data-pipeline` pattern is this same mechanism one layer up: a cluster whose shape
 is Data Factory / Synapse / Event Hubs + storage + analytics defers as a **whole**
 rather than resource by resource, because the pipeline is the unit a specialist would
-assess. It lives in `patterns.md` and lands in build step 4.
+assess. It lives in `patterns.md`, which is not on disk.
 
 Recognising it at cluster level matters for the report: five separate deferrals read as
 five gaps, while one cluster-level deferral reads as one workload that needs an
 assessment — which is what it is.
 
-## Status — build step 3
+## Status — implemented
 
 The gate table is complete and the precedence order is enforced by `design-infra.md`.
-
-| Lands in | What                                                                                   |
-| -------- | -------------------------------------------------------------------------------------- |
-| step 4   | `patterns.md` and the cluster-level `data-pipeline` gate                               |
-| step 5   | `licensing.md`, and the `analytics.md` / `database.md` content the non-gated rows need |
+`database.md` and `analytics.md` are on disk. Still absent: `patterns.md` (the
+cluster-level `data-pipeline` gate) and `licensing.md`.
 
 **Untested.** No fixture exercises a gate yet: the `azure-iac-terraform` corpus contains
 no Managed Instance, elastic pool, Synapse workspace, Data Factory, or SQL-on-VM image.
-The rows above are therefore reviewed, not verified. A gate fixture belongs with build
-step 5, when `database.md` exists to be the thing a gate is chosen _instead of_.
+The rows above are therefore reviewed, not verified.

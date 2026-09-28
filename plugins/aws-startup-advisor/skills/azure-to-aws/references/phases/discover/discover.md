@@ -93,7 +93,7 @@ Two facts the frontmatter cannot express:
    subscription and resource group — one field supplies the cluster seed key, the
    environment scope, and uniqueness with no derivation.
 
-## Status — build steps 2 and 4 (partial)
+## Status — Terraform, live `az`, and app code
 
 Terraform discovery is real, live `az` discovery is real, and clustering is real:
 `discover-iac.md` (Terraform), `discover-live.md` (live `az` capture + parse), and

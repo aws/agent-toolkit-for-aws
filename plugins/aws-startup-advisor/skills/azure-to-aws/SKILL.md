@@ -5,10 +5,12 @@ description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrat
 
 # Azure-to-AWS Migration Skill
 
-> **Build status.** This skill's phase skeleton and DSL wiring are complete; the
-> per-phase CONTENT is landing in sequenced steps. Every unit file carries a
-> `## Status` block naming what it does today and which step fills it in. Do not
-> read a skeleton unit's thin body as the finished contract.
+> **Build status.** Discover, Clarify, Design, Estimate, Generate, and the
+> what-if workshop are implemented. A `## Status` block records which build
+> step filled a file in. It is not a signal to skip the file or to treat its
+> body as a stub. Still missing: Bicep, ARM templates, and RDfA; the feedback
+> sidebar (wiring only); and `patterns.md`, `licensing.md`, and `gpu-hpc.md`.
+> The live `az` capture path is implemented (`discover-live.md`).
 
 ## Philosophy
 

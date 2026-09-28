@@ -41,7 +41,7 @@ with this file.
 - Comparison is capped at five scenarios. Beyond that the table stops informing a
   decision.
 
-## Status — skeleton (build step 1)
+## Status — implemented
 
-The shape is the real contract. The knob set, the reprice mechanics, and the
-comparison rendering land in step 6.
+The shape above is the contract. The knob set, reprice, and comparison
+rendering are in `references/phases/workshop/`.
