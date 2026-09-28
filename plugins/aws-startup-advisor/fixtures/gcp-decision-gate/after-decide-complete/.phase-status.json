@@ -1,5 +1,7 @@
 {
   "migration_id": "0723-1900",
+  "run_id": "8c1e4f2a-3b6d-4a7e-9f10-5d2c8b7a6e41",
+  "owning_skill": "GCP_TO_AWS",
   "last_updated": "2026-07-23T19:22:00Z",
   "current_phase": "complete",
   "run_mode": "decide",
