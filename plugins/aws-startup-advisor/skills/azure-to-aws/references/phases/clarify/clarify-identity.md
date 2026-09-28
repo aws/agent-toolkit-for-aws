@@ -85,11 +85,12 @@ Say that in the row so [A] does not read as a cop-out.
 
 | Row        | Consumer                                                                                                 |
 | ---------- | -------------------------------------------------------------------------------------------------------- |
-| `identity` | `design-refs/identity.md` (build step 5, not yet written) and Generate's IAM Identity Center scaffolding |
+| `identity` | `design-refs/identity.md` and Generate's IAM Identity Center scaffolding |
 
-`identity.md` is still missing, and `index.md` routes one type to it. That is a real gap
-rather than a decision: this row is currently recorded and not yet consumed by any rubric.
-Note it on the sheet as recorded-for-later rather than implying it shapes the design today.
+`design-refs/identity.md` is on disk. Human identity is not an ARM resource mapping;
+it is this Clarify row, and that file's default is a fresh IAM Identity Center
+re-invite. Key Vault and user-assigned managed identities stay fast-path rows in
+`index.md`. `identity.md` carries the reasoning for those rows.
 
 ## What this fragment deliberately does not ask
 
