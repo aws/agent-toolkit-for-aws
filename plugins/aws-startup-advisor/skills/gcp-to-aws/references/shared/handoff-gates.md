@@ -63,6 +63,7 @@ Patching artifacts to satisfy a gate defeats fail-closed validation and produces
 | Re-run **Discover** after **Clarify** completed      | **STOP** unless user explicitly confirms. Emit `GATE_FAIL \| phase=discover \| field=preferences.json \| reason=stale_downstream`. Downstream artifacts may be stale. |
 | Re-run **Clarify** after **Design** completed        | Same — confirm with user; Design/Estimate may need re-run.                                                                                                            |
 | Re-run **Estimate** after **Generate** started       | Same — confirm with user; report and Terraform may be stale.                                                                                                          |
+| Enter **Generate** with a declared compliance framework but no `security_baseline_compliance` line in `estimation-infra.json` | **STOP** unless user explicitly confirms. Emit `GATE_FAIL \| phase=generate \| field=estimation-infra.json.projected_costs.breakdown.security_baseline_compliance \| reason=stale_downstream`. Estimate ran before the compliance answer was applied — budget and report totals would understate. |
 | Re-run a phase **before** downstream phase completed | Allowed. Overwrite that phase's artifacts; downstream phases remain `"pending"` or must be re-run.                                                                    |
 
 When user confirms intentional re-run: set downstream phases back to `"pending"` in `.phase-status.json` before proceeding.
@@ -79,7 +80,7 @@ Detailed checklists live in each phase file. Minimum gates:
 | **clarify**  | `preferences.json` valid; Cloud SQL in inventory → `design_constraints.availability.value` set                    |
 | **design**   | Active route artifacts present (existing gates)                                                                   |
 | **estimate** | Active route artifacts present; infra route → `recommendation.path` + non-empty `migrate_if` / `stay_if`          |
-| **generate** | Load `shared/validate-artifacts.md` before report; report pre-write sanity (see `generate-artifacts-report.md`)   |
+| **generate** | Load `shared/validate-artifacts.md` before report; report pre-write sanity (see `generate-artifacts-report.md`); compliance-estimate staleness guard (see `generate.md` Prerequisites) |
 
 ---
 
