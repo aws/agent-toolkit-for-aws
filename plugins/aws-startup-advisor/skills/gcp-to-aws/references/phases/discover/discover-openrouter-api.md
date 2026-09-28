@@ -291,7 +291,7 @@ volume:
    each of the top 5 models by usage. (`openrouter_usage_api` is a live-usage
    detection method, parallel to `openai_usage_api`.)
 4. For any `usage_by_model` model absent from `models[]`: append
-   `{ "model_id": "<model>", "service": "openrouter", "detected_via": ["usage_api"],
+   `{ "model_id": "<model>", "service": "openrouter_api", "detected_via": ["usage_api"],
    "evidence": [{ "source": "usage_api", "pattern": "billed usage in last 30 days" }],
    "capabilities_used": ["text_generation"], "usage_context": "Observed in
    OpenRouter usage data — call sites not yet located in code" }`. Code-derived

@@ -23,7 +23,8 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
       "terraform": true,
       "application_code": true,
       "billing_data": false,
-      "openai_usage_api": false
+      "openai_usage_api": false,
+      "openrouter_usage_api": false
     }
   },
 
@@ -116,9 +117,10 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
   "current_costs": {
     "monthly_ai_spend": 450,
     "services_detected": ["Vertex AI Predictions", "Generative AI API"],
-    "source": "billing_data|openai_usage_api|mixed",
+    "source": "billing_data|openai_usage_api|openrouter_usage_api|mixed",
     "breakdown": [
       { "provider": "openai", "monthly_spend": 105, "source": "openai_usage_api" },
+      { "provider": "openrouter", "monthly_spend": 60, "source": "openrouter_usage_api" },
       { "provider": "gcp", "monthly_spend": 345, "source": "billing_data" }
     ],
     "conflicting_sources": []
@@ -167,7 +169,7 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
 - `integration.capabilities_summary` — Union of all capabilities across all models
 - `infrastructure[]` — Terraform resources related to AI (empty array if no Terraform provided)
 - `current_costs` — Present ONLY if billing data OR OpenAI usage API data was provided; omitted entirely otherwise. `source` records provenance. Merge is provider-aware: billing CSVs measure GCP/Vertex spend, the usage API measures OpenAI spend — when both exist for DIFFERENT providers, `monthly_ai_spend` is their SUM with `source: "mixed"` and the per-provider split in `breakdown[]` (never max/pick-one — that drops a provider). Same-provider overlap: the usage API wins and the displaced figure lands in `conflicting_sources[]` (never silently resolved). `breakdown` is present only for `source: "mixed"`.
-- `detection_signals[]` — Raw signals from AI detection for transparency. `method` values include `terraform`, `code`, `live_gcloud`, and `openai_usage_api`.
+- `detection_signals[]` — Raw signals from AI detection for transparency. `method` values include `terraform`, `code`, `live_gcloud`, `openai_usage_api`, and `openrouter_usage_api`.
 
 **Conditional sections:**
 
