@@ -19,10 +19,10 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 | 1 | `architect-for-startups` | Stage-aware AWS architecture guidance and reviews tuned to team size, runway, and credits — advice rather than code changes | [SKILL.md](skills/architect-for-startups/SKILL.md) |
 | 2 | `start-building-for-startups` | Interactive discovery flow that gathers requirements, scans the codebase, then writes an AWS scaffold and implementation into the project | [SKILL.md](skills/start-building-for-startups/SKILL.md) |
 | 3 | `agent-advisor` | Runtime selection, migration planning, and an executable proof of concept for AI-agent workloads on AWS | [SKILL.md](skills/agent-advisor/SKILL.md) |
-| 4 | `azure-to-aws` | Seven-phase Microsoft Azure to AWS migration over canonical `Microsoft.*` ARM resource types, with an opt-in generate gate and a what-if repricing workshop | [SKILL.md](skills/azure-to-aws/SKILL.md) |
+| 4 | `azure-to-aws` | Six-phase Microsoft Azure to AWS migration. Discovery reads Terraform (`azurerm_*`), application code, and billing exports — not Bicep, ARM templates, or a live Azure CLI capture. Generate is opt-in, and the what-if workshop is optional | [SKILL.md](skills/azure-to-aws/SKILL.md) |
 | 5 | `gcp-to-aws` | Six-phase Google Cloud to AWS migration: discover, clarify, design, estimate, generate artifacts, feedback | [SKILL.md](skills/gcp-to-aws/SKILL.md) |
 | 6 | `heroku-to-aws` | Six-phase Heroku to AWS migration with deterministic add-on mapping and an optional what-if repricing workshop | [SKILL.md](skills/heroku-to-aws/SKILL.md) |
-| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
+| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch. Requires `gcp-to-aws` installed alongside it | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
 | 8 | `tf-best-practices` | AWS Terraform authoring posture, security-baseline spec, and a read-only policy gate over generated Terraform | [SKILL.md](skills/tf-best-practices/SKILL.md) |
 | 9 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
 | 10 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
@@ -118,7 +118,7 @@ The skill requires at least one agentic component. Non-agent compute or data mig
 
 ## Cloud Migration
 
-The `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` skills run the same migration flow: **discover**, **clarify**, **design**, **estimate**, **generate**, and **feedback**. Clarify must finish before design, estimate, or generate, so the plan is never built on unstated assumptions. `azure-to-aws` adds a seventh phase — an optional what-if **workshop** between estimate and generate — and makes generate opt-in behind a post-estimate decision gate.
+The `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` skills run the same six-phase flow: **discover**, **clarify**, **design**, **estimate**, **generate**, and **feedback**. Clarify must finish before design, estimate, or generate, so the plan is never built on unstated assumptions. Generate runs only after you choose to produce the artifacts at the post-estimate decision gate. The what-if workshop is optional and sits beside estimate; it is not an extra phase.
 
 ### How It Works
 
@@ -126,7 +126,7 @@ The `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` skills run the same migrat
 - **Clarify** — Resolves the requirements that change the target architecture: availability, compliance, data residency, cutover tolerance, and team capacity.
 - **Design** — Maps source resources to AWS services using deterministic mapping tables — for example Heroku dynos to AWS Elastic Beanstalk, Heroku Postgres to Amazon RDS or Aurora, Heroku Redis to Amazon ElastiCache, Heroku Kafka to Amazon MSK, Cloud SQL to Amazon RDS, GKE to Amazon EKS, Cloud Run to AWS Fargate, Azure App Service to AWS Elastic Beanstalk, AKS to Amazon EKS, Azure SQL to Amazon RDS, and Cosmos DB to Amazon DynamoDB or DocumentDB.
 - **Estimate** — Costs the target architecture from the plugin's bundled rate reference data and a documented cost algorithm, with an estimation schema and complexity tiers so two runs of the same workload agree. Estimates are planning figures; confirm them against the [AWS Pricing Calculator](https://calculator.aws/) before committing budget.
-- **Generate** — Emits migration artifacts, including Terraform, gated by the `tf-best-practices` policy check and a validated migration report.
+- **Generate** — Emits migration artifacts, including Terraform, gated by the `tf-best-practices` policy check and a validated migration report. On the infrastructure route, `heroku-to-aws` and `gcp-to-aws` also emit `baseline.tf` — an account-wide security baseline (GuardDuty, CloudTrail, IMDSv2, EBS encryption, budget alerts) — with AWS Config and Security Hub controls added when the declared compliance set includes SOC 2, PCI, HIPAA, or FedRAMP. `gcp-to-aws`'s AI-only and billing-only routes emit monitoring or skeleton Terraform instead and skip the baseline.
 - **Workshop mode** — After estimate, `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` can reprice region, high-availability, compute, and AWS Graviton scenarios without repeating discovery.
 
 ### Examples
@@ -141,7 +141,15 @@ The `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` skills run the same migrat
 
 The `llm-to-bedrock` skill is a focused model and SDK rewrite. It assesses the codebase, rewrites OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluates the rewritten behavior against a golden prompt set, and delivers a ready-to-review git branch with a migration report.
 
-Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover. The assess phase is delegated to `gcp-to-aws`, so install that skill alongside this one.
+**Requires `gcp-to-aws` installed alongside it.** `llm-to-bedrock` delegates its assess phase to the `gcp-to-aws` skill and has no standalone fallback — installing `llm-to-bedrock` on its own stops at the first step. Install both together:
+
+```bash
+npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill gcp-to-aws
+```
+
+(The `--skill '*'` install above already includes both.)
+
+Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover.
 
 ### Examples
 
