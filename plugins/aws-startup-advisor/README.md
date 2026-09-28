@@ -141,7 +141,15 @@ The `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` skills run the same migrat
 
 The `llm-to-bedrock` skill is a focused model and SDK rewrite. It assesses the codebase, rewrites OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluates the rewritten behavior against a golden prompt set, and delivers a ready-to-review git branch with a migration report.
 
-Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover. The assess phase is delegated to `gcp-to-aws`, so install that skill alongside this one.
+**Requires `gcp-to-aws` installed alongside it.** `llm-to-bedrock` delegates its assess phase to the `gcp-to-aws` skill and has no standalone fallback — installing `llm-to-bedrock` on its own stops at the first step. Install both together:
+
+```bash
+npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill gcp-to-aws
+```
+
+(The `--skill '*'` install above already includes both.)
+
+Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover.
 
 ### Examples
 
