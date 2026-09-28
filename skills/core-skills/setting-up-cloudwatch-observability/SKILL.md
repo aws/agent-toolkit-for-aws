@@ -11,7 +11,6 @@ description: >-
   Space (and whether GitHub can be connected); and registering a custom MCP tool server over HTTP or stdio and
   choosing its auth (API key, bearer, or OAuth2). For using a Space already set up — querying, dashboards,
   Omni alerts, or defining Omni resources as code — use aws-observability.
-version: 2
 
 ---
 
