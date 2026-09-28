@@ -173,7 +173,7 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
 
 **Conditional sections:**
 
-- `current_costs` — Include ONLY if billing data was provided (billing discovery ran) or OpenAI usage API discovery ran (`discover-openai-api.md`). Omit entirely if neither.
+- `current_costs` — Include ONLY if billing data was provided (billing discovery ran), OpenAI usage API discovery ran (`discover-openai-api.md`), or OpenRouter usage API discovery ran (`discover-openrouter-api.md`). Omit entirely if none.
 - `infrastructure` — Set to `[]` if no Terraform files were provided (IaC discovery did not run).
 - `agentic_profile` — Include ONLY if agentic signals detected (`is_agentic: true`). Omit entirely otherwise.
 - `tool_manifest` — Include ONLY if `agentic_profile` exists. Set to `[]` if agentic but no tools detected.
