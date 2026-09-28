@@ -57,9 +57,9 @@ under any install path — native plugin install and `npx skills add --skill '*'
   > you installed the whole plugin it should already be next to me — it looks like only some of
   > the plugin's skills were installed. Install the pair together with:
   > `npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill gcp-to-aws`
-  > (use the same `--agent` and `--global`/project scope you used for this skill), or reinstall the
-  > `aws-startup-advisor` plugin with `--skill '*'` to get every skill at once. Then restart your
-  > agent and ask me to migrate again."
+  > (use the same `--agent` and `--global`/project scope you used for this skill), or run that same
+  > `npx skills add` command with `--skill '*'` instead of the two skill names to get every skill at
+  > once. Then restart your agent and ask me to migrate again."
 
   **Do not** perform the Assess phase yourself as a workaround — Phase A below is explicit that
   Assess logic lives only in `gcp-to-aws`; re-implementing it here would drift out of sync with

@@ -22,7 +22,7 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 | 4 | `azure-to-aws` | Seven-phase Microsoft Azure to AWS migration over canonical `Microsoft.*` ARM resource types, with an opt-in generate gate and a what-if repricing workshop | [SKILL.md](skills/azure-to-aws/SKILL.md) |
 | 5 | `gcp-to-aws` | Six-phase Google Cloud to AWS migration: discover, clarify, design, estimate, generate artifacts, feedback | [SKILL.md](skills/gcp-to-aws/SKILL.md) |
 | 6 | `heroku-to-aws` | Six-phase Heroku to AWS migration with deterministic add-on mapping and an optional what-if repricing workshop | [SKILL.md](skills/heroku-to-aws/SKILL.md) |
-| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
+| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch. Requires `gcp-to-aws` installed alongside it | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
 | 8 | `tf-best-practices` | AWS Terraform authoring posture, security-baseline spec, and a read-only policy gate over generated Terraform | [SKILL.md](skills/tf-best-practices/SKILL.md) |
 | 9 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
 | 10 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
