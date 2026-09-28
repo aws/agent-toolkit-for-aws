@@ -82,7 +82,7 @@ Three states, and they are not the same fact:
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `recognized`     | a pattern matched; `pattern_id` names it and `target_architecture` is a real string                                                                                             |
 | `unclassified`   | the catalog was consulted and nothing matched. A required fallback, not a failure — but it MUST be flagged in the report so the output does not overclaim architectural insight |
-| `catalog_absent` | `design-refs/patterns.md` is not on disk (it lands in build step 4), so no recognition was attempted at all                                                                     |
+| `catalog_absent` | `design-refs/patterns.md` is not on disk, so no recognition was attempted at all                                                                                                |
 
 Without this field, the phase's postcondition demanding `target_architecture` is
 unsatisfiable while `patterns.md` is absent, and the honest response — leaving it

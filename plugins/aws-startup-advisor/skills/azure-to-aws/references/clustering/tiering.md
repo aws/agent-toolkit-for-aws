@@ -57,4 +57,4 @@ nobody agreed to.
 
 ## Status — build step 4
 
-Implemented and consumed by `discover-assemble.md`. Generate's use of it lands in step 6.
+Implemented and consumed by `discover-assemble.md`. Generate sequences emits in this tier order (`generate.md` § Sequencing).
