@@ -361,6 +361,58 @@ When Part 2B of `estimate-infra.md` produces an observability cost, it is includ
 - `mid` equals the sum of all `components` values
 - This entry REPLACES any CloudWatch/log/metric portion in the "Supporting" row — never both
 
+## Security Baseline Entries in `projected_costs.breakdown`
+
+`estimate-infra.md` always adds a `security_baseline` entry (the workload-independent
+account controls in `baseline.tf`), and — when `preferences.json` →
+`design_constraints.compliance.value` contains `soc2`/`pci`/`hipaa`/`fedramp` — a sibling
+`security_baseline_compliance` entry. Both are flat additives to each tier total
+(Premium/Balanced/Optimized), not tier-dependent.
+
+```json
+{
+  "service": "AWS Security Baseline (Tier 1)",
+  "low": 3.00,
+  "mid": 15.00,
+  "high": 30.00,
+  "accuracy": "±25%",
+  "pricing_source": "cached",
+  "components": {
+    "cloudtrail_s3_storage": 1.50,
+    "guardduty": 13.00,
+    "budgets": 0.00,
+    "free_controls": 0.00
+  }
+}
+```
+
+```json
+{
+  "service": "AWS Security Baseline — Compliance (Config + Security Hub)",
+  "low": 3.00,
+  "mid": 14.00,
+  "high": 25.00,
+  "accuracy": "±25%",
+  "pricing_source": "cached",
+  "emission_reason": "declared compliance: soc2, pci",
+  "components": {
+    "aws_config": 6.00,
+    "config_s3_storage": 0.50,
+    "security_hub_fsbp": 7.00,
+    "extra_standards": 0.00
+  }
+}
+```
+
+**Validation for the security-baseline entries:**
+
+- `security_baseline` is ALWAYS present (the account controls are workload-independent).
+- `security_baseline_compliance` is present IFF `design_constraints.compliance.value`
+  contains a gating framework (`soc2`/`pci`/`hipaa`/`fedramp`); absent / `none` / `unknown`
+  ⇒ omit it. When present it carries an `emission_reason` naming the declared frameworks.
+- `mid` equals the sum of each entry's `components` values.
+- Per-unit rates are grounded in `references/shared/pricing-cache.md § Security Baseline`.
+
 ## `architecture_comparison` (optional — Graviton/ARM64)
 
 Present in `estimation-infra.json` only when `preferences.json` → `design_constraints.cpu_architecture.value` is `graviton` or `mixed` (see `estimate-infra.md` Part 2C and `shared/schema-graviton.md`). Omit entirely for `x86`.
@@ -393,7 +445,7 @@ Present in `estimation-infra.json` only when `preferences.json` → `design_cons
 - `current_costs.gcp_monthly` matches billing-profile.json total (if used) or is a reasonable estimate
 - `projected_costs` has all three tiers (premium, balanced, optimized)
 - **Tier semantics:** Three totals are **scenario $** only (same design); **Balanced** matches generated Terraform baseline — see **Cost tiers** section above; user-facing labels must use the subtitles there (also `estimate-infra.md` Present Summary / `generate-artifacts-report.md`)
-- `projected_costs.breakdown` covers compute, database, storage, networking, supporting services, and observability
+- `projected_costs.breakdown` covers compute, database, storage, networking, supporting services, observability, and the security baseline (always a `security_baseline` entry, plus `security_baseline_compliance` when a gating compliance framework is declared)
 - Every service in `aws-design.json` is represented in the cost breakdown
 - `projected_costs.breakdown` observability entry (when present) REPLACES any CloudWatch/log/metric costs in the "Supporting" row — never double-count
 - `cost_comparison` shows all three options with monthly and annual differences
