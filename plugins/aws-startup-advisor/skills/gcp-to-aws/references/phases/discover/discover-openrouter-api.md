@@ -152,10 +152,14 @@ key:
 - For `/activity`, requests the last 30 days (the endpoint returns daily rows;
   filter/keep rows whose `date` is within the window).
 - A non-200 on one endpoint records `failed` for that row and continues — a
-  missing endpoint or zero usage is normal, never a halt. **Exception: a 401 on
-  the FIRST call** means the key is not a provisioning key (or was revoked) —
-  abort the remaining calls and exit with a distinct `KEY_INVALID` line so the
-  agent can hand off to re-intake.
+  missing endpoint or zero usage is normal, never a halt. **Exception: a 401 OR
+  403 on the FIRST (probe) call** means the key is not a management/provisioning
+  key (OpenRouter returns **403 "Only management keys can perform this
+  operation"** for an inference key, and 401 for a revoked/invalid key) — abort
+  before writing anything, print a distinct `KEY_INVALID` line, and do **not**
+  write the manifest (see 2b). A written manifest tells the Discover route gate a
+  capture completed; writing one after an auth failure would halt the whole phase
+  on a missing profile.
 - Prints one line per call: `<file> ok|failed|skipped <n_rows>`.
 
 **2b. Probe.** The capture script runs the probe call first (2a rules apply — the
@@ -165,11 +169,13 @@ agent never invokes curl with the key itself):
 GET https://openrouter.ai/api/v1/credits  →  credits.json
 ```
 
-- On 401: stop and tell the user: "The key was rejected. Confirm it is a
-  **provisioning** key (openrouter.ai/settings/provisioning-keys), not a plain
-  inference key — inference keys cannot read account usage." Offer to re-run
-  Step 1 intake or skip. On 429, wait 30 seconds and retry once.
-- On success: continue to the capture table.
+- On **401 or 403**: stop, write NO manifest and NO capture files, and tell the
+  user: "The key was rejected (`<status>`). Confirm it is a **provisioning /
+  management** key (openrouter.ai/settings/provisioning-keys), not a plain
+  inference key — inference keys return 403 and cannot read account usage."
+  Offer to re-run Step 1 intake or skip. On 429, wait 30 seconds and retry once.
+- On success: continue to the capture table (the manifest is written in 2d, only
+  after the probe authenticates).
 
 **2c. Capture Endpoint Table.** Every row is `GET` against
 `https://openrouter.ai/api/v1`.
@@ -212,15 +218,23 @@ row failed, exit with no output and tell the user which scope is missing (a
 
 Sum across the window (a throwaway extraction script if captures are large):
 
-- **Activity** (`activity.json`): group the daily rows by `model`; per model sum
-  `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, and
+Both OpenRouter responses wrap their payload in a top-level `data` key — **unwrap
+`data` before reading anything below.** `/activity` returns
+`{ "data": [ { "date", "model", "usage", ... } ] }` (an array under `data`);
+`/credits` returns `{ "data": { "total_credits", "total_usage" } }` (an object under
+`data`). Reading the response body's top level directly yields nothing and would
+produce a profile of zeros that still (wrongly) passes the `monthly_cost_usd == sum
+of rows` self-check.
+
+- **Activity** (`activity.json`): group the rows in `data[]` by `model`; per model
+  sum `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, and
   `usage` (USD). `monthly_cost_usd` = the sum of `usage` over the window —
   **never scale a partial window up to a month**. If the first non-zero `date` is
   < 30 days old, set `partial_window: true` and report the actual span in
   `active_days`.
-- **Credits** (`credits.json`): `total_credits` / `total_usage` are lifetime
-  figures — record them as context, NOT as the monthly baseline (the monthly
-  figure comes from `/activity` summed over the window).
+- **Credits** (`credits.json`): read `data.total_credits` / `data.total_usage`
+  (lifetime figures) — record them as context, NOT as the monthly baseline (the
+  monthly figure comes from `/activity` summed over the window).
 
 Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
 

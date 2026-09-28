@@ -183,9 +183,13 @@ The sub-file's Step 0 consent gate is the single consent point for this source
 — do not pre-ask here; declining `[B]` exits cleanly and must not be re-asked
 this run. If `$MIGRATION_DIR/openrouter-capture/manifest.json` already exists (a
 resumed run), execute from its Step 3 (parse the existing captures; consent and
-capture already happened). OpenRouter is a router — its usage already includes
-the upstream providers it fronts, so its spend must not be double-counted against
-a separate OpenAI-direct or Vertex figure (the sub-file's merge handles this).
+capture already happened). The merge SUMS OpenRouter spend with a genuinely
+separate provider's spend (e.g. a Vertex billing CSV, or OpenAI-direct usage that
+did NOT flow through OpenRouter) into `source: "mixed"`. What it must NOT do is add
+a second line for traffic already inside the OpenRouter usage figure — OpenRouter
+is a router, so its `usage` already includes the upstream providers it fronts;
+adding an "openai via openrouter" line on top would double-count. The sub-file's
+merge handles this distinction.
 
 ## Step 2: Check Outputs
 
