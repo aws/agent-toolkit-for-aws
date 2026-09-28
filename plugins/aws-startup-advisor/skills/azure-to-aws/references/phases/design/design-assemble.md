@@ -51,7 +51,8 @@ holistic goal, and it is the part a customer actually reads. An `unclassified`
 pattern is a required fallback, not a failure — but it must be flagged so the output
 does not overclaim architectural insight it does not have.
 
-## Status — skeleton (build step 1)
+## Status — implemented
 
-Writes the artifact and owns the contract above. Cluster-level fields land with
-step 4; the AI design route lands with step 6.
+Writes `aws-design.json` and, when the AI fragment ran, `aws-design-ai.json`.
+`patterns.md` is not on disk, so cluster `pattern_id` stays `unclassified` with
+`pattern_status: "catalog_absent"`.
