@@ -29,6 +29,7 @@ session artifacts are always read from and written to the user's working
 directory. Never fetch or write customer data through `retrieve_skill`.
 
 ## Table of Contents
+
 - Overview
 - Bedrock API Landscape
 - Critical Warnings
@@ -129,7 +130,6 @@ For full API details and provider-specific body formats, read [model invocation 
 | Track costs by team, model, or tag | Cost Tracking | [cost tracking](references/cost-tracking.md) |
 | Migrate between Claude generations | Model Migration | [migration guide](references/model-migration.md) |
 
-
 ## Knowledge Bases (retrieval, agentic retrieval and RAG)
 
 For RAG on Bedrock, **default to the Managed Knowledge Base (MKB)** — AWS recommends it and it fully manages storage, chunking, parsing, and retrieval, so there is no infrastructure to provision. Prefer it for essentially all new RAG work. Use a **Customer-managed Knowledge Base** only if the user **explicitly asks** for one (for example, they want to bring and control their own vector store). Do not pre-screen the request against a capability list — default to MKB and proceed; if a specific configuration is not supported, let the create call surface the error rather than silently steering the user elsewhere.
@@ -147,6 +147,7 @@ Before starting any workflow:
 Check for required tools and inform the user about the execution environment.
 
 **Constraints:**
+
 - You MUST check that the AWS CLI is available and configured with valid credentials
 - You MUST verify the AWS CLI version is recent (v2 recommended; older versions lack Converse API and AgentCore support): `aws --version`
 - You MUST check that the target AWS region has Bedrock model access enabled
@@ -154,6 +155,7 @@ Check for required tools and inform the user about the execution environment.
 - You MUST ask the user if they want to proceed despite missing tools
 
 **General constraints for all workflows:**
+
 - You MUST present an overview of what will be done before starting execution
 - You MUST explain to the user what step is being executed and why before running each command
 - You MUST respect the user's decision to stop or abort at any point
@@ -244,6 +246,7 @@ Identify the AgentCore service from the table below, then you MUST read the corr
 You MUST read [prompt caching reference](references/prompt-caching.md) before responding. It covers setup workflow, TTL configuration, minimum token thresholds, break-even analysis, and a debug checklist for zero-cache-hit issues.
 
 **Constraints:**
+
 - You MUST walk the user through the debug checklist when cache is not working (verify model support, token threshold, content identity, TTL, cache point placement)
 - You MUST check minimum token thresholds per model before confirming a caching setup will work
 
@@ -252,6 +255,7 @@ You MUST read [prompt caching reference](references/prompt-caching.md) before re
 You MUST read [quota health reference](references/quota-health.md) before responding. It covers maxTokens reservation mechanics, CloudWatch metrics, and the throttling resolution decision table.
 
 **Constraints:**
+
 - You MUST explain the relationship between `maxTokens` and quota reservation
 - You MUST guide the user through comparing limits vs peak usage using `aws service-quotas` and `aws cloudwatch get-metric-statistics`
 
@@ -260,6 +264,7 @@ You MUST read [quota health reference](references/quota-health.md) before respon
 You MUST read [cost tracking reference](references/cost-tracking.md) before responding. It covers inference profile tagging, CUR 2.0 attribution, and AWS Budgets setup.
 
 **Constraints:**
+
 - You MUST ask what time range, grouping, and cost attribution method the user needs before generating Cost Explorer queries
 
 ### Migrate between Claude generations
@@ -357,6 +362,7 @@ You MUST read the linked reference file for the relevant service before respondi
 When the user asks which model to use, compares models, or asks about Claude/Llama/Nova/Titan on Bedrock, you MUST read [model selection guide](references/model-selection-guide.md) before responding. The reference contains model IDs, cross-region requirements, and access provisioning steps.
 
 Quick defaults (verify availability: `aws bedrock list-foundation-models --region <region>`):
+
 - **General purpose**: Claude Sonnet (best quality/cost balance)
 - **Fast + cheap**: Claude Haiku or Nova Micro
 - **Embeddings for KB**: Titan Embeddings V2
