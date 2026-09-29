@@ -216,10 +216,9 @@ Overall honest assessment; the source→Bedrock model comparison (price + assess
 integration pattern and complexity; capability gaps; and — prominently, if `weak_migrate`/
 `recommend_stay` — the reason. Name any compliance regime that shaped the design.
 
-## Status — build step 2 (AI design route)
+## Status — implemented (AI design route)
 
-The design half of the AI capability. Its consumers — `estimate-ai.md` (reads
-`aws-design-ai.json` → `estimation-ai.json`) and `generate-artifacts-ai.md` — land in step 3.
-`ai-workload-profile.json` (this fragment's input) is produced by `discover-app-code.md`, which
-lands in step 4; until then the AI route is reachable only for an estate whose Cognitive
-Services / Azure ML resources were detected from IaC.
+`estimate-ai.md` and `generate-artifacts-ai.md` consume this fragment.
+`discover-app-code.md` produces `ai-workload-profile.json` from application code.
+`discover-iac.md` produces the `iac_cognitive` profile from Cognitive Services and
+Azure ML resources.

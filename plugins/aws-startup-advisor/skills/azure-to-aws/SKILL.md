@@ -5,16 +5,18 @@ description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrat
 
 # Azure-to-AWS Migration Skill
 
-> **Build status.** This skill's phase skeleton and DSL wiring are complete; the
-> per-phase CONTENT is landing in sequenced steps. Every unit file carries a
-> `## Status` block naming what it does today and which step fills it in. Do not
-> read a skeleton unit's thin body as the finished contract.
+> **Build status.** Discover, Clarify, Design, Estimate, Generate, and the
+> what-if workshop are implemented. A `## Status` block records which build
+> step filled a file in. It is not a signal to skip the file or to treat its
+> body as a stub. Still missing: Bicep, ARM templates, a live `az` capture,
+> and RDfA; the feedback sidebar (wiring only); and `patterns.md`,
+> `licensing.md`, and `gpu-hpc.md`.
 
 ## Philosophy
 
 - **Re-platform by default**: pick the AWS service that matches the Azure workload type (App Service → Elastic Beanstalk, AKS → EKS, VMs → EC2, Flexible Server → RDS/Aurora, Azure Cache for Redis → ElastiCache). Re-architecting is a user decision, not a default.
 - **Do not recommend AWS App Runner** (no longer accepting new customers as of April 2026). App Service maps to **Elastic Beanstalk** by default, with Fargate as the override for direct container control and EKS for teams that already run Kubernetes. ECS Express Mode may be mentioned only as a forward-look on the Fargate override path.
-- **Live-first discovery, read-only and consent-gated (planned)**: the design intent is that the user's authenticated `az` CLI is a first-class source — most startups have no `azurerm_*` Terraform, and the tenant is authoritative for what actually runs. **The live-`az` capture fragment is not on this branch yet** (Terraform is the built discovery source today; a live-only workspace halts rather than guessing); it lands as a sequenced follow-up. Resource Discovery for Azure (RDfA) is offered as the **accuracy upgrade** when right-sizing dollars matter, and recommended outright above roughly a handful of subscriptions. Live capture is strictly read-only, never captures app-setting or connection-string VALUES, and never mints a token.
+- **Live-first discovery, read-only and consent-gated (not implemented)**: the design intent is that the user's authenticated `az` CLI is a first-class source — most startups have no `azurerm_*` Terraform, and the tenant is authoritative for what actually runs. **The live `az` capture fragment is not implemented.** Terraform (`azurerm_*`) and application code are the discovery sources that run today; a workspace with only Bicep, ARM, or a live CLI capture halts rather than guessing. Resource Discovery for Azure (RDfA) is the accuracy upgrade when right-sizing dollars matter, and it is not implemented either. Live capture, when it exists, stays strictly read-only, never captures app-setting or connection-string VALUES, and never mints a token.
 - **Holistic first, per-resource second**: the report leads with cluster-level architecture rationale. A 40-row per-resource mapping table is an appendix, not the headline.
 - **Pre-determined where there is no ambiguity**: an architecture-invariant primitive (Blob → S3, VNet → VPC) is a deterministic table lookup and never routed through a rubric that could reason its way somewhere else. A pattern may narrow the rubric's candidate set; **a pattern may never change a `deterministic` mapping's target.**
 - **Dev sizing unless specified**: default to development-tier capacity (single AZ, `db.t4g.micro`-class). Upgrade only on user direction or on measured utilization.
