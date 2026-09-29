@@ -860,17 +860,22 @@ describe('telemetry emitter', () => {
       // Assert
       assert.equal(first.map(activity).find((a) => a.phase === 'DESIGN').attributes.complexityTier, 'SMALL');
       assert.equal(redesign.attributes.complexityTier, 'LARGE', 'the stale generation tier is ignored while Generate is pending');
+    } finally {
+      cleanup(p);
+    }
+  });
+
   it('reports a failed gate once per phase with its reason, and the later pass of that phase as its own event', async () => {
     // Arrange: clarify's completion gate failed on a missing artifact
     const p = makeProject(phaseStatus());
     const writeGateFailures = (failures: unknown) =>
       writeFileSync(join(p.runDir, '.gate-failures.json'), JSON.stringify(failures, null, 2));
     const summary = (b: any) => [activity(b).eventName, activity(b).phase, activity(b).status];
-    writeGateFailures({ clarify: { reason: 'missing', field: 'preferences.json', at: '2026-02-26T15:40:00Z' } });
+    writeGateFailures({ clarify: { reason: 'missing', field: 'preferences.json', at: new Date().toISOString() } });
     try {
       // Act
       const first = await reconcile(p);
-      writeGateFailures({ clarify: { reason: 'invalid', field: 'preferences.json', at: '2026-02-26T15:41:00Z' } });
+      writeGateFailures({ clarify: { reason: 'invalid', field: 'preferences.json', at: new Date().toISOString() } });
       const repeat = await reconcile(p);
       writeFileSync(
         p.statusFile,
@@ -922,7 +927,7 @@ describe('telemetry emitter', () => {
   it('baselines gate failures recorded before consent together with the phases, so only later failures are reported', async () => {
     // Arrange: state and a recorded failure both predate the consent record;
     // the state file stays old throughout, so the later failure is judged by
-    // the gate record's own mtime
+    // its own timestamp
     const p = makeProject(phaseStatus());
     const gateFile = join(p.runDir, '.gate-failures.json');
     const clarify = { reason: 'missing', field: 'preferences.json', at: '2026-02-25T10:00:00Z' };
@@ -934,7 +939,7 @@ describe('telemetry emitter', () => {
       // Act
       const first = await reconcile(p);
       const baselined = snapshotOf(p).gateFailures;
-      writeFileSync(gateFile, JSON.stringify({ clarify, design: { reason: 'invalid', field: 'design.json', at: '2026-02-26T16:00:00Z' } }));
+      writeFileSync(gateFile, JSON.stringify({ clarify, design: { reason: 'invalid', field: 'design.json', at: new Date().toISOString() } }));
       const later = await reconcile(p);
 
       // Assert
@@ -944,6 +949,102 @@ describe('telemetry emitter', () => {
         later.map((b) => [activity(b).eventName, activity(b).phase, activity(b).attributes?.failureReason]),
         [['GATE_FAILED', 'DESIGN', 'INVALID']],
       );
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('judges each recorded gate failure by its own timestamp when a new failure rewrites the file', async () => {
+    // Arrange: CLARIFY failed a day before consent; DESIGN fails now, rewriting the shared file
+    const p = makeProject(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }));
+    const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    writeFileSync(
+      join(p.runDir, '.gate-failures.json'),
+      JSON.stringify({
+        clarify: { reason: 'missing', field: 'preferences.json', at: dayAgo },
+        design: { reason: 'invalid', field: 'aws-design.json', at: new Date().toISOString() },
+      }),
+    );
+    try {
+      // Act
+      const gates = (await reconcile(p)).map(activity).filter((a) => a.eventName === 'GATE_FAILED');
+
+      // Assert
+      assert.deepEqual(gates.map((a) => [a.phase, a.attributes.failureReason]), [['DESIGN', 'INVALID']]);
+      assert.deepEqual(snapshotOf(p).gateFailures.sort(), ['CLARIFY', 'DESIGN'], 'the old failure is known, not sent');
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('keeps the pre-consent baseline when the only new gate event is held', async () => {
+    // Arrange: a run that predates consent, then a live DESIGN failure the service refuses
+    const p = makeProject(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }));
+    const dayAgo = new Date(Date.now() - 24 * 3600 * 1000);
+    utimesSync(p.statusFile, dayAgo, dayAgo);
+    writeFileSync(
+      join(p.runDir, '.gate-failures.json'),
+      JSON.stringify({ design: { reason: 'invalid', field: 'aws-design.json', at: new Date().toISOString() } }),
+    );
+    try {
+      respondWith = 403;
+      const refused = await reconcile(p);
+      respondWith = 200;
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(phaseStatus({ current_phase: 'estimate', phases: { ...phaseStatus().phases, clarify: 'completed', design: 'completed' } }), null, 2),
+      );
+
+      // Act
+      const later = (await reconcile(p)).map(activity).map((a) => [a.eventName, a.phase]);
+
+      // Assert
+      assert.deepEqual(refused.map(activity).map((a) => [a.eventName, a.phase]), [['GATE_FAILED', 'DESIGN']], 'only the live failure was attempted');
+      assert.equal(snapshotOf(p).phases.discover, 'completed', 'history was still baselined');
+      assert.deepEqual(later.sort(), [['GATE_FAILED', 'DESIGN'], ['PHASE_COMPLETED', 'DESIGN']], 'held gate re-sent, history never sent');
+    } finally {
+      respondWith = 200;
+      cleanup(p);
+    }
+  });
+
+  it('ignores a malformed gate entry and an inherited-key reason without consuming the phase', async () => {
+    // Arrange
+    const p = makeProject(phaseStatus());
+    const gates = (v: unknown) => writeFileSync(join(p.runDir, '.gate-failures.json'), JSON.stringify(v));
+    try {
+      gates({ clarify: null, design: { reason: '__proto__', at: new Date().toISOString() } });
+      const first = (await reconcile(p)).map(activity).filter((a) => a.eventName === 'GATE_FAILED');
+      gates({ clarify: { reason: 'missing', field: 'preferences.json', at: new Date().toISOString() }, design: { reason: '__proto__', at: new Date().toISOString() } });
+
+      // Act
+      const second = (await reconcile(p)).map(activity).filter((a) => a.eventName === 'GATE_FAILED');
+
+      // Assert
+      assert.deepEqual(first.map((a) => [a.phase, a.attributes.failureReason]), [['DESIGN', undefined]], 'a null entry is not a failure; an unknown reason drops only the attribute');
+      assert.deepEqual(second.map((a) => [a.phase, a.attributes.failureReason]), [['CLARIFY', 'MISSING']], 'the real failure is still reported');
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('carries the complexity tier on a Design-onward gate failure', async () => {
+    // Arrange: Design fails before any tiered artifact exists; the discover preview says complex
+    const p = makeProject(
+      phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }),
+      'granted',
+      { 'gcp-resource-inventory.json': GCP_INVENTORY, 'migration-preview.json': { complexity_signal: 'complex' } },
+    );
+    writeFileSync(
+      join(p.runDir, '.gate-failures.json'),
+      JSON.stringify({ design: { reason: 'missing', field: 'aws-design.json', at: new Date().toISOString() } }),
+    );
+    try {
+      // Act
+      const gate = (await reconcile(p)).map(activity).find((a) => a.eventName === 'GATE_FAILED');
+
+      // Assert
+      assert.equal(gate.attributes.complexityTier, 'LARGE');
     } finally {
       cleanup(p);
     }

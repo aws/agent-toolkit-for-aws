@@ -197,6 +197,15 @@ function predatesConsent(statusFile) {
   return Number.isFinite(consentedAt) && mtime < consentedAt - PRE_CONSENT_SLACK_MS;
 }
 
+// The same rule for a timestamp the skill wrote itself; undefined when either
+// side is unusable, so the caller can fall back to the file's mtime.
+function predatesConsentAt(iso) {
+  const consentedAt = Date.parse(consentRecord()?.consentedAt ?? "");
+  const at = Date.parse(iso ?? "");
+  if (!Number.isFinite(consentedAt) || !Number.isFinite(at)) return undefined;
+  return at < consentedAt - PRE_CONSENT_SLACK_MS;
+}
+
 // At the moment of a grant, every run already on disk is recorded as known, so
 // only transitions made from here on are reported. The mtime rule above cannot
 // do this alone: the next write to a state file refreshes its mtime and would
@@ -212,10 +221,12 @@ async function baselineRuns(startDir) {
     try {
       const snapshot = readSnapshot(snapshotFile);
       if (snapshot === SNAPSHOT_UNREADABLE) continue;
+      const gates = gateFailureEntries(readJson(path.join(runDir, ".gate-failures.json"))).map((e) => e.phase);
       writeJson(snapshotFile, {
         runId: asUuid(snapshot?.runId) ?? asUuid(status.run_id) ?? crypto.randomUUID(),
         ...(snapshot?.sessionId ? { sessionId: snapshot.sessionId } : {}),
         phases: status.phases ?? {},
+        gateFailures: [...new Set([...(snapshot?.gateFailures ?? []), ...gates])],
         completed: Boolean(snapshot?.completed) || status.current_phase === "complete",
         via: viaMode(),
         updatedAt: new Date().toISOString(),
@@ -715,7 +726,9 @@ function deriveAttributes(runDir, skill, event, status) {
     if (status) attributes.validationStatus = status;
   }
 
-  const fromDesignOnward = phaseEvent && ["DESIGN", "ESTIMATE", "WORKSHOP", "GENERATE", "FEEDBACK"].includes(phase);
+  const fromDesignOnward =
+    (phaseEvent || event.eventName === "GATE_FAILED") &&
+    ["DESIGN", "ESTIMATE", "WORKSHOP", "GENERATE", "FEEDBACK"].includes(phase);
   if (fromDesignOnward || event.eventName === "RUN_COMPLETED") {
     const tier = complexityTier(runDir, status);
     if (tier) attributes.complexityTier = tier;
@@ -735,6 +748,7 @@ function deriveAttributes(runDir, skill, event, status) {
 function gateFailureEntries(gateFailures) {
   if (!gateFailures || typeof gateFailures !== "object" || Array.isArray(gateFailures)) return [];
   return Object.entries(gateFailures)
+    .filter(([, entry]) => entry && typeof entry === "object" && !Array.isArray(entry))
     .map(([name, entry]) => ({ phase: String(name).toUpperCase(), entry }))
     .filter(({ phase }) => PHASES.has(phase));
 }
@@ -866,17 +880,19 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
 
     // The snapshot mirrors the state last observed, whether or not anything
     // was sent for it. Written only when the observation changed.
-    const observe = (phases, completed, reportedGateFailures) => {
+    const observe = (phases, completed, reportedGateFailures, started) => {
+      const notStarted = started === false || (started === undefined && snapshot?.started === false);
       const same =
         snapshot &&
         JSON.stringify(snapshot.phases ?? {}) === JSON.stringify(phases) &&
         Boolean(snapshot.completed) === completed &&
-        JSON.stringify(snapshot.gateFailures ?? []) === JSON.stringify(reportedGateFailures);
+        JSON.stringify(snapshot.gateFailures ?? []) === JSON.stringify(reportedGateFailures) &&
+        (snapshot.started === false) === notStarted;
       if (same) return;
       writeJson(snapshotFile, {
         runId,
         sessionId: validSessionId ?? snapshot?.sessionId,
-        ...(snapshot?.started === false ? { started: false } : {}),
+        ...(notStarted ? { started: false } : {}),
         phases,
         gateFailures: reportedGateFailures,
         completed,
@@ -889,20 +905,23 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
     // written before the effective consent record is history the customer
     // never agreed to report: a run that predates the first grant, or
     // transitions made while consent was revoked and then granted again. The
-    // state file and the gate-failure record are judged separately, each by
-    // its own mtime, so a gate that fails after consent on a run that started
-    // before it is still reported. History is recorded as already known and
-    // never sent, so only what happens from here on is reported.
+    // state file is judged by its mtime. Each recorded gate failure is judged
+    // by its own timestamp, because a new failure rewrites the shared file and
+    // its mtime says nothing about the entries retained from before consent;
+    // an entry without a usable timestamp falls back to the file's mtime. So a
+    // gate that fails after consent on a run that started before it is still
+    // reported. History is recorded as already known and never sent, so only
+    // what happens from here on is reported.
     const stateIsHistory = predatesConsent(statusFile);
     const gatesAreHistory = predatesConsent(gateFile);
-    const recordedGates = gateFailureEntries(gateFailures).map((e) => e.phase);
-    const knownGates = (sent) => [
-      ...new Set([...(snapshot?.gateFailures ?? []), ...(gatesAreHistory ? recordedGates : sent)]),
-    ];
+    const historyGates = gateFailureEntries(gateFailures)
+      .filter(({ entry }) => predatesConsentAt(entry.at) ?? gatesAreHistory)
+      .map((e) => e.phase);
+    const knownGates = (sent) => [...new Set([...(snapshot?.gateFailures ?? []), ...historyGates, ...sent])];
     const completedFromHistory = stateIsHistory && status.current_phase === "complete";
 
     const events = diffEvents(status, snapshot, gateFailures).filter((e) =>
-      e.eventName === "GATE_FAILED" ? !gatesAreHistory : !stateIsHistory,
+      e.eventName === "GATE_FAILED" ? !historyGates.includes(e.phase) : !stateIsHistory,
     );
     if (events.length === 0) {
       // Nothing to send, but the observation may have changed: history to
@@ -936,7 +955,19 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
       events.map((event) => post(endpoint, buildRequest(event, ctx), deadline)),
     );
     const held = new Set(events.filter((_, i) => isHeld(results[i])));
-    if (held.size === events.length) return; // nothing taken: nothing recorded
+    if (held.size === events.length) {
+      // Nothing taken, so nothing is recorded as sent. History still is: the
+      // next live write to the state file would otherwise make it look new.
+      if (stateIsHistory || historyGates.length) {
+        observe(
+          stateIsHistory ? (status.phases ?? {}) : (snapshot?.phases ?? {}),
+          Boolean(snapshot?.completed) || completedFromHistory,
+          knownGates([]),
+          stateIsHistory ? undefined : snapshot ? snapshot.started : false,
+        );
+      }
+      return;
+    }
 
     // The snapshot records exactly what the service took. A held phase keeps
     // its previous state so only that transition is re-sent; a held RUN_STARTED
