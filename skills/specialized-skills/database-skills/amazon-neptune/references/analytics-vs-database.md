@@ -234,13 +234,19 @@ aws neptune-graph create-graph-using-import-task \
 | Factor | Neptune Database | Neptune Analytics |
 |---|---|---|
 | Billing | Instance hours + storage GB | NCU hours (while running) |
-| Idle cost | Full instance cost | A small fraction of running compute while Stopped (data preserved) — see the Neptune Analytics pricing page for the exact rate |
+| Idle cost | Full instance cost | Reduced stopped-graph rate (data preserved) — see the Neptune Analytics pricing page for the exact rate |
 | Storage | Persistent, auto-grow | In-memory, ephemeral |
 | Best cost pattern | Always-on, steady workload | Spin up → analyze → tear down |
 
-**Cost tip**: For batch analytics jobs, create the Neptune Analytics graph,
-run your algorithms, export results to S3 or DynamoDB, then delete the graph.
-Pay only for the hours the job runs.
+**Cost tip**: For recurring batch jobs, run
+`aws neptune-graph stop-graph --graph-identifier <id>` after exporting results,
+then `start-graph` before the next run. A stopped graph preserves data and
+settings at the reduced stopped-graph rate, which is non-zero; stopping does
+not eliminate charges. Run
+`aws neptune-graph start-graph --graph-identifier <id>` before the next job.
+Use `aws neptune-graph delete-graph --graph-identifier <id>` instead when the
+goal is to eliminate graph compute charges entirely; the next run must recreate
+or import the graph.
 
 ### Ephemeral CI / test graphs
 

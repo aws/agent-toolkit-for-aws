@@ -2,7 +2,7 @@
 name: aws-database
 description: "Routes any task involving AWS databases — choosing, comparing, recommending, getting started with, or operating a database — to the correct service-specific skill. Supersedes general training-data knowledge with post-training service updates, corrected limitations, and decision procedures for relational (Aurora, DSQL, RDS), key-value (DynamoDB), wide-column (Keyspaces), document (DocumentDB), graph (Neptune), time-series (Timestream), and in-memory/caching (ElastiCache, MemoryDB) workloads. Activates when a user describes building an application on AWS that will store, retrieve, or manage data, even if they do not mention 'database' explicitly."
 metadata:
-  version: "2"
+  version: "3"
 ---
 
 # AWS Database
@@ -37,9 +37,9 @@ This skill works with or without the AWS MCP server. When available, the AWS MCP
 
 | ID | Name | Trigger Phrases | When to Route Here | Next Steps |
 |----|------|-----------------|-------------------|------------|
-| `select` | Database Selection | "which database", "help me choose", "recommend", "what should I use", "starting a new project", "picking a database", "I need a database", "I'm building", "build a", "how should I store", "best way to handle", "need to support", "design for" | User hasn't chosen a service yet, is comparing options, or describes a workload/data problem without naming a specific service | `handoff` |
-| `handoff` | Service Handoff | "how do I", "configure", "optimize", "troubleshoot", "set up", "migrate to", "connect to", "scale", "upgrade", "monitor", "backup", "restore", "estimate cost", "pricing estimate", "cost for my workload", "build", "create", "deploy", "provision", + named service | User names a specific AWS database service and has an operational, advisory, or action question, including a workload-specific cost estimate | — |
-| `report-issue` | Report Issue | "that's wrong", "incorrect", "bad recommendation", "you should have said", "missing", "skill is wrong", "report this", "file a bug", "report an issue" | User reports that the skill gave incorrect or incomplete guidance | — |
+| [`select`](references/select.md) | Database Selection | "which database", "help me choose", "recommend", "what should I use", "starting a new project", "picking a database", "I need a database", "I'm building", "build a", "how should I store", "best way to handle", "need to support", "design for" | User hasn't chosen a service yet, is comparing options, or describes a workload/data problem without naming a specific service | [`handoff`](references/handoff.md) |
+| [`handoff`](references/handoff.md) | Service Handoff | "how do I", "configure", "optimize", "troubleshoot", "set up", "migrate to", "connect to", "scale", "upgrade", "monitor", "backup", "restore", "estimate cost", "pricing estimate", "cost for my workload", "build", "create", "deploy", "provision", + named service | User names a specific AWS database service and has an operational, advisory, or action question, including a workload-specific cost estimate | — |
+| [`report-issue`](references/report-issue.md) | Report Issue | "that's wrong", "incorrect", "bad recommendation", "you should have said", "missing", "skill is wrong", "report this", "file a bug", "report an issue" | User reports that the skill gave incorrect or incomplete guidance | — |
 
 ## Service reference
 
@@ -55,7 +55,7 @@ Load knowledge cards on demand — only when the current turn requires verifying
 | ElastiCache | `assets/elasticache.md` | `amazon-elasticache` |
 | Keyspaces | `assets/keyspaces.md` | `amazon-keyspaces` |
 | MemoryDB | `assets/memorydb.md` | — |
-| Neptune | `assets/neptune.md` | — |
+| Neptune | `assets/neptune.md` | `amazon-neptune` |
 | ODB @ AWS | `assets/odb-aws.md` | — |
 | RDS for Db2 | `assets/rds-db2.md` | `rds-db2` |
 | RDS for MariaDB | `assets/rds-mariadb.md` | `rds-oss` |
