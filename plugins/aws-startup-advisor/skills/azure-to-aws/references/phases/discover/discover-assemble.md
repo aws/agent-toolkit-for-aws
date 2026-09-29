@@ -59,11 +59,21 @@ the validation checklist.
    procedure; `typed-edges-strategy.md` says which edge types may merge and which are
    ambient; `classification-rules.md` picks the primary; `tiering.md` assigns the tier.
 
-8. Merge AI-profile contributions by producer. IaC only ->
-   `metadata.profile_source: "iac_cognitive"`; app-code only -> `"application_code"`; both ->
-   `"merged"`, with code winning conflicts and `infrastructure[]` unioned by `address`.
-   Preserve both `sources_analyzed` flags. A strong IaC AI signal without an IaC profile
-   contribution is an assembly failure, not an optional absence.
+8. Merge AI-profile contributions by producer. IaC and/or live only ->
+   `metadata.profile_source: "iac_cognitive"`; app-code only -> `"application_code"`;
+   any infrastructure signal (IaC and/or live) PLUS app-code -> `"merged"`, with code
+   winning field-level conflicts. Union `infrastructure[]` by its per-entry key — an
+   IaC-sourced entry's `address`, a live-sourced entry's `azure_id` (per
+   `schema-discover-ai.md` § infrastructure[]); the two entry shapes never collide
+   with each other because they key on different fields, and an IaC entry and a live
+   entry both present in the same profile are two DISTINCT resources, not two
+   descriptions of one resource to reconcile. Set every `sources_analyzed` flag
+   (`terraform`, `live`, `application_code`) to `true` iff AT LEAST ONE qualifying
+   resource in the merged profile came from that source — OR across the whole
+   profile, never assigned exclusively per producer (see `schema-discover-ai.md` §
+   profile_source and sources_analyzed). A strong IaC AI signal without an IaC
+   profile contribution is an assembly failure, not an optional absence; same for a
+   live AI signal without a live profile contribution.
 
 ## Confidence vocabulary
 

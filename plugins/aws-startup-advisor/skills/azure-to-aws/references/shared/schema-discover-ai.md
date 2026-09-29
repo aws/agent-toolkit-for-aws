@@ -7,9 +7,13 @@
 > ports stay straight; the only changes are the source-provider swaps recorded in § Azure swaps.
 
 Produced by `discover-app-code.md` when app-code AI confidence ≥ 70%, OR — as a
-minimal IaC-inferred profile — by `discover-iac.md` when the inventory is Cognitive-Services /
-Azure-ML strong. Both producers have landed. An infrastructure-only repo (AI in Terraform,
-no application code) depends on the IaC path; an app-code-only repo depends on the app-code path.
+minimal infrastructure-inferred profile — by `discover-iac.md` (Terraform) and/or
+`discover-live.md` (live `az` capture) when the inventory is Cognitive-Services /
+Azure-ML strong. All three producers have landed, and any combination may contribute
+to the same run — an infrastructure-only repo (AI in Terraform and/or live tenant
+state, no application code) depends on the IaC/live path; an app-code-only repo
+depends on the app-code path; a run with both merges them (see § profile_source and
+sources_analyzed).
 
 ## Shape
 
@@ -18,9 +22,10 @@ no application code) depends on the IaC path; an app-code-only repo depends on t
   "metadata": {
     "report_date": "<ISO 8601>",
     "project_directory": "<path>",
-    "profile_source": "application_code", // application_code | iac_cognitive | merged
+    "profile_source": "application_code", // application_code | iac_cognitive | merged — see § profile_source for how "merged" covers a live contribution
     "sources_analyzed": {
       "terraform": true,
+      "live": false, // true iff live `az` capture contributed AT LEAST ONE qualifying AI resource — see § infrastructure[]
       "application_code": false,
       "billing_data": false,
       "openai_usage_api": false
@@ -36,7 +41,7 @@ no application code) depends on the IaC path; an app-code-only repo depends on t
   },
   "models": [], // see § models[]; MAY be empty for iac_cognitive
   "integration": {}, // see § integration
-  "infrastructure": [], // Azure AI Terraform resources; [] if no IaC
+  "infrastructure": [], // Azure AI resources (Terraform-sourced and/or live-`az`-sourced); [] if neither contributed — see § infrastructure[]
   "current_costs": {}, // ONLY if billing or usage-API ran — see § current_costs
   "detection_signals": [], // see § detection_signals[]
   "workloads": [], // ALWAYS present, [] if none — see § workloads[]
@@ -101,11 +106,54 @@ One per detected model. **Field names are exact** (the §13.3b drift class):
 }
 ```
 
+## profile_source and sources_analyzed — how producers combine
+
+`metadata.profile_source` names which producer(s) contributed to this profile:
+`application_code`, `iac_cognitive`, or `merged`. There is no fourth value for "live
+contributed" — a live-only or IaC+live run is still `iac_cognitive` or `merged`
+respectively, because `iac_cognitive` means "the profile came from infrastructure
+signal, not app-code SDK detection," and that is equally true whether the
+infrastructure signal was declared (Terraform) or observed (live `az`). What
+distinguishes the two is `metadata.sources_analyzed.terraform` vs `.live` (see § Shape)
+and each `infrastructure[]` entry's own shape (§ infrastructure[] below), not
+`profile_source`.
+
+**`sources_analyzed` fields are OR'd across every qualifying resource in the profile,
+never assigned exclusively per producer.** With one IaC-sourced qualifying resource
+and a different live-sourced qualifying resource in the SAME profile:
+`sources_analyzed.terraform: true` (an IaC resource contributed) AND
+`sources_analyzed.live: true` (a live resource also contributed) — both true
+simultaneously, because both are true statements about the profile as a whole.
+`summary.inferred_from_iac` follows the same OR rule: `true` if ANY qualifying
+resource came from Terraform, regardless of whether other resources in the same
+profile came from live `az` or app code. Only set a source flag `false` when NO
+qualifying resource in the entire profile came from that source — per-resource
+provenance (which specific resource came from which source) lives on that resource's
+`infrastructure[]` entry, not by forcing the profile-level flag to disagree with a
+resource that is plainly present.
+
 ## infrastructure[]
 
-Azure AI Terraform resources: `{ address, type, file, role?, config{} }`. `[]` if no IaC.
-Type examples: `azurerm_cognitive_account`, `azurerm_cognitive_deployment`,
-`azurerm_machine_learning_workspace`, `azurerm_search_service`.
+Two entry shapes, keyed by which producer supplied the resource — the `address` field's
+presence is the discriminator, matching `discover.md`'s producer-agreement rule:
+
+- **IaC-sourced entry:** `{ address, type, file, role?, config{} }`. `address`/`file` are
+  the Terraform reference (`config.tf_address`/`config.tf_file`); `type` is the Terraform
+  resource type when available, else the canonical Azure type. Examples:
+  `azurerm_cognitive_account`, `azurerm_cognitive_deployment`,
+  `azurerm_machine_learning_workspace`, `azurerm_search_service`.
+- **Live-sourced entry:** `{ azure_id, type, role?, config{} }` — NO `address`/`file` (there
+  is no Terraform reference for a live-captured resource). `azure_id` is the full ARM
+  resource id from the live capture (see `discover-live.md` § AI detection); `type` is the
+  canonical `Microsoft.*` ARM type string, e.g. `Microsoft.CognitiveServices/accounts`,
+  `Microsoft.CognitiveServices/accounts/deployments`,
+  `Microsoft.MachineLearningServices/workspaces`.
+
+`[]` if neither IaC nor a live capture contributed a qualifying resource. A run with BOTH
+kinds of resource (mixed IaC + live) carries both entry shapes side by side in one array —
+this is not a merge conflict, since an IaC-declared resource and a live-captured resource
+describe two different `azure_id`s (see `discover.md`'s producer-agreement rule for how
+`sources_analyzed`/`inferred_from_iac` behave in that case).
 
 ## current_costs
 
@@ -207,8 +255,10 @@ Present ONLY if `agentic_profile` exists (`[]` if agentic but no tools). Provide
 - [ ] `current_costs` present only if billing or usage-API ran.
 - [ ] No secret values anywhere (env-var/appsetting NAMES only).
 
-## Status — build step 3 (contract)
+## Status — build step 3 (contract), extended for live `az`
 
 Written as the AI-track contract. `discover-app-code.md` is the application-code producer
-(build step 4, now landed). `discover-iac.md`'s Cognitive-Services path is the
-infrastructure-only producer (minimal `iac_cognitive` profile).
+(build step 4, now landed). `discover-iac.md`'s Cognitive-Services path and
+`discover-live.md`'s AI detection are both infrastructure-signal producers (minimal
+`iac_cognitive` profile) — declared and observed respectively, merged per § profile_source
+and sources_analyzed when both contribute to the same run.

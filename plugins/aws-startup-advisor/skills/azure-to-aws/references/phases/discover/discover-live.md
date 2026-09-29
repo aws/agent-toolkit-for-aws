@@ -152,6 +152,11 @@ Output is written to .migration/<run>/live-capture/ (gitignored).
 
 - **[A]** → continue to Step 2.
 - **[B]** → exit cleanly with no output (record the decline for the orchestrator).
+  **On a re-entry where `live-capture/manifest.json` already exists from a prior
+  attempt** (see `discover.md`'s "Pre-dispatch main-window action," step 1): delete
+  or rename that manifest before exiting — a stale manifest left in place would
+  make the dispatched `live` fragment fire on data the user just declined to use
+  again.
 
 ### Step 2: Capture
 
@@ -185,12 +190,23 @@ real subscription: it returned `Microsoft.*` types directly (e.g.
 
 - Success → record `method: "resource_list"` in the manifest. `az resource list`
   carries every resource's full ARM `id` (the fast-path projects `id:id`), which is
-  the required `azure_id` — enrichment rows then merge their extra config onto those
-  entries by name+type. `az resource list` gives types/names/locations/sku but thin
-  per-service config, so then run only the **enrichment rows** (marked E) of the table
-  below for the ARM types that were found — those add the config fields (app-setting
-  names, container images, network wiring, versions) that edge inference and sizing
-  need.
+  the required `azure_id` — enrichment rows **join their extra config onto those
+  entries by that same full ARM `id`, never by name+type.** Every enrichment row also
+  projects `id:id` (see the REQUIRED note below), so both sides of the join already
+  carry the exact key needed. `name+type` is NOT a safe join key: it is not unique
+  within a subscription (e.g. `rg-dev/api` and `rg-prod/api` can both be a
+  `Microsoft.Compute/virtualMachines` named `api`, with different sizes), and a
+  same-name collision across resource groups would silently attach one resource's
+  enrichment config to a different resource with no later step able to detect or
+  repair it. `az resource list` gives types/names/locations/sku but thin per-service
+  config, so then run only the **enrichment rows** (marked E) of the table below for
+  the ARM types that were found — those add the config fields (app-setting names,
+  container images, network wiring, versions) that edge inference and sizing need.
+  If an enrichment row's captured `id` does not match any fast-path entry (a resource
+  visible to one call but not the other — e.g. a permissions or propagation gap),
+  keep that enrichment entry as its own inventory entry rather than dropping it or
+  guessing a match; record the gap in `warnings[]` per the closed vocabulary in
+  `schema-discover-azure.md` § Warnings.
 
 - Failure → classify and branch:
   - **Permission denied** (the identity lacks Reader on the subscription) → tell the
@@ -248,9 +264,11 @@ databases per server; skip the `master` system database. Elastic pools
 (`az sql elastic-pool list`) are an enrichment row only when a server is found.
 
 **Row 16 note (two-step):** list Cognitive Services accounts, then list deployments
-per account — the deployment's `model.name`/`version` is the AI signal Design's
-lifecycle check consumes. Never capture keys (`az cognitiveservices account keys
-list` is FORBIDDEN).
+per account — the deployment's captured `model`/`version` fields (the `--query`
+projects `properties.model.name` into the flat string key `model` — see the
+"Deployment row field note" below Step 3; it is a string, not `model.name` on an
+object) are the AI signal Design's lifecycle check consumes. Never capture keys
+(`az cognitiveservices account keys list` is FORBIDDEN).
 
 **Sizing caveat:** SKU capacity / `storageGb` are PROVISIONED, not actual usage.
 Downstream sizing must treat them as an upper bound. (Follow-up: actual utilization
@@ -307,8 +325,34 @@ in `references/shared/schema-discover-azure.md`:
 - `name` = the resource name.
 - `resource_group` = the captured `resourceGroup`.
 - `subscription_id` = `$AZURE_SUBSCRIPTION` (the schema requires it on every entry).
-- `config` = the projected fields from the capture (redaction rules from the Security
-  Contract apply; keep `sku`/`tier`/`capacity` — Design's cost-bearing test reads them).
+- `config` = the projected fields from the capture, **renamed and reshaped to the
+  SAME canonical `config` keys `extract-terraform.md`'s § "Per-type attributes"
+  table defines for that `azure_type`** — never the raw `--query` alias names. Every downstream reader (sizing, edge inference, AI parsing, and the drift
+  comparison against an IaC-sourced entry for the same `azure_id`) reads those
+  canonical keys; a live entry that kept its capture-time alias names would silently
+  read as absent to all of them, and a drift comparison against an IaC-sourced
+  duplicate of the same resource would never fire because the two entries would
+  share no field names to compare. Redaction rules from the Security Contract apply
+  before this rename, not after. The renames actually needed, by capture row:
+
+  | Row(s)  | Captured key(s)             | Canonical `config` key(s)                | Notes                                                                                    |
+  | ------- | ---------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+  | 2       | `sku`, `capacity`, `reserved` | `sku_name`, `worker_count`, `os_type`      | `reserved: true` → `os_type: "Linux"`, else `"Windows"` (App Service Plan's `reserved` flag is Azure's Linux/Windows discriminator) |
+  | 5       | `os`, `image`                | `os_type`, `image_publisher`/`image_offer`/`image_sku` | rename `os`; split the captured `image` object (`imageReference`'s `publisher`/`offer`/`sku`) into its three canonical fields. `size` already matches. `zone` and `os_disk` have no row-5 capture source — leave absent, do not invent them |
+  | 7, 8    | `storageGb`                  | `storage_mb`                              | multiply by 1024 (GB → MB) — unit conversion, not just a rename                          |
+  | 9       | `apiKind`                    | (drop — not a canonical field)             | Cosmos API routing uses `kind`/`capabilities` (already correctly named); `apiKind` (`serverVersion`) is unrelated Mongo-wire-version metadata, keep under its captured name for reference only, do not alias it onto a canonical key |
+  | 10      | `sku`, `family`, `capacity`  | `sku_name`, `family`, `capacity`           | rename `sku` → `sku_name` only; `family`/`capacity` already match                        |
+  | 13      | `kafka`                      | `kafka_enabled`                            | rename only; `sku`/`capacity` already match. Row 12 (`Microsoft.ServiceBus/namespaces`) already matches (`sku`) with no rename needed — its canonical `capacity` field has no row-12 capture source, leave absent |
+  | 14      | `addressSpace`, `subnets`    | `address_space`, subnet `address_prefixes` | rename the top-level key; each subnet's `prefix` → `address_prefixes` (as an array)      |
+  | 16      | `sku` (account row)          | `sku_name`                                 | account-level rename only; the deployment row's `model`/`version` are handled separately below, not carried into `config` under those names |
+
+  Every row not listed above already captures under its canonical name (e.g. rows 1,
+  3, 4, 4a, 4b, 6, 11, 11a, 11b, 15, 17, 18 project `sku`/`id`/`name`/etc. that already
+  match `extract-terraform.md`, or the row has no canonical `config` mapping at all).
+  When a captured field has no canonical counterpart for that type (e.g. row 5's
+  `subnet`, row 9's `multiRegion`), keep it in `config` under its captured name — it
+  is extra context, not a contract field, and is harmless alongside the canonical
+  keys.
 - `source` = `"live"` on every entry.
 - `azure_type_provenance` = `"table"` when the captured `Microsoft.*` type is in the
   canonicalization table; `"derived"` / `"derived_uncorroborated"` per the rule below
@@ -330,18 +374,45 @@ is `inferred` (declared/observed config, no utilization rollup — see
 `discover-assemble.md`). It becomes `measured` only when `az monitor metrics list`
 utilization backs the sizing.
 
+**Deployment row field note (row 16, second call).** The `--query` projection
+`model:properties.model.name` flattens `properties.model.name` into a plain STRING
+under the key `model` — after capture, `model` is the model name itself (e.g.
+`"gpt-4.1-mini"`), not an object with a `.name` property. Every reference below to
+"a deployment's `model.name`" means that captured `model` string field — reading
+`model.name` on it (as if it were still nested) reads undefined. Use the captured
+`model` string directly wherever this section says `model.name`.
+
 **AI detection:** if any `Microsoft.CognitiveServices/accounts`,
 `.../accounts/deployments`, or `Microsoft.MachineLearningServices/workspaces` resource
-was captured, contribute the minimal `ai-workload-profile.json` exactly as
-`discover-iac.md` Step 4.5 would, validating against `schema-discover-ai.md`, so the AI
-track fires. Live-specific field values (a live-only run has no Terraform):
-`profile_source: "iac_cognitive"`; a `detection_signals[]` entry with
-`method: "live_az"` (the allowed live method — this carries the live signal);
-`summary.inferred_from_iac: false` and `metadata.sources_analyzed.terraform: false`;
-`infrastructure[]` keyed by `azure_id` (not `config.tf_address`). Put a captured
-deployment's `model.name` in `models[]` — but note `models[].detected_via` is limited to
-`code|terraform|billing` in the schema and has NO live value, so the live provenance is
-recorded on the `detection_signals[]` entry, not on `detected_via`.
+was captured, contribute to `ai-workload-profile.json` per `schema-discover-ai.md` §
+profile_source and sources_analyzed and § infrastructure[], so the AI track fires.
+This section may be writing the ONLY qualifying resource in the profile (live-only),
+or adding a live-sourced resource alongside one `discover-iac.md` Step 4.5 already
+contributed (mixed IaC+live) — the rules below hold in both cases, because
+`sources_analyzed`/`inferred_from_iac` are OR'd across the whole profile, not
+assigned exclusively to whichever producer ran last:
+
+- Add one `infrastructure[]` entry per captured qualifying resource, in the
+  **live-sourced shape**: `{ azure_id, type, role?, config }` — keyed by `azure_id`,
+  NOT `config.tf_address` (there is no Terraform reference for a live-captured
+  resource). Do not touch or remove any IaC-sourced `infrastructure[]` entry
+  `discover-iac.md` already wrote — the array carries both shapes side by side.
+- Add a `detection_signals[]` entry with `method: "live_az"` for each live-captured
+  resource — this is what carries the live provenance, since `models[].detected_via`
+  is limited to `code|terraform|billing` per the schema and has no live value.
+- Set `metadata.sources_analyzed.live: true`. Set `.terraform` to whatever it already
+  is (`true` if an IaC-sourced resource also qualified this run, unchanged
+  otherwise) — do NOT force it to `false`; a live contribution never overrides an
+  IaC contribution's truth. Same rule for `summary.inferred_from_iac`: leave it
+  `true` if any IaC-sourced resource qualified, regardless of this live contribution.
+- Set `metadata.profile_source` to `"iac_cognitive"` if this is the only
+  infrastructure-signal producer (no app-code contribution), or leave/set it to
+  `"merged"` if app-code also qualified this run — same rule `discover-iac.md`
+  already follows, unaffected by whether the infrastructure signal came from
+  Terraform, live `az`, or both.
+- Put a captured deployment's `model` field (see the field note above — it is
+  already a flat string after capture, not `model.name` on an object) in `models[]`.
+
 `Microsoft.Search/searchServices` alone is NOT a strong signal.
 
 > **`ai_source` keys off the DEPLOYMENT MODEL, not the account `kind`** (validated
