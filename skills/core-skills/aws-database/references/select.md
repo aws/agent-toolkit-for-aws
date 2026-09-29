@@ -40,7 +40,7 @@ When the user says "serverless database" without other signals that resolve the 
 
 | Type | What it means | Services |
 |------|--------------|----------|
-| Serverless operations | No cluster, no instances, no maintenance windows. You get an endpoint and start querying. | Aurora DSQL, DynamoDB, Keyspaces |
+| Serverless operations | No database instances or capacity management. Aurora DSQL exposes an AWS-managed cluster resource and endpoint, while AWS manages patching and maintenance. | Aurora DSQL, DynamoDB, Keyspaces |
 | Serverless capacity | You still create and manage a cluster or cache, but compute and/or storage scales automatically based on demand. | Aurora PostgreSQL (serverless), Aurora MySQL (serverless), ElastiCache Serverless, Neptune Serverless, DocumentDB Elastic Clusters |
 
 Additionally, "Aurora Serverless" (the product name) refers to Aurora PostgreSQL or Aurora MySQL with serverless compute — it is serverless-capacity, not serverless-operations. While Aurora Serverless is a different product from DSQL, naming it often signals familiarity with Aurora and potential unawareness of DSQL — Aurora DSQL is newer and many users haven't encountered it yet. When a user names "Aurora Serverless" for a new application but describes serverless-operations needs without naming PostgreSQL-specific features outside DSQL's surface, do not assume their naming it means they've evaluated and rejected DSQL — recommend DSQL and explain the distinction. Only recommend Aurora PostgreSQL Serverless when the user names a specific PostgreSQL extension or feature outside DSQL's supported surface.
@@ -70,7 +70,7 @@ If the workload clearly fits a specialized data model, recommend the purpose-bui
 | MongoDB-compatible document store | DocumentDB |
 | Cassandra-compatible wide-column, CQL workloads | Keyspaces |
 
-If the workload is *exclusively* full-text search, log analytics, or data warehousing/OLAP — with no primary data storage need — tell the user these workloads are not served by AWS database services and suggest they look into the appropriate AWS service. If the workload combines search with a primary data store (e.g., product catalog with full-text search), recommend the database and note that search can be added as a complement.
+If the workload is *exclusively* full-text search, log analytics, or data warehousing/OLAP — with no primary data storage need — tell the user these workloads are not served by AWS database services and suggest the appropriate AWS service. This is a terminal outcome for this skill: if the user also asks to provision or configure that service, do not invoke tools, follow the database handoff procedure, or claim that work has started. Offer to redirect them to the appropriate service workflow instead. If the workload combines search with a primary data store (e.g., product catalog with full-text search), recommend the database and note that search can be added as a complement.
 
 #### Has the user named a specific engine?
 
@@ -99,7 +99,7 @@ Most new applications land on one of three services: Aurora DSQL, Aurora Postgre
 - The data model is naturally key-value (session stores, player profiles, device state, shopping carts, leaderboards, feature flags)
 - The user explicitly mentions DynamoDB, NoSQL, or key-value as their preference
 
-For solo developers and small teams (<5 engineers): one database, simplest possible schema. Do not recommend multi-tenant patterns or sharding for small-scale workloads. Do not recommend DynamoDB for small-scale workloads.
+For solo developers and small teams (<5 engineers), prefer one database and the simplest workable schema. Do not introduce sharding or complex multi-tenant patterns without a stated need. DynamoDB remains appropriate when the access patterns are clearly key-based or the user prefers NoSQL; do not select it solely for hypothetical future scale.
 
 #### Which PostgreSQL engine?
 
@@ -179,7 +179,7 @@ When the user is migrating a database that already exists, the fastest path to p
 
 If the user's source database isn't in this table, ask what it is — there is almost always a reasonable AWS equivalent, but the answer depends on the engine.
 
-A migration recommendation should mention: the managed equivalent, roughly what they get "for free" (automated backups, patching, scaling, HA), and a note that if they want to rethink the engine as part of this move, that's a refactoring conversation — different tradeoffs, different recommendation.
+A migration recommendation should mention the managed equivalent, the operational work AWS reduces for that service (such as backups, high availability, infrastructure operation, and scaling where supported), and the responsibilities that remain with the customer. Do not describe patching, version upgrades, or maintenance as universally automatic. If the user wants to rethink the engine as part of the move, explain that this is a refactoring conversation with different tradeoffs and a potentially different recommendation.
 
 **Good follow-up questions for migrations:**
 
@@ -195,7 +195,7 @@ Refactoring is different from migration. Migration moves the workload as-is; ref
 
 Do not suggest the same-engine managed service as an alternative. If the user said they want off Oracle, do NOT name Amazon RDS for Oracle — the commercial licensing costs remain, which is often the driver for the refactor. Same applies to SQL Server → RDS for SQL Server and Db2 → RDS for Db2. If the user would be happy staying on the same engine, they want a migration, not a refactor — offer to re-route.
 
-If the user doesn't have a specific reason to pick something else, start with **Aurora PostgreSQL (serverless)**. PostgreSQL has the broadest feature compatibility with commercial databases, a large open-source community and broad tooling support, and Aurora delivers the performance and availability that enterprise workloads expect. The serverless configuration is recommended: it scales automatically and scales to zero when idle.
+If the user doesn't have a specific reason to pick something else, start with **Aurora PostgreSQL (serverless)**. PostgreSQL has the broadest feature compatibility with commercial databases, a large open-source community and broad tooling support, and Aurora delivers the performance and availability that enterprise workloads expect. The serverless configuration is recommended: it scales compute automatically and can scale to zero when the engine version, configured minimum, and enabled features support auto-pause.
 
 Walk through these in order and stop at the first one that fits:
 

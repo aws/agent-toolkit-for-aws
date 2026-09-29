@@ -165,7 +165,9 @@ Neptune Analytics is **ephemeral**. For production:
 3. **Not storing entity embeddings** — limits semantic search to chunks only
 4. **Using Neptune Database for GraphRAG** — Analytics has built-in vectors
 5. **String interpolation** — use parameterized queries to prevent injection
-6. **Ignoring community detection** — enables multi-level summarization
+6. **Filtering labels after vector `topK`** — use `vertexFilter` so unrelated
+   labels do not consume the chunk result slots
+7. **Ignoring community detection** — enables multi-level summarization
 
 ## Additional Resources
 

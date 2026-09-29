@@ -5,9 +5,9 @@
 - **Data model**: Relational (full PostgreSQL)
 - **Query language**: PostgreSQL SQL (full dialect + extensions)
 - **Compatibility**: Full PostgreSQL (all extensions, stored procedures, triggers, FDWs)
-- **Serverless**: Yes (Serverless, auto-scaling 0-256 ACU)
-- **Serverless type**: Capacity — you still create and manage a cluster, but compute scales automatically (including to zero with auto-pause)
-- **Scale to zero**: Yes, via auto-pause
+- **Serverless**: Yes
+- **Serverless type**: Capacity — you create and manage a cluster, while compute scales automatically within the supported capacity range (currently up to 256 ACUs on supported engine and platform versions). Patching, upgrades, and maintenance remain a shared responsibility, consistent with standard Aurora PostgreSQL
+- **Scale to zero**: Conditional — requires an engine version that supports auto-pause and a minimum capacity of 0 ACUs; otherwise the minimum is 0.5 ACU. Enabled features and settings can require a higher effective floor or prevent auto-pause
 - **VPC required**: Yes (unless Express Configuration — no VPC, PostgreSQL only, limited regions)
 - **Multi-region**: Global Database for disaster recovery (<1s replication, single write region)
 - **Free Tier**: new-account AWS Free Tier — $100 in credits at sign-up plus up to $100 more ($200 total), usable across eligible services including Aurora for up to 12 months. Free plan gives Aurora PostgreSQL serverless up to 4 ACUs and 1 GiB storage per cluster; upgrade to Paid for up to 256 ACUs / 256 TiB (per aws.amazon.com/rds/aurora/pricing)

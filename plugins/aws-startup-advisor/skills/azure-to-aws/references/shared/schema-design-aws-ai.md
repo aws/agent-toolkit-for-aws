@@ -185,5 +185,5 @@ rubric file (`ai.md`, `ai-azure-openai-to-bedrock.md`, or a `vendored/ai/*` ref)
 
 ## Status — build step 2 (AI design route)
 
-Written alongside `design-ai.md`. The estimate/generate AI consumers (`estimation-ai.json`,
-`generation-ai.json`) land in step 3 and read this contract.
+Written alongside `design-ai.md`. `estimate-ai.md` and `generate-artifacts-ai.md`
+read this contract.

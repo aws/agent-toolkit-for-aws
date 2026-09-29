@@ -12,8 +12,7 @@
 - **Multi-region**: Multi-Region replication (add/remove Regions on a live keyspace)
 - **Consistency**: Tunable reads (ONE, LOCAL_QUORUM); lightweight transactions (LWT) for conditional writes
 - **Free Tier**: First three months (30M write request units, 30M read request units, 1 GB storage per month).
-- **Min cost**: $0 (free tier)
-- **Pricing**: On-demand and provisioned; AWS Database Savings Plans supported
+- **Min cost**: $0 (free tier); on-demand and provisioned capacity modes, AWS Database Savings Plans supported
 - **Time to first query**: Seconds (create table, start writing)
 - **Key features**: CQL compatibility, serverless, replication across 3 AZs, multi-Region replication, TTL, point-in-time recovery, CDC Streams (pull API), client-side timestamps, logged batches, User Defined Types (UDTs) including nested UDTs, frozen collections, pre-warming, IPv6, customer-managed KMS keys
 - **Limitations**: No JOINs, no secondary indexes, no full-text search, no complex analytical queries, per-row 1 MB size, some CQL features unsupported

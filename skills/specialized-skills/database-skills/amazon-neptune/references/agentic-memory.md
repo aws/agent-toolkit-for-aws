@@ -154,6 +154,8 @@ Neptune Analytics is **ephemeral**. For production agents:
 5. **No timestamps** — agents need temporal context for relevance
 6. **No persistence strategy** — Analytics memory is lost on graph deletion
 7. **String interpolation** — use parameterized queries (bindings or `$param`)
+8. **Filtering labels after vector `topK`** — use `vertexFilter` so unrelated
+   labels do not consume the entity result slots
 
 ## Memory Framework Integrations
 

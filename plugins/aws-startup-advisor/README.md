@@ -22,7 +22,7 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 | 4 | `azure-to-aws` | Six-phase Microsoft Azure to AWS migration. Discovery reads Terraform (`azurerm_*`), application code, and billing exports — not Bicep, ARM templates, or a live Azure CLI capture. Generate is opt-in, and the what-if workshop is optional | [SKILL.md](skills/azure-to-aws/SKILL.md) |
 | 5 | `gcp-to-aws` | Six-phase Google Cloud to AWS migration: discover, clarify, design, estimate, generate artifacts, feedback | [SKILL.md](skills/gcp-to-aws/SKILL.md) |
 | 6 | `heroku-to-aws` | Six-phase Heroku to AWS migration with deterministic add-on mapping and an optional what-if repricing workshop | [SKILL.md](skills/heroku-to-aws/SKILL.md) |
-| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
+| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch. Requires `gcp-to-aws` installed alongside it | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
 | 8 | `tf-best-practices` | AWS Terraform authoring posture, security-baseline spec, and a read-only policy gate over generated Terraform | [SKILL.md](skills/tf-best-practices/SKILL.md) |
 | 9 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
 | 10 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
@@ -141,7 +141,15 @@ The `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` skills run the same six-ph
 
 The `llm-to-bedrock` skill is a focused model and SDK rewrite. It assesses the codebase, rewrites OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluates the rewritten behavior against a golden prompt set, and delivers a ready-to-review git branch with a migration report.
 
-Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover. The assess phase is delegated to `gcp-to-aws`, so install that skill alongside this one.
+**Requires `gcp-to-aws` installed alongside it.** `llm-to-bedrock` delegates its assess phase to the `gcp-to-aws` skill and has no standalone fallback — installing `llm-to-bedrock` on its own stops at the first step. Install both together:
+
+```bash
+npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill gcp-to-aws
+```
+
+(The `--skill '*'` install above already includes both.)
+
+Model mapping is compatibility-guided rather than one-to-one parity. Validate prompts, tool-calling behavior, and evaluation metrics before cutover.
 
 ### Examples
 
