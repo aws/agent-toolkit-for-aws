@@ -398,7 +398,7 @@ Present in `estimation-infra.json` only when `preferences.json` → `design_cons
 - `projected_costs.breakdown` observability entry (when present) REPLACES any CloudWatch/log/metric costs in the "Supporting" row — never double-count
 - `cost_comparison` shows all three options with monthly and annual differences
 - `cost_comparison.commitment_context` is present if `billing-profile.json` has `commitments.has_active_cuds == true`; omitted otherwise
-- `migration_cost_considerations.billing_data_available` is `true` if `billing-profile.json` exists, `false` otherwise
+- `migration_cost_considerations.billing_data_available` is `true` if `billing-profile.json` exists **with non-empty `services[]`**, `false` otherwise (a skip-record profile — empty `services[]`, non-empty `warnings[]` — counts as `false`; it records that billing input was seen and skipped, not usable spend data)
 - If `billing_data_available` is `true`: `migration_cost_considerations.categories` lists **GCP vendor egress / data transfer** only (never human or professional-services costs)
 - If `billing_data_available` is `false`: `migration_cost_considerations.categories` is empty; `note` explains that billing data is required for GCP egress fee estimates
 - `roi_analysis` presents recurring monthly/annual savings (or increase) per tier

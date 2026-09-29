@@ -390,9 +390,9 @@ If `commitments.has_active_cuds == false` or the section is absent, omit `commit
 
 This section covers **GCP vendor/network charges** for outbound data during migration — not human labor or professional-services costs (those are never presented as dollar estimates by this advisor).
 
-**Billing data check:** Before generating this section, check if `$MIGRATION_DIR/billing-profile.json` exists.
+**Billing data check:** Before generating this section, check if `$MIGRATION_DIR/billing-profile.json` exists **AND has non-empty `services[]`**. A **skip-record** profile (empty `services[]`, non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) does NOT count as billing data being available — there are no service line items to estimate egress volume from. Route a skip-record profile to the "IF billing data is NOT available" branch below (never to the "IS available" branch, even though the file exists on disk).
 
-### IF billing data IS available (`billing-profile.json` exists):
+### IF billing data IS available (`billing-profile.json` exists with non-empty `services[]`):
 
 **Data transfer** — egress fees from GCP during migration. GCP charges for outbound data transfer; volume depends on database sizes and storage to migrate. Use the billing data to estimate the volume of data that needs to move.
 

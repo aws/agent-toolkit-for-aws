@@ -729,20 +729,39 @@ Tell the user, before collecting models:
 >
 > The preflight probes each model by the right API automatically and reports exactly which access to enable per model; I'll relay that."
 
-### AC2 — Collect target models and region
+### AC2 — Collect requested models and region (do NOT resolve friendly names yet)
 
-- **Models:** if `$ARGUMENTS` names model IDs, use them. Otherwise **AskUserQuestion**: "Which
-  models do you want access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-4-5-v1:0`,
-  `openai.gpt-oss-120b-1:0`) or provider + name and I'll resolve the ID." If the user gives a
-  friendly name, resolve it to a Bedrock model ID (read
-  `$HELPERS/resolve-bedrock-model-id/resolve-bedrock-model-id.md` and follow its procedure);
-  confirm the resolved IDs back to the user. Collect them into `$TARGET_MODELS`.
+- **Models (raw request only):** if `$ARGUMENTS` names model IDs, use them directly — skip
+  resolution, they're already IDs. Otherwise **AskUserQuestion**: "Which models do you want
+  access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-4-5-v1:0`,
+  `openai.gpt-oss-120b-1:0`) or provider + name and I'll resolve the ID." Collect whatever the
+  user gave (IDs and/or friendly names) into `$REQUESTED_MODELS` — **do NOT invoke the
+  friendly-name resolver here.** The resolver's own commands
+  (`aws bedrock list-foundation-models` / `list-inference-profiles`) require a `--region` and
+  run under whatever AWS identity is active at call time — resolving before `$REGION`/AC3 are
+  set means it can run against the wrong region or the default (not yet confirmed) profile
+  and fail for reasons that have nothing to do with the model name.
 - **Region:** **AskUserQuestion**: "Which AWS region? (default `us-east-1`)" → `$REGION`.
 
 ### AC3 — AWS identity confirmation
 
 Run the **B2** identity-confirmation step exactly as written (including the profile-choice
 handling and `$AWS_PROFILE_CHOICE`). Do not proceed without a confirmed identity.
+
+### AC3.5 — Resolve friendly names, now that region + identity are confirmed
+
+For any entry in `$REQUESTED_MODELS` that is not already a Bedrock model ID, resolve it now
+(read `$HELPERS/resolve-bedrock-model-id/resolve-bedrock-model-id.md` and follow its
+procedure) — using `$REGION` from AC2 and, if AC3 chose a non-default profile, prefixing the
+resolver's own AWS CLI calls with `AWS_PROFILE=$AWS_PROFILE_CHOICE` (env vars do not persist
+across Bash calls; without the prefix the resolver queries the DEFAULT identity, not the one
+just confirmed). Confirm the resolved IDs back to the user. Collect the final IDs (already-ID
+entries plus newly-resolved ones) into `$TARGET_MODELS`.
+
+**If the user later changes `$REGION` or the AWS profile** (e.g. after an AC4 `authz`/
+`credentials` failure prompts a re-check): re-run this resolution step for any name-based
+entry before re-running AC4 — a model ID resolved against the old region/profile may not be
+the right ID (or may not exist) in the new one.
 
 ### AC4 — Preflight the named models
 
@@ -767,7 +786,24 @@ Then, per B4's branch table:
   - **Commercial Regions:** access is on by default once the caller has the AWS Marketplace
     permissions (`aws-marketplace:Subscribe` / `Unsubscribe` / `ViewSubscriptions`) — the model
     auto-subscribes on first invoke. If those permissions are missing, that is the fix.
-  - **GovCloud (and explicit enable):** use the console **Model access** page in `$REGION`.
+  - **GovCloud, third-party models (most models — check first):** GovCloud accounts are
+    linked one-to-one with a commercial account, and per AWS's own docs, third-party model
+    access must be enabled in **both** accounts — enabling it only in GovCloud leaves the
+    account blocked. Two steps, in order:
+    1. In the linked **commercial** account, in `us-east-1` or `us-west-2` (switch AWS
+       identity/profile to that account first), invoke the model once (or enable it via the
+       SDK/CLI as in the commercial-Regions bullet above) — this is the same auto-enable
+       mechanism, just run against the commercial account rather than GovCloud. Note: entitlement
+       can take a few minutes to propagate to the linked GovCloud account after this step.
+    2. Switch back to the **GovCloud** identity, then use the console **Model access** page —
+       always in **`us-gov-west-1`** specifically (not the inference region — GovCloud's
+       Model access console page only exists in that one region, regardless of what `$REGION`
+       the user is trying to invoke the model from).
+    Confirm which identity/profile is active before each step; a mismatch here (acting in the
+    wrong account) looks like the enablement "didn't work."
+  - **GovCloud, Amazon-provided models:** only the GovCloud-account step above is needed — no
+    linked commercial-account step, since Amazon models aren't third-party AWS Marketplace
+    listings.
   - **Anthropic** models additionally need the one-time First-Time-Use form
     (`PutUseCaseForModelAccess`) per account before invoke — except when reached via
     `bedrock-mantle`.
@@ -783,14 +819,30 @@ Then, per B4's branch table:
   correct ID, re-confirm, and re-run AC4.
 - `reason: credentials` / `mantle_deps_missing` / other → surface `detail` and follow B4's rule
   (fix and re-run; do not claim access is verified when it isn't).
-- `ok == true` for a model → tell the user access is confirmed working in `$REGION` for that ID.
+- `ok == true` + `reason: embedding_unprobed` → the model is from an unrecognized embedding
+  family, so the preflight could NOT actually invoke it (see `probe_model()` in
+  `preflight_bedrock.py`) — this is `ok: true` at the JSON level but zero inference calls
+  were made. Do **not** report this as "enabled & working." Tell the user access appears
+  enabled but was **not verified by a real call** — ask them to confirm in the Bedrock
+  console or with a manual test invoke. Even a genuinely successful probe on a first-time
+  third-party model invoke is not a permanent guarantee either: AWS auto-enables access in
+  the background on first invoke (up to ~15 minutes to finalize), and a missing prerequisite
+  during that window can make a later call fail with `AccessDeniedException` even though an
+  earlier call succeeded — mention this for any model reported as newly working for the
+  first time in this account.
+- `ok == true` (any other `reason`, i.e. an actual invoke succeeded) → tell the user access is
+  confirmed working in `$REGION` for that ID.
 
 ### AC5 — Summarize and stop
 
-Give the user a per-model summary: `<model_id>` → `enabled & working` / `enable access` (naming
-the applicable prerequisite from the `model_access` branch — Marketplace permissions in
-commercial Regions, the console Model access page in GovCloud, plus the Anthropic FTU form where
-it applies) / `grant <action>` / `not available in <region>, use <candidate>`. Then run
+Give the user a per-model summary: `<model_id>` → `enabled & working` (a real invoke
+succeeded) / `enabled — not verified by a real call` (`embedding_unprobed`; recommend a
+manual console/test check) / `enable access` (naming the applicable prerequisite from the
+`model_access` branch — Marketplace permissions in commercial Regions; for GovCloud, the
+linked-commercial-account step (third-party models) plus the `us-gov-west-1` console Model
+access page; plus the Anthropic FTU form where it applies) / `grant <action>` /
+`not available in <region>, use <candidate>`. Do NOT collapse `embedding_unprobed` into
+`enabled & working` — they mean different things to the user. Then run
 the **Contextual offers (final step)**. Do **not** continue into Assess, rewrite, or any code
 change — this mode is complete.
 

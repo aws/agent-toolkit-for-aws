@@ -204,6 +204,16 @@ Load `shared/handoff-gates.md`. **Re-read from disk** every artifact below befor
 GATE_FAIL | phase=discover | field=preferences.json | reason=stale_downstream
 ```
 
+**On confirmed re-entry, before writing this run's new artifacts:** follow
+`shared/handoff-gates.md`'s "Retire stale route artifacts" rule — compare which routes are
+active in the artifacts already on disk against which routes THIS re-run's fresh discovery
+output will support, and delete any route's downstream artifacts (`aws-design-*.json`,
+`estimation-*.json`, `generation-*.json`) that were active before but will no longer be
+supported (e.g. a working billing export replaced by one this sub-file cannot read). This is
+necessary because Design/Estimate/Generate all select their route by file existence, not by
+`.phase-status.json`'s phase flags — resetting the flags alone leaves the stale files in place
+to be silently re-selected.
+
 **Checks (all must PASS):**
 
 1. At least one discovery artifact exists (`gcp-resource-inventory.json`, `ai-workload-profile.json`, or `billing-profile.json`). `openai-usage-profile.json` does NOT satisfy this check on its own — it is a supplement (spend and volumes, no integration or capability detail; see SKILL.md Prerequisites) and cannot anchor a run by itself. A **skip-record** `billing-profile.json` (empty `services[]` **and** non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) ALSO does not satisfy this check on its own: it records that billing input was skipped, not parsed. The run must anchor on IaC, code scan, or AI discovery instead.

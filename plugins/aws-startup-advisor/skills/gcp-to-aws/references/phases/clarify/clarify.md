@@ -12,7 +12,7 @@ _fragments:
     _trigger: { _always: true }
     _file: phases/clarify/clarify-global.md
   - _id: compute
-    _trigger: { _when: "(billing-profile.json exists AND gcp-resource-inventory.json does NOT exist) OR any compute resource is present — Cloud Run, Cloud Functions, GKE, GCE, App Engine" }
+    _trigger: { _when: "(billing-profile.json exists with non-empty services[] AND gcp-resource-inventory.json does NOT exist) OR any compute resource is present — Cloud Run, Cloud Functions, GKE, GCE, App Engine. A skip-record billing-profile.json (empty services[], non-empty warnings[]) does NOT satisfy the billing clause — there is no billing signal to ask compute questions about." }
     _file: phases/clarify/clarify-compute.md
   - _id: database
     _trigger: { _when: "database resources present in the inventory — Cloud SQL, Spanner, Memorystore" }

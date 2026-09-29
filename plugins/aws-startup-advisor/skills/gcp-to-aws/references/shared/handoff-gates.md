@@ -67,6 +67,33 @@ Patching artifacts to satisfy a gate defeats fail-closed validation and produces
 
 When user confirms intentional re-run: set downstream phases back to `"pending"` in `.phase-status.json` before proceeding.
 
+**Retire stale route artifacts on a confirmed re-entry that CHANGES which route is active
+(CRITICAL — not just resetting phase status).** Every downstream phase (`design.md`,
+`estimate.md`, `generate.md`) selects its route by **file existence**
+(`aws-design-billing.json` exists AND `aws-design.json` does not, etc.), not by reading
+`.phase-status.json`'s phase flags. Resetting those flags to `"pending"` does NOT remove the
+actual artifact files on disk — so if the re-run's new discovery output no longer supports a
+route the PREVIOUS run activated (e.g. a working billing export is replaced by an
+unrecognized one, turning `billing-profile.json` into a skip record), the old route's
+artifacts (`aws-design-billing.json`, `estimation-billing.json`, `generation-billing.json`,
+and any generated billing skeleton) are still present when Design/Estimate/Generate re-run,
+and get silently re-selected and combined with the NEW run's other artifacts. Before
+proceeding on a confirmed re-entry:
+
+1. Determine which routes were active in the artifacts already on disk (infra: `aws-design.json`;
+   billing-only: `aws-design-billing.json` with `aws-design.json` absent; AI: `aws-design-ai.json`).
+2. Re-evaluate which routes the NEW discovery output supports, using the SAME rules
+   `design.md`'s Routing Rules section uses (e.g. billing-only requires `billing-profile.json`
+   with non-empty `services[]`).
+3. For any route that was active before but is NOT supported by the new discovery output,
+   **delete that route's downstream artifacts** — its `aws-design-*.json`,
+   `estimation-*.json`, `generation-*.json`, and any generated skeleton/Terraform for that
+   route — before Design re-runs. Do not merely reset the phase flag; the file must actually
+   be gone, since every downstream phase trusts the file's existence over the phase flag.
+4. Tell the user which artifacts were retired and why ("your billing export is no longer
+   recognized, so the billing-only design/estimate from your previous run has been removed —
+   re-run Design to pick up the new discovery output").
+
 ---
 
 ## Phase-specific checklists (summary)
