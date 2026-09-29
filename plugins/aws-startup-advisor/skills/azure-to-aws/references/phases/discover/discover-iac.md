@@ -148,10 +148,17 @@ minimal `ai-workload-profile.json` payload conforming to
    format is `OpenAI`; otherwise use `"other"`. Never infer `openai`, `anthropic`, or `both`
    from Azure infrastructure alone.
 3. Copy every strong-signal resource, plus supporting Search resources, into
-   `infrastructure[]` as `{ address, type, file, role, config }`. `address` and `file` come
-   from `config.tf_address` and `config.tf_file`; `type` is the original Terraform type when
-   available, otherwise the canonical Azure type. `role` is `account`, `deployment`,
-   `ml_workspace`, or `search`.
+   `infrastructure[]` as `{ address, type, file, role, config, azure_id? }`. `address` and
+   `file` come from `config.tf_address` and `config.tf_file`; `type` is the original
+   Terraform type when available, otherwise the canonical Azure type. `role` is `account`,
+   `deployment`, `ml_workspace`, or `search`. Also carry the resource's own reconstructed
+   `azure_id` (the same value this resource got in the main inventory `resources[]` entry,
+   per `extract-terraform.md` rule 5) — UNLESS that `azure_id` contains an unresolved `tf:`
+   name segment, in which case omit the field entirely rather than carry a placeholder that
+   cannot join against anything. This `azure_id` is what lets the assembler (rule 8 below)
+   recognize an IaC-declared Cognitive Services account/deployment/ML workspace as the SAME
+   real resource a live capture also observed, instead of always treating the two entries as
+   distinct.
 4. For each Cognitive Services deployment whose extracted `config.model.name` is a literal,
    add one deduplicated `models[]` row. Use the model name as `model_id`, service
    `azure_openai`, `detected_via: ["terraform"]`, evidence naming the Terraform file and

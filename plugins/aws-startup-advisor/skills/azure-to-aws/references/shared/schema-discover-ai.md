@@ -137,11 +137,16 @@ resource that is plainly present.
 Two entry shapes, keyed by which producer supplied the resource — the `address` field's
 presence is the discriminator, matching `discover.md`'s producer-agreement rule:
 
-- **IaC-sourced entry:** `{ address, type, file, role?, config{} }`. `address`/`file` are
-  the Terraform reference (`config.tf_address`/`config.tf_file`); `type` is the Terraform
-  resource type when available, else the canonical Azure type. Examples:
-  `azurerm_cognitive_account`, `azurerm_cognitive_deployment`,
-  `azurerm_machine_learning_workspace`, `azurerm_search_service`.
+- **IaC-sourced entry:** `{ address, type, file, role?, config{}, azure_id? }`.
+  `address`/`file` are the Terraform reference (`config.tf_address`/`config.tf_file`);
+  `type` is the Terraform resource type when available, else the canonical Azure type.
+  Examples: `azurerm_cognitive_account`, `azurerm_cognitive_deployment`,
+  `azurerm_machine_learning_workspace`, `azurerm_search_service`. `azure_id` is OPTIONAL —
+  present when `discover-iac.md` could reconstruct a real (non-`tf:`-placeholder) ARM id
+  for the resource, per `extract-terraform.md` rule 5; absent when it could not (an
+  unresolved name expression). It is the join key against a live-sourced entry (see
+  Reconciliation below) — its presence does NOT make this entry a live-sourced entry,
+  since `address` is still present and still the discriminator.
 - **Live-sourced entry:** `{ azure_id, type, role?, config{} }` — NO `address`/`file` (there
   is no Terraform reference for a live-captured resource). `azure_id` is the full ARM
   resource id from the live capture (see `discover-live.md` § AI detection); `type` is the
@@ -150,10 +155,19 @@ presence is the discriminator, matching `discover.md`'s producer-agreement rule:
   `Microsoft.MachineLearningServices/workspaces`.
 
 `[]` if neither IaC nor a live capture contributed a qualifying resource. A run with BOTH
-kinds of resource (mixed IaC + live) carries both entry shapes side by side in one array —
-this is not a merge conflict, since an IaC-declared resource and a live-captured resource
-describe two different `azure_id`s (see `discover.md`'s producer-agreement rule for how
-`sources_analyzed`/`inferred_from_iac` behave in that case).
+kinds of resource (mixed IaC + live) carries both entry shapes side by side in one array.
+
+**Reconciliation.** When an IaC-sourced entry's `azure_id` (if present) exactly matches a
+live-sourced entry's `azure_id`, they describe the SAME deployed resource observed by two
+producers — not two distinct resources. The assembler (see `discover-assemble.md` rule 8)
+merges the pair into ONE `infrastructure[]` entry: keep the IaC-sourced shape (`address`/
+`file` retained for provenance), overlay live's `config` values where they disagree (live
+reflects current state), and keep whichever entry's `role` is present. An IaC-sourced
+entry with no `azure_id`, or whose `azure_id` matches no live entry, stays IaC-only and
+unmerged — that is a genuinely distinct resource (or one IaC could not resolve to a real
+id), not a reconciliation failure. This mirrors `discover-live.md` Step 6's IaC/live merge
+for the main resource inventory. See `discover.md`'s producer-agreement rule for how
+`sources_analyzed`/`inferred_from_iac` behave across merged and unmerged entries.
 
 ## current_costs
 
