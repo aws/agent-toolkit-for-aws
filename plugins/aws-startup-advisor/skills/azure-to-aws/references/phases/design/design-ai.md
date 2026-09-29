@@ -127,14 +127,13 @@ each workload:
 
 **Stay-or-migrate (check same-model FIRST):** source model on Bedrock AND region carries it →
 `strong_migrate`, `model_change: false` (the rationale is risk + governance, not cost; Bedrock
-in-region runs ~10% above OpenAI standard — report a modest increase, not parity, and never
-claim free). Bedrock cheaper → `strong_migrate`. Within 25% and priority≠cost →
+pricing depends on the selected inference/context tier and verified source rate — do not impose a fixed premium or claim free). Bedrock cheaper → `strong_migrate`. Within 25% and priority≠cost →
 `moderate_migrate`. Source >25% cheaper and priority=cost → `weak_migrate`/`recommend_stay`.
 Overall = weakest across models. `recommend_stay` REQUIRES a non-cost reason in
 `honest_assessment_reason` when the source provider's models are on Bedrock.
 
 **Quota risk** (per `references/vendored/ai/bedrock-quotas.md`): high/very_high volume →
-`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× burndown) →
+`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× output burndown) or Astra runtime (10× output burndown) →
 `"medium"`; else `"low"`. Record on each `bedrock_models[]` entry.
 
 ## Part 1B: Volume-based strategy
@@ -180,15 +179,20 @@ Map Azure AI infrastructure to AWS:
 
 ## Part 5: Code migration plan
 
-Generate before/after examples per detected `integration.pattern` and `ai_source`. For an
-`azure_openai`/`openai` source with the model on Bedrock, the **Mantle Responses API** is the
-primary path (`migration_path: "mantle_openai_responses"`, `model_change: false`): the app
-keeps the OpenAI SDK; only the base URL (`.../openai/v1/responses`), credential (a Bedrock API
-key/token provider), model ID, and IAM (`bedrock-mantle:*`) change. Read
-`references/shared/openai-on-bedrock.md` for exact values. If the source uses Chat Completions,
-plan a reshape to `responses.create`. No Converse fallback exists for proprietary GPT models
-(mantle-only, in-region only): needing Guardrails/Knowledge Bases/logging/an unsupported region
-forces a `converse` path with `model_change: true` to a Bedrock-native model (or `gpt-oss`).
+Generate before/after examples per detected `integration.pattern` and `ai_source`, preserving
+the endpoint and API selected by `references/vendored/ai/ai-openai-to-bedrock.md`.
+For Astra in Oregon, a Chat source uses `migration_path: "mantle_openai_chat"`; a Responses
+source uses `"mantle_openai_responses"`. Use `/openai/v1`, Bedrock credentials and Mantle IAM.
+An Azure-specific client (`AzureOpenAI`, deployment/API-version configuration) must be adapted
+to the selected Bedrock client; do not claim that setting OPENAI_BASE_URL alone changes that client.
+Keep `model_change: false` only when the exact underlying model is unchanged; opaque Azure
+deployment names need verified model identity, not a guessed GPT family.
+
+Astra's supported `us.` / `global.` runtime profiles use `migration_path: "runtime_openai_cris"`;
+retain the validated CRIS id and caller-region gate. GPT-5.6 also has runtime profiles; GPT-5.5/5.4
+remain Mantle-only. A runtime endpoint change does not by itself require a model change.
+Astra's sampling/state/cache behavior follows its own evidence; do not inherit GPT-5.x rules.
+Read `references/shared/openai-on-bedrock.md` for exact model/API constraints.
 Anthropic-SDK sources → boto3 Converse client swap. Record `code_migration.openrouter_path`
 when a router was detected (`same_model_mantle|direct|litellm|keep_openrouter`).
 

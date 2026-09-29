@@ -10,16 +10,33 @@ In the `detect_grep` recipes below, `<REPO>` is the repository path supplied in 
 
 ---
 
-## Same-model (mantle) deltas
+## Same-vendor GPT endpoint and API deltas
 
-**Read this section INSTEAD of the parameter-surface sections below when the resolved target is a proprietary GPT model on `bedrock-mantle`** (`openai.gpt-5.6-sol` / `-terra` / `-luna`, `openai.gpt-5.5`, `openai.gpt-5.4`). The model is unchanged, so temperature ranges, penalty parameters, and stop-sequence limits are unchanged — do not raise those as deltas. The deltas here are about the API surface and the endpoint, not about model behavior.
+**Read this section INSTEAD of the cross-family parameter sections below when the resolved target is
+a proprietary GPT model:** `openai.gpt-6-astra`, `openai.gpt-5.6-sol` / `-terra` / `-luna`,
+`openai.gpt-5.5`, or `openai.gpt-5.4`. Bare ids select mantle; Astra `us.` / `global.` and
+GPT-5.6 `us.` / `in.` / `global.` ids select runtime. Use
+`gcp-to-aws/references/shared/openai-on-bedrock.md` for the model-specific API and region matrix.
+
+Preserving the model avoids a vendor change but does not prove parameter parity across endpoints.
+For Astra, sampling, penalties, `n`, and hosted-state behavior are unprobed: verify on the exact selected
+API before preserving them. A Pro-to-Astra or other version upgrade is a model change and requires
+quality evaluation even though the vendor is unchanged.
+
+Astra runtime supports OpenAI-compatible Responses / Chat Completions and Converse. Keep a supported
+source API where possible; a Converse selection requires request/response mapping and capability checks,
+not Claude-specific temperature or penalty rewrites. Use `bedrock-runtime.{region}.amazonaws.com/openai/v1`
+for OpenAI-compatible runtime calls, CRIS ids, and runtime IAM permissions. Astra mantle is Oregon-only.
 
 ## chat-completions-to-responses
 
 - `resolution_kind`: `ux_choice`
 - Source (OpenAI): `client.chat.completions.create(...)`, `messages=[...]`, reads `choices[0].message.content`
 - Target (mantle GPT): `client.responses.create(...)`, `input=...`, reads `output_text`
-- Chat Completions support is **unverified** for these models — every AWS sample uses Responses, and no GPT model card lists Chat Completions as supported. Treat a Chat Completions source as requiring a reshape, and probe the target account before committing to either surface.
+- Astra's model card explicitly supports Chat Completions on mantle. Preserve that source API when selected;
+  do not emit this reshape delta. Its `n` support is unverified, so probe it instead of assuming either
+  Chat support or the Responses API's no-`n` rule. GPT-5.x Chat availability remains model/endpoint-specific;
+  follow its dated catalog evidence and probe before choosing a surface.
 
 ### detect_grep
 
@@ -33,7 +50,8 @@ grep -rEn 'choices\[0\]\.(message|delta)' <REPO> --include="*.py" --include="*.j
 ## reasoning-items-must-round-trip
 
 - `resolution_kind`: `impl_path`
-- These models reason before responding. In multi-turn and tool-calling flows the model's output items — which may include reasoning items — must be appended to the next request's `input`. Dropping them degrades multi-step and tool-use quality without raising an error, so this fails silently.
+- On Responses, preserve output items (including reasoning items) when replaying multi-turn or tool-calling
+  flows. On Chat Completions, preserve messages and tool-call ids instead; do not apply Responses item shapes.
 - Detection: any Responses-API call that builds the next turn's `input` from message text alone rather than appending `response.output`.
 
 ### detect_grep
@@ -46,15 +64,20 @@ grep -rEn 'function_call_output|tool_call' <REPO> --include="*.py" --include="*.
 ## endpoint-path-and-credential
 
 - `resolution_kind`: `impl_path`
-- Base URL must be `https://bedrock-mantle.{region}.api.aws/openai/v1` — the `openai/v1` segment is required and differs from the `v1` path other mantle models use. A hardcoded `/v1` returns 404.
+- For a mantle selection, base URL must be `https://bedrock-mantle.{region}.api.aws/openai/v1` — the `openai/v1` segment is required and differs from the `v1` path other mantle models use. A hardcoded `/v1` returns 404.
 - The API key must be a Bedrock API key or an auto-refreshing token provider, **not** an existing OpenAI key. A long-lived `OPENAI_API_KEY` read from the environment will fail authentication.
-- IAM must grant `bedrock-mantle:*` actions; `bedrock:InvokeModel` does not authorize these models.
+- Mantle IAM uses project-scoped inference actions and bearer-token authorization; `bedrock:InvokeModel`
+  does not authorize mantle calls. Runtime CRIS selections use runtime permissions instead.
 - Not user-visible — always `user_visible: false`, `resolution_kind: impl_path`. Apply without prompting.
 
 ## prompt-caching-availability
 
 - `resolution_kind`: `impl_path`
-- Prompt caching is listed as supported on GPT-5.6 only. Do not emit caching configuration for `openai.gpt-5.5` or `openai.gpt-5.4`.
+- Astra lists implicit and explicit prompt caching on mantle Responses, with **30-minute cache-write** rates.
+  Do not inherit GPT-5.6's minimum-prefix, breakpoint, or cached-input quota-exemption rules.
+  Verify caching on the selected API; do not transfer mantle behavior to runtime or Chat.
+- GPT-5.6 caching follows its separate catalog evidence. Do not emit caching configuration for
+  `openai.gpt-5.5` or `openai.gpt-5.4`.
 
 ---
 

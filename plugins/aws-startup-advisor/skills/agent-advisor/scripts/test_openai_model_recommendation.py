@@ -657,3 +657,105 @@ def test_same_model_governance_still_recommended_end_to_end():
     assert rec["decision_status"] == "recommended"
     assert rec["primary_model"] == "openai.gpt-5.6-luna"
     assert rec["api_path"] == "runtime_converse"
+
+
+@pytest.mark.parametrize("surface,path", [
+    ("responses", "mantle_openai_responses"),
+    ("chat_completions", "mantle_openai_chat"),
+])
+def test_astra_keeps_source_model_and_api_on_mantle(surface, path):
+    rec = oai.recommend_openai_workload(
+        _workload(source={"model_ids": ["gpt-6-astra"], "api_surface": surface}),
+        "us-west-2", OPENAI_CATALOG,
+    )
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == "openai.gpt-6-astra"
+    assert rec["api_path"] == path
+    assert rec["source_analysis"]["source_family"] == "reasoning"
+    assert rec["source_analysis"]["version_changed"] is False
+    assert "chat_completions_to_responses_required" not in _codes(rec["blocks"])
+    assert "sampling_params_accepted" not in _codes(rec["tuning"])
+    assert "sampling_params_unverified" in _codes(rec["tuning"])
+
+
+def test_astra_mantle_outside_oregon_requires_decision():
+    rec = _recommend(_workload(source={"model_ids": ["gpt-6-astra"]}))
+    assert rec["decision_status"] == "decision_required"
+    assert rec["primary_model"] is None
+    assert "model_region_unavailable" in _codes(rec["blocks"])
+
+
+@pytest.mark.parametrize("signals", [
+    {"requirements": {"uses_n": True}},
+    {"detected_features": ["multiple_candidates_n"]},
+])
+def test_astra_chat_n_requires_verification_without_responses_reshape(signals):
+    rec = oai.recommend_openai_workload(
+        _workload(source={"model_ids": ["gpt-6-astra"], "api_surface": "chat_completions"},
+                  **signals),
+        "us-west-2", OPENAI_CATALOG,
+    )
+    assert rec["api_path"] == "mantle_openai_chat"
+    assert "multiple_candidates_n_unverified" in _codes(rec["tuning"])
+    assert "responses_no_n" not in _delta_codes(rec)
+    assert "chat_completions_to_responses_required" not in _codes(rec["blocks"])
+
+
+def test_astra_runtime_preserves_model_with_sourced_streaming_and_limits():
+    rec = _recommend(_workload(
+        source={"model_ids": ["gpt-6-astra"]},
+        requirements={
+            "governance": ["guardrails"], "critical_features": ["streaming"],
+            "data_residency": "global_allowed", "min_context_tokens": 1050000,
+            "expected_output_tokens": 128000,
+        },
+    ))
+    assert rec["decision_status"] == "recommended"
+    assert rec["primary_model"] == "openai.gpt-6-astra"
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["invocation_model_id"] == "global.openai.gpt-6-astra"
+    assert "streaming" in rec["compatibility"]["native"]
+
+
+@pytest.mark.parametrize("region,geography", [
+    ("eu-west-1", "eu"),
+    ("eu-west-1", "us"),
+    ("ap-south-1", "in"),
+])
+def test_astra_rejects_unsupported_geo_profile_or_caller_region(region, geography):
+    rec = oai.recommend_openai_workload(
+        _workload(
+            source={"model_ids": ["gpt-6-astra"]},
+            requirements={
+                "governance": ["guardrails"], "data_residency": "geo_required",
+                "cris_geography": geography,
+            },
+        ), region, OPENAI_CATALOG,
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert "inference_profile_unverified" in _codes(rec["blocks"])
+
+
+def test_astra_runtime_does_not_inherit_mantle_tools_or_structured_output():
+    for feature in ("tool_or_function_calling", "structured_output_json"):
+        rec = _recommend(_workload(
+            source={"model_ids": ["gpt-6-astra"]},
+            requirements={"governance": ["guardrails"], "critical_features": [feature]},
+        ))
+        assert rec["decision_status"] == "decision_required"
+        assert rec["primary_model"] is None
+        assert "unverified_capability" in _codes(rec["blocks"])
+
+
+@pytest.mark.parametrize("requirement,limit", [
+    ("min_context_tokens", 1050001),
+    ("expected_output_tokens", 128001),
+])
+def test_astra_rejects_capacity_above_documented_limit(requirement, limit):
+    rec = oai.recommend_openai_workload(
+        _workload(source={"model_ids": ["gpt-6-astra"]},
+                  requirements={requirement: limit}),
+        "us-west-2", OPENAI_CATALOG,
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert "unverified_capacity" in _codes(rec["blocks"])

@@ -168,3 +168,27 @@ def test_gpt_oss_stays_on_the_runtime_path():
     pol = generate_policy(["openai.gpt-oss-120b-1:0"], "us-east-1", "111122223333")
     sids = {s["Sid"] for s in pol["Statement"]}
     assert sids == {"BedrockInvokeModelScoped"}
+
+
+def test_astra_bare_id_grants_mantle_project_and_bearer_actions():
+    assert is_mantle_model("openai.gpt-6-astra")
+    statements = {s["Sid"]: s for s in
+                  generate_policy(["openai.gpt-6-astra"], "us-west-2", ACCOUNT)["Statement"]}
+    assert set(statements) == {"BedrockMantleInference", "BedrockMantleCallWithBearerToken"}
+    assert statements["BedrockMantleInference"]["Resource"] == (
+        f"arn:aws:bedrock-mantle:us-west-2:{ACCOUNT}:project/*")
+    assert "bedrock-mantle:CreateInference" in statements["BedrockMantleInference"]["Action"]
+    assert statements["BedrockMantleCallWithBearerToken"]["Resource"] == "*"
+
+
+@pytest.mark.parametrize("prefix", ["us", "global"])
+def test_astra_cris_id_grants_runtime_foundation_and_profile_arns(prefix):
+    mid = f"{prefix}.openai.gpt-6-astra"
+    assert not is_mantle_model(mid)
+    statements = generate_policy([mid], "us-west-2", ACCOUNT)["Statement"]
+    assert len(statements) == 1
+    assert statements[0]["Action"] == ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    assert set(statements[0]["Resource"]) == {
+        "arn:aws:bedrock:*::foundation-model/openai.gpt-6-astra",
+        f"arn:aws:bedrock:us-west-2:{ACCOUNT}:inference-profile/{mid}",
+    }

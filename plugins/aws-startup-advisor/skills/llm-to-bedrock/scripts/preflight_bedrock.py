@@ -9,7 +9,7 @@ carries `reason`/`detail`/`failing_models` lifted from the first failing model.
 Chat models are probed via Converse; embedding models (which don't speak
 Converse) via InvokeModel with their family's request body. Bare OpenAI
 proprietary GPT ids are mantle-served and probed via the OpenAI Responses API;
-GPT-5.6 CRIS profile ids (us./in./global. prefixed) are bedrock-runtime targets
+GPT-6 Astra (us./global.) and GPT-5.6 (us./in./global.) CRIS ids are bedrock-runtime targets
 and take the normal Converse probe.
 The 1-token probe costs a fraction of a cent (noted in output).
 """
@@ -58,14 +58,34 @@ def is_embedding_model(model_id: str) -> bool:
 
 def is_mantle_model(model_id: str) -> bool:
     """Pure: ids that must be probed via the mantle Responses API rather than
-    Converse/InvokeModel. Matches the BARE proprietary GPT ids (`openai.gpt-5*`),
+    Converse/InvokeModel. Matches BARE GPT-5 ids and `openai.gpt-6-astra`,
     which are mantle-served. Deliberately does NOT match:
     - gpt-oss ids (Converse-capable on bedrock-runtime), and
-    - GPT-5.6 CRIS profile ids (`us.`/`in.`/`global.` prefixed) — those are
+    - GPT-6 Astra / GPT-5.6 CRIS profile ids — those are
       bedrock-runtime targets where Converse IS supported, so falling through to
       the standard Converse probe is the correct behavior, not an accident."""
     mid = model_id.lower()
-    return mid.startswith("openai.gpt-5") and "oss" not in mid
+    return (mid.startswith("openai.gpt-5") or mid == "openai.gpt-6-astra") and "oss" not in mid
+
+
+
+def normalize_api_path(plan_path: str | None, model_ids: list[str]) -> str:
+    """Resolve a missing legacy path once for evaluator and rewriter dispatch.
+
+    Explicit plans retain their chosen API. Legacy bare proprietary GPT targets
+    use Mantle Responses; runtime targets retain the existing Converse default.
+    A mixed legacy target set needs an explicit plan rather than an unsafe guess.
+    """
+    if plan_path:
+        return plan_path
+    if not model_ids:
+        raise ValueError("No validated target model IDs to resolve an API path")
+    mantle = [is_mantle_model(mid) for mid in model_ids]
+    if all(mantle):
+        return "mantle_openai_responses"
+    if any(mantle):
+        raise ValueError("Mixed Mantle and runtime targets require an explicit migration plan")
+    return "converse"
 
 
 def classify_mantle_error(status: int | None, message: str) -> dict:
@@ -73,7 +93,7 @@ def classify_mantle_error(status: int | None, message: str) -> dict:
 
     Mirrors classify_invoke_error's contract but for the mantle surface, where the
     remedies differ: IAM needs bedrock-mantle:* actions (not bedrock:InvokeModel),
-    and mantle itself has no cross-region form — though for GPT-5.6 a
+    and mantle itself has no cross-region form — though for Astra / GPT-5.6 a
     bedrock-runtime CRIS id can cover the region instead."""
     if status in (401, 403):
         lowered = message.lower()
@@ -91,7 +111,9 @@ def classify_mantle_error(status: int | None, message: str) -> dict:
         return {"ok": False, "reason": "model_unavailable",
                 "detail": f"Model not available at this mantle endpoint/region — {message}. "
                           f"Mantle is in-region only; for GPT-5.6 try a bedrock-runtime CRIS "
-                          f"id (us./in./global. prefixed) instead, for GPT-5.5/5.4 switch to "
+                          f"id (us./in./global. prefixed); for GPT-6 Astra use us-west-2 "
+                          f"mantle or a supported us./global. runtime CRIS path. "
+                          f"For GPT-5.5/5.4 switch to "
                           f"a supported region or a different model."}
     if status == 429:
         # Reaching a token-per-minute ceiling still proves we are authorized.
@@ -271,11 +293,21 @@ def main(argv=None) -> int:
                 "Mantle quotas are per-model input/output tokens per minute; there is no RPM "
                 "quota. Pace on token throughput, and note that prompt-cached input tokens are "
                 "exempt from the input-TPM quota.")
+            if model_id.lower() == "openai.gpt-6-astra":
+                verdict["quota_note"] = (
+                    "Verify Astra's mantle quotas in the target account and us-west-2. "
+                    "Do not assume GPT-5.6's cached-input quota exemption or RPM rules "
+                    "apply; Astra's documented 10x output burndown is runtime-specific.")
         else:
             verdict = probe_model(client, model_id)
             rpm = quota_rpm(quotas, model_id)
             verdict["model_id"] = model_id
             verdict["rpm_quota"] = rpm
+            if model_id in ("us.openai.gpt-6-astra", "global.openai.gpt-6-astra"):
+                verdict["quota_note"] = (
+                    "Astra runtime TPM usage = input tokens + 10 * output tokens. "
+                    "Check the selected CRIS profile's token quota; an RPM check alone "
+                    "does not establish throughput capacity.")
             if rpm is not None and args.dataset_size > rpm:
                 verdict["quota_warning"] = (
                     f"Dataset ({args.dataset_size}) exceeds ~{rpm} RPM quota — "

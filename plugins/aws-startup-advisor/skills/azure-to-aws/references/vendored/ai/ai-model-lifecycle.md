@@ -62,6 +62,14 @@ On each run, compute `days_to_eol = EOL date − today` for every model in the L
 
 ---
 
+## GPT-6 Astra — Active (verified September 9, 2026)
+
+The [Astra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+lists launch **September 8, 2026**, lifecycle **Active**, and no scheduled EOL date. Its EOL is
+**no sooner than September 8, 2027**, with a Legacy period of at least six months. The earliest
+possible EOL is not an announced retirement date. Existing GPT-5.x entries are not superseded.
+See `openai-on-bedrock.md` for access paths, regions, and pricing.
+
 ## Legacy / EOL Models (as of September 21, 2026)
 
 For models launched before 2026-09-07, the [legacy lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative. For models launched on or after that date, the model card and the runtime `modelLifecycle.status` field are authoritative — they will not appear in the table below. The table captures pre-policy-change models referenced elsewhere in this plugin. **Recompute the Status column on each run** using `days_to_eol = EOL date − today`.

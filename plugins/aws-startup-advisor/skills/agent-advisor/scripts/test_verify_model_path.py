@@ -197,6 +197,28 @@ class FakeOpenAIClient:
         self.responses = responses or FakeResponses()
 
 
+def test_astra_chat_recommendation_probes_chat_completions():
+    data = _openai_input()
+    data["region"] = "us-west-2"
+    data["workloads"][0]["source"].update(
+        model_ids=["gpt-6-astra"], api_surface="chat_completions"
+    )
+    recommendation = model_recommendation.recommend(data)
+    completions = FakeResponses(response={"model": "openai.gpt-6-astra"})
+    client = type("ChatClient", (), {
+        "chat": type("Chat", (), {"completions": completions})(),
+    })()
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        openai_responses_client_factory=lambda region: client,
+    )
+    verification = result["workloads"]["openai-svc"]
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == "mantle_openai_chat"
+    assert completions.calls[0]["model"] == "openai.gpt-6-astra"
+    assert completions.calls[0]["messages"][0]["role"] == "user"
+
+
 def _openai_input(requirements=None):
     return {
         "schema_version": 2,

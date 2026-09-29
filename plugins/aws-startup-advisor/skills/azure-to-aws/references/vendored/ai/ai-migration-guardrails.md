@@ -48,7 +48,7 @@ Inference on `bedrock-mantle` for these models is governed by **two per-model, p
 | Medium          | Medium     | Monitor 429s against **token** throughput, not request rate; enable prompt caching                 |
 | High            | High       | Enable prompt caching first (cached input is exempt from input TPM), then request a quota increase |
 
-**The `bedrock-runtime` fallback exists only for GPT-5.6.** GPT-5.5 and GPT-5.4 are `bedrock-mantle` only and in-region only — for them, "switch to `bedrock-runtime`" requires moving to a different model (Bedrock-native or `gpt-oss`), a model change with its own eval cost. GPT-5.6 Sol/Terra/Luna DO have a `bedrock-runtime` path via CRIS inference profiles (`us.`/`in.`/`global.` prefixed ids; the model cards recommend runtime for new applications) — a legitimate endpoint option with its own quota family, and on Global CRIS it is also the cost-parity option. Scaling levers on the mantle path, in order:
+**GPT-6 Astra and GPT-5.6 have `bedrock-runtime` alternatives.** GPT-5.5 and GPT-5.4 are `bedrock-mantle` only and in-region only — for them, "switch to `bedrock-runtime`" requires moving to a different model (Bedrock-native or `gpt-oss`), a model change with its own eval cost. GPT-5.6 Sol/Terra/Luna have a runtime path via CRIS profiles (`us.`/`in.`/`global.`); use their own quota family and Global pricing. Astra uses only `us.` / `global.` CRIS and its separate caller-region matrix. Scaling levers for GPT-5.x mantle, in order:
 
 1. Prompt caching (GPT-5.6 only) — 90% off cached input and exempt from the input-TPM quota
 2. Exponential backoff with a bounded retry count (`max_retries` on the OpenAI SDK)
@@ -59,6 +59,19 @@ Inference on `bedrock-mantle` for these models is governed by **two per-model, p
 See `references/shared/openai-on-bedrock.md` for the endpoint, region matrix, and caching parameters.
 
 **Source:** [Get started with GPT-5.6 on Amazon Bedrock — Quotas and scaling](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/)
+
+### GPT-6 Astra — verify the selected endpoint's quota
+
+Astra mantle is available in `us-west-2` only. Its model card lists implicit/explicit caching on
+Responses and 30-minute cache-write prices, but does not establish GPT-5.6's cached-input quota
+exemption, minimum prefix, or breakpoint rules. Verify account quotas before promising throughput.
+
+Astra runtime uses **10× output-token burndown**:
+`required_TPM = peak_input_TPM + 10 × peak_output_TPM`. Use the selected US Geo or Global CRIS quota;
+do not multiply total source TPM by ten or carry this rule over to mantle. An endpoint change also
+requires residency consent and API/capability checks from the canonical catalog.
+
+**Source:** [Astra model card, verified 2026-09-16](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
 
 ### Other models on Mantle
 
@@ -78,7 +91,9 @@ Claude models on Mantle have an additional **output TPM cap** that differs by mo
 **Impact for migration decisions:**
 
 - For Claude migrations at medium/high volume: the 2M output TPM cap on Claude 4.7+ is the binding constraint
-- For OpenAI proprietary GPT targets: this Claude cap does not apply. Their mantle constraint is the per-model input/output TPM quota described above; for GPT-5.6 the `bedrock-runtime`/CRIS path is an available alternative (its own quota family), while GPT-5.5/5.4 have no runtime path
+- For OpenAI proprietary GPT targets: this Claude cap does not apply. Use the GPT-5.x mantle quotas or
+  Astra-specific verification above. Astra / GPT-5.6 have runtime CRIS alternatives with their own
+  quotas; GPT-5.5/5.4 have no runtime path
 - For `gpt-oss` targets: these do run on `bedrock-runtime`, so standard account TPM limits and the Converse-path mitigations apply
 - When output-heavy workloads (long JSON, tool outputs, multi-step reasoning) are detected, flag the relevant cap prominently; recommend `bedrock-runtime` for production **only** when the target model actually has a `bedrock-runtime` path
 

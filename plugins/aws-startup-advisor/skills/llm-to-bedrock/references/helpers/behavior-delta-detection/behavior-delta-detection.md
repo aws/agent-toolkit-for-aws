@@ -6,23 +6,26 @@ The motivation is to prevent silent UX changes during migration. Example: OpenAI
 
 ## When to load
 
-- Track 2 migration AND
-- `source_provider ∈ {openai, google}` (the analyzer emits `google` for both Gemini API and Vertex AI) AND
-- `same_model_family == false`
+For Track 2 with `source_provider` equal to `openai` or `google`, use the resolved
+source/target mapping to select the section below. Do not skip OpenAI endpoint/API deltas
+just because `same_model_family` is true. Anthropic same-model and custom OpenAI-compatible
+providers retain their existing v1 behavior (`behavior_deltas: []`).
 
-For Anthropic 1P → Bedrock (`same_model_family: true`), parameter surfaces are identical — skip this skill entirely. For custom OpenAI-compatible providers (Together, Fireworks, etc.), v1 also skips — emit `behavior_deltas: []`.
+`same_model_family` means the exact model is preserved, not merely the vendor. Compare the
+source id with the target after removing supported Bedrock profile/provider prefixes for
+identity comparison only. Keep the actual invocation id unchanged. Pro-to-Astra is a model
+change and requires quality evaluation.
 
-**OpenAI → the same GPT model on Bedrock is also `same_model_family: true`.** When the target is a proprietary GPT model on `bedrock-mantle` (`openai.gpt-5.6-sol` / `-terra` / `-luna`, `openai.gpt-5.5`, `openai.gpt-5.4`), the model is unchanged, so the model-parameter deltas in `references/openai-to-bedrock.md` — temperature range, penalty parameters, stop-sequence limits — **do not apply**. Applying them would prompt the user to accept range changes that are not happening.
+| Source | Resolved target                                                        | What to load                                                    |
+| ------ | ---------------------------------------------------------------------- | --------------------------------------------------------------- |
+| openai | Bare `openai.gpt-6-astra` or proprietary `openai.gpt-5*` (not gpt-oss) | Same-vendor GPT endpoint and API deltas                         |
+| openai | Supported Astra `us.` / `global.` or GPT-5.6 CRIS id                   | Same-vendor GPT endpoint and API deltas, using the runtime path |
+| openai | Claude / Nova / DeepSeek / gpt-oss                                     | Cross-family parameter-surface deltas                           |
 
-That case is not delta-free, though: the **API surface** can change (Chat Completions → Responses) and reasoning models require reasoning items to be echoed back across turns. Read only the "Same-model (mantle) deltas" section of `references/openai-to-bedrock.md` for those, and skip the parameter-surface blocks.
-
-Decide from the resolved target model id, not from `source_provider`:
-
-| Source | Target model id          | What to load                                              |
-| ------ | ------------------------ | --------------------------------------------------------- |
-| openai | `openai.gpt-5*` (mantle) | Same-model (mantle) deltas ONLY                           |
-| openai | Claude / Nova / DeepSeek | Full parameter-surface deltas (cross-family)              |
-| openai | `openai.gpt-oss-*`       | Full parameter-surface deltas — different model, Converse |
+The OpenAI reference's **Same-vendor GPT endpoint and API deltas** section is authoritative
+for those targets. Astra Chat does not require a Responses reshape unless the plan selected
+Responses. Sampling, penalties, `n`, and hosted state remain unverified until checked for the
+selected model/API; do not infer unchanged parameters from unchanged model identity.
 
 ## Choose the right reference
 

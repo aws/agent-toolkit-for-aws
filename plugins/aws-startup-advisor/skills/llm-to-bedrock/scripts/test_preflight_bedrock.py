@@ -1,5 +1,42 @@
 # test_preflight_bedrock.py
 import preflight_bedrock as p
+import pytest
+
+
+@pytest.mark.parametrize("model_id,mantle", [
+    ("openai.gpt-6-astra", True),
+    ("us.openai.gpt-6-astra", False),
+    ("global.openai.gpt-6-astra", False),
+])
+def test_astra_preflight_dispatch_preserves_id_and_endpoint(model_id, mantle, monkeypatch, capsys):
+    import boto3
+    import json
+    calls = []
+    client = object()
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: client)
+    monkeypatch.setattr(p, "fetch_bedrock_quotas", lambda region: [])
+
+    def probe_mantle(mid, region):
+        calls.append(("mantle", mid, region))
+        return {"ok": True, "reason": "ok"}
+
+    def probe_runtime(actual_client, mid):
+        assert actual_client is client
+        calls.append(("runtime", mid, "us-west-2"))
+        return {"ok": True, "reason": "ok"}
+
+    monkeypatch.setattr(p, "probe_mantle_model", probe_mantle)
+    monkeypatch.setattr(p, "probe_model", probe_runtime)
+    assert p.is_mantle_model(model_id) is mantle
+    assert p.main(["--region", "us-west-2", "--models", model_id]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert calls == [("mantle" if mantle else "runtime", model_id, "us-west-2")]
+    assert out["models"][0]["model_id"] == model_id
+    note = out["models"][0]["quota_note"]
+    if mantle:
+        assert "Do not assume GPT-5.6" in note
+    else:
+        assert "input tokens + 10 * output tokens" in note
 
 
 def test_classify_access_denied_maps_to_authz_failure():

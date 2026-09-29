@@ -1,6 +1,7 @@
 # AI Pricing Cache (Bedrock + source-provider)
 
 **Last updated:** 2026-08-24
+**GPT-6 Astra rates added:** 2026-09-09 (model card; other entries retain their existing dates)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±15-25% for AI models (sourced from public pricing pages)
@@ -52,6 +53,7 @@ recommend Legacy/excluded models for new migrations.**
 | DeepSeek-R1       | deepseek.r1-v1:0                         | DeepSeek  | 1.35       | 5.40        | 128K    | reasoning | active                                                                                         |
 | gpt-oss-20b       | openai.gpt-oss-20b-1:0                   | OpenAI    | 0.07       | 0.30        | 128K    | budget    | active                                                                                         |
 | gpt-oss-120b      | openai.gpt-oss-120b-1:0                  | OpenAI    | 0.15       | 0.60        | 128K    | efficient | active                                                                                         |
+| GPT-6 Astra       | openai.gpt-6-astra                       | OpenAI    | 11.00      | 55.00       | 272K    | frontier  | active (mantle in-region / runtime Geo rate; Global 10.00/50.00; long-context rates below)     |
 | GPT-5.6 Sol       | openai.gpt-5.6-sol                       | OpenAI    | 4.40       | 22.00       | 272K    | frontier  | active (mantle in-region + runtime CRIS; 1M tier 8.80/33.00)                                   |
 | GPT-5.6 Terra     | openai.gpt-5.6-terra                     | OpenAI    | 2.20       | 13.20       | 272K    | flagship  | active (mantle in-region + runtime CRIS; 1M tier 4.40/19.80)                                   |
 | GPT-5.6 Luna      | openai.gpt-5.6-luna                      | OpenAI    | 0.22       | 1.32        | 272K    | fast      | active (mantle in-region + runtime CRIS; 1M tier 0.44/1.98)                                    |
@@ -61,6 +63,20 @@ recommend Legacy/excluded models for new migrations.**
 _Quick-reference rows use **—** for **model ID** and **context**; resolve in the Bedrock console
 or AWS model documentation. This is a curated subset for migration selection — see the Bedrock
 pricing page for the full catalog._
+
+### GPT-6 Astra — verified 2026-09-09
+
+Source: [AWS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html).
+USD per 1M tokens, Standard tier. See `openai-on-bedrock.md` for the endpoint/region gates.
+
+| Context tier | Inference option | Input | Output | 30m cache write | Cache read |
+| ------------ | ---------------- | ----- | ------ | --------------- | ---------- |
+| Short (272K) | In-Region / Geo  | 11.00 | 55.00  | 13.75           | 1.10       |
+| Short (272K) | Global CRIS      | 10.00 | 50.00  | 12.50           | 1.00       |
+| Long (1.05M) | In-Region / Geo  | 22.00 | 82.50  | 27.50           | 2.20       |
+| Long (1.05M) | Global CRIS      | 20.00 | 75.00  | 25.00           | 2.00       |
+
+Use the long-context tier above 272K. Priority and Flex are unsupported.
 
 ### Embeddings — Bedrock (per 1M input tokens, US East)
 

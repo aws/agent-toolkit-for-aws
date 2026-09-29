@@ -25,15 +25,16 @@ Read `aws-design-ai.json → ai_architecture.code_migration.migration_path` and
 `ai-workload-profile.json → integration.languages[0]` (`python`→`.py`, `javascript`/`typescript`→
 `.js`, `go`→`.go`, else `.py`).
 
-| `migration_path` / framework                                      | Emits (in addition to the always-on set)                                  |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `mantle_openai_responses`                                         | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**       |
-| `direct` (or absent)                                              | `ai-migration/provider_adapter.{py,js,go}`                                |
-| `gpt-oss`                                                         | `ai-migration/provider_adapter.{py,js,go}` targeting gpt-oss via Converse |
-| gateway (`llm_router`/`api_gateway`/`voice_platform`/`framework`) | `ai-migration/gateway_config.{yaml,py,json}` — skip the adapter           |
-| agentic `migration_approach == harness`                           | `ai-migration/harness.json`, `ai-migration/deploy_harness.sh`             |
-| agentic `migration_approach == strands`                           | `ai-migration/strands_agents.py`, `ai-migration/deploy_strands.sh`        |
-| eval opted in                                                     | `ai-migration/eval-prompts.jsonl`, `ai-migration/run-evaluation.sh`       |
+| `migration_path` / framework                                      | Emits (in addition to the always-on set)                                          |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `mantle_openai_responses` / `mantle_openai_chat`                  | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**               |
+| `direct` (or absent)                                              | `ai-migration/provider_adapter.{py,js,go}`                                        |
+| `runtime_openai_cris`                                             | `ai-migration/provider_adapter.{py,js,go}` retaining the selected runtime CRIS id |
+| `gpt-oss`                                                         | `ai-migration/provider_adapter.{py,js,go}` targeting gpt-oss via Converse         |
+| gateway (`llm_router`/`api_gateway`/`voice_platform`/`framework`) | `ai-migration/gateway_config.{yaml,py,json}` — skip the adapter                   |
+| agentic `migration_approach == harness`                           | `ai-migration/harness.json`, `ai-migration/deploy_harness.sh`                     |
+| agentic `migration_approach == strands`                           | `ai-migration/strands_agents.py`, `ai-migration/deploy_strands.sh`                |
+| eval opted in                                                     | `ai-migration/eval-prompts.jsonl`, `ai-migration/run-evaluation.sh`               |
 
 **Always emit (every path):** `ai-migration/setup_bedrock.sh`, `ai-migration/test_comparison.py`
 (always Python), `ai-migration/bedrock_monitoring.tf`.
@@ -50,9 +51,9 @@ Shell script, **dry-run by default** with an `--execute` flag. Sets
 load-bearing — bare `/v1` 404s), a Bedrock API key / token provider (NOT an OpenAI key), the
 `openai.gpt-*` model ID, and IAM needing `bedrock-mantle:*` (not `bedrock:InvokeModel`). Per-workload
 `MAX_TOKENS` from a lookup table, default `1024`. No prompt changes when the source already uses
-`responses.create`; a Chat Completions source needs a reshape (flag it in the script comments).
+`responses.create`. Preserve Astra Chat when `mantle_openai_chat` was selected; reshape only for a selected API change. Adapt Azure-specific client/deployment/API-version settings to the Bedrock client rather than relying on OPENAI_BASE_URL alone.
 
-## Step 1: `provider_adapter.{py,js,go}` (direct / gpt-oss path)
+## Step 1: `provider_adapter.{py,js,go}` (direct / gpt-oss / runtime_openai_cris path)
 
 Feature-flagged on `AI_PROVIDER` (values `azure_openai` | `bedrock` | `shadow`; **default
 `azure_openai`**). Emits methods gated on `integration.capabilities_summary`: `text_generation`→
@@ -137,8 +138,8 @@ is AWS-only and ports from gcp unchanged.
       path emitted the adapter and NO mantle script.
 - [ ] `bedrock_monitoring.tf` present on every path; budget is a computed integer ≥ 10.
 - [ ] No secret VALUE in any emitted file; credentials are env-var references.
-- [ ] No proprietary `openai.gpt-*` model ID paired with a Converse/`bedrock-runtime` path
-      (mantle-only).
+- [ ] Bare proprietary GPT ids use Mantle; Astra runtime calls retain the validated `us.` /
+      `global.` CRIS id. Chat/Responses and runtime artifact selection match the saved design.
 - [ ] Plugin attribution strings say "Azure-to-AWS".
 - [ ] `generation-ai.json` validates; `rollback_plan.mechanism == "feature_flag"`.
 

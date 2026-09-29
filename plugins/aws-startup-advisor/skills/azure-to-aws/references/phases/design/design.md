@@ -82,7 +82,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design-ai.json exists: every design_blocks[] row has exactly one of target_bedrock_model / target_aws_service non-null (XOR), and every document_extraction/image_analysis/speech_transcription row has target_bedrock_model null, a non-null target_aws_service, and honest_assessment 'not_applicable' — per references/shared/schema-design-aws-ai.md"
     _on_failure: _halt_and_inform
-  - _assert: "WHEN aws-design-ai.json exists AND summary.ai_source is azure_openai or openai: every source model that is available on Bedrock and carried by the target region maps to itself with model_change false — not to a Claude/Nova substitute; and no proprietary openai.gpt-* model ID is paired with a converse/bedrock-runtime migration path"
+  - _assert: "WHEN aws-design-ai.json exists AND summary.ai_source is azure_openai or openai: every source model that is available on Bedrock and carried by the target region maps to itself with model_change false — not to a Claude/Nova substitute; and bare proprietary openai.gpt-* IDs use Mantle only; runtime_openai_cris accepts documented Astra us./global. or GPT-5.6 CRIS IDs with the selected API and caller-region checks"
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design-ai.json exists: regional_warnings[] and multi_model_warnings[] are present (empty is fine); agentic_design is present only when agentic_profile.is_agentic is true; and App Runner appears nowhere"
     _on_failure: _halt_and_inform

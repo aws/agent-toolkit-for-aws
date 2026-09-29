@@ -18,7 +18,7 @@ import openai_model_recommendation
 SKILL_DIR = pathlib.Path(__file__).parent.parent
 MODELS_DIR = SKILL_DIR / "references" / "models"
 DEFAULT_CATALOG = MODELS_DIR / "anthropic-bedrock-2026-07-21.json"
-OPENAI_CATALOG = MODELS_DIR / "openai-bedrock-2026-08-21.json"
+OPENAI_CATALOG = MODELS_DIR / "openai-bedrock-2026-09-09.json"
 
 # Which provider module owns a source. This is a TWO-way decision, not a per-provider table: OpenAI
 # has its own module, and everything else goes to the Anthropic one — including `none`/`unknown` (no

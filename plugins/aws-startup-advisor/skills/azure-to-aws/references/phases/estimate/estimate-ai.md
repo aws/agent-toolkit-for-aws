@@ -205,14 +205,22 @@ Do **not** repeat these as "costs" in the user-facing summary.
 Present the monthly and annual cost difference between current Azure AI spend and projected
 Bedrock cost:
 
-- **If the model is unchanged** (`model_change: false`): projected cost is **about 10% higher**,
-  not the same — Bedrock in-region is priced at OpenAI's data-residency tier, which is 1.10x
-  OpenAI / Azure OpenAI standard. Quote the increase plainly and make the case on non-cost
-  grounds. If any workload exceeds 272K context, price it at the long-context tier and show that
-  separately; it can dominate the comparison.
+- **If the model is unchanged** (`model_change: false`): derive the difference from the selected
+  model's inference option/context tier and verified source rate. For Astra use its dedicated
+  short/long-context In-Region/Geo/Global rows. A $60 Global target versus $60 source is 0%,
+  not a fixed premium. If the source rate is unverified, mark the source comparison unavailable.
 - **If Bedrock is cheaper:** present monthly and annual savings clearly.
 - **If Bedrock is more expensive:** state clearly, justify with non-cost benefits, or note "not
   justified if cost is the only priority".
+
+When both monthly totals are established for the same workload volume:
+
+```python
+monthly_difference = bedrock_monthly - source_monthly
+percentage_difference = monthly_difference / source_monthly * 100 if source_monthly > 0 else None
+```
+
+A zero source total has no percentage comparison; show its dollar difference only.
 
 Reference `aws-design-ai.json` → `honest_assessment`. If `"recommend_stay"`, present prominently
 along with `honest_assessment_reason`.
@@ -269,7 +277,7 @@ equivalent of `estimate-infra.md` Part 8.
 
 | Condition                                                                                                                         | Verdict             | `recommendation.path` |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------- |
-| **Same model on Bedrock** (`model_change: false`) — ~10% higher, short-context; non-cost benefits carry it                        | Migrate with caveat | `migrate_optimized`   |
+| **Same model on Bedrock** (`model_change: false`) — use the verified Part 5 cost delta and applicable non-cost benefits           | Migrate with caveat | `migrate_optimized`   |
 | Bedrock cheaper AND capabilities match                                                                                            | Migrate             | `migrate_optimized`   |
 | Bedrock more expensive BUT non-cost benefits justify (vendor diversification, Guardrails, multi-model) AND user priority ≠ `cost` | Migrate with caveat | `migrate_optimized`   |
 | Bedrock more expensive AND user priority = `cost` AND no compelling non-cost reason                                               | Stay                | `stay`                |
@@ -295,13 +303,12 @@ equivalent of `estimate-infra.md` Part 8.
   state why in `rationale`.
 - If `honest_assessment` from `aws-design-ai.json` says `recommend_stay`, `recommendation.path`
   MUST be `stay` regardless of cost numbers.
-- **A same-model move is a modest cost increase, not parity.** When
-  `bedrock_models[].model_change` is `false`, Bedrock in-region costs ~10% more than OpenAI /
-  Azure OpenAI standard for the same model. Report that figure rather than "no savings
-  identified", and argue the case on commitments, governance, residency, prompt caching, and
-  eliminated behavior-delta risk. A ~10% increase alone should not route to `stay` unless
-  `ai_priority = cost` and no non-cost driver applies; a long-context workload at the 1M tier is a
-  different matter and may legitimately favour staying.
+- **Same-model cost is the computed Part 5 result, not a fixed premium.** The final
+  `recommendation.rationale` must use the selected inference option/context tier and verified
+  source baseline. Report parity, savings or an increase as actually calculated. When the
+  source comparison is unavailable, say so, set confidence appropriately and do not invent a
+  percentage. Apply the decision table to those actual costs and the user's non-cost drivers;
+  the `honest_assessment: recommend_stay` override still takes precedence.
 - For multi-workload runs: if some workloads favor migration and others don't, use
   `migrate_phased` and list which workloads to migrate vs. keep in `rationale`.
 

@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "provider": "openai",
-  "verified_at": "2026-08-21",
+  "verified_at": "2026-09-09",
   "verified_region": "us-east-2",
-  "source": "AWS Bedrock userguide OpenAI model cards + models-api-compatibility (retrieved 2026-08-21); internal migration reference, OpenAI path (feature-level probes, 2026-06-20)",
-  "disclaimer": "This is the OpenAI-to-Bedrock MIGRATION target catalog, not a list of OpenAI models: it holds the verified landing candidates for the available paths. Verified 2026-08-21 — the GPT-5.6 family changed materially between 2026-07-21 and 2026-08-21: Sol/Terra/Luna now ALSO run on bedrock-runtime via CRIS inference profiles (Geo us./in., Global global.), with Converse/Chat Completions/Invoke listed as supported there (Guardrails Converse-only, prompt caching Responses-only on runtime), and Global CRIS pricing published at OpenAI's standard list price (cost parity; In-Region/Geo remain 1.10x). So runtime_converse now carries BOTH same-vendor GPT-5.6 candidates (same-model governance path) AND the Claude tier mapping (GPT-5.6 Sol -> Claude Opus 4.8, Terra/5.5/5.4 -> Claude Sonnet 5, Luna -> Claude Haiku 4.5) as the cross-family option. GPT-5.5 and GPT-5.4 remain mantle-only and in-region only — no CRIS, no runtime path. The gpt-oss open-weight models still support Converse on bedrock-runtime but sit a capability class below the frontier tier and are not listed. Only models with dated evidence are listed; entries name their evidence. Numeric limits stay 'unknown' unless sourced. Re-probe every selected model and API path in the target account and region before implementation.",
+  "source": "AWS Bedrock userguide OpenAI model cards + models-api-compatibility (retrieved 2026-08-21); internal migration reference, OpenAI path (feature-level probes, 2026-06-20); GPT-6 Astra model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html",
+  "disclaimer": "Dated migration candidates, not account-level availability guarantees. Capabilities and regions are specific to each model and API path. Entries retain their evidence dates; Astra has documentation evidence but no account-level behavioral probe. Re-probe the selected model, API, and region before implementation.",
   "paths": {
     "mantle_openai_responses": {
       "sdk": "openai",
@@ -16,7 +16,8 @@
       "supports_cris": false,
       "strengths": [
         "Preserves the OpenAI SDK and minimizes client rewrite",
-        "GPT-5.x on Bedrock Mantle is served through the Responses API"
+        "GPT-5.x on Bedrock Mantle is served through the Responses API",
+        "GPT-6 Astra supports Responses on Mantle in us-west-2"
       ],
       "constraints": [
         "Mantle itself has no cross-region form for any GPT model (in-region only); for GPT-5.6 the bedrock-runtime CRIS path covers additional regions instead (see runtime_converse)",
@@ -33,7 +34,8 @@
       "model_id_strategy": "clean_openai_model_id",
       "supports_cris": false,
       "strengths": [
-        "OpenAI-compatible Chat Completions surface for models that accept it"
+        "OpenAI-compatible Chat Completions surface for models that accept it",
+        "GPT-6 Astra explicitly supports Chat Completions on Mantle in us-west-2"
       ],
       "constraints": [
         "Not available for the GPT-5.x models listed here: rejected on gpt-5.4 (internal reference probe) and unsupported on the gpt-5.6-sol model card",
@@ -51,7 +53,8 @@
       "strengths": [
         "Bedrock-native multi-model request surface",
         "Supports Bedrock Guardrails (Converse API only), invocation logging, and CloudWatch",
-        "For GPT-5.6 this is a SAME-MODEL governance path via CRIS (us./in./global. ids; base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs); the model cards recommend runtime for new applications, and Global CRIS is priced at OpenAI's standard rate (cost parity)"
+        "For GPT-5.6 this is a SAME-MODEL governance path via CRIS (us./in./global. ids; base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs); the model cards recommend runtime for new applications, and Global CRIS is priced at OpenAI's standard rate (cost parity)",
+        "GPT-6 Astra supports same-model Converse via US Geo/Global CRIS; Guardrails and application inference profiles are Converse-only"
       ],
       "constraints": [
         "GPT-5.5 / GPT-5.4 have NO runtime path — a Converse target for them means a Bedrock-native model and a boto3 rewrite of the OpenAI integration",
@@ -71,9 +74,14 @@
       "context_window": 1000000,
       "output_token_ceiling": "unknown",
       "region_availability": {
-        "commercial": ["us-east-1", "us-east-2"],
+        "commercial": [
+          "us-east-1",
+          "us-east-2"
+        ],
         "govcloud": [],
-        "evidence": "Commercial set per this catalog's pricing cache (US East N. Virginia / Ohio). The 2026-08 GovCloud announcement names Terra and Luna only \u2014 Sol's GovCloud availability is not stated; treat as unknown, not absent."
+        "evidence": "Commercial set per this catalog's pricing cache (US East N. Virginia / Ohio). The 2026-08 GovCloud announcement names Terra and Luna only — Sol's GovCloud availability is not stated; treat as unknown, not absent.",
+        "scope": "mantle_in_region",
+        "scope_note": "Commercial and GovCloud lists describe mantle in-region availability only. Runtime CRIS availability is defined by the selected path and profile; do not use these lists as a runtime region gate."
       },
       "capabilities": [
         "reasoning",
@@ -133,9 +141,18 @@
       "context_window": 1000000,
       "output_token_ceiling": "unknown",
       "region_availability": {
-        "commercial": ["us-east-1", "us-east-2", "us-west-2"],
-        "govcloud": ["us-gov-west-1", "us-gov-east-1"],
-        "evidence": "AWS What's New 2026-08 (openai-gpt-terra-luna-govcloud): \"GPT-5.6 Terra and Luna are now generally available on Amazon Bedrock in AWS GovCloud (US-West) and AWS GovCloud (US-East)\"; commercial set per this catalog's pricing cache \u2014 verify against the pricing page before relying on it."
+        "commercial": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-2"
+        ],
+        "govcloud": [
+          "us-gov-west-1",
+          "us-gov-east-1"
+        ],
+        "evidence": "AWS What's New 2026-08 (openai-gpt-terra-luna-govcloud): \"GPT-5.6 Terra and Luna are now generally available on Amazon Bedrock in AWS GovCloud (US-West) and AWS GovCloud (US-East)\"; commercial set per this catalog's pricing cache — verify against the pricing page before relying on it.",
+        "scope": "mantle_in_region",
+        "scope_note": "Commercial and GovCloud lists describe mantle in-region availability only. Runtime CRIS availability is defined by the selected path and profile; do not use these lists as a runtime region gate."
       },
       "capabilities": [
         "reasoning",
@@ -166,9 +183,18 @@
       "context_window": 1000000,
       "output_token_ceiling": "unknown",
       "region_availability": {
-        "commercial": ["us-east-1", "us-east-2", "us-west-2"],
-        "govcloud": ["us-gov-west-1", "us-gov-east-1"],
-        "evidence": "AWS What's New 2026-08 (openai-gpt-terra-luna-govcloud): \"GPT-5.6 Terra and Luna are now generally available on Amazon Bedrock in AWS GovCloud (US-West) and AWS GovCloud (US-East)\"; commercial set per this catalog's pricing cache \u2014 verify against the pricing page before relying on it."
+        "commercial": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-2"
+        ],
+        "govcloud": [
+          "us-gov-west-1",
+          "us-gov-east-1"
+        ],
+        "evidence": "AWS What's New 2026-08 (openai-gpt-terra-luna-govcloud): \"GPT-5.6 Terra and Luna are now generally available on Amazon Bedrock in AWS GovCloud (US-West) and AWS GovCloud (US-East)\"; commercial set per this catalog's pricing cache — verify against the pricing page before relying on it.",
+        "scope": "mantle_in_region",
+        "scope_note": "Commercial and GovCloud lists describe mantle in-region availability only. Runtime CRIS availability is defined by the selected path and profile; do not use these lists as a runtime region gate."
       },
       "capabilities": [
         "reasoning",
@@ -285,6 +311,116 @@
           "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
           "requires_cris": true,
           "evidence": "anthropic-bedrock-2026-07-21 catalog runtime_converse entry (requires CRIS profile)"
+        }
+      }
+    },
+    "openai_gpt_6_astra": {
+      "display_name": "OpenAI GPT-6 Astra (on Bedrock)",
+      "family": "openai_gpt_6",
+      "generation": "reasoning",
+      "version": "6",
+      "class": "reasoning",
+      "context_window": 1050000,
+      "output_token_ceiling": 128000,
+      "region_availability": {
+        "commercial": [
+          "us-west-2"
+        ],
+        "govcloud": [],
+        "evidence": "AWS model card 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. This list is mantle in-region only; runtime caller regions are recorded per inference profile below. No GovCloud region is listed.",
+        "scope": "mantle_in_region",
+        "scope_note": "Commercial and GovCloud lists describe mantle in-region availability only. Runtime CRIS availability is defined by the selected path and profile; do not use these lists as a runtime region gate."
+      },
+      "capabilities": [
+        "reasoning",
+        "image_input_vision"
+      ],
+      "capability_source": "AWS model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Launched 2026-09-08, Active, no scheduled EOL; EOL no sooner than 2027-09-08. Text/image input and text output. Server-side tool calling is listed on mantle; runtime lists response streaming and explicitly excludes structured outputs and server-side tool use. These are documentation claims, not feature-level account probes. Sampling, hosted tools, and reasoning-effort values require verification on the selected API.",
+      "paths": {
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": false,
+          "supported_regions": [
+            "us-west-2"
+          ],
+          "capabilities": [
+            "reasoning",
+            "image_input_vision",
+            "tool_or_function_calling"
+          ],
+          "evidence": "AWS model card 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Responses supported at /openai/v1/responses; mantle is us-west-2 only. Server-side tool calling and implicit/explicit Responses caching supported; application inference profiles unsupported."
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": false,
+          "supported_regions": [
+            "us-west-2"
+          ],
+          "capabilities": [
+            "reasoning",
+            "image_input_vision"
+          ],
+          "evidence": "AWS model card 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Chat Completions supported at /openai/v1/chat/completions in us-west-2; prompt caching is Responses-only. Tool behavior on Chat Completions remains unprobed."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": true,
+          "supported_regions": [
+            "us-east-1",
+            "us-east-2",
+            "us-west-1",
+            "us-west-2",
+            "ca-central-1",
+            "eu-central-1",
+            "eu-north-1",
+            "eu-west-1",
+            "eu-west-2",
+            "eu-west-3",
+            "ap-northeast-1",
+            "ap-northeast-2",
+            "ap-northeast-3",
+            "ap-south-1",
+            "ap-southeast-1",
+            "ap-southeast-2",
+            "sa-east-1"
+          ],
+          "inference_profile_regions": {
+            "us.openai.gpt-6-astra": [
+              "us-east-1",
+              "us-east-2",
+              "us-west-1",
+              "us-west-2",
+              "ca-central-1"
+            ],
+            "global.openai.gpt-6-astra": [
+              "us-east-1",
+              "us-east-2",
+              "us-west-1",
+              "us-west-2",
+              "ca-central-1",
+              "eu-central-1",
+              "eu-north-1",
+              "eu-west-1",
+              "eu-west-2",
+              "eu-west-3",
+              "ap-northeast-1",
+              "ap-northeast-2",
+              "ap-northeast-3",
+              "ap-south-1",
+              "ap-southeast-1",
+              "ap-southeast-2",
+              "sa-east-1"
+            ]
+          },
+          "capabilities": [
+            "reasoning",
+            "image_input_vision",
+            "streaming"
+          ],
+          "evidence": "AWS model card 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Runtime APIs: Responses, Chat Completions, Converse; Invoke and Messages unsupported. US Geo/Global CRIS only, no in-region or EU/India Geo form. Guardrails and application inference profiles are Converse-only. Structured outputs and server-side tool use unsupported. Runtime TPM accounting uses 10x output-token burndown."
         }
       }
     }

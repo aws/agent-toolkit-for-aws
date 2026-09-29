@@ -181,26 +181,33 @@ Establishes baseline Bedrock recommendation. Override hierarchy: Q10 special fea
 
 _Skip when:_ `models[].model_id` is populated in `ai-workload-profile.json` **with confidence ≥ 0.8** (the same threshold as full-flow Q19) — auto-detect with `chosen_by: "extracted"` and do not present this question. The detected models are already shown in the Step 1 summary. Below 0.8, present the question with the detected model(s) offered as the suggested answer. With 2+ detected models, record `ai_model_baseline` as an array (one entry per model).
 
-> 1\) Gemini Flash | 2\) Gemini Pro | 3\) GPT-3.5 Turbo | 4\) GPT-4/4 Turbo | 5\) GPT-4o | 6\) GPT-5.4/Mini/Nano | 7\) GPT-5.6 Sol/Terra/Luna | 8\) GPT-5/5.x (older) | 9\) GPT-5.5/Pro | 10\) o-series | 11\) Claude (Anthropic SDK) | 12\) Other/Multiple | 13\) Don't know
+> 1\) Gemini Flash | 2\) Gemini Pro | 3\) GPT-3.5 Turbo | 4\) GPT-4/4 Turbo | 5\) GPT-4o | 6\) GPT-5.4/Mini/Nano | 7\) GPT-5.6 Sol/Terra/Luna | 8\) GPT-5/5.x (older) | 9\) GPT-5.5/Pro | 10\) o-series | 11\) Claude (Anthropic SDK) | 12\) GPT-6 Astra | 13\) Other/Multiple | 14\) Don't know
 
-| Source        | Baseline Recommendation        | Pricing Context                    |
-| ------------- | ------------------------------ | ---------------------------------- |
-| Gemini Flash  | Claude Haiku 4.5 ($1/$5)       | Strong savings                     |
-| Gemini Pro    | Claude Sonnet 5 ($2/$10)       | Comparable tier                    |
-| GPT-5.6 (any) | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-5.5       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-5.4       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
-| GPT-3.5 Turbo | GPT-5.6 Luna; or Haiku 4.5     | Luna 36% cheaper, 77% under Haiku  |
-| GPT-4/4 Turbo | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
-| GPT-4o        | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
-| GPT-5.4 Mini  | GPT-5.6 Luna; or Nova Lite     | Mini not on Bedrock — offer both   |
-| GPT-5.4 Nano  | GPT-5.6 Luna; or Nova Micro    | Nano not on Bedrock — offer both   |
-| GPT-5.x Pro   | GPT-5.6 Sol; or Nova 2 Pro     | Pro not on Bedrock — offer both    |
-| GPT-5/5.1/5.2 | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
-| o-series      | GPT-5.6 Sol/Terra; or Sonnet 5 | Not on Bedrock — offer both        |
-| Claude (any)  | Same model on Bedrock          | Client swap only — no model change |
+| Source        | Baseline Recommendation                                                            | Pricing Context                                                                                                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gemini Flash  | Claude Haiku 4.5 ($1/$5)                                                           | Strong savings                                                                                                                                                                                                                    |
+| Gemini Pro    | Claude Sonnet 5 ($2/$10)                                                           | Comparable tier                                                                                                                                                                                                                   |
+| GPT-6 Astra   | **GPT-6 Astra on Bedrock** — keep the source model                                 | Short-context rates: $11/$55 In-Region / Geo, $10/$50 Global; above 272K use $22/$82.50 or $20/$75 respectively. Apply Astra's API and region gate in `shared/openai-on-bedrock.md`; verify source pricing before comparing.      |
+| GPT-5.6 (any) | **Same model on Bedrock**                                                          | ~10% over OpenAI std (DR tier)                                                                                                                                                                                                    |
+| GPT-5.5       | **Same model on Bedrock**                                                          | ~10% over OpenAI std (DR tier)                                                                                                                                                                                                    |
+| GPT-5.4       | **Same model on Bedrock**                                                          | ~10% over OpenAI std (DR tier)                                                                                                                                                                                                    |
+| GPT-3.5 Turbo | GPT-5.6 Luna; or Haiku 4.5                                                         | Luna 36% cheaper, 77% under Haiku                                                                                                                                                                                                 |
+| GPT-4/4 Turbo | GPT-5.6 Terra; or Sonnet 5                                                         | Not on Bedrock — offer both                                                                                                                                                                                                       |
+| GPT-4o        | GPT-5.6 Terra; or Sonnet 5                                                         | Not on Bedrock — offer both                                                                                                                                                                                                       |
+| GPT-5.4 Mini  | GPT-5.6 Luna; or Nova Lite                                                         | Mini not on Bedrock — offer both                                                                                                                                                                                                  |
+| GPT-5.4 Nano  | GPT-5.6 Luna; or Nova Micro                                                        | Nano not on Bedrock — offer both                                                                                                                                                                                                  |
+| GPT-5.x Pro   | GPT-6 Astra for capability; GPT-5.6 Sol for lower cost; or Nova 2 Pro ($1.375/$11) | Pro variants are not on Bedrock. Astra costs 2.5x Sol at the recorded rates for the same context/inference option. Nova 2 Pro is 94% cheaper than GPT-5.4/5.5 Pro at $30/$180. Apply the region gate and offer both vendor paths. |
+| GPT-5/5.1/5.2 | GPT-5.6 Terra; or Sonnet 5                                                         | Not on Bedrock — offer both                                                                                                                                                                                                       |
+| o-series      | GPT-5.6 Sol/Terra; or Sonnet 5                                                     | Not on Bedrock — offer both                                                                                                                                                                                                       |
+| Claude (any)  | Same model on Bedrock                                                              | Client swap only — no model change                                                                                                                                                                                                |
 
-**Same-model rows first.** GPT-5.6 / 5.5 / 5.4 run on Bedrock, so those sources map to themselves. Cost is ~10% ABOVE OpenAI standard (Bedrock in-region is priced at OpenAI's data-residency tier), so the case is AWS commitments, governance, and residency — not savings, and not parity. They are `bedrock-mantle` / Responses-only and in-region only; see `references/shared/openai-on-bedrock.md`. For sources with no Bedrock equivalent, present both a same-vendor upgrade and a cross-family option rather than pre-picking.
+**Same-model rows first.** GPT-6 Astra / GPT-5.6 / 5.5 / 5.4 sources map to themselves.
+Apply the model-specific API and region gate in `references/shared/openai-on-bedrock.md`.
+Astra mantle is Oregon-only; runtime uses US Geo / Global CRIS. GPT-5.6 also has runtime CRIS;
+GPT-5.5 / 5.4 remain mantle-only. GPT-5.x in-region costs about 10% above OpenAI standard,
+while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separately dated
+inference/context tier against the source price before claiming savings or parity.
+For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.
 
 Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → Sonnet 5.
 

@@ -81,6 +81,12 @@ STATIC_FALLBACK = {
     "global.openai.gpt-5.6-sol":                    {"input_per_1k_usd": 0.004, "output_per_1k_usd": 0.020},
     "global.openai.gpt-5.6-terra":                  {"input_per_1k_usd": 0.002, "output_per_1k_usd": 0.012},
     "global.openai.gpt-5.6-luna":                   {"input_per_1k_usd": 0.0002, "output_per_1k_usd": 0.0012},
+    # Astra model card, verified 2026-09-16: Standard, <=272K input tokens.
+    # >272K costs 2x input / 1.5x output; this lookup does not select context tiers.
+    # https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html
+    "openai.gpt-6-astra":                          {"input_per_1k_usd": 0.011, "output_per_1k_usd": 0.055},
+    "us.openai.gpt-6-astra":                       {"input_per_1k_usd": 0.011, "output_per_1k_usd": 0.055},
+    "global.openai.gpt-6-astra":                   {"input_per_1k_usd": 0.010, "output_per_1k_usd": 0.050},
 }
 
 
@@ -88,7 +94,7 @@ def is_mantle_gpt(model_id: str) -> bool:
     """Pure: OpenAI's proprietary GPT models, which the AWS PriceList API does not
     carry. The open-weight gpt-oss models ARE in the PriceList API and must not match."""
     mid = model_id.lower()
-    return mid.startswith("openai.gpt-5") and "oss" not in mid
+    return mid.startswith(("openai.gpt-5", "openai.gpt-6")) and "oss" not in mid
 
 
 def unavailable(note: str) -> dict:
@@ -106,7 +112,7 @@ def _static_fallback(model_id: str) -> dict | None:
     # different price points, and the inference options differ by prefix at a 10%
     # spread — a partial match on e.g. `openai.gpt-5.6` or `us.openai.gpt-5.6`
     # would silently bill one tier or option at another's rate.
-    if is_mantle_gpt(model_id) or re.match(r"^(us|in|global)\.openai\.gpt-5", model_id):
+    if is_mantle_gpt(model_id) or re.match(r"^[^.]+\.openai\.gpt-[56]", model_id):
         return None
     # Try stripping the version suffix for a partial match (e.g. us.anthropic.claude-sonnet-5)
     base = model_id.rsplit("-v", 1)[0] if "-v" in model_id else model_id
@@ -156,8 +162,13 @@ def lookup(region: str, model_id: str) -> dict:
     if fb:
         fb["note"] = ("static pricing table (verified 2026-08-04 against "
                       "aws.amazon.com/bedrock/pricing and the vendored pricing cache)")
+        if model_id.endswith("openai.gpt-6-astra"):
+            fb["note"] = (
+                "static pricing table (Astra model card verified 2026-09-16); "
+                "Standard tier, <=272K input tokens. For >272K, use 2x input / 1.5x "
+                "output rates. Pricing does not verify account or regional availability.")
         return fb
-    if is_mantle_gpt(model_id):
+    if is_mantle_gpt(model_id) or re.match(r"^[^.]+\.openai\.gpt-[56]", model_id):
         # Short-circuit: the PriceList API carries no rows for the proprietary GPT
         # models, so a live lookup would burn a round trip and still return nothing —
         # and a generic "unavailable" would read as "this model doesn't exist".
