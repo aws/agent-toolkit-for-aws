@@ -77,8 +77,8 @@ the end of the turn instead.
   plugin hook's own `timeout` cannot raise; the teardown sweep bounds itself to it.
 - Cursor cloud agents run neither `sessionStart` nor `sessionEnd`, so there is no
   final sweep there.
-- Cursor defines no per-plugin data directory, so `installId` lives in
-  `~/.aws-startups-plugins`.
+- Consent and the `installId` share one record, `~/.aws-startups-plugins/telemetry.json`,
+  written by `consent grant`; the id is minted at that moment and not before.
 - Exit codes: `0` is success and `2` blocks. `emit.mjs` always exits `0`.
 
 ## Tests

@@ -136,9 +136,8 @@ read from the estate; Design's rationale and the report distinguish "you chose" 
 | `ai_token_volume`, `ai_monthly_spend`                                                  | `estimate-ai.md` token tiers + ROI                  |
 | `startup_program_status`, `ai_monthly_spend`                                           | `generate-artifacts-ai.md` STARTUP_PROGRAMS.md      |
 
-## Status — build step 3 (AI route)
+## Status — implemented (AI route)
 
-The AI Clarify fragment. Wired into `clarify.md` `_fragments` (`_when ai-workload-profile.json
-exists`) and `clarify-assemble.md` `_reads` + `_knowledge` (schema-discover-ai.md). Its producer
-`discover-app-code.md` lands in step 4; until then it fires only for an IaC-detected AI profile.
-The `clarify-ai-only.md` standalone route is deferred (plan §19.9c).
+Wired into `clarify.md` `_fragments` (`_when ai-workload-profile.json` exists) and
+`clarify-assemble.md`. `discover-app-code.md` is the application-code producer.
+The standalone `clarify-ai-only.md` route is wired from `clarify.md` Step 0.
