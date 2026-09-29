@@ -117,25 +117,6 @@ function hostSource() {
   return "OTHER";
 }
 
-function stateDir() {
-  return process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), ".aws-startups-plugins");
-}
-
-// installId is machine-level (one customer, many repos, one install), minted
-// lazily on first use because there is no install-time hook to mint it at.
-function getInstallId() {
-  const file = path.join(stateDir(), "install.json");
-  const existing = readJson(file);
-  if (existing && UUID_RE.test(existing.installId)) return asUuid(existing.installId);
-  const installId = crypto.randomUUID();
-  try {
-    writeJson(file, { installId, createdAt: new Date().toISOString() });
-  } catch {
-    /* read-only state dir: still emit under the fresh id */
-  }
-  return installId;
-}
-
 async function readStdin() {
   if (process.stdin.isTTY) return null;
   const chunks = [];
@@ -175,49 +156,25 @@ async function findRunDirs(startDir) {
 
 // --------------------------------------------------------------------- consent
 
-// Consent has two homes. The plugin-wide record, written when the customer
-// answers the plugin's single telemetry prompt, lives at
-// ~/.aws-startups-plugins/telemetry.json (or the plugin data dir) and covers
-// every project. The project-level record beside the runs is written by this
-// emitter's own consent command. Across every record found, a recorded "no"
-// wins: a plugin-wide no silences every project, and a project's stop-sharing
-// command stays effective under a plugin-wide yes. Only then does any
-// recorded "yes" count. Nothing is sent without one.
-function consentFileFor(runDir) {
-  return path.join(path.dirname(runDir), "telemetry.json");
+// One record for the whole plugin family, at a fixed place in the customer's
+// home directory so every host and every project reads the same decision. It
+// holds the decision and, for a granted one, the installId minted at the
+// moment of consent: nothing is minted before the customer agrees, a revoke
+// leaves no identifier behind, and a later grant starts a new identity.
+// Nothing is sent without a granted record that carries an installId.
+function consentFile() {
+  return path.join(os.homedir(), ".aws-startups-plugins", "telemetry.json");
 }
 
-function machineConsentFiles() {
-  const home = path.join(os.homedir(), ".aws-startups-plugins", "telemetry.json");
-  const data = path.join(stateDir(), "telemetry.json");
-  return data === home ? [home] : [data, home];
+function consentRecord() {
+  const record = readJson(consentFile());
+  return record?.consent ? record : null;
 }
 
-// Every consent record on disk, plugin-wide ones first, each with its file.
-function consentRecords(projectFile) {
-  return [...machineConsentFiles(), projectFile]
-    .map((file) => ({ file, record: readJson(file) }))
-    .filter(({ record }) => record?.consent);
-}
-
-// The record that decides: a "revoked" anywhere, else the earliest "granted",
-// since the moment consent was first given is what pre-consent history is
-// measured against.
-function effectiveConsent(records) {
-  const at = ({ record }) => Date.parse(record.consentedAt ?? "") || Infinity;
-  return records.find(({ record }) => record.consent === "revoked") ??
-    records.filter(({ record }) => record.consent === "granted").sort((a, b) => at(a) - at(b))[0] ??
-    null;
-}
-
-function consentRecordFor(runDir) {
-  return effectiveConsent(consentRecords(consentFileFor(runDir)))?.record ?? null;
-}
-
-function consentGrantedFor(runDir) {
+function consentGranted() {
   if (process.env.DO_NOT_TRACK === "1") return false;
   if (process.env.AWS_STARTUP_ADVISOR_TELEMETRY === "0") return false;
-  return consentRecordFor(runDir)?.consent === "granted";
+  return consentRecord()?.consent === "granted";
 }
 
 // The state file's mtime, not its agent-written last_updated field, is compared
@@ -228,8 +185,8 @@ function consentGrantedFor(runDir) {
 // live run costs more than reporting two seconds of history.
 const PRE_CONSENT_SLACK_MS = 2_000;
 
-function predatesConsent(runDir, statusFile) {
-  const consentedAt = Date.parse(consentRecordFor(runDir)?.consentedAt ?? "");
+function predatesConsent(statusFile) {
+  const consentedAt = Date.parse(consentRecord()?.consentedAt ?? "");
   let mtime;
   try {
     mtime = statSync(statusFile).mtimeMs;
@@ -239,52 +196,53 @@ function predatesConsent(runDir, statusFile) {
   return Number.isFinite(consentedAt) && mtime < consentedAt - PRE_CONSENT_SLACK_MS;
 }
 
-// The skills routinely cd into .migration/<id>/ to work with relative paths, so
-// the consent command must find the migration root from anywhere inside the
-// project, not only from its root.
-function findMigrationRoot(startDir) {
-  let dir = path.resolve(startDir);
-  for (let depth = 0; depth < 6; depth++) {
-    if (path.basename(dir) === ".migration") return dir;
-    const candidate = path.join(dir, ".migration");
-    if (existsSync(candidate)) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+// At the moment of a grant, every run already on disk is recorded as known, so
+// only transitions made from here on are reported. The mtime rule above cannot
+// do this alone: the next write to a state file refreshes its mtime and would
+// make everything in it, including phases completed while consent was absent,
+// look like new work.
+async function baselineRuns(startDir) {
+  for (const runDir of await findRunDirs(startDir)) {
+    const status = readJson(path.join(runDir, ".phase-status.json"));
+    if (!status?.migration_id) continue;
+    const snapshotFile = path.join(runDir, ".telemetry-snapshot.json");
+    const lock = acquireLock(runDir);
+    if (!lock) continue;
+    try {
+      const snapshot = readSnapshot(snapshotFile);
+      if (snapshot === SNAPSHOT_UNREADABLE) continue;
+      writeJson(snapshotFile, {
+        runId: asUuid(snapshot?.runId) ?? asUuid(status.run_id) ?? crypto.randomUUID(),
+        ...(snapshot?.sessionId ? { sessionId: snapshot.sessionId } : {}),
+        phases: status.phases ?? {},
+        completed: Boolean(snapshot?.completed) || status.current_phase === "complete",
+        via: viaMode(),
+        updatedAt: new Date().toISOString(),
+      });
+    } finally {
+      rmSync(lock, { recursive: true, force: true });
+    }
   }
-  return path.resolve(".migration"); // nothing found: report against cwd
 }
 
-function runConsentCommand(action) {
-  const migrationRoot = findMigrationRoot(process.cwd());
-  const file = path.join(migrationRoot, "telemetry.json");
-  const write = (consent) => {
-    if (!existsSync(migrationRoot)) {
-      process.stdout.write("no .migration directory here; create the run first\n");
-      return;
-    }
-    writeJson(file, {
-      consent,
-      installId: getInstallId(),
-      consentedAt: new Date().toISOString(),
-      version: 1,
-    });
-    process.stdout.write(`${consent}\n`);
+async function runConsentCommand(action) {
+  const file = consentFile();
+  const current = consentRecord();
+  const write = (record) => {
+    writeJson(file, { ...record, consentedAt: new Date().toISOString(), version: 1 });
+    process.stdout.write(`${record.consent}\n`);
   };
-  const decision = effectiveConsent(consentRecords(file));
   switch (action) {
     case "get":
-      process.stdout.write(`${decision?.record.consent ?? "unset"}\n`);
+      process.stdout.write(`${current?.consent ?? "unset"}\n`);
       return;
-    case "status": {
-      const install = readJson(path.join(stateDir(), "install.json"));
+    case "status":
       process.stdout.write(
         JSON.stringify(
           {
-            consent: decision?.record.consent ?? "unset",
-            consentFile: decision?.file ?? file,
-            stateDir: stateDir(),
-            installId: install?.installId ?? "not yet minted",
+            consent: current?.consent ?? "unset",
+            consentFile: file,
+            installId: (current?.consent === "granted" && asUuid(current.installId)) || "none",
             endpoint: resolveEndpoint() ?? "disabled",
           },
           null,
@@ -292,14 +250,18 @@ function runConsentCommand(action) {
         ) + "\n",
       );
       return;
-    }
-    case "grant":
-      write("granted");
+    case "grant": {
+      // The identifier is born with the consent it belongs to: a standing grant
+      // keeps its id, anything else mints a fresh one.
+      const installId = current?.consent === "granted" ? asUuid(current.installId) : undefined;
+      write({ consent: "granted", installId: installId ?? crypto.randomUUID() });
+      await baselineRuns(process.cwd());
       return;
+    }
     case "revoke":
-      // A decline is a decision too: recorded locally so the customer is not
-      // asked again. No event is sent for it.
-      write("revoked");
+      // A decline is a decision too: recorded so the customer is not asked
+      // again. No identifier and no event go with it.
+      write({ consent: "revoked" });
       return;
     default:
       process.stdout.write("usage: emit.mjs consent <get|grant|revoke|status>\n");
@@ -655,7 +617,9 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
   const skill = status.owning_skill;
   if (!MIGRATION_SKILLS.has(skill)) return;
 
-  if (!consentGrantedFor(runDir)) return;
+  if (!consentGranted()) return;
+  const installId = asUuid(consentRecord()?.installId);
+  if (!installId) return; // a grant without an identity sends nothing
 
   const snapshotFile = path.join(runDir, ".telemetry-snapshot.json");
   const lock = acquireLock(runDir);
@@ -670,10 +634,12 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
 
     // Identifiers read back from customer-editable files are validated, not
     // trusted: the service rejects the whole event on one malformed UUID.
-    // run_id comes from .phase-status.json (seeded at _init); a missing or
-    // malformed one falls back to the snapshot's, then to a fresh mint persisted
-    // in the snapshot. The emitter never writes the skill's own state file.
-    const runId = asUuid(status.run_id) ?? asUuid(snapshot?.runId) ?? crypto.randomUUID();
+    // A run directory is one lifecycle, so the id the snapshot already reports
+    // under stays authoritative: a state file rebuilt after corruption carries
+    // a fresh run_id, which must not split the run. Otherwise run_id comes from
+    // .phase-status.json (seeded at _init), then a fresh mint persisted in the
+    // snapshot. The emitter never writes the skill's own state file.
+    const runId = asUuid(snapshot?.runId) ?? asUuid(status.run_id) ?? crypto.randomUUID();
     const validSessionId = asUuid(sessionId);
 
     // The snapshot mirrors the state last observed, whether or not anything
@@ -701,7 +667,7 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
     // while consent was revoked and then granted again. Either way it is
     // recorded as already known and nothing is sent, so only transitions from
     // here on are reported.
-    if (predatesConsent(runDir, statusFile)) {
+    if (predatesConsent(statusFile)) {
       observe(status.phases ?? {}, Boolean(snapshot?.completed) || status.current_phase === "complete");
       return;
     }
@@ -724,7 +690,7 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
       initiatingSkill: MIGRATION_SKILLS.has(status.initiated_by) ? status.initiated_by : undefined,
       runId,
       sessionId: validSessionId,
-      installId: getInstallId(),
+      installId,
       pluginVersion: pluginVersion(),
     };
 
@@ -775,7 +741,7 @@ async function main() {
   const args = process.argv.slice(2);
 
   if (args[0] === "consent") {
-    runConsentCommand(args[1]);
+    await runConsentCommand(args[1]);
     return;
   }
 
