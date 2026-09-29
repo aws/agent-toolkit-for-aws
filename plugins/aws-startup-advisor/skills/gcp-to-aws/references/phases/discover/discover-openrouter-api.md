@@ -169,7 +169,10 @@ agent never invokes curl with the key itself):
 GET https://openrouter.ai/api/v1/credits  →  credits.json
 ```
 
-- On **401 or 403**: stop, write NO manifest and NO capture files, and tell the
+- On **401 or 403**: stop, write NO manifest and NO capture files, **delete
+  `$MIGRATION_DIR/.openrouter-key-env` now** (this key was just proven invalid or
+  wrong-type — do not leave a rejected key file on disk waiting for a later
+  cleanup step this path never reaches), and tell the
   user: "The key was rejected (`<status>`). Confirm it is a **provisioning /
   management** key (openrouter.ai/settings/provisioning-keys), not a plain
   inference key — inference keys return 403 and cannot read account usage."
@@ -210,9 +213,27 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
 }
 ```
 
-Every attempted or deliberately skipped call gets an entry. If the `/activity`
-row failed, exit with no output and tell the user which scope is missing (a
-`/credits`-only capture has no per-model signal to build a profile from).
+Every attempted or deliberately skipped call gets an entry. **If the `/activity`
+row's status is `failed`** (a mid-table failure, e.g. a 500 — distinct from the
+401/403 probe failure above, which never reaches this step): still write the
+manifest as shown (so a resumed run can tell what was already tried), but do
+**not** proceed to Step 3, and do **not** delete the key file yet — the key is
+still valid (the probe succeeded), and a resumed run needs it to retry. Tell the
+user: "OpenRouter usage discovery captured credits but the usage endpoint
+(`/activity`) failed (`<note>`) — no per-model signal to build a profile from.
+I'll retry it if you ask me to continue OpenRouter discovery again, or you can
+skip it for this run." **A subsequent invocation of this file MUST check for
+this specific outcome, not just manifest presence:** read the existing manifest
+first — if the `/activity` entry's `status` is `failed`, retry ONLY that row
+(reusing the existing key file and the other rows' already-good captures rather
+than re-running Step 0–2b from scratch), update its entry to `ok`/`failed` in
+place, and only then either proceed to Step 3 (on `ok`) or repeat this same
+stop-and-offer-retry behavior (on another `failed`). Only a manifest whose
+`/activity` entry is `ok` or a deliberate `skipped` (the user chose to abandon
+that scope) is safe to jump straight to Step 3 on. Delete the key file once
+`/activity` reaches a terminal `ok`/`skipped` state (per Step 4's cleanup) or
+once the user explicitly abandons OpenRouter discovery for this run — never
+while a retry is still live.
 
 ## Step 3: Parse Captures into the Usage Profile
 
@@ -325,6 +346,17 @@ volume:
    OpenRouter usage data — call sites not yet located in code" }`. Code-derived
    entries always win on conflict; usage-only entries tell Clarify what the code
    scan missed (a model routed at runtime but not literal in the source).
+   **Also append a matching `workloads[]` entry for that same model** (per
+   `schema-discover-ai.md` § workloads[] "Usage-only workloads"): `{workload_id:
+   "wl_" + sha256(model_id + "|usage_api|plain")[:6], model_id: "<model>",
+   sdk_method: "usage_api", capability: "text_generation", capability_confidence:
+   "low", structured_output: false, call_sites: [{"file": "<usage_api>", "line":
+   0}]}`. Without this, the model exists in `models[]` with no corresponding
+   `workloads[]` entry — Clarify's multi-workload confirmation table and Design's
+   per-workload iteration both read `workloads[]`, not `models[]`, so a usage-only
+   model added to `models[]` alone is never surfaced for confirmation and never
+   gets a `design_block`. Recompute `summary.total_models_detected` to include
+   this addition (it counts `models[]` length, not just code-derived models).
 5. If `summary.ai_source` does not already reflect the OpenRouter-fronted
    providers, leave it as the code scan set it — OpenRouter is a transport, and
    `ai_source` is about the source SDK/provider family, which the code scan owns.
@@ -336,7 +368,10 @@ If `ai-workload-profile.json` does NOT exist, Clarify and Estimate read
 handoff gate.
 
 **Clean up (default, not optional):** delete
-`$MIGRATION_DIR/.openrouter-key-env` now — the key is no longer needed. Tell the
+`$MIGRATION_DIR/.openrouter-key-env` now — the key is no longer needed. (This is
+the happy-path cleanup point; a 401/403 on the probe deletes it immediately at
+that point instead, per Step 2b, since a rejected key has nothing left to
+retry.) Tell the
 user it was deleted and that they can also revoke the provisioning key at
 openrouter.ai/settings/provisioning-keys if it was created just for this run.
 

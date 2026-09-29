@@ -182,8 +182,12 @@ condition holds; otherwise skip silently:
 The sub-file's Step 0 consent gate is the single consent point for this source
 — do not pre-ask here; declining `[B]` exits cleanly and must not be re-asked
 this run. If `$MIGRATION_DIR/openrouter-capture/manifest.json` already exists (a
-resumed run), execute from its Step 3 (parse the existing captures; consent and
-capture already happened). The merge SUMS OpenRouter spend with a genuinely
+resumed run), check its `/activity` entry's `status` first — `ok` or a
+deliberate `skipped` means consent and capture already happened cleanly, so
+execute from Step 3 (parse the existing captures) as before; a `failed` status
+means the prior attempt did NOT complete (see `discover-openrouter-api.md` Step
+2d's retry rule) — resume from Step 2's retry path, not Step 3, since there is
+no `activity.json` to parse yet. The merge SUMS OpenRouter spend with a genuinely
 separate provider's spend (e.g. a Vertex billing CSV, or OpenAI-direct usage that
 did NOT flow through OpenRouter) into `source: "mixed"`. What it must NOT do is add
 a second line for traffic already inside the OpenRouter usage figure — OpenRouter
