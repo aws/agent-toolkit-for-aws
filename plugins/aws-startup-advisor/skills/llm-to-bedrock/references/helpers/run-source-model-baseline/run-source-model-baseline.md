@@ -139,6 +139,15 @@ top-level `system`, Gemini `systemInstruction` — shapes unit-locked in
 `live` row in the output are never re-billed; failed rows are retried), and
 writes the output contract below.
 
+Anthropic responses stopped by `model_context_window_exceeded` are incomplete:
+record an error with empty `source_response`, use the stored baseline for that
+evaluation, and retry the failed row on resume. If an earlier evaluation is known
+to have cached truncated responses as `live`, archive the affected baseline and
+evaluation artifacts before rerunning collection and scoring. Existing rows do
+not retain stop reasons, so they cannot prove completeness after the fact; when
+the affected IDs are unknown, regenerate the baseline file under the existing
+baseline authorization instead of reusing that suspect cache.
+
 Pass `SOURCE_MODEL_ID`, `GOLDEN_DATASET_PATH`, `OUTPUT_PATH` via env and the
 env-file path as the argument:
 

@@ -44,7 +44,7 @@ Read from prompt context (forwarded from llm2bedrock-code-analyzer, llm2bedrock-
 - **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — key fields:
   - `source_provider` — `openai` / `anthropic` / `google` / `cohere` / `custom`. Drives §9 baseline gating. (Vertex AI customers are emitted as `google` here; the analyzer's `errors` field carries the `vertex AI auth detected` signal that gates baseline collection upstream — by the time you reach §9, `source_baseline_available` already reflects that.)
   - `source_models` — list of source-model IDs. Pass `<SOURCE_MODEL_ID>` to the §9 baseline skill verbatim.
-  - `same_model_family` — `true` when the model is unchanged: Anthropic 1P → Bedrock Claude, or OpenAI → the same GPT model on Bedrock (`openai.gpt-5*`). Triggers the §8 short-circuit.
+  - `same_model_family` — legacy name for exact unchanged model identity/version, subject to the §8 identity recheck. Anthropic provider membership alone does not qualify. Read `target_models` source→validated-target pairs from the same analysis for that check.
   - `source_baseline_available` — `true` iff the user supplied a source-provider API key (orchestration skill Phase B3) and it was written to `<repo>/.saws-migrate/.source-provider-env`. When `false`, §9 skips and the report banner will note the gap.
   - `special_patterns` — `{streaming, function_calling, embeddings, vision}` booleans. Drives §5 layer selection.
   - `bedrock_provider_available` — informational ONLY. This is a rewrite-strategy flag for T2-5, NOT an account-capability flag. Do NOT use it to decide whether your Bedrock calls will work — Step §6 verifies that directly.
@@ -158,7 +158,8 @@ try:
         messages=[{'role': 'user', 'content': [{'text': 'ping'}]}],
         inferenceConfig={'maxTokens': 10},
     )
-    print('OK:', r['output']['message']['content'][0]['text'])
+    text = "".join(block["text"] for block in r["output"]["message"]["content"] if "text" in block)
+    print("OK:", text or "(invocation succeeded; no text)", f"stopReason={r.get('stopReason', 'unknown')}")
 except Exception as e:
     print(f'FAIL [{type(e).__name__}]: {e}', file=sys.stderr)
     sys.exit(1)
@@ -249,7 +250,9 @@ If `total_golden_cases == 0` (T2-2 abort / paste / vision-no-images / embeddings
 
 # 8. Same-model-family short-circuit
 
-If `same_model_family: true` — either Anthropic 1P → Bedrock Claude, or OpenAI → the same GPT model on Bedrock (`openai.gpt-5*`):
+Before using this shortcut (including on resume), run `uv run --project <scriptsDir> python <scriptsDir>/model_identity.py --provider <source_provider> --source <source-model> --target <bedrock-model>` for EVERY `target_models` pair. Require a nonempty list and all `same_model: true` results. Unknown or changed identities override a stale true flag to false. In particular, Opus 4.8 → 5.5 follows §9–§13 baseline, comparative scoring and adaptation, subject to existing dataset/key availability gates.
+
+If `same_model_family: true` is verified and target API checks have no unresolved behavior changes:
 
 - Skip rubric generation and scoring (no parameter-surface drift to score against).
 - Just verify each prompt works on Bedrock (connectivity + response format): run each prompt, check for errors, verify response is non-empty.
@@ -311,15 +314,14 @@ Count a case as failed if the call errors or returns empty output. If a case wit
 
 **When to run:**
 
-- `source_baseline_available == true` AND `same_model_family == false`
+- `source_baseline_available == true` AND the §8 shortcut is not eligible
   → run this step.
 - `source_baseline_available == false` → SKIP. Set
   `live_source_baseline: false` and `source_baseline_quality: 'unknown'`
   for the final report. The report will
   surface a banner explaining the pass rate is not a side-by-side
   comparison.
-- `same_model_family == true` (Anthropic 1P → Bedrock Claude, or OpenAI →
-  the same GPT model on Bedrock) → SKIP. §8 already short-circuits scoring
+- `same_model_family == true` (all exact identities verified and §8 shortcut eligible) → SKIP. §8 already short-circuits scoring
   entirely; a live baseline would compare the model against itself.
 
 **Procedure:**
@@ -391,7 +393,8 @@ try:
         ]}],
         inferenceConfig={"maxTokens": 20},
     )
-    print("VISION_OK:", r["output"]["message"]["content"][0]["text"])
+    text = "".join(block["text"] for block in r["output"]["message"]["content"] if "text" in block)
+    print("VISION_OK:", text or "(image request accepted; no text)", f"stopReason={r.get('stopReason', 'unknown')}")
 except Exception as e:
     print(f"VISION_FAIL [{type(e).__name__}]: {e}", file=sys.stderr)
     sys.exit(1)
@@ -400,7 +403,7 @@ PY
 
 Outcomes:
 
-- **`VISION_OK:`** — SDK + content path both work. Proceed to §10.
+- **`VISION_OK:`** — the SDK accepted the image request. A no-text/stop-reason note does not prove answer quality; the golden evaluation in §10 checks that.
 - **`VISION_INFRA_SKIPPED`** — image download failed (DNS / proxy / air-gapped machine). Bedrock vision was NOT exercised; the test is inconclusive at this layer. Add to `notes`: `vision_smoke_skipped: CDN unreachable — Bedrock vision SDK path not exercised at smoke layer`. Proceed to §10 — golden cases carry their own images from T2-2, which will exercise the SDK directly.
 - **`VISION_FAIL`** — Bedrock rejected the image (`ValidationException`, `AccessDeniedException`, etc.). Surface the exact error in your result file's `notes`, STOP — golden vision eval will fail the same way. (If the failure is an `AccessDeniedException` on model access, route it through `{ blocked: { reason: 'model_access', detail: ... } }` per §6.)
 
@@ -548,8 +551,16 @@ for prompt in prompts:
             system=system,
             inferenceConfig={"maxTokens": 4096}
         )
-        bedrock_output = response["output"]["message"]["content"][0]["text"]
-        status = "success"
+        bedrock_output = "".join(
+            block["text"] for block in response["output"]["message"]["content"] if "text" in block
+        )
+        stop_reason = response.get("stopReason", "unknown")
+        if stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
+            status = f"error: non_final_response (stopReason={stop_reason})"
+        elif not bedrock_output:
+            status = f"error: no_text_response (stopReason={stop_reason})"
+        else:
+            status = "success"
     except ClientError as e:
         if e.response.get("Error", {}).get("Code", "") == "ThrottlingException":
             # Retry budget exhausted — stop here; remaining prompts stay unevaluated.

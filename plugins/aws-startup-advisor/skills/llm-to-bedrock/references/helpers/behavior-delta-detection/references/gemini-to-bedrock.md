@@ -10,7 +10,29 @@ In the `detect_grep` recipes below, `<REPO>` is the repository path supplied in 
 
 ---
 
+## sampling-parameters-removed
+
+Apply this rule FIRST when the selected target does not support sampling controls,
+including Opus 5.5 with its required adaptive thinking. Skip the temperature-range
+and top-p pass-through sections below for that target. Verify the target model
+and thinking mode before applying those generic sections to other models.
+
+- Source: `temperature`, `top_p` / `topP`, `top_k` / `topK`, including framework defaults.
+- Target: omit these fields from Converse `inferenceConfig`, native request bodies,
+  and `additionalModelRequestFields`. Do not clamp, rescale, or disable thinking.
+- Detect with `rg -n 'temperature|top_p|topP|top_k|topK' <REPO>`; trace request builders,
+  framework defaults, UI controls and user-editable configuration for every hit.
+- For user-visible controls, emit `resolution_kind: ux_choice` and
+  `option_set_id: parameter_removed`. All three existing options remove the field
+  from the request; the confirmed option determines how to change the control.
+- For backend constants, emit `resolution_kind: impl_path` without `option_set_id`;
+  the default removes unsupported fields and records `impl_path_default`.
+- Missing confirmation uses the existing safe-default/TODO rule. An unresolved
+  control is not a compatible completed migration. Do not restore Opus 4.8 as a fallback.
+
 ## temperature-range-mismatch
+
+**Applies only to a target and thinking mode verified to accept sampling.**
 
 - `resolution_kind`: `ux_choice`
 - `option_set_id`: `range_narrowed`
@@ -39,6 +61,8 @@ See `openai-to-bedrock.md` § `temperature-range-mismatch` § Code templates for
 ---
 
 ## top-p-range-match
+
+**Applies only to a target and thinking mode verified to accept sampling.**
 
 - `resolution_kind`: `impl_path`
 - Source (Gemini): `top_p ∈ [0, 1]`
@@ -80,9 +104,14 @@ choices = [c.content.parts[0].text for c in response.candidates]
 
 # After (option parameter_removed_1: drop control + remove from API)
 # UI: remove the candidate-count slider/input.
+# inference_config is already filtered by the selected target's sampling contract;
+# for Opus 5.5 it contains no temperature, topP, or top_k fields.
 # Backend: single response from converse.
-response = bedrock.converse(modelId=..., messages=messages_bedrock, inferenceConfig={"temperature": 0.7})
-choice = response["output"]["message"]["content"][0]["text"]
+response = bedrock.converse(modelId=..., messages=messages_bedrock, inferenceConfig=inference_config)
+choice = "".join(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
+stop_reason = response.get("stopReason", "unknown")
+if not choice or stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
+    raise ValueError(f"No complete text response (stopReason={stop_reason})")
 
 # If the calling code expected a list of choices, change the consumer to handle a single result.
 ```

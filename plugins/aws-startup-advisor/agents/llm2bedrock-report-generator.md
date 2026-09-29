@@ -264,6 +264,8 @@ Case 1 — `no_golden_cases: true` is in the evaluator's `notes`:
 > "Bedrock SDK works" — not "Bedrock matches the source model".
 
 Case 2 — `same_model_family: true — connectivity-only verification`
+
+Before rendering this case, recheck each analysis source→validated-target pair with `<scriptsDir>/model_identity.py`. If any identity differs or is unknown, the cached evaluator result is stale: return it to T2-4 for evaluation and do not use the connectivity-only banner or readiness verdict.
 is in the evaluator's `notes`:
 
 > ℹ️ **Connectivity-only verification (same-model migration).** This run

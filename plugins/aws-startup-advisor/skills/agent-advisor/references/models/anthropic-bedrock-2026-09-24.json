@@ -1,0 +1,234 @@
+{
+  "schema_version": 2,
+  "provider": "anthropic",
+  "verified_at": "2026-09-24",
+  "verified_region": "us-east-1",
+  "source": "Opus 5.5: AWS Bedrock model card retrieved 2026-09-24, https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html. Other entries retain their explicitly dated evidence from anthropic-bedrock-2026-07-21.json.",
+  "disclaimer": "Point-in-time model-card evidence, not an account invocation. Re-probe the chosen model, API and inference profile in the target account and region. Opus 5.5 is Active, uses always-on adaptive thinking, and has no Batch tier. Global profiles are unavailable in GovCloud. Unchanged prior-generation entries retain their earlier evidence dates; Fable and Mythos are excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references.",
+  "paths": {
+    "mantle_messages": {
+      "sdk": "anthropic[bedrock]",
+      "client": "AnthropicBedrockMantle",
+      "iam_action": "bedrock-mantle:CreateInference",
+      "model_id_strategy": "clean_model_id",
+      "supports_cris": false,
+      "strengths": [
+        "Preserves the Anthropic Messages API",
+        "Preferred for newest Anthropic beta features"
+      ],
+      "constraints": [
+        "Bedrock Guardrails and runtime invocation logging are not available",
+        "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
+        "Availability must be probed in the target account and region"
+      ]
+    },
+    "runtime_converse": {
+      "sdk": "boto3",
+      "client": "bedrock-runtime.Converse",
+      "iam_action": "bedrock:InvokeModel",
+      "model_id_strategy": "cris_inference_profile",
+      "supports_cris": true,
+      "strengths": [
+        "Supports Bedrock governance, Guardrails, and invocation logging",
+        "Provides a multi-model request surface"
+      ],
+      "constraints": [
+        "Newer Claude models generally require a Global or geography-scoped CRIS inference profile",
+        "Anthropic-specific request fields may require additionalModelRequestFields",
+        "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
+        "Availability must be probed in the target account and region"
+      ]
+    },
+    "runtime_invoke": {
+      "sdk": "boto3",
+      "client": "bedrock-runtime.InvokeModel",
+      "iam_action": "bedrock:InvokeModel",
+      "model_id_strategy": "cris_inference_profile",
+      "supports_cris": true,
+      "strengths": [
+        "Preserves the provider-native Bedrock request body",
+        "Supports Bedrock runtime governance"
+      ],
+      "constraints": [
+        "Uses the Bedrock Anthropic version field rather than the first-party HTTP header",
+        "Newer Claude models generally require a Global or geography-scoped CRIS inference profile",
+        "Structured-output strategy is model-specific: Opus 5.5 rejects forced any/tool choice and disabled thinking; use auto tool choice or prompted JSON with application validation and bounded retries, without a native schema guarantee.",
+        "Availability must be probed in the target account and region"
+      ]
+    }
+  },
+  "models": {
+    "claude_opus_5_5": {
+      "display_name": "Claude Opus 5.5",
+      "family": "claude_opus",
+      "version": "5.5",
+      "class": "premium",
+      "context_window": 1000000,
+      "output_token_ceiling": 128000,
+      "lifecycle_status": "active",
+      "launch_date": "2026-09-22",
+      "eol_no_sooner_than": "2027-09-22",
+      "capabilities": [
+        "tool_use",
+        "extended_thinking",
+        "vision",
+        "long_context"
+      ],
+      "adaptive_thinking_only": true,
+      "sampling_parameters_supported": false,
+      "default_effort": "medium",
+      "batch_supported": false,
+      "inference_profiles": {
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "ca-west-1",
+          "us-gov-east-1",
+          "us-gov-west-1"
+        ],
+        "eu": [
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3"
+        ],
+        "au": [
+          "ap-southeast-2",
+          "ap-southeast-4"
+        ],
+        "jp": [
+          "ap-northeast-1",
+          "ap-northeast-3"
+        ],
+        "global": [
+          "af-south-1",
+          "ap-east-2",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-south-2",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "ap-southeast-3",
+          "ap-southeast-4",
+          "ap-southeast-5",
+          "ap-southeast-6",
+          "ap-southeast-7",
+          "ca-central-1",
+          "ca-west-1",
+          "eu-central-1",
+          "eu-central-2",
+          "eu-north-1",
+          "eu-south-1",
+          "eu-south-2",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "il-central-1",
+          "me-central-1",
+          "me-south-1",
+          "mx-central-1",
+          "sa-east-1",
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2"
+        ]
+      },
+      "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24)",
+      "paths": {
+        "mantle_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-opus-5-5",
+          "requires_cris": false,
+          "regions": [
+            "us-east-1",
+            "ap-southeast-4",
+            "us-gov-west-1"
+          ]
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "anthropic.claude-opus-5-5",
+          "requires_cris": true
+        },
+        "runtime_invoke": {
+          "available": true,
+          "model_id": "anthropic.claude-opus-5-5",
+          "requires_cris": true
+        }
+      },
+      "forced_tool_choice_supported": false,
+      "native_structured_output_supported": false
+    },
+    "claude_sonnet_5": {
+      "display_name": "Claude Sonnet 5",
+      "family": "claude_sonnet",
+      "version": "5.0",
+      "class": "balanced",
+      "context_window": 1000000,
+      "output_token_ceiling": 128000,
+      "capabilities": [
+        "tool_use",
+        "extended_thinking",
+        "vision",
+        "long_context"
+      ],
+      "evidence": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): launch 2026-06-30, Active; Messages/Converse/Invoke checked; bedrock-mantle + bedrock-runtime checked; 1M context, 128K max output; adaptive thinking always on; image input checked; Geo (us/eu/au) and Global CRIS supported",
+      "paths": {
+        "mantle_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-sonnet-5",
+          "requires_cris": false
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "anthropic.claude-sonnet-5",
+          "requires_cris": true
+        },
+        "runtime_invoke": {
+          "available": true,
+          "model_id": "anthropic.claude-sonnet-5",
+          "requires_cris": true
+        }
+      }
+    },
+    "claude_haiku_4_5": {
+      "display_name": "Claude Haiku 4.5",
+      "family": "claude_haiku",
+      "version": "4.5",
+      "class": "fast",
+      "context_window": 200000,
+      "output_token_ceiling": 64000,
+      "capabilities": [
+        "tool_use",
+        "vision"
+      ],
+      "paths": {
+        "mantle_messages": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-4-5",
+          "requires_cris": false
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+          "requires_cris": true
+        },
+        "runtime_invoke": {
+          "available": true,
+          "model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+          "requires_cris": true
+        }
+      }
+    }
+  }
+}

@@ -1,8 +1,8 @@
 # bedrock_pricing.py
 """Look up Amazon Bedrock on-demand token prices.
 
-Primary source is the curated STATIC_FALLBACK table below (checked against the
-public pricing page). The live AWS Pricing API is tried as a secondary source
+Primary sources are the curated STATIC_FALLBACK table and the region/profile-aware
+Opus 5.5 rates (checked against AWS pricing). The live AWS Pricing API is a secondary source
 for models not in the table — note its 'model' attribute holds display names
 ("Claude 3 Haiku"), NOT model IDs, so we query with a display name derived
 from the model id; this is best-effort and may miss.
@@ -96,8 +96,89 @@ def unavailable(note: str) -> dict:
             "output_per_1k_usd": None, "note": f"Pricing unavailable: {note}"}
 
 
+# AWS Price List API, AmazonBedrockFoundationModels, verified 2026-09-24.
+# servicename: Claude Opus 5.5 (Amazon Bedrock Edition). Prices are per 1K.
+# Runtime requires a supported Geo/Global profile; the bare ID is Mantle-only.
+_OPUS55_ID = "anthropic.claude-opus-5-5"
+_OPUS55_PROFILE_REGIONS = {'us': ['us-east-1',
+        'us-east-2',
+        'us-west-1',
+        'us-west-2',
+        'ca-central-1',
+        'ca-west-1',
+        'us-gov-east-1',
+        'us-gov-west-1'],
+ 'eu': ['eu-central-1',
+        'eu-central-2',
+        'eu-north-1',
+        'eu-south-1',
+        'eu-south-2',
+        'eu-west-1',
+        'eu-west-2',
+        'eu-west-3'],
+ 'au': ['ap-southeast-2', 'ap-southeast-4'],
+ 'jp': ['ap-northeast-1', 'ap-northeast-3'],
+ 'global': ['af-south-1',
+            'ap-east-2',
+            'ap-northeast-1',
+            'ap-northeast-2',
+            'ap-northeast-3',
+            'ap-south-1',
+            'ap-south-2',
+            'ap-southeast-1',
+            'ap-southeast-2',
+            'ap-southeast-3',
+            'ap-southeast-4',
+            'ap-southeast-5',
+            'ap-southeast-6',
+            'ap-southeast-7',
+            'ca-central-1',
+            'ca-west-1',
+            'eu-central-1',
+            'eu-central-2',
+            'eu-north-1',
+            'eu-south-1',
+            'eu-south-2',
+            'eu-west-1',
+            'eu-west-2',
+            'eu-west-3',
+            'il-central-1',
+            'me-central-1',
+            'me-south-1',
+            'mx-central-1',
+            'sa-east-1',
+            'us-east-1',
+            'us-east-2',
+            'us-west-1',
+            'us-west-2']}
+_OPUS55_MANTLE_REGIONS = {"us-east-1", "ap-southeast-4", "us-gov-west-1"}
+
+
+def _opus55_pricing(region: str, model_id: str) -> dict:
+    if model_id == _OPUS55_ID:
+        valid = region in _OPUS55_MANTLE_REGIONS
+        prefix = "mantle"
+    else:
+        prefix, _, base = model_id.partition(".")
+        valid = base == _OPUS55_ID and region in _OPUS55_PROFILE_REGIONS.get(prefix, [])
+    if not valid:
+        return unavailable(f"no verified Opus 5.5 rate for {model_id} in {region}; "
+                           "confirm the exact model ID, endpoint and inference profile")
+    if region.startswith("us-gov-"):
+        inp, output = 0.0048, 0.024
+    elif prefix == "global":
+        inp, output = 0.004, 0.020
+    else:
+        inp, output = 0.0044, 0.022
+    return {"available": True, "input_per_1k_usd": inp, "output_per_1k_usd": output,
+            "note": "AWS Price List API AmazonBedrockFoundationModels; verified 2026-09-24; "
+                    f"Standard tier, {region}, {prefix} inference; no Batch"}
+
+
 def _static_fallback(model_id: str) -> dict | None:
     """Try the static fallback table. Returns a result dict or None."""
+    if "claude-opus-5" in model_id:
+        return None  # Opus 5.5 requires exact, region-aware pricing.
     entry = STATIC_FALLBACK.get(model_id)
     if entry:
         return {**entry, "available": True, "note": "static fallback (PriceList API had no entry)"}
@@ -150,6 +231,8 @@ def display_name_guess(model_id: str) -> str:
 
 
 def lookup(region: str, model_id: str) -> dict:
+    if "claude-opus-5" in model_id:
+        return _opus55_pricing(region, model_id)
     # Curated static table is the primary source — the Pricing API keys models
     # by display name and frequently lacks entries for new inference profiles.
     fb = _static_fallback(model_id)

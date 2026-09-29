@@ -146,7 +146,7 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 
 | Answer   | Model Impact                                        |
 | -------- | --------------------------------------------------- |
-| Quality  | Claude Sonnet 5 primary; Opus 4.8 for hardest tasks |
+| Quality  | Claude Sonnet 5 primary; Opus 5.5 for hardest tasks |
 | Speed    | Claude Haiku 4.5; also Nova Micro/Lite              |
 | Cost     | Claude Haiku 4.5 or Nova Micro                      |
 | Special  | Deferred to Q10                                     |
@@ -298,7 +298,7 @@ Present with concrete examples: Simple = classify/extract/summarize; Moderate = 
 | -------- | --------------------------------------------------------------------- |
 | Simple   | Haiku/Nova Micro sufficient; significant cost savings                 |
 | Moderate | Sonnet 5 recommended; Haiku may suffice with prompt engineering       |
-| Complex  | Sonnet 5 required; extended thinking considered; Opus 4.8 for hardest |
+| Complex  | Sonnet 5 required; extended thinking considered; Opus 5.5 for hardest |
 
 Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 

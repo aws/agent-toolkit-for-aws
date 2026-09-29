@@ -2,13 +2,13 @@
 
 Pure module: takes model IDs, region, and account ID — returns a policy dict.
 Handles the dual-ARN pattern (foundation-model + inference-profile) required
-when cross-region inference profile IDs (us./eu./apac. prefixed) are in use.
+when cross-region inference profile IDs (including au. and jp.) are in use.
 """
 import json
 import re
 import sys
 
-_GEO_PREFIX = re.compile(r"^(us|eu|apac|global)\.")
+_GEO_PREFIX = re.compile(r"^(us|eu|apac|au|jp|global)\.")
 
 
 def is_inference_profile(model_id: str) -> bool:
@@ -17,30 +17,35 @@ def is_inference_profile(model_id: str) -> bool:
 
 
 def is_mantle_model(model_id: str) -> bool:
-    """True for OpenAI's proprietary GPT models, which are served only on the
-    bedrock-mantle endpoint. They need `bedrock-mantle:*` actions — a policy
+    """True for bare proprietary GPT IDs and the bare Opus 5.5 ID, which use
+    bedrock-mantle (Responses and Messages respectively). They need
+    `bedrock-mantle:*` actions — a policy
     granting only `bedrock:InvokeModel` against a foundation-model ARN cannot
-    authorize them, and they have no inference profile to scope to either.
+    authorize these bare IDs. Their prefixed forms use runtime instead.
     The open-weight gpt-oss models DO use bedrock-runtime and must not match."""
     mid = model_id.lower()
-    return mid.startswith("openai.gpt-5") and "oss" not in mid
+    return (mid.startswith("openai.gpt-5") and "oss" not in mid) or mid == "anthropic.claude-opus-5-5"
+
+
+def _partition(region: str) -> str:
+    return "aws-us-gov" if region.startswith("us-gov-") else "aws-cn" if region.startswith("cn-") else "aws"
 
 
 def mantle_project_arn(region: str, account_id: str) -> str:
     """ARN scope for mantle inference. Mantle authorizes at project granularity,
     not per model, so this cannot be narrowed to specific model IDs — use a
     service control policy to restrict the model set."""
-    return f"arn:aws:bedrock-mantle:{region}:{account_id}:project/*"
+    return f"arn:{_partition(region)}:bedrock-mantle:{region}:{account_id}:project/*"
 
 
-def foundation_model_arn(model_id: str) -> str:
+def foundation_model_arn(model_id: str, region: str = "") -> str:
     """ARN for a plain foundation-model ID (no geo prefix)."""
-    return f"arn:aws:bedrock:*::foundation-model/{model_id}"
+    return f"arn:{_partition(region)}:bedrock:*::foundation-model/{model_id}"
 
 
 def inference_profile_arn(model_id: str, region: str, account_id: str) -> str:
     """ARN for a cross-region inference profile."""
-    return f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{model_id}"
+    return f"arn:{_partition(region)}:bedrock:{region}:{account_id}:inference-profile/{model_id}"
 
 
 def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
@@ -67,9 +72,9 @@ def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
         if is_inference_profile(mid):
             resources.append(inference_profile_arn(mid, region, account_id))
             base_id = _GEO_PREFIX.sub("", mid)
-            resources.append(foundation_model_arn(base_id))
+            resources.append(foundation_model_arn(base_id, region))
         else:
-            resources.append(foundation_model_arn(mid))
+            resources.append(foundation_model_arn(mid, region))
 
     # Emit unless the ONLY reason there are no resources is that every target is
     # mantle-only. A genuinely empty model list keeps the legacy shape (a statement

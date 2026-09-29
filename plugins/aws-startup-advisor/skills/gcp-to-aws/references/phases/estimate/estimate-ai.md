@@ -67,7 +67,14 @@ If design or discover phase has more specific token estimates, use those instead
 
 **Cost formula:** `Monthly = (input_tokens / 1M × input_rate) + (output_tokens / 1M × output_rate)`
 
-**Long-context surcharge:** If `ai_critical_feature = "ultra_long_context"` in `preferences.json`, Claude models charge 2x the standard input rate for tokens beyond 200K context. Apply the surcharge to the portion of input tokens that exceeds 200K per request. If per-request token counts are unknown, assume 50% of input tokens fall in the long-context tier as a conservative estimate.
+**Long-context pricing:** If `ai_critical_feature = "ultra_long_context"`, use the
+published rate for the exact model, source region, and inference profile. **Opus 5.5 has
+no long-context surcharge**: it uses the same per-token rates throughout its 1M context
+window (Global $4/$20, commercial Geo/Mantle $4.40/$22, GovCloud $4.80/$24 per 1M
+input/output tokens). Do not apply a generic 2x multiplier or assume that 50% of input
+falls in a premium tier. For other models, apply a long-context tier only when its
+threshold and rates are verified in the pricing cache or an authoritative source;
+if the required tier is unverified, report pricing as unavailable instead of guessing.
 
 **Comparison table columns:** Model, Bedrock Monthly, vs Source Provider ($ and %), vs Current GCP, Quality, Capabilities Match (checked against `ai_capabilities_required`).
 

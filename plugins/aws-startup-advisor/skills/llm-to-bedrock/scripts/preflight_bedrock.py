@@ -154,6 +154,11 @@ def _embed_request_body(model_id: str) -> dict | None:
 
 def probe_model(client, model_id: str) -> dict:
     """Real minimal probe: Converse for chat models, InvokeModel for embeddings."""
+    if model_id == "anthropic.claude-opus-5-5":
+        return {"ok": False, "reason": "inference_profile_required",
+                "detail": "Opus 5.5 has no in-region bedrock-runtime target. Use a supported "
+                          "Geo/Global inference profile for this Converse probe. The bare ID "
+                          "is for Mantle Messages and must be verified through that API."}
     from botocore.exceptions import BotoCoreError, ClientError
     try:
         if is_embedding_model(model_id):

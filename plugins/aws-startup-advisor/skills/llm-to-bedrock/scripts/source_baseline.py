@@ -154,6 +154,15 @@ def redact(text: str, secrets) -> str:
     return text
 
 
+def extract_anthropic_text(response: dict) -> str:
+    """Read visible text without treating thinking blocks as the answer."""
+    text = "".join(block["text"] for block in response["content"] if block.get("type") == "text")
+    stop_reason = response.get("stop_reason", "unknown")
+    if not text or stop_reason in ("max_tokens", "model_context_window_exceeded", "refusal", "tool_use"):
+        raise ValueError(f"No complete Anthropic text response (stop_reason={stop_reason})")
+    return text
+
+
 PROVIDERS = {
     # env key → (request builder, response-text extractor)
     "OPENAI_API_KEY": (
@@ -162,7 +171,7 @@ PROVIDERS = {
     ),
     "ANTHROPIC_API_KEY": (
         build_anthropic_request,
-        lambda d: d["content"][0]["text"],
+        extract_anthropic_text,
     ),
     "GEMINI_API_KEY": (
         build_gemini_request,

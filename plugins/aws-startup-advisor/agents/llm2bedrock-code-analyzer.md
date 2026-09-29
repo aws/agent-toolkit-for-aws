@@ -40,7 +40,7 @@ Your context block lists absolute paths to helper references (lines labelled
 `<helper> reference:`). Read the one you need on demand at the indicated step — do NOT
 try to load a skill by name.
 
-- **`behavior-delta-detection` reference** — at §9 to detect parameter-surface differences (OpenAI / Gemini → Bedrock). Read the path from your `behavior-delta-detection reference:` context line.
+- **`behavior-delta-detection` reference** — at §9 to detect parameter-surface differences (OpenAI / Gemini / Anthropic → Bedrock). Read the path from your `behavior-delta-detection reference:` context line.
 - **`resolve-bedrock-model-id` reference** — at §10 to validate plan target IDs against live Bedrock inference profiles. **MANDATORY** — do NOT reproduce its logic with raw `aws bedrock` calls. Read the path from your `resolve-bedrock-model-id reference:` context line.
 
 # 5. Locate the source code
@@ -124,11 +124,21 @@ Determine:
 1. **Source provider** (the value emitted in `source_provider`): one of `openai` / `anthropic` (1P) / `google` (Gemini, including Vertex AI) / `cohere` / `custom` (OpenAI-compatible). §7.1.2 below distinguishes Vertex AI internally for §12 only — the public enum stays at these 5 values so downstream agents don't need to learn a new branch.
 2. **AI framework**: raw SDK / LangChain / LlamaIndex / Vercel AI SDK / custom
 3. **SDK version**: read from lockfile or manifest
-4. **Same model family**: defaults to `false`. Set `same_model_family: true` when ALL plan model mappings keep the model itself, which is now true in two cases:
-   - Anthropic 1P (direct `anthropic` SDK) → Bedrock Claude, and
-   - OpenAI → **the same OpenAI model on Bedrock**, i.e. every `aws_model_id` is a proprietary GPT model (`openai.gpt-5*`) matching its `source_model`.
+4. **Same model identity**: the legacy `same_model_family` flag defaults to `false`.
+   For EVERY nonempty plan mapping, run the pinned helper:
 
-   In both cases the prompt-adaptation step is skipped downstream, because the model is unchanged. Mixed projects (e.g. chat=Anthropic→Claude AND embeddings=OpenAI→Cohere) → `false`. A GPT source mapped to Claude/Nova/`gpt-oss` is a model change → `false`.
+   ```bash
+   uv run --project <scriptsDir> python <scriptsDir>/model_identity.py --provider '<source_provider>' --source '<source_model>' --target '<aws_model_id>'
+   ```
+
+   Set `same_model_family: true` only if ALL results return `same_model: true`.
+   The helper removes provider/profile prefixes and Bedrock transport revisions,
+   but preserves model versions, tiers and release dates. Opus 4.8 → 5.5 is false;
+   `claude-opus-5-5` → `global.anthropic.claude-opus-5-5` is true. Unknown identities,
+   unresolved moving aliases, empty mappings and mixed model changes remain false.
+   Provider membership alone never permits the downstream scoring shortcut.
+   Recompute after §10 validates the target IDs; if a target changes, rerun §9
+   against that final target before returning the analysis.
 
 ## 7.1.1 Disambiguate `openai` vs OpenAI-compatible
 
@@ -240,9 +250,9 @@ grep -rn "image_url\|image_file\|vision\|ImageBlock" <REPO> --include="*.py" --i
 
 # 9. Detect behavior deltas (user-visible parameter-surface differences)
 
-If `source_provider ∈ {openai, google}` AND `same_model_family == false`, scan the source code for known parameter-surface differences between the source provider and Bedrock. The rewriter (T2-5) will ask the user to confirm each user-visible change before modifying code; this step enumerates them. (Vertex AI customers are emitted as `google` per §7.1.2 — parameter surface is identical between Gemini API and Vertex AI Gemini.)
+If `source_provider ∈ {openai, google, anthropic}` AND `same_model_family == false`, scan the source code for known parameter-surface differences between the source provider and Bedrock. The orchestration checkpoint asks the user to confirm each user-visible change before the rewriter modifies code; this step enumerates them. (Vertex AI customers are emitted as `google` per §7.1.2 — parameter surface is identical between Gemini API and Vertex AI Gemini.)
 
-For any other source_provider (`anthropic`, `cohere`, `custom`) OR `same_model_family == true`, set `behavior_deltas: []` and skip the rest of this section.
+For `cohere` or `custom`, set `behavior_deltas: []` and skip this section. Anthropic always loads `references/anthropic-to-bedrock.md`: a version hop needs the selected target's full parameter/thinking/prefill/tool/response checks, and an exact same-model move still needs API/path compatibility checks. Emit `[]` only after those checks find no deltas.
 
 **Exception — OpenAI same-model on mantle.** When `source_provider == openai` AND `same_model_family == true` (every target is a proprietary `openai.gpt-5*` model), do NOT emit `behavior_deltas: []` wholesale. The model is unchanged, so the parameter-surface deltas (temperature range, penalties, stop sequences) genuinely do not apply — but the **API surface** can still change. Read only the "Same-model (mantle) deltas" section of the reference's `openai-to-bedrock.md` and emit those: Chat Completions → Responses, reasoning items round-tripping, endpoint path and credential, and prompt-caching availability. Skipping these would leave a `chat.completions.create` call pointed at a model that does not verifiably accept it.
 
@@ -253,6 +263,7 @@ For any other source_provider (`anthropic`, `cohere`, `custom`) OR `same_model_f
    NOT your cwd):
    - `openai` → `<BDD_DIR>/references/openai-to-bedrock.md`
    - `google` → `<BDD_DIR>/references/gemini-to-bedrock.md`
+   - `anthropic` → `<BDD_DIR>/references/anthropic-to-bedrock.md`
 3. For each delta in the matching reference, run its `detect_grep` recipe (or recipes — some have multiple) inside the repository path provided in your context (the `Repository:` line).
 4. For each grep hit, classify `user_visible`:
    - `true` if the hit is inside a UI control (Slider, NumberInput, form field), CLI flag, env var read by the user, or config file the user edits.
@@ -314,7 +325,7 @@ find <REPO> -type f \( \( -name "*.json" -path "*langsmith*" \) -o \( -name "*.j
 
 - `cohere` / `custom` / `unknown` / empty — no stable HTTP contract callable with stdlib alone.
 - `errors` contains the EXACT substring `vertex AI auth detected (ADC, not API key)` (per §7.1.2) — Vertex AI uses ADC, not API keys; pasting a Gemini API key against Vertex would 401. Match the full phrase to avoid false hits from other `errors` entries that happen to contain "vertex".
-- `same_model_family == true` (Anthropic 1P → Bedrock Claude, or OpenAI → the same GPT model on Bedrock) — the evaluator skips quality scoring entirely, so a live baseline adds no value. The source and target are the same model, so a baseline would be comparing it against itself.
+- `same_model_family == true` (every validated mapping has the exact same model identity/version) — the evaluator skips quality scoring entirely, so a live baseline adds no value. The source and target are the same model, so a baseline would be comparing it against itself.
 
 Set `source_baseline_available` from the `Source baseline available:` line in your context — the orchestration skill sets it to `true` when the user already supplied a key in Phase B3, `false` otherwise. Echo that value; do not hardcode either way (hardcoding `false` would clobber an already-collected key's signal for the evaluator downstream).
 
