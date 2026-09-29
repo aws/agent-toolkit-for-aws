@@ -6,8 +6,8 @@
 - **Query language**: MySQL SQL
 - **Compatibility**: Full MySQL
 - **Serverless**: Yes
-- **Serverless type**: Capacity — you still create and manage a cluster, but compute scales automatically (including to zero with auto-pause)
-- **Scale to zero**: Yes, via auto-pause
+- **Serverless type**: Capacity — you create and manage a cluster, while compute scales automatically within the supported capacity range (currently up to 256 ACUs on supported engine and platform versions). Patching, upgrades, and maintenance remain a shared responsibility, consistent with standard Aurora MySQL
+- **Scale to zero**: Conditional — requires an engine version that supports auto-pause and a minimum capacity of 0 ACUs; otherwise the minimum is 0.5 ACU. Enabled features and settings can require a higher effective floor or prevent auto-pause
 - **VPC required**: Yes (no Express Configuration for MySQL)
 - **Multi-region**: Global Database for disaster recovery
 - **Free Tier**: new-account AWS Free Tier — $100 at sign-up plus up to $100 more ($200 total), usable across eligible services including Aurora for up to 12 months (per aws.amazon.com/rds/aurora/pricing). Note: the named "Free plan" 4-ACU/1-GiB-per-cluster allowance is documented for Aurora PostgreSQL serverless; MySQL workloads draw on the same credits
