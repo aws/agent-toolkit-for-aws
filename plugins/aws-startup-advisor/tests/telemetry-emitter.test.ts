@@ -799,6 +799,72 @@ describe('telemetry emitter', () => {
     }
   });
 
+  it('reads Heroku clarify answers from preferences.global, as heroku-to-aws writes them', async () => {
+    // Arrange: the checked-in Heroku clarify output; only compute_target lives under design_constraints
+    const preferences = JSON.parse(
+      readFileSync(join(import.meta.dirname, '..', 'fixtures', 'heroku-workshop', 'seed', 'preferences.json'), 'utf8'),
+    );
+    const p = makeProject(
+      phaseStatus({ owning_skill: 'HEROKU_TO_AWS', current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }),
+      'granted',
+      { 'heroku-resource-inventory.json': { resources: [] }, 'preferences.json': preferences },
+    );
+    try {
+      // Act
+      const clarify = (await reconcile(p)).map(activity).find((a) => a.phase === 'CLARIFY');
+
+      // Assert
+      assert.deepEqual(
+        {
+          compliance: clarify.attributes.compliance,
+          availability: clarify.attributes.availability,
+          targetRegion: clarify.attributes.targetRegion,
+          computePosture: clarify.attributes.computePosture,
+        },
+        { compliance: ['NONE'], availability: 'SINGLE_AZ', targetRegion: 'US_EAST_1', computePosture: 'ELASTIC_BEANSTALK' },
+      );
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('drops a generation tier once a confirmed re-entry sets Generate back to pending', async () => {
+    // Arrange: a completed SMALL run whose old generation artifact stays on disk after re-entry
+    const all = Object.fromEntries(Object.keys(phaseStatus().phases).map((k) => [k, 'completed']));
+    const p = makeProject(
+      phaseStatus({ current_phase: 'complete', run_mode: 'execute', phases: all }),
+      'granted',
+      {
+        'gcp-resource-inventory.json': GCP_INVENTORY,
+        'generation-infra.json': { complexity_tier: 'small' },
+        'migration-preview.json': { complexity_signal: 'likely_simple' },
+      },
+    );
+    try {
+      const first = await reconcile(p);
+      // re-entry: rediscovery finds a complex estate; downstream phases reset, artifacts retained
+      writeFileSync(join(p.runDir, 'migration-preview.json'), JSON.stringify({ complexity_signal: 'complex' }));
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(phaseStatus({ current_phase: 'estimate', phases: { ...phaseStatus().phases, clarify: 'completed', design: 'pending' } }), null, 2),
+      );
+      await reconcile(p);
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(phaseStatus({ current_phase: 'estimate', phases: { ...phaseStatus().phases, clarify: 'completed', design: 'completed' } }), null, 2),
+      );
+
+      // Act
+      const redesign = (await reconcile(p)).map(activity).find((a) => a.phase === 'DESIGN');
+
+      // Assert
+      assert.equal(first.map(activity).find((a) => a.phase === 'DESIGN').attributes.complexityTier, 'SMALL');
+      assert.equal(redesign.attributes.complexityTier, 'LARGE', 'the stale generation tier is ignored while Generate is pending');
+    } finally {
+      cleanup(p);
+    }
+  });
+
   it('detects a Heroku database from the add-on service, not from the resource type', async () => {
     // Arrange: one formation and one Postgres add-on, as heroku discover writes them
     const heroku = (resources: unknown[]) =>

@@ -497,9 +497,10 @@ function toCoverage(value) {
 
 // A design constraint is an object with the interpreted value under `value`
 // (gcp) or `default` (heroku's compute_target); older artifacts hold the bare
-// value.
+// value. Heroku records region, compliance and availability as plain values
+// under `global` instead.
 function constraintValue(preferences, key) {
-  const raw = preferences?.design_constraints?.[key];
+  const raw = preferences?.design_constraints?.[key] ?? preferences?.global?.[key];
   if (raw == null) return undefined;
   if (typeof raw === "object" && !Array.isArray(raw)) return raw.value ?? raw.default;
   return raw;
@@ -555,9 +556,16 @@ function projectedCost(estimate, tier, option) {
 }
 
 // The migration's complexity tier: written by generate (gcp) or estimate
-// (heroku); before either exists, the discover preview's coarser signal.
-function complexityTier(runDir) {
-  for (const name of ["generation-infra.json", "generation-billing.json", "generation-ai.json", "estimation-infra.json"]) {
+// (heroku); before either is complete, the discover preview's coarser signal.
+// A confirmed re-entry resets downstream phases to pending but leaves their
+// artifacts on disk, so an artifact counts only while its phase is completed.
+function complexityTier(runDir, status) {
+  const done = (phase) => status?.phases?.[phase] === "completed";
+  const tiered = [
+    ...(done("generate") ? ["generation-infra.json", "generation-billing.json", "generation-ai.json"] : []),
+    ...(done("estimate") ? ["estimation-infra.json"] : []),
+  ];
+  for (const name of tiered) {
     const artifact = readJson(path.join(runDir, name));
     const tier = toEnum(COMPLEXITY_TIER, artifact?.complexity_tier ?? artifact?.estimation_summary?.complexity_tier);
     if (tier) return tier;
@@ -572,7 +580,7 @@ function complexityTier(runDir) {
 // counts. complexityTier is the exception: it segments the funnel, so it rides
 // every event from DESIGN onward and the terminal, and an abandoned run still
 // carries it.
-function deriveAttributes(runDir, skill, event) {
+function deriveAttributes(runDir, skill, event, status) {
   const attributes = {};
   const spec = SKILL_INVENTORY[skill];
   const provider = sourceProvider(runDir, spec);
@@ -705,7 +713,7 @@ function deriveAttributes(runDir, skill, event) {
 
   const fromDesignOnward = phaseEvent && ["DESIGN", "ESTIMATE", "WORKSHOP", "GENERATE", "FEEDBACK"].includes(phase);
   if (fromDesignOnward || event.eventName === "RUN_COMPLETED") {
-    const tier = complexityTier(runDir);
+    const tier = complexityTier(runDir, status);
     if (tier) attributes.complexityTier = tier;
   }
 
@@ -745,7 +753,7 @@ function diffEvents(status, snapshot) {
 // SQS-redelivery dedup, and one POST per event with no retries makes that
 // equivalent to minting it here.
 function buildRequest(event, ctx) {
-  const attributes = deriveAttributes(ctx.runDir, ctx.skill, event);
+  const attributes = deriveAttributes(ctx.runDir, ctx.skill, event, ctx.status);
   const migrationActivity = {
     eventName: event.eventName,
     skill: ctx.skill,
@@ -873,6 +881,7 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
 
     const ctx = {
       runDir,
+      status,
       skill,
       // Only a known migration skill may be named as the invoker; anything else
       // is dropped rather than risk rejecting the whole event.
