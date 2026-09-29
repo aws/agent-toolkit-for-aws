@@ -213,27 +213,51 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
 }
 ```
 
-Every attempted or deliberately skipped call gets an entry. **If the `/activity`
-row's status is `failed`** (a mid-table failure, e.g. a 500 — distinct from the
-401/403 probe failure above, which never reaches this step): still write the
-manifest as shown (so a resumed run can tell what was already tried), but do
-**not** proceed to Step 3, and do **not** delete the key file yet — the key is
-still valid (the probe succeeded), and a resumed run needs it to retry. Tell the
-user: "OpenRouter usage discovery captured credits but the usage endpoint
-(`/activity`) failed (`<note>`) — no per-model signal to build a profile from.
-I'll retry it if you ask me to continue OpenRouter discovery again, or you can
-skip it for this run." **A subsequent invocation of this file MUST check for
-this specific outcome, not just manifest presence:** read the existing manifest
-first — if the `/activity` entry's `status` is `failed`, retry ONLY that row
-(reusing the existing key file and the other rows' already-good captures rather
-than re-running Step 0–2b from scratch), update its entry to `ok`/`failed` in
-place, and only then either proceed to Step 3 (on `ok`) or repeat this same
-stop-and-offer-retry behavior (on another `failed`). Only a manifest whose
-`/activity` entry is `ok` or a deliberate `skipped` (the user chose to abandon
-that scope) is safe to jump straight to Step 3 on. Delete the key file once
-`/activity` reaches a terminal `ok`/`skipped` state (per Step 4's cleanup) or
-once the user explicitly abandons OpenRouter discovery for this run — never
-while a retry is still live.
+Every attempted or deliberately skipped call gets an entry. **`/activity`'s
+`status` is special — unlike `/key` (optional context, `skipped` is harmless),
+`/activity` is the ONLY source of per-model rows, so its status determines
+whether this source produces anything at all:**
+
+**If the `/activity` row's status is `failed`** (a mid-table failure, e.g. a
+500 — distinct from the 401/403 probe failure above, which never reaches this
+step): still write the manifest as shown (so a resumed run can tell what was
+already tried), but do **not** proceed to Step 3, and do **not** delete the key
+file yet — the key is still valid (the probe succeeded), and a resumed run
+needs it to retry. Tell the user: "OpenRouter usage discovery captured credits
+but the usage endpoint (`/activity`) failed (`<note>`) — no per-model signal to
+build a profile from. I'll retry it if you ask me to continue OpenRouter
+discovery again, or you can skip it for this run."
+
+**If the user chooses to skip** (either right after this failure, or on a
+later resume): update the `/activity` entry's `status` to `skipped` in the
+existing manifest. This is a **terminal, omitted-source outcome, not an
+alternate path into Step 3** — there is no `activity.json` to parse, so nothing
+downstream of here runs: do not execute Step 3, do not write
+`openrouter-usage-profile.json`, and do not touch `ai-workload-profile.json`.
+Delete the key file (per Step 4's cleanup) since capture is now finished for
+this run. Tell the user OpenRouter usage discovery was skipped for this run and
+no profile was produced — a later resume must not retry it or re-ask for
+consent (the manifest's `skipped` status is what records that this was a
+deliberate choice, not an unattempted capture).
+
+**A subsequent invocation of this file MUST check for these specific outcomes,
+not just manifest presence:** read the existing manifest first.
+
+- `/activity` entry's `status` is `failed` → retry ONLY that row (reusing the
+  existing key file and the other rows' already-good captures rather than
+  re-running Step 0–2b from scratch), update its entry to `ok`/`failed` in
+  place, and only then either proceed to Step 3 (on `ok`) or repeat this same
+  stop-and-offer-retry behavior (on another `failed`), or record `skipped` and
+  stop per the paragraph above (if the user now chooses to abandon it).
+- `/activity` entry's `status` is `skipped` → this run already made its
+  decision; exit cleanly with no output and no re-ask, exactly like a Step 1
+  consent decline. Do NOT proceed to Step 3 — there is still no `activity.json`.
+- `/activity` entry's `status` is `ok` → proceed to Step 3 as normal (the only
+  status where a real capture exists to parse).
+
+Delete the key file once `/activity` reaches a terminal `ok`/`skipped` state
+(per Step 4's cleanup) — never while a retry is still live (a `failed` status
+with no user decision yet).
 
 ## Step 3: Parse Captures into the Usage Profile
 
@@ -339,24 +363,43 @@ volume:
    "confidence": 0.99, "evidence": "<N> requests, <X> tokens in last 30d" }` for
    each of the top 5 models by usage. (`openrouter_usage_api` is a live-usage
    detection method, parallel to `openai_usage_api`.)
-4. For any `usage_by_model` model absent from `models[]`: append
-   `{ "model_id": "<model>", "service": "openrouter_api", "detected_via": ["usage_api"],
-   "evidence": [{ "source": "usage_api", "pattern": "billed usage in last 30 days" }],
-   "capabilities_used": ["text_generation"], "usage_context": "Observed in
-   OpenRouter usage data — call sites not yet located in code" }`. Code-derived
-   entries always win on conflict; usage-only entries tell Clarify what the code
-   scan missed (a model routed at runtime but not literal in the source).
-   **Also append a matching `workloads[]` entry for that same model** (per
-   `schema-discover-ai.md` § workloads[] "Usage-only workloads"): `{workload_id:
-   "wl_" + sha256(model_id + "|usage_api|plain")[:6], model_id: "<model>",
-   sdk_method: "usage_api", capability: "text_generation", capability_confidence:
-   "low", structured_output: false, call_sites: [{"file": "<usage_api>", "line":
-   0}]}`. Without this, the model exists in `models[]` with no corresponding
-   `workloads[]` entry — Clarify's multi-workload confirmation table and Design's
-   per-workload iteration both read `workloads[]`, not `models[]`, so a usage-only
-   model added to `models[]` alone is never surfaced for confirmation and never
-   gets a `design_block`. Recompute `summary.total_models_detected` to include
-   this addition (it counts `models[]` length, not just code-derived models).
+4. **These are two INDEPENDENT checks over every `usage_by_model` entry — run
+   both, even for a model that already satisfies one of them (e.g. from an
+   earlier run against a saved/retained `ai-workload-profile.json`).** Checking
+   workload presence only when the model was ALSO just added to `models[]`
+   misses the case where a prior run (or a resumed one reusing an existing
+   profile) already inserted the model row without its workload row, or where
+   a resume merges a retained profile that already has the model from a
+   DIFFERENT capture pass.
+
+   a. **Model row:** for any `usage_by_model` model absent from `models[]`,
+      append `{ "model_id": "<model>", "service": "openrouter_api",
+      "detected_via": ["usage_api"], "evidence": [{ "source": "usage_api",
+      "pattern": "billed usage in last 30 days" }], "capabilities_used":
+      ["text_generation"], "usage_context": "Observed in OpenRouter usage data —
+      call sites not yet located in code" }`. Code-derived entries always win on
+      conflict; usage-only entries tell Clarify what the code scan missed (a
+      model routed at runtime but not literal in the source).
+   b. **Workload row:** for any `usage_by_model` model with NO `workloads[]`
+      entry whose `model_id` matches it AND `sdk_method: "usage_api"` — checked
+      by model identity alone, regardless of whether step (a) just inserted its
+      `models[]` row this pass or the row was already present from before —
+      append `{workload_id: "wl_" + sha256(model_id + "|usage_api|plain")[:6],
+      model_id: "<model>", sdk_method: "usage_api", capability:
+      "text_generation", capability_confidence: "low", structured_output: false,
+      call_sites: [{"file": "<usage_api>", "line": 0}]}` (per
+      `schema-discover-ai.md` § workloads[] "Usage-only workloads"). Without
+      this, the model can exist in `models[]` with no corresponding
+      `workloads[]` entry — Clarify's multi-workload confirmation table and
+      Design's per-workload iteration both read `workloads[]`, not `models[]`,
+      so a usage-only model present only in `models[]` is never surfaced for
+      confirmation and never gets a `design_block`. Before appending, confirm no
+      existing `workloads[]` entry already has this exact `workload_id` (the
+      sha256 is deterministic per model, so a second merge of the same model
+      naturally collides on it instead of duplicating).
+
+   Recompute `summary.total_models_detected` to include any (a) addition (it
+   counts `models[]` length, not just code-derived models).
 5. If `summary.ai_source` does not already reflect the OpenRouter-fronted
    providers, leave it as the code scan set it — OpenRouter is a transport, and
    `ai_source` is about the source SDK/provider family, which the code scan owns.

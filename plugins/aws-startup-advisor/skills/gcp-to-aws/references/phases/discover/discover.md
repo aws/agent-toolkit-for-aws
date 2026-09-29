@@ -182,12 +182,15 @@ condition holds; otherwise skip silently:
 The sub-file's Step 0 consent gate is the single consent point for this source
 — do not pre-ask here; declining `[B]` exits cleanly and must not be re-asked
 this run. If `$MIGRATION_DIR/openrouter-capture/manifest.json` already exists (a
-resumed run), check its `/activity` entry's `status` first — `ok` or a
-deliberate `skipped` means consent and capture already happened cleanly, so
-execute from Step 3 (parse the existing captures) as before; a `failed` status
-means the prior attempt did NOT complete (see `discover-openrouter-api.md` Step
-2d's retry rule) — resume from Step 2's retry path, not Step 3, since there is
-no `activity.json` to parse yet. The merge SUMS OpenRouter spend with a genuinely
+resumed run), check its `/activity` entry's `status` first — `ok` means capture
+already happened cleanly, so execute from Step 3 (parse the existing captures)
+as before; a deliberate `skipped` means the user already abandoned this source
+for this run — exit cleanly with no output and no re-ask, exactly like a Step 0
+consent decline (there is no `activity.json` to parse; do NOT execute Step 3 on
+a `skipped` status); a `failed` status means the prior attempt did NOT complete
+(see `discover-openrouter-api.md` Step 2d's retry rule) — resume from Step 2's
+retry path, not Step 3, since there is no `activity.json` to parse yet. The
+merge SUMS OpenRouter spend with a genuinely
 separate provider's spend (e.g. a Vertex billing CSV, or OpenAI-direct usage that
 did NOT flow through OpenRouter) into `source: "mixed"`. What it must NOT do is add
 a second line for traffic already inside the OpenRouter usage figure — OpenRouter
@@ -216,7 +219,7 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
    - If `discover-live.md` ran AND capture happened (`$MIGRATION_DIR/live-capture/manifest.json` exists) -> require `gcp-resource-inventory.json` and `gcp-resource-clusters.json`, with `live_metadata` present in the inventory. (If the user declined consent or gcloud was unavailable, the sub-file exited cleanly — no artifact required.)
    - If full `discover-billing.md` ran OR lightweight billing extraction ran -> require `billing-profile.json`
    - If `discover-openai-api.md` ran AND capture happened (`$MIGRATION_DIR/openai-capture/manifest.json` exists) -> require `openai-usage-profile.json`; when `ai-workload-profile.json` also exists, require `metadata.sources_analyzed.openai_usage_api` = `true` in it. (If the user declined consent or had no Admin key, the sub-file exited cleanly — no artifact required.)
-   - If `discover-openrouter-api.md` ran AND capture happened (`$MIGRATION_DIR/openrouter-capture/manifest.json` exists) -> require `openrouter-usage-profile.json`; when `ai-workload-profile.json` also exists, require `metadata.sources_analyzed.openrouter_usage_api` = `true` in it. (If the user declined consent or had no provisioning key, the sub-file exited cleanly — no artifact required.)
+   - If `discover-openrouter-api.md` ran AND capture happened (`$MIGRATION_DIR/openrouter-capture/manifest.json` exists) -> check the manifest's `/activity` entry: `status: "ok"` requires `openrouter-usage-profile.json` (and, when `ai-workload-profile.json` also exists, requires `metadata.sources_analyzed.openrouter_usage_api` = `true` in it); `status: "skipped"` requires NO artifact — the user deliberately abandoned this source with no per-model signal to build a profile from, which is a valid terminal outcome, not a failure; `status: "failed"` means the run did not reach a terminal state for this source and must not have completed Discover at all (the sub-file's own resume rule routes back to its retry path before Discover can finish). (If the user declined consent or had no provisioning key at Step 0/1, the sub-file exited cleanly before ever writing a manifest — no artifact required.)
    - If any triggered route is missing its required artifact(s): STOP and output: "Discover route [name] did not produce required artifacts. Resolve the sub-discovery failure before completing Phase 1."
 
 ## Step 3: Migration Preview
