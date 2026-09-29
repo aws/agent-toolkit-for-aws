@@ -113,6 +113,8 @@ Configure AWS credentials using one of the following methods:
 
 Your IAM role needs permissions for the AWS services used by the skills you install. The relevant IAM action namespaces are:
 
+- `airflow` - Amazon MWAA environments and Airflow REST API calls
+- `airflow-serverless` - Amazon MWAA Serverless workflows and workflow runs (separate from `airflow`)
 - `athena` - Query execution and workgroup management
 - `glue` - Data Catalog operations and ETL jobs
 - `s3` - Object storage operations
