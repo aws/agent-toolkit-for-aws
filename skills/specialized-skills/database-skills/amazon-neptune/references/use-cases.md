@@ -62,10 +62,13 @@ RETURN c, collect(DISTINCT o) AS orders,
 
 ### Graph model
 
+Model each identifier type as an explicit vertex so queries can prove that a ring shares at least two distinct types:
+
 ```
-(Account) -[USES]→ (Email | Phone | Device)
-(Account) -[MADE]→ (Transaction) -[TO]→ (Account)
-(Account) -[LOCATED_AT]→ (IPAddress)
+(Account {id}) -[:USES]-> (PhoneNumber {number})
+(Account {id}) -[:USES]-> (Email {address})
+(Account {id}) -[:IP_LOGIN {ts}]-> (IPAddress {addr})
+(Account) -[:MADE]-> (Transaction) -[:TO]-> (Account)
 ```
 
 ### Sample queries (Gremlin)
@@ -89,6 +92,33 @@ g.V().has('Account', 'id', accountId)
   .has('id', within(knownFraudIds))
   .dedup().count()
 ```
+
+### Sample queries (openCypher)
+
+Find accounts sharing a phone number:
+
+```cypher
+MATCH (a1:Account)-[:USES]->(p:PhoneNumber)<-[:USES]-(a2:Account)
+WHERE a1.id < a2.id
+RETURN p.number, collect(a1.id) + collect(a2.id) AS accounts
+LIMIT 100
+```
+
+For a ring of at least three accounts sharing at least two identifier types, keep the labels explicit and compare the label strings with `labels(...)[0]`:
+
+```cypher
+MATCH (a1:Account)-[:USES|IP_LOGIN]->(id1)<-[:USES|IP_LOGIN]-(a2:Account)
+MATCH (a2)-[:USES|IP_LOGIN]->(id2)<-[:USES|IP_LOGIN]-(a3:Account)
+WHERE a1.id < a2.id AND a2.id < a3.id
+  AND labels(id1)[0] <> labels(id2)[0]
+  AND labels(id1)[0] IN ['PhoneNumber','Email','IPAddress']
+  AND labels(id2)[0] IN ['PhoneNumber','Email','IPAddress']
+RETURN collect(DISTINCT a1.id) + collect(DISTINCT a2.id) + collect(DISTINCT a3.id) AS accounts,
+       collect(DISTINCT labels(id1)[0]) + collect(DISTINCT labels(id2)[0]) AS shared_identifier_types
+LIMIT 100
+```
+
+Do not replace the three identifier labels with a generic `Identifier` label when the request requires distinct identifier types. On Neptune Analytics, do not use label predicates such as `CASE WHEN id1:PhoneNumber`; use `labels(id1)[0]` or count-based aggregations.
 
 **Before**: SQL self-joins across tables, exponential complexity at 3+ hops.
 **After**: Native traversal, linear cost per hop, real-time ring detection.
@@ -204,9 +234,12 @@ RETURN path
 
 ```cypher
 // Vector search + graph expansion (GraphRAG retrieval)
-CALL neptune.algo.vectors.topKByEmbedding($queryEmbedding, {topK: 5})
+CALL neptune.algo.vectors.topK.byEmbedding({
+  embedding: $queryEmbedding,
+  topK: 5,
+  vertexFilter: '{"equals":{"property":"~label","value":"Chunk"}}'
+})
 YIELD node, score
-WHERE 'Chunk' IN labels(node)
 WITH node AS chunk, score
 MATCH (chunk)-[:MENTIONS]->(e:Entity)-[:RELATED_TO]-(related)
 RETURN chunk.text, score, collect(DISTINCT e.name) AS entities,
@@ -290,7 +323,11 @@ RETURN e, collect(DISTINCT {entity: related.name, rel: r.type}) AS relationships
        collect(DISTINCT {date: conv.date, summary: conv.summary}) AS conversations
 
 // Semantic recall (vector similarity)
-CALL neptune.algo.vectors.topKByEmbedding($queryEmbedding, {topK: 10})
+CALL neptune.algo.vectors.topK.byEmbedding({
+  embedding: $queryEmbedding,
+  topK: 10,
+  vertexFilter: '{"equals":{"property":"~label","value":"Entity"}}'
+})
 YIELD node, score
 RETURN node.name, node.type, node.description, score
 ```
