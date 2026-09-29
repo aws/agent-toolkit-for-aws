@@ -13,9 +13,7 @@
 - **Min cost**: ~$95/month (db.influx.medium, on-demand)
 - **Time to first query**: ~15-25 min (instance provisioning)
 - **Engine variants**: InfluxDB 2 (single-node/read replica, Flux, port 8086), InfluxDB 3 Core/Enterprise (multi-node, SQL, port 8181)
-- **V2 key features**: Built-in UI, Flux task engine, Telegraf integration, org/bucket multi-tenancy, read replicas for read scaling
-- **V2 limitations**: Cardinality degrades above ~10M series, no SQL, no horizontal write scaling, max practical storage ~2TB
-- **V3 key features**: Unlimited cardinality, Processing Engine (Python plugins), S3-backed Parquet storage, horizontal scaling up to 15 nodes, open data format (Parquet/Iceberg)
-- **V3 limitations**: No Flux (must rewrite), no built-in UI, no scale-to-zero
+- **Key features**: Built-in UI (v2), Flux task engine (v2), Telegraf integration (v2), org/bucket multi-tenancy (v2), read replicas for read scaling (v2), unlimited cardinality (v3), Processing Engine with Python plugins (v3), S3-backed Parquet storage (v3), horizontal scaling up to 15 nodes (v3), open data format — Parquet/Iceberg (v3)
+- **Limitations**: No scale to zero; cardinality degrades above ~10M series (v2), no SQL (v2), no horizontal write scaling (v2), max practical storage ~2TB (v2), no Flux — queries must be rewritten (v3), no built-in UI (v3)
 - **Best for**: High-frequency IoT telemetry, DevOps/infrastructure metrics, industrial sensor data, satellite telemetry, financial time-series, high-cardinality workloads (>10M series) (v3), SQL analytics over time-series (v3), self-hosted InfluxDB migration (v2)
 - **Not for**: General-purpose relational data, workloads needing JOINs/transactions, sub-millisecond key-value lookups, workloads needing $0 idle cost
