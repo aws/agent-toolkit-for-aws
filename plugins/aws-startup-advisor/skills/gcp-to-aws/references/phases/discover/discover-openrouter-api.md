@@ -235,6 +235,20 @@ of rows` self-check.
 - **Credits** (`credits.json`): read `data.total_credits` / `data.total_usage`
   (lifetime figures) — record them as context, NOT as the monthly baseline (the
   monthly figure comes from `/activity` summed over the window).
+- **Stale-lifetime-usage check (live-verified — this happens on a real account,
+  not a hypothetical edge case).** If `data[]` is EMPTY (zero `/activity` rows —
+  `active_days: 0`) but `credits.data.total_usage > 0`: the account has genuine
+  historical spend that predates the 30-day window (or predates this
+  provisioning key). Do **not** let this read as "confirmed zero spend" — that
+  is a different, stronger claim than "no spend in the last 30 days," and the
+  two are not distinguishable from `monthly_cost_usd: 0` alone. Append to
+  `metadata.capture_warnings`: `"activity empty but credits.total_usage is
+  $<total_usage> lifetime — spend exists outside the 30-day window; per-model
+  attribution unavailable"`. `summary.monthly_cost_usd` still correctly reports
+  `0` (that IS the accurate figure for the last 30 days — do not backfill it
+  from the lifetime total, which has no per-model breakdown to attribute), but
+  the warning is what tells a reader "$0 last 30 days" is not the same fact as
+  "$0 ever."
 
 Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
 
@@ -327,7 +341,14 @@ user it was deleted and that they can also revoke the provisioning key at
 openrouter.ai/settings/provisioning-keys if it was created just for this run.
 
 Report: "OpenRouter usage discovery: $X/month across N models (window: 30
-days[, partial: only M active days])."
+days[, partial: only M active days])." If `metadata.capture_warnings` is
+non-empty (including the stale-lifetime-usage case above), append it plainly —
+e.g. "Note: no billed usage in the last 30 days, but your account shows
+$<total_usage> in lifetime usage — that spend falls outside this window and
+isn't reflected in the figure above." Do NOT let a `$0/month` report stand
+unqualified when a capture warning says otherwise; the warning is what
+distinguishes "confirmed no recent spend" from "confirmed no recent spend, but
+real spend exists we can't attribute to a model."
 
 The parent `discover.md` owns the phase status update — do not touch
 `.phase-status.json` here.
