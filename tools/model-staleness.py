@@ -95,7 +95,34 @@ def check_plugin(plugin_dir: Path, findings: Findings) -> None:
     """Check one plugin's model registry, appending to `findings`."""
     canonicals = sorted(plugin_dir.glob(CANONICAL_GLOB))
     if not canonicals:
-        # Plugin ships no model-lifecycle registry — nothing to gate.
+        # No canonical file. Exempt ONLY if nothing else survives it — a
+        # required vendored copy still present (or, failing that, ANY
+        # ai-model-lifecycle.md anywhere under the plugin, e.g. a renamed or
+        # relocated vendored copy the required-paths list doesn't yet know
+        # about) means a consumer (estimate-ai.md / design.md) is reading a
+        # registry that just lost its freshness gate entirely — a canonical
+        # deletion/rename must fail loudly, not read as "this plugin never
+        # had a registry."
+        surviving = [
+            plugin_dir / req for req in REQUIRED_VENDORED if (plugin_dir / req).is_file()
+        ]
+        surviving += [
+            p
+            for p in sorted(plugin_dir.glob("skills/**/ai-model-lifecycle.md"))
+            if p not in surviving
+        ]
+        if surviving:
+            rel_paths = ", ".join(str(p.relative_to(REPO_ROOT)) for p in surviving)
+            findings.hard.append(
+                f"{plugin_dir.relative_to(REPO_ROOT)}: canonical "
+                f"{CANONICAL_GLOB} is MISSING, but {rel_paths} still exist and are "
+                f"read by estimate-ai.md/design.md — this plugin still has an "
+                f"active model registry with NO freshness gate. Restore the "
+                f"canonical file (or delete every surviving copy if the registry "
+                f"is being retired intentionally)."
+            )
+        # Otherwise: plugin genuinely ships no model-lifecycle registry at
+        # all — nothing to gate, exemption preserved.
         return
 
     for canonical in canonicals:
