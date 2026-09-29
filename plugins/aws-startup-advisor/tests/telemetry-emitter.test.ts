@@ -256,6 +256,36 @@ describe('telemetry emitter', () => {
     }
   });
 
+  it('reports a new llm-to-bedrock run beside an untouched Assess run that predates consent', async () => {
+    // Arrange: an old completed gcp-to-aws Assess run, left as is, plus this skill's fresh dot-dir run
+    const all = Object.fromEntries(Object.keys(phaseStatus().phases).map((k) => [k, 'completed']));
+    const p = makeProject(phaseStatus({ current_phase: 'complete', run_mode: 'decide', phases: all }));
+    const dayAgo = new Date(Date.now() - 24 * 3600 * 1000);
+    utimesSync(p.statusFile, dayAgo, dayAgo);
+    const bedrockDir = join(p.root, '.migration', '.bedrock-0226-1430');
+    mkdirSync(bedrockDir);
+    writeFileSync(
+      join(bedrockDir, '.phase-status.json'),
+      JSON.stringify({
+        migration_id: '.bedrock-0226-1430',
+        last_updated: new Date().toISOString(),
+        current_phase: 'execute',
+        run_id: '7c1d2e3f-4a5b-4c6d-8e7f-90a1b2c3d4e5',
+        owning_skill: 'LLM_TO_BEDROCK',
+        phases: { assess: 'completed', execute: 'in_progress' },
+      }),
+    );
+    try {
+      // Act
+      const sent = (await reconcile(p)).map(activity).map((a) => [a.eventName, a.skill, a.phase]);
+
+      // Assert
+      assert.deepEqual(sent, [['RUN_STARTED', 'LLM_TO_BEDROCK', undefined]], 'assess/execute are unmodelled phases; the old run is history');
+    } finally {
+      cleanup(p);
+    }
+  });
+
   it('sends nothing and leaves no trace without granted consent', async () => {
     // Arrange
     const revoked = makeProject(phaseStatus(), 'revoked');

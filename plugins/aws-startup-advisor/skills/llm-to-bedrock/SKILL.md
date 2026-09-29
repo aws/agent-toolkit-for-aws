@@ -258,15 +258,15 @@ missing file(s), show the error, and stop. (A2 can now report `assess-ready` fro
 file + `phases.design` alone, so this step is the backstop that guarantees the other two
 artifacts Phase B needs are actually present before Execute reads them.)
 
-**Record the delegation and establish this skill's own run state** (read-merge-write). This
-skill keeps a thin run-state file of its own, separate from the delegated run's, so the AI
-migration appears in the usage funnel under its own name. It declares its own state shape
-(phases `assess`, `execute`); the shared DSL's read-merge-write rule applies.
+**Establish this skill's own run state** (read-merge-write). This skill keeps a thin
+run-state file of its own, separate from the delegated run's, so the AI migration appears in
+the usage funnel under its own name. It declares its own state shape (phases `assess`,
+`execute`); the shared DSL's read-merge-write rule applies. Leave the delegated run's
+`.phase-status.json` untouched here: a run created by this invocation already carries
+`initiated_by` (A1), and rewriting an older run's file would make its history look like new
+work to the telemetry hooks.
 
-1. In the delegated run's `$MIGRATION_DIR/.phase-status.json`, add
-   `"initiated_by": "LLM_TO_BEDROCK"` if the key is absent — this keeps the delegated
-   Assess run out of gcp-to-aws's own funnel counts. Change nothing else in that file.
-2. Set `$BEDROCK_RUN_DIR` = `$REPO/.migration/.bedrock-<id>/`, where `<id>` is the basename
+1. Set `$BEDROCK_RUN_DIR` = `$REPO/.migration/.bedrock-<id>/`, where `<id>` is the basename
    of `$MIGRATION_DIR` (e.g. `.migration/.bedrock-0910-1100/`). The leading dot keeps it out
    of the `ls -td "$REPO/.migration"/*/` lookup above, so it can never be mistaken for the
    Assess run directory; keying it to the delegated run means a resumed migration reuses it.
