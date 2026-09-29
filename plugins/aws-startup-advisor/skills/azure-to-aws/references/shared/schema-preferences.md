@@ -170,6 +170,7 @@ distinguishes them — but only if this file recorded which happened.
 
 ## Status — build step 5 (infra categories)
 
-The shape above is the real contract and Design is written against it. The AI keys land with
-the AI route in step 6; the `clusters[]` pattern confirmation fills in when `patterns.md`
-lands.
+The shape above is the real contract and Design is written against it. The AI route
+is implemented in `clarify-ai.md` and `design-ai.md`; this schema does not yet list
+those AI keys. `clusters[]` pattern confirmation waits on `patterns.md`, which is
+not on disk.

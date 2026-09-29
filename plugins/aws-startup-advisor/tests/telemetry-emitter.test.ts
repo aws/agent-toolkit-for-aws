@@ -14,7 +14,7 @@ import { spawn } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { readFileSync as readText } from 'node:fs';
 import { tmpdir } from 'node:os';
 
@@ -55,7 +55,7 @@ after(() => server.close());
 interface Project {
   root: string;
   runDir: string;
-  stateDir: string;
+  home: string;
   statusFile: string;
   consentFile: string;
 }
@@ -95,21 +95,25 @@ function makeProject(
   const root = mkdtempSync(join(tmpdir(), 'emit-project-'));
   const runDir = join(root, '.migration', '0226-1430');
   mkdirSync(runDir, { recursive: true });
-  const consentFile = join(root, '.migration', 'telemetry.json');
+  // The consent record lives in the home directory; each project gets its own.
+  const home = mkdtempSync(join(tmpdir(), 'emit-home-'));
+  const consentFile = join(home, '.aws-startups-plugins', 'telemetry.json');
+  mkdirSync(dirname(consentFile), { recursive: true });
   if (consent) writeConsent(consentFile, consent);
   for (const [name, value] of Object.entries(artifacts)) writeFileSync(join(runDir, name), JSON.stringify(value));
   const statusFile = join(runDir, '.phase-status.json');
   writeFileSync(statusFile, JSON.stringify(status, null, 2));
-  return { root, runDir, stateDir: mkdtempSync(join(tmpdir(), 'emit-state-')), statusFile, consentFile };
+  return { root, runDir, home, statusFile, consentFile };
 }
 
 function writeConsent(file: string, consent: 'granted' | 'revoked', consentedAt = new Date()) {
-  writeFileSync(file, JSON.stringify({ consent, installId: RUN_ID, consentedAt: consentedAt.toISOString(), version: 1 }));
+  const installId = consent === 'granted' ? { installId: RUN_ID } : {};
+  writeFileSync(file, JSON.stringify({ consent, ...installId, consentedAt: consentedAt.toISOString(), version: 1 }));
 }
 
 function cleanup(p: Project) {
   rmSync(p.root, { recursive: true, force: true });
-  rmSync(p.stateDir, { recursive: true, force: true });
+  rmSync(p.home, { recursive: true, force: true });
 }
 
 function hostEnv(p: Project) {
@@ -120,7 +124,8 @@ function hostEnv(p: Project) {
   delete env.CURSOR_PROJECT_DIR;
   return Object.assign(env, {
     AWS_STARTUP_ADVISOR_TELEMETRY_ENDPOINT: endpoint,
-    CLAUDE_PLUGIN_DATA: p.stateDir,
+    HOME: p.home,
+    USERPROFILE: p.home,
     CLAUDECODE: '1',
   });
 }
@@ -230,6 +235,22 @@ describe('telemetry emitter', () => {
       );
       assert.deepEqual(again, []);
       assert.equal(snapshotOf(p).completed, true);
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('omits an enum attribute whose value is an inherited object key instead of sending an object', async () => {
+    // Arrange
+    const all = Object.fromEntries(Object.keys(phaseStatus().phases).map((k) => [k, 'completed']));
+    const p = makeProject(phaseStatus({ current_phase: 'complete', run_mode: '__proto__', phases: all }));
+    try {
+      // Act
+      const done = (await reconcile(p)).map(activity).find((a) => a.eventName === 'RUN_COMPLETED');
+
+      // Assert
+      assert.ok(done, 'the event itself is still sent');
+      assert.equal(done.attributes?.runMode, undefined);
     } finally {
       cleanup(p);
     }
@@ -360,32 +381,92 @@ describe('telemetry emitter', () => {
     }
   });
 
-  it('lets a recorded no anywhere win, and a plugin-wide yes stand in for a missing project one', async () => {
-    // Arrange: no project consent, but the plugin-wide record (in the plugin data dir) says granted
-    const granted = makeProject(phaseStatus(), null);
-    writeConsent(join(granted.stateDir, 'telemetry.json'), 'granted', new Date(Date.now() - 60_000));
-    // a project that said yes while the plugin-wide record says no
-    const overruled = makeProject(phaseStatus(), 'granted');
-    writeConsent(join(overruled.stateDir, 'telemetry.json'), 'revoked');
-    // and a project whose stop-sharing command ran under a plugin-wide yes
-    const stopped = makeProject(phaseStatus(), null);
-    writeConsent(join(stopped.stateDir, 'telemetry.json'), 'granted', new Date(Date.now() - 60_000));
+  it('mints the installId at grant, drops it on revoke, and reports only what happens after a new grant', async () => {
+    // Arrange: a run already reported under a granted record
+    const p = makeProject(phaseStatus());
+    const withPhases = (phases: Record<string, string>, current_phase: string) =>
+      phaseStatus({ current_phase, phases: { ...phaseStatus().phases, ...phases } });
     try {
-      // Act
-      const revoke = await consent(stopped, 'revoke');
-      const get = await consent(stopped, 'get');
+      const first = await reconcile(p);
+
+      // Act: stop sharing, complete CLARIFY meanwhile, grant again, and complete
+      // DESIGN before any hook has run under the new grant
+      const revoke = await consent(p, 'revoke');
+      writeFileSync(p.statusFile, JSON.stringify(withPhases({ clarify: 'completed' }, 'design'), null, 2));
+      const whileRevoked = await reconcile(p);
+      const revokedRecord = JSON.parse(readFileSync(p.consentFile, 'utf8'));
+      const grant = await consent(p, 'grant');
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(withPhases({ clarify: 'completed', design: 'completed' }, 'estimate'), null, 2),
+      );
+      const afterRegrant = await reconcile(p);
+      const record = JSON.parse(readFileSync(p.consentFile, 'utf8'));
+      const status = JSON.parse(await consent(p, 'status'));
 
       // Assert
-      assert.equal((await reconcile(granted)).length, 2, 'plugin-wide yes is enough');
-      assert.deepEqual(await reconcile(overruled), [], 'plugin-wide no wins over a project yes');
+      assert.equal(first.length, 2);
+      for (const body of first) assert.equal(body.installId, RUN_ID, 'the id comes from the consent record');
       assert.equal(revoke, 'revoked');
-      assert.equal(get, 'revoked', 'the project decision is the effective one');
-      assert.deepEqual(await reconcile(stopped), [], 'and the hook sends nothing under a plugin-wide yes');
-      assert.equal(existsSync(join(stopped.runDir, '.telemetry-snapshot.json')), false);
+      assert.deepEqual(whileRevoked, []);
+      assert.equal(revokedRecord.installId, undefined, 'a revoke leaves no identifier behind');
+      assert.equal(grant, 'granted');
+      assert.match(record.installId, UUID);
+      assert.notEqual(record.installId, RUN_ID, 'a new grant is a new identity');
+      assert.deepEqual(
+        afterRegrant.map((b) => [activity(b).eventName, activity(b).phase, b.installId]),
+        [['PHASE_COMPLETED', 'DESIGN', record.installId]],
+        'CLARIFY, completed while consent was revoked, is never reported',
+      );
+      assert.equal(status.installId, record.installId);
     } finally {
-      cleanup(granted);
-      cleanup(overruled);
-      cleanup(stopped);
+      cleanup(p);
+    }
+  });
+
+  it('sends nothing under a granted record that carries no installId', async () => {
+    // Arrange
+    const p = makeProject(phaseStatus(), null);
+    writeFileSync(p.consentFile, JSON.stringify({ consent: 'granted', consentedAt: new Date().toISOString(), version: 1 }));
+    try {
+      // Act + Assert
+      assert.deepEqual(await reconcile(p), []);
+      assert.equal(existsSync(join(p.runDir, '.telemetry-snapshot.json')), false, 'and leaves no trace');
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('keeps one run identity when the state file is rebuilt with a fresh run_id', async () => {
+    // Arrange: a reported run whose state file is later reconstructed
+    const p = makeProject(phaseStatus());
+    try {
+      await reconcile(p);
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(
+          phaseStatus({
+            run_id: '0f0f0f0f-1111-4222-8333-444444444444',
+            current_phase: 'design',
+            phases: { ...phaseStatus().phases, clarify: 'completed' },
+          }),
+          null,
+          2,
+        ),
+      );
+
+      // Act
+      const later = await reconcile(p);
+
+      // Assert
+      assert.deepEqual(
+        later.map((b) => [activity(b).eventName, activity(b).phase, activity(b).runId]),
+        [['PHASE_COMPLETED', 'CLARIFY', RUN_ID]],
+        'no second RUN_STARTED, and the original id is kept',
+      );
+      assert.equal(snapshotOf(p).runId, RUN_ID);
+    } finally {
+      cleanup(p);
     }
   });
 

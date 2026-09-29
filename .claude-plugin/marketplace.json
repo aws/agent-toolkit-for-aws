@@ -337,7 +337,7 @@
       ],
       "name": "aws-startup-advisor",
       "source": "./plugins/aws-startup-advisor",
-      "version": "2.0.1"
+      "version": "2.0.2"
     }
   ]
 }

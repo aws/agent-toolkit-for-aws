@@ -229,12 +229,12 @@ discovery in a way a depth calculation is not.
 - [ ] No resource is a member of two clusters.
 - [ ] Any cluster whose `justification` is `edges` or `merge:*` has a non-empty `edges[]`. A `split:*` cluster may legitimately have an empty one.
 
-## Status — skeleton (build step 1)
+## Status — contract in force
 
 The shapes above are the real contract and downstream phases are written against them.
-Per-type `config` schemas land with each dialect and source (step 2); the reservation
-and utilization profiles land with the RDfA fragment (step 2); `pattern_id`'s value set
-lands with the pattern catalog (step 4).
+Terraform discovery writes these shapes today. Per-type `config` for Bicep and ARM,
+and the reservation and utilization profiles, wait on those sources — they are not
+implemented. `pattern_id`'s value set waits on `patterns.md`, which is not on disk.
 
 `split:*` and `merge:*` are reachable as of build step 4. A cluster still carrying
 `seed:resource_group` is one that survived both refinement steps untouched — a genuine
