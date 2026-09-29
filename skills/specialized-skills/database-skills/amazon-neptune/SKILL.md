@@ -1,6 +1,6 @@
 ---
 name: amazon-neptune
-version: 1
+version: 2
 description: Provides authoritative guidance on Amazon Neptune Database and Neptune Analytics for graph, knowledge-graph, and relationship-heavy workloads — fraud detection / fraud rings, agentic memory / chatbot context across sessions, recommendations, identity resolution, Gremlin / openCypher / SPARQL queries, supernode / slow traversal, Neo4j to Neptune migration / APOC compatibility, Neptune Database vs Analytics engine selection, PageRank / community detection, GraphRAG, and connectivity from Lambda / EC2 / applications. Creates and modifies Neptune Database clusters/instances and Neptune Analytics graphs on explicit user confirmation; blocks destructive operations (delete, reset-graph, failover, major upgrade) and redirects to change-control.
 ---
 
@@ -72,50 +72,17 @@ Non-negotiables when creating or advising on Neptune resources:
 
 Full detail (per-engine specifics, condition keys, Analytics VPC boundary, FIPS endpoints): [security.md](references/security.md).
 
-## Producing artifacts (file_write)
+## Producing artifacts (`file_write`)
 
-Some requests — especially evaluation/harness tasks — ask you to **save** a
-deliverable (a JSON report, a query, a traversal, an execution plan) at a
-specific path like `artifacts/neptune/<name>.json`. You have a **`file_write`
-tool** for exactly this.
+When a request names an output path, you MUST call `file_write` with the complete deliverable at that exact path before writing a long explanation. Do not paste the content into chat and ask the user or harness to save it.
 
-**You MUST call the `file_write` tool to save any artifact the user names a
-path for. Do NOT paste the file contents into your chat response and ask the
-user (or "the harness") to save it — that does not create the file.** A
-downstream validator reads the actual file; prose is not read.
-
-The contract when a prompt says *"save … at `<path>`"*:
-
-1. **Write the artifact FIRST, before writing any long explanation.** As soon
-   as you have the deliverable content, call
-   `file_write(path="<exact path from the prompt>", content="<the full file
-   content>")`. Do NOT compose a multi-paragraph essay first and save at the
-   end — these tasks have a time budget and a long preamble can run it out
-   before the file is ever written, which fails the test even though your
-   content was correct. The single most common failure on these tasks is a
-   correct answer that was never written to disk because the agent explained
-   instead of calling the tool.
-2. Use the exact relative path given — e.g.
-   `artifacts/neptune/migration-compat-report.json`. Paths are relative to
-   the working directory; parent dirs are created for you.
-3. After the write succeeds (the tool returns a byte count), keep any summary
-   SHORT — one or two sentences. The validator reads the file, not your prose.
-   Never end with "please save this file" or "the harness can take it from
-   here to save…"; if you have the content, you write it.
-
-**Work efficiently — these tasks are time-bounded.** Don't over-deliberate.
-Produce the artifact content directly from the skill guidance and write it;
-avoid long chains of exploratory reasoning that risk a timeout before the
-`file_write` call lands.
-
-This applies whether or not you also created live AWS resources. If a task
-says "author the query and save it, the harness owns the graph," your job is
-done by writing the artifact — do not block on infrastructure you were told
-the harness provides.
+Write the artifact first, keep the post-write response to one or two sentences, and stop when the prompt says the harness owns the remaining infrastructure lifecycle. Before producing any saved artifact, read the exact-path, time-budget, and handoff contract in [artifact-delivery.md](references/artifact-delivery.md).
 
 ## Overview
 
-Amazon Neptune has two distinct engines. **Neptune Database** (OLTP) serves live application traversals, speaks Gremlin + openCypher + SPARQL, and bills instance-hours. **Neptune Analytics** (OLAP) runs batch algorithms (PageRank, community detection, node similarity) over the whole graph, speaks openCypher only, and bills m-NCUs while running. Use Database for live queries, Analytics for periodic algorithm jobs; move data via snapshot export → import. Side-by-side comparison: [analytics-vs-database.md](references/analytics-vs-database.md).
+Amazon Neptune has two distinct engines. **Neptune Database** (OLTP) serves live application traversals, speaks Gremlin + openCypher + SPARQL, and bills instance-hours. **Neptune Analytics** (OLAP) runs batch algorithms (PageRank, community detection, node similarity) over the whole graph, speaks openCypher only, and bills provisioned m-NCUs while running; a stopped graph preserves data and settings but still incurs the reduced stopped-graph rate. Use Database for live queries, Analytics for periodic algorithm jobs; move data via snapshot export → import. Side-by-side comparison: [analytics-vs-database.md](references/analytics-vs-database.md).
+
+**Security baseline:** Neptune Analytics is encrypted at rest by default. See [security.md](references/security.md) for encryption, IAM-authentication, and TLS requirements.
 
 ## Answering advisory questions
 
@@ -167,81 +134,33 @@ Full decision matrix (engine sizing, latency targets, cost tradeoffs) in [decisi
 
 ### 3. Model data as a property graph
 
-**Property graph basics:** vertices (nodes) have labels and properties; edges (relationships) have a label, direction, and properties. For fraud-ring detection, model as:
+Vertices have labels and properties; directed edges have a label and may have properties. For schema patterns and anti-patterns, read [data-modeling.md](references/data-modeling.md).
 
-```
-(Account {id, created_at}) -[:USES]-> (PhoneNumber {number})
-(Account {id, created_at}) -[:USES]-> (Email {address})
-(Account {id, created_at}) -[:IP_LOGIN {ts}]-> (IPAddress {addr})
-```
+For fraud-ring modeling or query generation, **read [use-cases.md](references/use-cases.md) and [querying.md](references/querying.md) before answering**. Model `PhoneNumber`, `Email`, and `IPAddress` as explicit identifier vertices connected from `Account` through `USES` / `IP_LOGIN`; do not collapse them into a generic `Identifier` when the request distinguishes identifier types.
 
-Multi-hop rings are found by traversing `Account → PhoneNumber → Account → Email → Account` within N hops. Use Neptune Analytics **connected components** or **community detection** algorithms for batch ring detection over the whole graph.
-
-**For agentic memory** (chatbot that remembers across sessions):
-
-```
-(User) -[:HAD]-> (Conversation) -[:MENTIONED]-> (Entity)
-(Conversation) -[:STATED]-> (Fact {subject, predicate, object})
-```
-
-Each session writes new `Fact` and `Entity` vertices; retrieval traverses from the current user + recent entities. Pair with a vector store (e.g., OpenSearch Serverless or pgvector) for semantic similarity. Frameworks like **mem0** and **LangChain memory** integrate with this pattern.
-
-**Avoid supernodes** — vertices with millions of edges — they destroy traversal performance. See §Troubleshooting.
+For relationship-heavy agentic memory, use the `User → Conversation → Entity / Fact` pattern in [agentic-memory.md](references/agentic-memory.md). Avoid supernodes—vertices with millions of edges—because unbounded fan-out destroys traversal performance.
 
 ### 4. Query with Gremlin or openCypher
 
-Neptune Database supports Gremlin, openCypher, and SPARQL. Neptune Analytics supports openCypher only.
+Neptune Database supports Gremlin, openCypher, and SPARQL. Neptune Analytics supports openCypher only. Use bounded, parameterized traversals and filter before expanding high-cardinality edges; complete query patterns are in [querying.md](references/querying.md).
 
-**Example openCypher — fraud rings sharing phone numbers within 3 hops:**
-
-```cypher
-MATCH (a1:Account)-[:USES]->(p:PhoneNumber)<-[:USES]-(a2:Account)
-WHERE a1.id < a2.id
-RETURN p.number, collect(a1.id) + collect(a2.id) AS accounts
-LIMIT 100
-```
-
-When the task asks for rings sharing **two or more distinct identifier types**,
-the query MUST reference the actual vertex labels — `PhoneNumber`, `Email`,
-and `IPAddress` — explicitly (do not abstract them into a generic
-`:Identifier` label; the model is `(:Account)-[:USES]->(:PhoneNumber|:Email)`
-and `(:Account)-[:IP_LOGIN]->(:IPAddress)`). Match each identifier type as its
-own pattern and require at least two distinct types to connect the ring:
-
-```cypher
-MATCH (a1:Account)-[:USES|IP_LOGIN]->(id1)<-[:USES|IP_LOGIN]-(a2:Account)
-MATCH (a2)-[:USES|IP_LOGIN]->(id2)<-[:USES|IP_LOGIN]-(a3:Account)
-WHERE a1.id < a2.id AND a2.id < a3.id
-  AND labels(id1)[0] <> labels(id2)[0]            // two DISTINCT identifier types
-  AND labels(id1)[0] IN ['PhoneNumber','Email','IPAddress']
-  AND labels(id2)[0] IN ['PhoneNumber','Email','IPAddress']
-RETURN collect(DISTINCT a1.id) + collect(DISTINCT a2.id) + collect(DISTINCT a3.id) AS accounts,
-       collect(DISTINCT labels(id1)[0]) + collect(DISTINCT labels(id2)[0]) AS shared_identifier_types
-LIMIT 100
-```
+Fraud-ring queries requiring two or more identifier types MUST use the explicit `PhoneNumber`, `Email`, and `IPAddress` labels, establish at least three distinct accounts, and require at least two distinct identifier labels. On Neptune Analytics, derive the type with `labels(identifier)[0]` rather than a label predicate inside `CASE` / `WHEN`. Complete fraud examples are in [use-cases.md](references/use-cases.md).
 
 ### 5. Migrate from Neo4j to Neptune
 
-Neptune supports **openCypher**, largely compatible with Neo4j's Cypher. Known **incompatibilities**:
+Neptune openCypher is not a drop-in replacement for Neo4j Cypher. Inventory and test every query. Flag APOC calls, `shortestPath()` / `allShortestPaths()`, mutating `CALL {}` subqueries, `CALL IN TRANSACTIONS`, and label predicates inside `CASE` / `WHEN`; each needs a Neptune-compatible rewrite.
 
-- **APOC procedures** (`apoc.*`) — not available; use Neptune-native alternatives or AWS Lambda.
-- **`shortestPath()` / `allShortestPaths()`** — not supported; rewrite using variable-length path patterns (`*1..n`), which ARE supported. Variable-length paths work directed or undirected (prefer directed for performance); the only VLP limitation is that a property-equality filter *inside* the relationship pattern must be a constant (e.g. `[:USES*1..5 {code:x.name}]` is rejected — a plain `WHERE` predicate on the nodes is fine).
-- **Label predicates inside `CASE` / `WHEN`** (e.g., `CASE WHEN n:Label THEN ...`) — Neptune Analytics parses and runs the query without error but silently evaluates every branch to null, so aggregations over the CASE result return 0 rows. Use `labels(n)[0]` (returns the first label as a string) or count-based aggregations instead. See [querying.md](references/querying.md) for before/after examples.
+Use the bundled `amazon-neptune-tools/neo4j-to-neptune` migration tool for graph data transfer. For the compatibility matrix, query rewrites, APOC alternatives, variable-length-path constraints, and migration checklist, read [migration.md](references/migration.md). Query-specific examples are in [querying.md](references/querying.md).
 
-`CALL { }` subqueries are supported for **read operations only** (MATCH, WITH, RETURN, ORDER BY, LIMIT). Key limitations vs Neo4j: mutating subqueries (CREATE/SET/DELETE inside CALL) are NOT supported, `CALL IN TRANSACTIONS` for batched mutations is NOT supported, and the importing WITH clause cannot use aliasing or DISTINCT. Queries that use CALL {} for writes must be rewritten to execute mutations in the outer query.
+### Neptune Analytics vector API migration
 
-Test every query on Neptune's openCypher. For data transfer, use the **bundled Neo4j-to-Neptune migration tool** (`amazon-neptune-tools/neo4j-to-neptune`, which exports the Neo4j graph to Neptune bulk-loader CSV). For the authoritative list of unsupported openCypher features, point the user to the **Neptune openCypher migration-path documentation** (docs.aws.amazon.com/neptune → openCypher compliance / Neo4j migration), which lists every unsupported feature. Also flag **`shortestPath()` / `allShortestPaths()`** (unsupported) as a known incompatibility to verify case-by-case; note that variable-length path patterns (`*1..n`, directed or undirected, with `WHERE` predicates on nodes) ARE supported — only non-constant property filters *inside* the VLP relationship are rejected.
+For the deprecated-to-supported API mapping and configuration-map syntax, see [vector-api-migration.md](references/vector-api-migration.md).
 
 ### 6. Run graph algorithms (Neptune Analytics)
 
-For nightly PageRank, community detection, node similarity: **use Neptune Analytics**. Pattern:
+For nightly PageRank, community detection, and node similarity, **use Neptune Analytics**. Follow the snapshot/import → algorithm → export workflow and Neptune-specific algorithm parameters in [analytics-vs-database.md](references/analytics-vs-database.md).
 
-1. Snapshot Neptune Database cluster.
-2. `aws neptune-graph create-graph-using-import-task` to load snapshot.
-3. Run via `CALL neptune.algo.pageRank(n, {numOfIterations: 20, dampingFactor: 0.85, edgeLabels: ['FOLLOWS'], vertexLabel: 'User'}) YIELD node, rank` or `CALL neptune.algo.louvain(...)`. Neptune's config keys differ from Neo4j's `gds.pageRank` (Neo4j's `maxIterations`/`nodeLabels`/`relationshipTypes` fail with `ValidationException` on Neptune). See [analytics-vs-database.md](references/analytics-vs-database.md) for the full translation table.
-4. Export results back to Database.
-
-Billed by provisioned **m-NCUs** while running. Stop between jobs to reduce compute cost — a stopped Analytics graph preserves data and settings and continues to bill only a small fraction of the running compute rate (see the Neptune Analytics pricing page for the exact stopped-graph rate). Only `delete-graph` eliminates compute cost entirely.
+Neptune Analytics is billed by provisioned **m-NCUs**. See [analytics-vs-database.md](references/analytics-vs-database.md) for the stop/start/delete lifecycle, cost breakdown, and algorithm parameter mapping, and [security.md](references/security.md) for recurring-automation security requirements.
 
 ## Troubleshooting
 
@@ -268,7 +187,7 @@ VPC reachability (Neptune Database is deployed inside a VPC; optional public end
 
 ### openCypher query fails on Neptune but works on Neo4j
 
-Check the incompatibilities in §Task 5. Most common: `apoc.*` calls, exotic path-expressions, and label predicates inside `CASE` / `WHEN` (Neptune Analytics silently returns 0 rows in that case). `CALL { }` subqueries are supported on Neptune (read-only).
+Check the incompatibilities in §Task 5. Most common: `apoc.*` calls, exotic path-expressions, and label predicates inside `CASE` / `WHEN` (Neptune Analytics silently returns 0 rows in that case). `CALL { }` subqueries support read queries but not Cypher update clauses; top-level Neptune Analytics `.mutate` procedures are separate and can write result properties.
 
 ### Slow load / bulk loader errors
 
@@ -286,7 +205,7 @@ Not for pure documents (DocumentDB), time-series (Timestream), relational (RDS/A
 - [Neptune openCypher Reference](https://docs.aws.amazon.com/neptune/latest/userguide/access-graph-opencypher.html)
 - [Neo4j-to-Neptune Migration Tool](https://github.com/awslabs/amazon-neptune-tools/tree/master/neo4j-to-neptune)
 
-Deep dives (load on demand): [data-modeling](references/data-modeling.md), [querying](references/querying.md), [connectivity](references/connectivity.md), [performance](references/performance.md), [troubleshooting](references/troubleshooting.md), [migration](references/migration.md), [graphrag](references/graphrag.md), [agentic-memory](references/agentic-memory.md), [analytics-vs-database](references/analytics-vs-database.md), [decision-guide](references/decision-guide.md), [use-cases](references/use-cases.md), [action-safety](references/action-safety.md), [security](references/security.md), [boundary-doc](references/boundary-doc.md).
+Deep dives (load on demand): [data-modeling](references/data-modeling.md), [querying](references/querying.md), [connectivity](references/connectivity.md), [performance](references/performance.md), [troubleshooting](references/troubleshooting.md), [migration](references/migration.md), [graphrag](references/graphrag.md), [agentic-memory](references/agentic-memory.md), [analytics-vs-database](references/analytics-vs-database.md), [decision-guide](references/decision-guide.md), [use-cases](references/use-cases.md), [artifact-delivery](references/artifact-delivery.md), [action-safety](references/action-safety.md), [security](references/security.md), [boundary-doc](references/boundary-doc.md).
 
 ## Handoff from aws-database-selection
 
