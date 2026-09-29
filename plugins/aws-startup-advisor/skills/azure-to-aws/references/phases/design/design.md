@@ -150,11 +150,11 @@ only `licensing.md`, `gpu-hpc.md` and `patterns.md` are still to come.
 file lands, and the halt decision reads from disk. If this list and `ls` disagree, `ls` is
 right and this list is the bug.
 
-| Lands in | What                                                                                                                                                                                      |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| step 4   | `patterns.md` and the cluster-level `data-pipeline` gate. Clustering itself is real; only pattern RECOGNITION is outstanding, so every cluster carries `pattern_status: "catalog_absent"` |
-| step 5   | The remaining eight category files, and the `knowledge/design/*.json` sizing tables wired through `_knowledge` `_when` guards                                                             |
-| step 6   | The AI design route                                                                                                                                                                       |
+Still absent: `patterns.md` and the cluster-level `data-pipeline` gate.
+Clustering itself is real; only pattern recognition is outstanding, so every
+cluster carries `pattern_status: "catalog_absent"`. The category rubrics named
+above and the AI design route (`design-ai.md`) are on disk. Sizing tables under
+`knowledge/design/` are on disk; look them up rather than treating them as future.
 
 **A missing SIZING table is treated more softly than a missing RUBRIC file, on purpose.**
 Without `appservice-eb-sizing.json` the design still names Elastic Beanstalk and states a
