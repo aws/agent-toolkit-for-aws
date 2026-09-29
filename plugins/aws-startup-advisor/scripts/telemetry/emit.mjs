@@ -321,7 +321,13 @@ const RESOLVED_STATUS = {
 
 const RUN_MODE = { decide: "DECIDE", decide_and_execute: "DECIDE_AND_EXECUTE" };
 
-const mapEnum = (table, value) => (value == null ? undefined : table[String(value).toLowerCase()]);
+// Own properties only: a value such as "__proto__" would otherwise resolve to
+// an inherited object and be sent in place of an enum member.
+const mapEnum = (table, value) => {
+  if (value == null) return undefined;
+  const key = String(value).toLowerCase();
+  return Object.hasOwn(table, key) ? table[key] : undefined;
+};
 
 const PRICING_SOURCE = {
   live: "LIVE",

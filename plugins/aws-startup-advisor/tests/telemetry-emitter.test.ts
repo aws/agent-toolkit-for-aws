@@ -240,6 +240,22 @@ describe('telemetry emitter', () => {
     }
   });
 
+  it('omits an enum attribute whose value is an inherited object key instead of sending an object', async () => {
+    // Arrange
+    const all = Object.fromEntries(Object.keys(phaseStatus().phases).map((k) => [k, 'completed']));
+    const p = makeProject(phaseStatus({ current_phase: 'complete', run_mode: '__proto__', phases: all }));
+    try {
+      // Act
+      const done = (await reconcile(p)).map(activity).find((a) => a.eventName === 'RUN_COMPLETED');
+
+      // Assert
+      assert.ok(done, 'the event itself is still sent');
+      assert.equal(done.attributes?.runMode, undefined);
+    } finally {
+      cleanup(p);
+    }
+  });
+
   it('sends nothing and leaves no trace without granted consent', async () => {
     // Arrange
     const revoked = makeProject(phaseStatus(), 'revoked');
