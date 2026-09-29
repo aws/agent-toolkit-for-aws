@@ -428,7 +428,7 @@ Present with concrete examples: Simple = classify/extract/summarize; Moderate = 
 | -------- | ----------------------------------------------------------------------------------------- |
 | Simple   | Claude Haiku 4.5 or Nova Micro sufficient; significant cost savings vs larger models      |
 | Moderate | Claude Sonnet 5 recommended; Haiku may suffice with prompt engineering                    |
-| Complex  | Claude Sonnet 5 required; extended thinking considered; Claude Opus 4.8 for hardest tasks |
+| Complex  | Claude Sonnet 5 required; extended thinking considered (if using Sonnet 5.5, disabling thinking now requires `thinking: {"type": "between_tools"}` instead of "disabled" at high effort or below); Claude Opus 4.8 for hardest tasks |
 
 Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 

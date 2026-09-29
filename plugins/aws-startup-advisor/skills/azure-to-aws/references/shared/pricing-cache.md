@@ -24,7 +24,7 @@
 
 **Anthropic Claude (Standard on-demand)** figures match **US East (N. Virginia)** on
 [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) as of cache refresh.
-**Recommend defaults (new migrations):** Claude Sonnet 5 (flagship), Claude Opus 4.8 (hardest
+**Recommend defaults (new migrations):** Claude Sonnet 5.5 (flagship), Claude Opus 4.8 (hardest
 reasoning), Claude Haiku 4.5 (cost/speed). Do not default to Claude Fable 5 (frontier). Long-context
 SKUs do not all use the same multiplier; confirm batch/cache and cross-region rows per model on
 that page. See `references/vendored/ai/ai-model-lifecycle.md` for lifecycle detail — **do not
