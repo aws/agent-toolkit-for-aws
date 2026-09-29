@@ -1,4 +1,4 @@
-# Migration
+# Migration Guide
 
 ## When to Activate
 
@@ -29,21 +29,75 @@ LiveAnalytics is in maintenance mode. Use the **InfluxData certified LiveAnalyti
 
 **Steps:**
 
+Use a dedicated private export bucket with default SSE-KMS encryption. Before running the migration client, scope both the bucket policy and the KMS key policy to the migration role and any service principals required by the current migration documentation. Grant only the required S3 and KMS actions, require TLS, and block public access.
+
 ```bash
 # 1. Provision InfluxDB 3 Enterprise cluster (route to getting-started)
-# 2. Create S3 bucket for export
+# 2. Create S3 bucket for export and apply secure defaults
 aws s3api create-bucket --bucket <bucket> \
     --object-lock-enabled-for-bucket --region <region> \
     --create-bucket-configuration LocationConstraint=<region>
 
+aws s3api put-public-access-block \
+    --bucket <bucket> \
+    --public-access-block-configuration \
+      BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+
+aws s3api put-bucket-encryption \
+    --bucket <bucket> \
+    --server-side-encryption-configuration '{
+      "Rules": [{
+        "ApplyServerSideEncryptionByDefault": {
+          "SSEAlgorithm": "aws:kms",
+          "KMSMasterKeyID": "<kms-key-arn>"
+        },
+        "BucketKeyEnabled": true
+      }]
+    }'
+
+aws s3api put-bucket-policy \
+    --bucket <bucket> \
+    --policy '{
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Sid": "DenyInsecureTransport",
+        "Effect": "Deny",
+        "Principal": "*",
+        "Action": "s3:*",
+        "Resource": [
+          "arn:<partition>:s3:::<bucket>",
+          "arn:<partition>:s3:::<bucket>/*"
+        ],
+        "Condition": {
+          "Bool": {
+            "aws:SecureTransport": "false"
+          }
+        }
+      }]
+    }'
+
 # 3. Run the migration client (recommended on EC2 t3.medium for auto-rotating IAM creds)
 export INFLUXDB3_HOST_URL="https://<process-node-endpoint>:<port>"
-export INFLUXDB3_AUTH_TOKEN=$(aws secretsmanager get-secret-value --secret-id "READONLY-InfluxDB-auth-parameters-<CLUSTER_ID>" --query SecretString --output text | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['token'])")
+V3_TOKEN_SECRET_ARN="$(
+  aws timestream-influxdb get-db-cluster \
+    --db-cluster-id <cluster-id> \
+    --query influxAuthParametersSecretArn \
+    --output text
+)"
+INFLUXDB3_AUTH_TOKEN="$(
+  aws secretsmanager get-secret-value \
+    --secret-id "$V3_TOKEN_SECRET_ARN" \
+    --query SecretString --output text |
+  python3 -c "import sys,json; print(json.loads(sys.stdin.read())['token'])"
+)"
+export INFLUXDB3_AUTH_TOKEN
 export INFLUXDB3_DATABASE_NAME="<database>"
 
 python3 liveanalytics_influxdb3_migration_client.py \
     --live-analytics-database-name <la-database> \
     --s3-bucket-name <bucket>
+
+unset INFLUXDB3_AUTH_TOKEN V3_TOKEN_SECRET_ARN
 ```
 
 **Important constraints:**
@@ -87,7 +141,7 @@ No in-place upgrade path. Requires data migration:
 - [ ] Inventory source data volume and time range
 - [ ] Map source schema to target schema (route to `schema-design`)
 - [ ] Estimate target instance/cluster sizing
-- [ ] Ensure Marketplace subscription is active (required for V3 Enterprise)
-- [ ] Attach `AmazonTimestreamInfluxDBFullAccess` and `AmazonTimestreamConsoleFullAccess` IAM policies (required for first-time Marketplace/Read Replica activation; replace with a scoped custom policy for production — see getting-started)
+- [ ] Verify the current Marketplace and licensing prerequisites for the selected V3 engine variant in the service documentation and `CreateDbCluster` API model
+- [ ] If the current documentation requires managed policies for first-time activation, attach them only to the activation principal, then remove them immediately and replace them with a scoped custom policy for production (see getting-started)
 - [ ] Test with a subset of data before full migration
 - [ ] Plan cutover window and rollback strategy

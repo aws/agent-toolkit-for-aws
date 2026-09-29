@@ -1,4 +1,4 @@
-# Processing Engine
+# Processing Engine Guide
 
 ## When to Activate
 
@@ -34,6 +34,9 @@ Source code and documentation: [InfluxData Plugins Repository](https://github.co
 ## Creating Triggers
 
 ```bash
+# Load V3_TOKEN from Secrets Manager as shown in the getting-started guide.
+export INFLUXDB3_AUTH_TOKEN="$V3_TOKEN"
+
 # Downsampler — aggregate CPU metrics hourly
 influxdb3 create trigger \
   --database metrics \
@@ -75,19 +78,26 @@ influxdb3 create trigger \
   --trigger-spec "every:30s" \
   --trigger-arguments 'hostname=db-server-01,include_cpu=true,include_memory=true,include_disk=true,include_network=true' \
   system_monitor
+
+unset INFLUXDB3_AUTH_TOKEN V3_TOKEN SLACK_WEBHOOK
 ```
 
 ## Managing Triggers
 
 ```bash
+# Load V3_TOKEN from Secrets Manager as shown in the getting-started guide.
+export INFLUXDB3_AUTH_TOKEN="$V3_TOKEN"
+
 # List triggers
-influxdb3 show system summary --database <db> --token <token>
+influxdb3 show system summary --database <db>
 
 # Disable a trigger
 influxdb3 disable trigger --database <db> --trigger-name <name>
 
 # Delete a trigger
 influxdb3 delete trigger --database <db> --trigger-name <name>
+
+unset INFLUXDB3_AUTH_TOKEN V3_TOKEN
 ```
 
 ## Configuration Options
@@ -98,7 +108,9 @@ influxdb3 delete trigger --database <db> --trigger-name <name>
 --trigger-arguments 'threshold=90,notify_email=admin@example.com'
 ```
 
-**Secrets in plugin arguments:** Do not hardcode webhook URLs, API keys, or other credentials directly in scripts or source control. Store them in AWS Secrets Manager and retrieve them at trigger-creation time (e.g., `aws secretsmanager get-secret-value` into an environment variable, as shown in the MAD anomaly-detection example above). **Limitation:** the resolved value is still written into the trigger spec and is visible in plaintext in `system.processing_engine_triggers` — this approach keeps secrets out of source control but does not protect them at rest inside InfluxDB. Restrict access to the database/system tables accordingly, and rotate any secret that is exposed this way.
+**Secrets in plugin arguments:** Do not hardcode webhook URLs, API keys, or other credentials directly in scripts or source control. Store them in AWS Secrets Manager and retrieve them only when creating the trigger, using a transient variable as shown above. If a plugin supports a reference-based secret mechanism, prefer it over embedding a resolved value.
+
+**Exposure limitation:** A resolved secret written into a trigger specification can be queried in plaintext through `system.processing_engine_triggers`. Restrict access to database and system tables, and rotate any value exposed this way. Require encryption at rest and follow [encryption guidance](encryption.md); verify customer-managed KMS key support and encryption scope before recommending it. At-rest encryption protects stored media but does not prevent an authorized database user from querying the plaintext trigger argument. Verify native audit coverage for reads of this system table and monitor those events only when the engine documentation confirms they exist; do not claim that CloudTrail records data-plane reads.
 
 **Error handling:** `--error-behavior log` (default), `retry`, or `disable`
 
