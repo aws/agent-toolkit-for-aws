@@ -256,7 +256,7 @@ fast path for the ARM types it found; unmarked rows run in the per-service fallt
 | 14  | `az network vnet list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location, addressSpace:addressSpace.addressPrefixes, subnets:subnets[].{name:name, prefix:addressPrefix}}"`                                                                                                                                                                                                                                                         | `vnet.json`            | E    | `Microsoft.Network/virtualNetworks`                         |
 | 15  | `az keyvault list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location}"` — vault NAMES only, never `secret show`/`secret list --query "[].value"`                                                                                                                                                                                                                                                                                   | `keyvault.json`        | E    | `Microsoft.KeyVault/vaults`                                 |
 | 16  | `az cognitiveservices account list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location, kind:kind, sku:sku.name}"` then per account `az cognitiveservices account deployment list -n <name> -g <rg> --query "[].{id:id, resourceGroup:resourceGroup, name:name, model:properties.model.name, version:properties.model.version}"`                                                                                                                                         | `cognitive.json`       | E    | `Microsoft.CognitiveServices/accounts`, `.../deployments`   |
-| 17  | `az ml workspace list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location}"` — only if the `ml` extension is present; else record `skipped`                                                                                                                                                                                                                                                                                         | `mlworkspace.json`     | E    | `Microsoft.MachineLearningServices/workspaces`              |
+| 17  | `az ml workspace list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location}"` — only if the `ml` extension is present (see the row-17 note below); else record `skipped`                                                                                                                                                                                                                                                             | `mlworkspace.json`     | E    | `Microsoft.MachineLearningServices/workspaces`              |
 | 18  | `az network private-dns zone list --query "[].{id:id, resourceGroup:resourceGroup, name:name}"` and `az network dns zone list --query "[].{id:id, resourceGroup:resourceGroup, name:name, records:numberOfRecordSets}"`                                                                                                                                                                                                                                                                           | `dns.json`             |      | `Microsoft.Network/dnszones`, `privateDnsZones`             |
 
 **Row 6 note (two-step):** SQL is server-then-database. List servers, then list
@@ -269,6 +269,25 @@ projects `properties.model.name` into the flat string key `model` — see the
 "Deployment row field note" below Step 3; it is a string, not `model.name` on an
 object) are the AI signal Design's lifecycle check consumes. Never capture keys
 (`az cognitiveservices account keys list` is FORBIDDEN).
+
+**Row 17 note (extension check, non-interactive — live-validated).** Never run
+`az ml workspace list` before checking for the `ml` extension: on an `az` install
+without it, running the row-17 command directly triggers the SAME kind of
+interactive dynamic-install prompt the "Do NOT use `az graph query`" warning above
+describes for Resource Graph — confirmed live, it hangs waiting for a
+Y/n answer with no clean error, which is fatal inside the dispatched worker (and
+awkward in the main window too). Check first with a command that names no resource
+and runs no dynamic-install path:
+
+```
+az extension list --query "[].name" --output json
+```
+
+If `"ml"` is in the result, run row 17 normally. If not, record `skipped` in the
+manifest with `note: "ml extension not installed"` and move on — do NOT offer to
+install it inline (unlike Resource Graph, ML workspaces are a narrow signal this
+fast-path doesn't need to chase, and prompting mid-capture risks the same hang if
+the offer itself is answered via a path that re-triggers dynamic install).
 
 **Sizing caveat:** SKU capacity / `storageGb` are PROVISIONED, not actual usage.
 Downstream sizing must treat them as an upper bound. (Follow-up: actual utilization
