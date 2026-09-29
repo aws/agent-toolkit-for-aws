@@ -80,6 +80,25 @@ for verifying a predicate. This phase is `_interactive: false` / `_exec: {_agent
 rw}`, so the dispatched worker cannot prompt for consent or run interactive `az` —
 the consent gate and the actual capture commands MUST run here instead.
 
+**Step 0 — ensure `$MIGRATION_DIR` exists before capturing into it (do this
+FIRST, before the re-entry check below).** This phase carries `_init: true`, and
+`INTERPRETER.md`'s generic `_exec` contract runs `_init` state setup AFTER
+`_preconditions` (§ `_exec`, step 2) — but this action runs BEFORE
+`_preconditions` (see above), and it writes to `$MIGRATION_DIR/live-capture/`,
+which does not exist until `_init` has run. **For this phase specifically,
+reverse that ordering: perform `_init` state setup per `INTERPRETER.md` §
+`_init: true` NOW**, before step 1 below — resolve resume-vs-fresh, set
+`$MIGRATION_DIR`, and (on a fresh run) create the directory, `.gitignore`, and
+`.phase-status.json` exactly as that section specifies. This makes "Step: Run
+the phase" step 1's `_init` call (below) a no-op confirmation for this phase —
+`_init` is idempotent by construction (a resumed run's `_init` setup only reads
+the existing `.phase-status.json` and reuses `$MIGRATION_DIR`; nothing is
+re-created), so running it here and having it "run again" later does not
+double-initialize state or re-prompt resume-vs-fresh. Every other check this
+phase's `_preconditions`/`_postconditions` perform, and the state transition
+itself, still run at their normal point in the MAIN window — only the state
+CREATION step moves earlier, for this phase alone, to break the cycle.
+
 1. **Re-entry check (do this FIRST, before offering consent).** If
    `$MIGRATION_DIR/live-capture/manifest.json` already exists (this run directory
    is being reused — a resumed run, or a confirmed re-entry per this phase's
@@ -159,7 +178,14 @@ reading an archive the customer already handed over is not interactive.
 
 ## Step: Run the phase
 
-1. Perform `_init` state setup per `INTERPRETER.md` § `_init: true`.
+1. Perform `_init` state setup per `INTERPRETER.md` § `_init: true` — **already
+   done** by "Pre-dispatch main-window action" Step 0 above, which runs this
+   same setup earlier (before `_preconditions`) so `$MIGRATION_DIR` exists for
+   live capture. This step is the normal backbone position for `_init` and is
+   listed here for parity with every other phase's "Step: Run the phase" — it is
+   a no-op re-confirmation for THIS phase specifically (idempotent: `$MIGRATION_DIR`
+   is already set, `.phase-status.json` already written), not a second
+   initialization.
 2. Run each fragment whose `_trigger` holds.
 3. Run `discover-assemble.md`.
 4. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK`; on any failure emit
