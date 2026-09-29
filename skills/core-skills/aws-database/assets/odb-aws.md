@@ -6,6 +6,7 @@
 - **Query language**: Oracle SQL, PL/SQL
 - **Compatibility**: Full Oracle Database (Enterprise Edition, RAC, Data Guard, all options)
 - **Serverless**: Yes (Oracle Autonomous Database on Serverless); dedicated Exadata infrastructure also available
+- **Serverless type**: Operations — Autonomous Database Serverless (ADB-S) runs on shared Exadata managed entirely by Oracle; no Exadata infrastructure or VM cluster to provision, and compute/storage auto-scale on demand (you create only an ODB network). Dedicated deployments (ADB-D, ExaDB-D) are not serverless
 - **Scale to zero**: Near zero (serverless)
 - **VPC required**: Yes (runs in customer VPC on Oracle-managed Exadata in AWS data centers)
 - **Multi-region**: Oracle Data Guard (active-passive DR)

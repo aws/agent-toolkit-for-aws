@@ -26,16 +26,35 @@ strategies, and query porting patterns.
 | UNWIND | ✅ | ✅ | Fully compatible |
 | CASE expressions | ✅ | ⚠️ | Supported, BUT a label predicate inside CASE (`CASE WHEN n:Label`) silently evaluates to null on Neptune Analytics — use `labels(n)[0]` instead |
 | Pattern comprehensions | ✅ | ⚠️ | Limited support |
-| CALL subqueries | ✅ | ✅ | Supported (read-only) |
+| CALL subqueries | ✅ | ✅ | Supported for read queries; Cypher updates unsupported |
 | APOC procedures | ✅ | ❌ | Not available — use alternatives |
 | Full-text indexes | ✅ | ❌ | Use OpenSearch integration |
 | Triggers | ✅ | ❌ | Use Neptune Streams + Lambda |
 | User-defined procedures | ✅ | ❌ | Not supported |
-| LOAD CSV | ✅ | ❌ | Use Neptune bulk loader |
+| LOAD CSV | ✅ | ❌ | Syntax unsupported. Analytics: `neptune.read()` / `neptune.load()`; Database or large imports: bulk loader/import task |
 | Multiple labels per node | ✅ | ✅ | Supported |
 | `shortestPath()` / `allShortestPaths()` | ✅ | ❌ | Not supported — rewrite with a variable-length path (`*1..n`) and `min(length(path))` |
 | Relationship indexes | ✅ | ⚠️ | Limited — Neptune auto-indexes |
 | EXPLAIN/PROFILE | ✅ | ✅ | `.profile()` in Gremlin, `EXPLAIN` in openCypher |
+
+## Query-porting constraints
+
+- **APOC procedures** (`apoc.*`) are unavailable. Replace them with Neptune-native openCypher or Gremlin, Neptune Analytics algorithms, the bulk loader/export APIs, OpenSearch, Streams plus Lambda, or application code as appropriate.
+- **`shortestPath()` and `allShortestPaths()`** are unsupported. Rewrite them with bounded variable-length paths such as `*1..n` and select the minimum path length. Directed and undirected variable-length paths are supported, but directed patterns are generally more efficient.
+- A property-equality filter inside a variable-length relationship pattern must use a constant. For example, `[:USES*1..5 {code:x.name}]` is rejected; move dynamic comparisons into a `WHERE` predicate on the matched nodes or relationships.
+- **Label predicates inside `CASE` / `WHEN`** silently evaluate to null on Neptune Analytics. Use `labels(n)[0]` or count-based aggregations instead.
+- **`CALL {}` subqueries do not support Cypher update clauses.** `CREATE`, `SET`, `DELETE`, and `CALL IN TRANSACTIONS` are unsupported inside the subquery. This does not apply to top-level Neptune Analytics algorithm procedures such as `CALL neptune.algo.*.mutate(...)`, which can write result properties to vertices. Perform other Cypher mutations in the outer query. The importing `WITH` clause cannot use aliasing or `DISTINCT`.
+
+Inventory and test every application query against Neptune openCypher rather than assuming Neo4j compatibility. Use the authoritative Neptune openCypher compliance and Neo4j migration documentation as the final compatibility source.
+
+## Migration tooling
+
+For graph data transfer, prefer the bundled `amazon-neptune-tools/neo4j-to-neptune` utility. It exports a Neo4j graph into Neptune bulk-loader CSV files, which can then be staged in S3 and loaded into Neptune. The manual CSV and dual-write patterns below remain alternatives for migrations that need additional transformation or a phased cutover.
+
+For Neptune Analytics, two additional S3 integrations can help with targeted migration stages:
+
+- `CALL neptune.read(...)` reads a CSV or Parquet object from S3 and yields rows to the rest of an openCypher query. Use it for small, query-driven read, insert, or update transformations.
+- `CALL neptune.load(...)` reads an S3 prefix and performs transactional batch inserts directly into an existing Analytics graph. It is suited to small-to-medium or incremental loads, rather than a replacement for all APOC utilities or Neptune Database migration paths.
 
 ## Data Migration
 
@@ -188,7 +207,7 @@ LIMIT 10
 MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*1..3]->(b:Person {name: 'Bob'})
 RETURN path
 
--- CALL { } subqueries — supported read-only (no rewrite needed)
+-- CALL { } subqueries — supported for read queries (no rewrite needed)
 -- Previously listed as unsupported. Older migration guides that rewrote
 -- to OPTIONAL MATCH no longer apply.
 MATCH (p:Person)
