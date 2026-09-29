@@ -8,10 +8,14 @@ the user to choose when the match is ambiguous.
 
 ## Input
 
-- `plan_model_id`: the target_model_id from the migration plan
+- `plan_model_id`: normally the target_model_id from the migration plan
   (e.g., `anthropic.claude-sonnet-4-6-20250514-v1:0` — a plausible-looking ID
   that does NOT exist; broken inputs like this are exactly what this helper
-  repairs, so this example is intentionally invalid)
+  repairs, so this example is intentionally invalid). **Can also be a
+  free-text friendly name** (e.g., `anthropic claude haiku`, `Nova Micro`) when
+  the caller is collecting a user-typed model request rather than reading a
+  plan (see `llm-to-bedrock/SKILL.md` AC2/AC3.5) — Step 3's ranking handles
+  both shapes, see the note there.
 - `region`: the AWS region from your context (e.g., `us-east-1`)
 
 ## Procedure
@@ -76,13 +80,29 @@ needed.
 
 ### Step 3: Token-based ranking when no exact match
 
-Tokenize both the plan ID and each live ID by splitting on `.`, `-`, `_`,
-`/`. Drop tokens that match the regex `^v?\d{6,}` or `^v\d+$` (these are
-date stamps like `20250514` or version tags like `v1`).
+Tokenize both `plan_model_id` and each live ID by splitting on `.`, `-`, `_`,
+`/`, **and whitespace** (a free-text friendly name like `anthropic claude
+haiku` is space-separated, not `.`/`-`/`_`/`/`-separated, so without splitting
+on whitespace too it stays one token and matches nothing — see § Input).
+Lowercase every token before comparing (a plan ID's tokens are already
+lowercase, but a user-typed name like `Nova Micro` is not). Drop tokens that
+match the regex `^v?\d{6,}` or `^v\d+$` (these are date stamps like
+`20250514` or version tags like `v1`).
 
-For each live profile, compute the size of the intersection of its token set
-with the plan ID's token set. Keep the top 3 by intersection size, breaking
-ties in this order:
+For each live profile, build its comparison token set from **both** its
+`inferenceProfileId` AND its `inferenceProfileName` (tokenized the same way) —
+an ID-only comparison set is fine for an ID-shaped `plan_model_id` (the name's
+tokens rarely add new overlap there) but is why a friendly-name input like
+`anthropic claude haiku` found nothing: the display name is where "claude"
+and "haiku" actually appear as separate words; the ID
+(`anthropic.claude-3-5-haiku-...`) has "claude" and "haiku" too, but a
+provider name typed as a separate word ("anthropic") only ever appears in the
+profile _name_, not the ID, for some providers' listings — do not restrict
+matching to the ID alone.
+
+Compute the size of the intersection of each live profile's combined
+(ID + name) token set with `plan_model_id`'s token set. Keep the top 3 by
+intersection size, breaking ties in this order:
 
 1. Prefer profiles whose ID starts with `us.`
 2. Then `global.`

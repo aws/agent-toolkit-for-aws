@@ -821,28 +821,37 @@ Then, per B4's branch table:
   (fix and re-run; do not claim access is verified when it isn't).
 - `ok == true` + `reason: embedding_unprobed` → the model is from an unrecognized embedding
   family, so the preflight could NOT actually invoke it (see `probe_model()` in
-  `preflight_bedrock.py`) — this is `ok: true` at the JSON level but zero inference calls
-  were made. Do **not** report this as "enabled & working." Tell the user access appears
-  enabled but was **not verified by a real call** — ask them to confirm in the Bedrock
-  console or with a manual test invoke. Even a genuinely successful probe on a first-time
-  third-party model invoke is not a permanent guarantee either: AWS auto-enables access in
-  the background on first invoke (up to ~15 minutes to finalize), and a missing prerequisite
-  during that window can make a later call fail with `AccessDeniedException` even though an
-  earlier call succeeded — mention this for any model reported as newly working for the
-  first time in this account.
-- `ok == true` (any other `reason`, i.e. an actual invoke succeeded) → tell the user access is
-  confirmed working in `$REGION` for that ID.
+  `preflight_bedrock.py`) — this is `ok: true` at the JSON level but **zero requests were
+  sent**, so nothing about actual access was observed either way. Do **not** report this as
+  "enabled" in any form, verified or not — "enabled" asserts a fact this probe never checked.
+  Tell the user **access is unverified** for this model (not "enabled — unverified"): ask
+  them to confirm in the Bedrock console or with a manual test invoke before relying on it.
+- `ok == true` + `reason: throttled_ok` → the probe reached the service and was throttled
+  (`ThrottlingException`/`ServiceQuotaExceededException`/a 429 on mantle) — this proves the
+  request was **authorized**, but it is not the same claim as "an invoke succeeded": no
+  response was produced, so nothing about the model's actual behavior was observed. Tell the
+  user access is **confirmed authorized, but the probe itself was throttled** — a quota
+  concern to note, not a reason to distrust the access verdict.
+- `ok == true` (any other `reason`, i.e. an actual invoke or InvokeModel call returned a real
+  response) → tell the user access is confirmed working in `$REGION` for that ID.
 
 ### AC5 — Summarize and stop
 
 Give the user a per-model summary: `<model_id>` → `enabled & working` (a real invoke
-succeeded) / `enabled — not verified by a real call` (`embedding_unprobed`; recommend a
-manual console/test check) / `enable access` (naming the applicable prerequisite from the
-`model_access` branch — Marketplace permissions in commercial Regions; for GovCloud, the
-linked-commercial-account step (third-party models) plus the `us-gov-west-1` console Model
-access page; plus the Anthropic FTU form where it applies) / `grant <action>` /
-`not available in <region>, use <candidate>`. Do NOT collapse `embedding_unprobed` into
-`enabled & working` — they mean different things to the user. Then run
+succeeded) / `access unverified — no request made` (`embedding_unprobed`; recommend a
+manual console/test check) / `authorized (probe throttled)` (`throttled_ok`; access is
+confirmed, but no response was observed) / `enable access` (naming the applicable
+prerequisite from the `model_access` branch — Marketplace permissions in commercial Regions;
+for GovCloud, the linked-commercial-account step (third-party models) plus the
+`us-gov-west-1` console Model access page; plus the Anthropic FTU form where it applies) /
+`grant <action>` / `not available in <region>, use <candidate>`. Do NOT collapse
+`embedding_unprobed` or `throttled_ok` into `enabled & working` — each means something
+distinct to the user (no request made / authorized-but-no-response / actually confirmed
+working), and even a genuinely successful invoke on a first-time third-party model is not a
+permanent guarantee either: AWS auto-enables access in the background on first invoke (up to
+~15 minutes to finalize), and a missing prerequisite during that window can make a later
+call fail with `AccessDeniedException` even though an earlier call succeeded — mention this
+for any model reported as newly working for the first time in this account. Then run
 the **Contextual offers (final step)**. Do **not** continue into Assess, rewrite, or any code
 change — this mode is complete.
 
