@@ -28,6 +28,7 @@ python3 scripts/fetch_bedrock_agent.py \
 ```
 
 ### Path B (fallback): AWS CLI read commands
+Run every `aws` read with `--no-cli-pager` (or `AWS_PAGER=` exported). In a non-interactive shell the default pager blocks and the call looks hung.
 The `aws` CLI is a self-contained binary already required for the migration, so it works where a bare python3 may not. Run the equivalent read sequence (`aws bedrock-agent get-agent`, `list/get-agent-action-group`, `list/get-agent-knowledge-base`, `get-knowledge-base`, `list-agent-aliases`, `list-agent-versions`, `list-agent-collaborators` when collaboration is on; `aws s3 cp` to inline S3 schemas; `aws iam get-role` for the execution role) and assemble the same manifest shape yourself. Tolerate `AccessDenied`/`NotFound`/`Validation` on individual calls; abort only on outright failure.
 
 If discovery fails outright, stop and report. Do not partially migrate from an incomplete manifest.

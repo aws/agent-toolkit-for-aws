@@ -73,16 +73,18 @@ Deployment Progress (all three stages are required — creation alone does not y
 **AgentCore CLI:**
 
 ```bash
-npm install -g @aws/agentcore@preview
-# Set the execution-limit guardrails (max iterations, max tokens, timeout) explicitly
-# rather than relying on defaults — see Security Considerations. Use `agentcore create --help`
-# for the current flag names, or set them on the underlying create-harness call below.
-agentcore create --name myresearchagent --model-provider bedrock
-agentcore deploy
-agentcore invoke --harness myresearchagent --session-id "$(uuidgen)" "Hello, what can you do?"
+npm install -g @aws/agentcore@latest
+# `project create` without --template scaffolds a managed-harness project:
+# app/myresearchagent/harness.yaml (model, tools, memory, limits) and system-prompt.md.
+# Set the execution-limit guardrails (maxIterations, maxTokens, timeoutSeconds) explicitly
+# in harness.yaml rather than relying on defaults, see Security Considerations.
+agentcore project create --name myresearchagent
+cd myresearchagent
+agentcore project deploy --region us-east-1
+agentcore project invoke harness --name myresearchagent --prompt "Hello, what can you do?"
 ```
 
-Useful CLI commands: `agentcore dev` (local dev server + inspector), `agentcore status`, `agentcore add harness`.
+Useful CLI commands: `agentcore project dev` (local dev server and inspector), `agentcore project status`, `agentcore project add harness`, `agentcore project export harness` (eject a harness to editable Strands code). The CLI is 1.x. The pre-1.0 `agentcore create`/`deploy`/`invoke` commands no longer exist.
 
 **AWS CLI / SDK:**
 
@@ -125,7 +127,7 @@ for event in response["stream"]:
 - `harnessName` must start with a letter and contain only letters, digits, and underscores, max 40 characters.
 - `runtimeSessionId` MUST be at least 33 characters — a standard UUID (36 chars, with hyphens) satisfies this. If your `uuidgen` strips hyphens (32 chars), it will be too short; append a suffix or concatenate two. Over the wire it maps to the `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` header. Reuse the same session id across invocations to continue the conversation in the same environment.
 - When no model is configured the harness applies a default Bedrock model; check the [CreateHarness API reference](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreateHarness.html) for the current default, and `aws bedrock list-foundation-models` for available model IDs.
-- Install the AgentCore CLI from the `@aws/agentcore@preview` npm channel (`npm install -g @aws/agentcore@preview`).
+- Install the AgentCore CLI 1.x from npm (`npm install -g @aws/agentcore@latest`). Pre-1.0 builds lack the `agentcore project` commands this reference uses.
 - Refer to the latest AWS documentation for authoritative API parameters.
 
 ## Configuration Surface
@@ -197,6 +199,66 @@ The optional fields are typed shapes, not loose key/values — use the exact mem
 ```
 
 Member names verified against the `Bedrock-AgentCore-Control` API model; confirm field names and provider-variant differences in the [CreateHarness API reference](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreateHarness.html).
+
+### CLI `harness.yaml` shape (differs from the API JSON)
+
+The shapes above are the **control-plane API** payload. The AgentCore CLI 1.x stores a harness as `app/<name>/harness.yaml` in a flatter shape and translates it at deploy. Do not mix the two. `bedrockModelConfig`, `systemPrompt` content blocks, and `managedMemoryConfiguration` are API-only and fail CLI validation. The scaffolded file documents every optional field in comments; the equivalents of the API fields are:
+
+```yaml
+name: assistant
+# Instructions come from system-prompt.md next to this file unless set inline.
+# systemPrompt: You are a helpful assistant.        # plain string, not content blocks
+model:
+  provider: bedrock                                  # bedrock | open_ai | gemini | lite_llm
+  modelId: <model-id>                                # resolve with `aws bedrock list-foundation-models`, or use the scaffold default
+  maxTokens: 4096
+  temperature: 0.7
+  topP: 0.9
+  apiFormat: converse_stream
+  # apiKeyArn: <credential-provider-arn>            # open_ai / gemini
+  # additionalParams: {}                            # lite_llm only
+tools:
+  - name: code_interpreter
+    type: agentcore_code_interpreter               # no config needed for the AWS-managed one
+  - name: company_tools
+    type: agentcore_gateway
+    config:
+      agentCoreGateway:
+        gatewayArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:gateway/example-1234567890
+        outboundAuth:
+          awsIam: {}
+  - name: research
+    type: remote_mcp
+    config:
+      remoteMcp:
+        url: https://mcp.example.com/mcp
+skills:
+  - s3Uri: s3://your-skills-bucket/skills/research/
+  - gitUrl: https://github.com/your-org/agent-skills.git
+    path: skills/research
+  - path: /opt/skills/research                     # a path inside the runtime container
+  - awsSkills: {}
+memory:
+  mode: managed                                    # managed | existing | disabled
+  # strategies: [SEMANTIC, SUMMARIZATION]
+  # eventExpiryDuration: 30
+  # mode: existing with name: <project memory name> or arn: <memory arn>
+maxIterations: 15
+maxTokens: 20000
+timeoutSeconds: 300
+lifecycleConfig:
+  idleRuntimeSessionTimeout: 900                   # seconds, 60-28800
+authorizerType: AWS_IAM                            # AWS_IAM | CUSTOM_JWT
+# authorizerConfiguration:
+#   customJwtAuthorizer:
+#     discoveryUrl: https://<issuer>/.well-known/openid-configuration
+#     allowedClients: [<client-id>]
+#     allowedAudience: [<harness-audience>]
+```
+
+**Wiring a project Gateway into a harness.** `agentCoreGateway.gatewayArn` must be the deployed gateway's ARN. The CLI does not turn a project gateway's name into that ARN, and the ARN exists only after the gateway is deployed. So: `agentcore project add gateway --name <gw> --authorizer-type AWS_IAM` (the default is `authorizerType: NONE`, which is unauthenticated, so never leave it), add its targets, `agentcore project deploy`, read the gateway ARN from `agentcore project status --json`, add one `agentcore_gateway` entry to the existing `tools:` list in `harness.yaml` (edit the list, do not append a second `tools:` key), then `agentcore project deploy` again. `outboundAuth: awsIam` uses the harness execution role, which the deploy grants access to every project gateway.
+
+`agentcore project add harness` writes this file from flags (`--system-prompt`, `--model <json>`, `--tools <json>`, `--memory <json>`, `--lifecycle-config <json>`, `--authorizer-type`). The JSON passed to those flags uses the same keys as the YAML, not the API keys. `agentcore project build` validates the file and reports the exact field that is wrong.
 
 ## Per-Invocation Overrides
 

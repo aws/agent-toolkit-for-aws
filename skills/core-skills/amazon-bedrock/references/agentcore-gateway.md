@@ -107,6 +107,22 @@ credentials MUST be created before the gateway target.
 - Verify the MCP tools generated from the OpenAPI schema match expectations
 - You SHOULD report the list of generated MCP tools to the user
 
+## AgentCore CLI (project) path
+
+In an AgentCore CLI 1.x project the same resources are declared and deployed with `agentcore project` commands instead of the API calls above:
+
+```bash
+agentcore project add gateway --name <gw> --authorizer-type AWS_IAM   # default is NONE (unauthenticated): always set it
+agentcore project add gateway-target --gateway <gw> --target-configuration file://target.json
+#   target.json is one agentCoreGateways[].targets[] object: targetType lambda (code the CLI builds),
+#   lambdaFunctionArn, mcpServer, openApiSchema, smithyModel, apiGateway, connector, passthrough
+agentcore project add gateway-connector --gateway <gw> --name <n> --connector bedrock-knowledge-bases --knowledge-base <kb-id>
+agentcore project deploy --region <region>
+agentcore project status --json       # gateway ARN, needed to attach the gateway to a harness
+```
+
+A harness references a gateway by ARN only, so deploy the gateway first and attach it in a second deploy (see the harness reference).
+
 ## Security Considerations
 
 - **Encryption:** S3 encrypts objects at rest by default (SSE-S3). For sensitive schemas, use SSE-KMS with a customer managed key. Target endpoints MUST use HTTPS — Gateway rejects HTTP endpoints.
