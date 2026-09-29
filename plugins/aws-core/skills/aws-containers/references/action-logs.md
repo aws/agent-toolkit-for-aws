@@ -231,7 +231,8 @@ When enabling Action Logs delivery, harden the destination and the delivery path
   access logging or CloudTrail data events on any S3 destination bucket.
 - **Alarm on delivery and access anomalies.** Set up CloudWatch Alarms for operational and
   security monitoring of the delivery pipeline — for example, on delivery failures (the
-  `ForwardingErrors` vended-log metric) or, via a CloudTrail metric filter, on unexpected
+  `DeliveryErrors` and `DeliveryThrottling` metrics in the `AWS/Logs` namespace) or, via a
+  CloudTrail metric filter, on unexpected
   `PutDeliverySource`/`CreateDelivery` attempts or an absence of the expected log volume.
 - **Restrict access to the logs.** Action Logs can contain operational metadata about the
   cluster; restrict read access on the destination to authorized personnel.
