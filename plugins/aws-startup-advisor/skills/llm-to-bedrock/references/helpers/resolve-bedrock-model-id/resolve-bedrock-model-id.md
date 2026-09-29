@@ -39,14 +39,32 @@ aws bedrock list-foundation-models \
 
 - **Exact match** on `plan_model_id` → return it unchanged. Do not add a regional prefix or a `-v1:0`-style suffix;
   the mantle id form is the literal `openai.gpt-5.5` shape.
-- **No match** → not enabled or not available in this region. Return `blocked` with `reason: model_unresolvable`,
-  putting the region and the `openai.*` ids that _were_ returned in `detail`. These two models have no CRIS, so the
-  remedy is a region change or a different model — never an inference-profile prefix.
+- **No exact match, but `plan_model_id` is a free-text friendly name (see § Input)** — apply Step 3's token-ranking
+  procedure (same tokenizer: split on `.`/`-`/`_`/`/`/whitespace, lowercase, drop date/version-stamp tokens) against
+  this catalog's `modelId` + `modelName` pairs instead of against inference profiles. **Do this check before
+  falling through to Step 1** — a friendly name like `"OpenAI GPT-5.5"` (tokens `{openai, gpt, 5}`) has full token
+  overlap with `openai.gpt-5.5`'s own id (`{openai, gpt, 5}`) and would otherwise fall through to Step 1's
+  `list-inference-profiles`, which never lists a mantle-only model — the free-text input would then reach Step 3's
+  ranking with zero candidates and dead-end at `blocked` with no matches shown, even though the foundation catalog
+  had the exact model the whole time. A single candidate with full token overlap on the model-identifying tokens
+  (excluding generic tokens like a bare `gpt`) → surface it as the ONE candidate through Step 4 exactly as an
+  inference-profile candidate would be (still never auto-applied — Step 5's confirm-on-ambiguity rule applies
+  identically to a foundation-model candidate). Multiple or weak candidates → include them in Step 4's candidate
+  list alongside any inference-profile candidates Steps 1–3 separately produce; do not silently drop either source.
+- **No match at all (exact or token) and `plan_model_id` looked ID-shaped, not free-text** → not enabled or not
+  available in this region. Return `blocked` with `reason: model_unresolvable`, putting the region and the
+  `openai.*` ids that _were_ returned in `detail`. These two models have no CRIS, so the remedy is a region change
+  or a different model — never an inference-profile prefix.
 - CLI failure / missing `bedrock:ListFoundationModels` → `blocked` with `reason: model_unresolvable` and the exact
   error in `detail`, rather than guessing.
 
 These two need `bedrock-mantle:*` IAM actions (e.g. `AmazonBedrockMantleInferenceAccess`), not
 `bedrock:InvokeModel`; resolution success does not imply invoke authorization.
+
+**A free-text name that does NOT token-match this catalog** (e.g. `"anthropic claude haiku"`, `"Nova Micro"`)
+continues to Step 1 as before — this catalog check only short-circuits the specific case a mantle-only model would
+otherwise be unreachable from free text; it is not a replacement for Step 1's inference-profile search for every
+other provider/model.
 
 **Case B — GPT-5.6 (`openai.gpt-5.6-sol` / `-terra` / `-luna`, or already `us.` / `in.` / `global.` prefixed):
 BOTH paths exist.** The bare id is the mantle form; `bedrock-runtime` serves these models through CRIS inference
