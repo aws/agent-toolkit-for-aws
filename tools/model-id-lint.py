@@ -57,13 +57,41 @@ FABRICATED_RE = re.compile(r"claude-(?:sonnet-4-6|opus-4-8)-\d{8}")
 SELF = Path(__file__).resolve()
 _VENDORED = re.compile(r"^skills/[^/]+/references/vendored/")
 
-# A Bedrock model ID inside a backtick span: provider.model-name:rev (and the
-# bare `v1:1`-style continuation the Nova Reel row uses). `*` is a wildcard.
-_ID_IN_BACKTICKS = re.compile(r"`([a-z0-9][a-z0-9.\-]*(?:\*[a-z0-9.\-]*)*:[0-9]+|v[0-9]+:[0-9]+)`")
+# A Bedrock model ID inside a backtick span: provider.model-name[:rev] — the
+# `:rev` suffix is OPTIONAL (e.g. `anthropic.claude-sonnet-4-6` is a real,
+# actively-used ID in this repo with no revision number at all — CRIS/mantle
+# IDs and some newer model names omit it). Also matches the bare `v1:1`-style
+# continuation the Nova Reel row uses. `*` is a wildcard. Requires at least one
+# `.` or `-` after the leading segment so a plain word isn't misread as an ID.
+_ID_IN_BACKTICKS = re.compile(
+    r"`([a-z0-9][a-z0-9.\-]*(?:\*[a-z0-9.\-]*)*(?:[.\-][a-z0-9]+)(?::[0-9]+)?|v[0-9]+:[0-9]+)`"
+)
 
 
 def canonicalize(rel: str) -> str:
     return _VENDORED.sub("skills/shared/", rel)
+
+
+def _rebuild_dual_ids(tokens: list[str]) -> list[str]:
+    """A row/bullet may list a full ID followed by a bare `vN:M` continuation
+    sharing its stem (the Nova Reel notation: `amazon.nova-reel-v1:0` /
+    `v1:1`). Rebuild the continuation against the preceding full ID's stem so
+    it becomes its own complete ID (`amazon.nova-reel-v1:1`), never a bare
+    `v1:1` fragment — banning that bare fragment as a substring would match
+    any unrelated "v1:1" text (a version string, a doc reference) anywhere in
+    the repo. Shared by both the excluded-table and Removed-list parsers so a
+    dual-ID entry keeps reconstructing correctly regardless of which section
+    it lives in (e.g. after a past-EOL row moves from the table to Removed)."""
+    rebuilt: list[str] = []
+    last_full = None
+    for tok in tokens:
+        if tok.startswith("v") and last_full and ":" in last_full:
+            stem = last_full.rsplit("-v", 1)[0]
+            rebuilt.append(f"{stem}-{tok}")
+        else:
+            rebuilt.append(tok)
+            last_full = tok
+    return rebuilt
 
 
 def _id_to_regex(model_id: str) -> re.Pattern:
@@ -105,19 +133,7 @@ def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
             continue
         excluded_ids = _ID_IN_BACKTICKS.findall(cells[1])
         excluded_count += len(excluded_ids)
-        row_ids = excluded_ids
-        # The Nova Reel row lists `amazon.nova-reel-v1:0` / `v1:1` — rebuild the
-        # bare `v1:1` continuation against the preceding full ID's stem.
-        rebuilt: list[str] = []
-        last_full = None
-        for tok in row_ids:
-            if tok.startswith("v") and last_full and ":" in last_full:
-                stem = last_full.rsplit("-v", 1)[0]
-                rebuilt.append(f"{stem}-{tok}")
-            else:
-                rebuilt.append(tok)
-                last_full = tok
-        ids.extend(rebuilt)
+        ids.extend(_rebuild_dual_ids(excluded_ids))
 
     # 2) The Removed (past-EOL) bullet list.
     in_removed = False
@@ -140,7 +156,7 @@ def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
                 head = re.split(r"replacement:", line, maxsplit=1)[0]
                 removed_ids = _ID_IN_BACKTICKS.findall(head)
                 removed_count += len(removed_ids)
-                ids.extend(removed_ids)
+                ids.extend(_rebuild_dual_ids(removed_ids))
 
     # Dedupe, preserve order.
     seen: set[str] = set()
