@@ -413,6 +413,9 @@ const COMPLIANCE_ACCEPTED = new Set([...COMPLIANCE, ...Object.keys(COMPLIANCE_AL
 const AVAILABILITY = new Set(["SINGLE_AZ", "MULTI_AZ", "MULTI_AZ_HA", "MULTI_REGION"]);
 const CUTOVER_STRATEGY = new Set(["MAINTENANCE_WINDOW_WEEKLY", "MAINTENANCE_WINDOW_MONTHLY", "FLEXIBLE", "ZERO_DOWNTIME"]);
 const DATABASE_TRAFFIC = new Set(["STEADY", "READ_HEAVY", "WRITE_HEAVY"]);
+// gcp's clarify writes "write-heavy-global" for the write-heavy answer.
+const DATABASE_TRAFFIC_ALIAS = { WRITE_HEAVY_GLOBAL: "WRITE_HEAVY" };
+const DATABASE_TRAFFIC_ACCEPTED = new Set([...DATABASE_TRAFFIC, ...Object.keys(DATABASE_TRAFFIC_ALIAS)]);
 const COMPUTE_POSTURE = new Set(["EKS_MANAGED", "EKS_OR_ECS", "ECS_FARGATE", "EKS", "ECS", "ELASTIC_BEANSTALK"]);
 const TARGET_REGION = new Set([
   "US_EAST_1", "US_EAST_2", "US_WEST_1", "US_WEST_2", "CA_CENTRAL_1",
@@ -531,7 +534,11 @@ function constraintValue(preferences, key) {
 }
 
 function toComplianceList(raw) {
-  const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  if (raw == null) return undefined;
+  // An explicit empty list is the customer's confirmed "no requirements", which
+  // the model spells NONE; only an absent answer is omitted.
+  if (Array.isArray(raw) && raw.length === 0) return ["NONE"];
+  const values = Array.isArray(raw) ? raw : [raw];
   const out = new Set();
   for (const v of values) {
     const key = toEnum(COMPLIANCE_ACCEPTED, v);
@@ -652,8 +659,8 @@ function deriveAttributes(runDir, skill, event, status) {
     if (cutover) attributes.cutoverStrategy = cutover;
     const dbSize = mapEnum(DB_SIZE, String(constraintValue(preferences, "db_size") ?? "").replace(/\s+/g, ""));
     if (dbSize) attributes.dbSize = dbSize;
-    const traffic = toEnum(DATABASE_TRAFFIC, constraintValue(preferences, "database_traffic"));
-    if (traffic) attributes.databaseTraffic = traffic;
+    const trafficKey = toEnum(DATABASE_TRAFFIC_ACCEPTED, constraintValue(preferences, "database_traffic"));
+    if (trafficKey) attributes.databaseTraffic = DATABASE_TRAFFIC_ALIAS[trafficKey] ?? trafficKey;
     // gcp asks about kubernetes, heroku about a compute target; same decision.
     const posture = toEnum(
       COMPUTE_POSTURE,

@@ -964,6 +964,35 @@ describe('telemetry emitter', () => {
     }
   });
 
+  it('maps the GCP clarify answers the producer actually writes: an empty compliance list and write-heavy-global', async () => {
+    // Arrange: preferences as gcp's clarify-assemble writes them
+    const clarified = (design_constraints: Record<string, unknown>) =>
+      makeProject(
+        phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }),
+        'granted',
+        { 'gcp-resource-inventory.json': GCP_INVENTORY, 'preferences.json': { design_constraints } },
+      );
+    const explicit = clarified({ compliance: { value: [] }, database_traffic: { value: 'write-heavy-global' } });
+    const absent = clarified({ database_traffic: { value: 'rapidly-growing' } });
+    const unsupported = clarified({ compliance: { value: ['iso-27001'] } });
+    const attrsOf = async (p: Project) => (await reconcile(p)).map(activity).find((a) => a.phase === 'CLARIFY').attributes;
+    try {
+      // Act
+      const a = await attrsOf(explicit);
+      const b = await attrsOf(absent);
+      const c = await attrsOf(unsupported);
+
+      // Assert
+      assert.deepEqual([a.compliance, a.databaseTraffic], [['NONE'], 'WRITE_HEAVY'], 'a confirmed empty answer is NONE; the producer spelling maps');
+      assert.deepEqual([b.compliance, b.databaseTraffic], [undefined, undefined], 'absent and unmodelled answers stay omitted');
+      assert.equal(c.compliance, undefined, 'a list of only unsupported members is omitted, not NONE');
+    } finally {
+      cleanup(explicit);
+      cleanup(absent);
+      cleanup(unsupported);
+    }
+  });
+
   it('drops a generation tier once a confirmed re-entry sets Generate back to pending', async () => {
     // Arrange: a completed SMALL run whose old generation artifact stays on disk after re-entry
     const all = Object.fromEntries(Object.keys(phaseStatus().phases).map((k) => [k, 'completed']));
