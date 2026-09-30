@@ -186,15 +186,31 @@ function consentGranted() {
 // live run costs more than reporting two seconds of history.
 const PRE_CONSENT_SLACK_MS = 2_000;
 
-function predatesConsent(statusFile) {
-  const consentedAt = Date.parse(consentRecord()?.consentedAt ?? "");
-  let mtime;
+function predatesConsent(runDir, statusFile, snapshot) {
+  const record = consentRecord();
+  const consentedAt = Date.parse(record?.consentedAt ?? "");
+  if (!Number.isFinite(consentedAt)) return false;
+  const before = (ms) => Number.isFinite(ms) && ms > 0 && ms < consentedAt - PRE_CONSENT_SLACK_MS;
+  let stat;
   try {
-    mtime = statSync(statusFile).mtimeMs;
+    stat = statSync(statusFile);
   } catch {
     return false;
   }
-  return Number.isFinite(consentedAt) && mtime < consentedAt - PRE_CONSENT_SLACK_MS;
+  if (before(stat.mtimeMs)) return true;
+  // A run that was never reported and was created while consent was revoked
+  // started under a "no": its state, however recently written, is history.
+  // The grant records when that "no" began; filesystems without a creation
+  // time fall back to the mtime rule alone.
+  const revokedAt = Date.parse(record?.revokedAt ?? "");
+  if (snapshot || !Number.isFinite(revokedAt)) return false;
+  let born;
+  try {
+    born = statSync(runDir).birthtimeMs;
+  } catch {
+    return false;
+  }
+  return before(born) && born >= revokedAt - PRE_CONSENT_SLACK_MS;
 }
 
 // The same rule for a timestamp the skill wrote itself; undefined when either
@@ -216,7 +232,12 @@ async function baselineRuns(startDir) {
     const status = readJson(path.join(runDir, ".phase-status.json"));
     if (!status?.migration_id) continue;
     const snapshotFile = path.join(runDir, ".telemetry-snapshot.json");
-    const lock = acquireLock(runDir);
+    // A hook may hold the lock for a moment; wait it out rather than leave the
+    // run without a baseline.
+    let lock = null;
+    for (let attempt = 0; attempt < 5 && !(lock = acquireLock(runDir)); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     if (!lock) continue;
     try {
       const snapshot = readSnapshot(snapshotFile);
@@ -266,7 +287,10 @@ async function runConsentCommand(action) {
       // The identifier is born with the consent it belongs to: a standing grant
       // keeps its id, anything else mints a fresh one.
       const installId = current?.consent === "granted" ? asUuid(current.installId) : undefined;
-      write({ consent: "granted", installId: installId ?? crypto.randomUUID() });
+      // When the grant ends a "no", its start is kept so runs born in between
+      // can be told from runs born under this grant.
+      const revokedAt = current?.consent === "revoked" ? current.consentedAt : current?.revokedAt;
+      write({ consent: "granted", installId: installId ?? crypto.randomUUID(), ...(revokedAt ? { revokedAt } : {}) });
       await baselineRuns(process.cwd());
       return;
     }
@@ -404,6 +428,9 @@ const COMPLIANCE_ACCEPTED = new Set([...COMPLIANCE, ...Object.keys(COMPLIANCE_AL
 const AVAILABILITY = new Set(["SINGLE_AZ", "MULTI_AZ", "MULTI_AZ_HA", "MULTI_REGION"]);
 const CUTOVER_STRATEGY = new Set(["MAINTENANCE_WINDOW_WEEKLY", "MAINTENANCE_WINDOW_MONTHLY", "FLEXIBLE", "ZERO_DOWNTIME"]);
 const DATABASE_TRAFFIC = new Set(["STEADY", "READ_HEAVY", "WRITE_HEAVY"]);
+// gcp's clarify writes "write-heavy-global" for the write-heavy answer.
+const DATABASE_TRAFFIC_ALIAS = { WRITE_HEAVY_GLOBAL: "WRITE_HEAVY" };
+const DATABASE_TRAFFIC_ACCEPTED = new Set([...DATABASE_TRAFFIC, ...Object.keys(DATABASE_TRAFFIC_ALIAS)]);
 const COMPUTE_POSTURE = new Set(["EKS_MANAGED", "EKS_OR_ECS", "ECS_FARGATE", "EKS", "ECS", "ELASTIC_BEANSTALK"]);
 const TARGET_REGION = new Set([
   "US_EAST_1", "US_EAST_2", "US_WEST_1", "US_WEST_2", "CA_CENTRAL_1",
@@ -522,7 +549,11 @@ function constraintValue(preferences, key) {
 }
 
 function toComplianceList(raw) {
-  const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  if (raw == null) return undefined;
+  // An explicit empty list is the customer's confirmed "no requirements", which
+  // the model spells NONE; only an absent answer is omitted.
+  if (Array.isArray(raw) && raw.length === 0) return ["NONE"];
+  const values = Array.isArray(raw) ? raw : [raw];
   const out = new Set();
   for (const v of values) {
     const key = toEnum(COMPLIANCE_ACCEPTED, v);
@@ -643,8 +674,8 @@ function deriveAttributes(runDir, skill, event, status) {
     if (cutover) attributes.cutoverStrategy = cutover;
     const dbSize = mapEnum(DB_SIZE, String(constraintValue(preferences, "db_size") ?? "").replace(/\s+/g, ""));
     if (dbSize) attributes.dbSize = dbSize;
-    const traffic = toEnum(DATABASE_TRAFFIC, constraintValue(preferences, "database_traffic"));
-    if (traffic) attributes.databaseTraffic = traffic;
+    const trafficKey = toEnum(DATABASE_TRAFFIC_ACCEPTED, constraintValue(preferences, "database_traffic"));
+    if (trafficKey) attributes.databaseTraffic = DATABASE_TRAFFIC_ALIAS[trafficKey] ?? trafficKey;
     // gcp asks about kubernetes, heroku about a compute target; same decision.
     const posture = toEnum(
       COMPUTE_POSTURE,
@@ -853,20 +884,27 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
   const skill = status.owning_skill;
   if (!MIGRATION_SKILLS.has(skill)) return;
 
-  if (!consentGranted()) return;
-  const installId = asUuid(consentRecord()?.installId);
-  if (!installId) return; // a grant without an identity sends nothing
+  // Without granted consent nothing leaves the machine. A run that was being
+  // reported before consent was withdrawn keeps its snapshot current all the
+  // same, so what happens while consent is absent is already known when it is
+  // granted again and can never be sent then; a run with no snapshot is left
+  // without a trace.
+  const installId = consentGranted() ? asUuid(consentRecord()?.installId) : undefined;
+  const sending = Boolean(installId); // a grant without an identity sends nothing
 
   const snapshotFile = path.join(runDir, ".telemetry-snapshot.json");
+  if (!sending && !existsSync(snapshotFile)) return;
   const lock = acquireLock(runDir);
   if (!lock) return;
   try {
     const snapshot = readSnapshot(snapshotFile);
     if (snapshot === SNAPSHOT_UNREADABLE) return; // try again on the next trigger
+    if (!sending && !snapshot) return;
 
     // Teardown sweeps only the session that wrote the snapshot; a run last
-    // touched by another session is that session's to report.
-    if (sessionEndMode && snapshot && sessionId && snapshot.sessionId !== sessionId) return;
+    // touched by another session is that session's to report. A baseline the
+    // consent command wrote names no session and is claimed by the first one.
+    if (sessionEndMode && snapshot?.sessionId && sessionId && snapshot.sessionId !== sessionId) return;
 
     // Identifiers read back from customer-editable files are validated, not
     // trusted: the service rejects the whole event on one malformed UUID.
@@ -879,19 +917,22 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
     const validSessionId = asUuid(sessionId);
 
     // The snapshot mirrors the state last observed, whether or not anything
-    // was sent for it. Written only when the observation changed.
+    // was sent for it, and names the session that last touched the run.
+    // Written only when the observation or the owner changed.
     const observe = (phases, completed, reportedGateFailures, started) => {
       const notStarted = started === false || (started === undefined && snapshot?.started === false);
+      const owner = validSessionId ?? snapshot?.sessionId;
       const same =
         snapshot &&
         JSON.stringify(snapshot.phases ?? {}) === JSON.stringify(phases) &&
         Boolean(snapshot.completed) === completed &&
         JSON.stringify(snapshot.gateFailures ?? []) === JSON.stringify(reportedGateFailures) &&
-        (snapshot.started === false) === notStarted;
+        (snapshot.started === false) === notStarted &&
+        snapshot.sessionId === owner;
       if (same) return;
       writeJson(snapshotFile, {
         runId,
-        sessionId: validSessionId ?? snapshot?.sessionId,
+        sessionId: owner,
         ...(notStarted ? { started: false } : {}),
         phases,
         gateFailures: reportedGateFailures,
@@ -901,21 +942,22 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
       });
     };
 
-    // Consent covers what happens from the moment it was given. A file last
-    // written before the effective consent record is history the customer
-    // never agreed to report: a run that predates the first grant, or
-    // transitions made while consent was revoked and then granted again. The
-    // state file is judged by its mtime. Each recorded gate failure is judged
-    // by its own timestamp, because a new failure rewrites the shared file and
-    // its mtime says nothing about the entries retained from before consent;
-    // an entry without a usable timestamp falls back to the file's mtime. So a
-    // gate that fails after consent on a run that started before it is still
-    // reported. History is recorded as already known and never sent, so only
-    // what happens from here on is reported.
-    const stateIsHistory = predatesConsent(statusFile);
-    const gatesAreHistory = predatesConsent(gateFile);
+    // Consent covers what happens from the moment it was given. State observed
+    // while consent is absent, or last written before the effective consent
+    // record (a run that predates the first grant, or transitions made while
+    // consent was revoked and then granted again), is history the customer
+    // never agreed to report. The state file is judged by its mtime. Each
+    // recorded gate failure is judged by its own timestamp, because a new
+    // failure rewrites the shared file and its mtime says nothing about the
+    // entries retained from before consent; an entry without a usable
+    // timestamp falls back to the file's mtime. So a gate that fails after
+    // consent on a run that started before it is still reported. History is
+    // recorded as already known and never sent, so only what happens from here
+    // on is reported.
+    const stateIsHistory = !sending || predatesConsent(runDir, statusFile, snapshot);
+    const gatesAreHistory = !sending || predatesConsent(runDir, gateFile, snapshot);
     const historyGates = gateFailureEntries(gateFailures)
-      .filter(({ entry }) => predatesConsentAt(entry.at) ?? gatesAreHistory)
+      .filter(({ entry }) => !sending || (predatesConsentAt(entry.at) ?? gatesAreHistory))
       .map((e) => e.phase);
     const knownGates = (sent) => [...new Set([...(snapshot?.gateFailures ?? []), ...historyGates, ...sent])];
     const completedFromHistory = stateIsHistory && status.current_phase === "complete";
