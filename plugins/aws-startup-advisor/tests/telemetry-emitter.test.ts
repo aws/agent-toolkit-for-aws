@@ -10,7 +10,7 @@
 
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
@@ -534,7 +534,7 @@ describe('telemetry emitter', () => {
     }
   });
 
-  it('keeps an existing snapshot current while consent is revoked, so a grant made elsewhere reports only later work', async () => {
+  it('keeps an existing snapshot current while consent is revoked; after a grant made elsewhere it baselines once, then reports later work', async () => {
     // Arrange: a reported run; consent is withdrawn (machine-wide), CLARIFY completes meanwhile
     const p = makeProject(phaseStatus());
     const withPhases = (phases: Record<string, string>, current_phase: string) =>
@@ -555,15 +555,18 @@ describe('telemetry emitter', () => {
 
       // Act
       const afterRegrant = await reconcile(p);
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(withPhases({ clarify: 'completed', design: 'completed', estimate: 'completed' }, 'workshop'), null, 2),
+      );
+      const next = await reconcile(p);
 
       // Assert
       assert.deepEqual(whileRevoked, []);
       assert.equal(observed.phases.clarify, 'completed', 'the revoked-period completion was recorded as known, not sent');
-      assert.deepEqual(
-        afterRegrant.map((b) => [activity(b).eventName, activity(b).phase]),
-        [['PHASE_COMPLETED', 'DESIGN']],
-        'only work after the new grant is reported',
-      );
+      assert.deepEqual(afterRegrant, [], 'a snapshot not yet verified against the new grant is baselined, not reported');
+      assert.equal(snapshotOf(p).consentedAt, JSON.parse(readFileSync(p.consentFile, 'utf8')).consentedAt);
+      assert.deepEqual(next.map((b) => [activity(b).eventName, activity(b).phase]), [['PHASE_COMPLETED', 'ESTIMATE']], 'from then on, each transition is reported');
       assert.deepEqual(await reconcile(empty), [], 'a run that was never reported stays untouched');
       assert.equal(existsSync(join(empty.runDir, '.telemetry-snapshot.json')), false, 'no snapshot is ever created without consent');
     } finally {
@@ -603,7 +606,7 @@ describe('telemetry emitter', () => {
     const p = makeProject(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }), null);
     const lock = join(p.runDir, '.telemetry-lock');
     mkdirSync(lock);
-    const releasing = setTimeout(() => rmSync(lock, { recursive: true, force: true }), 250);
+    const releasing = setTimeout(() => rmSync(lock, { recursive: true, force: true }), 1_200);
     try {
       // Act
       const grant = await consent(p, 'grant');
@@ -620,6 +623,69 @@ describe('telemetry emitter', () => {
       assert.deepEqual(sent, [['PHASE_COMPLETED', 'DESIGN']], 'the grant waited for the lock and baselined DISCOVER and CLARIFY');
     } finally {
       cleanup(p);
+    }
+  });
+
+  it('baselines a run that changed unobserved across a re-grant made elsewhere, instead of sending its revoked-period work', async () => {
+    // Arrange: a reported run; consent revoked; CLARIFY completes through a shell write with no hook;
+    // consent is granted again from another project; DESIGN completes before the first hook here
+    const p = makeProject(phaseStatus());
+    const withPhases = (phases: Record<string, string>, current_phase: string) =>
+      phaseStatus({ current_phase, phases: { ...phaseStatus().phases, ...phases } });
+    try {
+      await reconcile(p);
+      writeConsent(p.consentFile, 'revoked');
+      writeFileSync(p.statusFile, JSON.stringify(withPhases({ clarify: 'completed' }, 'design'), null, 2));
+      writeConsent(p.consentFile, 'granted');
+      writeFileSync(p.statusFile, JSON.stringify(withPhases({ clarify: 'completed', design: 'completed' }, 'estimate'), null, 2));
+
+      // Act
+      const first = await reconcile(p);
+      writeFileSync(p.statusFile, JSON.stringify(withPhases({ clarify: 'completed', design: 'completed', estimate: 'completed' }, 'workshop'), null, 2));
+      const next = await reconcile(p);
+
+      // Assert
+      assert.deepEqual(first, [], 'the two completions cannot be told apart, so neither is sent');
+      assert.deepEqual(next.map((b) => [activity(b).eventName, activity(b).phase]), [['PHASE_COMPLETED', 'ESTIMATE']]);
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it("reports a spend band the clarify phase defaulted as DEFAULTED, not as the customer's own figure", async () => {
+    // Arrange: Q3 was defaulted in clarify; estimate cites preferences as its source
+    const estimated = (spend: Record<string, unknown>) =>
+      makeProject(
+        phaseStatus({ current_phase: 'workshop', phases: { ...phaseStatus().phases, clarify: 'completed', design: 'completed', estimate: 'completed' } }),
+        'granted',
+        {
+          'gcp-resource-inventory.json': GCP_INVENTORY,
+          'preferences.json': { design_constraints: { gcp_monthly_spend: spend } },
+          'estimation-infra.json': { current_costs: { source: 'preferences', gcp_monthly: 3000 } },
+        },
+      );
+    const defaulted = estimated({ value: '$1K-$5K', chosen_by: 'default', source: 'default:Q3' });
+    const answered = estimated({ value: '$1K-$5K', chosen_by: 'user' });
+    const extracted = estimated({ value: '$1K-$5K', chosen_by: 'extracted', source: 'billing:monthly_total=$3000' });
+    const unknown = estimated({ value: '$1K-$5K' });
+    const attrsOf = async (p: Project) => (await reconcile(p)).map(activity).find((a) => a.phase === 'ESTIMATE').attributes;
+    try {
+      // Act
+      const d = await attrsOf(defaulted);
+      const a = await attrsOf(answered);
+      const x = await attrsOf(extracted);
+      const n = await attrsOf(unknown);
+
+      // Assert
+      assert.deepEqual([d.spendBand, d.spendBasis], ['FROM_1K_TO_10K', 'DEFAULTED'], 'a skill-filled default is never the customer\'s figure');
+      assert.deepEqual([a.spendBand, a.spendBasis], ['FROM_1K_TO_10K', 'USER_PROVIDED']);
+      assert.deepEqual([x.spendBand, x.spendBasis], ['FROM_1K_TO_10K', 'BILLING_DATA'], 'extracted from the billing export');
+      assert.deepEqual([n.spendBand, n.spendBasis], [undefined, undefined], 'no provenance, no pair');
+    } finally {
+      cleanup(defaulted);
+      cleanup(answered);
+      cleanup(extracted);
+      cleanup(unknown);
     }
   });
 
@@ -645,13 +711,18 @@ describe('telemetry emitter', () => {
     }
   });
 
-  it('transfers ownership to a session that observes the run unchanged, so its teardown reports the next completion', async () => {
-    // Arrange: session A reported the run; session B touches it without changing any phase
+  it('transfers ownership to a session that edits inside the run without changing a phase, and leaves runs it only scanned alone', async () => {
+    // Arrange: session A reported the run; session B edits an artifact of this run (no phase change)
+    // and, in a sibling run of the same project, session A stays the owner
     const p = makeProject(phaseStatus());
     const other = '0badf00d-1111-4222-8333-444444444444';
+    const sibling = join(p.root, '.migration', '0226-1500');
+    mkdirSync(sibling);
+    writeFileSync(join(sibling, '.phase-status.json'), JSON.stringify(phaseStatus({ migration_id: '0226-1500', run_id: '5a5a5a5a-1111-4222-8333-444444444444' }), null, 2));
     try {
       await reconcile(p);
-      const unchanged = await reconcile(p, other);
+      const unchanged = await run(p, [], { session_id: other, cwd: p.root, tool_input: { file_path: join(p.runDir, 'preferences.json') } });
+      const siblingOwner = JSON.parse(readFileSync(join(sibling, '.telemetry-snapshot.json'), 'utf8')).sessionId;
       writeFileSync(
         p.statusFile,
         JSON.stringify(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }), null, 2),
@@ -663,7 +734,8 @@ describe('telemetry emitter', () => {
 
       // Assert
       assert.deepEqual(unchanged, []);
-      assert.deepEqual(byA, [], 'A no longer owns the run');
+      assert.equal(siblingOwner, SESSION_ID, 'a run B merely scanned keeps its owner');
+      assert.deepEqual(byA, [], 'A no longer owns the run B edited');
       assert.deepEqual(byB, [['PHASE_COMPLETED', 'CLARIFY']]);
     } finally {
       cleanup(p);
@@ -767,7 +839,10 @@ describe('telemetry emitter', () => {
       });
     const gcp = makeProject(done(), 'granted', {
       'gcp-resource-inventory.json': GCP_INVENTORY,
-      'preferences.json': { metadata: { clarify_mode: 'wizard', migration_type: 'full' } },
+      'preferences.json': {
+        metadata: { clarify_mode: 'wizard', migration_type: 'full' },
+        design_constraints: { gcp_monthly_spend: { value: '$1K-$5K', chosen_by: 'user' } },
+      },
       'estimation-infra.json': {
         recommendation: { outcome: 'defer_for_evidence' },
         current_costs: { source: 'preferences', gcp_monthly_spend: 2500 },
@@ -1270,6 +1345,23 @@ describe('host registration', () => {
     }
     assert.equal(hooks.hooks.PostToolUse[0].hooks[0].async, true, 'post-write runs off the turn');
     assert.equal(hooks.hooks.SessionEnd[0].hooks[0].timeout, undefined, 'a plugin timeout cannot raise the SessionEnd budget');
+  });
+
+  it('keeps the telemetry handlers out of the Codex hooks file, which carries only the offer-context hook', () => {
+    // Arrange
+    const codexManifest = readJson(join(PLUGIN, '.codex-plugin/plugin.json'));
+
+    // Act
+    const hooks = readJson(join(PLUGIN, codexManifest.hooks));
+
+    // Assert: Codex runs only `command`, so the exec-form telemetry entries must not reach it
+    assert.deepEqual(Object.keys(hooks.hooks), ['SessionStart']);
+    assert.ok(!JSON.stringify(hooks).includes('emit.mjs'));
+    // and the context command it keeps runs as a plain shell string with JSON on stdin
+    const { command } = hooks.hooks.SessionStart[0].hooks[0];
+    const result = spawnSync('sh', ['-c', command], { env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN }, input: JSON.stringify({ session_id: SESSION_ID }) });
+    assert.equal(result.status, 0);
+    assert.ok(result.stdout.toString().length > 0, 'the offer context is printed');
   });
 
   it('wires the Cursor manifest to the Cursor hooks file and the marketplace to the plugin', () => {
