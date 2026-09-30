@@ -564,6 +564,142 @@ describe('telemetry emitter', () => {
     }
   });
 
+  it('keeps an existing snapshot current while consent is revoked, so a grant made elsewhere reports only later work', async () => {
+    // Arrange: a reported run; consent is withdrawn (machine-wide), CLARIFY completes meanwhile
+    const p = makeProject(phaseStatus());
+    const withPhases = (phases: Record<string, string>, current_phase: string) =>
+      phaseStatus({ current_phase, phases: { ...phaseStatus().phases, ...phases } });
+    const empty = makeProject(phaseStatus(), 'revoked');
+    try {
+      await reconcile(p);
+      writeConsent(p.consentFile, 'revoked');
+      writeFileSync(p.statusFile, JSON.stringify(withPhases({ clarify: 'completed' }, 'design'), null, 2));
+      const whileRevoked = await reconcile(p);
+      const observed = snapshotOf(p);
+      // consent is granted again from another project: no run here is baselined by the command
+      writeConsent(p.consentFile, 'granted');
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(withPhases({ clarify: 'completed', design: 'completed' }, 'estimate'), null, 2),
+      );
+
+      // Act
+      const afterRegrant = await reconcile(p);
+
+      // Assert
+      assert.deepEqual(whileRevoked, []);
+      assert.equal(observed.phases.clarify, 'completed', 'the revoked-period completion was recorded as known, not sent');
+      assert.deepEqual(
+        afterRegrant.map((b) => [activity(b).eventName, activity(b).phase]),
+        [['PHASE_COMPLETED', 'DESIGN']],
+        'only work after the new grant is reported',
+      );
+      assert.deepEqual(await reconcile(empty), [], 'a run that was never reported stays untouched');
+      assert.equal(existsSync(join(empty.runDir, '.telemetry-snapshot.json')), false, 'no snapshot is ever created without consent');
+    } finally {
+      cleanup(p);
+      cleanup(empty);
+    }
+  });
+
+  it('treats a never-reported run born while consent was revoked as history after a grant made elsewhere', async () => {
+    // Arrange: the run directory is created under a "no"; consent is granted again from another
+    // project a little later; the state file is then written, so its mtime alone reads as live
+    const p = makeProject(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }), null);
+    const revokedAt = new Date(Date.now() - 60_000).toISOString();
+    await new Promise((r) => setTimeout(r, 2_600));
+    writeFileSync(
+      p.consentFile,
+      JSON.stringify({ consent: 'granted', installId: RUN_ID, consentedAt: new Date().toISOString(), revokedAt, version: 1 }),
+    );
+    writeFileSync(
+      p.statusFile,
+      JSON.stringify(phaseStatus({ current_phase: 'estimate', phases: { ...phaseStatus().phases, clarify: 'completed', design: 'completed' } }), null, 2),
+    );
+    try {
+      // Act
+      const sent = await reconcile(p);
+
+      // Assert
+      assert.deepEqual(sent, [], 'a run that started under a no is baselined, not reported');
+      assert.equal(snapshotOf(p).phases.design, 'completed', 'and recorded as known');
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('baselines a run whose lock a hook holds at the moment of the grant', async () => {
+    // Arrange: a run completed CLARIFY without being reported; its lock is held while consent is granted
+    const p = makeProject(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }), null);
+    const lock = join(p.runDir, '.telemetry-lock');
+    mkdirSync(lock);
+    const releasing = setTimeout(() => rmSync(lock, { recursive: true, force: true }), 250);
+    try {
+      // Act
+      const grant = await consent(p, 'grant');
+      clearTimeout(releasing);
+      rmSync(lock, { recursive: true, force: true });
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(phaseStatus({ current_phase: 'estimate', phases: { ...phaseStatus().phases, clarify: 'completed', design: 'completed' } }), null, 2),
+      );
+      const sent = (await reconcile(p)).map((b) => [activity(b).eventName, activity(b).phase]);
+
+      // Assert
+      assert.equal(grant, 'granted');
+      assert.deepEqual(sent, [['PHASE_COMPLETED', 'DESIGN']], 'the grant waited for the lock and baselined DISCOVER and CLARIFY');
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('lets the first session claim a baseline the consent command wrote, so its teardown reports the run', async () => {
+    // Arrange: consent granted over an existing unreported run (baseline without a session), then CLARIFY completes
+    const p = makeProject(phaseStatus(), null);
+    try {
+      await consent(p, 'grant');
+      assert.equal(snapshotOf(p).sessionId, undefined, 'the command knows no session');
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }), null, 2),
+      );
+
+      // Act: teardown is the first hook of this session
+      const sent = (await sessionEnd(p)).map((b) => [activity(b).eventName, activity(b).phase]);
+
+      // Assert
+      assert.deepEqual(sent, [['PHASE_COMPLETED', 'CLARIFY']]);
+      assert.equal(snapshotOf(p).sessionId, SESSION_ID);
+    } finally {
+      cleanup(p);
+    }
+  });
+
+  it('transfers ownership to a session that observes the run unchanged, so its teardown reports the next completion', async () => {
+    // Arrange: session A reported the run; session B touches it without changing any phase
+    const p = makeProject(phaseStatus());
+    const other = '0badf00d-1111-4222-8333-444444444444';
+    try {
+      await reconcile(p);
+      const unchanged = await reconcile(p, other);
+      writeFileSync(
+        p.statusFile,
+        JSON.stringify(phaseStatus({ current_phase: 'design', phases: { ...phaseStatus().phases, clarify: 'completed' } }), null, 2),
+      );
+
+      // Act
+      const byA = await sessionEnd(p, SESSION_ID);
+      const byB = (await sessionEnd(p, other)).map((b) => [activity(b).eventName, activity(b).phase]);
+
+      // Assert
+      assert.deepEqual(unchanged, []);
+      assert.deepEqual(byA, [], 'A no longer owns the run');
+      assert.deepEqual(byB, [['PHASE_COMPLETED', 'CLARIFY']]);
+    } finally {
+      cleanup(p);
+    }
+  });
+
   it('reports a phase that completes again after a confirmed re-entry reset, exactly once more', async () => {
     // Arrange: DISCOVER was reported; the interpreter resets it to in_progress
     // for a re-run, then it completes again
