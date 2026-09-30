@@ -1,6 +1,6 @@
 ---
 name: azure-to-aws
-description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrate from Azure, Azure to AWS, move off Azure, migrate AKS to EKS, migrate App Service or Azure VMs to AWS compute, migrate Azure SQL or Azure Database to RDS, migrate Cosmos DB to DynamoDB, migrate Azure OpenAI to Bedrock, move Azure AI or agentic workloads to AWS, estimate AWS costs for my Azure infrastructure, what-if workshop. Runs a 6-phase process: discover Azure resources from Terraform, app code, and billing exports, then clarify, design, estimate costs (1:1 lift and right-sized), optionally reprice scenarios, generate artifacts, and collect feedback. Clarify gates Design, Estimate, and Generate; Generate is opt-in at the post-Estimate decision gate. Bicep/ARM/live-`az` discovery is not yet implemented; such a workspace halts. Do not use for: GCP migrations (see gcp-to-aws), Heroku migrations (see heroku-to-aws), general AWS architecture advice (see architect-for-startups), AWS-to-Azure reverse migration, or Azure-to-Azure refactoring."
+description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrate from Azure, Azure to AWS, move off Azure, migrate AKS to EKS, migrate App Service or Azure VMs to AWS compute, migrate Azure SQL or Azure Database to RDS, migrate Cosmos DB to DynamoDB, migrate Azure OpenAI to Bedrock, move Azure AI or agentic workloads to AWS, estimate AWS costs for my Azure infrastructure, what-if workshop. Runs a 6-phase process: discover Azure resources from Terraform, the live `az` CLI, app code, and billing exports, then clarify, design, estimate costs, optionally reprice scenarios, generate artifacts, and collect feedback. Clarify gates Design, Estimate, and Generate; Generate is opt-in at the post-Estimate decision gate. Bicep/ARM discovery is not yet implemented; a Bicep/ARM-only workspace halts. Do not use for: GCP migrations (see gcp-to-aws), Heroku migrations (see heroku-to-aws), general AWS architecture advice (see architect-for-startups), AWS-to-Azure reverse migration, or Azure-to-Azure refactoring."
 ---
 
 # Azure-to-AWS Migration Skill
@@ -8,15 +8,15 @@ description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrat
 > **Build status.** Discover, Clarify, Design, Estimate, Generate, and the
 > what-if workshop are implemented. A `## Status` block records which build
 > step filled a file in. It is not a signal to skip the file or to treat its
-> body as a stub. Still missing: Bicep, ARM templates, a live `az` capture,
-> and RDfA; the feedback sidebar (wiring only); and `patterns.md`,
-> `licensing.md`, and `gpu-hpc.md`.
+> body as a stub. Still missing: Bicep, ARM templates, and RDfA; the feedback
+> sidebar (wiring only); and `patterns.md`, `licensing.md`, and `gpu-hpc.md`.
+> The live `az` capture path is implemented (`discover-live.md`).
 
 ## Philosophy
 
 - **Re-platform by default**: pick the AWS service that matches the Azure workload type (App Service → Elastic Beanstalk, AKS → EKS, VMs → EC2, Flexible Server → RDS/Aurora, Azure Cache for Redis → ElastiCache). Re-architecting is a user decision, not a default.
 - **Do not recommend AWS App Runner** (no longer accepting new customers as of April 2026). App Service maps to **Elastic Beanstalk** by default, with Fargate as the override for direct container control and EKS for teams that already run Kubernetes. ECS Express Mode may be mentioned only as a forward-look on the Fargate override path.
-- **Live-first discovery, read-only and consent-gated (not implemented)**: the design intent is that the user's authenticated `az` CLI is a first-class source — most startups have no `azurerm_*` Terraform, and the tenant is authoritative for what actually runs. **The live `az` capture fragment is not implemented.** Terraform (`azurerm_*`) and application code are the discovery sources that run today; a workspace with only Bicep, ARM, or a live CLI capture halts rather than guessing. Resource Discovery for Azure (RDfA) is the accuracy upgrade when right-sizing dollars matter, and it is not implemented either. Live capture, when it exists, stays strictly read-only, never captures app-setting or connection-string VALUES, and never mints a token.
+- **Live-first discovery, read-only and consent-gated**: the user's authenticated `az` CLI is a first-class source — most startups have no `azurerm_*` Terraform, and the tenant is authoritative for what actually runs. **The live-`az` capture path is implemented** (`discover-live.md`): consent + read-only `az resource list`/`list` capture run as main-window pre-work, and a file-only fragment parses the capture into the same inventory contract as the Terraform path (a live-only workspace no longer halts — it discovers). Resource Discovery for Azure (RDfA) is offered as the **accuracy upgrade** when right-sizing dollars matter, and recommended outright above roughly a handful of subscriptions. Live capture is strictly read-only, never captures app-setting or connection-string VALUES, and never mints a token.
 - **Holistic first, per-resource second**: the report leads with cluster-level architecture rationale. A 40-row per-resource mapping table is an appendix, not the headline.
 - **Pre-determined where there is no ambiguity**: an architecture-invariant primitive (Blob → S3, VNet → VPC) is a deterministic table lookup and never routed through a rubric that could reason its way somewhere else. A pattern may narrow the rubric's candidate set; **a pattern may never change a `deterministic` mapping's target.**
 - **Dev sizing unless specified**: default to development-tier capacity (single AZ, `db.t4g.micro`-class). Upgrade only on user direction or on measured utilization.
@@ -212,7 +212,7 @@ phase contract. Both are `_kind: sidebar` — off-backbone, trigger-entered, nev
 - **Region**: `us-east-1` unless the user specifies otherwise; Azure regions are mapped, not assumed
 - **Sizing**: Development tier, upgraded from measured utilization when RDfA or `az monitor` metrics are available
 - **CPU architecture**: `x86_64` (see Philosophy — Graviton is an offered optimization here, not the default)
-- **Migration mode**: adapts to available inputs — Terraform (`azurerm_*`) IaC and application code are supported today, with billing exports as a fallback. Live `az` capture, RDfA, Bicep, and ARM templates are planned follow-ups, not yet available.
+- **Migration mode**: adapts to available inputs — Terraform (`azurerm_*`) IaC, live `az` capture (read-only, consent-gated), and application code are supported today, with billing exports as a fallback. RDfA, Bicep, and ARM templates are planned follow-ups, not yet available.
 - **Cost currency**: USD
 - **Timeline assumption**: 2–18 weeks depending on complexity. Tiers per `references/vendored/estimate/complexity-tiers.json`.
 
