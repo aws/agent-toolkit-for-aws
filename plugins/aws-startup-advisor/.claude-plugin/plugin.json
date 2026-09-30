@@ -84,5 +84,6 @@
   "license": "Apache-2.0",
   "name": "aws-startup-advisor",
   "repository": "https://github.com/aws/agent-toolkit-for-aws",
-  "version": "2.0.1"
+  "version": "2.0.2",
+  "hooks": "./com.anthropic.claude-code/hooks/hooks.json"
 }

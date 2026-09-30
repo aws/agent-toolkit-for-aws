@@ -1,6 +1,6 @@
 ---
 name: llm-to-bedrock
-description: "Use when the user wants to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, then rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge git branch. Not for: agent runtime selection, agentic architecture decisions, or agent migration planning — use agent-advisor for those. Not for standalone Bedrock cost estimates or infrastructure-only migration. REQUIRES the gcp-to-aws skill installed alongside this one — Assess runs by directly reading and executing gcp-to-aws's own AI-only phase files in this same session, with no standalone fallback if gcp-to-aws is absent."
+description: "Use when the user wants to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge git branch. Also has an access-only mode for users who just want to check or enable Bedrock model access for specific models (e.g. 'request access to Claude on Bedrock', 'enable GPT models on Bedrock', 'which models do I turn on') with no code migration — it checks each model and walks the right access step (Marketplace/model access and IAM) for the named models, then stops. Not for agent runtime selection or agent migration planning (use agent-advisor), nor standalone cost estimates or infra-only migration. The full migration REQUIRES gcp-to-aws installed alongside this skill (Assess is delegated to it, no standalone fallback if absent); access-only mode does not need gcp-to-aws."
 ---
 
 # Migrate to Bedrock (Assess + Execute)
@@ -37,6 +37,34 @@ uv --version 2>/dev/null || echo "MISSING"
 ```
 
 If missing: "Install uv first — see the official install guide: https://docs.astral.sh/uv/getting-started/installation/ (e.g. `brew install uv` or `pipx install uv`)". Stop.
+
+### 0a-bis. Route: full migration vs. access-only
+
+This skill has two modes. Decide which the user wants **before** the gcp-to-aws check (0b) —
+the access-only mode does not use `gcp-to-aws` at all, so requiring it there would block a user
+who only wants access enablement.
+
+Route to **Access-only mode** (jump to the "## Access-only mode" section below, skip 0b and
+Steps 1+) when either is true:
+
+- `$ARGUMENTS` contains an explicit access-request phrase — `model access`, `request access`,
+  `enable model access`, `just access`, or `preflight` (and no source-code path). Do **not** route
+  on the bare words `enable` or `access` alone — "enable the Bedrock rewrite" is a full migration,
+  not an access request. When in doubt, use the AskUserQuestion below rather than the keyword. **Or**
+- the user's request is about *getting Bedrock model access enabled* rather than rewriting code —
+  e.g. "help me request access to Claude on Bedrock", "enable GPT models on Bedrock", "which
+  models do I need to turn on", "I just want access, my engineers will do the migration".
+
+If it is ambiguous (the user mentions both a codebase and access), **AskUserQuestion**:
+
+> "Two things I can do — which do you want?
+> [Full migration] Rewrite your OpenAI/Gemini/Anthropic calls for Bedrock end-to-end.
+> [Just model access] Check and walk you through enabling Bedrock access for specific models,
+> no code changes."
+
+`[Just model access]` → Access-only mode. `[Full migration]` → continue to 0b.
+
+Otherwise (a code path / clear rewrite intent) → continue to 0b for the full migration.
 
 ### 0b. Check that the gcp-to-aws sibling skill is installed
 
@@ -665,6 +693,158 @@ user's own pre-existing branch and deleting it would destroy their work):
 
 ---
 
+## Access-only mode
+
+Entered from Step 0a-bis when the user wants Bedrock **model access** checked/enabled for a
+named set of models, not a code migration. It reuses the identity check (B2) and the preflight
+(B4) but takes its model list from the user, and it never touches `gcp-to-aws`, Assess, the
+source key (B3), or Phase C. It answers "which models do I need to turn on, and how" — then
+stops. No git branch, no rewrite.
+
+### AC1 — Set expectations (accuracy — say this first)
+
+Tell the user, before collecting models:
+
+> "A few things about 'model access' on Bedrock:
+>
+> - **Claude, Llama, Nova, Mistral, etc.** are Bedrock foundation models on the `bedrock-runtime` endpoint — inference uses `bedrock:InvokeModel` / `Converse`. In commercial Regions, access is **on by default** once the caller has the AWS Marketplace permissions (`aws-marketplace:Subscribe` / `Unsubscribe` / `ViewSubscriptions`) — the model auto-subscribes on first invoke. The console **Model access** page is the explicit enable/catalog step (and the required flow in GovCloud). **Anthropic** models also need a one-time First-Time-Use form (`PutUseCaseForModelAccess`) per account before invoke — except when reached via `bedrock-mantle`.
+> - **OpenAI on Bedrock comes in a few forms, all real** — and which endpoint they use is per-ID, not one blanket rule:
+>   - *Open-weight* `gpt-oss` (`openai.gpt-oss-20b-1:0`, `openai.gpt-oss-120b-1:0`) → `bedrock-runtime` via `bedrock:InvokeModel` / `Converse` (its Responses API is also offered on `bedrock-mantle`).
+>   - *Bare proprietary* GPT ids (`openai.gpt-5*`, not `gpt-oss`) → probed on the `bedrock-mantle` endpoint (Responses API).
+>   - A *GPT-5.6 CRIS profile* id prefixed `us.` / `in.` / `global.` (e.g. `global.openai.gpt-5.6-sol`) → a `bedrock-runtime` target where Converse is supported.
+>   - The `bedrock-mantle` path uses a **separate** action set — `bedrock-mantle:*` (e.g. the `AmazonBedrockMantleInferenceAccess` managed policy: `bedrock-mantle:CreateInference` + `CallWithBearerToken`) — distinct from `bedrock:InvokeModel`. The preflight decides per model; don't assume.
+> - What is **not** on Bedrock is calling OpenAI's own hosted API at api.openai.com — that stays with OpenAI. 'GPT on Bedrock' means the AWS-served models above, reached through AWS endpoints and IAM.
+>
+> The preflight probes each model by the right API automatically and reports exactly which access to enable per model; I'll relay that."
+
+### AC2 — Collect requested models and region (do NOT resolve friendly names yet)
+
+- **Models (raw request only):** if `$ARGUMENTS` names model IDs, use them directly — skip
+  resolution, they're already IDs. Otherwise **AskUserQuestion**: "Which models do you want
+  access to? Give Bedrock model IDs (e.g. `anthropic.claude-sonnet-4-5-v1:0`,
+  `openai.gpt-oss-120b-1:0`) or provider + name and I'll resolve the ID." Collect whatever the
+  user gave (IDs and/or friendly names) into `$REQUESTED_MODELS` — **do NOT invoke the
+  friendly-name resolver here.** The resolver's own commands
+  (`aws bedrock list-foundation-models` / `list-inference-profiles`) require a `--region` and
+  run under whatever AWS identity is active at call time — resolving before `$REGION`/AC3 are
+  set means it can run against the wrong region or the default (not yet confirmed) profile
+  and fail for reasons that have nothing to do with the model name.
+- **Region:** **AskUserQuestion**: "Which AWS region? (default `us-east-1`)" → `$REGION`.
+
+### AC3 — AWS identity confirmation
+
+Run the **B2** identity-confirmation step exactly as written (including the profile-choice
+handling and `$AWS_PROFILE_CHOICE`). Do not proceed without a confirmed identity.
+
+### AC3.5 — Resolve friendly names, now that region + identity are confirmed
+
+For any entry in `$REQUESTED_MODELS` that is not already a Bedrock model ID, resolve it now
+(read `$HELPERS/resolve-bedrock-model-id/resolve-bedrock-model-id.md` and follow its
+procedure) — using `$REGION` from AC2 and, if AC3 chose a non-default profile, prefixing the
+resolver's own AWS CLI calls with `AWS_PROFILE=$AWS_PROFILE_CHOICE` (env vars do not persist
+across Bash calls; without the prefix the resolver queries the DEFAULT identity, not the one
+just confirmed). Confirm the resolved IDs back to the user. Collect the final IDs (already-ID
+entries plus newly-resolved ones) into `$TARGET_MODELS`.
+
+**If the user later changes `$REGION` or the AWS profile** (e.g. after an AC4 `authz`/
+`credentials` failure prompts a re-check): re-run this resolution step for any name-based
+entry before re-running AC4 — a model ID resolved against the old region/profile may not be
+the right ID (or may not exist) in the new one.
+
+### AC4 — Preflight the named models
+
+Run the **B4** preflight against `$TARGET_MODELS` and interpret its verdicts exactly as B4
+does, with these mode-specific differences:
+
+```bash
+uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION --models <comma-separated $TARGET_MODELS> --dataset-size 0
+```
+
+(`--dataset-size 0` — there is no golden dataset in this mode, so no quota-vs-dataset warning is
+meaningful; a plain quota note is still surfaced if present. **Prepend
+`AWS_PROFILE=$AWS_PROFILE_CHOICE` inline if AC3/B2 chose a non-default profile** — env vars do
+not persist across Bash calls, so without the prefix this probes the DEFAULT identity, not the
+one the user just confirmed, and a `credentials`/`authz` failure would be about the wrong
+account.)
+
+Then, per B4's branch table:
+
+- `reason: model_access` → the model exists but access is not enabled for this account. Name the
+  right prerequisite for the failing model(s):
+  - **Commercial Regions:** access is on by default once the caller has the AWS Marketplace
+    permissions (`aws-marketplace:Subscribe` / `Unsubscribe` / `ViewSubscriptions`) — the model
+    auto-subscribes on first invoke. If those permissions are missing, that is the fix.
+  - **GovCloud, third-party models (most models — check first):** GovCloud accounts are
+    linked one-to-one with a commercial account, and per AWS's own docs, third-party model
+    access must be enabled in **both** accounts — enabling it only in GovCloud leaves the
+    account blocked. Two steps, in order:
+    1. In the linked **commercial** account, in `us-east-1` or `us-west-2` (switch AWS
+       identity/profile to that account first), invoke the model once (or enable it via the
+       SDK/CLI as in the commercial-Regions bullet above) — this is the same auto-enable
+       mechanism, just run against the commercial account rather than GovCloud. Note: entitlement
+       can take a few minutes to propagate to the linked GovCloud account after this step.
+    2. Switch back to the **GovCloud** identity, then use the console **Model access** page —
+       always in **`us-gov-west-1`** specifically (not the inference region — GovCloud's
+       Model access console page only exists in that one region, regardless of what `$REGION`
+       the user is trying to invoke the model from).
+    Confirm which identity/profile is active before each step; a mismatch here (acting in the
+    wrong account) looks like the enablement "didn't work."
+  - **GovCloud, Amazon-provided models:** only the GovCloud-account step above is needed — no
+    linked commercial-account step, since Amazon models aren't third-party AWS Marketplace
+    listings.
+  - **Anthropic** models additionally need the one-time First-Time-Use form
+    (`PutUseCaseForModelAccess`) per account before invoke — except when reached via
+    `bedrock-mantle`.
+  Point the user at the failing model(s) + the applicable prerequisite, and offer to re-run AC4
+  after they enable it. This is the common, expected outcome for a user who came here to "get
+  access."
+- `reason: authz` → access is enabled but IAM denies inference. Name the action to grant — for a
+  standard model `bedrock:InvokeModel`; for a mantle-only `openai.gpt-5*` target (bare proprietary
+  GPT, not `gpt-oss`) the `bedrock-mantle:*` set (see **B4a**). The `detail` says which — follow it
+  rather than guessing from the ID, since gpt-oss fails on `bedrock:InvokeModel`, not mantle.
+- `reason: model_unavailable` → the ID isn't offered in `$REGION`. Use the
+  `resolve-bedrock-model-id` procedure to suggest a cross-region inference-profile ID or a
+  correct ID, re-confirm, and re-run AC4.
+- `reason: credentials` / `mantle_deps_missing` / other → surface `detail` and follow B4's rule
+  (fix and re-run; do not claim access is verified when it isn't).
+- `ok == true` + `reason: embedding_unprobed` → the model is from an unrecognized embedding
+  family, so the preflight could NOT actually invoke it (see `probe_model()` in
+  `preflight_bedrock.py`) — this is `ok: true` at the JSON level but **zero requests were
+  sent**, so nothing about actual access was observed either way. Do **not** report this as
+  "enabled" in any form, verified or not — "enabled" asserts a fact this probe never checked.
+  Tell the user **access is unverified** for this model (not "enabled — unverified"): ask
+  them to confirm in the Bedrock console or with a manual test invoke before relying on it.
+- `ok == true` + `reason: throttled_ok` → the probe reached the service and was throttled
+  (`ThrottlingException`/`ServiceQuotaExceededException`/a 429 on mantle) — this proves the
+  request was **authorized**, but it is not the same claim as "an invoke succeeded": no
+  response was produced, so nothing about the model's actual behavior was observed. Tell the
+  user access is **confirmed authorized, but the probe itself was throttled** — a quota
+  concern to note, not a reason to distrust the access verdict.
+- `ok == true` (any other `reason`, i.e. an actual invoke or InvokeModel call returned a real
+  response) → tell the user access is confirmed working in `$REGION` for that ID.
+
+### AC5 — Summarize and stop
+
+Give the user a per-model summary: `<model_id>` → `enabled & working` (a real invoke
+succeeded) / `access unverified — no request made` (`embedding_unprobed`; recommend a
+manual console/test check) / `authorized (probe throttled)` (`throttled_ok`; access is
+confirmed, but no response was observed) / `enable access` (naming the applicable
+prerequisite from the `model_access` branch — Marketplace permissions in commercial Regions;
+for GovCloud, the linked-commercial-account step (third-party models) plus the
+`us-gov-west-1` console Model access page; plus the Anthropic FTU form where it applies) /
+`grant <action>` / `not available in <region>, use <candidate>`. Do NOT collapse
+`embedding_unprobed` or `throttled_ok` into `enabled & working` — each means something
+distinct to the user (no request made / authorized-but-no-response / actually confirmed
+working), and even a genuinely successful invoke on a first-time third-party model is not a
+permanent guarantee either: AWS auto-enables access in the background on first invoke (up to
+~15 minutes to finalize), and a missing prerequisite during that window can make a later
+call fail with `AccessDeniedException` even though an earlier call succeeded — mention this
+for any model reported as newly working for the first time in this account. Then run
+the **Contextual offers (final step)**. Do **not** continue into Assess, rewrite, or any code
+change — this mode is complete.
+
+---
+
 ## Inline mode (platforms without an Agent/subagent dispatch tool)
 
 If this platform has no subagent dispatch tool, run phases inline ONE AT A TIME, with a
@@ -701,8 +881,8 @@ this session.
 This is a mandatory closing step of every final recommendation — complete it before you consider your answer done. Run this offer check inline yourself; do not depend on loading another skill. The recommendation is decided on merit first; this step never changes, re-ranks, or re-opens it, and the offer is looked up only after the advice is final.
 
 1. Read [`../knowledge-base-for-startups/references/offers.md`](../knowledge-base-for-startups/references/offers.md) — the offer index (Offer · Summary · Keywords), one row per offer.
-2. Judge relevance against what the founder actually surfaced this session. Surface an offer only if **one** holds: a **named-product match** (you recommended a specific partner product by name and it has a row); a **direct intent/component match** (an offer's Keywords directly serve a concrete workload, a component in the final recommendation, or a need the founder raised). Keep a high bar — if the match is weak, or you would be inferring an unstated need, append nothing.
-3. If (and only if) one offer clears the bar, open only its detail file `../knowledge-base-for-startups/references/offers/<slug>.md` and append exactly **one** quiet, dismissible italic line — stating the value and condensing eligibility faithfully from that file (drop no qualifying criterion; never fabricate), with the redeem link built from the canonical `source_url` plus a `source` attribution param — append `?source=ide-startupAdvisor-<host>` (or `&source=...` if the url already has a query string), filling `<host>` from your execution environment (Claude Code → `claude`; AWS Startup Advisor IDE extension / VS Code → `vscode`; Cursor → `cursor`; Kiro → `kiro`; Codex → `codex`), or the generic `ide-startupAdvisor` when you cannot tell. Only append the query param; never change the destination. Show one or none, never a list.
+2. Judge relevance against what the founder actually surfaced this session. Surface an offer only if **one** holds: a **named-product match** (you recommended a specific partner product by name and it has a row); a **direct intent/component match** (an offer's Keywords directly serve a concrete workload, a component in the final recommendation, or a need the founder raised). Keep a high bar — if the match is weak, or you would be inferring an unstated need, append nothing. In this migration, only surface an offer that is a credit on a product the migration already kept or selected (e.g. LangSmith credits when the rewrite keeps their LangChain code); otherwise append none — never an offer that competes with Amazon Bedrock or anything else the rewrite or the gcp-to-aws design selects (e.g. Fireworks AI or another model-inference provider vs Bedrock).
+3. If (and only if) one offer clears the bar, open only its detail file `../knowledge-base-for-startups/references/offers/<slug>.md` and append exactly **one** quiet, dismissible italic line — stating the value and condensing eligibility faithfully from that file (drop no qualifying criterion; never fabricate), with the redeem link built from the canonical `source_url` plus a `source` attribution param — append `?source=ide-startupAdvisor-<host>` (or `&source=...` if the url already has a query string), filling `<host>` from your execution environment (Claude Code → `claude`; AWS Startup Advisor IDE extension / VS Code → `vscode`; Cursor → `cursor`; Kiro → `kiro`; Codex → `codex`), or the generic `ide-startupAdvisor` when you cannot tell. Only append the query param; never change the destination. Show one or none, never a list. If none clears the bar, append nothing and do not mention offers, partner alternatives, or why none appeared.
 
 Standard line:
 

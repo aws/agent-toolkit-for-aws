@@ -16,7 +16,7 @@ Create a serverless, React-based chatbot using Claude on Bedrock with RAG capabi
 
 I need a comprehensive design for a web-based chatbot application with the following key components:
 
-- Claude 3 Sonnet on Amazon Bedrock as the LLM
+- Claude on Amazon Bedrock as the LLM (use the latest available Claude Sonnet model in your region)
 - RAG capabilities for PDF documents stored in S3
 - React frontend with real-time chat functionality
 
@@ -25,7 +25,7 @@ I need a comprehensive design for a web-based chatbot application with the follo
 ### 1. Core Functionality
 
 - **User Interface**: Web-based chat interface built with React
-- **AI Backend**: Claude 3 Sonnet model via Amazon Bedrock API
+- **AI Backend**: Claude via Amazon Bedrock API (use the latest Claude Sonnet model available in your region — see [supported models](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html))
 - **RAG System**:
   - PDF document search and retrieval from S3
   - Document upload functionality for expanding knowledge base
@@ -42,7 +42,7 @@ I need a comprehensive design for a web-based chatbot application with the follo
 
 ### 3. Cost Optimization Targets
 
-- Monthly operational cost under $200 for moderate usage
+- Monthly operational cost under \$200 for moderate usage
 - Strategic use of spot instances where appropriate
 - Caching implementation to minimize Bedrock API calls
 - Pay-per-use services prioritized
