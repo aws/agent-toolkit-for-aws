@@ -273,7 +273,7 @@ Read from available discovery artifacts:
 | `has_bigquery`           | `gcp-resource-inventory.json` or `billing-profile.json` | Any `google_bigquery_*` resource or BigQuery billing SKU                        |
 | `has_ai_profile`         | File presence                                           | `ai-workload-profile.json` exists                                               |
 | `is_agentic`             | `ai-workload-profile.json`                              | `agentic_profile.is_agentic == true` (if file exists)                           |
-| `billing_monthly_usd`    | `billing-profile.json`                                  | `summary.total_monthly_spend` (null if absent)                                  |
+| `billing_monthly_usd`    | `billing-profile.json`                                  | `summary.total_monthly_spend` (`null` if absent **or if the profile is a skip record** — empty `services[]` + non-empty `warnings[]`; a skip record's `0` is "nothing parsed," not "zero spend") |
 
 **Classify (first match wins, top to bottom):**
 
@@ -404,15 +404,18 @@ If the gate fires:
 2. Set `cost_preview.aws_monthly_range_usd` to `null`.
 3. Set `cost_preview.quote_suppressed` to `true`, `quote_suppressed_reason` to `"authored_sizes_exceed_preview_defaults"`, and `authored_size_signals` to the ordered list from above (`"address: field value"` format, max 5).
 4. Set `cost_preview.disclaimer` to: `"Discover does not quote a monthly AWS range when Terraform sizes exceed the preview's hardcoded development defaults. Estimate after Clarify prices the authored (or user-confirmed) sizes."`
-5. Still set `gcp_monthly_usd` from billing when present (that number is real). Never invent GCP spend.
+5. Still set `gcp_monthly_usd` from billing when present AND usable (that number is real).
+   Never invent GCP spend, and never present a skip-record's `0` as if it were spend.
 
 If the gate does **not** fire, keep the existing stub-range behavior (`quote_suppressed: false` or omit the new fields).
 
-**If `billing-profile.json` exists:** Set `gcp_monthly_usd` from `summary.total_monthly_spend`. Show GCP actual. Show the AWS range **only** when the authored-size gate did not fire.
+**If `billing-profile.json` exists with non-empty `services[]`:** Set `gcp_monthly_usd` from `summary.total_monthly_spend`. Show GCP actual. Show the AWS range **only** when the authored-size gate did not fire.
+
+**If `billing-profile.json` is a skip record** (empty `services[]`, non-empty `warnings[]` — every billing file was an unrecognized non-GCP export): treat it as "no billing signal," same as the "If only IaC" / "If neither" rows below — do NOT set `gcp_monthly_usd` from its `total_monthly_spend` (that field is `0` because nothing was parsed, not because GCP spend is actually zero).
 
 **If only IaC:** Set `gcp_monthly_usd: null`. Show the AWS range **only** when the authored-size gate did not fire.
 
-**If neither IaC nor billing:** Omit cost preview entirely (`cost_preview: null`).
+**If neither IaC nor usable billing:** Omit cost preview entirely (`cost_preview: null`).
 
 ---
 

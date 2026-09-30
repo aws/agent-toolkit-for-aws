@@ -886,7 +886,9 @@ describe('host registration', () => {
     assert.equal(rootManifest.extensions['com.anthropic.claude-code'].hooks, hooksPath);
     const hooks = readJson(join(PLUGIN, hooksPath));
     const modes: Record<string, string[]> = { PostToolUse: [], Stop: ['--reconcile'], SessionEnd: ['--session-end'] };
-    assert.deepEqual(Object.keys(hooks.hooks).sort(), Object.keys(modes).sort());
+    // The file also carries hooks unrelated to telemetry (the offer-context SessionStart);
+    // every telemetry role must be registered, each through the emitter alone.
+    for (const event of Object.keys(modes)) assert.ok(hooks.hooks[event], `${event} is registered`);
     for (const [event, flags] of Object.entries(modes)) {
       for (const group of hooks.hooks[event]) {
         for (const hook of group.hooks) {
