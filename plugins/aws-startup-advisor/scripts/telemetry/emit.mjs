@@ -185,15 +185,31 @@ function consentGranted() {
 // live run costs more than reporting two seconds of history.
 const PRE_CONSENT_SLACK_MS = 2_000;
 
-function predatesConsent(statusFile) {
-  const consentedAt = Date.parse(consentRecord()?.consentedAt ?? "");
-  let mtime;
+function predatesConsent(runDir, statusFile, snapshot) {
+  const record = consentRecord();
+  const consentedAt = Date.parse(record?.consentedAt ?? "");
+  if (!Number.isFinite(consentedAt)) return false;
+  const before = (ms) => Number.isFinite(ms) && ms > 0 && ms < consentedAt - PRE_CONSENT_SLACK_MS;
+  let stat;
   try {
-    mtime = statSync(statusFile).mtimeMs;
+    stat = statSync(statusFile);
   } catch {
     return false;
   }
-  return Number.isFinite(consentedAt) && mtime < consentedAt - PRE_CONSENT_SLACK_MS;
+  if (before(stat.mtimeMs)) return true;
+  // A run that was never reported and was created while consent was revoked
+  // started under a "no": its state, however recently written, is history.
+  // The grant records when that "no" began; filesystems without a creation
+  // time fall back to the mtime rule alone.
+  const revokedAt = Date.parse(record?.revokedAt ?? "");
+  if (snapshot || !Number.isFinite(revokedAt)) return false;
+  let born;
+  try {
+    born = statSync(runDir).birthtimeMs;
+  } catch {
+    return false;
+  }
+  return before(born) && born >= revokedAt - PRE_CONSENT_SLACK_MS;
 }
 
 // At the moment of a grant, every run already on disk is recorded as known, so
@@ -206,7 +222,12 @@ async function baselineRuns(startDir) {
     const status = readJson(path.join(runDir, ".phase-status.json"));
     if (!status?.migration_id) continue;
     const snapshotFile = path.join(runDir, ".telemetry-snapshot.json");
-    const lock = acquireLock(runDir);
+    // A hook may hold the lock for a moment; wait it out rather than leave the
+    // run without a baseline.
+    let lock = null;
+    for (let attempt = 0; attempt < 5 && !(lock = acquireLock(runDir)); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     if (!lock) continue;
     try {
       const snapshot = readSnapshot(snapshotFile);
@@ -254,7 +275,10 @@ async function runConsentCommand(action) {
       // The identifier is born with the consent it belongs to: a standing grant
       // keeps its id, anything else mints a fresh one.
       const installId = current?.consent === "granted" ? asUuid(current.installId) : undefined;
-      write({ consent: "granted", installId: installId ?? crypto.randomUUID() });
+      // When the grant ends a "no", its start is kept so runs born in between
+      // can be told from runs born under this grant.
+      const revokedAt = current?.consent === "revoked" ? current.consentedAt : current?.revokedAt;
+      write({ consent: "granted", installId: installId ?? crypto.randomUUID(), ...(revokedAt ? { revokedAt } : {}) });
       await baselineRuns(process.cwd());
       return;
     }
@@ -814,20 +838,27 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
   const skill = status.owning_skill;
   if (!MIGRATION_SKILLS.has(skill)) return;
 
-  if (!consentGranted()) return;
-  const installId = asUuid(consentRecord()?.installId);
-  if (!installId) return; // a grant without an identity sends nothing
+  // Without granted consent nothing leaves the machine. A run that was being
+  // reported before consent was withdrawn keeps its snapshot current all the
+  // same, so what happens while consent is absent is already known when it is
+  // granted again and can never be sent then; a run with no snapshot is left
+  // without a trace.
+  const installId = consentGranted() ? asUuid(consentRecord()?.installId) : undefined;
+  const sending = Boolean(installId); // a grant without an identity sends nothing
 
   const snapshotFile = path.join(runDir, ".telemetry-snapshot.json");
+  if (!sending && !existsSync(snapshotFile)) return;
   const lock = acquireLock(runDir);
   if (!lock) return;
   try {
     const snapshot = readSnapshot(snapshotFile);
     if (snapshot === SNAPSHOT_UNREADABLE) return; // try again on the next trigger
+    if (!sending && !snapshot) return;
 
     // Teardown sweeps only the session that wrote the snapshot; a run last
-    // touched by another session is that session's to report.
-    if (sessionEndMode && snapshot && sessionId && snapshot.sessionId !== sessionId) return;
+    // touched by another session is that session's to report. A baseline the
+    // consent command wrote names no session and is claimed by the first one.
+    if (sessionEndMode && snapshot?.sessionId && sessionId && snapshot.sessionId !== sessionId) return;
 
     // Identifiers read back from customer-editable files are validated, not
     // trusted: the service rejects the whole event on one malformed UUID.
@@ -840,16 +871,19 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
     const validSessionId = asUuid(sessionId);
 
     // The snapshot mirrors the state last observed, whether or not anything
-    // was sent for it. Written only when the observation changed.
+    // was sent for it, and names the session that last touched the run.
+    // Written only when the observation or the owner changed.
     const observe = (phases, completed) => {
+      const owner = validSessionId ?? snapshot?.sessionId;
       const same =
         snapshot &&
         JSON.stringify(snapshot.phases ?? {}) === JSON.stringify(phases) &&
-        Boolean(snapshot.completed) === completed;
+        Boolean(snapshot.completed) === completed &&
+        snapshot.sessionId === owner;
       if (same) return;
       writeJson(snapshotFile, {
         runId,
-        sessionId: validSessionId ?? snapshot?.sessionId,
+        sessionId: owner,
         ...(snapshot?.started === false ? { started: false } : {}),
         phases,
         completed,
@@ -858,13 +892,13 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
       });
     };
 
-    // Consent covers what happens from the moment it was given. State last
-    // written before the consent record is history the customer never agreed
-    // to report: a run that predates the first grant, or transitions made
-    // while consent was revoked and then granted again. Either way it is
-    // recorded as already known and nothing is sent, so only transitions from
-    // here on are reported.
-    if (predatesConsent(statusFile)) {
+    // Consent covers what happens from the moment it was given. State observed
+    // while consent is absent, or last written before the consent record (a
+    // run that predates the first grant, or transitions made while consent was
+    // revoked and then granted again), is history the customer never agreed to
+    // report: it is recorded as already known and nothing is sent, so only
+    // transitions from here on are reported.
+    if (!sending || predatesConsent(runDir, statusFile, snapshot)) {
       observe(status.phases ?? {}, Boolean(snapshot?.completed) || status.current_phase === "complete");
       return;
     }
