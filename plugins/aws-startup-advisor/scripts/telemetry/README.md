@@ -79,6 +79,15 @@ the end of the turn instead.
   final sweep there.
 - Consent and the `installId` share one record, `~/.aws-startups-plugins/telemetry.json`,
   written by `consent grant`; the id is minted at that moment and not before.
+- A run whose snapshot was not verified against the current consent interval (consent
+  was granted from another project while it was mid-flight, or the grant could not take
+  its lock) is baselined once at its next hook and reports nothing for that observation,
+  even if a post-grant transition is mixed into it; it reports from the following
+  transition on. Under-reporting one transition is preferred to reporting one made while
+  consent was absent.
+- Codex runs only a hook's `command` string, not `args`, so the telemetry hooks are not
+  registered there: `.codex-plugin/plugin.json` points at `.codex-plugin/hooks.json`, which
+  carries only the offer-context `SessionStart` hook.
 - Exit codes: `0` is success and `2` blocks. `emit.mjs` always exits `0`.
 
 ## Tests
