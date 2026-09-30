@@ -225,7 +225,7 @@ async function baselineRuns(startDir) {
     // A hook may hold the lock for a moment; wait it out rather than leave the
     // run without a baseline.
     let lock = null;
-    for (let attempt = 0; attempt < 5 && !(lock = acquireLock(runDir)); attempt++) {
+    for (let attempt = 0; attempt < 30 && !(lock = acquireLock(runDir)); attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     if (!lock) continue;
@@ -237,6 +237,7 @@ async function baselineRuns(startDir) {
         ...(snapshot?.sessionId ? { sessionId: snapshot.sessionId } : {}),
         phases: status.phases ?? {},
         completed: Boolean(snapshot?.completed) || status.current_phase === "complete",
+        consentedAt: consentRecord()?.consentedAt,
         via: viaMode(),
         updatedAt: new Date().toISOString(),
       });
@@ -397,6 +398,20 @@ const SPEND_BASIS = {
   unavailable: "UNAVAILABLE",
   estimated_from_token_volume: "TOKEN_VOLUME_ESTIMATE",
 };
+
+// An estimate that cites "preferences" for the source spend is only as good as
+// the clarify answer behind it: the customer's own answer is USER_PROVIDED, one
+// the skill filled in itself is the model's DEFAULTED, one extracted from the
+// customer's billing export is BILLING_DATA, and anything without provenance is
+// left out rather than passed off as the customer's figure.
+function preferenceSpendBasis(runDir) {
+  const spend = readJson(path.join(runDir, "preferences.json"))?.design_constraints?.gcp_monthly_spend;
+  const source = String(spend?.source ?? "");
+  if (spend?.chosen_by === "default" || source.startsWith("default")) return "DEFAULTED";
+  if (spend?.chosen_by === "user") return "USER_PROVIDED";
+  if (spend?.chosen_by === "extracted" && source.startsWith("billing")) return "BILLING_DATA";
+  return undefined;
+}
 
 // ai-workload-profile.json summary.ai_source, the source for a run with no
 // infrastructure inventory. "both" names two providers and is omitted.
@@ -715,7 +730,7 @@ function deriveAttributes(runDir, skill, event, status) {
       const containers = costContainers(estimate);
       let basis;
       for (const c of containers) {
-        basis = mapEnum(SPEND_BASIS, c.source);
+        basis = c.source === "preferences" ? preferenceSpendBasis(runDir) : mapEnum(SPEND_BASIS, c.source);
         if (basis) break;
       }
       if (!basis && estimate.migration_cost_considerations?.billing_data_available === true) basis = "BILLING_DATA";
@@ -833,7 +848,7 @@ const isHeld = (result) =>
 
 // ------------------------------------------------------------------ per run
 
-async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadline }) {
+async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadline, editedPath }) {
   if (Date.now() >= deadline) return; // out of budget: untouched, so the next trigger reports it
   const statusFile = path.join(runDir, ".phase-status.json");
   const status = readJson(statusFile);
@@ -850,22 +865,25 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
   // same, so what happens while consent is absent is already known when it is
   // granted again and can never be sent then; a run with no snapshot is left
   // without a trace.
-  const installId = consentGranted() ? asUuid(consentRecord()?.installId) : undefined;
-  const sending = Boolean(installId); // a grant without an identity sends nothing
-
   const snapshotFile = path.join(runDir, ".telemetry-snapshot.json");
-  if (!sending && !existsSync(snapshotFile)) return;
+  if (!consentGranted() && !existsSync(snapshotFile)) return;
   const lock = acquireLock(runDir);
   if (!lock) return;
   try {
+    // Consent, state and snapshot are all read under the lock, so a grant that
+    // lands mid-invocation cannot be paired with a snapshot read before it.
+    const record = consentRecord();
+    const installId = consentGranted() ? asUuid(record?.installId) : undefined;
+    const sending = Boolean(installId); // a grant without an identity sends nothing
     const snapshot = readSnapshot(snapshotFile);
     if (snapshot === SNAPSHOT_UNREADABLE) return; // try again on the next trigger
     if (!sending && !snapshot) return;
+    const validSessionId = asUuid(sessionId);
 
     // Teardown sweeps only the session that wrote the snapshot; a run last
     // touched by another session is that session's to report. A baseline the
     // consent command wrote names no session and is claimed by the first one.
-    if (sessionEndMode && snapshot?.sessionId && sessionId && snapshot.sessionId !== sessionId) return;
+    if (sessionEndMode && snapshot?.sessionId && validSessionId && snapshot.sessionId !== validSessionId) return;
 
     // Identifiers read back from customer-editable files are validated, not
     // trusted: the service rejects the whole event on one malformed UUID.
@@ -875,25 +893,28 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
     // .phase-status.json (seeded at _init), then a fresh mint persisted in the
     // snapshot. The emitter never writes the skill's own state file.
     const runId = asUuid(snapshot?.runId) ?? asUuid(status.run_id) ?? crypto.randomUUID();
-    const validSessionId = asUuid(sessionId);
 
     // The snapshot mirrors the state last observed, whether or not anything
-    // was sent for it, and names the session that last touched the run.
-    // Written only when the observation or the owner changed.
+    // was sent for it, names the session that last touched the run, and, while
+    // consent is granted, the consent interval it was verified against. A hook
+    // that finds this run unchanged and edited nothing inside it leaves the
+    // owner alone: it only scanned past. Written only when something changed.
+    const consentedAt = sending ? record?.consentedAt : snapshot?.consentedAt;
+    const inRun = (file) => Boolean(file) && path.resolve(file).startsWith(runDir + path.sep);
     const observe = (phases, completed) => {
-      const owner = validSessionId ?? snapshot?.sessionId;
-      const same =
-        snapshot &&
-        JSON.stringify(snapshot.phases ?? {}) === JSON.stringify(phases) &&
-        Boolean(snapshot.completed) === completed &&
-        snapshot.sessionId === owner;
-      if (same) return;
+      const changed =
+        !snapshot ||
+        JSON.stringify(snapshot.phases ?? {}) !== JSON.stringify(phases) ||
+        Boolean(snapshot.completed) !== completed;
+      const owner = changed || inRun(editedPath) ? (validSessionId ?? snapshot?.sessionId) : (snapshot?.sessionId ?? validSessionId);
+      if (!changed && snapshot.sessionId === owner && snapshot.consentedAt === consentedAt) return;
       writeJson(snapshotFile, {
         runId,
         sessionId: owner,
         ...(snapshot?.started === false ? { started: false } : {}),
         phases,
         completed,
+        ...(consentedAt ? { consentedAt } : {}),
         via: viaMode(),
         updatedAt: new Date().toISOString(),
       });
@@ -904,8 +925,13 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
     // run that predates the first grant, or transitions made while consent was
     // revoked and then granted again), is history the customer never agreed to
     // report: it is recorded as already known and nothing is sent, so only
-    // transitions from here on are reported.
-    if (!sending || predatesConsent(runDir, statusFile, snapshot)) {
+    // transitions from here on are reported. A snapshot not verified against
+    // the current consent interval is history too: since the state file does
+    // not date its phases, a run that changed unobserved across a re-grant
+    // cannot separate what happened before the grant from what happened after,
+    // so it is baselined once and reports from its next transition on.
+    const verified = !snapshot || snapshot.consentedAt === consentedAt;
+    if (!sending || !verified || predatesConsent(runDir, statusFile, snapshot)) {
       observe(status.phases ?? {}, Boolean(snapshot?.completed) || status.current_phase === "complete");
       return;
     }
@@ -966,6 +992,7 @@ async function processRun(runDir, { sessionId, sessionEndMode, endpoint, deadlin
       started: !(runStarted && held.has(runStarted)),
       phases,
       completed: Boolean(snapshot?.completed) || Boolean(runCompleted && !held.has(runCompleted)),
+      ...(consentedAt ? { consentedAt } : {}),
       via: viaMode(),
       updatedAt: new Date().toISOString(),
     });
@@ -1014,7 +1041,7 @@ async function main() {
     process.cwd();
 
   for (const runDir of await findRunDirs(startDir)) {
-    await processRun(runDir, { sessionId, sessionEndMode, endpoint, deadline });
+    await processRun(runDir, { sessionId, sessionEndMode, endpoint, deadline, editedPath });
   }
 }
 
