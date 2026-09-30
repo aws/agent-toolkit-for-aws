@@ -88,8 +88,8 @@
   ],
   "extensions": {
     "com.anthropic.claude-code": {
-      "hooks": "./com.anthropic.claude-code/hooks/hooks.json",
-      "agents": "./agents/"
+      "agents": "./agents/",
+      "hooks": "./com.anthropic.claude-code/hooks/hooks.json"
     }
   }
 }

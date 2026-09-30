@@ -3,6 +3,7 @@ _assemble: assemble-inventory
 _of_phase: discover
 _reads:
   - iac (fragment contribution)
+  - live (fragment contribution, when a live-capture/manifest.json was written by the live-az pre-work)
   - app-code (fragment contribution, when source code with an AI signal is present)
 _produces:
   - azure-resource-inventory.json
@@ -58,11 +59,28 @@ the validation checklist.
    procedure; `typed-edges-strategy.md` says which edge types may merge and which are
    ambient; `classification-rules.md` picks the primary; `tiering.md` assigns the tier.
 
-8. Merge AI-profile contributions by producer. IaC only ->
-   `metadata.profile_source: "iac_cognitive"`; app-code only -> `"application_code"`; both ->
-   `"merged"`, with code winning conflicts and `infrastructure[]` unioned by `address`.
-   Preserve both `sources_analyzed` flags. A strong IaC AI signal without an IaC profile
-   contribution is an assembly failure, not an optional absence.
+8. Merge AI-profile contributions by producer. IaC and/or live only ->
+   `metadata.profile_source: "iac_cognitive"`; app-code only -> `"application_code"`;
+   any infrastructure signal (IaC and/or live) PLUS app-code -> `"merged"`, with code
+   winning field-level conflicts. Union `infrastructure[]` by its per-entry key — an
+   IaC-sourced entry's `address`, a live-sourced entry's `azure_id`. **Before
+   unioning, reconcile:** for every IaC-sourced entry that carries an `azure_id` (per
+   `discover-iac.md` § Step 4.5), check it against every live-sourced entry's
+   `azure_id`. An exact match means the two entries describe the SAME deployed
+   resource observed by two producers — merge them into ONE `infrastructure[]` entry
+   (keep the IaC-sourced shape for provenance, overlay live's `config` where it
+   disagrees, live wins on state) rather than keeping both, per
+   `schema-discover-ai.md` § infrastructure[] Reconciliation. An IaC-sourced entry
+   with no `azure_id`, or whose `azure_id` matches no live entry, is unmerged and
+   contributes its own entry as before — that is a genuinely distinct resource, not a
+   reconciliation failure. Set every `sources_analyzed` flag (`terraform`, `live`,
+   `application_code`) to `true` iff AT LEAST ONE qualifying resource in the merged
+   profile came from that source — OR across the whole profile, never assigned
+   exclusively per producer (see `schema-discover-ai.md` § profile_source and
+   sources_analyzed); a merged entry sets BOTH `terraform` and `live` true, since both
+   producers genuinely observed it. A strong IaC AI signal without an IaC profile
+   contribution is an assembly failure, not an optional absence; same for a live AI
+   signal without a live profile contribution.
 
 ## Confidence vocabulary
 
