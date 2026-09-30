@@ -111,5 +111,5 @@
     "termsOfServiceURL": "https://aws.amazon.com/service-terms/",
     "brandColor": "#FF9900"
   },
-  "hooks": "./com.anthropic.claude-code/hooks/hooks.json"
+  "hooks": "./.codex-plugin/hooks.json"
 }
