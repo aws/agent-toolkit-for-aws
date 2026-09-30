@@ -181,7 +181,7 @@ Map Azure AI infrastructure to AWS:
 
 Generate before/after examples per detected `integration.pattern` and `ai_source`, preserving
 the endpoint and API selected by `references/vendored/ai/ai-openai-to-bedrock.md`.
-For Astra in Oregon, a Chat source uses `migration_path: "mantle_openai_chat"`; a Responses
+For Astra on Standard Mantle in Virginia or Oregon, a Chat source uses `migration_path: "mantle_openai_chat"`; a Responses
 source uses `"mantle_openai_responses"`. Use `/openai/v1`, Bedrock credentials and Mantle IAM.
 An Azure-specific client (`AzureOpenAI`, deployment/API-version configuration) must be adapted
 to the selected Bedrock client; do not claim that setting OPENAI_BASE_URL alone changes that client.

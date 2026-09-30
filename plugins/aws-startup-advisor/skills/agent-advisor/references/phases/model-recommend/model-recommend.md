@@ -97,7 +97,7 @@ GPT-5.x on Mantle is Responses-only, so a Chat Completions source is reshaped, n
 `mantle_openai_chat`. GPT-5.6 sources additionally carry a SAME-MODEL `runtime_converse`
 candidate via CRIS ids (verified 2026-08-21) — governance requirements no longer force a
 family switch for them, while GPT-5.5/5.4 remain mantle-only. Astra preserves Chat Completions
-or Responses on Mantle in `us-west-2`, or uses its supported US/Global CRIS `runtime_converse`
+or Responses on Standard Mantle in `us-east-1` or `us-west-2`, or uses its supported US/Global CRIS `runtime_converse`
 path when required; apply its own capabilities and caller-region matrix. Azure OpenAI remains an
 explicit `provider_module_pending` generic result.
 

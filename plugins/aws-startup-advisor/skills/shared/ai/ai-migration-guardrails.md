@@ -62,7 +62,7 @@ See `references/shared/openai-on-bedrock.md` for the endpoint, region matrix, an
 
 ### GPT-6 Astra — verify the selected endpoint's quota
 
-Astra mantle is available in `us-west-2` only. Its model card lists implicit/explicit caching on
+Astra Standard mantle is available in `us-east-1` and `us-west-2` (region availability verified 2026-09-30). Its model card lists implicit/explicit caching on
 Responses and 30-minute cache-write prices, but does not establish GPT-5.6's cached-input quota
 exemption, minimum prefix, or breakpoint rules. Verify account quotas before promising throughput.
 

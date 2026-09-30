@@ -2,6 +2,7 @@
 import json
 import re
 import sys
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -239,9 +240,82 @@ def test_azure_runtime_parent_gate_contract(model_id, region, allowed):
     assert "**`code_migration`** — `migration_path`" in schema
 
 
-def test_azure_final_recommendation_uses_computed_roi():
-    text = (PLUGIN / "skills/azure-to-aws/references/phases/estimate/estimate-ai.md").read_text()
+@pytest.mark.parametrize("skill", ["gcp-to-aws", "azure-to-aws"])
+def test_final_recommendation_uses_computed_roi(skill):
+    text = (PLUGIN / "skills" / skill / "references/phases/estimate/estimate-ai.md").read_text()
     final = text.split("## Part 7: Migration Recommendation", 1)[1].split("## Output", 1)[0]
     assert "computed Part 5 result, not a fixed premium" in final
     assert "source comparison is unavailable" in final
     assert "~10% higher" not in final and "costs ~10% more" not in final
+
+
+@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
+@pytest.mark.parametrize("api_path,endpoint", [
+    ("mantle_openai_chat", "chat/completions"),
+    ("mantle_openai_responses", "responses"),
+])
+def test_gcp_generated_mantle_target_uses_real_sdk_wire_contract(region, api_path, endpoint, monkeypatch):
+    """Execute the actual generation template with the real SDK and offline HTTP."""
+    import httpx
+    import openai
+    import aws_bedrock_token_generator
+
+    path = PLUGIN / "skills/gcp-to-aws/references/phases/generate/generate-artifacts-ai.md"
+    section = path.read_text().split("## Step 2: Generate Test Comparison Harness", 1)[1].split(
+        "## Step 3:", 1)[0]
+    code = textwrap.dedent(re.search(r"  ```python\n(.*?)\n  ```", section, re.S).group(1))
+    code = (code.replace("{target_region}", region)
+            .replace("{aws_model_id}", "openai.gpt-6-astra")
+            .replace("{migration_path}", api_path))
+    requests = []
+
+    def transport(request):
+        requests.append(request)
+        if endpoint == "chat/completions":
+            body = {"id": "chatcmpl-fixture", "object": "chat.completion", "created": 0,
+                    "model": "openai.gpt-6-astra", "choices": [{
+                        "index": 0, "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "answer"}}]}
+        else:
+            body = {"id": "resp_fixture", "object": "response", "created_at": 0,
+                    "model": "openai.gpt-6-astra", "status": "completed", "output": [{
+                        "id": "msg_fixture", "type": "message", "role": "assistant",
+                        "status": "completed", "content": [{
+                            "type": "output_text", "text": "answer", "annotations": []}]}]}
+        return httpx.Response(200, json=body)
+
+    real_client = openai.BedrockOpenAI
+    with httpx.Client(transport=httpx.MockTransport(transport)) as http_client:
+        monkeypatch.setattr(aws_bedrock_token_generator, "provide_token",
+                            lambda **kwargs: "fixture-token")
+        monkeypatch.setattr(openai, "BedrockOpenAI",
+                            lambda **kwargs: real_client(http_client=http_client, **kwargs))
+        ns = {}
+        exec(compile(code, str(path), "exec"), ns)  # nosec B102 - committed generator template
+        assert ns["call_bedrock"]("ping") == "answer"
+    assert len(requests) == 1
+    assert str(requests[0].url) == f"https://bedrock-mantle.{region}.api.aws/openai/v1/{endpoint}"
+    payload = json.loads(requests[0].content)
+    assert payload["model"] == "openai.gpt-6-astra"
+    assert ("messages" in payload) is (endpoint == "chat/completions")
+    assert ("input" in payload) is (endpoint == "responses")
+    assert "provider_adapter" not in code
+
+
+def test_gcp_stage_two_artifacts_follow_mantle_and_runtime_contracts():
+    path = PLUGIN / "skills/gcp-to-aws/references/phases/generate/generate-artifacts-ai.md"
+    text = path.read_text()
+    route = text.split("## Step 0:", 1)[1].split("## Step 1M:", 1)[0]
+    for api_path in ("mantle_openai_chat", "mantle_openai_responses", "runtime_openai_cris"):
+        assert api_path in route
+    assert 'starts with `"mantle"`' in route
+    setup = text.split("## Step 3: Generate Bedrock Setup Script", 1)[1].split("## Step 3B", 1)[0]
+    assert "bedrock-mantle:CreateInference" in setup
+    assert "bedrock-mantle:CallWithBearerToken" in setup
+    assert "test_comparison.py --target-only --quick" in setup
+    assert "A Mantle selection must never run a Converse probe" in setup
+    monitoring = text.split("## Step 3F:", 1)[1]
+    assert "omit the profile resource and its output for Mantle targets" in monitoring
+    assert 'copy_from = "{verified_model_source_arn}"' in monitoring
+    assert 'prefixed with "us." for US regions' not in monitoring
+    assert "Astra supports application inference profiles only on runtime Converse" in monitoring

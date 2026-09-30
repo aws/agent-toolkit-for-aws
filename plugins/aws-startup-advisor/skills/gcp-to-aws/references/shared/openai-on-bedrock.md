@@ -1,8 +1,8 @@
 # OpenAI Models on Amazon Bedrock
 
 **Last verified:** 2026-08-21
-**GPT-6 Astra verified:** 2026-09-09 against its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
-and [GA announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/openai-gpt-6-astra-on-amazon-bedrock/).
+**GPT-6 Astra regions reverified:** 2026-09-30 against its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html).
+Original launch: [GA announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/openai-gpt-6-astra-on-amazon-bedrock/).
 The dates on the existing GPT-5.x evidence below are unchanged.
 **Sources:** [OpenAI model cards](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html) (per-model
 cards linked below), [GPT-5.6 launch post](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/),
@@ -54,11 +54,11 @@ lower-cost reasoning alternative; Astra does not make existing GPT-5.x sources r
 
 ## Access Paths — Split by Family
 
-**GPT-6 Astra has two endpoints, verified 2026-09-09:**
+**GPT-6 Astra has two endpoints; regions reverified 2026-09-30:**
 
 | Endpoint          | Reach                         | Model ID                                              | Supported APIs                        |
 | ----------------- | ----------------------------- | ----------------------------------------------------- | ------------------------------------- |
-| `bedrock-mantle`  | In-region, **us-west-2 only** | `openai.gpt-6-astra`                                  | Responses, Chat Completions           |
+| `bedrock-mantle`  | Standard in-region, **us-east-1 / us-west-2** | `openai.gpt-6-astra`                                  | Responses, Chat Completions           |
 | `bedrock-runtime` | CRIS only, no in-region form  | `us.openai.gpt-6-astra` / `global.openai.gpt-6-astra` | Responses, Chat Completions, Converse |
 
 Use `/openai/v1` on either endpoint for the OpenAI-compatible APIs. Astra does **not** support
@@ -143,7 +143,7 @@ request for multi-turn and tool-calling flows.
 
 | Model         | us-east-1 | us-east-2 | us-west-2 | us-gov-west-1 | us-gov-east-1 |
 | ------------- | --------- | --------- | --------- | ------------- | ------------- |
-| GPT-6 Astra   | —         | —         | yes       | —             | —             |
+| GPT-6 Astra   | yes       | —         | yes       | —             | —             |
 | GPT-5.6 Sol   | yes       | yes       | —         | —             | —             |
 | GPT-5.6 Terra | yes       | yes       | yes       | yes           | yes           |
 | GPT-5.6 Luna  | yes       | yes       | yes       | yes           | yes           |

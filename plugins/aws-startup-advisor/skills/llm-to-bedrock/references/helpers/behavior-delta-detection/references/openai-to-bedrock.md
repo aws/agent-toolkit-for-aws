@@ -26,7 +26,7 @@ quality evaluation even though the vendor is unchanged.
 Astra runtime supports OpenAI-compatible Responses / Chat Completions and Converse. Keep a supported
 source API where possible; a Converse selection requires request/response mapping and capability checks,
 not Claude-specific temperature or penalty rewrites. Use `bedrock-runtime.{region}.amazonaws.com/openai/v1`
-for OpenAI-compatible runtime calls, CRIS ids, and runtime IAM permissions. Astra mantle is Oregon-only.
+for OpenAI-compatible runtime calls, CRIS ids, and runtime IAM permissions. Astra Standard mantle supports `us-east-1` and `us-west-2`.
 
 ## chat-completions-to-responses
 

@@ -18,7 +18,7 @@ the user to choose when the match is ambiguous.
 
 ### Step 0: Route the OpenAI proprietary GPT ids by family
 
-**Check this before Step 1.** Route by family and endpoint (GPT-5 verified 2026-08-21; Astra verified 2026-09-16; see
+**Check this before Step 1.** Route by family and endpoint (GPT-5 verified 2026-08-21; Astra regions verified 2026-09-30; see
 `gcp-to-aws/references/shared/openai-on-bedrock.md`):
 
 **Case A — GPT-5.5 / GPT-5.4 (`openai.gpt-5.5`, `openai.gpt-5.4`): mantle-only, no inference profile.** The
@@ -58,8 +58,8 @@ profiles (`us.openai.gpt-5.6-*`, `in.openai.gpt-5.6-*` in India Regions, `global
 **Case C — GPT-6 Astra: `openai.gpt-6-astra` on mantle, or `us.openai.gpt-6-astra` /
 `global.openai.gpt-6-astra` on runtime.** Preserve the plan's endpoint and residency choice:
 
-- Bare id → mantle in `us-west-2` only. Validate the exact id with the Case A catalog query.
-  A different region returns `blocked` with `reason: model_unresolvable`; offer Oregon or a supported
+- Bare id → Standard mantle in `us-east-1` or `us-west-2`. Validate the exact id with the Case A catalog query.
+  A different region returns `blocked` with `reason: model_unresolvable`; offer Virginia, Oregon, or a supported
   runtime CRIS path through the orchestrator. Do not silently add a prefix or change endpoints.
 - `us.` / `global.` id → Step 1, then require an exact live profile match in the caller region.
   Check the Astra runtime matrix in `gcp-to-aws/references/shared/openai-on-bedrock.md`;

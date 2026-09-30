@@ -2,6 +2,7 @@ import json
 import pathlib
 
 import jsonschema
+import pytest
 
 import model_recommendation
 import verify_model_path
@@ -197,16 +198,19 @@ class FakeOpenAIClient:
         self.responses = responses or FakeResponses()
 
 
-def test_astra_chat_recommendation_probes_chat_completions():
+@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
+@pytest.mark.parametrize("surface", ["chat_completions", "responses"])
+def test_astra_recommendation_probes_selected_api_in_supported_regions(region, surface):
     data = _openai_input()
-    data["region"] = "us-west-2"
+    data["region"] = region
     data["workloads"][0]["source"].update(
-        model_ids=["gpt-6-astra"], api_surface="chat_completions"
+        model_ids=["gpt-6-astra"], api_surface=surface
     )
     recommendation = model_recommendation.recommend(data)
     completions = FakeResponses(response={"model": "openai.gpt-6-astra"})
     client = type("ChatClient", (), {
         "chat": type("Chat", (), {"completions": completions})(),
+        "responses": completions,
     })()
     result = verify_model_path.verify_recommendation(
         recommendation, now=NOW,
@@ -214,9 +218,15 @@ def test_astra_chat_recommendation_probes_chat_completions():
     )
     verification = result["workloads"]["openai-svc"]
     assert verification["status"] == "passed"
-    assert verification["api_path"] == "mantle_openai_chat"
+    assert verification["api_path"] == (
+        "mantle_openai_chat" if surface == "chat_completions" else "mantle_openai_responses"
+    )
+    assert verification["region"] == region
     assert completions.calls[0]["model"] == "openai.gpt-6-astra"
-    assert completions.calls[0]["messages"][0]["role"] == "user"
+    if surface == "chat_completions":
+        assert completions.calls[0]["messages"][0]["role"] == "user"
+    else:
+        assert completions.calls[0]["input"] == verify_model_path.PROMPT
 
 
 def _openai_input(requirements=None):

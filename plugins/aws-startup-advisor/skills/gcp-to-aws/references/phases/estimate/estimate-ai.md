@@ -232,7 +232,7 @@ Produce a clear migrate/stay/optimize verdict for the AI workload migration. Thi
 
 | Condition                                                                                                                         | Verdict             | `recommendation.path` |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------- |
-| **Same model on Bedrock** (`model_change: false`) — ~10% higher, short-context; non-cost benefits carry it                        | Migrate with caveat | `migrate_optimized`   |
+| **Same model on Bedrock** (`model_change: false`) — use the verified Part 5 cost delta and applicable non-cost benefits                        | Migrate with caveat | `migrate_optimized`   |
 | Bedrock cheaper AND capabilities match                                                                                            | Migrate             | `migrate_optimized`   |
 | Bedrock more expensive BUT non-cost benefits justify (vendor diversification, Guardrails, multi-model) AND user priority ≠ `cost` | Migrate with caveat | `migrate_optimized`   |
 | Bedrock more expensive AND user priority = `cost` AND no compelling non-cost reason                                               | Stay                | `stay`                |
@@ -256,7 +256,7 @@ Produce a clear migrate/stay/optimize verdict for the AI workload migration. Thi
 
 - MUST emit `recommendation` — never omit. If data is insufficient, set `confidence: "low"` and state why in `rationale`.
 - If `honest_assessment` from `aws-design-ai.json` says `recommend_stay`, `recommendation.path` MUST be `stay` regardless of cost numbers.
-- **A same-model move is a modest cost increase, not parity.** When `bedrock_models[].model_change` is `false`, Bedrock in-region costs ~10% more than OpenAI standard for the same model. Report that figure rather than "no savings identified", and argue the case on commitments, governance, residency, prompt caching, and eliminated behavior-delta risk. A ~10% increase alone should not route to `stay` unless `ai_priority = cost` and no non-cost driver applies; a long-context workload at the 1M tier is a different matter and may legitimately favour staying.
+- **Same-model cost is the computed Part 5 result, not a fixed premium.** The final `recommendation.rationale` must use the selected inference option/context tier and verified source baseline. Report parity, savings or an increase as actually calculated. When the source comparison is unavailable, say so, set confidence appropriately and do not invent a percentage. Apply the decision table to those actual costs and the user's non-cost drivers; the `honest_assessment: recommend_stay` override still takes precedence.
 - For multi-workload runs: if some workloads favor migration and others don't, use `migrate_phased` and list which workloads to migrate vs. keep in `rationale`.
 
 ---

@@ -722,16 +722,20 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
 
 
 def _decision_options(catalog, workload, region):
-    """Two-sided option set: Mantle Responses continuity vs runtime Converse governance."""
+    """Two-sided option set: the selected Mantle API vs runtime Converse governance."""
     options = []
     detected = workload.get("detected_features") or []
+    astra = _same_model_runtime_key(workload["source"]) == "openai_gpt_6_astra"
+    mantle_path = "mantle_openai_responses"
+    if astra:
+        preferred = workload["requirements"].get("preferred_api_path")
+        if preferred in {"mantle_openai_chat", "mantle_openai_responses"}:
+            mantle_path = preferred
+        elif workload["source"].get("api_surface") == "chat_completions":
+            mantle_path = "mantle_openai_chat"
     mantle, _ = _catalog_model_for_path(
-        catalog, "mantle_openai_responses", detected, workload["requirements"],
-        candidate_order=(
-            ["openai_gpt_6_astra"]
-            if _same_model_runtime_key(workload["source"]) == "openai_gpt_6_astra"
-            else None
-        ),
+        catalog, mantle_path, detected, workload["requirements"],
+        candidate_order=["openai_gpt_6_astra"] if astra else None,
     )
     if mantle:
         model_key, model, path_config = mantle
@@ -739,15 +743,15 @@ def _decision_options(catalog, workload, region):
             {
                 "model_key": model_key,
                 "model": path_config["model_id"],
-                "api_path": "mantle_openai_responses",
+                "api_path": mantle_path,
                 "invocation_model_id": _resolve_invocation_model_id(
                     path_config["model_id"], path_config["requires_cris"], workload["requirements"]
                 ),
                 "requires_cris": path_config["requires_cris"],
-                "reason": "Preserves the OpenAI SDK and Responses surface; gives up runtime-only "
+                "reason": "Preserves the OpenAI SDK and selected Mantle API; gives up runtime-only "
                 "Bedrock governance." + (
-                    " Astra requires us-west-2; change the target region before selecting "
-                    "this option if it is currently elsewhere."
+                    " Astra Standard Mantle supports us-east-1 and us-west-2; choose a "
+                    "supported target region before selecting this option."
                     if model_key == "openai_gpt_6_astra" else ""
                 ),
             }
@@ -914,11 +918,29 @@ def recommend_openai_workload(workload, region, catalog):
     # source on Astra and fail closed when the required path lacks evidence.
     if _same_model_runtime_key(source) == "openai_gpt_6_astra":
         candidate_order = ["openai_gpt_6_astra"]
-        if not runtime_required and surface == "chat_completions":
+        preferred = requirements.get("preferred_api_path")
+        if preferred:
+            available = catalog["models"]["openai_gpt_6_astra"]["paths"].get(preferred, {})
+            if (available.get("available") is not True
+                    or runtime_required and preferred != "runtime_converse"
+                    or continuity_required and preferred == "runtime_converse"):
+                return _unresolved(
+                    "The explicit Astra API preference conflicts with the available paths "
+                    "or required API/governance constraints.", [],
+                    _finding(
+                        "preferred_api_path_conflict", "[BLOCKS]",
+                        f"The requested {preferred} path cannot satisfy this workload.",
+                        "Choose a supported API or revise the conflicting requirements, "
+                        "then rerun Model Recommend.",
+                    ), preferred,
+                )
+            path = preferred
+        elif not runtime_required and surface == "chat_completions":
             path = "mantle_openai_chat"
         rationale_head = (
-            "Keep GPT-6 Astra on Bedrock using the source-compatible API or required "
-            "runtime Converse path; apply Astra's own region and feature evidence."
+            "Keep GPT-6 Astra on Bedrock using the compatible explicit API preference, "
+            "otherwise the source-compatible API or required runtime Converse path; "
+            "apply Astra's own region and feature evidence."
         )
 
     # Evidence-driven selection: pick the first candidate on the path whose catalog
@@ -1022,12 +1044,33 @@ def recommend_openai_workload(workload, region, catalog):
             _finding(
                 "chat_completions_to_responses_required",
                 "[BLOCKS]",
-                "GPT-5.x on Mantle rejects Chat Completions; the source must reshape to the "
-                "Responses API.",
-                "Apply the request/response/tool/state reshape deltas before cutover; do not "
-                "target mantle_openai_chat for GPT-5.x.",
+                (
+                    "The selected Astra Responses path requires reshaping the Chat source."
+                    if model_key == "openai_gpt_6_astra"
+                    else "GPT-5.x on Mantle rejects Chat Completions; the source must reshape "
+                    "to the Responses API."
+                ),
+                "Apply the request/response/tool/state reshape deltas before cutover.",
             )
         )
+    if path == "mantle_openai_chat" and surface == "responses":
+        deltas.extend([
+            _delta(
+                "responses_to_chat_request", "path",
+                "Map Responses input/instructions to Chat messages/system content and "
+                "verify the selected model's output-budget parameters.",
+            ),
+            _delta(
+                "responses_to_chat_response", "path",
+                "Read choices[0].message.content instead of output_text; preserve Chat "
+                "messages and tool_call_id rather than Responses output items.",
+            ),
+        ])
+        blocks.append(_finding(
+            "responses_to_chat_completions_required", "[BLOCKS]",
+            "The selected Astra Chat path requires reshaping the Responses source.",
+            "Apply the request/response/tool/state mapping before cutover.",
+        ))
     deltas.extend(f_deltas)
 
     if path == "runtime_converse":

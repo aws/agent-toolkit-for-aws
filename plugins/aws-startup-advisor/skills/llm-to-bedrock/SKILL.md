@@ -667,7 +667,7 @@ When `rewrite_strategy == "mantle"`, C5's context block ALSO includes:
   excluding gpt-oss, or `openai.gpt-6-astra`). Do not use `/v1` for Astra.
 - `Mantle surface: chat_completions` when `resolved_api_path` is `mantle_openai_chat`;
   otherwise `Mantle surface: responses` for the proprietary GPT Mantle path. Astra supports
-  both surfaces in Oregon. Preserve the selected API; do not reshape Astra Chat solely
+  both surfaces on Standard Mantle in Virginia and Oregon. Preserve the selected API; do not reshape Astra Chat solely
   because it is a proprietary GPT model. Older GPT-5.x targets retain their dated API checks.
 - `Same model: true` only when every mapping keeps the exact source model (after removing
   the Bedrock provider/profile prefix for identity comparison). A Pro-to-Astra upgrade is

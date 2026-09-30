@@ -360,7 +360,7 @@ For each detected `integration.pattern` and `ai_source`, generate before/after m
 | Streaming                       | `stream=True`             | `converse_stream`   | Event loop over `contentBlockDelta`                                                                  |
 
 **OpenAI model/API selection:** preserve the model and the supported API chosen in the
-mapping guide. For Astra on Mantle in `us-west-2`, a Chat source selects
+mapping guide. For Astra on Standard Mantle in `us-east-1` or `us-west-2`, a Chat source selects
 `migration_path: "mantle_openai_chat"`; a Responses source selects `"mantle_openai_responses"`.
 Keep the OpenAI SDK, use `/openai/v1`, Bedrock credentials and Mantle IAM. Do not reshape
 Astra Chat solely because it is proprietary GPT. Record `model_change: false` only when

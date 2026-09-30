@@ -189,7 +189,7 @@ Interpret the result:
 
 Use this INSTEAD of §6 for bare proprietary GPT ids, including `openai.gpt-6-astra`.
 The script classifier `preflight_bedrock.is_mantle_model` defines this endpoint split.
-Astra Mantle requires `us-west-2`; its `us.` / `global.` ids remain on runtime.
+Astra Standard Mantle supports `us-east-1` and `us-west-2`; its `us.` / `global.` ids remain on runtime.
 
 ```bash
 mkdir -p <repo>/.saws-migrate/eval-results
@@ -225,7 +225,7 @@ Interpret the result:
   region. These models are **in-region only**, so there is no cross-region
   inference profile to fall back to and `resolve-bedrock-model-id`'s
   inference-profile ranking does not apply. Return
-  `{ blocked: { reason: 'model_unresolvable', detail: '<the exact error> — <TARGET_MODEL_ID> is not available on the bedrock-mantle endpoint in <REGION>. Mantle is in-region only; for Astra use Oregon Mantle or a supported us./global. runtime profile with an explicit plan change; GPT-5.6 may use its us./in./global. CRIS forms, while GPT-5.5/5.4 need a supported region or a different model.' } }`.
+  `{ blocked: { reason: 'model_unresolvable', detail: '<the exact error> — <TARGET_MODEL_ID> is not available on the bedrock-mantle endpoint in <REGION>. Mantle is in-region only; for Astra use Virginia/Oregon Standard Mantle or a supported us./global. runtime profile with an explicit plan change; GPT-5.6 may use its us./in./global. CRIS forms, while GPT-5.5/5.4 need a supported region or a different model.' } }`.
   Use `model_unresolvable` rather than a new reason — its recovery path (user
   picks or pastes an ID, recorded in `resolved_model_overrides`) is exactly right
   here. Astra may use only supported `us.` / `global.` CRIS candidates; check its own region matrix. For GPT-5.6 a `us.`/`in.`/`global.`-prefixed CRIS candidate is legitimate

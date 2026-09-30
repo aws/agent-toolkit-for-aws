@@ -111,7 +111,7 @@ def classify_mantle_error(status: int | None, message: str) -> dict:
         return {"ok": False, "reason": "model_unavailable",
                 "detail": f"Model not available at this mantle endpoint/region — {message}. "
                           f"Mantle is in-region only; for GPT-5.6 try a bedrock-runtime CRIS "
-                          f"id (us./in./global. prefixed); for GPT-6 Astra use us-west-2 "
+                          f"id (us./in./global. prefixed); for GPT-6 Astra use us-east-1/us-west-2 "
                           f"mantle or a supported us./global. runtime CRIS path. "
                           f"For GPT-5.5/5.4 switch to "
                           f"a supported region or a different model."}
@@ -295,7 +295,7 @@ def main(argv=None) -> int:
                 "exempt from the input-TPM quota.")
             if model_id.lower() == "openai.gpt-6-astra":
                 verdict["quota_note"] = (
-                    "Verify Astra's mantle quotas in the target account and us-west-2. "
+                    f"Verify Astra's mantle quotas in the target account and {args.region}. "
                     "Do not assume GPT-5.6's cached-input quota exemption or RPM rules "
                     "apply; Astra's documented 10x output burndown is runtime-specific.")
         else:

@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "provider": "openai",
-  "verified_at": "2026-09-09",
+  "verified_at": "2026-09-30",
   "verified_region": "us-east-2",
-  "source": "AWS Bedrock userguide OpenAI model cards + models-api-compatibility (retrieved 2026-08-21); internal migration reference, OpenAI path (feature-level probes, 2026-06-20); GPT-6 Astra model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html",
+  "source": "AWS Bedrock userguide OpenAI model cards + models-api-compatibility (retrieved 2026-08-21); internal migration reference, OpenAI path (feature-level probes, 2026-06-20); GPT-6 Astra model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html; Astra Mantle Standard regional availability reverified 2026-09-30 against the same public model card",
   "disclaimer": "Dated migration candidates, not account-level availability guarantees. Capabilities and regions are specific to each model and API path. Entries retain their evidence dates; Astra has documentation evidence but no account-level behavioral probe. Re-probe the selected model, API, and region before implementation.",
   "paths": {
     "mantle_openai_responses": {
@@ -324,10 +324,11 @@
       "output_token_ceiling": 128000,
       "region_availability": {
         "commercial": [
+          "us-east-1",
           "us-west-2"
         ],
         "govcloud": [],
-        "evidence": "AWS model card 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. This list is mantle in-region only; runtime caller regions are recorded per inference profile below. No GovCloud region is listed.",
+        "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. This list is mantle in-region only; runtime caller regions are recorded per inference profile below. No GovCloud region is listed.",
         "scope": "mantle_in_region",
         "scope_note": "Commercial and GovCloud lists describe mantle in-region availability only. Runtime CRIS availability is defined by the selected path and profile; do not use these lists as a runtime region gate."
       },
@@ -342,6 +343,7 @@
           "model_id": "openai.gpt-6-astra",
           "requires_cris": false,
           "supported_regions": [
+            "us-east-1",
             "us-west-2"
           ],
           "capabilities": [
@@ -349,20 +351,21 @@
             "image_input_vision",
             "tool_or_function_calling"
           ],
-          "evidence": "AWS model card 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Responses supported at /openai/v1/responses; mantle is us-west-2 only. Server-side tool calling and implicit/explicit Responses caching supported; application inference profiles unsupported."
+          "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Responses supported at /openai/v1/responses; Standard mantle is available in us-east-1 and us-west-2. Server-side tool calling and implicit/explicit Responses caching supported; application inference profiles unsupported."
         },
         "mantle_openai_chat": {
           "available": true,
           "model_id": "openai.gpt-6-astra",
           "requires_cris": false,
           "supported_regions": [
+            "us-east-1",
             "us-west-2"
           ],
           "capabilities": [
             "reasoning",
             "image_input_vision"
           ],
-          "evidence": "AWS model card 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Chat Completions supported at /openai/v1/chat/completions in us-west-2; prompt caching is Responses-only. Tool behavior on Chat Completions remains unprobed."
+          "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Chat Completions supported at /openai/v1/chat/completions in us-east-1 and us-west-2; prompt caching is Responses-only. Tool behavior on Chat Completions remains unprobed."
         },
         "runtime_converse": {
           "available": true,

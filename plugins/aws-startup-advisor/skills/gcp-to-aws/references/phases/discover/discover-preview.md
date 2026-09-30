@@ -98,7 +98,7 @@ comparison. See `references/shared/openai-on-bedrock.md`.
 | `gpt-5.5` (not `-pro`)                 | GPT-5.5            | `openai.gpt-5.5`                                                    |
 | `gpt-5.4` (not `-pro`/`-mini`/`-nano`) | GPT-5.4            | `openai.gpt-5.4`                                                    |
 
-Astra mantle is Oregon-only (`us-west-2`); its runtime path uses US Geo / Global CRIS with its own caller-region matrix.
+Astra Standard mantle is available in Virginia (`us-east-1`) and Oregon (`us-west-2`); its runtime path uses US Geo / Global CRIS with its own caller-region matrix.
 On the mantle endpoint the GPT-5.x models above are in-region only (us-east-1, us-east-2; us-west-2 additionally for Terra, Luna,
 and GPT-5.4; AWS GovCloud us-gov-west-1 / us-gov-east-1 for Terra and Luna, us-gov-west-1 also for GPT-5.4).
 GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS ids; GPT-5.5 / GPT-5.4 have no
