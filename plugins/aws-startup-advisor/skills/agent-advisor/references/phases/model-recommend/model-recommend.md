@@ -133,7 +133,7 @@ For Anthropic source paths, scan for migration-sensitive features:
 For OpenAI source paths, scan instead for OpenAI feature codes:
 
 - `tool_or_function_calling`, `structured_output_json`, `streaming`, `image_input_vision`
-- `reasoning`, `sampling_params`, `max_tokens`, `multiple_candidates_n`
+- `reasoning`, `sampling_params`, `max_tokens`, `multiple_candidates_n`, `prompt_caching`
 - `web_search`, `file_search_retrieval`, `files_api`, `vector_stores`, `assistants_threads`
 - `audio_modality`, `embeddings`, `images`, `conversation_state`
 

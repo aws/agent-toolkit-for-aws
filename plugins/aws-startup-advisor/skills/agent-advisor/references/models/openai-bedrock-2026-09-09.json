@@ -349,7 +349,8 @@
           "capabilities": [
             "reasoning",
             "image_input_vision",
-            "tool_or_function_calling"
+            "tool_or_function_calling",
+            "prompt_caching"
           ],
           "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Responses supported at /openai/v1/responses; Standard mantle is available in us-east-1 and us-west-2. Server-side tool calling and implicit/explicit Responses caching supported; application inference profiles unsupported."
         },

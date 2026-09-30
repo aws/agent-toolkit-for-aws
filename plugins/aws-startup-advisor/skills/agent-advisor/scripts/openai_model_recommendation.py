@@ -640,6 +640,8 @@ def _unsupported_required_capabilities(target_model, detected_features, requirem
             "reasoning",
         }
     )
+    if target_model.get("family") == "openai_gpt_6" and "prompt_caching" in needed:
+        checkable.add("prompt_caching")
     return sorted(checkable - catalog_caps)
 
 
@@ -651,6 +653,8 @@ def _compatibility(detected_features, requirements, path, target_model=None):
     text_features = detected.intersection(
         {"tool_or_function_calling", "structured_output_json", "streaming", "image_input_vision", "reasoning"}
     )
+    if (target_model or {}).get("family") == "openai_gpt_6" and "prompt_caching" in detected:
+        text_features.add("prompt_caching")
     catalog_caps = set((target_model or {}).get("capabilities") or [])
     native = sorted(text_features.intersection(catalog_caps)) if target_model else []
     unsupported = sorted(text_features - catalog_caps) if target_model else []
@@ -724,7 +728,8 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
 def _decision_options(catalog, workload, region):
     """Two-sided option set: the selected Mantle API vs runtime Converse governance."""
     options = []
-    detected = workload.get("detected_features") or []
+    detected = [feature for feature, status in _feature_assessment(workload).items()
+                if status == "detected"]
     astra = _same_model_runtime_key(workload["source"]) == "openai_gpt_6_astra"
     mantle_path = "mantle_openai_responses"
     if astra:
@@ -733,6 +738,11 @@ def _decision_options(catalog, workload, region):
             mantle_path = preferred
         elif workload["source"].get("api_surface") == "chat_completions":
             mantle_path = "mantle_openai_chat"
+        # A decision may offer changing an incompatible Chat preference to the
+        # documented Responses caching path; it must not silently select it.
+        needed = set(detected) | set(workload["requirements"].get("critical_features") or [])
+        if "prompt_caching" in needed:
+            mantle_path = "mantle_openai_responses"
     mantle, _ = _catalog_model_for_path(
         catalog, mantle_path, detected, workload["requirements"],
         candidate_order=["openai_gpt_6_astra"] if astra else None,

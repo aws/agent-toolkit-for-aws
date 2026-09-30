@@ -314,8 +314,24 @@ def test_gcp_stage_two_artifacts_follow_mantle_and_runtime_contracts():
     assert "bedrock-mantle:CallWithBearerToken" in setup
     assert "test_comparison.py --target-only --quick" in setup
     assert "A Mantle selection must never run a Converse probe" in setup
+    assert "also authorize that exact `application-inference-profile/" in setup
+    assert "effective invocation target and IAM remain aligned" in setup
     monitoring = text.split("## Step 3F:", 1)[1]
     assert "omit the profile resource and its output for Mantle targets" in monitoring
     assert 'copy_from = "{verified_model_source_arn}"' in monitoring
     assert 'prefixed with "us." for US regions' not in monitoring
     assert "Astra supports application inference profiles only on runtime Converse" in monitoring
+
+
+def test_gcp_report_lists_only_generated_profile_attribution():
+    path = PLUGIN / "skills/gcp-to-aws/references/phases/generate/generate-artifacts-report.md"
+    text = path.read_text()
+    controls = text.split("**Cost guardrails", 1)[1].split("**What the baseline", 1)[0]
+    unconditional_rows = [line for line in controls.splitlines() if line.startswith("|")]
+    assert any("Bedrock budget" in line for line in unconditional_rows)
+    assert any("Cost anomaly detection" in line for line in unconditional_rows)
+    assert not any("Inference profiles" in line for line in unconditional_rows)
+    assert "actual generated `bedrock_monitoring.tf`" in controls
+    assert "enabled `aws_bedrock_inference_profile` resource" in controls
+    assert "`bedrock_inference_profile_arns` output" in controls
+    assert "add profile attribution only when an eligible profile was generated" in text

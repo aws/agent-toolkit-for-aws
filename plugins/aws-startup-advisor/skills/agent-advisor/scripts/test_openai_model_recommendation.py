@@ -738,6 +738,44 @@ def test_astra_api_preference_conflicts_require_an_explicit_decision(preferred, 
     assert "preferred_api_path_conflict" in _codes(rec["blocks"])
 
 
+@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
+@pytest.mark.parametrize("surface,preferred,expected", [
+    ("chat_completions", None, None),
+    ("responses", "mantle_openai_chat", None),
+    ("responses", None, "mantle_openai_responses"),
+    ("chat_completions", "mantle_openai_responses", "mantle_openai_responses"),
+])
+def test_astra_required_caching_is_checked_on_the_selected_api(region, surface, preferred, expected):
+    requirements = {"critical_features": ["prompt_caching"]}
+    if preferred:
+        requirements["preferred_api_path"] = preferred
+    rec = oai.recommend_openai_workload(
+        _workload(source={"model_ids": ["gpt-6-astra"], "api_surface": surface},
+                  requirements=requirements),
+        region, OPENAI_CATALOG,
+    )
+    assert rec["api_path"] == expected
+    if expected is None:
+        assert rec["decision_status"] == "decision_required"
+        assert "unverified_capability" in _codes(rec["blocks"])
+        assert "prompt_caching" in rec["blocks"][0]["message"]
+        assert rec["decision_options"][0]["api_path"] == "mantle_openai_responses"
+    else:
+        assert rec["decision_status"] == "recommended"
+        assert "prompt_caching" in rec["compatibility"]["native"]
+
+
+def test_astra_decision_options_ignore_an_explicitly_absent_cache_signal():
+    workload = _workload(
+        source={"model_ids": ["gpt-6-astra"], "api_surface": "chat_completions"},
+        requirements={"preferred_api_path": "mantle_openai_chat"},
+        detected_features=["prompt_caching"],
+        feature_status={"prompt_caching": "absent"},
+    )
+    options = oai._decision_options(OPENAI_CATALOG, workload, "us-west-2")
+    assert options[0]["api_path"] == "mantle_openai_chat"
+
+
 @pytest.mark.parametrize("signals", [
     {"requirements": {"uses_n": True}},
     {"detected_features": ["multiple_candidates_n"]},
