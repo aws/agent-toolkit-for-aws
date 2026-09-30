@@ -50,8 +50,11 @@ def test_analyzer_cli_and_downstream_consumers_use_the_identity_gate():
     )
     assert json.loads(result.stdout) == {"same_model": False}
     plugin = script.parents[3]
-    for name in ["code-analyzer", "code-rewriter", "prompt-evaluator", "report-generator"]:
-        assert "model_identity.py" in (plugin / "agents" / f"llm2bedrock-{name}.md").read_text()
+    assert "model_identity.py" in (plugin / "agents/llm2bedrock-code-analyzer.md").read_text()
+    for name in ["code-rewriter", "prompt-evaluator", "report-generator"]:
+        text = (plugin / "agents" / f"llm2bedrock-{name}.md").read_text()
+        assert "validate_result.py --schema analysis" in text
+        assert "/model_identity.py --provider" not in text
     helper = script.parents[1] / "references/helpers/behavior-delta-detection"
     for path in [helper / "behavior-delta-detection.md",
                  plugin / "agents/llm2bedrock-code-analyzer.md",

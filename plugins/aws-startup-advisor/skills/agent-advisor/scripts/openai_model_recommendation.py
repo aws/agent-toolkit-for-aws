@@ -673,7 +673,8 @@ def _evaluation(detected_features, requirements):
     return {"mode": "trajectory" if trajectory else "prompt", "gates": gates}
 
 
-def _verification(region, catalog, path, requires_cris, invocation_model_id, selected):
+def _verification(region, catalog, path, requires_cris, invocation_model_id, selected,
+                  model=None, requirements=None):
     if not selected:
         return {
             "region": region,
@@ -702,6 +703,10 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
         "availability_claim": "provisional",
         "invocation_model_id": invocation_model_id,
         "required_checks": checks,
+        **anthropic_model_recommendation._profile_verification(
+            (model or {}).get("paths", {}).get(path, {}).get("model_id"),
+            requires_cris, model, region, requirements,
+        ),
     }
 
 
@@ -1023,7 +1028,8 @@ def recommend_openai_workload(workload, region, catalog):
                 "gate": "Compare source and target on the golden set before percentage rollout.",
             },
             "verification": _verification(
-                region, catalog, path, path_config["requires_cris"], invocation_model_id, selected=True
+                region, catalog, path, path_config["requires_cris"], invocation_model_id,
+                selected=True, model=model, requirements=requirements,
             ),
         }
     )

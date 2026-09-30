@@ -44,7 +44,7 @@ Read from prompt context (forwarded from llm2bedrock-code-analyzer, llm2bedrock-
 - **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — key fields:
   - `source_provider` — `openai` / `anthropic` / `google` / `cohere` / `custom`. Drives §9 baseline gating. (Vertex AI customers are emitted as `google` here; the analyzer's `errors` field carries the `vertex AI auth detected` signal that gates baseline collection upstream — by the time you reach §9, `source_baseline_available` already reflects that.)
   - `source_models` — list of source-model IDs. Pass `<SOURCE_MODEL_ID>` to the §9 baseline skill verbatim.
-  - `same_model_family` — legacy name for exact unchanged model identity/version, subject to the §8 identity recheck. Anthropic provider membership alone does not qualify. Read `target_models` source→validated-target pairs from the same analysis for that check.
+  - `same_model_family` — exact unchanged model identity/version, checked centrally by `validate_result.py --schema analysis` before dispatch or cache reuse. Consume that validated value without deriving it again; Anthropic provider membership alone does not qualify.
   - `source_baseline_available` — `true` iff the user supplied a source-provider API key (orchestration skill Phase B3) and it was written to `<repo>/.saws-migrate/.source-provider-env`. When `false`, §9 skips and the report banner will note the gap.
   - `special_patterns` — `{streaming, function_calling, embeddings, vision}` booleans. Drives §5 layer selection.
   - `bedrock_provider_available` — informational ONLY. This is a rewrite-strategy flag for T2-5, NOT an account-capability flag. Do NOT use it to decide whether your Bedrock calls will work — Step §6 verifies that directly.
@@ -250,9 +250,17 @@ If `total_golden_cases == 0` (T2-2 abort / paste / vision-no-images / embeddings
 
 # 8. Same-model-family short-circuit
 
-Before using this shortcut (including on resume), run `uv run --project <scriptsDir> python <scriptsDir>/model_identity.py --provider <source_provider> --source <source-model> --target <bedrock-model>` for EVERY `target_models` pair. Require a nonempty list and all `same_model: true` results. Unknown or changed identities override a stale true flag to false. In particular, Opus 4.8 → 5.5 follows §9–§13 baseline, comparative scoring and adaptation, subject to existing dataset/key availability gates.
+Use the analyzer's centrally validated identity flag. C0 invalidates older evaluation
+contracts before resuming, and the analysis validator rejects incorrect true claims.
+Opus 4.8 → 5.5 follows §9–§13 baseline, comparative scoring and adaptation, subject to the
+existing dataset/key availability gates.
 
-If `same_model_family: true` is verified and target API checks have no unresolved behavior changes:
+If `same_model_family: true`:
+
+Pending API/path behavior deltas do not change model identity or choose the evaluation
+transport. C3 runs this connectivity/response-format loop on the API selected in §6;
+C4 later confirms user-visible deltas and C5 applies them. Do not route a same-model
+Mantle target into §10 because its API changes have not yet been confirmed.
 
 - Skip rubric generation and scoring (no parameter-surface drift to score against).
 - Just verify each prompt works on Bedrock (connectivity + response format): run each prompt, check for errors, verify response is non-empty.
@@ -314,14 +322,14 @@ Count a case as failed if the call errors or returns empty output. If a case wit
 
 **When to run:**
 
-- `source_baseline_available == true` AND the §8 shortcut is not eligible
+- `source_baseline_available == true` AND `same_model_family == false`
   → run this step.
 - `source_baseline_available == false` → SKIP. Set
   `live_source_baseline: false` and `source_baseline_quality: 'unknown'`
   for the final report. The report will
   surface a banner explaining the pass rate is not a side-by-side
   comparison.
-- `same_model_family == true` (all exact identities verified and §8 shortcut eligible) → SKIP. §8 already short-circuits scoring
+- `same_model_family == true` (centrally validated exact identities) → SKIP. §8 already short-circuits scoring
   entirely; a live baseline would compare the model against itself.
 
 **Procedure:**

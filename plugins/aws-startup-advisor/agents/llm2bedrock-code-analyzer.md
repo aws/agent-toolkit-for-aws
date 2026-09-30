@@ -139,6 +139,8 @@ Determine:
    Provider membership alone never permits the downstream scoring shortcut.
    Recompute after §10 validates the target IDs; if a target changes, rerun §9
    against that final target before returning the analysis.
+   `validate_result.py --schema analysis` verifies this claim centrally before
+   the orchestrator accepts or reuses the result; downstream agents consume that validated flag.
 
 ## 7.1.1 Disambiguate `openai` vs OpenAI-compatible
 

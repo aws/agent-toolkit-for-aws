@@ -322,3 +322,33 @@ def test_context_truncated_source_baseline_falls_back_and_retries_on_resume(tmp_
     }
     assert baseline.main() == 0
     assert len(calls) == 2
+
+
+def test_same_gpt_pending_api_delta_keeps_the_mantle_connectivity_loop():
+    text = EVALUATOR.read_text()
+    section = text.split("# 8. Same-model-family short-circuit", 1)[1].split("# 9.", 1)[0]
+    assert "If `same_model_family: true`:" in section
+    assert "no unresolved behavior changes" not in section
+    assert "C4 later confirms user-visible deltas" in section
+    code = block(EVALUATOR, 'from image_input import converse_message, responses_message')
+    nodes = ast.parse(code).body
+    start = next(i for i, node in enumerate(nodes) if isinstance(node, ast.Assign)
+                 and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "items")
+    calls = []
+    client = types.SimpleNamespace(responses=types.SimpleNamespace(
+        create=lambda **kwargs: calls.append(kwargs)
+    ))
+    namespace = {
+        "client": client, "raw": None,
+        "case": {"user_prompt": "Hello", "system_prompt": "Be concise"},
+        "responses_message": lambda prompt, path, raw: {
+            "role": "user", "content": [{"type": "input_text", "text": prompt}]
+        },
+    }
+    # The literal model placeholder is replaced exactly as the evaluator does.
+    source = ast.unparse(ast.Module(body=nodes[start:], type_ignores=[]))
+    exec(compile(source.replace("<TARGET_MODEL_ID>", "openai.gpt-5.5"),
+                 "<mantle-connectivity>", "exec"), namespace)  # nosec B102
+    assert calls[0]["model"] == "openai.gpt-5.5"
+    assert calls[0]["input"][0]["role"] == "developer"
+    assert calls[0]["input"][1]["content"][0]["text"] == "Hello"

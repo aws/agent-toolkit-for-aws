@@ -356,6 +356,25 @@ def _candidate_summary(candidate, requirements, reason, region=None):
     }
 
 
+def _allowed_inference_profiles(model_id, model, region, requirements):
+    geography = requirements.get("cris_geography")
+    geo_required = requirements.get("data_residency") == "geo_required"
+    return [
+        f"{prefix}.{model_id}"
+        for prefix, regions in model.get("inference_profiles", {}).items()
+        if region in regions
+        and not (geo_required and (prefix == "global" or (geography and prefix != geography)))
+    ]
+
+
+def _profile_verification(model_id, requires_cris, model, region, requirements):
+    if not requires_cris or not (model or {}).get("inference_profiles"):
+        return {}
+    return {"allowed_inference_profiles": _allowed_inference_profiles(
+        model_id, model, region, requirements or {}
+    )}
+
+
 def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=None, region=None):
     if not requires_cris:
         return model_id
@@ -370,16 +389,23 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
     profiles = (model or {}).get("inference_profiles")
     if not candidate or not profiles:
         return candidate
-    # An application profile cannot be resolved from a static catalog. Keep it
-    # unresolved until the target-account probe establishes its model and geography.
-    prefix, separator, base = candidate.partition(".")
-    if not separator or base != model_id or region not in profiles.get(prefix, []):
-        return None
-    if requirements.get("data_residency") == "geo_required":
-        geography = requirements.get("cris_geography")
-        if prefix == "global" or (geography and prefix != geography):
+    allowed = _allowed_inference_profiles(model_id, model, region, requirements)
+    profile_id = candidate
+    if candidate.startswith("arn:"):
+        arn = re.fullmatch(
+            r"arn:(aws(?:-[a-z-]+)?):bedrock:([a-z0-9-]+):[0-9]{12}:"
+            r"(inference-profile|application-inference-profile)/([a-zA-Z0-9:.-]+)",
+            candidate,
+        )
+        partition = "aws-us-gov" if region.startswith("us-gov-") else "aws-cn" if region.startswith("cn-") else "aws"
+        if not arn or arn[1] != partition or arn[2] != region:
             return None
-    return candidate
+        if arn[3] == "application-inference-profile":
+            # Preserve the callable ARN. The verifier checks its model destinations
+            # against allowed_inference_profiles before making an inference call.
+            return candidate if allowed else None
+        profile_id = arn[4]
+    return candidate if profile_id in allowed else None
 
 
 def _decision_options(catalog, workload, option_paths, region=None):
@@ -642,7 +668,7 @@ def _base_findings(feature_status, source_analysis, model=None, requirements=Non
     return blocks, tuning
 
 
-def _verification(candidate, region, catalog, invocation_model_id):
+def _verification(candidate, region, catalog, invocation_model_id, requirements=None):
     path = candidate["path"]
     checks = [
         "Probe the selected model through the selected API path in the target account and region.",
@@ -661,6 +687,11 @@ def _verification(candidate, region, catalog, invocation_model_id):
         "availability_claim": "provisional",
         "invocation_model_id": invocation_model_id,
         "required_checks": checks,
+        **_profile_verification(
+            candidate["path_config"]["model_id"],
+            candidate["path_config"]["requires_cris"],
+            candidate["model"], region, requirements,
+        ),
     }
 
 
@@ -849,6 +880,6 @@ def recommend_anthropic_workload(workload, region, catalog):
             "gate": "Compare source and target on the golden set before percentage rollout.",
         },
         "verification": _verification(
-            chosen, region, catalog, invocation_model_id
+            chosen, region, catalog, invocation_model_id, workload["requirements"]
         ),
     }
