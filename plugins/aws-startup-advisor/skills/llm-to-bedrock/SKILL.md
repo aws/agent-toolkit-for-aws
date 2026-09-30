@@ -147,6 +147,14 @@ Then, in order:
    exactly as `$GCP_BASE/references/phases/discover/discover.md` Step 0 describes (list
    existing runs and offer Resume/Fresh/Cancel if any exist; otherwise create
    `$REPO/.migration/<MMDD-HHMM>/` with the current timestamp and set `$MIGRATION_DIR` to it).
+   **A directory that exists but has no `.phase-status.json` yet is NOT an existing run** —
+   treat it as fresh and skip discover.md's Resume/Fresh/Cancel prompt for it (same exception
+   `agent-advisor`'s `migration-plan.md` Phase A documents for its own inline gcp-to-aws
+   delegation). This matters here because llm-to-bedrock does not pre-create `$MIGRATION_DIR`
+   before this step — but a run interrupted after this step creates the directory and before
+   discover.md's Step 0 writes `.phase-status.json` would otherwise leave exactly this
+   directory (present, but state-less) for a later resume, and discover.md's Resume branch
+   would then try to read a `.phase-status.json` that doesn't exist.
 2. **Read and execute** `$GCP_BASE/references/phases/discover/discover.md` in full, exactly
    as written, including its own Step 0 state-file initialization (skip Step 0 if resuming —
    `$MIGRATION_DIR` already has a `.phase-status.json`) and its Step 1 sub-discovery gates
@@ -196,6 +204,19 @@ user stopped mid-Clarify and is resuming later) — re-read `$MIGRATION_DIR/.pha
 and resume A1 at whichever step in `phases` is not yet `"completed"`, rather than restarting
 from Discover.
 
+**Before trusting that re-read, apply `gcp-to-aws/SKILL.md` § State Validation** (the same
+contract A1's own phase files rely on when THEY read this state, so this wrapper-level
+backstop re-read must not be held to a looser standard). In particular: if
+`.phase-status.json` fails to parse (an interrupted write left it invalid — e.g. the session
+was interrupted mid-write, not just mid-phase), § State Validation check 2's reconstruction
+procedure is the one and only sanctioned way to recover it — infer completed phases from the
+artifacts actually present in `$MIGRATION_DIR`, present the inferred status to the user for
+confirmation, and rewrite `.phase-status.json` only on that confirmation. This is a narrow,
+explicit exception to A1's "do not write to that file yourself" rule: `.phase-status.json`
+recovery per this contract is not the same act as a phase file's own state management, and
+proceeding here without it would mean this wrapper resumes on state it never validated,
+unlike every phase file it delegates to.
+
 **Workshop guard:** if `phases.workshop == "in_progress"`, `design.md`'s inner-workshop path
 is actively repricing (`workshop-refresh.md` is rewriting `aws-design-ai.json` between an old
 and a new mapping) — finish that loop (it resolves `phases.workshop` back to `"completed"` on
@@ -203,11 +224,16 @@ exit or decline) before treating Design as done.
 
 ### A3 — Locate Assess output
 
-Find `$MIGRATION_DIR` (the `.migration/<MMDD-HHMM>/` directory that was created):
-
-```bash
-ls -td "$REPO/.migration"/*/ 2>/dev/null | head -1
-```
+**Use the SAME `$MIGRATION_DIR` A1/A2 already resolved and confirmed — do NOT re-select a
+directory here.** `$MIGRATION_DIR` is already set from A1 step 1 (and re-confirmed, not
+replaced, by A2's re-read on a resumed session); re-running a "newest directory" lookup
+(`ls -td "$REPO/.migration"/*/ | head -1`) at this point can select a DIFFERENT, newer run
+than the one A2 just verified was complete — e.g. a sibling run whose own Design is still
+in progress. B1 would then read that sibling's unfinished model map instead of the run this
+phase actually assessed, with no error raised (the newer directory can genuinely contain all
+three files below, just from a different, incomplete assessment). If `$MIGRATION_DIR` is
+somehow unset here (it should never be, given A1/A2 above), that is a bug in this phase's own
+state tracking — stop and report it rather than guessing a directory from `ls -td`.
 
 Verify **all three** of these files exist in `$MIGRATION_DIR` (Phase B reads every one):
 
