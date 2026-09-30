@@ -300,7 +300,7 @@ the flow is the intended cost. Corrections use the Gate 1 override grammar and s
 **Sequence (fixed — do not reorder or combine):**
 
 1. Answer Recap → wait for the user's response
-2. Category E opt-in (if `billing-profile.json` exists) → wait
+2. Category E opt-in (if `billing-profile.json` exists with non-empty `services[]`) → wait
 3. Step 5 — write `preferences.json`
 
 **"Use defaults for the rest" still gets a recap:** when the user defaults remaining
@@ -327,7 +327,10 @@ one-liner).
 ## Category E Opt-In
 
 After the essentials are answered (but before writing final `preferences.json`), offer
-Category E if `billing-profile.json` exists:
+Category E if `billing-profile.json` exists **with non-empty `services[]`** — a skip
+record (empty `services[]`, non-empty `warnings[]`; see `discover-billing.md` § skip
+record) has no billing data to base HA/right-sizing recommendations on, so do not offer
+it from file existence alone:
 
 > "Would you also like HA upgrade and right-sizing recommendations based on your billing
 > data? If not, I'll use conservative defaults (no upgrades, match current capacity)."
