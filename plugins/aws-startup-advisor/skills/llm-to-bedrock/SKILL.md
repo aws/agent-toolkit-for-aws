@@ -499,7 +499,7 @@ Bedrock at their expense, capped at 200 cases.
   "assess_design_sha256": "<sha256 of $MIGRATION_DIR/aws-design-ai.json>",
   "report_date_suffix": "<date +%Y-%m-%d>",
   "schema_version": 1,
-  "evaluation_contract_version": 2,
+  "evaluation_contract_version": 3,
   "plugin_version": "<version from <plugin>/.claude-plugin/plugin.json>"
 }
 ```
@@ -553,8 +553,9 @@ rewrite.json + delta-decisions.json · REPORT = `MIGRATION_REPORT_<saved suffix>
 
 `evaluation_contract_version` is enforced by `validate_result.py`, independently of the
 plugin release version. Missing or older versions invalidate results produced by the old
-provider-only identity shortcut. Persist version 2 in both current and saved contexts after
-invalidation so subsequent resumes can reuse the newly validated results.
+provider-only identity shortcut or text-only comparative image requests. Persist version 3
+in both current and saved contexts after invalidation so subsequent resumes can reuse the
+newly validated results.
 
 **Post-C5 reruns of C1–C3 need the pre-migration tree.** If rewrite.json was payload-valid
 and the table invalidates ANALYSIS/INGESTION/EVAL: confirm with the user that the old

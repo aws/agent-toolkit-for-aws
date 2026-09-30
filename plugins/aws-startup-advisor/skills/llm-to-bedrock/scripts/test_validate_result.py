@@ -273,6 +273,14 @@ def test_legacy_evaluation_contract_invalidates_even_when_caller_omits_version(t
     assert vr.main(["--check-run-context", saved, "--current", current]) == 0
 
 
+def test_text_only_comparative_contract_cannot_reuse_image_results(tmp_path, capsys):
+    previous = {**RUN_CONTEXT, "evaluation_contract_version": 2}
+    saved = write(tmp_path, "saved.json", previous)
+    current = write(tmp_path, "current.json", RUN_CONTEXT)
+    assert vr.main(["--check-run-context", saved, "--current", current]) == 1
+    assert 'evaluation_contract_version saved=2 current=3' in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("source,target", [
     ("claude-opus-4-6", "us.anthropic.claude-opus-4-8"),
     ("claude-opus-4-8", "global.anthropic.claude-opus-5-5"),

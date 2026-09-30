@@ -35,7 +35,7 @@ def block(path, marker):
     sources += re.findall(r"python - <<'PY'\n(.*?)\nPY", text, re.S)
     matches = [code for code in sources if marker in code]
     assert len(matches) == 1, (path, marker, len(matches))
-    return matches[0]
+    return matches[0].replace("<scriptsDir>", str(SKILLS / "llm-to-bedrock/scripts"))
 
 
 def after_call(code, method):
@@ -219,7 +219,8 @@ def test_auto_tool_validation_does_not_retry_refusal_or_truncation(stop):
     assert len(namespace["bedrock"].requests) == 1
 
 
-def test_native_vision_template_and_source_baseline_skip_thinking_blocks():
+def test_native_vision_template_and_source_baseline_skip_thinking_blocks(monkeypatch):
+    monkeypatch.syspath_prepend(str(SKILLS / "llm-to-bedrock/scripts"))
     path = SKILLS / "llm-to-bedrock/references/helpers/bedrock-known-fixes/references/bedrock-vision.py.template"
     nodes = [node for node in ast.parse(path.read_text()).body if isinstance(node, ast.FunctionDef) and node.name in {"analyze_image", "_parse_response"}]
     payload = {"content": [{"type": "thinking", "thinking": "Private", "signature": "opaque"}, {"type": "text", "text": '{"answer":"valid"}'}], "stop_reason": "end_turn"}
@@ -260,6 +261,7 @@ def test_shared_guide_and_gemini_adapter_read_typed_text():
 
 @pytest.mark.parametrize("complete_stop", ["end_turn", "stop_sequence"])
 def test_context_truncated_source_baseline_falls_back_and_retries_on_resume(tmp_path, monkeypatch, complete_stop):
+    monkeypatch.syspath_prepend(str(SKILLS / "llm-to-bedrock/scripts"))
     path = SKILLS / "llm-to-bedrock/scripts/source_baseline.py"
     spec = importlib.util.spec_from_file_location("context_limit_source_baseline", path)
     baseline = importlib.util.module_from_spec(spec)
@@ -352,3 +354,44 @@ def test_same_gpt_pending_api_delta_keeps_the_mantle_connectivity_loop():
     assert calls[0]["model"] == "openai.gpt-5.5"
     assert calls[0]["input"][0]["role"] == "developer"
     assert calls[0]["input"][1]["content"][0]["text"] == "Hello"
+
+
+@pytest.mark.parametrize("image_kind", ["jpg", "missing", "unsupported", "none"])
+def test_comparative_loop_preserves_each_golden_image(tmp_path, monkeypatch, image_kind):
+    code = block(EVALUATOR, 'gd_path = "<repo>/.saws-migrate/golden-dataset/prompts.jsonl"')
+    scripts = SKILLS / "llm-to-bedrock/scripts"
+    monkeypatch.syspath_prepend(str(scripts))
+    image = tmp_path / ("receipt.txt" if image_kind == "unsupported" else "receipt.jpg")
+    if image_kind != "missing":
+        image.write_bytes(b"test-image-bytes")
+    data = tmp_path / ".saws-migrate/golden-dataset"
+    data.mkdir(parents=True)
+    (tmp_path / ".saws-migrate/eval-results").mkdir()
+    case = {"id": "vision", "user_prompt": "Read the total", "system_prompt": "Be precise",
+            "assistant_response": "42.00"}
+    if image_kind != "none":
+        case["image_path"] = str(image)
+    (data / "prompts.jsonl").write_text(json.dumps(case) + "\n")
+    client = Bedrock([response([{"text": "42.00"}])])
+    fake_boto = types.ModuleType("boto3")
+    fake_boto.client = lambda *args, **kwargs: client
+    fake_core = types.ModuleType("botocore")
+    fake_exceptions = types.ModuleType("botocore.exceptions")
+    fake_exceptions.ClientError = type("ClientError", (Exception,), {})
+    monkeypatch.setitem(sys.modules, "boto3", fake_boto)
+    monkeypatch.setitem(sys.modules, "botocore", fake_core)
+    monkeypatch.setitem(sys.modules, "botocore.exceptions", fake_exceptions)
+    exec(compile(code.replace("<repo>", str(tmp_path)), "<comparative-evaluator>", "exec"), {})  # nosec B102
+    result = json.loads((tmp_path / ".saws-migrate/eval-results/raw_results.jsonl").read_text())
+    if image_kind in {"missing", "unsupported"}:
+        assert result["status"].startswith("error:") and not client.requests
+    else:
+        assert result["status"] == "success"
+        request = client.requests[0]
+        assert request["system"] == [{"text": "Be precise"}]
+        content = request["messages"][0]["content"]
+        assert content[-1] == {"text": "Read the total"}
+        if image_kind == "jpg":
+            assert content[0] == {"image": {"format": "jpeg", "source": {"bytes": b"test-image-bytes"}}}
+        else:
+            assert content == [{"text": "Read the total"}]

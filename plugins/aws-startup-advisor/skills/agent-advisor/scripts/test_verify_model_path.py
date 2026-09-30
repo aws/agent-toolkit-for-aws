@@ -389,6 +389,38 @@ def test_global_application_profile_can_use_an_allowed_reference_after_an_unread
     assert client.converse_calls[0]["modelId"] == APPLICATION_ARN
 
 
+def test_recommendation_cli_invalidates_passed_profile_cache_when_residency_changes(tmp_path):
+    data = _input({
+        "priority": "quality", "governance": ["guardrails"],
+        "data_residency": "global_allowed", "inference_profile_id": APPLICATION_ARN,
+    })
+    source = tmp_path / "input.json"
+    source.write_text(json.dumps(data))
+    assert model_recommendation.main([str(source)]) == 0
+    cache = tmp_path / "model-verification.json"
+    passed = '{"workloads":{"support-agent":{"status":"passed"}}}\n'
+    cache.write_text(passed)
+    assert model_recommendation.main([str(source)]) == 0
+    assert cache.read_text() == passed
+    data["workloads"][0]["requirements"].update(data_residency="geo_required", cris_geography="us")
+    source.write_text(json.dumps(data))
+    assert model_recommendation.main([str(source)]) == 0
+    assert not cache.exists()
+    result = json.loads((tmp_path / "model-recommendation.json").read_text())
+    workload = result["workloads"]["support-agent"]
+    assert workload["invocation_model_id"] == APPLICATION_ARN
+    assert workload["verification"]["allowed_inference_profiles"] == [f"us.{OPUS55}"]
+
+
+def test_recommendation_cli_drops_orphaned_verification_before_first_write(tmp_path):
+    source = tmp_path / "input.json"
+    source.write_text(json.dumps(_input({"data_residency": "global_allowed"})))
+    cache = tmp_path / "model-verification.json"
+    cache.write_text('{"status":"passed"}')
+    assert model_recommendation.main([str(source)]) == 0
+    assert not cache.exists()
+
+
 def test_mantle_responses_probe_calls_responses_create_with_exact_id():
     client = FakeOpenAIClient()
     result = _verify_openai(

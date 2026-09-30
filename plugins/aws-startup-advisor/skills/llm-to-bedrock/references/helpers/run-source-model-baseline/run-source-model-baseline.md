@@ -139,6 +139,11 @@ top-level `system`, Gemini `systemInstruction` — shapes unit-locked in
 `live` row in the output are never re-billed; failed rows are retried), and
 writes the output contract below.
 
+For every golden case with `image_path`, the runner sends the same image bytes and
+user/system prompts to the source provider. Unreadable or unsupported images produce an
+error row with an empty source response, not a text-only call marked `live`. C0's evaluation
+contract invalidation clears older baseline/evaluation caches that omitted these images.
+
 Anthropic responses stopped by `model_context_window_exceeded` are incomplete:
 record an error with empty `source_response`, use the stored baseline for that
 evaluation, and retry the failed row on resume. If an earlier evaluation is known

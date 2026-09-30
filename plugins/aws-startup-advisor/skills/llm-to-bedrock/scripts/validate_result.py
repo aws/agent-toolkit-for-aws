@@ -31,7 +31,7 @@ from model_identity import same_model
 
 SCHEMA_NAMES = ("analysis", "ingestion", "eval", "rewrite", "delta-decisions")
 SCHEMAS_DIR = pathlib.Path(__file__).parent / "schemas"
-EVALUATION_CONTRACT_VERSION = 2
+EVALUATION_CONTRACT_VERSION = 3
 
 # Run metadata, not run identity — excluded from the mismatch comparison
 # (design §5.1: a resume on a later calendar day must not invalidate anything).

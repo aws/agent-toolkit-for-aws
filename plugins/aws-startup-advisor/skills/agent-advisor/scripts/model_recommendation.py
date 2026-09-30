@@ -168,6 +168,22 @@ def recommend(input_data, catalog=None, openai_catalog=None):
     }
 
 
+def _invocation_contract(recommendation):
+    return {
+        workload_id: {
+            "decision_status": workload.get("decision_status"),
+            "model": (workload.get("model_identity") or {}).get("path_model_id"),
+            "api_path": workload.get("api_path"),
+            "invocation_model_id": workload.get("invocation_model_id"),
+            "region": workload["verification"]["region"],
+            "allowed_inference_profiles": sorted(
+                workload["verification"].get("allowed_inference_profiles", [])
+            ),
+        }
+        for workload_id, workload in recommendation["workloads"].items()
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="agent-advisor Bedrock model recommendation"
@@ -197,6 +213,13 @@ def main(argv=None):
     result = recommend(input_data, load_catalog(args.catalog))
     validate(result, "model-recommendation.json")
     output = args.output or args.input.parent / "model-recommendation.json"
+    try:
+        previous = json.loads(output.read_text())
+        previous_contract = _invocation_contract(previous)
+    except (OSError, ValueError, KeyError, TypeError):
+        previous_contract = None
+    if previous_contract != _invocation_contract(result):
+        output.with_name("model-verification.json").unlink(missing_ok=True)
     output.write_text(json.dumps(result, indent=2) + "\n")
     validated = "no" if jsonschema is None else "yes"
     print(f"RESULT=ok WORKLOADS={len(result['workloads'])} SCHEMA_VALIDATED={validated}")

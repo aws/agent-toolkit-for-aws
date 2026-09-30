@@ -471,6 +471,9 @@ Outcomes are the same as §9.5: `VISION_OK` → proceed; `VISION_INFRA_SKIPPED` 
 
 For each prompt in the golden dataset, run the evaluation via `python` stdin (avoids the brittle nested-heredoc + escaped-quote pattern that breaks on any literal `'` inside the script):
 
+Send each case's `image_path` through the same shared image builder used by §8.
+An unreadable or unsupported image is a failed case; never silently evaluate its text alone.
+
 ```bash
 AWS_REGION=<REGION> <prepend AWS_PROFILE=<profile> when your context has an `AWS profile` line> uv run --project <scriptsDir> python - <<'PY'
 import json
@@ -480,6 +483,9 @@ import sys
 import time
 import boto3
 from botocore.exceptions import ClientError
+
+sys.path.insert(0, "<scriptsDir>")
+from image_input import converse_message
 
 bedrock = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
@@ -547,9 +553,14 @@ for prompt in prompts:
     else:
         system = []
 
-    messages.append({"role": "user", "content": [{"text": prompt["user_prompt"]}]})
-
     try:
+        image_path = prompt.get("image_path")
+        if image_path:
+            with open(image_path, "rb") as image:
+                raw = image.read()
+        else:
+            raw = None
+        messages.append(converse_message(prompt["user_prompt"], image_path, raw))
         # IMPORTANT: substitute the §6-validated ID here, not the raw plan ID — if §6's
         # `resolve-bedrock-model-id` skill ran, the plan ID was stale and the validated
         # one is what works for converse calls.

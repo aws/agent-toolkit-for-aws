@@ -267,6 +267,11 @@ model. Runtime recommendations with an unresolved CRIS profile produce `needs_re
 Keep `model-verification.json` when generated and show its per-workload status. A failed probe
 does not change the accepted recommendation; it blocks runnable POC claims until resolved.
 
+When this engine rewrites a recommendation, it removes the sibling `model-verification.json`
+if any workload's model, API, invocation ID, region or allowed profile set changed. An unchanged
+invocation contract retains its verification. After invalidation, treat verification as
+`not_run`; do not restore a passed result from an older design or report.
+
 For an Opus 5.5 application-profile ARN, the verifier first reads `GetInferenceProfile`
 for that ARN and the recommendation's `verification.allowed_inference_profiles`. It requires
 active destinations matching the selected model and an allowed regional profile before
