@@ -206,7 +206,7 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
    - `gcp-resource-inventory.json` — IaC discovery succeeded
    - `gcp-resource-clusters.json` — IaC discovery produced clusters
    - `ai-workload-profile.json` — App code discovery (confidence ≥ 70%) and/or IaC Vertex-strong inference (`discover-iac.md` Step 7d)
-   - `billing-profile.json` — Billing data parsed
+   - `billing-profile.json` — Billing data parsed (or, when `services[]` is empty and `warnings[]` is non-empty, a skip record: billing files seen but not a GCP/BigQuery export)
    - `openai-usage-profile.json` — OpenAI Admin API usage captured
    - `openrouter-usage-profile.json` — OpenRouter API usage captured
 2. **If NO artifacts were produced** (sub-discoveries ran but produced no output): STOP and output: "Discovery ran but produced no artifacts. Check that your input files contain valid GCP resources and try again."
@@ -236,9 +236,19 @@ Load `shared/handoff-gates.md`. **Re-read from disk** every artifact below befor
 GATE_FAIL | phase=discover | field=preferences.json | reason=stale_downstream
 ```
 
+**On confirmed re-entry, before writing this run's new artifacts:** follow
+`shared/handoff-gates.md`'s "Retire stale route artifacts" rule — compare which routes are
+active in the artifacts already on disk against which routes THIS re-run's fresh discovery
+output will support, and delete any route's downstream artifacts (`aws-design-*.json`,
+`estimation-*.json`, `generation-*.json`) that were active before but will no longer be
+supported (e.g. a working billing export replaced by one this sub-file cannot read). This is
+necessary because Design/Estimate/Generate all select their route by file existence, not by
+`.phase-status.json`'s phase flags — resetting the flags alone leaves the stale files in place
+to be silently re-selected.
+
 **Checks (all must PASS):**
 
-1. At least one discovery artifact exists (`gcp-resource-inventory.json`, `ai-workload-profile.json`, or `billing-profile.json`). Neither `openai-usage-profile.json` nor `openrouter-usage-profile.json` satisfies this check on its own — each is a supplement (spend and volumes, no integration or capability detail; see SKILL.md Prerequisites) and cannot anchor a run by itself.
+1. At least one discovery artifact exists (`gcp-resource-inventory.json`, `ai-workload-profile.json`, or `billing-profile.json`). Neither `openai-usage-profile.json` nor `openrouter-usage-profile.json` satisfies this check on its own — each is a supplement (spend and volumes, no integration or capability detail; see SKILL.md Prerequisites) and cannot anchor a run by itself. A **skip-record** `billing-profile.json` (empty `services[]` **and** non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) ALSO does not satisfy this check on its own: it records that billing input was skipped, not parsed. The run must anchor on IaC, code scan, or AI discovery instead.
 2. Route output gates from Step 2 all pass.
 3. If any discovery artifact exists → `migration-preview.json` exists with `complexity_signal` set.
 
@@ -259,7 +269,7 @@ Output to user — build message from whichever artifacts exist:
 - If `gcp-resource-inventory.json` exists: "Discovered X total resources across Y clusters."
 - If live discovery ran: "Live discovery captured N resources from project [id]." Plus, when IaC also ran: "Drift check: A resources live but not in Terraform, B in Terraform but not live, C config conflicts (live values used)." Plus, when `live_metadata.unmapped_asset_types` is non-empty: "Skipped M unmapped asset types (top: X, Y, Z) — full list in live_metadata."
 - If `ai-workload-profile.json` exists: "Detected AI workloads (source: [ai_source])."
-- If `billing-profile.json` exists: "Parsed billing data ($Z/month across N services)."
+- If `billing-profile.json` exists with non-empty `services[]`: "Parsed billing data ($Z/month across N services)." If it is a skip record (empty `services[]`, non-empty `warnings[]`): "Skipped N billing files (not GCP/BigQuery exports) — see billing-profile.json warnings." (never report "$0/month across 0 services" as parsed spend).
 - If `openai-usage-profile.json` exists: "Captured OpenAI usage via Admin API ($X/month across M models)." Plus, when `metadata.capture_warnings` is non-empty: "W usage endpoints failed — affected categories are unknown, not zero (see profile metadata)."
 - If `openrouter-usage-profile.json` exists: "Captured OpenRouter usage via API ($X/month across M models)." Plus, when `metadata.capture_warnings` is non-empty: "W usage endpoints failed — affected categories are unknown, not zero (see profile metadata)."
 

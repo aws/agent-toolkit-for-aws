@@ -1,4 +1,4 @@
-# Schema & Data Modeling
+# Schema and Data Modeling
 
 ## When to Activate
 
