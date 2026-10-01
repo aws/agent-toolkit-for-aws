@@ -1,5 +1,10 @@
 {
   "phase": "clarify",
+  "metadata": {
+    "clarify_mode": "wizard",
+    "fast_path_eligible": false,
+    "questions_defaulted": []
+  },
   "clarify_status": "COMPLETE",
   "global": {
     "target_region": {

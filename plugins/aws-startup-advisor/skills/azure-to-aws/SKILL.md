@@ -107,6 +107,18 @@ does not count. Azure estates make this stricter, not looser: licensing posture 
 App Service Plan isolation are not inferable from configuration, and getting either
 wrong moves the estimate by multiples.
 
+**Clarify has a fast path, and the fast path is still Clarify.** When Discover marks
+the estate eligible (`azure-resource-inventory.json` → `metadata.clarify_fast_path`,
+`discover-assemble.md` § Assembly rule 9 — no AI, no Windows/SQL licensing signal, no
+VMs, no Cosmos Core, no HA database, one region, small cluster count), `clarify.md`
+§ Step 0.5 offers to ask only the ESSENTIAL rows (compliance; baseline spend when no
+billing source exists; database cutover when a relational database is present) and
+apply documented defaults for the rest, each shown with its consequence. Every
+fragment still runs, every row is still recorded, and the plan-isolation default is
+always surfaced with its cost consequence. The eligibility rule exists precisely so
+that the two cases named above — licensing, and any other row with no defensible
+default — never reach the short path.
+
 **Generate requires `run_mode: decide_and_execute`.** `estimate-assemble.md` owns
 presenting the post-Estimate decision gate and writing `run_mode` into
 `.phase-status.json`. An absent `run_mode` is NOT consent. Note that `generate.md`

@@ -53,6 +53,11 @@ licensing exposure and found none" is a different statement from silence.
 ```jsonc
 {
   "phase": "clarify",
+  "metadata": {
+    "clarify_mode": "wizard", // "fast_path" | "wizard" — which Clarify flow produced this file
+    "fast_path_eligible": false, // copied from azure-resource-inventory.json metadata.clarify_fast_path.eligible
+    "questions_defaulted": [] // dotted row keys that took their documented default without being asked, e.g. "design_constraints.compute_target"
+  },
   "global": {
     "target_region": { "disposition": "DETECTED", "value": "eu-west-1", "default": "eu-west-1" },
     "user_geography": {
@@ -129,6 +134,7 @@ Which fragment owns which section:
 
 | Section                                                      | Fragment                                                                         |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `metadata`                                                   | the assembler (`clarify-assemble.md` § Assembly rule 0)                          |
 | `global`, `design_constraints.cost_optimization`, `baseline` | `clarify-global.md`                                                              |
 | the rest of `design_constraints`, `app_service_plans[]`      | `clarify-compute.md`                                                             |
 | `data`                                                       | `clarify-database.md`                                                            |

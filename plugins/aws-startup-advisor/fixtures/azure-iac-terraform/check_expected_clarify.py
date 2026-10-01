@@ -232,6 +232,28 @@ def check_licensing_firing(prefs: dict, exp: dict) -> None:
               f"MGN refuses the image, so it is not advisory")
 
 
+def check_clarify_mode(prefs: dict, exp: dict) -> None:
+    """preferences.json metadata.clarify_mode (clarify-assemble.md § Assembly rule 0).
+
+    This corpus is ineligible for the Step 0.5 fast path (VMs, ZoneRedundant Postgres,
+    five clusters), so a run that reports `fast_path` here either ignored Discover's
+    verdict or re-derived eligibility itself — both are exactly what clarify.md § Step 0.5
+    forbids, and neither produces a malformed artifact.
+    """
+    spec = exp["clarify_mode"]
+    meta = prefs.get("metadata") or {}
+    mode = meta.get("clarify_mode")
+    check(mode == spec["expected"],
+          f"metadata.clarify_mode is {mode!r}, expected {spec['expected']!r}. {spec['_why']}")
+    check(meta.get("fast_path_eligible") is spec["expected_fast_path_eligible"],
+          f"metadata.fast_path_eligible is {meta.get('fast_path_eligible')!r}, expected "
+          f"{spec['expected_fast_path_eligible']!r} — it must be copied from the inventory's "
+          f"metadata.clarify_fast_path.eligible, not re-decided by Clarify")
+    check(isinstance(meta.get("questions_defaulted"), list),
+          f"metadata.questions_defaulted is {meta.get('questions_defaulted')!r}, expected a list "
+          f"(possibly empty) of dotted row keys that took their documented default")
+
+
 def check_cluster_rows(prefs: dict, run_dir: Path, exp: dict) -> None:
     spec = exp["cluster_rows"]
     clusters = load(run_dir / spec["clusters_file"], spec["clusters_file"])
@@ -285,6 +307,7 @@ def main() -> int:
     check_conflicting_answer(prefs, exp)
     check_isolation_rows(prefs, inv, exp)
     check_licensing_firing(prefs, exp)
+    check_clarify_mode(prefs, exp)
     check_cluster_rows(prefs, cl_dir, exp)
     check_no_secrets(prefs, exp)
 

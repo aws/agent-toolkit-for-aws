@@ -125,6 +125,11 @@
     ],
     "expected_status": "BLOCKED_ON_ESSENTIAL"
   },
+  "clarify_mode": {
+    "_why": "This corpus is ineligible for the clarify.md Step 0.5 fast path (VMs, ZoneRedundant Postgres, five clusters). A run reporting fast_path here either ignored Discover's metadata.clarify_fast_path verdict or re-derived eligibility itself; both are forbidden and neither produces a malformed artifact.",
+    "expected": "wizard",
+    "expected_fast_path_eligible": false
+  },
   "defaults_not_promoted": {
     "_why": "A value taken from its default must still read PROPOSED. DETECTED means READ FROM THE ESTATE. Design's rationale prints 'you chose Elastic Beanstalk' differently from 'we assumed Elastic Beanstalk', and the report prints the difference \u2014 but only if this file recorded which happened. A row that is DETECTED with value == default and no stated source is a promoted default.",
     "accepted_keys": [

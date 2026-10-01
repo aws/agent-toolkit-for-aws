@@ -88,6 +88,12 @@ skill's recommendation, changeable), **ESSENTIAL** (cannot be defaulted; must be
 answered), **N/A** (does not apply to this estate — shown so the user can see it was
 considered).
 
+Two ways to run the sheet. The **wizard** (default) presents every DETECTED/PROPOSED row
+as a gate, then asks the ESSENTIALs, then recaps. The **fast path** (Step 0.5, only when
+Discover marked the estate eligible) asks the ESSENTIALs first and applies the rest as
+documented defaults with a visible consequence line, so a simple estate reaches an
+estimate in two or three answers — the same shape as gcp-to-aws's fast path.
+
 Two Azure-specific categories that no sibling skill has:
 
 - **Licensing (conditional).** N/A, and its rubric never loads, when there are no
@@ -137,6 +143,58 @@ Before running any fragment, detect the migration type from which discovery arti
 > `metadata.migration_type: "ai-only"`. Do not run the infra fragments (there is no inventory for
 > their triggers to read) and do not fabricate an assumption sheet from the summaries here.
 
+## Step 0.5: Fast-path gate (simple estates)
+
+**Mirrors gcp-to-aws's `clarify.md` § Step 1.5.** Discover has already decided whether this
+estate qualifies — read `azure-resource-inventory.json` → `metadata.clarify_fast_path`
+(written by `discover-assemble.md` § Assembly rule 9). Do **not** re-derive eligibility here;
+if the key is absent, treat the estate as ineligible and run the full flow.
+
+```
+IF metadata.clarify_fast_path.eligible == true
+THEN offer the fast path (below)
+ELSE proceed to "Step: Run the phase" — and if reasons_ineligible is non-empty,
+     say which one(s) in the Discovery Summary so the user knows why the full
+     sheet is running (e.g. "Windows VMs detected — licensing posture has no
+     safe default, so I'll walk through the full sheet").
+```
+
+**If eligible**, present the offer **after** the Discovery Summary and **before** any
+fragment row is shown:
+
+> "Your estate looks straightforward — [total_resources] resources in [cluster_count]
+> workload(s), one region, no VMs, no Windows or SQL Server licensing, no AI.
+>
+> Want to use documented defaults and answer just [N] question(s)? I'll show you every
+> default I applied, with what it decides, and you can change any of them.
+>
+> **[Yes — short path]** / **[No — ask me everything]**"
+
+Compute `[N]` from the ESSENTIAL rows that will actually fire on this estate — see
+`clarify-assemble.md` § Fast-path mode. It is 2 or 3 for an eligible estate.
+
+**If the user chooses Yes:**
+
+1. Run every fragment whose `_trigger` holds, exactly as in the full flow — fragments compute
+   rows and defaults and ask nothing, so the short path needs them just as much.
+2. Run `clarify-assemble.md` in **fast-path mode** (its § Fast-path mode section): ESSENTIAL
+   rows are asked immediately, every DETECTED/PROPOSED row takes its documented value
+   without a sheet gate, and one compact "assumptions applied" summary is shown afterwards
+   for correction.
+3. `preferences.json` carries `metadata.clarify_mode: "fast_path"` and lists every defaulted
+   row in `metadata.questions_defaulted[]`.
+
+**If the user chooses No, or the estate is ineligible:** continue to "Step: Run the phase".
+Write `metadata.clarify_mode: "wizard"`.
+
+Why this does not weaken "Clarify is mandatory" (`SKILL.md`): the fast path **is** a
+Clarify run — every fragment fires, every row is recorded with its disposition, every
+ESSENTIAL row is still asked, and Design reads the same `preferences.json`. What changes is
+that rows with a documented default are not presented as a gate before the user has seen a
+number. Eligibility is what keeps that honest: the estates where a default is _not_
+defensible (licensing, VM cutover, HA downgrade, Cosmos RW split, multi-region) are exactly
+the ones Discover marks ineligible.
+
 ## Step: Run the phase
 
 **Fragments do not talk to the user. The assembler does.** This is the one phase where
@@ -146,7 +204,9 @@ that split matters, so it is stated here rather than left to each unit:
    what it can, assigns a disposition per row, and returns rows** — it asks nothing.
 2. Run `clarify-assemble.md`, which owns the whole conversation: **one** consolidated
    assumption sheet (DETECTED and PROPOSED rows, batched at five at a time), then the
-   ESSENTIAL questions, then the answer recap, then it writes `preferences.json`.
+   ESSENTIAL questions, then the answer recap, then it writes `preferences.json`. (On the
+   fast path from Step 0.5 the assembler runs its § Fast-path mode instead — same rows,
+   ESSENTIALs first, defaults applied, one summary.)
 3. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK`; on any failure emit
    `GATE_FAIL` and stop.
 

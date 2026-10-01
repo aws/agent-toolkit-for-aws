@@ -1,6 +1,11 @@
 {
   "_what_this_is": "GOLDEN preferences.json for the azure-iac-terraform corpus, with clarify-answers.json as the user. It is a BLOCKED Clarify: baseline.azure_monthly_spend is ESSENTIAL and unanswered, so the phase must emit GATE_FAIL. That is deliberate \u2014 it pins the completion gate rather than only the happy path.",
   "phase": "clarify",
+  "metadata": {
+    "clarify_mode": "wizard",
+    "fast_path_eligible": false,
+    "questions_defaulted": []
+  },
   "clarify_status": "BLOCKED_ON_ESSENTIAL",
   "global": {
     "target_region": {

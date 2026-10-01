@@ -55,6 +55,54 @@ Reply with a row number to change it, or "looks right" to accept all.
 for the remainder — the phase completes either way. A wizard the user cannot escape is an
 interrogation.
 
+### Fast-path mode (entered from `clarify.md` § Step 0.5 only)
+
+When Clarify entered via the fast-path offer, the three gates collapse into one exchange.
+Nothing about the _rows_ changes — every fragment has run and every row has a disposition —
+only the order and the gating:
+
+1. **Ask the ESSENTIAL rows first, in one batch, with their context lines.** On an eligible
+   estate these are at most: `design_constraints.compliance` (Q-A1c, always),
+   `baseline.azure_monthly_spend` (Q-A5, only when no billing source was discovered), and
+   `data.db_cutover` (Q-D2, only when a relational database is present — keep its extracted
+   size on the row). No other ESSENTIAL row can fire, because Discover's eligibility rule
+   excludes every estate feature that would make one fire. If one does, the inventory and
+   the verdict disagree — stop, say so, and fall back to the full flow.
+2. **Apply every DETECTED and PROPOSED row's documented value** without presenting a sheet.
+   Record each PROPOSED row's key in `metadata.questions_defaulted[]`; DETECTED rows are
+   not "defaulted" — they were read from the estate.
+3. **Show one compact "assumptions applied" summary**, then proceed. This replaces Gate 1
+   and Gate 3. It is informational, not a gate — the phase continues unless the user
+   objects — but every line carries the consequence the fragment supplied, so the
+   assumption is visible rather than silent:
+
+   ```
+   Assumptions applied (say a row name to change it, or "looks right"):
+
+     Target region          eu-west-1 (mapped from westeurope)
+     Compute target         Elastic Beanstalk — closest to App Service; say "Fargate" for direct container control
+     Plan asp-contoso-web   keep 3 apps together — mirrors what you pay today; splitting multiplies compute by 3
+     DB availability        single-AZ — your Flexible Server has no HA today; say "multi-AZ" to add a standby
+     CPU architecture       x86_64 (default)
+     Human identity         fresh IAM Identity Center re-invite
+     Licensing              N/A — no Windows or SQL Server found
+   ```
+
+   Show N/A rows here too, compactly, for the same reason the full sheet does.
+4. A correction removes that row's key from `questions_defaulted[]`, writes the user's value,
+   and adds a `"source": "user_corrected"` sibling on the row (disposition stays `PROPOSED`,
+   per assembly rule 2), so Design's rationale can say "you chose this" rather than "we
+   assumed this".
+5. Write `preferences.json` with `metadata.clarify_mode: "fast_path"`. Everything else in
+   this file — `clarify_status`, the Validation Checklist, the handoff gate — applies
+   unchanged.
+
+The App Service Plan isolation row (Q-C2) deserves one explicit word: it stays PROPOSED with
+its documented default (no split) on the fast path, as on the full sheet, and it **must**
+appear in the summary with its cost consequence whenever a plan hosts more than one app.
+`SKILL.md` names plan isolation as a reason Clarify cannot be skipped; the fast path honours
+that by always surfacing the default, not by asking a question the full flow also defaults.
+
 **Show N/A rows too**, compactly, at the end of the sheet. _"Licensing — N/A, no Windows or
 SQL found"_ tells the user the estate was checked. Silence does not, and the report
 distinguishes the two.
@@ -78,6 +126,11 @@ the last point before Design commits, and it is cheap relative to re-running fou
 
 ## Assembly rules
 
+0. Write the top-level `metadata` block: `clarify_mode` (`"fast_path"` | `"wizard"`),
+   `fast_path_eligible` (copied from the inventory verdict so the report can show both the
+   verdict and the choice), and `questions_defaulted[]` (every PROPOSED row that took its
+   documented value without being shown as a question — on the wizard path that is the rows
+   the user confirmed on the sheet or waved through with "use the defaults for the rest").
 1. Merge every fragment's rows into one `preferences.json`.
 2. Every row carries `disposition`, `value`, and `default`. A row the user never answered
    keeps its documented default and **stays PROPOSED** — never silently promote a default to
@@ -115,6 +168,7 @@ rewriting their answer and faking a gate failure both hide a real decision they 
 ## Validation Checklist
 
 - [ ] `clarify_status` is set to `COMPLETE` or `BLOCKED_ON_ESSENTIAL`, and it agrees with whether any `ESSENTIAL` row has `value: null`.
+- [ ] `metadata.clarify_mode` is `fast_path` or `wizard`; when `fast_path`, the inventory's `metadata.clarify_fast_path.eligible` was `true` and `metadata.questions_defaulted[]` lists every PROPOSED row that was not asked.
 
 - [ ] `global.target_region` is set.
 - [ ] `design_constraints.cpu_architecture` is set, with `x86_64` recorded as the default.
