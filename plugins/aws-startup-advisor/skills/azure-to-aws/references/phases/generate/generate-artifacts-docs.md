@@ -34,8 +34,13 @@ Required sections, in order:
 1. **Overview** — one paragraph: what estate was found (workload count from
    `clusters[]`), what it becomes on AWS, and that this is a draft plan to review.
 2. **Prerequisites** — an AWS account + credentials; Terraform ≥ 1.5; the S3 backend
-   bootstrap (two-step `init -backend=false` then `init`, per `terraform/README.md`); the
-   fill-once tfvars values (region, project, any Secrets Manager values). If a Windows
+   bootstrap (two-step `init -backend=false` then `init`, targeting `aws_s3_bucket.tfstate`
+   and `aws_dynamodb_table.tfstate_lock` in `baseline.tf`, per `terraform/README.md`); the
+   fill-once tfvars values (region, project, `operations_email`, `billing_email`,
+   `security_email`, any Secrets Manager values). State that `baseline.tf` is the account
+   security baseline (CloudTrail, GuardDuty, budget alerts, and Config + Security Hub when
+   a framework was declared) and that deleting that file before apply is how to opt out.
+   If a Windows
    estate, name the AWS Application Migration Service (MGN) prerequisite; if an
    **Azure Edition Windows Server** image was detected, state the hard blocker plainly
    (MGN refuses the image until re-imaged).
