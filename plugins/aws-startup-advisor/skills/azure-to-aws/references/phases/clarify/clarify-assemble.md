@@ -79,7 +79,7 @@ only the order and the gating:
    > to the estimate, and you can change any of them there."
 
    The defaults are rendered by `estimate-assemble.md` § Step 2 as the **"Assumptions
-   behind this number"** block, *after* the user has a number to judge them against. A
+   behind this number"** block, _after_ the user has a number to judge them against. A
    default is only worth correcting once its consequence is visible in dollars; showing the
    list before the estimate is the gate this mode exists to remove.
 4. Write `preferences.json` with `metadata.clarify_mode: "fast_path"`. Everything else in
