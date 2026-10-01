@@ -491,18 +491,24 @@ per-1M-token rates and the sample cost only, with the line
    ```
 
 2. **Set up AWS credentials:**
-   - Configure AWS credentials with Bedrock access
-   - Set environment variables per `.env.example`
+   - ECS uses the task role. Lambda uses the execution role. A local run uses the boto3 default chain (`aws sso login` or a named profile).
+   - `.env.example` sets `AWS_REGION` and the model id. Access keys stay commented. A Mantle bearer token, when present, is commented, expires within 12 hours, and is for a short local run — not an ECS task or a Lambda environment.
    - Apply the generated least-privilege IAM policy: `.saws-migrate/iam-policy.json`
      (scoped to the exact model ARNs used in this migration — review before attaching to a role)
 
-3. **Run tests:**
+3. **Retire the source provider key** (after you accept this branch; the eval already used it):
+   - Revoke `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, or `GEMINI_API_KEY` — whichever this repo used — in that provider's console.
+   - Delete the same secret from CI (GitHub Actions, GitLab, and any other secret store) and from any ECS task definition or Lambda environment that still sets it.
+   - Confirm a search for those names is clean outside `.saws-migrate/` and `.migration/`.
+   - This migration does not revoke the key for you.
+
+4. **Run tests:**
 
    ```bash
    <test command>
    ```
 
-4. **Open a PR:**
+5. **Open a PR:**
 
    ```bash
    git push origin <branch_name>
@@ -510,7 +516,7 @@ per-1M-token rates and the sample cost only, with the line
 
    Review with your team, then merge.
 
-5. **Deploy:**
+6. **Deploy:**
    Deploy using your normal deployment process.
 
 ## How to Undo
@@ -525,7 +531,7 @@ rm -rf .saws-migrate .migration   # removes all migration artifacts, including t
 rm MIGRATION_REPORT_*.md          # this report
 ```
 
-If you pasted a source-provider API key during the run, consider rotating it.
+If you pasted a source-provider API key for the eval, revoke that key at the provider too. Removing `.saws-migrate/` deletes the local copy. It does not revoke the key, and it does not remove the key from CI.
 
 ---
 

@@ -183,7 +183,7 @@ client = OpenAI(
 # model="gpt-5.5" -> model="openai.gpt-5.5"
 ```
 
-A bearer token read from the environment expires within 12 hours. When the target repo has a long-running process (a server, worker, or scheduled job rather than a short CLI run), prefer the auto-refreshing client and note the added dependency in `dependency_changes`:
+A bearer token read from the environment expires within 12 hours. That form is for a short CLI or one-shot script. A server, worker, scheduled job, ECS service, or Lambda function uses the auto-refreshing client below, and `.env.example` does not set `AWS_BEARER_TOKEN_BEDROCK` for those. Note the added dependency in `dependency_changes`:
 
 ```python
 from aws_bedrock_token_generator import provide_token   # aws-bedrock-token-generator
@@ -377,18 +377,37 @@ For EACH file in the `files_to_modify` list from llm2bedrock-code-analyzer:
 
 # 11. Update auth patterns
 
-Replace source provider API key auth with AWS credentials:
+Replace source provider API key auth with the AWS credential chain. Do not call OpenAI, Anthropic, or Google to revoke a key. The source-model eval already used that key. Revocation is the customer's cutover step, recorded below, not an API call from this agent.
 
 ```bash
-# Find API key references
-grep -rn "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GOOGLE_API_KEY\|GEMINI_API_KEY" . --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" --include="*.yaml" --include="*.json" | grep -v node_modules
+# Find API key references in code and committed templates
+grep -rn "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GOOGLE_API_KEY\|GEMINI_API_KEY" . --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" --include="*.yaml" --include="*.yml" --include="*.json" | grep -v node_modules | grep -v '.saws-migrate/' | grep -v '.migration/'
 ```
 
-Replace with AWS credential configuration:
+Also search CI and deploy config that the include-filter above misses:
 
-- Remove `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` env var usage
-- Use boto3 default credential chain (env vars, IAM role, etc.)
-- Add `AWS_REGION` and `AWS_DEFAULT_REGION` to config
+```bash
+rg -n "OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|GEMINI_API_KEY" \
+  .github .gitlab-ci.yml bitbucket-pipelines.yml azure-pipelines.yml .circleci \
+  Dockerfile Dockerfile.* docker-compose.yml docker-compose.yaml \
+  task-definition.json template.yaml template.yml serverless.yml serverless.yaml \
+  2>/dev/null || true
+```
+
+In application code and committed templates:
+
+- Remove `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, and `GEMINI_API_KEY` usage.
+- Do not delete a secret from GitHub Actions, GitLab, or any remote secret store. Record each remaining hit in `notes`.
+- Converse path: the boto3 default credential chain. ECS uses the task role. Lambda uses the execution role. Do not write `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` into application code or into an uncommented `.env.example` line.
+- Add `AWS_REGION` as config. Add `AWS_DEFAULT_REGION` only where the SDK reads it. Neither is a credential.
+
+**Retire-the-key checklist (required in `notes` and in the §26 summary).** Name the provider keys this repo actually referenced. The customer does this after they accept the branch:
+
+1. Revoke the key in the provider console (OpenAI, Anthropic, or Google).
+2. Delete that secret from CI and deploy stores: GitHub Actions secrets, GitLab CI variables, and any ECS task definition or Lambda environment that still sets it.
+3. Re-run the searches above and confirm they are clean outside `.saws-migrate/` and `.migration/`.
+
+Do not mark this checklist done. This agent cannot see the provider console or the CI secret store.
 
 # 12. Update dependencies (manifest + lockfile)
 
@@ -517,28 +536,37 @@ Example: `notes: "poetry lock failed: SolverProblemError on package langchain-co
 
 # 13. Update environment variable template
 
-Create or update `.env.example` (use the `Write` tool):
+Create or update `.env.example` (use the `Write` tool). Uncommented lines are the region and the model id from this run's migration plan (`aws_model_id`). Do not copy an illustrative model id into the file. Long-lived access keys are a commented local fallback, never the deploy credential.
+
+Detect the deploy shape from the repo. A Dockerfile or ECS task definition means the ECS task role. A Lambda handler, SAM template, or `serverless.yml` means the Lambda execution role. Otherwise name the boto3 default chain (instance profile, SSO, or a local profile). Say which one applies in a comment. Do not invent a role ARN.
 
 ```
-# AWS Configuration (required for Bedrock)
+# AWS configuration (required for Bedrock)
+# ECS: attach Bedrock permission to the task role.
+# Lambda: attach Bedrock permission to the execution role.
+# Local: `aws sso login` or a named profile. boto3 reads the default chain.
+# Do not commit access keys. Uncomment only for a short local session, then discard them.
+# AWS_ACCESS_KEY_ID=
+# AWS_SECRET_ACCESS_KEY=
 AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-# Or use IAM role / SSO — boto3 will auto-detect
 
-# Bedrock Model Configuration
-BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6
+# Bedrock model — the plan's aws_model_id for this run
+BEDROCK_MODEL_ID=<aws_model_id>
 ```
 
-**Mantle express lane exception:** when this run used the Mantle express lane (§8), Mantle authenticates with a bearer token, not SigV4. Write `.env.example` with the token instead of the access-key pair:
+**Mantle, short CLI or one-shot script only.** A static bearer token expires within 12 hours. When this run used the Mantle express lane (§8) AND the process is not a server, worker, scheduled job, ECS service, or Lambda, write the token commented, with that expiry:
 
 ```
-# Bedrock (Mantle endpoint — bearer-token auth)
+# Mantle local/CLI only. Expires within 12 hours. Do not put this on ECS or Lambda.
+# Obtain via aws-bedrock-token-generator, or `aws bedrock get-bearer-token`.
+# AWS_BEARER_TOKEN_BEDROCK=
 AWS_REGION=us-east-1
-# Obtain a bearer token via the aws-bedrock-token-generator package, or
-# `aws bedrock get-bearer-token` — export it as:
-AWS_BEARER_TOKEN_BEDROCK=your-bedrock-bearer-token
+
+# Bedrock model — the plan's aws_model_id for this run
+BEDROCK_MODEL_ID=<aws_model_id>
 ```
+
+**Mantle, long-running process** (ECS, Lambda, server, worker, scheduled job). Do not put `AWS_BEARER_TOKEN_BEDROCK` in `.env.example`. The code uses the auto-refreshing client from §8 (`provide_token`). The deploy identity is the task role or the execution role, and `.env.example` matches the default template above.
 
 # 14. Commit code-only changes; verify clean working tree
 
@@ -838,6 +866,7 @@ The branch is the deliverable. In your `summary` and `notes`, capture for the us
 - Dependencies changed
 - Tests generated and pass status
 - How to apply: "Push this branch and open a PR in your repo"
+- The retire-the-key checklist from §11, naming the provider keys this repo referenced. State that this agent did not revoke them.
 
 The workflow surfaces this summary to the user; you do not push to remote.
 
@@ -861,7 +890,7 @@ If you hit a hard wall, write `{ "blocked": { "reason": "<model_access|source_ke
 
   Do NOT include a `diffs` field — the report-generator reads diffs from git directly. A clean working tree on the migration branch is required (§25 satisfies this: baseline + rewrite + tests commits, `git status` clean).
 - **`summary`** — short prose for the user / sidebar. ~1–3 sentences. Mention branch name, file count, dependency swaps, test pass/fail count.
-- **`notes`** — string log of structured signals: test counts (`5 tests generated, 5/5 passing`), lint status, env-var changes, any partial-failure detail from §19's retry cap, branch-collision detail from §7, manual-review items.
+- **`notes`** — string log of structured signals: test counts (`5 tests generated, 5/5 passing`), lint status, env-var changes, the §11 retire-the-key checklist with the provider keys this repo referenced (never marked done), any partial-failure detail from §19's retry cap, branch-collision detail from §7, manual-review items.
 
 ## Hard-block routing
 
