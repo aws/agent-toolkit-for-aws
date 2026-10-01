@@ -6,19 +6,16 @@ so the skill folder is **self-contained** — it runs standalone (lifted out, zi
 or used on its own) without reaching outside its own directory.
 
 **Do not hand-edit anything in this directory.** Edit the canonical source instead,
-then copy the changed file over every vendored copy in the same change so the
-copies stay byte-identical:
+then bring every vendored copy back in sync:
 
 ```sh
-# from the repository root, for each vendored path listed below
-cp plugins/aws-startup-advisor/skills/shared/<path> \
-   plugins/aws-startup-advisor/skills/gcp-to-aws/references/vendored/<path>
+# from the repository root
+python3 tools/sync-vendored.py          # copies skills/shared/<path> over every vendored copy
+python3 tools/sync-vendored.py --check  # what CI runs (mise run lint:vendored-parity)
 ```
 
-This repository has no automated sync task for these copies — keeping them
-byte-identical is part of the change that touches the canonical file. Verify with
-`md5sum` (or `md5 -q`) over the canonical file and every vendored copy before
-opening a pull request; the hashes must match.
+CI fails when any vendored copy differs from its canonical source or has no canonical
+source at all, so a change to `skills/shared/` that forgets the copies cannot merge.
 
 | Vendored path                           | Canonical source                                      |
 | --------------------------------------- | ----------------------------------------------------- |
