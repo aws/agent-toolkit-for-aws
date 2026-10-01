@@ -92,7 +92,8 @@ Two ways to run the sheet. The **wizard** (default) presents every DETECTED/PROP
 as a gate, then asks the ESSENTIALs, then recaps. The **fast path** (Step 0.5, only when
 Discover marked the estate eligible) asks the ESSENTIALs first and applies the rest as
 documented defaults with a visible consequence line, so a simple estate reaches an
-estimate in two or three answers — the same shape as gcp-to-aws's fast path.
+estimate in one or two answers (compliance, plus baseline spend when no billing source
+exists; see Step 0.5) — the same shape as gcp-to-aws's fast path.
 
 Two Azure-specific categories that no sibling skill has:
 

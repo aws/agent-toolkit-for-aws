@@ -171,8 +171,14 @@ distinguishes them — but only if this file recorded which happened.
 - **`identity` defaults to a fresh IAM Identity Center re-invite**, not Entra ID federation:
   defaulting to federation would leave the migration depending on the cloud being left.
 - **`isolation_split` defaults to `false`**, because splitting multiplies compute cost.
-- **`vm_cutover` and `db_cutover` have no defaults at all.** They select entirely different
-  runbooks, not different numbers.
+- **`vm_cutover` has no default at all** (ESSENTIAL): MGN versus rebuild selects an entirely
+  different runbook, and no inventory fact makes one of them defensible.
+- **`db_cutover` has a size-derived default and is deferred, not asked, in Clarify:**
+  `dump_restore` when the largest relational database is ≤ 100 GiB, `dms` above that. It is
+  recorded PROPOSED with `deferred_to_generate: true` and `default_basis`, and asked for real
+  at `estimate-assemble.md` § Step 3b when the user chooses [C] Generate — the two answers
+  also select different runbooks, which is exactly why the question is asked where the
+  runbook is written rather than before the user has a number.
 - **`global.user_geography` defaults to `single-region`** when Q-A1 maps one Azure region
   (PROPOSED, correctable). Design reads it for CloudFront / Route 53 (`networking.md` §2.3)
   and Q-D1's Catastrophic branch uses it before writing `data.availability: "multi-region"`.
