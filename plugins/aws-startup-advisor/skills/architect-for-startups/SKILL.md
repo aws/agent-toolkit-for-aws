@@ -86,6 +86,7 @@ guidance.
 ### Observability
 
 - [Monitoring, logging, tracing](references/observability.md)
+- A live workload in trouble right now — an outage, 5xx errors, an alarm, "find the root cause" — or a request for pre-merge release-readiness review: hand off to the `operate-on-aws` skill (AWS DevOps Agent) instead of answering from this reference.
 
 ### AI/ML
 
