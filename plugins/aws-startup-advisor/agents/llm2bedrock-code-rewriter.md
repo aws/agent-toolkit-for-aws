@@ -161,7 +161,7 @@ The source SDK stays. Per client, change only three things:
   | Anthropic SDK                            | `https://bedrock-mantle.<REGION>.api.aws/anthropic/v1` |
 
   If your context has a `Mantle base path` line, use it verbatim — it is authoritative over this table.
-- **Credential** → a Bedrock bearer token, NOT the original provider key, read from the `AWS_BEARER_TOKEN_BEDROCK` env var. Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
+- **Credential** → a Bedrock bearer token, NOT the original provider key. For a short CLI or one-shot script, read it from the `AWS_BEARER_TOKEN_BEDROCK` env var; for any long-running process use the auto-refreshing `provide_token` client shown below (the env-var form expires within 12 hours). Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
 - **Model ID** → the Bedrock model id from the `Mantle model map` context line (the `aws_model_id` from the migration plan).
 
 **When your context has `Same model: true`**, the target is the same model the app already used. Do NOT change model parameters (`temperature`, penalties, stop sequences) — they are unchanged, and §9 will not ask about them. Limit edits to base_url, credential, and model id, plus the Chat Completions → Responses reshape below if the source used Chat Completions.
@@ -825,7 +825,12 @@ grep -rl "from openai\|import openai\|require.*openai\|from anthropic\|import an
 
 If any files still contain source SDK references, fix them before proceeding. Test directories are NOT excluded from this scan on purpose: the source SDK package is being removed from the manifest, so a leftover `import openai` in a customer test means `pytest` ImportErrors on the customer's machine — §18.0 should have migrated those tests; if one appears here, go back and fix it.
 
-**Mantle express lane exception:** when this run used the Mantle express lane (§8, `Rewrite strategy: mantle`), the source-SDK imports are EXPECTED to remain — Mantle keeps the original SDK, so this residual scan does NOT apply. Verify instead that every client init sets the Mantle `base_url` and the `AWS_BEARER_TOKEN_BEDROCK` credential, and that model IDs were swapped to their Mantle forms.
+**Mantle express lane exception:** when this run used the Mantle express lane (§8, `Rewrite strategy: mantle`), the source-SDK imports are EXPECTED to remain — Mantle keeps the original SDK, so this residual scan does NOT apply. Verify instead that every client init points at Mantle and uses a Bedrock credential in the form §8 prescribes for that client's lifetime — and that model IDs were swapped to their Mantle forms:
+
+- **Short CLI / one-shot script:** `base_url` set to the Mantle path and `api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"]`.
+- **Server, worker, scheduled job, ECS service, or Lambda:** `BedrockOpenAI(..., bedrock_token_provider=lambda: provide_token(...))` (or the equivalent auto-refreshing client for the SDK in use), **no** `AWS_BEARER_TOKEN_BEDROCK` read in code, and `.env.example` does **not** set it.
+
+Either form passes. What fails is the original provider key still being read anywhere, or a long-running client reading `AWS_BEARER_TOKEN_BEDROCK` from the environment — do not "fix" a `provide_token` client back to the env token.
 
 # 23. Verify all files were written
 
