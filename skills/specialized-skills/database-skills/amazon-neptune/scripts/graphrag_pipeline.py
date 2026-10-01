@@ -135,17 +135,27 @@ def store_embedding(graph_id: str, vertex_id: str, embedding: List[float]):
 def vector_search(
     graph_id: str, query_embedding: List[float], top_k: int = 5, vertex_label: str = "Chunk"
 ) -> List[Dict]:
-    """Neptune Analytics vector similarity search."""
+    """Neptune Analytics vector similarity search constrained to one vertex label."""
+    vertex_filter = json.dumps(
+        {"equals": {"property": "~label", "value": vertex_label}}
+    )
     return run_query(
         graph_id,
         """
-        CALL neptune.algo.vectors.topKByEmbedding($embedding, {topK: $top_k})
+        CALL neptune.algo.vectors.topK.byEmbedding({
+            embedding: $embedding,
+            topK: $top_k,
+            vertexFilter: $vertex_filter
+        })
         YIELD node, score
-        WHERE $label IN labels(node)
         RETURN node.id AS id, node.text AS text, score
         ORDER BY score DESC
     """,
-        parameters={"embedding": query_embedding, "top_k": top_k, "label": vertex_label},
+        parameters={
+            "embedding": query_embedding,
+            "top_k": top_k,
+            "vertex_filter": vertex_filter,
+        },
     )
 
 
