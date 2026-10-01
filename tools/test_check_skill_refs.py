@@ -108,7 +108,32 @@ def test_gcp_dependents_may_name_gcp_tree_and_agents_search_skills(tmp_path: Pat
     assert got == {"design-refs/ai.md": True, "$GCP_BASE/references/design-refs/ai.md": True}
     agent = plugin / "agents" / "worker.md"
     got2 = {r.raw: (r.resolved is not None) for r in csr.scan_file(agent, plugin)}
-    assert got2 == {"scripts/tool.py": True}
+    # the fixture's agents/worker.md names scripts/tool.py, which exists only under alpha —
+    # agents resolve against llm-to-bedrock ONLY, so this is MISSING
+    assert got2 == {"scripts/tool.py": False}
+
+
+def test_agents_resolve_only_against_llm_to_bedrock(tmp_path: Path):
+    """Review finding on #387: the agent loop searched every skill and kept the first hit, so
+    `scripts/pyproject.toml` present only under agent-advisor made a dead llm-to-bedrock
+    path look alive."""
+    plugin = _plugin(tmp_path)
+    (plugin / "skills" / "agent-advisor" / "scripts").mkdir(parents=True)
+    (plugin / "skills" / "agent-advisor" / "scripts" / "pyproject.toml").write_text("x")
+    agent = plugin / "agents" / "evaluator.md"
+    agent.write_text("run with `scripts/pyproject.toml` and `<BDD_DIR>/references/openai-to-bedrock.md`")
+    got = {r.raw: r.resolved for r in csr.scan_file(agent, plugin)}
+    assert got["scripts/pyproject.toml"] is None            # only agent-advisor has it -> MISSING
+    assert got["<BDD_DIR>/references/openai-to-bedrock.md"] is None
+    l2b = plugin / "skills" / "llm-to-bedrock"
+    (l2b / "scripts").mkdir(parents=True)
+    (l2b / "scripts" / "pyproject.toml").write_text("x")
+    (l2b / "references" / "helpers" / "bdd" / "references").mkdir(parents=True)
+    (l2b / "references" / "helpers" / "bdd" / "references" / "openai-to-bedrock.md").write_text("x")
+    got = {r.raw: r.resolved for r in csr.scan_file(agent, plugin)}
+    assert got["scripts/pyproject.toml"] == (l2b / "scripts" / "pyproject.toml").resolve()
+    assert got["<BDD_DIR>/references/openai-to-bedrock.md"] is not None
+    assert "llm-to-bedrock" in str(got["<BDD_DIR>/references/openai-to-bedrock.md"])
 
 
 def test_baseline_ignore_vs_entries_and_stale(tmp_path: Path):
@@ -135,10 +160,13 @@ def test_cli_exit_codes(tmp_path: Path):
     (plugin / "skills" / "alpha" / "SKILL.md").write_text("`references/phases/nope.md`")
     r = _run("--check", "--plugin", str(plugin), "--no-baseline", "--json")
     assert r.returncode == 1
-    assert json.loads(r.stdout)["missing"][0]["ref"] == "references/phases/nope.md"
+    assert "references/phases/nope.md" in {m["ref"] for m in json.loads(r.stdout)["missing"]}
     (plugin / "skills" / "alpha" / "SKILL.md").write_text("`references/phases/design.md`")
-    # the fixture tree's vendored INTERPRETER.md carries one deliberately dead reference
+    # the fixture tree carries two deliberately dead references: the vendored INTERPRETER.md's
+    # state schema, and agents/worker.md's scripts/tool.py (agents resolve only against
+    # llm-to-bedrock, which the fixture does not have)
     (plugin / "skills" / "alpha" / "references" / "vendored" / "dsl" / "INTERPRETER.md").unlink()
+    (plugin / "agents" / "worker.md").unlink()
     r = _run("--check", "--plugin", str(plugin), "--no-baseline")
     assert r.returncode == 0 and r.stdout.strip().endswith("0 stale baseline entries")
 

@@ -71,6 +71,8 @@ _LIBRARY_ORIGIN_RE = re.compile(r"/skills/(shared/|[^/]+/references/(vendored|sh
 # skills that execute gcp-to-aws's phase files inline (agent-advisor) or by Skill invocation
 # (llm-to-bedrock) legitimately name paths inside gcp-to-aws's tree
 _GCP_DEPENDENTS = {"agent-advisor", "llm-to-bedrock"}
+# the skill whose subagents live in plugins/<plugin>/agents/
+_AGENTS_OWNER = "llm-to-bedrock"
 # anything carrying a run-artifact prefix or templating is not a repo path
 _SKIP_PREFIX_RE = re.compile(
     r"(\$\{?(MIGRATION_DIR|RUN_DIR|REPO|PHASE_DIR|PLAN_DIR|OUT|TARGET|APP|WORKSPACE|TMP)\}?/"
@@ -163,14 +165,17 @@ def _candidates(prefix: str, path: str, source: Path, plugin: Path) -> List[Path
         cands.append(gcp / path)
         cands.append(gcp / "references" / path)
     if skill is None and "agents" in source.parts:
-        # agents are llm-to-bedrock's subagents; their paths are relative to that skill's
-        # scripts/ or helper dirs, named through variables the agent defines at runtime
-        for other in sorted((plugin / "skills").iterdir()):
-            if other.is_dir():
-                cands.append(other / path)
-                for hit in other.rglob(Path(path).name):
-                    if str(hit).endswith(path) and hit.is_file():
-                        cands.append(hit)
+        # agents/ holds llm-to-bedrock's subagents (llm2bedrock-*) and two generic phase
+        # workers; their paths are relative to llm-to-bedrock's scripts/ or helper dirs,
+        # named through variables (<BDD_DIR>, $HELPERS) the agent defines at runtime.
+        # Resolve ONLY against that skill — a same-named file in another skill must not
+        # make a dead llm-to-bedrock path look alive.
+        owner = plugin / "skills" / _AGENTS_OWNER
+        cands.append(owner / path)
+        if owner.is_dir():
+            for hit in owner.rglob(Path(path).name):
+                if str(hit).endswith(path) and hit.is_file():
+                    cands.append(hit)
     return cands
 
 
