@@ -201,6 +201,50 @@ def test_injected_off_contract_key_fails(tmp_path: Path):
                for e in report["errors"]), report["errors"]
 
 
+def test_empty_phases_fails_min_properties(tmp_path: Path):
+    """Review finding on #385: phase-status.schema.json has `minProperties: 1` on `phases`
+    and the subset silently skipped it, so `phases: {}` passed."""
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / ".phase-status.json").write_text(json.dumps(
+        {"migration_id": "x", "last_updated": "2026-01-01T00:00:00Z", "phases": {}}))
+    r = _run("--run-dir", str(run), "--skill", "gcp-to-aws", "--no-baseline", "--json")
+    assert r.returncode == 1
+    errs = json.loads(r.stdout)["errors"]
+    assert any(e["code"] == "SCHEMA_VIOLATION" and e["path"] == "phases" and "minProperties" in e["message"]
+               for e in errs), errs
+
+
+def test_schema_keyword_the_subset_does_not_implement_is_rejected_at_load():
+    """The class behind the minProperties hole: a keyword the subset does not know must
+    surface as SCHEMA_PARSE, never be skipped."""
+    schema = {"type": "object", "properties": {"a": {"type": "string", "contentEncoding": "base64"}},
+              "dependencies": {"a": ["b"]}}
+    found = va.unsupported_keywords(schema)
+    assert ("#/properties/a", "contentEncoding") in found
+    assert ("#", "dependencies") in found
+    # every keyword the two real schemas use is either enforced or an annotation
+    for p in (PLUGIN_ROOT / "skills/shared/state/phase-status.schema.json",
+              PLUGIN_ROOT / "skills/shared/estimate/estimation-infra.schema.json"):
+        assert va.unsupported_keywords(json.loads(p.read_text())) == [], p.name
+
+
+def test_stale_baseline_entry_fails_the_gate(tmp_path: Path):
+    """Review finding on #385: a baseline entry matching nothing printed a warning and
+    exited 0, so the burn-down list could only shrink if someone read the log."""
+    src = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-discover"
+    run = tmp_path / "run"
+    shutil.copytree(src, run)
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({"entries": [
+        {"code": "UNKNOWN_KEY", "artifact": "*", "path": "never.matches.anything", "reason": "stale"}]}))
+    r = _run("--run-dir", str(run), "--skill", "azure-to-aws", "--baseline", str(baseline), "--json")
+    assert r.returncode == 1
+    report = json.loads(r.stdout)
+    assert any(e["code"] == "STALE_BASELINE" for e in report["errors"]), report["errors"]
+    assert report["stale_baseline_entries"][0]["path"] == "never.matches.anything"
+
+
 def test_real_json_schema_violation_fails(tmp_path: Path):
     src = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-estimate"
     run = tmp_path / "run"

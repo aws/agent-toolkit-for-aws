@@ -32,6 +32,9 @@ For every artifact it finds in a run directory (or in the fixture goldens):
   SCHEMA_VIOLATION   a real JSON Schema (draft-07 subset) rejected the value
   SCHEMA_PARSE       the contract document's own example block does not parse — the
                      contract is broken, independent of any artifact
+  STALE_BASELINE     a baseline entry matched no finding — the gap it described is fixed
+                     (remove the entry) or the entry is mistyped (it hides nothing today and
+                     could hide a real finding tomorrow); fails the run either way
   NO_CONTRACT        an artifact was found that no contract covers (informational)
 
 Keys beginning with `_` are treated as annotations (`_comment`, `_what_this_is`) and are
@@ -73,7 +76,7 @@ DEFAULT_MANIFEST = HERE / "artifact-contracts.json"
 DEFAULT_BASELINE = HERE / "artifact-contracts-baseline.json"
 
 ERROR_CODES = {"UNKNOWN_KEY", "MISSING_REQUIRED", "TYPE_MISMATCH", "ENUM_VIOLATION",
-               "SCHEMA_VIOLATION", "SCHEMA_PARSE"}
+               "SCHEMA_VIOLATION", "SCHEMA_PARSE", "STALE_BASELINE"}
 INFO_CODES = {"NO_CONTRACT"}
 
 
@@ -609,10 +612,49 @@ def _join(path: str, key: str) -> str:
 # --------------------------------------------------------------------------- JSON Schema subset
 
 
+# Keywords the subset validator ENFORCES. Anything else that is a validation keyword is
+# reported by `unsupported_keywords` so a schema cannot silently lose a constraint.
+_ENFORCED_KEYWORDS = {
+    "type", "properties", "required", "additionalProperties", "enum", "const", "items",
+    "pattern", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minItems",
+    "maxItems", "uniqueItems", "minProperties", "maxProperties", "minLength", "maxLength",
+    "allOf", "anyOf", "oneOf", "not", "$ref",
+}
+# Annotations / structure that carry no constraint of their own.
+_ANNOTATION_KEYWORDS = {
+    "$schema", "$id", "$comment", "title", "description", "default", "examples",
+    "definitions", "$defs", "format",  # format is intentionally not enforced (annotation-level)
+}
+
+
+def unsupported_keywords(schema: Any, ptr: str = "#") -> List[Tuple[str, str]]:
+    """Walk a JSON Schema and return (json-pointer, keyword) pairs for every keyword the
+    subset neither enforces nor recognises as an annotation. Called once per schema load."""
+    found: List[Tuple[str, str]] = []
+    if isinstance(schema, dict):
+        for k, v in schema.items():
+            if k in ("properties", "definitions", "$defs", "patternProperties"):
+                if isinstance(v, dict):
+                    for name, sub in v.items():
+                        found.extend(unsupported_keywords(sub, f"{ptr}/{k}/{name}"))
+                if k == "patternProperties":
+                    found.append((ptr, k))
+                continue
+            if k in ("items", "additionalProperties", "not"):
+                found.extend(unsupported_keywords(v, f"{ptr}/{k}"))
+            elif k in ("allOf", "anyOf", "oneOf") and isinstance(v, list):
+                for i, sub in enumerate(v):
+                    found.extend(unsupported_keywords(sub, f"{ptr}/{k}/{i}"))
+            if k not in _ENFORCED_KEYWORDS and k not in _ANNOTATION_KEYWORDS:
+                found.append((ptr, k))
+    return found
+
+
 def validate_json_schema(schema: Dict[str, Any], value: Any, path: str, artifact: str, contract: str,
                          out: List[Finding], root_schema: Optional[Dict[str, Any]] = None) -> None:
-    """Draft-07 subset: type, properties, required, additionalProperties, enum, const, items,
-    pattern, minimum, maximum, minItems, oneOf/anyOf/allOf, $ref (#/definitions/...)."""
+    """Draft-07 subset — exactly the keywords in `_ENFORCED_KEYWORDS`. A schema using any
+    other validation keyword is rejected at load time (see `unsupported_keywords`), so a
+    constraint can never be skipped silently."""
     root_schema = root_schema or schema
     if "$ref" in schema:
         ref = schema["$ref"]
@@ -640,12 +682,27 @@ def validate_json_schema(schema: Dict[str, Any], value: Any, path: str, artifact
     if isinstance(value, str) and "pattern" in schema and not re.search(schema["pattern"], value):
         out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
                            f"'{value}' does not match pattern {schema['pattern']}", contract))
+    if isinstance(value, str):
+        if "minLength" in schema and len(value) < schema["minLength"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", f"length {len(value)} < minLength {schema['minLength']}", contract))
+        if "maxLength" in schema and len(value) > schema["maxLength"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", f"length {len(value)} > maxLength {schema['maxLength']}", contract))
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if "minimum" in schema and value < schema["minimum"]:
             out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", f"{value} < minimum {schema['minimum']}", contract))
         if "maximum" in schema and value > schema["maximum"]:
             out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", f"{value} > maximum {schema['maximum']}", contract))
+        if "exclusiveMinimum" in schema and value <= schema["exclusiveMinimum"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", f"{value} <= exclusiveMinimum {schema['exclusiveMinimum']}", contract))
+        if "exclusiveMaximum" in schema and value >= schema["exclusiveMaximum"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", f"{value} >= exclusiveMaximum {schema['exclusiveMaximum']}", contract))
     if isinstance(value, dict):
+        if "minProperties" in schema and len(value) < schema["minProperties"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                               f"{len(value)} properties < minProperties {schema['minProperties']}", contract))
+        if "maxProperties" in schema and len(value) > schema["maxProperties"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                               f"{len(value)} properties > maxProperties {schema['maxProperties']}", contract))
         props = schema.get("properties", {})
         for k in schema.get("required", []):
             if k not in value:
@@ -663,6 +720,11 @@ def validate_json_schema(schema: Dict[str, Any], value: Any, path: str, artifact
         if "minItems" in schema and len(value) < schema["minItems"]:
             out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
                                f"{len(value)} items < minItems {schema['minItems']}", contract))
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                               f"{len(value)} items > maxItems {schema['maxItems']}", contract))
+        if schema.get("uniqueItems") and len({json.dumps(v, sort_keys=True) for v in value}) != len(value):
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", "items are not unique (uniqueItems)", contract))
         items = schema.get("items")
         if isinstance(items, dict):
             for i, el in enumerate(value):
@@ -670,6 +732,11 @@ def validate_json_schema(schema: Dict[str, Any], value: Any, path: str, artifact
     for combinator in ("allOf",):
         for sub in schema.get(combinator, []):
             validate_json_schema(sub, value, path, artifact, contract, out, root_schema)
+    if isinstance(schema.get("not"), dict):
+        trial_not: List[Finding] = []
+        validate_json_schema(schema["not"], value, path, artifact, contract, trial_not, root_schema)
+        if not trial_not:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", "matches a `not` schema", contract))
     for combinator in ("oneOf", "anyOf"):
         subs = schema.get(combinator)
         if subs:
@@ -713,6 +780,13 @@ def build_contracts(manifest: Dict[str, Any], skill: str, findings: List[Finding
                 c.json_schema_path = _rel(p)
             except (OSError, json.JSONDecodeError) as e:
                 findings.append(Finding("SCHEMA_PARSE", _rel(p), "", f"cannot load JSON Schema: {e}", _rel(p)))
+            else:
+                for ptr, kw in unsupported_keywords(c.json_schema):
+                    findings.append(Finding(
+                        "SCHEMA_PARSE", _rel(p), ptr,
+                        f"JSON Schema keyword '{kw}' is not implemented by this validator's subset — "
+                        f"it would be skipped silently. Add it to _ENFORCED_KEYWORDS (with a check) or "
+                        f"_ANNOTATION_KEYWORDS (if it carries no constraint).", _rel(p)))
         if "shape" in spec:
             c.shape = build_shape_contract(spec, findings)
         contracts.append(c)
@@ -845,6 +919,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     stale: List[Dict[str, Any]] = []
     if not args.no_baseline and args.baseline.exists() and not args.self_check:
         stale = apply_baseline(findings, json.loads(args.baseline.read_text(encoding="utf-8")))
+        for e in stale:
+            # a baseline entry that matches nothing is either fixed (remove it) or mistyped
+            # (it is hiding nothing and would hide a future finding by accident) — fail either way
+            findings.append(Finding("STALE_BASELINE", _rel(args.baseline), e.get("path", "*"),
+                                    f"entry matched no finding — remove it, or fix its code/artifact/path: {json.dumps(e)}",
+                                    ""))
 
     # de-duplicate identical findings (several contracts can cover one artifact)
     seen: Set[Tuple[str, str, str, str]] = set()
@@ -877,8 +957,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                 by_code[f.code] = by_code.get(f.code, 0) + 1
             print(f"baselined (known, explained, not failing): " +
                   ", ".join(f"{k}={v}" for k, v in sorted(by_code.items())))
-        for e in stale:
-            print(f"warn   STALE_BASELINE    entry matched nothing — remove it: {json.dumps(e)}")
         print(f"\n{'FAIL' if errors else 'PASS'} — {checked} artifact(s) checked, "
               f"{len(errors)} error(s), {len(baselined)} baselined, {len(infos)} info")
     return 1 if errors else 0
