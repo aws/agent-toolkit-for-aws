@@ -1,19 +1,13 @@
 # Serverless Architecture Patterns
 
-Pattern selection and the opinionated service defaults / constraints for each. The patterns themselves are standard — the value here is the default-vs-alternative choices and the non-obvious constraints.
+Opinionated service defaults and constraints for each common serverless pattern, to apply **after** the compute decision is made. Choose the compute form factor (Event Functions on On-Demand or Managed Instances, Web Functions, MicroVMs), the orchestration layer (Durable Functions vs Step Functions) and the EventBridge / API front-door option with the decision flow in `SKILL.md`; the patterns below assume Event Functions unless stated otherwise. The patterns themselves are standard — the value here is the default-vs-alternative choices and the non-obvious constraints.
 
-## Pattern selection
+Most real apps combine several. Make the compute decision **per component**, not once for the whole application: one application can legitimately use Event Functions, Web Functions, and MicroVMs together. Start with one component (a CRUD API on DynamoDB covers most initial needs); add event processing for async work, orchestration for multi-step workflows, and fan-out for cross-service communication.
 
-| What you're building | Pattern |
-|---|---|
-| Synchronous request/response API | REST/HTTP API → Lambda → DynamoDB |
-| Processing events from a queue/stream/database | Event processing (SQS/Streams → Lambda) |
-| Multi-step workflow with branching/error handling | Orchestration (Step Functions) |
-| Real-time bidirectional / LLM streaming | WebSocket API or Function URL streaming |
-| One event → multiple independent consumers | Async fan-out (EventBridge / SNS); for a governed, multi-team bus see amazon-eventbridge-event-bus |
-| Recurring task on a schedule | EventBridge Scheduler → Lambda / Step Functions |
+Examples:
 
-Most real apps combine several. Start with one (a CRUD API on DynamoDB covers most initial needs); add event processing for async work, orchestration for multi-step workflows, fan-out for cross-service comms.
+- A React frontend and Python FastAPI backend are separate deployment decisions. Host the static frontend with a web-hosting service; run FastAPI as an Event Function behind API Gateway, an ALB, or a Function URL, optionally using Lambda Web Adapter. Do not route FastAPI to Web Functions, which is Node.js-only. SQLite is suitable for local development or a single-process prototype, but Lambda's local filesystem is ephemeral and not shared across environments; persisted application data needs a durable database.
+- A Node.js streaming control-plane API can use Web Functions while each user session runs in a state-preserving MicroVM.
 
 ---
 
@@ -27,9 +21,11 @@ CRUD APIs, mobile/web backends, microservices.
 | Auth | JWT authorizer (HTTP API native) | Cognito (REST native), Lambda authorizer (custom logic) |
 | Database | DynamoDB (on-demand) | RDS Proxy + RDS for relational data |
 | File storage | S3 presigned URLs | Direct upload via API Gateway (10 MB limit) |
-| Function pattern | One function per route | Lambdalith for Express/FastAPI migrations |
+| Function pattern | Existing Node.js HTTP server → Lambda Web Functions; otherwise one Event Function per route | Lambdalith for FastAPI migrations |
 
 Constraints: HTTP API 30s hard timeout, no WAF/caching; REST API 29s default (adjustable for Regional/private). Both 10 MB payload.
+
+A public Lambda Web Functions endpoint has **no AWS-layer auth and no built-in WAF**, and its rate limit applies to the endpoint rather than per client. The app owns auth, input validation and per-client rate limiting. Front the endpoint with CloudFront and AWS WAF for L7 protection (rate limiting, bot control, IP reputation), and set the standard security response headers — `Strict-Transport-Security`, `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` — which `helmet` handles for Express and Fastify. Route to the **aws-lambda-web-functions** skill for the full security checklist.
 
 ---
 
@@ -73,7 +69,7 @@ Chat, live dashboards, notifications, LLM token streaming, multiplayer.
 | Decision | Default | Alternative |
 |---|---|---|
 | Bidirectional | API Gateway WebSocket | AppSync subscriptions (GraphQL) |
-| LLM streaming | Lambda Function URL + ConverseStream | REST API proxy with STREAM mode |
+| LLM streaming | Lambda Function URL + ConverseStream | REST API proxy with STREAM mode; Lambda Web Functions for Node.js SSE / chunked responses |
 | Connection state | DynamoDB (connectionId → metadata, TTL to clean up after 2h max) | ElastiCache (higher throughput) |
 | Auth | `$connect` route authorizer | Cognito + custom auth in Lambda |
 
