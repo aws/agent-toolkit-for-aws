@@ -113,6 +113,10 @@ redispatch Generate: it re-authors `terraform/` and would wipe manual fixes.
 
 Only after `HANDOFF_OK`, apply the phase-status update protocol (`INTERPRETER.md` § The interpreter loop) — mark `phases.generate` completed and advance per `_advances_to` (the `complete` terminal) — in the **same turn** as the output message below.
 
+**Write the web-handoff summary (fail-open):** run
+`python3 "<SKILL_BASE>/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+(absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …` or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip or error the migration is still complete — continue without it and do not surface the script output to the user. When it printed `PLAN_OK`, present the web-handoff block described after the Output section below.
+
 Output to user:
 
 ```
@@ -129,6 +133,29 @@ Artifacts produced:
 Migration planning is complete. All artifacts are in $MIGRATION_DIR/.
 Share migration-report.html with stakeholders; use MIGRATION_GUIDE.md for cutover.
 ```
+
+**Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit this whole block; there is no file to upload). The `plan.json` filename appears in EXACTLY ONE place — the produced-files list — and NEVER in the What's next block. Make two edits:
+
+- **(a)** In the "Artifacts produced" list in the output above, add exactly one entry as **plain text** — that list renders inside a code block, where Markdown links do not work, so do not link it here (the clickable link is the What's next call-to-action below): `plan.json — upload to AWS Startups Migrate for up to $1,500 in credits`. Keep every existing entry on its own line; do not merge, collapse, or re-wrap them.
+- **(b)** Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading — do NOT add a `plan.json` line (or any file line) above or inside it. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience:
+
+> **💬 What's next**
+>
+> - **Refine your plan**
+>   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
+> - **Claim your credits**
+>   When you're happy with your plan, upload it below to apply for up to $1,500 in AWS migration credits.
+>
+> [🎉 Get up to $1,500 in AWS migration credits →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+>
+> Upload your plan to AWS Startups Migrate to see what you qualify for and unlock:
+>
+> - Interactive plan dashboard
+> - Monthly cost estimate
+> - Migration paths: AI Agent, AWS Expert, or AWS Partner
+> - Up to $1,500 in AWS migration credits
+
+Ship note: this reaches customers only after the import page and the ImportPlan API are both live in production. This `plan.json` import handoff is separate from the base64url plan-share link gated off in `SKILL.md`/`feedback-collect.md`.
 
 After this output, SKILL.md handles the post-Generate share prompt and feedback finalization.
 
