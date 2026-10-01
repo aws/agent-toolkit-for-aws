@@ -16,8 +16,8 @@ SigV4 and no boto3, and has no third-party imports.
 
 Fire and forget. `post_event` swallows everything and reports failure to nobody: a
 telemetry POST is not something the user asked for and must not be able to fail an
-operation they did ask for. `PutPluginTelemetryEvent` is also feature-gated off in
-prod today, so a 403 on every call is currently the expected result.
+operation they did ask for. Every status is treated the same way — a 403 or 400 is
+dropped exactly like a timeout, so nothing here depends on which the service sends.
 
 The consent gate is re-checked in `post_event`, so a new call site cannot emit by
 forgetting to ask.
@@ -57,8 +57,6 @@ SOURCE_CURSOR = "CURSOR"
 SOURCE_KIRO = "KIRO"
 SOURCE_OTHER = "OTHER"
 
-SOURCE_ENV = "AWS_STARTUP_ADVISOR_SOURCE"
-
 # First marker present wins. Only the Claude Code rows are verified against a
 # running host; an unmatched host reports OTHER rather than a plausible guess,
 # because a wrong attribution silently moves one host's numbers into another's.
@@ -73,10 +71,6 @@ _HOST_MARKERS = (
     ("CLAUDE_CODE_ENTRYPOINT", SOURCE_CLAUDE_CODE),  # verified
     ("CODEX_SANDBOX", SOURCE_CODEX),  # unverified
     ("KIRO_IDE", SOURCE_KIRO),  # unverified
-)
-
-_VALID_SOURCES = frozenset(
-    {SOURCE_CLAUDE_CODE, SOURCE_CODEX, SOURCE_CURSOR, SOURCE_KIRO, SOURCE_OTHER}
 )
 
 # The PluginSkillId enum, mirrored from model/types/plugin-telemetry.smithy. An
@@ -95,6 +89,7 @@ PLUGIN_SKILL_IDS = frozenset(
         "AGENT_ADVISOR",
         "TF_BEST_PRACTICES",
         "CONTEXTUAL_OFFERS_FOR_STARTUPS",
+        "OPERATE_ON_AWS",
     }
 )
 
@@ -114,10 +109,6 @@ def endpoint():
 
 def detect_source():
     """Best-effort PluginSource for the host, or OTHER."""
-    override = os.environ.get(SOURCE_ENV, "").strip().upper()
-    if override in _VALID_SOURCES:
-        return override
-
     for name, source in _HOST_MARKERS:
         if os.environ.get(name, "").strip():
             return source

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SessionStart hook: ask the agent to collect consent, once, ever.
 
-    python3 scripts/telemetry/consent/session_start.py [--format plain|cursor]
+    python3 scripts/telemetry/consent/session_start.py
 
 Silent if a valid record exists, which is every session after the first. If none
 exists it prints one instruction that the host injects into the agent's context,
@@ -18,13 +18,12 @@ Only one of the three parts is trustworthy, which is the design:
     instruction means no record, which means no telemetry. The failure mode is
     silence, not unconsented collection.
 
-Claude Code and Codex accept plain stdout on SessionStart as extra context; Cursor
-wants a JSON object with `additional_context`, hence `--format cursor`.
+Claude Code takes plain stdout on SessionStart as extra context, so that is all
+this writes. A host wanting a JSON envelope needs its own wrapper.
 
 Always exits 0. A consent prompt is not worth breaking a session over.
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -35,14 +34,17 @@ import record  # noqa: E402  (path set above so this resolves in-plugin)
 CONSENT_DIR = Path(__file__).resolve().parent
 
 # Absolute paths, not ${CLAUDE_PLUGIN_ROOT}: this is read by a model, not a shell,
-# so an unexpanded variable would reach it as literal text.
+# so an unexpanded variable would reach it as literal text. Same reason the
+# interpreter is resolved here rather than written as a bare `python3`, which is
+# usually not on PATH on Windows — the model would run it and the notice would
+# never be recorded.
 INSTRUCTION = """\
 [AWS Startup Advisor] This user has not yet been shown the usage-data notice.
 
 The first time in this session that a request would use an AWS Startup Advisor
 skill, stop before doing that work and run this exchange instead:
 
-1. Run: python3 "{consent}/cli.py" show
+1. Run: {py} "{consent}/cli.py" show
 2. Reproduce that command's output to the user VERBATIM. Do not summarize,
    shorten, translate, reorder, or rewrite it — it is a legal notice and the
    exact wording is the point. Its last paragraph already asks the question and
@@ -54,8 +56,8 @@ skill, stop before doing that work and run this exchange instead:
    skipped — the user reads the answer they asked for and never replies to the
    notice, which makes showing it pointless.
 4. When they reply, record it by running exactly one of:
-     acknowledged     -> python3 "{consent}/accept.py"
-     wants to opt out -> python3 "{consent}/opt_out.py"
+     acknowledged     -> {py} "{consent}/accept.py"
+     wants to opt out -> {py} "{consent}/opt_out.py"
 5. Then answer their original request in full, in that same turn. They asked
    once; do not make them repeat themselves or re-ask.
 
@@ -75,17 +77,10 @@ notice tells the user they may edit it themselves instead.
 
 
 def build_message():
-    return INSTRUCTION.format(consent=CONSENT_DIR)
+    return INSTRUCTION.format(consent=CONSENT_DIR, py=record.INTERPRETER)
 
 
-def main(argv):
-    fmt = "plain"
-    if argv:
-        if argv[0] == "--format" and len(argv) == 2:
-            fmt = argv[1]
-        elif argv[0].startswith("--format="):
-            fmt = argv[0].split("=", 1)[1]
-
+def main():
     # Deliberately does not read stdin. Hosts write the hook payload there and
     # nothing here needs it. Reading it would risk hanging: a host that holds the
     # pipe open never sends the EOF that read() waits for, the host kills the hook
@@ -94,18 +89,12 @@ def main(argv):
     if record.consent_status() is not None:
         return 0  # already answered, accepted or opted out — stay quiet
 
-    message = build_message()
-
-    if fmt == "cursor":
-        print(json.dumps({"additional_context": message}))
-    else:
-        print(message, end="")
-
+    print(build_message(), end="")
     return 0
 
 
 if __name__ == "__main__":
     try:
-        sys.exit(main(sys.argv[1:]))
+        sys.exit(main())
     except BaseException:
         sys.exit(0)  # never break session start

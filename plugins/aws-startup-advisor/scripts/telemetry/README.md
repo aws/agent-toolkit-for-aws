@@ -9,7 +9,7 @@ metrics once the answer is yes. Nothing here is required for any skill to work.
 consent/           deciding whether anything may be sent
   notice.py          the approved wording, text only — legal reviews this file
   record.py          ~/.aws-startup-advisor/plugin-telemetry.json: read/write/gate
-  cli.py             show | status | check
+  cli.py             show | status
   accept.py          writes ACCEPTED
   opt_out.py         writes OPT_OUT — the command the notice names
   session_start.py   SessionStart hook: asks the agent to raise the notice, once

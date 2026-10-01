@@ -2,7 +2,7 @@
 """The consent record: one reader, one writer, one source of truth.
 
     ~/.aws-startup-advisor/plugin-telemetry.json
-    {"installId": "<uuid>", "consentStatus": "ACCEPTED" | "OPT_OUT" | "REJECTED"}
+    {"installId": "<uuid>", "consentStatus": "ACCEPTED" | "OPT_OUT"}
 
 That file is the only thing that decides whether telemetry may be emitted. There
 is no environment variable, so a user cannot end up opted out according to their
@@ -35,15 +35,11 @@ import notice  # noqa: E402  (path set above so this resolves in-plugin)
 STATE_DIR_NAME = ".aws-startup-advisor"
 STATE_FILE_NAME = "plugin-telemetry.json"
 
-# Only ACCEPTED permits emitting anything. OPT_OUT and REJECTED both mean the user
-# declined; only OPT_OUT is written, and REJECTED is accepted on read so a record
-# carrying it does not get the notice raised at it again.
+# Two answers, and only ACCEPTED permits emitting anything.
 ACCEPTED = "ACCEPTED"
 OPT_OUT = "OPT_OUT"
-REJECTED = "REJECTED"
 
-VALID_STATUSES = (ACCEPTED, OPT_OUT, REJECTED)
-WRITABLE_STATUSES = (ACCEPTED, OPT_OUT)
+VALID_STATUSES = (ACCEPTED, OPT_OUT)
 
 # The service's UUID shape, from model/types/scalars.smithy. installId is sent
 # verbatim as a @required UUID, so a record holding anything else is unusable.
@@ -65,8 +61,8 @@ OPT_OUT_INSTRUCTION = 'setting "consentStatus" to "%s" in %s' % (
 # notice. It preserves the install ID, which a hand-edit cannot. `py -3` on
 # Windows, where python3 is usually not on PATH at all.
 OPT_OUT_SCRIPT = Path(__file__).resolve().parent / "opt_out.py"
-_INTERPRETER = "py -3" if os.name == "nt" else "python3"
-OPT_OUT_COMMAND = '%s "%s"' % (_INTERPRETER, OPT_OUT_SCRIPT)
+INTERPRETER = "py -3" if os.name == "nt" else "python3"
+OPT_OUT_COMMAND = '%s "%s"' % (INTERPRETER, OPT_OUT_SCRIPT)
 
 
 def disclaimer():
@@ -114,8 +110,12 @@ def read_state():
     instruction produce a record we then read as corrupt, and the notice would be
     raised at them again next session.
     """
+    # utf-8-sig, not utf-8: the notice tells the user to edit this file, and a
+    # Windows editor adds a BOM that json.load rejects. Reading that as "nothing
+    # recorded" would raise the notice again at someone who just did what it asked.
+    # It reads a BOM-less file identically, so this costs nothing.
     try:
-        with open(state_path(), "r", encoding="utf-8") as handle:
+        with open(state_path(), "r", encoding="utf-8-sig") as handle:
             data = json.load(handle)
     except (OSError, ValueError):
         return None
@@ -132,7 +132,7 @@ def read_state():
 
 
 def consent_status():
-    """'ACCEPTED', 'OPT_OUT', 'REJECTED', or None when nothing is decided."""
+    """'ACCEPTED', 'OPT_OUT', or None when nothing is decided."""
     state = read_state()
     return state["consentStatus"] if state else None
 
@@ -154,9 +154,9 @@ def write_state(status):
     only if it is a UUID, since a hand-edited record may carry no ID at all or
     something the service would reject.
     """
-    if status not in WRITABLE_STATUSES:
+    if status not in VALID_STATUSES:
         raise ValueError(
-            "consentStatus must be one of %s, got %r" % (WRITABLE_STATUSES, status)
+            "consentStatus must be one of %s, got %r" % (VALID_STATUSES, status)
         )
 
     existing = read_state() or {}

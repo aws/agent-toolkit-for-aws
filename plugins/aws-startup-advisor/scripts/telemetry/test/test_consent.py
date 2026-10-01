@@ -179,6 +179,8 @@ class TestReadState:
             '{"installId": "abc", "consentStatus": "ACCEPTED"}',  # not a UUID
             '{"installId": "%s", "consentStatus": "accepted"}' % A_UUID,  # case
             '{"installId": "%s", "consentStatus": "MAYBE"}' % A_UUID,
+            # ACCEPTED and OPT_OUT are the only two statuses there are.
+            '{"installId": "%s", "consentStatus": "REJECTED"}' % A_UUID,
         ],
     )
     def test_invalid_records_fail_closed(self, home, body):
@@ -202,13 +204,6 @@ class TestReadState:
         assert record.read_state() is None
         assert not record.is_accepted()
 
-    def test_rejected_is_readable(self, home):
-        # Reading it as invalid would re-raise the notice at someone who has
-        # already declined.
-        write_record(home, record.REJECTED)
-        assert record.consent_status() == record.REJECTED
-        assert not record.is_accepted()
-
 
 class TestWriteState:
     def test_schema_has_exactly_two_keys(self, home):
@@ -229,9 +224,8 @@ class TestWriteState:
     def test_opt_out_record_still_has_an_install_id(self, home):
         assert record.write_state(record.OPT_OUT)["installId"]
 
-    @pytest.mark.parametrize("status", ["MAYBE", "", "REJECTED"])
-    def test_refuses_to_write_anything_but_the_two_current_statuses(self, home, status):
-        # REJECTED is readable, but OPT_OUT is the only spelling written.
+    @pytest.mark.parametrize("status", ["MAYBE", "", "REJECTED", "accepted", None])
+    def test_refuses_to_write_anything_but_the_two_statuses(self, home, status):
         with pytest.raises(ValueError):
             record.write_state(status)
 
@@ -272,9 +266,22 @@ class TestTheNoticesOwnInstructionWorks:
         out = run("consent/cli.py", "status", home=home).stdout
         assert "collection: OFF" in out
 
-    def test_check_exits_1(self, home):
-        self.hand_edit(home)
-        assert run("consent/cli.py", "check", home=home).returncode == 1
+    def test_a_utf8_bom_does_not_undo_the_opt_out(self, home):
+        # What a Windows editor writes. Rejecting it would re-raise the notice at
+        # someone who did exactly what it told them, every session.
+        directory = home / record.STATE_DIR_NAME
+        directory.mkdir(parents=True, exist_ok=True)
+        record.state_path().write_bytes(b"\xef\xbb\xbf" + self.MINIMAL.encode())
+        assert record.consent_status() == record.OPT_OUT
+        assert not record.is_accepted()
+        assert run("consent/session_start.py", home=home).stdout == ""
+
+    def test_a_utf8_bom_does_not_undo_an_acceptance(self, home):
+        install_id = record.write_state(record.ACCEPTED)["installId"]
+        body = record.state_path().read_text()
+        record.state_path().write_bytes(b"\xef\xbb\xbf" + body.encode())
+        assert record.is_accepted()
+        assert record.read_state()["installId"] == install_id
 
     def test_opting_back_in_mints_an_install_id(self, home):
         self.hand_edit(home)
@@ -325,22 +332,10 @@ class TestNoEnvironmentSwitch:
         assert "opt_out.py" in record.opt_out_help()
 
 
-class TestCheck:
-    def test_exit_1_when_absent(self, tmp_path):
-        assert run("consent/cli.py", "check", home=tmp_path).returncode == 1
-
-    def test_exit_0_after_accept(self, tmp_path):
-        run("consent/accept.py", home=tmp_path)
-        assert run("consent/cli.py", "check", home=tmp_path).returncode == 0
-
-    def test_exit_1_after_opt_out(self, tmp_path):
-        run("consent/opt_out.py", home=tmp_path)
-        assert run("consent/cli.py", "check", home=tmp_path).returncode == 1
-
-    def test_prints_nothing(self, tmp_path):
-        assert run("consent/cli.py", "check", home=tmp_path).stdout == ""
-
-    @pytest.mark.parametrize("args", [(), ("bogus",), ("show", "extra")])
+class TestCliUsage:
+    @pytest.mark.parametrize(
+        "args", [(), ("bogus",), ("show", "extra"), ("check",), ("status", "x")]
+    )
     def test_usage_error_exits_2(self, tmp_path, args):
         assert run("consent/cli.py", *args, home=tmp_path).returncode == 2
 
@@ -380,9 +375,8 @@ class TestStatus:
         assert "collection: ON" in out
         assert "opt_out.py" in out
 
-    @pytest.mark.parametrize("status", ["OPT_OUT", "REJECTED"])
-    def test_reports_off_for_either_spelling_of_opted_out(self, home, status):
-        write_record(home, status)
+    def test_reports_off_when_opted_out(self, home):
+        write_record(home, record.OPT_OUT)
         out = run("consent/cli.py", "status", home=home).stdout
         assert "collection: OFF" in out
         assert "opted out" in out
@@ -447,26 +441,16 @@ class TestSessionStartHook:
         assert result.returncode == 0
         assert result.stdout == ""
 
-    def test_silent_for_a_rejected_record(self, home):
-        write_record(home, record.REJECTED)
-        assert run(self.HOOK, home=home).stdout == ""
-
     def test_speaks_again_when_the_record_is_corrupt(self, tmp_path):
         directory = tmp_path / record.STATE_DIR_NAME
         directory.mkdir()
         (directory / record.STATE_FILE_NAME).write_text('{"installId":')
         assert run(self.HOOK, home=tmp_path).stdout != ""
 
-    def test_cursor_format_is_a_json_object(self, tmp_path):
-        result = run(self.HOOK, "--format", "cursor", home=tmp_path)
-        payload = json.loads(result.stdout)
-        # Cursor reads `additional_context`, not `hookSpecificOutput`.
-        assert set(payload) == {"additional_context"}
-        assert "cli.py" in payload["additional_context"]
-
-    def test_cursor_format_stays_silent_once_answered(self, tmp_path):
-        run("consent/accept.py", home=tmp_path)
-        assert run(self.HOOK, "--format=cursor", home=tmp_path).stdout == ""
+    def test_prints_plain_text_not_a_json_envelope(self, tmp_path):
+        # Claude Code takes stdout verbatim as extra context.
+        out = run(self.HOOK, home=tmp_path).stdout
+        assert out.startswith("[AWS Startup Advisor]")
 
     def test_does_not_block_on_a_stdin_pipe_that_never_closes(self, tmp_path):
         """A host may hand the hook a pipe it holds open.

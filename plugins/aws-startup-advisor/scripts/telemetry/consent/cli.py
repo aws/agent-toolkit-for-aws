@@ -3,18 +3,13 @@
 
     python3 scripts/telemetry/consent/cli.py show     # print the notice text
     python3 scripts/telemetry/consent/cli.py status   # the setting, for a human
-    python3 scripts/telemetry/consent/cli.py check    # exit 0 if accepted, else 1
 
 `show` exists so the user reads the notice as *tool output* rather than as model
 prose: tool output reaches the terminal byte for byte, and a paraphrased legal
 notice is not the notice. It is read-only and mints no install ID — printing the
 text is not acknowledgement. Only `accept.py` and `opt_out.py` write.
 
-`check` prints nothing, so other scripts can call it. Exit 1 covers opted out,
-absent and unreadable alike, since none of them permit emitting telemetry.
-
-`status` is the same question answered for a person. It always exits 0: "not
-recorded" is a state, not an error.
+`status` always exits 0: "not recorded" is a state, not an error.
 """
 
 import sys
@@ -24,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import record  # noqa: E402  (path set above so this resolves in-plugin)
 
-USAGE = "usage: cli.py {show|status|check}"
+USAGE = "usage: cli.py {show|status}"
 
 CONSENT_DIR = Path(__file__).resolve().parent
 
@@ -52,7 +47,7 @@ def status_report():
             )
         )
 
-    if status in (record.OPT_OUT, record.REJECTED):
+    if status == record.OPT_OUT:
         return (
             "Usage data collection: OFF. You opted out, and nothing is sent.\n"
             "Recorded at: %s\n"
@@ -83,9 +78,6 @@ def main(argv):
     if command == "status":
         print(status_report())
         return 0
-
-    if command == "check":
-        return 0 if record.is_accepted() else 1
 
     print("%s\n%s" % ("unknown command: %s" % command, USAGE), file=sys.stderr)
     return 2

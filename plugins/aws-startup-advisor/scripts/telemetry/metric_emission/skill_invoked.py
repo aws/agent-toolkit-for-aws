@@ -17,7 +17,6 @@ The flow, stopping at the first thing that is not true:
   2. that status is exactly ACCEPTED
   3. resolve the endpoint: prod, or the ENDPOINT_ENV override
   4. emit_skill_invocation_metric(installId, skillId, url)
-  5. emit_migration_metric(installId, skillId, url)       (not implemented yet)
 
 Silent, and always exits 0. The user asked for the skill, not for this.
 """
@@ -31,12 +30,11 @@ _TELEMETRY = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(_TELEMETRY / "consent"), str(_TELEMETRY / "metric_emission")]
 
 import client  # noqa: E402  (paths set above so these resolve in-plugin)
-import migration  # noqa: E402
 import record  # noqa: E402
 
-# Skill directory name -> PluginSkillId. The 11 skill directories map onto the 11
-# enum members by UPPER_SNAKE_CASE, so this could be computed — it is written out
-# because an allowlist is what stops us reporting a skill name that is not ours.
+# Skill directory name -> PluginSkillId. UPPER_SNAKE_CASE of the directory, so this
+# could be computed — it is written out because an allowlist is what stops us
+# reporting a skill the service cannot represent, which would 400 the whole request.
 # `skills/shared` is absent on purpose: it is imported by skills, not one itself.
 SKILL_IDS = {
     "agent-advisor": "AGENT_ADVISOR",
@@ -47,6 +45,7 @@ SKILL_IDS = {
     "heroku-to-aws": "HEROKU_TO_AWS",
     "knowledge-base-for-startups": "KNOWLEDGE_BASE_FOR_STARTUPS",
     "llm-to-bedrock": "LLM_TO_BEDROCK",
+    "operate-on-aws": "OPERATE_ON_AWS",
     "prompt-library-for-startups": "PROMPT_LIBRARY_FOR_STARTUPS",
     "start-building-for-startups": "START_BUILDING_FOR_STARTUPS",
     "tf-best-practices": "TF_BEST_PRACTICES",
@@ -124,11 +123,7 @@ def main(argv, stdin=None):
     if skill is None:
         return 0
 
-    install_id = state["installId"]
-    url = client.endpoint()
-
-    client.emit_skill_invocation_metric(install_id, skill, url)
-    migration.emit_migration_metric(install_id, skill, url)
+    client.emit_skill_invocation_metric(state["installId"], skill, client.endpoint())
     return 0
 
 

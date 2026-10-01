@@ -15,21 +15,24 @@ is no environment variable. Opting out means setting `"consentStatus"` to
 script below does in one step — the script also keeps their install ID, so prefer
 it over editing by hand.
 
-Run the scripts from this plugin's consent directory:
+Each block below is one command: run it whole, in a single shell invocation. The
+two setup lines are repeated in every block on purpose — shell variables do not
+survive between separate invocations, so a block that omitted them would run
+`python3` against an empty path.
 
-```bash
-CONSENT="${CLAUDE_PLUGIN_ROOT:?plugin root not set}/scripts/telemetry/consent"
-```
-
-If that variable is unset, do not hunt for the files and do not hand-edit the
-record. Say the plugin root could not be resolved and stop.
+`${CLAUDE_PLUGIN_ROOT}` has to appear as exactly that token to be substituted, so
+it carries no shell default. If it does not resolve, the script path will not exist
+and Python will say so: relay that and stop. Do not hunt for the files yourself and
+do not hand-edit the record.
 
 Act on `$ARGUMENTS`, case-insensitively, treating anything unrecognised as empty:
 
 **Empty or `status`**
 
 ```bash
-python3 "$CONSENT/cli.py" status
+CONSENT="${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/consent"
+PY="$(command -v python3 || command -v python || echo 'py -3')"
+$PY "$CONSENT/cli.py" status
 ```
 
 Relay that output as-is, then mention they can pass `opt-out`, `opt-in`, or
@@ -38,7 +41,9 @@ Relay that output as-is, then mention they can pass `opt-out`, `opt-in`, or
 **`opt-out`**
 
 ```bash
-python3 "$CONSENT/opt_out.py"
+CONSENT="${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/consent"
+PY="$(command -v python3 || command -v python || echo 'py -3')"
+$PY "$CONSENT/opt_out.py"
 ```
 
 No confirmation. Asking someone to confirm twice in order to decline is a dark
@@ -48,7 +53,9 @@ pattern.
 means:
 
 ```bash
-python3 "$CONSENT/cli.py" show
+CONSENT="${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/consent"
+PY="$(command -v python3 || command -v python || echo 'py -3')"
+$PY "$CONSENT/cli.py" show
 ```
 
 Reproduce that output VERBATIM: no summarizing, shortening, translating,
@@ -56,7 +63,9 @@ reordering, or rewriting. It is a legal notice and the exact wording is the
 point. Then ask them to confirm, and only if they do:
 
 ```bash
-python3 "$CONSENT/accept.py"
+CONSENT="${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/consent"
+PY="$(command -v python3 || command -v python || echo 'py -3')"
+$PY "$CONSENT/accept.py"
 ```
 
 **`show`** — print the notice, verbatim as above, and change nothing. It writes
