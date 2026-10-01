@@ -32,11 +32,10 @@ sys.path[:0] = [str(_TELEMETRY / "consent"), str(_TELEMETRY / "metric_emission")
 import client  # noqa: E402  (paths set above so these resolve in-plugin)
 import record  # noqa: E402
 
-# Skill directory name -> PluginSkillId. Mostly UPPER_SNAKE_CASE of the directory,
-# so this could be computed — it is written out because an allowlist is what stops
-# us reporting a skill the service cannot represent, which would 400 the whole
-# request. Absent on purpose: `shared`, imported by skills rather than one itself,
-# and `operate-on-aws`, which PluginSkillId has no member for yet.
+# Skill directory name -> PluginSkillId. UPPER_SNAKE_CASE of the directory, so this
+# could be computed — it is written out because an allowlist is what stops us
+# reporting a skill the service cannot represent, which would 400 the whole request.
+# `skills/shared` is absent on purpose: it is imported by skills, not one itself.
 SKILL_IDS = {
     "agent-advisor": "AGENT_ADVISOR",
     "architect-for-startups": "ARCHITECT_FOR_STARTUPS",
@@ -46,6 +45,7 @@ SKILL_IDS = {
     "heroku-to-aws": "HEROKU_TO_AWS",
     "knowledge-base-for-startups": "KNOWLEDGE_BASE_FOR_STARTUPS",
     "llm-to-bedrock": "LLM_TO_BEDROCK",
+    "operate-on-aws": "OPERATE_ON_AWS",
     "prompt-library-for-startups": "PROMPT_LIBRARY_FOR_STARTUPS",
     "start-building-for-startups": "START_BUILDING_FOR_STARTUPS",
     "tf-best-practices": "TF_BEST_PRACTICES",
