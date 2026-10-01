@@ -45,6 +45,14 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 # Imported by skills, not a skill: it has no SKILL.md and cannot be invoked.
 NOT_A_SKILL = {"shared"}
 
+# Real skills the service cannot yet represent: PluginSkillId has no member for
+# them, and an unmodelled member is a 400 for the whole request. Invoking one of
+# these reports nothing, which is the right failure — a dropped event beats a
+# rejected one. Named here so the gap is recorded rather than silently tolerated.
+# TODO(StartupEngBlend-3621): add OPERATE_ON_AWS to PluginSkillId, then move this
+# directory into SKILL_IDS.
+NOT_YET_MODELLED = {"operate-on-aws"}
+
 
 def accept(home):
     """An accepted record on disk, and its install ID."""
@@ -68,15 +76,19 @@ class TestSkillIdMap:
         # Otherwise a skill ships with no way to ever be counted.
         assert set(skill_invoked.SKILL_IDS.values()) == MODELLED_SKILL_IDS
 
-    def test_keys_are_exactly_this_plugin_s_skill_directories(self):
+    def test_keys_are_exactly_the_modelled_skill_directories(self):
         on_disk = {
             path.name
             for path in SKILLS_DIR.iterdir()
             if path.is_dir() and path.name not in NOT_A_SKILL
         }
         # The map is an allowlist, so a new skill is invisible until added here,
-        # and a renamed directory stops being counted silently.
-        assert set(skill_invoked.SKILL_IDS) == on_disk
+        # and a renamed directory stops being counted silently. A directory the
+        # service cannot represent has to be named in NOT_YET_MODELLED to pass.
+        assert set(skill_invoked.SKILL_IDS) == on_disk - NOT_YET_MODELLED
+        # And that exemption expires on its own: once the directory is gone or
+        # renamed, this fails rather than quietly exempting nothing.
+        assert NOT_YET_MODELLED <= on_disk
 
     def test_the_client_agrees_with_the_model(self):
         assert set(client.PLUGIN_SKILL_IDS) == MODELLED_SKILL_IDS

@@ -32,10 +32,11 @@ sys.path[:0] = [str(_TELEMETRY / "consent"), str(_TELEMETRY / "metric_emission")
 import client  # noqa: E402  (paths set above so these resolve in-plugin)
 import record  # noqa: E402
 
-# Skill directory name -> PluginSkillId. The 11 skill directories map onto the 11
-# enum members by UPPER_SNAKE_CASE, so this could be computed — it is written out
-# because an allowlist is what stops us reporting a skill name that is not ours.
-# `skills/shared` is absent on purpose: it is imported by skills, not one itself.
+# Skill directory name -> PluginSkillId. Mostly UPPER_SNAKE_CASE of the directory,
+# so this could be computed — it is written out because an allowlist is what stops
+# us reporting a skill the service cannot represent, which would 400 the whole
+# request. Absent on purpose: `shared`, imported by skills rather than one itself,
+# and `operate-on-aws`, which PluginSkillId has no member for yet.
 SKILL_IDS = {
     "agent-advisor": "AGENT_ADVISOR",
     "architect-for-startups": "ARCHITECT_FOR_STARTUPS",
