@@ -226,12 +226,14 @@ sidebars are offered (placement is orchestration prose, not part of the phase
 contract). Both are `_kind: sidebar` — off-backbone, trigger-entered, never
 `current_phase`.
 
-> **Plan-share links are GATED OFF.** The share landing page
+> **Base64url plan-share links are GATED OFF.** The share landing page
 > (`https://aws.amazon.com/startups/migrate/connect`) is not yet live (404). Do
-> NOT offer, generate, or present a share link at any sidebar. The share-link
-> spec is preserved in `references/phases/feedback/feedback-collect.md` Step 3
-> (itself gated) for when the page ships; restoring the share prompts here is the
-> un-gating change.
+> NOT offer, generate, or present that base64url share link at any sidebar. The
+> share-link spec is preserved in `references/phases/feedback/feedback-collect.md`
+> Step 3 (itself gated) for when the page ships; restoring the share prompts here
+> is the un-gating change. (This is distinct from the `plan.json` web-import
+> handoff offered at the Estimate decision gate, which uploads a file to the live
+> import page — see `references/phases/estimate/estimate-assemble.md`.)
 
 - **After Discover**: No prompt. Proceed directly to Clarify.
 

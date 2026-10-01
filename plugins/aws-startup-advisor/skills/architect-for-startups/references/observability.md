@@ -63,14 +63,14 @@
 
 ## When to Graduate
 
-| Trigger                                                  | Action                                                              |
-| -------------------------------------------------------- | ------------------------------------------------------------------- |
-| First customer-facing outage you can't diagnose in 30min | Add X-Ray tracing                                                   |
-| Debugging takes >1hr regularly                           | Increase log retention, add structured fields                       |
-| 3+ services with cross-service calls                     | Distributed tracing (X-Ray or OTEL)                                 |
-| 10+ engineers needing observability                      | Evaluate Datadog/New Relic (UX justifies cost)                      |
-| SOC2 audit                                               | 90-day log retention, CloudTrail in all accounts                    |
-| Monthly observability bill >$500 on CloudWatch           | Audit: log retention, custom metrics cardinality, unused dashboards |
+| Trigger                                                  | Action                                                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| First customer-facing outage you can't diagnose in 30min | Investigate it now with `operate-on-aws` (AWS DevOps Agent), then add X-Ray tracing so the next one is easier |
+| Debugging takes >1hr regularly                           | Increase log retention, add structured fields                                                                 |
+| 3+ services with cross-service calls                     | Distributed tracing (X-Ray or OTEL)                                                                           |
+| 10+ engineers needing observability                      | Evaluate Datadog/New Relic (UX justifies cost)                                                                |
+| SOC2 audit                                               | 90-day log retention, CloudTrail in all accounts                                                              |
+| Monthly observability bill >$500 on CloudWatch           | Audit: log retention, custom metrics cardinality, unused dashboards                                           |
 
 ## Credits Consideration
 

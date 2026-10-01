@@ -58,9 +58,9 @@ Your application can implement HTTP endpoints that Lambda invokes at lifecycle t
 | Hook | Path | When invoked | Timeout field | Use it for |
 |---|---|---|---|---|
 | **`/ready`** | `POST /aws/lambda-microvms/runtime/v1/ready` | During image build, before snapshot capture | `readyTimeoutInSeconds` (1–3600) | Confirm app initialized; fail the build if app is broken |
-| **`/validate`** | `POST /aws/lambda-microvms/runtime/v1/validate` | After build, on a test MicroVM run from the snapshot | `validateTimeoutInSeconds` (1–3600) | End-to-end smoke test of the snapshot |
+| **`/validate`** | `POST /aws/lambda-microvms/runtime/v1/validate` | After build, on a test MicroVM run from the snapshot | `validateTimeoutInSeconds` (1–3600) | End-to-end smoke test of the snapshot. Running mock payloads here also lets the platform sample which snapshot portions are accessed at run time and **prefetch** them on future launches, reducing cold-start latency |
 
-Implementing image build hooks is recommended for performance — they ensure your application is fully initialized before the snapshot is captured, resulting in faster runs.
+Implementing image build hooks is recommended for performance — `/ready` ensures your application is fully initialized before the snapshot is captured, and `/validate` lets the platform verify the snapshot and sample the portions accessed at run time so it can prefetch them on future launches, resulting in faster runs.
 
 ### MicroVM hooks
 

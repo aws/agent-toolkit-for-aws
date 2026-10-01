@@ -1,7 +1,7 @@
 {
   "name": "aws-startup-advisor",
-  "version": "2.0.2",
-  "description": "Personalized AWS guidance built on patterns from 350,000+ startups—architecture, cost, security, and migration, from day-one account setup to production-ready infrastructure. Migrate to AWS from GCP or Heroku—including your entire AI stack: OpenAI/Gemini/Anthropic SDK rewrites to Amazon Bedrock, agentic systems (LangChain, CrewAI, AutoGen) to AWS-native runtimes, and Temporal workers. Includes AWS Activate credits eligibility and 60+ exclusive startup offers. Built by AWS Startup Solutions Architects, with multi-account, multi-region support.",
+  "version": "2.0.3",
+  "description": "Personalized AWS guidance built on patterns from 350,000+ startups—architecture, cost, security, and migration, from day-one account setup to production-ready infrastructure. Migrate to AWS from GCP or Heroku—including your entire AI stack: OpenAI/Gemini/Anthropic SDK rewrites to Amazon Bedrock, agentic systems (LangChain, CrewAI, AutoGen) to AWS-native runtimes, and Temporal workers. Operate what you run with AWS DevOps Agent—incident investigation and release-readiness review, with the cost shown before anything is enabled. Includes AWS Activate credits eligibility and 60+ exclusive startup offers. Built by AWS Startup Solutions Architects, with multi-account, multi-region support.",
   "author": {
     "name": "Amazon Web Services",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
@@ -84,7 +84,12 @@
     "entra-id",
     "blob-storage",
     "bicep",
-    "arm-template"
+    "arm-template",
+    "devops-agent",
+    "incident-response",
+    "root-cause-analysis",
+    "release-readiness",
+    "on-call"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
