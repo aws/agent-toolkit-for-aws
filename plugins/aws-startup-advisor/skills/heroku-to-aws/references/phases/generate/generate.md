@@ -65,7 +65,9 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "at least one domain .tf file exists beyond the core files"
     _on_failure: _halt_and_inform
-  - _assert: "MIGRATION_GUIDE.md has Prerequisites and Verification sections; README.md lists the artifacts"
+  - _assert: "MIGRATION_GUIDE.md has Prerequisites, Verification, Cutover, and Rollback sections, in that order, with Decommission after Rollback; the Rollback section names a DNS-revert action and states what happens to writes made after cutover; README.md lists the artifacts"
+    _on_failure: _halt_and_inform
+  - _assert: "if preferences.json global.dns_strategy is 'route53' and heroku-resource-inventory.json has at least one resource_type 'domain' resource, then terraform/dns.tf exists and declares hosted_zone_id, heroku_dns_targets, and cutover_weight variables and an aws_acm_certificate_validation resource, and no terraform file declares var.acm_certificate_arn; otherwise terraform/dns.tf does not exist"
     _on_failure: _halt_and_inform
   - _assert: "migration-report.html has decision-summary, exec-costs, cost-optimization, next-steps, and draft-for-review footer; if scenarios/index.json has ≥2 scenarios, also what-if-scenarios"
     _on_failure: _halt_and_inform

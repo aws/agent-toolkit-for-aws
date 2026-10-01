@@ -39,6 +39,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | `database.tf`  | database   | RDS/Aurora instances, parameter groups, RDS Proxy                                                                                      |
 | `cache.tf`     | cache      | ElastiCache replication groups, subnet groups                                                                                          |
 | `messaging.tf` | messaging  | MSK clusters, configurations                                                                                                           |
+| `dns.tf`       | dns        | Route 53 records for every custom domain, ACM certificate with DNS validation, weighted Heroku↔AWS cutover (only when `dns_strategy == "route53"`) |
 | `security.tf`  | security   | Security groups, IAM roles/policies                                                                                                    |
 
 **File emission rules:**
@@ -52,6 +53,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 - `database.tf` — Emitted when `aws_service` contains "RDS" or "Aurora" entries
 - `cache.tf` — Emitted when `aws_service` contains "ElastiCache" entries
 - `messaging.tf` — Emitted when `aws_service` contains "MSK" entries
+- `dns.tf` — Emitted when `preferences.global.dns_strategy == "route53"` AND the inventory has at least one `resource_type: "domain"` resource. Owns the ACM certificate too, so `compute.tf` / `beanstalk.tf` reference it instead of `var.acm_certificate_arn` (see Step 6 and Step 6.5). When `dns_strategy == "external"`, or no custom domain was discovered, no `dns.tf` is written and the guide's cutover section gives manual record instructions.
 - `security.tf` — ALWAYS emitted (security groups required for all deployments)
 
 **Service-to-file routing:**
@@ -66,6 +68,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | VPC, Subnet, Route Table, IGW, NAT | `vpc.tf`                                                                                                        |
 | Security Group, IAM Role/Policy    | `security.tf`                                                                                                   |
 | CloudWatch Logs                    | `compute.tf`                                                                                                    |
+| Route 53 + ACM (from `preferences.global.dns_strategy == "route53"` and inventory `domain` resources — not an `aws-design.json` service) | `dns.tf` |
 
 **Unmapped services:** If `aws-design.json` contains a `service_id` with an `aws_service` value that has no Terraform resource mapping in this file (e.g., CloudWatch + X-Ray composite, Amazon SES, Amazon SNS), **skip** that resource and record a warning in `generation-warnings.json` (which is ALWAYS written — see Step 10 — with an empty `warnings` array when nothing is skipped). Do NOT halt generation.
 
@@ -508,6 +511,21 @@ output "msk_bootstrap_brokers" {
   value       = aws_msk_cluster.kafka.bootstrap_brokers_tls
   sensitive   = true
 }
+
+# {{IF has_route53_dns}}
+# DNS outputs
+output "dns_cutover" {
+  description = "Per hostname: where Route 53 currently sends traffic and the AWS target it will cut over to"
+  value = {
+    for h in local.custom_domains : h => {
+      aws_weight    = var.cutover_weight
+      heroku_weight = 100 - var.cutover_weight
+      aws_target    = local.aws_dns_target
+      apex          = local.is_apex[h]
+    }
+  }
+}
+# {{ENDIF}}
 ```
 
 Only emit outputs for services present in `aws-design.json`. Mark connection strings as `sensitive = true`.
@@ -1206,7 +1224,11 @@ resource "aws_lb_listener" "https" {
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  # {{IF has_route53_dns}}
+  certificate_arn   = aws_acm_certificate_validation.app.certificate_arn
+  # {{ELSE}}
   certificate_arn   = var.acm_certificate_arn
+  # {{ENDIF}}
 
   default_action {
     type             = "forward"
@@ -1229,11 +1251,13 @@ resource "aws_lb_listener" "http_redirect" {
   }
 }
 
+# {{IF NOT has_route53_dns}}
 variable "acm_certificate_arn" {
   description = "ARN of the ACM certificate for HTTPS listener"
   type        = string
   # TODO: Provide your ACM certificate ARN
 }
+# {{ENDIF}}
 ```
 
 **ALB rules:**
@@ -1242,7 +1266,7 @@ variable "acm_certificate_arn" {
 - HTTP listener always redirects to HTTPS
 - TLS 1.3 policy for new deployments
 - Health check path defaults to `/` (user should customize)
-- ACM certificate ARN as variable with TODO marker
+- ACM certificate: when `dns.tf` is emitted (`has_route53_dns`), the listener uses the certificate `dns.tf` issues and validates; otherwise `var.acm_certificate_arn` with a TODO marker
 
 ---
 
@@ -1314,6 +1338,35 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
     name      = "HealthCheckPath"
     value     = var.eb_health_check_path_<app_sanitized>_web
   }
+  # {{IF has_route53_dns}}
+  # HTTPS on the EB load balancer, using the certificate dns.tf issues. Without this a
+  # custom domain pointed at the environment serves plain HTTP only.
+  setting {
+    namespace = "aws:elasticbeanstalk:environment"
+    name      = "LoadBalancerType"
+    value     = "application"
+  }
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "ListenerEnabled"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "Protocol"
+    value     = "HTTPS"
+  }
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "SSLCertificateArns"
+    value     = aws_acm_certificate_validation.app.certificate_arn
+  }
+  setting {
+    namespace = "aws:elbv2:listener:443"
+    name      = "SSLPolicy"
+    value     = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  }
+  # {{ENDIF}}
   # {{ENDIF}}
 
   # {{IF process_type != "web"}}
@@ -2101,6 +2154,156 @@ resource "aws_cloudwatch_log_group" "msk" {
 
 ---
 
+## Step 9.5: Generate `dns.tf` (Route 53 cutover — only when `dns_strategy == "route53"`)
+
+**Emit when** `preferences.global.dns_strategy == "route53"` AND `heroku-resource-inventory.json` has at least one `resource_type: "domain"` resource. Set `has_route53_dns = true` for the rest of this file; it switches the ALB listener (Step 6) and EB web environments (Step 6.5) onto the certificate issued here. Otherwise skip this step, leave `has_route53_dns = false`, and let `generate-docs.md` § Phase 5 give manual-record instructions.
+
+**What this file buys the user.** Cutover and rollback become one variable: `cutover_weight` 0 → 10 → 50 → 100 shifts traffic from Heroku to AWS one `terraform apply` at a time, and setting it back to 0 is the rollback — no hand-edited records, no "which TTL did we set" at 2 a.m. The ACM certificate is issued and validated in the same apply, so HTTPS works the moment the first weighted record resolves to AWS.
+
+**Inputs.** `local.custom_domains` = every `domain` resource's `config.hostname` (deduplicated; `*.herokuapp.com` hostnames were never recorded). `local.aws_dns_target` = the ALB `dns_name` when the web process is on Fargate, else the EB environment `cname`. Heroku's DNS targets are **not** in the inventory today (`heroku domains` prints them as "DNS Target"; discovery records only `hostname` and `sni_endpoint`), so they are a required variable with a placeholder guard.
+
+```hcl
+# dns.tf — Route 53 records, ACM certificate, weighted Heroku→AWS cutover.
+# cutover_weight = 0 sends everything to Heroku; 100 sends everything to AWS; rollback = 0.
+
+variable "hosted_zone_id" {
+  description = "Route 53 hosted zone that serves your custom domain(s). `aws route53 list-hosted-zones-by-name --dns-name <domain>`"
+  type        = string
+  validation {
+    condition     = can(regex("^Z[A-Z0-9]{8,32}$", var.hosted_zone_id))
+    error_message = "hosted_zone_id must be a Route 53 zone id (starts with Z). Replace the placeholder in terraform.tfvars."
+  }
+}
+
+variable "heroku_dns_targets" {
+  description = "hostname → Heroku DNS target (the 'DNS Target' column of `heroku domains -a <app>`, e.g. whispering-willow-1234.herokudns.com). One entry per custom domain."
+  type        = map(string)
+  validation {
+    condition     = alltrue([for h, t in var.heroku_dns_targets : can(regex("\\.herokudns\\.com$|\\.herokuapp\\.com$|\\.herokussl\\.com$", t))])
+    error_message = "Every heroku_dns_targets value must be a Heroku DNS target (…herokudns.com). Copy them from `heroku domains`."
+  }
+}
+
+variable "cutover_weight" {
+  description = "Share of traffic (0-100) Route 53 sends to AWS for non-apex hostnames. 0 = all Heroku (safe default), 100 = all AWS. Lower it to roll back."
+  type        = number
+  default     = 0
+  validation {
+    condition     = var.cutover_weight >= 0 && var.cutover_weight <= 100 && floor(var.cutover_weight) == var.cutover_weight
+    error_message = "cutover_weight must be a whole number from 0 to 100."
+  }
+}
+
+locals {
+  custom_domains = toset([<comma-separated quoted hostnames from inventory domain resources>])
+  # A hostname is an apex when it IS the zone name. Apex records cannot CNAME to Heroku, so
+  # the apex gets a single ALIAS to AWS that is only created at cutover_weight == 100.
+  zone_name = trimsuffix(data.aws_route53_zone.app.name, ".")
+  is_apex   = { for h in local.custom_domains : h => (h == local.zone_name) }
+  # {{IF has_fargate_web}}
+  aws_dns_target  = aws_lb.<app_sanitized>_web.dns_name
+  aws_alias_zone  = aws_lb.<app_sanitized>_web.zone_id
+  # {{ELSE}} (Elastic Beanstalk web)
+  aws_dns_target  = aws_elastic_beanstalk_environment.<app_sanitized>_web.cname
+  aws_alias_zone  = data.aws_elastic_beanstalk_hosted_zone.current.id
+  # {{ENDIF}}
+}
+
+data "aws_route53_zone" "app" {
+  zone_id = var.hosted_zone_id
+}
+
+# {{IF has_beanstalk_web}}
+data "aws_elastic_beanstalk_hosted_zone" "current" {}
+# {{ENDIF}}
+
+# --- Certificate: issued for every custom domain, validated via Route 53 in the same apply.
+resource "aws_acm_certificate" "app" {
+  domain_name               = sort(tolist(local.custom_domains))[0]
+  subject_alternative_names = slice(sort(tolist(local.custom_domains)), 1, length(local.custom_domains))
+  validation_method         = "DNS"
+  lifecycle {
+    create_before_destroy = true
+  }
+  tags = { Name = "${var.project_name}-${var.environment}-cert" }
+}
+
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.app.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+  zone_id         = var.hosted_zone_id
+  name            = each.value.name
+  type            = each.value.type
+  ttl             = 60
+  records         = [each.value.record]
+  allow_overwrite = true
+}
+
+resource "aws_acm_certificate_validation" "app" {
+  certificate_arn         = aws_acm_certificate.app.arn
+  validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
+}
+
+# --- Non-apex hostnames: weighted CNAME pair. Both records share name+type; Route 53 splits
+# traffic by weight. A weight of 0 is never returned while the other is > 0, so
+# cutover_weight = 0 is "all Heroku" and 100 is "all AWS" with no record churn in between.
+resource "aws_route53_record" "heroku" {
+  for_each = { for h in local.custom_domains : h => h if !local.is_apex[h] }
+  zone_id        = var.hosted_zone_id
+  name           = each.key
+  type           = "CNAME"
+  ttl            = 60
+  records        = [var.heroku_dns_targets[each.key]]
+  set_identifier = "heroku"
+  weighted_routing_policy {
+    weight = 100 - var.cutover_weight
+  }
+}
+
+resource "aws_route53_record" "aws" {
+  for_each = { for h in local.custom_domains : h => h if !local.is_apex[h] }
+  zone_id        = var.hosted_zone_id
+  name           = each.key
+  type           = "CNAME"
+  ttl            = 60
+  records        = [local.aws_dns_target]
+  set_identifier = "aws"
+  weighted_routing_policy {
+    weight = var.cutover_weight
+  }
+}
+
+# --- Apex hostname: Route 53 cannot CNAME or ALIAS an apex to an external host, so the apex
+# cannot be weighted against Heroku. It stays at the current DNS provider until the final
+# step, then flips in one apply when cutover_weight reaches 100. Rollback: set < 100 (the
+# ALIAS is removed) and re-point the apex at Heroku at the provider that served it before.
+resource "aws_route53_record" "apex" {
+  for_each = { for h in local.custom_domains : h => h if local.is_apex[h] && var.cutover_weight == 100 }
+  zone_id = var.hosted_zone_id
+  name    = each.key
+  type    = "A"
+  alias {
+    name                   = local.aws_dns_target
+    zone_id                = local.aws_alias_zone
+    evaluate_target_health = true
+  }
+}
+```
+
+**Rules:**
+
+- `for_each` keys are hostnames, so `terraform state` and `plan` output read in the user's own vocabulary ("www.example.com"), not indices.
+- `heroku_dns_targets` must cover every non-apex hostname; a missing key fails `plan` with a clear message rather than silently routing 100 % to AWS.
+- TTL 60 on every record this file creates. The guide tells the user to lower the TTL at their current provider to 60 **before** moving the zone so the first weighted step propagates in minutes.
+- Never emit `aws_route53_zone` as a resource: the user may already serve other records from the zone, and importing it is theirs to decide. The data source makes the zone a precondition the plan checks.
+- `allow_overwrite = true` only on the ACM validation records — re-issuing a certificate must not fail on a stale `_acme-challenge`-style record.
+- When `has_route53_dns` is true, remove `var.acm_certificate_arn` from `variables.tf` and from `terraform.tfvars.example` (Step 11); the listener and EB settings reference `aws_acm_certificate_validation.app.certificate_arn` instead.
+
 ## Step 10: Handle Unmapped Resources and Warnings
 
 **Always write `$MIGRATION_DIR/generation-warnings.json`** — it is a mandatory
@@ -2200,8 +2403,18 @@ security_email   = "TODO-security@example.com" # security alternate contact
 # db_username = "app_user"
 # db_password = "CHANGE_ME"
 
+# {{IF has_route53_dns}}
+# DNS (dns.tf) — required. Get the zone id from `aws route53 list-hosted-zones-by-name --dns-name <domain>`
+# and each Heroku DNS target from `heroku domains -a <app>` (the "DNS Target" column).
+# hosted_zone_id = "Z0123456789ABCDEFGHIJ"
+# heroku_dns_targets = {
+#   "www.example.com" = "whispering-willow-1234.herokudns.com"
+# }
+# cutover_weight = 0   # 0 = all traffic to Heroku; raise to 10 → 50 → 100 during cutover; back to 0 = rollback
+# {{ELSE}}
 # ACM certificate (required if ALB is in the design)
 # acm_certificate_arn = "arn:aws:acm:<region>:<account_id>:certificate/<cert-id>"
+# {{ENDIF}}
 
 # Container images (one per Fargate service)
 # container_image_<app>_<process_type> = "<account_id>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>"

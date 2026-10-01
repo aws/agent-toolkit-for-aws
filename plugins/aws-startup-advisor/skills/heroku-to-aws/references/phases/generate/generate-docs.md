@@ -40,6 +40,9 @@ Also extract:
 - `migration_method` — from `preferences.json`.data.migration_method (`"pg_dump_restore"`, `"dms"`, `"bucardo"`, `"wal_g"`)
 - `containerization_status` — from `preferences.json`.operational.containerization_status (`"containerized"`, `"buildpack_only"`, `"partial"`)
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
+- `dns_strategy` — from `preferences.json`.global.dns_strategy (`"route53"` or `"external"`)
+- `custom_domains[]` — every `resource_type == "domain"` resource's `config.hostname` from `heroku-resource-inventory.json` (deduplicated). `has_route53_dns = true` when `dns_strategy == "route53"` AND `custom_domains` is non-empty — the same condition under which `generate-terraform.md` Step 9.5 emits `dns.tf`.
+- `aws_dns_target_label` — `"the ALB DNS name (terraform output alb_dns_name)"` when `has_fargate`, else `"the Elastic Beanstalk environment CNAME (terraform output eb_environment_cname)"`
 
 ---
 
@@ -69,6 +72,8 @@ This guide provides step-by-step instructions for migrating your Heroku applicat
 - [Phase 3: Application Deployment](#phase-3-application-deployment)
 - [Phase 4: Verification](#phase-4-verification)
 - [Phase 5: Cutover](#phase-5-cutover)
+- [Phase 6: Rollback](#phase-6-rollback)
+- [Decommission Heroku](#decommission-heroku-resources)
   {{IF deferred_addons.length > 0}}
 - [Manual Migration Items](#manual-migration-items)
   {{ENDIF}}
@@ -792,30 +797,155 @@ This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode 
 
 ## Phase 5: Cutover
 
-### DNS Cutover
+**Do not start this phase until every Phase 4 check passes.** Cutover is the only step that touches customer traffic; everything before it is reversible by deleting AWS resources, and everything after it is reversible by the steps in Phase 6.
 
-1. Update DNS records to point at the active AWS endpoint:
+### Before you move any traffic
+
+- [ ] Phase 4 checklist green on the AWS deployment at its direct endpoint ({{aws_dns_target_label}})
+- [ ] TTL on every custom-domain record at your **current** DNS provider lowered to 60 seconds **at least 24 hours ago** (resolvers cache the old TTL until it expires)
+- [ ] You know your Heroku DNS targets: `heroku domains -a {{app_name}}` → "DNS Target" column
+{{IF migration_approach == "full_cutover"}}
+- [ ] A fresh pre-cutover database export exists (Phase 2 procedure) — it is your rollback point for data
+{{ENDIF}}
+
+{{IF has_route53_dns}}
+
+### DNS Cutover (Route 53, weighted)
+
+`terraform/dns.tf` created, for each non-apex hostname, two weighted records with the same name: one to Heroku, one to AWS. `cutover_weight` is the share of traffic AWS receives. Cutover is three applies; rollback is one.
+
+1. **Canary — 10 %:**
+
+   ```bash
+   cd terraform/
+   terraform apply -input=false -var cutover_weight=10
+   ```
+
+   Watch for 15–30 minutes: CloudWatch 5xx rate on the ALB/EB target group, application error tracker, `heroku logs --tail -a {{app_name}}` for the 90 % still on Heroku. Confirm sessions, logins, and any webhook callbacks work for the AWS share.
+2. **Half — 50 %:** `terraform apply -input=false -var cutover_weight=50`. Watch for at least one full business cycle (an hour of peak traffic, or a batch window if you have one).
+3. **All — 100 %:** `terraform apply -input=false -var cutover_weight=100`. This apply also creates the apex record (see below). Then put `cutover_weight = 100` in `terraform.tfvars` so a later apply does not revert it.
+{{IF migration_approach == "full_cutover"}}
+4. **Freeze Heroku writes** once at 100 %: `heroku maintenance:on -a {{app_name}}`. Until this moment the Heroku share could still write to Heroku Postgres; after it, the AWS database is the only writer.
+{{ENDIF}}
+
+**Apex domains** ({{custom_domains}} that equal the zone name): Route 53 cannot CNAME or ALIAS an apex to Heroku, so the apex cannot be weighted. Keep the apex at your current provider pointing at Heroku through steps 1–2; the step-3 apply creates a Route 53 ALIAS to AWS, and you then delegate the zone to Route 53 (NS records at your registrar) or copy the ALIAS target to your provider. Test weighted cutover on `www.` first.
+
+**Verify each step:** `dig +short {{app_domain}}` from two networks should return AWS targets in roughly the weighted proportion; `terraform output dns_cutover` shows the live weights.
+
+{{ELSE}}
+
+### DNS Cutover (your current DNS provider)
+
+No `dns.tf` was generated ({{IF dns_strategy == "external"}}you chose to keep your DNS provider{{ELSE}}no custom domain was discovered{{ENDIF}}). Cut over by editing records at your provider:
+
+1. For each custom hostname, change the record from its Heroku DNS target to {{aws_dns_target_label}}:
 
 {{IF has_beanstalk}}
-
-```
-{{app_domain}} → CNAME → {{EB_ENVIRONMENT_URL}}
-```
-
+   ```
+   {{app_domain}}  CNAME  <eb_environment_cname>      (was: <heroku DNS target>)
+   ```
 {{ENDIF}}
 {{IF has_fargate}}
+   ```
+   {{app_domain}}  CNAME  <alb_dns_name>              (was: <heroku DNS target>)
+   ```
+{{ENDIF}}
 
-```
-{{app_domain}} → CNAME → {{ALB_DNS_NAME}}
-```
+   Apex hostnames cannot be CNAMEs: use your provider's ALIAS/ANAME record type, or move the zone to Route 53 (re-run Clarify with `dns_strategy: route53` to get `dns.tf`).
+2. If your provider supports weighted or percentage routing, use it the same way as the Route 53 path above (10 % → 50 % → 100 %). If not, this is an all-at-once switch: do it at your lowest-traffic hour and keep the Heroku record value written down.
+{{IF migration_approach == "full_cutover"}}
+3. Once resolvers have moved (watch `dig` from two networks; TTL 60 means ~2 minutes after propagation), freeze Heroku writes: `heroku maintenance:on -a {{app_name}}`.
+{{ENDIF}}
+4. Restore TTLs to your normal value after the Phase 6 rollback window closes.
 
 {{ENDIF}}
 
-1. Set TTL low (60s) before cutover, restore after verification.
+### After cutover
 
-### Decommission Heroku
+- [ ] Phase 4 checklist green again, now at the custom domain over HTTPS
+- [ ] Heroku dyno load approaches zero (`heroku ps -a {{app_name}}`, request logs)
+- [ ] Leave Heroku **running** for the rollback window below — do not scale to zero yet
 
-After successful verification (recommend 48–72 hours of parallel running):
+---
+
+## Phase 6: Rollback
+
+Rollback is cheap only while Heroku is still running. This section is the reason Decommission comes last.
+
+### Rollback window
+
+Keep every Heroku dyno, add-on, and the pre-cutover database export for **at least 72 hours** after reaching 100 % on AWS. Nothing in Phase 7 (decommission) is reversible.
+
+### Triggers — roll back when any of these holds after cutover
+
+| Signal | Threshold | Where to look |
+| --- | --- | --- |
+| `{{health_check_path}}` on the custom domain | non-200 for > 2 minutes | ALB/EB target health, `curl -I https://{{app_domain}}{{health_check_path}}` |
+| 5xx rate | > 2× the Heroku baseline for 10 minutes | CloudWatch `HTTPCode_Target_5XX_Count` vs Heroku's last week of `heroku logs` |
+| p95 latency | > 1.5× Heroku baseline for 15 minutes | CloudWatch `TargetResponseTime` |
+| A Phase 4 functional check fails on the custom domain | any | your test suite |
+<!-- markdownlint-disable MD055 MD056 -->
+{{IF has_postgres}}
+| Row counts diverge from the Phase 2 reconciliation | any table | `scripts/migrate-postgres.sh --verify` |
+{{ENDIF}}
+<!-- markdownlint-enable MD055 MD056 -->
+
+### Rollback by phase — what it costs and how long it takes
+
+| You are in… | Rollback action | Data at risk | RTO |
+| --- | --- | --- | --- |
+| Phase 1 (provisioned, nothing deployed) | `terraform destroy` | none — Heroku untouched | minutes |
+| Phase 2 (data copied) | Drop/ignore the AWS copy; Heroku Postgres is still primary | none | minutes |
+| Phase 3 (deployed, no traffic) | Scale AWS services to 0 or leave idle | none | none |
+| Phase 5 at 10 % / 50 % | **DNS back to Heroku** (below) | {{IF migration_approach == "full_cutover"}}writes made by the AWS share during the window — see "Writes after cutover"{{ELSE}}none — the database already lives on AWS and Heroku keeps using it through the interim path{{ENDIF}} | TTL (60 s) + resolver drain ≈ 5 min |
+| Phase 5 at 100 % | DNS back to Heroku, then `heroku maintenance:off -a {{app_name}}` | {{IF migration_approach == "full_cutover"}}every write since 100 % — reverse-sync required{{ELSE}}none{{ENDIF}} | 5 min + reverse-sync time |
+| After decommission | **No rollback** — rebuild Heroku from scratch | all Heroku-side state | hours–days |
+
+### DNS back to Heroku
+
+{{IF has_route53_dns}}
+
+```bash
+cd terraform/
+terraform apply -input=false -var cutover_weight=0
+```
+
+That single apply returns every non-apex hostname to Heroku (the AWS record stays in the zone at weight 0, so rolling forward later is the same command with a higher number). For an apex that was flipped at 100 %, the apply removes the ALIAS; re-create the apex at the provider that served it before, pointing at Heroku, or add a temporary Route 53 record there if you already delegated the zone.
+
+{{ELSE}}
+
+At your DNS provider, set each hostname back to its Heroku DNS target (the value you wrote down before cutover; `heroku domains -a {{app_name}}` shows it). With TTL 60 the change takes effect within about two minutes.
+
+{{ENDIF}}
+
+Then, if you had frozen Heroku: `heroku maintenance:off -a {{app_name}}`.
+
+### Writes after cutover
+
+{{IF migration_approach == "full_cutover"}}
+
+Once traffic reached AWS, the AWS database received writes that Heroku Postgres never saw. Rolling DNS back without handling them silently loses data. Before `heroku maintenance:off`:
+
+1. Decide: **accept the gap** (acceptable for a short canary with low write volume — say so explicitly in your incident notes), or **reverse-sync**.
+2. Reverse-sync: `pg_dump` the AWS database (`--data-only` for the tables with new rows, or the whole database if the window was long) and `pg_restore` into Heroku Postgres — the Phase 2 script in reverse. Reconcile row counts before reopening Heroku.
+3. Only then `heroku maintenance:off`.
+
+The smaller the step that failed, the smaller this problem — which is why the canary is 10 %, not 50 %.
+
+{{ELSE}}
+
+Your database already lives on AWS (data-first migration) and Heroku reaches it through the interim access path. Rolling compute back to Heroku does not move or lose data; the database stays where it is. Do **not** close the interim path (`interim_heroku_ingress_cidrs`, `interim_db_public_access`) until compute has cut over for good.
+
+{{ENDIF}}
+
+### After a rollback
+
+- Keep AWS resources provisioned; fix the cause; re-run Phase 4 at the direct endpoint; restart Phase 5 from 10 %.
+- Record what tripped and what you changed in `ROLLBACK-NOTES.md` next to this guide — the next cutover attempt should start from that.
+
+---
+
+## Phase 7: Decommission Heroku
 
 ### Post-Migration Lockdown
 
@@ -834,7 +964,7 @@ Once your application is fully running on AWS (no longer connecting from Heroku)
 
 ### Decommission Heroku Resources
 
-After successful verification (recommend 48–72 hours of parallel running):
+Only after the Phase 6 rollback window (72 hours at 100 % on AWS with no trigger fired):
 
 1. Scale Heroku dynos to 0:
 
@@ -912,11 +1042,17 @@ Replace template variables using these sources:
 | `{{EB_ENVIRONMENT_NAMES}}` | Space-separated generated Elastic Beanstalk environment names for all EB process types |
 | `{{MSK_CLUSTER_ARN}}` | Placeholder — user fills from Terraform output |
 | `{{MIGRATION_BUCKET}}` | Placeholder — user creates an S3 bucket for migration artifacts |
-| `{{app_domain}}` | Placeholder — user fills with their application domain |
+| `{{app_domain}}` | First hostname in `custom_domains[]` when the inventory has `domain` resources; otherwise a placeholder the user fills |
+| `{{custom_domains}}` | Comma-separated `custom_domains[]` (inventory `domain` resources' `config.hostname`) |
+| `{{aws_dns_target_label}}` | See Step 0 inputs — names the Terraform output that holds the AWS endpoint for this design |
+| `{{health_check_path}}` | `eb_health_check_path_<app_sanitized>_web` for the first Beanstalk web app; `/` for a Fargate web service (the ALB target group default) — the same path Phase 4 checks |
 
 ### Conditional Section Rules
 
 **Strict enforcement — no empty sections:**
+
+- Phase 5 renders exactly ONE of its two DNS subsections: "DNS Cutover (Route 53, weighted)" when `has_route53_dns`, else "DNS Cutover (your current DNS provider)". Never both, never neither.
+- Phase 6 Rollback is ALWAYS rendered. Its "Writes after cutover" subsection renders the `full_cutover` text or the data-first text per `migration_approach`, never both. The row-count trigger row renders only when `has_postgres`.
 
 - If `has_postgres == false`: Omit the entire "PostgreSQL Migration" subsection under Phase 2 (heading + content)
 - If `has_redis == false`: Omit the entire "Redis Migration" subsection under Phase 2 (heading + content)
