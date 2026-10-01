@@ -35,6 +35,7 @@ Write `$MIGRATION_DIR/preferences.json`:
     "questions_defaulted": ["Q7", "Q8", ...],
     "questions_skipped_extracted": ["Q6", "Q12b", ...],
     "questions_skipped_not_applicable": ["Q6", "Q8", ...],
+    "questions_deferred_to_generate": ["Q4", "Q6c", "Q12d"],
     "inventory_clarifications": {"database_ha": "plan:premium-0"}
   },
   "global": {
@@ -53,7 +54,7 @@ Write `$MIGRATION_DIR/preferences.json`:
     "database_ha": "<Q6 value>",
     "migration_method": "<Q6c value>",
     "estimated_db_size_gb": "<derived or user-provided>",
-    "db_size_source": "plan_derived|user_override",
+    "db_size_source": "live_capture|plan_derived|user_override",
     "redis_ha": "<Q7 value>",
     "kafka_retention_days": "<Q8 value>",
     "dns_strategy": "<Q10 value>"
@@ -108,6 +109,7 @@ Do **not** write a `workshop` object from Clarify. The what-if workshop
 
 1. The `sources` object records how each question was answered: `"user"` (explicitly answered, or corrected on the Assumption Sheet), `"extracted"` (resolved from the inventory — Detected sheet row), `"default"` (system default applied, including skipped questions, sheet-confirmed defaults, and "use defaults for the rest").
 2. `defaults_applied` is the array of question IDs that received default values.
+3a. `metadata.questions_deferred_to_generate` records the execution-only questions (Q4 maintenance window, Q6c DB migration method, Q12d EB deploy method — each only when it fires) whose documented default was written here and which are **asked for real at the Decision gate's [C] Generate** (`estimate-assemble.md` § Confirm execution choices) before `generate.md` loads. Nothing before Generate reads these three fields. Their `sources` entry is `"default"` until that step rewrites it to `"user"`.
 3. `metadata.questions_skipped_not_applicable` records questions skipped because their triggering condition was not met (e.g., Q6 skipped because no Postgres). `metadata.questions_skipped_extracted` records questions resolved from the inventory (interview Step 2.5 Extraction Rules); the raw signal goes in `metadata.inventory_clarifications` (e.g. `{"database_ha": "plan:premium-0"}`).
 4. Only write keys with non-null values. Omit sections/keys that are entirely null.
 5. `global.fir_intent` is `null` when no Fir apps detected (Q11 not fired).
@@ -147,6 +149,7 @@ Before handing off to Design:
 - [ ] If `design_constraints.eb_deploy_method` is present → `design_constraints.eb_deploy_method.chosen_by` is `"user"` or `"default"`
 - [ ] All entries in `sources` have a value of `"user"` or `"default"`
 - [ ] `metadata.clarify_mode` is set to `"fast_path"` or `"full"`
+- [ ] `metadata.questions_deferred_to_generate` is present and lists Q4, Q6c (if Postgres present), and Q12d (if the resolved compute plan includes EB); each listed question's field carries its documented default and `sources.<field>` is `"default"`
 - [ ] Only keys with non-null values are present
 - [ ] Output is valid JSON
 

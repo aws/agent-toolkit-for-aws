@@ -74,12 +74,12 @@ ELSE full question flow (Assumption Sheet + progressive batches)
 | **Q1** — region | Not extracted (no Private Space region; mixed regions) |
 | **Q2** — compliance | Always |
 | **Q3** — availability posture | Always |
-| **Q4** — maintenance window | Always |
 | **Q12c** — compute target recommendation | Always |
-| **Q12d** — EB deploy method | Only if the resolved Q12c compute plan includes Elastic Beanstalk |
 | **Q11** — Fir intent | Only if a Fir-generation app was detected |
 
-Compute `fast_path_question_count` from this table against the inventory and use that number in the offer — do not quote a fixed range. Typical: 4 questions for a Common Runtime app on Fargate, 5–6 with EB, 7 with Fir.
+These are the questions that change the **number** (availability, compute target) or the **safety posture** (compliance, region). Execution-only questions — **Q4** maintenance window, **Q6c** DB migration method, **Q12d** EB deploy method — are not on either path; they take their documented default here, are listed in `metadata.questions_deferred_to_generate`, and are asked for real at the Decision gate when the user chooses **[C] Generate** (see § Generate-time questions below).
+
+Compute `fast_path_question_count` from this table against the inventory and use that number in the offer — do not quote a fixed range. Typical: 3 questions for a Private Space app (region extracted), 4 for a Common Runtime app, 5 with Fir.
 
 **If fast-path eligible**, present:
 
@@ -108,18 +108,11 @@ Compute `fast_path_question_count` from this table against the inventory and use
 - `cost_optimization`: `balanced`
 - `container_registry`: `ecr`
 
-Users are informed, with one consequence line per default so the assumption is visible rather than silent:
+Users are told in one sentence, **without** the list — the defaults are shown next to the estimate, where a correction can be judged against the dollars it moves:
 
-> "Smart defaults applied:
->
-> - Migration approach: full cutover — single downtime event; say "data-first" for a phased cutover
-> - DB migration method: pg_dump/restore — fine under ~10 GB; larger needs DMS
-> - Containerization: [extracted value, or "buildpack-only" if not extracted] — [Fargate via buildpack-to-image path / Dockerfile reused as-is]
-> - DNS: Route 53; log retention: 30 days; cost posture: balanced; registry: ECR
->
-> Say 'I want to change something' to override any of these."
+> "Thanks — I've applied [N] documented defaults (migration approach, DB migration method, DNS, log retention, cost posture, registry). You'll see each one, with what it decides and what it costs, right next to the estimate, and you can change any of them there."
 
-(Omit the containerization line when Q12b was extracted and already shown in the offer.)
+`estimate-assemble.md` § Post-Estimate: Decision Gate renders them as the **"Assumptions behind this number"** block from `metadata.questions_defaulted` and `metadata.questions_deferred_to_generate`.
 
 **If user chooses No, or stack is not eligible:** Continue to Step 2.
 
@@ -136,11 +129,11 @@ Before generating questions, scan the inventory to determine which questions app
 | Q1 — Target AWS region               | Always                                                           | Never                                     |
 | Q2 — Compliance                      | Always                                                           | Never                                     |
 | Q3 — Availability posture            | Always                                                           | Never                                     |
-| Q4 — Maintenance window              | Always                                                           | Never                                     |
+| Q4 — Maintenance window              | **Deferred to Generate** — defaulted here, asked at [C] Generate | Never asked in Clarify                    |
 | Q5 — Environment naming              | Always                                                           | Never                                     |
 | Q6 — Database HA                     | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6b — Migration approach             | Postgres add-on present                                          | No Postgres in inventory                  |
-| Q6c — DB migration method            | Postgres add-on present                                          | No Postgres in inventory                  |
+| Q6c — DB migration method            | **Deferred to Generate** — defaulted here when Postgres present, asked at [C] Generate | No Postgres, or never asked in Clarify |
 | Q7 — Redis HA                        | Redis add-on present                                             | No Redis in inventory                     |
 | Q8 — Kafka retention                 | Kafka add-on present                                             | No Kafka in inventory                     |
 | Q9 — VPC subnet IDs                  | Private Space with peering detected BUT subnet IDs not available | No Private Space or subnets already known |
@@ -149,7 +142,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q11 — Fir intent                     | At least one app has `heroku_generation == "fir"`                | No Fir-generation apps                    |
 | Q12b — Containerization status       | Always                                                           | Never                                     |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
-| Q12d — EB deploy method              | Resolved Q12c compute plan includes Elastic Beanstalk            | All-Fargate or all-EKS compute plan       |
+| Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
 | Q12 — Container registry             | Always                                                           | Never                                     |
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
@@ -210,8 +203,10 @@ After determining active questions, organize them into **three progressive batch
 
 | Batch | Name                      | Questions              | Content                                                                                                                                               |
 | ----- | ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | Global / Strategic        | Q1–Q5, Q12c, Q12d      | Region, compliance, availability, maintenance, environment naming, compute target recommendation, EB deploy method when applicable                    |
-| **2** | Data / Network            | Q6, Q6b, Q6c, Q7–Q10   | Database HA, migration approach, DB migration method, Redis HA, Kafka retention, VPC subnets, DNS strategy                                            |
+| **1** | Global / Strategic        | Q1–Q3, Q5, Q12c        | Region, compliance, availability, environment naming, compute target recommendation                                                                   |
+| **2** | Data / Network            | Q6, Q6b, Q7–Q10        | Database HA, migration approach, Redis HA, Kafka retention, VPC subnets, DNS strategy                                                                 |
+
+**Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
 | **3** | Operational / Conditional | Q11, Q12b, Q12–Q15     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
 
 **Batch 2 is active** if ANY of: Postgres present, Redis present, Kafka present, Private Space detected, or DNS question is needed (always true → Batch 2 always fires with at least Q10).
@@ -243,7 +238,7 @@ Let's start with your strategic requirements.
 
 --- Global / Strategic ---
 
-[Present active questions Q1–Q5]
+[Present active questions Q1–Q3, Q5, Q12c — never Q4]
 ```
 
 **Batch 2 — Data / Network (if active):**
@@ -256,7 +251,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Data / Network ---
 
-[Present active questions Q6–Q10]
+[Present active questions Q6, Q6b, Q7–Q10 — never Q6c]
 ```
 
 **Batch 3 — Operational / Conditional:**
@@ -395,6 +390,8 @@ Re-prompt Q9b until valid input is provided.
 
 #### Q4 — Maintenance Window
 
+> _**Generate-time question.** Not asked in Clarify on either path — the default below is written and `Q4` is listed in `metadata.questions_deferred_to_generate`. Asked for real at the Decision gate's **[C] Generate** (`estimate-assemble.md` § Confirm execution choices). Only `generate-terraform.md` reads `maintenance_window`._
+>
 > When should AWS perform maintenance operations (patches, minor upgrades)?
 >
 > 1. Weekday off-hours (Tue–Thu, 02:00–06:00 UTC)
@@ -487,7 +484,7 @@ Re-prompt Q9b until valid input is provided.
 
 #### Q12d — Elastic Beanstalk Deployment Mechanism
 
-> _Fires only when the resolved compute target plan includes Elastic Beanstalk: `design_constraints.compute_target.default` is `"elastic_beanstalk"`, the field is absent, or any per-formation override resolves to `"elastic_beanstalk"`._
+> _**Generate-time question.** Fires only when the resolved compute target plan includes Elastic Beanstalk: `design_constraints.compute_target.default` is `"elastic_beanstalk"`, the field is absent, or any per-formation override resolves to `"elastic_beanstalk"`. When it fires it is **not asked in Clarify** — the default below is written with `chosen_by: "default"` and `Q12d` is listed in `metadata.questions_deferred_to_generate`; it is asked for real at the Decision gate's **[C] Generate** (`estimate-assemble.md` § Confirm execution choices). Only Generate reads `eb_deploy_method`._
 >
 > How do you want to deploy code changes to Elastic Beanstalk?
 >
@@ -569,11 +566,11 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 #### Q6c — Database Migration Method
 
-> _Fires only when Heroku Postgres add-on is present in inventory._
+> _**Generate-time question.** Fires only when a Heroku Postgres add-on is present in inventory. When it fires it is **not asked in Clarify** — the size-derived default below is written and `Q6c` is listed in `metadata.questions_deferred_to_generate`; it is asked for real at the Decision gate's **[C] Generate** (`estimate-assemble.md` § Confirm execution choices), with the size estimate on the prompt. Only `generate-docs.md` reads `migration_method`._
 >
 > How would you like to migrate your PostgreSQL data to AWS?
 >
-> Estimated database size from your plan: ~[derive from postgres plan table max storage]
+> Estimated database size: ~[`data_size_gb` from live `pg:info` when captured; otherwise the postgres plan table's max storage, labelled "plan maximum — your actual data may be much smaller"]
 > (If you know your actual database size, tell me and I'll adjust the recommendation.)
 >
 > 1. pg_dump / pg_restore — simplest method, requires application downtime during migration (recommended for databases under ~10GB)
@@ -597,7 +594,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 - If estimated DB size ≥ 10GB and user accepts brief downtime → recommend 2 (dms)
 - If user requires near-zero downtime regardless of size → recommend 3 or 4
 
-**Estimating size:** Use the postgres plan table's maximum storage capacity for the detected plan tier as the estimated size. **Note: This is an upper-bound estimate — your actual database may be much smaller than the plan allows.** If your actual data is well below the plan maximum (e.g., 2 GB actual on a 64 GB plan), override downward to get a more appropriate method recommendation. If user provides actual size, use that instead and record `source: "user_override"` for the size estimate.
+**Estimating size:** Prefer the live-captured `data_size_gb` from `heroku pg:info` when the inventory carries it (`db_size_source: "live_capture"`). Otherwise use the postgres plan table's maximum storage capacity for the detected plan tier (`db_size_source: "plan_derived"`). **Note: the plan-derived figure is an upper-bound estimate — your actual database may be much smaller than the plan allows.** If your actual data is well below the plan maximum (e.g., 2 GB actual on a 64 GB plan), override downward to get a more appropriate method recommendation. If user provides actual size, use that instead and record `source: "user_override"` for the size estimate.
 
 **Design impact:** Determines which data migration procedure section appears in MIGRATION_GUIDE.md. DMS selection triggers the CDC limitation warning.
 

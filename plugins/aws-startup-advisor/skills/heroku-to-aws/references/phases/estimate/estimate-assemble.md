@@ -182,6 +182,19 @@ Phase 4 of 6 complete (Estimate). Remaining: Generate (+ optional Feedback).
 - Timeline if you execute: ~[N–M] weeks ([complexity_tier], from
   references/vendored/estimate/complexity-tiers.json)
 
+#### Assumptions behind this number
+
+| Assumed | Value | What it decides / what changing it does |
+| --- | --- | --- |
+| Migration approach | full cutover | one downtime event; "data-first" moves the DB first and keeps Heroku running longer (adds dual-run cost) |
+| Database HA | single-AZ (standard-0 has no follower) | "multi-AZ" adds a standby, ~2x the RDS line |
+| Cost posture | balanced | "optimized" assumes reservations/Spot; "premium" prices max resilience |
+| Container registry | ECR | — |
+| DB migration method | pg_dump/restore (~2 GB) | confirmed before Generate — DMS for larger databases shortens the outage |
+| Maintenance window | flexible | confirmed before Generate — no cost effect |
+
+Say a row name to change it — I'll re-run Design and Estimate and show this pack again.
+
 [A] Done for now — I have what I need to decide
 [B] Explore what-ifs — reprice scenarios side by side (~1 min each): region,
     single-AZ database, compute target, Graviton
@@ -192,6 +205,41 @@ Omit option **B** if the workshop sidebar is already `"completed"` from the
 offer above (do not re-offer the same choice twice in one turn) — present only
 **[A] Done for now** and **[C] Generate Terraform and migration scripts** in
 that case.
+
+**The "Assumptions behind this number" block** is built from `preferences.json`:
+one row per question ID in `metadata.questions_defaulted` (the field's applied
+value and the consequence from the Clarify catalog / Assumption Sheet), plus one
+per ID in `metadata.questions_deferred_to_generate` (labelled "confirmed before
+Generate"). Omit the block only when both arrays are empty. This is where the
+Assumption Sheet lives when Clarify ran in fast-path mode — the user judges a
+default against the dollars it moves, not before they have a number — and on the
+full flow it shows the rows waved through with "use defaults for the rest".
+Extracted (Detected) values are not listed here; they were read from Heroku, not
+assumed.
+
+**Handling a correction from this block:**
+
+- If the row is a workshop knob (region, single-AZ database, compute target,
+  Graviton), route it through option **B** — the sidebar already reprices those
+  side by side.
+- Otherwise: write the user's value to the field, set `sources.<field>` to
+  `"user"`, move the question ID from `metadata.questions_defaulted` to
+  `metadata.questions_asked`, mark `phases.design` and `phases.estimate` pending
+  via the Phase Status Update Protocol, re-run Design → Estimate, and re-present
+  this gate. Never hand-edit `aws-design.json` or `estimation-infra.json`.
+
+**Confirm execution choices (option C only, before `run_mode` is written):**
+`metadata.questions_deferred_to_generate` lists the questions Clarify defaulted
+because only Generate reads them — Q4 maintenance window, Q6c DB migration
+method (when Postgres is present), Q12d EB deploy method (when the compute plan
+includes EB). Ask them now, in one batch, using each question's catalog text from
+`clarify-interview.md` with its context (the DB size estimate and its source on
+Q6c). Write each answer to its field, set `sources.<field>` to `"user"`
+(`chosen_by: "user"` on `eb_deploy_method`), move the IDs to
+`metadata.questions_asked`, empty `metadata.questions_deferred_to_generate`, and
+only then set `run_mode`. Skip this step when the array is empty or absent.
+`generate.md` must not load while it is non-empty — that is the one way a
+runbook gets written against an answer the user never gave.
 
 **Choice handling:**
 
@@ -273,8 +321,9 @@ that case.
   `current_phase: estimate`; set `phases.workshop` → `"in_progress"`. On
   workshop exit, **return to this gate** (options A and C; the workshop's
   active scenario carries into either) — do not advance to Generate directly.
-- **C** → Set `run_mode: "decide_and_execute"` and `current_phase` →
-  `"generate"`. Continue with the Feedback/Generate sidebars in `SKILL.md`.
+- **C** → **Run "Confirm execution choices" above first.** Then set
+  `run_mode: "decide_and_execute"` and `current_phase` → `"generate"`. Continue
+  with the Feedback/Generate sidebars in `SKILL.md`.
 
 ### Decide-complete resume
 
@@ -290,6 +339,8 @@ DECISION.md). Want to generate the Terraform and migration scripts now?
 [B] No, I'm still deciding
 ```
 
-- **A** → Set `run_mode: "decide_and_execute"` and `current_phase` →
-  `"generate"` **before** loading `generate.md`. Continue to Generate.
+- **A** → **Run "Confirm execution choices" (§ Post-Estimate: Decision Gate)
+  first** if `metadata.questions_deferred_to_generate` is non-empty. Then set
+  `run_mode: "decide_and_execute"` and `current_phase` → `"generate"` **before**
+  loading `generate.md`. Continue to Generate.
 - **B** → Leave state unchanged; end the turn.
