@@ -56,8 +56,6 @@ SOURCE_CURSOR = "CURSOR"
 SOURCE_KIRO = "KIRO"
 SOURCE_OTHER = "OTHER"
 
-SOURCE_ENV = "AWS_STARTUP_ADVISOR_SOURCE"
-
 # First marker present wins. Only the Claude Code rows are verified against a
 # running host; an unmatched host reports OTHER rather than a plausible guess,
 # because a wrong attribution silently moves one host's numbers into another's.
@@ -68,10 +66,6 @@ _HOST_MARKERS = (
     ("CODEX_SANDBOX", SOURCE_CODEX),  # unverified
     ("CURSOR_TRACE_ID", SOURCE_CURSOR),  # unverified
     ("KIRO_IDE", SOURCE_KIRO),  # unverified
-)
-
-_VALID_SOURCES = frozenset(
-    {SOURCE_CLAUDE_CODE, SOURCE_CODEX, SOURCE_CURSOR, SOURCE_KIRO, SOURCE_OTHER}
 )
 
 # The PluginSkillId enum, mirrored from model/types/plugin-telemetry.smithy. An
@@ -109,10 +103,6 @@ def endpoint():
 
 def detect_source():
     """Best-effort PluginSource for the host, or OTHER."""
-    override = os.environ.get(SOURCE_ENV, "").strip().upper()
-    if override in _VALID_SOURCES:
-        return override
-
     for name, source in _HOST_MARKERS:
         if os.environ.get(name, "").strip():
             return source

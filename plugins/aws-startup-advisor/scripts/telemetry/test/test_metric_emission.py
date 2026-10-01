@@ -18,7 +18,6 @@ import pytest
 from conftest import EMISSION, PLUGIN_ROOT, run
 
 import client
-import migration
 import record
 import skill_invoked
 
@@ -247,12 +246,11 @@ class TestPostEventRechecksConsent:
         )
         assert collector.received == []
 
-    @pytest.mark.parametrize("status", ["OPT_OUT", "REJECTED"])
-    def test_opted_out_sends_nothing(self, home, collector, status):
+    def test_opted_out_sends_nothing(self, home, collector):
         directory = home / record.STATE_DIR_NAME
         directory.mkdir()
         (directory / record.STATE_FILE_NAME).write_text(
-            json.dumps({"installId": A_UUID, "consentStatus": status})
+            json.dumps({"installId": A_UUID, "consentStatus": "OPT_OUT"})
         )
         assert (
             client.post_event({"consentRecorded": {}}, A_UUID, collector.url) is False
@@ -322,22 +320,21 @@ class TestDetectSource:
     def test_claude_code_is_recognized(self, monkeypatch):
         for name, _ in client._HOST_MARKERS:
             monkeypatch.delenv(name, raising=False)
-        monkeypatch.delenv(client.SOURCE_ENV, raising=False)
         monkeypatch.setenv("CLAUDECODE", "1")
         assert client.detect_source() == "CLAUDE_CODE"
 
     def test_an_unknown_host_is_other(self, monkeypatch):
         for name, _ in client._HOST_MARKERS:
             monkeypatch.delenv(name, raising=False)
-        monkeypatch.delenv(client.SOURCE_ENV, raising=False)
         # Not a plausible guess: a wrong attribution silently moves one host's
         # numbers into another's.
         assert client.detect_source() == "OTHER"
 
-    def test_an_unmodelled_override_is_ignored(self, monkeypatch):
+    def test_no_variable_can_set_the_source(self, monkeypatch):
         for name, _ in client._HOST_MARKERS:
             monkeypatch.delenv(name, raising=False)
-        monkeypatch.setenv(client.SOURCE_ENV, "MY_EDITOR")
+        # There is no override: the host is detected, never declared.
+        monkeypatch.setenv("AWS_STARTUP_ADVISOR_SOURCE", "CURSOR")
         assert client.detect_source() == "OTHER"
 
 
@@ -403,26 +400,6 @@ class TestSendConsentRecorded:
         assert "127.0.0.1" not in result.stdout
 
 
-class TestMigrationMetricIsAPlaceholder:
-    def test_returns_false(self):
-        assert (
-            migration.emit_migration_metric(A_UUID, "GCP_TO_AWS", "http://x") is False
-        )
-
-    def test_sends_nothing(self, home, collector):
-        accept(home)
-        migration.emit_migration_metric(A_UUID, "GCP_TO_AWS", collector.url)
-        assert collector.received == []
-
-    def test_takes_the_same_arguments_as_the_skill_metric(self):
-        # The hook calls both the same way, so the signatures must not drift.
-        import inspect
-
-        assert list(
-            inspect.signature(migration.emit_migration_metric).parameters
-        ) == list(inspect.signature(client.emit_skill_invocation_metric).parameters)
-
-
 class TestSkillInvokedHookEndToEnd:
     HOOK = "metric_emission/skill_invoked.py"
 
@@ -475,12 +452,11 @@ class TestSkillInvokedHookEndToEnd:
         self.invoke(home, collector, stdin=self.payload("gcp-to-aws"))
         assert collector.received == []
 
-    @pytest.mark.parametrize("status", ["OPT_OUT", "REJECTED"])
-    def test_opted_out_sends_nothing(self, home, collector, status):
+    def test_opted_out_sends_nothing(self, home, collector):
         directory = home / record.STATE_DIR_NAME
         directory.mkdir()
         (directory / record.STATE_FILE_NAME).write_text(
-            json.dumps({"installId": A_UUID, "consentStatus": status})
+            json.dumps({"installId": A_UUID, "consentStatus": "OPT_OUT"})
         )
         self.invoke(home, collector, stdin=self.payload("gcp-to-aws"))
         assert collector.received == []

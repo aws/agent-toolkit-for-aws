@@ -24,13 +24,9 @@ NOTICE_BODY = (
     "opt-out by {opt_out}. Opting out does not change any plugin functionality."
 )
 
-# The approved source brackets two controls, meaning "put the real thing here":
-# [insert command/config setting] is the `opt_out` argument, and [Acknowledge] is
-# a GUI button label that in a terminal rendered as a dead string asking the user
-# nothing, so it becomes a question they can answer in words.
-OPT_OUT_SOURCE_PLACEHOLDER = "[insert command/config setting]"
-ACKNOWLEDGE_SOURCE_PLACEHOLDER = "[Acknowledge]"
-
+# The approved source ends in "[Acknowledge]", a GUI button label. In a terminal
+# that renders as a dead string asking the user nothing, so it becomes a question
+# they can answer in words.
 ACKNOWLEDGE_PROMPT = (
     'Do you acknowledge this notice? Reply "yes" to acknowledge, or "opt out" if '
     "you would rather no usage data was collected. Either answer is fine, and "
@@ -41,10 +37,6 @@ ACKNOWLEDGE_PROMPT = (
 
 # 79, not 80, so a terminal reserving a cell for the cursor does not re-wrap.
 WRAP_WIDTH = 79
-
-# Not persisted: the agreed record schema has no field for it, so a revision to
-# this wording cannot be told from the version a user already acknowledged.
-DISCLAIMER_VERSION = "1.0.0"
 
 
 def _wrap(text):
