@@ -32,6 +32,29 @@ Check which estimation artifacts exist in `$MIGRATION_DIR/`:
 
 If **none** of these estimation artifacts exist: **STOP**. Output: "No estimation artifacts found. Run Phase 4 (Estimate) first."
 
+**Compliance-estimate staleness guard.** When `estimation-infra.json` exists, read
+`preferences.json` → `design_constraints.compliance.value` (absent / `none` / `unknown` →
+treat as no gating framework declared) and check whether it contains any of `soc2`, `pci`,
+`hipaa`, `fedramp` — the same gating set `generate-artifacts-infra.md` uses to decide whether
+`baseline.tf` emits the Config + Security Hub compliance controls. If it does,
+`estimation-infra.json` → `projected_costs.breakdown` MUST already contain a
+`security_baseline_compliance` entry (added whenever Estimate ran with the compliance answer
+correctly read). If that entry is **missing** — a run whose Estimate saw an empty/absent
+compliance value even though Clarify recorded a gating framework, most likely because
+Estimate ran before the `design_constraints.compliance.value` reader fix — the budget and
+report totals downstream would **understate**: Generate would still correctly emit the
+compliance controls in `baseline.tf` (it reads the same field, already correct), but their
+cost would be silently absent from `aws_budgets_budget.limit_amount` and every report cost
+table. **STOP.** Emit `GATE_FAIL | phase=generate | field=estimation-infra.json.projected_costs.breakdown.security_baseline_compliance | reason=stale_downstream`.
+Tell the user: "Your declared compliance requirement ([frameworks]) will add AWS Config and
+Security Hub controls to the generated Terraform, but the cost estimate on file was computed
+before that requirement was applied — it's missing that line item, so your budget and report
+totals would understate the real cost. Re-run Phase 4 (Estimate) to refresh it, then come
+back to Generate." **Do NOT** patch `estimation-infra.json` to add the missing entry, and do
+NOT proceed to Stage 1 — per `shared/handoff-gates.md`'s re-entry protocol, this is a
+user-confirmed re-run, not a silent repair. If the user confirms, set `phases.estimate` (and
+`phases.generate`, if not already `"pending"`) back to `"pending"` before re-running Estimate.
+
 ## Stage 1: Migration Planning
 
 **Dirty-state tracking**: Before producing any Stage 1 outputs, set `dirty_state` in `.phase-status.json`:
@@ -166,6 +189,10 @@ After `HANDOFF_OK`, use the Phase Status Update Protocol (read-merge-write) to u
 - Set `phases.generate` to `"completed"`
 - Set `current_phase` to `"complete"`
 
+**Write the web-handoff summary (fail-open):** run
+`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+(absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …` or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip or error the migration is still complete — continue without it and do not surface the script output to the user. When it printed `PLAN_OK`, present the web-handoff block described after the Output section below.
+
 ## Summary
 
 **Use structured completion reporting** in the shape below. Present final summary to user:
@@ -203,5 +230,28 @@ Output to user:
 
 - If `migration-report.html` exists: "Phase 5 of 6 complete (Generate). All required phases of the GCP-to-AWS migration analysis are complete. Your migration report is ready at $MIGRATION_DIR/migration-report.html. Optional: Phase 6 (Feedback)."
 - If `migration-report.html` is missing: "Phase 5 of 6 complete (Generate). All required phases of the GCP-to-AWS migration analysis are complete. Markdown documentation is available at $MIGRATION_DIR/MIGRATION_GUIDE.md and $MIGRATION_DIR/README.md. (HTML report generation is optional and non-blocking.) Optional: Phase 6 (Feedback)."
+
+**Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit this whole block; there is no file to upload). The `plan.json` filename appears in EXACTLY ONE place — the produced-files list — and NEVER in the What's next block. Make two edits:
+
+- **(a)** In the `✓ Produced` list in the Summary above, add exactly one entry as **plain text** — that list renders inside a code block, where Markdown links do not work, so do not link it here (the clickable link is the What's next call-to-action below): `plan.json — upload to AWS Startups Migrate for up to $1,500 in credits`. Keep every existing entry on its own line; do not merge, collapse, or re-wrap them.
+- **(b)** Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading — do NOT add a `plan.json` line (or any file line) above or inside it. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience:
+
+> **💬 What's next**
+>
+> - **Refine your plan**
+>   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
+> - **Claim your credits**
+>   When you're happy with your plan, upload it below to apply for up to $1,500 in AWS migration credits.
+>
+> [🎉 Get up to $1,500 in AWS migration credits →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+>
+> Upload your plan to AWS Startups Migrate to see what you qualify for and unlock:
+>
+> - Interactive plan dashboard
+> - Monthly cost estimate
+> - Migration paths: AI Agent, AWS Expert, or AWS Partner
+> - Up to $1,500 in AWS migration credits
+
+Ship note: this reaches customers only after the import page and the ImportPlan API are both live in production.
 
 _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FAIL`, never from inner workshop reprices._

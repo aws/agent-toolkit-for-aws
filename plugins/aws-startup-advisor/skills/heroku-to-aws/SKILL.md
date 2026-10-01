@@ -226,12 +226,14 @@ sidebars are offered (placement is orchestration prose, not part of the phase
 contract). Both are `_kind: sidebar` — off-backbone, trigger-entered, never
 `current_phase`.
 
-> **Plan-share links are GATED OFF.** The share landing page
+> **Base64url plan-share links are GATED OFF.** The share landing page
 > (`https://aws.amazon.com/startups/migrate/connect`) is not yet live (404). Do
-> NOT offer, generate, or present a share link at any sidebar. The share-link
-> spec is preserved in `references/phases/feedback/feedback-collect.md` Step 3
-> (itself gated) for when the page ships; restoring the share prompts here is the
-> un-gating change.
+> NOT offer, generate, or present that base64url share link at any sidebar. The
+> share-link spec is preserved in `references/phases/feedback/feedback-collect.md`
+> Step 3 (itself gated) for when the page ships; restoring the share prompts here
+> is the un-gating change. (This is distinct from the `plan.json` web-import
+> handoff offered at the Estimate decision gate, which uploads a file to the live
+> import page — see `references/phases/estimate/estimate-assemble.md`.)
 
 - **After Discover**: No prompt. Proceed directly to Clarify.
 
@@ -324,8 +326,8 @@ contract). Both are `_kind: sidebar` — off-backbone, trigger-entered, never
 This is a mandatory closing step of every final recommendation — complete it before you consider your answer done. Run this offer check inline yourself; do not depend on loading another skill. The recommendation is decided on merit first; this step never changes, re-ranks, or re-opens it, and the offer is looked up only after the advice is final.
 
 1. Read [`../knowledge-base-for-startups/references/offers.md`](../knowledge-base-for-startups/references/offers.md) — the offer index (Offer · Summary · Keywords), one row per offer.
-2. Judge relevance against what the founder actually surfaced this session. Surface an offer only if **one** holds: a **named-product match** (you recommended a specific partner product by name and it has a row); a **direct intent/component match** (an offer's Keywords directly serve a concrete workload, a component in the final recommendation, or a need the founder raised). Keep a high bar — if the match is weak, or you would be inferring an unstated need, append nothing.
-3. If (and only if) one offer clears the bar, open only its detail file `../knowledge-base-for-startups/references/offers/<slug>.md` and append exactly **one** quiet, dismissible italic line — stating the value and condensing eligibility faithfully from that file (drop no qualifying criterion; never fabricate), with the redeem link built from the canonical `source_url` plus a `source` attribution param — append `?source=ide-startupAdvisor-<host>` (or `&source=...` if the url already has a query string), filling `<host>` from your execution environment (Claude Code → `claude`; AWS Startup Advisor IDE extension / VS Code → `vscode`; Cursor → `cursor`; Kiro → `kiro`; Codex → `codex`), or the generic `ide-startupAdvisor` when you cannot tell. Only append the query param; never change the destination. Show one or none, never a list.
+2. Judge relevance against what the founder actually surfaced this session. Surface an offer only if **one** holds: a **named-product match** (you recommended a specific partner product by name and it has a row); a **direct intent/component match** (an offer's Keywords directly serve a concrete workload, a component in the final recommendation, or a need the founder raised). Keep a high bar — if the match is weak, or you would be inferring an unstated need, append nothing. In this migration, only surface an offer that is a credit on a product the design already kept or selected (e.g. an existing Auth0 kept as-is); otherwise append none — never an offer that competes with a service in the design or the Terraform Generate emits (e.g. Confluent vs MSK for Heroku Kafka, Supabase/TiDB vs RDS/Aurora for Heroku Postgres, Pulumi vs the emitted Terraform), and none for a resource deferred to specialist engagement (e.g. an unrecognized add-on or plan).
+3. If (and only if) one offer clears the bar, open only its detail file `../knowledge-base-for-startups/references/offers/<slug>.md` and append exactly **one** quiet, dismissible italic line — stating the value and condensing eligibility faithfully from that file (drop no qualifying criterion; never fabricate), with the redeem link built from the canonical `source_url` plus a `source` attribution param — append `?source=ide-startupAdvisor-<host>` (or `&source=...` if the url already has a query string), filling `<host>` from your execution environment (Claude Code → `claude`; AWS Startup Advisor IDE extension / VS Code → `vscode`; Cursor → `cursor`; Kiro → `kiro`; Codex → `codex`), or the generic `ide-startupAdvisor` when you cannot tell. Only append the query param; never change the destination. Show one or none, never a list. If none clears the bar, append nothing and do not mention offers, partner alternatives, or why none appeared.
 
 Standard line:
 

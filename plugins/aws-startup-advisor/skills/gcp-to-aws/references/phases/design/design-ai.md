@@ -14,7 +14,7 @@ Read `$MIGRATION_DIR/ai-workload-profile.json`:
 - `models[]` — Detected AI models with service, capabilities, evidence
 - `integration` — SDK, frameworks, languages, gateway type, capability summary
 - `infrastructure[]` — Terraform resources related to AI (may be empty)
-- `current_costs` — Present only if billing data or OpenAI usage API data was provided (`source` field records which)
+- `current_costs` — Present only if billing data, OpenAI usage API data, or OpenRouter usage API data was provided (`source` field records which)
 
 Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If absent: use defaults (prefer managed Bedrock, no latency constraint, no budget cap).
 

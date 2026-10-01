@@ -207,9 +207,13 @@ Build the profile per `references/shared/schema-discover-ai.md`. **`ai_source`:*
 - `other` — traditional ML only (Vision / Document Intelligence / Speech / Language / Azure ML) with
   no LLM SDK.
 
-**`profile_source`:** `application_code` (fresh from code), `iac_cognitive` (pre-existing IaC-inferred),
-or `merged` (both — code wins on conflict; union `infrastructure[]` by address; set
-`sources_analyzed.terraform`/`.application_code` accordingly).
+**`profile_source`:** `application_code` (fresh from code), `iac_cognitive` (pre-existing
+infrastructure-inferred profile — IaC and/or live `az`, see `schema-discover-ai.md` §
+profile_source), or `merged` (infrastructure signal + code — code wins on
+field-level conflict; union `infrastructure[]` by each entry's own key, per
+`schema-discover-ai.md` § infrastructure[]; set `sources_analyzed.terraform` /
+`.live` / `.application_code` each to true iff at least one qualifying resource
+came from that source — OR across the whole profile, never exclusive).
 
 **CRITICAL field names** (exact): `model_id`, `service`, `detected_via`, `capabilities_used`,
 `usage_context`, `pattern`, `gateway_type`, `capabilities_summary`, `ai_source`. The field is

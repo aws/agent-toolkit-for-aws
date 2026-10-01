@@ -114,9 +114,21 @@ Cost breakdown derived from GCP billing export CSV. Provides service-level spend
     "detected": true,
     "confidence": 0.85,
     "services": ["Vertex AI"]
-  }
+  },
+  "warnings": [
+    {
+      "file": "openrouter-usage-2026-01.csv",
+      "code": "unrecognized_billing_export",
+      "detail": "Matched a billing filename glob but is not a GCP/BigQuery export (looks like OpenRouter). Skipped; model/service discovery relies on IaC and the code scan."
+    }
+  ]
 }
 ```
+
+`warnings` is **optional** — omit it entirely, or emit `[]`, when every billing file parsed
+cleanly. Each entry is `{ file, code, detail }`; `code` is a short machine token
+(e.g. `unrecognized_billing_export`). It records billing files that were skipped rather than
+parsed, so a skipped non-GCP export leaves a trace instead of silently vanishing.
 
 **Key Fields:**
 
@@ -140,3 +152,4 @@ Cost breakdown derived from GCP billing export CSV. Provides service-level spend
 - `ai_signals.detected` — Whether any AI/ML services were found in the billing data
 - `ai_signals.confidence` — Confidence that the project uses AI (derived from billing SKU analysis)
 - `ai_signals.services` — List of AI-related GCP services found
+- `warnings` — **Optional.** Billing files that matched a filename glob but were skipped (not a GCP/BigQuery export). Each item `{ file, code, detail }`. Absent or `[]` when nothing was skipped.
