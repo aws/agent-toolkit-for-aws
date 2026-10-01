@@ -25,6 +25,7 @@ forgetting to ask.
 
 import json
 import os
+import socket
 import sys
 import time
 import urllib.error
@@ -50,6 +51,10 @@ ENDPOINT_ENV = "AWS_STARTUP_ADVISOR_PLUGIN_TELEMETRY_ENDPOINT"
 
 # Short, because these run inline in an agent turn with a human waiting.
 TIMEOUT_SECONDS = 3.0
+
+# post_event_status's answer when no connection could be made at all (offline,
+# DNS, refused): unlike a timeout, nothing can have reached the service.
+UNREACHABLE = 0
 
 SOURCE_CLAUDE_CODE = "CLAUDE_CODE"
 SOURCE_CODEX = "CODEX"
@@ -150,8 +155,9 @@ def build_payload(event, install_id, now_ms=None):
 
 
 def post_event_status(event, install_id, url, timeout=TIMEOUT_SECONDS):
-    """POST one event and report the HTTP status, or None when nothing was sent
-    or the service could not be reached; never raises.
+    """POST one event and report the HTTP status; UNREACHABLE when no connection
+    could be made; None when nothing was sent or the outcome is unknown (a
+    timeout, a connection dropped mid-request); never raises.
 
     `install_id` and `url` are passed in so a caller that has already read and
     validated the record is not making this re-derive it. The status lets a
@@ -180,6 +186,12 @@ def post_event_status(event, install_id, url, timeout=TIMEOUT_SECONDS):
                 return response.status
         except urllib.error.HTTPError as error:
             return error.code
+        except urllib.error.URLError as error:
+            # Raised before any response: the connection was never made, unless
+            # the reason is a timeout, which may have struck after the send.
+            if isinstance(error.reason, (socket.timeout, TimeoutError)):
+                return None
+            return UNREACHABLE
     except BaseException:
         return None
 

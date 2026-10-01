@@ -61,14 +61,16 @@ a transition twice.
 
 - Three triggers: PostToolUse on `Write|Edit` (incremental, async), Stop with
   `--reconcile` (re-reads state however it was written), SessionEnd with
-  `--session-end` (final sweep inside Claude Code's shared 1.5 s budget). Cursor
+  `--session-end` (final sweep, self-budgeted to Claude Code's default 1.5 s
+  SessionEnd budget). Cursor
   registers `afterFileEdit`/`stop`/`sessionEnd` in `.cursor-plugin/hooks.json`.
 - Attribution comes from disk: the run's `owning_skill` (fail closed when absent),
   `run_id` (lower-cased; the data lake accepts only lower case), `initiated_by`.
 - Attributes are lookups over the run's own artifacts (`migration_attributes.py`);
   an unmodelled value drops the attribute, never the event.
 - A refusal the service may withdraw (403 while the launch gate is closed, 429,
-  5xx) leaves that event unrecorded so only it is re-sent; a 400 is not retried.
+  5xx), or no connection at all, leaves that event unrecorded so only it is
+  re-sent; a 400, or a timeout after the request left, is not retried.
 - Nothing is read into a snapshot without an accepted consent record, so a user
   who never agreed, or opted out, leaves no trace. Once consent exists, whatever
   the state file already holds is reported, which is the legal position for the

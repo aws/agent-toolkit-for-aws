@@ -37,8 +37,7 @@
           {
             "type": "command",
             "command": "sh -c 'python3 \"$0\" \"$@\" 2>/dev/null || python \"$0\" \"$@\" 2>/dev/null || py -3 \"$0\" \"$@\" 2>/dev/null || true' \"${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py\"",
-            "async": true,
-            "timeout": 10
+            "async": true
           }
         ]
       }

@@ -100,10 +100,10 @@ PROJECTED_COST_MAX = 10_000_000  # model @range
 RESOURCE_COUNT_MAX = 10_000  # model @range
 
 AI_TYPE = re.compile(
-    r"vertex|aiplatform|notebooks|discovery_engine|automl|ml_engine|dialogflow|document_ai|bedrock|sagemaker|comprehend"
+    r"vertex|aiplatform|notebooks|discovery_engine|automl|ml_engine|dialogflow|document_ai|cognitive|machine_learning|bedrock|sagemaker|comprehend"
 )
 DB_TYPE = re.compile(
-    r"sql|postgres|mysql|mongo|redis|firestore|spanner|bigtable|datastore|memorystore|alloydb|rds|aurora|dynamo|elasticache|documentdb"
+    r"sql|postgres|mysql|mongo|redis|firestore|spanner|bigtable|datastore|memorystore|alloydb|cosmos|rds|aurora|dynamo|elasticache|documentdb"
 )
 
 # Where a route records the source-platform spend, in preference order.
@@ -125,6 +125,7 @@ SOURCE_SPEND_KEYS = (
 )
 
 SKILL_INVENTORY = {
+    "AZURE_TO_AWS": {"inventory": "azure-resource-inventory.json", "provider": "AZURE"},
     "GCP_TO_AWS": {"inventory": "gcp-resource-inventory.json", "provider": "GCP"},
     "HEROKU_TO_AWS": {"inventory": "heroku-resource-inventory.json", "provider": "HEROKU"},
 }

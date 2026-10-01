@@ -19,9 +19,9 @@ from the same record. Attribution is read from disk: a run names its owner in
 emits nothing.
 
 Fail-open: every path exits 0 and swallows every error. A refusal the service may
-later withdraw (403 while the launch gate is closed, 429, 5xx) leaves that event
-unrecorded so only it is re-sent; anything the service took, or refused for good
-(400), is never repeated.
+later withdraw (403 while the launch gate is closed, 429, 5xx), or no connection
+at all, leaves that event unrecorded so only it is re-sent; anything the service
+took, or refused for good (400), is never repeated.
 """
 
 import json
@@ -42,14 +42,16 @@ import client  # noqa: E402  (paths set above so these resolve in-plugin)
 import migration_attributes as attrs  # noqa: E402
 import record  # noqa: E402
 
-MIGRATION_SKILLS = frozenset({"GCP_TO_AWS", "HEROKU_TO_AWS", "LLM_TO_BEDROCK"})
+MIGRATION_SKILLS = frozenset({"AZURE_TO_AWS", "GCP_TO_AWS", "HEROKU_TO_AWS", "LLM_TO_BEDROCK"})
 
 # A hook killed by the host mid-run leaves its lock behind; anything older than
 # this is treated as abandoned.
 LOCK_STALE_SECONDS = 60.0
 POST_TIMEOUT_SECONDS = 3.0
-# Claude Code gives all SessionEnd hooks one shared budget, which a plugin hook's
-# own timeout cannot raise; the reserve leaves room for the snapshot write.
+# Claude Code gives all SessionEnd hooks one shared budget, 1.5 s by default. A
+# longer per-hook timeout can raise it, but a hook killed at the budget would leave
+# accepted events unrecorded, so the sweep budgets itself to the default instead;
+# the reserve leaves room for the snapshot write.
 SESSION_END_BUDGET_SECONDS = 1.5
 SESSION_END_RESERVE_SECONDS = 0.4
 STDIN_TIMEOUT_SECONDS = 2.0
@@ -76,9 +78,10 @@ def as_uuid(value):
 
 
 def read_snapshot(path):
-    """None when absent, SNAPSHOT_UNREADABLE when present but not JSON: a missing
-    snapshot means a new run, but a truncated one (a hook killed mid-write) must
-    not, or the run is re-reported from RUN_STARTED."""
+    """None when absent, SNAPSHOT_UNREADABLE when present but not JSON. A missing
+    snapshot means a new run; a corrupt one must not, or the run would be
+    re-reported from RUN_STARTED. The caller rebuilds it from the current state
+    without sending, so the run reports again from its next transition."""
     if not path.exists():
         return None
     try:
@@ -251,18 +254,22 @@ def build_activity(event, ctx):
         activity["phase"] = event["phase"]
     if event.get("status"):
         activity["status"] = event["status"]
-    attributes = attrs.derive_attributes(ctx["runDir"], ctx["skill"], event, ctx["status"])
+    try:
+        attributes = attrs.derive_attributes(ctx["runDir"], ctx["skill"], event, ctx["status"])
+    except Exception:
+        attributes = None  # an artifact of an unexpected shape costs its attributes, never the event
     if attributes:
         activity["attributes"] = attributes
     return {"migrationActivity": activity}
 
 
 def is_held(status):
-    """Statuses that mean the service did not take the event but may later: 403
-    (a closed launch gate, or a WAF rate limit), 429 and 5xx. Anything else,
-    including a 400 the event would earn again and a network failure (None), is
-    the loss the design tolerates: a retry queue is what it refuses."""
-    return status in (403, 429) or (status is not None and status >= 500)
+    """Outcomes that mean the service did not take the event but may later: no
+    connection at all (offline, DNS), 403 (a closed launch gate, or a WAF rate
+    limit), 429 and 5xx. Anything else is the loss the design tolerates rather
+    than risk a duplicate: a 400 the event would earn again, and a timeout or a
+    dropped connection (None), after which the service may have taken it."""
+    return status == client.UNREACHABLE or status in (403, 429) or (status is not None and status >= 500)
 
 
 # ------------------------------------------------------------------ per run
@@ -299,8 +306,9 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
         return
     try:
         snapshot = read_snapshot(snapshot_file)
-        if snapshot is SNAPSHOT_UNREADABLE:
-            return  # try again on the next trigger
+        rebuild = snapshot is SNAPSHOT_UNREADABLE
+        if rebuild:
+            snapshot = None  # re-observed below, without sending
         valid_session_id = as_uuid(session_id)
 
         # Teardown sweeps only the session that wrote the snapshot; a run last
@@ -320,7 +328,8 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
             if not path:
                 return False
             try:
-                return Path(path).resolve().is_relative_to(run_dir.resolve())
+                Path(path).resolve().relative_to(run_dir.resolve())  # is_relative_to needs 3.9
+                return True
             except (OSError, ValueError):
                 return False
 
@@ -351,6 +360,14 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
                 return
             write_snapshot(phases, completed, gates, (snapshot or {}).get("started"), owner)
 
+        if rebuild:
+            # A corrupt snapshot (not this script's: its write is atomic) cannot
+            # say what was reported. Those transitions are lost; recording the
+            # current state lets the run report again from the next one.
+            observe(status.get("phases") or {}, status.get("current_phase") == "complete",
+                    [phase for phase, _ in gate_failure_entries(gate_failures)])
+            return
+
         events = diff_events(status, snapshot, gate_failures)
         known_gates = list(dict.fromkeys((snapshot or {}).get("gateFailures") or []))
         if not events:
@@ -376,11 +393,12 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
         # Concurrently, under one budget: sent serially, a reconcile catching a
         # whole run could outlive the host's hook timeout and never reach the
         # snapshot write, so the next trigger would repeat the batch.
+        activities = [build_activity(event, ctx) for event in events]
         timeout = max(0.05, min(POST_TIMEOUT_SECONDS, deadline - time.time()))
         with ThreadPoolExecutor(max_workers=max(1, len(events))) as pool:
             results = list(pool.map(
-                lambda event: client.post_event_status(build_activity(event, ctx), install_id, url, timeout=timeout),
-                events,
+                lambda activity: client.post_event_status(activity, install_id, url, timeout=timeout),
+                activities,
             ))
         held = [event for event, result in zip(events, results) if is_held(result)]
         if len(held) == len(events):
@@ -425,16 +443,6 @@ def reconcile(start_dir, session_id=None, session_end=False, edited_path=None, u
             process_run(run_dir, session_id, session_end, url, deadline, edited_path, via)
         except BaseException:
             continue  # one run's trouble must not silence the others
-
-
-def emit_migration_metric(install_id, skill_id, url, cwd=None):
-    """Seam for skill_invoked.py: a skill invocation is one more moment to catch up
-    on the run's state, so it reconciles the current project. The invocation
-    alone names no run or phase, which is why the events come from disk."""
-    if skill_id not in MIGRATION_SKILLS:
-        return False
-    reconcile(cwd or os.getcwd(), url=url)
-    return True
 
 
 def main(argv, stdin=None):

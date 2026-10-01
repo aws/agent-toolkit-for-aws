@@ -9,14 +9,13 @@ is mocked.
 
 import json
 import os
+import socket
 import subprocess  # nosec B404 — test-only, inputs are hardcoded literals
 import sys
 import time
 
 import pytest
 from conftest import EMISSION, PLUGIN_ROOT, run
-
-import migration
 
 RUN_ID = "3f9c2a7e-5b1d-4e8a-9c6f-2d7b8e1a4c53"
 SESSION_ID = "9b2c4d6e-8f10-4a12-b345-6789abcdef01"
@@ -317,6 +316,50 @@ def test_teardown_stays_inside_the_host_budget_and_never_repeats_what_it_attempt
     assert p.session_end() == []
 
 
+def test_an_artifact_of_an_unexpected_shape_costs_its_attributes_never_the_event(project):
+    # total_models_detected as a string used to raise inside the send pool: the
+    # events went out, the snapshot was never written, and every later hook
+    # repeated the whole batch.
+    p = project(phase_status(current_phase="complete", run_mode="decide", phases=all_completed()), artifacts={
+        "gcp-resource-inventory.json": GCP_INVENTORY,
+        "ai-workload-profile.json": {"summary": {"ai_source": "openai", "total_models_detected": "2"}},
+    })
+    first = p.reconcile()
+    assert ("PHASE_COMPLETED", "DISCOVER", "SUCCESS") in summary(first) and p.has_snapshot()
+    assert p.reconcile() == []
+
+
+def test_a_service_that_cannot_be_reached_leaves_the_run_unrecorded_until_it_can(project, collector):
+    p = project()
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        refused = "http://127.0.0.1:%d/v1/plugin-telemetry-event" % probe.getsockname()[1]
+    assert p.hook("--reconcile", env={ENDPOINT_ENV: refused}) == []
+    assert not p.has_snapshot(), "nothing could have reached the service, so nothing is recorded"
+    assert summary(p.reconcile()) == [("PHASE_COMPLETED", "DISCOVER", "SUCCESS"), ("RUN_STARTED", None, None)]
+
+
+def test_a_corrupt_snapshot_is_rebuilt_without_sending_so_the_run_reports_again(project):
+    p = project()
+    p.reconcile()
+    (p.run_dir / ".telemetry-snapshot.json").write_text("{\"runId\": \"" + RUN_ID[:12], encoding="utf-8")
+    assert p.reconcile() == [], "what the corrupt snapshot had reported is unknowable, so nothing is re-sent"
+    assert p.snapshot()["phases"] == phase_status()["phases"] and p.snapshot()["runId"] == RUN_ID
+    p.write_status(phase_status(current_phase="design", phases=with_phases(clarify="completed")))
+    assert summary(p.reconcile()) == [("PHASE_COMPLETED", "CLARIFY", "SUCCESS")]
+
+
+def test_reports_azure_runs_with_their_own_inventory_vocabulary(project):
+    p = project(phase_status(owning_skill="AZURE_TO_AWS"), artifacts={"azure-resource-inventory.json": {"resources": [
+        {"type": "azurerm_cosmosdb_account", "name": "db"},
+        {"type": "azurerm_cognitive_account", "name": "ai"},
+        {"type": "azurerm_container_app", "name": "api"},
+    ]}})
+    events = {activity(b).get("phase") or activity(b)["eventName"]: activity(b) for b in p.reconcile()}
+    assert events["RUN_STARTED"]["skill"] == "AZURE_TO_AWS"
+    assert events["DISCOVER"]["attributes"] == {"sourceProvider": "AZURE", "resourceCount": 3, "hasDatabase": True, "hasAi": True}
+
+
 # ---------------------------------------------------------------- attributes
 
 
@@ -330,7 +373,7 @@ def test_derives_attributes_from_producer_shaped_artifacts_including_the_ai_only
                                   "pricing_source": {"status": "cached", "fallback_staleness": {"is_stale": False}},
                                   "current_costs": {"source": "preferences", "gcp_monthly_spend": 2500}},
     })
-    ai_only = project(done | {"initiated_by": "LLM_TO_BEDROCK"}, run_name="0226-1500", artifacts={
+    ai_only = project({**done, "initiated_by": "LLM_TO_BEDROCK"}, run_name="0226-1500", artifacts={
         "ai-workload-profile.json": {"summary": {"ai_source": "openai", "total_models_detected": 2}},
         "preferences.json": {"metadata": {"clarify_mode": "fast_path", "migration_type": "ai-only"}},
     })
@@ -506,7 +549,7 @@ def test_registers_the_three_telemetry_hooks_through_the_portable_interpreter_ch
         assert commands[0].endswith('"${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py"' + flag)
     post_write = next(g for g in hooks["PostToolUse"] if g.get("matcher") == "Write|Edit")
     assert post_write["hooks"][0]["async"] is True, "post-write runs off the turn"
-    assert "timeout" not in hooks["SessionEnd"][0]["hooks"][0], "a plugin timeout cannot raise the SessionEnd budget"
+    assert "timeout" not in hooks["SessionEnd"][0]["hooks"][0], "the sweep budgets itself to the default SessionEnd budget"
 
 
 def test_wires_the_cursor_manifest_to_cursor_hooks_that_reach_the_emitter():
@@ -518,20 +561,6 @@ def test_wires_the_cursor_manifest_to_cursor_hooks_that_reach_the_emitter():
             assert '"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py"' in entry["command"]
             assert entry["command"].endswith("--session-end" if event == "sessionEnd" else "--reconcile")
 
-
-def test_skill_invoked_seam_reconciles_the_current_project(project, collector):
-    p = project()
-    assert migration.emit_migration_metric(RUN_ID, "KNOWLEDGE_BASE_FOR_STARTUPS", collector.url, cwd=str(p.root)) is False
-    assert collector.received == []
-    saved = dict(os.environ)
-    os.environ.update({"HOME": str(p.home), "USERPROFILE": str(p.home), "CLAUDECODE": "1"})
-    try:
-        assert migration.emit_migration_metric(RUN_ID, "GCP_TO_AWS", collector.url, cwd=str(p.root)) is True
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
-    assert summary([json.loads(r["body"]) for r in collector.received]) == [
-        ("PHASE_COMPLETED", "DISCOVER", "SUCCESS"), ("RUN_STARTED", None, None)]
 
 
 def test_the_registered_stop_command_runs_the_emitter_through_the_shell_as_the_host_does(project, collector):
