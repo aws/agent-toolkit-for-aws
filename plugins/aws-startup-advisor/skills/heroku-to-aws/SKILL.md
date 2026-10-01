@@ -161,7 +161,7 @@ heroku-to-aws/
 │   │   │   ├── discover-live.md                # Live discovery fragment (parses live-capture/)
 │   │   │   └── discover-billing.md             # Billing data parsing
 │   │   ├── clarify/
-│   │   │   └── clarify.md                      # Phase 2: Adaptive questions (12–15, batched ≤5)
+│   │   │   └── clarify.md                      # Phase 2: Adaptive questions (fast path 4–7, or sheet + 3 batches, ≤4 per turn)
 │   │   ├── design/
 │   │   │   └── design.md                       # Phase 3: Design orchestrator (flat single-pass mapping)
 │   │   ├── estimate/

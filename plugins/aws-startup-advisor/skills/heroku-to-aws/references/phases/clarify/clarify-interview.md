@@ -35,9 +35,11 @@ Check `$MIGRATION_DIR/` for existing state:
 
 ---
 
-## Step 1: Read Inventory and Determine Fast-Path Eligibility
+## Step 1: Read Inventory, Extract Known Answers, Determine Fast-Path Eligibility
 
 Read `$MIGRATION_DIR/heroku-resource-inventory.json`. This artifact must exist (produced by Phase 1: Discover).
+
+**Run the Extraction Rules (Step 2 § Extraction Rules) now, before anything is shown to the user.** Extraction is a property of the inventory, not of the question flow — a question the inventory already answers must never be asked on *either* path. On the fast path, extracted values are applied directly (recorded in `metadata.questions_skipped_extracted`); on the full flow they surface as **Detected** rows on the Assumption Sheet.
 
 ### Discovery Summary
 
@@ -61,28 +63,41 @@ After the Discovery Summary, evaluate fast-path eligibility:
 IF total_apps_discovered < 5
    AND no resource with resource_type == "space" exists
    AND no resource with config.addon_service == "heroku-kafka" exists
-THEN eligible for fast-path (3–5 questions)
-ELSE full question flow (12–15 questions)
+THEN eligible for fast-path
+ELSE full question flow (Assumption Sheet + progressive batches)
 ```
+
+**Fast-path question set.** The fast path asks exactly these, minus any already resolved by extraction:
+
+| Fast-path question | Asked when |
+| --- | --- |
+| **Q1** — region | Not extracted (no Private Space region; mixed regions) |
+| **Q2** — compliance | Always |
+| **Q3** — availability posture | Always |
+| **Q4** — maintenance window | Always |
+| **Q12c** — compute target recommendation | Always |
+| **Q12d** — EB deploy method | Only if the resolved Q12c compute plan includes Elastic Beanstalk |
+| **Q11** — Fir intent | Only if a Fir-generation app was detected |
+
+Compute `fast_path_question_count` from this table against the inventory and use that number in the offer — do not quote a fixed range. Typical: 4 questions for a Common Runtime app on Fargate, 5–6 with EB, 7 with Fir.
 
 **If fast-path eligible**, present:
 
-> "Your stack looks straightforward — [N] app(s), no Private Spaces, no Kafka.
+> "Your stack looks straightforward — [N] app(s), no Private Spaces, no Kafka. [If anything was extracted: "I already have [region / database HA / containerization] from your inventory."]
 >
-> Want to use smart defaults and answer just 4–6 questions? I'll apply sensible defaults for the rest.
+> Want to use smart defaults and answer just [fast_path_question_count] questions? I'll apply documented defaults for the rest and show you what I assumed.
 >
 > **[Yes — short path]** / **[No — ask me everything]**"
 
 **If user chooses Yes:**
 
-1. Ask only: **Q1** (region), **Q2** (compliance), **Q3** (availability), **Q4** (maintenance window), **Q12c** (compute target recommendation), **Q12d** (EB deploy method, only if the resolved compute plan includes EB) — and optionally **Q11** (Fir intent, only if Fir detected).
+1. Ask only the fast-path question set above, skipping any question already resolved by extraction.
 2. Apply documented defaults for ALL other questions. Record each in `metadata.questions_defaulted`.
 3. Write `preferences.json` with `metadata.clarify_mode: "fast_path"`. Skip Steps 2–3 batch loop.
 4. Proceed to Step 4 (Validation Checklist).
 
 **Fast-path default values applied when skipping questions:**
 
-- `migration_urgency`: `routine`
 - `migration_approach`: `full_cutover`
 - `migration_method`: `pg_dump_restore`
 - `containerization_status`: `buildpack_only`
@@ -93,7 +108,17 @@ ELSE full question flow (12–15 questions)
 - `cost_optimization`: `balanced`
 - `container_registry`: `ecr`
 
-Users are informed: "Smart defaults applied: full cutover approach, pg_dump for database migration, routine urgency, buildpack-only containerization status. Say 'I want to change something' to override any of these."
+Users are informed, with one consequence line per default so the assumption is visible rather than silent:
+
+> "Smart defaults applied:
+> - Migration approach: full cutover — single downtime event; say "data-first" for a phased cutover
+> - DB migration method: pg_dump/restore — fine under ~10 GB; larger needs DMS
+> - Containerization: [extracted value, or "buildpack-only" if not extracted] — [Fargate via buildpack-to-image path / Dockerfile reused as-is]
+> - DNS: Route 53; log retention: 30 days; cost posture: balanced; registry: ECR
+>
+> Say 'I want to change something' to override any of these."
+
+(Omit the containerization line when Q12b was extracted and already shown in the offer.)
 
 **If user chooses No, or stack is not eligible:** Continue to Step 2.
 
@@ -112,7 +137,6 @@ Before generating questions, scan the inventory to determine which questions app
 | Q3 — Availability posture            | Always                                                           | Never                                     |
 | Q4 — Maintenance window              | Always                                                           | Never                                     |
 | Q5 — Environment naming              | Always                                                           | Never                                     |
-| Q5b — Migration urgency              | Always                                                           | Never                                     |
 | Q6 — Database HA                     | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6b — Migration approach             | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6c — DB migration method            | Postgres add-on present                                          | No Postgres in inventory                  |
@@ -132,7 +156,7 @@ Before generating questions, scan the inventory to determine which questions app
 
 ### Extraction Rules (answer from the inventory before asking)
 
-Before planning batches, resolve what `heroku-resource-inventory.json` already answers. Extracted questions are NOT asked — they appear as **Detected** rows on the Assumption Sheet (Step 2.5) and are recorded in `metadata.questions_skipped_extracted`, with the raw signal in `metadata.inventory_clarifications`.
+**These rules run in Step 1, before the fast-path offer** — they are referenced from here because they also feed the Assumption Sheet. Resolve what `heroku-resource-inventory.json` already answers. Extracted questions are NOT asked on any path — on the full flow they appear as **Detected** rows on the Assumption Sheet (Step 2.5); on the fast path they are applied directly. Either way they are recorded in `metadata.questions_skipped_extracted`, with the raw signal in `metadata.inventory_clarifications`.
 
 | Q                       | Extraction signal                                                                                                                                                                                                 | Resolves to                                                                                                                                    | When NOT to extract                                                             |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -185,7 +209,7 @@ After determining active questions, organize them into **three progressive batch
 
 | Batch | Name                      | Questions              | Content                                                                                                                                               |
 | ----- | ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | Global / Strategic        | Q1–Q5, Q5b, Q12c, Q12d | Region, compliance, availability, maintenance, environment naming, migration urgency, compute target recommendation, EB deploy method when applicable |
+| **1** | Global / Strategic        | Q1–Q5, Q12c, Q12d      | Region, compliance, availability, maintenance, environment naming, compute target recommendation, EB deploy method when applicable                    |
 | **2** | Data / Network            | Q6, Q6b, Q6c, Q7–Q10   | Database HA, migration approach, DB migration method, Redis HA, Kafka retention, VPC subnets, DNS strategy                                            |
 | **3** | Operational / Conditional | Q11, Q12b, Q12–Q15     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
 
@@ -405,36 +429,6 @@ Re-prompt Q9b until valid input is provided.
 - 4 → `environment_naming: "<user value>"`
 
 **Default:** 1 → `environment_naming: "production"`
-
----
-
-#### Q5b — Migration Approach
-
-> _Fires only when Heroku Postgres add-on is present in inventory._
->
-> How would you like to sequence the migration?
->
-> 1. Full cutover — migrate database and application together in one maintenance window (simpler, single downtime event)
-> 2. Database first — migrate the database to AWS now, keep the app on Heroku temporarily while you prepare the compute migration (requires a target exit date)
->
-> ⚠️ Option 2 requires network access from Heroku to your AWS database during the transition period, granted to a bounded allowlist of addresses (never the open internet) with TLS enforced first. If your app runs in a Private Space, that means VPC peering or the space's stable outbound IPs; on the Common Runtime it means a static-egress proxy add-on. Access is revoked once the app migrates off Heroku.
-
-**Interpret:**
-
-- 1 → `migration_approach: "full_cutover"`
-- 2 → `migration_approach: "interim_cutover_data_first"`
-
-**Default:** 1 → `migration_approach: "full_cutover"`
-
-**If user selects 2:**
-
-1. Ask follow-up: "What's your target date to complete the app migration off Heroku? (YYYY-MM-DD format)"
-2. Validate ISO 8601 date format. If invalid, re-prompt.
-3. Set `target_exit_date: "<validated date>"`
-4. Set `interim_cutover: true`
-5. Set `ktlo_warning: "Heroku is in sustaining engineering. Hybrid operation should be bounded to weeks, not quarters."`
-
-**Design impact:** Option 2 → MIGRATION_GUIDE.md includes the "Interim Database Exposure" section (TLS prerequisite gate, then a scoped CIDR allowlist applied via Terraform) and a "Platform Risk" callout.
 
 ---
 
@@ -726,7 +720,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 **Default:** 1 → `fir_intent: "exit_heroku"`
 
-**Note:** Cutover timing (full vs data-first) is handled by the migration_approach question (Q5b), not this question. This question only determines the compute destination for Fir workloads.
+**Note:** Cutover timing (full vs data-first) is handled by the migration_approach question (Q6b), not this question. This question only determines the compute destination for Fir workloads.
 
 **Design impact:** Both options result in full Fir workload migration to AWS. Option 2 indicates the user wants to manage their own Kubernetes/ECS orchestration rather than using the skill's standard Fargate mapping.
 
