@@ -13,7 +13,7 @@
 | Function version not ACTIVE | Fewer than 3 execution environments ready | Wait for provisioning; check capacity provider status |
 | Unexpected 500 errors | Unhandled concurrent access to shared state | Add thread-safe patterns from migration-patterns.md |
 | CloudWatch logs missing | VPC egress not configured | Add NAT Gateway or CloudWatch Logs VPC endpoint |
-| High costs despite low traffic | Minimum 3 instances always running | Evaluate if standard Lambda is more cost-effective |
+| High costs despite low traffic | Minimum 3 instances always running | Evaluate if Lambda Event Functions are more cost-effective |
 
 ## Debugging Steps
 
