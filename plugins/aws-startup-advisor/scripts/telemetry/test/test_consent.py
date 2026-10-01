@@ -266,6 +266,23 @@ class TestTheNoticesOwnInstructionWorks:
         out = run("consent/cli.py", "status", home=home).stdout
         assert "collection: OFF" in out
 
+    def test_a_utf8_bom_does_not_undo_the_opt_out(self, home):
+        # What a Windows editor writes. Rejecting it would re-raise the notice at
+        # someone who did exactly what it told them, every session.
+        directory = home / record.STATE_DIR_NAME
+        directory.mkdir(parents=True, exist_ok=True)
+        record.state_path().write_bytes(b"\xef\xbb\xbf" + self.MINIMAL.encode())
+        assert record.consent_status() == record.OPT_OUT
+        assert not record.is_accepted()
+        assert run("consent/session_start.py", home=home).stdout == ""
+
+    def test_a_utf8_bom_does_not_undo_an_acceptance(self, home):
+        install_id = record.write_state(record.ACCEPTED)["installId"]
+        body = record.state_path().read_text()
+        record.state_path().write_bytes(b"\xef\xbb\xbf" + body.encode())
+        assert record.is_accepted()
+        assert record.read_state()["installId"] == install_id
+
     def test_opting_back_in_mints_an_install_id(self, home):
         self.hand_edit(home)
         written = record.write_state(record.ACCEPTED)

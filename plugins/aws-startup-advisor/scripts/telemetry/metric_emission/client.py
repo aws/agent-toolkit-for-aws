@@ -16,8 +16,8 @@ SigV4 and no boto3, and has no third-party imports.
 
 Fire and forget. `post_event` swallows everything and reports failure to nobody: a
 telemetry POST is not something the user asked for and must not be able to fail an
-operation they did ask for. `PutPluginTelemetryEvent` is also feature-gated off in
-prod today, so a 403 on every call is currently the expected result.
+operation they did ask for. Every status is treated the same way — a 403 or 400 is
+dropped exactly like a timeout, so nothing here depends on which the service sends.
 
 The consent gate is re-checked in `post_event`, so a new call site cannot emit by
 forgetting to ask.

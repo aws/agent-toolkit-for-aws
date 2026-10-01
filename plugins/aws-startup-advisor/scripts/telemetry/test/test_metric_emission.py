@@ -232,7 +232,7 @@ class TestPostEventIsFireAndForget:
         monkeypatch.setattr(
             client.urllib.request, "urlopen", lambda *a, **k: Forbidden()
         )
-        # Prod is feature-gated off today, so 403 is the current normal.
+        # A rejection is not an error here: it is dropped like any other failure.
         assert (
             client.post_event({"consentRecorded": {}}, install_id, "http://x") is False
         )

@@ -34,14 +34,17 @@ import record  # noqa: E402  (path set above so this resolves in-plugin)
 CONSENT_DIR = Path(__file__).resolve().parent
 
 # Absolute paths, not ${CLAUDE_PLUGIN_ROOT}: this is read by a model, not a shell,
-# so an unexpanded variable would reach it as literal text.
+# so an unexpanded variable would reach it as literal text. Same reason the
+# interpreter is resolved here rather than written as a bare `python3`, which is
+# usually not on PATH on Windows — the model would run it and the notice would
+# never be recorded.
 INSTRUCTION = """\
 [AWS Startup Advisor] This user has not yet been shown the usage-data notice.
 
 The first time in this session that a request would use an AWS Startup Advisor
 skill, stop before doing that work and run this exchange instead:
 
-1. Run: python3 "{consent}/cli.py" show
+1. Run: {py} "{consent}/cli.py" show
 2. Reproduce that command's output to the user VERBATIM. Do not summarize,
    shorten, translate, reorder, or rewrite it — it is a legal notice and the
    exact wording is the point. Its last paragraph already asks the question and
@@ -53,8 +56,8 @@ skill, stop before doing that work and run this exchange instead:
    skipped — the user reads the answer they asked for and never replies to the
    notice, which makes showing it pointless.
 4. When they reply, record it by running exactly one of:
-     acknowledged     -> python3 "{consent}/accept.py"
-     wants to opt out -> python3 "{consent}/opt_out.py"
+     acknowledged     -> {py} "{consent}/accept.py"
+     wants to opt out -> {py} "{consent}/opt_out.py"
 5. Then answer their original request in full, in that same turn. They asked
    once; do not make them repeat themselves or re-ask.
 
@@ -74,7 +77,7 @@ notice tells the user they may edit it themselves instead.
 
 
 def build_message():
-    return INSTRUCTION.format(consent=CONSENT_DIR)
+    return INSTRUCTION.format(consent=CONSENT_DIR, py=record.INTERPRETER)
 
 
 def main():

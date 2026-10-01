@@ -61,8 +61,8 @@ OPT_OUT_INSTRUCTION = 'setting "consentStatus" to "%s" in %s' % (
 # notice. It preserves the install ID, which a hand-edit cannot. `py -3` on
 # Windows, where python3 is usually not on PATH at all.
 OPT_OUT_SCRIPT = Path(__file__).resolve().parent / "opt_out.py"
-_INTERPRETER = "py -3" if os.name == "nt" else "python3"
-OPT_OUT_COMMAND = '%s "%s"' % (_INTERPRETER, OPT_OUT_SCRIPT)
+INTERPRETER = "py -3" if os.name == "nt" else "python3"
+OPT_OUT_COMMAND = '%s "%s"' % (INTERPRETER, OPT_OUT_SCRIPT)
 
 
 def disclaimer():
@@ -110,8 +110,12 @@ def read_state():
     instruction produce a record we then read as corrupt, and the notice would be
     raised at them again next session.
     """
+    # utf-8-sig, not utf-8: the notice tells the user to edit this file, and a
+    # Windows editor adds a BOM that json.load rejects. Reading that as "nothing
+    # recorded" would raise the notice again at someone who just did what it asked.
+    # It reads a BOM-less file identically, so this costs nothing.
     try:
-        with open(state_path(), "r", encoding="utf-8") as handle:
+        with open(state_path(), "r", encoding="utf-8-sig") as handle:
             data = json.load(handle)
     except (OSError, ValueError):
         return None
