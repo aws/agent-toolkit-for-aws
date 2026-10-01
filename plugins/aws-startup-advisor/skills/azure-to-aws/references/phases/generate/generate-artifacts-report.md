@@ -183,9 +183,19 @@ migration plan, and that figures are estimates to validate before decisions.
 
 ## Step 5: Validate the rendered report (REQUIRED — mandatory gate)
 
-The prose above is not self-enforcing. Run the plugin's report validator, which is
-source-cloud-agnostic and already present at plugin root — resolve it the same way the
-`tf-best-practices` policy checker is resolved:
+The prose above is not self-enforcing. Render the report from
+`references/shared/report-decision-core.md` in **full** mode (or AI-only mode
+when there is no infra track) before you write HTML. `REPORT_OK` is not a
+substitute for that file: the shared validator rejects a report that has the
+right section IDs but omits decision-core content the artifacts require
+(verdict headline, hero metrics, per-track line, conditions, "What would flip
+this", the specialist-engagement callout, the architecture section when the
+design has clusters, assumptions after risks, a risk table, and the what-if
+columns Region / HA / Compute / Arch when two or more scenarios exist).
+
+Run the plugin's report validator, which is source-cloud-agnostic and already
+present at plugin root — resolve it the same way the `tf-best-practices` policy
+checker is resolved:
 
 ```bash
 python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \

@@ -821,6 +821,7 @@ def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
 
     # When Estimate declared a recommendation outcome, the verdict headline is required.
     recommendation_outcome = False
+    flips: list = []
     if migration_dir is not None:
         est_path = migration_dir / "estimation-infra.json"
         if est_path.is_file():
@@ -828,6 +829,8 @@ def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
                 est = json.loads(est_path.read_text(encoding="utf-8"))
                 rec = (est or {}).get("recommendation") or {}
                 recommendation_outcome = bool(rec.get("outcome"))
+                raw_flips = rec.get("would_flip_if") or []
+                flips = raw_flips if isinstance(raw_flips, list) else []
             except (OSError, json.JSONDecodeError):
                 # Fail open on ambiguity: a missing/corrupt estimate does not force the
                 # verdict-headline requirement (we can't confirm an outcome was declared).
@@ -838,6 +841,13 @@ def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
             "decision-summary has no verdict-headline element "
             '(render outcome_label as <p class="verdict-headline">…</p>)'
         )
+    if flips:
+        visible = re.sub(r"<[^>]+>", " ", summary).lower()
+        if "what would flip" not in visible:
+            errors.append(
+                "estimation-infra.json declares recommendation.would_flip_if but "
+                'decision-summary has no "What would flip this" list'
+            )
     return errors
 
 
@@ -956,6 +966,35 @@ def _validate_accessibility(html: str) -> list[str]:
     return errors
 
 
+def _what_if_column_errors(section: str) -> list[str]:
+    """Workshop compare tables use the same column set as generate-report.md."""
+    header = re.search(r"<thead\b.*?</thead>", section, re.DOTALL | re.IGNORECASE)
+    if not header:
+        return [
+            "what-if-scenarios must contain a table headed "
+            "Scenario, Region, HA, Compute, Arch, and Complexity"
+        ]
+    text = re.sub(r"<[^>]+>", " ", header.group(0)).lower()
+    missing = [
+        label
+        for label, present in (
+            ("Region", "region" in text),
+            ("HA", "ha" in text or "availability" in text),
+            ("Compute", "compute" in text),
+            ("Arch", re.search(r"\barch\b", text) is not None),
+            ("Complexity", "complexity" in text),
+        )
+        if not present
+    ]
+    if not missing:
+        return []
+    return [
+        "what-if-scenarios table is missing column(s): "
+        + ", ".join(missing)
+        + " (generate-report.md what-if table)"
+    ]
+
+
 def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[str]:
     errors: list[str] = []
     counts = _section_counts(html)
@@ -1011,6 +1050,9 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
                     'scenarios/index.json has ≥2 scenarios but no '
                     '<section id="what-if-scenarios">'
                 )
+            elif len(scenarios) >= 2:
+                section = _section_html(html, "what-if-scenarios") or ""
+                errors.extend(_what_if_column_errors(section))
 
         # generate-report.md / report-decision-core.md § decision-basis: when Estimate
         # declared decision_basis (evidence/assumptions behind the verdict), the report

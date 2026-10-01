@@ -269,6 +269,12 @@ python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
   "$MIGRATION_DIR/migration-report.html" --mode full --migration-dir "$MIGRATION_DIR"
 ```
 
+`REPORT_OK` means the validator's decision-core checks passed. It is not a substitute for the content
+rules in this file: when `recommendation.would_flip_if` is non-empty the
+summary must include "What would flip this", and when two or more scenarios
+exist the what-if table must include Region, HA, Compute, Arch, and Complexity.
+A report written only to satisfy the section-ID list will fail.
+
 `REPORT_OK` → the report gate passes. `REPORT_FAIL` → the main-window step emits `GATE_FAIL` **and
 pastes the validator's `errors[]` verbatim**; the gate does not edit the HTML itself. The pasted
 errors are what make recovery actionable — a bare "re-run Generate" is not a fix, since re-dispatch
@@ -277,8 +283,9 @@ re-authors the report under this shell-less worker. On `REPORT_OK` the finish st
 hand-edit of the report from those errors + a direct validator re-run and re-stamp (or a maintainer
 re-running Generate for a clean rebuild).
 The validator enforces the required sections, the `draft for review` footer, the typography-first
-verdict rules, non-empty `cost-optimization`, and the a11y subset the report emits (`<th scope>`,
-`<figure>` labels).
+verdict rules, "What would flip this" when `would_flip_if` is present, the what-if
+column set when two or more scenarios exist, non-empty `cost-optimization`, and the
+a11y subset the report emits (`<th scope>`, `<figure>` labels).
 
 ---
 

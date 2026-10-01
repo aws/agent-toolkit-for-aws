@@ -1246,6 +1246,14 @@ def _validate_appendix_config(html: str) -> list[str]:
         errors.append(
             'appendix-config table must include a "Question" or "Assumption" column (from preferences.prompt)'
         )
+    if "choice" not in hdr_text:
+        errors.append(
+            'appendix-config table must include a "Your choice" column (the value the reader confirmed)'
+        )
+    if "source" not in hdr_text:
+        errors.append(
+            'appendix-config table must include a "Source" column (user answer, extracted, or default)'
+        )
     if "consequence" not in hdr_text:
         errors.append(
             "appendix-config table must include a Design consequence column (from preferences.design_consequence)"
@@ -1646,6 +1654,194 @@ def _validate_fixture_bleed(html: str, migration_dir: Path | None) -> list[str]:
     return errors
 
 
+def _plain_text(fragment: str) -> str:
+    """Decoded visible text, with dashes folded so artifact prose can be matched."""
+    text = unescape(re.sub(r"<[^>]+>", " ", fragment))
+    text = text.replace("\u2014", "-").replace("\u2013", "-")
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _word_shingles(text: str, size: int = 4) -> set[str]:
+    """Word phrases used to recognize a rendered condition without requiring a verbatim copy."""
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    if not words:
+        return set()
+    if len(words) <= size:
+        return {" ".join(words)}
+    return {" ".join(words[i : i + size]) for i in range(len(words) - size + 1)}
+
+
+def _iter_aws_services(node: object):
+    if isinstance(node, dict):
+        service = node.get("aws_service")
+        if isinstance(service, str):
+            yield service
+        for value in node.values():
+            yield from _iter_aws_services(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_aws_services(item)
+
+
+def _design_has_clusters(aws_design: dict | None) -> bool:
+    if not aws_design:
+        return False
+    clusters = aws_design.get("clusters")
+    return isinstance(clusters, list) and len(clusters) > 0
+
+
+def _design_has_deferred_service(aws_design: dict | None) -> bool:
+    if not aws_design:
+        return False
+    return any(
+        service.strip().lower().startswith("deferred")
+        for service in _iter_aws_services(aws_design)
+    )
+
+
+def _what_if_column_errors(section: str) -> list[str]:
+    """Workshop compare tables must carry the decision-core column set."""
+    header = re.search(r"<thead\b.*?</thead>", section, re.DOTALL | re.IGNORECASE)
+    if not header:
+        return [
+            "what-if-scenarios must contain a table whose header includes "
+            "Scenario, Region, HA, Compute, Arch, the three monthly tiers, and Complexity"
+        ]
+    text = _plain_text(header.group(0))
+    missing: list[str] = []
+    for label, present in (
+        ("Scenario", "scenario" in text),
+        ("Region", "region" in text),
+        ("HA", "ha" in text or "availability" in text),
+        ("Compute", "compute" in text),
+        ("Arch", "arch" in text),
+        ("Complexity", "complexity" in text),
+    ):
+        if not present:
+            missing.append(label)
+    if not ("premium" in text and "balanced" in text and "optimized" in text):
+        missing.append("Premium/Balanced/Optimized")
+    if not missing:
+        return []
+    return [
+        "what-if-scenarios table is missing decision-core column(s): "
+        + ", ".join(missing)
+        + " (report-decision-core.md Section 3b)"
+    ]
+
+
+def _validate_decision_core_render(
+    html: str,
+    estimation_infra: dict | None,
+    aws_design: dict | None,
+    *,
+    mode: str,
+    migration_dir: Path | None,
+) -> list[str]:
+    """Fail when artifact fields that the decision core requires are not rendered.
+
+    REPORT_OK used to mean "the section IDs exist." A report can satisfy that
+    and still omit the verdict headline, hero metrics, flip conditions, the
+    specialist callout, and the architecture section. These checks fire only
+    when the corresponding artifact data was passed in, so a pre-extension
+    estimate is not rejected for fields it does not have.
+    """
+    if mode not in ("full", "decision"):
+        return []
+    errors: list[str] = []
+    summary = _section_html(html, "decision-summary") or ""
+    summary_text = _plain_text(summary)
+    recommendation = (estimation_infra or {}).get("recommendation") or {}
+
+    if recommendation:
+        if not re.search(r"\bmetric-hero\b", summary, re.IGNORECASE):
+            errors.append(
+                "recommendation block exists but decision-summary has no hero metric "
+                '(render the AWS run rate and migration shape with class="metric-hero")'
+            )
+        outcome = recommendation.get("outcome") or recommendation.get("outcome_label")
+        if outcome and not re.search(r"\bverdict-headline\b", summary, re.IGNORECASE):
+            errors.append(
+                "recommendation.outcome exists but decision-summary has no "
+                'verdict-headline (render outcome_label as <p class="verdict-headline">)'
+            )
+
+    flips = recommendation.get("would_flip_if")
+    if isinstance(flips, list) and flips and "what would flip" not in summary_text:
+        errors.append(
+            "recommendation.would_flip_if is non-empty but decision-summary has no "
+            '"What would flip this" list'
+        )
+
+    tracks = recommendation.get("track_outcomes")
+    if isinstance(tracks, list) and tracks and "by track" not in summary_text:
+        errors.append(
+            "recommendation.track_outcomes exists but decision-summary has no "
+            '"By track" disposition line'
+        )
+
+    conditions = recommendation.get("conditions")
+    if (
+        recommendation.get("outcome") == "conditional_go"
+        and isinstance(conditions, list)
+        and conditions
+    ):
+        summary_shingles = _word_shingles(summary_text)
+        for condition in conditions:
+            shingles = _word_shingles(_plain_text(str(condition)))
+            if shingles and not (shingles & summary_shingles):
+                errors.append(
+                    "recommendation.conditions is non-empty but decision-summary does "
+                    "not render that condition as a checklist (a shared phrase from the "
+                    "artifact condition is missing)"
+                )
+                break
+
+    if _design_has_deferred_service(aws_design) and "specialist engagement" not in summary_text:
+        errors.append(
+            'aws-design.json maps a service to "Deferred — specialist engagement" but '
+            "decision-summary has no specialist-engagement callout"
+        )
+
+    if mode == "full" and _design_has_clusters(aws_design):
+        if _section_html(html, "exec-architecture") is None:
+            errors.append(
+                'aws-design.json has clusters but no <section id="exec-architecture"> '
+                "(the architecture overview is required in full mode)"
+            )
+
+    risks = re.search(r'<section\b[^>]*\bid=["\']exec-risks["\']', html, re.IGNORECASE)
+    assumptions = re.search(
+        r'<section\b[^>]*\bid=["\']exec-assumptions["\']', html, re.IGNORECASE
+    )
+    if risks and assumptions and assumptions.start() < risks.start():
+        errors.append(
+            "exec-assumptions must follow exec-risks — the assumptions panel is the "
+            "last executive section (report-decision-core.md Section 8)"
+        )
+
+    risks_html = _section_html(html, "exec-risks")
+    if risks_html is not None and not re.search(r"<table\b", risks_html, re.IGNORECASE):
+        errors.append(
+            "exec-risks must render risks in a table (impact, likelihood, mitigation), "
+            "not a bullet list"
+        )
+
+    if migration_dir is not None:
+        index_path = migration_dir / "scenarios" / "index.json"
+        if index_path.is_file():
+            try:
+                index = json.loads(index_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                index = None
+            scenarios = (index or {}).get("scenarios") or []
+            section = _section_html(html, "what-if-scenarios")
+            if len(scenarios) >= 2 and section is not None:
+                errors.extend(_what_if_column_errors(section))
+
+    return errors
+
+
 def validate_report(
     html: str,
     estimation_infra: dict | None = None,
@@ -1771,6 +1967,20 @@ def validate_report(
             require_toc=require_toc,
         )
     )
+
+    # Decision-core content. --no-require-toc remains the escape hatch for
+    # minimal unit fixtures; a normal Generate or Decision report must render
+    # the artifact fields, not only the section IDs.
+    if require_toc:
+        errors.extend(
+            _validate_decision_core_render(
+                html,
+                estimation_infra,
+                aws_design,
+                mode=mode,
+                migration_dir=migration_dir,
+            )
+        )
 
     # Catch verbatim copies of the reference fixture into a real run.
     errors.extend(_validate_fixture_bleed(html, migration_dir))

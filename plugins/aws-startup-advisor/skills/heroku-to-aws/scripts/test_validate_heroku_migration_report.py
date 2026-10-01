@@ -119,6 +119,63 @@ def test_verdict_headline_not_required_without_recommendation() -> None:
     assert "REPORT_OK" in out
 
 
+def test_would_flip_required_when_artifact_has_it() -> None:
+    html = GOOD.replace(
+        '<p class="verdict-headline">Go, with conditions</p>',
+        '<p class="verdict-headline">Go, with conditions</p>'
+        "<h3>What would flip this</h3><ul><li>A published rate above the Heroku bill.</li></ul>",
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "estimation-infra.json").write_text(
+            json.dumps(
+                {
+                    "recommendation": {
+                        "outcome": "go_conditional",
+                        "would_flip_if": ["A published rate above the Heroku bill."],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        missing, out = run(GOOD, migration_dir=d)
+        present, ok = run(html, migration_dir=d)
+    assert missing == 1, out
+    assert "would_flip" in out
+    assert present == 0, ok
+
+
+def test_what_if_columns_required_when_section_present() -> None:
+    thin = GOOD.replace(
+        '<section id="next-steps">',
+        '<section id="what-if-scenarios"><table><thead><tr>'
+        '<th scope="col">Scenario</th><th scope="col">Monthly</th>'
+        "</tr></thead><tbody><tr><td>Baseline</td><td>$1</td></tr></tbody></table></section>"
+        '<section id="next-steps">',
+    )
+    full = GOOD.replace(
+        '<section id="next-steps">',
+        '<section id="what-if-scenarios"><table><thead><tr>'
+        '<th scope="col">Scenario</th><th scope="col">Region</th><th scope="col">HA</th>'
+        '<th scope="col">Compute</th><th scope="col">Arch</th>'
+        '<th scope="col">Complexity</th></tr></thead>'
+        "<tbody><tr><td>Baseline</td><td>us-east-1</td><td>Multi-AZ</td>"
+        "<td>Fargate</td><td>mixed</td><td>Large</td></tr></tbody></table></section>"
+        '<section id="next-steps">',
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "scenarios").mkdir()
+        (d / "scenarios" / "index.json").write_text(
+            json.dumps({"scenarios": [{"id": "a"}, {"id": "b"}]}), encoding="utf-8"
+        )
+        bad, bad_out = run(thin, migration_dir=d)
+        good, good_out = run(full, migration_dir=d)
+    assert bad == 1, bad_out
+    assert "Region" in bad_out
+    assert good == 0, good_out
+
+
 def test_what_if_required_when_two_scenarios() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp)
