@@ -841,14 +841,18 @@ No `dns.tf` was generated ({{IF dns_strategy == "external"}}you chose to keep yo
 1. For each custom hostname, change the record from its Heroku DNS target to {{aws_dns_target_label}}:
 
 {{IF has_beanstalk}}
+
    ```
    {{app_domain}}  CNAME  <eb_environment_cname>      (was: <heroku DNS target>)
    ```
+
 {{ENDIF}}
 {{IF has_fargate}}
+
    ```
    {{app_domain}}  CNAME  <alb_dns_name>              (was: <heroku DNS target>)
    ```
+
 {{ENDIF}}
 
    Apex hostnames cannot be CNAMEs: use your provider's ALIAS/ANAME record type, or move the zone to Route 53 (re-run Clarify with `dns_strategy: route53` to get `dns.tf`).
