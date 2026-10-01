@@ -32,6 +32,29 @@ Check which estimation artifacts exist in `$MIGRATION_DIR/`:
 
 If **none** of these estimation artifacts exist: **STOP**. Output: "No estimation artifacts found. Run Phase 4 (Estimate) first."
 
+**Compliance-estimate staleness guard.** When `estimation-infra.json` exists, read
+`preferences.json` → `design_constraints.compliance.value` (absent / `none` / `unknown` →
+treat as no gating framework declared) and check whether it contains any of `soc2`, `pci`,
+`hipaa`, `fedramp` — the same gating set `generate-artifacts-infra.md` uses to decide whether
+`baseline.tf` emits the Config + Security Hub compliance controls. If it does,
+`estimation-infra.json` → `projected_costs.breakdown` MUST already contain a
+`security_baseline_compliance` entry (added whenever Estimate ran with the compliance answer
+correctly read). If that entry is **missing** — a run whose Estimate saw an empty/absent
+compliance value even though Clarify recorded a gating framework, most likely because
+Estimate ran before the `design_constraints.compliance.value` reader fix — the budget and
+report totals downstream would **understate**: Generate would still correctly emit the
+compliance controls in `baseline.tf` (it reads the same field, already correct), but their
+cost would be silently absent from `aws_budgets_budget.limit_amount` and every report cost
+table. **STOP.** Emit `GATE_FAIL | phase=generate | field=estimation-infra.json.projected_costs.breakdown.security_baseline_compliance | reason=stale_downstream`.
+Tell the user: "Your declared compliance requirement ([frameworks]) will add AWS Config and
+Security Hub controls to the generated Terraform, but the cost estimate on file was computed
+before that requirement was applied — it's missing that line item, so your budget and report
+totals would understate the real cost. Re-run Phase 4 (Estimate) to refresh it, then come
+back to Generate." **Do NOT** patch `estimation-infra.json` to add the missing entry, and do
+NOT proceed to Stage 1 — per `shared/handoff-gates.md`'s re-entry protocol, this is a
+user-confirmed re-run, not a silent repair. If the user confirms, set `phases.estimate` (and
+`phases.generate`, if not already `"pending"`) back to `"pending"` before re-running Estimate.
+
 ## Stage 1: Migration Planning
 
 **Dirty-state tracking**: Before producing any Stage 1 outputs, set `dirty_state` in `.phase-status.json`:
