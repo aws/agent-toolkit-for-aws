@@ -1655,8 +1655,21 @@ def _validate_fixture_bleed(html: str, migration_dir: Path | None) -> list[str]:
 
 
 def _plain_text(fragment: str) -> str:
-    """Decoded visible text, with dashes folded so artifact prose can be matched."""
-    text = unescape(re.sub(r"<[^>]+>", " ", fragment))
+    """Decoded visible text, with dashes folded so artifact prose can be matched.
+
+    Inert subtrees (`<script>`, `<style>`, `<template>`) and HTML comments are
+    dropped first: the browser does not render their contents, so a decision-core
+    heading or condition hidden inside a `<template>` must not count as rendered.
+    This matches the Heroku validator's decoded-text semantics.
+    """
+    stripped = re.sub(r"<!--.*?-->", " ", fragment, flags=re.DOTALL)
+    stripped = re.sub(
+        r"<(script|style|template)\b[^>]*>.*?</\1\s*>",
+        " ",
+        stripped,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    text = unescape(re.sub(r"<[^>]+>", " ", stripped))
     text = text.replace("\u2014", "-").replace("\u2013", "-")
     return re.sub(r"\s+", " ", text).strip().lower()
 

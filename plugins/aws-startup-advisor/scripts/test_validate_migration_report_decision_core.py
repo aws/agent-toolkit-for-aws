@@ -52,6 +52,19 @@ def test_missing_would_flip_list_fails() -> None:
     assert any("would_flip" in err for err in errors), errors
 
 
+def test_would_flip_list_only_in_template_fails() -> None:
+    # A browser never renders <template> contents, so a flip heading hidden there
+    # must not satisfy the check (regression for the shared validator keeping
+    # <template> text; the Heroku validator already rejected this input).
+    validator = _load()
+    html = _reference_html().replace(
+        "<h3>What would flip this</h3>",
+        "<template><h3>What would flip this</h3></template>",
+    )
+    errors = validator.validate_report(html, _reference_estimate(), None)
+    assert any("would_flip" in err for err in errors), errors
+
+
 def test_deferred_service_without_callout_fails() -> None:
     validator = _load()
     html = _reference_html().replace("specialist engagement", "analytics follow-up")
