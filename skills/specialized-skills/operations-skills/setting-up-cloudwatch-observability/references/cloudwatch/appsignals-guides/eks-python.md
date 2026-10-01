@@ -1,15 +1,20 @@
-# Enable AWS Application Signals for Node.js Applications on Amazon EKS
+# Enable AWS Application Signals for Python Applications on Amazon EKS
 
-This guide shows how to modify existing CDK and Terraform infrastructure code to enable AWS Application Signals for Node.js applications running on Amazon EKS.
+This guide shows how to modify existing CDK and Terraform infrastructure code to enable AWS Application Signals for Python applications running on Amazon EKS.
 
 ## Prerequisites
 
 - Application Signals enabled in your AWS account (see [Enable Application Signals in your account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html))
 - Existing EKS cluster deployed using CDK or Terraform code
-- Node.js application containerized and pushed to ECR
+- Python application containerized and pushed to ECR
 - AWS CLI configured with appropriate permissions
 
 ## Critical Requirements
+
+**Error Handling:**
+
+- If you cannot determine required values from the IaC, STOP and ask the user
+- Preserve all existing configuration; add new resources/annotations in addition
 
 **Do NOT:**
 
@@ -21,10 +26,13 @@ This guide shows how to modify existing CDK and Terraform infrastructure code to
 
 ### 1. Install CloudWatch Observability Add-on
 
+Create an IAM role and install the CloudWatch Observability add-on:
+
 ```typescript
 import * as eks from 'aws-cdk-lib/aws-eks';
 import * as iam from 'aws-cdk-lib/aws-iam';
 
+// Create IAM role for CloudWatch agent
 const cloudwatchRole = new iam.Role(this, 'CloudWatchAgentAddOnRole', {
   assumedBy: new iam.OpenIdConnectPrincipal(cluster.openIdConnectProvider),
   managedPolicies: [
@@ -32,6 +40,7 @@ const cloudwatchRole = new iam.Role(this, 'CloudWatchAgentAddOnRole', {
   ],
 });
 
+// Install the CloudWatch Observability add-on
 new eks.CfnAddon(this, 'CloudWatchAddon', {
   addonName: 'amazon-cloudwatch-observability',
   clusterName: cluster.clusterName,
@@ -39,22 +48,27 @@ new eks.CfnAddon(this, 'CloudWatchAddon', {
 });
 ```
 
-### 2. Add Node.js Instrumentation Annotation
+### 2. Add Python Instrumentation Annotation
+
+Update your deployment template metadata to include the Python instrumentation annotation:
 
 ```typescript
 template: {
   metadata: {
     labels: { app: config.appName },
     annotations: {
-      'instrumentation.opentelemetry.io/inject-nodejs': 'true'
+      'instrumentation.opentelemetry.io/inject-python': 'true'
     }
   },
+  // ... rest of your template configuration
 }
 ```
 
 ## Terraform Implementation
 
 ### 1. Add CloudWatch Agent IAM Permissions
+
+Add the CloudWatch policy to the node role:
 
 > **Neither path in this guide confines `CloudWatchAgentServerPolicy` to the agent.** Attaching to
 > `node_role` grants it to **every pod scheduled on those nodes**, since any pod can reach the node's
@@ -73,10 +87,12 @@ resource "aws_iam_role_policy_attachment" "cloudwatch_agent_policy" {
 }
 ```
 
-Add to node group's `depends_on`:
+**Important:** Add this policy attachment to your node group's `depends_on` block:
 
 ```hcl
 resource "aws_eks_node_group" "app_nodes" {
+  # ... existing configuration ...
+
   depends_on = [
     aws_iam_role_policy_attachment.node_policy,
     aws_iam_role_policy_attachment.cloudwatch_agent_policy
@@ -97,7 +113,9 @@ resource "aws_eks_addon" "cloudwatch_observability" {
 }
 ```
 
-### 3. Add Node.js Instrumentation Annotation
+### 3. Add Python Instrumentation Annotation
+
+Update your Kubernetes deployment template:
 
 ```hcl
 template {
@@ -106,16 +124,17 @@ template {
       app = var.app_name
     }
     annotations = {
-      "instrumentation.opentelemetry.io/inject-nodejs" = "true"
+      "instrumentation.opentelemetry.io/inject-python" = "true"
     }
   }
+  # ... rest of your template configuration
 }
 ```
 
 ## Important Notes
 
-- The Node.js instrumentation annotation will cause pods to restart automatically
-- For Node.js applications with ESM module format, see [special configuration requirements](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable-EKS.html#EKS-NodeJs-ESM) in the AWS documentation
+- The Python instrumentation annotation will cause pods to restart automatically
+- Ensure your Python application meets the [prerequisites](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable-Troubleshoot.html#Application-Signals-troubleshoot-starting-Python) for Application Signals
 - It may take a few minutes for data to appear in the Application Signals console after deployment
 
 ## Completion
@@ -125,28 +144,34 @@ template {
 > IRSA-style role; the Terraform path attaches it to the **node** role, which extends it to every pod
 > scheduled on those nodes. Also state that the CDK role's trust policy has no `:sub` condition
 > unless one was added, so as written neither path confines the policy to the agent. The summary
-> bullet has a ``your-node-role`` slot — fill it in with the role this change actually used before reciting.
+> bullet has a `<role>` slot — fill it in with the role this change actually used before reciting.
 
 **Tell the user:**
 
-"I've completed the Application Signals enablement for your Node.js application. Here's what I modified:
+"I've completed the Application Signals enablement for your Python application. Here's what I modified:
 
 **Files Changed:**
 
 - IAM role: Added CloudWatchAgentServerPolicy to `your-node-role`
 - CloudWatch Observability EKS add-on: Added to the EKS Cluster
-- Kubernetes Deployment: Instrumentation annotation added with inject-nodejs set to true
+- Kubernetes Deployment: Instrumentation annotation added with inject-python set to true
 
 **Next Steps:**
 
 1. Ensure that [Application Signals is enabled in AWS account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html).
-2. Review the changes using `git diff`
-3. Deploy your infrastructure
+2. Review the changes I made using `git diff`
+3. Deploy your infrastructure:
+   - For CDK: `cdk deploy`
+   - For Terraform: `terraform apply`
 4. After deployment, wait 5-10 minutes for telemetry data to start flowing
 
 **Verification:**
 
 - Open AWS CloudWatch Console → Application Signals → Services
+- Look for your service and check that traces and metrics are being collected
+
+**Warning for Django:**
+If your application is built with Django, you must follow [additional steps to prevent startup failures](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable-Troubleshoot.html#Application-Signals-troubleshoot-starting).
 
 **Troubleshooting**
 Refer to the [CloudWatch APM troubleshooting guide](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable-Troubleshoot.html).

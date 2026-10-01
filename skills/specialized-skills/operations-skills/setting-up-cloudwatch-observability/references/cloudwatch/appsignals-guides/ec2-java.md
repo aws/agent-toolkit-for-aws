@@ -84,7 +84,7 @@ Find the IAM role attached to the EC2 instance.
 > for the **CloudWatch agent**, which receives telemetry locally and forwards it to CloudWatch and
 > X-Ray — so these permissions are what let the agent reach those destinations, not something the
 > instrumentation itself needs. On **EC2, ECS, and EKS**, an ADOT-SDK-only setup adds no IAM to the
-> workload at all (see the `setting-up-cloudwatch-observability` skill's
+> workload at all (see this skill's
 > `references/cloudwatch-omni/instrumentation/instrumentation.md`, which forbids attaching this policy on that path).
 > Lambda is the exception — that path does grant its execution role X-Ray write permissions.
 >

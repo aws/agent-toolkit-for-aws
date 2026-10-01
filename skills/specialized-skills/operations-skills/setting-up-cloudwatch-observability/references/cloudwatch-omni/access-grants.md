@@ -184,7 +184,7 @@ Every grant names three things, and every lookup answers a question about one of
   | `IAM_USER`, `IAM_ROLE`, `IAM_ROOT` | The IAM ARN. Must be in the caller's account |
   | `ACCESS_PROFILE` | The Access Profile's ID — see [access-profiles.md](access-profiles.md) |
   | `ALERT` | An alert's ARN — the `alertArn` that `list-alerts` returns — or the reserved, case-sensitive token `ALL` meaning every alert in the Space. **Never the alert's name or its `alertId`.** `ALL` is accepted only for `ALERT`, and only on a `CUSTOM` grant whose single action is `AssumeAccessProfile`; any other use is rejected ("Wildcard principal identifier is not supported for this principal type"). A profile that alerts created later must assume needs `ALL`: `CreateAlert` authorizes against the wildcard `alert/*` ARN, which only `ALL` matches |
-  | `AGENT` | An agent workload principal — a service-defined identifier for the agent, not an IAM ARN |
+  | `AGENT` | An agent workload principal — a service-defined identifier for the agent, not an IAM ARN. **Service-managed only:** `create-access-grant` rejects an `AGENT` principal with `400 Access grants cannot be created for the AGENT principal type.` The one `AGENT` grant a Space has is the automatic `OmniDefaults-AsyncAccessProfile-AgentCanAssume`, created by the service; you do not create an `AGENT` grant yourself |
 
 - **A permission** — one of `READ`, `READ_WRITE_DELETE`, `SPACE_ADMIN`, or `CUSTOM`.
   See [Permission levels](#permission-levels).
@@ -1046,10 +1046,12 @@ summary. Read the detail and report from it:
 - A grant with **no** scope fields grants its permission level **unscoped** across the
   whole Space — say that, rather than reading the absence as an error or as "no
   access".
-- For a workload principal (`ALERT`, `AGENT`), the detail is how you learn **which
-  Access Profile it may assume**: a trust grant is a `CUSTOM` grant whose single action
-  is `AssumeAccessProfile`, and the profile's ARN sits in that entry's `resources`. The
-  summary shows only that a `CUSTOM` grant exists.
+- For an `ALERT` principal, the detail is how you learn **which Access Profile it may
+  assume**: a trust grant is a `CUSTOM` grant whose single action is `AssumeAccessProfile`,
+  and the profile's ARN sits in that entry's `resources`. The summary shows only that a
+  `CUSTOM` grant exists. (An `AGENT` workload assumes its profile through the
+  service-managed `OmniDefaults-AsyncAccessProfile-AgentCanAssume` grant; you cannot create
+  an `AGENT` trust grant yourself. See the `AGENT` row in the principal table above.)
 - The detail carries `createdBy`, `createdAt`, and `updatedAt` — use these to answer
   "who granted this / when". There is still no expiry.
 - A grant ID that matches **no** grant comes back from `get-access-grant` as
