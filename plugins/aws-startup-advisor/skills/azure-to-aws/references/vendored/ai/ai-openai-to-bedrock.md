@@ -26,20 +26,22 @@ recommend Legacy models as primary selections for new migrations.
 ## Key Insight: OpenAI's Own Models Run on Bedrock
 
 **The old premise of this guide — "OpenAI models are unavailable on AWS, so migrating means switching model families"
-— is obsolete.** GPT-5.6 Sol / Terra / Luna, GPT-5.5, and GPT-5.4 are generally available on Bedrock, at OpenAI's
-data-residency-tier rates, counting toward existing AWS commitments.
+— is obsolete.** GPT-6 Astra, GPT-5.6 Sol / Terra / Luna, GPT-5.5, and GPT-5.4 are generally available on Bedrock,
+counting toward existing AWS commitments. Pricing depends on the model and inference option;
+see `shared/openai-on-bedrock.md`.
 
 Two consequences that invert the previous decision logic:
 
 1. **When the source model is on Bedrock, keep it.** A same-model move has no behavior delta to validate, no prompt
    re-engineering, and no eval regression risk — the migration is an endpoint and credential change, not a model
    change. This is the default recommendation.
-2. **The cost of a same-model move depends on the inference option — state it conditionally.** In-Region and Geo
+2. **The cost of a same-model move depends on the inference option — state it conditionally.** GPT-5.x In-Region and Geo
    CRIS are priced at OpenAI's _data residency_ tier, exactly 1.10x the standard list price, so those moves cost
    ~10% more. **GPT-5.6 on Global CRIS is priced at the standard list price — cost parity** — available only when
    the workload has no data-residency constraint (GPT-5.5 / GPT-5.4 have no CRIS at all). See
    `shared/openai-on-bedrock.md`. The non-cost case — AWS commitments, IAM/VPC/CloudTrail governance, residency,
    prompt caching, one vendor relationship — carries the in-region path; never present that path as free or neutral.
+   For Astra, use its separately dated Bedrock rates and verify the source provider's rate before comparing.
 
 Cross-family mapping (to Claude / Nova / DeepSeek) is still the right answer in two situations: the source model has
 no Bedrock equivalent, or the user's priority is cost and is willing to accept a model change to get it. Both are
@@ -53,20 +55,22 @@ Apply in order. Stop at the first tier that resolves.
 
 ### Tier 0 — Source model is on Bedrock (default path)
 
-If the detected model is GPT-5.6 Sol / Terra / Luna, GPT-5.5, or GPT-5.4, the target is **the same model on
+If the detected model is GPT-6 Astra, GPT-5.6 Sol / Terra / Luna, GPT-5.5, or GPT-5.4, the target is **the same model on
 Bedrock**.
 
-| Source model  | Bedrock target | Model ID (mantle / runtime CRIS)                        | Assessment                                                      |
-| ------------- | -------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
-| GPT-5.6 Sol   | GPT-5.6 Sol    | `openai.gpt-5.6-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
-| GPT-5.6 Terra | GPT-5.6 Terra  | `openai.gpt-5.6-terra` / `us.` `in.` `global.` prefixed | `strong_migrate` — same model; parity on Global CRIS, else +10% |
-| GPT-5.6 Luna  | GPT-5.6 Luna   | `openai.gpt-5.6-luna` / `us.` `in.` `global.` prefixed  | `strong_migrate` — same model; parity on Global CRIS, else +10% |
-| GPT-5.5       | GPT-5.5        | `openai.gpt-5.5` (mantle only)                          | `strong_migrate` — same model, ~10% over OpenAI std             |
-| GPT-5.4       | GPT-5.4        | `openai.gpt-5.4` (mantle only)                          | `strong_migrate` — same model, ~10% over OpenAI std             |
+| Source model  | Bedrock target | Model ID (mantle / runtime CRIS)                        | Assessment                                                                                                           |
+| ------------- | -------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| GPT-6 Astra   | GPT-6 Astra    | `openai.gpt-6-astra` / `us.` `global.` prefixed         | `strong_migrate` after the Astra region/API gate in `shared/openai-on-bedrock.md`; price the chosen inference option |
+| GPT-5.6 Sol   | GPT-5.6 Sol    | `openai.gpt-5.6-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10%                                                      |
+| GPT-5.6 Terra | GPT-5.6 Terra  | `openai.gpt-5.6-terra` / `us.` `in.` `global.` prefixed | `strong_migrate` — same model; parity on Global CRIS, else +10%                                                      |
+| GPT-5.6 Luna  | GPT-5.6 Luna   | `openai.gpt-5.6-luna` / `us.` `in.` `global.` prefixed  | `strong_migrate` — same model; parity on Global CRIS, else +10%                                                      |
+| GPT-5.5       | GPT-5.5        | `openai.gpt-5.5` (mantle only)                          | `strong_migrate` — same model, ~10% over OpenAI std                                                                  |
+| GPT-5.4       | GPT-5.4        | `openai.gpt-5.4` (mantle only)                          | `strong_migrate` — same model, ~10% over OpenAI std                                                                  |
 
 Then apply the **region gate** below. Record `model_change: false` and the chosen path in
-`aws-design-ai.json` → `ai_architecture.code_migration`: `migration_path: "mantle_openai_responses"` for the
-in-region mantle endpoint, or `migration_path: "runtime_openai_cris"` when a GPT-5.6 target is served via
+`aws-design-ai.json` → `ai_architecture.code_migration`: `migration_path: "mantle_openai_chat"` for
+Astra sources using Chat Completions, or `"mantle_openai_responses"` for a selected Mantle Responses
+path. Use `migration_path: "runtime_openai_cris"` when a GPT-6 Astra / GPT-5.6 target is served via
 `bedrock-runtime` with a CRIS id (the model cards recommend runtime for new applications).
 
 Report the assessment honestly: `strong_migrate` here means "low-risk, well-supported move", not "cheaper".
@@ -74,6 +78,12 @@ Report the assessment honestly: `strong_migrate` here means "low-risk, well-supp
 ### Region gate (applies to every Tier 0 selection — endpoint-aware)
 
 The gate differs by family (see `shared/openai-on-bedrock.md` § Regional Availability):
+
+**GPT-6 Astra:** apply its own mantle and runtime matrices from the canonical catalog. For strict
+in-region residency, the mantle region must match. Otherwise offer a supported runtime CRIS path
+with explicit routing consent; a Global-only caller region cannot satisfy a Geo-only requirement.
+If neither path meets the constraints, offer a supported region or a model change under Tier 1.
+Do not assume GPT-5.6's broader regional footprint applies to Astra.
 
 **GPT-5.6 Sol / Terra / Luna:** rarely blocked. If the target region is in the mantle in-region matrix, either
 endpoint works. If not, the `bedrock-runtime` CRIS path (Geo `us.`/`in.`, Global `global.`) covers most commercial
@@ -107,14 +117,18 @@ let the user choose.** Do not silently default to either.
 
 Option A tier mapping:
 
-| Source tier                                              | Bedrock GPT target |
-| -------------------------------------------------------- | ------------------ |
-| Flagship reasoning (o1-pro, o3-pro, GPT-5 Pro, `*-Pro`)  | GPT-5.6 Sol        |
-| Flagship general (GPT-4o, GPT-4.1, GPT-5/5.1/5.2, GPT-4) | GPT-5.6 Terra      |
-| Mid / reasoning (o1, o3, o4-mini)                        | GPT-5.6 Terra      |
-| Fast / cheap (`*-mini`, `*-nano`, GPT-3.5 Turbo)         | GPT-5.6 Luna       |
+| Source tier                                              | Bedrock GPT target                                     |
+| -------------------------------------------------------- | ------------------------------------------------------ |
+| Flagship reasoning (o1-pro, o3-pro, GPT-5 Pro, `*-Pro`)  | GPT-6 Astra; GPT-5.6 Sol as the lower-cost alternative |
+| Flagship general (GPT-4o, GPT-4.1, GPT-5/5.1/5.2, GPT-4) | GPT-5.6 Terra                                          |
+| Mid / reasoning (o1, o3, o4-mini)                        | GPT-5.6 Terra                                          |
+| Fast / cheap (`*-mini`, `*-nano`, GPT-3.5 Turbo)         | GPT-5.6 Luna                                           |
 
 Option A is subject to the same region gate as Tier 0.
+
+Astra is the capability-first choice for this reasoning tier, not a mandatory upgrade for an
+existing Bedrock model. At the recorded rates it costs 2.5x Sol for the same inference option and
+context tier; evaluate quality and cost before choosing between them.
 
 ### Tier 2 — Cost priority override
 
@@ -145,16 +159,17 @@ reported as unavailable rather than priced (see `shared/openai-on-bedrock.md`).
 > reduction, which AWS lists as promotional through at least Nov 21, 2026. The pre-reduction in-region
 > rate was $5.50/$33.00; GPT-5.5 keeps that rate.
 
-| Bedrock GPT baseline | Price        | Cross-family alternative | Price        | Delta                  |
-| -------------------- | ------------ | ------------------------ | ------------ | ---------------------- |
-| GPT-5.6 Sol          | 4.40 / 22.00 | Claude Opus 4.8          | 5.00 / 25.00 | Sol 12% cheaper        |
-| GPT-5.6 Terra        | 2.20 / 13.20 | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 20% cheaper     |
-| GPT-5.5              | 5.50 / 33.00 | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 68% cheaper     |
-| GPT-5.5              | 5.50 / 33.00 | Claude Opus 4.8          | 5.00 / 25.00 | Opus 20% cheaper       |
-| GPT-5.4              | 2.75 / 16.50 | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 36% cheaper     |
-| GPT-5.6 Luna         | 0.22 / 1.32  | Claude Haiku 4.5         | 1.00 / 5.00  | **Luna 75% cheaper**   |
-| GPT-5.6 Luna         | 0.22 / 1.32  | Nova Lite                | 0.06 / 0.24  | Nova Lite 80% cheaper  |
-| GPT-5.6 Luna         | 0.22 / 1.32  | Nova Micro               | 0.035 / 0.14 | Nova Micro 88% cheaper |
+| Bedrock GPT baseline | Price         | Cross-family alternative | Price        | Delta                                 |
+| -------------------- | ------------- | ------------------------ | ------------ | ------------------------------------- |
+| GPT-6 Astra          | 11.00 / 55.00 | Claude Opus 4.8          | 5.00 / 25.00 | Opus 55% cheaper; evaluate capability |
+| GPT-5.6 Sol          | 4.40 / 22.00  | Claude Opus 4.8          | 5.00 / 25.00 | Sol 12% cheaper                       |
+| GPT-5.6 Terra        | 2.20 / 13.20  | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 20% cheaper                    |
+| GPT-5.5              | 5.50 / 33.00  | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 68% cheaper                    |
+| GPT-5.5              | 5.50 / 33.00  | Claude Opus 4.8          | 5.00 / 25.00 | Opus 20% cheaper                      |
+| GPT-5.4              | 2.75 / 16.50  | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 36% cheaper                    |
+| GPT-5.6 Luna         | 0.22 / 1.32   | Claude Haiku 4.5         | 1.00 / 5.00  | **Luna 75% cheaper**                  |
+| GPT-5.6 Luna         | 0.22 / 1.32   | Nova Lite                | 0.06 / 0.24  | Nova Lite 80% cheaper                 |
+| GPT-5.6 Luna         | 0.22 / 1.32   | Nova Micro               | 0.035 / 0.14 | Nova Micro 88% cheaper                |
 
 Findings worth surfacing to users:
 
@@ -215,7 +230,7 @@ frontier tier. Recommend them when the user wants OpenAI-architecture models on 
 
 ## Migration Decision Framework
 
-**Migrate to Bedrock, same model (Tier 0), if:** the source is GPT-5.6 / 5.5 / 5.4 and the target region carries it.
+**Migrate to Bedrock, same model (Tier 0), if:** the source is GPT-6 Astra / GPT-5.6 / 5.5 / 5.4 and the selected endpoint, API, and region support it.
 This is the common case and needs no cost justification.
 
 **Migrate to Bedrock, model change (Tier 1/2), if:**
@@ -223,8 +238,8 @@ This is the common case and needs no cost justification.
 - The source model is not on Bedrock (see the region and catalog lists in `shared/openai-on-bedrock.md`)
 - The user's priority is cost and they accept a model change — note that the cheapest option is often Nova, and that
   GPT-5.6 Luna already beats Claude Haiku 4.5 on price
-- Bedrock-native features are required that mantle does not expose (Guardrails, Knowledge Bases, invocation logging,
-  Converse-based tooling) — these need a Bedrock-native model or gpt-oss
+- Required features cannot be served by a supported same-model path. Astra / GPT-5.6 have runtime CRIS
+  options for applicable governance features; check their capability matrix before proposing a model change
 
 **Consider staying on OpenAI's own API only if:**
 
@@ -248,25 +263,25 @@ rather than dismissing it. For a long-context (>272K) workload the gap is much w
 
 ## Feature Migration
 
-| OpenAI Feature                             | Bedrock Equivalent                                          | Notes                                                                                                |
-| ------------------------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| OpenAI SDK (direct)                        | Same model on mantle Responses API                          | Base URL + credential + model ID change; see `shared/openai-on-bedrock.md` for the `/openai/v1` path |
-| Responses API                              | Mantle Responses API                                        | Closest to a drop-in; still verify the path and model ID                                             |
-| Chat Completions                           | Reshape to Responses                                        | Unverified for GPT-5.x — probe before committing                                                     |
-| Function calling                           | Supported on GPT-5.x via mantle; Claude tools via Converse  | Same-model keeps tool semantics identical                                                            |
-| Reasoning effort                           | `reasoning={"effort": ...}` on mantle                       | `none` / `low` / `medium` / `high` / `xhigh` / `max`                                                 |
-| Prompt caching                             | GPT-5.6 only (90% off cached input)                         | Not listed for GPT-5.5 / 5.4; Claude has its own caching                                             |
-| Streaming                                  | Supported                                                   | Verify per surface                                                                                   |
-| Vision                                     | GPT-5.x (image input) or Claude / Llama 4                   | Same-model preserves behavior                                                                        |
-| JSON mode                                  | Claude (excellent), Nova Pro (good)                         | Most models via prompt                                                                               |
-| Embeddings (ada-002, `text-embedding-3-*`) | Titan Embeddings v2                                         | No OpenAI embedding model on Bedrock; must re-embed all documents                                    |
-| DALL-E / gpt-image                         | Stability AI                                                | Nova Canvas v1 is Legacy; see `ai-model-lifecycle.md`                                                |
-| Whisper (STT)                              | Amazon Transcribe                                           | Different service, API, and pricing model                                                            |
-| TTS                                        | Amazon Polly / Nova 2 Sonic                                 | Different pricing model                                                                              |
-| Assistants API                             | See decision tree below                                     | Path depends on which features are used                                                              |
-| Realtime API                               | No equivalent                                               | Stay on OpenAI for this                                                                              |
-| Codex                                      | Not verified on Bedrock — see `shared/openai-on-bedrock.md` | Do not price; re-check the OpenAI model card index first                                             |
-| Guardrails / KB / invocation logging       | Bedrock-native model or gpt-oss                             | Not available through the mantle GPT path                                                            |
+| OpenAI Feature                             | Bedrock Equivalent                                                              | Notes                                                                                                |
+| ------------------------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| OpenAI SDK (direct)                        | Same model on mantle Responses API                                              | Base URL + credential + model ID change; see `shared/openai-on-bedrock.md` for the `/openai/v1` path |
+| Responses API                              | Mantle Responses API                                                            | Closest to a drop-in; still verify the path and model ID                                             |
+| Chat Completions                           | Preserve on Astra Mantle when selected; otherwise follow the planned API change | GPT-5.x support remains model/endpoint-specific; verify before committing                            |
+| Function calling                           | Supported on GPT-5.x via mantle; Claude tools via Converse                      | Same-model keeps tool semantics identical                                                            |
+| Reasoning effort                           | `reasoning={"effort": ...}` on mantle                                           | `none` / `low` / `medium` / `high` / `xhigh` / `max`                                                 |
+| Prompt caching                             | GPT-5.6 only (90% off cached input)                                             | Not listed for GPT-5.5 / 5.4; Claude has its own caching                                             |
+| Streaming                                  | Supported                                                                       | Verify per surface                                                                                   |
+| Vision                                     | GPT-5.x (image input) or Claude / Llama 4                                       | Same-model preserves behavior                                                                        |
+| JSON mode                                  | Claude (excellent), Nova Pro (good)                                             | Most models via prompt                                                                               |
+| Embeddings (ada-002, `text-embedding-3-*`) | Titan Embeddings v2                                                             | No OpenAI embedding model on Bedrock; must re-embed all documents                                    |
+| DALL-E / gpt-image                         | Stability AI                                                                    | Nova Canvas v1 is Legacy; see `ai-model-lifecycle.md`                                                |
+| Whisper (STT)                              | Amazon Transcribe                                                               | Different service, API, and pricing model                                                            |
+| TTS                                        | Amazon Polly / Nova 2 Sonic                                                     | Different pricing model                                                                              |
+| Assistants API                             | See decision tree below                                                         | Path depends on which features are used                                                              |
+| Realtime API                               | No equivalent                                                                   | Stay on OpenAI for this                                                                              |
+| Codex                                      | Not verified on Bedrock — see `shared/openai-on-bedrock.md`                     | Do not price; re-check the OpenAI model card index first                                             |
+| Guardrails / KB / invocation logging       | Bedrock-native model or gpt-oss                                                 | Not available through the mantle GPT path                                                            |
 
 ---
 

@@ -721,6 +721,7 @@ _POOL_LIFECYCLE_KEYS = {
     "claude_opus_4_8": "claude-opus-4-8",
     "claude_sonnet_5": "claude-sonnet-5",
     "claude_haiku_4_5": "claude-haiku-4-5",
+    "openai_gpt_6_astra": "gpt-6-astra",
     "openai_gpt_5_6_sol": "gpt-5.6-sol",
     "openai_gpt_5_6_terra": "gpt-5.6-terra",
     "openai_gpt_5_6_luna": "gpt-5.6-luna",

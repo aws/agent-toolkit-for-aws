@@ -14,7 +14,11 @@ Generate migration artifacts from the AI migration plan and design. Artifacts va
 - `ai-migration/test_comparison.py` — A/B test harness (always Python)
 - `ai-migration/bedrock_monitoring.tf` — Bedrock cost budget, anomaly detection, inference profiles (always)
 
-**Outputs (direct SDK users — `ai_framework` = `"direct"`):**
+**Outputs (direct SDK users, selected Mantle path):**
+
+- `ai-migration/migrate_to_mantle.sh` — Selected Chat/Responses client setup; no provider adapter
+
+**Outputs (direct SDK users, selected runtime path):**
 
 - `ai-migration/provider_adapter.{py,js,go}` — Provider abstraction with feature flag
 
@@ -45,7 +49,8 @@ If any required file is missing: **STOP**. Output: "Missing required artifact: [
 
 Check `preferences.json` → `ai_constraints.ai_framework.value` and `aws-design-ai.json` → `ai_architecture.code_migration.migration_path`:
 
-- `migration_path` = `"mantle"` → Generate Mantle setup (Step 1M) + setup (Step 3) + test harness (Step 2). Skip provider adapter (Step 1).
+- `migration_path` starts with `"mantle"` (`"mantle"`, `"mantle_openai_chat"`, `"mantle_openai_responses"`) → Generate Mantle setup (Step 1M) + setup (Step 3) + the adapter-free Mantle test harness (Step 2). Skip provider adapter (Step 1). Preserve the selected Chat/Responses API; legacy `"mantle"` defaults to Responses for proprietary GPT targets.
+- `migration_path` = `"runtime_openai_cris"` or `"converse"` → Generate the runtime provider adapter (Step 1), setup (Step 3), and runtime test harness (Step 2). Retain the validated profile ID and the runtime API recorded in the design; the existing Converse plan uses Converse. An explicitly selected OpenAI-compatible runtime API must retain its Chat/Responses client at `https://bedrock-runtime.{region}.amazonaws.com/openai/v1`.
 - `migration_path` = `"gpt-oss"` → Generate provider adapter (Step 1) targeting the gpt-oss model on Bedrock via the Converse API + setup (Step 3) + test harness (Step 2). Use the Bedrock model ID from `aws-design-ai.json` → `ai_architecture.bedrock_models[].aws_model_id` (the gpt-oss model ID). Do NOT generate a Mantle script — gpt-oss uses the Converse API directly.
 - `"direct"` or absent → Generate provider adapter (Step 1) + setup (Step 3) + test harness (Step 2)
 - `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → Skip Step 1, generate gateway config (Step 3B) instead
@@ -63,13 +68,12 @@ Generate `ai-migration/migrate_to_mantle.sh` — a shell script that configures 
 **Requirements:**
 
 - Dry-run by default (`--execute` flag to apply)
-- Print the environment variables to set: `OPENAI_BASE_URL=https://bedrock-mantle.{region}.api.aws/v1`, `OPENAI_API_KEY=<bedrock-api-key>`
+- For proprietary GPT targets, print `OPENAI_BASE_URL=https://bedrock-mantle.{region}.api.aws/openai/v1`. Use the model-specific base path from `shared/openai-on-bedrock.md`; never use generic `/v1` for Astra. Credentials must be Bedrock credentials, not the source provider's API key; prefer the auto-refreshing `BedrockOpenAI` token provider shown in that reference.
 - Print the model string change: current model ID → Bedrock model ID from `aws-design-ai.json`
-- Include a quick verification call using the OpenAI SDK against the Mantle endpoint
-- **Add a warning comment** about `max_tokens`: OpenAI SDK users migrating via Mantle carry over their existing `max_tokens` value unchanged. If the existing value is 4096 (OpenAI default), this reduces Bedrock concurrency by 5–8x on TPM quota. Instruct users to audit `max_tokens` before production and include the workload-type lookup table (see Step 1M max_tokens guidance above).
-- Note: "No code changes required. Your existing OpenAI SDK calls work unchanged."
+- Include a quick verification call using the selected Mantle API: `chat.completions.create` for `mantle_openai_chat`, `responses.create` for `mantle_openai_responses`. Reuse the target-call shape in Step 2; never call Converse with a bare Astra ID.
+- Preserve request/response shapes only when the selected API matches the source. Otherwise include the planned API reshape. Do not claim all existing SDK calls work unchanged; parameters and tool/state behavior still need the selected model/API's verification.
 - Reference [Mantle documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) for API key generation
-- **Set `max_tokens` default to 1024** in the generated migration script with an explanatory comment. Do NOT inherit the caller's existing `max_tokens` value (often 4096 from OpenAI defaults) — this reduces concurrency by 5–8x on Bedrock's TPM quota. Include a workload-type lookup table as a comment so users tune before production:
+- Include the output-budget lookup table below as a starting heuristic. Send a budget parameter only after verifying its name and behavior for the selected API; `MAX_TOKENS` is a local tuning value, not permission to send a `max_tokens` kwarg to every model. Do not apply Claude/runtime quota multipliers or GPT-5.x cache exemptions to Astra Mantle.
 
   ```bash
   # max_tokens guidance — tune before production:
@@ -100,7 +104,7 @@ Generate `ai-migration/provider_adapter.{py,js,go}` — an abstraction layer tha
   - `streaming: true` → `generate_stream(prompt) → Iterator[str]`
   - `embeddings: true` → `embed(text) → list[float]`
 - **Source provider class**: Use SDK imports from `ai-workload-profile.json` → `integration.sdk_imports`. Use model IDs from `ai-workload-profile.json` → `models[].model_id`.
-- **Bedrock provider class**: Use `boto3` Converse API (`converse` for generate, `converse_stream` for streaming, `invoke_model` for embeddings with Titan). Use inference profile ARNs from `bedrock_monitoring.tf` output `bedrock_inference_profile_arns` as `modelId` — this enables cost attribution in Cost Explorer. Fall back to raw model IDs from `aws-design-ai.json` → `ai_architecture.bedrock_models[].aws_model_id` if profiles are not yet deployed. Use region from `preferences.json` → `design_constraints.target_region`.
+- **Bedrock provider class**: For a Converse plan, use `boto3` (`converse` for generate, `converse_stream` for streaming, `invoke_model` for separately selected Titan embeddings). For `runtime_openai_cris`, preserve the runtime API selected in the design: Converse uses this adapter shape; an OpenAI-compatible Chat/Responses selection uses the OpenAI SDK at `https://bedrock-runtime.{region}.amazonaws.com/openai/v1` with Bedrock credentials and the exact CRIS ID. Never send a bare Astra ID to runtime or replace a validated `global.` profile with `us.`. Use an application inference profile only when the selected model/API supports it; otherwise retain `aws-design-ai.json` → `ai_architecture.bedrock_models[].aws_model_id`. Use region from `preferences.json` → `design_constraints.target_region`.
 
   ```python
   # Use inference profile ARN for cost attribution (preferred)
@@ -114,7 +118,7 @@ Generate `ai-migration/provider_adapter.{py,js,go}` — an abstraction layer tha
 - **Shadow mode**: Send requests to both providers, return source response, log Bedrock response for comparison.
 - Include error handling and logging for API calls.
 
-For JS: use `@aws-sdk/client-bedrock-runtime` + `@google-cloud/vertexai`. For Go: use `github.com/aws/aws-sdk-go-v2/service/bedrockruntime` + `cloud.google.com/go/aiplatform`.
+For JS/Go, choose the source SDK from the recorded imports rather than assuming Vertex. Use the AWS runtime SDK for a Converse target, or the matching OpenAI client for a selected OpenAI-compatible runtime API.
 
 ---
 
@@ -125,13 +129,39 @@ Generate `ai-migration/test_comparison.py` — always Python regardless of adapt
 **Requirements:**
 
 - Accept prompts from a JSON file (`--prompts`) or use built-in defaults (`--quick`)
+- Support `--target-only` for the setup smoke test; this mode needs no source credentials.
 - Run each prompt against both the source provider and Bedrock
 - Measure per-prompt: latency (ms), success/failure, response text (truncated to 500 chars)
 - Compute summary statistics: p50/p95/mean latency per provider, quality score (trait matching against expected traits), pass/fail criteria
 - Pass criteria: Bedrock latency ≤ 2x source latency, mean quality score ≥ 0.9
 - Output structured JSON to `--output` (default: `comparison_results.json`)
 - Built-in test prompts: include 3-5 prompts based on `ai-workload-profile.json` → `models[].usage_context` covering the primary use case
-- Import the provider adapter via `from provider_adapter import get_provider`
+- **Runtime adapter path:** import `get_provider` from the emitted provider adapter.
+- **Mantle path:** do not import `provider_adapter` because Step 0 intentionally skips it. Call the source using its recorded SDK and call the target directly with the selected Mantle API. Use this target function for proprietary GPT plans, substituting the saved design values:
+
+  ```python
+  def call_bedrock(prompt):
+      from aws_bedrock_token_generator import provide_token
+      from openai import BedrockOpenAI
+
+      region = "{target_region}"
+      model_id = "{aws_model_id}"
+      api_path = "{migration_path}"
+      client = BedrockOpenAI(
+          aws_region=region,
+          bedrock_token_provider=lambda: provide_token(region=region),
+          max_retries=2,
+      )
+      if api_path == "mantle_openai_chat":
+          response = client.chat.completions.create(
+              model=model_id, messages=[{"role": "user", "content": prompt}]
+          )
+          return response.choices[0].message.content
+      response = client.responses.create(model=model_id, input=prompt)
+      return response.output_text
+  ```
+
+  Install `openai>=2.45.0,<3` and `aws-bedrock-token-generator>=1,<2` in the generated project's environment. The setup smoke test invokes this same harness with `--target-only --quick`, so setup and comparison cannot choose different APIs.
 
 ---
 
@@ -143,11 +173,12 @@ Generate `ai-migration/setup_bedrock.sh`.
 
 - Dry-run by default (`--execute` flag to run for real)
 - Step 1 — Request model access: List each model from `aws-design-ai.json` → `bedrock_models[].aws_model_id` and the embedding model
-- Step 2 — Create IAM role: Trust policy for the compute platform (Lambda, ECS, or EC2 based on `aws-design.json` if present). Bedrock policy: `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` scoped to `arn:aws:bedrock:*::foundation-model/*`
+- Step 2 — Create IAM role: Trust policy for the compute platform (Lambda, ECS, or EC2 based on `aws-design.json` if present). Match inference permissions to the selected endpoint. Mantle needs `bedrock-mantle:CreateInference` scoped to `arn:aws:bedrock-mantle:{region}:{account_id}:project/*`, plus `bedrock-mantle:CallWithBearerToken` on `*` when using bearer credentials. Runtime needs `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream` against the selected foundation-model ARN and, for CRIS, the exact inference-profile ARN. Runtime actions do not authorize Mantle.
+- If the runtime client uses `BEDROCK_INFERENCE_PROFILE_ARN` from the generated monitoring output, also authorize that exact `application-inference-profile/…` ARN, retaining the backing model/CRIS resources needed for the selected model and fallback. Resolve it from the same output used by the client; do not grant every application profile. Re-run setup after enabling or changing this override so the effective invocation target and IAM remain aligned. See [inference-profile IAM prerequisites](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html).
 - Compliance carry-through: if `preferences.json` → `design_constraints.compliance` is set and not `none`/`unknown` (full-flow Q2 / AI-only Q1.5), the script and its printed notes MUST reflect the design's Step 0.7 constraints — `AWS_REGION` from the compliance-constrained region (GovCloud for fedramp, EU for gdpr), `eu.` inference-profile model IDs for gdpr, and for hipaa a printed warning that Bedrock invocation logs retain original content (KMS-encrypt + restrict IAM on the log group before enabling)
 - Step 3 — Print required environment variables: `AWS_REGION`, `AI_PROVIDER=bedrock`, model IDs
 - Step 4 — Check quota: Query current TPM quota for the primary model via `aws service-quotas get-service-quota`. If `aws-design-ai.json` → `ai_architecture.quota_risk` is `"high"` or `"medium"`, print warning: "⚠️ Your token volume may exceed default Bedrock quotas. Request a quota increase via Service Quotas console (allow 1–5 business days)." Include the `aws service-quotas request-service-quota-increase` command template.
-- Step 5 — Verification: Test Bedrock access with a simple `converse` call using the primary model
+- Step 5 — Verification: Run `test_comparison.py --target-only --quick` using the same selected API, model ID and region as the generated client. A Mantle selection must never run a Converse probe; a runtime selection must preserve its validated profile ID.
 - If `$MIGRATION_DIR/terraform/` exists, print coordination note: "Ensure the IAM role is referenced in compute.tf task definitions"
 - Use region from `preferences.json` → `design_constraints.target_region`
 
@@ -583,6 +614,8 @@ print(f"Next step: Validate model quality, then migrate to Strands.")
 Creates `ai-migration/bedrock_monitoring.tf` — standalone Terraform for AI-only migrations
 that have no `baseline.tf` from the infra track.
 
+Budget and anomaly monitoring apply to every path. **Application inference profiles are conditional:** omit the profile resource and its output for Mantle targets, including Astra, and for any model/API without documented support. Astra supports application inference profiles only on runtime Converse, not on runtime Chat/Responses. An unsupported profile must not prevent the applicable budget/anomaly resources from being emitted.
+
 > **These are detective controls, not spend caps.** Bedrock has no native spend limit.
 > Anomaly Detection has ~24h data lag — you'll know within a day, not at month-end invoice.
 > AI-only migrations (infra stays on GCP) have zero cost guardrails without this file.
@@ -701,22 +734,22 @@ resource "aws_ce_anomaly_subscription" "bedrock_alert" {
 }
 
 # Application inference profiles — cost attribution by environment/app
+# AGENT: omit this resource and its output for Mantle or any unsupported model/API.
 # Tags on these profiles appear in Cost Explorer; tags on API calls do not.
 # copy_from must be a full foundation-model ARN or cross-region inference profile ARN.
 # For Claude models, use the cross-region inference profile ARN format:
 #   arn:aws:bedrock:{region}:{account_id}:inference-profile/us.anthropic.claude-sonnet-5
 # For Amazon Nova models, use:
 #   arn:aws:bedrock:{region}:{account_id}:inference-profile/us.amazon.nova-pro-v1:0
-# [AGENT: generate one block per model in aws-design-ai.json → ai_architecture.bedrock_models[]]
+# [AGENT: generate one block per eligible runtime model/API in the saved design]
 resource "aws_bedrock_inference_profile" "primary" {
   name = "${var.project_name}-${var.environment}-primary"
 
   model_source {
-    # Use cross-region inference profile ARN, not bare model ID
-    copy_from = "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:inference-profile/{cross_region_inference_profile_id}"
-    # AGENT: replace {cross_region_inference_profile_id} with the correct ID from
-    # aws-design-ai.json bedrock_models[].aws_model_id, prefixed with "us." for US regions
-    # e.g., us.anthropic.claude-sonnet-5 or us.amazon.nova-pro-v1:0
+    copy_from = "{verified_model_source_arn}"
+    # AGENT: use the exact foundation-model or CRIS ARN resolved for this model/API.
+    # Preserve the chosen profile's geography; never manufacture a "us." prefix
+    # or replace a validated global profile with a regional one.
   }
 
   tags = {

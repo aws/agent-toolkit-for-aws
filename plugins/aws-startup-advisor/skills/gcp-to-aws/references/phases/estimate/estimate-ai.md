@@ -70,6 +70,11 @@ If design or discover phase has more specific token estimates, use those instead
 
 **Long-context surcharge:** If `ai_critical_feature = "ultra_long_context"` in `preferences.json`, Claude models charge 2x the standard input rate for tokens beyond 200K context. Apply the surcharge to the portion of input tokens that exceeds 200K per request. If per-request token counts are unknown, assume 50% of input tokens fall in the long-context tier as a conservative estimate.
 
+**Astra context and inference option:** use its dedicated table in `shared/pricing-cache.md`:
+short-context at up to 272K input tokens, long-context above that boundary, with separate
+In-Region/Geo and Global input/output rates. Do not use a short-context row for a long-context
+workload or apply a Claude-specific surcharge to Astra.
+
 **Comparison table columns:** Model, Bedrock Monthly, vs Source Provider ($ and %), vs Current GCP, Quality, Capabilities Match (checked against `ai_capabilities_required`).
 
 Include source provider pricing from `aws-design-ai.json` → `bedrock_models[].source_provider_price`.
@@ -115,13 +120,22 @@ Do **not** repeat these as "costs" in the user-facing summary.
 
 Present the monthly and annual cost difference between current GCP AI spend and projected Bedrock cost:
 
-- **If the model is unchanged** (`model_change: false`): projected cost is **about 10% higher**, not the same — Bedrock in-region is priced at OpenAI's data-residency tier, which is 1.10x OpenAI standard. Quote the increase plainly and make the case on non-cost grounds. If any workload exceeds 272K context, price it at the long-context tier (2.0x input / 1.5x output) and show that separately; it can dominate the comparison.
+- **If the model is unchanged** (`model_change: false`): compute the difference from the verified source rate and the selected model's context tier and inference option. Do not impose a fixed premium. A verified $60 source versus $60 Astra Global comparison is 0%; an applicable $60 source versus $66 In-Region/Geo comparison is 10%. If the source rate is unverified, mark the source comparison unavailable and do not infer a percentage from another tier. For Astra inputs above 272K, select its long-context input/output rates for that inference option before calculating totals.
 - **If Bedrock is cheaper**: present monthly and annual savings clearly
 - **If Bedrock is more expensive**: state clearly, justify with non-cost benefits or note "not justified if cost is the only priority"
 
+When both monthly totals are established for the same workload volume, calculate:
+
+```python
+monthly_difference = bedrock_monthly - source_monthly
+percentage_difference = monthly_difference / source_monthly * 100 if source_monthly > 0 else None
+```
+
+A zero source total has no defined percentage comparison; show the dollar difference instead.
+
 Reference `aws-design-ai.json` → `honest_assessment`. If `"recommend_stay"`, present prominently along with `honest_assessment_reason`.
 
-**Non-cost benefits to present:** usage counting toward existing AWS commitments, IAM/VPC/PrivateLink/KMS/CloudTrail governance, in-region processing for data residency, prompt caching (Claude, and GPT-5.6 at 90% off cached input with cached tokens exempt from the input-TPM quota), model flexibility (100+ models), AWS ecosystem (Guardrails, Knowledge Bases, AgentCore), and — for a same-model move — the elimination of behavior-delta and prompt-regression risk.
+**Non-cost benefits to present:** usage counting toward existing AWS commitments, IAM/VPC/PrivateLink/KMS/CloudTrail governance, in-region processing for data residency, prompt caching (Claude, and GPT-5.6 at 90% off cached input with cached tokens exempt from the input-TPM quota), model flexibility (100+ models), AWS ecosystem (Guardrails, Knowledge Bases, AgentCore), and — for a same-model move — reduced model-change risk, while endpoint/API compatibility still requires evaluation.
 
 **Pricing source caveat (all providers):** a `pricing-cache.md` cell marked `_unverified_` is **blocking for any quoted figure, whatever the provider** — resolve it from the Bedrock pricing page or the model card before the row enters `model_comparison` or the ROI table; never substitute a guess or a same-tier sibling's rate. An `_unverified_` cache cell is not evidence the model is unavailable or free — it means the rate was not confirmed when the cache was last updated. See `shared/openai-on-bedrock.md`.
 
@@ -219,7 +233,7 @@ Produce a clear migrate/stay/optimize verdict for the AI workload migration. Thi
 
 | Condition                                                                                                                         | Verdict             | `recommendation.path` |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------- |
-| **Same model on Bedrock** (`model_change: false`) — ~10% higher, short-context; non-cost benefits carry it                        | Migrate with caveat | `migrate_optimized`   |
+| **Same model on Bedrock** (`model_change: false`) — use the verified Part 5 cost delta and applicable non-cost benefits                        | Migrate with caveat | `migrate_optimized`   |
 | Bedrock cheaper AND capabilities match                                                                                            | Migrate             | `migrate_optimized`   |
 | Bedrock more expensive BUT non-cost benefits justify (vendor diversification, Guardrails, multi-model) AND user priority ≠ `cost` | Migrate with caveat | `migrate_optimized`   |
 | Bedrock more expensive AND user priority = `cost` AND no compelling non-cost reason                                               | Stay                | `stay`                |
@@ -243,7 +257,7 @@ Produce a clear migrate/stay/optimize verdict for the AI workload migration. Thi
 
 - MUST emit `recommendation` — never omit. If data is insufficient, set `confidence: "low"` and state why in `rationale`.
 - If `honest_assessment` from `aws-design-ai.json` says `recommend_stay`, `recommendation.path` MUST be `stay` regardless of cost numbers.
-- **A same-model move is a modest cost increase, not parity.** When `bedrock_models[].model_change` is `false`, Bedrock in-region costs ~10% more than OpenAI standard for the same model. Report that figure rather than "no savings identified", and argue the case on commitments, governance, residency, prompt caching, and eliminated behavior-delta risk. A ~10% increase alone should not route to `stay` unless `ai_priority = cost` and no non-cost driver applies; a long-context workload at the 1M tier is a different matter and may legitimately favour staying.
+- **Same-model cost is the computed Part 5 result, not a fixed premium.** The final `recommendation.rationale` must use the selected inference option/context tier and verified source baseline. Report parity, savings or an increase as actually calculated. When the source comparison is unavailable, say so, set confidence appropriately and do not invent a percentage. Apply the decision table to those actual costs and the user's non-cost drivers; the `honest_assessment: recommend_stay` override still takes precedence.
 - For multi-workload runs: if some workloads favor migration and others don't, use `migrate_phased` and list which workloads to migrate vs. keep in `rationale`.
 
 ---

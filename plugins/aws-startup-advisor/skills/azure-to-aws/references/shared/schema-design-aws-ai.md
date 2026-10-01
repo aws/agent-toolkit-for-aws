@@ -105,7 +105,8 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
   do NOT appear here — they are `design_blocks[]` rows with `target_aws_service`.
 - **`capability_mapping`** — per capability that is `true` in the profile's
   `integration.capabilities_summary`: `{ parity: "full|partial|none", notes }`.
-- **`code_migration`** — `primary_pattern` (matches profile `integration.pattern`),
+- **`code_migration`** — `migration_path` (the selected API/endpoint path consumed by Generate),
+  `primary_pattern` (matches profile `integration.pattern`),
   `framework`, `files_to_modify[]`, `dependency_changes`, and — when the source is Azure
   OpenAI / OpenAI — `openrouter_path` when a router was detected
   (`same_model_mantle|direct|litellm|keep_openrouter`).
@@ -114,13 +115,13 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
 
 ## migration_path vocabulary
 
-`mantle_openai_responses` (Azure OpenAI / OpenAI source, model on Bedrock, region carries it —
-keep the SDK, `model_change: false`) · `converse` (Bedrock-native Converse/`bedrock-runtime`;
-set `model_change: true` when a proprietary GPT model must move off mantle for Guardrails /
-Knowledge Bases / logging / an unsupported region) · `gpt-oss` (OpenAI-lineage model on the
-Bedrock-native runtime) · `direct` (framework-agnostic Bedrock SDK swap). A proprietary
-`openai.gpt-*` model ID is NEVER paired with a `converse`/`bedrock-runtime` path — those models
-are mantle-only.
+`mantle_openai_responses` (selected Mantle Responses API) · `mantle_openai_chat`
+(Astra Chat on Mantle, subject to its region/API gate) · `runtime_openai_cris` (supported
+Astra/GPT-5.6 CRIS id on runtime) · `converse` (Bedrock-native Converse) · `gpt-oss`
+(open-weight OpenAI model on runtime) · `direct` (framework-agnostic SDK swap).
+`model_change` describes model identity, not the endpoint: it stays false for a same-model
+CRIS move. Bare proprietary GPT ids select Mantle; a runtime Astra target must retain its
+supported `us.` / `global.` profile id. Never send bare Astra to Converse or invent a profile.
 
 ## regional_validation
 
@@ -170,8 +171,8 @@ rubric file (`ai.md`, `ai-azure-openai-to-bedrock.md`, or a `vendored/ai/*` ref)
       `price_comparison`.
 - [ ] `honest_assessment` overall is the weakest across `bedrock_models[]`; if
       `recommend_stay`, `honest_assessment_reason` names a non-cost blocker.
-- [ ] No `bedrock_models[]` entry pairs a proprietary `openai.gpt-*` model ID with a
-      `converse`/`bedrock-runtime` migration path (mantle-only).
+- [ ] Bare proprietary GPT ids use Mantle; runtime Astra uses a supported `us.` / `global.`
+      CRIS id and its caller-region gate. The recorded API and `model_change` match the design.
 - [ ] If `ai_source` is `azure_openai` or `openai`: every source model that is available on
       Bedrock and carried by the target region maps to ITSELF with `model_change: false` — not
       to a Claude/Nova substitute.

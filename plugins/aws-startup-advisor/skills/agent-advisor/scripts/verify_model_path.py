@@ -147,6 +147,12 @@ def verify_workload(
         elif path == "mantle_openai_responses":
             factory = openai_responses_client_factory or _default_openai_responses_client
             response = _probe_openai_responses(factory(result["region"]), model_id)
+        elif path == "mantle_openai_chat":
+            factory = openai_responses_client_factory or _default_openai_responses_client
+            response = factory(result["region"]).chat.completions.create(
+                model=model_id,
+                messages=[{"role": "user", "content": PROMPT}],
+            )
         elif path == "runtime_converse":
             factory = runtime_client_factory or _default_runtime_client
             response = _probe_converse(factory(result["region"]), model_id)

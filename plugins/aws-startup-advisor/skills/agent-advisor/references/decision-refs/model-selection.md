@@ -21,8 +21,9 @@ file — it is dispatched by source provider so the path vocabulary and rules di
 
 - **Anthropic** → `scripts/anthropic_model_recommendation.py` + `references/models/anthropic-bedrock-2026-07-21.json`
   (paths: `mantle_messages`, `runtime_converse`, `runtime_invoke`).
-- **OpenAI** → `scripts/openai_model_recommendation.py` + `references/models/openai-bedrock-2026-08-21.json`
-  (paths: `mantle_openai_responses`, `runtime_converse`; Chat Completions reshapes to Responses).
+- **OpenAI** → `scripts/openai_model_recommendation.py` + `references/models/openai-bedrock-2026-09-09.json`
+  (paths: `mantle_openai_chat`, `mantle_openai_responses`, `runtime_converse`; preserve Astra's
+  supported source API and apply each model's dated capability and region checks).
 - **Azure OpenAI / other** → generic `provider_module_pending` until a dedicated module exists.
 
 Do not restate the per-provider path rules here — the dated catalogs and the engine are

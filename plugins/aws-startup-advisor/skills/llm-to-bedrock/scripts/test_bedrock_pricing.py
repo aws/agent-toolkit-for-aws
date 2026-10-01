@@ -1,5 +1,46 @@
 # test_bedrock_pricing.py
 import bedrock_pricing as bp
+import pytest
+
+
+@pytest.mark.parametrize("model_id,inp,out", [
+    ("openai.gpt-6-astra", 0.011, 0.055),
+    ("us.openai.gpt-6-astra", 0.011, 0.055),
+    ("global.openai.gpt-6-astra", 0.010, 0.050),
+])
+def test_astra_rates_resolve_without_live_pricing(model_id, inp, out, monkeypatch):
+    import boto3
+
+    def no_live_pricing(*args, **kwargs):
+        raise AssertionError("Astra pricing must use the dated static table")
+
+    monkeypatch.setattr(boto3, "client", no_live_pricing)
+    result = bp.lookup("us-west-2", model_id)
+    assert result["available"]
+    assert result["input_per_1k_usd"] == inp
+    assert result["output_per_1k_usd"] == out
+    assert "<=272K" in result["note"]
+    assert "2x input / 1.5x output" in result["note"]
+    assert "2026-09-16" in result["note"]
+
+
+@pytest.mark.parametrize("model_id", [
+    "openai.gpt-6", "openai.gpt-6-astra-pro", "openai.gpt-6-astra-v1:0",
+    "us.openai.gpt-6", "global.openai.gpt-6-astra-v1:0",
+    "in.openai.gpt-6-astra", "eu.openai.gpt-6-astra",
+])
+def test_astra_unknown_ids_never_inherit_another_rate(model_id, monkeypatch):
+    import boto3
+
+    def no_live_pricing(*args, **kwargs):
+        raise AssertionError("Unknown proprietary GPT ids must fail closed")
+
+    monkeypatch.setattr(boto3, "client", no_live_pricing)
+    assert bp._static_fallback(model_id) is None
+    result = bp.lookup("us-west-2", model_id)
+    assert result["available"] is False
+    assert result["input_per_1k_usd"] is None
+    assert result["output_per_1k_usd"] is None
 
 def test_parse_price_dimensions_extracts_per_1k_token_rates():
     # Pure parser over a Pricing API PriceList JSON fragment.

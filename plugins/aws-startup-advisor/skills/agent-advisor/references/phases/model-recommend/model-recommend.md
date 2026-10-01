@@ -8,7 +8,7 @@ _input:
   - context-signals.json
 _knowledge:
   - { file: references/models/anthropic-bedrock-2026-07-21.json }
-  - { file: references/models/openai-bedrock-2026-08-21.json }
+  - { file: references/models/openai-bedrock-2026-09-09.json }
 _assemble:
   _file: phases/model-recommend/model-recommend-assemble.md
 _produces:
@@ -92,11 +92,13 @@ reuse the Anthropic `preserve_messages_api` switch):
 - minimum context window and expected output-token ceiling?
 - allow Global CRIS or require a geography-scoped profile (runtime Converse only)?
 
-OpenAI is handled by a dedicated provider module (`openai-bedrock-2026-08-21.json` catalog):
+OpenAI is handled by a dedicated provider module (`openai-bedrock-2026-09-09.json` catalog):
 GPT-5.x on Mantle is Responses-only, so a Chat Completions source is reshaped, not routed to
 `mantle_openai_chat`. GPT-5.6 sources additionally carry a SAME-MODEL `runtime_converse`
 candidate via CRIS ids (verified 2026-08-21) — governance requirements no longer force a
-family switch for them, while GPT-5.5/5.4 remain mantle-only. Azure OpenAI remains an
+family switch for them, while GPT-5.5/5.4 remain mantle-only. Astra preserves Chat Completions
+or Responses on Standard Mantle in `us-east-1` or `us-west-2`, or uses its supported US/Global CRIS `runtime_converse`
+path when required; apply its own capabilities and caller-region matrix. Azure OpenAI remains an
 explicit `provider_module_pending` generic result.
 
 **OpenRouter/LiteLLM-sourced OpenAI models still use the OpenAI module.** Discover records the
@@ -131,7 +133,7 @@ For Anthropic source paths, scan for migration-sensitive features:
 For OpenAI source paths, scan instead for OpenAI feature codes:
 
 - `tool_or_function_calling`, `structured_output_json`, `streaming`, `image_input_vision`
-- `reasoning`, `sampling_params`, `max_tokens`, `multiple_candidates_n`
+- `reasoning`, `sampling_params`, `max_tokens`, `multiple_candidates_n`, `prompt_caching`
 - `web_search`, `file_search_retrieval`, `files_api`, `vector_stores`, `assistants_threads`
 - `audio_modality`, `embeddings`, `images`, `conversation_state`
 
