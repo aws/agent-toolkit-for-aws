@@ -38,7 +38,7 @@ def test_handoff_exits_invoke_plan_writer() -> None:
 def test_handoff_exits_present_import_cta() -> None:
     for f in HANDOFF_FILES:
         text = f.read_text(encoding="utf-8")
-        assert "migrate/plans/import" in text, (
+        assert "migrate/credits" in text, (
             f"{f.name}: handoff exit no longer presents the web-import CTA"
         )
 

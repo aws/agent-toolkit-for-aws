@@ -210,7 +210,7 @@ commit." Suggest at most one.
        lowercased if it is a UUID — e.g. "Your decision report is saved at
        `decision-report.html` (plus a Slack-friendly `DECISION.md`), and your
        uploadable plan at `plan.json` — upload it to
-       [AWS Startups Migrate](https://startups.aws.com/startups/en-US/migrate/plans/import?source=plugin&run=<run_id>)
+       [AWS Startups Migrate](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
        for up to $1,500 in credits. If you decide to migrate, say 'generate the
        Terraform and migration scripts' — everything is saved and I'll pick up
        from here." The `plan.json` filename appears in EXACTLY ONE place — this
@@ -232,7 +232,7 @@ commit." Suggest at most one.
      > - **Claim your credits**
      >   When you're happy with your plan, upload it below to apply for up to $1,500 in AWS migration credits.
      >
-     > [🎉 Get up to $1,500 in AWS migration credits →](https://startups.aws.com/startups/en-US/migrate/plans/import?source=plugin&run=<run_id>)
+     > [🎉 Get up to $1,500 in AWS migration credits →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
      >
      > Upload your plan to AWS Startups Migrate to see what you qualify for and unlock:
      >

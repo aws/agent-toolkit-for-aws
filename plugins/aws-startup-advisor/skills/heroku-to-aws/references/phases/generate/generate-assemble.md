@@ -146,7 +146,7 @@ Share migration-report.html with stakeholders; use MIGRATION_GUIDE.md for cutove
 > - **Claim your credits**
 >   When you're happy with your plan, upload it below to apply for up to $1,500 in AWS migration credits.
 >
-> [🎉 Get up to $1,500 in AWS migration credits →](https://startups.aws.com/startups/en-US/migrate/plans/import?source=plugin&run=<run_id>)
+> [🎉 Get up to $1,500 in AWS migration credits →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
 >
 > Upload your plan to AWS Startups Migrate to see what you qualify for and unlock:
 >
