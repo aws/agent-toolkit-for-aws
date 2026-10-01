@@ -32,12 +32,8 @@ path in `metric_emission/` is gated on `record.is_accepted()`, re-checked inside
 There is no environment variable, so a user cannot be opted out according to
 their shell and opted in according to their disk.
 
-The notice names that file as the opt-out — set `"consentStatus"` to `"OPT_OUT"`
-— rather than naming a script, because a script has to be named by its absolute
-path, which differs for every install and does not wrap. So a hand-edited record
-is a supported input: `installId` is required only when the status is `ACCEPTED`,
-which is the only status that sends anything. `opt_out.py` makes the same edit in
-one step and preserves the install ID.
+The notice names that file as the opt-out — set `"consentStatus"` to `"OPT_OUT"`.
+`opt_out.py` makes the same edit in one step and keeps the install ID.
 
 The only environment variable here is `AWS_STARTUP_ADVISOR_PLUGIN_TELEMETRY_ENDPOINT`,
 which chooses *where* an event goes (beta/gamma for the service team) and never
