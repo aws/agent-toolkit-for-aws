@@ -17,7 +17,8 @@ consent/           deciding whether anything may be sent
 metric_emission/   sending events, only ever when consent/ says yes
   client.py          builds and POSTs a PluginTelemetryEvent
   skill_invoked.py   PostToolUse hook, matcher "Skill"
-  migration.py       placeholder, not implemented
+  migration.py       migration-run hooks: PostToolUse (Write|Edit), Stop, SessionEnd
+  migration_attributes.py   the MigrationActivity attribute vocabularies and lookups
 
 test/              the whole suite
 ```
@@ -46,3 +47,31 @@ uv run --with pytest python -m pytest -q
 ```
 
 `python3 -m pytest` does not work on a homebrew Python with no pytest installed.
+
+## Migration telemetry
+
+`migration.py` reports a migration run's progress without any instruction to the
+agent. The migration skills already keep `.migration/<id>/.phase-status.json` (and
+`.gate-failures.json`) for their own gate enforcement; the hooks run the script,
+which diffs those files against a snapshot it keeps beside them
+(`.telemetry-snapshot.json`) and POSTs one `migrationActivity` event per
+transition: RUN_STARTED, PHASE_COMPLETED, GATE_FAILED, RUN_COMPLETED. The diff is
+idempotent and each run is locked while it runs, so overlapping hooks never report
+a transition twice.
+
+- Three triggers: PostToolUse on `Write|Edit` (incremental, async), Stop with
+  `--reconcile` (re-reads state however it was written), SessionEnd with
+  `--session-end` (final sweep inside Claude Code's shared 1.5 s budget). Cursor
+  registers `afterFileEdit`/`stop`/`sessionEnd` in `.cursor-plugin/hooks.json`.
+- Attribution comes from disk: the run's `owning_skill` (fail closed when absent),
+  `run_id` (lower-cased; the data lake accepts only lower case), `initiated_by`.
+- Attributes are lookups over the run's own artifacts (`migration_attributes.py`);
+  an unmodelled value drops the attribute, never the event.
+- A refusal the service may withdraw (403 while the launch gate is closed, 429,
+  5xx) leaves that event unrecorded so only it is re-sent; a 400 is not retried.
+- Nothing is read into a snapshot without an accepted consent record, so a user
+  who never agreed, or opted out, leaves no trace. Once consent exists, whatever
+  the state file already holds is reported, which is the legal position for the
+  IDE extension as well: data may be kept locally before consent, never sent.
+- Teardown reports only runs the session itself touched (the snapshot names its
+  owner); a hook that merely scans past a run leaves its owner alone.

@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -62,11 +63,15 @@ SOURCE_ENV = "AWS_STARTUP_ADVISOR_SOURCE"
 # running host; an unmatched host reports OTHER rather than a plausible guess,
 # because a wrong attribution silently moves one host's numbers into another's.
 # TODO(StartupEngBlend-3621): confirm the other three.
+# Cursor is checked first: it also exports Claude Code compatibility variables
+# to its hooks, so a Claude marker alone would misattribute every Cursor event.
 _HOST_MARKERS = (
+    ("CURSOR_VERSION", SOURCE_CURSOR),  # verified in Cursor's hook environment
+    ("CURSOR_PROJECT_DIR", SOURCE_CURSOR),  # verified in Cursor's hook environment
+    ("CURSOR_TRACE_ID", SOURCE_CURSOR),  # unverified
     ("CLAUDECODE", SOURCE_CLAUDE_CODE),  # verified
     ("CLAUDE_CODE_ENTRYPOINT", SOURCE_CLAUDE_CODE),  # verified
     ("CODEX_SANDBOX", SOURCE_CODEX),  # unverified
-    ("CURSOR_TRACE_ID", SOURCE_CURSOR),  # unverified
     ("KIRO_IDE", SOURCE_KIRO),  # unverified
 )
 
@@ -153,11 +158,13 @@ def build_payload(event, install_id, now_ms=None):
     }
 
 
-def post_event(event, install_id, url):
-    """POST one event. True only if the service accepted it; never raises.
+def post_event_status(event, install_id, url, timeout=TIMEOUT_SECONDS):
+    """POST one event and report the HTTP status, or None when nothing was sent
+    or the service could not be reached; never raises.
 
     `install_id` and `url` are passed in so a caller that has already read and
-    validated the record is not making this re-derive it.
+    validated the record is not making this re-derive it. The status lets a
+    caller tell a refusal it may retry (403, 429, 5xx) from one it may not (400).
 
     Everything is inside the try, not just the request: a malformed URL, an
     unserializable event or an unreadable manifest must fail the same silent way
@@ -165,11 +172,11 @@ def post_event(event, install_id, url):
     """
     try:
         if not record.is_accepted():
-            return False
+            return None
 
         payload = build_payload(event, install_id)
         if payload is None:
-            return False
+            return None
 
         request = urllib.request.Request(
             url,
@@ -177,10 +184,19 @@ def post_event(event, install_id, url):
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-            return 200 <= response.status < 300
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
     except BaseException:
-        return False
+        return None
+
+
+def post_event(event, install_id, url):
+    """POST one event. True only if the service accepted it; never raises."""
+    status = post_event_status(event, install_id, url)
+    return status is not None and 200 <= status < 300
 
 
 def send_event(event):

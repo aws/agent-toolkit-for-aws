@@ -403,24 +403,31 @@ class TestSendConsentRecorded:
         assert "127.0.0.1" not in result.stdout
 
 
-class TestMigrationMetricIsAPlaceholder:
-    def test_returns_false(self):
+class TestMigrationMetricSeam:
+    def test_ignores_skills_outside_the_migration_set(self):
         assert (
-            migration.emit_migration_metric(A_UUID, "GCP_TO_AWS", "http://x") is False
+            migration.emit_migration_metric(A_UUID, "KNOWLEDGE_BASE_FOR_STARTUPS", "http://x")
+            is False
         )
 
-    def test_sends_nothing(self, home, collector):
+    def test_sends_nothing_when_the_project_has_no_run(self, home, collector, tmp_path):
         accept(home)
-        migration.emit_migration_metric(A_UUID, "GCP_TO_AWS", collector.url)
+        assert (
+            migration.emit_migration_metric(A_UUID, "GCP_TO_AWS", collector.url, cwd=str(tmp_path))
+            is True
+        )
         assert collector.received == []
 
-    def test_takes_the_same_arguments_as_the_skill_metric(self):
-        # The hook calls both the same way, so the signatures must not drift.
+    def test_takes_the_skill_metric_arguments_first(self):
+        # The hook calls both the same way, so the shared leading parameters must
+        # not drift; the migration seam may only add optional ones after them.
         import inspect
 
-        assert list(
-            inspect.signature(migration.emit_migration_metric).parameters
-        ) == list(inspect.signature(client.emit_skill_invocation_metric).parameters)
+        skill = list(inspect.signature(client.emit_skill_invocation_metric).parameters)
+        ours = inspect.signature(migration.emit_migration_metric).parameters
+        assert list(ours)[: len(skill)] == skill
+        for name in list(ours)[len(skill) :]:
+            assert ours[name].default is not inspect.Parameter.empty
 
 
 class TestSkillInvokedHookEndToEnd:
