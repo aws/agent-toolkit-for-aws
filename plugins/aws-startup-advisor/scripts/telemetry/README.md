@@ -68,6 +68,11 @@ a transition twice.
   `run_id` (lower-cased; the data lake accepts only lower case), `initiated_by`.
 - Attributes are lookups over the run's own artifacts (`migration_attributes.py`);
   an unmodelled value drops the attribute, never the event.
+- RUN_COMPLETED is sent once per `runMode`: a run that ends decision-only and is
+  later executed ends again under `DECIDE_AND_EXECUTE`, once Generate is
+  completed. Consumers read a run's `runMode` from its latest RUN_COMPLETED and
+  count completed runs by distinct `runId`. The same ending is never repeated,
+  even after a confirmed re-entry re-reports its phases.
 - A refusal the service may withdraw (403 while the launch gate is closed, 429,
   5xx), or no connection at all, leaves that event unrecorded so only it is
   re-sent; a 400, or a timeout after the request left, is not retried.

@@ -11,7 +11,12 @@ followed. The migration skills maintain `.migration/<id>/.phase-status.json` (an
 files, diffs them against a snapshot it keeps beside them, and POSTs one event per
 transition found: RUN_STARTED, PHASE_COMPLETED, GATE_FAILED, RUN_COMPLETED. The
 diff is idempotent and the run is locked while it runs, so overlapping hooks
-cannot report the same transition twice.
+cannot report the same transition twice. RUN_COMPLETED is sent once per runMode:
+a run that ends decision-only and is later executed ends again, under
+DECIDE_AND_EXECUTE, so consumers read a run's runMode from its latest
+RUN_COMPLETED and count completed runs by distinct runId. The same ending is
+never repeated, even after a confirmed re-entry; a held ending the run has
+since outgrown is superseded by the new one rather than re-sent.
 
 Consent is `record.is_accepted()`, the plugin's single gate; the install id comes
 from the same record. Attribution is read from disk: a run names its owner in
@@ -208,10 +213,22 @@ def gate_failure_entries(gate_failures):
     return entries
 
 
+def run_ended(status):
+    """(ended, runMode). The skills flip `run_mode` to decide_and_execute before
+    Generate runs and may leave `current_phase: complete` from the decision-only
+    finish in place, so an executed ending counts only once Generate is done."""
+    run_mode = attrs.map_enum(attrs.RUN_MODE, status.get("run_mode"))
+    generate = str((status.get("phases") or {}).get("generate", "")).lower()
+    executing = run_mode == "DECIDE_AND_EXECUTE" and generate != "completed"
+    return status.get("current_phase") == "complete" and not executing, run_mode
+
+
 def diff_events(status, snapshot, gate_failures):
     """One event per transition between the snapshot and the state file, plus one
     GATE_FAILED per phase newly present in the gate record (a repeat failure of
-    the same phase is not a new event; its later success is)."""
+    the same phase is not a new event; its later success is). A run ends once
+    per runMode: a decision-only finish the user later turns into an executed
+    one is reported again, under DECIDE_AND_EXECUTE."""
     events = []
     if snapshot is None or snapshot.get("started") is False:
         events.append({"eventName": "RUN_STARTED"})
@@ -233,9 +250,11 @@ def diff_events(status, snapshot, gate_failures):
         if not mapped or phase not in attrs.PHASES:
             continue
         events.append({"eventName": "PHASE_COMPLETED", "phase": phase, "status": mapped, "key": name})
-    if status.get("current_phase") == "complete" and not (snapshot or {}).get("completed"):
+    ended, run_mode = run_ended(status)
+    reported_mode = (snapshot or {}).get("completedRunMode")
+    ended_again = bool(run_mode and reported_mode and run_mode != reported_mode)
+    if ended and (not (snapshot or {}).get("completed") or ended_again):
         event = {"eventName": "RUN_COMPLETED", "status": "SUCCESS"}
-        run_mode = attrs.map_enum(attrs.RUN_MODE, status.get("run_mode"))
         if run_mode:
             event["runMode"] = run_mode
         events.append(event)
@@ -333,7 +352,7 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
             except (OSError, ValueError):
                 return False
 
-        def write_snapshot(phases, completed, gates, started, owner):
+        def write_snapshot(phases, completed, gates, started, owner, completed_mode):
             value = {"runId": run_id}
             if owner:
                 value["sessionId"] = owner
@@ -341,9 +360,11 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
                 value["started"] = False
             value.update({"phases": phases, "gateFailures": gates, "completed": completed, "via": via,
                           "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            if completed_mode:
+                value["completedRunMode"] = completed_mode  # the runMode the run was last reported ending under
             write_json(snapshot_file, value)
 
-        def observe(phases, completed, gates):
+        def observe(phases, completed, gates, completed_mode):
             """Record the state last observed, whether or not anything was sent.
             Ownership moves to this session only when it changed the run or
             edited a file inside it; a hook that merely scanned past leaves the
@@ -352,20 +373,22 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
                 snapshot is None
                 or (snapshot.get("phases") or {}) != phases
                 or bool(snapshot.get("completed")) != completed
+                or snapshot.get("completedRunMode") != completed_mode
                 or (snapshot.get("gateFailures") or []) != gates
             )
             touched = changed or in_run(edited_path)
             owner = (valid_session_id or owner_before) if touched else (owner_before or valid_session_id)
             if not changed and snapshot.get("sessionId") == owner:
                 return
-            write_snapshot(phases, completed, gates, (snapshot or {}).get("started"), owner)
+            write_snapshot(phases, completed, gates, (snapshot or {}).get("started"), owner, completed_mode)
 
         if rebuild:
             # A corrupt snapshot (not this script's: its write is atomic) cannot
             # say what was reported. Those transitions are lost; recording the
             # current state lets the run report again from the next one.
-            observe(status.get("phases") or {}, status.get("current_phase") == "complete",
-                    [phase for phase, _ in gate_failure_entries(gate_failures)])
+            ended, run_mode = run_ended(status)
+            observe(status.get("phases") or {}, ended, [phase for phase, _ in gate_failure_entries(gate_failures)],
+                    run_mode if ended else None)
             return
 
         events = diff_events(status, snapshot, gate_failures)
@@ -376,7 +399,8 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
             # run taken over by this session. Record it, or the phase's next
             # completion would read as already reported and this session's
             # teardown would skip the run.
-            observe(status.get("phases") or {}, bool((snapshot or {}).get("completed")), known_gates)
+            observe(status.get("phases") or {}, bool((snapshot or {}).get("completed")), known_gates,
+                    (snapshot or {}).get("completedRunMode"))
             return
 
         ctx = {
@@ -420,12 +444,14 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
         run_started = next((e for e in events if e["eventName"] == "RUN_STARTED"), None)
         run_completed = next((e for e in events if e["eventName"] == "RUN_COMPLETED"), None)
         sent_gates = [e["phase"] for e in events if e["eventName"] == "GATE_FAILED" and e not in held]
+        ended_now = bool(run_completed and run_completed not in held)
         write_snapshot(
             phases,
-            bool((snapshot or {}).get("completed")) or bool(run_completed and run_completed not in held),
+            bool((snapshot or {}).get("completed")) or ended_now,
             list(dict.fromkeys(known_gates + sent_gates)),
             not (run_started and run_started in held),
             valid_session_id or owner_before,
+            run_completed.get("runMode") if ended_now else (snapshot or {}).get("completedRunMode"),
         )
     finally:
         release_lock(lock)

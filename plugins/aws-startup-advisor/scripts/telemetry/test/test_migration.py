@@ -360,6 +360,55 @@ def test_reports_azure_runs_with_their_own_inventory_vocabulary(project):
     assert events["DISCOVER"]["attributes"] == {"sourceProvider": "AZURE", "resourceCount": 3, "hasDatabase": True, "hasAi": True}
 
 
+def test_a_run_executed_after_a_decide_only_finish_ends_again_under_its_new_run_mode(project):
+    decided = phase_status(current_phase="complete", run_mode="decide", phases=with_phases(
+        clarify="completed", design="completed", estimate="completed", workshop="completed"))
+    p = project(decided)
+    first = [activity(b) for b in p.reconcile() if activity(b)["eventName"] == "RUN_COMPLETED"]
+    assert [e.get("attributes", {}).get("runMode") for e in first] == ["DECIDE"]
+    p.write_status({**decided, "run_mode": "decide_and_execute", "current_phase": "generate",
+                    "phases": with_phases(clarify="completed", design="completed", estimate="completed",
+                                          workshop="completed", generate="in_progress")})
+    assert p.reconcile() == [], "opting in is not yet an ending"
+    p.write_status({**decided, "run_mode": "decide_and_execute", "phases": all_completed()})
+    again = p.reconcile()
+    assert summary(again) == [("PHASE_COMPLETED", "FEEDBACK", "SUCCESS"), ("PHASE_COMPLETED", "GENERATE", "SUCCESS"),
+                              ("RUN_COMPLETED", None, "SUCCESS")]
+    assert next(activity(b) for b in again if activity(b)["eventName"] == "RUN_COMPLETED")["attributes"]["runMode"] == "DECIDE_AND_EXECUTE"
+    assert p.snapshot()["completedRunMode"] == "DECIDE_AND_EXECUTE"
+    assert p.reconcile() == [], "the same ending is never reported twice"
+
+
+def test_an_explicit_execute_request_ends_the_run_only_once_generate_is_completed(project):
+    # The skill flips run_mode before loading Generate and leaves current_phase
+    # at "complete" from the decision-only finish, so the flip alone is not an ending.
+    decided = phase_status(current_phase="complete", run_mode="decide", phases=with_phases(
+        clarify="completed", design="completed", estimate="completed", workshop="completed"))
+    p = project(decided)
+    assert ("RUN_COMPLETED", None, "SUCCESS") in summary(p.reconcile())
+    p.write_status({**decided, "run_mode": "decide_and_execute"})
+    assert p.reconcile() == [], "run_mode flipped, Generate not yet run: nothing has ended"
+    assert p.snapshot()["completedRunMode"] == "DECIDE"
+    p.write_status({**decided, "run_mode": "decide_and_execute", "phases": all_completed()})
+    ended = [activity(b) for b in p.reconcile() if activity(b)["eventName"] == "RUN_COMPLETED"]
+    assert [e["attributes"]["runMode"] for e in ended] == ["DECIDE_AND_EXECUTE"]
+    assert p.reconcile() == []
+
+
+def test_reports_an_llm_to_bedrock_run_in_its_dot_directory_at_run_level_only(project):
+    # llm-to-bedrock keeps its own thin run state in .migration/.bedrock-<id>/ with
+    # phases the model does not know (assess, execute): only run-level events leave.
+    p = project(phase_status(migration_id=".bedrock-0226-1430", owning_skill="LLM_TO_BEDROCK", current_phase="execute",
+                             phases={"assess": "completed", "execute": "in_progress"}),
+                run_name=".bedrock-0226-1430", artifacts={})
+    first = p.reconcile()
+    assert summary(first) == [("RUN_STARTED", None, None)]
+    assert activity(first[0])["skill"] == "LLM_TO_BEDROCK"
+    p.write_status(phase_status(migration_id=".bedrock-0226-1430", owning_skill="LLM_TO_BEDROCK", current_phase="complete",
+                                phases={"assess": "completed", "execute": "completed"}))
+    assert summary(p.reconcile()) == [("RUN_COMPLETED", None, "SUCCESS")]
+
+
 # ---------------------------------------------------------------- attributes
 
 
