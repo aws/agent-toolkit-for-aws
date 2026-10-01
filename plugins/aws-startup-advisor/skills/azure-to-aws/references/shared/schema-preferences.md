@@ -56,7 +56,8 @@ licensing exposure and found none" is a different statement from silence.
   "metadata": {
     "clarify_mode": "wizard", // "fast_path" | "wizard" — which Clarify flow produced this file
     "fast_path_eligible": false, // copied from azure-resource-inventory.json metadata.clarify_fast_path.eligible
-    "questions_defaulted": [] // dotted row keys that took their documented default without being asked, e.g. "design_constraints.compute_target"
+    "questions_defaulted": [], // dotted row keys that took their documented default without being asked, e.g. "design_constraints.compute_target"
+    "deferred_to_generate": ["data.db_cutover"] // execution-only rows carrying a default here and asked for real at the Decision gate's [C] (estimate-assemble.md § Step 3b); Generate must not run while any of these is still unconfirmed
   },
   "global": {
     "target_region": { "disposition": "DETECTED", "value": "eu-west-1", "default": "eu-west-1" },
@@ -84,7 +85,13 @@ licensing exposure and found none" is a different statement from silence.
       "default": null,
       "source_ha_context": "pg-contoso-store: ZoneRedundant, standby zone 2"
     },
-    "db_cutover": { "disposition": "ESSENTIAL", "value": "dms", "default": null },
+    "db_cutover": {
+      "disposition": "PROPOSED",
+      "value": "dump_restore",
+      "default": "dump_restore",
+      "deferred_to_generate": true, // asked for real at estimate-assemble.md § Step 3b when the user chooses [C] Generate
+      "default_basis": "largest relational DB 64 GiB <= 100 GiB"
+    },
     "traffic_pattern": { "disposition": "PROPOSED", "value": null, "default": "steady" },
     "storage_io": { "disposition": "PROPOSED", "value": null, "default": "medium" },
     "cosmos_rw_split": { "disposition": "N/A", "value": null, "default": null },

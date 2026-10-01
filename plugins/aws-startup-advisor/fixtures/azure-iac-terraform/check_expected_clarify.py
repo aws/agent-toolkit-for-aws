@@ -252,6 +252,21 @@ def check_clarify_mode(prefs: dict, exp: dict) -> None:
     check(isinstance(meta.get("questions_defaulted"), list),
           f"metadata.questions_defaulted is {meta.get('questions_defaulted')!r}, expected a list "
           f"(possibly empty) of dotted row keys that took their documented default")
+    want_deferred = spec.get("expected_deferred_to_generate")
+    if want_deferred is not None:
+        deferred = meta.get("deferred_to_generate")
+        check(sorted(deferred or []) == sorted(want_deferred),
+              f"metadata.deferred_to_generate is {deferred!r}, expected {want_deferred!r}. "
+              f"{spec.get('_deferred_why', '')}")
+        for dotted in want_deferred:
+            r = get(prefs, dotted) or {}
+            check(r.get("deferred_to_generate") is True,
+                  f"{dotted!r}: listed in metadata.deferred_to_generate but the row does not carry "
+                  f"deferred_to_generate: true — generate.md's precondition and estimate-assemble.md "
+                  f"Step 3b both key off the row flag")
+            check(r.get("default") is not None and r.get("value") == r.get("default"),
+                  f"{dotted!r}: a deferred row must carry a non-null default and (before Step 3b) "
+                  f"value == default; got value={r.get('value')!r} default={r.get('default')!r}")
 
 
 def check_cluster_rows(prefs: dict, run_dir: Path, exp: dict) -> None:

@@ -62,46 +62,41 @@ Nothing about the _rows_ changes — every fragment has run and every row has a 
 only the order and the gating:
 
 1. **Ask the ESSENTIAL rows first, in one batch, with their context lines.** On an eligible
-   estate these are at most: `design_constraints.compliance` (Q-A1c, always),
-   `baseline.azure_monthly_spend` (Q-A5, only when no billing source was discovered), and
-   `data.db_cutover` (Q-D2, only when a relational database is present — keep its extracted
-   size on the row). No other ESSENTIAL row can fire, because Discover's eligibility rule
-   excludes every estate feature that would make one fire. If one does, the inventory and
-   the verdict disagree — stop, say so, and fall back to the full flow.
+   estate these are at most: `design_constraints.compliance` (Q-A1c, always) and
+   `baseline.azure_monthly_spend` (Q-A5, only when no billing source was discovered). No
+   other ESSENTIAL row can fire, because Discover's eligibility rule excludes every estate
+   feature that would make one fire (and `data.db_cutover` is PROPOSED-and-deferred, not
+   ESSENTIAL — see Q-D2). If one does, the inventory and the verdict disagree — stop, say
+   so, and fall back to the full flow.
 2. **Apply every DETECTED and PROPOSED row's documented value** without presenting a sheet.
    Record each PROPOSED row's key in `metadata.questions_defaulted[]`; DETECTED rows are
-   not "defaulted" — they were read from the estate.
-3. **Show one compact "assumptions applied" summary**, then proceed. This replaces Gate 1
-   and Gate 3. It is informational, not a gate — the phase continues unless the user
-   objects — but every line carries the consequence the fragment supplied, so the
-   assumption is visible rather than silent:
+   not "defaulted" — they were read from the estate. Rows marked `deferred_to_generate`
+   also go in `metadata.deferred_to_generate[]`.
+3. **Say one sentence, then proceed** — do not present the defaults here:
 
-   ```
-   Assumptions applied (say a row name to change it, or "looks right"):
+   > "Thanks — I've applied [N] documented defaults (compute target, DB availability, plan
+   > grouping, …). You'll see each one, with what it decides and what it costs, right next
+   > to the estimate, and you can change any of them there."
 
-     Target region          eu-west-1 (mapped from westeurope)
-     Compute target         Elastic Beanstalk — closest to App Service; say "Fargate" for direct container control
-     Plan asp-contoso-web   keep 3 apps together — mirrors what you pay today; splitting multiplies compute by 3
-     DB availability        single-AZ — your Flexible Server has no HA today; say "multi-AZ" to add a standby
-     CPU architecture       x86_64 (default)
-     Human identity         fresh IAM Identity Center re-invite
-     Licensing              N/A — no Windows or SQL Server found
-   ```
-
-   Show N/A rows here too, compactly, for the same reason the full sheet does.
-4. A correction removes that row's key from `questions_defaulted[]`, writes the user's value,
-   and adds a `"source": "user_corrected"` sibling on the row (disposition stays `PROPOSED`,
-   per assembly rule 2), so Design's rationale can say "you chose this" rather than "we
-   assumed this".
-5. Write `preferences.json` with `metadata.clarify_mode: "fast_path"`. Everything else in
+   The defaults are rendered by `estimate-assemble.md` § Step 2 as the **"Assumptions
+   behind this number"** block, *after* the user has a number to judge them against. A
+   default is only worth correcting once its consequence is visible in dollars; showing the
+   list before the estimate is the gate this mode exists to remove.
+4. Write `preferences.json` with `metadata.clarify_mode: "fast_path"`. Everything else in
    this file — `clarify_status`, the Validation Checklist, the handoff gate — applies
    unchanged.
 
+Corrections (made at the Estimate gate) remove the row's key from `questions_defaulted[]`,
+write the user's value, and add a `"source": "user_corrected"` sibling on the row
+(disposition stays `PROPOSED`, per assembly rule 2), so Design's rationale can say "you chose
+this" rather than "we assumed this".
+
 The App Service Plan isolation row (Q-C2) deserves one explicit word: it stays PROPOSED with
 its documented default (no split) on the fast path, as on the full sheet, and it **must**
-appear in the summary with its cost consequence whenever a plan hosts more than one app.
-`SKILL.md` names plan isolation as a reason Clarify cannot be skipped; the fast path honours
-that by always surfacing the default, not by asking a question the full flow also defaults.
+appear in the Estimate-side assumptions block with its cost consequence whenever a plan hosts
+more than one app. `SKILL.md` names plan isolation as a reason Clarify cannot be skipped; the
+fast path honours that by always surfacing the default next to the number it moves, not by
+asking a question the full flow also defaults.
 
 **Show N/A rows too**, compactly, at the end of the sheet. _"Licensing — N/A, no Windows or
 SQL found"_ tells the user the estate was checked. Silence does not, and the report
@@ -128,9 +123,13 @@ the last point before Design commits, and it is cheap relative to re-running fou
 
 0. Write the top-level `metadata` block: `clarify_mode` (`"fast_path"` | `"wizard"`),
    `fast_path_eligible` (copied from the inventory verdict so the report can show both the
-   verdict and the choice), and `questions_defaulted[]` (every PROPOSED row that took its
+   verdict and the choice), `questions_defaulted[]` (every PROPOSED row that took its
    documented value without being shown as a question — on the wizard path that is the rows
-   the user confirmed on the sheet or waved through with "use the defaults for the rest").
+   the user confirmed on the sheet or waved through with "use the defaults for the rest"),
+   and `deferred_to_generate[]` (every row carrying `deferred_to_generate: true` — today
+   only `data.db_cutover` when a relational database is present; `[]` otherwise). A deferred
+   row is **not** asked in this phase on either path; it is confirmed at the Decision gate's
+   [C] (`estimate-assemble.md` § Step 3b) before Generate loads.
 1. Merge every fragment's rows into one `preferences.json`.
 2. Every row carries `disposition`, `value`, and `default`. A row the user never answered
    keeps its documented default and **stays PROPOSED** — never silently promote a default to
@@ -169,6 +168,7 @@ rewriting their answer and faking a gate failure both hide a real decision they 
 
 - [ ] `clarify_status` is set to `COMPLETE` or `BLOCKED_ON_ESSENTIAL`, and it agrees with whether any `ESSENTIAL` row has `value: null`.
 - [ ] `metadata.clarify_mode` is `fast_path` or `wizard`; when `fast_path`, the inventory's `metadata.clarify_fast_path.eligible` was `true` and `metadata.questions_defaulted[]` lists every PROPOSED row that was not asked.
+- [ ] `metadata.deferred_to_generate[]` is present and lists exactly the rows carrying `deferred_to_generate: true`; each such row has a non-null `default` and a `default_basis`.
 
 - [ ] `global.target_region` is set.
 - [ ] `design_constraints.cpu_architecture` is set, with `x86_64` recorded as the default.

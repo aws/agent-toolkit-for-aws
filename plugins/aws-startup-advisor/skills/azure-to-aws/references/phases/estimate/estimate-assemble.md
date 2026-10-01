@@ -69,10 +69,43 @@ Phase 4 of 7 complete (Estimate). Remaining: Generate (+ optional Workshop, Feed
 - Timeline if you execute: ~[N-M] weeks ([complexity_tier])
 - Deferred to specialists: [deferred[] entries, or omit the line]
 
+#### Assumptions behind this number
+
+| Assumed | Value | What it decides / what changing it does |
+| --- | --- | --- |
+| Compute target | Elastic Beanstalk | closest to App Service; "Fargate" for direct container control |
+| Plan asp-contoso-web | keep 3 apps together | mirrors today's bill; splitting multiplies the compute line by 3 |
+| DB availability | single-AZ | no HA on your Flexible Server today; "multi-AZ" adds a standby (~2x the DB line) |
+| DB cutover | dump/restore (64 GiB) | confirmed before Generate — DMS adds instance hours and a replication phase |
+| CPU architecture | x86_64 | "Graviton" reprices compute ~20% lower where supported |
+
+Say a row name to change it — I'll re-run Design and Estimate and show this pack again.
+
 [A] That's what I needed for now — stop here with the design and the estimate
 [B] Explore what-if scenarios (region, HA, compute target, architecture) before deciding
 [C] Generate the migration artifacts — Terraform, migration scripts, and docs
 ```
+
+**The "Assumptions behind this number" block** is built from `preferences.json`:
+one row per key in `metadata.questions_defaulted[]`, plus one per key in
+`metadata.deferred_to_generate[]` (labelled "confirmed before Generate"). Each row
+shows the applied value and the consequence line its Clarify fragment supplied. Omit
+the block only when both arrays are empty. This is where the assumption sheet lives
+when Clarify ran in fast-path mode — the user judges a default against the dollars it
+moves, not before they have a number — and on the wizard path it shows the rows the
+user waved through with "use the defaults for the rest". Always include the App
+Service Plan isolation row when a plan hosts more than one app.
+
+**Handling a correction from this block:**
+
+- If the row is a workshop knob (region, availability, compute target, CPU
+  architecture), route it through option **B** — the sidebar already reprices those
+  side by side and preserves provenance.
+- Otherwise: write the user's value to the row (keep `disposition: PROPOSED`, add
+  `"source": "user_corrected"`, remove the key from `metadata.questions_defaulted[]`),
+  mark `phases.design` and `phases.estimate` pending via the Phase Status Update
+  Protocol, re-run Design → Estimate, and re-present this gate. Never hand-edit
+  `aws-design.json` or `estimation-infra.json` to reflect the change.
 
 Rules for the pack itself:
 
@@ -84,11 +117,13 @@ Rules for the pack itself:
 - **When the right-sizing delta is `$0`**, replace that clause with the reason
   rather than printing "saves $0" — e.g. "no utilization data, so right-sizing
   reflects declared waste only". A bare `$0` reads as a broken calculation.
-- **At most one data-justified scenario hint.** When a material assumption was
-  defaulted rather than confirmed — most often `data.availability`, where
-  Multi-AZ roughly doubles the database line — append: "Suggestion: we assumed
-  [assumption]; pricing a [alternative] scenario would bound that before you
-  commit."
+- **At most one data-justified scenario hint, and only when the assumptions block
+  is absent.** When a material assumption was defaulted rather than confirmed —
+  most often `data.availability`, where Multi-AZ roughly doubles the database
+  line — and `metadata.questions_defaulted[]` is empty (so no block rendered),
+  append: "Suggestion: we assumed [assumption]; pricing a [alternative] scenario
+  would bound that before you commit." When the block is present it already
+  carries that row with its consequence; do not say it twice.
 
 ---
 
@@ -102,10 +137,38 @@ no shared schema change.
 | ------------------------ | ---------------------- | ------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **A** — done for now     | `"decide"`             | `"complete"`       | `"completed"` (declined) | **Write `DECISION.md` (Step 3a below)**, then close out. `phases.generate` **stays** `"pending"`: that combination means "decision complete, execution available on request"                   |
 | **B** — what-if workshop | `"decide"`             | stays `"estimate"` | `"in_progress"`          | Enter the `workshop` sidebar. **Re-present this gate when the sidebar resolves** (options A and C; the active scenario carries into either). Never advance to Generate from inside the sidebar |
-| **C** — generate         | `"decide_and_execute"` | `"generate"`       | `"completed"` (declined) | Continue to Generate                                                                                                                                                                           |
+| **C** — generate         | `"decide_and_execute"` | `"generate"`       | `"completed"` (declined) | **Run Step 3b first** (confirm deferred execution choices), then continue to Generate                                                                                                           |
 
 Use the read-merge-write Phase Status Update Protocol, and set `phases.estimate`
 to `"completed"` in the same write.
+
+### Step 3b — On option C, confirm the deferred execution choices before Generate loads
+
+`preferences.json` → `metadata.deferred_to_generate[]` lists the rows Clarify
+defaulted because nothing before Generate consumes them (today: `data.db_cutover`;
+see `clarify-database.md` § Q-D2). They are **asked for real here**, one batch,
+each with the fragment's original options and the context that makes it
+answerable — the extracted database size for `db_cutover`:
+
+> "Before I write the runbook, one execution choice I defaulted earlier:
+>
+> **Database cutover** — your largest database is 64 GiB, so I assumed
+> dump-and-restore (a scheduled outage proportional to size).
+> [A] AWS DMS with continuous replication — near-zero downtime, more setup, needs logical replication on the source
+> [B] Dump and restore during a maintenance window — simpler, downtime proportional to database size (current assumption)"
+
+Write the answer to the row (`"source": "user_confirmed_at_generate"`, disposition
+stays `PROPOSED`), remove the key from `metadata.deferred_to_generate[]`, and only
+then write `run_mode: "decide_and_execute"`. **If the answer changes the Estimate's
+migration-service line** (`dump_restore` → `dms` adds DMS instance hours), re-run
+Estimate's Part 7 one-off cost section and note the delta in one line; do not
+re-present the whole pack. Generate's `_preconditions` must find
+`metadata.deferred_to_generate` empty — an unconfirmed deferred row is the one way a
+runbook can be written against an answer the user never gave.
+
+This step is skipped when `metadata.deferred_to_generate[]` is empty or absent (an
+estate with no relational database, or a `preferences.json` written before this
+field existed).
 
 ### Step 3a — On option A, write `DECISION.md` (the Assess-complete handoff marker)
 

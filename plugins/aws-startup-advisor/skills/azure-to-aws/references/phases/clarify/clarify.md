@@ -171,7 +171,8 @@ fragment row is shown:
 > **[Yes — short path]** / **[No — ask me everything]**"
 
 Compute `[N]` from the ESSENTIAL rows that will actually fire on this estate — see
-`clarify-assemble.md` § Fast-path mode. It is 2 or 3 for an eligible estate.
+`clarify-assemble.md` § Fast-path mode. It is 1 or 2 for an eligible estate (compliance,
+plus baseline spend when no billing source exists).
 
 **If the user chooses Yes:**
 
@@ -179,8 +180,9 @@ Compute `[N]` from the ESSENTIAL rows that will actually fire on this estate —
    rows and defaults and ask nothing, so the short path needs them just as much.
 2. Run `clarify-assemble.md` in **fast-path mode** (its § Fast-path mode section): ESSENTIAL
    rows are asked immediately, every DETECTED/PROPOSED row takes its documented value
-   without a sheet gate, and one compact "assumptions applied" summary is shown afterwards
-   for correction.
+   without a sheet gate, and the defaults are shown **next to the estimate**
+   (`estimate-assemble.md` § Step 2 "Assumptions behind this number") where a correction
+   has a dollar consequence to be judged against.
 3. `preferences.json` carries `metadata.clarify_mode: "fast_path"` and lists every defaulted
    row in `metadata.questions_defaulted[]`.
 
