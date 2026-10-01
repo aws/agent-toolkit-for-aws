@@ -1,0 +1,243 @@
+{
+  "_what_this_is": "Maps each migration artifact (by file name, fnmatch glob) to the contract document that defines it. Read by scripts/validate-artifacts.py. 'shape' points at a markdown document whose JSON/JSONC example block IS the contract; 'root_heading' selects which block (prefix match on the heading text, backticks ignored); 'sections' maps sub-section headings to the key path they refine when the heading's own backticked token is not the path; 'json_schema' points at a real JSON Schema. Both may be present — the schema is authoritative where it speaks, the shape catches keys the schema leaves open.",
+  "fixture_prefixes": {
+    "gcp-": "gcp-to-aws",
+    "heroku-": "heroku-to-aws",
+    "azure-": "azure-to-aws"
+  },
+  "shared": {
+    ".phase-status.json": {
+      "json_schema": "skills/shared/state/phase-status.schema.json"
+    }
+  },
+  "skills": {
+    "gcp-to-aws": {
+      "gcp-resource-inventory.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-discover-iac.md",
+        "root_heading": "gcp-resource-inventory.json",
+        "sections": {
+          "Live discovery extensions": "",
+          "@L128": "resources[]"
+        },
+        "ignore_headings": [
+          "gcp-resource-clusters.json"
+        ],
+        "open_paths": [
+          "resources[].config"
+        ],
+        "_open_paths_why": "schema-discover-iac.md documents one sample config; per-resource-type config shapes are not published, so config keys cannot be judged unknown.",
+        "_sections_why": "@L128 is the single-resource 'Example:' block under the inventory heading; it documents one resources[] item, not the root. 'Live discovery extensions' documents root-level additions (metadata, resources[], live_metadata), so it merges into the root.",
+        "extra_shapes": [
+          {
+            "shape": "skills/gcp-to-aws/references/shared/schema-graviton.md",
+            "heading": "graviton_profile",
+            "path": "graviton_profile[]"
+          }
+        ]
+      },
+      "gcp-resource-clusters.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-discover-iac.md",
+        "root_heading": "gcp-resource-clusters.json",
+        "ignore_headings": [
+          "gcp-resource-inventory.json",
+          "Live discovery extensions"
+        ]
+      },
+      "billing-profile.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-discover-billing.md",
+        "root_heading": "billing-profile.json"
+      },
+      "ai-workload-profile.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-discover-ai.md",
+        "root_heading": "ai-workload-profile.json"
+      },
+      "preferences.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-preferences.md",
+        "root_heading": "Top-level shape",
+        "extra_shapes": [
+          {
+            "shape": "skills/gcp-to-aws/references/shared/schema-graviton.md",
+            "heading": "design_constraints.cpu_architecture",
+            "path": "design_constraints.cpu_architecture"
+          },
+          {
+            "shape": "skills/gcp-to-aws/references/shared/schema-workshop-scenarios.md",
+            "heading": "preferences.json",
+            "path": "workshop"
+          }
+        ]
+      },
+      "estimation-infra.json": {
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json",
+        "shape": "skills/gcp-to-aws/references/shared/schema-estimate-infra.md",
+        "root_heading": "estimation-infra.json schema",
+        "sections": {
+          "Observability Entry in": "projected_costs.breakdown[]",
+          "Security Baseline Entries in": "projected_costs.breakdown[]",
+          "architecture_comparison": "architecture_comparison"
+        },
+        "ignore_headings": [
+          "Cost tiers"
+        ]
+      },
+      "scenarios/scenario-NNN.preferences.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-preferences.md",
+        "root_heading": "Top-level shape",
+        "extra_shapes": [
+          {
+            "shape": "skills/gcp-to-aws/references/shared/schema-graviton.md",
+            "heading": "design_constraints.cpu_architecture",
+            "path": "design_constraints.cpu_architecture"
+          },
+          {
+            "shape": "skills/gcp-to-aws/references/shared/schema-workshop-scenarios.md",
+            "heading": "preferences.json",
+            "path": "workshop"
+          }
+        ]
+      },
+      "scenarios/scenario-NNN.estimation-infra.json": {
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
+      }
+    },
+    "heroku-to-aws": {
+      "heroku-resource-inventory.json": {
+        "shape": "skills/heroku-to-aws/references/shared/schema-discover-heroku.md",
+        "root_heading": "heroku-resource-inventory.json",
+        "section_rules": [
+          {
+            "heading_regex": "^`[a-z_]+` config$",
+            "path": "resources[].config"
+          }
+        ],
+        "sections": {
+          "Complete Example": ""
+        },
+        "_sections_why": "'Complete Example' is a full artifact; merging it into the root makes keys it shows (resources[].source, unmanaged_by_terraform, …) part of the contract."
+      },
+      "preferences.json": {
+        "shape": "skills/heroku-to-aws/references/phases/clarify/clarify-assemble.md",
+        "root_heading": "Step 4: Assemble and Write preferences.json",
+        "extra_shapes": [
+          {
+            "shape": "skills/heroku-to-aws/references/shared/schema-workshop-scenarios.md",
+            "heading": "preferences.json",
+            "path": "workshop"
+          }
+        ]
+      },
+      "estimation-infra.json": {
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
+      },
+      "scenarios/index.json": {
+        "shape": "skills/heroku-to-aws/references/shared/schema-workshop-scenarios.md",
+        "root_heading": "scenarios/index.json",
+        "ignore_headings": [
+          "preferences.json",
+          "scenarios/scenario-NNN.json"
+        ]
+      },
+      "scenarios/scenario-NNN.json": {
+        "shape": "skills/heroku-to-aws/references/shared/schema-workshop-scenarios.md",
+        "root_heading": "scenarios/scenario-NNN.json",
+        "ignore_headings": [
+          "preferences.json",
+          "scenarios/index.json"
+        ]
+      },
+      "scenarios/scenario-NNN.preferences.json": {
+        "shape": "skills/heroku-to-aws/references/phases/clarify/clarify-assemble.md",
+        "root_heading": "Step 4: Assemble and Write preferences.json",
+        "extra_shapes": [
+          {
+            "shape": "skills/heroku-to-aws/references/shared/schema-workshop-scenarios.md",
+            "heading": "preferences.json",
+            "path": "workshop"
+          }
+        ]
+      },
+      "scenarios/scenario-NNN.estimation-infra.json": {
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
+      }
+    },
+    "azure-to-aws": {
+      "azure-resource-inventory.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-discover-azure.md",
+        "root_heading": "azure-resource-inventory.json",
+        "sections": {
+          "Warnings": "warnings[]"
+        },
+        "ignore_headings": [
+          "azure-resource-clusters.json"
+        ],
+        "extra_shapes": [
+          {
+            "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
+            "heading": "graviton_profile",
+            "path": "graviton_profile[]"
+          }
+        ]
+      },
+      "azure-resource-clusters.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-discover-azure.md",
+        "root_heading": "azure-resource-clusters.json",
+        "ignore_headings": [
+          "azure-resource-inventory.json",
+          "Warnings"
+        ]
+      },
+      "ai-workload-profile.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-discover-ai.md",
+        "root_heading": "Shape"
+      },
+      "preferences.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-preferences.md",
+        "root_heading": "Shape",
+        "allowed_anywhere": [
+          "source",
+          "reason",
+          "context",
+          "note",
+          "unanswered",
+          "blocks_phase",
+          "conflict",
+          "forced_by",
+          "residency_warning",
+          "detail",
+          "default_basis",
+          "deferred_to_generate"
+        ],
+        "_allowed_anywhere_why": "schema-preferences.md defines these as row annotations usable on any row (§ 'The justification key is source' — REQUIRED on DETECTED; reason on N/A rows; context on ESSENTIAL rows; unanswered/blocks_phase/conflict per clarify-assemble.md § clarify_status; default_basis/deferred_to_generate per Q-D2). They are documented as a vocabulary, not per row, so the example block cannot list them on every row.",
+        "extra_shapes": [
+          {
+            "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
+            "heading": "design_constraints.cpu_architecture",
+            "path": "design_constraints.cpu_architecture"
+          }
+        ]
+      },
+      "aws-design.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-design-aws.md",
+        "root_heading": "Shape",
+        "extra_shapes": [
+          {
+            "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
+            "heading": "graviton",
+            "path": "services[].graviton"
+          }
+        ]
+      },
+      "aws-design-ai.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-design-aws-ai.md",
+        "root_heading": "Shape"
+      },
+      "estimation-infra.json": {
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
+      },
+      "scenarios/index.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-workshop-scenarios.md",
+        "root_heading": "scenarios/index.json"
+      }
+    }
+  }
+}

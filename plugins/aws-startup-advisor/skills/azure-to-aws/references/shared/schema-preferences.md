@@ -53,6 +53,7 @@ licensing exposure and found none" is a different statement from silence.
 ```jsonc
 {
   "phase": "clarify",
+  "clarify_status": "COMPLETE", // REQUIRED — COMPLETE | BLOCKED_ON_ESSENTIAL — the phase's own verdict (clarify-assemble.md § clarify_status)
   "global": {
     "target_region": { "disposition": "DETECTED", "value": "eu-west-1", "default": "eu-west-1" },
     "user_geography": {

@@ -1,0 +1,888 @@
+#!/usr/bin/env python3
+"""Validate migration artifacts against the contracts the skills publish for them.
+
+Why this exists
+---------------
+The migration skills (gcp-to-aws, heroku-to-aws, azure-to-aws) pass ~17 JSON artifacts
+between phases: Discover writes an inventory, Clarify writes preferences, Design reads
+both, and so on. Each artifact's contract is published as a `schema-*.md` document whose
+"shape" is a JSON / JSONC example block, plus two real JSON Schemas under
+`skills/shared/`. Those contracts are prose. Nothing checked that a producer actually
+writes what the next phase reads, so a field could be renamed in one phase file, a new
+key emitted without being documented, or a documented enum silently widened — and every
+DSL `_assert` would still pass, because the model that writes the artifact is the model
+that evaluates the assertion.
+
+This tool turns the published shape blocks into a key-path contract and checks real
+artifacts against it. It is deliberately conservative: it enforces only what the
+documents actually say (known keys, example types, `a | b | c` enums, keys the document
+marks REQUIRED) and reports the rest as what it is — a gap in the contract, not in the
+artifact.
+
+What it checks
+--------------
+For every artifact it finds in a run directory (or in the fixture goldens):
+
+  UNKNOWN_KEY        a key the contract does not mention (off-contract emission — the
+                     drift class that motivated this tool)
+  MISSING_REQUIRED   a key the contract marks `(REQUIRED)` / `// REQUIRED` / `// ALWAYS
+                     present` is absent
+  TYPE_MISMATCH      the value's JSON type differs from the contract's example
+  ENUM_VIOLATION     the value is outside an `a | b | c` set the contract spells out
+  SCHEMA_VIOLATION   a real JSON Schema (draft-07 subset) rejected the value
+  SCHEMA_PARSE       the contract document's own example block does not parse — the
+                     contract is broken, independent of any artifact
+  NO_CONTRACT        an artifact was found that no contract covers (informational)
+
+Keys beginning with `_` are treated as annotations (`_comment`, `_what_this_is`) and are
+never reported as unknown. Placeholder values (`"<ISO 8601>"`, `"..."`) accept any
+string; a placeholder *key* (`"<azure_id>"`, `"..."`) makes the object open.
+
+Usage
+-----
+    python3 validate-artifacts.py --self-check
+        Parse every contract document and report SCHEMA_PARSE findings. No artifacts.
+
+    python3 validate-artifacts.py --fixtures
+        Validate every golden artifact under fixtures/ against its skill's contracts,
+        applying the baseline file (known, explained findings that do not fail).
+
+    python3 validate-artifacts.py --run-dir <path/.migration/<run>> --skill <name>
+        Validate one real run. For users and for post-run checks in capability tests.
+
+    --json      machine-readable output
+    --baseline  override the baseline file path (default: scripts/artifact-contracts-baseline.json)
+    --manifest  override the contracts manifest (default: scripts/artifact-contracts.json)
+
+Exit 0 when no non-baselined ERROR findings; 1 otherwise. Stdlib only (Python 3.9+).
+"""
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import json
+import re
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+HERE = Path(__file__).resolve().parent
+PLUGIN_ROOT = HERE.parent
+DEFAULT_MANIFEST = HERE / "artifact-contracts.json"
+DEFAULT_BASELINE = HERE / "artifact-contracts-baseline.json"
+
+ERROR_CODES = {"UNKNOWN_KEY", "MISSING_REQUIRED", "TYPE_MISMATCH", "ENUM_VIOLATION",
+               "SCHEMA_VIOLATION", "SCHEMA_PARSE"}
+INFO_CODES = {"NO_CONTRACT"}
+
+
+# --------------------------------------------------------------------------- findings
+
+
+@dataclass
+class Finding:
+    code: str
+    artifact: str          # path of the artifact (relative to cwd when possible)
+    path: str              # JSON path inside the artifact, e.g. "data.db_cutover"
+    message: str
+    contract: str = ""     # which contract document/section produced it
+    baselined: bool = False
+    baseline_reason: str = ""
+
+    @property
+    def severity(self) -> str:
+        return "error" if self.code in ERROR_CODES else "info"
+
+    def as_dict(self) -> Dict[str, Any]:
+        d = {"code": self.code, "severity": self.severity, "artifact": self.artifact,
+             "path": self.path, "message": self.message, "contract": self.contract}
+        if self.baselined:
+            d["baselined"] = True
+            d["baseline_reason"] = self.baseline_reason
+        return d
+
+
+# --------------------------------------------------------------------------- JSONC → JSON
+
+
+_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
+
+
+def strip_jsonc(text: str) -> Tuple[str, Dict[int, str], Dict[int, str]]:
+    """Strip `//` comments outside strings and trailing commas.
+
+    Returns (json_text, comment_by_line, key_by_line). Line numbers are 0-based into the
+    block. `key_by_line` holds the JSON key that opens on that line, so a trailing comment
+    can be attributed to the key it annotates.
+    """
+    out_lines: List[str] = []
+    comments: Dict[int, str] = {}
+    keys: Dict[int, str] = {}
+    for i, line in enumerate(text.splitlines()):
+        # find first `//` that is not inside a string
+        idx = None
+        in_str = False
+        esc = False
+        j = 0
+        while j < len(line):
+            ch = line[j]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+            else:
+                if ch == '"':
+                    in_str = True
+                elif ch == "/" and j + 1 < len(line) and line[j + 1] == "/":
+                    idx = j
+                    break
+            j += 1
+        if idx is not None:
+            comments[i] = line[idx + 2:].strip()
+            line = line[:idx].rstrip()
+        # the key a trailing comment annotates is the LAST `"key":` opened on the line
+        key_matches = re.findall(r'"((?:[^"\\]|\\.)*)"\s*:', line)
+        if key_matches:
+            keys[i] = key_matches[-1]
+        out_lines.append(line)
+    joined = "\n".join(out_lines)
+    # bare `...` ellipses in arrays/objects (`["Q1", "Q2", ...]`) → a placeholder string
+    joined = re.sub(r"(?<![\"\w.])\.\.\.(?![\"\w.])", '"..."', joined)
+    # bare `true|false` alternation → a boolean example
+    joined = re.sub(r"(?<![\"\w])(?:true|false)\|(?:true|false)(?![\"\w])", "true", joined)
+    # trailing commas before } or ]
+    joined = re.sub(r",(\s*[}\]])", r"\1", joined)
+    return joined, comments, keys
+
+
+# --------------------------------------------------------------------------- shape templates
+
+
+@dataclass
+class Node:
+    kinds: Set[str] = field(default_factory=set)     # subset of object/array/string/number/boolean/null/any
+    keys: Dict[str, "Node"] = field(default_factory=dict)
+    required: Set[str] = field(default_factory=set)
+    wildcard: bool = False                           # object accepts keys not listed
+    any_key: Optional["Node"] = None                 # template every key under this object must satisfy
+    item: Optional["Node"] = None
+    enum: Optional[Set[str]] = None
+    source: str = ""
+
+    def is_any(self) -> bool:
+        return "any" in self.kinds or not self.kinds
+
+    def merge(self, other: "Node") -> "Node":
+        """Union two templates for the same path (several documented variants)."""
+        self.kinds |= other.kinds
+        self.wildcard = self.wildcard or other.wildcard
+        self.required |= other.required
+        for k, v in other.keys.items():
+            if k in self.keys:
+                self.keys[k].merge(v)
+            else:
+                self.keys[k] = v
+        if other.item is not None:
+            if self.item is None:
+                self.item = other.item
+            else:
+                self.item.merge(other.item)
+        if other.any_key is not None:
+            if self.any_key is None:
+                self.any_key = other.any_key
+            else:
+                self.any_key.merge(other.any_key)
+        if self.enum is not None and other.enum is not None:
+            self.enum = self.enum | other.enum
+        elif other.enum is None and self.enum is not None and "string" in other.kinds and not other.is_any():
+            # the other variant documents a free string here — enum is not universal
+            self.enum = None
+        return self
+
+
+_PLACEHOLDER_RE = re.compile(r"^<.*>$")
+_ENUM_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.:+\-/]+$")
+_COMMENT_ENUM_RE = re.compile(r"(?:^|[—:\-]\s*)([A-Za-z0-9_.:+\-/]+(?:\s*\|\s*[A-Za-z0-9_.:+\-/]+)+)\s*(?:$|[—(\-])")
+
+
+def _enum_from_string(s: str) -> Optional[Set[str]]:
+    if "|" not in s:
+        return None
+    toks = [t.strip() for t in s.split("|")]
+    if len(toks) >= 2 and all(_ENUM_TOKEN_RE.match(t) for t in toks):
+        return set(toks)
+    return None
+
+
+def _enum_from_comment(c: str) -> Optional[Set[str]]:
+    m = _COMMENT_ENUM_RE.search(c)
+    if not m:
+        return None
+    toks = [t.strip() for t in m.group(1).split("|")]
+    if len(toks) >= 2 and all(_ENUM_TOKEN_RE.match(t) for t in toks):
+        return set(toks)
+    return None
+
+
+def _is_required_comment(c: str) -> bool:
+    c_up = c.upper()
+    return ("REQUIRED" in c_up and "NOT REQUIRED" not in c_up and "REQUIRED WHEN" not in c_up
+            and "REQUIRED IF" not in c_up and "REQUIRED ONLY" not in c_up and "REQUIRED ON" not in c_up
+            and "REQUIRED WHENEVER" not in c_up) or "ALWAYS PRESENT" in c_up
+
+
+def build_node(value: Any, key_comments: Dict[str, List[str]], source: str) -> Node:
+    """Infer a template node from an example value."""
+    n = Node(source=source)
+    if isinstance(value, dict):
+        n.kinds.add("object")
+        for k, v in value.items():
+            if k == "..." or _PLACEHOLDER_RE.match(k):
+                n.wildcard = True
+                if isinstance(v, (dict, list)) and v not in ({}, []) and not (isinstance(v, dict) and set(v) == {"..."}):
+                    tmpl = build_node(v, key_comments, source)
+                    n.any_key = tmpl if n.any_key is None else n.any_key.merge(tmpl)
+                continue
+            child = build_node(v, key_comments, source)
+            for c in key_comments.get(k, []):
+                if _is_required_comment(c):
+                    n.required.add(k)
+                e = _enum_from_comment(c)
+                if e is not None and ("string" in child.kinds or "null" in child.kinds or child.is_any()):
+                    # only trust a comment enum when the example value is consistent with it
+                    if not isinstance(v, str) or v in e or _PLACEHOLDER_RE.match(v) or v == "...":
+                        child.enum = e
+                        child.kinds.add("string")
+                        child.kinds.discard("any")
+                if "null" in c.lower() and "or null" in c.lower() or "nullable" in c.lower():
+                    child.kinds.add("null")
+            n.keys[k] = child
+    elif isinstance(value, list):
+        n.kinds.add("array")
+        item: Optional[Node] = None
+        for el in value:
+            en = build_node(el, key_comments, source)
+            item = en if item is None else item.merge(en)
+        n.item = item if item is not None else Node(kinds={"any"}, source=source)
+    elif isinstance(value, str):
+        if value == "..." or _PLACEHOLDER_RE.match(value):
+            # a placeholder like "<Q13 value>" says nothing about the JSON type
+            n.kinds.add("any")
+        else:
+            e = _enum_from_string(value)
+            n.kinds.add("string")
+            if e is not None:
+                n.enum = e
+    elif isinstance(value, bool):
+        n.kinds.add("boolean")
+    elif isinstance(value, (int, float)):
+        n.kinds.add("number")
+    elif value is None:
+        n.kinds.add("null")
+        n.kinds.add("any")  # a null example says nothing about the non-null type
+    return n
+
+
+# --------------------------------------------------------------------------- contract documents
+
+
+@dataclass
+class Block:
+    heading: str
+    lang: str
+    text: str
+    line: int          # 1-based line of the opening fence in the document
+
+
+_FENCE_RE = re.compile(r"^```(\w+)?\s*$")
+
+
+def extract_blocks(doc: Path) -> List[Block]:
+    blocks: List[Block] = []
+    heading = ""
+    in_block = False
+    lang = ""
+    start = 0
+    buf: List[str] = []
+    for i, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), start=1):
+        if not in_block:
+            if line.startswith("#"):
+                heading = line.lstrip("#").strip()
+            m = _FENCE_RE.match(line)
+            if m:
+                in_block = True
+                lang = (m.group(1) or "").lower()
+                start = i
+                buf = []
+        else:
+            if line.startswith("```"):
+                in_block = False
+                if lang in ("json", "jsonc"):
+                    blocks.append(Block(heading=heading, lang=lang, text="\n".join(buf), line=start))
+            else:
+                buf.append(line)
+    return blocks
+
+
+def _heading_matches(heading: str, wanted: str) -> bool:
+    h = heading.replace("`", "").strip().lower()
+    w = wanted.replace("`", "").strip().lower()
+    return h == w or h.startswith(w)
+
+
+def _heading_token(heading: str) -> Optional[str]:
+    """The key path a sub-section heading documents, e.g. '## `services[]`' → 'services[]'."""
+    m = re.search(r"`([^`]+)`", heading)
+    tok = m.group(1) if m else heading.split(" ")[0]
+    tok = tok.strip()
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_.\[\]]*$", tok):
+        return None
+    return tok
+
+
+def parse_block(block: Block, doc: Path, findings: List[Finding]) -> Optional[Tuple[Any, Dict[str, List[str]]]]:
+    json_text, comments, keys = strip_jsonc(block.text)
+    # a lone `...` line inside an object means "more keys like these"; inside an array it
+    # means "more items". Try the object reading first, then the array reading, then the
+    # fragment reading (`"key": {...}` with no outer braces).
+    lone = re.compile(r'^(\s*)"\.\.\."\s*,?\s*$', re.M)
+    candidates = [lone.sub(r'\1"...": "..."', json_text), json_text, "{" + json_text + "}",
+                  "{" + lone.sub(r'\1"...": "..."', json_text) + "}"]
+    value = None
+    first_error: Optional[json.JSONDecodeError] = None
+    for cand in candidates:
+        try:
+            value = json.loads(re.sub(r",(\s*[}\]])", r"\1", cand))
+            break
+        except json.JSONDecodeError as e:
+            if first_error is None:
+                first_error = e
+    if value is None:
+        e = first_error
+        try:
+            value = json.loads("{" + json_text + "}")
+        except json.JSONDecodeError:
+            findings.append(Finding(
+                code="SCHEMA_PARSE", artifact=_rel(doc), path=f"L{block.line}",
+                message=f"example block under '{block.heading}' is not valid JSON/JSONC: {e.msg} "
+                        f"(block line {e.lineno})",
+                contract=_rel(doc)))
+            return None
+    key_comments: Dict[str, List[str]] = {}
+    for ln, c in comments.items():
+        k = keys.get(ln)
+        if k is not None:
+            key_comments.setdefault(k, []).append(c)
+    return value, key_comments
+
+
+def _unwrap_to_path(value: Any, dotted: str) -> Any:
+    """A block may show its key path as wrapper objects — `{"design_constraints":
+    {"cpu_architecture": {...}}}` under a heading for `design_constraints.cpu_architecture`.
+    Peel single-key wrappers while they match the path components, so the block's own
+    keys land at the path and not one level below it."""
+    comps = [c.rstrip("[]") for c in dotted.split(".") if c]
+    for c in comps:
+        if isinstance(value, dict) and len(value) == 1 and c in value:
+            value = value[c]
+        else:
+            break
+    # also peel when the wrapper is only the LAST component (common: {"metadata": {...}})
+    if comps and isinstance(value, dict) and len(value) == 1 and comps[-1] in value \
+            and isinstance(value[comps[-1]], (dict, list)):
+        value = value[comps[-1]]
+    return value
+
+
+def _walk_path(root: Node, dotted: str) -> Optional[Node]:
+    """Find the node at 'a.b[].c'; create intermediate nodes as needed."""
+    node = root
+    if dotted == "":
+        return root
+    for part in dotted.split("."):
+        is_array = part.endswith("[]")
+        key = part[:-2] if is_array else part
+        if key:
+            if key not in node.keys:
+                fresh = Node(kinds={"object"} if not is_array else {"array"}, source=root.source)
+                if node.any_key is not None:
+                    fresh.merge(node.any_key)
+                node.keys[key] = fresh
+            node = node.keys[key]
+        if is_array:
+            node.kinds.add("array")
+            if node.item is None:
+                node.item = Node(kinds={"object"}, source=root.source)
+            node = node.item
+    return node
+
+
+@dataclass
+class ShapeContract:
+    doc: Path
+    root: Node
+    label: str
+
+
+def build_shape_contract(spec: Dict[str, Any], findings: List[Finding]) -> Optional[ShapeContract]:
+    doc = PLUGIN_ROOT / spec["shape"]
+    if not doc.exists():
+        findings.append(Finding("SCHEMA_PARSE", _rel(doc), "", "contract document not found", _rel(doc)))
+        return None
+    blocks = extract_blocks(doc)
+    root_heading = spec.get("root_heading")
+    root_block: Optional[Block] = None
+    for b in blocks:
+        if root_heading is None or _heading_matches(b.heading, root_heading):
+            root_block = b
+            break
+    if root_block is None:
+        findings.append(Finding("SCHEMA_PARSE", _rel(doc), "",
+                                f"no JSON block found under heading '{root_heading}'", _rel(doc)))
+        return None
+    parsed = parse_block(root_block, doc, findings)
+    if parsed is None:
+        return None
+    value, kc = parsed
+    root = build_node(value, kc, f"{_rel(doc)}:L{root_block.line}")
+    if not isinstance(value, dict):
+        findings.append(Finding("SCHEMA_PARSE", _rel(doc), f"L{root_block.line}",
+                                "root example block is not a JSON object", _rel(doc)))
+        return None
+
+    # Sub-section blocks refine paths inside the root. Manifest `sections` wins; otherwise
+    # the heading's backticked token is the path ("services[]", "metadata", "a.b").
+    explicit: Dict[str, str] = spec.get("sections", {})            # heading → path
+    rules: List[Dict[str, str]] = spec.get("section_rules", [])    # {heading_regex, path}
+    ignore: List[str] = spec.get("ignore_headings", [])
+    anchors = {k for k in explicit if k.startswith("@L")}
+    seen_anchors: Set[str] = set()
+    for b in blocks:
+        if b is root_block:
+            continue
+        path: Optional[str] = None
+        anchor = f"@L{b.line}"
+        if anchor in explicit:
+            path = explicit[anchor]
+            seen_anchors.add(anchor)
+        elif root_heading is not None and _heading_matches(b.heading, root_heading):
+            # another example under the root heading (a per-item sample, a fragment) —
+            # only a line anchor in the manifest can say what it documents
+            continue
+        if path is None and any(_heading_matches(b.heading, ig) for ig in ignore):
+            continue
+        if path is None:
+            for h, p in explicit.items():
+                if h.startswith("@L"):
+                    continue
+                if _heading_matches(b.heading, h):
+                    path = p
+                    break
+        if path is None:
+            for r in rules:
+                if re.search(r["heading_regex"], b.heading):
+                    path = r["path"]
+                    break
+        if path is None:
+            tok = _heading_token(b.heading)
+            if tok is None:
+                continue
+            path = tok
+        parsed = parse_block(b, doc, findings)
+        if parsed is None:
+            continue
+        v, kc2 = parsed
+        v = _unwrap_to_path(v, path)
+        sub = build_node(v, kc2, f"{_rel(doc)}:L{b.line}")
+        target = _walk_path(root, path)
+        if target is None:
+            continue
+        target.merge(sub)
+        if "(REQUIRED)" in b.heading.upper():
+            parent_path = ".".join(path.split(".")[:-1])
+            parent = _walk_path(root, parent_path) if parent_path else root
+            if parent is not None:
+                parent.required.add(path.split(".")[-1].rstrip("[]"))
+    for a in anchors - seen_anchors:
+        findings.append(Finding("SCHEMA_PARSE", _rel(doc), a,
+                                f"manifest section anchor {a} does not point at a JSON block start in this document "
+                                f"(the document moved; update artifact-contracts.json)", _rel(doc)))
+    # Blocks in OTHER documents that add keys to this artifact (graviton, workshop, …)
+    for extra in spec.get("extra_shapes", []):
+        edoc = PLUGIN_ROOT / extra["shape"]
+        if not edoc.exists():
+            findings.append(Finding("SCHEMA_PARSE", _rel(edoc), "", "extra_shapes document not found", _rel(edoc)))
+            continue
+        hit = None
+        for eb in extract_blocks(edoc):
+            if _heading_matches(eb.heading, extra["heading"]):
+                hit = eb
+                break
+        if hit is None:
+            findings.append(Finding("SCHEMA_PARSE", _rel(edoc), "",
+                                    f"no JSON block under heading '{extra['heading']}'", _rel(edoc)))
+            continue
+        parsed = parse_block(hit, edoc, findings)
+        if parsed is None:
+            continue
+        ev, ekc = parsed
+        epath = extra["path"]
+        ev = _unwrap_to_path(ev, epath)
+        enode = build_node(ev, ekc, f"{_rel(edoc)}:L{hit.line}")
+        target = _walk_path(root, epath)
+        if target is not None:
+            target.merge(enode)
+    for k in spec.get("required", []):
+        root.required.add(k)
+    for k in spec.get("open_paths", []):
+        n = _walk_path(root, k)
+        if n is not None:
+            n.wildcard = True
+    allowed = set(spec.get("allowed_anywhere", []))
+    if allowed:
+        _mark_allowed_anywhere(root, allowed)
+    return ShapeContract(doc=doc, root=root, label=f"{_rel(doc)} § {root_block.heading}")
+
+
+def _mark_allowed_anywhere(node: Node, allowed: Set[str]) -> None:
+    """Keys a document defines as a vocabulary usable on any row (e.g. azure preferences'
+    `source` / `reason` / `context`) are accepted at every object level without being
+    listed in each example row."""
+    if "object" in node.kinds and node.keys:
+        for k in allowed:
+            node.keys.setdefault(k, Node(kinds={"any"}, source=node.source))
+        for child in list(node.keys.values()):
+            _mark_allowed_anywhere(child, allowed)
+    if node.item is not None:
+        _mark_allowed_anywhere(node.item, allowed)
+
+
+# --------------------------------------------------------------------------- shape validation
+
+
+_KIND_OF = {dict: "object", list: "array", str: "string", bool: "boolean", int: "number",
+            float: "number", type(None): "null"}
+
+
+def validate_shape(node: Node, value: Any, path: str, artifact: str, contract: str, out: List[Finding]) -> None:
+    kind = _KIND_OF.get(type(value), "any")
+    if not node.is_any() and kind not in node.kinds:
+        # tolerate null where the example never said — too many contracts write null for "absent"
+        if kind == "null":
+            return
+        out.append(Finding("TYPE_MISMATCH", artifact, path or "$",
+                           f"is {kind}, contract example is {'/'.join(sorted(node.kinds))}", contract))
+        return
+    if node.enum is not None and isinstance(value, str) and value not in node.enum:
+        out.append(Finding("ENUM_VIOLATION", artifact, path or "$",
+                           f"'{value}' not in {{{', '.join(sorted(node.enum))}}}", contract))
+    if isinstance(value, dict) and "object" in node.kinds:
+        for k in node.required:
+            if k not in value:
+                out.append(Finding("MISSING_REQUIRED", artifact, _join(path, k),
+                                   "contract marks this key REQUIRED / ALWAYS present", contract))
+        for k, v in value.items():
+            if k.startswith("_"):
+                continue
+            child = node.keys.get(k)
+            if child is None:
+                if node.any_key is not None:
+                    validate_shape(node.any_key, v, _join(path, k), artifact, contract, out)
+                elif not node.wildcard and node.keys:
+                    out.append(Finding("UNKNOWN_KEY", artifact, _join(path, k),
+                                       "key is not in the contract's example shape", contract))
+                continue
+            validate_shape(child, v, _join(path, k), artifact, contract, out)
+    elif isinstance(value, list) and "array" in node.kinds and node.item is not None:
+        for i, el in enumerate(value):
+            validate_shape(node.item, el, f"{path}[{i}]", artifact, contract, out)
+
+
+def _join(path: str, key: str) -> str:
+    return f"{path}.{key}" if path else key
+
+
+# --------------------------------------------------------------------------- JSON Schema subset
+
+
+def validate_json_schema(schema: Dict[str, Any], value: Any, path: str, artifact: str, contract: str,
+                         out: List[Finding], root_schema: Optional[Dict[str, Any]] = None) -> None:
+    """Draft-07 subset: type, properties, required, additionalProperties, enum, const, items,
+    pattern, minimum, maximum, minItems, oneOf/anyOf/allOf, $ref (#/definitions/...)."""
+    root_schema = root_schema or schema
+    if "$ref" in schema:
+        ref = schema["$ref"]
+        if ref.startswith("#/"):
+            target: Any = root_schema
+            for part in ref[2:].split("/"):
+                target = target.get(part, {}) if isinstance(target, dict) else {}
+            validate_json_schema(target, value, path, artifact, contract, out, root_schema)
+        return
+    t = schema.get("type")
+    if t is not None:
+        types = t if isinstance(t, list) else [t]
+        kind = _KIND_OF.get(type(value), "any")
+        ok = kind in types or (kind == "number" and "integer" in types and isinstance(value, int) and not isinstance(value, bool))
+        if not ok:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                               f"is {kind}, schema type is {t}", contract))
+            return
+    if "enum" in schema and value not in schema["enum"]:
+        out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                           f"{value!r} not in enum {schema['enum']}", contract))
+    if "const" in schema and value != schema["const"]:
+        out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                           f"{value!r} != const {schema['const']!r}", contract))
+    if isinstance(value, str) and "pattern" in schema and not re.search(schema["pattern"], value):
+        out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                           f"'{value}' does not match pattern {schema['pattern']}", contract))
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", f"{value} < minimum {schema['minimum']}", contract))
+        if "maximum" in schema and value > schema["maximum"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$", f"{value} > maximum {schema['maximum']}", contract))
+    if isinstance(value, dict):
+        props = schema.get("properties", {})
+        for k in schema.get("required", []):
+            if k not in value:
+                out.append(Finding("SCHEMA_VIOLATION", artifact, _join(path, k), "required by schema", contract))
+        addl = schema.get("additionalProperties", True)
+        for k, v in value.items():
+            if k in props:
+                validate_json_schema(props[k], v, _join(path, k), artifact, contract, out, root_schema)
+            elif addl is False:
+                out.append(Finding("SCHEMA_VIOLATION", artifact, _join(path, k),
+                                   "additionalProperties is false", contract))
+            elif isinstance(addl, dict):
+                validate_json_schema(addl, v, _join(path, k), artifact, contract, out, root_schema)
+    if isinstance(value, list):
+        if "minItems" in schema and len(value) < schema["minItems"]:
+            out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                               f"{len(value)} items < minItems {schema['minItems']}", contract))
+        items = schema.get("items")
+        if isinstance(items, dict):
+            for i, el in enumerate(value):
+                validate_json_schema(items, el, f"{path}[{i}]", artifact, contract, out, root_schema)
+    for combinator in ("allOf",):
+        for sub in schema.get(combinator, []):
+            validate_json_schema(sub, value, path, artifact, contract, out, root_schema)
+    for combinator in ("oneOf", "anyOf"):
+        subs = schema.get(combinator)
+        if subs:
+            passes = 0
+            for sub in subs:
+                trial: List[Finding] = []
+                validate_json_schema(sub, value, path, artifact, contract, trial, root_schema)
+                if not trial:
+                    passes += 1
+            if passes == 0 or (combinator == "oneOf" and passes > 1):
+                out.append(Finding("SCHEMA_VIOLATION", artifact, path or "$",
+                                   f"matches {passes} of {len(subs)} {combinator} branches", contract))
+
+
+# --------------------------------------------------------------------------- manifest + resolution
+
+
+@dataclass
+class Contract:
+    artifact_glob: str
+    shape: Optional[ShapeContract] = None
+    json_schema: Optional[Dict[str, Any]] = None
+    json_schema_path: str = ""
+
+
+def load_manifest(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def build_contracts(manifest: Dict[str, Any], skill: str, findings: List[Finding]) -> List[Contract]:
+    specs: Dict[str, Any] = {}
+    specs.update(manifest.get("shared", {}))
+    specs.update(manifest.get("skills", {}).get(skill, {}))
+    contracts: List[Contract] = []
+    for glob_, spec in specs.items():
+        c = Contract(artifact_glob=glob_)
+        if "json_schema" in spec:
+            p = PLUGIN_ROOT / spec["json_schema"]
+            try:
+                c.json_schema = json.loads(p.read_text(encoding="utf-8"))
+                c.json_schema_path = _rel(p)
+            except (OSError, json.JSONDecodeError) as e:
+                findings.append(Finding("SCHEMA_PARSE", _rel(p), "", f"cannot load JSON Schema: {e}", _rel(p)))
+        if "shape" in spec:
+            c.shape = build_shape_contract(spec, findings)
+        contracts.append(c)
+    return contracts
+
+
+def artifact_name(p: Path) -> str:
+    """Normalise 'scenarios/scenario-001.preferences.json' → 'scenarios/scenario-NNN.preferences.json'."""
+    name = p.name
+    name = re.sub(r"scenario-\d+\.", "scenario-NNN.", name)
+    if p.parent.name == "scenarios":
+        return "scenarios/" + name
+    return name
+
+
+def find_artifacts(run_dir: Path) -> List[Path]:
+    out: List[Path] = []
+    for p in sorted(run_dir.rglob("*.json")):
+        rel = p.relative_to(run_dir)
+        parts = rel.parts
+        if any(part in ("live-capture", "workspace-terraform", ".terraform", "node_modules") for part in parts):
+            continue
+        if p.name.startswith("expected-") or p.name.startswith("clarify-answers"):
+            continue
+        out.append(p)
+    return out
+
+
+def validate_run_dir(run_dir: Path, skill: str, manifest: Dict[str, Any], findings: List[Finding]) -> int:
+    contracts = build_contracts(manifest, skill, findings)
+    checked = 0
+    for p in find_artifacts(run_dir):
+        name = artifact_name(p)
+        matched = [c for c in contracts if fnmatch.fnmatch(name, c.artifact_glob)]
+        rel = _rel(p)
+        if not matched:
+            findings.append(Finding("NO_CONTRACT", rel, "", f"no contract covers '{name}' for skill {skill}", ""))
+            continue
+        try:
+            value = json.loads(p.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            findings.append(Finding("TYPE_MISMATCH", rel, "$", f"artifact is not valid JSON: {e.msg}", ""))
+            continue
+        checked += 1
+        for c in matched:
+            if c.json_schema is not None:
+                validate_json_schema(c.json_schema, value, "", rel, c.json_schema_path, findings)
+            if c.shape is not None:
+                validate_shape(c.shape.root, value, "", rel, c.shape.label, findings)
+    return checked
+
+
+# --------------------------------------------------------------------------- baseline
+
+
+def apply_baseline(findings: List[Finding], baseline: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Mark findings matched by a baseline entry. Returns entries that matched nothing."""
+    entries = baseline.get("entries", [])
+    used = [False] * len(entries)
+    for f in findings:
+        for i, e in enumerate(entries):
+            if e.get("code") != f.code:
+                continue
+            if not fnmatch.fnmatch(f.artifact, e.get("artifact", "*")):
+                continue
+            if not fnmatch.fnmatch(f.path, e.get("path", "*")):
+                continue
+            f.baselined = True
+            f.baseline_reason = e.get("reason", "")
+            used[i] = True
+            break
+    return [e for e, u in zip(entries, used) if not u]
+
+
+# --------------------------------------------------------------------------- CLI
+
+
+def _rel(p: Path) -> str:
+    """Paths in findings are relative to the plugin root (stable across cwd, so the
+    baseline's artifact globs match whether the tool runs from the repo root or the
+    plugin directory); paths outside the plugin fall back to absolute."""
+    try:
+        return str(p.resolve().relative_to(PLUGIN_ROOT))
+    except ValueError:
+        return str(p.resolve())
+
+
+def skill_for_fixture(dirname: str, manifest: Dict[str, Any]) -> Optional[str]:
+    for prefix, skill in manifest.get("fixture_prefixes", {}).items():
+        if dirname.startswith(prefix):
+            return skill
+    return None
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--self-check", action="store_true", help="parse every contract document only")
+    mode.add_argument("--fixtures", action="store_true", help="validate the fixture goldens")
+    mode.add_argument("--run-dir", type=Path, help="a .migration/<run> directory to validate")
+    ap.add_argument("--skill", choices=["gcp-to-aws", "heroku-to-aws", "azure-to-aws"],
+                    help="required with --run-dir")
+    ap.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    ap.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
+    ap.add_argument("--no-baseline", action="store_true", help="ignore the baseline file")
+    ap.add_argument("--json", action="store_true", help="machine-readable output")
+    args = ap.parse_args(argv)
+
+    manifest = load_manifest(args.manifest)
+    findings: List[Finding] = []
+    checked = 0
+
+    if args.self_check:
+        for skill in manifest.get("skills", {}):
+            build_contracts(manifest, skill, findings)
+    elif args.fixtures:
+        fixtures_root = PLUGIN_ROOT / "fixtures"
+        for d in sorted(p for p in fixtures_root.iterdir() if p.is_dir()):
+            skill = skill_for_fixture(d.name, manifest)
+            if skill is None:
+                continue
+            checked += validate_run_dir(d, skill, manifest, findings)
+    else:
+        if not args.skill:
+            ap.error("--run-dir requires --skill")
+        if not args.run_dir.is_dir():
+            ap.error(f"{args.run_dir} is not a directory")
+        checked += validate_run_dir(args.run_dir, args.skill, manifest, findings)
+
+    stale: List[Dict[str, Any]] = []
+    if not args.no_baseline and args.baseline.exists() and not args.self_check:
+        stale = apply_baseline(findings, json.loads(args.baseline.read_text(encoding="utf-8")))
+
+    # de-duplicate identical findings (several contracts can cover one artifact)
+    seen: Set[Tuple[str, str, str, str]] = set()
+    unique: List[Finding] = []
+    for f in findings:
+        key = (f.code, f.artifact, f.path, f.message)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(f)
+    findings = unique
+
+    errors = [f for f in findings if f.severity == "error" and not f.baselined]
+    baselined = [f for f in findings if f.baselined]
+    infos = [f for f in findings if f.severity == "info"]
+
+    if args.json:
+        print(json.dumps({"checked_artifacts": checked, "errors": [f.as_dict() for f in errors],
+                          "baselined": [f.as_dict() for f in baselined], "info": [f.as_dict() for f in infos],
+                          "stale_baseline_entries": stale}, indent=2))
+    else:
+        for f in errors:
+            print(f"ERROR  {f.code:<17} {f.artifact} :: {f.path}\n       {f.message}" +
+                  (f"\n       contract: {f.contract}" if f.contract else ""))
+        for f in infos:
+            print(f"info   {f.code:<17} {f.artifact} :: {f.message}")
+        if baselined:
+            by_code: Dict[str, int] = {}
+            for f in baselined:
+                by_code[f.code] = by_code.get(f.code, 0) + 1
+            print(f"baselined (known, explained, not failing): " +
+                  ", ".join(f"{k}={v}" for k, v in sorted(by_code.items())))
+        for e in stale:
+            print(f"warn   STALE_BASELINE    entry matched nothing — remove it: {json.dumps(e)}")
+        print(f"\n{'FAIL' if errors else 'PASS'} — {checked} artifact(s) checked, "
+              f"{len(errors)} error(s), {len(baselined)} baselined, {len(infos)} info")
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
