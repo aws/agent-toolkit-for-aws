@@ -36,7 +36,13 @@ def _tree(tmp_path: Path) -> Path:
     (vend / "dsl" / "INTERPRETER.md").write_text("canonical v2\n")   # in sync
     (vend / "pricing.json").write_text('{"a": 0}\n')                  # drifted
     (vend / "orphan.md").write_text("no source\n")                   # no canonical
-    (vend / "README.md").write_text("explanatory, never compared\n")
+    (vend / "README.md").write_text(
+        "# Vendored\n\n"
+        "| Vendored path | Canonical source |\n"
+        "| --- | --- |\n"
+        "| `dsl/INTERPRETER.md` | `skills/shared/dsl/INTERPRETER.md` |\n"
+        "| `pricing.json` | `skills/shared/pricing.json` |\n"
+        "| `orphan.md` | `skills/shared/orphan.md` |\n")
     # a skill that vendors nothing, and the shared dir itself, are both ignored
     (plugins / "p" / "skills" / "beta").mkdir()
     return plugins
@@ -64,12 +70,54 @@ def test_sync_copies_canonical_over_drifted_and_leaves_orphans_as_errors(tmp_pat
     assert [e for e in sv.check_plugin(plugins / "p") if "orphan" not in e] == []
 
 
+def test_deleted_copy_is_caught_via_readme_table(tmp_path: Path):
+    """Review probe on #386: deleting a vendored copy left check_plugin at 0 errors because
+    it only walked files that still existed. The README table is the record of intent."""
+    plugins = _tree(tmp_path)
+    vend = plugins / "p" / "skills" / "alpha" / "references" / "vendored"
+    (vend / "dsl" / "INTERPRETER.md").unlink()
+    errors = sv.check_manifest(plugins / "p")
+    assert any("dsl/INTERPRETER.md" in e and "missing on disk" in e for e in errors), errors
+    # sync restores it from canonical
+    copied, _ = sv.sync_plugin(plugins / "p")
+    assert (vend / "dsl" / "INTERPRETER.md").read_text() == "canonical v2\n"
+    assert copied >= 1
+    assert not any("missing on disk" in e for e in sv.check_manifest(plugins / "p"))
+
+
+def test_unlisted_copy_and_wrong_canonical_path_are_caught(tmp_path: Path):
+    plugins = _tree(tmp_path)
+    vend = plugins / "p" / "skills" / "alpha" / "references" / "vendored"
+    (vend / "extra.md").write_text("x\n")
+    readme = vend / "README.md"
+    readme.write_text(readme.read_text().replace("`skills/shared/pricing.json`", "`skills/other/pricing.json`"))
+    errors = sv.check_manifest(plugins / "p")
+    assert any("extra.md" in e and "not listed" in e for e in errors), errors
+    assert any("pricing.json" in e and "expected `skills/shared/pricing.json`" in e for e in errors), errors
+
+
+def test_new_shared_file_nobody_vendors_is_not_an_error(tmp_path: Path):
+    """Documented limit, pinned so the README wording stays honest: a brand-new
+    skills/shared/ file that no skill vendors is NOT drift."""
+    plugins = _tree(tmp_path)
+    (plugins / "p" / "skills" / "shared" / "brand-new.md").write_text("new\n")
+    (plugins / "p" / "skills" / "alpha" / "references" / "vendored" / "orphan.md").unlink()
+    readme = plugins / "p" / "skills" / "alpha" / "references" / "vendored" / "README.md"
+    readme.write_text("\n".join(l for l in readme.read_text().splitlines() if "orphan" not in l) + "\n")
+    (plugins / "p" / "skills" / "alpha" / "references" / "vendored" / "pricing.json").write_text('{"a": 1}\n')
+    assert sv.check_plugin(plugins / "p") == []
+    assert sv.check_manifest(plugins / "p") == []
+
+
 def test_cli_check_exit_codes(tmp_path: Path):
     plugins = _tree(tmp_path)
     r = subprocess.run([sys.executable, str(SCRIPT), "--check", "--plugins-root", str(plugins)],
                        capture_output=True, text=True)
     assert r.returncode == 1 and "FAIL" in r.stdout
-    (plugins / "p" / "skills" / "alpha" / "references" / "vendored" / "orphan.md").unlink()
+    vend = plugins / "p" / "skills" / "alpha" / "references" / "vendored"
+    (vend / "orphan.md").unlink()
+    readme = vend / "README.md"
+    readme.write_text("\n".join(l for l in readme.read_text().splitlines() if "orphan" not in l) + "\n")
     subprocess.run([sys.executable, str(SCRIPT), "--plugins-root", str(plugins)], check=True, capture_output=True)
     r = subprocess.run([sys.executable, str(SCRIPT), "--check", "--plugins-root", str(plugins)],
                        capture_output=True, text=True)
@@ -79,4 +127,4 @@ def test_cli_check_exit_codes(tmp_path: Path):
 def test_real_repository_is_in_sync():
     r = subprocess.run([sys.executable, str(SCRIPT), "--check"], capture_output=True, text=True, cwd=REPO_ROOT)
     assert r.returncode == 0, r.stdout
-    assert "vendored file(s) byte-identical" in r.stdout
+    assert "vendored file(s) byte-identical" in r.stdout and "README tables" in r.stdout

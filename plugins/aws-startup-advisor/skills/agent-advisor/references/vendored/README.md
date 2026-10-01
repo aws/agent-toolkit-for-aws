@@ -9,7 +9,9 @@ or used on its own) without reaching outside its own directory.
 then run `python3 tools/sync-vendored.py` from the repository root to bring every
 skill's `references/vendored/` copy back in sync. Every copy must stay **byte-identical**
 to the canonical source; CI runs `python3 tools/sync-vendored.py --check`
-(`mise run lint:vendored-parity`) and fails on any drift or any copy with no canonical source.
+(`mise run lint:vendored-parity`) and fails on any drift, any copy with no canonical source,
+any row in the table below with no file on disk, and any file on disk with no row. It cannot
+see a new `skills/shared/` file no skill vendors yet — adding one here means the copy **and** a row.
 
 | Vendored path        | Canonical source                   |
 | -------------------- | ---------------------------------- |

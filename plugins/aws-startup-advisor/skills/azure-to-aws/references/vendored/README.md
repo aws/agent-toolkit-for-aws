@@ -14,8 +14,11 @@ python3 tools/sync-vendored.py          # copies skills/shared/<path> over every
 python3 tools/sync-vendored.py --check  # what CI runs (mise run lint:vendored-parity)
 ```
 
-CI fails when any vendored copy differs from its canonical source or has no canonical
-source at all, so a change to `skills/shared/` that forgets the copies cannot merge.
+CI fails when a vendored copy differs from its canonical source, has no canonical source,
+is listed in the table below but missing on disk, or is on disk but not listed below. So an
+edit to a `skills/shared/` file this skill vendors, or a deleted copy, cannot merge
+unnoticed. What CI cannot see is a **new** `skills/shared/` file that no skill vendors yet —
+if this skill needs one, add the copy **and** a row in the table below.
 
 | Vendored path                           | Canonical source                                      |
 | --------------------------------------- | ----------------------------------------------------- |
