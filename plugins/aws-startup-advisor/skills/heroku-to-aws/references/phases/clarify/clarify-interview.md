@@ -39,7 +39,7 @@ Check `$MIGRATION_DIR/` for existing state:
 
 Read `$MIGRATION_DIR/heroku-resource-inventory.json`. This artifact must exist (produced by Phase 1: Discover).
 
-**Run the Extraction Rules (Step 2 § Extraction Rules) now, before anything is shown to the user.** Extraction is a property of the inventory, not of the question flow — a question the inventory already answers must never be asked on *either* path. On the fast path, extracted values are applied directly (recorded in `metadata.questions_skipped_extracted`); on the full flow they surface as **Detected** rows on the Assumption Sheet.
+**Run the Extraction Rules (Step 2 § Extraction Rules) now, before anything is shown to the user.** Extraction is a property of the inventory, not of the question flow — a question the inventory already answers must never be asked on _either_ path. On the fast path, extracted values are applied directly (recorded in `metadata.questions_skipped_extracted`); on the full flow they surface as **Detected** rows on the Assumption Sheet.
 
 ### Discovery Summary
 
@@ -111,6 +111,7 @@ Compute `fast_path_question_count` from this table against the inventory and use
 Users are informed, with one consequence line per default so the assumption is visible rather than silent:
 
 > "Smart defaults applied:
+>
 > - Migration approach: full cutover — single downtime event; say "data-first" for a phased cutover
 > - DB migration method: pg_dump/restore — fine under ~10 GB; larger needs DMS
 > - Containerization: [extracted value, or "buildpack-only" if not extracted] — [Fargate via buildpack-to-image path / Dockerfile reused as-is]
