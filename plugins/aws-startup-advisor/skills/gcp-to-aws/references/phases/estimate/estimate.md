@@ -187,11 +187,62 @@ commit." Suggest at most one.
      `.phase-status.json` (`phases.generate` **stays** `"pending"` — this
      combination means "decision complete, execution available on request";
      see `schema-phase-status.md`).
-  3. Run the post-gate feedback checkpoint per `SKILL.md`. Close with:
-     "Your decision report is saved at `decision-report.html` (plus a
-     Slack-friendly `DECISION.md`). If you decide to migrate, say 'generate
-     the Terraform and migration scripts' — everything is saved and I'll pick
-     up from here."
+  3. **Write the web-handoff summary (fail-open):** run
+     `python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+     (absolute paths — cwd must not be load-bearing). It reads the estimate
+     artifacts and writes `$MIGRATION_DIR/plan.json`, the uploadable handoff
+     file, printing `PLAN_OK | …` or `PLAN_SKIP | reason=…`. This is an optional
+     enhancement, never a gate: on any skip or error the decision is still
+     complete — continue without it and do not surface the script output to the
+     user.
+  4. Run the post-gate feedback checkpoint per `SKILL.md`. Step 3 has already
+     run, so you know its `PLAN_OK`/`PLAN_SKIP` status — author the close **once**
+     with that knowledge, never as a two-pass edit of an already-shown message:
+     - If step 3 printed `PLAN_SKIP` (no `plan.json`), close with:
+       "Your decision report is saved at `decision-report.html` (plus a
+       Slack-friendly `DECISION.md`). If you decide to migrate, say 'generate
+       the Terraform and migration scripts' — everything is saved and I'll pick
+       up from here."
+     - If step 3 printed `PLAN_OK`, close with that same sentence and also name
+       `plan.json` in it, with **AWS Startups Migrate** as a Markdown link (the
+       close is prose, so a link renders here, unlike the fenced Generate
+       produced-list). Substitute the run's `run_id` (from `.phase-status.json`),
+       lowercased if it is a UUID — e.g. "Your decision report is saved at
+       `decision-report.html` (plus a Slack-friendly `DECISION.md`), and your
+       uploadable plan at `plan.json` — upload it to
+       [AWS Startups Migrate](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+       for up to $1,500 in credits. If you decide to migrate, say 'generate the
+       Terraform and migration scripts' — everything is saved and I'll pick up
+       from here." The `plan.json` filename appears in EXACTLY ONE place — this
+       close — and NEVER in the What's next block below.
+  5. **Web-handoff — only when step 3 printed `PLAN_OK`** (if it printed
+     `PLAN_SKIP`, omit this whole block; there is no file to upload). Append the
+     What's next block below, verbatim, replacing `<run_id>` in the link with the
+     run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the
+     `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's
+     next" heading — do NOT add a `plan.json` line (or any file line) above or
+     inside it. The call-to-action must be a Markdown link so it renders as
+     clickable text with no bare URL. Do not reword it — this copy is owned by the
+     web experience:
+
+     > **💬 What's next**
+     >
+     > - **Refine your plan**
+     >   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
+     > - **Claim your credits**
+     >   When you're happy with your plan, upload it below to apply for up to $1,500 in AWS migration credits.
+     >
+     > [🎉 Get up to $1,500 in AWS migration credits →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+     >
+     > Upload your plan to AWS Startups Migrate to see what you qualify for and unlock:
+     >
+     > - Interactive plan dashboard
+     > - Monthly cost estimate
+     > - Migration paths: AI Agent, AWS Expert, or AWS Partner
+     > - Up to $1,500 in AWS migration credits
+
+     Ship note: this reaches customers only after the import page and the
+     ImportPlan API are both live in production.
 - **B** → Load `references/phases/workshop/workshop.md`. Keep
   `current_phase: estimate`; set `phases.workshop` → `"in_progress"`. On
   workshop exit, **return to this gate** (options A and C; the workshop's

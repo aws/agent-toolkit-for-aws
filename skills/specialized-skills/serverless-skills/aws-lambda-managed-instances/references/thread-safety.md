@@ -20,7 +20,7 @@ When reviewing a function for LMI readiness, check each item:
 
 ### Python (Process-Based Isolation)
 
-Python uses **multiple independent processes**, each with its own interpreter and memory space. Global variables, module-level caches, and singleton objects are duplicated per process, not shared. If a function works on standard Lambda today, it works on LMI without code changes related to shared state.
+Python uses **multiple independent processes**, each with its own interpreter and memory space. Global variables, module-level caches, and singleton objects are duplicated per process, not shared. If a function works as a Lambda Event Function today, it works on LMI without code changes related to shared state.
 
 **Key concerns:**
 
