@@ -8,16 +8,23 @@ description: "Use when the user wants to migrate code that calls OpenAI, Gemini/
 Single-command AI migration: OpenAI / Gemini / Anthropic → Amazon Bedrock.
 
 **Requires the `gcp-to-aws` skill installed alongside this one.** This skill has no
-standalone Assess implementation — Phase A below delegates Assess entirely to `gcp-to-aws`
-via a cross-skill invocation, and there is no fallback path that performs Assess itself if
-`gcp-to-aws` is missing. If you installed this skill on its own (e.g. a single-skill
-`npx skills add`), install `gcp-to-aws` too before using it.
+standalone Assess implementation — Phase A below runs Assess by directly reading and
+executing `gcp-to-aws`'s own phase instruction files in this same session (the same
+inline-execution pattern `agent-advisor` uses for its `migration-plan` phase: no cross-skill
+tool call, no turn boundary, and no dependency on your agent supporting a Skill/subagent
+dispatch mechanism — reading a file works on any agent). There is no fallback path that
+performs Assess itself if `gcp-to-aws` is missing. If you installed this skill on its own
+(e.g. a single-skill `npx skills add`), install `gcp-to-aws` too before using it.
 
 The skill base directory is given in the "Base directory for this skill: X" line the harness
 emits at load time. Call it `<SKILL_BASE>`. Derived paths:
 
 - `$SCRIPTS` = `<SKILL_BASE>/scripts`
 - `$HELPERS` = `<SKILL_BASE>/references/helpers` (the former helper skills, now references)
+- `$GCP_BASE` = `<SKILL_BASE>/../gcp-to-aws` — the sibling `gcp-to-aws` skill's own directory.
+  Phase A reads its instruction files directly off this path; every relative reference inside
+  a `gcp-to-aws` file (`references/shared/...`, `references/phases/...`, etc.) resolves under
+  `$GCP_BASE`, exactly as it would if `gcp-to-aws` were running standalone.
 
 ---
 
@@ -61,11 +68,12 @@ Otherwise (a code path / clear rewrite intent) → continue to 0b for the full m
 
 ### 0b. Check that the gcp-to-aws sibling skill is installed
 
-Phase A below delegates the entire Assess step to the `gcp-to-aws` skill via the Skill tool —
-there is no Assess logic in this skill to fall back to. `gcp-to-aws` is a **separate skill**,
-not bundled inside this one — a single-skill install (e.g. `npx skills add ... --skill
-llm-to-bedrock`) does not bring it along automatically. Check for it now, before promising the
-user an Assess phase this deployment cannot run:
+Phase A below runs Assess by directly reading and executing `gcp-to-aws`'s own phase
+instruction files (Discover → Clarify → Design → Estimate, AI-only path) in this same
+session — there is no Assess logic in this skill to fall back to. `gcp-to-aws` is a
+**separate skill**, not bundled inside this one — a single-skill install (e.g. `npx skills
+add ... --skill llm-to-bedrock`) does not bring it along automatically. Check for it now,
+before promising the user an Assess phase this deployment cannot run:
 
 ```bash
 [ -f "<SKILL_BASE>/../gcp-to-aws/SKILL.md" ] && echo GCP_TO_AWS_PRESENT || echo GCP_TO_AWS_MISSING
@@ -94,18 +102,11 @@ under any install path — native plugin install and `npx skills add --skill '*'
   that skill's Discover/Clarify/Design logic over time. There is no standalone Assess for this
   skill — this check exists to fail fast and clearly, not to unlock alternate behavior.
 
-**Separately, invoking `gcp-to-aws` at all in Phase A requires your agent to support the
-Skill tool** (cross-skill invocation by name). This is confirmed for Claude Code; it has not
-been verified across every agent that supports `npx skills` installs (Cursor, Codex, etc.) —
-if you're on one of those and this fails, that is the likely cause. If the Skill tool call in
-Phase A's A1 step fails or no such mechanism exists on your agent, this skill still has no
-fallback: tell the user plainly that this agent cannot chain into `gcp-to-aws` automatically,
-and ask them to invoke `gcp-to-aws` themselves directly (e.g. "migrate my AI workload to AWS")
-to run Discover through Design (accepting the decision pack is enough — they do not need to
-generate infra Terraform), then come back to this skill once its Assess artifacts are ready
-(the decision pack is done, or `generate` is `completed`; checked in A2) to continue with the
-SDK rewrite. This is a manual two-step workaround for a missing agent capability, not an
-automated fallback — do not present it to the user as this skill "handling it."
+Phase A reads `gcp-to-aws`'s files directly off disk rather than invoking it as a skill, so
+there is no separate agent-capability requirement here — any agent that can read a file and
+run Bash can execute this. (An earlier version of this skill invoked `gcp-to-aws` via a
+cross-skill Skill-tool call; that mechanism is Claude-Code-specific and unverified elsewhere,
+which is exactly why Phase A no longer uses it.)
 
 ---
 
@@ -143,137 +144,124 @@ Record `$REPO` for all subsequent steps.
 
 ---
 
-## Phase A — Assess (MANDATORY: delegate to the gcp-to-aws skill)
+## Phase A — Assess (runs gcp-to-aws's own AI-path files, inline)
 
-**CRITICAL: You MUST use the Skill tool to invoke `aws-startup-advisor:gcp-to-aws` (a sibling skill
-in this same plugin). Do NOT perform the Assess phase yourself. Do NOT read source code, detect
-AI SDKs, or ask Clarify questions manually. The entire Assess phase is handled by the gcp-to-aws
-skill — you only invoke it and wait for completion.**
+**Do NOT read source code, detect AI SDKs, or ask Clarify questions yourself from scratch.**
+This phase reads `gcp-to-aws`'s own phase instruction files off disk and follows them exactly
+as if `gcp-to-aws` were running standalone — the same content, the same state file, the same
+artifacts. The only difference from invoking `gcp-to-aws` as a separate skill is that there is
+no tool call and no turn boundary: everything below runs inline, in this session.
 
-### A1 — Invoke the Assess skill
+**Path resolution.** `gcp-to-aws` instruction files use relative references
+(`references/phases/...`, `references/shared/...`, `references/vendored/...`,
+`references/design-refs/...`, `shared/...`, `design-refs/...`, `phases/...`,
+`data/...` — including the short forms). Resolve every one of them under `$GCP_BASE`
+(defined above), exactly the prefix it's written with, e.g. `shared/pricing-cache.md` →
+`$GCP_BASE/references/shared/pricing-cache.md`. `$MIGRATION_DIR` is the one path that does
+**not** resolve under `$GCP_BASE` — it stays under `$REPO` per gcp-to-aws's own convention
+(A1 below). `gcp-to-aws`'s files are **read-only** here — this phase never edits them.
 
-Call the **Skill** tool with skill name `aws-startup-advisor:gcp-to-aws`.
+### A1 — Run Discover, Clarify, Design, and Estimate
 
-Before invoking, tell the user:
+Tell the user, before starting:
 
-> "I'm now invoking the gcp-to-aws Assess skill to discover your AI workloads and design
-> the Bedrock migration. It will ask you some questions — please answer them. (Don't be
-> confused by the skill's `gcp-to-aws` name — it also covers pure AI/LLM migrations with no
-> GCP or infrastructure component, which is how it's being used here.)"
+> "I'm now running the Discover → Clarify → Design → Estimate assessment (the same logic
+> `gcp-to-aws` uses standalone) to detect your AI workloads and design the Bedrock migration.
+> It'll ask you some questions — please answer them."
 
-After invoking the Skill tool, the `gcp-to-aws` skill instructions will load into context.
-Follow those instructions exactly — they will drive the Discover, Clarify, Design, and Estimate
-phases through to the decision pack. The source code to scan is at `$REPO`. You do **not** need
-`gcp-to-aws` to run its **Generate** (infra Terraform) phase — that is opt-in and produces nothing
-this SDK rewrite reads; stopping at the decision pack is enough (A2 confirms readiness).
+Then, in order:
 
-When Discover creates the run's `.phase-status.json`, it must record `"initiated_by": "LLM_TO_BEDROCK"` beside `owning_skill` (which stays `GCP_TO_AWS`): this run was started by llm-to-bedrock, and that is how telemetry attributes it.
+1. **Resolve `$MIGRATION_DIR`.** Check for an existing `.migration/` directory at `$REPO`
+   exactly as `$GCP_BASE/references/phases/discover/discover.md` Step 0 describes (list
+   existing runs and offer Resume/Fresh/Cancel if any exist; otherwise create
+   `$REPO/.migration/<MMDD-HHMM>/` with the current timestamp and set `$MIGRATION_DIR` to it).
+   **A directory that exists but has no `.phase-status.json` yet is NOT an existing run** —
+   treat it as fresh and skip discover.md's Resume/Fresh/Cancel prompt for it (same exception
+   `agent-advisor`'s `migration-plan.md` Phase A documents for its own inline gcp-to-aws
+   delegation). This matters here because llm-to-bedrock does not pre-create `$MIGRATION_DIR`
+   before this step — but a run interrupted after this step creates the directory and before
+   discover.md's Step 0 writes `.phase-status.json` would otherwise leave exactly this
+   directory (present, but state-less) for a later resume, and discover.md's Resume branch
+   would then try to read a `.phase-status.json` that doesn't exist.
+2. **Read and execute** `$GCP_BASE/references/phases/discover/discover.md` in full, exactly
+   as written, including its own Step 0 state-file initialization (skip Step 0 if resuming —
+   `$MIGRATION_DIR` already has a `.phase-status.json`) and its Step 1 sub-discovery gates
+   (1a–1e). Those gates already key off what's actually present in `$REPO` — IaC discovery
+   only runs if Terraform files exist there, billing discovery only if billing exports exist,
+   and so on; you do not need to steer it. If the source provider is OpenAI, `discover.md`'s
+   own Step 1e will offer its OpenAI Admin API usage discovery
+   (`discover-openai-api.md` — read-only, consent-gated, needs an Admin key with **Usage**
+   set to **Read**) when applicable; accepting it gives Estimate real spend and token volumes
+   without manual CSV exports.
 
-**Important context for the gcp-to-aws skill execution:**
+   When Discover's Step 0 writes the run's `.phase-status.json`, it must record
+   `"initiated_by": "LLM_TO_BEDROCK"` beside `owning_skill` (which stays `GCP_TO_AWS`, per
+   `discover.md`'s own instruction for a run started by another skill): this run was started
+   by llm-to-bedrock, and that is how telemetry attributes it.
 
-- Source code is at `$REPO` — when the skill asks for GCP sources or scans for files, point it there
-- This is an AI/LLM workload migration — the AI path is the goal
-- Unless Terraform/IaC files are actually present in `$REPO`, skip IaC discovery
-- Unless the user offers billing data, skip billing discovery. If the source provider is
-  OpenAI, the skill may instead offer its OpenAI Admin API usage discovery
-  (`discover-openai-api.md` — read-only, consent-gated, needs an Admin key with
-  **Usage** set to **Read**); accepting it gives Estimate real spend and token volumes without
-  manual CSV exports
+   On `HANDOFF_OK`: at least one of `ai-workload-profile.json`, `gcp-resource-inventory.json`,
+   or `billing-profile.json` is present in `$MIGRATION_DIR`.
+3. **Read and execute** `$GCP_BASE/references/phases/clarify/clarify.md` in full. It routes
+   itself — when `ai-workload-profile.json` is the only discovery artifact, it reads
+   `clarify-ai-only.md` and runs that standalone flow; if infra artifacts also exist, it runs
+   the fragment/assembler split instead. Either way, follow what it loads exactly.
+   On `HANDOFF_OK`: `preferences.json` is present in `$MIGRATION_DIR`.
+4. **Read and execute** `$GCP_BASE/references/phases/design/design.md` in full. It routes to
+   `design-ai.md` when `ai-workload-profile.json` exists — that is the file this skill's
+   Execute phase depends on. On `HANDOFF_OK`: `aws-design-ai.json` is present in
+   `$MIGRATION_DIR` (plus `aws-design.json`/`aws-design-billing.json` too, if an infra or
+   billing route also ran).
+5. **Read and execute** `$GCP_BASE/references/phases/estimate/estimate.md` in full. You do
+   **not** need to continue past Estimate — this skill only needs the Assess artifacts
+   (`aws-design-ai.json`, `ai-workload-profile.json`, `preferences.json`), so once
+   `estimate.md` reaches its post-Estimate decision gate, choosing **not to generate infra**
+   (or simply stopping at the decision pack) is enough; you never read anything `generate.md`
+   would produce (Terraform, `MIGRATION_GUIDE.md`, `migration-report.html`).
 
-### A2 — Wait for Assess completion
+Each file above manages `$MIGRATION_DIR/.phase-status.json` itself, per its own protocol —
+do not write to that file yourself, other than the `initiated_by` field named in step 2 above.
+If any file's own `_postconditions`/handoff checks fail (`GATE_FAIL`), stop and show the user
+exactly what that file reported; do not patch an artifact to force a gate to pass.
 
-The `gcp-to-aws` skill is a state machine. After each phase completes, it may stop and wait
-for the next invocation. This skill only needs the **Assess artifacts** (`aws-design-ai.json`
-from Design, `ai-workload-profile.json` from Discover, `preferences.json` from Clarify) — it
-never reads anything Generate produces (Terraform, `MIGRATION_GUIDE.md`, `migration-report.html`).
-Those artifacts are all on disk once **Design** completes, so for a pure AI/SDK rewrite you do
-**not** need `gcp-to-aws` to run its infra Generate phase. The check below emits `assess-ready`
-when **any** of these hold (in this order):
+### A2 — Confirm Assess is complete
 
-1. **Design done + artifact present** — `phases.design == "completed"` AND `aws-design-ai.json`
-   exists. This is the ground truth for the AI path: Design's own completion gate has passed, so
-   the model mapping is real, not mid-authoring. (Existence alone is **not** enough — `design-ai.md`
-   writes the JSON, and Discover/Clarify wrote their two files even earlier, all **before**
-   `design.md` stamps `phases.design`; so a bare "all three files exist" would fire mid-Design.
-   Requiring `phases.design == "completed"` is what closes that early-fire window.) This also
-   covers the `legacy-generate` back-compat state in `gcp-to-aws/SKILL.md`, which is only reachable
-   after Design and therefore already has `phases.design == "completed"`.
-2. **Decide-complete** — `current_phase == "complete"` AND `run_mode == "decide"` AND
-   `phases.generate == "pending"` AND `DECISION.md` on disk (the normal AI-path end state).
-3. **Generate-complete** — `phases.generate == "completed"` (the user also chose to generate infra).
+Since Phase A above ran every step through Estimate inline (not across separate
+invocations), Assess is complete once step 5 of A1 finishes without a `GATE_FAIL`. This
+check exists as a backstop in case the session was interrupted partway through A1 (e.g. the
+user stopped mid-Clarify and is resuming later) — re-read `$MIGRATION_DIR/.phase-status.json`
+and resume A1 at whichever step in `phases` is not yet `"completed"`, rather than restarting
+from Discover.
 
-**Workshop guard (all three conditions above):** none of them are trustworthy while
-`phases.workshop == "in_progress"`. For a mixed IaC/AI run, `design.md`'s inner-workshop path
-explicitly preserves `phases.design == "completed"` while `workshop-refresh.md` is actively
-patching preferences and rewriting the design artifacts mid-reprice — so condition 1 (and,
-transitively, 2 and 3, since they never regress `phases.design`) can read `assess-ready` while
-`aws-design-ai.json` is between an old and a new region/model mapping. `phases.workshop` only
-holds `"in_progress"` for the duration of that loop (`workshop.md` § Entry step 3; resolved back
-to `"completed"` on exit/decline), so this is a narrow, real interruption window, not a permanent
-state. Treat `phases.workshop == "in_progress"` as `not-ready` regardless of what the three
-conditions above say, and re-poll after the cap below.
+**Before trusting that re-read, apply `gcp-to-aws/SKILL.md` § State Validation** (the same
+contract A1's own phase files rely on when THEY read this state, so this wrapper-level
+backstop re-read must not be held to a looser standard). In particular: if
+`.phase-status.json` fails to parse (an interrupted write left it invalid — e.g. the session
+was interrupted mid-write, not just mid-phase), § State Validation check 2's reconstruction
+procedure is the one and only sanctioned way to recover it — infer completed phases from the
+artifacts actually present in `$MIGRATION_DIR`, present the inferred status to the user for
+confirmation, and rewrite `.phase-status.json` only on that confirmation. This is a narrow,
+explicit exception to A1's "do not write to that file yourself" rule: `.phase-status.json`
+recovery per this contract is not the same act as a phase file's own state management, and
+proceeding here without it would mean this wrapper resumes on state it never validated,
+unlike every phase file it delegates to.
 
-Check progress against the LATEST run directory only (older `.migration/` runs may contain a
-stale status):
-
-```bash
-MIGRATION_DIR=$(ls -td "$REPO/.migration"/*/ 2>/dev/null | head -1)
-# Stdlib-only JSON read — no boto3, so bare python3 is fine here (no pinned env needed).
-# Emit one token: assess-ready / not-ready / no-status-file. Ground truth is the Assess the AI
-# path actually consumes (see the three conditions above); the phase-status tuples are fallbacks.
-python3 - "$MIGRATION_DIR" <<'PY' 2>/dev/null || echo "no-status-file"
-import json, os, sys
-d = sys.argv[1]
-if not d:
-    print("no-status-file"); sys.exit()
-def has(f): return os.path.exists(os.path.join(d, f))
-try:
-    s = json.load(open(os.path.join(d, ".phase-status.json")))
-except Exception:
-    # No readable status file, but the design artifact alone is not trusted (may be mid-Design);
-    # without the status we cannot confirm Design's gate passed.
-    print("no-status-file" if not has("aws-design-ai.json") else "not-ready"); sys.exit()
-ph = s.get("phases", {})
-# An active workshop reprice is actively rewriting aws-design-ai.json/aws-design.json between an
-# old and a new mapping (workshop-refresh.md), while design.md's inner-workshop path leaves
-# phases.design == "completed" throughout — so none of the three readiness conditions below are
-# trustworthy while this holds. Checked first and short-circuits to not-ready.
-if ph.get("workshop") == "in_progress":
-    print("not-ready"); sys.exit()
-# phases.design == completed means Design's completion gate passed, so aws-design-ai.json is
-# final (not mid-authoring). This also covers the legacy-generate state, which is only reachable
-# after Design. Do NOT accept a bare "all three files exist" — Discover/Clarify write their two
-# files early, and design-ai.md writes aws-design-ai.json BEFORE the gate, so three-files-present
-# fires mid-Design (the early-fire case). A3 remains the artifact-completeness backstop.
-design_done = ph.get("design") == "completed" and has("aws-design-ai.json")
-generate_done = ph.get("generate") == "completed"
-decide_done = (
-    s.get("current_phase") == "complete"
-    and s.get("run_mode") == "decide"
-    and ph.get("generate") == "pending"
-    and has("DECISION.md")
-)
-print("assess-ready" if (design_done or generate_done or decide_done) else "not-ready")
-PY
-```
-
-- `assess-ready` → proceed to A3 (Assess is done whether or not infra Generate ran). A3 still
-  verifies the specific files before Execute reads them.
-- `not-ready` / `no-status-file` → the skill needs to run again. Re-invoke
-  `aws-startup-advisor:gcp-to-aws` via the Skill tool — it picks up where it left off. (You do
-  not need to push it all the way to Generate; stopping at the decision pack is enough.)
-
-**Cap: at most 6 re-invocations.** If it is still `not-ready` after 6, stop and show the user
-the last status output — the Assess skill is stuck and needs manual attention; looping further
-just burns context.
+**Workshop guard:** if `phases.workshop == "in_progress"`, `design.md`'s inner-workshop path
+is actively repricing (`workshop-refresh.md` is rewriting `aws-design-ai.json` between an old
+and a new mapping) — finish that loop (it resolves `phases.workshop` back to `"completed"` on
+exit or decline) before treating Design as done.
 
 ### A3 — Locate Assess output
 
-Find `$MIGRATION_DIR` (the `.migration/<MMDD-HHMM>/` directory that was created):
-
-```bash
-ls -td "$REPO/.migration"/*/ 2>/dev/null | head -1
-```
+**Use the SAME `$MIGRATION_DIR` A1/A2 already resolved and confirmed — do NOT re-select a
+directory here.** `$MIGRATION_DIR` is already set from A1 step 1 (and re-confirmed, not
+replaced, by A2's re-read on a resumed session); re-running a "newest directory" lookup
+(`ls -td "$REPO/.migration"/*/ | head -1`) at this point can select a DIFFERENT, newer run
+than the one A2 just verified was complete — e.g. a sibling run whose own Design is still
+in progress. B1 would then read that sibling's unfinished model map instead of the run this
+phase actually assessed, with no error raised (the newer directory can genuinely contain all
+three files below, just from a different, incomplete assessment). If `$MIGRATION_DIR` is
+somehow unset here (it should never be, given A1/A2 above), that is a bug in this phase's own
+state tracking — stop and report it rather than guessing a directory from `ls -td`.
 
 Verify **all three** of these files exist in `$MIGRATION_DIR` (Phase B reads every one):
 
@@ -282,9 +270,9 @@ Verify **all three** of these files exist in `$MIGRATION_DIR` (Phase B reads eve
 - `preferences.json` (user preferences from Clarify)
 
 If **any** of the three is missing, Assess did not complete the AI path correctly — name the
-missing file(s), show the error, and stop. (A2 can now report `assess-ready` from the design
-file + `phases.design` alone, so this step is the backstop that guarantees the other two
-artifacts Phase B needs are actually present before Execute reads them.)
+missing file(s), show the error, and stop. A1 running to completion without a `GATE_FAIL`
+should already guarantee this; this step is the backstop that confirms it before Execute
+reads them.
 
 ---
 
@@ -682,7 +670,7 @@ When `rewrite_strategy == "mantle"`, C5's context block ALSO includes:
   `aws_model_id` is a proprietary GPT model (`openai.gpt-5*`). These are served only on the
   `/openai/v1` path via the Responses API — distinct from the `v1` path other mantle models
   use — so the rewriter must not emit a `/v1` base URL or a Chat Completions call for them.
-  See `gcp-to-aws/references/shared/openai-on-bedrock.md`.
+  See `$GCP_BASE/references/shared/openai-on-bedrock.md`.
 - `Same model: true` when `bedrock_models[].model_change` is `false`. Signals the rewriter to
   keep model parameters untouched and limit changes to the endpoint, credential, model id, and
   (if the source used Chat Completions) the surface reshape.

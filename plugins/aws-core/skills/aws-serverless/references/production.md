@@ -68,7 +68,7 @@ Pre-deployment checklist, architecture trade-offs, and operational patterns. Con
 
 ### Lambdalith vs micro-Lambda
 
-Prefer **micro-Lambda** (function per route) for greenfield: per-function least-privilege IAM, independent scaling + reserved concurrency, granular observability, smaller/faster cold starts. Use a **Lambdalith** when migrating an existing FastAPI app or when a small team values deployment simplicity over granularity. For Node.js apps, Lambda Web Functions runs the HTTP server directly without an adapter — route to the **aws-lambda-web-functions** skill; the Lambdalith adapter pattern applies to Python/FastAPI.
+Prefer **micro-Lambda** (function per route) for greenfield: per-function least-privilege IAM, independent scaling + reserved concurrency, granular observability, smaller/faster cold starts. Use a **Lambdalith** when migrating an existing Express/FastAPI app or when a small team values deployment simplicity over granularity.
 
 ### Reserved vs Provisioned Concurrency
 
