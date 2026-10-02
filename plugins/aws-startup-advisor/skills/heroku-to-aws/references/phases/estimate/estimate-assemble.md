@@ -227,7 +227,15 @@ assumed.
   `workshop-refresh.md` § 6.4 records knob diffs in each scenario's
   `preferences_subset`, so a knob must never be changed outside it. Database HA
   and cost posture rows in the block above are knobs. The option **B** label
-  names only the common ones; the full set is the sheet's.
+  names only the common ones; the full set is the sheet's. This route applies
+  **whether or not option B was displayed**: when the gate omitted **B** because
+  the sidebar was already `"completed"` from the offer, a knob row named here
+  still enters the workshop exactly as choice **B** below does — load
+  `references/phases/workshop/workshop.md`, keep `current_phase: estimate`, set
+  `phases.workshop` → `"in_progress"` (its Entry runs the stale-Generate guard
+  on every re-entry, so a completed sidebar is a legal starting state) — and
+  returns to this gate on exit. Never write the knob into `preferences.json`
+  from this gate as a workaround for a missing option.
 - Otherwise, the correction is a late answer to a Clarify question and runs
   the **same question contract** the interview would have run — a field-only
   write is not enough:
@@ -253,11 +261,14 @@ assumed.
      Artifact-only: `phases.clarify` stays `"completed"`, no `HANDOFF_OK` is
      emitted, no phase breadcrumb is printed.
   4. **Reprice.** Mark `phases.design` and `phases.estimate` pending via the
-     Phase Status Update Protocol, re-run Design → Estimate, and re-present this
-     gate. Never hand-edit `aws-design.json` or `estimation-infra.json`.
+     Phase Status Update Protocol and re-run Design → Estimate. Never hand-edit
+     `aws-design.json` or `estimation-infra.json`. Do not re-present the gate
+     yet — continue to step 5 first, so the gate (and any report the user asks
+     for from it) never reads a working tree that a saved scenario contradicts.
   5. **Rebase the scenario store (when `scenarios/index.json` exists).** This
      gate is also reached after a workshop has saved scenarios, and
-     `workshop-invariants.md` § 4 requires the working tree to equal
+     `references/vendored/workshop/workshop-invariants.md` § 4 requires the
+     working tree to equal
      `index.active_scenario_id`. A non-knob correction changes the **base** every
      scenario shares (`workshop-refresh.md` § 3 leaves non-knob fields
      untouched, so scenarios differ only by their `preferences_subset` knobs) —
@@ -284,6 +295,8 @@ assumed.
      - Say so in one line: "Repricing [N] saved what-if scenario(s) with this
        change too, so the comparison stays like-for-like." The main report and
        its what-if comparison row then read the same active estimate.
+  6. **Re-present this gate** (after step 5, or straight after step 4 when no
+     `scenarios/index.json` exists).
 
 **Confirm execution choices (option C only, before `run_mode` is written):**
 `metadata.questions_deferred_to_generate` lists the questions Clarify defaulted
