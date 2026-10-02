@@ -1684,6 +1684,124 @@ def _word_shingles(text: str, size: int = 4) -> set[str]:
     return {" ".join(words[i : i + size]) for i in range(len(words) - size + 1)}
 
 
+def _phrase_rendered(phrase: str, rendered_text: str, max_width: int = 4) -> bool:
+    """True when `rendered_text` shares a word phrase with the artifact `phrase`.
+
+    The shingle width is the phrase's own token count, capped at `max_width`:
+    a one-to-three-word condition such as "Confirm capacity" is a single
+    shingle, and the rendered text must be cut at that same width or the two
+    sets can never intersect (a fixed four-word cut only ever matched
+    conditions of four or more words). An empty phrase has nothing to render.
+    """
+    words = re.findall(r"[a-z0-9]+", _plain_text(phrase))
+    if not words:
+        return True
+    width = min(len(words), max_width)
+    return bool(_word_shingles(" ".join(words), width) & _word_shingles(rendered_text, width))
+
+
+class _RenderedFragmentParser(HTMLParser):
+    """Flatten a fragment into what the browser would show, in document order.
+
+    Produces `entries` — `("text", run)` for prose outside a list item and
+    `("li", item)` for each list item, both decoded, lower-cased, whitespace-
+    collapsed and dash-folded like `_plain_text` — plus `class_tokens`, the set
+    of class attribute tokens on rendered start tags. Inert subtrees
+    (`<script>`, `<style>`, `<template>`) and comments are skipped entirely, so
+    a heading, list item or class that exists only there is not counted as
+    rendered. Inline tags do not split a run ("What <em>would</em> flip this"
+    stays one phrase); every other tag closes the current run.
+    """
+
+    _INLINE_TAGS = _DecodedTextRunParser._INLINE_TAGS
+    _INERT_TAGS = _DecodedTextRunParser._INERT_TAGS
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.entries: list[tuple[str, str]] = []
+        self.class_tokens: set[str] = set()
+        self._inert_depth = 0
+        self._li_depth = 0
+        self._buf: list[str] = []
+
+    def _flush(self) -> None:
+        text = _plain_text(" ".join(self._buf))
+        self._buf = []
+        if text:
+            self.entries.append(("li" if self._li_depth else "text", text))
+
+    def _record_classes(self, attrs: list[tuple[str, str | None]]) -> None:
+        for name, value in attrs:
+            if name == "class" and value:
+                self.class_tokens.update(value.split())
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS:
+            self._inert_depth += 1
+            return
+        if self._inert_depth > 0:
+            return
+        self._record_classes(attrs)
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+        if tag == "li":
+            self._li_depth += 1
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS or self._inert_depth > 0:
+            return
+        self._record_classes(attrs)
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._INERT_TAGS:
+            if self._inert_depth > 0:
+                self._inert_depth -= 1
+            return
+        if self._inert_depth > 0:
+            return
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+        if tag == "li" and self._li_depth > 0:
+            self._li_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._inert_depth == 0:
+            self._buf.append(data)
+
+    def close(self) -> None:
+        super().close()
+        self._flush()
+
+
+def _rendered_fragment(fragment: str) -> _RenderedFragmentParser:
+    parser = _RenderedFragmentParser()
+    parser.feed(fragment)
+    parser.close()
+    return parser
+
+
+def _rendered_list_after_heading(
+    entries: list[tuple[str, str]], heading_phrase: str
+) -> list[str] | None:
+    """Items of the list that follows the first rendered run containing `heading_phrase`.
+
+    Returns None when no rendered run carries the heading, and an empty list
+    when the heading is present but no list item follows it before the next
+    prose run — the "heading only, empty <ul>" shape.
+    """
+    for index, (kind, text) in enumerate(entries):
+        if kind == "text" and heading_phrase in text:
+            items: list[str] = []
+            for next_kind, next_text in entries[index + 1 :]:
+                if next_kind != "li":
+                    break
+                items.append(next_text)
+            return items
+    return None
+
+
 def _iter_aws_services(node: object):
     if isinstance(node, dict):
         service = node.get("aws_service")
@@ -1764,27 +1882,47 @@ def _validate_decision_core_render(
     errors: list[str] = []
     summary = _section_html(html, "decision-summary") or ""
     summary_text = _plain_text(summary)
+    # Rendered view of the summary: class tokens and list items are read from
+    # elements the browser shows, so markup that exists only inside a
+    # <template> (or a comment) cannot satisfy a check.
+    rendered = _rendered_fragment(summary)
     recommendation = (estimation_infra or {}).get("recommendation") or {}
 
     if recommendation:
-        if not re.search(r"\bmetric-hero\b", summary, re.IGNORECASE):
+        if "metric-hero" not in rendered.class_tokens:
             errors.append(
                 "recommendation block exists but decision-summary has no hero metric "
                 '(render the AWS run rate and migration shape with class="metric-hero")'
             )
         outcome = recommendation.get("outcome") or recommendation.get("outcome_label")
-        if outcome and not re.search(r"\bverdict-headline\b", summary, re.IGNORECASE):
+        if outcome and "verdict-headline" not in rendered.class_tokens:
             errors.append(
                 "recommendation.outcome exists but decision-summary has no "
                 'verdict-headline (render outcome_label as <p class="verdict-headline">)'
             )
 
     flips = recommendation.get("would_flip_if")
-    if isinstance(flips, list) and flips and "what would flip" not in summary_text:
-        errors.append(
-            "recommendation.would_flip_if is non-empty but decision-summary has no "
-            '"What would flip this" list'
-        )
+    if isinstance(flips, list) and flips:
+        items = _rendered_list_after_heading(rendered.entries, "what would flip")
+        if items is None:
+            errors.append(
+                "recommendation.would_flip_if is non-empty but decision-summary has no "
+                '"What would flip this" list'
+            )
+        else:
+            # The heading alone is not the content: every artifact flip condition
+            # must appear as a rendered item of that list.
+            missing = [
+                str(flip)
+                for flip in flips
+                if not any(_phrase_rendered(str(flip), item) for item in items)
+            ]
+            if missing:
+                errors.append(
+                    f'"What would flip this" list renders {len(flips) - len(missing)} of '
+                    f"{len(flips)} recommendation.would_flip_if entries — missing: "
+                    + "; ".join(f'"{flip}"' for flip in missing)
+                )
 
     tracks = recommendation.get("track_outcomes")
     if isinstance(tracks, list) and tracks and "by track" not in summary_text:
@@ -1799,10 +1937,8 @@ def _validate_decision_core_render(
         and isinstance(conditions, list)
         and conditions
     ):
-        summary_shingles = _word_shingles(summary_text)
         for condition in conditions:
-            shingles = _word_shingles(_plain_text(str(condition)))
-            if shingles and not (shingles & summary_shingles):
+            if not _phrase_rendered(str(condition), summary_text):
                 errors.append(
                     "recommendation.conditions is non-empty but decision-summary does "
                     "not render that condition as a checklist (a shared phrase from the "
