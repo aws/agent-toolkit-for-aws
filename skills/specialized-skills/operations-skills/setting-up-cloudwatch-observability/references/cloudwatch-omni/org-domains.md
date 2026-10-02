@@ -128,9 +128,9 @@ Quotas and scope rules to state up front:
 
 ### Operations you will call
 
-Every operation runs through the `aws___call_aws` tool as an `aws <service>
-<operation>` CLI command, with the operation's inputs passed as CLI flags
-(`--kebab-key`). Policy documents appear below as standalone JSON blocks — pass each
+Every operation is an `aws <service> <operation>` CLI command, with the operation's
+inputs passed as CLI flags (`--kebab-key`). Run it through the `aws___call_aws`
+tool when that tool is available; otherwise run the same command in a shell. Policy documents appear below as standalone JSON blocks — pass each
 as the corresponding flag value (`--assume-role-policy-document`).
 
 **`aws organizations` operations:**
@@ -182,7 +182,7 @@ Report the caller identity before starting, and confirm the account is the
 management account:
 
 ```
-aws___call_aws → aws sts get-caller-identity
+aws sts get-caller-identity
 ```
 
 ## Step 1 — Interview the customer first
@@ -210,7 +210,7 @@ If the customer does not know their Identity Center instance ARN, look it up for
 them rather than sending them away to find it:
 
 ```
-aws___call_aws → aws sso-admin list-instances
+aws sso-admin list-instances
 ```
 
 Each entry carries the instance ARN and its identity store ID. The public
@@ -237,7 +237,7 @@ trusted access in AWS Organizations. The service principal is
 ### Check first
 
 ```
-aws___call_aws → aws organizations list-aws-service-access-for-organization
+aws organizations list-aws-service-access-for-organization
 ```
 
 The response carries `EnabledServicePrincipals`, a list of entries each with a
@@ -254,7 +254,7 @@ confirmation before running it; do not enable trusted access as an implied step 
 the overall setup, because it affects every account in the organization.
 
 ```
-aws___call_aws → aws organizations enable-aws-service-access --service-principal observabilityadmin.amazonaws.com
+aws organizations enable-aws-service-access --service-principal observabilityadmin.amazonaws.com
 ```
 
 This call is **management account only** and returns no body. Re-run the check to
@@ -319,13 +319,13 @@ protection — keep both. Note the resource type is `organization-domain`, not
 ```
 
 ```
-aws___call_aws → aws iam create-role --role-name <role-name> --assume-role-policy-document <trust-policy-json>
+aws iam create-role --role-name <role-name> --assume-role-policy-document <trust-policy-json>
 ```
 
 ### Attach the managed policy
 
 ```
-aws___call_aws → aws iam attach-role-policy --role-name <role-name> --policy-arn arn:aws:iam::aws:policy/CloudWatchOmniDomainAccessPolicy
+aws iam attach-role-policy --role-name <role-name> --policy-arn arn:aws:iam::aws:policy/CloudWatchOmniDomainAccessPolicy
 ```
 
 **Constraints:**
@@ -356,7 +356,7 @@ entry carries its ARN. Use the ARN's resource type to tell them apart —
 is the check to run when the customer has no domain ID yet.
 
 ```
-aws___call_aws → aws cloudwatchomni list-domains
+aws cloudwatchomni list-domains
 ```
 
 Read the result before creating anything:
@@ -389,7 +389,7 @@ Read the result before creating anything:
 For an **IAM-only** Domain:
 
 ```
-aws___call_aws → aws cloudwatchomni create-domain-for-organization \
+aws cloudwatchomni create-domain-for-organization \
   --name <domain-name> --identity-providers IAM \
   --domain-access-role-arn arn:aws:iam::<management-account-id>:role/<role-name>
 ```
@@ -398,7 +398,7 @@ For an **Identity Center** Domain, `identityProviderConfiguration` becomes
 required and carries the instance ARN:
 
 ```
-aws___call_aws → aws cloudwatchomni create-domain-for-organization \
+aws cloudwatchomni create-domain-for-organization \
   --name <domain-name> --identity-providers IAM IDC \
   --domain-access-role-arn arn:aws:iam::<management-account-id>:role/<role-name> \
   --identity-provider-configuration '{"identityCenterConfiguration": {"identityCenterInstanceArn": "<idc-instance-arn>"}}'
@@ -439,7 +439,7 @@ The management account, or a registered delegated administrator, vends credentia
 for the target account and uses them to create the Space:
 
 ```
-aws___call_aws → aws cloudwatchomni get-space-credentials-for-organization \
+aws cloudwatchomni get-space-credentials-for-organization \
   --context '{"domainId": "<domain-id>", "targetAccountId": "<target-account-id>"}' \
   --credential-type SPACE_OPERATION
 ```
@@ -456,7 +456,7 @@ for it directly by passing `spaceId` in the `context` instead of the
 Enumerate what exists across the organization at any point:
 
 ```
-aws___call_aws → aws cloudwatchomni list-spaces-for-organization
+aws cloudwatchomni list-spaces-for-organization
 ```
 
 **Constraints:**
@@ -482,7 +482,7 @@ Domain-level grant to one account or one Space — that is what per-Space grants
 for.
 
 ```
-aws___call_aws → aws cloudwatchomni create-domain-access-grant-for-organization \
+aws cloudwatchomni create-domain-access-grant-for-organization \
   --domain-id <domain-id> \
   --name <grant-name> \
   --principal '{"principalType": "<principal-type>", "principalId": "<principal-id>"}' \
@@ -500,7 +500,7 @@ revoking later.
 Review the grants with:
 
 ```
-aws___call_aws → aws cloudwatchomni list-domain-access-grants-for-organization --domain-id <domain-id>
+aws cloudwatchomni list-domain-access-grants-for-organization --domain-id <domain-id>
 ```
 
 **Constraints:**
@@ -521,11 +521,11 @@ Read the Domain back rather than trusting the create response, and confirm the
 Spaces and grants landed:
 
 ```
-aws___call_aws → aws cloudwatchomni get-domain-for-organization --domain-id <domain-id>
+aws cloudwatchomni get-domain-for-organization --domain-id <domain-id>
 
-aws___call_aws → aws cloudwatchomni list-spaces-for-organization
+aws cloudwatchomni list-spaces-for-organization
 
-aws___call_aws → aws cloudwatchomni list-domain-access-grants-for-organization --domain-id <domain-id>
+aws cloudwatchomni list-domain-access-grants-for-organization --domain-id <domain-id>
 ```
 
 Then report to the customer, in one line: the domain endpoint URL, the domain ID,
@@ -548,7 +548,7 @@ Order matters, and it spans accounts.
 2. Delete the Domain, from its **home Region** — the Region it was created in:
 
    ```
-   aws___call_aws → aws cloudwatchomni delete-domain-for-organization --domain-id <domain-id>
+   aws cloudwatchomni delete-domain-for-organization --domain-id <domain-id>
    ```
 
    Use `delete-domain-for-organization`, not `delete-domain` — the account-scoped

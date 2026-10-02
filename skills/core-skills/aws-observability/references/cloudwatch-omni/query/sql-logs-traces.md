@@ -8,6 +8,33 @@ The SQL dialect for querying logs and traces in CloudWatch Omni. Both Omni exper
 
 ---
 
+## 0. Running a Query
+
+A statement is executed with these three operations, in order — there is no single
+"execute query" call:
+
+1. **`StartTelemetryQuerySession`** → returns a `sessionId`. One session carries many
+   queries; reuse it rather than opening one per statement.
+2. **`StartTelemetryQuery`** with `sessionId` + `queryString` (the SQL below) → returns a
+   `queryId`. A statement that cannot be planned fails **here**, with the schema or parse
+   error in the response.
+3. **`GetTelemetryQueryResults`** with `queryId` — and **only** `queryId`; passing
+   `sessionId` too is rejected as an unknown parameter. Poll it until `status` is
+   `Complete` (results in `rows`) or `Failed`. A fresh query needs a moment: expect an
+   in-progress status before the first `Complete`.
+
+A session is closed with `StopTelemetryQuerySession`, and a long-running query with
+`StopTelemetryQuery`. Sessions expire on their own; a reused `sessionId` that has gone
+stale fails with `Session has been terminated. Please call StartSession to create a new
+session.`, which means open a new session, not that the SQL is wrong.
+
+In the AWS CLI these are `aws cloudwatchomni start-telemetry-query-session`,
+`start-telemetry-query` and `get-telemetry-query-results`. The same three operations run
+the queries in [views.md](views.md); see
+[programmatic-access.md](../programmatic-access.md) for client setup and versions.
+
+---
+
 ## 1. Tables & Addressing
 
 | Table Reference | Contents |
@@ -42,6 +69,13 @@ The dot-separated form (`logs.default`) is the most common. Use whichever you pr
 Every query **must** include a filter on `` `@timestamp` ``. Queries without a time-range filter are rejected.
 
 - `` `@timestamp` `` values are **timestamps**
+- **On a span, `` `@timestamp` `` is the span END time** (`endTimeUnixNano`), not the start.
+  A window that only brackets when a request *started* therefore excludes every span of that
+  request that finished after the window closed — typically the slow root or client span that
+  carries the error — and the query still completes normally, returning the fast child spans
+  as if they were the whole trace. When fetching a whole trace or correlating by `traceId`,
+  push the upper bound out by the longest span duration you expect (a span that ran for ten
+  minutes is stamped ten minutes after it started).
 - When self-joining, the `` `@timestamp` `` filter is required on **both** sides of the join
 
 **Relative time range:**
@@ -77,7 +111,7 @@ These `@`-prefixed fields are the **only** fields guaranteed to exist on every r
 
 | Field | Description |
 |---|---|
-| `` `@timestamp` `` | Mandatory filter field. Every query must constrain this. |
+| `` `@timestamp` `` | Mandatory filter field. Every query must constrain this. **On a span it is the span END time** (`endTimeUnixNano`), not the start — see the note in [Required Time Range](#2-required-time-range). |
 | `` `@record` `` | All user-visible data as JSON. Contains the full record structure. |
 | `` `@message` `` | Original ingestion payload. Permission-gated — may not be available to all users. |
 | `` `@ingest_time` `` | When the record was ingested. |
@@ -146,6 +180,16 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 The field names shown here are **examples of the syntax**. The actual fields present depend entirely on the ingested data — use [Schema Discovery](#5-schema-discovery) to find what exists.
 
 **Permissive schema:** Referencing a field that doesn't exist in the data will **silently return NULL** rather than producing an error. This means typos in field names won't fail your query — they'll just give empty results. Always verify field names via schema discovery if results look unexpectedly empty.
+
+**An alias-qualified bracket path resolves to NULL.** With a table alias in scope,
+`t.attributes['k']` and `t.resource['attributes']['k']` return NULL everywhere — in
+`SELECT`, in `WHERE` and in a `JOIN ... ON` — while the same path written **without** the
+alias returns the value. Measured on one query over `traces.default`:
+`COUNT(t.attributes['session.id'])` = 0 against `COUNT(attributes['session.id'])` =
+122,670. Nothing errors, so a join written the qualified way silently matches zero rows.
+Write bracket paths unqualified, or project the nested field to a flat alias in a CTE or
+derived table first and refer to that alias. Alias-qualifying a top-level column
+(`` t.`@timestamp` ``, `t.name`) is unaffected.
 
 **An all-NULL column from a query that ran is a signal to verify the field name before
 concluding the data is absent — not proof the name is wrong.** A correctly-named field can
@@ -221,12 +265,18 @@ Only `SELECT` statements are allowed. All DDL (`CREATE`, `ALTER`, `DROP`) and DM
 - `LIMIT` — default is **10,000** if omitted
 - `DISTINCT`
 
-**Joins:**
+**Joins** — on base tables the outer joins need the **`OUTER`** keyword spelled out:
 
-- `INNER JOIN`
-- `LEFT JOIN`
-- `RIGHT JOIN`
+- `INNER JOIN` (and bare `JOIN`)
+- `LEFT OUTER JOIN` — **not** `LEFT JOIN`
+- `RIGHT OUTER JOIN` — **not** `RIGHT JOIN`
 - `FULL OUTER JOIN`
+
+The short `LEFT JOIN` / `RIGHT JOIN` spellings are rejected against base tables, and the
+error blames a column rather than the keyword: `Schema error: No field named a."spanId".
+Valid fields are a."@timestamp", b."@timestamp".` — every non-time column vanishes from
+the reported schema, so it reads as a missing field. Add `OUTER` and the identical
+`ON`/`WHERE` runs unchanged.
 
 **Subqueries & Composition:**
 
@@ -239,6 +289,12 @@ Only `SELECT` statements are allowed. All DDL (`CREATE`, `ALTER`, `DROP`) and DM
 - `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)`
 - `RANK() OVER (...)`
 - Aggregate functions with `OVER (PARTITION BY ... ORDER BY ...)`
+- **A window's `PARTITION BY` / `ORDER BY` takes a column or an alias, never a bracket
+  path.** `PARTITION BY attributes['http.method']` is rejected with `Schema error: No
+  field named attributes. Valid fields are "@timestamp", attributes` — an error that
+  names nothing wrong in the query. Project the nested field in a CTE or derived table
+  first and partition by that alias (see the running-count pattern in §8). Top-level
+  columns (`kind`, `name`) work directly.
 
 **Expressions:**
 
@@ -265,12 +321,18 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 **Per-occurrence / per-table** — each table reference carries its own independent sampling rate. In multi-datastore joins and self-joins, every occurrence is sampled separately:
 
 ```sql
-SELECT *
+SELECT a.`@timestamp` AS log_time, b.name AS span_name
 FROM "logs.default" a TABLESAMPLE (10 PERCENT)
-JOIN "traces.default" b TABLESAMPLE (50 PERCENT) ON a.id = b.id
+JOIN "traces.default" b TABLESAMPLE (50 PERCENT) ON a.traceId = b.traceId
 WHERE a.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
   AND b.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+LIMIT 3
 ```
+
+Project columns explicitly and qualify them, as above: `SELECT *` across two tables that
+both expose `@timestamp` is rejected with `Schema error: Ambiguous reference to
+unqualified field "@timestamp"` — the join itself is fine, the star is not. Join on a
+field the two tables actually share (`traceId`), not a placeholder `id`.
 
 **Behavior** — `TABLESAMPLE` returns an approximate sample, not an exact `p%` of rows: the returned row count is an approximation of the requested percentage. Sampling is repeatable — re-running the same query over the same time range returns the same sample.
 
@@ -353,6 +415,12 @@ WHERE a.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 
 ### Time & Date
 
+`` `@timestamp` `` is `Timestamp(Nanosecond)`. `dateceil` and `convert_timezone` accept only
+`Timestamp(Microsecond)`, so call them on `arrow_cast(\`@timestamp\`, 'Timestamp(Microsecond, None)')`;
+passed the raw column they fail at planning with`Failed to coerce arguments ... Timestamp(ns) to
+the signature Exact(..., Timestamp(µs))`.`dateceil` takes an `INTERVAL`, not a`'5 minutes'`
+string. `date_diff` takes dates: `date_diff(CAST(a AS DATE), CAST(b AS DATE))`.
+
 - `NOW()` — current timestamp
 - `to_timestamp_nanos(string)` — parse ISO-8601 string to timestamp. E.g., `to_timestamp_nanos('2026-08-20T15:00:00.000Z')`
 - `to_timestamp(string)` — parse string to timestamp
@@ -361,12 +429,12 @@ WHERE a.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 - `fromMillis(integer)` — epoch milliseconds to timestamp
 - `toMillis(timestamp)` — timestamp to epoch milliseconds
 - `date_trunc(unit, timestamp)` — truncate to unit. E.g., `date_trunc('minute', \`@timestamp\`)`
-- `dateceil(timestamp, unit)` — ceiling to unit. E.g., `dateceil(\`@timestamp\`, '5 minutes')`
+- `dateceil(timestamp_us, interval)` — ceiling to interval; needs the microsecond cast. E.g., `dateceil(arrow_cast(\`@timestamp\`, 'Timestamp(Microsecond, None)'), INTERVAL '5 minutes')`
 - `date_part(field, timestamp)` — extract part (year, month, day, hour, minute, second)
 - `extract(field FROM timestamp)` — same as date_part
 - `date_bin(interval, timestamp, origin)` — bin timestamps into fixed intervals
-- `date_diff(date, date)` — difference between dates
-- `convert_timezone(from, to, timestamp)` — timezone conversion
+- `date_diff(date, date)` — difference between dates; cast timestamps first: `date_diff(CAST(\`@timestamp\` AS DATE), CAST(NOW() AS DATE))`
+- `convert_timezone(from, to, timestamp_us)` — timezone conversion; needs the microsecond cast. E.g., `convert_timezone('UTC', 'Europe/London', arrow_cast(\`@timestamp\`, 'Timestamp(Microsecond, None)'))`
 - `add_months(date, n)` — add months
 - `make_timestamp(y, m, d, h, min, sec)` — create timestamp from parts
 
@@ -637,19 +705,31 @@ LIMIT 20
 
 ### Window Function — Running Count per Group
 
+The nested field has to be aliased in a CTE first — a window cannot partition by a
+bracket path (§6):
+
 ```sql
 -- 'your.partition.key' is a placeholder for a real field
+WITH rows AS (
+  SELECT `@timestamp`,
+         attributes['your.partition.key'] AS group_key
+  FROM default
+  WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+)
 SELECT `@timestamp`,
-       attributes['your.partition.key'] AS group_key,
+       group_key,
        count(*) OVER (
-         PARTITION BY attributes['your.partition.key']
+         PARTITION BY group_key
          ORDER BY `@timestamp`
        ) AS running_count
-FROM default
-WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+FROM rows
 ORDER BY `@timestamp` DESC
 LIMIT 200
 ```
+
+Partitioning by the bracket path directly — `PARTITION BY attributes['your.partition.key']`
+— fails with `Schema error: No field named attributes`, with or without `ORDER BY`, for
+`count(*)` and `ROW_NUMBER()` alike.
 
 ### Approximate Percentiles
 
@@ -679,10 +759,16 @@ WITH candidates AS (
 SELECT t.`@timestamp`, t.`@record`
 FROM default AS t
 INNER JOIN candidates AS c
-  ON t.attributes['your.correlation.key'] = c.corr_key
+  ON attributes['your.correlation.key'] = c.corr_key
 WHERE t.`@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ORDER BY t.`@timestamp` ASC
 ```
+
+The `ON` clause deliberately writes the bracket path **unqualified** — `attributes[...]`,
+not `t.attributes[...]`. An alias-qualified bracket path resolves to NULL (see
+[Field Access & Quoting](#4-field-access--quoting)), so the qualified spelling makes this
+join match nothing and return zero rows **with no error**. Alias-qualifying a *top-level*
+field, as in `` t.`@timestamp` `` above, is fine.
 
 ### Correlating logs with traces
 
@@ -716,6 +802,9 @@ answer**, each with the mandatory `` `@timestamp` `` bound:
      AND t.<shared_field> = '<trace-id>'
    ORDER BY l.`@timestamp` ASC
    ```
+
+Give the span side a wide upper bound: a span's `` `@timestamp` `` is its **end** time, so a
+window that stops shortly after the request began drops its longest spans (section 2).
 
 If the log records carry no trace context at all, no query can associate them after
 ingestion — the fix is instrumentation (inject the active trace id into each log record),

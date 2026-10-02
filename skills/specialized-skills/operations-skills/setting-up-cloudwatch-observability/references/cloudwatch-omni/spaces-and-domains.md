@@ -124,9 +124,10 @@ Center.
 
 ### Operations you will call
 
-Every operation runs through the `aws___call_aws` tool as an `aws <service>
-<operation>` CLI command — the service name in kebab-case, the operation in
-kebab-case, and each input-shape member passed as a `--kebab-key` flag. Policy
+Every operation is an `aws <service> <operation>` CLI command — the service name in
+kebab-case, the operation in kebab-case, and each input-shape member passed as a
+`--kebab-key` flag. Run it through the `aws___call_aws`
+tool when that tool is available; otherwise run the same command in a shell. Policy
 documents appear below as standalone JSON blocks — pass each as the corresponding
 flag value (`--assume-role-policy-document`).
 
@@ -167,7 +168,7 @@ flag value (`--assume-role-policy-document`).
 Report the caller identity before starting:
 
 ```
-aws___call_aws → aws sts get-caller-identity
+aws sts get-caller-identity
 ```
 
 ## Step 1 — Interview the customer first
@@ -183,7 +184,7 @@ default silently.
    question 1 is that instance's primary Region.
 5. **Space name?** Same character rules as the domain name; 3–64 characters.
 6. **Space access role** — should the agent **create a new role** with the correct
-   trust policy and managed policies, or will the customer **supply an existing
+   trust policy and managed policy, or will the customer **supply an existing
    role ARN**? Recommend creating one.
 7. **AgentCore evaluation role ARN?** `create-space` requires this as well as the
    space access role, and the agent cannot create it. Ask for an existing ARN, or
@@ -199,7 +200,7 @@ If the customer does not know their Identity Center instance ARN, look it up for
 them rather than sending them away to find it:
 
 ```
-aws___call_aws → aws sso-admin list-instances
+aws sso-admin list-instances
 ```
 
 Each entry carries the instance ARN and its identity store ID. The public
@@ -223,7 +224,7 @@ reference for this operation is
 conflicts, so check before creating and tell the customer the limit.
 
 ```
-aws___call_aws → aws cloudwatchomni list-domains
+aws cloudwatchomni list-domains
 ```
 
 If a Domain comes back, do NOT create another. Report the existing Domain to the
@@ -249,7 +250,7 @@ confirmation, take its `domainId` and continue from Step 3.
 For an **IAM-only** Domain there is no extra configuration:
 
 ```
-aws___call_aws → aws cloudwatchomni create-domain --name <domain-name> --identity-providers IAM
+aws cloudwatchomni create-domain --name <domain-name> --identity-providers IAM
 ```
 
 For an **Identity Center** Domain, `identityProviderConfiguration` becomes
@@ -257,7 +258,7 @@ required and carries the instance ARN. The Domain must be created in the
 instance's primary Region, which the service verifies:
 
 ```
-aws___call_aws → aws cloudwatchomni create-domain --name <domain-name> --identity-providers IAM IDC --identity-provider-configuration '{"identityCenterConfiguration": {"identityCenterInstanceArn": "<idc-instance-arn>"}}'
+aws cloudwatchomni create-domain --name <domain-name> --identity-providers IAM IDC --identity-provider-configuration '{"identityCenterConfiguration": {"identityCenterInstanceArn": "<idc-instance-arn>"}}'
 ```
 
 If the customer does not have the Identity Center instance ARN to hand, do not leave
@@ -326,7 +327,7 @@ protection — keep both.
 ```
 
 ```
-aws___call_aws → aws iam create-role --role-name <role-name> --assume-role-policy-document <trust-policy-json>
+aws iam create-role --role-name <role-name> --assume-role-policy-document <trust-policy-json>
 ```
 
 **Constraints:**
@@ -340,25 +341,23 @@ aws___call_aws → aws iam create-role --role-name <role-name> --assume-role-pol
 - You MUST create the role in the same account as the caller. `create-space`
   rejects a `dataAccessRoleArn` from another account.
 
-### Attach the managed policies
+### Attach the managed policy
 
-Attach both with the IAM `attach-role-policy` operation. Do not write an inline
+Attach it with the IAM `attach-role-policy` operation. Do not write an inline
 policy instead, and do not substitute a `*FullAccess` policy — the Space's
-permissions are defined by these two managed policies and nothing else. If the role
+permissions are defined by this managed policy and nothing else. If the role
 was supplied by the customer rather than created here, ask before attaching anything
 to it.
 
 ```
-aws___call_aws → aws iam attach-role-policy --role-name <role-name> --policy-arn arn:aws:iam::aws:policy/CloudWatchOmniSpaceAccessPolicy
-
-aws___call_aws → aws iam attach-role-policy --role-name <role-name> --policy-arn arn:aws:iam::aws:policy/CloudWatchOmniAgentObservabilityPolicy
+aws iam attach-role-policy --role-name <role-name> --policy-arn arn:aws:iam::aws:policy/CloudWatchOmniSpaceAccessPolicy
 ```
 
 **Constraints:**
 
 - You MUST NOT substitute a `*FullAccess` policy or hand-write a broad inline
-  policy. The Space's permissions are defined by these managed policies.
-- You MUST NOT attach these policies to a role the customer supplied without
+  policy. The Space's permissions are defined by this managed policy.
+- You MUST NOT attach this policy to a role the customer supplied without
   asking. They may be reusing it, and widening someone else's role is not yours
   to do.
 
@@ -373,11 +372,11 @@ call:
    is `bedrock-agentcore.amazonaws.com`. An account already running evaluations
    usually has one — show the matches and let the customer pick.
 
-```
-aws___call_aws → aws iam list-roles
-```
+   ```
+   aws iam list-roles
+   ```
 
-1. **Otherwise have the customer create one** — the AgentCore Evaluations console
+2. **Otherwise have the customer create one** — the AgentCore Evaluations console
    ("Create and use a new service role") or the AgentCore CLI/SDK
    (`auto_create_execution_role=True`) — then use the ARN it returns.
 
@@ -387,7 +386,7 @@ aws___call_aws → aws iam list-roles
   rejected by the client before the request is sent.
 - You MUST NOT hardcode this role's IAM policy. The console and CLI build the
   authoritative policy on creation.
-- You MUST NOT attach the Space's managed policies to it. It is a different role
+- You MUST NOT attach the Space's managed policy to it. It is a different role
   with a different trust principal.
 
 **When the customer asks what this role is** — typically because `create-space` just
@@ -412,7 +411,7 @@ conflicts; a Space in a different Region is a different Space. Check before
 creating, scope the check to the target Region, and tell the customer the limit.
 
 ```
-aws___call_aws → aws cloudwatchomni list-spaces --domain-id <domain-id>
+aws cloudwatchomni list-spaces --domain-id <domain-id>
 ```
 
 If a Space already exists in the target Region, do NOT create another. Report it
@@ -438,12 +437,15 @@ to the customer — its name, ID, and Region — and confirm they want to use it
 > AgentCore evaluation role there before calling.
 
 ```
-aws___call_aws → aws cloudwatchomni create-space --name <space-name> --domain-id <domain-id> \
+aws cloudwatchomni create-space --name <space-name> --domain-id <domain-id> \
   --data-access-role-arn arn:aws:iam::<account-id>:role/<role-name> \
   --agent-core-evaluation-role-arn arn:aws:iam::<account-id>:role/<agentcore-eval-role-name>
 ```
 
-`--domain-id` accepts the Domain's ID, its name, or its ARN.
+`--domain-id` takes the Domain's ID only (`d-` followed by up to 25 base-36
+characters); it does **not** accept the Domain's name or ARN. Passing a name or
+ARN fails with `400 ValidationException` (`domainId` must match `d-[0-9a-z]{1,25}`).
+If you have a name or ARN, resolve it to the ID with `list-domains` first.
 
 For **customer managed encryption**, add `encryptionConfiguration`:
 
@@ -497,9 +499,9 @@ the response.
 Read both resources back rather than trusting the create responses:
 
 ```
-aws___call_aws → aws cloudwatchomni get-domain --domain-id <domain-id>
+aws cloudwatchomni get-domain --domain-id <domain-id>
 
-aws___call_aws → aws cloudwatchomni get-space --space-id <space-id>
+aws cloudwatchomni get-space --space-id <space-id>
 ```
 
 Confirm the Domain reports the expected endpoint URL, and the Space reports
@@ -531,18 +533,18 @@ Order matters. Delete the Space first.
    explicit confirmation before running this call.
 
    ```
-   aws___call_aws → aws cloudwatchomni delete-space --space-id <space-id>
+   aws cloudwatchomni delete-space --space-id <space-id>
    ```
 
 2. Delete the Domain. This fails while any Space still exists under it:
 
    ```
-   aws___call_aws → aws cloudwatchomni delete-domain --domain-id <domain-id>
+   aws cloudwatchomni delete-domain --domain-id <domain-id>
    ```
 
 3. The space access role — branch on who created it:
-   - **The agent created it in Step 3:** detach both managed policies with
-     `detach-role-policy`, then `delete-role`. A role with policies attached
+   - **The agent created it in Step 3:** detach the managed policy with
+     `detach-role-policy`, then `delete-role`. A role with a policy attached
      cannot be deleted.
    - **The customer supplied it:** do NOT delete or modify it. Tell them the Space
      is gone and the role is untouched.
@@ -646,10 +648,10 @@ arriving the delete is destructive. Fix the trust policy on the existing role in
 - The `aws:SourceArn` wildcard covers Region and space ID because neither is known
   when the role is created. Do not widen it further — the account ID and the
   `space/` resource type MUST stay pinned.
-- If the customer supplied the role, attach only these two managed policies and change
+- If the customer supplied the role, attach only this managed policy and change
   nothing else about its existing permissions.
 - Do not attach `*FullAccess` policies to the space access role. Its permissions
-  come from the Omni managed policies and nothing else.
+  come from the Omni managed policy and nothing else.
 - A Space encrypted with a customer managed key needs the key policy to grant the
   service `kms:Decrypt` and `kms:GenerateDataKey`. Do not author or modify the key
   policy; if it needs changing, direct the customer to their key administrator.

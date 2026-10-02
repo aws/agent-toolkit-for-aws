@@ -1,7 +1,7 @@
 ---
 name: architect-for-startups
 description: >-
-  Startup-tailored AWS architecture advice that adjusts recommendations to the company's stage (pre-revenue through Series B+), team size, runway, and available credits. Use when a founder wants guidance or a recommendation rather than code changes: which services to choose, how to plan or review an architecture, how to stretch credits and control cost, or how to prepare architecture for a fundraise or technical diligence. For an interactive discovery flow that scaffolds and writes the architecture into the codebase, use start-building-for-startups. For AI-agent runtime selection or agentic architecture recommendations specifically, use agent-advisor. Do not use for: writing or scaffolding code, factual AWS Activate / programs / credits lookups (see knowledge-base-for-startups), a single copy-paste prompt (see prompt-library-for-startups), or migration intent such as GCP-to-AWS, Azure-to-AWS, or Heroku-to-AWS (see the migration skills: `gcp-to-aws`, `azure-to-aws`, `heroku-to-aws`, `llm-to-bedrock`).
+  Startup-tailored AWS architecture advice for non-agent workloads, adjusted to the company's stage (pre-revenue through Series B+), team size, runway, and credits. Not for AI agents: deploying an AI agent on AWS, picking its runtime, or any agentic architecture is agent-advisor. Use when a founder wants guidance or a recommendation rather than code changes: which services to choose, how to plan or review an architecture, how to stretch credits and control cost, or how to prepare architecture for a fundraise or technical diligence. For an interactive discovery flow that scaffolds and writes the architecture into the codebase, use start-building-for-startups. Do not use for: writing or scaffolding code, factual AWS Activate / programs / credits lookups (see knowledge-base-for-startups), a single copy-paste prompt (see prompt-library-for-startups), or migration intent such as GCP-to-AWS, Azure-to-AWS, or Heroku-to-AWS (see the migration skills: `gcp-to-aws`, `azure-to-aws`, `heroku-to-aws`, `llm-to-bedrock`).
 ---
 
 # Architect for Startups
@@ -90,6 +90,7 @@ guidance.
 
 ### AI/ML
 
+- An AI agent is the workload — "deploy an AI agent on AWS", which runtime for my agent, AgentCore vs ECS vs EKS vs Lambda, an agentic architecture, or moving agents to AWS: hand off to the `agent-advisor` skill instead of answering from these references. It scores the runtime deterministically and can build the POC. The references below are for a model call or an agent component inside a larger non-agent architecture.
 - [Foundation models and AI agents](references/bedrock.md)
 - [Agent runtime platform](references/agentcore.md)
 - [ML pipelines and model serving](references/mlops.md)

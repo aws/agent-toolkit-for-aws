@@ -1,12 +1,12 @@
-# Enable AWS Application Signals for .NET Applications on Amazon EKS
+# Enable AWS Application Signals for Java Applications on Amazon EKS
 
-This guide shows how to modify existing CDK and Terraform infrastructure code to enable AWS Application Signals for .NET applications running on Amazon EKS.
+This guide shows how to modify existing CDK and Terraform infrastructure code to enable AWS Application Signals for Java applications running on Amazon EKS.
 
 ## Prerequisites
 
 - Application Signals enabled in your AWS account (see [Enable Application Signals in your account](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable.html))
 - Existing EKS cluster deployed using CDK or Terraform code
-- .NET application containerized and pushed to ECR
+- Java application containerized and pushed to ECR
 - AWS CLI configured with appropriate permissions
 
 ## Critical Requirements
@@ -39,14 +39,14 @@ new eks.CfnAddon(this, 'CloudWatchAddon', {
 });
 ```
 
-### 2. Add .NET Instrumentation Annotation
+### 2. Add Java Instrumentation Annotation
 
 ```typescript
 template: {
   metadata: {
     labels: { app: config.appName },
     annotations: {
-      'instrumentation.opentelemetry.io/inject-dotnet': 'true'
+      'instrumentation.opentelemetry.io/inject-java': 'true'
     }
   },
 }
@@ -97,7 +97,7 @@ resource "aws_eks_addon" "cloudwatch_observability" {
 }
 ```
 
-### 3. Add .NET Instrumentation Annotation
+### 3. Add Java Instrumentation Annotation
 
 ```hcl
 template {
@@ -106,7 +106,7 @@ template {
       app = var.app_name
     }
     annotations = {
-      "instrumentation.opentelemetry.io/inject-dotnet" = "true"
+      "instrumentation.opentelemetry.io/inject-java" = "true"
     }
   }
 }
@@ -114,8 +114,8 @@ template {
 
 ## Important Notes
 
-- The .NET instrumentation annotation will cause pods to restart automatically
-- .NET applications require .NET 6.0 or later for Application Signals support
+- The Java instrumentation annotation will cause pods to restart automatically
+- Java applications typically have faster startup times with Application Signals compared to other languages
 - It may take a few minutes for data to appear in the Application Signals console after deployment
 
 ## Completion
@@ -125,17 +125,17 @@ template {
 > IRSA-style role; the Terraform path attaches it to the **node** role, which extends it to every pod
 > scheduled on those nodes. Also state that the CDK role's trust policy has no `:sub` condition
 > unless one was added, so as written neither path confines the policy to the agent. The summary
-> bullet has a ``your-node-role`` slot — fill it in with the role this change actually used before reciting.
+> bullet has a `<role>` slot — fill it in with the role this change actually used before reciting.
 
 **Tell the user:**
 
-"I've completed the Application Signals enablement for your .NET application. Here's what I modified:
+"I've completed the Application Signals enablement for your Java application. Here's what I modified:
 
 **Files Changed:**
 
 - IAM role: Added CloudWatchAgentServerPolicy to `your-node-role`
 - CloudWatch Observability EKS add-on: Added to the EKS Cluster
-- Kubernetes Deployment: Instrumentation annotation added with inject-dotnet set to true
+- Kubernetes Deployment: Instrumentation annotation added with inject-java set to true
 
 **Next Steps:**
 
