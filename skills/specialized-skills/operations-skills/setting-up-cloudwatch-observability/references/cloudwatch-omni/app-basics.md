@@ -142,25 +142,30 @@ Two things are conditional rather than sequential:
 Two skills cover CloudWatch, and choosing wrongly is worse than any mistake inside a
 procedure — the agent proceeds confidently down the wrong path.
 
-**This skill** is for setting Omni up: Domains, Spaces, grants, Access Profiles,
-ingestion, forwarding, instrumentation, and connecting Slack.
+**This skill** is for *setting up* — on **either** product. For Omni: Domains, Spaces,
+grants, Access Profiles, ingestion, forwarding, plain-ADOT instrumentation, and connecting
+Slack (`references/cloudwatch-omni/`). For classic CloudWatch: onboarding a service to
+**Application Signals** — ADOT auto-instrumentation, the `amazon-cloudwatch-observability`
+add-on, ServiceEvents, CI/CD metadata (`references/cloudwatch/`).
 
-**`aws-observability`** is for CloudWatch — Log Insights, metrics, alarms,
-dashboards, X-Ray, CloudTrail, Application Signals, synthetics — and also for
-day-to-day *use* of Omni once it is set up: writing queries, building dashboards,
-and configuring alerts.
+**`aws-observability`** is for *using* what is already set up — on either product too:
+Log Insights, metrics, alarms, CloudWatch dashboards, X-Ray, CloudTrail, synthetics, the
+Application Signals service map, Dynamic Instrumentation debugging, and Omni queries,
+dashboards, alerts, and evaluations.
 
-Between the two skills the split is **setup versus use, for Omni**; everything
-CloudWatch — setup (Application Signals, Dynamic Instrumentation) as much as use — lives
-in `aws-observability`:
+So the split between the two skills is **setup versus use**, and it is the *same* split for
+both products; the product only decides which reference folder a request reads from:
 
 | The customer wants | Skill |
 |---|---|
 | To create or configure a Domain, Space, grant, or profile | This skill |
 | To get telemetry flowing into Omni for the first time | This skill |
 | To instrument an application or agent for Omni | This skill |
-| To query telemetry, build a dashboard, or set up an alert in Omni | `aws-observability` |
-| Anything about Application Signals, X-Ray, synthetics, or CloudWatch alarms | `aws-observability` |
+| To enable or onboard a service to Application Signals, including ServiceEvents and CI/CD metadata | This skill |
+| To switch Dynamic Instrumentation on while onboarding a service | This skill |
+| To query telemetry, build a dashboard, or set up an alarm or Omni alert | `aws-observability` |
+| To read an Application Signals service map, or debug with Dynamic Instrumentation snapshots | `aws-observability` |
+| Anything about X-Ray trace analysis, synthetics, or CloudTrail auditing | `aws-observability` |
 | To investigate a live problem | `aws-observability` |
 
 **Constraints:**
@@ -184,23 +189,34 @@ in `aws-observability`:
 - In the same message, you MUST explain the boundary as **setup versus use**, so the
   customer can place their own request: creating or configuring a Domain, Space,
   grant, or Access Profile, getting telemetry flowing into Omni for the first time,
-  and instrumenting an application or agent for Omni are first-time Omni setup (this
-  skill); querying telemetry, building dashboards, and configuring alerts are
-  day-to-day use, and belong — with anything about Application Signals, X-Ray,
-  synthetics, or CloudWatch alarms — to `aws-observability`. Naming the table above
+  instrumenting an application or agent for Omni, and onboarding a service to
+  Application Signals are all first-time setup (this skill); querying telemetry,
+  building dashboards, configuring alarms or Omni alerts, reading a service map,
+  X-Ray trace analysis, synthetics, and Dynamic Instrumentation debugging are
+  day-to-day use and belong to `aws-observability`. Naming the table above
   in prose is enough; do not start any of it.
+- You MUST NOT present the question as "which skill" — both answers are served here,
+  from different reference folders. The customer's choice selects the folder, not the
+  skill, so answering "Omni" or "CloudWatch" never hands the request away.
 - Having asked, you MUST then **stop and wait**. Do NOT go on to give the Omni setup
-  sequence, or begin Domain or Space creation, in the same reply; that is the same as
-  assuming Omni and it wastes the question.
+  sequence, begin Domain or Space creation, or start Application Signals onboarding, in
+  the same reply; that is the same as assuming a product and it wastes the question.
 - If the customer **did** name Omni, Application Observability, Agent Observability,
   a Space, or a Domain, it is Omni — continue here for a setup step, or route to
-  `aws-observability` for use. If they named a CloudWatch feature (log group, alarm,
-  Log Insights, Application Signals, X-Ray, synthetics), route to `aws-observability`.
+  `aws-observability` for use. If they named a CloudWatch feature, split it the same way:
+  *enabling* Application Signals on a service belongs here (see below), while a log group,
+  an alarm, Log Insights, X-Ray trace analysis, or synthetics goes to `aws-observability`.
 - If the customer already has a working Space and is asking about queries,
   dashboards, or alerts, you MUST stop and route to `aws-observability`.
-- If the request names Application Signals, ServiceEvents, or Dynamic
-  Instrumentation, you MUST stop and route to `aws-observability`. Those are CloudWatch
-  features and are not part of Omni setup.
+- If the request names **Application Signals, ServiceEvents, or Dynamic Instrumentation**,
+  you MUST NOT hand the whole request to `aws-observability` — split it by setup versus use.
+  *Enabling* them on a service that does not have them yet is setup and belongs to **this
+  skill**, under `references/cloudwatch/application-signals-onboarding.md` (ServiceEvents
+  included; its Step 5d switches Dynamic Instrumentation on, and the CI/CD metadata chain is
+  `references/cloudwatch/application-signals-cicd-metadata.md`). Only *using* them on a
+  service that already reports — the service map, alarms on Application Signals metrics,
+  placing breakpoints and reading snapshots — goes to `aws-observability`. None of them belong in an **Omni** instrumentation change: the Omni path forbids
+  those env vars and the add-on outright.
 
 ## Additional resources
 
@@ -215,3 +231,7 @@ in `aws-observability`:
 - `references/cloudwatch-omni/instrumentation/instrumentation.md` — instrumenting applications
 - `references/cloudwatch-omni/omni-agents-instrumentation/omni-agents-instrumentation.md` —
   instrumenting AI agents
+- `references/cloudwatch/application-signals-onboarding.md` — the **classic CloudWatch**
+  alternative: onboarding a service to Application Signals (with
+  `references/cloudwatch/application-signals-cicd-metadata.md` for the ServiceEvents CI/CD
+  chain, and `references/cloudwatch/appsignals-guides/` for the per-platform steps)
