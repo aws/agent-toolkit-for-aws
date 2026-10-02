@@ -4,29 +4,12 @@ Exact quotas and the handful of gotchas worth pinning down. Assumes you know the
 
 ## Contents
 
-- [Choosing the HTTP front door](#choosing-the-http-front-door)
 - [REST vs HTTP API comparison](#rest-vs-http-api-comparison)
 - [Integration timeouts and payloads](#integration-timeouts-and-payloads)
 - [Throttling and quotas](#throttling-and-quotas)
 - [Lambda authorizers](#lambda-authorizers)
 - [WebSocket APIs](#websocket-apis)
 - [CORS gotchas](#cors-gotchas)
-
----
-
-## Choosing the HTTP front door
-
-Decided in `SKILL.md` Step 5; this is the full table.
-
-| Need | Use | Continue with |
-|---|---|---|
-| Node.js HTTP server, streaming responses, active-CPU billing, CloudFront in front | **Lambda Web Functions** | **aws-lambda-web-functions** skill (not API Gateway) |
-| Regional HTTP proxy for Event Functions: lowest latency and cost, JWT/IAM/Lambda authorizers, no per-client throttling, 30 s timeout | **API Gateway HTTP API** | [REST vs HTTP API comparison](#rest-vs-http-api-comparison); **connecting-lambda-to-api-gateway** skill |
-| Per-client usage plans and API keys, request validation/transformation, caching, canary deployments, private or edge-optimized endpoints, WAF, response streaming via API Gateway | **API Gateway REST API** | [REST vs HTTP API comparison](#rest-vs-http-api-comparison); **creating-api-gateway-stage**, **deploying-custom-domain-rest-api** skills |
-| Persistent bidirectional connections (chat, live dashboards, IoT command and control) with Event Functions | **API Gateway WebSocket API** | [WebSocket APIs](#websocket-apis) |
-| Simple HTTPS endpoint for a single Event Function without API management (IAM or public auth, response streaming) | **Lambda Function URL** | [lambda.md](lambda.md) |
-
-Use HTTP API by default — it is the cheaper option (up to ~70% lower per-request price than REST API) with lower latency — and move to REST API only when it lacks a feature you need. State this cost/feature tradeoff explicitly when recommending an API front door.
 
 ---
 
