@@ -94,5 +94,6 @@
   ],
   "skills": "./skills/",
   "commands": "./commands/",
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./.mcp.json",
+  "hooks": ".cursor-plugin/hooks.json"
 }
