@@ -1,6 +1,6 @@
-# Enable AWS Application Signals for Python on EC2
+# Enable AWS Application Signals for Node.js on EC2
 
-Your task is to modify Infrastructure as Code (IaC) files to enable AWS Application Signals for a Python application running on EC2 instances. You will update IAM permissions, install monitoring agents, and configure OpenTelemetry instrumentation through UserData scripts.
+Your task is to modify Infrastructure as Code (IaC) files to enable AWS Application Signals for a Node.js application running on EC2 instances. You will update IAM permissions, install monitoring agents, and configure OpenTelemetry instrumentation through UserData scripts.
 
 ## What You Will Accomplish
 
@@ -8,7 +8,7 @@ After completing this task:
 
 - The EC2 instance will have permissions to send telemetry data to CloudWatch
 - The CloudWatch Agent will be installed and configured for Application Signals
-- The Python application will be automatically instrumented with AWS Distro for OpenTelemetry (ADOT)
+- The Node.js application will be automatically instrumented with AWS Distro for OpenTelemetry (ADOT)
 - Traces, metrics, and performance data will appear in the CloudWatch Application Signals console
 - The user will be able to see service maps, SLOs, and application performance metrics without manual code instrumentation
 
@@ -28,7 +28,7 @@ After completing this task:
 
 ## IaC Tool Support
 
-**Code examples use CDK TypeScript syntax**. If you are working with Terraform or CloudFormation, translate the CDK syntax to the appropriate format while keeping all bash commands identical. The UserData bash commands (CloudWatch Agent installation, ADOT installation, environment variables) are universal across all IaC tools - only the wrapper syntax differs.
+**Code examples use CDK TypeScript syntax.** If you are working with Terraform or CloudFormation, translate the CDK syntax to the appropriate format while keeping all bash commands identical. The UserData bash commands (CloudWatch Agent installation, ADOT installation, environment variables) are universal across all IaC tools - only the wrapper syntax differs.
 
 ## Before You Start: Gather Required Information
 
@@ -40,49 +40,44 @@ Read the UserData script and look for the application startup command. This is t
 
 **If you see:**
 
-- `docker run` or `docker start` → **Docker deployment**
-- `python`, `gunicorn`, `uvicorn`, `flask run`, or similar → **Non-Docker deployment**
+- `docker run` or `docker start` → Docker deployment
+- `node`, `npm start`, `yarn start`, or similar → Non-Docker deployment
 
 **If unclear:**
 
-- Ask the user: "Is your Python application running in a Docker container or directly on the EC2 instance?" DO NOT GUESS
+- Ask the user: "Is your Node.js application running in a Docker container or directly on the EC2 instance?" DO NOT GUESS
 
-**Critical distinction:** Where does the Python process run?
+**Critical distinction:** Where does the Node.js process run?
 
-- **Docker:** Python runs inside a container → Modify Dockerfile
-- **Non-Docker:** Python runs directly on EC2 → Modify UserData
+- **Docker:** Node.js runs inside a container → Modify Dockerfile
+- **Non-Docker:** Node.js runs directly on EC2 → Modify UserData
 
 ### Step 2: Extract Placeholder Values
 
 Analyze the existing IaC to determine these values for Application Signals enablement:
 
-- `{{SERVICE_NAME}}`:
+- `{{SERVICE_NAME}}`
   - **Why It Matters:** Sets the service name displayed in Application Signals console via `OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}`
   - **How to Find It:** Use the application name, stack name, or construct ID. Look for service/app names in the IaC.
-  - **Example Value:** `my-python-app`
+  - **Example Value:** `my-nodejs-app`
   - **Required For:** Both Docker and non-Docker
 - `{{ENTRY_POINT}}`
-  - **Why It Matters:** Used to wrap the application startup with OpenTelemetry instrumentation: `opentelemetry-instrument python {{ENTRY_POINT}}`
-  - **How to Find It:** Find the Python file that starts the application (look for `python` commands in UserData)
-  - **Example Value:** `app.py` or `main.py`
-  - **Required For:** non-Docker
+  - **Why It Matters:** Used to start the application with OpenTelemetry instrumentation: `node --require ... {{ENTRY_POINT}}`
+  - **How to Find It:** Find the JavaScript file that starts the application (look for `node` commands in UserData)
+  - **Example Value:** `server.js`, `index.js`, or `app.js`
+  - **Required For:** Non-Docker
 - `{{APP_DIR}}`
-  - **Why It Matters:** Python needs to run from the correct directory to find application files and dependencies
+  - **Why It Matters:** Node.js needs to run from the correct directory to find application files and dependencies
   - **How to Find It:** Find where the application code is deployed (look for `cd`, `git clone`, or file copy commands in UserData)
   - **Example Value:** `/opt/myapp`
-  - **Required For:** non-Docker
+  - **Required For:** Non-Docker
 
 For Docker-based deployments you will also need to find these additional values:
 
-- `{{PORT}}`
-  - **Why It Matters:** Docker port mapping that ensures the container is accessible on the correct port
-  - **How to Find It:** Find port mappings in `docker run -p` commands or security group ingress rules
-  - **Example Value:** `5000`
-  - **Required For:** Docker
 - `{{APP_NAME}}`
   - **Why It Matters:** Used to reference the container for operations like `docker logs {{APP_NAME}}`, `docker exec`, health checks, etc.
   - **How to Find It:** Find container name in `docker run --name` or use `{{SERVICE_NAME}}-container`
-  - **Example Value:** `python-flask-app`
+  - **Example Value:** `nodejs-express-app`
   - **Required For:** Docker
 - `{{IMAGE_URI}}`
   - **Why It Matters:** This is the identifier for the application that Docker will run
@@ -92,41 +87,7 @@ For Docker-based deployments you will also need to find these additional values:
 
 **If you cannot determine a value:** Ask the user for clarification before proceeding. Do not guess or make up values.
 
-### Step 3: Identify Python Framework
-
-Search the IaC UserData and application files for framework indicators:
-
-- **Django:** `django`, `manage.py`, `DJANGO_SETTINGS_MODULE`, `settings.py`
-- **Flask:** `flask`, `Flask(`, `@app.route`
-- **FastAPI:** `fastapi`, `FastAPI(`, `uvicorn`
-- **WSGI Server:** `gunicorn`, `uwsgi` in startup commands or `requirements.txt`
-- **Other:** Generic Python application
-
-**If you cannot determine a value:** Ask the user for clarification before proceeding. Do not guess or make up values.
-
-### Step 4: Framework-Specific Requirements
-
-Only complete the relevant subsections based on what you identified in Step 3.
-
-#### 4a. Django Applications
-
-If you identified Django in Step 3, extract the Django settings module path:
-
-- `{{DJANGO_SETTINGS_MODULE}}`: The Python module path to `settings.py`
-  - **How to Find:** Look for existing `DJANGO_SETTINGS_MODULE` in UserData/Dockerfile, or search for `settings.py` location
-  - **Common Patterns:** `myproject.settings` (if `settings.py` at `myproject/settings.py`)
-  - **If not found:** Ask the user for the Django settings module path
-
-#### 4b. WSGI Server Applications (Gunicorn/uWSGI)
-
-If you identified a WSGI server in Step 3, note that additional worker instrumentation is required:
-
-- Gunicorn requires a `post_fork` hook in `gunicorn.conf.py`
-- uWSGI requires `import` directive in `uwsgi.ini`
-- Both require `OTEL_AWS_PYTHON_DEFER_TO_WORKERS_ENABLED=true` environment variable
-- Implementation details are covered in the Docker/non-Docker configuration sections below
-
-### Step 5: Identify Instance OS
+### Step 3: Identify Instance OS
 
 Determine the operating system to use the correct package manager and installation commands.
 
@@ -142,6 +103,26 @@ Determine the operating system to use the correct package manager and installati
 - **Fedora/RHEL/CentOS:** Use `dnf` or `yum` package manager
 
 **If unclear:** Look for AMI name/ID in the IaC or ask the user which OS the EC2 instance is running. Do not guess or make up values.
+
+### Step 4: Determine Module Format
+
+Determine if the Node.js application uses CommonJS or ESM module format. This affects which ADOT dependencies to install and which node flags to use.
+
+**Check the application's package.json file:**
+
+- Look for `"type": "module"` → **ESM format**
+- Look for `"type": "commonjs"` or no type field → **CommonJS format** (default)
+
+**Alternative checks:**
+
+- If the main application file has `.mjs` extension → **ESM format**
+- If the main application file has `.cjs` extension → **CommonJS format**
+- If `.js` extension → Depends on package.json type field
+
+**If unclear:**
+
+- Ask the user: "Does your Node.js application use ESM module format (type: module in package.json)?" DO NOT GUESS
+- Default to CommonJS if package.json doesn't specify type
 
 ## Instructions
 
@@ -179,7 +160,7 @@ AWS::EC2::Instance
 
 ### Step 2: Locate the IAM Role
 
-Find the IAM role attached to the EC2 instance.
+Find the IAM role attached to the EC2 instance
 
 **CDK:**
 
@@ -194,7 +175,7 @@ new iam.Role(this, 'RoleName'
 > for the **CloudWatch agent**, which receives telemetry locally and forwards it to CloudWatch and
 > X-Ray — so these permissions are what let the agent reach those destinations, not something the
 > instrumentation itself needs. On **EC2, ECS, and EKS**, an ADOT-SDK-only setup adds no IAM to the
-> workload at all (see the `setting-up-cloudwatch-observability` skill's
+> workload at all (see this skill's
 > `references/cloudwatch-omni/instrumentation/instrumentation.md`, which forbids attaching this policy on that path).
 > Lambda is the exception — that path does grant its execution role X-Ray write permissions.
 >
@@ -293,80 +274,88 @@ instance.userData.addCommands(
 );
 ```
 
-### Step 6: Install ADOT Python Auto-Instrumentation SDK
+### Step 6: Install ADOT Node.js Auto-Instrumentation SDK
 
-Choose based on deployment type identified in "Before You Start".
+Choose based on deployment type AND module format identified in "Before You Start".
 
 #### Option A: Docker Deployment - Modify Dockerfile
 
 For Docker deployments, modify the `Dockerfile` in the application directory.
 
-**1. Install aws-opentelemetry-distro:**
+Add the ADOT Node.js SDK installation AFTER any existing `npm install` or dependency installation commands:
 
-Find the line that installs Python dependencies (usually `RUN pip install` or `RUN pip install -r requirements.txt`). Add ADOT installation AFTER it:
+**For CommonJS applications:**
 
 ```dockerfile
-# Add this line after the existing pip install command
-# Use latest version. ServiceEvents requires aws-opentelemetry-distro>=0.18.0.
-RUN pip install --no-cache-dir aws-opentelemetry-distro
+# Install ADOT Node.js auto-instrumentation (use latest; ServiceEvents requires >=0.12.0)
+RUN npm install @aws/aws-distro-opentelemetry-node-autoinstrumentation
 ```
 
-**2. Wrap the CMD with opentelemetry-instrument:**
-
-Find the `CMD` line at the end of the `Dockerfile` and wrap the command with `opentelemetry-instrument`:
+**For ESM applications:**
 
 ```dockerfile
-# Before (Flask):
-CMD ["flask", "run"]
-
-# After:
-CMD ["opentelemetry-instrument", "flask", "run"]
-
-# Before (any Python app):
-CMD ["python", "app.py"]
-
-# After:
-CMD ["opentelemetry-instrument", "python", "app.py"]
-```
-
-**Django-specific examples:**
-
-For Django with Gunicorn (production):
-
-```dockerfile
-# Before:
-CMD ["gunicorn", "-c", "gunicorn.conf.py", "djangoapp.wsgi:application"]
-
-# After:
-CMD ["opentelemetry-instrument", "gunicorn", "-c", "gunicorn.conf.py", "djangoapp.wsgi:application"]
-```
-
-For Django development server, add the `--noreload` flag to prevent auto-reloader conflicts with OpenTelemetry:
-
-```dockerfile
-# Before:
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
-
-# After:
-CMD ["opentelemetry-instrument", "python", "manage.py", "runserver", "0.0.0.0:8000", "--noreload"]
+# Install ADOT Node.js auto-instrumentation with ESM support (use latest; ServiceEvents requires >=0.12.0)
+RUN npm install @aws/aws-distro-opentelemetry-node-autoinstrumentation @opentelemetry/instrumentation
 ```
 
 **Why modify Dockerfile, not UserData:** The ADOT package must be installed inside the container image, not on the EC2 host. UserData commands run on the host and won't affect the containerized application.
 
 #### Option B: Non-Docker Deployment - Modify UserData
 
-For non-Docker deployments, add to UserData AFTER CloudWatch Agent installation:
+For non-Docker deployments, add to UserData AFTER CloudWatch Agent configuration:
+
+**For CommonJS applications:**
 
 ```typescript
 instance.userData.addCommands(
-  '# Install ADOT Python auto-instrumentation',
-  'pip3 install aws-opentelemetry-distro',
+  '# Install ADOT Node.js auto-instrumentation (must run in the app directory so the',
+  '# package lands in {{APP_DIR}}/node_modules where Node module resolution finds it)',
+  'cd {{APP_DIR}} && npm install @aws/aws-distro-opentelemetry-node-autoinstrumentation',
 );
 ```
 
-### Step 7: Modify UserData - Configure Application (Docker Deployment)
+**For ESM applications:**
 
-**Only follow this step if you identified Docker deployment in "Before You Start".**
+```typescript
+instance.userData.addCommands(
+  '# Install ADOT Node.js auto-instrumentation with ESM support (run in the app directory)',
+  'cd {{APP_DIR}} && npm install @aws/aws-distro-opentelemetry-node-autoinstrumentation @opentelemetry/instrumentation',
+);
+```
+
+### Step 7: Modify Application Startup to Load ADOT Agent
+
+Choose based on deployment type AND module format identified in "Before You Start".
+
+#### Option A: Docker Deployment
+
+For Docker deployments, you need to modify both the Dockerfile CMD and the UserData docker run command.
+
+**1. Modify Dockerfile CMD to load ADOT agent:**
+
+Find the `CMD` line in your Dockerfile and modify it based on module format:
+
+**For CommonJS applications:**
+
+```dockerfile
+# Before:
+CMD ["node", "app.js"]
+
+# After:
+CMD ["node", "--require", "@aws/aws-distro-opentelemetry-node-autoinstrumentation/register", "app.js"]
+```
+
+**For ESM applications:**
+
+```dockerfile
+# Before:
+CMD ["node", "app.js"]
+
+# After:
+CMD ["node", "--import", "@aws/aws-distro-opentelemetry-node-autoinstrumentation/register", "--experimental-loader=@opentelemetry/instrumentation/hook.mjs", "app.js"]
+```
+
+**2. Add environment variables to docker run command in UserData:**
 
 **Container networking — match the customer's existing setup (minimal change).** The example below uses `--network host` with `localhost:4316` endpoints. That pairing is one option, not a hard requirement — the right choice depends on how the container already reaches the host-installed CloudWatch Agent. Don't change the customer's networking model just to instrument; instead pick the variant that fits theirs:
 
@@ -374,27 +363,15 @@ instance.userData.addCommands(
 - **Using a bridge/default network:** don't add `--network host`. Point the endpoints at the host instead — `host.docker.internal:4316`/`:2000` (add `--add-host=host.docker.internal:host-gateway` on Linux) or the bridge gateway IP. This requires the CloudWatch Agent to listen on a non-loopback address, so it is recommended to restrict those ports with security groups / host firewall.
 - **Option 2 — CloudWatch Agent as a sidecar container** (most isolated): run the agent as another container on the same user-defined Docker network and target it by name (e.g. `cwagent:4316`). Nothing binds to host interfaces. This is the same model the ECS guides use; choose it if the customer prefers full container isolation over a host-installed agent.
 
-#### Step 7A: Base Framework Configuration
-
-Choose the appropriate option based on the framework you identified in Step 3.
-
-##### Option 1: Standard Python (Flask, FastAPI, Other)
-
-**Use this for Flask, FastAPI, or other Python frameworks NOT using Django.**
-
 Find the existing `docker run` command in UserData. Replace it with (this shows the `--network host` example — adapt per the networking variant you chose above):
 
 ```typescript
 instance.userData.addCommands(
   '# Run container with Application Signals environment variables',
   `docker run -d --name {{APP_NAME}} \\`,
-  `  -e PORT={{PORT}} \\`,
-  `  -e SERVICE_NAME={{SERVICE_NAME}} \\`,
   `  -e OTEL_METRICS_EXPORTER=none \\`,
   `  -e OTEL_LOGS_EXPORTER=none \\`,
   `  -e OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true \\`,
-  `  -e OTEL_PYTHON_DISTRO=aws_distro \\`,
-  `  -e OTEL_PYTHON_CONFIGURATOR=aws_configurator \\`,
   `  -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \\`,
   `  -e OTEL_TRACES_SAMPLER=xray \\`,
   `  -e OTEL_TRACES_SAMPLER_ARG=endpoint=http://localhost:2000 \\`,
@@ -406,88 +383,13 @@ instance.userData.addCommands(
 );
 ```
 
-##### Option 2: Django Applications
+#### Option B: Non-Docker Deployment
 
-**Use this if you identified Django in Step 3.**
+For non-Docker deployments, set environment variables and modify the node startup command based on module format.
 
-Find the existing `docker run` command in UserData. Replace it with (this shows the `--network host` example — adapt per the networking variant you chose above):
+Find the existing command that starts the Node.js application. Add the environment variables BEFORE it and modify the startup command:
 
-```typescript
-instance.userData.addCommands(
-  `docker run -d --name {{APP_NAME}} \\`,
-  `  -e PORT={{PORT}} \\`,
-  `  -e SERVICE_NAME={{SERVICE_NAME}} \\`,
-  `  -e DJANGO_SETTINGS_MODULE={{DJANGO_SETTINGS_MODULE}} \\`,
-  `  -e OTEL_METRICS_EXPORTER=none \\`,
-  `  -e OTEL_LOGS_EXPORTER=none \\`,
-  `  -e OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true \\`,
-  `  -e OTEL_PYTHON_DISTRO=aws_distro \\`,
-  `  -e OTEL_PYTHON_CONFIGURATOR=aws_configurator \\`,
-  `  -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \\`,
-  `  -e OTEL_TRACES_SAMPLER=xray \\`,
-  `  -e OTEL_TRACES_SAMPLER_ARG=endpoint=http://localhost:2000 \\`,
-  `  -e OTEL_AWS_APPLICATION_SIGNALS_EXPORTER_ENDPOINT=http://localhost:4316/v1/metrics \\`,
-  `  -e OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4316/v1/traces \\`,
-  `  -e OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}} \\`,
-  `  --network host \\`,
-  `  {{IMAGE_URI}}`,
-);
-```
-
-#### Step 7B: WSGI Additional Configuration
-
-**Only complete this section if you identified a WSGI server (Gunicorn/uWSGI) in Step 3.**
-
-If you are using a WSGI server, you must add additional worker instrumentation on top of the configuration from Step 7A.
-
-**1. Ensure WSGI configuration file is in the Docker image.**
-
-Your `Dockerfile` must include the appropriate configuration file:
-
-For **Gunicorn** - Create `gunicorn.conf.py`:
-
-```python
-def post_fork(server, worker):
-    from opentelemetry.instrumentation.auto_instrumentation import sitecustomize
-```
-
-For **uWSGI** - Create or modify `uwsgi.ini`:
-
-```ini
-[uwsgi]
-enable-threads = true
-lazy-apps = true
-import = opentelemetry.instrumentation.auto_instrumentation.sitecustomize
-```
-
-**2. Add WSGI-specific environment variable to your docker run command.**
-
-Go back to the `docker run` command you configured in Step 7A and add this environment variable:
-
-```typescript
-`  -e OTEL_AWS_PYTHON_DEFER_TO_WORKERS_ENABLED=true \\`,
-```
-
-Add it right after the `OTEL_RESOURCE_ATTRIBUTES` line and before `--network host`.
-
-**WSGI requirements:**
-
-- `OTEL_AWS_PYTHON_DEFER_TO_WORKERS_ENABLED=true` is REQUIRED for all WSGI servers
-- The `gunicorn.conf.py` or `uwsgi.ini` file with worker instrumentation is REQUIRED
-
-### Step 8: Modify UserData - Configure Application (Non-Docker Deployment)
-
-**Only follow this step if you identified non-Docker deployment in "Before You Start".**
-
-#### Step 8A: Base Framework Configuration
-
-Choose the appropriate option based on the framework you identified in Step 3.
-
-##### Option 1: Standard Python (Flask, FastAPI, Other)
-
-**Use this for Flask, FastAPI, or other Python frameworks NOT using Django.**
-
-Find the existing command that starts the Python application. Replace it with:
+**For CommonJS applications:**
 
 ```typescript
 instance.userData.addCommands(
@@ -495,8 +397,6 @@ instance.userData.addCommands(
   'export OTEL_METRICS_EXPORTER=none',
   'export OTEL_LOGS_EXPORTER=none',
   'export OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true',
-  'export OTEL_PYTHON_DISTRO=aws_distro',
-  'export OTEL_PYTHON_CONFIGURATOR=aws_configurator',
   'export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf',
   'export OTEL_TRACES_SAMPLER=xray',
   'export OTEL_TRACES_SAMPLER_ARG=endpoint=http://localhost:2000',
@@ -504,26 +404,20 @@ instance.userData.addCommands(
   'export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4316/v1/traces',
   'export OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}',
   '',
-  '# Start application with ADOT instrumentation',
+  '# Start application with ADOT agent',
   'cd {{APP_DIR}}',
-  'opentelemetry-instrument python {{ENTRY_POINT}}',
+  'node --require "@aws/aws-distro-opentelemetry-node-autoinstrumentation/register" {{ENTRY_POINT}}',
 );
 ```
 
-##### Option 2: Django Applications
-
-**Use this if you identified Django in Step 3.**
-
-Find the existing command that starts the Django application. Replace it with:
+**For ESM applications:**
 
 ```typescript
 instance.userData.addCommands(
-  'export DJANGO_SETTINGS_MODULE={{DJANGO_SETTINGS_MODULE}}',
+  '# Set OpenTelemetry environment variables',
   'export OTEL_METRICS_EXPORTER=none',
   'export OTEL_LOGS_EXPORTER=none',
   'export OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true',
-  'export OTEL_PYTHON_DISTRO=aws_distro',
-  'export OTEL_PYTHON_CONFIGURATOR=aws_configurator',
   'export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf',
   'export OTEL_TRACES_SAMPLER=xray',
   'export OTEL_TRACES_SAMPLER_ARG=endpoint=http://localhost:2000',
@@ -531,101 +425,29 @@ instance.userData.addCommands(
   'export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4316/v1/traces',
   'export OTEL_RESOURCE_ATTRIBUTES=service.name={{SERVICE_NAME}}',
   '',
-  '# Start Django application with ADOT instrumentation',
+  '# Start application with ADOT agent (ESM)',
   'cd {{APP_DIR}}',
-  'opentelemetry-instrument python manage.py runserver 0.0.0.0:{{PORT}} --noreload',
+  'node --import "@aws/aws-distro-opentelemetry-node-autoinstrumentation/register" \\',
+  '  --experimental-loader=@opentelemetry/instrumentation/hook.mjs \\',
+  '  {{ENTRY_POINT}}',
 );
 ```
 
-**Django-specific notes:**
-
-- `--noreload` flag is REQUIRED to prevent auto-reloader conflicts with OpenTelemetry
-
-#### Step 8B: WSGI Additional Configuration
-
-**Only complete this section if you identified a WSGI server (Gunicorn/uWSGI) in Step 3.**
-
-If you are using a WSGI server, you must add additional worker instrumentation on top of the configuration from Step 8A.
-
-**1. Ensure WSGI configuration file exists on the EC2 instance.**
-
-Your application directory must include the appropriate configuration file:
-
-For **Gunicorn** - Create `gunicorn.conf.py`:
-
-```python
-def post_fork(server, worker):
-    from opentelemetry.instrumentation.auto_instrumentation import sitecustomize
-```
-
-For **uWSGI** - Create or modify `uwsgi.ini`:
-
-```ini
-[uwsgi]
-enable-threads = true
-lazy-apps = true
-import = opentelemetry.instrumentation.auto_instrumentation.sitecustomize
-```
-
-**2. Add WSGI-specific environment variable to your configuration.**
-
-Go back to the commands you configured in Step 8A and add this environment variable:
-
-```typescript
-'export OTEL_AWS_PYTHON_DEFER_TO_WORKERS_ENABLED=true',
-```
-
-Add it right after the `export OTEL_RESOURCE_ATTRIBUTES` line.
-
-**3. Update the application startup command.**
-
-Replace the application startup command with the WSGI server command wrapped with OpenTelemetry instrumentation.
-
-**General examples (Flask, FastAPI, etc.):**
-
-```typescript
-// Flask with Gunicorn
-'opentelemetry-instrument gunicorn -c gunicorn.conf.py app:app',
-
-// Generic Python app with uWSGI
-'opentelemetry-instrument uwsgi --ini uwsgi.ini',
-```
-
-**Django-specific examples:**
-
-For Django with Gunicorn:
-
-```typescript
-// The cd command is from Step 8A, this replaces the startup command
-'opentelemetry-instrument gunicorn -c gunicorn.conf.py myproject.wsgi:application',
-```
-
-For Django with uWSGI:
-
-```typescript
-'opentelemetry-instrument uwsgi --ini uwsgi.ini --module myproject.wsgi:application',
-```
-
-**WSGI requirements:**
-
-- `OTEL_AWS_PYTHON_DEFER_TO_WORKERS_ENABLED=true` is REQUIRED for all WSGI servers
-- The `gunicorn.conf.py` or `uwsgi.ini` file with worker instrumentation is REQUIRED
-- The startup command must use `opentelemetry-instrument` wrapper with your WSGI server
+**Note for systemd services:** If the application uses systemd (look for `.service` files or `systemctl` commands in UserData), translate the `export` statements to `Environment=` directives in the service file, set `WorkingDirectory={{APP_DIR}}`, and update `ExecStart=` to use the appropriate node flags. After modifying the service file, add `systemctl daemon-reload` and `systemctl restart <service>` to UserData
 
 ## Completion
 
 **Tell the user:**
 
-"I've completed the Application Signals enablement for your Python application. Here's what I modified:
+"I've completed the Application Signals enablement for your Node.js application. Here's what I modified:
 
 **Files Changed:**
 
 - IAM role: Added CloudWatchAgentServerPolicy
 - UserData: Installed and configured CloudWatch Agent
-- UserData: Installed ADOT Python SDK
-- UserData/Service file: Added OpenTelemetry environment variables and instrumentation wrapper
-- Dockerfile: Installed ADOT Python SDK and modified CMD with instrumentation wrapper (if using Docker)
-- WSGI configuration: Added worker instrumentation (if using Gunicorn/uWSGI)
+- UserData: Installed ADOT Node.js SDK
+- UserData/Service file: Added OpenTelemetry environment variables and node startup flags
+- Dockerfile: Installed ADOT Node.js SDK and modified CMD with node flags (if using Docker)
 
 **Next Steps:**
 

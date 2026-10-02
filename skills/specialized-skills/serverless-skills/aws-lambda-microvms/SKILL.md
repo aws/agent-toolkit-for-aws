@@ -1,7 +1,7 @@
 ---
 name: aws-lambda-microvms
 description: Builds, runs, debugs, and operates applications on AWS Lambda MicroVMs — Firecracker-isolated, snapshot-resumable serverless compute environments running inside a container with up to 8 hr lifetimes. Applicable when workloads need strong isolation between tenants, isolated serverless compute, sandbox compute, or secure multi-tenant execution. Also suited for AI/agent code-execution sandboxes, interactive code playgrounds and notebooks (Jupyter, REPLs, dev environments running user-supplied code), reinforcement-learning environments, multi-tenant CI executors and build runners, sessionful game or simulation servers, or isolated security scanners. Also applicable when the workload needs long-lived sessions, a real port-listening server (gRPC, WebSocket, custom TCP protocols), state preserved across periods of inactivity (suspend/resume), container-level access (FUSE, eBPF, custom syscalls), or session-affine routing.
-version: 2
+version: 1
 ---
 
 # AWS Lambda MicroVMs
@@ -40,11 +40,10 @@ AWS Lambda MicroVMs are serverless compute environments that combine Firecracker
 
 In general, Lambda MicroVMs are suited for long-lived sessions, real port-listening servers (gRPC, WebSocket, custom TCP protocols), state preserved across periods of inactivity (suspend/resume), container-level access (FUSE, eBPF, custom syscalls), or session-affine routing to a specific compute environment.
 
-### Choose Lambda Event Functions when
+### Choose AWS Lambda (functions) when
 
 - The workload fits in 15 minutes.
-- Per-function isolation is sufficient; if ordinary event/request handlers need execution environments dedicated to one invoker or tenant, use Event Functions on On-Demand with tenant isolation mode. Do not assume Lambda creates a fresh Firecracker VM or execution environment for every invocation.
-- No session state needs to remain in memory, on disk, or in running processes between interactions.
+- Per-invocation isolation is fine; no need for session state held in memory.
 - Fully automatic scaling is preferred (no `RunMicrovm` to manage).
 - Event-source integrations (S3, SQS, EventBridge, etc.) drive the function.
 

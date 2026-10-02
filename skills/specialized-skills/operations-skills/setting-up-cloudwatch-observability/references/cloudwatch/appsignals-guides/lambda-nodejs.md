@@ -1,6 +1,6 @@
-# Enable AWS Application Signals for Java on AWS Lambda
+# Enable AWS Application Signals for Node.js on AWS Lambda
 
-Your task is to modify Infrastructure as Code (IaC) files to enable AWS Application Signals for Java Lambda functions. You will:
+Your task is to modify Infrastructure as Code (IaC) files to enable AWS Application Signals for Node.js Lambda functions. You will:
 
 1. Add IAM permissions for Application Signals
 2. Configure X-Ray tracing
@@ -19,19 +19,19 @@ The ADOT Lambda layer ARN is region-specific, and its **layer version changes ov
 ARN format — fill in `<REGION>` and `<LAYER_VERSION>` (the latest version for that region from the source above):
 
 ```
-arn:aws:lambda:<REGION>:<ACCOUNT_ID>:layer:AWSOpenTelemetryDistroJava:<LAYER_VERSION>
+arn:aws:lambda:<REGION>:<ACCOUNT_ID>:layer:AWSOpenTelemetryDistroJs:<LAYER_VERSION>
 ```
 
 A few sample regions (illustrative — confirm the current `<LAYER_VERSION>` and account ID from the source of truth, and use it for **any** supported region, not just these):
 
 ```
-us-east-1:      arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroJava:<LAYER_VERSION>
-us-west-2:      arn:aws:lambda:us-west-2:615299751070:layer:AWSOpenTelemetryDistroJava:<LAYER_VERSION>
-ca-central-1:   arn:aws:lambda:ca-central-1:615299751070:layer:AWSOpenTelemetryDistroJava:<LAYER_VERSION>
-ap-east-1:      arn:aws:lambda:ap-east-1:888577020596:layer:AWSOpenTelemetryDistroJava:<LAYER_VERSION>
-ap-southeast-1: arn:aws:lambda:ap-southeast-1:615299751070:layer:AWSOpenTelemetryDistroJava:<LAYER_VERSION>
-eu-west-1:      arn:aws:lambda:eu-west-1:615299751070:layer:AWSOpenTelemetryDistroJava:<LAYER_VERSION>
-eu-south-1:     arn:aws:lambda:eu-south-1:257394471194:layer:AWSOpenTelemetryDistroJava:<LAYER_VERSION>
+us-east-1:      arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroJs:<LAYER_VERSION>
+us-west-2:      arn:aws:lambda:us-west-2:615299751070:layer:AWSOpenTelemetryDistroJs:<LAYER_VERSION>
+ca-central-1:   arn:aws:lambda:ca-central-1:615299751070:layer:AWSOpenTelemetryDistroJs:<LAYER_VERSION>
+ap-east-1:      arn:aws:lambda:ap-east-1:888577020596:layer:AWSOpenTelemetryDistroJs:<LAYER_VERSION>
+ap-southeast-1: arn:aws:lambda:ap-southeast-1:615299751070:layer:AWSOpenTelemetryDistroJs:<LAYER_VERSION>
+eu-west-1:      arn:aws:lambda:eu-west-1:615299751070:layer:AWSOpenTelemetryDistroJs:<LAYER_VERSION>
+eu-south-1:     arn:aws:lambda:eu-south-1:257394471194:layer:AWSOpenTelemetryDistroJs:<LAYER_VERSION>
 ...
 ```
 
@@ -49,8 +49,8 @@ Add `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda functi
 > `arn:aws:logs:*:*:log-group:/aws/application-signals/data:*`, and both of its statements are
 > conditioned on `aws:ResourceAccount` matching `aws:PrincipalAccount`. It is the right grant here.
 >
-> Do not carry it over to the ADOT-SDK-only path where Application Signals is disabled: the
-> `setting-up-cloudwatch-observability` skill's
+> Do not carry it over to the ADOT-SDK-only path where Application Signals is disabled:
+> this skill's
 > `references/cloudwatch-omni/instrumentation/instrumentation.md` states it is out of scope there. That path grants
 > the execution role `xray:PutTraceSegments` and `xray:PutTelemetryRecords` — usually via the
 > `AWSXRayDaemonWriteAccess` managed policy (or the inline grant CDK adds when `tracing` is enabled);
@@ -62,10 +62,13 @@ Add `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda functi
 **CDK:**
 
 ```typescript
-managedPolicies: [
-  iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
-  iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchLambdaApplicationSignalsExecutionRolePolicy'),
-],
+const role = new iam.Role(this, 'LambdaRole', {
+  assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+  managedPolicies: [
+    iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+    iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchLambdaApplicationSignalsExecutionRolePolicy'),
+  ],
+});
 ```
 
 **Terraform:**
@@ -79,28 +82,83 @@ resource "aws_iam_role_policy_attachment" "application_signals" {
 
 ### Step 2: Enable X-Ray Active Tracing
 
-**CDK:** `tracing: lambda.Tracing.ACTIVE`
-**Terraform:** `tracing_config { mode = "Active" }`
+**CDK:**
 
-### Step 3: Add ADOT Java Lambda Layer
+```typescript
+tracing: lambda.Tracing.ACTIVE,
+```
 
-Use the layer name `AWSOpenTelemetryDistroJava` with automatic region detection. See Region-Specific Layer ARNs section above for complete mapping.
+**Terraform:**
+
+```hcl
+tracing_config {
+  mode = "Active"
+}
+```
+
+### Step 3: Add ADOT Node.js Lambda Layer
+
+Use the layer name `AWSOpenTelemetryDistroJs` with automatic region detection.
+
+**CDK:**
+
+```typescript
+const layerArns: { [region: string]: string } = {
+  // ... (see Region-Specific Layer ARNs section above for complete mapping)
+};
+
+layers: [
+  lambda.LayerVersion.fromLayerVersionArn(this, 'AdotLayer', layerArns[this.region]),
+],
+```
+
+**Terraform:**
+
+```hcl
+locals {
+  layer_arns = {
+    // ... (see Region-Specific Layer ARNs section above for complete mapping)
+  }
+}
+
+data "aws_region" "current" {}
+
+layers = [local.layer_arns[data.aws_region.current.name]]
+```
 
 ### Step 4: Set Environment Variable
 
-Add `AWS_LAMBDA_EXEC_WRAPPER = "/opt/otel-instrument"`.
+Add `AWS_LAMBDA_EXEC_WRAPPER` environment variable with value `/opt/otel-instrument`.
+
+**CDK:**
+
+```typescript
+environment: {
+  AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
+},
+```
+
+**Terraform:**
+
+```hcl
+environment {
+  variables = {
+    AWS_LAMBDA_EXEC_WRAPPER = "/opt/otel-instrument"
+  }
+}
+```
 
 ## Completion
 
 **Tell the user:**
 
-"I've completed the Application Signals enablement for your Java Lambda function.
+"I've completed the Application Signals enablement for your Node.js Lambda function.
 
 **Configuration Changes:**
 
 - IAM Permissions: Added CloudWatchLambdaApplicationSignalsExecutionRolePolicy
 - X-Ray Tracing: Enabled active tracing
-- ADOT Layer: Added AWSOpenTelemetryDistroJava layer
+- ADOT Layer: Added AWSOpenTelemetryDistroJs layer
 - Environment Variable: Set AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument
 
 **Next Steps:**

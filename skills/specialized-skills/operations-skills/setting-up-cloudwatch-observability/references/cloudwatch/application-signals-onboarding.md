@@ -1,6 +1,10 @@
 # Application Signals Onboarding (Enable Auto-Instrumentation via ADOT)
 
-Enable AWS Application Signals for a service that is **not yet instrumented**, by using ADOT (AWS Distro for OpenTelemetry) auto-instrumentation SDKs and making minimal, reviewable changes to the customer's infrastructure-as-code, Dockerfiles, CI/CD workflows, and deployment manifests. This is the *enablement* side of observability (turning an un-instrumented service into one that reports to Application Signals via ADOT). For querying, alarms, dashboards, or trace analysis on an already-instrumented service, use the other references.
+Enable AWS Application Signals for a service that is **not yet instrumented**, by using ADOT (AWS Distro for OpenTelemetry) auto-instrumentation SDKs and making minimal, reviewable changes to the customer's infrastructure-as-code, Dockerfiles, CI/CD workflows, and deployment manifests. This is the *enablement* side of observability (turning an un-instrumented service into one that reports to Application Signals via ADOT).
+
+**This is the CloudWatch path, not the Omni one.** Application Signals is a CloudWatch feature: the `amazon-cloudwatch-observability` add-on, the CloudWatch Agent, ServiceEvents, port 4316, and a monitored service in the service map. The Omni path — plain ADOT SDK exporting toward a Space, with none of that wiring — is `references/cloudwatch-omni/instrumentation/instrumentation.md`. Pick by what the customer named; if they named neither, probe for a Space in the target Region per `SKILL.md`'s routing rules.
+
+Once the service reports, querying it, alarming on it, reading its service map, and debugging it live with Dynamic Instrumentation are day-to-day use and belong to the `aws-observability` skill.
 
 **Never modify application source code** (`.py`, `.js`, `.ts`, `.java`, `.cs`). Only edit IaC, Dockerfiles, CI/CD workflows, dependency files, and deployment manifests. Make the minimum changes needed and preserve existing configuration. Present changes for the user to review; do not run `terraform apply`, `cdk deploy`, or `kubectl apply` automatically.
 
@@ -132,7 +136,7 @@ For raw `aws_iam_role` / ECS / EC2, attach the same three policies via `aws_iam_
 Read the guide for the detected combination and apply its instrumentation changes (the inject annotation on EKS, the ADOT init container on ECS, the SDK/agent install on EC2, the Lambda layer on Lambda):
 
 ```
-references/appsignals-guides/<platform>-<language>.md
+references/cloudwatch/appsignals-guides/<platform>-<language>.md
 ```
 
 Valid platforms: `ec2`, `ecs`, `eks`, `lambda`. Valid languages: `python`, `nodejs`, `java`, `dotnet`. Example: Python on EKS → `references/cloudwatch/appsignals-guides/eks-python.md`.

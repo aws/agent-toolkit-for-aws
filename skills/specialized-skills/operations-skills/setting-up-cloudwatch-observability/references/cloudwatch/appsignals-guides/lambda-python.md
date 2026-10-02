@@ -1,6 +1,6 @@
-# Enable AWS Application Signals for .NET on AWS Lambda
+# Enable AWS Application Signals for Python on AWS Lambda
 
-Your task is to modify Infrastructure as Code (IaC) files to enable AWS Application Signals for .NET Lambda functions. You will:
+Your task is to modify Infrastructure as Code (IaC) files to enable AWS Application Signals for Python Lambda functions. You will:
 
 1. Add IAM permissions for Application Signals
 2. Configure X-Ray tracing
@@ -19,19 +19,19 @@ The ADOT Lambda layer ARN is region-specific, and its **layer version changes ov
 ARN format — fill in `<REGION>` and `<LAYER_VERSION>` (the latest version for that region from the source above):
 
 ```
-arn:aws:lambda:<REGION>:<ACCOUNT_ID>:layer:AWSOpenTelemetryDistroDotNet:<LAYER_VERSION>
+arn:aws:lambda:<REGION>:<ACCOUNT_ID>:layer:AWSOpenTelemetryDistroPython:<LAYER_VERSION>
 ```
 
 A few sample regions (illustrative — confirm the current `<LAYER_VERSION>` and account ID from the source of truth, and use it for **any** supported region, not just these):
 
 ```
-us-east-1:      arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroDotNet:<LAYER_VERSION>
-us-west-2:      arn:aws:lambda:us-west-2:615299751070:layer:AWSOpenTelemetryDistroDotNet:<LAYER_VERSION>
-ca-central-1:   arn:aws:lambda:ca-central-1:615299751070:layer:AWSOpenTelemetryDistroDotNet:<LAYER_VERSION>
-ap-east-1:      arn:aws:lambda:ap-east-1:888577020596:layer:AWSOpenTelemetryDistroDotNet:<LAYER_VERSION>
-ap-southeast-1: arn:aws:lambda:ap-southeast-1:615299751070:layer:AWSOpenTelemetryDistroDotNet:<LAYER_VERSION>
-eu-west-1:      arn:aws:lambda:eu-west-1:615299751070:layer:AWSOpenTelemetryDistroDotNet:<LAYER_VERSION>
-eu-south-1:     arn:aws:lambda:eu-south-1:257394471194:layer:AWSOpenTelemetryDistroDotNet:<LAYER_VERSION>
+us-east-1:      arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:<LAYER_VERSION>
+us-west-2:      arn:aws:lambda:us-west-2:615299751070:layer:AWSOpenTelemetryDistroPython:<LAYER_VERSION>
+ca-central-1:   arn:aws:lambda:ca-central-1:615299751070:layer:AWSOpenTelemetryDistroPython:<LAYER_VERSION>
+ap-east-1:      arn:aws:lambda:ap-east-1:888577020596:layer:AWSOpenTelemetryDistroPython:<LAYER_VERSION>
+ap-southeast-1: arn:aws:lambda:ap-southeast-1:615299751070:layer:AWSOpenTelemetryDistroPython:<LAYER_VERSION>
+eu-west-1:      arn:aws:lambda:eu-west-1:615299751070:layer:AWSOpenTelemetryDistroPython:<LAYER_VERSION>
+eu-south-1:     arn:aws:lambda:eu-south-1:257394471194:layer:AWSOpenTelemetryDistroPython:<LAYER_VERSION>
 ...
 ```
 
@@ -41,7 +41,7 @@ eu-south-1:     arn:aws:lambda:eu-south-1:257394471194:layer:AWSOpenTelemetryDis
 
 ### Step 1: Add IAM Permissions
 
-Add `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda function's execution role.
+Add the AWS managed policy `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda function's execution role.
 
 > **Which policy, and when it applies.** `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` is
 > the purpose-built managed policy for this configuration — Application Signals **enabled** on
@@ -49,8 +49,8 @@ Add `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda functi
 > `arn:aws:logs:*:*:log-group:/aws/application-signals/data:*`, and both of its statements are
 > conditioned on `aws:ResourceAccount` matching `aws:PrincipalAccount`. It is the right grant here.
 >
-> Do not carry it over to the ADOT-SDK-only path where Application Signals is disabled: the
-> `setting-up-cloudwatch-observability` skill's
+> Do not carry it over to the ADOT-SDK-only path where Application Signals is disabled:
+> this skill's
 > `references/cloudwatch-omni/instrumentation/instrumentation.md` states it is out of scope there. That path grants
 > the execution role `xray:PutTraceSegments` and `xray:PutTelemetryRecords` — usually via the
 > `AWSXRayDaemonWriteAccess` managed policy (or the inline grant CDK adds when `tracing` is enabled);
@@ -59,30 +59,128 @@ Add `CloudWatchLambdaApplicationSignalsExecutionRolePolicy` to the Lambda functi
 > `xray:PutTelemetryRecords`, so it is not a superset of the ADOT-only grant. Say which of the two
 > setups this change is for, since the correct IAM differs.
 
+**CDK:**
+
+```typescript
+const role = new iam.Role(this, 'LambdaRole', {
+  assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+  managedPolicies: [
+    iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+    iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchLambdaApplicationSignalsExecutionRolePolicy'),
+  ],
+});
+```
+
+**Terraform:**
+
+```hcl
+resource "aws_iam_role_policy_attachment" "application_signals" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLambdaApplicationSignalsExecutionRolePolicy"
+}
+```
+
+**CloudFormation:**
+
+```yaml
+ManagedPolicyArns:
+  - arn:aws:iam::aws:policy/CloudWatchLambdaApplicationSignalsExecutionRolePolicy
+```
+
 ### Step 2: Enable X-Ray Active Tracing
 
-**CDK:** `tracing: lambda.Tracing.ACTIVE`
-**Terraform:** `tracing_config { mode = "Active" }`
+**CDK:**
 
-### Step 3: Add ADOT .NET Lambda Layer
+```typescript
+const myFunction = new lambda.Function(this, 'MyFunction', {
+  tracing: lambda.Tracing.ACTIVE,
+});
+```
 
-Use the layer name `AWSOpenTelemetryDistroDotNet` with automatic region detection. See Region-Specific Layer ARNs section above for complete mapping.
+**Terraform:**
+
+```hcl
+resource "aws_lambda_function" "my_function" {
+  tracing_config {
+    mode = "Active"
+  }
+}
+```
+
+**CloudFormation:**
+
+```yaml
+TracingConfig:
+  Mode: Active
+```
+
+### Step 3: Add ADOT Python Lambda Layer
+
+Use the layer name `AWSOpenTelemetryDistroPython` with automatic region detection.
+
+**CDK:**
+
+```typescript
+const layerArns: { [region: string]: string } = {
+  // ... (see Region-Specific Layer ARNs section above for complete mapping)
+};
+
+const myFunction = new lambda.Function(this, 'MyFunction', {
+  layers: [
+    lambda.LayerVersion.fromLayerVersionArn(this, 'AdotLayer', layerArns[this.region]),
+  ],
+});
+```
+
+**Terraform:**
+
+```hcl
+locals {
+  layer_arns = {
+    // ... (see Region-Specific Layer ARNs section above for complete mapping)
+  }
+}
+
+data "aws_region" "current" {}
+
+resource "aws_lambda_function" "my_function" {
+  layers = [local.layer_arns[data.aws_region.current.name]]
+}
+```
 
 ### Step 4: Set Environment Variable
 
-Add `AWS_LAMBDA_EXEC_WRAPPER = "/opt/otel-instrument"`.
+Add `AWS_LAMBDA_EXEC_WRAPPER` environment variable with value `/opt/otel-instrument`.
+
+**CDK:**
+
+```typescript
+environment: {
+  AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
+},
+```
+
+**Terraform:**
+
+```hcl
+environment {
+  variables = {
+    AWS_LAMBDA_EXEC_WRAPPER = "/opt/otel-instrument"
+  }
+}
+```
 
 ## Completion
 
 **Tell the user:**
 
-"I've completed the Application Signals enablement for your .NET Lambda function.
+"I've completed the Application Signals enablement for your Python Lambda function.
 
 **Configuration Changes:**
 
 - IAM Permissions: Added CloudWatchLambdaApplicationSignalsExecutionRolePolicy
 - X-Ray Tracing: Enabled active tracing
-- ADOT Layer: Added AWSOpenTelemetryDistroDotNet layer
+- ADOT Layer: Added AWSOpenTelemetryDistroPython layer
 - Environment Variable: Set AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument
 
 **Next Steps:**
@@ -95,6 +193,7 @@ Add `AWS_LAMBDA_EXEC_WRAPPER = "/opt/otel-instrument"`.
 **Verification:**
 
 - Open AWS CloudWatch Console → Application Signals → Services
+- Look for your Lambda function service
 
 **Troubleshooting**
 Refer to the [CloudWatch APM troubleshooting guide](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals-Enable-Troubleshoot.html).
