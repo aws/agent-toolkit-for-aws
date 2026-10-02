@@ -68,6 +68,8 @@ def test_default_anthropic_messages_prefers_mantle_and_sonnet5():
 
     assert rec["decision_status"] == "recommended"
     assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["model_identity"]["display_name"] == "Claude Sonnet 5"
+    assert rec["model_identity"]["version"] == "5.0"
     assert rec["api_path"] == "mantle_messages"
     assert rec["invocation_model_id"] == "anthropic.claude-sonnet-5"
     assert rec["model_identity"]["path_model_id"] == rec["primary_model"]

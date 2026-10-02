@@ -24,11 +24,13 @@
 
 **Anthropic Claude (Standard on-demand)** figures match **US East (N. Virginia)** on
 [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) as of cache refresh.
-**Recommend defaults (new migrations):** Claude Sonnet 5.5 (flagship), Claude Opus 4.8 (hardest
+**Recommend defaults (new migrations):** Claude Sonnet 5 (flagship), Claude Opus 4.8 (hardest
 reasoning), Claude Haiku 4.5 (cost/speed). Do not default to Claude Fable 5 (frontier). Long-context
 SKUs do not all use the same multiplier; confirm batch/cache and cross-region rows per model on
 that page. See `references/vendored/ai/ai-model-lifecycle.md` for lifecycle detail — **do not
 recommend Legacy/excluded models for new migrations.**
+
+**Sonnet 5.5 release (2026-09-28):** Sonnet 5.5 (`anthropic.claude-sonnet-5-5` on Bedrock) is a distinct model and has no row in this cache yet. Keep the current Sonnet 5 default and rate rows until 5.5 has a separately verified entry. For an explicit 5.5 estimate, apply the unavailable-pricing contract in `estimate-ai.md`; do not silently reuse Sonnet 5 rates. Read the [5.5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide) before recommending its request/response handling.
 
 ### Multi-provider quick reference (per 1M tokens)
 
