@@ -69,8 +69,10 @@ only the order and the gating:
    ESSENTIAL — see Q-D2). If one does, the inventory and the verdict disagree — stop, say
    so, and fall back to the full flow.
 2. **Apply every DETECTED and PROPOSED row's documented value** without presenting a sheet.
-   Record each PROPOSED row's key in `metadata.questions_defaulted[]`; DETECTED rows are
-   not "defaulted" — they were read from the estate. Array rows use index notation —
+   Record each PROPOSED row's key in `metadata.questions_defaulted[]` — other than rows
+   carrying `deferred_to_generate: true`, which are listed in
+   `metadata.deferred_to_generate[]` instead (below); DETECTED rows are not "defaulted" —
+   they were read from the estate. Array rows use index notation —
    `app_service_plans[0].isolation_split`, `clusters[1].pattern_id` — so one dotted
    lookup resolves the entry (the Estimate block labels the row from the plan's
    `name_expression` or the `cluster_id`, not from the key). Rows marked
@@ -100,7 +102,8 @@ Corrections (made at the Estimate gate directly, or through the workshop sidebar
 `workshop-refresh.md` § 3) remove the row's key from `questions_defaulted[]`, write the
 user's value, and add a `"source": "user_corrected"` sibling on the row (disposition stays
 `PROPOSED`, per assembly rule 2), so Design's rationale can say "you chose this" rather than
-"we assumed this".
+"we assumed this". A deferred row corrected at the gate takes the Step 3b confirmation write
+instead (`estimate-assemble.md` § Step 2).
 
 The App Service Plan isolation row (Q-C2) deserves one explicit word: it stays PROPOSED with
 its documented default (no split) on the fast path, as on the full sheet, and it **must**
@@ -135,9 +138,10 @@ the last point before Design commits, and it is cheap relative to re-running fou
 0. Write the top-level `metadata` block: `clarify_mode` (`"fast_path"` | `"wizard"`),
    `fast_path_eligible` (copied from the inventory verdict so the report can show both the
    verdict and the choice), `questions_defaulted[]` (every PROPOSED row that took its
-   documented value without being shown as a question — on the wizard path that is the rows
-   the user confirmed on the sheet or waved through with "use the defaults for the rest";
-   array rows under their index key, e.g. `app_service_plans[0].isolation_split`),
+   documented value without being shown as a question, other than rows carrying
+   `deferred_to_generate: true` — on the wizard path that is the rows the user confirmed on
+   the sheet or waved through with "use the defaults for the rest"; array rows under their
+   index key, e.g. `app_service_plans[0].isolation_split`),
    and `deferred_to_generate[]` (every row carrying `deferred_to_generate: true` — today
    only `data.db_cutover` when a relational database is present; `[]` otherwise). The two
    lists are **disjoint**: a deferred row is never also listed in `questions_defaulted[]`.
@@ -180,7 +184,7 @@ rewriting their answer and faking a gate failure both hide a real decision they 
 ## Validation Checklist
 
 - [ ] `clarify_status` is set to `COMPLETE` or `BLOCKED_ON_ESSENTIAL`, and it agrees with whether any `ESSENTIAL` row has `value: null`.
-- [ ] `metadata.clarify_mode` is `fast_path` or `wizard`; when `fast_path`, the inventory's `metadata.clarify_fast_path.eligible` was `true` and `metadata.questions_defaulted[]` lists every PROPOSED row that was not asked.
+- [ ] `metadata.clarify_mode` is `fast_path` or `wizard`; when `fast_path`, the inventory's `metadata.clarify_fast_path.eligible` was `true` and `metadata.questions_defaulted[]` lists every PROPOSED row that was not asked, other than rows carrying `deferred_to_generate: true` (listed in `metadata.deferred_to_generate[]`).
 - [ ] `metadata.deferred_to_generate[]` is present and lists exactly the rows carrying `deferred_to_generate: true`; each such row has a non-null `default`, a `default_basis`, a `size_coverage` (`complete` | `partial` | `unknown` — the unknown-size fallback is a documented default, not a gap), and does not appear in `questions_defaulted[]`.
 - [ ] `questions_defaulted[]` and `deferred_to_generate[]` share no key, and every `questions_defaulted[]` key (index notation for array rows) resolves to a PROPOSED row whose `value` equals its `default` and carries no `source`.
 

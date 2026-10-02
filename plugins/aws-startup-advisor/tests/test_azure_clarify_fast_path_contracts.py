@@ -81,6 +81,16 @@ def test_clarify_gates_are_mode_aware() -> None:
             f"clarify.md: the {anchor} postcondition has no fast-path branch keyed on "
             f"metadata.clarify_mode / metadata.questions_defaulted"
         )
+    # The "every PROPOSED row ... questions_defaulted[]" postcondition must carve out the
+    # deferred row, or the fast-path golden (db_cutover only in deferred_to_generate[])
+    # fails it on a literal reading.
+    every_row = next(
+        ln for ln in fm.splitlines() if "_assert" in ln and "every PROPOSED row" in ln
+    )
+    assert "deferred_to_generate" in every_row, (
+        "clarify.md: the 'every PROPOSED row ... questions_defaulted[]' postcondition does "
+        "not exempt rows carrying deferred_to_generate: true (the lists are disjoint)"
+    )
     checklist = _section(_read(CLARIFY_ASSEMBLE), "## Validation Checklist", "## Status")
     assert "size_coverage" in checklist, (
         "clarify-assemble.md checklist no longer requires size_coverage on deferred rows"
@@ -117,12 +127,25 @@ def test_workshop_patch_updates_default_index() -> None:
         "workshop-refresh.md § 3 no longer applies the correction provenance "
         "(source: user_corrected + removal from metadata.questions_defaulted)"
     )
-    assert "questions_defaulted" in _read(WORKSHOP_SHEET), (
+    sheet = _read(WORKSHOP_SHEET)
+    assert "questions_defaulted" in sheet, (
         "workshop-sheet.md no longer reads metadata.questions_defaulted for provenance"
+    )
+    # The default label is keyed on the Clarify mode (wizard runs list rows the user
+    # confirmed on the sheet), and a gate/sidebar correction is not a "Clarify answer".
+    assert "clarify_mode" in sheet and "user_corrected" in sheet, (
+        "workshop-sheet.md provenance column no longer keys the default label on "
+        "metadata.clarify_mode or no longer distinguishes source: user_corrected"
     )
     step2 = _section(_read(ESTIMATE_ASSEMBLE), "## Step 2", "## Step 3")
     assert "workshop-refresh.md" in step2 and "user_corrected" in step2, (
         "estimate-assemble.md Step 2 no longer cites the sidebar's provenance contract"
+    )
+    # Correcting the deferred row from the assumptions block is its confirmation: the
+    # direct route must apply the Step 3b write, not leave deferred_to_generate: true.
+    assert "user_confirmed_at_generate" in step2 and "deferred_to_generate: false" in step2, (
+        "estimate-assemble.md Step 2 direct-correction route leaves a deferred row flagged "
+        "deferred (Part 4 would label the user's answer 'assumed' and Step 3b re-ask it)"
     )
 
 
@@ -164,6 +187,13 @@ def test_gate_mutations_reconcile_scenarios() -> None:
     step2 = _section(text, "## Step 2", "## Step 3")
     assert "Scenario reconciliation" in step2, (
         "estimate-assemble.md: the direct-correction route no longer triggers reconciliation"
+    )
+    # Step 3b rewrites provenance and the Part 4 label on every confirmation, so § 4 needs
+    # reconciliation on every write — not only when the answer changed the estimate.
+    step3b = _section(text, "### Step 3b", "### Scenario reconciliation")
+    assert "Scenario reconciliation" in step3b and "answer changed the estimate" not in step3b, (
+        "estimate-assemble.md Step 3b triggers reconciliation only when the answer changed "
+        "the estimate; an unchanged answer still drifts the active snapshot"
     )
     for f in (WORKSHOP_COMPARE, SCHEMA_SCENARIOS, REPORT_CORE):
         assert "stale" in _read(f), f"{f.name} no longer renders/documents the stale marker"

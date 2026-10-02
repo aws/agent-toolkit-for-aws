@@ -109,6 +109,14 @@ hosts more than one app.
   removed from `metadata.questions_defaulted[]`) **before** it snapshots the scenario,
   so this block never re-lists the explicit choice as an assumption when the gate is
   re-presented.
+- If the row carries `deferred_to_generate: true` (today `data.db_cutover`, the row
+  labelled "confirmed before Generate"), the correction **is** the confirmation Step 3b
+  would otherwise collect. Do not write `"source": "user_corrected"`; apply Step 3b's
+  write rule in full instead — `value`, `"source": "user_confirmed_at_generate"`,
+  `deferred_to_generate: false`, key removed from **both** `metadata` lists. Leaving
+  the flag `true` makes `estimate-infra.md` § Part 4 label the user's answer "assumed;
+  confirmed before Generate" and makes Step 3b ask it again. Then continue with the
+  next bullet's re-run and reconciliation.
 - Otherwise: write the user's value to the row (keep `disposition: PROPOSED`, add
   `"source": "user_corrected"`, remove the key from `metadata.questions_defaulted[]`),
   mark `phases.design` and `phases.estimate` pending via the Phase Status Update
@@ -129,8 +137,9 @@ Rules for the pack itself:
 - **At most one data-justified scenario hint, and only when the assumptions block
   is absent.** When a material assumption was defaulted rather than confirmed —
   most often `data.availability`, where Multi-AZ roughly doubles the database
-  line — and `metadata.questions_defaulted[]` is empty (so no block rendered),
-  append: "Suggestion: we assumed [assumption]; pricing a [alternative] scenario
+  line — and both `metadata.questions_defaulted[]` and
+  `metadata.deferred_to_generate[]` are empty (so no block rendered), append:
+  "Suggestion: we assumed [assumption]; pricing a [alternative] scenario
   would bound that before you commit." When the block is present it already
   carries that row with its consequence; do not say it twice.
 
@@ -215,21 +224,25 @@ Decision gate", never "assumed; confirmed before Generate". A changed answer
 (`dump_restore` → `dms`) adds DMS instance hours — note the delta in one line; an
 unchanged answer changes no dollars but the label still flips. Do not re-present the
 whole pack, and do not re-run Part 7 — that is the complexity tier, which this answer
-does not move. When `scenarios/index.json` exists and the answer changed the estimate,
-run § Scenario reconciliation below.
+does not move. When `scenarios/index.json` exists, run § Scenario reconciliation below
+after **every** Step 3b write, changed answer or not — the write rule and the Part 4
+label have changed the working `preferences.json` and `estimation-infra.json` either
+way, and `workshop-invariants.md` § 4 is about the working tree matching the active
+snapshot, not about whether a dollar figure moved.
 
 Generate's `_preconditions` must find `metadata.deferred_to_generate` empty and no
 row still carrying `deferred_to_generate: true` — an unconfirmed deferred row is the
 one way a runbook can be written against an answer the user never gave.
 
 This step is skipped when `metadata.deferred_to_generate[]` is empty or absent (an
-estate with no relational database, or a `preferences.json` written before this
-field existed).
+estate with no relational database, a `preferences.json` written before this field
+existed, or a deferred row the user already corrected from the Step 2 assumptions
+block — that correction applied this step's write rule and emptied the list).
 
 ### Scenario reconciliation after a gate-side preference write
 
 **Trigger:** a direct correction from the Step 2 assumptions block that re-ran Design
-→ Estimate, or a Step 3b answer that changed the estimate — **and**
+→ Estimate, or **any** Step 3b write (changed answer or not) — **and**
 `scenarios/index.json` exists (a workshop has saved scenarios). Skip when it does not.
 
 **Why:** `workshop-invariants.md` § 4 — the working preference/design/estimate
@@ -237,9 +250,13 @@ artifacts must always match `index.active_scenario_id`. The sidebar
 (`workshop-refresh.md` § 6) is otherwise the only writer of `scenarios/<id>.*`, so a
 gate-side write that re-prices the working tree leaves the active snapshot and its
 `estimation_summary` describing a design Generate will not build, and the report's
-what-if table reads those stale manifests.
+what-if table reads those stale manifests. An unchanged Step 3b answer moves no
+dollars but still rewrites the row's provenance and the Part 4 label, so the active
+snapshot differs from the working tree until this runs; the procedure is idempotent,
+so running it for a provenance-only write costs nothing.
 
-**Procedure — update the active scenario in place, mark the rest stale:**
+**Procedure — update the active scenario in place, mark the rest stale when the
+estimate moved:**
 
 1. Read `index.active_scenario_id` (call it `<active>`).
 2. After Design/Estimate (or the Part 4 reprice) have written the working tree,
@@ -250,14 +267,20 @@ what-if table reads those stale manifests.
    new `estimation-infra.json`; recompute `preferences_subset` against the baseline
    snapshot; set `corrected_at_gate: "<dotted row key>"`; append
    `(corrected at decision gate: <row>)` to `label`.
-4. On **every other** manifest (the baseline included when it is not active) set
-   `stale: true` and `stale_reason: "<row> changed at the decision gate after this
-   scenario was priced"`. Do not delete, re-price, or re-id them — a new scenario id
-   here would trip the five-scenario cap outside the sidebar.
+4. **When the write changed the estimate** (the active manifest's `estimation_summary`
+   differs from the one step 3 just wrote), on **every other** manifest (the baseline
+   included when it is not active) set `stale: true` and `stale_reason: "<row> changed
+   at the decision gate after this scenario was priced"`. Do not delete, re-price, or
+   re-id them — a new scenario id here would trip the five-scenario cap outside the
+   sidebar. When the write changed only provenance (an unchanged Step 3b answer), skip
+   this step: the other scenarios' numbers are still right, and their snapshot copies
+   carrying the pre-confirmation row is accepted drift — the sidebar's next Apply
+   snapshots a fresh id from the working tree anyway.
 5. Leave `inventory_fingerprint`, `active_scenario_id`, and
    `.phase-status.json.phases.workshop` unchanged.
 6. Say one line: "Updated scenario `<active>`; `<n>` other scenario(s) marked stale —
-   reprice in the workshop to refresh them."
+   reprice in the workshop to refresh them." Omit the second clause when step 4 was
+   skipped.
 
 `workshop-compare.md` and the report's what-if table render the `stale` marker. A
 stale scenario stays stale — the sidebar snapshots a fresh id on its next Apply

@@ -169,7 +169,11 @@ gate's assumptions block (`estimate-assemble.md` § Step 2) or through the works
 routes write the same three things, so the assumptions block never re-lists an explicit
 choice as an assumption and a scenario snapshot carries the corrected provenance. An entry
 in `questions_defaulted[]` therefore always resolves to a PROPOSED row whose `value` equals
-its `default` and which carries no `source`.
+its `default` and which carries no `source`. The one exception is a row carrying
+`deferred_to_generate: true`: correcting it at the Decision gate is its confirmation, so it
+takes the Step 3b write (`"source": "user_confirmed_at_generate"`, `deferred_to_generate:
+false`, key removed from both `metadata` lists — see the `db_cutover` bullet below) rather
+than `user_corrected`.
 
 ## Non-obvious defaults
 
@@ -198,7 +202,8 @@ its `default` and which carries no `source`.
   chooses [C] Generate — the two answers also select different runbooks, which is exactly
   why the question is asked where the runbook is written rather than before the user has a
   number. Step 3b carries the uncertainty into its prompt and asks for the size when
-  `size_coverage` is not `"complete"`. **After Step 3b** the row carries the confirmed
+  `size_coverage` is not `"complete"`. **After Step 3b** (or a correction of the row from
+  the Step 2 assumptions block, which applies the same write) the row carries the confirmed
   `value`, `"source": "user_confirmed_at_generate"`, `deferred_to_generate: false`
   (explicit, not deleted), and its key is removed from **both** `metadata` lists;
   `default`, `default_basis`, `largest_relational_db_gib`, and `size_coverage` stay for the

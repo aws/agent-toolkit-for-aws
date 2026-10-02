@@ -109,8 +109,9 @@ Inner workshop reprice. Chat note after Estimate:
 Three manifest fields are **never written by the sidebar**: `stale` (bool, default
 `false`), `stale_reason` (string | null), and `corrected_at_gate` (string | null).
 `estimate-assemble.md` § Scenario reconciliation writes them when a decision-gate
-correction or a Step 3b answer re-prices the working tree after scenarios exist —
-it updates the active scenario in place and marks every other one `stale`. A new
+correction or a Step 3b answer rewrites the working tree after scenarios exist —
+it updates the active scenario in place and, when the estimate moved, marks every
+other one `stale`. A new
 snapshot written here starts with `stale: false` and the other two `null`; see
 `schema-workshop-scenarios.md` § Manifest fields written outside the sidebar.
 

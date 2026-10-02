@@ -30,11 +30,22 @@ From `$MIGRATION_DIR/preferences.json`:
 | CPU architecture  | `design_constraints.cpu_architecture.value`  | `x86_64`, `graviton` — omit row if key absent                      |
 
 **Provenance column.** Each row says where its current value came from, read from
-`preferences.json`: a knob whose dotted key is in `metadata.questions_defaulted[]`
-shows "skill default (not asked — fast path)"; a row with `source: "user_corrected"`
-or an ESSENTIAL/user-answered row shows "Clarify answer"; a DETECTED row shows
-"detected". The user can then see whether they are overriding their own earlier
-answer or an assumption nobody asked them about.
+`preferences.json`, in this order of precedence:
+
+- `source: "user_corrected"` — "your correction (decision gate / earlier workshop
+  pass)". That source is written only after Clarify, by the Decision gate's direct
+  route or by `workshop-refresh.md` § 3, so it is never a Clarify answer.
+- Dotted key in `metadata.questions_defaulted[]` — a skill default, labelled by
+  `metadata.clarify_mode`: `fast_path` → "skill default (not asked — fast path)";
+  `wizard` → "skill default (confirmed on the Clarify sheet)". On the wizard path that
+  list holds the rows the user confirmed or waved through with "use the defaults for
+  the rest" (`clarify-assemble.md` § Assembly rule 0), so "not asked" would be wrong.
+- Otherwise an ESSENTIAL row, or a PROPOSED row whose `value` differs from its `default`
+  with no `source` — "Clarify answer" (answered or changed on the sheet).
+- A DETECTED row — "detected".
+
+The user can then see whether they are overriding their own earlier answer, their own
+earlier correction, or an assumption nobody asked them about.
 
 When patching wrapper objects, preserve `chosen_by`, `prompt`, and
 `design_consequence` (set `chosen_by` to `"user"` on edit). An edited knob also

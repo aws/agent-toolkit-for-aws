@@ -51,9 +51,9 @@ scenario.
 
 | Field               | Type             | Written when                                                                                                          |
 | ------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `stale`             | boolean          | `true` on every non-active scenario after a gate-side write re-priced the working tree; `false` (or absent) otherwise |
-| `stale_reason`      | string or `null` | with `stale: true` — which row changed at the decision gate and that this scenario was priced before it               |
-| `corrected_at_gate` | string or `null` | on the active scenario, the dotted key of the row the gate corrected; its snapshot copies were overwritten in place   |
+| `stale`             | boolean          | `true` on every non-active scenario after a gate-side write **changed the estimate**; `false` (or absent) otherwise — a provenance-only write (an unchanged Step 3b answer) leaves it alone |
+| `stale_reason`      | string or `null` | with `stale: true` — which row changed at the decision gate and that this scenario was priced before it                                                                                     |
+| `corrected_at_gate` | string or `null` | on the active scenario, the dotted key of the row the gate corrected or confirmed (Step 3b, changed or not); its snapshot copies were overwritten in place                                   |
 
 The sidebar never sets these. A new snapshot starts with `stale: false` and the other
 two `null`. `workshop-compare.md` suffixes `(stale)` to a stale row and the report's

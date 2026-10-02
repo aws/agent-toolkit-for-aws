@@ -52,7 +52,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "all Validation Checklist items in clarify-assemble.md pass"
     _on_failure: _halt_and_inform
-  - _assert: "every row a fragment returned appears in preferences.json with a disposition of DETECTED, PROPOSED, ESSENTIAL, or N/A, and a value that is either the user's answer or the documented default. On the wizard path every such DETECTED/PROPOSED row was shown on the assumption sheet; on the fast path (metadata.clarify_mode == fast_path) no DETECTED/PROPOSED row was shown and every PROPOSED row that took its default is listed in metadata.questions_defaulted[]"
+  - _assert: "every row a fragment returned appears in preferences.json with a disposition of DETECTED, PROPOSED, ESSENTIAL, or N/A, and a value that is either the user's answer or the documented default. On the wizard path every such DETECTED/PROPOSED row was shown on the assumption sheet; on the fast path (metadata.clarify_mode == fast_path) no DETECTED/PROPOSED row was shown and every PROPOSED row that took its default — other than rows carrying deferred_to_generate: true, which are listed only in metadata.deferred_to_generate[] — is listed in metadata.questions_defaulted[]"
     _on_failure: _halt_and_inform
   - _assert: "global.target_region is set, and design_constraints.cpu_architecture is set with x86_64 as the recorded default unless the user chose otherwise"
     _on_failure: _halt_and_inform
