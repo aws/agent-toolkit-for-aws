@@ -802,6 +802,119 @@ def _class_tokens(html_fragment: str) -> set[str]:
     return tokens
 
 
+def _normalize_phrase(text: str) -> str:
+    """Lower-cased, whitespace-collapsed, dash-folded rendered text, so a heading
+    written as `What&nbsp;would\nflip this` compares equal to the plain spelling."""
+    text = text.replace("\u2014", "-").replace("\u2013", "-")
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _word_shingles(text: str, size: int) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    if not words:
+        return set()
+    if len(words) <= size:
+        return {" ".join(words)}
+    return {" ".join(words[i : i + size]) for i in range(len(words) - size + 1)}
+
+
+def _phrase_rendered(phrase: str, rendered_text: str, max_width: int = 4) -> bool:
+    """Ported from validate-migration-report.py — True when `rendered_text`
+    shares a word phrase with the artifact `phrase`, cut at the phrase's own
+    token width (capped at four) so one-to-three-word entries can match."""
+    words = re.findall(r"[a-z0-9]+", _normalize_phrase(phrase))
+    if not words:
+        return True
+    width = min(len(words), max_width)
+    return bool(_word_shingles(" ".join(words), width) & _word_shingles(rendered_text, width))
+
+
+class _RenderedFragmentParser(HTMLParser):
+    """Ported from validate-migration-report.py — flatten a fragment into what
+    the browser shows, in document order: `("text", run)` for prose outside a
+    list item and `("li", item)` per list item, each decoded and normalized via
+    _normalize_phrase. Inert subtrees and comments are skipped (same rule as
+    _DecodedTextParser / _TagAttrCollector), and inline tags do not split a run,
+    so `What <em>would</em> flip this` is one phrase."""
+
+    _INLINE_TAGS = _DecodedTextParser._INLINE_TAGS
+    _INERT_TAGS = _DecodedTextParser._INERT_TAGS
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.entries: list[tuple[str, str]] = []
+        self._inert_depth = 0
+        self._li_depth = 0
+        self._buf: list[str] = []
+
+    def _flush(self) -> None:
+        text = _normalize_phrase(" ".join(self._buf))
+        self._buf = []
+        if text:
+            self.entries.append(("li" if self._li_depth else "text", text))
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS:
+            self._inert_depth += 1
+            return
+        if self._inert_depth > 0:
+            return
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+        if tag == "li":
+            self._li_depth += 1
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS or self._inert_depth > 0:
+            return
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._INERT_TAGS:
+            if self._inert_depth > 0:
+                self._inert_depth -= 1
+            return
+        if self._inert_depth > 0:
+            return
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+        if tag == "li" and self._li_depth > 0:
+            self._li_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._inert_depth == 0:
+            self._buf.append(data)
+
+    def close(self) -> None:
+        super().close()
+        self._flush()
+
+
+def _rendered_entries(fragment: str) -> list[tuple[str, str]]:
+    parser = _RenderedFragmentParser()
+    parser.feed(fragment)
+    parser.close()
+    return parser.entries
+
+
+def _rendered_list_after_heading(
+    entries: list[tuple[str, str]], heading_phrase: str
+) -> list[str] | None:
+    """Items of the list following the first rendered run that contains
+    `heading_phrase`; None when no rendered run carries the heading, [] when the
+    heading is present but no list item follows it (heading-only / empty <ul>)."""
+    for index, (kind, text) in enumerate(entries):
+        if kind == "text" and heading_phrase in text:
+            items: list[str] = []
+            for next_kind, next_text in entries[index + 1 :]:
+                if next_kind != "li":
+                    break
+                items.append(next_text)
+            return items
+    return None
+
+
 def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
     """Typography-first verdict rules (skill: verdict is the section thesis and
     must never be a colored-pill row)."""
@@ -842,12 +955,28 @@ def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
             '(render outcome_label as <p class="verdict-headline">…</p>)'
         )
     if flips:
-        visible = re.sub(r"<[^>]+>", " ", summary).lower()
-        if "what would flip" not in visible:
+        # Match the heading on decoded, whitespace-normalized visible text (entities,
+        # line breaks and inline markup are all one phrase to the reader; comments and
+        # <template> content are not rendered), then require every artifact flip
+        # condition to appear as an item of the list that follows it.
+        items = _rendered_list_after_heading(_rendered_entries(summary), "what would flip")
+        if items is None:
             errors.append(
                 "estimation-infra.json declares recommendation.would_flip_if but "
                 'decision-summary has no "What would flip this" list'
             )
+        else:
+            missing = [
+                str(flip)
+                for flip in flips
+                if not any(_phrase_rendered(str(flip), item) for item in items)
+            ]
+            if missing:
+                errors.append(
+                    f'"What would flip this" list renders {len(flips) - len(missing)} of '
+                    f"{len(flips)} recommendation.would_flip_if entries — missing: "
+                    + "; ".join(f'"{flip}"' for flip in missing)
+                )
     return errors
 
 

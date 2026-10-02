@@ -145,6 +145,70 @@ def test_would_flip_required_when_artifact_has_it() -> None:
     assert present == 0, ok
 
 
+VERDICT = '<p class="verdict-headline">Go, with conditions</p>'
+FLIPS = ["A published rate above the Heroku bill.", "Dyno count doubles before cutover."]
+FLIP_ITEMS = "".join(f"<li>{flip}</li>" for flip in FLIPS)
+
+
+def _run_with_flips(html: str) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "estimation-infra.json").write_text(
+            json.dumps(
+                {"recommendation": {"outcome": "go_conditional", "would_flip_if": FLIPS}}
+            ),
+            encoding="utf-8",
+        )
+        return run(html, migration_dir=d)
+
+
+def test_would_flip_heading_accepts_equivalent_visible_spellings() -> None:
+    # Line breaks, &nbsp; entities and inline markup inside the heading all read
+    # as "What would flip this" to the reader and must match.
+    for heading in (
+        "<h3>What would flip this</h3>",
+        "<h3>What\nwould\nflip this</h3>",
+        "<h3>What&nbsp;would&nbsp;flip this</h3>",
+        "<h3>What <em>would</em> flip this</h3>",
+    ):
+        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + heading + f"<ul>{FLIP_ITEMS}</ul>"))
+        assert code == 0, (heading, out)
+
+
+def test_would_flip_heading_in_comment_or_template_fails() -> None:
+    for inert in (
+        "<!-- What would flip this -->",
+        "<template><h3>What would flip this</h3></template>",
+    ):
+        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + inert + f"<ul>{FLIP_ITEMS}</ul>"))
+        assert code == 1, (inert, out)
+        assert "would_flip" in out
+
+
+def test_would_flip_empty_list_fails() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(VERDICT, VERDICT + "<h3>What would flip this</h3><ul></ul>")
+    )
+    assert code == 1, out
+    assert "0 of 2" in out, out
+
+
+def test_would_flip_partial_list_fails() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(VERDICT, VERDICT + f"<h3>What would flip this</h3><ul><li>{FLIPS[0]}</li></ul>")
+    )
+    assert code == 1, out
+    assert "1 of 2" in out and "Dyno count" in out, out
+
+
+def test_would_flip_complete_list_passes() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(VERDICT, VERDICT + f"<h3>What would flip this</h3><ul>{FLIP_ITEMS}</ul>")
+    )
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
 def test_what_if_columns_required_when_section_present() -> None:
     thin = GOOD.replace(
         '<section id="next-steps">',

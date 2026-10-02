@@ -271,7 +271,9 @@ python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
 
 `REPORT_OK` means the validator's decision-core checks passed. It is not a substitute for the content
 rules in this file: when `recommendation.would_flip_if` is non-empty the
-summary must include "What would flip this", and when two or more scenarios
+summary must include a "What would flip this" list whose items render every
+entry (the heading over an empty or partial list fails; content inside
+`<template>` or comments does not count), and when two or more scenarios
 exist the what-if table must include Region, HA, Compute, Arch, and Complexity.
 A report written only to satisfy the section-ID list will fail.
 
@@ -283,7 +285,7 @@ re-authors the report under this shell-less worker. On `REPORT_OK` the finish st
 hand-edit of the report from those errors + a direct validator re-run and re-stamp (or a maintainer
 re-running Generate for a clean rebuild).
 The validator enforces the required sections, the `draft for review` footer, the typography-first
-verdict rules, "What would flip this" when `would_flip_if` is present, the what-if
+verdict rules, the populated "What would flip this" list when `would_flip_if` is present, the what-if
 column set when two or more scenarios exist, non-empty `cost-optimization`, and the
 a11y subset the report emits (`<th scope>`, `<figure>` labels).
 
