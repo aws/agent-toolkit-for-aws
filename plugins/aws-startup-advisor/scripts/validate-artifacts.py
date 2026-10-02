@@ -48,13 +48,17 @@ Usage
 
     python3 validate-artifacts.py --fixtures
         Validate every golden artifact under fixtures/ against its skill's contracts,
-        applying the baseline file (known, explained findings that do not fail).
+        applying the shipped baseline file (known, explained findings that do not fail).
 
     python3 validate-artifacts.py --run-dir <path/.migration/<run>> --skill <name>
         Validate one real run. For users and for post-run checks in capability tests.
+        No baseline is applied unless `--baseline` names one: the shipped baseline
+        describes gaps in the fixture corpus (its globs are `fixtures/...`), so applying
+        it to a run outside that corpus would only report every entry as stale.
 
     --json      machine-readable output
-    --baseline  override the baseline file path (default: scripts/artifact-contracts-baseline.json)
+    --baseline  apply this baseline file (default: scripts/artifact-contracts-baseline.json
+                for --fixtures; none for --run-dir). Every entry must match a finding.
     --manifest  override the contracts manifest (default: scripts/artifact-contracts.json)
 
 Exit 0 when no non-baselined ERROR findings; 1 otherwise. Stdlib only (Python 3.9+).
@@ -62,6 +66,7 @@ Exit 0 when no non-baselined ERROR findings; 1 otherwise. Stdlib only (Python 3.
 from __future__ import annotations
 
 import argparse
+import copy
 import fnmatch
 import json
 import re
@@ -174,13 +179,20 @@ class Node:
     any_key: Optional["Node"] = None                 # template every key under this object must satisfy
     item: Optional["Node"] = None
     enum: Optional[Set[str]] = None
+    enum_join: Optional[str] = None                  # "+" when the contract allows a joined set of enum members
+    examples: Set[str] = field(default_factory=set)  # concrete (non-enum, non-placeholder) string values shown
     source: str = ""
 
     def is_any(self) -> bool:
         return "any" in self.kinds or not self.kinds
 
     def merge(self, other: "Node") -> "Node":
-        """Union two templates for the same path (several documented variants)."""
+        """Union two templates for the same path (several documented variants).
+
+        Children adopted from `other` are copied, never shared: a later refinement of a
+        named child (`design_constraints.cpu_architecture`) must not mutate the generic
+        template (`design_constraints.<key>`) it was seeded from.
+        """
         self.kinds |= other.kinds
         self.wildcard = self.wildcard or other.wildcard
         self.required |= other.required
@@ -188,28 +200,38 @@ class Node:
             if k in self.keys:
                 self.keys[k].merge(v)
             else:
-                self.keys[k] = v
+                self.keys[k] = copy.deepcopy(v)
         if other.item is not None:
             if self.item is None:
-                self.item = other.item
+                self.item = copy.deepcopy(other.item)
             else:
                 self.item.merge(other.item)
         if other.any_key is not None:
             if self.any_key is None:
-                self.any_key = other.any_key
+                self.any_key = copy.deepcopy(other.any_key)
             else:
                 self.any_key.merge(other.any_key)
-        if self.enum is not None and other.enum is not None:
-            self.enum = self.enum | other.enum
-        elif other.enum is None and self.enum is not None and "string" in other.kinds and not other.is_any():
-            # the other variant documents a free string here — enum is not universal
-            self.enum = None
+        self.enum_join = self.enum_join or other.enum_join
+        self.examples |= other.examples
+        if self.enum is not None or other.enum is not None:
+            # A declared enum survives a merge with a concrete example: `"confidence": "full"`
+            # demonstrates one member of `full|reduced`, it does not widen the field to any
+            # string. A concrete token the document shows that is not yet in the enum is
+            # documented by that very example, so it joins the set. Only a free-text
+            # example (not a token — spaces, punctuation) proves the field is not an enum.
+            merged = (self.enum or set()) | (other.enum or set())
+            if any(not _ENUM_TOKEN_RE.match(e) for e in self.examples):
+                self.enum = None
+            else:
+                self.enum = merged | self.examples
         return self
 
 
 _PLACEHOLDER_RE = re.compile(r"^<.*>$")
 _ENUM_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.:+\-/]+$")
 _COMMENT_ENUM_RE = re.compile(r"(?:^|[—:\-]\s*)([A-Za-z0-9_.:+\-/]+(?:\s*\|\s*[A-Za-z0-9_.:+\-/]+)+)\s*(?:$|[—(\-])")
+# `terraform | live | billing (or a "+"-joined set)` — members may be combined with "+"
+_JOINED_SET_RE = re.compile(r"[\"'`]?\+[\"'`]?[\s-]*joined|joined\s+(?:by|with|on)\s+[\"'`]?\+", re.I)
 
 
 def _enum_from_string(s: str) -> Optional[Set[str]]:
@@ -261,6 +283,8 @@ def build_node(value: Any, key_comments: Dict[str, List[str]], source: str) -> N
                         child.enum = e
                         child.kinds.add("string")
                         child.kinds.discard("any")
+                        if _JOINED_SET_RE.search(c):
+                            child.enum_join = "+"
                 if "null" in c.lower() and "or null" in c.lower() or "nullable" in c.lower():
                     child.kinds.add("null")
             n.keys[k] = child
@@ -280,6 +304,8 @@ def build_node(value: Any, key_comments: Dict[str, List[str]], source: str) -> N
             n.kinds.add("string")
             if e is not None:
                 n.enum = e
+            else:
+                n.examples.add(value)
     elif isinstance(value, bool):
         n.kinds.add("boolean")
     elif isinstance(value, (int, float)):
@@ -305,7 +331,19 @@ _FENCE_RE = re.compile(r"^```(\w+)?\s*$")
 
 
 def extract_blocks(doc: Path) -> List[Block]:
+    return _scan_doc(doc)[0]
+
+
+def extract_headings(doc: Path) -> List[str]:
+    """Every heading in document order, whether or not a JSON block follows it. A heading
+    such as '### `metadata` (REQUIRED)' is a contract statement even when the section body
+    is a table, so requiredness cannot be read from fenced blocks alone."""
+    return _scan_doc(doc)[1]
+
+
+def _scan_doc(doc: Path) -> Tuple[List[Block], List[str]]:
     blocks: List[Block] = []
+    headings: List[str] = []
     heading = ""
     in_block = False
     lang = ""
@@ -315,6 +353,7 @@ def extract_blocks(doc: Path) -> List[Block]:
         if not in_block:
             if line.startswith("#"):
                 heading = line.lstrip("#").strip()
+                headings.append(heading)
             m = _FENCE_RE.match(line)
             if m:
                 in_block = True
@@ -328,13 +367,20 @@ def extract_blocks(doc: Path) -> List[Block]:
                     blocks.append(Block(heading=heading, lang=lang, text="\n".join(buf), line=start))
             else:
                 buf.append(line)
-    return blocks
+    return blocks, headings
 
 
 def _heading_matches(heading: str, wanted: str) -> bool:
+    """Exact match, or a prefix match that ends on a word boundary — `graviton` matches
+    '`graviton` block (added to …)' but not '`graviton_profile` (emitted by …)'."""
     h = heading.replace("`", "").strip().lower()
     w = wanted.replace("`", "").strip().lower()
-    return h == w or h.startswith(w)
+    if h == w:
+        return True
+    if not h.startswith(w):
+        return False
+    nxt = h[len(w)]
+    return not (nxt.isalnum() or nxt == "_")
 
 
 def _heading_token(heading: str) -> Optional[str]:
@@ -401,6 +447,23 @@ def _unwrap_to_path(value: Any, dotted: str) -> Any:
     return value
 
 
+def _merge_example_at(root: Node, path: str, value: Any, key_comments: Dict[str, List[str]], source: str) -> None:
+    """Merge an example block into the template at `path`, at the level the example
+    actually shows. A path ending in `[]` names the array's ITEM; a block for it may be a
+    bare item (`{"name": …}`, merged into the item) or the whole array (`[{…}, {…}]` after
+    `{"workloads": [...]}` was unwrapped — merged into the array node, one level up).
+    Merging an array example into the item node would nest a phantom item level whose
+    object has no declared keys, so none of the item's field checks would ever run."""
+    value = _unwrap_to_path(value, path)
+    node = build_node(value, key_comments, source)
+    if path.endswith("[]") and isinstance(value, list):
+        target = _walk_path(root, path[:-2])
+    else:
+        target = _walk_path(root, path)
+    if target is not None:
+        target.merge(node)
+
+
 def _walk_path(root: Node, dotted: str) -> Optional[Node]:
     """Find the node at 'a.b[].c'; create intermediate nodes as needed."""
     node = root
@@ -436,7 +499,7 @@ def build_shape_contract(spec: Dict[str, Any], findings: List[Finding]) -> Optio
     if not doc.exists():
         findings.append(Finding("SCHEMA_PARSE", _rel(doc), "", "contract document not found", _rel(doc)))
         return None
-    blocks = extract_blocks(doc)
+    blocks, headings = _scan_doc(doc)
     root_heading = spec.get("root_heading")
     root_block: Optional[Block] = None
     for b in blocks:
@@ -464,52 +527,52 @@ def build_shape_contract(spec: Dict[str, Any], findings: List[Finding]) -> Optio
     ignore: List[str] = spec.get("ignore_headings", [])
     anchors = {k for k in explicit if k.startswith("@L")}
     seen_anchors: Set[str] = set()
+
+    def section_path(heading: str) -> Optional[str]:
+        """The key path a (non-anchored) section heading documents, or None to skip it."""
+        if root_heading is not None and _heading_matches(heading, root_heading):
+            # another example under the root heading (a per-item sample, a fragment) —
+            # only a line anchor in the manifest can say what it documents
+            return None
+        if any(_heading_matches(heading, ig) for ig in ignore):
+            return None
+        for h, p in explicit.items():
+            if not h.startswith("@L") and _heading_matches(heading, h):
+                return p
+        for r in rules:
+            if re.search(r["heading_regex"], heading):
+                return r["path"]
+        return _heading_token(heading)
+
     for b in blocks:
         if b is root_block:
             continue
-        path: Optional[str] = None
         anchor = f"@L{b.line}"
         if anchor in explicit:
-            path = explicit[anchor]
+            path: Optional[str] = explicit[anchor]
             seen_anchors.add(anchor)
-        elif root_heading is not None and _heading_matches(b.heading, root_heading):
-            # another example under the root heading (a per-item sample, a fragment) —
-            # only a line anchor in the manifest can say what it documents
+        else:
+            path = section_path(b.heading)
+        if path is None:
             continue
-        if path is None and any(_heading_matches(b.heading, ig) for ig in ignore):
-            continue
-        if path is None:
-            for h, p in explicit.items():
-                if h.startswith("@L"):
-                    continue
-                if _heading_matches(b.heading, h):
-                    path = p
-                    break
-        if path is None:
-            for r in rules:
-                if re.search(r["heading_regex"], b.heading):
-                    path = r["path"]
-                    break
-        if path is None:
-            tok = _heading_token(b.heading)
-            if tok is None:
-                continue
-            path = tok
         parsed = parse_block(b, doc, findings)
         if parsed is None:
             continue
         v, kc2 = parsed
-        v = _unwrap_to_path(v, path)
-        sub = build_node(v, kc2, f"{_rel(doc)}:L{b.line}")
-        target = _walk_path(root, path)
-        if target is None:
+        _merge_example_at(root, path, v, kc2, f"{_rel(doc)}:L{b.line}")
+    # A heading marked `(REQUIRED)` is a contract statement on its own, whether the section
+    # body is a JSON block or a table (`### \`metadata\` (REQUIRED)` in the Heroku inventory
+    # contract is a table). Read requiredness from every heading, not only fenced ones.
+    for heading in headings:
+        if "(REQUIRED)" not in heading.upper():
             continue
-        target.merge(sub)
-        if "(REQUIRED)" in b.heading.upper():
-            parent_path = ".".join(path.split(".")[:-1])
-            parent = _walk_path(root, parent_path) if parent_path else root
-            if parent is not None:
-                parent.required.add(path.split(".")[-1].rstrip("[]"))
+        path = section_path(heading)
+        if not path:
+            continue
+        parent_path = ".".join(path.split(".")[:-1])
+        parent = _walk_path(root, parent_path) if parent_path else root
+        if parent is not None:
+            parent.required.add(path.split(".")[-1].rstrip("[]"))
     for a in anchors - seen_anchors:
         findings.append(Finding("SCHEMA_PARSE", _rel(doc), a,
                                 f"manifest section anchor {a} does not point at a JSON block start in this document "
@@ -533,12 +596,7 @@ def build_shape_contract(spec: Dict[str, Any], findings: List[Finding]) -> Optio
         if parsed is None:
             continue
         ev, ekc = parsed
-        epath = extra["path"]
-        ev = _unwrap_to_path(ev, epath)
-        enode = build_node(ev, ekc, f"{_rel(edoc)}:L{hit.line}")
-        target = _walk_path(root, epath)
-        if target is not None:
-            target.merge(enode)
+        _merge_example_at(root, extra["path"], ev, ekc, f"{_rel(edoc)}:L{hit.line}")
     for k in spec.get("required", []):
         root.required.add(k)
     for k in spec.get("open_paths", []):
@@ -580,9 +638,15 @@ def validate_shape(node: Node, value: Any, path: str, artifact: str, contract: s
         out.append(Finding("TYPE_MISMATCH", artifact, path or "$",
                            f"is {kind}, contract example is {'/'.join(sorted(node.kinds))}", contract))
         return
-    if node.enum is not None and isinstance(value, str) and value not in node.enum:
-        out.append(Finding("ENUM_VIOLATION", artifact, path or "$",
-                           f"'{value}' not in {{{', '.join(sorted(node.enum))}}}", contract))
+    if node.enum is not None and isinstance(value, str):
+        # a joined set (`terraform+live`) is valid when every member is; an unknown member
+        # is still a violation
+        members = value.split(node.enum_join) if node.enum_join else [value]
+        if not members or any(m not in node.enum for m in members):
+            allowed = ", ".join(sorted(node.enum))
+            joined = f" (or a '{node.enum_join}'-joined set of them)" if node.enum_join else ""
+            out.append(Finding("ENUM_VIOLATION", artifact, path or "$",
+                               f"'{value}' not in {{{allowed}}}{joined}", contract))
     if isinstance(value, dict) and "object" in node.kinds:
         for k in node.required:
             if k not in value:
@@ -890,7 +954,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--skill", choices=["gcp-to-aws", "heroku-to-aws", "azure-to-aws"],
                     help="required with --run-dir")
     ap.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
-    ap.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
+    ap.add_argument("--baseline", type=Path, default=None,
+                    help="baseline file to apply; defaults to the shipped fixture baseline for --fixtures "
+                         "and to none for --run-dir (the shipped entries describe the fixture corpus)")
     ap.add_argument("--no-baseline", action="store_true", help="ignore the baseline file")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args(argv)
@@ -916,13 +982,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             ap.error(f"{args.run_dir} is not a directory")
         checked += validate_run_dir(args.run_dir, args.skill, manifest, findings)
 
+    # The shipped baseline is the fixture corpus' burn-down list (every entry's artifact
+    # glob is `fixtures/...`), so it applies by default only to --fixtures. A real run gets
+    # a baseline only when the caller names one — and then every entry must match.
+    baseline_path: Optional[Path] = args.baseline
+    if baseline_path is None and args.fixtures:
+        baseline_path = DEFAULT_BASELINE
     stale: List[Dict[str, Any]] = []
-    if not args.no_baseline and args.baseline.exists() and not args.self_check:
-        stale = apply_baseline(findings, json.loads(args.baseline.read_text(encoding="utf-8")))
+    if not args.no_baseline and baseline_path is not None and baseline_path.exists() and not args.self_check:
+        stale = apply_baseline(findings, json.loads(baseline_path.read_text(encoding="utf-8")))
         for e in stale:
             # a baseline entry that matches nothing is either fixed (remove it) or mistyped
             # (it is hiding nothing and would hide a future finding by accident) — fail either way
-            findings.append(Finding("STALE_BASELINE", _rel(args.baseline), e.get("path", "*"),
+            findings.append(Finding("STALE_BASELINE", _rel(baseline_path), e.get("path", "*"),
                                     f"entry matched no finding — remove it, or fix its code/artifact/path: {json.dumps(e)}",
                                     ""))
 

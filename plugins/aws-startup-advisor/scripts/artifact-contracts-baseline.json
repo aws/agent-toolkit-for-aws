@@ -126,6 +126,18 @@
       "artifact": "fixtures/azure-*/*preferences.json",
       "path": "clusters[[]*[]].pattern_status",
       "reason": "See confirmed."
+    },
+    {
+      "code": "MISSING_REQUIRED",
+      "artifact": "fixtures/heroku-*/*heroku-resource-inventory.json",
+      "path": "apps",
+      "reason": "schema-discover-heroku.md § `apps[]` (REQUIRED): every Discover output carries one apps[] row per Heroku app. The heroku-nonweb-scaling (seed, after-design) and heroku-workshop (seed, after-arm64-reprice) inventories are hand-authored seeds for Design/Workshop fixtures and carry only resources[] (+ billing_profile). Add an apps[] row for each heroku_app the resources reference (app_name, heroku_generation, generation_action, discovery_status, failure_reason), then remove this entry."
+    },
+    {
+      "code": "MISSING_REQUIRED",
+      "artifact": "fixtures/heroku-workshop/*heroku-resource-inventory.json",
+      "path": "metadata",
+      "reason": "schema-discover-heroku.md § `metadata` (REQUIRED). The heroku-workshop seed and after-arm64-reprice inventories have no metadata block at all (migration_id/skill on the root only). Add metadata (report_date, discovery_sources, confidence) to both goldens, then remove this entry."
     }
   ]
 }

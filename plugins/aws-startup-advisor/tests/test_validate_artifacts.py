@@ -119,6 +119,108 @@ def test_allowed_anywhere_vocabulary():
     assert _validate(ex, {"g": {"r": {"value": 1, "source": "live"}}}, allowed_anywhere=["source"]) == set()
 
 
+# --------------------------------------------------------------------------- template merging
+
+
+def test_merge_keeps_declared_enum_when_a_concrete_example_shows_one_member():
+    """Review finding on #385: merging `"confidence": "full"` (a Complete Example) into
+    `"confidence": "full|reduced"` cleared the enum, so any string passed."""
+    declared = _node('{"confidence": "full|reduced"}')
+    declared.merge(_node('{"confidence": "full"}'))
+    assert declared.keys["confidence"].enum == {"full", "reduced"}
+    # the other direction too (the example is seen before the declaration)
+    example = _node('{"confidence": "full"}')
+    example.merge(_node('{"confidence": "full|reduced"}'))
+    assert example.keys["confidence"].enum == {"full", "reduced"}
+    # a concrete token the document shows that the enum omitted is documented by that example
+    declared.merge(_node('{"confidence": "partial"}'))
+    assert declared.keys["confidence"].enum == {"full", "reduced", "partial"}
+    # only a free-text example (not a token) proves the field is not an enum
+    declared.merge(_node('{"confidence": "Using cached prices from 2026-03-04 (±5%)"}'))
+    assert declared.keys["confidence"].enum is None
+
+
+def test_merge_copies_adopted_children_so_a_named_refinement_does_not_leak_into_the_generic_template():
+    """Review finding on #385/#387: `design_constraints.cpu_architecture` was seeded from the
+    `<key>` template by reference, so refining it widened `chosen_by` on every row."""
+    root = _node('{"design_constraints": {"<key>": {"value": "<v>", "chosen_by": "user|default|extracted"}}}')
+    target = va._walk_path(root, "design_constraints.cpu_architecture")
+    target.merge(_node('{"value": "graviton", "chosen_by": "default"}'))
+    generic = root.keys["design_constraints"].any_key.keys["chosen_by"]
+    assert generic.enum == {"user", "default", "extracted"}
+    assert target.keys["chosen_by"].enum == {"user", "default", "extracted"}
+    out = []
+    va.validate_shape(root, {"design_constraints": {"target_region": {"value": "us-east-1", "chosen_by": "invalid-origin"},
+                                                    "cpu_architecture": {"value": "graviton", "chosen_by": "bogus"}}},
+                      "", "a", "c", out)
+    assert {(f.code, f.path) for f in out} == {("ENUM_VIOLATION", "design_constraints.target_region.chosen_by"),
+                                               ("ENUM_VIOLATION", "design_constraints.cpu_architecture.chosen_by")}
+
+
+def test_joined_set_qualifier_allows_plus_joined_members_but_not_unknown_ones():
+    """Review finding on #386/#387: `terraform | live | billing (or a "+"-joined set)` was read
+    as a closed enum, so the documented `live+terraform` provenance failed."""
+    ex = ('{"source": "terraform", // terraform | bicep | arm | live | rdfa | billing (or a "+"-joined set)\n'
+          ' "prov": "table", // table | rubric\n}')
+    n = _node(ex)
+    assert n.keys["source"].enum_join == "+" and n.keys["prov"].enum_join is None
+    assert _validate(ex, {"source": "live+terraform", "prov": "table"}) == set()
+    assert _validate(ex, {"source": "terraform", "prov": "table"}) == set()
+    assert _validate(ex, {"source": "terraform+bogus", "prov": "table"}) == {("ENUM_VIOLATION", "source")}
+    assert _validate(ex, {"source": "live", "prov": "table+rubric"}) == {("ENUM_VIOLATION", "prov")}
+
+
+def test_wrapped_array_example_merges_at_the_array_level(tmp_path: Path):
+    """Review finding on #385: `{"workloads": [...]}` under a `workloads[]` heading was merged
+    into the ITEM node, nesting a phantom level whose object had no keys — so no workload
+    field was ever checked."""
+    root = _node('{"metadata": {"a": 1}}')
+    text, comments, keys = va.strip_jsonc('{"workloads": [{"workload_id": "wl_1", "structured_output": false, "call_sites": [{"file": "a", "line": 1}]}]}')
+    va._merge_example_at(root, "workloads[]", json.loads(text), {}, "t")
+    item = root.keys["workloads"].item
+    assert set(item.keys) == {"workload_id", "structured_output", "call_sites"}
+    # a bare per-item example still lands on the item
+    va._merge_example_at(root, "workloads[]", {"model_id": "m"}, {}, "t")
+    assert "model_id" in root.keys["workloads"].item.keys
+    out = []
+    va.validate_shape(root, {"metadata": {"a": 1}, "workloads": [{"workload_id": "x", "model_name": "m", "structured_output": "yes", "call_sites": "a.ts"}]},
+                      "", "a", "c", out)
+    assert {(f.code, f.path) for f in out} == {("UNKNOWN_KEY", "workloads[0].model_name"),
+                                               ("TYPE_MISMATCH", "workloads[0].structured_output"),
+                                               ("TYPE_MISMATCH", "workloads[0].call_sites")}
+    ok = []
+    va.validate_shape(root, {"metadata": {"a": 1}, "workloads": []}, "", "a", "c", ok)
+    assert ok == []
+
+
+def test_heading_match_is_exact_or_word_boundary_prefix():
+    """Review finding on #385: `graviton` selected '`graviton_profile` (emitted by …)' by prefix."""
+    assert va._heading_matches("`graviton` block (added to each compute service in `aws-design.json`)", "graviton")
+    assert not va._heading_matches("`graviton_profile` (emitted by Discover, one entry per compute service)", "graviton")
+    assert va._heading_matches("`graviton_profile` (emitted by Discover)", "graviton_profile")
+    assert va._heading_matches("Shape", "Shape") and not va._heading_matches("Shapes", "Shape")
+    assert va._heading_matches("Cost tiers (`projected_costs` / `cost_comparison`)", "Cost tiers")
+
+
+def test_required_heading_with_a_table_body_is_enforced(tmp_path: Path):
+    """Review finding on #385: requiredness was read only from headings that had a JSON block,
+    so '### `apps[]` (REQUIRED)' followed by a table never reached `root.required`."""
+    doc = tmp_path / "schema.md"
+    doc.write_text("# Contract\n\n## thing.json\n\n```json\n{\"metadata\": {\"x\": 1}, \"apps\": [], \"opt\": {}}\n```\n\n"
+                   "### `metadata` (REQUIRED)\n\n| Field | Type |\n|---|---|\n| `x` | number |\n\n"
+                   "### `apps[]` (REQUIRED)\n\n| Field | Type |\n|---|---|\n\n"
+                   "### `opt` (OPTIONAL — present when available)\n\n| Field | Type |\n|---|---|\n")
+    old_root = va.PLUGIN_ROOT
+    va.PLUGIN_ROOT = tmp_path
+    try:
+        findings = []
+        c = va.build_shape_contract({"shape": "schema.md", "root_heading": "thing.json"}, findings)
+    finally:
+        va.PLUGIN_ROOT = old_root
+    assert findings == [] and c is not None
+    assert c.root.required == {"metadata", "apps"}
+
+
 # --------------------------------------------------------------------------- JSON Schema subset
 
 
@@ -256,3 +358,214 @@ def test_real_json_schema_violation_fails(tmp_path: Path):
     r = _run("--run-dir", str(run), "--skill", "azure-to-aws", "--no-baseline", "--json")
     assert r.returncode == 1
     assert any(e["code"] == "SCHEMA_VIOLATION" and e["path"] == "complexity_tier" for e in json.loads(r.stdout)["errors"])
+
+
+# --------------------------------------------------------------------------- review findings (#385 round 2) against the real contracts
+
+
+def _errors(r: subprocess.CompletedProcess):
+    assert r.stdout, r.stderr
+    return {(e["code"], e["path"]) for e in json.loads(r.stdout)["errors"]}
+
+
+def _write_run(tmp_path: Path, name: str, artifact: str, data) -> Path:
+    run = tmp_path / name
+    (run / Path(artifact).parent).mkdir(parents=True, exist_ok=True)
+    (run / artifact).write_text(json.dumps(data))
+    return run
+
+
+def _doc_example(doc: Path, heading: str):
+    """The first JSON block under `heading`, with `a|b` alternations resolved to `a`."""
+    block = next(b for b in va.extract_blocks(doc) if va._heading_matches(b.heading, heading))
+    findings = []
+    value, _ = va.parse_block(block, doc, findings)   # also reads `"key": {...}` fragments
+    assert findings == []
+
+    def pick(o):
+        if isinstance(o, dict):
+            return {k: pick(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [pick(x) for x in o]
+        if isinstance(o, str) and "|" in o and va._enum_from_string(o):
+            return o.split("|")[0]
+        return o
+    return pick(value)
+
+
+def test_documented_default_run_dir_command_passes_for_a_valid_run(tmp_path: Path):
+    """Review finding on #385: `--run-dir <run> --skill gcp-to-aws` applied the shipped
+    fixture baseline, so a valid real run failed with 21 STALE_BASELINE errors."""
+    status = json.loads((PLUGIN_ROOT / "fixtures/gcp-decision-gate/after-decide-complete/.phase-status.json").read_text())
+    run = _write_run(tmp_path, "run", ".phase-status.json", status)
+    r = _run("--run-dir", str(run), "--skill", "gcp-to-aws", "--json")
+    assert r.returncode == 0, r.stdout + r.stderr
+    report = json.loads(r.stdout)
+    assert report["errors"] == [] and report["stale_baseline_entries"] == []
+    # the real fixture run passes the same way when validated as a run directory
+    r = _run("--run-dir", str(PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-discover"), "--skill", "azure-to-aws", "--json")
+    assert r.returncode == 0, r.stdout
+    # the shipped baseline still applies to --fixtures (and every entry must match there):
+    # test_fixtures_pass_with_baseline_and_no_stale_entries. An explicit --baseline on a run
+    # is still audited for stale entries: test_stale_baseline_entry_fails_the_gate.
+
+
+def test_heroku_complete_example_enums_are_enforced_after_merge(tmp_path: Path):
+    """Review finding on #385: merging the Heroku Complete Example cleared the declared enums
+    on confidence / heroku_generation / discovery_status / dyno_type."""
+    doc = PLUGIN_ROOT / "skills/heroku-to-aws/references/shared/schema-discover-heroku.md"
+    good = _doc_example(doc, "Complete Example")
+    r = _run("--run-dir", str(_write_run(tmp_path, "ok", "heroku-resource-inventory.json", good)),
+             "--skill", "heroku-to-aws", "--no-baseline", "--json")
+    assert r.returncode == 0, r.stdout
+    formation = next(i for i, x in enumerate(good["resources"]) if x["resource_type"] == "formation")
+    mutants = {
+        "metadata.confidence": lambda d: d["metadata"].__setitem__("confidence", "bogus"),
+        "apps[0].heroku_generation": lambda d: d["apps"][0].__setitem__("heroku_generation", "mars"),
+        "apps[0].discovery_status": lambda d: d["apps"][0].__setitem__("discovery_status", "whatever"),
+        f"resources[{formation}].config.dyno_type": lambda d: d["resources"][formation]["config"].__setitem__("dyno_type", "giga-9000"),
+    }
+    for path, mutate in mutants.items():
+        bad = json.loads(json.dumps(good))
+        mutate(bad)
+        r = _run("--run-dir", str(_write_run(tmp_path, path, "heroku-resource-inventory.json", bad)),
+                 "--skill", "heroku-to-aws", "--no-baseline", "--json")
+        assert r.returncode == 1 and ("ENUM_VIOLATION", path) in _errors(r), (path, r.stdout)
+
+
+def test_heroku_required_table_sections_are_enforced(tmp_path: Path):
+    """Review finding on #385: `metadata`, `apps[]`, `resources[]` are headed `(REQUIRED)` but
+    documented as tables, so `{}` passed as heroku-resource-inventory.json."""
+    doc = PLUGIN_ROOT / "skills/heroku-to-aws/references/shared/schema-discover-heroku.md"
+    good = _doc_example(doc, "Complete Example")
+    for key in ("metadata", "apps", "resources"):
+        bad = json.loads(json.dumps(good))
+        bad.pop(key)
+        r = _run("--run-dir", str(_write_run(tmp_path, "no-" + key, "heroku-resource-inventory.json", bad)),
+                 "--skill", "heroku-to-aws", "--no-baseline", "--json")
+        assert r.returncode == 1 and _errors(r) == {("MISSING_REQUIRED", key)}, (key, r.stdout)
+    for key in ("billing_profile", "terraform_metadata"):   # OPTIONAL sections stay optional
+        ok = json.loads(json.dumps(good))
+        ok.pop(key)
+        r = _run("--run-dir", str(_write_run(tmp_path, "opt-" + key, "heroku-resource-inventory.json", ok)),
+                 "--skill", "heroku-to-aws", "--no-baseline", "--json")
+        assert r.returncode == 0, (key, r.stdout)
+    r = _run("--run-dir", str(_write_run(tmp_path, "empty", "heroku-resource-inventory.json", {})),
+             "--skill", "heroku-to-aws", "--no-baseline", "--json")
+    assert _errors(r) == {("MISSING_REQUIRED", "metadata"), ("MISSING_REQUIRED", "apps"), ("MISSING_REQUIRED", "resources")}
+
+
+def test_gcp_estimate_extensions_bind_to_their_object_keys(tmp_path: Path):
+    """Review finding on #385: scenario_deltas and the observability / security_baseline /
+    security_baseline_compliance breakdown members were bound to a `breakdown[]` item (the
+    schema types breakdown as an object), so a complete estimate failed with UNKNOWN_KEY."""
+    doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-estimate-infra.md"
+    est = json.loads((PLUGIN_ROOT / "fixtures/gcp-decision-gate/after-decide-complete/estimation-infra.json").read_text())
+    sec_blocks = [b for b in va.extract_blocks(doc) if va._heading_matches(b.heading, "Security Baseline Entries in")]
+    assert len(sec_blocks) == 2, "manifest anchors @L373/@L390 expect two Security Baseline blocks"
+    est["projected_costs"]["scenario_deltas"] = _doc_example(doc, "Cost tiers")["scenario_deltas"]
+    est["projected_costs"]["breakdown"] = {
+        "compute": {"service": "Fargate", "monthly": 71},
+        "observability": _doc_example(doc, "Observability Entry in"),
+        "security_baseline": json.loads(va.strip_jsonc(sec_blocks[0].text)[0]),
+        "security_baseline_compliance": json.loads(va.strip_jsonc(sec_blocks[1].text)[0]),
+    }
+    r = _run("--run-dir", str(_write_run(tmp_path, "ok", "estimation-infra.json", est)), "--skill", "gcp-to-aws", "--json")
+    assert r.returncode == 0, r.stdout
+    bad = json.loads(json.dumps(est))
+    bad["projected_costs"]["breakdown"]["observability"]["components"]["bogus"] = 1
+    bad["projected_costs"]["breakdown"]["security_baseline"]["invented"] = 1
+    bad["projected_costs"]["scenario_deltas"]["weird"] = []
+    bad["projected_costs"]["unrelated"] = 1
+    r = _run("--run-dir", str(_write_run(tmp_path, "bad", "estimation-infra.json", bad)), "--skill", "gcp-to-aws", "--json")
+    assert r.returncode == 1
+    assert _errors(r) == {("UNKNOWN_KEY", "projected_costs.breakdown.observability.components.bogus"),
+                          ("UNKNOWN_KEY", "projected_costs.breakdown.security_baseline.invented"),
+                          ("UNKNOWN_KEY", "projected_costs.scenario_deltas.weird"),
+                          ("UNKNOWN_KEY", "projected_costs.unrelated")}
+
+
+def test_azure_design_graviton_block_is_the_design_section_not_the_discovery_profile(tmp_path: Path):
+    """Review finding on #385: the `graviton` heading matched `graviton_profile` by prefix, so
+    services[].graviton rejected the documented `compatibility` field."""
+    src = PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-design"
+    control = _errors(_run("--run-dir", str(src), "--skill", "azure-to-aws", "--no-baseline", "--json"))
+    design = json.loads((src / "aws-design.json").read_text())
+    design["services"][0]["graviton"] = {"compatibility": "ready", "target_architecture": "arm64", "caveats": []}
+    r = _run("--run-dir", str(_write_run(tmp_path, "grav", "aws-design.json", design)), "--skill", "azure-to-aws", "--no-baseline", "--json")
+    assert _errors(r) - control == set(), r.stdout
+    design["services"][0]["graviton"] = {"compatibility": "ready", "tier": "ready", "service_name": "x"}   # discovery-profile fields
+    r = _run("--run-dir", str(_write_run(tmp_path, "mixed", "aws-design.json", design)), "--skill", "azure-to-aws", "--no-baseline", "--json")
+    assert _errors(r) - control == {("UNKNOWN_KEY", "services[0].graviton.tier"), ("UNKNOWN_KEY", "services[0].graviton.service_name")}
+    # the discovery profile is still selected for the inventory
+    inv = json.loads((PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-discover/azure-resource-inventory.json").read_text())
+    inv["graviton_profile"] = [{"service_name": "api", "tier": "ready", "target_architecture": "arm64", "signals": [], "caveats": [], "source": "app_code"}]
+    r = _run("--run-dir", str(_write_run(tmp_path, "inv", "azure-resource-inventory.json", inv)), "--skill", "azure-to-aws", "--no-baseline", "--json")
+    assert not any(p.startswith("graviton_profile") for _, p in _errors(r)), r.stdout
+
+
+def test_gcp_ai_workloads_fields_are_checked(tmp_path: Path):
+    """Review finding on #385: the wrapped `{"workloads": [...]}` example merged one level too
+    deep, so key and type drift inside a workload never fired."""
+    doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-discover-ai.md"
+    profile = _doc_example(doc, "ai-workload-profile.json")
+    profile["workloads"] = _doc_example(doc, "workloads[]")["workloads"]
+    r = _run("--run-dir", str(_write_run(tmp_path, "ok", "ai-workload-profile.json", profile)), "--skill", "gcp-to-aws", "--json")
+    assert r.returncode == 0, r.stdout
+    empty = dict(profile, workloads=[])
+    r = _run("--run-dir", str(_write_run(tmp_path, "empty", "ai-workload-profile.json", empty)), "--skill", "gcp-to-aws", "--json")
+    assert r.returncode == 0, r.stdout
+    bad = json.loads(json.dumps(profile))
+    w = bad["workloads"][0]
+    w["model_name"] = w.pop("model_id")
+    w["structured_output"] = "yes"
+    w["call_sites"] = "lib/gemini.ts"
+    r = _run("--run-dir", str(_write_run(tmp_path, "bad", "ai-workload-profile.json", bad)), "--skill", "gcp-to-aws", "--json")
+    assert r.returncode == 1
+    assert _errors(r) == {("UNKNOWN_KEY", "workloads[0].model_name"),
+                          ("TYPE_MISMATCH", "workloads[0].structured_output"),
+                          ("TYPE_MISMATCH", "workloads[0].call_sites")}
+
+
+def test_heroku_workshop_preferences_subset_is_an_open_knob_map(tmp_path: Path):
+    """Review finding on #385: `preferences_subset` was closed to the two knobs in the example,
+    so a cost-optimization or availability delta failed with UNKNOWN_KEY."""
+    sc = json.loads((PLUGIN_ROOT / "fixtures/heroku-workshop/after-arm64-reprice/scenarios/scenario-002.json").read_text())
+    sc["preferences_subset"].update({"operational.cost_optimization": "aggressive", "availability.multi_az": True,
+                                     "database.ha": "multi_az", "compute.target": "fargate"})
+    r = _run("--run-dir", str(_write_run(tmp_path, "ok", "scenarios/scenario-002.json", sc)), "--skill", "heroku-to-aws", "--json")
+    assert r.returncode == 0, r.stdout
+    sc["invented_root_key"] = 1   # the manifest itself is still closed
+    r = _run("--run-dir", str(_write_run(tmp_path, "bad", "scenarios/scenario-002.json", sc)), "--skill", "heroku-to-aws", "--json")
+    assert _errors(r) == {("UNKNOWN_KEY", "invented_root_key")}
+
+
+def test_azure_inventory_source_accepts_the_documented_joined_set(tmp_path: Path):
+    """Review finding on #386/#387: `source` is documented as `terraform | bicep | arm | live |
+    rdfa | billing (or a "+"-joined set)` and discover-live.md emits `live+terraform`."""
+    inv = json.loads((PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-discover/azure-resource-inventory.json").read_text())
+    for val, expect in (("live+terraform", set()), ("terraform+live", set()), ("terraform", set()),
+                        ("terraform+bogus", {("ENUM_VIOLATION", "resources[0].source")}),
+                        ("bogus", {("ENUM_VIOLATION", "resources[0].source")})):
+        inv["resources"][0]["source"] = val
+        r = _run("--run-dir", str(_write_run(tmp_path, val, "azure-resource-inventory.json", inv)), "--skill", "azure-to-aws", "--json")
+        assert _errors(r) == expect, (val, r.stdout)
+    inv["resources"][0]["source"] = "terraform"
+    inv["resources"][0]["azure_type_provenance"] = "terraform+live"   # a genuinely closed enum stays closed
+    r = _run("--run-dir", str(_write_run(tmp_path, "prov", "azure-resource-inventory.json", inv)), "--skill", "azure-to-aws", "--json")
+    assert _errors(r) == {("ENUM_VIOLATION", "resources[0].azure_type_provenance")}, r.stdout
+
+
+def test_gcp_preferences_chosen_by_enum_is_enforced_including_derived(tmp_path: Path):
+    """Review finding on #385/#387: the Graviton refinement cleared `chosen_by` for every row;
+    restoring the enum must keep the AI-only route's `derived` (schema-preferences.md § Wrapper)."""
+    pref = json.loads((PLUGIN_ROOT / "fixtures/gcp-workshop/after-graviton-reprice/preferences.json").read_text())
+    for val, expect in (("derived", set()), ("default", set()),
+                        ("invalid-origin", {("ENUM_VIOLATION", "design_constraints.target_region.chosen_by")})):
+        pref["design_constraints"]["target_region"]["chosen_by"] = val
+        r = _run("--run-dir", str(_write_run(tmp_path, val, "preferences.json", pref)), "--skill", "gcp-to-aws", "--json")
+        assert _errors(r) == expect, (val, r.stdout)
+    pref["design_constraints"]["target_region"]["chosen_by"] = "user"
+    pref["design_constraints"]["cpu_architecture"] = {"value": "graviton", "chosen_by": "bogus"}
+    r = _run("--run-dir", str(_write_run(tmp_path, "cpu", "preferences.json", pref)), "--skill", "gcp-to-aws", "--json")
+    assert _errors(r) == {("ENUM_VIOLATION", "design_constraints.cpu_architecture.chosen_by")}, r.stdout
