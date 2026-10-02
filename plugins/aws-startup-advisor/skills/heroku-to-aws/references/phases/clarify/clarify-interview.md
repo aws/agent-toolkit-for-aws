@@ -159,7 +159,12 @@ Before generating questions, scan the inventory to determine which questions app
 
 ### Extraction Rules (answer from the inventory before asking)
 
-**These rules run in Step 1, before the fast-path offer** — they are referenced from here because they also feed the Assumption Sheet. Resolve what `heroku-resource-inventory.json` already answers. Extracted questions are NOT asked on any path — on the full flow they appear as **Detected** rows on the Assumption Sheet (Step 2.5); on the fast path they are applied directly. Either way they are recorded in `metadata.questions_skipped_extracted`, with the raw signal in `metadata.inventory_clarifications`.
+**These rules run in Step 1, before the fast-path offer** — they are referenced from here because they also feed the Assumption Sheet. Resolve what `heroku-resource-inventory.json` already answers. Extracted questions are NOT asked on any path, but the table's **Resolves to** column names two kinds of extraction with two provenance buckets:
+
+- **Detected** — an explicit fact (Private Space region, `premium-*` HA tier, app stack). On the full flow it is a **Detected** row on the Assumption Sheet (Step 2.5); on the fast path it is applied directly. Recorded in `metadata.questions_skipped_extracted` with `sources.<QID>: "extracted"`.
+- **Proposed default** — a suggestion read from the inventory (Common Runtime `us`/`eu` region, `mini`/hobby Redis tier). On the full flow it is an **Assumed** row the user confirms, not a Detected row; on the fast path it is applied as the documented default. Recorded in `metadata.questions_defaulted` with `sources.<QID>: "default"` — never in `questions_skipped_extracted`, never as `"extracted"`, so the Decision gate's assumptions block shows it.
+
+Both kinds keep the raw signal in `metadata.inventory_clarifications`.
 
 | Q                       | Extraction signal                                                                                                                                                                                                 | Resolves to                                                                                                                                    | When NOT to extract                                                             |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -848,7 +853,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 | Q6 — Database HA          | 4 (match Q3)                            | `database_ha: <Q3 value>`                                                                                   |
 | Q6b — Migration approach  | 1 (full cutover)                        | `migration_approach: "full_cutover"`                                                                        |
 | Q6c — DB migration method | 1 (pg_dump)                             | `migration_method: "pg_dump_restore"`                                                                       |
-| Q7 — Redis HA             | 1 (yes)                                 | `redis_ha: true`                                                                                            |
+| Q7 — Redis HA             | 1 (yes) if source plan has HA, else 2 (no) | `redis_ha: true` for a `premium-*` source tier; `false` for `mini`/hobby (Q7 § Default)                     |
 | Q8 — Kafka retention      | 3 (7 days)                              | `kafka_retention_days: 7`                                                                                   |
 | Q9 — Subnet IDs           | _(no default — must ask if applicable)_ | —                                                                                                           |
 | Q9b — VPC ID              | _(no default — must ask if applicable)_ | —                                                                                                           |
