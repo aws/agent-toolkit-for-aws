@@ -92,7 +92,9 @@
       "value": "dump_restore",
       "default": "dump_restore",
       "deferred_to_generate": true,
-      "default_basis": "largest relational DB 64 GiB <= 100 GiB"
+      "default_basis": "largest relational DB 64 GiB <= 100 GiB",
+      "largest_relational_db_gib": 64,
+      "size_coverage": "complete"
     },
     "traffic_pattern": {
       "disposition": "PROPOSED",

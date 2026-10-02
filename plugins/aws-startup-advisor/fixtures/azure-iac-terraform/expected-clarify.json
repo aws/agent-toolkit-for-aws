@@ -79,7 +79,8 @@
         "DETECTED"
       ],
       "requires_keys": [
-        "default_basis"
+        "default_basis",
+        "size_coverage"
       ],
       "why": "DMS versus dump-and-restore is a different RUNBOOK, which is exactly why the question is asked where the runbook is written: Clarify records a size-derived default (64 GiB <= 100 GiB -> dump_restore) marked deferred_to_generate, and the Decision gate's [C] asks it for real (estimate-assemble.md Step 3b) before Generate loads. ESSENTIAL here would make a user who stops at the decision answer a question they will never use; DETECTED would claim the estate said something it did not."
     },
@@ -140,6 +141,9 @@
       "data.db_cutover"
     ],
     "_deferred_why": "The corpus has a relational database, so db_cutover must be defaulted-and-deferred, and metadata.deferred_to_generate must name it so generate.md's precondition can refuse to run until Step 3b confirms it."
+  },
+  "db_cutover_default_rule": {
+    "_why": "The default is not a fixed pin but Q-D2's RULE evaluated against the inventory's relational storage_mb: dump_restore at <= 100 GiB (inclusive), dms above, and dump_restore + size_coverage unknown when no server carries a measured size. Pinning the rule rather than the value catches the two plausible improvisations the missing-size case invites \u2014 inventing a size so the two-branch rule fires, or escalating to ESSENTIAL and adding a question the fast-path offer promised not to ask."
   },
   "defaults_not_promoted": {
     "_why": "A value taken from its default must still read PROPOSED. DETECTED means READ FROM THE ESTATE. Design's rationale prints 'you chose Elastic Beanstalk' differently from 'we assumed Elastic Beanstalk', and the report prints the difference \u2014 but only if this file recorded which happened. A row that is DETECTED with value == default and no stated source is a promoted default.",
