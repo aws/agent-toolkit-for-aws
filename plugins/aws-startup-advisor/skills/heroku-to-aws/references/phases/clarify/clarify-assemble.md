@@ -93,8 +93,8 @@ Write `$MIGRATION_DIR/preferences.json`:
   },
   "defaults_applied": ["<list of defaulted question IDs>"],
   "sources": {
-    "Q1": "user|default",
-    "Q2": "user|default",
+    "Q1": "user|extracted|default",
+    "Q2": "user|extracted|default",
     ...
   }
 }
@@ -107,9 +107,9 @@ Do **not** write a `workshop` object from Clarify. The what-if workshop
 
 ### Schema Rules
 
-1. The `sources` object records how each question was answered: `"user"` (explicitly answered, or corrected on the Assumption Sheet), `"extracted"` (resolved from the inventory — Detected sheet row), `"default"` (system default applied, including skipped questions, sheet-confirmed defaults, and "use defaults for the rest").
+1. The `sources` object records how each question was answered: `"user"` (explicitly answered, or corrected on the Assumption Sheet), `"extracted"` (resolved from the inventory — a Detected sheet row on the full flow, or applied directly on the fast path), `"default"` (system default applied, including skipped questions, sheet-confirmed defaults, "use defaults for the rest", and a fast-path proposed default such as a Common Runtime region or a tier-derived `database_ha` that disagreed with Q3). These three are the complete enum; every ID in `metadata.questions_skipped_extracted` has `sources.<QID>: "extracted"`, and extracted fields carry the catalog's type and enum (interview § Extraction Rules), never a raw signal.
 2. `defaults_applied` is the array of question IDs that received default values.
-3a. `metadata.questions_deferred_to_generate` records the execution-only questions (Q4 maintenance window, Q6c DB migration method, Q12d EB deploy method — each only when it fires) whose documented default was written here and which are **asked for real at the Decision gate's [C] Generate** (`estimate-assemble.md` § Confirm execution choices) before `generate.md` loads. Nothing before Generate reads these three fields. Their `sources` entry is `"default"` until that step rewrites it to `"user"`.
+3a. `metadata.questions_deferred_to_generate` records the execution-only questions (Q4 maintenance window, Q6c DB migration method, Q12d EB deploy method — each only when it fires) whose documented default was written here and which are **asked for real at the Decision gate's [C] Generate** (`estimate-assemble.md` § Confirm execution choices) before `generate.md` loads. Nothing before Generate reads these three fields. Their `sources` entry is `"default"` until that step rewrites it to `"user"` and empties the array — an empty array is a valid, terminal state, not a missing field. A `preferences.json` written before this field existed has no array at all; interview Step 0 (reuse) rebuilds it from the `sources` entries instead of re-defaulting answers the user already gave.
 3. `metadata.questions_skipped_not_applicable` records questions skipped because their triggering condition was not met (e.g., Q6 skipped because no Postgres). `metadata.questions_skipped_extracted` records questions resolved from the inventory (interview Step 2.5 Extraction Rules); the raw signal goes in `metadata.inventory_clarifications` (e.g. `{"database_ha": "plan:premium-0"}`).
 4. Only write keys with non-null values. Omit sections/keys that are entirely null.
 5. `global.fir_intent` is `null` when no Fir apps detected (Q11 not fired).
@@ -147,9 +147,11 @@ Before handing off to Design:
 - [ ] `design_constraints.compute_target.recommendation.reasons` is a non-empty array
 - [ ] If the resolved compute plan includes Elastic Beanstalk → `design_constraints.eb_deploy_method.value` is one of: `"github_actions"`, `"codepipeline"`, `"manual"`
 - [ ] If `design_constraints.eb_deploy_method` is present → `design_constraints.eb_deploy_method.chosen_by` is `"user"` or `"default"`
-- [ ] All entries in `sources` have a value of `"user"` or `"default"`
+- [ ] All entries in `sources` have a value of `"user"`, `"extracted"`, or `"default"`
+- [ ] Every ID in `metadata.questions_skipped_extracted` has `sources.<QID>` = `"extracted"`, and its field holds a catalog enum value (`data.database_ha` ∈ `"single-az"` / `"multi-az"` / `"multi-az-ha"`; `operational.containerization_status` ∈ `"containerized"` / `"buildpack_only"` / `"partial"`; `data.redis_ha` Boolean) — never a raw inventory signal such as a Boolean `database_ha`
 - [ ] `metadata.clarify_mode` is set to `"fast_path"` or `"full"`
-- [ ] `metadata.questions_deferred_to_generate` is present and lists Q4, Q6c (if Postgres present), and Q12d (if the resolved compute plan includes EB); each listed question's field carries its documented default and `sources.<field>` is `"default"`
+- [ ] `metadata.questions_deferred_to_generate` is present (an empty array is valid — it means the Decision gate's "Confirm execution choices" already ran). On a **fresh assembly** (interview Steps 1–3 ran this session) it lists Q4, Q6c (if Postgres present), and Q12d (if the resolved compute plan includes EB). On **preference reuse** (interview Step 0 case 1) it is whatever Step 0 normalized — a legacy file gets the array rebuilt from its `sources` entries; an emptied array stays empty
+- [ ] Every ID listed in `metadata.questions_deferred_to_generate` has its field set to the documented default and `sources.<QID>` = `"default"`; no ID with `sources.<QID>` = `"user"` is listed (an already-answered execution choice is never re-asked)
 - [ ] Only keys with non-null values are present
 - [ ] Output is valid JSON
 
