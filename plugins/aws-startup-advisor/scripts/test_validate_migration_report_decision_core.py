@@ -327,6 +327,36 @@ def test_clusters_without_architecture_section_fail() -> None:
     assert any("exec-architecture" in err for err in errors), errors
 
 
+def test_scenario_column_check_requires_migration_dir() -> None:
+    # The what-if column check reads scenarios/index.json via --migration-dir.
+    # Without that flag the check never fires, even with >=2 scenarios and a
+    # thin what-if-scenarios table missing the decision-core columns.
+    validator = _load()
+    html = _reference_html().replace(
+        '<section id="exec-timeline">',
+        '<section id="what-if-scenarios"><table><caption>Scenarios</caption><thead><tr>'
+        '<th scope="col">Scenario</th><th scope="col">Monthly</th>'
+        "</tr></thead><tbody><tr><td>Baseline</td><td>$1</td></tr></tbody></table></section>"
+        '<section id="exec-timeline">',
+    )
+    ai = json.loads((FIXTURES / "estimation-ai-reference.json").read_text(encoding="utf-8"))
+    errors_without_dir = validator.validate_report(html, _reference_estimate(), ai)
+    assert errors_without_dir == [], errors_without_dir
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "scenarios").mkdir()
+        (root / "scenarios" / "index.json").write_text(
+            json.dumps({"scenarios": [{"id": "a"}, {"id": "b"}]}), encoding="utf-8"
+        )
+        errors_with_dir = validator.validate_report(
+            html, _reference_estimate(), ai, migration_dir=root
+        )
+    assert any("Region" in err for err in errors_with_dir), errors_with_dir
+
+
 def test_decision_fixture_still_passes() -> None:
     validator = _load()
     root = FIXTURES / "gcp-decision-gate" / "after-decide-complete"
