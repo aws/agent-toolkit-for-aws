@@ -202,12 +202,13 @@ python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
   "$MIGRATION_DIR/migration-report.html" \
   --estimation-infra "$MIGRATION_DIR/estimation-infra.json" \
   --estimation-ai "$MIGRATION_DIR/estimation-ai.json" \
+  --aws-design "$MIGRATION_DIR/aws-design.json" \
   --migration-dir "$MIGRATION_DIR"
 ```
 
-Pass `--estimation-infra` / `--estimation-ai` only when those files exist in `$MIGRATION_DIR`.
+Pass `--estimation-infra` / `--estimation-ai` / `--aws-design` only when those files exist in `$MIGRATION_DIR` (absolute paths — cwd must not be load-bearing). The validator does not read `aws-design.json` from `--migration-dir`; the architecture-section and specialist-callout checks fire only when `--aws-design` is passed, so omitting it on an infra run leaves those omissions undetected.
 
-**AI-only path:** when there is no infra track (no `estimation-infra.json`), add `--mode ai_only` so the validator requires the AI-only section set (`decision-summary`, `exec-assumptions`, `exec-risks`, `appendix-ai`, `appendix-artifacts`, `appendix-config`, `appendix-glossary`) instead of the infra sections. Pass `--estimation-ai "$MIGRATION_DIR/estimation-ai.json"`.
+**AI-only path:** when there is no infra track (no `estimation-infra.json`), add `--mode ai_only` so the validator requires the AI-only section set (`decision-summary`, `exec-assumptions`, `exec-risks`, `appendix-ai`, `appendix-artifacts`, `appendix-config`, `appendix-glossary`) instead of the infra sections. Pass `--estimation-ai "$MIGRATION_DIR/estimation-ai.json"`; there is no `aws-design.json` on this path, so `--aws-design` is omitted.
 
 Branch on the exit code, exactly as gcp-to-aws's `generate.md` does:
 
