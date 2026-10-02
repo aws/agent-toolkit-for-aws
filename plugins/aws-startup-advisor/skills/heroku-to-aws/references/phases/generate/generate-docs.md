@@ -40,7 +40,7 @@ Also extract:
 - `migration_method` — from `preferences.json`.data.migration_method (`"pg_dump_restore"`, `"dms"`, `"bucardo"`, `"wal_g"`)
 - `containerization_status` — from `preferences.json`.operational.containerization_status (`"containerized"`, `"buildpack_only"`, `"partial"`)
 - `target_exit_date` — from `preferences.json`.global.target_exit_date (ISO date or null)
-- `dns_strategy` — from `preferences.json`.global.dns_strategy (`"route53"` or `"external"`)
+- `dns_strategy` — from `preferences.json`.data.dns_strategy (Clarify Q10 writes it inside the `"data"` block — `clarify-assemble.md`; there is no `global.dns_strategy`). `"route53"` or `"external"`; treat any other or missing value (e.g. a legacy `"manual_cutover"`) as `"external"`.
 - `custom_domains[]` — every `resource_type == "domain"` resource's `config.hostname` from `heroku-resource-inventory.json` (deduplicated). `has_route53_dns = true` when `dns_strategy == "route53"` AND `custom_domains` is non-empty — the same condition under which `generate-terraform.md` Step 9.5 emits `dns.tf`.
 - `aws_dns_target_label` — `"the ALB DNS name (terraform output alb_dns_name)"` when `has_fargate`, else `"the Elastic Beanstalk environment CNAME (terraform output eb_environment_cname)"`
 
@@ -814,16 +814,19 @@ This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode 
 
 `terraform/dns.tf` created, for each non-apex hostname, two weighted records with the same name: one to Heroku, one to AWS. `cutover_weight` is the share of traffic AWS receives. Cutover is three applies; rollback is one.
 
+Every step below is the same two actions: edit the `cutover_weight` line in `terraform/terraform.tfvars`, then run a plain apply. Never pass `-var cutover_weight=…` instead — Terraform re-reads `terraform.tfvars` on every apply, so a one-command override is silently undone by the next ordinary apply (for example the one that fixes an AWS-side bug after a rollback).
+
 1. **Canary — 10 %:**
 
    ```bash
    cd terraform/
-   terraform apply -input=false -var cutover_weight=10
+   sed -i.bak 's/^cutover_weight *=.*/cutover_weight = 10/' terraform.tfvars
+   terraform apply -input=false
    ```
 
    Watch for 15–30 minutes: CloudWatch 5xx rate on the ALB/EB target group, application error tracker, `heroku logs --tail -a {{app_name}}` for the 90 % still on Heroku. Confirm sessions, logins, and any webhook callbacks work for the AWS share.
-2. **Half — 50 %:** `terraform apply -input=false -var cutover_weight=50`. Watch for at least one full business cycle (an hour of peak traffic, or a batch window if you have one).
-3. **All — 100 %:** `terraform apply -input=false -var cutover_weight=100`. This apply also creates the apex record (see below). Then put `cutover_weight = 100` in `terraform.tfvars` so a later apply does not revert it.
+2. **Half — 50 %:** set `cutover_weight = 50` in `terraform.tfvars`, `terraform apply -input=false`. Watch for at least one full business cycle (an hour of peak traffic, or a batch window if you have one).
+3. **All — 100 %:** set `cutover_weight = 100` in `terraform.tfvars`, `terraform apply -input=false`. This apply also creates the apex record (see below). Because the value is in the file, any later apply keeps 100.
 {{IF migration_approach == "full_cutover"}}
 4. **Freeze Heroku writes** once at 100 %: `heroku maintenance:on -a {{app_name}}`. Until this moment the Heroku share could still write to Heroku Postgres; after it, the AWS database is the only writer.
 {{ENDIF}}
@@ -836,7 +839,7 @@ This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode 
 
 ### DNS Cutover (your current DNS provider)
 
-No `dns.tf` was generated ({{IF dns_strategy == "external"}}you chose to keep your DNS provider{{ELSE}}no custom domain was discovered{{ENDIF}}). Cut over by editing records at your provider:
+No `dns.tf` was generated ({{IF custom_domains is empty}}no custom domain was discovered{{ELSE}}you chose to keep your DNS provider{{ENDIF}}). Cut over by editing records at your provider:
 
 1. For each custom hostname, change the record from its Heroku DNS target to {{aws_dns_target_label}}:
 
@@ -911,10 +914,14 @@ Keep every Heroku dyno, add-on, and the pre-cutover database export for **at lea
 
 ```bash
 cd terraform/
-terraform apply -input=false -var cutover_weight=0
+sed -i.bak 's/^cutover_weight *=.*/cutover_weight = 0/' terraform.tfvars   # persist first — see below
+grep '^cutover_weight' terraform.tfvars                                      # expect: cutover_weight = 0
+terraform apply -input=false
 ```
 
-That single apply returns every non-apex hostname to Heroku (the AWS record stays in the zone at weight 0, so rolling forward later is the same command with a higher number). For an apex that was flipped at 100 %, the apply removes the ALIAS; re-create the apex at the provider that served it before, pointing at Heroku, or add a temporary Route 53 record there if you already delegated the zone.
+Edit the file, do not pass `-var cutover_weight=0`: Phase 5 wrote `cutover_weight = 100` into `terraform.tfvars`, and Terraform re-reads that file on every apply. A `-var` override rolls traffic back for exactly one apply; the next ordinary `terraform apply` — typically the one you run minutes later to fix the AWS-side cause — would read 100 from the file and send all traffic back to AWS, skipping the 10 % restart below. With the value persisted, every later apply keeps traffic on Heroku until you deliberately raise it again.
+
+That single apply returns every non-apex hostname to Heroku (the AWS record stays in the zone at weight 0, so rolling forward later is the same edit with a higher number). For an apex that was flipped at 100 %, the apply removes the ALIAS; re-create the apex at the provider that served it before, pointing at Heroku, or add a temporary Route 53 record there if you already delegated the zone.
 
 {{ELSE}}
 
@@ -944,7 +951,7 @@ Your database already lives on AWS (data-first migration) and Heroku reaches it 
 
 ### After a rollback
 
-- Keep AWS resources provisioned; fix the cause; re-run Phase 4 at the direct endpoint; restart Phase 5 from 10 %.
+- Keep AWS resources provisioned; fix the cause (its `terraform apply` is safe: `terraform.tfvars` still says `cutover_weight = 0`); re-run Phase 4 at the direct endpoint; restart Phase 5 from 10 % by editing `terraform.tfvars` again.
 - Record what tripped and what you changed in `ROLLBACK-NOTES.md` next to this guide — the next cutover attempt should start from that.
 
 ---

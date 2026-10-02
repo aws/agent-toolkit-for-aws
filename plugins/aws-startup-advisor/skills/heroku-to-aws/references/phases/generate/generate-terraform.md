@@ -53,7 +53,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 - `database.tf` — Emitted when `aws_service` contains "RDS" or "Aurora" entries
 - `cache.tf` — Emitted when `aws_service` contains "ElastiCache" entries
 - `messaging.tf` — Emitted when `aws_service` contains "MSK" entries
-- `dns.tf` — Emitted when `preferences.global.dns_strategy == "route53"` AND the inventory has at least one `resource_type: "domain"` resource. Owns the ACM certificate too, so `compute.tf` / `beanstalk.tf` reference it instead of `var.acm_certificate_arn` (see Step 6 and Step 6.5). When `dns_strategy == "external"`, or no custom domain was discovered, no `dns.tf` is written and the guide's cutover section gives manual record instructions.
+- `dns.tf` — Emitted when `preferences.data.dns_strategy == "route53"` (Clarify Q10 writes it under `data`, not `global` — `clarify-assemble.md`) AND at least one inventory `resource_type: "domain"` hostname resolves to an Elastic Beanstalk or Fargate web service (`generate-docs.md` Step 0 `eligible_hostnames[]`). Owns the ACM certificate too, so `compute.tf` / `beanstalk.tf` reference it instead of `var.acm_certificate_arn` (see Step 6 and Step 6.5). When `dns_strategy` is anything other than `"route53"`, no custom domain was discovered, or the design is EKS (no EB/Fargate web service exists — `design-eks.md` "All-or-Nothing Rule"), no `dns.tf` is written and the guide's cutover section gives manual record instructions.
 - `security.tf` — ALWAYS emitted (security groups required for all deployments)
 
 **Service-to-file routing:**
@@ -68,7 +68,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | VPC, Subnet, Route Table, IGW, NAT | `vpc.tf`                                                                                                        |
 | Security Group, IAM Role/Policy    | `security.tf`                                                                                                   |
 | CloudWatch Logs                    | `compute.tf`                                                                                                    |
-| Route 53 + ACM (from `preferences.global.dns_strategy == "route53"` and inventory `domain` resources — not an `aws-design.json` service) | `dns.tf` |
+| Route 53 + ACM (from `preferences.data.dns_strategy == "route53"` and inventory `domain` resources whose app has an EB or Fargate web service — not an `aws-design.json` service) | `dns.tf` |
 
 **Unmapped services:** If `aws-design.json` contains a `service_id` with an `aws_service` value that has no Terraform resource mapping in this file (e.g., CloudWatch + X-Ray composite, Amazon SES, Amazon SNS), **skip** that resource and record a warning in `generation-warnings.json` (which is ALWAYS written — see Step 10 — with an empty `warnings` array when nothing is skipped). Do NOT halt generation.
 
@@ -2156,15 +2156,16 @@ resource "aws_cloudwatch_log_group" "msk" {
 
 ## Step 9.5: Generate `dns.tf` (Route 53 cutover — only when `dns_strategy == "route53"`)
 
-**Emit when** `preferences.global.dns_strategy == "route53"` AND `heroku-resource-inventory.json` has at least one `resource_type: "domain"` resource. Set `has_route53_dns = true` for the rest of this file; it switches the ALB listener (Step 6) and EB web environments (Step 6.5) onto the certificate issued here. Otherwise skip this step, leave `has_route53_dns = false`, and let `generate-docs.md` § Phase 5 give manual-record instructions.
+**Emit when** `preferences.data.dns_strategy == "route53"` (the field Clarify Q10 writes — `clarify-assemble.md` `"data"` block; `global.dns_strategy` does not exist) AND `heroku-resource-inventory.json` has at least one `resource_type: "domain"` resource. Set `has_route53_dns = true` for the rest of this file; it switches the ALB listener (Step 6) and EB web environments (Step 6.5) onto the certificate issued here. Otherwise skip this step, leave `has_route53_dns = false`, and let `generate-docs.md` § Phase 5 give manual-record instructions.
 
-**What this file buys the user.** Cutover and rollback become one variable: `cutover_weight` 0 → 10 → 50 → 100 shifts traffic from Heroku to AWS one `terraform apply` at a time, and setting it back to 0 is the rollback — no hand-edited records, no "which TTL did we set" at 2 a.m. The ACM certificate is issued and validated in the same apply, so HTTPS works the moment the first weighted record resolves to AWS.
+**What this file buys the user.** Cutover and rollback become one variable: `cutover_weight` 0 → 10 → 50 → 100 shifts traffic from Heroku to AWS one `terraform apply` at a time, and editing it back to 0 is the rollback — no hand-edited records, no "which TTL did we set" at 2 a.m. The value lives in `terraform.tfvars` and nowhere else: every cutover and rollback step edits that line and runs a plain `terraform apply -input=false`, never a `-var` override, because Terraform re-reads `terraform.tfvars` on every apply and the next ordinary apply would silently put the traffic back where the file says. The ACM certificate is issued and validated in the same apply, so HTTPS works the moment the first weighted record resolves to AWS.
 
 **Inputs.** `local.custom_domains` = every `domain` resource's `config.hostname` (deduplicated; `*.herokuapp.com` hostnames were never recorded). `local.aws_dns_target` = the ALB `dns_name` when the web process is on Fargate, else the EB environment `cname`. Heroku's DNS targets are **not** in the inventory today (`heroku domains` prints them as "DNS Target"; discovery records only `hostname` and `sni_endpoint`), so they are a required variable with a placeholder guard.
 
 ```hcl
 # dns.tf — Route 53 records, ACM certificate, weighted Heroku→AWS cutover.
 # cutover_weight = 0 sends everything to Heroku; 100 sends everything to AWS; rollback = 0.
+# Set it in terraform.tfvars only (never `-var`): the next plain apply re-reads the file.
 
 variable "hosted_zone_id" {
   description = "Route 53 hosted zone that serves your custom domain(s). `aws route53 list-hosted-zones-by-name --dns-name <domain>`"
@@ -2176,16 +2177,16 @@ variable "hosted_zone_id" {
 }
 
 variable "heroku_dns_targets" {
-  description = "hostname → Heroku DNS target (the 'DNS Target' column of `heroku domains -a <app>`, e.g. whispering-willow-1234.herokudns.com). One entry per custom domain."
+  description = "hostname → Heroku DNS target (the 'DNS Target' column of `heroku domains -a <app>`): <haiku>.herokudns.com on the Common Runtime and Fir, <haiku>.<haiku>.herokuspace.com in a Cedar Private Space. One entry per custom domain."
   type        = map(string)
   validation {
-    condition     = alltrue([for h, t in var.heroku_dns_targets : can(regex("\\.herokudns\\.com$|\\.herokuapp\\.com$|\\.herokussl\\.com$", t))])
-    error_message = "Every heroku_dns_targets value must be a Heroku DNS target (…herokudns.com). Copy them from `heroku domains`."
+    condition     = alltrue([for h, t in var.heroku_dns_targets : can(regex("\\.herokudns\\.com$|\\.herokuapp\\.com$|\\.herokussl\\.com$|\\.herokuspace\\.com$", t))])
+    error_message = "Every heroku_dns_targets value must be a Heroku DNS target: …herokudns.com, …herokuapp.com, …herokussl.com, or <haiku>.<haiku>.herokuspace.com for a Cedar Private Space. Copy them from `heroku domains`."
   }
 }
 
 variable "cutover_weight" {
-  description = "Share of traffic (0-100) Route 53 sends to AWS for non-apex hostnames. 0 = all Heroku (safe default), 100 = all AWS. Lower it to roll back."
+  description = "Share of traffic (0-100) Route 53 sends to AWS. 0 = all Heroku (safe default), 100 = all AWS. Set it in terraform.tfvars (never -var) and lower it there to roll back, so the next apply cannot silently revert it."
   type        = number
   default     = 0
   validation {
@@ -2410,7 +2411,11 @@ security_email   = "TODO-security@example.com" # security alternate contact
 # heroku_dns_targets = {
 #   "www.example.com" = "whispering-willow-1234.herokudns.com"
 # }
-# cutover_weight = 0   # 0 = all traffic to Heroku; raise to 10 → 50 → 100 during cutover; back to 0 = rollback
+# cutover_weight is deliberately NOT commented out: this line is the single source of truth for
+# where traffic goes. MIGRATION_GUIDE.md Phase 5 raises it 10 → 50 → 100 by editing it here and
+# running a plain `terraform apply`; Phase 6 rollback sets it back to 0 the same way. Never pass
+# it as `-var` — the next apply re-reads this file and would silently undo the override.
+cutover_weight = 0
 # {{ELSE}}
 # ACM certificate (required if ALB is in the design)
 # acm_certificate_arn = "arn:aws:acm:<region>:<account_id>:certificate/<cert-id>"
