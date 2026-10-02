@@ -52,7 +52,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "all Validation Checklist items in clarify-assemble.md pass"
     _on_failure: _halt_and_inform
-  - _assert: "every assumption-sheet row the user was shown appears in preferences.json with a disposition of DETECTED, PROPOSED, ESSENTIAL, or N/A, and a value that is either the user's answer or the documented default"
+  - _assert: "every row a fragment returned appears in preferences.json with a disposition of DETECTED, PROPOSED, ESSENTIAL, or N/A, and a value that is either the user's answer or the documented default. On the wizard path every such DETECTED/PROPOSED row was shown on the assumption sheet; on the fast path (metadata.clarify_mode == fast_path) no DETECTED/PROPOSED row was shown and every PROPOSED row that took its default is listed in metadata.questions_defaulted[]"
     _on_failure: _halt_and_inform
   - _assert: "global.target_region is set, and design_constraints.cpu_architecture is set with x86_64 as the recorded default unless the user chose otherwise"
     _on_failure: _halt_and_inform
@@ -60,9 +60,9 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "if the inventory contains Windows VM images, any Microsoft.Sql/* resource, or a SQL-on-VM signature, then licensing is set (License Included vs BYOL via Dedicated Hosts); otherwise licensing is N/A and no licensing question was asked"
     _on_failure: _halt_and_inform
-  - _assert: "if azure-resource-clusters.json assigns any cluster a pattern_id, the user confirmed or corrected that pattern on the assumption sheet and the confirmed value is recorded in preferences.json"
+  - _assert: "if azure-resource-clusters.json assigns any cluster a pattern_id, its clusters[n].pattern_id row is recorded in preferences.json — on the wizard path the user confirmed or corrected that pattern on the assumption sheet; on the fast path (metadata.clarify_mode == fast_path) the row carries the detected pattern as its documented default, a PROPOSED row is listed in metadata.questions_defaulted[] under its index key clusters[n].pattern_id, and it is disclosed at estimate-assemble.md § Step 2"
     _on_failure: _halt_and_inform
-  - _assert: "if any Microsoft.Web/serverfarms plan hosts more than one Microsoft.Web/sites app, the isolation question was asked and its answer recorded; an absent answer means no split"
+  - _assert: "if any Microsoft.Web/serverfarms plan hosts more than one Microsoft.Web/sites app, its app_service_plans[n].isolation_split row is recorded in preferences.json — on the wizard path the isolation row was shown and the user's answer or the default of no split recorded; on the fast path (metadata.clarify_mode == fast_path) the row carries its documented default of no split, is listed in metadata.questions_defaulted[] under its index key app_service_plans[n].isolation_split, and is disclosed at estimate-assemble.md § Step 2. A fast-path run whose row lacks the list entry fails this gate"
     _on_failure: _halt_and_inform
   - _assert: "if ai-workload-profile.json exists, preferences.json carries workloads[] and (when agentic_profile.is_agentic) ai_constraints.agentic; every persisted workload row carries workload_id, capability, and target_bedrock_model; and startup_program_status is present (ESSENTIAL, value null until answered) — the workloads[] in preferences.json, not ai-workload-profile.json, is the downstream source of truth"
     _on_failure: _halt_and_inform

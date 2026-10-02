@@ -122,7 +122,8 @@ with no defensible default — never reach the short path.
 
 **Execution-only questions are asked at execution time.** `data.db_cutover` (DMS vs
 dump/restore) is consumed by Generate's runbook and by one Estimate line; Clarify
-records a size-derived default and marks it `deferred_to_generate`, and the Decision
+records a size-derived default (or the documented unknown-size fallback when no database
+size was measured) and marks it `deferred_to_generate`, and the Decision
 gate's **[C] Generate** asks it for real (`estimate-assemble.md` § Step 3b) before
 `generate.md` loads. A user who stops at the decision never answers it; a user who
 generates always does. `vm_cutover` stays ESSENTIAL in Clarify because MGN-vs-rebuild

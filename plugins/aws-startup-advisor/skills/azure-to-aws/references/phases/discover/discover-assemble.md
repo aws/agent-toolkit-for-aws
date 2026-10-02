@@ -117,9 +117,9 @@ the validation checklist.
    Each clause removes a question that Clarify would otherwise have to ask with no default
    (licensing, VM cutover, Cosmos read/write split, HA downgrade, region choice) or a
    category whose rows need the full sheet (AI). What remains on the short path is exactly
-   the ESSENTIAL rows that fire for every estate — compliance, baseline spend when no billing
-   source exists, and database cutover when a relational database is present — plus
-   documented defaults for everything else. The two size caps are deliberately generous
+   the ESSENTIAL rows that fire for every estate — compliance, and baseline spend when no
+   billing source exists (database cutover is PROPOSED-and-deferred, not ESSENTIAL — see
+   `clarify-database.md` § Q-D2) — plus documented defaults for everything else. The two size caps are deliberately generous
    because Azure inventories count `$0` networking primitives (see
    `estimate-infra.md` § complexity tier note); the cluster count is the better signal.
 

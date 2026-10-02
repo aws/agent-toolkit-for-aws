@@ -88,23 +88,32 @@ Say a row name to change it — I'll re-run Design and Estimate and show this pa
 
 **The "Assumptions behind this number" block** is built from `preferences.json`:
 one row per key in `metadata.questions_defaulted[]`, plus one per key in
-`metadata.deferred_to_generate[]` (labelled "confirmed before Generate"). Each row
-shows the applied value and the consequence line its Clarify fragment supplied. Omit
-the block only when both arrays are empty. This is where the assumption sheet lives
-when Clarify ran in fast-path mode — the user judges a default against the dollars it
-moves, not before they have a number — and on the wizard path it shows the rows the
-user waved through with "use the defaults for the rest". Always include the App
-Service Plan isolation row when a plan hosts more than one app.
+`metadata.deferred_to_generate[]` (labelled "confirmed before Generate"). The two lists
+are disjoint (`clarify-assemble.md` § Assembly rule 0), so no row renders twice. An
+array-row key such as `app_service_plans[0].isolation_split` resolves to that element of
+the array; label the row from the plan's `name_expression` (or the `cluster_id` for
+`clusters[n].pattern_id`), not from the key. Each row shows the applied value and the
+consequence line its Clarify fragment supplied. Omit the block only when both arrays
+are empty. This is where the assumption sheet lives when Clarify ran in fast-path mode
+— the user judges a default against the dollars it moves, not before they have a
+number — and on the wizard path it shows the rows the user waved through with "use the
+defaults for the rest". Always include the App Service Plan isolation row when a plan
+hosts more than one app.
 
 **Handling a correction from this block:**
 
 - If the row is a workshop knob (region, availability, compute target, CPU
-  architecture), route it through option **B** — the sidebar already reprices those
-  side by side and preserves provenance.
+  architecture), route it through option **B** — the sidebar reprices those side by
+  side and applies the same provenance update as the direct route
+  (`workshop-refresh.md` § 3: the user's value, `"source": "user_corrected"`, key
+  removed from `metadata.questions_defaulted[]`) **before** it snapshots the scenario,
+  so this block never re-lists the explicit choice as an assumption when the gate is
+  re-presented.
 - Otherwise: write the user's value to the row (keep `disposition: PROPOSED`, add
   `"source": "user_corrected"`, remove the key from `metadata.questions_defaulted[]`),
   mark `phases.design` and `phases.estimate` pending via the Phase Status Update
-  Protocol, re-run Design → Estimate, and re-present this gate. Never hand-edit
+  Protocol, re-run Design → Estimate, then — when `scenarios/index.json` exists — run
+  § Scenario reconciliation below, and re-present this gate. Never hand-edit
   `aws-design.json` or `estimation-infra.json` to reflect the change.
 
 Rules for the pack itself:
@@ -148,7 +157,10 @@ to `"completed"` in the same write.
 defaulted because nothing before Generate consumes them (today: `data.db_cutover`;
 see `clarify-database.md` § Q-D2). They are **asked for real here**, one batch,
 each with the fragment's original options and the context that makes it
-answerable — the extracted database size for `db_cutover`:
+answerable — the extracted database size for `db_cutover`. The prompt follows the
+row's `size_coverage`:
+
+**`size_coverage: "complete"`** — the measured size is the context:
 
 > "Before I write the runbook, one execution choice I defaulted earlier:
 >
@@ -157,18 +169,100 @@ answerable — the extracted database size for `db_cutover`:
 > [A] AWS DMS with continuous replication — near-zero downtime, more setup, needs logical replication on the source
 > [B] Dump and restore during a maintenance window — simpler, downtime proportional to database size (current assumption)"
 
-Write the answer to the row (`"source": "user_confirmed_at_generate"`, disposition
-stays `PROPOSED`), remove the key from `metadata.deferred_to_generate[]`, and only
-then write `run_mode: "decide_and_execute"`. **If the answer changes the Estimate's
-migration-service line** (`dump_restore` → `dms` adds DMS instance hours), re-run
-Estimate's Part 7 one-off cost section and note the delta in one line; do not
-re-present the whole pack. Generate's `_preconditions` must find
-`metadata.deferred_to_generate` empty — an unconfirmed deferred row is the one way a
-runbook can be written against an answer the user never gave.
+**`size_coverage: "unknown"`** — say why the size is missing (from `default_basis`),
+and offer to take the size first:
+
+> "**Database cutover** — I couldn't read your database's size ([reason from
+> `default_basis`, e.g. the storage enrichment call was skipped]), so I assumed
+> dump-and-restore for `<server name>`. Roughly how large is it? Under 100 GiB,
+> dump-and-restore is the simpler path; above it, DMS.
+> [A] AWS DMS with continuous replication — near-zero downtime, more setup, needs logical replication on the source
+> [B] Dump and restore during a maintenance window — simpler, downtime proportional to database size (current assumption)
+> [C] Tell me the size first and I'll recommend"
+
+**`size_coverage: "partial"`** — name the unmeasured server(s) and say the rule may
+flip: "your largest _measured_ database is 64 GiB, but `<server>` has no recorded
+size — if it is above 100 GiB the recommendation flips to DMS." Offer the same [C].
+
+When the user states a size, write it on the row as `user_stated_size_gib: <n>` —
+leave `largest_relational_db_gib` and `size_coverage` as Clarify wrote them, because
+they record what Discover measured — then recommend per the 100 GiB rule (inclusive
+on the dump-and-restore side) and take [A] or [B]. Never rewrite the measured fields
+to make the row look complete.
+
+**Write rule — clear every piece of deferral state in one preference update:**
+
+1. `value` ← the answer; `"source": "user_confirmed_at_generate"`; disposition stays
+   `PROPOSED`.
+2. `deferred_to_generate: false` — explicit, not deleted. `estimate-infra.md` § Part 4
+   reads this row flag to choose its label; leaving it `true` makes the confirmed
+   answer print as "assumed".
+3. Remove the key from `metadata.deferred_to_generate[]` **and** from
+   `metadata.questions_defaulted[]`. The lists are disjoint from this PR on, so the
+   second removal is a no-op on a fresh file; it is kept so a `preferences.json`
+   written before the lists were disjoint is also cleaned and Step 2 cannot re-list
+   the confirmed answer.
+4. Keep `default`, `default_basis`, `largest_relational_db_gib`, and `size_coverage`
+   as the audit trail of what was assumed and why.
+
+Only then write `run_mode: "decide_and_execute"`.
+
+**Reprice the migration-cost line, whether or not the answer changed.** Re-run
+`estimate-infra.md` § Part 4 Migration cost considerations — the Migration-service
+cost row — against the confirmed value. Because the row flag is now `false` and
+`source` is `user_confirmed_at_generate`, the line is labelled "confirmed at the
+Decision gate", never "assumed; confirmed before Generate". A changed answer
+(`dump_restore` → `dms`) adds DMS instance hours — note the delta in one line; an
+unchanged answer changes no dollars but the label still flips. Do not re-present the
+whole pack, and do not re-run Part 7 — that is the complexity tier, which this answer
+does not move. When `scenarios/index.json` exists and the answer changed the estimate,
+run § Scenario reconciliation below.
+
+Generate's `_preconditions` must find `metadata.deferred_to_generate` empty and no
+row still carrying `deferred_to_generate: true` — an unconfirmed deferred row is the
+one way a runbook can be written against an answer the user never gave.
 
 This step is skipped when `metadata.deferred_to_generate[]` is empty or absent (an
 estate with no relational database, or a `preferences.json` written before this
 field existed).
+
+### Scenario reconciliation after a gate-side preference write
+
+**Trigger:** a direct correction from the Step 2 assumptions block that re-ran Design
+→ Estimate, or a Step 3b answer that changed the estimate — **and**
+`scenarios/index.json` exists (a workshop has saved scenarios). Skip when it does not.
+
+**Why:** `workshop-invariants.md` § 4 — the working preference/design/estimate
+artifacts must always match `index.active_scenario_id`. The sidebar
+(`workshop-refresh.md` § 6) is otherwise the only writer of `scenarios/<id>.*`, so a
+gate-side write that re-prices the working tree leaves the active snapshot and its
+`estimation_summary` describing a design Generate will not build, and the report's
+what-if table reads those stale manifests.
+
+**Procedure — update the active scenario in place, mark the rest stale:**
+
+1. Read `index.active_scenario_id` (call it `<active>`).
+2. After Design/Estimate (or the Part 4 reprice) have written the working tree,
+   overwrite `scenarios/<active>.preferences.json`, `scenarios/<active>.aws-design.json`,
+   and `scenarios/<active>.estimation-infra.json` from the working-tree artifacts.
+3. Rewrite the active manifest `scenarios/<active>.json`: `estimation_summary` (the
+   three tiers, `complexity_tier`, `pricing_source`, `recommendation_outcome`) from the
+   new `estimation-infra.json`; recompute `preferences_subset` against the baseline
+   snapshot; set `corrected_at_gate: "<dotted row key>"`; append
+   `(corrected at decision gate: <row>)` to `label`.
+4. On **every other** manifest (the baseline included when it is not active) set
+   `stale: true` and `stale_reason: "<row> changed at the decision gate after this
+   scenario was priced"`. Do not delete, re-price, or re-id them — a new scenario id
+   here would trip the five-scenario cap outside the sidebar.
+5. Leave `inventory_fingerprint`, `active_scenario_id`, and
+   `.phase-status.json.phases.workshop` unchanged.
+6. Say one line: "Updated scenario `<active>`; `<n>` other scenario(s) marked stale —
+   reprice in the workshop to refresh them."
+
+`workshop-compare.md` and the report's what-if table render the `stale` marker. A
+stale scenario stays stale — the sidebar snapshots a fresh id on its next Apply
+(`workshop-refresh.md` § 6) rather than rewriting a priced one, so the marker is the
+honest record that the old row was priced before the correction.
 
 ### Step 3a — On option A, write `DECISION.md` (the Assess-complete handoff marker)
 
