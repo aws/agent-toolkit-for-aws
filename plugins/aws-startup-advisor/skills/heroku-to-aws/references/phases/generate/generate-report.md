@@ -273,7 +273,8 @@ python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
 rules in this file: when `recommendation.would_flip_if` is non-empty the
 summary must include a "What would flip this" list whose items render every
 entry (the heading over an empty or partial list fails; content inside
-`<template>` or comments does not count), and when two or more scenarios
+`<template>` or comments does not count; the label may be a heading over the
+list or lead its first item, `<li>What would flip this: …</li>`), and when two or more scenarios
 exist the what-if table must include Region, HA, Compute, Arch, and Complexity.
 A report written only to satisfy the section-ID list will fail.
 
