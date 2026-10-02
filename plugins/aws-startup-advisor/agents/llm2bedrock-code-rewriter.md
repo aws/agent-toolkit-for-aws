@@ -384,15 +384,18 @@ Replace source provider API key auth with the AWS credential chain. Do not call 
 grep -rn "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GOOGLE_API_KEY\|GEMINI_API_KEY" . --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" --include="*.yaml" --include="*.yml" --include="*.json" | grep -v node_modules | grep -v '.saws-migrate/' | grep -v '.migration/'
 ```
 
-Also search CI and deploy config that the include-filter above misses:
+Also search CI and deploy config that the include-filter above misses. Use `rg --glob` (ripgrep expands these patterns itself) rather than bare shell globs — under default zsh, an unquoted glob with no matching file (e.g. no `Dockerfile.*` variant exists) aborts the command with `no matches found` before `rg` ever runs, and a trailing `|| true` would hide that failure as a clean, empty scan. The quoted `--glob` form below runs correctly under both bash and zsh whether or not each optional file/variant exists:
 
 ```bash
 rg -n "OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|GEMINI_API_KEY" \
-  .github .gitlab-ci.yml bitbucket-pipelines.yml azure-pipelines.yml .circleci \
-  Dockerfile Dockerfile.* docker-compose.yml docker-compose.yaml \
-  task-definition.json template.yaml template.yml serverless.yml serverless.yaml \
-  2>/dev/null || true
+  --glob ".github/**" --glob ".gitlab-ci.yml" --glob "bitbucket-pipelines.yml" \
+  --glob "azure-pipelines.yml" --glob ".circleci/**" \
+  --glob "Dockerfile*" --glob "docker-compose.y*ml" \
+  --glob "task-definition.json" --glob "template.y*ml" --glob "serverless.y*ml" \
+  .
 ```
+
+This command exits 1 (ripgrep's "no matches" convention) when the repo has none of these files/references at all — that is expected and not an execution failure; only a nonzero exit from a _shell_ error (e.g. `command not found`) indicates the scan itself broke.
 
 In application code and committed templates:
 
