@@ -401,13 +401,14 @@ In application code and committed templates:
 - Converse path: the boto3 default credential chain. ECS uses the task role. Lambda uses the execution role. Do not write `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` into application code or into an uncommented `.env.example` line.
 - Add `AWS_REGION` as config. Add `AWS_DEFAULT_REGION` only where the SDK reads it. Neither is a credential.
 
-**Retire-the-key checklist (required in `notes` and in the §26 summary).** Name the provider keys this repo actually referenced. The customer does this after they accept the branch:
+**Retire-the-key checklist (required in `notes` and in the §26 summary).** Name the provider keys this repo actually referenced. The customer does this after the Bedrock build is deployed and verified in production — not when they accept the branch. Accepting the branch is a local checkout; the original deployment still runs on the source provider and still reads the key until the cutover is done. If the customer declines the migration, the key stays: the original application needs it.
 
-1. Revoke the key in the provider console (OpenAI, Anthropic, or Google).
-2. Delete that secret from CI and deploy stores: GitHub Actions secrets, GitLab CI variables, and any ECS task definition or Lambda environment that still sets it.
-3. Re-run the searches above and confirm they are clean outside `.saws-migrate/` and `.migration/`.
+1. Confirm the cutover: the Bedrock build serves production traffic, the original deployment is retired, and no rollback target, canary, cron job, other service, or CI job still reads the key.
+2. Revoke the key in the provider console (OpenAI, Anthropic, or Google).
+3. Delete that secret from CI and deploy stores: GitHub Actions secrets, GitLab CI variables, and any ECS task definition or Lambda environment that still sets it.
+4. Re-run the searches above and confirm they are clean outside `.saws-migrate/` and `.migration/`.
 
-Do not mark this checklist done. This agent cannot see the provider console or the CI secret store.
+A separate evaluation-only key (one the customer created for the eval, with no other consumer) can be revoked as soon as the branch is accepted. Do not mark this checklist done. This agent cannot see the provider console, the CI secret store, or production.
 
 # 12. Update dependencies (manifest + lockfile)
 
@@ -538,12 +539,19 @@ Example: `notes: "poetry lock failed: SolverProblemError on package langchain-co
 
 Create or update `.env.example` (use the `Write` tool). Uncommented lines are the region and the model id from this run's migration plan (`aws_model_id`). Do not copy an illustrative model id into the file. Long-lived access keys are a commented local fallback, never the deploy credential.
 
-Detect the deploy shape from the repo. A Dockerfile or ECS task definition means the ECS task role. A Lambda handler, SAM template, or `serverless.yml` means the Lambda execution role. Otherwise name the boto3 default chain (instance profile, SSO, or a local profile). Say which one applies in a comment. Do not invent a role ARN.
+Detect the deploy shape from deployment evidence, not from the application's packaging. This migration swaps the SDK; it does not move the app, so the role you name must already exist on the platform the app runs on today:
+
+- **ECS task role** only when the repo carries ECS deployment evidence: an ECS task definition (`task-definition.json`, `taskDefinition` in a workflow or CDK/CloudFormation stack), an ECS service or Copilot/App Runner manifest, or a CI step that calls `aws ecs`. A Dockerfile alone is a container image, not ECS — Cloud Run, Kubernetes, Fly, and Lambda container images all have one.
+- **Lambda execution role** only when the repo carries Lambda deployment evidence: a SAM `template.yaml`, `serverless.yml`, a CDK/CloudFormation `AWS::Lambda::Function` or `AWS::Serverless::Function`, or a handler the deploy config wires to Lambda. A handler-shaped function on its own is not enough.
+- **Otherwise** name the boto3 default chain and leave the platform unresolved: a server or container reads credentials from its host (instance profile or the platform's equivalent); a local run uses SSO or a named profile. Say that you did not identify the deployment platform and that the customer picks the identity.
+
+Say which case applies, and what evidence picked it, in a comment. Do not invent a role ARN. Do not name an ECS or Lambda role for an app whose deployment platform you did not find.
 
 ```
 # AWS configuration (required for Bedrock)
 # ECS: attach Bedrock permission to the task role.
 # Lambda: attach Bedrock permission to the execution role.
+# Other server or container: boto3 reads the default chain from the host (instance profile or equivalent).
 # Local: `aws sso login` or a named profile. boto3 reads the default chain.
 # Do not commit access keys. Uncomment only for a short local session, then discard them.
 # AWS_ACCESS_KEY_ID=
@@ -566,7 +574,7 @@ AWS_REGION=us-east-1
 BEDROCK_MODEL_ID=<aws_model_id>
 ```
 
-**Mantle, long-running process** (ECS, Lambda, server, worker, scheduled job). Do not put `AWS_BEARER_TOKEN_BEDROCK` in `.env.example`. The code uses the auto-refreshing client from §8 (`provide_token`). The deploy identity is the task role or the execution role, and `.env.example` matches the default template above.
+**Mantle, long-running process** (ECS, Lambda, server, worker, scheduled job). Do not put `AWS_BEARER_TOKEN_BEDROCK` in `.env.example`. The code uses the auto-refreshing client from §8 (`provide_token`), which signs with whatever the default chain resolves. The deploy identity follows the same evidence rule as above: the task role with ECS evidence, the execution role with Lambda evidence, otherwise the default chain on the host with the platform left unresolved. `.env.example` matches the default template above.
 
 # 14. Commit code-only changes; verify clean working tree
 
