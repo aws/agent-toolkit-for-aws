@@ -235,7 +235,15 @@ assumed.
   `phases.workshop` → `"in_progress"` (its Entry runs the stale-Generate guard
   on every re-entry, so a completed sidebar is a legal starting state) — and
   returns to this gate on exit. Never write the knob into `preferences.json`
-  from this gate as a workaround for a missing option.
+  from this gate as a workaround for a missing option. The workshop records
+  the provenance the correction implies: `workshop-refresh.md` § 3 sets
+  `sources.<QID>` to `"user"` and moves the ID out of
+  `metadata.questions_defaulted` / `metadata.questions_skipped_extracted`
+  for every knob the sheet changed, before its inner Estimate and before the
+  scenario snapshot — so a corrected knob does not reappear in the block
+  above as an assumption, and the saved active scenario carries the same
+  provenance as the working tree. Scenarios the user did not change keep
+  their own saved provenance.
 - Otherwise, the correction is a late answer to a Clarify question and runs
   the **same question contract** the interview would have run — a field-only
   write is not enough:
@@ -252,8 +260,17 @@ assumed.
      only non-null keys are written).
      Generate selects interim procedures from `migration_approach` alone, so a
      data-first answer with no exit date is never a valid state.
-  2. **Record provenance.** Set `sources.<QID>` to `"user"` and move the ID from
-     `metadata.questions_defaulted` to `metadata.questions_asked`. Set
+  2. **Record provenance.** Set `sources.<QID>` to `"user"` and move the ID to
+     `metadata.questions_asked` from whichever index lists it —
+     `metadata.questions_defaulted` for a defaulted row, or
+     `metadata.questions_deferred_to_generate` for a Generate-time row (Q4,
+     Q6c, Q12d) answered early from this block. Remove only that ID: the other
+     still-unanswered deferred IDs stay listed and are still asked at **[C]**
+     ("Confirm execution choices" below asks whatever remains and skips when
+     the array is empty). Q12d's Interpret line already wrote
+     `eb_deploy_method.chosen_by: "user"` in step 1. An ID left in the
+     deferred array with `sources.<QID>` = `"user"` fails the checklist in
+     step 3, so this move is what lets the correction reprice. Set
      `metadata.timestamp` to now.
   3. **Re-run the Clarify gate.** Run `clarify-assemble.md` § Validation
      Checklist on the updated `preferences.json` (re-read from disk) and stop on
@@ -270,18 +287,20 @@ assumed.
      `references/vendored/workshop/workshop-invariants.md` § 4 requires the
      working tree to equal
      `index.active_scenario_id`. A non-knob correction changes the **base** every
-     scenario shares (`workshop-refresh.md` § 3 leaves non-knob fields
-     untouched, so scenarios differ only by their `preferences_subset` knobs) —
-     it is not a new scenario. Only non-knob fields reach this step: a
-     `workshop-sheet.md` § Step 1 path was routed to option **B** above and
-     must not be rebased here, or saved preferences would disagree with their
-     manifest's `preferences_subset`. Rebase the store in place rather than
+     scenario shares (`workshop-refresh.md` § 3 changes only knobs and their
+     own provenance entries, so scenarios differ only by their
+     `preferences_subset` knobs) — it is not a new scenario. Only non-knob
+     fields reach this step: a `workshop-sheet.md` § Step 1 path was routed to
+     option **B** above and must not be rebased here, or saved preferences
+     would disagree with their manifest's `preferences_subset`. Rebase the
+     store in place rather than
      leaving it split across two bases:
      - For the **active** scenario: overwrite its three copies
        (`scenarios/{id}.preferences.json` / `.aws-design.json` /
        `.estimation-infra.json`) with the new working-tree artifacts.
      - For **every other** scenario (baseline first): apply the same non-knob
-       field change(s) to its saved preferences copy, swap that copy into the
+       field change(s) and the step 2 provenance/index updates to its saved
+       preferences copy, swap that copy into the
        working tree, run inner Design → Estimate per `workshop-refresh.md`
        § Inner runs (artifact-only), and copy the three working-tree artifacts
        back into that scenario's copies. After the last one, restore the working
