@@ -541,9 +541,9 @@ Create or update `.env.example` (use the `Write` tool). Uncommented lines are th
 
 Detect the deploy shape from deployment evidence, not from the application's packaging. This migration swaps the SDK; it does not move the app, so the role you name must already exist on the platform the app runs on today:
 
-- **ECS task role** only when the repo carries ECS deployment evidence: an ECS task definition (`task-definition.json`, `taskDefinition` in a workflow or CDK/CloudFormation stack), an ECS service or Copilot/App Runner manifest, or a CI step that calls `aws ecs`. A Dockerfile alone is a container image, not ECS — Cloud Run, Kubernetes, Fly, and Lambda container images all have one.
+- **ECS task role** only when the repo carries ECS deployment evidence: an ECS task definition (`task-definition.json`, `taskDefinition` in a workflow or CDK/CloudFormation stack), an ECS service definition, a Copilot manifest whose `type` is an ECS service (Load Balanced Web Service, Backend Service, Worker Service — not Request-Driven Web Service, which deploys to App Runner), or a CI step that calls `aws ecs`. A Dockerfile alone is a container image, not ECS — App Runner, Cloud Run, Kubernetes, Fly, and Lambda container images all have one.
 - **Lambda execution role** only when the repo carries Lambda deployment evidence: a SAM `template.yaml`, `serverless.yml`, a CDK/CloudFormation `AWS::Lambda::Function` or `AWS::Serverless::Function`, or a handler the deploy config wires to Lambda. A handler-shaped function on its own is not enough.
-- **Otherwise** name the boto3 default chain and leave the platform unresolved: a server or container reads credentials from its host (instance profile or the platform's equivalent); a local run uses SSO or a named profile. Say that you did not identify the deployment platform and that the customer picks the identity.
+- **Otherwise** name the boto3 default chain: a server or container reads credentials from its host (instance profile or the platform's equivalent); a local run uses SSO or a named profile. App Runner lands here, not in the ECS case — it has no task role; with an `apprunner.yaml` or Copilot Request-Driven Web Service manifest, name the App Runner service's instance role as the host identity. When no deployment evidence turned up, say that you did not identify the platform and that the customer picks the identity.
 
 Say which case applies, and what evidence picked it, in a comment. Do not invent a role ARN. Do not name an ECS or Lambda role for an app whose deployment platform you did not find.
 
@@ -551,7 +551,7 @@ Say which case applies, and what evidence picked it, in a comment. Do not invent
 # AWS configuration (required for Bedrock)
 # ECS: attach Bedrock permission to the task role.
 # Lambda: attach Bedrock permission to the execution role.
-# Other server or container: boto3 reads the default chain from the host (instance profile or equivalent).
+# Other server or container: boto3 reads the default chain from the host (instance profile, App Runner instance role, or equivalent).
 # Local: `aws sso login` or a named profile. boto3 reads the default chain.
 # Do not commit access keys. Uncomment only for a short local session, then discard them.
 # AWS_ACCESS_KEY_ID=
@@ -574,7 +574,7 @@ AWS_REGION=us-east-1
 BEDROCK_MODEL_ID=<aws_model_id>
 ```
 
-**Mantle, long-running process** (ECS, Lambda, server, worker, scheduled job). Do not put `AWS_BEARER_TOKEN_BEDROCK` in `.env.example`. The code uses the auto-refreshing client from §8 (`provide_token`), which signs with whatever the default chain resolves. The deploy identity follows the same evidence rule as above: the task role with ECS evidence, the execution role with Lambda evidence, otherwise the default chain on the host with the platform left unresolved. `.env.example` matches the default template above.
+**Mantle, long-running process** (ECS, Lambda, server, worker, scheduled job). Do not put `AWS_BEARER_TOKEN_BEDROCK` in `.env.example`. The code uses the auto-refreshing client from §8 (`provide_token`), which signs with whatever the default chain resolves. The deploy identity follows the same evidence rule as above: the task role with ECS evidence, the execution role with Lambda evidence, otherwise the default chain on the host (App Runner's instance role, an instance profile, or the platform's equivalent) with the platform left unresolved when no evidence names it. `.env.example` matches the default template above.
 
 # 14. Commit code-only changes; verify clean working tree
 

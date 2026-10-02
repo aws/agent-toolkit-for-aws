@@ -491,7 +491,7 @@ per-1M-token rates and the sample cost only, with the line
    ```
 
 2. **Set up AWS credentials:**
-   - ECS uses the task role. Lambda uses the execution role. Any other server or container uses the boto3 default chain on its host (instance profile or equivalent). A local run uses the default chain too (`aws sso login` or a named profile).
+   - ECS uses the task role. Lambda uses the execution role. Any other server or container uses the boto3 default chain on its host (instance profile, App Runner instance role, or equivalent). A local run uses the default chain too (`aws sso login` or a named profile).
    - `.env.example` sets `AWS_REGION` and the model id. Access keys stay commented. A Mantle bearer token, when present, is commented, expires within 12 hours, and is for a short local run — not an ECS task or a Lambda environment.
    - Apply the generated least-privilege IAM policy: `.saws-migrate/iam-policy.json`
      (scoped to the exact model ARNs used in this migration — review before attaching to a role)
