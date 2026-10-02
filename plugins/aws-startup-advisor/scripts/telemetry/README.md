@@ -17,7 +17,7 @@ consent/           deciding whether anything may be sent
 metric_emission/   sending events, only ever when consent/ says yes
   client.py          builds and POSTs a PluginTelemetryEvent
   skill_invoked.py   PostToolUse hook, matcher "Skill"
-  migration.py       migration-run hooks: PostToolUse (Write|Edit), Stop, SessionEnd
+  migration.py       migration-run hooks: PostToolUse (Write|Edit|Bash), Stop, SessionEnd
   migration_attributes.py   the MigrationActivity attribute vocabularies and lookups
 
 test/              the whole suite
@@ -59,11 +59,22 @@ transition: RUN_STARTED, PHASE_COMPLETED, GATE_FAILED, RUN_COMPLETED. The diff i
 idempotent and each run is locked while it runs, so overlapping hooks never report
 a transition twice.
 
-- Three triggers: PostToolUse on `Write|Edit` (incremental, async), Stop with
-  `--reconcile` (re-reads state however it was written), SessionEnd with
-  `--session-end` (final sweep, self-budgeted to Claude Code's default 1.5 s
-  SessionEnd budget). Cursor
-  registers `afterFileEdit`/`stop`/`sessionEnd` in `.cursor-plugin/hooks.json`.
+- Three triggers: PostToolUse on `Write|Edit|Bash` (incremental, async; Bash
+  because the agent sometimes writes a state file through a heredoc rather than
+  the Write tool, and a Bash payload carries no file path, so the emitter
+  reconciles every run under the hook's cwd), Stop with `--reconcile` (re-reads
+  state however it was written), SessionEnd with `--session-end` (final sweep,
+  self-budgeted to Claude Code's default 1.5 s SessionEnd budget). Cursor
+  registers `afterFileEdit`/`afterShellExecution`/`stop`/`sessionEnd` in
+  `.cursor-plugin/hooks.json`.
+- The state is read again once the run lock is held: hooks run concurrently, and
+  one that read the state before another reported a newer transition must not
+  diff against what it read.
+- `RUN_COMPLETED` is sent once per `runMode`, and each mode at most once for the
+  life of the run: a workshop re-entry that clears `run_mode` and reopens the
+  decision gate does not make either ending reportable again. When the optional
+  `current_phase` is absent, the run is complete only when every backbone phase,
+  Generate included, is completed, as the owning skill evaluates it.
 - Attribution comes from disk: the run's `owning_skill` (fail closed when absent),
   `run_id` (lower-cased; the data lake accepts only lower case), `initiated_by`.
 - Attributes are lookups over the run's own artifacts (`migration_attributes.py`);

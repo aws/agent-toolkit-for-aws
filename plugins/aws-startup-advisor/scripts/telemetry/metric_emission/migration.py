@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hook: report a migration run's progress as MigrationActivity telemetry.
 
-    python3 scripts/telemetry/metric_emission/migration.py                 # PostToolUse (Write|Edit)
+    python3 scripts/telemetry/metric_emission/migration.py                 # PostToolUse (Write|Edit|Bash)
     python3 scripts/telemetry/metric_emission/migration.py --reconcile     # Stop
     python3 scripts/telemetry/metric_emission/migration.py --session-end   # SessionEnd
 
@@ -213,14 +213,40 @@ def gate_failure_entries(gate_failures):
     return entries
 
 
+BACKBONE = ("discover", "clarify", "design", "estimate", "generate")
+
+
 def run_ended(status):
     """(ended, runMode). The skills flip `run_mode` to decide_and_execute before
     Generate runs and may leave `current_phase: complete` from the decision-only
-    finish in place, so an executed ending counts only once Generate is done."""
+    finish in place, so an executed ending counts only once Generate is done.
+
+    `current_phase` is optional in the shared state schema and authoritative when
+    present. Without it the owning skill evaluates the backbone in order and is
+    complete only when every backbone phase, Generate included, is completed;
+    Generate stays opt-in, so a decision-only run that omits the field has not
+    ended. Sidebars (workshop, feedback) never decide completion."""
     run_mode = attrs.map_enum(attrs.RUN_MODE, status.get("run_mode"))
-    generate = str((status.get("phases") or {}).get("generate", "")).lower()
+    phases = status.get("phases") or {}
+    generate = str(phases.get("generate", "")).lower()
     executing = run_mode == "DECIDE_AND_EXECUTE" and generate != "completed"
-    return status.get("current_phase") == "complete" and not executing, run_mode
+    current = status.get("current_phase")
+    if current is None:
+        ended = all(str(phases.get(name, "")).lower() == "completed" for name in BACKBONE)
+    else:
+        ended = current == "complete"
+    return ended and not executing, run_mode
+
+
+def reported_run_modes(snapshot):
+    """Every runMode this run has already been reported ending under. Older
+    snapshots kept only the last one under completedRunMode."""
+    snapshot = snapshot or {}
+    modes = snapshot.get("completedRunModes")
+    if isinstance(modes, list):
+        return [m for m in modes if isinstance(m, str)]
+    last = snapshot.get("completedRunMode")
+    return [last] if isinstance(last, str) else []
 
 
 def diff_events(status, snapshot, gate_failures):
@@ -228,7 +254,7 @@ def diff_events(status, snapshot, gate_failures):
     GATE_FAILED per phase newly present in the gate record (a repeat failure of
     the same phase is not a new event; its later success is). A run ends once
     per runMode: a decision-only finish the user later turns into an executed
-    one is reported again, under DECIDE_AND_EXECUTE."""
+    one is reported again, under DECIDE_AND_EXECUTE, and each mode at most once."""
     events = []
     if snapshot is None or snapshot.get("started") is False:
         events.append({"eventName": "RUN_STARTED"})
@@ -251,8 +277,10 @@ def diff_events(status, snapshot, gate_failures):
             continue
         events.append({"eventName": "PHASE_COMPLETED", "phase": phase, "status": mapped, "key": name})
     ended, run_mode = run_ended(status)
-    reported_mode = (snapshot or {}).get("completedRunMode")
-    ended_again = bool(run_mode and reported_mode and run_mode != reported_mode)
+    reported_modes = reported_run_modes(snapshot)
+    # A workshop re-entry clears run_mode and reopens the decision gate while the
+    # run stays completed; a mode already reported is never reported again.
+    ended_again = bool(run_mode and reported_modes and run_mode not in reported_modes)
     if ended and (not (snapshot or {}).get("completed") or ended_again):
         event = {"eventName": "RUN_COMPLETED", "status": "SUCCESS"}
         if run_mode:
@@ -298,10 +326,16 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
     if time.time() >= deadline:
         return  # out of budget: untouched, so the next trigger reports it
     run_dir = Path(run_dir)
-    status = attrs.read_json(run_dir / STATUS_FILE)
-    if not isinstance(status, dict) or not status.get("migration_id"):
+
+    def read_state():
+        status = attrs.read_json(run_dir / STATUS_FILE)
+        if not isinstance(status, dict) or not status.get("migration_id"):
+            return None, None
+        return status, attrs.read_json(run_dir / GATE_FILE)
+
+    status, gate_failures = read_state()
+    if status is None:
         return
-    gate_failures = attrs.read_json(run_dir / GATE_FILE)
 
     # Attribution is read from disk, never from an argument: a run that declares
     # no owner, or an owner outside the migration set, emits nothing (fail
@@ -324,6 +358,14 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
     if lock is None:
         return
     try:
+        # Read again under the lock. Hooks run concurrently: one that read the
+        # state before another reported a newer transition, and took the lock
+        # only after that report, would otherwise diff against stale state and
+        # move the snapshot backwards, and the next reconcile would re-send the
+        # newer transition.
+        status, gate_failures = read_state()
+        if status is None or status.get("owning_skill") != skill:
+            return
         snapshot = read_snapshot(snapshot_file)
         rebuild = snapshot is SNAPSHOT_UNREADABLE
         if rebuild:
@@ -352,7 +394,9 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
             except (OSError, ValueError):
                 return False
 
-        def write_snapshot(phases, completed, gates, started, owner, completed_mode):
+        modes_before = reported_run_modes(snapshot)
+
+        def write_snapshot(phases, completed, gates, started, owner, completed_modes):
             value = {"runId": run_id}
             if owner:
                 value["sessionId"] = owner
@@ -360,11 +404,11 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
                 value["started"] = False
             value.update({"phases": phases, "gateFailures": gates, "completed": completed, "via": via,
                           "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
-            if completed_mode:
-                value["completedRunMode"] = completed_mode  # the runMode the run was last reported ending under
+            if completed_modes:
+                value["completedRunModes"] = completed_modes  # every runMode the run has been reported ending under
             write_json(snapshot_file, value)
 
-        def observe(phases, completed, gates, completed_mode):
+        def observe(phases, completed, gates, completed_modes):
             """Record the state last observed, whether or not anything was sent.
             Ownership moves to this session only when it changed the run or
             edited a file inside it; a hook that merely scanned past leaves the
@@ -373,14 +417,14 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
                 snapshot is None
                 or (snapshot.get("phases") or {}) != phases
                 or bool(snapshot.get("completed")) != completed
-                or snapshot.get("completedRunMode") != completed_mode
+                or modes_before != completed_modes
                 or (snapshot.get("gateFailures") or []) != gates
             )
             touched = changed or in_run(edited_path)
             owner = (valid_session_id or owner_before) if touched else (owner_before or valid_session_id)
             if not changed and snapshot.get("sessionId") == owner:
                 return
-            write_snapshot(phases, completed, gates, (snapshot or {}).get("started"), owner, completed_mode)
+            write_snapshot(phases, completed, gates, (snapshot or {}).get("started"), owner, completed_modes)
 
         if rebuild:
             # A corrupt snapshot (not this script's: its write is atomic) cannot
@@ -388,7 +432,7 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
             # current state lets the run report again from the next one.
             ended, run_mode = run_ended(status)
             observe(status.get("phases") or {}, ended, [phase for phase, _ in gate_failure_entries(gate_failures)],
-                    run_mode if ended else None)
+                    [run_mode] if ended and run_mode else [])
             return
 
         events = diff_events(status, snapshot, gate_failures)
@@ -399,8 +443,7 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
             # run taken over by this session. Record it, or the phase's next
             # completion would read as already reported and this session's
             # teardown would skip the run.
-            observe(status.get("phases") or {}, bool((snapshot or {}).get("completed")), known_gates,
-                    (snapshot or {}).get("completedRunMode"))
+            observe(status.get("phases") or {}, bool((snapshot or {}).get("completed")), known_gates, modes_before)
             return
 
         ctx = {
@@ -445,13 +488,16 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
         run_completed = next((e for e in events if e["eventName"] == "RUN_COMPLETED"), None)
         sent_gates = [e["phase"] for e in events if e["eventName"] == "GATE_FAILED" and e not in held]
         ended_now = bool(run_completed and run_completed not in held)
+        modes = list(modes_before)
+        if ended_now and run_completed.get("runMode") and run_completed["runMode"] not in modes:
+            modes.append(run_completed["runMode"])
         write_snapshot(
             phases,
             bool((snapshot or {}).get("completed")) or ended_now,
             list(dict.fromkeys(known_gates + sent_gates)),
             not (run_started and run_started in held),
             valid_session_id or owner_before,
-            run_completed.get("runMode") if ended_now else (snapshot or {}).get("completedRunMode"),
+            modes,
         )
     finally:
         release_lock(lock)
@@ -482,6 +528,10 @@ def main(argv, stdin=None):
         edited_path = None
 
     # Post-write fast path: an edit outside any .migration tree is no work at all.
+    # A Bash payload carries a command, not a file path, and the agent does write
+    # state files through the shell (a heredoc instead of the Write tool), so it
+    # falls through to a reconcile of every run under the hook's cwd: a few file
+    # reads, and nothing is sent unless a transition is new.
     if not session_end and "--reconcile" not in argv and edited_path and ".migration" not in edited_path:
         return 0
 

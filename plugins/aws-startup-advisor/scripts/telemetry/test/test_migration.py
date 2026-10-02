@@ -350,10 +350,11 @@ def test_a_corrupt_snapshot_is_rebuilt_without_sending_so_the_run_reports_again(
 
 
 def test_reports_azure_runs_with_their_own_inventory_vocabulary(project):
+    # azure discover writes the canonical ARM type under `azure_type`, never azurerm_*.
     p = project(phase_status(owning_skill="AZURE_TO_AWS"), artifacts={"azure-resource-inventory.json": {"resources": [
-        {"type": "azurerm_cosmosdb_account", "name": "db"},
-        {"type": "azurerm_cognitive_account", "name": "ai"},
-        {"type": "azurerm_container_app", "name": "api"},
+        {"azure_type": "Microsoft.DocumentDB/databaseAccounts", "name": "db"},
+        {"azure_type": "Microsoft.CognitiveServices/accounts", "name": "ai"},
+        {"azure_type": "Microsoft.App/containerApps", "name": "api"},
     ]}})
     events = {activity(b).get("phase") or activity(b)["eventName"]: activity(b) for b in p.reconcile()}
     assert events["RUN_STARTED"]["skill"] == "AZURE_TO_AWS"
@@ -375,7 +376,7 @@ def test_a_run_executed_after_a_decide_only_finish_ends_again_under_its_new_run_
     assert summary(again) == [("PHASE_COMPLETED", "FEEDBACK", "SUCCESS"), ("PHASE_COMPLETED", "GENERATE", "SUCCESS"),
                               ("RUN_COMPLETED", None, "SUCCESS")]
     assert next(activity(b) for b in again if activity(b)["eventName"] == "RUN_COMPLETED")["attributes"]["runMode"] == "DECIDE_AND_EXECUTE"
-    assert p.snapshot()["completedRunMode"] == "DECIDE_AND_EXECUTE"
+    assert p.snapshot()["completedRunModes"] == ["DECIDE", "DECIDE_AND_EXECUTE"]
     assert p.reconcile() == [], "the same ending is never reported twice"
 
 
@@ -388,7 +389,7 @@ def test_an_explicit_execute_request_ends_the_run_only_once_generate_is_complete
     assert ("RUN_COMPLETED", None, "SUCCESS") in summary(p.reconcile())
     p.write_status({**decided, "run_mode": "decide_and_execute"})
     assert p.reconcile() == [], "run_mode flipped, Generate not yet run: nothing has ended"
-    assert p.snapshot()["completedRunMode"] == "DECIDE"
+    assert p.snapshot()["completedRunModes"] == ["DECIDE"]
     p.write_status({**decided, "run_mode": "decide_and_execute", "phases": all_completed()})
     ended = [activity(b) for b in p.reconcile() if activity(b)["eventName"] == "RUN_COMPLETED"]
     assert [e["attributes"]["runMode"] for e in ended] == ["DECIDE_AND_EXECUTE"]
@@ -407,6 +408,115 @@ def test_reports_an_llm_to_bedrock_run_in_its_dot_directory_at_run_level_only(pr
     p.write_status(phase_status(migration_id=".bedrock-0226-1430", owning_skill="LLM_TO_BEDROCK", current_phase="complete",
                                 phases={"assess": "completed", "execute": "completed"}))
     assert summary(p.reconcile()) == [("RUN_COMPLETED", None, "SUCCESS")]
+
+
+def test_maps_the_azure_producer_fields_from_the_committed_fixtures(project):
+    # The real azure-to-aws fixtures: 30 ARM resources (PostgreSQL, Redis, DocumentDB among
+    # them) and an estimate whose baseline is the customer's stated USD 4200.
+    fixtures = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform"
+    inventory = json.loads((fixtures / "after-discover" / "azure-resource-inventory.json").read_text())
+    estimate = json.loads((fixtures / "after-estimate" / "estimation-infra.json").read_text())
+    p = project(phase_status(owning_skill="AZURE_TO_AWS", current_phase="complete", run_mode="decide",
+                             phases=with_phases(clarify="completed", design="completed", estimate="completed")),
+                artifacts={"azure-resource-inventory.json": inventory, "estimation-infra.json": estimate})
+    events = {activity(b).get("phase") or activity(b)["eventName"]: activity(b) for b in p.reconcile()}
+    discover = events["DISCOVER"]["attributes"]
+    assert (discover["sourceProvider"], discover["resourceCount"], discover["hasDatabase"]) == ("AZURE", 30, True)
+    estimate_attrs = events["ESTIMATE"]["attributes"]
+    assert estimate_attrs["spendBand"] == "FROM_1K_TO_10K"
+    assert estimate_attrs["spendBasis"] == "USER_PROVIDED"
+    assert estimate_attrs["recommendationOutcome"] == "CONDITIONAL_GO"
+    assert "estimateAccuracyBand" not in estimate_attrs, "'as stated by the customer' is not a percentage band"
+
+
+def test_honours_the_backbone_fallback_when_current_phase_is_absent(project):
+    # current_phase is optional in the shared schema; without it gcp-to-aws evaluates
+    # the backbone in order and is complete only when every phase, Generate included, is.
+    finished = phase_status(run_mode="decide_and_execute", phases=all_completed())
+    del finished["current_phase"]
+    done = project(finished)
+    ended = [activity(b) for b in done.reconcile() if activity(b)["eventName"] == "RUN_COMPLETED"]
+    assert [e["attributes"]["runMode"] for e in ended] == ["DECIDE_AND_EXECUTE"]
+    assert done.reconcile() == []
+    # A decision-only run that omits the field has not ended: Generate stays opt-in.
+    decided = phase_status(run_mode="decide", phases=with_phases(clarify="completed", design="completed", estimate="completed"))
+    del decided["current_phase"]
+    open_run = project(decided, run_name="0226-1500")
+    assert ("RUN_COMPLETED", None, "SUCCESS") not in summary(open_run.reconcile())
+    assert open_run.snapshot()["completed"] is False
+
+
+def test_each_run_mode_ends_once_even_across_a_workshop_re_entry(project):
+    # heroku's workshop re-entry clears run_mode, resets Generate and reopens the
+    # decision gate; the run has already ended under both modes and must not again.
+    decided = phase_status(current_phase="complete", run_mode="decide", phases=with_phases(
+        clarify="completed", design="completed", estimate="completed", workshop="completed"))
+    p = project(decided)
+    endings = lambda bodies: [activity(b)["attributes"]["runMode"] for b in bodies if activity(b)["eventName"] == "RUN_COMPLETED"]
+    assert endings(p.reconcile()) == ["DECIDE"]
+    p.write_status({**decided, "run_mode": "decide_and_execute", "phases": all_completed()})
+    assert endings(p.reconcile()) == ["DECIDE_AND_EXECUTE"]
+    assert p.snapshot()["completedRunModes"] == ["DECIDE", "DECIDE_AND_EXECUTE"]
+    reentered = {**decided, "current_phase": "estimate", "phases": with_phases(
+        clarify="completed", design="completed", estimate="completed", workshop="in_progress")}
+    del reentered["run_mode"]
+    p.write_status(reentered)
+    assert endings(p.reconcile()) == []
+    p.write_status({**decided, "phases": with_phases(clarify="completed", design="completed", estimate="completed", workshop="completed")})
+    assert endings(p.reconcile()) == [], "a second decision-only ending is not reported again"
+    p.write_status({**decided, "run_mode": "decide_and_execute", "phases": all_completed()})
+    assert endings(p.reconcile()) == [], "nor a second executed one"
+    assert p.snapshot()["completedRunModes"] == ["DECIDE", "DECIDE_AND_EXECUTE"]
+
+
+def test_an_older_snapshot_that_kept_only_the_last_completed_mode_is_honoured(project):
+    decided = phase_status(current_phase="complete", run_mode="decide", phases=with_phases(
+        clarify="completed", design="completed", estimate="completed", workshop="completed"))
+    p = project(decided)
+    p.reconcile()
+    snapshot = p.snapshot()
+    snapshot["completedRunMode"] = snapshot.pop("completedRunModes")[0]  # the shape earlier builds wrote
+    (p.run_dir / ".telemetry-snapshot.json").write_text(json.dumps(snapshot), encoding="utf-8")
+    assert p.reconcile() == [], "the recorded DECIDE ending is still known"
+    p.write_status({**decided, "run_mode": "decide_and_execute", "phases": all_completed()})
+    ended = [activity(b)["attributes"]["runMode"] for b in p.reconcile() if activity(b)["eventName"] == "RUN_COMPLETED"]
+    assert ended == ["DECIDE_AND_EXECUTE"]
+    assert p.snapshot()["completedRunModes"] == ["DECIDE", "DECIDE_AND_EXECUTE"]
+
+
+def test_reads_the_state_under_the_lock_so_a_stale_reader_cannot_undo_a_newer_report(project, monkeypatch):
+    # Two async hooks: the older one has read the state (clarify in_progress) when the
+    # newer one completes CLARIFY, reports it and releases the lock; the older one then
+    # takes the lock. It must diff against what is on disk now, not what it read.
+    import migration
+
+    p = project()
+    p.reconcile()
+    real_acquire = migration.acquire_lock
+
+    def acquire_after_a_newer_report(run_dir):
+        monkeypatch.setattr(migration, "acquire_lock", real_acquire)
+        p.write_status(phase_status(current_phase="design", phases=with_phases(clarify="completed")))
+        migration.process_run(run_dir, SESSION_ID, False, p.collector.url, float("inf"), None, "hook")
+        return real_acquire(run_dir)
+
+    monkeypatch.setattr(migration, "acquire_lock", acquire_after_a_newer_report)
+    before = len(p.collector.received)
+    migration.process_run(p.run_dir, SESSION_ID, False, p.collector.url, float("inf"), None, "hook")
+    sent = [json.loads(r["body"]) for r in p.collector.received[before:]]
+    assert summary(sent) == [("PHASE_COMPLETED", "CLARIFY", "SUCCESS")], "the newer hook's report, once"
+    assert p.snapshot()["phases"]["clarify"] == "completed", "the stale reader did not move the snapshot back"
+    assert p.reconcile() == []
+
+
+def test_reports_a_state_file_written_through_a_shell_command_when_the_bash_hook_fires(project):
+    # The agent sometimes writes .phase-status.json with a heredoc instead of the Write
+    # tool; the Bash payload carries no file path, so every run under cwd is reconciled.
+    p = project()
+    bash = lambda command: {"tool_name": "Bash", "tool_input": {"command": command}}
+    first = p.hook(payload=bash("cat > .migration/0226-1430/.phase-status.json <<'EOF'\n{...}\nEOF"))
+    assert summary(first) == [("PHASE_COMPLETED", "DISCOVER", "SUCCESS"), ("RUN_STARTED", None, None)]
+    assert p.hook(payload=bash("git status")) == [], "an unrelated command finds nothing new"
 
 
 # ---------------------------------------------------------------- attributes
@@ -596,15 +706,16 @@ def test_registers_the_three_telemetry_hooks_through_the_portable_interpreter_ch
         assert len(commands) == 1, "%s registers the migration emitter once" % event
         assert commands[0].startswith("sh -c 'python3 \"$0\" \"$@\"")
         assert commands[0].endswith('"${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py"' + flag)
-    post_write = next(g for g in hooks["PostToolUse"] if g.get("matcher") == "Write|Edit")
+    post_write = next(g for g in hooks["PostToolUse"] if g.get("matcher") == "Write|Edit|Bash")
     assert post_write["hooks"][0]["async"] is True, "post-write runs off the turn"
+    # Bash because the agent sometimes writes a state file through a heredoc rather than the Write tool.
     assert "timeout" not in hooks["SessionEnd"][0]["hooks"][0], "the sweep budgets itself to the default SessionEnd budget"
 
 
 def test_wires_the_cursor_manifest_to_cursor_hooks_that_reach_the_emitter():
     manifest = json.loads((PLUGIN_ROOT / ".cursor-plugin" / "plugin.json").read_text())
     hooks = json.loads((PLUGIN_ROOT / manifest["hooks"]).read_text())["hooks"]
-    assert set(hooks) == {"afterFileEdit", "stop", "sessionEnd"}
+    assert set(hooks) == {"afterFileEdit", "afterShellExecution", "stop", "sessionEnd"}
     for event, entries in hooks.items():
         for entry in entries:
             assert '"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py"' in entry["command"]

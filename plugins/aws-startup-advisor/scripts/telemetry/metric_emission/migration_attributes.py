@@ -59,8 +59,14 @@ SPEND_BASIS = {
     "user_provided": "USER_PROVIDED",
     "unavailable": "UNAVAILABLE",
     "estimated_from_token_volume": "TOKEN_VOLUME_ESTIMATE",
+    # azure-to-aws's baseline rungs (estimate-infra.md): a stated figure, a Cost
+    # Management export or RDfA consumption data, or a figure derived from SKUs.
+    "user_stated": "USER_PROVIDED",
+    "cost_management_export": "BILLING_DATA",
+    "consumption_data": "BILLING_DATA",
+    "derived_from_skus": "INVENTORY_ESTIMATE",
 }
-AI_SOURCE = {"openai": "OPENAI", "anthropic": "ANTHROPIC", "gemini": "GCP", "other": "OTHER"}
+AI_SOURCE = {"openai": "OPENAI", "anthropic": "ANTHROPIC", "gemini": "GCP", "azure_openai": "AZURE", "other": "OTHER"}
 COMPLEXITY_TIER = frozenset({"SMALL", "MEDIUM", "LARGE"})
 # The discover preview's coarser signal, used before a tiered artifact exists.
 COMPLEXITY_SIGNAL = {"likely_simple": "SMALL", "standard": "MEDIUM", "complex": "LARGE"}
@@ -100,7 +106,7 @@ PROJECTED_COST_MAX = 10_000_000  # model @range
 RESOURCE_COUNT_MAX = 10_000  # model @range
 
 AI_TYPE = re.compile(
-    r"vertex|aiplatform|notebooks|discovery_engine|automl|ml_engine|dialogflow|document_ai|cognitive|machine_learning|bedrock|sagemaker|comprehend"
+    r"vertex|aiplatform|notebooks|discovery_engine|automl|ml_engine|dialogflow|document_ai|cognitive|machine_?learning|bedrock|sagemaker|comprehend"
 )
 DB_TYPE = re.compile(
     r"sql|postgres|mysql|mongo|redis|firestore|spanner|bigtable|datastore|memorystore|alloydb|cosmos|rds|aurora|dynamo|elasticache|documentdb"
@@ -122,6 +128,10 @@ SOURCE_SPEND_KEYS = (
     "heroku_monthly_estimated",
     "heroku_monthly_baseline",
     "current_heroku_monthly",
+    "azure_monthly",
+    "azure_monthly_spend",
+    "azure_monthly_baseline",
+    "current_azure_monthly",
 )
 
 SKILL_INVENTORY = {
@@ -289,11 +299,14 @@ def preference_spend_basis(run_dir):
 
 
 def resource_types(resources):
+    """The resource types as one lower-cased string. gcp writes `type`, heroku
+    `resource_type` (with the add-on service under config), azure the canonical
+    ARM type under `azure_type` (Microsoft.DocumentDB/databaseAccounts)."""
     parts = []
     for resource in resources:
         if not isinstance(resource, dict):
             continue
-        kind = resource.get("type") or resource.get("resource_type") or ""
+        kind = resource.get("type") or resource.get("resource_type") or resource.get("azure_type") or ""
         addon = (resource.get("config") or {}).get("addon_service") if isinstance(resource.get("config"), dict) else ""
         parts.append("%s %s" % (kind, addon or ""))
     return " ".join(parts).lower()
