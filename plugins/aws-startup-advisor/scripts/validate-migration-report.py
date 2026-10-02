@@ -1703,18 +1703,20 @@ def _phrase_rendered(phrase: str, rendered_text: str, max_width: int = 4) -> boo
 class _RenderedFragmentParser(HTMLParser):
     """Flatten a fragment into what the browser would show, in document order.
 
-    Produces `entries` — `("text", run)` for prose outside a list item and
-    `("li", item)` for each list item, both decoded, lower-cased, whitespace-
-    collapsed and dash-folded like `_plain_text` — plus `class_tokens`, the set
-    of class attribute tokens on rendered start tags. Inert subtrees
-    (`<script>`, `<style>`, `<template>`) and comments are skipped entirely, so
-    a heading, list item or class that exists only there is not counted as
-    rendered. Inline tags do not split a run ("What <em>would</em> flip this"
-    stays one phrase); every other tag closes the current run.
+    Produces `entries` — `("heading", run)` for an `<h1>`–`<h6>`, `("li", item)`
+    for each list item and `("text", run)` for any other prose, all decoded,
+    lower-cased, whitespace-collapsed and dash-folded like `_plain_text` — plus
+    `class_tokens`, the set of class attribute tokens on rendered start tags.
+    Inert subtrees (`<script>`, `<style>`, `<template>`) and comments are
+    skipped entirely, so a heading, list item or class that exists only there
+    is not counted as rendered. Inline tags do not split a run ("What
+    <em>would</em> flip this" stays one phrase); every other tag closes the
+    current run.
     """
 
     _INLINE_TAGS = _DecodedTextRunParser._INLINE_TAGS
     _INERT_TAGS = _DecodedTextRunParser._INERT_TAGS
+    _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -1722,13 +1724,21 @@ class _RenderedFragmentParser(HTMLParser):
         self.class_tokens: set[str] = set()
         self._inert_depth = 0
         self._li_depth = 0
+        self._heading_depth = 0
         self._buf: list[str] = []
 
     def _flush(self) -> None:
         text = _plain_text(" ".join(self._buf))
         self._buf = []
-        if text:
-            self.entries.append(("li" if self._li_depth else "text", text))
+        if not text:
+            return
+        if self._li_depth:
+            kind = "li"
+        elif self._heading_depth:
+            kind = "heading"
+        else:
+            kind = "text"
+        self.entries.append((kind, text))
 
     def _record_classes(self, attrs: list[tuple[str, str | None]]) -> None:
         for name, value in attrs:
@@ -1746,6 +1756,8 @@ class _RenderedFragmentParser(HTMLParser):
             self._flush()
         if tag == "li":
             self._li_depth += 1
+        elif tag in self._HEADING_TAGS:
+            self._heading_depth += 1
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._INERT_TAGS or self._inert_depth > 0:
@@ -1765,6 +1777,8 @@ class _RenderedFragmentParser(HTMLParser):
             self._flush()
         if tag == "li" and self._li_depth > 0:
             self._li_depth -= 1
+        elif tag in self._HEADING_TAGS and self._heading_depth > 0:
+            self._heading_depth -= 1
 
     def handle_data(self, data: str) -> None:
         if self._inert_depth == 0:
@@ -1785,20 +1799,46 @@ def _rendered_fragment(fragment: str) -> _RenderedFragmentParser:
 def _rendered_list_after_heading(
     entries: list[tuple[str, str]], heading_phrase: str
 ) -> list[str] | None:
-    """Items of the list that follows the first rendered run containing `heading_phrase`.
+    """Items of the rendered list that `heading_phrase` introduces.
 
-    Returns None when no rendered run carries the heading, and an empty list
-    when the heading is present but no list item follows it before the next
-    prose run — the "heading only, empty <ul>" shape.
+    Two rendered shapes introduce the list, both legitimate under the report
+    specs ("short unordered list"):
+
+    - a heading (preferred) or prose run carrying the phrase, such as
+      `<h3>What would flip this</h3>`, then the list. Lead-in prose between the
+      heading and the first `<li>` is skipped; the items run ends at the first
+      non-item entry after it, and reaching another heading before any item
+      means the list is empty.
+    - a list item carrying the phrase as an inline label, such as
+      `<li>What would flip this: …</li>`. The remainder of that item plus its
+      following sibling items are the list.
+
+    Returns None when no rendered run carries the phrase, and an empty list when
+    the phrase is present but no item renders under it (heading only, empty
+    `<ul>`).
     """
-    for index, (kind, text) in enumerate(entries):
-        if kind == "text" and heading_phrase in text:
-            items: list[str] = []
-            for next_kind, next_text in entries[index + 1 :]:
-                if next_kind != "li":
+
+    def items_from(start: int) -> list[str]:
+        items: list[str] = []
+        for kind, text in entries[start:]:
+            if kind != "li":
+                break
+            items.append(text)
+        return items
+
+    for wanted in ("heading", "text", "li"):
+        for index, (kind, text) in enumerate(entries):
+            if kind != wanted or heading_phrase not in text:
+                continue
+            if kind == "li":
+                remainder = text.split(heading_phrase, 1)[1].lstrip(" :;,.-")
+                return ([remainder] if remainder else []) + items_from(index + 1)
+            for offset, (next_kind, _next_text) in enumerate(entries[index + 1 :], index + 1):
+                if next_kind == "li":
+                    return items_from(offset)
+                if next_kind == "heading":
                     break
-                items.append(next_text)
-            return items
+            return []
     return None
 
 
@@ -1937,8 +1977,13 @@ def _validate_decision_core_render(
         and isinstance(conditions, list)
         and conditions
     ):
+        # The spec renders conditions[] as a checklist, so match each condition
+        # against the rendered list items only. Scanning the whole summary let a
+        # one-word condition ("Confirm") be satisfied by that word anywhere in
+        # the verdict prose, so it could never be reported as omitted.
+        checklist = [text for kind, text in rendered.entries if kind == "li"]
         for condition in conditions:
-            if not _phrase_rendered(str(condition), summary_text):
+            if not any(_phrase_rendered(str(condition), item) for item in checklist):
                 errors.append(
                     "recommendation.conditions is non-empty but decision-summary does "
                     "not render that condition as a checklist (a shared phrase from the "

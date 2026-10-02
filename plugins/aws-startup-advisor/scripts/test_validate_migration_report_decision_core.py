@@ -129,6 +129,68 @@ def test_would_flip_complete_list_passes_with_inline_markup() -> None:
     assert _flip_errors(html) == []
 
 
+LEAD_IN = '      <p class="muted">Any of these would change the verdict:</p>\n'
+
+
+def test_would_flip_lead_in_paragraph_before_list_passes() -> None:
+    # A one-sentence lead-in between the heading and the <ul> is legitimate
+    # output; the items below it are rendered and must be found (regression for
+    # the matcher stopping at the first non-item run and reporting "0 of 2").
+    html = _reference_html().replace(
+        "      <h3>What would flip this</h3>\n", "      <h3>What would flip this</h3>\n" + LEAD_IN
+    )
+    assert html != _reference_html()
+    assert _flip_errors(html) == []
+
+
+def test_would_flip_lead_in_paragraph_with_empty_list_fails() -> None:
+    html = _reference_html().replace(
+        FLIP_BLOCK,
+        "      <h3>What would flip this</h3>\n" + LEAD_IN + '      <ul class="compact"></ul>',
+    )
+    assert html != _reference_html()
+    errors = _flip_errors(html)
+    assert errors and "0 of 2" in errors[0], errors
+
+
+def test_would_flip_another_heading_before_any_item_is_empty_list() -> None:
+    # Prose is skipped, but the search is bounded by the next heading: a flip
+    # heading with no items before "Key decisions ahead" renders none of them.
+    html = _reference_html().replace(
+        FLIP_BLOCK, "      <h3>What would flip this</h3>\n      <p>See below.</p>"
+    )
+    assert html != _reference_html()
+    errors = _flip_errors(html)
+    assert errors and "0 of 2" in errors[0], errors
+
+
+INLINE_LABEL_BLOCK = """      <ul class="compact">
+        <li>What would flip this: Single-AZ acceptable: AWS estimate drops further, strengthens go</li>
+        <li>BigQuery must cut over in the same window: defer for specialist evidence</li>
+      </ul>"""
+
+
+def test_would_flip_inline_label_item_passes() -> None:
+    # The specs only ask for a "short unordered list"; the Heroku decision
+    # fixtures render the label inside the first item with no separate heading.
+    # That item's remainder plus its siblings are the list.
+    html = _reference_html().replace(FLIP_BLOCK, INLINE_LABEL_BLOCK)
+    assert html != _reference_html()
+    assert _flip_errors(html) == []
+
+
+def test_would_flip_inline_label_partial_list_fails() -> None:
+    html = _reference_html().replace(
+        FLIP_BLOCK, INLINE_LABEL_BLOCK.replace(
+            "        <li>BigQuery must cut over in the same window: defer for specialist evidence</li>\n",
+            "",
+        )
+    )
+    assert html != _reference_html()
+    errors = _flip_errors(html)
+    assert errors and "1 of 2" in errors[0] and "BigQuery" in errors[0], errors
+
+
 def _with_condition(condition: str, *, rendered: bool) -> tuple[str, dict]:
     estimate = _reference_estimate()
     estimate["recommendation"]["conditions"] = [condition]
@@ -166,6 +228,43 @@ def test_omitted_long_condition_fails() -> None:
     )
     errors = [e for e in validator.validate_report(html, estimate, None) if "condition" in e]
     assert errors, "omitted condition passed"
+
+
+def _without_confirm_in_checklist(html: str) -> str:
+    # Reword every list item of the reference summary that happens to contain
+    # "confirm", so the word survives only in prose.
+    html = html.replace("<li>Condition: confirm", "<li>Condition: verify")
+    html = html.replace("not confirmed", "not verified")
+    html = html.replace("<li>Confirm Bedrock", "<li>Verify Bedrock")
+    return html.replace(
+        '<p class="verdict-headline">Go, with conditions</p>',
+        '<p class="verdict-headline">Go, with conditions</p>\n'
+        "      <p>Confirm these before cutover.</p>",
+    )
+
+
+def test_one_word_condition_only_in_prose_fails() -> None:
+    # Conditions render as a checklist, so the scan is scoped to rendered list
+    # items. A one-word condition used to be satisfied by that word anywhere in
+    # the summary prose and could never be reported as omitted.
+    validator = _load()
+    html, estimate = _with_condition("Confirm", rendered=False)
+    html = _without_confirm_in_checklist(html)
+    rendered = validator._rendered_fragment(validator._section_html(html, "decision-summary"))
+    assert any("confirm" in text for kind, text in rendered.entries if kind != "li")
+    assert not any("confirm" in text for kind, text in rendered.entries if kind == "li")
+    errors = [e for e in validator.validate_report(html, estimate, None) if "condition" in e]
+    assert errors, "one-word condition rendered only in prose passed"
+
+
+def test_one_word_condition_in_checklist_passes() -> None:
+    validator = _load()
+    html, estimate = _with_condition("Confirm", rendered=False)
+    html = _without_confirm_in_checklist(html).replace(
+        "<li>Condition: verify CUD", "<li>Condition: Confirm CUD"
+    )
+    errors = [e for e in validator.validate_report(html, estimate, None) if "condition" in e]
+    assert errors == [], errors
 
 
 def test_verdict_headline_only_in_template_fails() -> None:

@@ -831,27 +831,37 @@ def _phrase_rendered(phrase: str, rendered_text: str, max_width: int = 4) -> boo
 
 class _RenderedFragmentParser(HTMLParser):
     """Ported from validate-migration-report.py — flatten a fragment into what
-    the browser shows, in document order: `("text", run)` for prose outside a
-    list item and `("li", item)` per list item, each decoded and normalized via
-    _normalize_phrase. Inert subtrees and comments are skipped (same rule as
-    _DecodedTextParser / _TagAttrCollector), and inline tags do not split a run,
-    so `What <em>would</em> flip this` is one phrase."""
+    the browser shows, in document order: `("heading", run)` for an <h1>–<h6>,
+    `("li", item)` per list item and `("text", run)` for any other prose, each
+    decoded and normalized via _normalize_phrase. Inert subtrees and comments
+    are skipped (same rule as _DecodedTextParser / _TagAttrCollector), and
+    inline tags do not split a run, so `What <em>would</em> flip this` is one
+    phrase."""
 
     _INLINE_TAGS = _DecodedTextParser._INLINE_TAGS
     _INERT_TAGS = _DecodedTextParser._INERT_TAGS
+    _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.entries: list[tuple[str, str]] = []
         self._inert_depth = 0
         self._li_depth = 0
+        self._heading_depth = 0
         self._buf: list[str] = []
 
     def _flush(self) -> None:
         text = _normalize_phrase(" ".join(self._buf))
         self._buf = []
-        if text:
-            self.entries.append(("li" if self._li_depth else "text", text))
+        if not text:
+            return
+        if self._li_depth:
+            kind = "li"
+        elif self._heading_depth:
+            kind = "heading"
+        else:
+            kind = "text"
+        self.entries.append((kind, text))
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._INERT_TAGS:
@@ -863,6 +873,8 @@ class _RenderedFragmentParser(HTMLParser):
             self._flush()
         if tag == "li":
             self._li_depth += 1
+        elif tag in self._HEADING_TAGS:
+            self._heading_depth += 1
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._INERT_TAGS or self._inert_depth > 0:
@@ -881,6 +893,8 @@ class _RenderedFragmentParser(HTMLParser):
             self._flush()
         if tag == "li" and self._li_depth > 0:
             self._li_depth -= 1
+        elif tag in self._HEADING_TAGS and self._heading_depth > 0:
+            self._heading_depth -= 1
 
     def handle_data(self, data: str) -> None:
         if self._inert_depth == 0:
@@ -901,17 +915,38 @@ def _rendered_entries(fragment: str) -> list[tuple[str, str]]:
 def _rendered_list_after_heading(
     entries: list[tuple[str, str]], heading_phrase: str
 ) -> list[str] | None:
-    """Items of the list following the first rendered run that contains
-    `heading_phrase`; None when no rendered run carries the heading, [] when the
-    heading is present but no list item follows it (heading-only / empty <ul>)."""
-    for index, (kind, text) in enumerate(entries):
-        if kind == "text" and heading_phrase in text:
-            items: list[str] = []
-            for next_kind, next_text in entries[index + 1 :]:
-                if next_kind != "li":
+    """Ported from validate-migration-report.py — items of the rendered list
+    that `heading_phrase` introduces. Two shapes are accepted, both legitimate
+    under generate-report.md's "short unordered list": a heading (preferred) or
+    prose run carrying the phrase (`<h3>What would flip this</h3>`), with any
+    lead-in prose before the first <li> skipped and another heading before any
+    item meaning an empty list; or a list item carrying the phrase as an inline
+    label (`<li>What would flip this: …</li>`, the shape the heroku-decision-gate
+    fixtures render), whose remainder plus following sibling items are the
+    list. None when no rendered run carries the phrase, [] when it does but no
+    item renders under it (heading-only / empty <ul>)."""
+
+    def items_from(start: int) -> list[str]:
+        items: list[str] = []
+        for kind, text in entries[start:]:
+            if kind != "li":
+                break
+            items.append(text)
+        return items
+
+    for wanted in ("heading", "text", "li"):
+        for index, (kind, text) in enumerate(entries):
+            if kind != wanted or heading_phrase not in text:
+                continue
+            if kind == "li":
+                remainder = text.split(heading_phrase, 1)[1].lstrip(" :;,.-")
+                return ([remainder] if remainder else []) + items_from(index + 1)
+            for offset, (next_kind, _next_text) in enumerate(entries[index + 1 :], index + 1):
+                if next_kind == "li":
+                    return items_from(offset)
+                if next_kind == "heading":
                     break
-                items.append(next_text)
-            return items
+            return []
     return None
 
 

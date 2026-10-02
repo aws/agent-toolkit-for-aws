@@ -209,6 +209,84 @@ def test_would_flip_complete_list_passes() -> None:
     assert "REPORT_OK" in out
 
 
+def test_would_flip_lead_in_paragraph_before_list_passes() -> None:
+    # A one-sentence lead-in between the heading and the <ul> is legitimate
+    # output; the items below it are rendered and must be found (regression for
+    # the matcher stopping at the first non-item run and reporting "0 of N").
+    code, out = _run_with_flips(
+        GOOD.replace(
+            VERDICT,
+            VERDICT
+            + "<h3>What would flip this</h3>"
+            + '<p class="muted">Any of these would change the verdict:</p>'
+            + f"<ul>{FLIP_ITEMS}</ul>",
+        )
+    )
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_would_flip_lead_in_paragraph_with_empty_list_fails() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(
+            VERDICT,
+            VERDICT
+            + "<h3>What would flip this</h3>"
+            + '<p class="muted">Any of these would change the verdict:</p><ul></ul>',
+        )
+    )
+    assert code == 1, out
+    assert "0 of 2" in out, out
+
+
+def test_would_flip_inline_label_item_passes() -> None:
+    # generate-report.md only asks for a "short unordered list"; the
+    # heroku-decision-gate fixtures render the label inside the first item
+    # (`<li>What would flip this: …</li>`) with no separate heading. That item's
+    # remainder plus its siblings are the list.
+    code, out = _run_with_flips(
+        GOOD.replace(
+            VERDICT,
+            VERDICT + f"<ul><li>What would flip this: {FLIPS[0]}</li><li>{FLIPS[1]}</li></ul>",
+        )
+    )
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_would_flip_inline_label_partial_list_fails() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(VERDICT, VERDICT + f"<ul><li>What would flip this: {FLIPS[0]}</li></ul>")
+    )
+    assert code == 1, out
+    assert "1 of 2" in out and "Dyno count" in out, out
+
+
+def test_decision_gate_fixtures_render_their_flip_condition() -> None:
+    # The checked-in decision fixtures declare would_flip_if and render it in the
+    # inline-label shape; they must keep passing --mode decision so the fixture
+    # asserters (check_expected_decide*.py) exercise the flip check for real.
+    fixtures = SCRIPT.parents[3] / "fixtures" / "heroku-decision-gate"
+    for name in ("after-decide-complete", "retained-execution-pack"):
+        run_dir = fixtures / name
+        estimate = json.loads((run_dir / "estimation-infra.json").read_text(encoding="utf-8"))
+        assert estimate["recommendation"]["would_flip_if"], name
+        result = subprocess.run(  # nosec B603
+            [
+                sys.executable,
+                str(SCRIPT),
+                str(run_dir / "decision-report.html"),
+                "--mode",
+                "decision",
+                "--migration-dir",
+                str(run_dir),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (name, result.stdout + result.stderr)
+
+
 def test_what_if_columns_required_when_section_present() -> None:
     thin = GOOD.replace(
         '<section id="next-steps">',
