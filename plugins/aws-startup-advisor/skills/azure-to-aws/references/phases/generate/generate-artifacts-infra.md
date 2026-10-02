@@ -180,19 +180,9 @@ as no frameworks. `["unknown"]` does not add Config or Security Hub.
      at 50/80/100% ACTUAL to `var.billing_email`)
    - `aws_guardduty_detector.baseline` (defense-in-depth; `enable = true`;
      `finding_publishing_frequency = "FIFTEEN_MINUTES"`)
-6. **Remote state**, appended after the always-on resources (same resources GCP puts in
-   this file; do not also emit them in `security.tf`), wrapped in
-   `########## Remote State — keep this section when opting out of the baseline ##########` /
-   `########## End Remote State ##########`:
-   `aws_s3_bucket.tfstate`, versioning, SSE (`aws:kms`), public-access block, and
-   `aws_dynamodb_table.tfstate_lock` (`PAY_PER_REQUEST`, hash key `LockID`). Bucket name
-   `${var.project_name}-${var.environment}-tfstate-${data.aws_caller_identity.current.account_id}`.
-   Lock table name `${var.project_name}-${var.environment}-tfstate-lock`. Tag with a
-   literal `{ Component = "terraform-state" }` (the provider `default_tags` supply the
-   rest) — **not** `local.baseline_tags`, and no `var.*_email` reference, so the section
-   stands alone once everything above the marker is removed.
-7. **Compliance-conditional**, only when compliance contains `soc2`, `pci`, `hipaa`, or
-   `fedramp`, wrapped in `########## Compliance-Conditional ##########` /
+6. **Compliance-conditional**, only when compliance contains `soc2`, `pci`, `hipaa`, or
+   `fedramp`, emitted directly after the always-on resources and **before** the Remote
+   State section (item 7), wrapped in `########## Compliance-Conditional ##########` /
    `########## End Compliance-Conditional ##########`:
    - `aws_iam_role.config` trusted by `config.amazonaws.com`, plus an
      `aws_iam_role_policy_attachment` whose `policy_arn` is derived from the target
@@ -212,6 +202,19 @@ as no frameworks. `["unknown"]` does not add Config or Security Hub.
    - `aws_securityhub_standards_subscription.fsbp` always in this section
    - `aws_securityhub_standards_subscription.pci_dss` only when compliance contains `pci`
    - Do not emit a NIST 800-53 subscription, including for `hipaa` or `fedramp`
+7. **Remote state**, always the **final** section of the file — after the always-on
+   resources and after the compliance-conditional section when one was emitted (same
+   resources GCP puts in this file; do not also emit them in `security.tf`), wrapped in
+   `########## Remote State — keep this section when opting out of the baseline ##########` /
+   `########## End Remote State ##########`:
+   `aws_s3_bucket.tfstate`, versioning, SSE (`aws:kms`), public-access block, and
+   `aws_dynamodb_table.tfstate_lock` (`PAY_PER_REQUEST`, hash key `LockID`). Bucket name
+   `${var.project_name}-${var.environment}-tfstate-${data.aws_caller_identity.current.account_id}`.
+   Lock table name `${var.project_name}-${var.environment}-tfstate-lock`. Tag with a
+   literal `{ Component = "terraform-state" }` (the provider `default_tags` supply the
+   rest) — **not** `local.baseline_tags`, no `local.cloudtrail_retention_days`, and no
+   `var.*_email` reference, so the section stands alone once everything outside the two
+   markers is removed. Nothing follows `########## End Remote State ##########`.
 8. **Lifecycle.** Omit the `STANDARD_IA` transition when retention is under 90 days. Omit
    `GLACIER` when retention is under 365 days. Apply both rules to the CloudTrail bucket
    and, when emitted, the Config bucket.
@@ -234,12 +237,16 @@ The opt-out is an operator action on the emitted root, after Generate and before
 `terraform apply`. It has three steps, and all three are needed — the first alone leaves a
 root that does not plan:
 
-1. **In `terraform/baseline.tf`, delete everything above the
-   `########## Remote State` marker** — the header, the `locals` block, the always-on
-   resources, and the compliance-conditional section when present. Keep the Remote State
-   section: `main.tf`'s active S3 backend and the README bootstrap both depend on
-   `aws_s3_bucket.tfstate` and `aws_dynamodb_table.tfstate_lock`, and nothing else
-   declares them. Deleting the whole file removes the backend's producers.
+1. **In `terraform/baseline.tf`, delete everything outside the
+   `########## Remote State` / `########## End Remote State` markers** — the header, the
+   `locals` block, the always-on resources, and the whole
+   `########## Compliance-Conditional` … `########## End Compliance-Conditional` section
+   when present (its Config bucket lifecycle reads `local.cloudtrail_retention_days`, so
+   leaving it behind without the `locals` block does not plan, and leaving it behind at all
+   is not an opt-out). Keep only the Remote State section: `main.tf`'s active S3 backend
+   and the README bootstrap both depend on `aws_s3_bucket.tfstate` and
+   `aws_dynamodb_table.tfstate_lock`, and nothing else declares them. Deleting the whole
+   file removes the backend's producers.
 2. **Remove `operations_email`, `billing_email`, and `security_email`** from
    `variables.tf` and their rows from `terraform.tfvars.example`. They have no defaults,
    so left in place `terraform plan` fails on them even though nothing references them;
@@ -251,8 +258,9 @@ root that does not plan:
 Write this procedure, as three numbered steps, into `terraform/README.md` next to the
 bootstrap section; `generate-artifacts-docs.md` points the runbook's Prerequisites at it.
 The emitter keeps the procedure valid by construction: the Remote State section is
-self-contained (item 6), and the three contact variables are referenced only inside
-`baseline.tf` (Step 2) — never from `security.tf`, a domain file, or an output.
+self-contained and is always the last section of the file, after the compliance-conditional
+section when one exists (items 6–7), and the three contact variables are referenced only
+inside `baseline.tf` (Step 2) — never from `security.tf`, a domain file, or an output.
 
 ## Step 2: variables.tf + tfvars.example + .gitignore
 
@@ -341,7 +349,10 @@ For each domain with services in the manifest, populate resource attributes from
   and one `aws_elastic_beanstalk_environment`, resolving `solution_stack_name` with a
   `data "aws_elastic_beanstalk_solution_stack"` source (do not paste a human-readable
   platform label). Emit the EB instance profile it references (`aws_iam_role` +
-  `aws_iam_instance_profile` + `AWSElasticBeanstalkWebTier`). Emit `setting` blocks for
+  `aws_iam_instance_profile` + an `aws_iam_role_policy_attachment` whose `policy_arn` is
+  `"arn:${data.aws_partition.current.partition}:iam::aws:policy/AWSElasticBeanstalkWebTier"`
+  — partition-derived like the Config role in Step 1.5, never a literal `arn:aws:`, so a
+  `fedramp` App Service design resolves to `arn:aws-us-gov:`). Emit `setting` blocks for
   IamInstanceProfile, SecurityGroups, InstanceType, EnvironmentType, VPCId/Subnets, and
   (LoadBalanced) `LoadBalancerType = application`.
 - **Networking:** emit VPC/subnets/SGs from the design; wire an ALB only if the design has
@@ -392,14 +403,20 @@ Description on every output.
       mention Trusted Advisor.
 - [ ] The state bucket and lock table are not also declared in `security.tf`.
 - [ ] The opt-out holds by construction: `baseline.tf`'s remote-state resources sit inside
-      the `########## Remote State` / `########## End Remote State` markers and reference
-      neither `local.baseline_tags` nor any `var.*_email`; `var.operations_email`,
+      the `########## Remote State` / `########## End Remote State` markers, that section is
+      the last thing in the file (the `########## End Compliance-Conditional ##########`
+      marker, when present, precedes `########## Remote State`; nothing follows
+      `########## End Remote State ##########`), and the section references neither
+      `local.baseline_tags`, `local.cloudtrail_retention_days`, nor any `var.*_email`;
+      `var.operations_email`,
       `var.billing_email`, and `var.security_email` appear in no file other than
       `baseline.tf` (and their declarations in `variables.tf`); `terraform/README.md`
       carries the three-step opt-out next to the bootstrap section.
 - [ ] `main.tf` declares `data "aws_partition" "current"`, and no `.tf` file contains a
       literal `arn:aws:` for an AWS-managed policy — the Config role attachment reads
-      `arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWS_ConfigRole`.
+      `arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWS_ConfigRole`
+      and the Elastic Beanstalk instance-profile attachment, when emitted, reads
+      `arn:${data.aws_partition.current.partition}:iam::aws:policy/AWSElasticBeanstalkWebTier`.
 - [ ] When `aws-design.json` `services[]` is empty (every resource deferred or skipped), the
       output is the core files plus `baseline.tf`, `aws_budgets_budget.monthly_spend` is
       `"50"` (Balanced total is 0), and no domain file was invented.

@@ -80,7 +80,8 @@ Confirm the case first, then run every part below with an empty service set:
   baseline includes them, so the comparison is not read as a saving.
 - **Parts 7 and 8 run normally.** `service_count` is `0` and `deferred_count` is
   the whole estate; the deferrals raise the tier as they always do. The
-  recommendation is never `go` here — `conditional_go` with the deferral
+  recommendation is never `go` here — Part 8 soft trigger 9 fires on the empty
+  `services[]`, so the derivation yields `conditional_go` with the deferral
   condition, or `defer_for_evidence` if a hard trigger fires.
 - **The decision gate is still presented** (`estimate-assemble.md` Step 2), with
   the pack's `$0` clause replaced by the deferral sentence. Option C is offered:
@@ -837,6 +838,7 @@ services, and the AWS-side estimate can almost always be produced. Prefer
 | 6 | The pricing cache is past its own staleness window                     | "Refresh pricing before treating the delta as decision-grade"                                             |
 | 7 | `licensing._fired` and the Windows licence cost is not in the estimate | "Confirm the Windows licensing basis — it is the line most likely to move the total"                      |
 | 8 | The right-sizing delta is `$0` for want of utilization data            | "Supply utilization data to see what right-sizing is worth; today the delta reflects declared waste only" |
+| 9 | `services[]` is empty — every resource deferred or skipped (Step 1 § The all-deferred design; `all_services_deferred` fired) | "The AWS total is the account baseline only (`baseline.tf`: CloudTrail, GuardDuty, the `$50` budget floor); the deferred workloads' AWS cost is unestimated until a specialist designs them" |
 
 **Derivation:**
 
