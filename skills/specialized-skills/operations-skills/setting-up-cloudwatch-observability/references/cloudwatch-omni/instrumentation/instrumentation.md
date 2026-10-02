@@ -2,7 +2,7 @@
 
 Instrument an application that is **not yet instrumented** so it emits OpenTelemetry traces and metrics, using the AWS Distro for OpenTelemetry (ADOT) auto-instrumentation SDKs. This is plain OTel instrumentation — the ADOT SDK is wired into the workload and exports over OTLP to the SDK's default endpoint.
 
-**Before you start:** confirm a Space exists in the target Region (`aws cloudwatchomni list-spaces --region <region>`); if none, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering telemetry nowhere the customer can see.
+**Before you start:** confirm a Space exists in the target Region. `list-spaces` is account-global (the `--region` flag only selects the endpoint; the response lists every Space in the account, each with its own `region`), so filter to the Region rather than trusting a non-empty list: `aws cloudwatchomni list-spaces --region <region> --query "items[?region=='<region>']"`. If that filtered list is empty, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering telemetry nowhere the customer can see.
 
 **Never modify application source code** (`.py`, `.js`, `.ts`, `.java`, `.cs`). Only edit infrastructure-as-code, Dockerfiles, CI/CD workflows, dependency files, and deployment manifests. Make the minimum change needed and preserve existing configuration. Present changes for the user to review; do not run `terraform apply`, `cdk deploy`, `kubectl apply`, `helm install`/`helm upgrade`, `kubectl annotate`, `kubectl delete`, or `aws ecs update-service` automatically. That applies to the collector step too: some of it is imperative commands rather than a diff, and those still belong to the user.
 
@@ -25,7 +25,7 @@ Do not start down this path unprompted — instrumentation alone is a complete a
 
 ## Do NOT add these
 
-These belong to CloudWatch Application Signals and must not appear in an Omni instrumentation change. If the user explicitly wants Application Signals instead, stop and route to the **aws-observability** skill.
+These belong to CloudWatch Application Signals and must not appear in an Omni instrumentation change. If the user explicitly wants Application Signals instead, stop and switch to the sibling CloudWatch path in this same skill: `references/cloudwatch/application-signals-onboarding.md`, then the matching `references/cloudwatch/appsignals-guides/<platform>-<language>.md`. That is a folder switch, not a skill switch — do not hand the request to **aws-observability**, which holds no onboarding procedure.
 
 - `OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true`, `OTEL_AWS_APPLICATION_SIGNALS_EXPORTER_ENDPOINT`
 - `OTEL_AWS_SERVICE_EVENTS_*` (git/deployment metadata, `PACKAGES_INCLUDE`)
