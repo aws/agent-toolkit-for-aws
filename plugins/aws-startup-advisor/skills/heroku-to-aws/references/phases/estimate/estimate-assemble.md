@@ -187,7 +187,7 @@ Phase 4 of 6 complete (Estimate). Remaining: Generate (+ optional Feedback).
 | Assumed | Value | What it decides / what changing it does |
 | --- | --- | --- |
 | Migration approach | full cutover | one downtime event; "data-first" moves the DB first and keeps Heroku running longer (adds dual-run cost) |
-| Database HA | single-AZ (standard-0 has no follower) | "multi-AZ" adds a standby, ~2x the RDS line |
+| Database HA | multi-AZ (matches your availability answer; your standard-0 plan has no follower today) | "single-AZ" matches the current plan and roughly halves the RDS line |
 | Cost posture | balanced | "optimized" assumes reservations/Spot; "premium" prices max resilience |
 | Container registry | ECR | — |
 | DB migration method | pg_dump/restore (~2 GB) | confirmed before Generate — DMS for larger databases shortens the outage |
@@ -222,11 +222,59 @@ assumed.
 - If the row is a workshop knob (region, single-AZ database, compute target,
   Graviton), route it through option **B** — the sidebar already reprices those
   side by side.
-- Otherwise: write the user's value to the field, set `sources.<field>` to
-  `"user"`, move the question ID from `metadata.questions_defaulted` to
-  `metadata.questions_asked`, mark `phases.design` and `phases.estimate` pending
-  via the Phase Status Update Protocol, re-run Design → Estimate, and re-present
-  this gate. Never hand-edit `aws-design.json` or `estimation-infra.json`.
+- Otherwise, the correction is a late answer to a Clarify question and runs
+  the **same question contract** the interview would have run — a field-only
+  write is not enough:
+  1. **Interpret through the catalog.** Look up the question in
+     `clarify-interview.md` § Question Catalog. Validate the value against its
+     **Valid options** (reject and re-prompt on mismatch, as interview Step 3c
+     does). Write **every** field the matching **Interpret** line sets, and run
+     any follow-up it requires before moving on — e.g. "data-first" on Q6b
+     (`migration_approach: "interim_cutover_data_first"`) MUST ask the target
+     exit date, validate it as a future ISO 8601 date, and set
+     `target_exit_date`, `interim_cutover: true`, and `ktlo_warning`; the
+     reverse correction (data-first → full cutover) sets `interim_cutover:
+     false` and removes `target_exit_date` / `ktlo_warning` (schema rule 4:
+     only non-null keys are written).
+     Generate selects interim procedures from `migration_approach` alone, so a
+     data-first answer with no exit date is never a valid state.
+  2. **Record provenance.** Set `sources.<QID>` to `"user"` and move the ID from
+     `metadata.questions_defaulted` to `metadata.questions_asked`. Set
+     `metadata.timestamp` to now.
+  3. **Re-run the Clarify gate.** Run `clarify-assemble.md` § Validation
+     Checklist on the updated `preferences.json` (re-read from disk) and stop on
+     any failure — do not reprice an artifact Clarify would have rejected.
+     Artifact-only: `phases.clarify` stays `"completed"`, no `HANDOFF_OK` is
+     emitted, no phase breadcrumb is printed.
+  4. **Reprice.** Mark `phases.design` and `phases.estimate` pending via the
+     Phase Status Update Protocol, re-run Design → Estimate, and re-present this
+     gate. Never hand-edit `aws-design.json` or `estimation-infra.json`.
+  5. **Rebase the scenario store (when `scenarios/index.json` exists).** This
+     gate is also reached after a workshop has saved scenarios, and
+     `workshop-invariants.md` § 4 requires the working tree to equal
+     `index.active_scenario_id`. A non-knob correction changes the **base** every
+     scenario shares (`workshop-refresh.md` § 3 leaves non-knob fields
+     untouched, so scenarios differ only by their `preferences_subset` knobs) —
+     it is not a new scenario. Rebase the store in place rather than leaving it
+     split across two bases:
+     - For the **active** scenario: overwrite its three copies
+       (`scenarios/{id}.preferences.json` / `.aws-design.json` /
+       `.estimation-infra.json`) with the new working-tree artifacts.
+     - For **every other** scenario (baseline first): apply the same non-knob
+       field change(s) to its saved preferences copy, swap that copy into the
+       working tree, run inner Design → Estimate per `workshop-refresh.md`
+       § Inner runs (artifact-only), and copy the three working-tree artifacts
+       back into that scenario's copies. After the last one, restore the working
+       tree from the active scenario's three copies.
+     - For each rebased manifest, recompute `preferences_fingerprint` and
+       `aws_design_fingerprint` and rewrite `estimation_summary` from its new
+       `estimation-infra.json` copy; leave `scenario_id`, `label`, `created_at`,
+       `source`, and `preferences_subset` unchanged (knob-only diffs are
+       unaffected by a non-knob field). Do not allocate a new scenario or change
+       `active_scenario_id`.
+     - Say so in one line: "Repricing [N] saved what-if scenario(s) with this
+       change too, so the comparison stays like-for-like." The main report and
+       its what-if comparison row then read the same active estimate.
 
 **Confirm execution choices (option C only, before `run_mode` is written):**
 `metadata.questions_deferred_to_generate` lists the questions Clarify defaulted
