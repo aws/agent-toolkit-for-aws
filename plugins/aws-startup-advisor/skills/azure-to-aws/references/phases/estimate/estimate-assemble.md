@@ -84,6 +84,13 @@ Rules for the pack itself:
 - **When the right-sizing delta is `$0`**, replace that clause with the reason
   rather than printing "saves $0" — e.g. "no utilization data, so right-sizing
   reflects declared waste only". A bare `$0` reads as a broken calculation.
+- **When `services[]` is empty (the all-deferred design, `estimate-infra.md`
+  Step 1)**, both totals are `$0` and the pack must say what that is: replace the
+  cost line with "Est. AWS monthly: account baseline only — every discovered
+  resource is deferred to a specialist, so no workload cost is estimated", keep
+  the "Deferred to specialists" line (it is the whole estate), and still offer
+  option C — Generate's baseline-only output (`baseline.tf` plus the core files)
+  is the deliverable for this estate. Never present the `$0` as a saving.
 - **At most one data-justified scenario hint.** When a material assumption was
   defaulted rather than confirmed — most often `data.availability`, where
   Multi-AZ roughly doubles the database line — append: "Suggestion: we assumed

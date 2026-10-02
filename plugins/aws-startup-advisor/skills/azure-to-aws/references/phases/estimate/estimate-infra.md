@@ -37,9 +37,9 @@ Two of its steps fire on nearly every Azure run, so expect them:
 
 ## Step 1: Prerequisites
 
-The entry gate (design completed, inputs present and valid, non-empty
-`services[]`) is enforced by this phase's `_preconditions` per `INTERPRETER.md`
-§ Gate protocol; it has already passed. Then read:
+The entry gate (design completed, inputs present and valid, `services[]` present
+and every entry well-formed) is enforced by this phase's `_preconditions` per
+`INTERPRETER.md` § Gate protocol; it has already passed. Then read:
 
 1. `$MIGRATION_DIR/aws-design.json` — `services[]`, `deferred[]`, `warnings[]`,
    `target_region`, `clusters[]`.
@@ -47,6 +47,44 @@ The entry gate (design completed, inputs present and valid, non-empty
    and `licensing` (whose `_fired` flag decides Part 3's delta line).
 3. `$MIGRATION_DIR/azure-resource-inventory.json` — the source SKUs the 1:1 lift
    is priced from, plus `iac_metadata`.
+
+### The all-deferred design
+
+`design.md` allows `services[]` to be **empty** when every discovered resource was
+deferred to a specialist or skipped — a Synapse-and-Managed-Instance-only estate
+is the typical shape. That design is valid and it reaches this phase, so this
+phase must carry it through rather than stopping: Generate requires a completed
+Estimate, and its baseline-only path (core files plus `baseline.tf`) is the right
+output for exactly this estate.
+
+Confirm the case first, then run every part below with an empty service set:
+
+- **Confirm it is accounted for.** Every `azure-resource-inventory.json` resource
+  must appear in `deferred[]` or in a `warnings[]` skip entry. One that appears in
+  neither is a dropped resource, not a deferral — `GATE_FAIL` with the
+  `_preconditions` wording; never price around it.
+- **Part 2 prices nothing.** `projected_costs.breakdown` carries no service lines.
+  The estate-wide lines still appear so a reader sees they were considered: the
+  Part 2C observability line and both Part 2C-2 standing lines are emitted at `$0`
+  with a `basis` naming the all-deferred case ("no generated service; every
+  resource is deferred to a specialist"). Both totals are `0`, every scenario key
+  is `0`, `is_floor` is `false` (nothing was excluded — nothing was priced), and
+  `rightsizing_delta.explanation` says why the delta is `0`: "every discovered
+  resource is deferred; there is no AWS-side line to right-size."
+- **Say what the `$0` is.** Emit the `all_services_deferred` warning (vocabulary
+  below) and carry its sentence into `recommendation.conditions` and
+  `would_flip_if[]`: the AWS total is the account baseline only — the
+  `baseline.tf` controls Generate emits (CloudTrail, GuardDuty, the `$50` budget
+  floor) — and the deferred workloads' AWS cost is unestimated until a specialist
+  designs them. `deferred_bears_azure_cost` still fires per entry when the Azure
+  baseline includes them, so the comparison is not read as a saving.
+- **Parts 7 and 8 run normally.** `service_count` is `0` and `deferred_count` is
+  the whole estate; the deferrals raise the tier as they always do. The
+  recommendation is never `go` here — `conditional_go` with the deferral
+  condition, or `defer_for_evidence` if a hard trigger fires.
+- **The decision gate is still presented** (`estimate-assemble.md` Step 2), with
+  the pack's `$0` clause replaced by the deferral sentence. Option C is offered:
+  Generate's baseline-only output is a real deliverable for this estate.
 
 ---
 
@@ -869,6 +907,7 @@ terms: add a row here first, then use it.**
 | `declared_waste_found`              | The IaC declares waste (an idle plan, an unattached disk)                                                                           |
 | `licensing_cost_absent`             | `licensing._fired` and the Windows rate is unavailable                                                                              |
 | `deferred_bears_azure_cost`         | A `deferred[]` entry is cost-bearing on Azure, so the baseline includes it and the AWS side does not                                |
+| `all_services_deferred`             | `services[]` is empty because every resource was deferred or skipped; both totals are `0` and cover the account baseline only (Step 1 § The all-deferred design) |
 | `compliance_unconfirmed`            | Clarify asked compliance and the recorded value is `["unknown"]` (or still null); catalog treated like none, report caveat required |
 | `compliance_never_asked`            | **Legacy.** Pre-Q-A1c frozen artifacts only. Do not emit on a live run after Clarify records a compliance row                       |
 
