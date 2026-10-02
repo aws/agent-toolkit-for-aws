@@ -42,7 +42,7 @@ Use the **Recommendation Impact** row for the selected answer from the category 
   "design_constraints": {
     "<key>": {
       "value": "<answer or default>",
-      "chosen_by": "user|default|extracted",
+      "chosen_by": "user|default|extracted|derived",
       "prompt": "<question text shown>",
       "design_consequence": "<one line: what this decides>",
       "question_id": "<Qn — optional>",

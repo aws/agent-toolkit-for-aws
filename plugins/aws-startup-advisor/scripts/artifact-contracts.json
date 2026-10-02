@@ -1,5 +1,5 @@
 {
-  "_what_this_is": "Maps each migration artifact (by file name, fnmatch glob) to the contract document that defines it. Read by scripts/validate-artifacts.py. 'shape' points at a markdown document whose JSON/JSONC example block IS the contract; 'root_heading' selects which block (prefix match on the heading text, backticks ignored); 'sections' maps sub-section headings to the key path they refine when the heading's own backticked token is not the path; 'json_schema' points at a real JSON Schema. Both may be present — the schema is authoritative where it speaks, the shape catches keys the schema leaves open.",
+  "_what_this_is": "Maps each migration artifact (by file name, fnmatch glob) to the contract document that defines it. Read by scripts/validate-artifacts.py. 'shape' points at a markdown document whose JSON/JSONC example block IS the contract; 'root_heading' selects which block (exact or word-boundary prefix match on the heading text, backticks ignored — 'graviton' matches '`graviton` block …' but not '`graviton_profile` …'); 'sections' maps sub-section headings to the key path they refine when the heading's own backticked token is not the path; 'json_schema' points at a real JSON Schema. Both may be present — the schema is authoritative where it speaks, the shape catches keys the schema leaves open.",
   "fixture_prefixes": {
     "gcp-": "gcp-to-aws",
     "heroku-": "heroku-to-aws",
@@ -72,13 +72,13 @@
         "shape": "skills/gcp-to-aws/references/shared/schema-estimate-infra.md",
         "root_heading": "estimation-infra.json schema",
         "sections": {
-          "Observability Entry in": "projected_costs.breakdown[]",
-          "Security Baseline Entries in": "projected_costs.breakdown[]",
+          "Cost tiers": "projected_costs.scenario_deltas",
+          "Observability Entry in": "projected_costs.breakdown.observability",
+          "@L373": "projected_costs.breakdown.security_baseline",
+          "@L390": "projected_costs.breakdown.security_baseline_compliance",
           "architecture_comparison": "architecture_comparison"
         },
-        "ignore_headings": [
-          "Cost tiers"
-        ]
+        "_sections_why": "`projected_costs.breakdown` is a keyed object (shared estimation-infra.schema.json; emit-plan-json.py and validate-migration-report.py read it by key), so the Observability / Security Baseline sections document the named `observability`, `security_baseline` and `security_baseline_compliance` members — not items of an array. The two Security Baseline blocks share one heading, so line anchors tell them apart (the first is `security_baseline`, the second — with `emission_reason` — is `security_baseline_compliance`). 'Cost tiers' carries the `scenario_deltas` block that estimate-infra.md requires alongside the three tiers."
       },
       "scenarios/scenario-NNN.preferences.json": {
         "shape": "skills/gcp-to-aws/references/shared/schema-preferences.md",
@@ -143,7 +143,11 @@
         "ignore_headings": [
           "preferences.json",
           "scenarios/index.json"
-        ]
+        ],
+        "open_paths": [
+          "preferences_subset"
+        ],
+        "_open_paths_why": "schema-workshop-scenarios.md defines `preferences_subset` as the map of dot-path knobs that differ from the baseline scenario (workshop-refresh.md step 4; workshop-invariants.md). The example shows two knobs; the workshop sheet also emits availability, database/Redis HA, compute-target and cost-optimization deltas, so the keys are the open knob vocabulary, not the two in the example."
       },
       "scenarios/scenario-NNN.preferences.json": {
         "shape": "skills/heroku-to-aws/references/phases/clarify/clarify-assemble.md",
@@ -222,8 +226,9 @@
         "extra_shapes": [
           {
             "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
-            "heading": "graviton",
-            "path": "services[].graviton"
+            "heading": "graviton block",
+            "path": "services[].graviton",
+            "_heading_why": "schema-graviton.md has both '`graviton_profile` (emitted by Discover…)' and '`graviton` block (added to each compute service…)'. Heading matches end on a word boundary so 'graviton' alone no longer selects graviton_profile, but the full 'graviton block' names the design section explicitly."
           }
         ]
       },
