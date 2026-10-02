@@ -473,16 +473,17 @@ output "migration_summary" {
 Add per-service outputs for connection information:
 
 ```hcl
-# Compute outputs
-output "alb_dns_name" {
-  description = "ALB DNS name for Fargate web traffic"
-  value       = aws_lb.web.dns_name
+# Compute outputs — one per web app, suffixed with <app_sanitized>.
+# Fargate web outputs: emit once per `alb:{heroku_app}:web` service.
+output "alb_dns_name_<app_sanitized>" {
+  description = "ALB DNS name for <heroku_app>'s Fargate web traffic"
+  value       = aws_lb.<app_sanitized>_web.dns_name
 }
 
-# EB web outputs: emit only when a web process exists. Worker-only apps have no public EB CNAME.
-output "eb_environment_url" {
-  description = "Elastic Beanstalk web environment URL"
-  value       = aws_elastic_beanstalk_environment.<app_name>_web.cname
+# EB web outputs: emit once per `eb:{heroku_app}:web` service, only when a web process exists. Worker-only apps have no public EB CNAME.
+output "eb_environment_url_<app_sanitized>" {
+  description = "Elastic Beanstalk web environment CNAME for <heroku_app>"
+  value       = aws_elastic_beanstalk_environment.<app_sanitized>_web.cname
 }
 
 # Database outputs
@@ -531,6 +532,8 @@ output "dns_cutover" {
 ```
 
 Only emit outputs for services present in `aws-design.json`. Mark connection strings as `sensitive = true`.
+
+Compute outputs are per web app and reference the Step 6 / Step 6.5 resource names (`aws_lb.<app_sanitized>_web`, `aws_elastic_beanstalk_environment.<app_sanitized>_web`) — never a shared `alb_dns_name` / `eb_environment_url`, so a production/staging pair gets two distinct outputs and `generate-docs.md` Step 0 `dns_hostnames[].output_name` names each hostname's own.
 
 ---
 
