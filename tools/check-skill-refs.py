@@ -25,7 +25,9 @@ Not references (skipped): run-artifact paths (`$MIGRATION_DIR/…`, `$RUN_DIR/�
 (`<slug>`, `{name}`, `*`, `NNN`), and URLs.
 
 Resolution order for a bare path `P` found in `skills/<skill>/…/file.md`:
-  1. explicit prefix → plugin root / skill root / gcp-to-aws root / referencing file's dir
+  1. explicit prefix → plugin root / skill root / gcp-to-aws root / referencing file's dir.
+     An explicit prefix is authoritative: the agent runs `<SKILL_BASE>/scripts/x.py` as
+     written, so none of the fallbacks below apply to it.
   2. `skills/<skill>/P`                     (skill-relative — the documented convention)
   3. `<dir of referencing file>/P`          (file-relative)
   4. `skills/<skill>/references/P`          (agent-advisor short forms: phases/, shared/, design-refs/)
@@ -138,14 +140,18 @@ def _candidates(prefix: str, path: str, source: Path, plugin: Path) -> List[Path
         for _ in range(p.count("../")):
             up = up.parent
         cands.append(up / path)
-    if not cands or not p:
-        if skill is not None:
-            cands.append(skill / path)
-        cands.append(here / path)
-        if skill is not None:
-            cands.append(skill / "references" / path)
-        cands.append(plugin / path)
-        cands.append(REPO_ROOT / path)
+    if cands:
+        # An explicit base (`<SKILL_BASE>/`, `$PLUGIN_ROOT/`, `$GCP_BASE/`, `./`, `../`) names
+        # the location. The agent runs the command as written, so a same-named file under
+        # another skill does not make the named one exist — no cross-skill fallbacks here.
+        return cands
+    if skill is not None:
+        cands.append(skill / path)
+    cands.append(here / path)
+    if skill is not None:
+        cands.append(skill / "references" / path)
+    cands.append(plugin / path)
+    cands.append(REPO_ROOT / path)
     src = str(source)
     if _LIBRARY_ORIGIN_RE.search(src):
         shared = plugin / "skills" / "shared"
@@ -204,8 +210,11 @@ def scan_file(source: Path, plugin: Path) -> List[Ref]:
         line_wo_urls = _URL_RE.sub("", line)
         for m in _TOKEN_RE.finditer(line_wo_urls):
             start = m.start()
-            # what immediately precedes the token decides whether it is a repo path
-            before = line_wo_urls[max(0, start - 40):start]
+            # Only the token's own contiguous prefix decides whether it is a run-artifact
+            # path (`<run_dir>/references/x.md`, `.migration/<run>/scripts/y.sh`). An
+            # earlier, separate token on the line — "write to `$MIGRATION_DIR/` per
+            # `references/shared/schema.md`" — says nothing about this one.
+            before = re.search(r"[^\s`]*$", line_wo_urls[:start]).group(0)
             full = m.group(0)
             if _SKIP_PREFIX_RE.search(before + full[: len(m.group("prefix"))]):
                 continue

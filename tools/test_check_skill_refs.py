@@ -136,6 +136,55 @@ def test_agents_resolve_only_against_llm_to_bedrock(tmp_path: Path):
     assert "llm-to-bedrock" in str(got["<BDD_DIR>/references/openai-to-bedrock.md"])
 
 
+def test_run_artifact_skip_is_limited_to_the_current_token(tmp_path: Path):
+    """Review finding on #387: a 40-character lookbehind let an earlier `$MIGRATION_DIR/`
+    token swallow the separate schema reference that followed it (azure design-ai.md:197),
+    so a renamed schema file was never reported."""
+    plugin = _plugin(tmp_path)
+    missing = "references/shared/schema-design-aws-ai.md"   # not in the fixture tree
+    got = _refs(plugin, "alpha",
+                f"Alone: `{missing}`.\n"
+                f"Write `aws-design-ai.json` to `$MIGRATION_DIR/` per `{missing}`.\n"
+                f"Emit `$MIGRATION_DIR/scripts/02-migrate-data.sh`\n`{missing}`\n"
+                f"`<run_dir>/{missing}` and `.migration/<run>/{missing}` and `$MIGRATION_DIR/{missing}`",
+                name="design-ai.md")
+    # the schema reference is seen (and MISSING) alone, after an output path, and after a
+    # newline; the genuinely run-artifact-prefixed forms are still skipped
+    assert got == {missing: False}
+    f = plugin / "skills" / "alpha" / "design-ai.md"
+    assert sorted(r.line for r in csr.scan_file(f, plugin)) == [1, 2, 4]
+
+
+def test_explicit_base_prefixes_do_not_fall_back_to_other_skills(tmp_path: Path):
+    """Review finding on #387: library-origin and gcp-dependent fallbacks were appended even
+    after an explicit base named the target, so `<SKILL_BASE>/scripts/validate.py` with no
+    helper under alpha resolved to beta's copy. The command as written would still fail."""
+    plugin = _plugin(tmp_path)
+    (plugin / "skills" / "beta" / "scripts").mkdir()
+    (plugin / "skills" / "beta" / "scripts" / "validate.py").write_text("x")
+    (plugin / "skills" / "alpha" / "references" / "shared").mkdir()
+    contract = plugin / "skills" / "alpha" / "references" / "shared" / "contract.md"   # library origin
+    contract.write_text("run `<SKILL_BASE>/scripts/validate.py`, `$PLUGIN_ROOT/scripts/validate.py`, "
+                        "`$GCP_BASE/scripts/validate.py`, `./scripts/validate.py`; bare `scripts/validate.py`; "
+                        "see `<SKILL_BASE>/../gcp-to-aws/SKILL.md` and `<SKILL_BASE>/scripts/tool.py`")
+    (plugin / "skills" / "gcp-to-aws" / "SKILL.md").write_text("x")
+    got = {r.raw: r.resolved for r in csr.scan_file(contract, plugin)}
+    assert got["<SKILL_BASE>/scripts/validate.py"] is None
+    assert got["$PLUGIN_ROOT/scripts/validate.py"] is None
+    assert got["$GCP_BASE/scripts/validate.py"] is None
+    assert got["./scripts/validate.py"] is None
+    # an unqualified reference from a library-origin file may still mean any vendoring skill
+    assert got["scripts/validate.py"] == (plugin / "skills" / "beta" / "scripts" / "validate.py").resolve()
+    # explicit bases that DO name an existing file keep resolving, including `../` traversal
+    assert got["<SKILL_BASE>/../gcp-to-aws/SKILL.md"] == (plugin / "skills" / "gcp-to-aws" / "SKILL.md").resolve()
+    assert got["<SKILL_BASE>/scripts/tool.py"] == (plugin / "skills" / "alpha" / "scripts" / "tool.py").resolve()
+    # a gcp dependent naming `$GCP_BASE/…` resolves there and only there
+    (plugin / "skills" / "agent-advisor" / "references").mkdir()
+    (plugin / "skills" / "agent-advisor" / "references" / "ai.md").write_text("x")
+    got2 = _refs(plugin, "agent-advisor", "`$GCP_BASE/references/design-refs/ai.md` `$GCP_BASE/references/ai.md`")
+    assert got2 == {"$GCP_BASE/references/design-refs/ai.md": True, "$GCP_BASE/references/ai.md": False}
+
+
 def test_baseline_ignore_vs_entries_and_stale(tmp_path: Path):
     plugin = _plugin(tmp_path)
     f = plugin / "skills" / "alpha" / "SKILL.md"
