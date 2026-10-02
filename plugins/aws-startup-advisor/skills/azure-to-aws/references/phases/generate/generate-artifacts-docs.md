@@ -39,7 +39,11 @@ Required sections, in order:
    fill-once tfvars values (region, project, `operations_email`, `billing_email`,
    `security_email`, any Secrets Manager values). State that `baseline.tf` is the account
    security baseline (CloudTrail, GuardDuty, budget alerts, and Config + Security Hub when
-   a framework was declared) and that deleting that file before apply is how to opt out.
+   a framework was declared) and point at the three-step opt-out in `terraform/README.md`
+   (delete everything above the `########## Remote State` marker in `baseline.tf`, keep
+   that section because the backend depends on it, and remove the three contact variables
+   from `variables.tf` and the tfvars example) — never say "delete the file", which
+   removes the state bucket and lock table and leaves three required variables unset.
    If a Windows
    estate, name the AWS Application Migration Service (MGN) prerequisite; if an
    **Azure Edition Windows Server** image was detected, state the hard blocker plainly

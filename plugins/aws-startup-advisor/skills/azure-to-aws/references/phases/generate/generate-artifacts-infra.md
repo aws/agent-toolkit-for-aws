@@ -34,8 +34,10 @@ the value stays where it was.
 Read from `$MIGRATION_DIR/`:
 
 - `aws-design.json` (REQUIRED) — `services[]` (per-resource mappings with `aws_service`,
-  `aws_config`, `confidence`, `azure_type`), `clusters[]` (workload grouping + tier),
-  `deferred[]`, `target_region`, `cpu_architecture`.
+  `aws_config`, `confidence`, `azure_type`; **may be empty** when every discovered resource
+  was deferred or skipped — `design.md` allows that, Estimate carries it through, and this
+  fragment then emits the core files plus `baseline.tf` only), `clusters[]` (workload
+  grouping + tier), `deferred[]`, `target_region`, `cpu_architecture`.
 - `preferences.json` (REQUIRED) — `design_constraints`, `data.availability`, licensing,
   identity, environment/region.
 - `estimation-infra.json` (REQUIRED) — for the budget limit and the cost-tier README note.
@@ -52,7 +54,7 @@ have services in `aws-design.json`:
 | File                       | Domain            | Contains                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `main.tf`                  | core              | provider, S3 backend, data sources, cost-tier header                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `baseline.tf`              | security baseline | Account-wide security baseline: alternate contacts, password policy, S3 public-access block, EBS encryption, Access Analyzer, IMDSv2 default, CloudTrail + S3 log bucket, AWS Budget, GuardDuty, and the remote-state bucket + lock table. Plus Config + Security Hub when `design_constraints.compliance` contains soc2, pci, hipaa, or fedramp. Always emitted, including when the design has no infrastructure clusters. Delete this file before apply to skip it. |
+| `baseline.tf`              | security baseline | Account-wide security baseline: alternate contacts, password policy, S3 public-access block, EBS encryption, Access Analyzer, IMDSv2 default, CloudTrail + S3 log bucket, AWS Budget, GuardDuty, and the remote-state bucket + lock table. Plus Config + Security Hub when `design_constraints.compliance` contains soc2, pci, hipaa, or fedramp. Always emitted, including when the design has no infrastructure clusters. Opting out is the three-step procedure in Step 1.5 § "Opting out of the baseline" — deleting the whole file alone breaks the root. |
 | `variables.tf`             | core              | all input variables (types, defaults, placeholder-guard validation)                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `outputs.tf`               | core              | key resource outputs + `migration_summary`                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `.gitignore`               | core              | tfstate/tfvars ignores                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -103,19 +105,26 @@ Rules:
 - `terraform` block: `required_version >= 1.5.0`, `hashicorp/aws ~> 5.80`, and an
   **active** (not commented-out) S3 backend block (bucket/key/region/dynamodb_table
   with `# TODO` substitution comments). The state bucket and lock table are created by
-  `baseline.tf` (`aws_s3_bucket.tfstate`, `aws_dynamodb_table.tfstate_lock`). README
-  documents the two-step `init -backend=false` bootstrap that targets those resources.
+  the delimited **Remote State** section of `baseline.tf` (`aws_s3_bucket.tfstate`,
+  `aws_dynamodb_table.tfstate_lock`). README documents the two-step `init -backend=false`
+  bootstrap that targets those resources, and the baseline opt-out procedure (Step 1.5
+  § "Opting out of the baseline"), which keeps that section.
 - `provider "aws"`: `region = var.aws_region`, `default_tags` with Project,
   Environment, ManagedBy, MigrationId.
-- Data sources: `aws_caller_identity`, `aws_region`, `aws_availability_zones`.
+- Data sources: `aws_caller_identity`, `aws_region`, `aws_availability_zones`,
+  `aws_partition` (`data "aws_partition" "current" {}` — every AWS-managed policy ARN is
+  built from `data.aws_partition.current.partition`, never a literal `arn:aws:`, so a
+  `fedramp` design that targets GovCloud resolves to `arn:aws-us-gov:`).
 
 ## Step 1.5: Generate baseline.tf
 
 Always emitted, including when `aws-design.json` has no infrastructure clusters and no
 generatable services. The baseline is workload-independent account controls. It is not
-driven by `clusters[]`. Users who do not want it delete `terraform/baseline.tf` before
-`terraform apply`. Do not probe for an existing trail, Config recorder, or Security Hub
-enrollment; collision risk is an inline comment.
+driven by `clusters[]`. Users who do not want it follow § "Opting out of the baseline"
+below — deleting the file alone is not a complete opt-out, because the file also owns the
+remote-state producers and the three contact variables have no defaults. Do not probe for
+an existing trail, Config recorder, or Security Hub enrollment; collision risk is an
+inline comment.
 
 This is the same account file `gcp-to-aws` emits. Read compliance from Azure's field,
 `preferences.json` → `design_constraints.compliance`, not from a root `compliance` key.
@@ -172,17 +181,28 @@ as no frameworks. `["unknown"]` does not add Config or Security Hub.
    - `aws_guardduty_detector.baseline` (defense-in-depth; `enable = true`;
      `finding_publishing_frequency = "FIFTEEN_MINUTES"`)
 6. **Remote state**, appended after the always-on resources (same resources GCP puts in
-   this file; do not also emit them in `security.tf`):
+   this file; do not also emit them in `security.tf`), wrapped in
+   `########## Remote State — keep this section when opting out of the baseline ##########` /
+   `########## End Remote State ##########`:
    `aws_s3_bucket.tfstate`, versioning, SSE (`aws:kms`), public-access block, and
    `aws_dynamodb_table.tfstate_lock` (`PAY_PER_REQUEST`, hash key `LockID`). Bucket name
    `${var.project_name}-${var.environment}-tfstate-${data.aws_caller_identity.current.account_id}`.
-   Lock table name `${var.project_name}-${var.environment}-tfstate-lock`. Tag with
-   `Component = "terraform-state"`.
+   Lock table name `${var.project_name}-${var.environment}-tfstate-lock`. Tag with a
+   literal `{ Component = "terraform-state" }` (the provider `default_tags` supply the
+   rest) — **not** `local.baseline_tags`, and no `var.*_email` reference, so the section
+   stands alone once everything above the marker is removed.
 7. **Compliance-conditional**, only when compliance contains `soc2`, `pci`, `hipaa`, or
    `fedramp`, wrapped in `########## Compliance-Conditional ##########` /
    `########## End Compliance-Conditional ##########`:
-   - `aws_iam_role.config` trusted by `config.amazonaws.com`, attached to
-     `arn:aws:iam::aws:policy/service-role/AWS_ConfigRole` (the underscore is required)
+   - `aws_iam_role.config` trusted by `config.amazonaws.com`, plus an
+     `aws_iam_role_policy_attachment` whose `policy_arn` is derived from the target
+     partition, never hard-coded:
+     `"arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWS_ConfigRole"`
+     (the `data "aws_partition" "current"` source is emitted in `main.tf`, Step 1). This
+     resolves to `arn:aws:…` in commercial regions and `arn:aws-us-gov:…` in GovCloud —
+     required for `fedramp`, whose region choice lands in GovCloud, where a literal
+     `arn:aws:` ARN cannot be attached. Same pattern as the GCP emitter. The underscore in
+     `AWS_ConfigRole` is required; `AWSConfigRole` is a deprecated name and fails apply.
    - `aws_config_configuration_recorder.baseline` with `all_supported = true` and
      `include_global_resource_types = true`
    - `aws_config_delivery_channel.baseline` and `aws_config_configuration_recorder_status.baseline`
@@ -208,14 +228,41 @@ as no frameworks. `["unknown"]` does not add Config or Security Hub.
 `gdpr` changes retention only. It does not add Config or Security Hub. An empty compliance
 value emits none of the `aws_config_*` or `aws_securityhub_*` resources.
 
+### Opting out of the baseline
+
+The opt-out is an operator action on the emitted root, after Generate and before
+`terraform apply`. It has three steps, and all three are needed — the first alone leaves a
+root that does not plan:
+
+1. **In `terraform/baseline.tf`, delete everything above the
+   `########## Remote State` marker** — the header, the `locals` block, the always-on
+   resources, and the compliance-conditional section when present. Keep the Remote State
+   section: `main.tf`'s active S3 backend and the README bootstrap both depend on
+   `aws_s3_bucket.tfstate` and `aws_dynamodb_table.tfstate_lock`, and nothing else
+   declares them. Deleting the whole file removes the backend's producers.
+2. **Remove `operations_email`, `billing_email`, and `security_email`** from
+   `variables.tf` and their rows from `terraform.tfvars.example`. They have no defaults,
+   so left in place `terraform plan` fails on them even though nothing references them;
+   they are referenced only from `baseline.tf`, so removing them leaves no dangling
+   `var.*`.
+3. **Leave `main.tf`, `variables.tf`'s other inputs, and the domain files untouched.**
+   `data.aws_partition.current` stays in `main.tf` whether or not Config is emitted.
+
+Write this procedure, as three numbered steps, into `terraform/README.md` next to the
+bootstrap section; `generate-artifacts-docs.md` points the runbook's Prerequisites at it.
+The emitter keeps the procedure valid by construction: the Remote State section is
+self-contained (item 6), and the three contact variables are referenced only inside
+`baseline.tf` (Step 2) — never from `security.tf`, a domain file, or an output.
+
 ## Step 2: variables.tf + tfvars.example + .gitignore
 
 - **Global vars (always):** `aws_region` (from `preferences.json` target region),
   `project_name`, `environment`, `migration_id`, and the fill-once contacts
   `operations_email`, `billing_email`, `security_email` (`type = string`, **no default**).
   Put all three in `terraform.tfvars.example` with `example.com` placeholders so the
-  placeholder guard below rejects them at plan. Removing the three variables, or deleting
-  `baseline.tf`, is how an operator opts out.
+  placeholder guard below rejects them at plan. Reference the three **only from
+  `baseline.tf`** (alternate contacts, budget subscriber) — never from a domain file or an
+  output — so the opt-out in Step 1.5 can remove them without leaving a dangling `var.*`.
 - **Per-service vars:** extract configurable values from each service's `aws_config`
   (instance classes, sizes, engine versions, capacities). Infer types; use `aws_config`
   values as defaults; deduplicate shared vars. Annotate each with its Azure source as a
@@ -344,6 +391,18 @@ Description on every output.
       `ACCT.EBS`, `ACCT.CT`, `ACCT.GD`, `ACCT.CFG`, `ACCT.SH`, `WKLD.EC2.01`) and does not
       mention Trusted Advisor.
 - [ ] The state bucket and lock table are not also declared in `security.tf`.
+- [ ] The opt-out holds by construction: `baseline.tf`'s remote-state resources sit inside
+      the `########## Remote State` / `########## End Remote State` markers and reference
+      neither `local.baseline_tags` nor any `var.*_email`; `var.operations_email`,
+      `var.billing_email`, and `var.security_email` appear in no file other than
+      `baseline.tf` (and their declarations in `variables.tf`); `terraform/README.md`
+      carries the three-step opt-out next to the bootstrap section.
+- [ ] `main.tf` declares `data "aws_partition" "current"`, and no `.tf` file contains a
+      literal `arn:aws:` for an AWS-managed policy — the Config role attachment reads
+      `arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWS_ConfigRole`.
+- [ ] When `aws-design.json` `services[]` is empty (every resource deferred or skipped), the
+      output is the core files plus `baseline.tf`, `aws_budgets_budget.monthly_spend` is
+      `"50"` (Balanced total is 0), and no domain file was invented.
 
 ## Step 6: Validation is the orchestrator's job (main window) — NOT this worker
 
@@ -366,7 +425,9 @@ Report generated files to the parent orchestrator. **Do NOT update `.phase-statu
 Emitters implemented, following gcp-to-aws's `generate-artifacts-infra.md` structure
 adapted to azure artifacts: generation manifest, main/variables/outputs core files with
 placeholder-guard validation, `baseline.tf` (always, including a design with no
-infrastructure clusters), per-domain files via `aws_config`, App Service Plan fan-in,
+infrastructure clusters or an empty `services[]`; partition-derived Config policy ARN; a
+self-contained Remote State section and a three-step opt-out that leaves a usable root),
+per-domain files via `aws_config`, App Service Plan fan-in,
 Secrets Manager references, x86 default, and the `tf-best-practices` authoring hand-off
 (Step 3.0). Post-write validation, the policy gate, and the `validation-report.json` write
 now live in the orchestrator (`generate.md`, main window), not this worker fragment — the
