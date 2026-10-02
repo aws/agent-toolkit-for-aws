@@ -29,10 +29,15 @@ Check `$MIGRATION_DIR/` for existing state:
 > 2. Start fresh and re-answer all questions
 
 - If 1: **Normalize legacy metadata, then** skip to the Validation Checklist (`clarify-assemble.md`) with the existing `preferences.json`. The file's answers are the user's — never re-default, re-ask, or reclassify any of them. The only field that may need rebuilding is `metadata.questions_deferred_to_generate`:
-  - **Absent** (written before the field existed): add it. For each Generate-time question that fires on this inventory — Q4; Q6c when Postgres is present; Q12d when the resolved compute plan includes EB — list the ID when its `sources` entry is `"default"` or missing (never answered → asked at the Decision gate's **[C] Generate**); leave it out when its `sources` entry is `"user"` (already answered — keep the value and provenance).
+  - **Absent** (written before the field existed): add it. For each Generate-time question that fires on this inventory — Q4; Q6c when Postgres is present; Q12d when the resolved compute plan includes EB — decide from its provenance:
+    - `sources.<QID>` is `"user"` → already answered: keep the value and provenance, do not list it.
+    - `sources.<QID>` is `"default"` → never answered: list it (asked at the Decision gate's **[C] Generate**).
+    - `sources.<QID>` is **missing and the field is absent** (the question did not fire on the run that wrote the file — e.g. Postgres has been added since) → write the field's documented default (§ Defaults Table) and `sources.<QID>: "default"`, then list it. Every listed ID must satisfy the checklist's "field at the documented default, `sources.<QID>` = `"default"`" line, so an ID is never listed with its entry still missing.
+    - **Q12d** carries its own provenance in `design_constraints.eb_deploy_method.chosen_by`; it wins over a missing `sources.Q12d`. `chosen_by: "user"` → keep the value, write `sources.Q12d: "user"` if missing, do not list. `chosen_by: "default"` → write `sources.Q12d: "default"` if missing, list it.
+    - A field holding a value with **no** `sources` entry and no `chosen_by` has no provenance. Do not guess — stop, report which field, and offer option 2 (start fresh). This is the state the Validation Checklist would have rejected anyway; failing here names the field.
   - **Present and empty**: the Decision gate's "Confirm execution choices" already ran and rewrote those `sources` entries to `"user"`. Accept as-is — do not re-list the IDs.
   - **Present and non-empty**: accept as-is.
-  This normalization rebuilds a missing index over existing answers; it writes nothing to `questions_asked` or `questions_defaulted`.
+  This normalization rebuilds a missing index over existing answers; it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
 - If 2: Delete `preferences.json`, continue to Step 1.
 
 **Case 2 — No prior state**: Continue to Step 1.
@@ -43,7 +48,7 @@ Check `$MIGRATION_DIR/` for existing state:
 
 Read `$MIGRATION_DIR/heroku-resource-inventory.json`. This artifact must exist (produced by Phase 1: Discover).
 
-**Run the Extraction Rules (Step 2 § Extraction Rules) now, before anything is shown to the user.** Extraction is a property of the inventory, not of the question flow — a question the inventory already answers must never be asked on _either_ path. On the fast path, extracted values are applied directly (recorded in `metadata.questions_skipped_extracted`, `sources.<QID>: "extracted"`); on the full flow they surface as **Detected** rows on the Assumption Sheet. Either way an extracted value is written in the catalog's field type and enum (see § Extraction Rules), and a tier-derived `database_ha` is reconciled with the Q3 answer before it is kept.
+**Run the Extraction Rules (Step 2 § Extraction Rules) now, before anything is shown to the user.** Extraction is a property of the inventory, not of the question flow — a question the inventory already answers must never be asked on _either_ path. On the fast path, extracted values are applied directly (recorded in `metadata.questions_skipped_extracted`, `sources.<QID>: "extracted"`); on the full flow they surface as **Detected** rows on the Assumption Sheet. Either way an extracted value is written in the catalog's field type and enum (see § Extraction Rules), and a tier-derived `database_ha` is reconciled with the Q3 answer before it is kept — on the fast path Q3 is asked after the offer, so the offer presents database HA as a signal to check, never as a resolved answer.
 
 ### Discovery Summary
 
@@ -87,7 +92,7 @@ Compute `fast_path_question_count` from this table against the inventory and use
 
 **If fast-path eligible**, present:
 
-> "Your stack looks straightforward — [N] app(s), no Private Spaces, no Kafka. [If anything was extracted: "I already have [region / database HA / containerization] from your inventory."]
+> "Your stack looks straightforward — [N] app(s), no Private Spaces, no Kafka. [If region or containerization was extracted: "I already have [region / containerization] from your inventory."] [If a Postgres plan tier was read: "Your Postgres plan tells me about database HA today — I'll check it against the availability you want."]
 >
 > Want to use smart defaults and answer just [fast_path_question_count] questions? I'll apply documented defaults for the rest and show you what I assumed.
 >

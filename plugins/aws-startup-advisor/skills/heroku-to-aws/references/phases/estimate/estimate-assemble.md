@@ -188,7 +188,7 @@ Phase 4 of 6 complete (Estimate). Remaining: Generate (+ optional Feedback).
 | --- | --- | --- |
 | Migration approach | full cutover | one downtime event; "data-first" moves the DB first and keeps Heroku running longer (adds dual-run cost) |
 | Database HA | multi-AZ (matches your availability answer; your standard-0 plan has no follower today) | "single-AZ" matches the current plan and roughly halves the RDS line |
-| Cost posture | balanced | "optimized" assumes reservations/Spot; "premium" prices max resilience |
+| Cost posture | balanced | "aggressive" minimizes cost and accepts tighter margins; "conservative" matches current capacity and prioritizes stability |
 | Container registry | ECR | — |
 | DB migration method | pg_dump/restore (~2 GB) | confirmed before Generate — DMS for larger databases shortens the outage |
 | Maintenance window | flexible | confirmed before Generate — no cost effect |
@@ -219,9 +219,15 @@ assumed.
 
 **Handling a correction from this block:**
 
-- If the row is a workshop knob (region, single-AZ database, compute target,
-  Graviton), route it through option **B** — the sidebar already reprices those
-  side by side.
+- If the row is a **workshop knob** — any field whose path is listed in
+  `workshop-sheet.md` § Step 1 (`global.target_region`, `global.availability`,
+  `data.database_ha`, `data.redis_ha`, `design_constraints.compute_target.default`,
+  `operational.cost_optimization`, `workshop.cpu_architecture`) — route it
+  through option **B** — the sidebar already reprices those side by side, and
+  `workshop-refresh.md` § 6.4 records knob diffs in each scenario's
+  `preferences_subset`, so a knob must never be changed outside it. Database HA
+  and cost posture rows in the block above are knobs. The option **B** label
+  names only the common ones; the full set is the sheet's.
 - Otherwise, the correction is a late answer to a Clarify question and runs
   the **same question contract** the interview would have run — a field-only
   write is not enough:
@@ -255,8 +261,11 @@ assumed.
      `index.active_scenario_id`. A non-knob correction changes the **base** every
      scenario shares (`workshop-refresh.md` § 3 leaves non-knob fields
      untouched, so scenarios differ only by their `preferences_subset` knobs) —
-     it is not a new scenario. Rebase the store in place rather than leaving it
-     split across two bases:
+     it is not a new scenario. Only non-knob fields reach this step: a
+     `workshop-sheet.md` § Step 1 path was routed to option **B** above and
+     must not be rebased here, or saved preferences would disagree with their
+     manifest's `preferences_subset`. Rebase the store in place rather than
+     leaving it split across two bases:
      - For the **active** scenario: overwrite its three copies
        (`scenarios/{id}.preferences.json` / `.aws-design.json` /
        `.estimation-infra.json`) with the new working-tree artifacts.
