@@ -858,7 +858,10 @@ resource "aws_security_group" "database" {
   # terraform.tfvars from MIGRATION_GUIDE.md "Interim Database Exposure" Step 2:
   # Private Space peering CIDRs, Private Space stable outbound IPs, or a
   # static-egress proxy add-on's IPs. Empty (the default) emits no rule.
-  # Reset to [] and delete this block at cutover.
+  # Reset to [] and delete this block only after the Phase 6 rollback window (72 h at
+  # cutover_weight = 100) — MIGRATION_GUIDE.md "Interim Database Exposure" Step 4 / Phase 7.
+  # Never at cutover: after the Phase 2 database handoff Heroku dynos reach the primary over
+  # this path, and a rollback depends on it.
   dynamic "ingress" {
     for_each = length(var.interim_heroku_ingress_cidrs) > 0 ? [1] : []
     content {
@@ -866,7 +869,7 @@ resource "aws_security_group" "database" {
       to_port     = 5432
       protocol    = "tcp"
       cidr_blocks = var.interim_heroku_ingress_cidrs
-      description = "INTERIM: PostgreSQL from Heroku static egress — remove at cutover"
+      description = "INTERIM: PostgreSQL from Heroku static egress — remove after the rollback window"
     }
   }
   # {{ENDIF}}
@@ -1790,7 +1793,7 @@ variable "db_password" {
 
 # {{IF migration_approach == "interim_cutover_data_first"}}
 variable "interim_db_public_access" {
-  description = "INTERIM ONLY: expose the database on a public endpoint while the app still runs on Heroku. Leave false unless MIGRATION_GUIDE.md 'Interim Database Exposure' Step 2 Path B or C applies. Reset to false at cutover."
+  description = "INTERIM ONLY: expose the database on a public endpoint while the app still runs on Heroku. Leave false unless MIGRATION_GUIDE.md 'Interim Database Exposure' Step 2 Path B or C applies. Reset to false after the Phase 6 rollback window (MIGRATION_GUIDE.md 'Interim Database Exposure' Step 4), never at cutover."
   type        = bool
   default     = false
 }
@@ -2299,7 +2302,7 @@ resource "aws_acm_certificate_validation" "app" {
 # this "heroku" member and imports it (import id: <ZONE_ID>_<hostname>_CNAME_heroku) before the
 # first apply — Route 53 will not create a weighted record beside a simple one.
 resource "aws_route53_record" "heroku" {
-  for_each       = { for h in local.custom_domains : h => h if !local.is_apex[h] }
+  for_each = { for h in local.custom_domains : h => h if !local.is_apex[h] }
   zone_id        = var.hosted_zone_ids[each.key]
   name           = each.key
   type           = "CNAME"
@@ -2312,7 +2315,7 @@ resource "aws_route53_record" "heroku" {
 }
 
 resource "aws_route53_record" "aws" {
-  for_each       = { for h in local.custom_domains : h => h if !local.is_apex[h] }
+  for_each = { for h in local.custom_domains : h => h if !local.is_apex[h] }
   zone_id        = var.hosted_zone_ids[each.key]
   name           = each.key
   type           = "CNAME"
@@ -2332,7 +2335,7 @@ resource "aws_route53_record" "aws" {
 # serves the zone. Pinned IPs are a bounded stopgap (Heroku publishes no stable inbound IPs):
 # the guide re-resolves them before each weight change and keeps the window short.
 resource "aws_route53_record" "apex_heroku" {
-  for_each       = { for h in local.custom_domains : h => h if local.is_apex[h] }
+  for_each = { for h in local.custom_domains : h => h if local.is_apex[h] }
   zone_id        = var.hosted_zone_ids[each.key]
   name           = each.key
   type           = "A"
@@ -2351,7 +2354,7 @@ resource "aws_route53_record" "apex_heroku" {
 }
 
 resource "aws_route53_record" "apex_aws" {
-  for_each       = { for h in local.custom_domains : h => h if local.is_apex[h] }
+  for_each = { for h in local.custom_domains : h => h if local.is_apex[h] }
   zone_id        = var.hosted_zone_ids[each.key]
   name           = each.key
   type           = "A"
@@ -2531,7 +2534,8 @@ cutover_weight = 0
 # {{IF migration_approach == "interim_cutover_data_first"}}
 # Interim Heroku -> RDS access. Bounded allowlist only, never 0.0.0.0/0.
 # Source the addresses per MIGRATION_GUIDE.md "Interim Database Exposure" Step 2,
-# then reset both to their defaults at cutover.
+# then reset both to their defaults after the Phase 6 rollback window (Interim Database
+# Exposure Step 4), not at cutover.
 # interim_heroku_ingress_cidrs = ["203.0.113.10/32", "203.0.113.11/32"]
 # interim_db_public_access     = false
 # {{ENDIF}}
