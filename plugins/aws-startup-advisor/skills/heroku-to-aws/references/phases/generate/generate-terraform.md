@@ -39,7 +39,7 @@ Generate `$MIGRATION_DIR/terraform/` with the following file organization. Only 
 | `database.tf`  | database   | RDS/Aurora instances, parameter groups, RDS Proxy                                                                                      |
 | `cache.tf`     | cache      | ElastiCache replication groups, subnet groups                                                                                          |
 | `messaging.tf` | messaging  | MSK clusters, configurations                                                                                                           |
-| `dns.tf`       | dns        | Route 53 records for every custom domain, ACM certificate with DNS validation, weighted Heroku↔AWS cutover (only when `dns_strategy == "route53"`) |
+| `dns.tf`       | dns        | Route 53 records for every custom domain (each routed to its own app's EB/Fargate web endpoint in its own zone), ACM certificate with DNS validation, weighted Heroku↔AWS cutover (only when `data.dns_strategy == "route53"` and an EB/Fargate web service exists) |
 | `security.tf`  | security   | Security groups, IAM roles/policies                                                                                                    |
 
 **File emission rules:**
@@ -515,12 +515,14 @@ output "msk_bootstrap_brokers" {
 # {{IF has_route53_dns}}
 # DNS outputs
 output "dns_cutover" {
-  description = "Per hostname: where Route 53 currently sends traffic and the AWS target it will cut over to"
+  description = "Per hostname: the Heroku app it belongs to, the zone it lives in, the AWS endpoint it cuts over to, and where Route 53 currently sends traffic"
   value = {
     for h in local.custom_domains : h => {
+      heroku_app    = local.aws_targets[h].heroku_app
+      zone_id       = var.hosted_zone_ids[h]
+      aws_target    = local.aws_targets[h].name
       aws_weight    = var.cutover_weight
       heroku_weight = 100 - var.cutover_weight
-      aws_target    = local.aws_dns_target
       apex          = local.is_apex[h]
     }
   }
@@ -2156,32 +2158,54 @@ resource "aws_cloudwatch_log_group" "msk" {
 
 ## Step 9.5: Generate `dns.tf` (Route 53 cutover — only when `dns_strategy == "route53"`)
 
-**Emit when** `preferences.data.dns_strategy == "route53"` (the field Clarify Q10 writes — `clarify-assemble.md` `"data"` block; `global.dns_strategy` does not exist) AND `heroku-resource-inventory.json` has at least one `resource_type: "domain"` resource. Set `has_route53_dns = true` for the rest of this file; it switches the ALB listener (Step 6) and EB web environments (Step 6.5) onto the certificate issued here. Otherwise skip this step, leave `has_route53_dns = false`, and let `generate-docs.md` § Phase 5 give manual-record instructions.
+**Emit when** `preferences.data.dns_strategy == "route53"` (the field Clarify Q10 writes — `clarify-assemble.md` `"data"` block; `global.dns_strategy` does not exist) AND `generate-docs.md` Step 0 `eligible_hostnames[]` is non-empty — that is, at least one inventory `resource_type: "domain"` hostname belongs to a Heroku app whose **web** formation landed on Elastic Beanstalk or Fargate. Set `has_route53_dns = true` for the rest of this file; it switches the ALB listener (Step 6) and EB web environments (Step 6.5) onto the certificate issued here. Otherwise skip this step, leave `has_route53_dns = false`, and let `generate-docs.md` § Phase 5 give manual-record instructions.
+
+**Never for an EKS design.** `design-eks.md` "All-or-Nothing Rule" puts every formation on EKS, so an EKS design has no EB or Fargate web service, `eligible_hostnames[]` is empty, and this step does not run — there is no Beanstalk fallback to fall into. The EKS web Service's endpoint exists only after the Phase 3 `kubectl apply`, so its DNS/TLS handoff is the manual branch of the guide (`generate-docs.md` § Phase 5 "DNS Cutover (your current DNS provider)" with `has_eks`). Do not emit `dns.tf`, and never reference an `aws_elastic_beanstalk_environment` or `aws_lb` that no other step declared.
 
 **What this file buys the user.** Cutover and rollback become one variable: `cutover_weight` 0 → 10 → 50 → 100 shifts traffic from Heroku to AWS one `terraform apply` at a time, and editing it back to 0 is the rollback — no hand-edited records, no "which TTL did we set" at 2 a.m. The value lives in `terraform.tfvars` and nowhere else: every cutover and rollback step edits that line and runs a plain `terraform apply -input=false`, never a `-var` override, because Terraform re-reads `terraform.tfvars` on every apply and the next ordinary apply would silently put the traffic back where the file says. The ACM certificate is issued and validated in the same apply, so HTTPS works the moment the first weighted record resolves to AWS.
 
-**Inputs.** `local.custom_domains` = every `domain` resource's `config.hostname` (deduplicated; `*.herokuapp.com` hostnames were never recorded). `local.aws_dns_target` = the ALB `dns_name` when the web process is on Fargate, else the EB environment `cname`. Heroku's DNS targets are **not** in the inventory today (`heroku domains` prints them as "DNS Target"; discovery records only `hostname` and `sni_endpoint`), so they are a required variable with a placeholder guard.
+**Inputs.** `local.custom_domains` = every hostname in `generate-docs.md` Step 0 `eligible_hostnames[]` (deduplicated; `*.herokuapp.com` hostnames were never recorded). Each hostname keeps the associations the inventory and design already carry: the domain resource's `heroku_app` (`domain:{app_name}:{hostname}`) selects that app's **web** formation in `aws-design.json` — `alb:{app}:web` → `aws_lb.<app_sanitized>_web` (Step 6), `eb:{app}:web` → `aws_elastic_beanstalk_environment.<app_sanitized>_web` (Step 6.5) — and the generator writes that pairing out as a literal `local.aws_targets` entry. There is **no shared scalar target**: a production/staging pair or a mixed EB/Fargate inventory routes each hostname to its own app's endpoint. Hostnames whose app has no EB/Fargate web formation (`target_kind` `eks` or `none`) are left out of `dns.tf` and appended to `generation-warnings.json` (Step 10 schema; `service_id: "domain:<app>:<hostname>"`, `aws_service: "Route 53"`, reason `"no Elastic Beanstalk or Fargate web service for heroku_app <app>"`, recommendation `"create this record manually — MIGRATION_GUIDE.md Phase 5 manual DNS branch"`). Zones are per hostname too: `hosted_zone_ids` maps every hostname to the zone that is authoritative for it, so `admin.example.org` and `www.example.com` can live in different hosted zones. Heroku's DNS targets are **not** in the inventory today (`heroku domains` prints them as "DNS Target"; discovery records only `hostname` and `sni_endpoint`), so they are a required variable with a placeholder guard; the apex additionally needs the A records Heroku's target currently resolves to (`heroku_apex_ips`, see the apex comment in the file).
 
 ```hcl
 # dns.tf — Route 53 records, ACM certificate, weighted Heroku→AWS cutover.
 # cutover_weight = 0 sends everything to Heroku; 100 sends everything to AWS; rollback = 0.
 # Set it in terraform.tfvars only (never `-var`): the next plain apply re-reads the file.
+#
+# PRECONDITION (MIGRATION_GUIDE.md Phase 1 § "DNS preparation (Route 53)"): every zone in
+# hosted_zone_ids is AUTHORITATIVE for its hostnames before the first apply, and any existing
+# simple record for a hostname below has been converted to the weighted "heroku" member and
+# imported. The ACM validation here blocks the Phase 1 apply until the validation records
+# resolve from the public internet, which only happens if Route 53 answers for the zone; and
+# Route 53 refuses to create a weighted record next to a simple record of the same name/type.
 
-variable "hosted_zone_id" {
-  description = "Route 53 hosted zone that serves your custom domain(s). `aws route53 list-hosted-zones-by-name --dns-name <domain>`"
-  type        = string
+variable "hosted_zone_ids" {
+  description = "hostname → id of the Route 53 hosted zone that is AUTHORITATIVE for it (`aws route53 list-hosted-zones-by-name --dns-name <zone>`). One entry per custom domain; hostnames under different zones get different ids."
+  type        = map(string)
   validation {
-    condition     = can(regex("^Z[A-Z0-9]{8,32}$", var.hosted_zone_id))
-    error_message = "hosted_zone_id must be a Route 53 zone id (starts with Z). Replace the placeholder in terraform.tfvars."
+    condition     = alltrue([for h, z in var.hosted_zone_ids : can(regex("^Z[A-Z0-9]{8,32}$", z))])
+    error_message = "Every hosted_zone_ids value must be a Route 53 zone id (starts with Z). Replace the placeholders in terraform.tfvars."
   }
 }
 
 variable "heroku_dns_targets" {
-  description = "hostname → Heroku DNS target (the 'DNS Target' column of `heroku domains -a <app>`): <haiku>.herokudns.com on the Common Runtime and Fir, <haiku>.<haiku>.herokuspace.com in a Cedar Private Space. One entry per custom domain."
+  description = "hostname → Heroku DNS target (the 'DNS Target' column of `heroku domains -a <app>`): <haiku>.herokudns.com on the Common Runtime and Fir, <haiku>.<haiku>.herokuspace.com in a Cedar Private Space. One entry per non-apex custom domain (the apex uses heroku_apex_ips)."
   type        = map(string)
   validation {
     condition     = alltrue([for h, t in var.heroku_dns_targets : can(regex("\\.herokudns\\.com$|\\.herokuapp\\.com$|\\.herokussl\\.com$|\\.herokuspace\\.com$", t))])
     error_message = "Every heroku_dns_targets value must be a Heroku DNS target: …herokudns.com, …herokuapp.com, …herokussl.com, or <haiku>.<haiku>.herokuspace.com for a Cedar Private Space. Copy them from `heroku domains`."
+  }
+}
+
+variable "heroku_apex_ips" {
+  description = "apex hostname → IPv4 addresses its Heroku DNS target resolves to right now (`dig +short A <heroku DNS target>`). Required for every hostname that equals its zone name; leave {} when there is no apex. Heroku publishes no stable inbound IPs — re-resolve before every weight change and before any rollback (MIGRATION_GUIDE.md Phase 1 § DNS preparation)."
+  type        = map(list(string))
+  default     = {}
+  validation {
+    condition = alltrue([
+      for h, ips in var.heroku_apex_ips :
+      length(ips) > 0 && alltrue([for ip in ips : can(regex("^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])$", ip))])
+    ])
+    error_message = "Every heroku_apex_ips entry must be a non-empty list of IPv4 addresses. Resolve them with `dig +short A <heroku DNS target>`."
   }
 }
 
@@ -2196,29 +2220,47 @@ variable "cutover_weight" {
 }
 
 locals {
-  custom_domains = toset([<comma-separated quoted hostnames from inventory domain resources>])
-  # A hostname is an apex when it IS the zone name. Apex records cannot CNAME to Heroku, so
-  # the apex gets a single ALIAS to AWS that is only created at cutover_weight == 100.
-  zone_name = trimsuffix(data.aws_route53_zone.app.name, ".")
-  is_apex   = { for h in local.custom_domains : h => (h == local.zone_name) }
-  # {{IF has_fargate_web}}
-  aws_dns_target  = aws_lb.<app_sanitized>_web.dns_name
-  aws_alias_zone  = aws_lb.<app_sanitized>_web.zone_id
-  # {{ELSE}} (Elastic Beanstalk web)
-  aws_dns_target  = aws_elastic_beanstalk_environment.<app_sanitized>_web.cname
-  aws_alias_zone  = data.aws_elastic_beanstalk_hosted_zone.current.id
-  # {{ENDIF}}
+  custom_domains = toset([<comma-separated quoted hostnames from eligible_hostnames[]>])
+
+  # A hostname is an apex when it IS its own zone's name. Route 53 cannot CNAME an apex, so the
+  # apex is a weighted A pair (apex_heroku / apex_aws below) instead of a weighted CNAME pair.
+  is_apex = { for h in local.custom_domains : h => (h == trimsuffix(data.aws_route53_zone.by_host[h].name, ".")) }
+
+  # GENERATOR-EMITTED LITERAL — one entry per hostname, resolved from the domain resource's
+  # heroku_app and that app's web formation in aws-design.json. Never a shared value: two apps
+  # must never be sent to the same endpoint, and a worker-only app has no entry here at all.
+  aws_targets = {
+    # {{FOR host IN eligible_hostnames}}
+    # {{IF host.target_kind == "alb"}}
+    "<host.hostname>" = {
+      heroku_app = "<host.heroku_app>"
+      name       = aws_lb.<host.app_sanitized>_web.dns_name
+      zone_id    = aws_lb.<host.app_sanitized>_web.zone_id
+    }
+    # {{ELSE}} (host.target_kind == "eb")
+    "<host.hostname>" = {
+      heroku_app = "<host.heroku_app>"
+      name       = aws_elastic_beanstalk_environment.<host.app_sanitized>_web.cname
+      zone_id    = data.aws_elastic_beanstalk_hosted_zone.current.id
+    }
+    # {{ENDIF}}
+    # {{ENDFOR}}
+  }
 }
 
-data "aws_route53_zone" "app" {
-  zone_id = var.hosted_zone_id
+# One lookup per hostname: the plan fails early if a zone id is wrong, and each hostname's apex
+# test uses its own zone's name.
+data "aws_route53_zone" "by_host" {
+  for_each = local.custom_domains
+  zone_id  = var.hosted_zone_ids[each.key]
 }
 
-# {{IF has_beanstalk_web}}
+# {{IF any eligible_hostnames[] entry has target_kind == "eb"}}
 data "aws_elastic_beanstalk_hosted_zone" "current" {}
 # {{ENDIF}}
 
 # --- Certificate: issued for every custom domain, validated via Route 53 in the same apply.
+# Each validation CNAME goes to the zone that is authoritative for that hostname.
 resource "aws_acm_certificate" "app" {
   domain_name               = sort(tolist(local.custom_domains))[0]
   subject_alternative_names = slice(sort(tolist(local.custom_domains)), 1, length(local.custom_domains))
@@ -2237,7 +2279,7 @@ resource "aws_route53_record" "cert_validation" {
       type   = dvo.resource_record_type
     }
   }
-  zone_id         = var.hosted_zone_id
+  zone_id         = var.hosted_zone_ids[each.key]
   name            = each.value.name
   type            = each.value.type
   ttl             = 60
@@ -2253,9 +2295,12 @@ resource "aws_acm_certificate_validation" "app" {
 # --- Non-apex hostnames: weighted CNAME pair. Both records share name+type; Route 53 splits
 # traffic by weight. A weight of 0 is never returned while the other is > 0, so
 # cutover_weight = 0 is "all Heroku" and 100 is "all AWS" with no record churn in between.
+# If the zone already held a simple CNAME for the hostname, the guide converts it in place to
+# this "heroku" member and imports it (import id: <ZONE_ID>_<hostname>_CNAME_heroku) before the
+# first apply — Route 53 will not create a weighted record beside a simple one.
 resource "aws_route53_record" "heroku" {
-  for_each = { for h in local.custom_domains : h => h if !local.is_apex[h] }
-  zone_id        = var.hosted_zone_id
+  for_each       = { for h in local.custom_domains : h => h if !local.is_apex[h] }
+  zone_id        = var.hosted_zone_ids[each.key]
   name           = each.key
   type           = "CNAME"
   ttl            = 60
@@ -2267,31 +2312,57 @@ resource "aws_route53_record" "heroku" {
 }
 
 resource "aws_route53_record" "aws" {
-  for_each = { for h in local.custom_domains : h => h if !local.is_apex[h] }
-  zone_id        = var.hosted_zone_id
+  for_each       = { for h in local.custom_domains : h => h if !local.is_apex[h] }
+  zone_id        = var.hosted_zone_ids[each.key]
   name           = each.key
   type           = "CNAME"
   ttl            = 60
-  records        = [local.aws_dns_target]
+  records        = [local.aws_targets[each.key].name]
   set_identifier = "aws"
   weighted_routing_policy {
     weight = var.cutover_weight
   }
 }
 
-# --- Apex hostname: Route 53 cannot CNAME or ALIAS an apex to an external host, so the apex
-# cannot be weighted against Heroku. It stays at the current DNS provider until the final
-# step, then flips in one apply when cutover_weight reaches 100. Rollback: set < 100 (the
-# ALIAS is removed) and re-point the apex at Heroku at the provider that served it before.
-resource "aws_route53_record" "apex" {
-  for_each = { for h in local.custom_domains : h => h if local.is_apex[h] && var.cutover_weight == 100 }
-  zone_id = var.hosted_zone_id
-  name    = each.key
-  type    = "A"
+# --- Apex hostname: Route 53 cannot CNAME or ALIAS an apex to an external host, so the only
+# authoritative apex answer that points at Heroku is an A record with the addresses Heroku's
+# DNS target resolves to today. Both members are weighted, so the apex moves with the same
+# cutover_weight as every other hostname, there is an authoritative apex answer at every weight,
+# and rollback is a weight change — never a delete plus an edit at a provider that no longer
+# serves the zone. Pinned IPs are a bounded stopgap (Heroku publishes no stable inbound IPs):
+# the guide re-resolves them before each weight change and keeps the window short.
+resource "aws_route53_record" "apex_heroku" {
+  for_each       = { for h in local.custom_domains : h => h if local.is_apex[h] }
+  zone_id        = var.hosted_zone_ids[each.key]
+  name           = each.key
+  type           = "A"
+  ttl            = 60
+  records        = var.heroku_apex_ips[each.key]
+  set_identifier = "heroku"
+  weighted_routing_policy {
+    weight = 100 - var.cutover_weight
+  }
+  lifecycle {
+    precondition {
+      condition     = contains(keys(var.heroku_apex_ips), each.key)
+      error_message = "${each.key} is the zone apex: add heroku_apex_ips[\"${each.key}\"] = [<dig +short A <its Heroku DNS target>>] to terraform.tfvars."
+    }
+  }
+}
+
+resource "aws_route53_record" "apex_aws" {
+  for_each       = { for h in local.custom_domains : h => h if local.is_apex[h] }
+  zone_id        = var.hosted_zone_ids[each.key]
+  name           = each.key
+  type           = "A"
+  set_identifier = "aws"
   alias {
-    name                   = local.aws_dns_target
-    zone_id                = local.aws_alias_zone
+    name                   = local.aws_targets[each.key].name
+    zone_id                = local.aws_targets[each.key].zone_id
     evaluate_target_health = true
+  }
+  weighted_routing_policy {
+    weight = var.cutover_weight
   }
 }
 ```
@@ -2299,7 +2370,11 @@ resource "aws_route53_record" "apex" {
 **Rules:**
 
 - `for_each` keys are hostnames, so `terraform state` and `plan` output read in the user's own vocabulary ("www.example.com"), not indices.
-- `heroku_dns_targets` must cover every non-apex hostname; a missing key fails `plan` with a clear message rather than silently routing 100 % to AWS.
+- `local.aws_targets` is emitted per hostname from `eligible_hostnames[]` and references only resources this run declares (`aws_lb.<app_sanitized>_web` from Step 6, `aws_elastic_beanstalk_environment.<app_sanitized>_web` from Step 6.5). Never collapse it to one value, and never reference a Beanstalk environment for an app that has none.
+- `hosted_zone_ids` and `heroku_dns_targets` must cover every hostname in `local.custom_domains` (`heroku_dns_targets` every non-apex one); a missing key fails `plan` with a clear message rather than silently routing 100 % to AWS. `heroku_apex_ips` must cover every apex; the `apex_heroku` precondition names the missing hostname.
+- Route 53 must be **authoritative** for every zone in `hosted_zone_ids` before the Phase 1 apply (guide Phase 1 § "DNS preparation (Route 53)"): `aws_acm_certificate_validation` waits for the validation CNAMEs to resolve publicly, which never happens while another provider answers for the zone.
+- Existing simple records for a hostname are **converted and imported**, never overwritten: the guide turns a simple CNAME into the weighted `heroku` member in one `change-resource-record-sets` ChangeBatch and the user runs `terraform import 'aws_route53_record.heroku["<host>"]' <ZONE_ID>_<host>_CNAME_heroku` (apex: `aws_route53_record.apex_heroku["<host>"]`, id `<ZONE_ID>_<host>_A_heroku`). `allow_overwrite = true` stays limited to the ACM validation records.
+- The apex is never deleted by a weight change: `apex_heroku` + `apex_aws` exist at every `cutover_weight`, so rollback keeps an authoritative apex answer.
 - TTL 60 on every record this file creates. The guide tells the user to lower the TTL at their current provider to 60 **before** moving the zone so the first weighted step propagates in minutes.
 - Never emit `aws_route53_zone` as a resource: the user may already serve other records from the zone, and importing it is theirs to decide. The data source makes the zone a precondition the plan checks.
 - `allow_overwrite = true` only on the ACM validation records — re-issuing a certificate must not fail on a stale `_acme-challenge`-style record.
@@ -2405,11 +2480,22 @@ security_email   = "TODO-security@example.com" # security alternate contact
 # db_password = "CHANGE_ME"
 
 # {{IF has_route53_dns}}
-# DNS (dns.tf) — required. Get the zone id from `aws route53 list-hosted-zones-by-name --dns-name <domain>`
-# and each Heroku DNS target from `heroku domains -a <app>` (the "DNS Target" column).
-# hosted_zone_id = "Z0123456789ABCDEFGHIJ"
+# DNS (dns.tf) — required. One entry PER HOSTNAME in each map (hostnames may live in different
+# zones and belong to different Heroku apps). Zone ids: `aws route53 list-hosted-zones-by-name
+# --dns-name <zone>` — the zone must already be authoritative (MIGRATION_GUIDE.md Phase 1 § DNS
+# preparation). Heroku DNS targets: `heroku domains -a <app>` ("DNS Target" column). Apex IPs:
+# `dig +short A <heroku DNS target>`, re-resolved before every weight change.
+# hosted_zone_ids = {
+#   "www.example.com"   = "Z0123456789ABCDEFGHIJ"
+#   "example.com"       = "Z0123456789ABCDEFGHIJ"
+#   "admin.example.org" = "Z0987654321JIHGFEDCBA"
+# }
 # heroku_dns_targets = {
-#   "www.example.com" = "whispering-willow-1234.herokudns.com"
+#   "www.example.com"   = "whispering-willow-1234.herokudns.com"
+#   "admin.example.org" = "quiet-meadow-5678.herokudns.com"
+# }
+# heroku_apex_ips = {                       # only for hostnames that equal their zone name
+#   "example.com" = ["203.0.113.10", "203.0.113.11"]
 # }
 # cutover_weight is deliberately NOT commented out: this line is the single source of truth for
 # where traffic goes. MIGRATION_GUIDE.md Phase 5 raises it 10 → 50 → 100 by editing it here and
