@@ -303,7 +303,7 @@ def main(argv=None) -> int:
             rpm = quota_rpm(quotas, model_id)
             verdict["model_id"] = model_id
             verdict["rpm_quota"] = rpm
-            if model_id in ("us.openai.gpt-6-astra", "global.openai.gpt-6-astra"):
+            if model_id.rsplit("/", 1)[-1] in ("us.openai.gpt-6-astra", "global.openai.gpt-6-astra"):
                 verdict["quota_note"] = (
                     "Astra runtime TPM usage = input tokens + 10 * output tokens. "
                     "Check the selected CRIS profile's token quota; an RPM check alone "

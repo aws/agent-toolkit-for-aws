@@ -229,6 +229,30 @@ def test_astra_recommendation_probes_selected_api_in_supported_regions(region, s
         assert completions.calls[0]["input"] == verify_model_path.PROMPT
 
 
+@pytest.mark.parametrize("prefix", ["us", "global"])
+@pytest.mark.parametrize("as_arn", [False, True])
+def test_astra_system_profile_representation_reaches_verifier_unchanged(prefix, as_arn):
+    model_id = f"{prefix}.openai.gpt-6-astra"
+    if as_arn:
+        model_id = f"arn:aws:bedrock:us-west-2:111122223333:inference-profile/{model_id}"
+    data = _openai_input({"governance": ["guardrails"], "inference_profile_id": model_id})
+    data["region"] = "us-west-2"
+    data["workloads"][0]["source"]["model_ids"] = ["gpt-6-astra"]
+    schemas = pathlib.Path(model_recommendation.__file__).parent / "schemas"
+    jsonschema.validate(data, json.loads((schemas / "model-recommendation-input.json").read_text()))
+    recommendation = model_recommendation.recommend(data)
+    jsonschema.validate(recommendation, json.loads((schemas / "model-recommendation.json").read_text()))
+    selected = recommendation["workloads"]["openai-svc"]
+    assert selected["decision_status"] == "recommended"
+    assert selected["invocation_model_id"] == model_id
+    client = FakeRuntimeClient()
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW, runtime_client_factory=lambda region: client,
+    )
+    assert result["workloads"]["openai-svc"]["status"] == "passed"
+    assert client.converse_calls[0]["modelId"] == model_id
+
+
 def _openai_input(requirements=None):
     return {
         "schema_version": 2,

@@ -63,7 +63,14 @@ lower-cost reasoning alternative; Astra does not make existing GPT-5.x sources r
 
 Use `/openai/v1` on either endpoint for the OpenAI-compatible APIs. Astra does **not** support
 Invoke or Messages. On runtime, Guardrails and application inference profiles are **Converse-only**;
-server-side tool use and structured outputs are unsupported. On mantle, server-side tool calling
+server-side tool use is unsupported. Runtime supports non-streaming JSON Schema output (reverified
+2026-10-03): Chat uses `response_format.json_schema`, Responses uses `text.format`, and Converse
+uses `outputConfig.textFormat.type: "json_schema"` with `name` and a JSON-encoded schema string in
+`outputConfig.textFormat.structure.jsonSchema`, plus **`additionalModelRequestFields.text.format.strict=true`**.
+For Chat/Responses set the format type to `json_schema` and include `name`, `schema` and `strict: true`.
+Use an object schema, require every field, set `additionalProperties: false`, validate before calling,
+and check refusal/incomplete responses before parsing. Do not claim streamed JSON Schema support.
+On mantle, server-side tool calling
 is supported, implicit/explicit prompt caching is **Responses-only**, and application inference
 profiles are unsupported. Do not copy GPT-5.6's API or feature matrix onto Astra.
 

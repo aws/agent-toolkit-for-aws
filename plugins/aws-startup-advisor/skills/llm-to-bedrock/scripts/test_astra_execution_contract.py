@@ -11,6 +11,8 @@ import pytest
 
 import image_input
 import preflight_bedrock
+import bedrock_pricing
+import iam_policy
 
 PLUGIN = Path(__file__).resolve().parents[3]
 EVALUATOR = PLUGIN / "agents/llm2bedrock-prompt-evaluator.md"
@@ -335,3 +337,94 @@ def test_gcp_report_lists_only_generated_profile_attribution():
     assert "enabled `aws_bedrock_inference_profile` resource" in controls
     assert "`bedrock_inference_profile_arns` output" in controls
     assert "add profile attribution only when an eligible profile was generated" in text
+
+
+def advisor_comparator():
+    path = PLUGIN / "skills/agent-advisor/references/phases/migration-plan/migration-plan.md"
+    section = path.read_text().split("### Step 3.5", 1)[1].split("### Phase D", 1)[0]
+    code = re.search(r"```python\n(.*?)\n```", section, re.S).group(1)
+    ns = {}
+    exec(compile(code, str(path), "exec"), ns)  # nosec B102 - committed handoff algorithm
+    return ns["matches_advisor_model"]
+
+
+@pytest.mark.parametrize("prefix", ["us", "global"])
+@pytest.mark.parametrize("as_arn", [False, True])
+@pytest.mark.parametrize("unit_count", [1, 2])
+def test_advisor_handoff_preserves_per_unit_runtime_profiles(prefix, as_arn, unit_count):
+    matches = advisor_comparator()
+    invocation = f"{prefix}.openai.gpt-6-astra"
+    if as_arn:
+        invocation = f"arn:aws:bedrock:us-west-2:111122223333:inference-profile/{invocation}"
+    advisor = {"model": "openai.gpt-6-astra", "api_path": "runtime_converse",
+               "invocation_model_id": invocation}
+    units = [advisor]
+    if unit_count == 2:
+        units.append({"model": "openai.gpt-6-astra", "api_path": "mantle_openai_chat",
+                      "invocation_model_id": "openai.gpt-6-astra"})
+    plans = [(invocation, "runtime_openai_cris", "converse")]
+    if unit_count == 2:
+        plans.append(("openai.gpt-6-astra", "mantle_openai_chat", None))
+    assert all(matches(unit, *plan) for unit, plan in zip(units, plans))
+    assert matches(advisor, invocation, "runtime_openai_cris", None)
+    for wrong_model, wrong_path, wrong_api in [
+        ("us.openai.gpt-5.6-sol", "runtime_openai_cris", "converse"),
+        ("openai.gpt-6-astra", "runtime_openai_cris", "converse"),
+        (invocation, "mantle_openai_chat", "converse"),
+        (invocation, "runtime_openai_cris", "responses"),
+        (invocation, "runtime_openai_cris", "chat_completions"),
+    ]:
+        assert not matches(advisor, wrong_model, wrong_path, wrong_api)
+    other_profile = "global.openai.gpt-6-astra" if prefix == "us" else "us.openai.gpt-6-astra"
+    assert not matches(advisor, other_profile, "runtime_openai_cris", "converse")
+    assert not matches({**advisor, "invocation_model_id": None},
+                       invocation, "runtime_openai_cris", "converse")
+
+
+def test_gcp_design_producer_uses_current_cost_and_quota_contract():
+    text = (PLUGIN / "skills/gcp-to-aws/references/phases/design/design-ai.md").read_text()
+    assessment = text.split("**Stay-or-migrate assessment per model:**", 1)[1].split(
+        "**Model comparison table**", 1)[0]
+    assert "verified source" in assessment and "unavailable" in assessment
+    assert "report a modest cost increase rather than parity" not in assessment
+    quota = text.split("**Quota risk assessment**", 1)[1].split("## Part 1B:", 1)[0]
+    rows = [[cell.strip().strip('`"') for cell in line.strip("|").split("|")]
+            for line in quota.splitlines() if line.startswith("|")]
+    astra = next(row for row in rows if "Astra runtime" in row[1])
+    assert astra[0] == "medium" and astra[2] == "medium" and "10" in astra[1]
+    assert not any("other (1× burndown)" in row[1] for row in rows)
+
+
+@pytest.mark.parametrize("model,path", [
+    ("openai.gpt-6-astra", "mantle_openai_chat"),
+    ("openai.gpt-oss-120b-1:0", "runtime_converse"),
+    ("anthropic.claude-sonnet-5", "mantle_messages"),
+])
+def test_advisor_handoff_retains_exact_comparison_for_other_paths(model, path):
+    matches = advisor_comparator()
+    advisor = {"model": model, "api_path": path, "invocation_model_id": model}
+    assert matches(advisor, model, path)
+    assert not matches(advisor, model, "runtime_openai_cris")
+
+
+@pytest.mark.parametrize("prefix,input_rate,output_rate", [
+    ("us", .011, .055), ("global", .010, .050),
+])
+def test_astra_system_profile_arn_keeps_invocation_price_and_permissions(
+        prefix, input_rate, output_rate, monkeypatch, capsys):
+    arn = f"arn:aws:bedrock:us-west-2:111122223333:inference-profile/{prefix}.openai.gpt-6-astra"
+    policy = iam_policy.generate_policy([arn], "us-west-2", "111122223333")
+    assert policy["Statement"][0]["Resource"] == sorted([
+        arn, "arn:aws:bedrock:*::foundation-model/openai.gpt-6-astra",
+    ])
+    price = bedrock_pricing.lookup("us-west-2", arn)
+    assert price["input_per_1k_usd"] == input_rate
+    assert price["output_per_1k_usd"] == output_rate
+    import boto3
+    runtime = Mock()
+    monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: runtime)
+    monkeypatch.setattr(preflight_bedrock, "fetch_bedrock_quotas", lambda region: [])
+    assert preflight_bedrock.main(["--region", "us-west-2", "--models", arn]) == 0
+    assert runtime.converse.call_args.kwargs["modelId"] == arn
+    verdict = json.loads(capsys.readouterr().out)
+    assert "input tokens + 10 * output tokens" in verdict["models"][0]["quota_note"]

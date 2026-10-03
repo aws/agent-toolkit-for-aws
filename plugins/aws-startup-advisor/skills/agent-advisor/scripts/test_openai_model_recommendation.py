@@ -827,15 +827,73 @@ def test_astra_rejects_unsupported_geo_profile_or_caller_region(region, geograph
     assert "inference_profile_unverified" in _codes(rec["blocks"])
 
 
-def test_astra_runtime_does_not_inherit_mantle_tools_or_structured_output():
-    for feature in ("tool_or_function_calling", "structured_output_json"):
-        rec = _recommend(_workload(
+def test_astra_runtime_does_not_inherit_mantle_tools():
+    rec = _recommend(_workload(
+        source={"model_ids": ["gpt-6-astra"]},
+        requirements={"governance": ["guardrails"],
+                      "critical_features": ["tool_or_function_calling"]},
+    ))
+    assert rec["decision_status"] == "decision_required"
+    assert rec["primary_model"] is None
+    assert "unverified_capability" in _codes(rec["blocks"])
+
+
+def test_astra_runtime_json_schema_retains_model_and_documented_configuration():
+    data = {
+        "schema_version": 2, "region": "us-west-2", "primary_unit": "chat-svc",
+        "workloads": [_workload(
             source={"model_ids": ["gpt-6-astra"]},
-            requirements={"governance": ["guardrails"], "critical_features": [feature]},
-        ))
-        assert rec["decision_status"] == "decision_required"
-        assert rec["primary_model"] is None
-        assert "unverified_capability" in _codes(rec["blocks"])
+            requirements={"governance": ["guardrails"], "data_residency": "global_allowed",
+                          "critical_features": ["structured_output_json"]},
+        )],
+    }
+    jsonschema.validate(data, json.loads((SCRIPTS / "schemas/model-recommendation-input.json").read_text()))
+    result = model_recommendation.recommend(data)
+    jsonschema.validate(result, json.loads((SCRIPTS / "schemas/model-recommendation.json").read_text()))
+    rec = result["workloads"]["chat-svc"]
+    assert rec["decision_status"] == "recommended"
+    assert rec["api_path"] == "runtime_converse"
+    assert rec["invocation_model_id"] == "global.openai.gpt-6-astra"
+    assert rec["verification"]["availability_claim"] == "provisional"
+    assert "structured_output_json" in rec["compatibility"]["native"]
+    guidance = next(d["description"] for d in rec["migration_deltas"]
+                    if d["code"] == "structured_output_text_format")
+    assert "outputConfig.textFormat.structure.jsonSchema" in guidance
+    assert "additionalModelRequestFields.text.format.strict=true" in guidance
+    assert "JSON string" in guidance and "non-streaming" in guidance
+
+
+@pytest.mark.parametrize("status,expected", [
+    ("detected", "decision_required"), ("absent", "recommended"),
+])
+def test_astra_json_schema_does_not_claim_streaming_support(status, expected):
+    rec = _recommend(_workload(
+        source={"model_ids": ["gpt-6-astra"]},
+        requirements={"governance": ["guardrails"], "data_residency": "global_allowed",
+                      "critical_features": ["structured_output_json"]},
+        detected_features=["streaming"], feature_status={"streaming": status},
+    ))
+    assert rec["decision_status"] == expected
+    if expected == "decision_required":
+        assert "structured_output_streaming_unverified" in _codes(rec["blocks"])
+
+
+@pytest.mark.parametrize("profile", [
+    "arn:aws:bedrock:us-east-1:111122223333:inference-profile/us.openai.gpt-6-astra",
+    "arn:aws-cn:bedrock:us-west-2:111122223333:inference-profile/us.openai.gpt-6-astra",
+    "arn:aws:bedrock:us-west-2:bad-account:inference-profile/us.openai.gpt-6-astra",
+    "arn:aws:bedrock:us-west-2:111122223333:application-inference-profile/example",
+    "arn:aws:bedrock:us-west-2:111122223333:inference-profile/eu.openai.gpt-6-astra",
+    "arn:aws:bedrock:us-west-2:111122223333:inference-profile/us.openai.gpt-5.6-sol",
+])
+def test_astra_rejects_unverified_profile_arn_or_region(profile):
+    rec = oai.recommend_openai_workload(
+        _workload(source={"model_ids": ["gpt-6-astra"]},
+                  requirements={"governance": ["guardrails"], "inference_profile_id": profile}),
+        "us-west-2", OPENAI_CATALOG,
+    )
+    assert rec["decision_status"] == "decision_required"
+    assert "inference_profile_unverified" in _codes(rec["blocks"])
 
 
 @pytest.mark.parametrize("requirement,limit", [

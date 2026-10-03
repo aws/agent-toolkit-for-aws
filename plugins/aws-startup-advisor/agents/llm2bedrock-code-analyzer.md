@@ -126,7 +126,7 @@ Determine:
 3. **SDK version**: read from lockfile or manifest
 4. **Same model family**: defaults to `false`. Set `same_model_family: true` when ALL plan model mappings keep the model itself, which is now true in two cases:
    - Anthropic 1P (direct `anthropic` SDK) → Bedrock Claude, and
-   - OpenAI → **the same OpenAI model on Bedrock**, i.e. every target is the same proprietary GPT model as its `source_model`, including GPT-6 Astra. For identity comparison only, remove a supported `us.` / `in.` / `global.` profile prefix and the `openai.` provider prefix; preserve the validated invocation id itself. A Pro-to-Astra or other version upgrade is `false`, even though the vendor is unchanged.
+   - OpenAI → **the same OpenAI model on Bedrock**, i.e. every target is the same proprietary GPT model as its `source_model`, including GPT-6 Astra. For identity comparison only, take the profile resource ID after `/` when the target is a validated system-profile ARN, then remove a supported `us.` / `in.` / `global.` profile prefix and the `openai.` provider prefix; preserve the validated invocation id itself. A Pro-to-Astra or other version upgrade is `false`, even though the vendor is unchanged.
 
    In both cases the prompt-adaptation step is skipped downstream, because the model is unchanged. Mixed projects (e.g. chat=Anthropic→Claude AND embeddings=OpenAI→Cohere) → `false`. A GPT source mapped to Claude/Nova/`gpt-oss` is a model change → `false`.
 

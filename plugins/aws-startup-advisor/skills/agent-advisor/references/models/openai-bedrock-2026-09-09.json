@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "provider": "openai",
-  "verified_at": "2026-09-30",
+  "verified_at": "2026-10-03",
   "verified_region": "us-east-2",
-  "source": "AWS Bedrock userguide OpenAI model cards + models-api-compatibility (retrieved 2026-08-21); internal migration reference, OpenAI path (feature-level probes, 2026-06-20); GPT-6 Astra model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html; Astra Mantle Standard regional availability reverified 2026-09-30 against the same public model card",
+  "source": "AWS Bedrock userguide OpenAI model cards + models-api-compatibility (retrieved 2026-08-21); internal migration reference, OpenAI path (feature-level probes, 2026-06-20); GPT-6 Astra model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html; Astra Mantle Standard regional availability reverified 2026-09-30 against the same public model card; Astra runtime JSON Schema configuration reverified 2026-10-03 against the same public model card",
   "disclaimer": "Dated migration candidates, not account-level availability guarantees. Capabilities and regions are specific to each model and API path. Entries retain their evidence dates; Astra has documentation evidence but no account-level behavioral probe. Re-probe the selected model, API, and region before implementation.",
   "paths": {
     "mantle_openai_responses": {
@@ -336,7 +336,7 @@
         "reasoning",
         "image_input_vision"
       ],
-      "capability_source": "AWS model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Launched 2026-09-08, Active, no scheduled EOL; EOL no sooner than 2027-09-08. Text/image input and text output. Server-side tool calling is listed on mantle; runtime lists response streaming and explicitly excludes structured outputs and server-side tool use. These are documentation claims, not feature-level account probes. Sampling, hosted tools, and reasoning-effort values require verification on the selected API.",
+      "capability_source": "AWS model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Launched 2026-09-08, Active, no scheduled EOL; EOL no sooner than 2027-09-08. Text/image input and text output. Server-side tool calling is listed on mantle; runtime lists response streaming and supports non-streaming JSON Schema output (reverified 2026-10-03) and explicitly excludes server-side tool use. These are documentation claims, not feature-level account probes. Sampling, hosted tools, and reasoning-effort values require verification on the selected API.",
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -422,9 +422,10 @@
           "capabilities": [
             "reasoning",
             "image_input_vision",
-            "streaming"
+            "streaming",
+            "structured_output_json"
           ],
-          "evidence": "AWS model card 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Runtime APIs: Responses, Chat Completions, Converse; Invoke and Messages unsupported. US Geo/Global CRIS only, no in-region or EU/India Geo form. Guardrails and application inference profiles are Converse-only. Structured outputs and server-side tool use unsupported. Runtime TPM accounting uses 10x output-token burndown."
+          "evidence": "AWS model card, runtime JSON Schema reverified 2026-10-03: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Runtime APIs: Responses, Chat Completions, Converse; Invoke and Messages unsupported. US Geo/Global CRIS only, no in-region or EU/India Geo form. Guardrails and application inference profiles are Converse-only. Non-streaming JSON Schema outputs supported: Converse requires outputConfig.textFormat.structure.jsonSchema and additionalModelRequestFields.text.format.strict=true. Streaming structured output and server-side tool use are not evidenced. Runtime TPM accounting uses 10x output-token burndown."
         }
       }
     }

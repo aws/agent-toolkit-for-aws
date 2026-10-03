@@ -58,6 +58,10 @@ profiles (`us.openai.gpt-5.6-*`, `in.openai.gpt-5.6-*` in India Regions, `global
 **Case C — GPT-6 Astra: `openai.gpt-6-astra` on mantle, or `us.openai.gpt-6-astra` /
 `global.openai.gpt-6-astra` on runtime.** Preserve the plan's endpoint and residency choice:
 
+- A supplied system-profile ARN uses runtime. Validate its `arn:aws:bedrock:<caller-region>:<account>:inference-profile/<profile-id>`
+  form and apply the checks below to its profile ID. In Step 2 require the full ARN to match
+  `inferenceProfileArn` in the live listing, then return the original ARN unchanged.
+  Do not reduce it to a short ID, manufacture another ARN or accept an unverified application profile.
 - Bare id → Standard mantle in `us-east-1` or `us-west-2`. Validate the exact id with the Case A catalog query.
   A different region returns `blocked` with `reason: model_unresolvable`; offer Virginia, Oregon, or a supported
   runtime CRIS path through the orchestrator. Do not silently add a prefix or change endpoints.
@@ -78,15 +82,15 @@ Other model ids continue to Step 1 unchanged.
 aws bedrock list-inference-profiles \
   --region <region> \
   <add --profile <profile> when your context has an `AWS profile` line> \
-  --query 'inferenceProfileSummaries[].[inferenceProfileId,inferenceProfileName]' \
+  --query 'inferenceProfileSummaries[].[inferenceProfileId,inferenceProfileName,inferenceProfileArn]' \
   --output json
 ```
 
-Parse the JSON. Each entry is a `[id, name]` pair.
+Parse the JSON. Each entry is an `[id, name, arn]` triple; ranking still uses the ID and name.
 
 ### Step 2: Try exact match
 
-If `plan_model_id` appears verbatim in the list, return it. No user prompt
+If `plan_model_id` exactly matches a listed ID or ARN, return that original value. No user prompt
 needed.
 
 ### Step 3: Token-based ranking when no exact match

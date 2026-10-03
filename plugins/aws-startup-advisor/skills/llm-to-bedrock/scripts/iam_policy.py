@@ -13,7 +13,9 @@ _GEO_PREFIX = re.compile(r"^(us|eu|apac|global)\.")
 
 def is_inference_profile(model_id: str) -> bool:
     """True when the model ID uses a geo-prefix (cross-region inference profile)."""
-    return bool(_GEO_PREFIX.match(model_id))
+    return bool(_GEO_PREFIX.match(model_id) or re.fullmatch(
+        r"arn:aws:bedrock:[^:]+:[0-9]{12}:inference-profile/[^/]+", model_id
+    ))
 
 
 def is_mantle_model(model_id: str) -> bool:
@@ -41,6 +43,8 @@ def foundation_model_arn(model_id: str) -> str:
 
 def inference_profile_arn(model_id: str, region: str, account_id: str) -> str:
     """ARN for a cross-region inference profile."""
+    if model_id.startswith("arn:"):
+        return model_id
     return f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{model_id}"
 
 
@@ -67,7 +71,7 @@ def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
     for mid in sorted(set(runtime_ids)):
         if is_inference_profile(mid):
             resources.append(inference_profile_arn(mid, region, account_id))
-            base_id = _GEO_PREFIX.sub("", mid)
+            base_id = _GEO_PREFIX.sub("", mid.rsplit("/", 1)[-1])
             resources.append(foundation_model_arn(base_id))
         else:
             resources.append(foundation_model_arn(mid))

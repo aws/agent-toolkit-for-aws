@@ -467,7 +467,20 @@ def _feature_findings(detected_features, requirements, path=None, target_model=N
     blocks, tuning, deltas, impacts = [], [], [], []
 
     if "structured_output_json" in detected:
-        if is_mantle:
+        if path == "runtime_converse" and (target_model or {}).get("family") == "openai_gpt_6":
+            deltas.append(
+                _delta(
+                    "structured_output_text_format",
+                    "feature",
+                    "Astra runtime JSON Schema output is documented for non-streaming calls. "
+                    "Set outputConfig.textFormat.type=json_schema and put name plus schema "
+                    "(encoded as a JSON string) in outputConfig.textFormat.structure.jsonSchema. "
+                    "Also set additionalModelRequestFields.text.format.strict=true. Use an "
+                    "object schema with all fields required and additionalProperties=false; "
+                    "validate the schema and check refusal/incomplete responses before parsing.",
+                )
+            )
+        elif is_mantle:
             # Verified on Mantle: responses.parse(text_format=Model) returns a typed object.
             deltas.append(
                 _delta(
@@ -981,6 +994,19 @@ def recommend_openai_workload(workload, region, catalog):
             path,
         )
 
+    needed = set(detected) | set(requirements.get("critical_features") or [])
+    if (model_key == "openai_gpt_6_astra" and path == "runtime_converse"
+            and {"structured_output_json", "streaming"} <= needed):
+        return _unresolved(
+            rationale_head, [],
+            _finding(
+                "structured_output_streaming_unverified", "[BLOCKS]",
+                "Astra runtime JSON Schema output is documented only for non-streaming calls.",
+                "Use non-streaming structured output or separate the streaming workload, "
+                "then update requirements and rerun Model Recommend.",
+            ), path,
+        )
+
     numeric_conflicts = _numeric_requirement_conflict(model, requirements)
     if numeric_conflicts:
         return _unresolved(
@@ -1012,7 +1038,14 @@ def recommend_openai_workload(workload, region, catalog):
             ), path,
         )
     if profile_regions is not None and invocation_model_id is not None:
-        if region not in profile_regions.get(invocation_model_id, []):
+        profile_key = invocation_model_id
+        if invocation_model_id.startswith("arn:"):
+            match = re.fullmatch(
+                r"arn:aws:bedrock:([^:]+):[0-9]{12}:inference-profile/([^/]+)",
+                invocation_model_id,
+            )
+            profile_key = match.group(2) if match and match.group(1) == region else None
+        if region not in profile_regions.get(profile_key, []):
             return _unresolved(
                 rationale_head, [],
                 _finding(

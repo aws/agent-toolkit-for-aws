@@ -243,6 +243,7 @@ Write the injection context to `$RUN_DIR/migration-plan-injection.json`:
       "endpoint_contract": "<the POST /invocations + GET /ping note when target_runtime==agentcore, else null — PER UNIT, so a secondary AgentCore unit in a split system still carries it>",
       "model": "<from unit.model_recommendation.model>",
       "api_path": "<from unit.model_recommendation.api_path>",
+      "invocation_model_id": "<from unit.model_recommendation.invocation_model_id; null until resolved>",
       "source": "<from unit.model_recommendation.source>",
       "services": "<from unit.agentcore_services[]>",
       "evidence": "<from context-signals.json.units[].evidence, matched by unit.id>"
@@ -353,11 +354,40 @@ are not modified and gcp never sees this step:
 ### Step 3.5 — Validate the advisor model/path contract (advisor wins)
 
 For every matched, model-bearing unit, compare the plan's model and migration path with
-`design.json.units[<id>].model_recommendation.{model,api_path}`.
+that unit's `design.json` model contract, including its separate `invocation_model_id`.
+Carry the injected invocation identifier into the corresponding GCP `aws_model_id` unchanged.
+For a proprietary GPT `runtime_converse` decision, GCP represents the same API as
+`migration_path: "runtime_openai_cris"` with `runtime_api: "converse"` in `code_migration`.
+An absent `runtime_api` on a legacy runtime plan means Converse; an explicit Chat/Responses
+choice is not equivalent. Do not replace a confirmed Global profile with US Geo or strip an ARN.
+Read each matched model row's `migration_path` and `runtime_api`; use the `code_migration`
+defaults only for a single-unit legacy plan. A secondary unit must not inherit the primary's
+API or invocation profile. Missing per-unit data requires re-running Design with the injection.
 
-1. If both match, annotate the design block with
+Use this comparison for each unit (including the single-unit case). It separates logical model
+identity from the invocation identifier while preserving the existing exact comparison for other paths:
+
+```python
+def matches_advisor_model(advisor, plan_model, migration_path, runtime_api=None):
+    model = advisor["model"]
+    proprietary_runtime = model == "openai.gpt-6-astra" or model.startswith("openai.gpt-5.6-")
+    if advisor["api_path"] == "runtime_converse" and proprietary_runtime:
+        invocation = advisor.get("invocation_model_id")
+        if not invocation:
+            return False
+        profile_id = invocation.rsplit("/", 1)[-1]
+        logical_model = (profile_id.split(".", 1)[1]
+                         if profile_id.startswith(("us.", "in.", "global.")) else profile_id)
+        return (logical_model == model and plan_model == invocation
+                and migration_path == "runtime_openai_cris"
+                and (runtime_api or "converse") == "converse")
+    return plan_model == model and migration_path == advisor["api_path"]
+```
+
+1. If the comparison matches, annotate the design block with
    `"advisor_model_contract": "validated"` and continue.
-2. If either differs, do not rewrite `design.json`, the recommendation, or the report.
+2. If model, API or invocation profile differs (or the required profile is unresolved),
+   do not rewrite `design.json`, the recommendation, or the report.
    Record the proposed value and rationale in the design block as
    `plan_model_mismatch`, then STOP with `_halt_and_inform`. Tell the user which requirement or
    account/region probe caused the mismatch. Resolution MUST return to Model Recommend, update

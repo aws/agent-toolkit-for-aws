@@ -670,7 +670,8 @@ When `rewrite_strategy == "mantle"`, C5's context block ALSO includes:
   both surfaces on Standard Mantle in Virginia and Oregon. Preserve the selected API; do not reshape Astra Chat solely
   because it is a proprietary GPT model. Older GPT-5.x targets retain their dated API checks.
 - `Same model: true` only when every mapping keeps the exact source model (after removing
-  the Bedrock provider/profile prefix for identity comparison). A Pro-to-Astra upgrade is
+  the Bedrock provider/profile prefix for identity comparison; for a validated system-profile
+  ARN, first take its resource ID after `/`). A Pro-to-Astra upgrade is
   `false` and still requires quality evaluation. This flag does not establish parameter parity;
   Astra sampling, `n`, and hosted-state behavior require the selected API's evidence.
 

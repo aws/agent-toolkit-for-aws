@@ -55,6 +55,12 @@ Check `preferences.json` → `ai_constraints.ai_framework.value` and `aws-design
 - `"direct"` or absent → Generate provider adapter (Step 1) + setup (Step 3) + test harness (Step 2)
 - `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or `"framework"` → Skip Step 1, generate gateway config (Step 3B) instead
 
+For `runtime_openai_cris`, read `ai_architecture.code_migration.runtime_api`; an absent legacy
+field means `converse`. Use that API consistently for the adapter, comparison and setup calls.
+Preserve the exact `aws_model_id` string, whether a short profile ID or a system-profile ARN.
+When building the IAM policy, use a supplied profile ARN directly and resolve its backing
+foundation-model resources; do not interpolate the ARN into another ARN.
+
 **Step 3F runs for ALL paths** (direct, mantle, gpt-oss, gateway, harness, strands) — generate `bedrock_monitoring.tf` regardless of migration path.
 
 **Determine language** (direct SDK users only): Read `ai-workload-profile.json` → `integration.languages` array. Use the first entry: `"python"` → `.py`, `"javascript"`/`"typescript"` → `.js`, `"go"` → `.go`, other/unknown → `.py`.

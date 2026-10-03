@@ -195,11 +195,13 @@ Treat model mapping as compatibility-guided, not 1:1 parity. Before cutover, req
 Check the same-model case FIRST — it short-circuits the cost comparison:
 
 - **Source model is available on Bedrock** (per `shared/openai-on-bedrock.md`) AND the target region carries it →
-  `"strong_migrate"`. Set `model_change: false`. The rationale is risk (no behavior delta) plus AWS commitments,
-  governance, and residency — **not** cost: Bedrock in-region is priced at OpenAI's data-residency-tier rate, about
-  10% above OpenAI standard, so report a modest cost increase rather than parity. Do not downgrade the assessment for
-  that ~10%, and do not claim it is free. If the workload exceeds 272K context, price it at the long-context tier
-  (2.0x input, 1.5x output) — the gap is then substantial and may change the recommendation.
+  `"strong_migrate"`. Set `model_change: false`. The rationale is reduced model-change risk plus AWS commitments,
+  governance, and residency; endpoint/API compatibility still needs evaluation. Derive the cost comparison from
+  the selected model's inference option/context tier and verified source rate. A verified $60 source and $60
+  Astra Global target is parity; do not impose a fixed premium. If source pricing is unavailable, retain that
+  unavailable comparison in Design rather than borrowing another model's rate. Above 272K input tokens, use
+  Astra's dedicated long-context prices before computing the difference. A material increase can change the
+  recommendation according to the user's cost priority and non-cost drivers below.
 - Source model on Bedrock but the target region does not carry it → treat as no-same-model below, and record the
   region as the cause in `regional_warnings[]`. Do not report this as a model-quality judgment.
 - Bedrock cheaper → `"strong_migrate"`
@@ -225,7 +227,9 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 | ------------------------- | ---------------------------------- | ------------ | --------------------------------------------------------------------------------- |
 | `"high"` or `"very_high"` | Any                                | `"high"`     | Flag: "Request Bedrock quota increase before migration (allow 1–5 business days)" |
 | `"medium"`                | Claude (5× burndown)               | `"medium"`   | Flag: "Monitor TPM usage; quota increase may be needed at peak"                   |
-| `"medium"`                | Nova / Llama / other (1× burndown) | `"low"`      | No action                                                                         |
+| `"medium"`                | Astra runtime (10× output burndown) | `"medium"` | Flag: "Verify input TPM + 10 × output TPM against the selected CRIS quota" |
+| `"medium"`                | Verified 1× models (e.g. Nova / Llama) | `"low"` | No action |
+| `"medium"`                | Unverified model/endpoint quota | `"medium"` | Flag: "Verify quota dimensions before estimating throughput" |
 | `"low"`                   | Any                                | `"low"`      | No action                                                                         |
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture` alongside `honest_assessment`.
@@ -374,6 +378,15 @@ Astra uses only supported `us.` / `global.` profiles and its own caller-region m
 GPT-5.5 / 5.4 remain Mantle-only. Check each model's capabilities before selecting an alternative;
 do not infer that every Bedrock feature is available on every runtime API.
 
+Record `code_migration.runtime_api` as `converse`, `responses` or `chat_completions` for
+`runtime_openai_cris`; absent on a legacy plan means `converse`. When the advisor supplied a
+per-unit model contract, retain its exact `invocation_model_id` in that unit's `aws_model_id`
+(including a system-profile ARN when supplied), and translate `runtime_converse` to
+`runtime_openai_cris` plus `runtime_api: "converse"`. A missing invocation ID requires resolution;
+do not manufacture a profile from the region. Keep each unit's model/API/profile together.
+For multiple advisor units, write `migration_path` and `runtime_api` on each corresponding
+`bedrock_models[]` row with its `aws_model_id`; `code_migration` remains the primary-unit default.
+
 **Throughput:** load `references/vendored/ai/ai-migration-guardrails.md` and apply the selected
 model/endpoint's quota rules. Astra runtime uses input TPM plus 10 times output TPM.
 Astra Mantle quotas and cache exemptions must be verified independently; do not copy GPT-5.6's
@@ -418,7 +431,7 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 | `ai_architecture.tiered_strategy`          | object/null | Tiered model routing (null for low/medium volume)                                                                                                                                                                                                |
 | `ai_architecture.bedrock_models`           | array       | Per-model: `gcp_model_id`, `aws_model_id`, `capabilities_matched[]`, `capability_gaps[]`, `honest_assessment`, `source_provider_price`, `bedrock_price`, `price_comparison`, `migration_complexity`                                              |
 | `ai_architecture.capability_mapping`       | object      | Per-capability: `parity` (full/partial/none), `notes`                                                                                                                                                                                            |
-| `ai_architecture.code_migration`           | object      | `primary_pattern`, `framework`, `files_to_modify[]`, `dependency_changes`                                                                                                                                                                        |
+| `ai_architecture.code_migration`           | object      | `primary_pattern`, `framework`, `files_to_modify[]`, `dependency_changes`, `migration_path`; `runtime_api` for `runtime_openai_cris` (`converse` when absent on a legacy plan) |
 | `ai_architecture.infrastructure`           | array       | GCP resource → AWS equivalent mappings with confidence                                                                                                                                                                                           |
 | `ai_architecture.services_to_migrate`      | array       | GCP service → AWS service with effort and notes                                                                                                                                                                                                  |
 | `regional_warnings`                        | array       | Per-service: `service`, `target_region`, `nearest_available`, `impact` (empty array if all services available)                                                                                                                                   |
