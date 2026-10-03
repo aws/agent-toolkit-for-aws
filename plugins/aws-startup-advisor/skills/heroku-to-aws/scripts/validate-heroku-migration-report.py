@@ -494,11 +494,16 @@ class _DecodedTextParser(HTMLParser):
         "sub", "sup", "time", "u", "var", "wbr",
     }
     _INERT_TAGS = {"script", "style", "template"}
+    _VOID_TAGS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self._parts: list[str] = []
         self._inert_depth = 0
+        self._stack: list[dict[str, object]] = []
         # Absolute offsets (into text()) of every block-level separator — a
         # rate-suffix match must never read past one of these into unrelated
         # content from a different cell/row/paragraph (see
@@ -515,15 +520,43 @@ class _DecodedTextParser(HTMLParser):
             self._boundaries.append(sum(len(p) for p in self._parts))
         self._parts.append(text)
 
+    def _hidden(self) -> bool:
+        return bool(self._stack and self._stack[-1]["hidden"])
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        return "hidden" in dict(attrs)
+
+    def _pop_to(self, tag: str) -> bool:
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index]["tag"] == tag:
+                popped = self._stack[index:]
+                del self._stack[index:]
+                return any(bool(frame["hidden"]) for frame in popped)
+        return False
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._INERT_TAGS:
             self._inert_depth += 1
             return
-        if self._inert_depth == 0 and tag not in self._INLINE_TAGS:
+        if self._inert_depth > 0:
+            return
+        hidden = self._hidden() or self._is_hidden(attrs)
+        if tag not in self._VOID_TAGS:
+            self._stack.append({"tag": tag, "hidden": hidden})
+        if hidden:
+            if tag not in self._INLINE_TAGS:
+                self._append(" ", is_boundary=True)
+            return
+        if tag not in self._INLINE_TAGS:
             self._append(" ", is_boundary=True)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag not in self._INLINE_TAGS and tag not in self._INERT_TAGS:
+        if tag in self._INERT_TAGS or self._inert_depth > 0 or self._hidden():
+            return
+        if self._is_hidden(attrs):
+            return
+        if tag not in self._INLINE_TAGS:
             self._append(" ", is_boundary=True)
 
     def handle_endtag(self, tag: str) -> None:
@@ -531,11 +564,18 @@ class _DecodedTextParser(HTMLParser):
             if self._inert_depth > 0:
                 self._inert_depth -= 1
             return
-        if self._inert_depth == 0 and tag not in self._INLINE_TAGS:
+        if self._inert_depth > 0:
+            return
+        hidden = self._pop_to(tag)
+        if hidden or self._hidden():
+            if tag not in self._INLINE_TAGS:
+                self._append(" ", is_boundary=True)
+            return
+        if tag not in self._INLINE_TAGS:
             self._append(" ", is_boundary=True)
 
     def handle_data(self, data: str) -> None:
-        if self._inert_depth == 0:
+        if self._inert_depth == 0 and not self._hidden():
             self._append(data)
 
     def text(self) -> str:
@@ -598,30 +638,54 @@ class _TagAttrCollector(HTMLParser):
     "is this rendered?" check in this file agrees on the answer."""
 
     _INERT_TAGS = {"script", "style", "template"}
+    _VOID_TAGS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.tags: list[tuple[str, dict[str, str | None], bool]] = []
         self._inert_depth = 0
+        self._stack: list[dict[str, object]] = []
+
+    def _hidden(self) -> bool:
+        return bool(self._stack and self._stack[-1]["hidden"])
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        return "hidden" in dict(attrs)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._INERT_TAGS:
             self._inert_depth += 1
             return
-        if self._inert_depth == 0:
+        if self._inert_depth > 0:
+            return
+        hidden = self._hidden() or self._is_hidden(attrs)
+        if tag not in self._VOID_TAGS:
+            self._stack.append({"tag": tag, "hidden": hidden})
+        if not hidden:
             self.tags.append((tag, dict(attrs), False))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         # A self-closed inert tag opens no subtree; a self-closed normal tag is a
-        # rendered element (unless nested in an inert subtree).
-        if tag in self._INERT_TAGS:
+        # rendered element unless nested in an inert or hidden subtree.
+        if tag in self._INERT_TAGS or self._inert_depth > 0 or self._hidden():
             return
-        if self._inert_depth == 0:
+        if not self._is_hidden(attrs):
             self.tags.append((tag, dict(attrs), True))
 
     def handle_endtag(self, tag: str) -> None:
         if tag in self._INERT_TAGS and self._inert_depth > 0:
             self._inert_depth -= 1
+            return
+        if self._inert_depth > 0:
+            return
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index]["tag"] == tag:
+                del self._stack[index:]
+                return
 
 
 def _collect_tags(html: str) -> list[tuple[str, dict[str, str | None], bool]]:
@@ -802,6 +866,203 @@ def _class_tokens(html_fragment: str) -> set[str]:
     return tokens
 
 
+def _normalize_phrase(text: str) -> str:
+    """Lower-cased, whitespace-collapsed, dash-folded rendered text, so a heading
+    written as `What&nbsp;would\nflip this` compares equal to the plain spelling."""
+    text = text.replace("\u2014", "-").replace("\u2013", "-")
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _word_shingles(text: str, size: int) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    if not words:
+        return set()
+    if len(words) <= size:
+        return {" ".join(words)}
+    return {" ".join(words[i : i + size]) for i in range(len(words) - size + 1)}
+
+
+def _phrase_rendered(phrase: str, rendered_text: str, max_width: int = 4) -> bool:
+    """Ported from validate-migration-report.py — True when `rendered_text`
+    shares a word phrase with the artifact `phrase`, cut at the phrase's own
+    token width (capped at four) so one-to-three-word entries can match."""
+    words = re.findall(r"[a-z0-9]+", _normalize_phrase(phrase))
+    if not words:
+        return True
+    width = min(len(words), max_width)
+    return bool(_word_shingles(" ".join(words), width) & _word_shingles(rendered_text, width))
+
+
+def _unmatched_phrases(phrases: list[object], rendered_items: list[str]) -> list[str]:
+    """Return artifact phrases that cannot be assigned distinct rendered items."""
+    matched_items: dict[int, int] = {}
+
+    def assign(phrase_index: int, seen_items: set[int]) -> bool:
+        phrase = str(phrases[phrase_index])
+        for item_index, item in enumerate(rendered_items):
+            if item_index in seen_items or not _phrase_rendered(phrase, item):
+                continue
+            seen_items.add(item_index)
+            previous = matched_items.get(item_index)
+            if previous is None or assign(previous, seen_items):
+                matched_items[item_index] = phrase_index
+                return True
+        return False
+
+    for phrase_index in range(len(phrases)):
+        assign(phrase_index, set())
+    matched_phrases = set(matched_items.values())
+    return [str(phrase) for index, phrase in enumerate(phrases) if index not in matched_phrases]
+
+
+class _RenderedFragmentParser(HTMLParser):
+    """Ported from validate-migration-report.py — flatten a fragment into what
+    the browser shows, in document order: `("heading", run)` for an <h1>–<h6>,
+    `("li", item)` per list item and `("text", run)` for any other prose, each
+    decoded and normalized via _normalize_phrase. Inert subtrees and comments
+    are skipped (same rule as _DecodedTextParser / _TagAttrCollector), and
+    inline tags do not split a run, so `What <em>would</em> flip this` is one
+    phrase."""
+
+    _INLINE_TAGS = _DecodedTextParser._INLINE_TAGS
+    _INERT_TAGS = _DecodedTextParser._INERT_TAGS
+    _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+    _VOID_TAGS = _DecodedTextParser._VOID_TAGS
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.entries: list[tuple[str, str]] = []
+        self._inert_depth = 0
+        self._stack: list[dict[str, object]] = []
+        self._li_depth = 0
+        self._heading_depth = 0
+        self._buf: list[str] = []
+
+    def _hidden(self) -> bool:
+        return bool(self._stack and self._stack[-1]["hidden"])
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        return "hidden" in dict(attrs)
+
+    def _pop_to(self, tag: str) -> bool:
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index]["tag"] == tag:
+                popped = self._stack[index:]
+                del self._stack[index:]
+                return any(bool(frame["hidden"]) for frame in popped)
+        return False
+
+    def _flush(self) -> None:
+        text = _normalize_phrase(" ".join(self._buf))
+        self._buf = []
+        if not text:
+            return
+        if self._li_depth:
+            kind = "li"
+        elif self._heading_depth:
+            kind = "heading"
+        else:
+            kind = "text"
+        self.entries.append((kind, text))
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS:
+            self._inert_depth += 1
+            return
+        if self._inert_depth > 0:
+            return
+        hidden = self._hidden() or self._is_hidden(attrs)
+        if tag not in self._VOID_TAGS:
+            self._stack.append({"tag": tag, "hidden": hidden})
+        if hidden:
+            return
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+        if tag == "li":
+            self._li_depth += 1
+        elif tag in self._HEADING_TAGS:
+            self._heading_depth += 1
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS or self._inert_depth > 0 or self._hidden():
+            return
+        if self._is_hidden(attrs):
+            return
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._INERT_TAGS:
+            if self._inert_depth > 0:
+                self._inert_depth -= 1
+            return
+        if self._inert_depth > 0:
+            return
+        hidden = self._pop_to(tag)
+        if hidden or self._hidden():
+            return
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+        if tag == "li" and self._li_depth > 0:
+            self._li_depth -= 1
+        elif tag in self._HEADING_TAGS and self._heading_depth > 0:
+            self._heading_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._inert_depth == 0 and not self._hidden():
+            self._buf.append(data)
+
+    def close(self) -> None:
+        super().close()
+        self._flush()
+
+
+def _rendered_entries(fragment: str) -> list[tuple[str, str]]:
+    parser = _RenderedFragmentParser()
+    parser.feed(fragment)
+    parser.close()
+    return parser.entries
+
+
+def _rendered_list_after_heading(
+    entries: list[tuple[str, str]], heading_phrase: str
+) -> list[str] | None:
+    """Ported from validate-migration-report.py — items of the rendered list
+    that `heading_phrase` introduces. Two shapes are accepted, both legitimate
+    under generate-report.md's "short unordered list": a heading (preferred) or
+    prose run carrying the phrase (`<h3>What would flip this</h3>`), with any
+    lead-in prose before the first <li> skipped and another heading before any
+    item meaning an empty list; or a list item carrying the phrase as an inline
+    label (`<li>What would flip this: …</li>`, the shape the heroku-decision-gate
+    fixtures render), whose remainder plus following sibling items are the
+    list. None when no rendered run carries the phrase, [] when it does but no
+    item renders under it (heading-only / empty <ul>)."""
+
+    def items_from(start: int) -> list[str]:
+        items: list[str] = []
+        for kind, text in entries[start:]:
+            if kind != "li":
+                break
+            items.append(text)
+        return items
+
+    for wanted in ("heading", "text", "li"):
+        for index, (kind, text) in enumerate(entries):
+            if kind != wanted or heading_phrase not in text:
+                continue
+            if kind == "li":
+                remainder = text.split(heading_phrase, 1)[1].lstrip(" :;,.-")
+                return ([remainder] if remainder else []) + items_from(index + 1)
+            for offset, (next_kind, _next_text) in enumerate(entries[index + 1 :], index + 1):
+                if next_kind == "li":
+                    return items_from(offset)
+                if next_kind == "heading":
+                    break
+            return []
+    return None
+
+
 def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
     """Typography-first verdict rules (skill: verdict is the section thesis and
     must never be a colored-pill row)."""
@@ -821,6 +1082,7 @@ def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
 
     # When Estimate declared a recommendation outcome, the verdict headline is required.
     recommendation_outcome = False
+    flips: list = []
     if migration_dir is not None:
         est_path = migration_dir / "estimation-infra.json"
         if est_path.is_file():
@@ -828,6 +1090,8 @@ def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
                 est = json.loads(est_path.read_text(encoding="utf-8"))
                 rec = (est or {}).get("recommendation") or {}
                 recommendation_outcome = bool(rec.get("outcome"))
+                raw_flips = rec.get("would_flip_if") or []
+                flips = raw_flips if isinstance(raw_flips, list) else []
             except (OSError, json.JSONDecodeError):
                 # Fail open on ambiguity: a missing/corrupt estimate does not force the
                 # verdict-headline requirement (we can't confirm an outcome was declared).
@@ -838,6 +1102,25 @@ def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
             "decision-summary has no verdict-headline element "
             '(render outcome_label as <p class="verdict-headline">…</p>)'
         )
+    if flips:
+        # Match the heading on decoded, whitespace-normalized visible text (entities,
+        # line breaks and inline markup are all one phrase to the reader; comments and
+        # <template> content are not rendered), then require every artifact flip
+        # condition to appear as an item of the list that follows it.
+        items = _rendered_list_after_heading(_rendered_entries(summary), "what would flip")
+        if items is None:
+            errors.append(
+                "estimation-infra.json declares recommendation.would_flip_if but "
+                'decision-summary has no "What would flip this" list'
+            )
+        else:
+            missing = _unmatched_phrases(flips, items)
+            if missing:
+                errors.append(
+                    f'"What would flip this" list renders {len(flips) - len(missing)} of '
+                    f"{len(flips)} recommendation.would_flip_if entries — missing: "
+                    + "; ".join(f'"{flip}"' for flip in missing)
+                )
     return errors
 
 
@@ -956,6 +1239,35 @@ def _validate_accessibility(html: str) -> list[str]:
     return errors
 
 
+def _what_if_column_errors(section: str) -> list[str]:
+    """Workshop compare tables use the same column set as generate-report.md."""
+    header = re.search(r"<thead\b.*?</thead>", section, re.DOTALL | re.IGNORECASE)
+    if not header:
+        return [
+            "what-if-scenarios must contain a table headed "
+            "Scenario, Region, HA, Compute, Arch, and Complexity"
+        ]
+    text = re.sub(r"<[^>]+>", " ", header.group(0)).lower()
+    missing = [
+        label
+        for label, present in (
+            ("Region", "region" in text),
+            ("HA", "ha" in text or "availability" in text),
+            ("Compute", "compute" in text),
+            ("Arch", re.search(r"\barch\b", text) is not None),
+            ("Complexity", "complexity" in text),
+        )
+        if not present
+    ]
+    if not missing:
+        return []
+    return [
+        "what-if-scenarios table is missing column(s): "
+        + ", ".join(missing)
+        + " (generate-report.md what-if table)"
+    ]
+
+
 def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[str]:
     errors: list[str] = []
     counts = _section_counts(html)
@@ -1011,6 +1323,9 @@ def validate(html: str, migration_dir: Path | None, mode: str = "full") -> list[
                     'scenarios/index.json has ≥2 scenarios but no '
                     '<section id="what-if-scenarios">'
                 )
+            elif len(scenarios) >= 2:
+                section = _section_html(html, "what-if-scenarios") or ""
+                errors.extend(_what_if_column_errors(section))
 
         # generate-report.md / report-decision-core.md § decision-basis: when Estimate
         # declared decision_basis (evidence/assumptions behind the verdict), the report

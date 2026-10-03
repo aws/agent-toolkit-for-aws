@@ -134,6 +134,20 @@ Rules for the pack itself:
 - **When the right-sizing delta is `$0`**, replace that clause with the reason
   rather than printing "saves $0" — e.g. "no utilization data, so right-sizing
   reflects declared waste only". A bare `$0` reads as a broken calculation.
+- **When `services[]` is empty (the all-deferred design, `estimate-infra.md`
+  Step 1)**, the priced workload total is `$0` and the pack must say what that
+  is. Replace the cost line with the soft-trigger-9 sentence: name the
+  `deferred[]` entries when there are any, and say skipped resources are not a
+  specialist engagement when `deferred[]` is empty. Always add that
+  `baseline.tf` controls are unpriced and are not in the `$0`. The "Deferred to
+  specialists" line lists `deferred[]` only, and is omitted when that array is
+  empty. Still offer option C — Generate's baseline-only output (`baseline.tf`
+  plus the core files) is the deliverable for this estate. Never present the
+  `$0` as a saving, and never call it the price of the account baseline.
+- **On every run**, the "Not priced" line names the unpriced `baseline.tf`
+  controls (CloudTrail log storage, GuardDuty, and Config plus Security Hub
+  when a named framework is declared), even when `is_floor` is false. The
+  budget floor is not a substitute for those prices.
 - **At most one data-justified scenario hint, and only when the assumptions block
   is absent.** When a material assumption was defaulted rather than confirmed —
   most often `data.availability`, where Multi-AZ roughly doubles the database
