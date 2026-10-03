@@ -97,7 +97,17 @@
         ]
       },
       "scenarios/scenario-NNN.estimation-infra.json": {
-        "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json",
+        "shape": "skills/gcp-to-aws/references/shared/schema-estimate-infra.md",
+        "root_heading": "estimation-infra.json schema",
+        "sections": {
+          "Cost tiers": "projected_costs.scenario_deltas",
+          "Observability Entry in": "projected_costs.breakdown.observability",
+          "@L373": "projected_costs.breakdown.security_baseline",
+          "@L390": "projected_costs.breakdown.security_baseline_compliance",
+          "architecture_comparison": "architecture_comparison"
+        },
+        "_sections_why": "Workshop baseline capture copies the active estimation-infra.json into scenarios/scenario-NNN.estimation-infra.json. The snapshot uses the same Markdown shape, root heading, and section refinements."
       }
     },
     "heroku-to-aws": {
@@ -242,6 +252,48 @@
       "scenarios/index.json": {
         "shape": "skills/azure-to-aws/references/shared/schema-workshop-scenarios.md",
         "root_heading": "scenarios/index.json"
+      },
+      "scenarios/scenario-NNN.preferences.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-preferences.md",
+        "root_heading": "Shape",
+        "allowed_anywhere": [
+          "source",
+          "reason",
+          "context",
+          "note",
+          "unanswered",
+          "blocks_phase",
+          "conflict",
+          "forced_by",
+          "residency_warning",
+          "detail",
+          "default_basis",
+          "deferred_to_generate"
+        ],
+        "extra_shapes": [
+          {
+            "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
+            "heading": "design_constraints.cpu_architecture",
+            "path": "design_constraints.cpu_architecture"
+          }
+        ],
+        "_alias_why": "Workshop baseline capture copies preferences.json to scenarios/scenario-NNN.preferences.json. The snapshot uses the same shape and refinements."
+      },
+      "scenarios/scenario-NNN.aws-design.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-design-aws.md",
+        "root_heading": "Shape",
+        "extra_shapes": [
+          {
+            "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
+            "heading": "graviton block",
+            "path": "services[].graviton"
+          }
+        ],
+        "_alias_why": "Workshop baseline capture copies aws-design.json to scenarios/scenario-NNN.aws-design.json."
+      },
+      "scenarios/scenario-NNN.estimation-infra.json": {
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json",
+        "_alias_why": "Workshop baseline capture copies estimation-infra.json to scenarios/scenario-NNN.estimation-infra.json. The active file's contract is this JSON Schema."
       }
     }
   }

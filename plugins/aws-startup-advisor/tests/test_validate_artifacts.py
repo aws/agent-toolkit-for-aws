@@ -826,3 +826,98 @@ def test_azure_workshop_index_records_capture_state(tmp_path: Path):
     bad = json.loads(json.dumps(index))
     bad["invented"] = 1
     assert ("UNKNOWN_KEY", "invented") in run("bad", bad)
+
+
+def test_gcp_inventory_estimate_accepts_the_cache_category(tmp_path: Path):
+    """Review finding on #385: estimate-infra.md records Memorystore under breakdown.cache."""
+    est = json.loads((PLUGIN_ROOT / "fixtures/gcp-decision-gate/after-decide-complete/estimation-infra.json").read_text())
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "estimation-infra.json", data)),
+                            "--skill", "gcp-to-aws", "--json"))
+
+    control = run("base", est)
+    est.setdefault("current_costs", {})["source"] = "inventory_estimate"
+    est["current_costs"].setdefault("breakdown", {})["cache"] = 10
+    assert run("cache", est) - control == set()
+    bad = json.loads(json.dumps(est))
+    bad["current_costs"]["breakdown"]["invented"] = 1
+    assert ("UNKNOWN_KEY", "current_costs.breakdown.invented") in run("bad", bad)
+
+
+def test_workshop_snapshots_reuse_the_active_contracts(tmp_path: Path):
+    """Review finding on #385: scenario copies skipped the active shape, or had no contract."""
+    est = json.loads((PLUGIN_ROOT / "fixtures/gcp-decision-gate/after-decide-complete/estimation-infra.json").read_text())
+    doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-estimate-infra.md"
+    est["projected_costs"]["scenario_deltas"] = _doc_example(doc, "Cost tiers")["scenario_deltas"]
+
+    def run_gcp(name, artifact, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, artifact, data)),
+                            "--skill", "gcp-to-aws", "--no-baseline", "--json"))
+
+    for artifact in ("estimation-infra.json", "scenarios/scenario-017.estimation-infra.json"):
+        bad = json.loads(json.dumps(est))
+        bad["projected_costs"]["scenario_deltas"]["bogus"] = []
+        assert ("UNKNOWN_KEY", "projected_costs.scenario_deltas.bogus") in run_gcp("gcp-" + artifact, artifact, bad)
+
+    pref = json.loads((PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-clarify/preferences.json").read_text())
+    design = json.loads((PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-design/aws-design.json").read_text())
+    azure_est = json.loads((PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-estimate/estimation-infra.json").read_text())
+
+    def run_az(name, artifact, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, artifact, data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    pairs = (
+        ("preferences.json", "scenarios/scenario-001.preferences.json", pref, "clarify_status", "invented-status", "ENUM_VIOLATION"),
+        ("aws-design.json", "scenarios/scenario-001.aws-design.json", design, None, None, "MISSING_REQUIRED"),
+        ("estimation-infra.json", "scenarios/scenario-001.estimation-infra.json", azure_est, "complexity_tier", "enormous", "SCHEMA_VIOLATION"),
+    )
+    for active, snap, data, key, value, code in pairs:
+        bad = json.loads(json.dumps(data))
+        if key == "clarify_status":
+            bad["clarify_status"] = value
+            path = "clarify_status"
+        elif code == "MISSING_REQUIRED":
+            del bad["services"][0]["routing_provenance"]
+            path = "services[0].routing_provenance"
+        else:
+            bad["complexity_tier"] = value
+            path = "complexity_tier"
+        assert (code, path) in run_az("a-" + active, active, bad)
+        assert (code, path) in run_az("s-" + snap, snap, bad)
+        assert "NO_CONTRACT" not in {c for c, _ in run_az("s-" + snap, snap, bad)}
+
+
+def test_heroku_scenario_accepts_recommendation_outcome(tmp_path: Path):
+    """Review finding on #385: workshop-invariants.md permits a nullable recommendation_outcome."""
+    sc = json.loads((PLUGIN_ROOT / "fixtures/heroku-workshop/after-arm64-reprice/scenarios/scenario-002.json").read_text())
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "scenarios/scenario-002.json", data)),
+                            "--skill", "heroku-to-aws", "--json"))
+
+    control = run("base", sc)
+    for value in ("conditional_go", None):
+        ok = json.loads(json.dumps(sc))
+        ok["estimation_summary"]["recommendation_outcome"] = value
+        assert ("UNKNOWN_KEY", "estimation_summary.recommendation_outcome") not in run(str(value), ok)
+        assert run(str(value), ok) - control == set()
+    bad = json.loads(json.dumps(sc))
+    bad["estimation_summary"]["invented"] = 1
+    assert ("UNKNOWN_KEY", "estimation_summary.invented") in run("bad", bad)
+
+
+def test_azure_discovery_verdict_is_required(tmp_path: Path):
+    """Review finding on #385: the REQUIRED marker inside clarify_fast_path was dropped."""
+    src = PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-discover/azure-resource-inventory.json"
+    inv = json.loads(src.read_text())
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "azure-resource-inventory.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    assert ("MISSING_REQUIRED", "metadata.clarify_fast_path") not in run("kept", inv)
+    fresh = json.loads(json.dumps(inv))
+    del fresh["metadata"]["clarify_fast_path"]
+    assert ("MISSING_REQUIRED", "metadata.clarify_fast_path") in run("omitted", fresh)

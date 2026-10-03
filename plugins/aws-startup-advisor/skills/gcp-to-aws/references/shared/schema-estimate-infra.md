@@ -69,7 +69,7 @@ Validation: when all three tiers are present, `scenario_deltas.premium` and `sce
     "gcp_monthly": 300,
     "gcp_annual": 3600,
     "baseline_note": "From billing-profile.json actual spend data — or the mandatory derived-baseline caveat for inventory_estimate",
-    "breakdown": { "compute": 75, "database": 50, "storage": 40, "networking": 20, "other": 15 },
+    "breakdown": { "compute": 75, "database": 50, "cache": 10, "storage": 40, "networking": 20, "other": 15 },
     "derivation": [],
     "excluded_resources": [],
     "warnings": []
