@@ -48,5 +48,8 @@ jobs:
       - name: Validate manifests, skills, and plugin parity
         run: mise run validate
 
+      - name: Lint Bedrock model IDs (fail on retired-model references)
+        run: mise run lint:model-id
+
       - name: Security scan (gitleaks)
         run: mise run security
