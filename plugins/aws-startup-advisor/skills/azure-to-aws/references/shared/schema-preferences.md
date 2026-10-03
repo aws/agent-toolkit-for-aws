@@ -109,6 +109,9 @@ licensing exposure and found none" is a different statement from silence.
     "default": "identity_center_reinvite"
   },
   "licensing": {
+    "disposition": "N/A", // unfired stub only — clarify-licensing.md § Step 3; absent when the per-model rows below are present
+    "value": null,
+    "default": null,
     "windows_model": {
       "disposition": "ESSENTIAL",
       "value": "license_included",
