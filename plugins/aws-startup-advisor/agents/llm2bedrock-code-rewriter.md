@@ -161,7 +161,7 @@ The source SDK stays. Per client, change only three things:
   | Anthropic SDK                            | `https://bedrock-mantle.<REGION>.api.aws/anthropic/v1` |
 
   If your context has a `Mantle base path` line, use it verbatim — it is authoritative over this table.
-- **Credential** → a Bedrock bearer token, NOT the original provider key, read from the `AWS_BEARER_TOKEN_BEDROCK` env var. Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
+- **Credential** → a Bedrock bearer token, NOT the original provider key. For a short CLI or one-shot script, read it from the `AWS_BEARER_TOKEN_BEDROCK` env var; for any long-running process use the auto-refreshing `provide_token` client shown below (the env-var form expires within 12 hours). Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
 - **Model ID** → the Bedrock model id from the `Mantle model map` context line (the `aws_model_id` from the migration plan).
 
 **When your context has `Same model: true`**, the target is the same model the app already used. Do NOT change model parameters (`temperature`, penalties, stop sequences) — they are unchanged, and §9 will not ask about them. Limit edits to base_url, credential, and model id, plus the Chat Completions → Responses reshape below if the source used Chat Completions.
@@ -183,7 +183,7 @@ client = OpenAI(
 # model="gpt-5.5" -> model="openai.gpt-5.5"
 ```
 
-A bearer token read from the environment expires within 12 hours. When the target repo has a long-running process (a server, worker, or scheduled job rather than a short CLI run), prefer the auto-refreshing client and note the added dependency in `dependency_changes`:
+A bearer token read from the environment expires within 12 hours. That form is for a short CLI or one-shot script. A server, worker, scheduled job, ECS service, or Lambda function uses the auto-refreshing client below, and `.env.example` does not set `AWS_BEARER_TOKEN_BEDROCK` for those. Note the added dependency in `dependency_changes`:
 
 ```python
 from aws_bedrock_token_generator import provide_token   # aws-bedrock-token-generator
@@ -377,18 +377,41 @@ For EACH file in the `files_to_modify` list from llm2bedrock-code-analyzer:
 
 # 11. Update auth patterns
 
-Replace source provider API key auth with AWS credentials:
+Replace source provider API key auth with the AWS credential chain. Do not call OpenAI, Anthropic, or Google to revoke a key. The source-model eval already used that key. Revocation is the customer's cutover step, recorded below, not an API call from this agent.
 
 ```bash
-# Find API key references
-grep -rn "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GOOGLE_API_KEY\|GEMINI_API_KEY" . --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" --include="*.yaml" --include="*.json" | grep -v node_modules
+# Find API key references in code and committed templates
+grep -rn "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GOOGLE_API_KEY\|GEMINI_API_KEY" . --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" --include="*.yaml" --include="*.yml" --include="*.json" | grep -v node_modules | grep -v '.saws-migrate/' | grep -v '.migration/'
 ```
 
-Replace with AWS credential configuration:
+Also search CI and deploy config that the include-filter above misses. Use `rg --glob` (ripgrep expands these patterns itself) rather than bare shell globs — under default zsh, an unquoted glob with no matching file (e.g. no `Dockerfile.*` variant exists) aborts the command with `no matches found` before `rg` ever runs, and a trailing `|| true` would hide that failure as a clean, empty scan. The quoted `--glob` form below runs correctly under both bash and zsh whether or not each optional file/variant exists:
 
-- Remove `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` env var usage
-- Use boto3 default credential chain (env vars, IAM role, etc.)
-- Add `AWS_REGION` and `AWS_DEFAULT_REGION` to config
+```bash
+rg -n "OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|GEMINI_API_KEY" \
+  --glob ".github/**" --glob ".gitlab-ci.yml" --glob "bitbucket-pipelines.yml" \
+  --glob "azure-pipelines.yml" --glob ".circleci/**" \
+  --glob "Dockerfile*" --glob "docker-compose.y*ml" \
+  --glob "task-definition.json" --glob "template.y*ml" --glob "serverless.y*ml" \
+  .
+```
+
+This command exits 1 (ripgrep's "no matches" convention) when the repo has none of these files/references at all — that is expected and not an execution failure; only a nonzero exit from a _shell_ error (e.g. `command not found`) indicates the scan itself broke.
+
+In application code and committed templates:
+
+- Remove `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, and `GEMINI_API_KEY` usage.
+- Do not delete a secret from GitHub Actions, GitLab, or any remote secret store. Record each remaining hit in `notes`.
+- Converse path: the boto3 default credential chain. ECS uses the task role. Lambda uses the execution role. Do not write `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` into application code or into an uncommented `.env.example` line.
+- Add `AWS_REGION` as config. Add `AWS_DEFAULT_REGION` only where the SDK reads it. Neither is a credential.
+
+**Retire-the-key checklist (required in `notes` and in the §26 summary).** Name the provider keys this repo actually referenced. The customer does this after the Bedrock build is deployed and verified in production — not when they accept the branch. Accepting the branch is a local checkout; the original deployment still runs on the source provider and still reads the key until the cutover is done. If the customer declines the migration, the key stays: the original application needs it.
+
+1. Confirm the cutover: the Bedrock build serves production traffic, the original deployment is retired, and no rollback target, canary, cron job, other service, or CI job still reads the key.
+2. Revoke the key in the provider console (OpenAI, Anthropic, or Google).
+3. Delete that secret from CI and deploy stores: GitHub Actions secrets, GitLab CI variables, and any ECS task definition or Lambda environment that still sets it.
+4. Re-run the searches above and confirm they are clean outside `.saws-migrate/` and `.migration/`.
+
+A separate evaluation-only key (one the customer created for the eval, with no other consumer) can be revoked as soon as the branch is accepted. Do not mark this checklist done. This agent cannot see the provider console, the CI secret store, or production.
 
 # 12. Update dependencies (manifest + lockfile)
 
@@ -517,28 +540,44 @@ Example: `notes: "poetry lock failed: SolverProblemError on package langchain-co
 
 # 13. Update environment variable template
 
-Create or update `.env.example` (use the `Write` tool):
+Create or update `.env.example` (use the `Write` tool). Uncommented lines are the region and the model id from this run's migration plan (`aws_model_id`). Do not copy an illustrative model id into the file. Long-lived access keys are a commented local fallback, never the deploy credential.
+
+Detect the deploy shape from deployment evidence, not from the application's packaging. This migration swaps the SDK; it does not move the app, so the role you name must already exist on the platform the app runs on today:
+
+- **ECS task role** only when the repo carries ECS deployment evidence: an ECS task definition (`task-definition.json`, `taskDefinition` in a workflow or CDK/CloudFormation stack), an ECS service definition, a Copilot manifest whose `type` is an ECS service (Load Balanced Web Service, Backend Service, Worker Service — not Request-Driven Web Service, which deploys to App Runner), or a CI step that calls `aws ecs`. A Dockerfile alone is a container image, not ECS — App Runner, Cloud Run, Kubernetes, Fly, and Lambda container images all have one.
+- **Lambda execution role** only when the repo carries Lambda deployment evidence: a SAM `template.yaml`, `serverless.yml`, a CDK/CloudFormation `AWS::Lambda::Function` or `AWS::Serverless::Function`, or a handler the deploy config wires to Lambda. A handler-shaped function on its own is not enough.
+- **Otherwise** name the boto3 default chain: a server or container reads credentials from its host (instance profile or the platform's equivalent); a local run uses SSO or a named profile. App Runner lands here, not in the ECS case — it has no task role; with an `apprunner.yaml` or Copilot Request-Driven Web Service manifest, name the App Runner service's instance role as the host identity. When no deployment evidence turned up, say that you did not identify the platform and that the customer picks the identity.
+
+Say which case applies, and what evidence picked it, in a comment. Do not invent a role ARN. Do not name an ECS or Lambda role for an app whose deployment platform you did not find.
 
 ```
-# AWS Configuration (required for Bedrock)
+# AWS configuration (required for Bedrock)
+# ECS: attach Bedrock permission to the task role.
+# Lambda: attach Bedrock permission to the execution role.
+# Other server or container: boto3 reads the default chain from the host (instance profile, App Runner instance role, or equivalent).
+# Local: `aws sso login` or a named profile. boto3 reads the default chain.
+# Do not commit access keys. Uncomment only for a short local session, then discard them.
+# AWS_ACCESS_KEY_ID=
+# AWS_SECRET_ACCESS_KEY=
 AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-# Or use IAM role / SSO — boto3 will auto-detect
 
-# Bedrock Model Configuration
-BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6
+# Bedrock model — the plan's aws_model_id for this run
+BEDROCK_MODEL_ID=<aws_model_id>
 ```
 
-**Mantle express lane exception:** when this run used the Mantle express lane (§8), Mantle authenticates with a bearer token, not SigV4. Write `.env.example` with the token instead of the access-key pair:
+**Mantle, short CLI or one-shot script only.** A static bearer token expires within 12 hours. When this run used the Mantle express lane (§8) AND the process is not a server, worker, scheduled job, ECS service, or Lambda, write the token commented, with that expiry:
 
 ```
-# Bedrock (Mantle endpoint — bearer-token auth)
+# Mantle local/CLI only. Expires within 12 hours. Do not put this on ECS or Lambda.
+# Obtain via aws-bedrock-token-generator, or `aws bedrock get-bearer-token`.
+# AWS_BEARER_TOKEN_BEDROCK=
 AWS_REGION=us-east-1
-# Obtain a bearer token via the aws-bedrock-token-generator package, or
-# `aws bedrock get-bearer-token` — export it as:
-AWS_BEARER_TOKEN_BEDROCK=your-bedrock-bearer-token
+
+# Bedrock model — the plan's aws_model_id for this run
+BEDROCK_MODEL_ID=<aws_model_id>
 ```
+
+**Mantle, long-running process** (ECS, Lambda, server, worker, scheduled job). Do not put `AWS_BEARER_TOKEN_BEDROCK` in `.env.example`. The code uses the auto-refreshing client from §8 (`provide_token`), which signs with whatever the default chain resolves. The deploy identity follows the same evidence rule as above: the task role with ECS evidence, the execution role with Lambda evidence, otherwise the default chain on the host (App Runner's instance role, an instance profile, or the platform's equivalent) with the platform left unresolved when no evidence names it. `.env.example` matches the default template above.
 
 # 14. Commit code-only changes; verify clean working tree
 
@@ -797,7 +836,12 @@ grep -rl "from openai\|import openai\|require.*openai\|from anthropic\|import an
 
 If any files still contain source SDK references, fix them before proceeding. Test directories are NOT excluded from this scan on purpose: the source SDK package is being removed from the manifest, so a leftover `import openai` in a customer test means `pytest` ImportErrors on the customer's machine — §18.0 should have migrated those tests; if one appears here, go back and fix it.
 
-**Mantle express lane exception:** when this run used the Mantle express lane (§8, `Rewrite strategy: mantle`), the source-SDK imports are EXPECTED to remain — Mantle keeps the original SDK, so this residual scan does NOT apply. Verify instead that every client init sets the Mantle `base_url` and the `AWS_BEARER_TOKEN_BEDROCK` credential, and that model IDs were swapped to their Mantle forms.
+**Mantle express lane exception:** when this run used the Mantle express lane (§8, `Rewrite strategy: mantle`), the source-SDK imports are EXPECTED to remain — Mantle keeps the original SDK, so this residual scan does NOT apply. Verify instead that every client init points at Mantle and uses a Bedrock credential in the form §8 prescribes for that client's lifetime — and that model IDs were swapped to their Mantle forms:
+
+- **Short CLI / one-shot script:** `base_url` set to the Mantle path and `api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"]`.
+- **Server, worker, scheduled job, ECS service, or Lambda:** `BedrockOpenAI(..., bedrock_token_provider=lambda: provide_token(...))` (or the equivalent auto-refreshing client for the SDK in use), **no** `AWS_BEARER_TOKEN_BEDROCK` read in code, and `.env.example` does **not** set it.
+
+Either form passes. What fails is the original provider key still being read anywhere, or a long-running client reading `AWS_BEARER_TOKEN_BEDROCK` from the environment — do not "fix" a `provide_token` client back to the env token.
 
 # 23. Verify all files were written
 
@@ -838,6 +882,7 @@ The branch is the deliverable. In your `summary` and `notes`, capture for the us
 - Dependencies changed
 - Tests generated and pass status
 - How to apply: "Push this branch and open a PR in your repo"
+- The retire-the-key checklist from §11, naming the provider keys this repo referenced. State that this agent did not revoke them.
 
 The workflow surfaces this summary to the user; you do not push to remote.
 
@@ -861,7 +906,7 @@ If you hit a hard wall, write `{ "blocked": { "reason": "<model_access|source_ke
 
   Do NOT include a `diffs` field — the report-generator reads diffs from git directly. A clean working tree on the migration branch is required (§25 satisfies this: baseline + rewrite + tests commits, `git status` clean).
 - **`summary`** — short prose for the user / sidebar. ~1–3 sentences. Mention branch name, file count, dependency swaps, test pass/fail count.
-- **`notes`** — string log of structured signals: test counts (`5 tests generated, 5/5 passing`), lint status, env-var changes, any partial-failure detail from §19's retry cap, branch-collision detail from §7, manual-review items.
+- **`notes`** — string log of structured signals: test counts (`5 tests generated, 5/5 passing`), lint status, env-var changes, the §11 retire-the-key checklist with the provider keys this repo referenced (never marked done), any partial-failure detail from §19's retry cap, branch-collision detail from §7, manual-review items.
 
 ## Hard-block routing
 

@@ -48,6 +48,8 @@ _preconditions:
     _on_failure: _unrecoverable
   - _validate_json: [aws-design.json, estimation-infra.json, preferences.json, heroku-resource-inventory.json]
     _on_failure: _unrecoverable
+  - _assert: "preferences.json metadata.questions_deferred_to_generate is absent or an empty array — every Generate-time question Clarify defaulted (Q4 maintenance window, Q6c DB migration method, Q12d EB deploy method) was asked at the Decision gate's 'Confirm execution choices' step (estimate-assemble.md). A non-empty array means MIGRATION_GUIDE.md / Terraform is about to be written against an answer the user never gave; return to that step."
+    _on_failure: _halt_and_inform
 _postconditions:
   - _check_file_exists: [terraform/main.tf, terraform/baseline.tf, terraform/variables.tf, terraform/outputs.tf, terraform/security.tf, terraform/.gitignore, terraform/terraform.tfvars.example, MIGRATION_GUIDE.md, README.md, migration-report.html, generation-warnings.json, validation-report.json]
     _on_failure: _halt_and_inform

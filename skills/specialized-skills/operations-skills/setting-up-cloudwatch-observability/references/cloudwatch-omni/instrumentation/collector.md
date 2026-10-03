@@ -75,8 +75,12 @@ Three things that are easy to get wrong:
   classification calls for it; do not associate a key or edit a key policy for them.
 - **Each signal needs its OWN `sigv4auth` extension**, because the `service` differs
   (`xray` vs `monitoring` vs `logs`). One shared extension cannot sign for more than one.
-- **The logs endpoint needs `x-aws-log-group` and `x-aws-log-stream` headers.** The log group
-  must already exist.
+- **The logs endpoint needs `x-aws-log-group` and `x-aws-log-stream` headers**, and both the
+  log group **and** the log stream named in `x-aws-log-stream` must already exist. With the
+  group present but the stream absent, the endpoint returns `400 The specified log stream does
+  not exist.`, so pre-create the stream with
+  `aws logs create-log-stream --log-group-name <group> --log-stream-name <stream>` (the sending
+  principal needs `logs:CreateLogStream`).
 
 ## Step 2: Choose the collector
 
