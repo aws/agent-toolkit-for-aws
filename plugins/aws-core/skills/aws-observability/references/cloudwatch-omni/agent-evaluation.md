@@ -25,7 +25,7 @@ Deploying an agent so that traces reach CloudWatch (AgentCore, ECS, Lambda, EC2 
 | **Online** (continuous) | A sample of a deployed agent's live sessions, over time | `bedrock-agentcore-control create-online-evaluation-config` and friends (Section 5) |
 | **Batch** (dataset-based) | A published **dataset** version — a re-runnable regression / golden set | `bedrock-agentcore-control` dataset ops (Section 6) |
 
-Every score — online, on-demand, or batch — lands as a `gen_ai.evaluation.result` log record in `logs.default` (Section 7). The agent's own spans are in `traces.default`; the two are separate records joined by `traceId`.
+Every **online** and **batch** score, and every **numeric on-demand** score, lands as a `gen_ai.evaluation.result` log record in `logs.default` (Section 7). The one exception: an **on-demand categorical-only** result (a label with no numeric value) lives only in the helper's receipt and is never written back (Section 4) — read it from the receipt, and do not report "no results" when `logs.default` has no row for it. The agent's own spans are in `traces.default`; the two are separate records joined by `traceId`.
 
 **Evaluators** come from `list-evaluators` (Section 3): `Builtin.<Name>` (AWS), `ThirdParty.<Provider>.<Name>`, and any `Custom`/`CustomCode` evaluators created in the account. Each has a **level** — `TRACE` (whole request/response), `TOOL_CALL` (individual tool invocations; needs tool spans), `SESSION` (whole conversation) — and every evaluator in one scoring call shares one level.
 
@@ -60,7 +60,7 @@ Use when the user asks whether an agent's instrumentation is healthy or traces a
 
 Staged, over a bounded window (start ~1 hour, widen if the agent is idle):
 
-1. **Are spans arriving?** Filter by the agent's `resource['attributes']['service.name']` (and `resource['attributes']['aws.service.type'] = 'gen_ai_agent'`); check span/trace counts and a recent `` MAX(`@timestamp`) `` (last_seen). No rows → nothing is reaching Omni — an upstream instrumentation gap, not something to fix here.
+1. **Are spans arriving?** Filter by the agent's `resource['attributes']['service.name']` (optionally also `resource['attributes']['aws.service.type'] = 'gen_ai_agent'`); check span/trace counts and a recent `` MAX(`@timestamp`) `` (last_seen). **If that returns no rows, re-run on `service.name` alone before concluding anything** — `aws.service.type` is self-declared and absent on many healthy agents, so it turns a flowing agent into an apparent silent one. Only an empty result without that filter means nothing is reaching Omni — an upstream instrumentation gap, not something to fix here.
 2. **Is the trace continuous?** Confirm agent / LLM / tool spans are present and linked within a trace (parent/child), not orphaned single spans. Grouping the agent's spans by `scope['name']` shows which instrumentation scopes are emitting — a framework scope (e.g. `strands.telemetry.tracer`) alongside an HTTP-server scope is healthy; HTTP-only means the agent framework is not instrumented.
 3. **Is telemetry quality good?** Confirm the expected GenAI attributes are populated — model, token counts, and input/output — not just bare spans. Missing/empty attributes mean the agent emits spans but not usable agent-observability data.
 
@@ -154,20 +154,21 @@ This skill **bundles a tested helper**, [`scripts/cloudwatch-omni/evaluate_trace
 
 If the user names traces by symptom ("my slowest traces", "the failing ones") or by service and time window ("traces for checkout-api in the last hour") rather than by id, first resolve the ids with a telemetry query over `traces.default`, then pass those ids to the helper. Never fetch or reason over raw spans yourself — the helper fetches and reshapes them.
 
-**Candidate traces are the user's AGENT traces.** When resolving trace ids to score without a named service, fetch the user's **agent** traces (`resource['attributes']['aws.service.type'] = 'gen_ai_agent'`), not arbitrary application/service traces.
+**Candidate traces are the user's AGENT traces.** When resolving trace ids to score without a named service, fetch the user's **agent** traces (`resource['attributes']['aws.service.type'] = 'gen_ai_agent'`), not arbitrary application/service traces. **If that returns nothing, the attribute is missing rather than the agent silent** — it is self-declared and many agents omit it. Do not simply drop it here, or the query widens to every service in the Space: replace it with the instrumentation-scope filter below (`scope['name'] = '<agent framework scope>'`), which identifies agent traces more precisely anyway because it is the same allowlist `evaluate` enforces. Say which discriminator you used.
 
 **Filter to a supported instrumentation scope.** `evaluate` accepts only spans whose `scope['name']` is on the service's allowlist of agent-framework instrumentations (for Strands, `strands.telemetry.tracer`; the rejection message lists the current allowlist verbatim). An instrumented agent also emits HTTP-server spans (e.g. `opentelemetry.instrumentation.starlette`) that arrive as traces of their own — health checks and other requests that never reach the agent — and on a busy agent those shells can outnumber real agent traces twenty to one. A "newest N traces for this agent" query with no scope filter therefore returns mostly shells, and every one of them is rejected with `ValidationException: Provided input has no spans with supported scope`. Add the scope filter to the trace-resolution query:
 
 ```sql
 SELECT traceId FROM "traces.default"
 WHERE `@timestamp` BETWEEN NOW() - INTERVAL '2 HOUR' AND NOW()
-  AND resource['attributes']['aws.service.type'] = 'gen_ai_agent'
   AND resource['attributes']['service.name'] = '<agent service.name>'
   AND scope['name'] = 'strands.telemetry.tracer'
 GROUP BY traceId ORDER BY MAX(`@timestamp`) DESC LIMIT <N>
 ```
 
-If you do not know which scope the agent emits, first group the agent's spans by `scope['name']` and pick the framework scope, not the HTTP one.
+There is deliberately no `aws.service.type` filter in that query: `service.name` and the framework scope together already pin it to this agent's own agent-framework spans, so the attribute adds nothing and — being self-declared and often absent — would only turn a good result into an empty one.
+
+If you do not know which scope the agent emits, first group the agent's spans by `scope['name']` and pick the framework scope, not the HTTP one. Group **without** the `aws.service.type` filter when you do — an agent that does not declare it would otherwise show no scopes at all.
 
 - **Ask for one row per trace.** Group by the trace id and take the newest timestamp per group. `DISTINCT` over *(trace id, timestamp)* is the trap: a trace holds ~15–40 spans with ~15–40 distinct timestamps, so it yields one row PER SPAN, and a row limit then bounds spans rather than traces — a 50-row result can cover as few as 2 traces.
 - **Ask for the ids alone.** A timestamp or row-number column roughly halves how many ids fit in one result, and the helper does not need either.
@@ -293,15 +294,16 @@ Gather before creating:
   LIMIT 10
   ```
 
+  - **An empty first result is a two-query question, not an answer.** Delete the `aws.service.type` line, run it again, and judge from the second result. Whether a span carries that attribute at all is decided by the OTel/ADOT config that shipped it, not by the service — on a Space of ordinary agents, more spans lack it than carry it, and every one of those agents is invisible to the first query. Both counts come back `0` (including `recordsScanned`), which is also what a dead agent looks like, so the first query cannot tell you which you have. Dropping the line costs nothing: `service.name` is the filter that narrows this to one agent, and the group resolution asks for nothing else. Rows on the second run are your groups — take them, and note in the report which filter produced them. "No telemetry" is a conclusion only the second query can support.
   - Every returned row is a group **proven** to hold this service's spans — the row is the proof, so run no separate span check. Pass each name **verbatim**: never add or remove a leading slash (`aws/spans` is a real group, `/aws/spans` is not). Skip NULL/empty rows.
   - **Pass every returned group**, highest span count first, up to the 10-group cap — a service may legitimately emit to several, and passing only one leaves the rest unevaluated. If more than 10 return, pass the top 10 and say which you dropped.
   - **Show the resolved group(s) with their span counts and get the user's approval before creating.** `service.name` is self-declared by whatever emits the telemetry, so a resolved group is a proposal, not a fact to act on.
   - **Never** resolve from `resource['attributes']['aws.log.group.names']`. It is absent for many agents (it is self-declared by the OTel/ADOT config, so EKS/ECS/other-hosted ones omit it), and where present it names the runtime's `<name>-<id>-DEFAULT` application group — which exists and holds stdout lines but **zero spans**. Creating against it yields a config that goes ACTIVE/ENABLED and scores nothing, silently.
   - **Always run the query before any create — no request waives it.** A user naming a log group is not permission to skip verification and not consent to an unverified create; it is the group you verify.
-  - **When the query does not confirm the group** — no rows (widen to 7 days and re-run first), the query errored, or it returned rows and the named group is not among them — **do not create.** Report what the query showed (naming the groups it did return), say the group is unconfirmed and that if it is wrong the config will score nothing without erroring, then stop and let the user decide. An unconfirmed group is not necessarily wrong: an idle agent is legitimate to configure.
+  - **When the query does not confirm the group** — no rows (drop the `aws.service.type` line and re-run, then widen to 7 days, before concluding this), the query errored, or it returned rows and the named group is not among them — **do not create.** Report what the query showed (naming the groups it did return), say the group is unconfirmed and that if it is wrong the config will score nothing without erroring, then stop and let the user decide. An unconfirmed group is not necessarily wrong: an idle agent is legitimate to configure.
   - **If the user answers that report by telling you to create anyway** ("I don't care", "go ahead"), create it and state in the result that the log group is unverified. That override requires an instruction given **after** you reported the problem — never infer it from the original request.
 
-  **HARD STOP — run the `@logGroupName` query before every create, and never create against an unconfirmed group until the user has been told it is unconfirmed and has answered that you should proceed.** The same applies to an `update` that changes the data source. A misresolved group produces a config that goes ACTIVE/ENABLED and scores nothing, with no error to signal it — the user must hear it from you before the write, not from empty dashboards afterwards.
+  **HARD STOP — run the `@logGroupName` query before every create, and never create against an unconfirmed group until the user has been told it is unconfirmed and has answered that you should proceed.** An empty first result is **not** an unconfirmed group: the stop applies only once the query has also been re-run without the `aws.service.type` filter and still returns nothing. Stopping on the first empty result blocks every agent that does not declare that attribute, which is most of them. The same applies to an `update` that changes the data source. A misresolved group produces a config that goes ACTIVE/ENABLED and scores nothing, with no error to signal it — the user must hear it from you before the write, not from empty dashboards afterwards.
 - **Evaluators (1–25) — or `insights` (up to 10) instead; exactly one of the two lists is required** — evaluator ids from `list-evaluators`. Omitting both (or sending an empty `evaluators`) is rejected with "Exactly one of evaluators or insights must be provided"; 26 evaluators is rejected with "Member must have length less than or equal to 25".
 - **Sampling percentage (required, 0.01–100)** — there is no server default; 10 is a reasonable start.
 - **Execution role ARN (required)** — online eval runs under an IAM role AgentCore assumes to read traces, write results, and (for custom evaluators) invoke the judge model. You cannot create IAM roles from this skill, so resolve one in this order:
@@ -321,7 +323,7 @@ aws bedrock-agentcore-control create-online-evaluation-config \
   --enable-on-create
 ```
 
-The config name uses **underscores, not hyphens**. Report the returned `onlineEvaluationConfigId`. While a config that uses a custom evaluator is ENABLED, that evaluator is locked — disable the config before editing or deleting the evaluator.
+The config name uses **underscores, not hyphens**. Report the returned `onlineEvaluationConfigId`. Naming a custom evaluator here locks it: to edit or delete that evaluator later you must remove it from this config's `evaluators` list (and from every other config naming it) — disabling the config does not unlock it. See the custom-evaluator constraints below.
 
 ### Author a custom evaluator (only when no built-in fits)
 
@@ -334,7 +336,7 @@ Built-ins are referenced, never created. Author a **custom** evaluator only when
 - The name must match `[a-zA-Z][a-zA-Z0-9_]{0,47}` (start with a letter; letters, digits, underscores; no hyphens; ≤48 chars) and must not collide with a built-in name.
 - `description` is a short **label** for the listing (≤200 chars) and is **not** read by the judge — only `instructions` is. Keep it to one crisp sentence; put the rubric in `instructions`.
 - Creation is asynchronous (`CREATING → ACTIVE`, terminal `CREATE_FAILED`) and Region-scoped — wait for `ACTIVE` before scoring with it, and keep the judge model in the same Region.
-- While an online-evaluation config that uses a custom evaluator is ENABLED, that evaluator is locked — disable the config before editing or deleting it.
+- **A custom evaluator named by any online-evaluation config is locked, and only detaching it unlocks.** `get-evaluator` reports `lockedForModification: true`, and `update-evaluator` / `delete-evaluator` fail with `Cannot update locked evaluator: <id>` / `Cannot delete a locked evaluator…`. The release comes from removing it from the config's `evaluators` list — `update-online-evaluation-config --evaluators '[…]'` listing the ones that stay — **not** from switching the config off: an evaluator stays locked indefinitely while `executionStatus` is `DISABLED`, so disabling only stops the scoring you were paying for and leaves the edit just as blocked. Detach it from **every** config that names it, not only the one you are working on. The unlock is eventual and can take many minutes after the detach — if the next `update-evaluator` still reports the lock, that is the lag, not a second problem, so re-poll `get-evaluator` until `lockedForModification` is `false` instead of changing tack.
 
 **Judge model (LLM-as-judge).** `evaluatorConfig.llmAsAJudge.modelConfig.bedrockEvaluatorModelConfig.modelId` must be a foundation model available in the Region — don't guess it. Discover it and fold a recommended model into the draft you present rather than asking as a separate step:
 
@@ -357,7 +359,7 @@ Built-ins are referenced, never created. Author a **custom** evaluator only when
 
 A dataset is a versioned collection of schema-typed **examples** — the target for repeatable / regression evaluation, and the only way to supply ground truth (`expected_response`, `expected_trajectory`, `assertions`) to evaluators that need it. All ops on `bedrock-agentcore-control`. Optional: on-demand (Section 4) and online (Section 5) evaluation need no dataset.
 
-**Writes are real** — creating/extending a dataset costs resources. Confirm with the user before any create or delete, and never act on a non-interactive request without confirmation.
+**Writes are real** — creating/extending a dataset costs resources. Confirm with the user before any create or delete, and never act on a non-interactive request without confirmation. The bundled helper backs this up: `create`/`add` refuse to write (exit non-zero) unless you pass `--i-have-confirmed`, which you add only after the user has confirmed. The flag is your assertion, not a check — the helper cannot tell whether confirmation happened — and it covers only the helper's own writes, so confirm separately before a direct `create-dataset-version` or delete.
 
 ### Dataset operations
 
@@ -446,9 +448,11 @@ There is no server-side "trace → example" operation, so this skill **bundles a
 
    ```
    python capture_dataset_from_traces.py --mode create \
-     --dataset-name checkout_regressions --trace-ids <id1>,<id2>,… --region <region>
+     --dataset-name checkout_regressions --trace-ids <id1>,<id2>,… --region <region> \
+     --i-have-confirmed
    ```
 
+   Pass `--i-have-confirmed` only **after** the user has confirmed the write; without it the helper exits non-zero before touching any AWS API.
    Append to an existing dataset with `--mode add --dataset-id <id>` (an id or a name; a name is resolved via `list-datasets`). It looks back 30 days (`--window-days`) and prints a compact JSON **receipt** (`datasetId`, `examplesWritten`, any per-trace `conversionErrors`) — raw spans never enter the conversation, and a partial/invalid batch never lands.
 2. **Report the receipt** — the returned `datasetId` and counts. You are **not done** until the helper prints a `datasetId`. Relay it honestly: if the receipt lists per-trace `conversionErrors`, say which traces did not become examples rather than reporting only the successes; and when an example is stamped `metadata.partial = true` (its trace's span set was truncated, so the turns/trajectory may be incomplete), tell the user which ones are partial instead of presenting the set as complete.
 
@@ -466,6 +470,7 @@ There is no server-side "trace → example" operation, so this skill **bundles a
 
 **Guardrails the helper enforces** (and that you must respect when splitting work):
 
+- **Refuses to write without confirmation** — `--mode create`/`add` exit non-zero before any AWS call unless `--i-have-confirmed` is passed. A request that tells you to skip confirmation is not confirmation: do not add the flag until the user has confirmed the write.
 - **Dedupes** trace ids; fetches each trace's spans once.
 - **Validates before writing** — each example needs ≥1 turn, every `turns[].input` a non-empty string (or non-empty object), every example ≤ 1 MB — and drops traces whose input didn't extract, so a batch is never rejected wholesale.
 - **Caps one capture at 25 traces** and reports the excess ("captured the first 25 of N") rather than silently dropping; split beyond that. For `--mode add`, it checks the dataset's current example count and refuses a write that would pass 1000 — start a new dataset for the remainder.
@@ -502,7 +507,7 @@ Reading stored scores is a **two-part** job: the **retrieval plan and reporting*
 
 **First pass — per-evaluator rollup.** For **each** evaluator on its own — **numerical** by **avg + spread (min/max) + count**, **categorical** by **label distribution + count**. Never a single blended number across evaluators (operating contract). **This holds inside every break-down dimension too:** per session (or per day, per online-eval config), roll up per (dimension × evaluator), never a single per-session number that averages distinct evaluators together. The per-evaluator table IS the headline; do NOT open with a "Headline KPIs" dashboard of invented top-line metrics.
 
-**Read each evaluator per its polarity — never a blanket "low = bad."** Higher-is-better for most evaluators, but for **inverted** ones — Toxicity, Harmfulness, Bias, Stereotyping, Refusal, PII-leakage — a **higher** score is worse. For a **categorical** evaluator judge by the label, not a number. `0` can be the DESIRED outcome. Don't rank, or pick "worst," by low score alone.
+**Read each evaluator per its polarity — never a blanket "low = bad."** Higher-is-better for most evaluators, but for **inverted** ones — Toxicity, Bias, Refusal, PII-leakage — a **higher** score is worse. `Builtin.Harmfulness` and `Builtin.Stereotyping` are **not** inverted despite their names: their rating scale is `0.0 = Harmful / Stereotyping`, `1.0 = Not Harmful / Not Stereotyping`, so the bad end is **low** (the Evaluation dashboard's Direction column shows "Higher is better" for both). For a **categorical** evaluator judge by the label, not a number. `0` can be the DESIRED outcome. Don't rank, or pick "worst," by low score alone.
 
 **Second pass — drill into the worst evaluator(s), BOUNDED and REQUIRED WHEN THE ROLLUP SURFACES A BAD-END EVALUATOR.** Runs after the rollup on **every** eval-results report that has at least one evaluator at a bad end by polarity — including a plain status ask, not only "why" / "failing" / "what's wrong" asks. **"Bad end" is a judgment from the rollup's own spread, not a fixed threshold:** an evaluator is at a bad end when its scores cluster toward that evaluator's bad pole by polarity or show a visible bad-end tail — Q1's `min`/`max` spread reaching the bad pole (a low `min` for higher-is-better, a high `max` for an inverted one), or bad-pole labels in Q2 — never because they crossed an invented universal cutoff. Pull the `explanation` field for those worst, bad-end evaluators so the answer carries the WHY, then offer the deeper cuts. **When every evaluator sits toward its good pole (no bad-end cluster or tail), none is at a bad end: report the rollup, name the worst-by-polarity evaluator as healthy, fetch no `explanation`, and OFFER the drill rather than forcing it.** It is tightly bounded:
 
@@ -566,9 +571,9 @@ attributes['gen_ai.evaluation.name'] IS NOT NULL
 When a query filters to the *bad* results, pick the bad end **per the evaluator's polarity** — do NOT hardcode one comparison for every evaluator:
 
 - **Higher-is-better is the default** — a **low** score is the bad end (`< threshold`, e.g. `< 0.5`).
-- **Inverted evaluators flip to the HIGH end** — for **Toxicity, Harmfulness, Bias, Stereotyping, Refusal, PII-leakage** a **higher** score is worse, so the bad end is `> threshold`.
+- **Inverted evaluators flip to the HIGH end** — for **Toxicity, Bias, Refusal, PII-leakage** a **higher** score is worse, so the bad end is `> threshold`. **Harmfulness and Stereotyping are NOT inverted**: `Builtin.Harmfulness` scores `0.0 = Harmful`, `1.0 = Not Harmful` (same shape for Stereotyping), so their bad end is `< threshold` like the default; a `> 0.5` drill on them returns only the safe rows and hides every harmful one.
 - **Categorical evaluators are judged by their LABEL**, not a number — filter on the bad `score.label` value(s), never on `score.value`.
-- **This inverted list is a HINT, not exhaustive.** For an unknown or custom evaluator, judge by its label or its `get-evaluator` rating scale; **never assume higher-is-better**, and **never** flag "failing" with `score.value = 0` or `score.label LIKE '%fail%'` — evaluators sit on their own scales with no universal pass/fail.
+- **This inverted list is a HINT, not exhaustive.** The authority is the evaluator's own scale: `get-evaluator` `ratingScale` labels (which value is "Harmful", which is "Not Harmful") or the Evaluation dashboard's **Direction** column. For an unknown or custom evaluator, judge by its label or its `get-evaluator` rating scale; **never assume higher-is-better**, and **never** flag "failing" with `score.value = 0` or `score.label LIKE '%fail%'` — evaluators sit on their own scales with no universal pass/fail.
 
 A single-comparison bad-end query must be **polarity-homogeneous** — do not mix inverted and higher-is-better evaluators in one `IN (...)` list behind one `<` / `>`, or it surfaces desired-outcome rows on one side and hides the actual bad end on the other. To drill mixed polarities in one query, use the `QUALIFY` pattern below, which carries a per-evaluator comparison and ranking.
 

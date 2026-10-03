@@ -212,6 +212,59 @@ def check_metadata(inv: dict, exp: dict) -> None:
     )
 
 
+def check_clarify_fast_path(inv: dict, exp: dict) -> None:
+    """The Discover-written Clarify fast-path verdict (discover-assemble.md rule 9).
+
+    Pinned because it is where an improvising run and a correct run DIVERGE most
+    cheaply: a model that skips the rule writes no key at all (and Clarify then
+    silently runs the wizard, which looks fine); a model that eyeballs "small
+    startup estate" marks this corpus eligible even though it has VMs, a
+    zone-redundant Postgres, and five clusters. Both must fail here.
+    """
+    spec = exp["clarify_fast_path"]
+    meta = inv.get("metadata") or {}
+    verdict = meta.get("clarify_fast_path")
+    check(
+        isinstance(verdict, dict),
+        "metadata.clarify_fast_path is missing — discover-assemble.md § Assembly rule 9 "
+        "requires Discover to write the Clarify fast-path verdict; without it Clarify "
+        "falls back to the wizard and the short path is never offered",
+    )
+    if not isinstance(verdict, dict):
+        return
+    eligible = verdict.get("eligible")
+    reasons = verdict.get("reasons_ineligible")
+    check(
+        eligible is spec["eligible"],
+        f"metadata.clarify_fast_path.eligible is {eligible!r}, expected {spec['eligible']!r} "
+        f"— this corpus has VMs, a ZoneRedundant Postgres, and {spec['_cluster_count']} "
+        f"clusters, each of which independently disqualifies the short path",
+    )
+    check(
+        isinstance(reasons, list),
+        f"metadata.clarify_fast_path.reasons_ineligible is {reasons!r}, expected a list",
+    )
+    if not isinstance(reasons, list):
+        return
+    allowed = set(spec["allowed_reasons"])
+    unknown = sorted(set(reasons) - allowed)
+    check(
+        not unknown,
+        f"reasons_ineligible contains {unknown!r}, outside the closed vocabulary "
+        f"{sorted(allowed)!r} (the rule-9 input names)",
+    )
+    missing = sorted(set(spec["reasons_must_include"]) - set(reasons))
+    check(
+        not missing,
+        f"reasons_ineligible is {reasons!r}, missing {missing!r} — rule 9 says record "
+        f"EVERY failing input, not just the first, so Clarify can explain the full flow",
+    )
+    check(
+        (eligible is False) == bool(reasons),
+        "reasons_ineligible must be non-empty iff eligible is false",
+    )
+
+
 def check_fan_in(index: dict[str, dict], resources: list[dict], exp: dict) -> None:
     spec = exp["app_service_plan_fan_in"]
     plan = index.get(spec["plan_local_name"])
@@ -683,6 +736,7 @@ def main() -> int:
     index = by_tf_name(resources)
 
     check_metadata(inv, exp)
+    check_clarify_fast_path(inv, exp)
     check_types(index, exp)
     check_forbidden_types(resources, exp)
     check_function_app(index, exp)
