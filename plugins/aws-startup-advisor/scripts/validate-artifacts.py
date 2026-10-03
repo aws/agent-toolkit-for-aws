@@ -186,13 +186,46 @@ class Node:
     def is_any(self) -> bool:
         return "any" in self.kinds or not self.kinds
 
+    def _is_unspecified_any(self) -> bool:
+        """An empty-array seed (`"services": []`) or a bare placeholder. It names no type,
+        no keys, and no enum — unlike a null example, which is `{null, any}` on purpose."""
+        return (
+            self.kinds == {"any"}
+            and not self.keys
+            and self.item is None
+            and self.any_key is None
+            and self.enum is None
+            and not self.examples
+            and not self.wildcard
+            and not self.required
+        )
+
     def merge(self, other: "Node") -> "Node":
         """Union two templates for the same path (several documented variants).
 
         Children adopted from `other` are copied, never shared: a later refinement of a
         named child (`design_constraints.cpu_architecture`) must not mutate the generic
         template (`design_constraints.<key>`) it was seeded from.
+
+        An unspecified `any` (the item of `"services": []`) is replaced when a concrete
+        shape arrives. Unioning would keep `any` in the kinds and skip type checks for
+        good. A later empty array does not put `any` back onto a shape already learned.
         """
+        if self._is_unspecified_any() and not other._is_unspecified_any():
+            concrete = copy.deepcopy(other)
+            self.kinds = concrete.kinds
+            self.wildcard = concrete.wildcard
+            self.required = concrete.required
+            self.keys = concrete.keys
+            self.item = concrete.item
+            self.any_key = concrete.any_key
+            self.enum = concrete.enum
+            self.enum_join = concrete.enum_join
+            self.examples = concrete.examples
+            self.source = concrete.source or self.source
+            return self
+        if other._is_unspecified_any() and not self._is_unspecified_any():
+            return self
         self.kinds |= other.kinds
         self.wildcard = self.wildcard or other.wildcard
         self.required |= other.required

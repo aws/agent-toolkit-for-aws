@@ -185,6 +185,29 @@ def test_explicit_base_prefixes_do_not_fall_back_to_other_skills(tmp_path: Path)
     assert got2 == {"$GCP_BASE/references/design-refs/ai.md": True, "$GCP_BASE/references/ai.md": False}
 
 
+def test_relative_prefixes_do_not_fall_back_to_the_unprefixed_skill_path(tmp_path: Path):
+    """Review finding on #387: `./` and `../` still tried `skill / path` after the literal
+    target missed. Azure estimate-infra.md:370's link is
+    `../../../knowledge/estimate/estimate-defaults.json`; dropping one `../` leaves a
+    nonexistent literal, but the unprefixed tail exists under the skill root."""
+    plugin = _plugin(tmp_path)
+    dest = plugin / "skills" / "alpha" / "knowledge" / "estimate"
+    dest.mkdir(parents=True)
+    (dest / "estimate-defaults.json").write_text("{}")
+    nested = plugin / "skills" / "alpha" / "references" / "phases" / "estimate"
+    nested.mkdir(parents=True)
+    f = nested / "estimate-infra.md"
+    f.write_text(
+        "see [`knowledge/estimate/estimate-defaults.json`](../../../knowledge/estimate/estimate-defaults.json).\n"
+        "short [`knowledge/estimate/estimate-defaults.json`](../../knowledge/estimate/estimate-defaults.json).\n"
+        "dot [`knowledge/estimate/estimate-defaults.json`](./knowledge/estimate/estimate-defaults.json).\n"
+    )
+    got = {r.raw: r.resolved for r in csr.scan_file(f, plugin)}
+    assert got["../../../knowledge/estimate/estimate-defaults.json"] == (dest / "estimate-defaults.json").resolve()
+    assert got["../../knowledge/estimate/estimate-defaults.json"] is None
+    assert got["./knowledge/estimate/estimate-defaults.json"] is None
+
+
 def test_baseline_ignore_vs_entries_and_stale(tmp_path: Path):
     plugin = _plugin(tmp_path)
     f = plugin / "skills" / "alpha" / "SKILL.md"

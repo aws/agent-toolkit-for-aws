@@ -26,8 +26,10 @@ Not references (skipped): run-artifact paths (`$MIGRATION_DIR/…`, `$RUN_DIR/�
 
 Resolution order for a bare path `P` found in `skills/<skill>/…/file.md`:
   1. explicit prefix → plugin root / skill root / gcp-to-aws root / referencing file's dir.
-     An explicit prefix is authoritative: the agent runs `<SKILL_BASE>/scripts/x.py` as
-     written, so none of the fallbacks below apply to it.
+     An explicit prefix is authoritative: the agent runs `<SKILL_BASE>/scripts/x.py`,
+     `./scripts/x.py`, or `../../knowledge/estimate/estimate-defaults.json` as written.
+     A same-named file under the skill root does not make a wrong relative path exist,
+     and none of the fallbacks below apply.
   2. `skills/<skill>/P`                     (skill-relative — the documented convention)
   3. `<dir of referencing file>/P`          (file-relative)
   4. `skills/<skill>/references/P`          (agent-advisor short forms: phases/, shared/, design-refs/)
@@ -131,9 +133,10 @@ def _candidates(prefix: str, path: str, source: Path, plugin: Path) -> List[Path
     elif "SCRIPTS" in p and skill is not None:
         cands.append(skill / "scripts" / path)
     elif p.startswith("./") or p.startswith("../"):
-        cands.append((here / p / path))
-        if skill is not None:
-            cands.append(skill / path)
+        # The relative prefix is the whole location. Do not also try `skill / path`:
+        # that unprefixed tail is how `../../knowledge/estimate/estimate-defaults.json`
+        # looked found when the literal target did not exist.
+        cands.append(here / p / path)
     # `<SKILL_BASE>/../gcp-to-aws/SKILL.md` style: prefix carries `../`
     if "../" in p and skill is not None and "SKILL_BASE" in p:
         up = skill

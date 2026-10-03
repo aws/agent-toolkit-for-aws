@@ -71,6 +71,40 @@ def test_required_from_comment_and_placeholder_is_any_type():
     assert n.keys["n"].is_any()  # a placeholder says nothing about the JSON type
 
 
+def test_empty_array_item_is_replaced_when_a_concrete_shape_arrives():
+    """Review finding on #387: `"services": []` seeded an `any` item, and merging the
+    later object kept `any`, so a scalar or nested list passed."""
+    seed = _node('{"services": [], "warnings": []}')
+    seed.merge(_node('{"services": [{"routing_provenance": "table", // REQUIRED\n "n": 1}]}'))
+    item = seed.keys["services"].item
+    assert not item.is_any() and "object" in item.kinds
+    assert "routing_provenance" in item.required
+    seed.merge(_node('{"services": []}'))
+    assert not seed.keys["services"].item.is_any()
+    ex = '{"services": [{"routing_provenance": "table", // REQUIRED\n "n": 1}]}'
+    root = _node('{"services": []}')
+    root.merge(_node(ex))
+
+    def check(value):
+        out = []
+        va.validate_shape(root, value, "", "a", "c", out)
+        return {(f.code, f.path) for f in out}
+
+    assert check({"services": []}) == set()
+    assert check({"services": [{"routing_provenance": "table", "n": 1}]}) == set()
+    assert check({"services": [None]}) == set()
+    assert ("TYPE_MISMATCH", "services[0]") in check({"services": ["not-an-object"]})
+    assert ("TYPE_MISMATCH", "services[0]") in check({"services": [17]})
+    assert ("TYPE_MISMATCH", "services[0]") in check({"services": [False]})
+    assert ("TYPE_MISMATCH", "services[0]") in check({"services": [[]]})
+    assert ("MISSING_REQUIRED", "services[0].routing_provenance") in check({"services": [{}]})
+    ph = _node('{"ids": ["<azure_id>"]}')
+    assert ph.keys["ids"].item.is_any()
+    out = []
+    va.validate_shape(ph, {"ids": [1, "x", False]}, "", "a", "c", out)
+    assert out == []
+
+
 def test_placeholder_key_makes_object_open_and_sets_any_key_template():
     n = _node('{"<key>": {"value": 1, "chosen_by": "user|default"}}')
     assert n.wildcard and n.any_key is not None
@@ -569,3 +603,32 @@ def test_gcp_preferences_chosen_by_enum_is_enforced_including_derived(tmp_path: 
     pref["design_constraints"]["cpu_architecture"] = {"value": "graviton", "chosen_by": "bogus"}
     r = _run("--run-dir", str(_write_run(tmp_path, "cpu", "preferences.json", pref)), "--skill", "gcp-to-aws", "--json")
     assert _errors(r) == {("ENUM_VIOLATION", "design_constraints.cpu_architecture.chosen_by")}, r.stdout
+
+
+def test_azure_design_arrays_reject_a_scalar_after_the_empty_seed(tmp_path: Path):
+    """Review finding on #387: services, clusters, deferred, and pending_rubric are seeded
+    `[]` and refined by a later object section. A scalar, string, boolean, or nested list
+    must fail. An empty array and an object stay valid as types. An array whose example
+    never names an item type stays open."""
+    src = PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-design/aws-design.json"
+    design = json.loads(src.read_text())
+    control = _errors(_run("--run-dir", str(src.parent), "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "aws-design.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    for key in ("services", "clusters", "deferred", "pending_rubric"):
+        for label, member in (("str", "not-an-object"), ("num", 17), ("bool", False), ("list", [])):
+            bad = json.loads(json.dumps(design))
+            bad[key] = [member]
+            assert ("TYPE_MISMATCH", f"{key}[0]") in run(f"{key}-{label}", bad) - control
+        empty = json.loads(json.dumps(design))
+        empty[key] = []
+        assert ("TYPE_MISMATCH", f"{key}[0]") not in run(key + "-empty", empty)
+        blank = json.loads(json.dumps(design))
+        blank[key] = [{}]
+        assert ("TYPE_MISMATCH", f"{key}[0]") not in run(key + "-obj", blank)
+    blank = json.loads(json.dumps(design))
+    blank["services"] = [{}]
+    assert ("MISSING_REQUIRED", "services[0].routing_provenance") in run("svc-obj", blank)
