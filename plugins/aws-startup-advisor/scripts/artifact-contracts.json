@@ -97,7 +97,17 @@
         ]
       },
       "scenarios/scenario-NNN.estimation-infra.json": {
-        "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json",
+        "shape": "skills/gcp-to-aws/references/shared/schema-estimate-infra.md",
+        "root_heading": "estimation-infra.json schema",
+        "sections": {
+          "Cost tiers": "projected_costs.scenario_deltas",
+          "Observability Entry in": "projected_costs.breakdown.observability",
+          "@L373": "projected_costs.breakdown.security_baseline",
+          "@L390": "projected_costs.breakdown.security_baseline_compliance",
+          "architecture_comparison": "architecture_comparison"
+        },
+        "_sections_why": "Workshop baseline capture copies the active estimation-infra.json into scenarios/scenario-NNN.estimation-infra.json. The snapshot is the same artifact, so it uses the same Markdown shape, root heading, and section refinements — not the JSON Schema alone."
       }
     },
     "heroku-to-aws": {

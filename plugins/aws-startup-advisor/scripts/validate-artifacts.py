@@ -467,8 +467,18 @@ def parse_block(block: Block, doc: Path, findings: List[Finding]) -> Optional[Tu
                 contract=_rel(doc)))
             return None
     key_comments: Dict[str, List[str]] = {}
+    raw_lines = block.text.splitlines()
     for ln, c in comments.items():
         k = keys.get(ln)
+        if k is None:
+            # A comment on its own line inside an object belongs to the key that opened
+            # it. `metadata.clarify_fast_path`'s REQUIRED marker is written that way, and
+            # dropping it left the verdict optional.
+            prev = ln - 1
+            while prev >= 0 and not raw_lines[prev].split("//", 1)[0].strip():
+                prev -= 1
+            if prev >= 0 and prev in keys and raw_lines[prev].split("//", 1)[0].rstrip().endswith("{"):
+                k = keys[prev]
         if k is not None:
             key_comments.setdefault(k, []).append(c)
     return value, key_comments

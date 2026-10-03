@@ -696,3 +696,55 @@ def test_azure_quoted_preference_enums_reject_unknown_values(tmp_path: Path):
     bad = json.loads(json.dumps(pref))
     bad["clarify_status"] = "invented-status"
     assert ("ENUM_VIOLATION", "clarify_status") in run("status-bad", bad)
+
+
+def test_azure_discovery_verdict_is_required(tmp_path: Path):
+    """Review finding on #386: `metadata.clarify_fast_path` is REQUIRED on a comment inside
+    the object, which the parser dropped, so a discovery inventory without the verdict passed."""
+    src = PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-discover/azure-resource-inventory.json"
+    inv = json.loads(src.read_text())
+    assert inv["metadata"]["clarify_fast_path"]["eligible"] is False
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "azure-resource-inventory.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    assert ("MISSING_REQUIRED", "metadata.clarify_fast_path") not in run("kept", inv)
+    fresh = json.loads(json.dumps(inv))
+    del fresh["metadata"]["clarify_fast_path"]
+    assert ("MISSING_REQUIRED", "metadata.clarify_fast_path") in run("omitted", fresh)
+    still = json.loads(json.dumps(inv))
+    still["metadata"]["clarify_fast_path"] = {"eligible": False, "reasons_ineligible": ["has_vm"]}
+    assert ("MISSING_REQUIRED", "metadata.clarify_fast_path") not in run("ineligible", still)
+    # the inline resource requirement was already enforced and stays enforced
+    dropped = json.loads(json.dumps(inv))
+    del dropped["resources"][0]["azure_type_provenance"]
+    assert ("MISSING_REQUIRED", "resources[0].azure_type_provenance") in run("provenance", dropped)
+
+
+def test_gcp_estimate_snapshots_use_the_active_estimate_shape(tmp_path: Path):
+    """Review finding on #386: scenario snapshots used only the JSON Schema, so an unknown
+    pricing bucket failed on estimation-infra.json and passed on the snapshot copy."""
+    est = json.loads((PLUGIN_ROOT / "fixtures/gcp-decision-gate/after-decide-complete/estimation-infra.json").read_text())
+    doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-estimate-infra.md"
+    sec_blocks = [b for b in va.extract_blocks(doc) if va._heading_matches(b.heading, "Security Baseline Entries in")]
+    est["projected_costs"]["scenario_deltas"] = _doc_example(doc, "Cost tiers")["scenario_deltas"]
+    est["projected_costs"]["breakdown"] = {
+        "compute": {"service": "Fargate", "monthly": 71},
+        "observability": _doc_example(doc, "Observability Entry in"),
+        "security_baseline": json.loads(va.strip_jsonc(sec_blocks[0].text)[0]),
+        "security_baseline_compliance": json.loads(va.strip_jsonc(sec_blocks[1].text)[0]),
+    }
+
+    def run(name, artifact, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, artifact, data)),
+                            "--skill", "gcp-to-aws", "--no-baseline", "--json"))
+
+    est["pricing_source"]["services_by_source"] = {
+        "cached": ["Fargate"], "fallback": ["NAT Gateway"], "estimated": [],
+    }
+    for artifact in ("estimation-infra.json", "scenarios/scenario-017.estimation-infra.json"):
+        assert run("ok-" + artifact, artifact, est) == set(), artifact
+        bad = json.loads(json.dumps(est))
+        bad["pricing_source"]["services_by_source"]["live"] = ["Fargate"]
+        assert ("UNKNOWN_KEY", "pricing_source.services_by_source.live") in run("bad-" + artifact, artifact, bad)
