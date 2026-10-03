@@ -42,7 +42,8 @@ commercial Geo and Mantle in-region **$4.40/$22**; GovCloud **$4.80/$24**.
 For example, us-east-1 input/output SKUs are `KVG5FBPDJPKF5TJY` / `MWH4TD2A4D5CEBAP`
 (Global) and `J9QFZT8WAQABG9ZX` / `FCRGDQ596BG7EQKH` (Geo/Mantle).
 The [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html) lists Active lifecycle, 1M context, 128K output,
-and **no Batch**. Runtime requires `us.`/`eu.`/`au.`/`jp.` Geo or `global.` CRIS;
+and **no Batch**. Runtime uses `us.`/`eu.`/`au.`/`jp.` Geo or `global.` CRIS,
+or the bare ID in `eu-west-2` (in-region model-card and pricing verification: 2026-10-03);
 Global is not available in GovCloud. Mantle uses the bare ID only in `us-east-1`,
 `ap-southeast-4`, and `us-gov-west-1`. Choose the price row by region and inference
 profile; a generic model name alone is insufficient. Other cache rows retain the
@@ -60,6 +61,7 @@ full-cache date at the top of this file.
 | Claude Opus 5.5 (AU Geo)          | au.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (AU Geo; no Batch; verified 2026-09-24)                                                 |
 | Claude Opus 5.5 (JP Geo)          | jp.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (JP Geo; no Batch; verified 2026-09-24)                                                 |
 | Claude Opus 5.5 (Mantle)          | anthropic.claude-opus-5-5                | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (commercial Mantle Messages; no Batch; verified 2026-09-24)                             |
+| Claude Opus 5.5 (London in-region) | anthropic.claude-opus-5-5 | Anthropic | 4.40 | 22.00 | 1M | premium | active (eu-west-2 runtime only; no Batch; verified 2026-10-03) |
 | Claude Opus 5.5 (GovCloud Geo)    | us.anthropic.claude-opus-5-5             | Anthropic | 4.80       | 24.00       | 1M      | premium   | active (us-gov-east-1/us-gov-west-1 only; no Batch; verified 2026-09-24)                       |
 | Claude Opus 5.5 (GovCloud Mantle) | anthropic.claude-opus-5-5                | Anthropic | 4.80       | 24.00       | 1M      | premium   | active (us-gov-west-1 Mantle only; no Batch; verified 2026-09-24)                              |
 | Claude Opus 4.8                   | anthropic.claude-opus-4-8                | Anthropic | 5.00       | 25.00       | 200K    | premium   | active                                                                                         |
@@ -132,7 +134,7 @@ Per 1M tokens unless noted.
 | --------------------------------------- | -------- | --------- | -------------- | -------------- | ---------- |
 | Claude Sonnet 5                         | 1.00     | 5.00      | 2.50           | 4.00           | 0.20       |
 | Claude Opus 5.5 (Global)                | N/A      | N/A       | 5.00           | 8.00           | 0.20       |
-| Claude Opus 5.5 (commercial Geo/Mantle) | N/A      | N/A       | 5.50           | 8.80           | 0.22       |
+| Claude Opus 5.5 (commercial Geo/Mantle/London runtime) | N/A      | N/A       | 5.50           | 8.80           | 0.22       |
 | Claude Opus 5.5 (GovCloud)              | N/A      | N/A       | 6.00           | 9.60           | 0.24       |
 | Claude Opus 4.8                         | 2.50     | 12.50     | 6.25           | 10.00          | 0.50       |
 | Claude Sonnet 4.6                       | 1.50     | 7.50      | 3.75           | 6.00           | 0.30       |

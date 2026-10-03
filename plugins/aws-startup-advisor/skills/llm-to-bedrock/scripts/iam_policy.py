@@ -16,15 +16,19 @@ def is_inference_profile(model_id: str) -> bool:
     return bool(_GEO_PREFIX.match(model_id))
 
 
-def is_mantle_model(model_id: str) -> bool:
+def is_mantle_model(model_id: str, region: str = "") -> bool:
     """True for bare proprietary GPT IDs and the bare Opus 5.5 ID, which use
     bedrock-mantle (Responses and Messages respectively). They need
     `bedrock-mantle:*` actions — a policy
     granting only `bedrock:InvokeModel` against a foundation-model ARN cannot
-    authorize these bare IDs. Their prefixed forms use runtime instead.
+    authorize these bare IDs. Opus 5.5 in eu-west-2 is a runtime in-region
+    target (model card verified 2026-10-03); its other bare-ID regions use Mantle.
+    Their prefixed forms use runtime instead.
     The open-weight gpt-oss models DO use bedrock-runtime and must not match."""
     mid = model_id.lower()
-    return (mid.startswith("openai.gpt-5") and "oss" not in mid) or mid == "anthropic.claude-opus-5-5"
+    return (mid.startswith("openai.gpt-5") and "oss" not in mid) or (
+        mid == "anthropic.claude-opus-5-5" and region != "eu-west-2"
+    )
 
 
 def _partition(region: str) -> str:
@@ -62,8 +66,8 @@ def generate_policy(model_ids: list[str], region: str, account_id: str) -> dict:
     all-mantle run must not emit an InvokeModel statement with an empty Resource
     list, which is an invalid policy.
     """
-    runtime_ids = [m for m in model_ids if not is_mantle_model(m)]
-    mantle_ids = [m for m in model_ids if is_mantle_model(m)]
+    runtime_ids = [m for m in model_ids if not is_mantle_model(m, region)]
+    mantle_ids = [m for m in model_ids if is_mantle_model(m, region)]
 
     statements = []
 

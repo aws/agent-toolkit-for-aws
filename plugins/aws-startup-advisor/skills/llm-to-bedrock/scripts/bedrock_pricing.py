@@ -98,7 +98,7 @@ def unavailable(note: str) -> dict:
 
 # AWS Price List API, AmazonBedrockFoundationModels, verified 2026-09-24.
 # servicename: Claude Opus 5.5 (Amazon Bedrock Edition). Prices are per 1K.
-# Runtime requires a supported Geo/Global profile; the bare ID is Mantle-only.
+# Runtime uses Geo/Global profiles, or the bare ID in eu-west-2 (verified 2026-10-03).
 _OPUS55_ID = "anthropic.claude-opus-5-5"
 _OPUS55_PROFILE_REGIONS = {'us': ['us-east-1',
         'us-east-2',
@@ -152,12 +152,13 @@ _OPUS55_PROFILE_REGIONS = {'us': ['us-east-1',
             'us-west-1',
             'us-west-2']}
 _OPUS55_MANTLE_REGIONS = {"us-east-1", "ap-southeast-4", "us-gov-west-1"}
+_OPUS55_RUNTIME_IN_REGION_REGIONS = {"eu-west-2"}
 
 
 def _opus55_pricing(region: str, model_id: str) -> dict:
     if model_id == _OPUS55_ID:
-        valid = region in _OPUS55_MANTLE_REGIONS
-        prefix = "mantle"
+        valid = region in _OPUS55_MANTLE_REGIONS | _OPUS55_RUNTIME_IN_REGION_REGIONS
+        prefix = "runtime-in-region" if region in _OPUS55_RUNTIME_IN_REGION_REGIONS else "mantle"
     else:
         prefix, _, base = model_id.partition(".")
         valid = base == _OPUS55_ID and region in _OPUS55_PROFILE_REGIONS.get(prefix, [])
@@ -170,8 +171,9 @@ def _opus55_pricing(region: str, model_id: str) -> dict:
         inp, output = 0.004, 0.020
     else:
         inp, output = 0.0044, 0.022
+    verified = "2026-10-03" if prefix == "runtime-in-region" else "2026-09-24"
     return {"available": True, "input_per_1k_usd": inp, "output_per_1k_usd": output,
-            "note": "AWS Price List API AmazonBedrockFoundationModels; verified 2026-09-24; "
+            "note": f"AWS Price List API AmazonBedrockFoundationModels; verified {verified}; "
                     f"Standard tier, {region}, {prefix} inference; no Batch"}
 
 

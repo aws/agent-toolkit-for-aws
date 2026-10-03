@@ -351,7 +351,7 @@ def _candidate_summary(candidate, requirements, reason, region=None):
         "model": path_config["model_id"],
         "api_path": candidate["path"],
         "invocation_model_id": invocation_model_id,
-        "requires_cris": path_config["requires_cris"],
+        "requires_cris": _invocation_requires_cris(path_config, invocation_model_id),
         "reason": reason,
     }
 
@@ -375,10 +375,21 @@ def _profile_verification(model_id, requires_cris, model, region, requirements):
     )}
 
 
+def _invocation_requires_cris(path_config, invocation_model_id):
+    return path_config["requires_cris"] and invocation_model_id != path_config["model_id"]
+
+
 def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=None, region=None):
     if not requires_cris:
         return model_id
     explicit = requirements.get("inference_profile_id")
+    if region in (model or {}).get("runtime_in_region_regions", []):
+        allowed = _allowed_inference_profiles(model_id, model, region, requirements)
+        geography_allowed = requirements.get("data_residency") != "geo_required" or any(
+            not profile.startswith("global.") for profile in allowed
+        )
+        if geography_allowed and (not explicit or explicit == model_id):
+            return model_id
     candidate = explicit
     if not candidate:
         residency = requirements.get("data_residency", "unknown")
@@ -482,7 +493,8 @@ def _migration_deltas(source, source_analysis, path, feature_status, requirement
         _delta(
             "model_id_shape",
             "path",
-            "Mantle uses a clean path ID; runtime requires a verified CRIS profile.",
+            "Use the selected region's verified runtime model or CRIS profile ID; "
+            "Mantle uses its clean path ID.",
         ),
         _delta(
             "iam_action",
@@ -670,11 +682,12 @@ def _base_findings(feature_status, source_analysis, model=None, requirements=Non
 
 def _verification(candidate, region, catalog, invocation_model_id, requirements=None):
     path = candidate["path"]
+    requires_cris = _invocation_requires_cris(candidate["path_config"], invocation_model_id)
     checks = [
         "Probe the selected model through the selected API path in the target account and region.",
         "Verify path-specific IAM before code rewrite or POC generation.",
     ]
-    if candidate["path_config"]["requires_cris"]:
+    if requires_cris:
         checks.insert(
             1,
             "Resolve and probe a Global or geography-scoped CRIS inference profile.",
@@ -689,7 +702,7 @@ def _verification(candidate, region, catalog, invocation_model_id, requirements=
         "required_checks": checks,
         **_profile_verification(
             candidate["path_config"]["model_id"],
-            candidate["path_config"]["requires_cris"],
+            requires_cris,
             candidate["model"], region, requirements,
         ),
     }
@@ -853,7 +866,7 @@ def recommend_anthropic_workload(workload, region, catalog):
             "context_window": model["context_window"],
             "output_token_ceiling": model["output_token_ceiling"],
             "path_model_id": path_config["model_id"],
-            "requires_cris": path_config["requires_cris"],
+            "requires_cris": _invocation_requires_cris(path_config, invocation_model_id),
         },
         "api_path": path,
         "invocation_model_id": invocation_model_id,

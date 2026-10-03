@@ -2,6 +2,8 @@
 
 import importlib.util
 import shutil
+import sys
+from types import ModuleType, SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -337,3 +339,61 @@ def test_long_context_quote_uses_the_flat_published_rate(region, prefix, monthly
     rate = _script("bedrock_pricing").lookup(region, prefix + MODEL)
     cost = 60000 * rate["input_per_1k_usd"] + 40000 * rate["output_per_1k_usd"]
     assert cost == pytest.approx(monthly)
+
+
+@pytest.mark.parametrize("provider,path", [
+    ("anthropic", "runtime_converse"),
+    ("anthropic", "runtime_invoke"),
+    ("openai", "runtime_converse"),
+])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_london_runtime_retains_bare_model_without_requiring_cris(provider, path, explicit):
+    requirements = {"preferred_api_path": path, "data_residency": "unknown"}
+    if explicit:
+        requirements["inference_profile_id"] = MODEL
+    if provider == "openai":
+        requirements.update(preserve_openai_api=False, governance=["guardrails"])
+    rec = _recommend("eu-west-2", provider=provider,
+                     source_model="claude-opus-4-8" if provider == "anthropic" else "gpt-4",
+                     **requirements)
+    assert rec["invocation_model_id"] == MODEL
+    assert rec["model_identity"]["requires_cris"] is False
+    assert "inference_profile_unresolved" not in {item["code"] for item in rec["blocks"]}
+    assert "allowed_inference_profiles" not in rec["verification"]
+    assert not any("Resolve and probe" in item for item in rec["verification"]["required_checks"])
+
+
+def test_london_preserves_explicit_profiles_and_rejects_conflicting_geography():
+    rec = _recommend("eu-west-2", inference_profile_id="eu." + MODEL,
+                     data_residency="geo_required", cris_geography="eu")
+    assert rec["invocation_model_id"] == "eu." + MODEL
+    assert rec["model_identity"]["requires_cris"] is True
+    rec = _recommend("eu-west-2", inference_profile_id=MODEL,
+                     data_residency="geo_required", cris_geography="us")
+    assert rec["invocation_model_id"] is None
+    assert _recommend("us-east-1", inference_profile_id=MODEL)["invocation_model_id"] is None
+
+
+def test_london_runtime_preflight_iam_and_price_agree_on_the_selected_path(monkeypatch):
+    exceptions = ModuleType("botocore.exceptions")
+    exceptions.ClientError = type("ClientError", (Exception,), {})
+    exceptions.BotoCoreError = type("BotoCoreError", (Exception,), {})
+    monkeypatch.setitem(sys.modules, "botocore", ModuleType("botocore"))
+    monkeypatch.setitem(sys.modules, "botocore.exceptions", exceptions)
+    calls = []
+    client = SimpleNamespace(
+        meta=SimpleNamespace(region_name="eu-west-2"),
+        converse=lambda **kwargs: calls.append(kwargs),
+    )
+    assert _script("preflight_bedrock").probe_model(client, MODEL)["ok"]
+    assert calls[0]["modelId"] == MODEL
+    policy = _script("iam_policy").generate_policy([MODEL], "eu-west-2", "123456789012")
+    statement = policy["Statement"][0]
+    assert "bedrock:InvokeModel" in statement["Action"]
+    assert f"arn:aws:bedrock:*::foundation-model/{MODEL}" in statement["Resource"]
+    assert all("bedrock-mantle" not in action
+               for item in policy["Statement"] for action in item["Action"])
+    price = _script("bedrock_pricing").lookup("eu-west-2", MODEL)
+    assert price["available"]
+    assert (price["input_per_1k_usd"], price["output_per_1k_usd"]) == (0.0044, 0.022)
+    assert "runtime-in-region" in price["note"]

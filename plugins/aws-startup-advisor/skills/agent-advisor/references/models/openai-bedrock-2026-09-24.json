@@ -4,7 +4,7 @@
   "verified_at": "2026-09-24",
   "verified_region": "us-east-2",
   "source": "Opus 5.5 cross-family target: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24). OpenAI and other unchanged entries retain their evidence from openai-bedrock-2026-08-21.json.",
-  "disclaimer": "The Opus cross-family target is updated to Opus 5.5; same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 requires CRIS on runtime, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references.",
+  "disclaimer": "The Opus cross-family target is updated to Opus 5.5; same-model OpenAI paths and their earlier evidence remain unchanged. This is a migration target catalog, not an account-availability claim. Verify the chosen model, API, region and CRIS profile before implementation. Opus 5.5 uses CRIS on runtime outside eu-west-2, has 1M context/128K output, always-on adaptive thinking, and no Batch tier. Fable and Mythos remain excluded from default selection. Opus 5.5 is the only Opus model in the automatic selection pool; older Opus snapshots and pricing records are historical references. The runtime in-region exception in eu-west-2 was verified 2026-10-03; the original catalog and other model evidence dates remain unchanged.",
   "paths": {
     "mantle_openai_responses": {
       "sdk": "openai",
@@ -20,7 +20,7 @@
       ],
       "constraints": [
         "Mantle itself has no cross-region form for any GPT model (in-region only); for GPT-5.6 the bedrock-runtime CRIS path covers additional regions instead (see runtime_converse)",
-        "GPT-5.x on Mantle rejects Chat Completions; a Chat Completions source must reshape to Responses (reference-verified on gpt-5.4; the 5.6 cards list Chat Completions as a supported API but its mantle-side availability is unprobed \u2014 verify in the target account)",
+        "GPT-5.x on Mantle rejects Chat Completions; a Chat Completions source must reshape to Responses (reference-verified on gpt-5.4; the 5.6 cards list Chat Completions as a supported API but its mantle-side availability is unprobed — verify in the target account)",
         "Availability must be probed in the target account and region"
       ]
     },
@@ -54,8 +54,8 @@
         "For GPT-5.6 this is a SAME-MODEL governance path via CRIS (us./in./global. ids; base URL bedrock-runtime.{region}.amazonaws.com/openai/v1 for the OpenAI-compatible APIs); the model cards recommend runtime for new applications, and Global CRIS is priced at OpenAI's standard rate (cost parity)"
       ],
       "constraints": [
-        "GPT-5.5 / GPT-5.4 have NO runtime path \u2014 a Converse target for them means a Bedrock-native model and a boto3 rewrite of the OpenAI integration",
-        "GPT-5.6 on runtime is CRIS-only (no in-region form); Geo CRIS stays within the geography, Global CRIS routes anywhere \u2014 pick by data-residency posture. Runtime does not support server-side tool use, structured outputs, or application inference profiles for these models; prompt caching is Responses-only",
+        "GPT-5.5 / GPT-5.4 have NO runtime path — a Converse target for them means a Bedrock-native model and a boto3 rewrite of the OpenAI integration",
+        "GPT-5.6 on runtime is CRIS-only (no in-region form); Geo CRIS stays within the geography, Global CRIS routes anywhere — pick by data-residency posture. Runtime does not support server-side tool use, structured outputs, or application inference profiles for these models; prompt caching is Responses-only",
         "Bedrock-native models generally require a Global or geography-scoped CRIS inference profile",
         "Availability must be probed in the target account and region"
       ]
@@ -76,14 +76,14 @@
           "us-east-2"
         ],
         "govcloud": [],
-        "evidence": "Commercial set per this catalog's pricing cache (US East N. Virginia / Ohio). The 2026-08 GovCloud announcement names Terra and Luna only \u2014 Sol's GovCloud availability is not stated; treat as unknown, not absent."
+        "evidence": "Commercial set per this catalog's pricing cache (US East N. Virginia / Ohio). The 2026-08 GovCloud announcement names Terra and Luna only — Sol's GovCloud availability is not stated; treat as unknown, not absent."
       },
       "capabilities": [
         "reasoning",
         "tool_or_function_calling",
         "image_input_vision"
       ],
-      "capability_source": "AWS model card 2026-08-21 (launch 2026-07-13, Active): frontier reasoning/agentic, image+text input checked; tool calling via the Responses API's built-in tool use (models-api-compatibility). Structured output/streaming behavior not feature-probed on Mantle \u2014 verify before relying. Re-verified 2026-08-21: context window is 1M per the current card (272K was the 2026-07-21 value); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
+      "capability_source": "AWS model card 2026-08-21 (launch 2026-07-13, Active): frontier reasoning/agentic, image+text input checked; tool calling via the Responses API's built-in tool use (models-api-compatibility). Structured output/streaming behavior not feature-probed on Mantle — verify before relying. Re-verified 2026-08-21: context window is 1M per the current card (272K was the 2026-07-21 value); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -117,7 +117,7 @@
         "reasoning",
         "tool_or_function_calling"
       ],
-      "capability_source": "AWS model card 2026-07-21 (launch 2026-06-01, Active): advanced coding/agentic tasks; tool calling via the Responses API's built-in tool use. Feature-level Mantle behavior not probed \u2014 verify before relying. Re-verified 2026-08-21: still mantle-only, in-region only; no CRIS, no runtime path, no long-context tier.",
+      "capability_source": "AWS model card 2026-07-21 (launch 2026-06-01, Active): advanced coding/agentic tasks; tool calling via the Responses API's built-in tool use. Feature-level Mantle behavior not probed — verify before relying. Re-verified 2026-08-21: still mantle-only, in-region only; no CRIS, no runtime path, no long-context tier.",
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -145,13 +145,13 @@
           "us-gov-west-1",
           "us-gov-east-1"
         ],
-        "evidence": "AWS What's New 2026-08 (openai-gpt-terra-luna-govcloud): \"GPT-5.6 Terra and Luna are now generally available on Amazon Bedrock in AWS GovCloud (US-West) and AWS GovCloud (US-East)\"; commercial set per this catalog's pricing cache \u2014 verify against the pricing page before relying on it."
+        "evidence": "AWS What's New 2026-08 (openai-gpt-terra-luna-govcloud): \"GPT-5.6 Terra and Luna are now generally available on Amazon Bedrock in AWS GovCloud (US-West) and AWS GovCloud (US-East)\"; commercial set per this catalog's pricing cache — verify against the pricing page before relying on it."
       },
       "capabilities": [
         "reasoning",
         "tool_or_function_calling"
       ],
-      "capability_source": "AWS model card 2026-08-21: balanced performance at half GPT-5.5 cost; tool calling via the Responses API's built-in tool use. Re-verified 2026-08-21: context window is 1M per the current card (the 2026-07-21 card did not state it \u2014 cataloged as unknown then); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
+      "capability_source": "AWS model card 2026-08-21: balanced performance at half GPT-5.5 cost; tool calling via the Responses API's built-in tool use. Re-verified 2026-08-21: context window is 1M per the current card (the 2026-07-21 card did not state it — cataloged as unknown then); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -185,13 +185,13 @@
           "us-gov-west-1",
           "us-gov-east-1"
         ],
-        "evidence": "AWS What's New 2026-08 (openai-gpt-terra-luna-govcloud): \"GPT-5.6 Terra and Luna are now generally available on Amazon Bedrock in AWS GovCloud (US-West) and AWS GovCloud (US-East)\"; commercial set per this catalog's pricing cache \u2014 verify against the pricing page before relying on it."
+        "evidence": "AWS What's New 2026-08 (openai-gpt-terra-luna-govcloud): \"GPT-5.6 Terra and Luna are now generally available on Amazon Bedrock in AWS GovCloud (US-West) and AWS GovCloud (US-East)\"; commercial set per this catalog's pricing cache — verify against the pricing page before relying on it."
       },
       "capabilities": [
         "reasoning",
         "tool_or_function_calling"
       ],
-      "capability_source": "AWS model card 2026-08-21: fastest/lowest-cost OpenAI tier for high-volume tasks; tool calling via the Responses API's built-in tool use. Re-verified 2026-08-21: context window is 1M per the current card (the 2026-07-21 card did not state it \u2014 cataloged as unknown then); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
+      "capability_source": "AWS model card 2026-08-21: fastest/lowest-cost OpenAI tier for high-volume tasks; tool calling via the Responses API's built-in tool use. Re-verified 2026-08-21: context window is 1M per the current card (the 2026-07-21 card did not state it — cataloged as unknown then); long-context (>272K) is a separate price tier at 2.0x input / 1.5x output per inference option.",
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -221,7 +221,7 @@
         "reasoning",
         "streaming"
       ],
-      "capability_source": "internal reference smoke tests and its reasoning-API migration notebook (Responses path, 2026-06 probes) \u2014 the only entry with feature-level Mantle behavior probes (tools, structured output, sampling); limits not stated Re-verified 2026-08-21: still mantle-only, in-region only; no CRIS, no runtime path, no long-context tier.",
+      "capability_source": "internal reference smoke tests and its reasoning-API migration notebook (Responses path, 2026-06 probes) — the only entry with feature-level Mantle behavior probes (tools, structured output, sampling); limits not stated Re-verified 2026-08-21: still mantle-only, in-region only; no CRIS, no runtime path, no long-context tier.",
       "paths": {
         "mantle_openai_responses": {
           "available": true,
@@ -250,7 +250,7 @@
         "reasoning",
         "image_input_vision"
       ],
-      "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): Converse checked, 1M context / 128K output, adaptive thinking always on, image input checked (tool_use/thinking/vision mapped to this provider's feature vocabulary). Balanced Claude tier \u2014 the Converse target for GPT-5.6 Terra, GPT-5.5, GPT-5.4, and unmatched/legacy sources.",
+      "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): Converse checked, 1M context / 128K output, adaptive thinking always on, image input checked (tool_use/thinking/vision mapped to this provider's feature vocabulary). Balanced Claude tier — the Converse target for GPT-5.6 Terra, GPT-5.5, GPT-5.4, and unmatched/legacy sources.",
       "paths": {
         "runtime_converse": {
           "available": true,
@@ -272,7 +272,7 @@
         "tool_or_function_calling",
         "image_input_vision"
       ],
-      "capability_source": "anthropic-bedrock-2026-07-21 catalog (runtime_converse available; tool_use/vision mapped to this provider's feature vocabulary; no extended-thinking evidence, so reasoning-requiring workloads fall back to a higher Claude tier). Fast/low-cost Claude tier \u2014 the Converse target for GPT-5.6 Luna.",
+      "capability_source": "anthropic-bedrock-2026-07-21 catalog (runtime_converse available; tool_use/vision mapped to this provider's feature vocabulary; no extended-thinking evidence, so reasoning-requiring workloads fall back to a higher Claude tier). Fast/low-cost Claude tier — the Converse target for GPT-5.6 Luna.",
       "paths": {
         "runtime_converse": {
           "available": true,
@@ -366,7 +366,7 @@
           "us-west-2"
         ]
       },
-      "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24)",
+      "evidence": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24); runtime in-region eu-west-2 confirmed from the same model card on 2026-10-03.",
       "paths": {
         "runtime_converse": {
           "available": true,
@@ -377,7 +377,11 @@
       "generation": "bedrock_native",
       "capability_source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html (retrieved 2026-09-24): tool use, reasoning and image input; native structured outputs unsupported.",
       "forced_tool_choice_supported": false,
-      "native_structured_output_supported": false
+      "native_structured_output_supported": false,
+      "runtime_in_region_regions": [
+        "eu-west-2"
+      ],
+      "runtime_in_region_verified_at": "2026-10-03"
     }
   }
 }

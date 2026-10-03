@@ -238,7 +238,7 @@ def _runtime_required(requirements):
     )
 
 
-def _model_identity(model_key, model, path_config):
+def _model_identity(model_key, model, path_config, invocation_model_id=None):
     return {
         "model_key": model_key,
         "display_name": model["display_name"],
@@ -247,7 +247,9 @@ def _model_identity(model_key, model, path_config):
         "context_window": model["context_window"],
         "output_token_ceiling": model["output_token_ceiling"],
         "path_model_id": path_config["model_id"],
-        "requires_cris": path_config["requires_cris"],
+        "requires_cris": anthropic_model_recommendation._invocation_requires_cris(
+            path_config, invocation_model_id
+        ),
     }
 
 
@@ -687,6 +689,9 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
                 "Resolve the model/path decision before running an availability probe."
             ],
         }
+    requires_cris = requires_cris and invocation_model_id != (model or {}).get(
+        "paths", {}
+    ).get(path, {}).get("model_id")
     checks = [
         "Probe the selected model through the selected API path in the target account and region.",
         "Verify path-specific IAM, model access, and quota before code rewrite or POC generation.",
@@ -739,16 +744,19 @@ def _decision_options(catalog, workload, region):
     )
     if runtime:
         model_key, model, path_config = runtime
+        invocation_model_id = _resolve_invocation_model_id(
+            path_config["model_id"], path_config["requires_cris"], workload["requirements"],
+            model, region,
+        )
         options.append(
             {
                 "model_key": model_key,
                 "model": path_config["model_id"],
                 "api_path": "runtime_converse",
-                "invocation_model_id": _resolve_invocation_model_id(
-                    path_config["model_id"], path_config["requires_cris"], workload["requirements"],
-                    model, region,
+                "invocation_model_id": invocation_model_id,
+                "requires_cris": anthropic_model_recommendation._invocation_requires_cris(
+                    path_config, invocation_model_id
                 ),
-                "requires_cris": path_config["requires_cris"],
                 "reason": (
                     "SAME-MODEL governance path: this GPT-5.6 target runs on bedrock-runtime via a "
                     "CRIS id — Guardrails (Converse API only), invocation logging, and cost parity "
@@ -1010,7 +1018,7 @@ def recommend_openai_workload(workload, region, catalog):
             "source_analysis": source_analysis,
             "feature_assessment": feature_assessment,
             "primary_model": path_config["model_id"],
-            "model_identity": _model_identity(model_key, model, path_config),
+            "model_identity": _model_identity(model_key, model, path_config, invocation_model_id),
             "api_path": path,
             "invocation_model_id": invocation_model_id,
             "decision_options": [],

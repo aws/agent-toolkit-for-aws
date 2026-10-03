@@ -105,12 +105,14 @@ Request TPM increases via Service Quotas. Cross-region inference profiles (us.* 
 
 The [AWS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html) identifies `anthropic.claude-opus-5-5` as
 Active, with a 1M-token context window and 128K maximum output. On `bedrock-runtime`,
-use a supported Geo or Global inference profile, never the bare ID. `global.` requires
+use a supported Geo or Global inference profile, or the bare ID in `eu-west-2`
+(runtime in-region availability verified 2026-10-03). Other runtime regions require CRIS. `global.` requires
 permission to route worldwide and is unavailable in GovCloud. Geo profiles are `us.`,
 `eu.`, `au.`, and `jp.`; use the model card's source-region matrix, not a guessed prefix.
 
-The bare ID is supported by **Mantle Messages** only in `us-east-1`, `ap-southeast-4`,
-and `us-gov-west-1`. It is not a runtime in-region target. Probe the selected API/profile
+For **Mantle Messages**, the bare ID is supported only in `us-east-1`, `ap-southeast-4`,
+and `us-gov-west-1`. The London runtime in-region path uses the commercial
+$4.40/$22 per 1M input/output rate (AWS Price List verified 2026-10-03). Probe the selected API/profile
 in the actual account; catalog availability is not proof of account access.
 
 Thinking is always adaptive and cannot be disabled. Use `output_config.effort`
