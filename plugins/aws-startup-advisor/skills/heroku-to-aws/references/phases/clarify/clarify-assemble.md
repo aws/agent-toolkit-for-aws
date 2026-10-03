@@ -36,7 +36,7 @@ Write `$MIGRATION_DIR/preferences.json`:
     "questions_skipped_extracted": ["Q6", "Q12b", ...],
     "questions_skipped_not_applicable": ["Q6", "Q8", ...],
     "questions_deferred_to_generate": ["Q4", "Q6c", "Q12d"],
-    "inventory_clarifications": {"database_ha": "plan:premium-0"}
+    "inventory_clarifications": {"<signal>": "<raw signal>"} // map of the signal that backed an extracted or proposed answer: database_ha ("plan:premium-0"), redis_ha ("plan:mini"), target_region ("space:virginia"). A proposed value is not recorded as extracted.
   },
   "global": {
     "target_region": "<Q1 value>",

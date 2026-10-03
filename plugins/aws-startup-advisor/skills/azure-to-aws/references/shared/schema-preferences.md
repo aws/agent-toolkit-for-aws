@@ -53,6 +53,7 @@ licensing exposure and found none" is a different statement from silence.
 ```jsonc
 {
   "phase": "clarify",
+  "clarify_status": "COMPLETE", // REQUIRED — COMPLETE | BLOCKED_ON_ESSENTIAL — the phase's own verdict (clarify-assemble.md § clarify_status)
   "metadata": {
     "clarify_mode": "wizard", // "fast_path" | "wizard" — which Clarify flow produced this file
     "fast_path_eligible": false, // copied from azure-resource-inventory.json metadata.clarify_fast_path.eligible
@@ -92,7 +93,8 @@ licensing exposure and found none" is a different statement from silence.
       "deferred_to_generate": true, // asked for real at estimate-assemble.md § Step 3b when the user chooses [C] Generate; Step 3b sets it to false
       "default_basis": "largest relational DB 64 GiB <= 100 GiB",
       "largest_relational_db_gib": 64, // what Discover measured; null when no relational server carried storage_mb
-      "size_coverage": "complete" // "complete" | "partial" | "unknown" — whether every relational server had a measured size
+      "size_coverage": "complete", // "complete" | "partial" | "unknown" — whether every relational server had a measured size
+      "user_stated_size_gib": 120 // optional. estimate-assemble.md § Step 3b writes this when the user states a size Discover did not measure. Absent until then. Does not replace largest_relational_db_gib or size_coverage.
     },
     "traffic_pattern": { "disposition": "PROPOSED", "value": null, "default": "steady" },
     "storage_io": { "disposition": "PROPOSED", "value": null, "default": "medium" },
@@ -108,6 +110,9 @@ licensing exposure and found none" is a different statement from silence.
     "default": "identity_center_reinvite"
   },
   "licensing": {
+    "disposition": "N/A", // unfired stub only — clarify-licensing.md § Step 3; absent when the per-model rows below are present
+    "value": null,
+    "default": null,
     "windows_model": {
       "disposition": "ESSENTIAL",
       "value": "license_included",
