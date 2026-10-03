@@ -100,6 +100,45 @@ def test_would_flip_partial_list_fails() -> None:
     assert "1 of 2" in errors[0] and "BigQuery" in errors[0], errors
 
 
+def test_would_flip_shared_suffix_cannot_cross_satisfy_items() -> None:
+    estimate = _reference_estimate()
+    estimate["recommendation"]["would_flip_if"] = [
+        "Database changes require specialist evidence",
+        "Compute changes require specialist evidence",
+    ]
+    html = _reference_html().replace(
+        FLIP_BLOCK,
+        """      <h3>What would flip this</h3>
+      <ul class="compact">
+        <li>Database changes require specialist evidence</li>
+      </ul>""",
+    )
+    errors = _flip_errors_for_estimate(html, estimate)
+    assert errors and "1 of 2" in errors[0] and "Compute" in errors[0], errors
+
+
+def test_would_flip_shared_suffix_complete_items_pass() -> None:
+    estimate = _reference_estimate()
+    estimate["recommendation"]["would_flip_if"] = [
+        "Database changes require specialist evidence",
+        "Compute changes require specialist evidence",
+    ]
+    html = _reference_html().replace(
+        FLIP_BLOCK,
+        """      <h3>What would flip this</h3>
+      <ul class="compact">
+        <li>Database changes require specialist evidence</li>
+        <li>Compute changes require specialist evidence</li>
+      </ul>""",
+    )
+    assert _flip_errors_for_estimate(html, estimate) == []
+
+
+def _flip_errors_for_estimate(html: str, estimate: dict) -> list[str]:
+    validator = _load()
+    return [e for e in validator.validate_report(html, estimate, None) if "flip" in e]
+
+
 def test_would_flip_items_only_in_template_fail() -> None:
     html = _reference_html().replace(
         "      <ul class=\"compact\">\n        <li>Single-AZ acceptable",

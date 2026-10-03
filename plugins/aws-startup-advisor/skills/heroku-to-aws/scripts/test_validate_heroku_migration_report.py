@@ -201,6 +201,53 @@ def test_would_flip_partial_list_fails() -> None:
     assert "1 of 2" in out and "Dyno count" in out, out
 
 
+def _run_with_custom_flips(html: str, flips: list[str]) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "estimation-infra.json").write_text(
+            json.dumps(
+                {"recommendation": {"outcome": "go_conditional", "would_flip_if": flips}}
+            ),
+            encoding="utf-8",
+        )
+        return run(html, migration_dir=d)
+
+
+def test_would_flip_shared_suffix_cannot_cross_satisfy_items() -> None:
+    flips = [
+        "Database changes require specialist evidence",
+        "Compute changes require specialist evidence",
+    ]
+    html = GOOD.replace(
+        VERDICT,
+        VERDICT
+        + "<h3>What would flip this</h3>"
+        + "<ul><li>Database changes require specialist evidence</li></ul>",
+    )
+    code, out = _run_with_custom_flips(html, flips)
+    assert code == 1, out
+    assert "1 of 2" in out and "Compute" in out, out
+
+
+def test_would_flip_shared_suffix_complete_items_pass() -> None:
+    flips = [
+        "Database changes require specialist evidence",
+        "Compute changes require specialist evidence",
+    ]
+    html = GOOD.replace(
+        VERDICT,
+        VERDICT
+        + "<h3>What would flip this</h3>"
+        + "<ul>"
+        "<li>Database changes require specialist evidence</li>"
+        "<li>Compute changes require specialist evidence</li>"
+        "</ul>",
+    )
+    code, out = _run_with_custom_flips(html, flips)
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
 def test_would_flip_complete_list_passes() -> None:
     code, out = _run_with_flips(
         GOOD.replace(VERDICT, VERDICT + f"<h3>What would flip this</h3><ul>{FLIP_ITEMS}</ul>")

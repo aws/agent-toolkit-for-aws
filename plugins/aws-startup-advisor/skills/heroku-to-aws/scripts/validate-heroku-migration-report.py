@@ -829,6 +829,28 @@ def _phrase_rendered(phrase: str, rendered_text: str, max_width: int = 4) -> boo
     return bool(_word_shingles(" ".join(words), width) & _word_shingles(rendered_text, width))
 
 
+def _unmatched_phrases(phrases: list[object], rendered_items: list[str]) -> list[str]:
+    """Return artifact phrases that cannot be assigned distinct rendered items."""
+    matched_items: dict[int, int] = {}
+
+    def assign(phrase_index: int, seen_items: set[int]) -> bool:
+        phrase = str(phrases[phrase_index])
+        for item_index, item in enumerate(rendered_items):
+            if item_index in seen_items or not _phrase_rendered(phrase, item):
+                continue
+            seen_items.add(item_index)
+            previous = matched_items.get(item_index)
+            if previous is None or assign(previous, seen_items):
+                matched_items[item_index] = phrase_index
+                return True
+        return False
+
+    for phrase_index in range(len(phrases)):
+        assign(phrase_index, set())
+    matched_phrases = set(matched_items.values())
+    return [str(phrase) for index, phrase in enumerate(phrases) if index not in matched_phrases]
+
+
 class _RenderedFragmentParser(HTMLParser):
     """Ported from validate-migration-report.py — flatten a fragment into what
     the browser shows, in document order: `("heading", run)` for an <h1>–<h6>,
@@ -1001,11 +1023,7 @@ def _validate_verdict(html: str, migration_dir: Path | None) -> list[str]:
                 'decision-summary has no "What would flip this" list'
             )
         else:
-            missing = [
-                str(flip)
-                for flip in flips
-                if not any(_phrase_rendered(str(flip), item) for item in items)
-            ]
+            missing = _unmatched_phrases(flips, items)
             if missing:
                 errors.append(
                     f'"What would flip this" list renders {len(flips) - len(missing)} of '
