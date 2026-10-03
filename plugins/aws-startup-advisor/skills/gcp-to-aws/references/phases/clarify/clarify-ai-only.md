@@ -298,7 +298,7 @@ Present with concrete examples: Simple = classify/extract/summarize; Moderate = 
 | -------- | --------------------------------------------------------------------- |
 | Simple   | Haiku/Nova Micro sufficient; significant cost savings                 |
 | Moderate | Sonnet 5 recommended; Haiku may suffice with prompt engineering       |
-| Complex  | Sonnet 5 required; extended thinking considered; Opus 4.8 for hardest |
+| Complex  | Sonnet 5 required; extended thinking considered (note: on Sonnet 5.5, turning off up-front thinking requires `thinking: {"type": "between_tools"}` instead of "disabled" at high effort or below); Opus 4.8 for hardest |
 
 Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 
