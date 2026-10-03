@@ -3,7 +3,7 @@
   "$id": "urn:awslabs:startups:migration-to-aws:heroku-to-aws:application-source-contract",
   "$comment": "The $id URN uses 'migration-to-aws' as a stable schema namespace identity — it is NOT a plugin name or skill invocation prefix. Do not rename it when the schema moves between plugins.",
   "title": "Heroku application-source request and findings",
-  "description": "Contract-only definitions for a future application-source review.",
+  "description": "Request and findings definitions for planned application-source validation.",
   "oneOf": [{ "$ref": "#/definitions/request" }, { "$ref": "#/definitions/findings" }],
   "definitions": {
     "question": {
@@ -47,7 +47,7 @@
       "type": "array",
       "maxItems": 256,
       "uniqueItems": true,
-      "items": { "$ref": "#/definitions/name" }
+      "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
     },
     "identifierList": {
       "type": "array",

@@ -27,9 +27,16 @@ run = "python3 tools/sync-plugin-skills.py --check"
 description = "Validate Agent Plugins v1.0.0 conformance (plugins/)"
 run = "uv run --with jsonschema --with pyyaml python tools/validate_spec.py"
 
+[tasks."test:heroku-source-review"]
+description = "Run Heroku application-source contract and validator tests"
+run = [
+  "node --test plugins/aws-startup-advisor/tests/tools/application-source-contract.test.ts",
+  "node --test plugins/aws-startup-advisor/tests/tools/application-source-review.test.ts",
+]
+
 [tasks.validate]
 description = "Run all validation"
-depends = ["lint:manifests", "lint:skill-parity", "lint:spec"]
+depends = ["lint:manifests", "lint:skill-parity", "lint:spec", "test:heroku-source-review"]
 
 [tasks.security]
 description = "Run security scans"
