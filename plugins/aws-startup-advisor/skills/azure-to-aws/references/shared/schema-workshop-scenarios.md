@@ -11,6 +11,9 @@ with this file.
 {
   "phase": "workshop",
   "baseline_scenario_id": "baseline",
+  "active_scenario_id": "baseline", // workshop-refresh.md sets this to the snapshot Apply/resume is on; equals baseline at capture
+  "max_scenarios": 5, // the five-scenario cap from the shared workshop invariants
+  "inventory_fingerprint": "<sha256 hex of azure-resource-inventory.json>", // frozen at baseline capture; refresh aborts when the inventory bytes change
   "scenarios": [
     {
       "scenario_id": "baseline",

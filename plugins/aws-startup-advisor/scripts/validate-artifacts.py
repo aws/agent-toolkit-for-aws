@@ -186,13 +186,46 @@ class Node:
     def is_any(self) -> bool:
         return "any" in self.kinds or not self.kinds
 
+    def _is_unspecified_any(self) -> bool:
+        """An empty-array seed (`"services": []`) or a bare placeholder. It names no type,
+        no keys, and no enum — unlike a null example, which is `{null, any}` on purpose."""
+        return (
+            self.kinds == {"any"}
+            and not self.keys
+            and self.item is None
+            and self.any_key is None
+            and self.enum is None
+            and not self.examples
+            and not self.wildcard
+            and not self.required
+        )
+
     def merge(self, other: "Node") -> "Node":
         """Union two templates for the same path (several documented variants).
 
         Children adopted from `other` are copied, never shared: a later refinement of a
         named child (`design_constraints.cpu_architecture`) must not mutate the generic
         template (`design_constraints.<key>`) it was seeded from.
+
+        An unspecified `any` (the item of `"services": []`) is replaced when a concrete
+        shape arrives. Unioning would keep `any` in the kinds and skip type checks for
+        good. A later empty array does not put `any` back onto a shape already learned.
         """
+        if self._is_unspecified_any() and not other._is_unspecified_any():
+            concrete = copy.deepcopy(other)
+            self.kinds = concrete.kinds
+            self.wildcard = concrete.wildcard
+            self.required = concrete.required
+            self.keys = concrete.keys
+            self.item = concrete.item
+            self.any_key = concrete.any_key
+            self.enum = concrete.enum
+            self.enum_join = concrete.enum_join
+            self.examples = concrete.examples
+            self.source = concrete.source or self.source
+            return self
+        if other._is_unspecified_any() and not self._is_unspecified_any():
+            return self
         self.kinds |= other.kinds
         self.wildcard = self.wildcard or other.wildcard
         self.required |= other.required
@@ -229,7 +262,12 @@ class Node:
 
 _PLACEHOLDER_RE = re.compile(r"^<.*>$")
 _ENUM_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.:+\-/]+$")
-_COMMENT_ENUM_RE = re.compile(r"(?:^|[—:\-]\s*)([A-Za-z0-9_.:+\-/]+(?:\s*\|\s*[A-Za-z0-9_.:+\-/]+)+)\s*(?:$|[—(\-])")
+# A member may be a bare token or a quoted one (`"fast_path" | "wizard"`). Quotes are
+# stripped before the token check, so a quoted phrase with spaces stays free text.
+_ENUM_ALT = r"(?:`[^`]+`|\"[^\"]+\"|'[^']+'|[A-Za-z0-9_.:+\-/]+)"
+_COMMENT_ENUM_RE = re.compile(
+    rf"(?:^|[—:\-]\s*)({_ENUM_ALT}(?:\s*\|\s*{_ENUM_ALT})+)\s*(?:$|[—(\-])"
+)
 # `terraform | live | billing (or a "+"-joined set)` — members may be combined with "+"
 _JOINED_SET_RE = re.compile(r"[\"'`]?\+[\"'`]?[\s-]*joined|joined\s+(?:by|with|on)\s+[\"'`]?\+", re.I)
 
@@ -243,12 +281,19 @@ def _enum_from_string(s: str) -> Optional[Set[str]]:
     return None
 
 
+def _enum_token(raw: str) -> Optional[str]:
+    t = raw.strip()
+    if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'`":
+        t = t[1:-1]
+    return t if _ENUM_TOKEN_RE.match(t) else None
+
+
 def _enum_from_comment(c: str) -> Optional[Set[str]]:
     m = _COMMENT_ENUM_RE.search(c)
     if not m:
         return None
-    toks = [t.strip() for t in m.group(1).split("|")]
-    if len(toks) >= 2 and all(_ENUM_TOKEN_RE.match(t) for t in toks):
+    toks = [_enum_token(t) for t in m.group(1).split("|")]
+    if len(toks) >= 2 and all(t is not None for t in toks):
         return set(toks)
     return None
 
@@ -458,6 +503,17 @@ def _merge_example_at(root: Node, path: str, value: Any, key_comments: Dict[str,
     node = build_node(value, key_comments, source)
     if path.endswith("[]") and isinstance(value, list):
         target = _walk_path(root, path[:-2])
+        # Stripping `[]` creates a missing leaf as an empty object. The example is the
+        # array itself, so that fresh leaf is an array. Leaving `object` in the kinds
+        # made `{object, array}` and an object-valued `workloads` passed the type check.
+        if (
+            target is not None
+            and target.kinds == {"object"}
+            and not target.keys
+            and target.item is None
+            and target.any_key is None
+        ):
+            target.kinds = {"array"}
     else:
         target = _walk_path(root, path)
     if target is not None:
@@ -830,6 +886,57 @@ def load_manifest(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _node_from_schema(schema: Any, source: str) -> Node:
+    """A shape node for a JSON Schema property the Markdown example never showed."""
+    n = Node(source=source)
+    if not isinstance(schema, dict):
+        n.kinds.add("any")
+        return n
+    raw = schema.get("type")
+    types = [raw] if isinstance(raw, str) else list(raw or [])
+    props = schema.get("properties") if isinstance(schema.get("properties"), dict) else None
+    if not types and props is not None:
+        types = ["object"]
+    for t in types:
+        if t == "integer":
+            n.kinds.add("number")
+        elif t in ("object", "array", "string", "number", "boolean", "null"):
+            n.kinds.add(t)
+        else:
+            n.kinds.add("any")
+    if not n.kinds:
+        n.kinds.add("any")
+    if props is not None:
+        n.kinds.add("object")
+        for k, sub in props.items():
+            n.keys[k] = _node_from_schema(sub, source)
+    items = schema.get("items")
+    if isinstance(items, dict) and "array" in n.kinds:
+        n.item = _node_from_schema(items, source)
+    return n
+
+
+def _admit_schema_properties(node: Node, schema: Any, source: str) -> None:
+    """Keys the JSON Schema declares and the Markdown shape does not are still in the
+    contract. The shape check was reporting them UNKNOWN_KEY after the schema had accepted
+    the same bytes. Keys in neither stay unknown. A key the shape already defines is not
+    replaced, so a closed example object stays closed."""
+    if not isinstance(schema, dict):
+        return
+    props = schema.get("properties")
+    if not isinstance(props, dict):
+        return
+    if "object" not in node.kinds and not node.is_any():
+        return
+    if "object" not in node.kinds:
+        node.kinds.add("object")
+    for k, sub in props.items():
+        if k not in node.keys:
+            node.keys[k] = _node_from_schema(sub, source)
+        else:
+            _admit_schema_properties(node.keys[k], sub, source)
+
+
 def build_contracts(manifest: Dict[str, Any], skill: str, findings: List[Finding]) -> List[Contract]:
     specs: Dict[str, Any] = {}
     specs.update(manifest.get("shared", {}))
@@ -853,6 +960,8 @@ def build_contracts(manifest: Dict[str, Any], skill: str, findings: List[Finding
                         f"_ANNOTATION_KEYWORDS (if it carries no constraint).", _rel(p)))
         if "shape" in spec:
             c.shape = build_shape_contract(spec, findings)
+        if c.shape is not None and c.json_schema is not None:
+            _admit_schema_properties(c.shape.root, c.json_schema, c.json_schema_path)
         contracts.append(c)
     return contracts
 
