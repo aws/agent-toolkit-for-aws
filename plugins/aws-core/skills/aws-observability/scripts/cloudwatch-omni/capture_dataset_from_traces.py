@@ -14,11 +14,16 @@ Requires boto3 + caller AWS credentials with cloudwatch-omni (Omni SQL query) +
 bedrock-agentcore-control (dataset write). The caller must have an access grant on the
 Space and cloudwatch:StartQuery / cloudwatch:GetQueryResults permissions.
 
+Creating/extending a dataset is a real resource write. This helper refuses to write unless
+the caller passes --i-have-confirmed, asserting the user confirmed this write. The flag is a
+caller-side assertion, not a verification: it stops an accidental or unconfirmed run, but the
+caller is responsible for adding it only AFTER the user has actually confirmed.
+
 Examples:
   python capture_dataset_from_traces.py --mode create --dataset-name checkout_regressions \
-      --trace-ids 6a7f...,6a80... --region us-east-1
+      --trace-ids 6a7f...,6a80... --region us-east-1 --i-have-confirmed
   python capture_dataset_from_traces.py --mode add --dataset-id my_ds-AbC123 \
-      --trace-ids 6a81...
+      --trace-ids 6a81... --i-have-confirmed
 """
 from __future__ import annotations
 
@@ -309,7 +314,25 @@ def main():
     ap.add_argument("--description")
     ap.add_argument("--region", default="us-east-1")
     ap.add_argument("--window-days", type=int, default=30, help="trace lookback window")
+    ap.add_argument(
+        "--i-have-confirmed",
+        action="store_true",
+        help="REQUIRED to write. Assert that the user confirmed this create/add. Without it the "
+        "helper refuses (exit 1) before any AWS call.",
+    )
     args = ap.parse_args()
+
+    # A create/add is a real resource write. Refuse outright unless the caller passes
+    # --i-have-confirmed, which an agent may add only AFTER the user has confirmed. The
+    # helper cannot verify that confirmation happened; it only guarantees that an unflagged
+    # run exits non-zero having touched no AWS API.
+    if not args.i_have_confirmed:
+        _die({
+            "error": "refusing to write: creating/extending a dataset is a real resource write. "
+            "Confirm with the user first, then re-run with --i-have-confirmed. Do not pass the "
+            "flag on a request that has not been confirmed.",
+            "confirmationRequired": True,
+        })
 
     if args.mode == "create" and not args.dataset_name:
         _die({"error": "--dataset-name is required for --mode create"})
