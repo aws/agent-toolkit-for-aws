@@ -421,6 +421,93 @@ def test_recommendation_cli_drops_orphaned_verification_before_first_write(tmp_p
     assert not cache.exists()
 
 
+@pytest.mark.parametrize("provider,path", [
+    ("anthropic", "runtime_converse"), ("anthropic", "runtime_invoke"),
+    ("openai", "runtime_converse"),
+])
+@pytest.mark.parametrize("regions", [("eu-west-2",), ("eu-west-2", "eu-west-1")])
+def test_london_application_profile_accepts_in_region_or_matching_geo_destinations(provider, path, regions):
+    data = _input() if provider == "anthropic" else _openai_input()
+    data["region"] = "eu-west-2"
+    arn = APPLICATION_ARN.replace("us-east-1", "eu-west-2")
+    requirements = data["workloads"][0]["requirements"]
+    requirements.update(priority="quality", preferred_api_path=path, data_residency="geo_required",
+                        cris_geography="eu", inference_profile_id=arn)
+    if provider == "openai":
+        requirements.update(governance=["guardrails"], preserve_openai_api=False)
+    recommendation = model_recommendation.recommend(data)
+    workload = next(iter(recommendation["workloads"].values()))
+    assert workload["verification"]["allowed_in_region_model_arns"] == [
+        f"arn:aws:bedrock:eu-west-2::foundation-model/{OPUS55}"
+    ]
+    client = FakeRuntimeClient()
+
+    class Control:
+        def get_inference_profile(self, inferenceProfileIdentifier):
+            assert not client.converse_calls and not client.invoke_calls
+            return _profile_metadata(regions=regions if inferenceProfileIdentifier == arn
+                                     else ("eu-west-2", "eu-west-1"))
+
+    result = verify_model_path.verify_recommendation(
+        recommendation, runtime_client_factory=lambda region: client,
+        control_client_factory=lambda region: Control(),
+    )
+    assert next(iter(result["workloads"].values()))["status"] == "passed"
+    calls = client.invoke_calls if path == "runtime_invoke" else client.converse_calls
+    assert calls[0]["modelId"] == arn
+
+
+@pytest.mark.parametrize("metadata", [
+    _profile_metadata(regions=("eu-west-1",)),
+    _profile_metadata(regions=("eu-west-2",), model="anthropic.claude-sonnet-5"),
+    _profile_metadata(regions=("eu-west-2",), status="INACTIVE"),
+    _profile_metadata(regions=("eu-west-2", "us-east-1")),
+])
+def test_london_in_region_allowance_rejects_wrong_or_additional_destinations(metadata):
+    arn = APPLICATION_ARN.replace("us-east-1", "eu-west-2")
+    data = _input({"priority": "quality", "preferred_api_path": "runtime_converse",
+                   "data_residency": "geo_required", "cris_geography": "eu",
+                   "inference_profile_id": arn})
+    data["region"] = "eu-west-2"
+    client = FakeRuntimeClient()
+
+    class Control:
+        def get_inference_profile(self, inferenceProfileIdentifier):
+            return metadata if inferenceProfileIdentifier == arn else _profile_metadata(
+                regions=("eu-west-2", "eu-west-1"))
+
+    result = verify_model_path.verify_recommendation(
+        model_recommendation.recommend(data), runtime_client_factory=lambda region: client,
+        control_client_factory=lambda region: Control(),
+    )
+    assert next(iter(result["workloads"].values()))["status"] == "failed"
+    assert not client.converse_calls
+
+
+def test_changed_in_region_allowance_invalidates_same_arn_verification(tmp_path):
+    arn = APPLICATION_ARN.replace("us-east-1", "eu-west-2")
+    data = _input({"priority": "quality", "preferred_api_path": "runtime_converse",
+                   "data_residency": "geo_required", "cris_geography": "eu",
+                   "inference_profile_id": arn})
+    data["region"] = "eu-west-2"
+    source = tmp_path / "input.json"
+    source.write_text(json.dumps(data))
+    assert model_recommendation.main([str(source)]) == 0
+    cache = tmp_path / "model-verification.json"
+    cache.write_text('{"status":"passed"}')
+    catalog = model_recommendation.load_catalog()
+    catalog["models"]["claude_opus_5_5"]["runtime_in_region_regions"] = []
+    custom = tmp_path / "catalog.json"
+    custom.write_text(json.dumps(catalog))
+    assert model_recommendation.main([str(source), "--catalog", str(custom)]) == 0
+    assert not cache.exists()
+    result = json.loads((tmp_path / "model-recommendation.json").read_text())
+    workload = next(iter(result["workloads"].values()))
+    assert workload["invocation_model_id"] == arn
+    assert workload["verification"]["allowed_inference_profiles"] == [f"eu.{OPUS55}"]
+    assert "allowed_in_region_model_arns" not in workload["verification"]
+
+
 def test_mantle_responses_probe_calls_responses_create_with_exact_id():
     client = FakeOpenAIClient()
     result = _verify_openai(

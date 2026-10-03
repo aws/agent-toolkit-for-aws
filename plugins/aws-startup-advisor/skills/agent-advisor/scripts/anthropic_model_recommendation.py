@@ -370,9 +370,23 @@ def _allowed_inference_profiles(model_id, model, region, requirements):
 def _profile_verification(model_id, requires_cris, model, region, requirements):
     if not requires_cris or not (model or {}).get("inference_profiles"):
         return {}
-    return {"allowed_inference_profiles": _allowed_inference_profiles(
+    result = {"allowed_inference_profiles": _allowed_inference_profiles(
         model_id, model, region, requirements or {}
     )}
+    if _runtime_in_region_allowed(model_id, model, region, requirements or {}):
+        result["allowed_in_region_model_arns"] = [
+            f"arn:aws:bedrock:{region}::foundation-model/{model_id}"
+        ]
+    return result
+
+
+def _runtime_in_region_allowed(model_id, model, region, requirements):
+    if region not in (model or {}).get("runtime_in_region_regions", []):
+        return False
+    allowed = _allowed_inference_profiles(model_id, model, region, requirements)
+    return requirements.get("data_residency") != "geo_required" or any(
+        not profile.startswith("global.") for profile in allowed
+    )
 
 
 def _invocation_requires_cris(path_config, invocation_model_id):
@@ -383,12 +397,8 @@ def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=No
     if not requires_cris:
         return model_id
     explicit = requirements.get("inference_profile_id")
-    if region in (model or {}).get("runtime_in_region_regions", []):
-        allowed = _allowed_inference_profiles(model_id, model, region, requirements)
-        geography_allowed = requirements.get("data_residency") != "geo_required" or any(
-            not profile.startswith("global.") for profile in allowed
-        )
-        if geography_allowed and (not explicit or explicit == model_id):
+    if _runtime_in_region_allowed(model_id, model, region, requirements):
+        if not explicit or explicit == model_id:
             return model_id
     candidate = explicit
     if not candidate:

@@ -262,6 +262,14 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "allowed_in_region_model_arns": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "additionalProperties": false

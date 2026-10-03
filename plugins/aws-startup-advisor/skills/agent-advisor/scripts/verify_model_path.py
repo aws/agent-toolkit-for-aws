@@ -39,7 +39,8 @@ def _default_control_client(region):
     return boto3.client("bedrock", region_name=region)
 
 
-def _verify_application_profile(client, model_id, path_model_id, allowed_profiles):
+def _verify_application_profile(client, model_id, path_model_id, allowed_profiles,
+                                allowed_in_region_model_arns=()):
     def destinations(profile):
         models = {item["modelArn"] for item in profile.get("models", [])}
         if profile.get("status") != "ACTIVE" or not models:
@@ -50,6 +51,8 @@ def _verify_application_profile(client, model_id, path_model_id, allowed_profile
 
     profile = client.get_inference_profile(inferenceProfileIdentifier=model_id)
     actual = destinations(profile)
+    if len(actual) == 1 and actual.issubset(set(allowed_in_region_model_arns)):
+        return
     errors = []
     for reference_id in allowed_profiles:
         try:
@@ -176,11 +179,12 @@ def verify_workload(
         if (":application-inference-profile/" in model_id
                 and result["path_model_id"] == "anthropic.claude-opus-5-5"):
             allowed = recommendation["verification"].get("allowed_inference_profiles")
-            if not allowed:
+            in_region = recommendation["verification"].get("allowed_in_region_model_arns", [])
+            if not allowed and not in_region:
                 raise ValueError("Application profile requires verified model and residency constraints")
             factory = control_client_factory or _default_control_client
             _verify_application_profile(
-                factory(result["region"]), model_id, result["path_model_id"], allowed
+                factory(result["region"]), model_id, result["path_model_id"], allowed or [], in_region
             )
         if path == "mantle_messages":
             factory = mantle_client_factory or _default_mantle_client

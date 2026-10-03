@@ -179,6 +179,9 @@ def _invocation_contract(recommendation):
             "allowed_inference_profiles": sorted(
                 workload["verification"].get("allowed_inference_profiles", [])
             ),
+            "allowed_in_region_model_arns": sorted(
+                workload["verification"].get("allowed_in_region_model_arns", [])
+            ),
         }
         for workload_id, workload in recommendation["workloads"].items()
     }

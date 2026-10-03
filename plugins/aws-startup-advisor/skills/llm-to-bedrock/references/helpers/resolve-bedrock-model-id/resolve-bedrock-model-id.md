@@ -3,7 +3,7 @@
 Migration plans are authored ahead of execution. By the time the execute agent
 runs, plan-supplied Bedrock inference-profile IDs may be stale, use the wrong
 regional prefix (`us.` / `global.` / `eu.`), or never existed. This skill
-takes an input ID, lists live profiles, and returns a validated ID — asking
+takes an input ID, checks the applicable live model/profile catalog, and returns a validated ID — asking
 the user to choose when the match is ambiguous.
 
 ## Input
@@ -16,7 +16,32 @@ the user to choose when the match is ambiguous.
 
 ## Procedure
 
-### Step 0: Route the OpenAI proprietary GPT ids by family
+### Step 0: Resolve documented bare-ID routes before profile lookup
+
+**London Opus 5.5 runtime in-region.** When `plan_model_id` is exactly
+`anthropic.claude-opus-5-5` and `region` is exactly `eu-west-2`, validate the
+foundation-model catalog instead of looking for that bare ID in an inference-profile list.
+The [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html)
+documents this in-region runtime route (verified 2026-10-03).
+
+```bash
+aws bedrock list-foundation-models \
+  --region eu-west-2 \
+  <add --profile <profile> when your context has an `AWS profile` line> \
+  --query "modelSummaries[?modelId=='anthropic.claude-opus-5-5' && modelLifecycle.status=='ACTIVE'].modelId" \
+  --output json
+```
+
+- If the returned array contains the exact bare ID, return it unchanged and stop this helper.
+  B4 remains the account-invocation check; catalog presence alone does not prove access.
+- An empty result, malformed result or CLI/permission failure returns `blocked` with
+  `reason: model_unresolvable` and the exact error/region in `detail`. Do not substitute
+  an EU or Global profile for an in-region target.
+- This exception applies only to the exact model and region above. Explicit profile IDs
+  continue through Steps 1–5. Bare Opus 5.5 IDs in other regions are not runtime in-region
+  targets and must not be admitted by this exception.
+
+**OpenAI proprietary GPT IDs.**
 
 **Check this before Step 1.** The proprietary GPT models split into two cases (verified 2026-08-21; see
 `gcp-to-aws/references/shared/openai-on-bedrock.md`):
@@ -55,7 +80,7 @@ profiles (`us.openai.gpt-5.6-*`, `in.openai.gpt-5.6-*` in India Regions, `global
   continue to Step 1; the normal inference-profile resolution below applies to these ids like any other CRIS
   profile. Note the runtime base URL for these models is `bedrock-runtime.{region}.amazonaws.com/openai/v1`.
 
-Non-`openai.gpt-5*` ids continue to Step 1 unchanged.
+Other IDs continue to Step 1 unchanged after checking the London exception above.
 
 ### Step 1: List live inference profiles
 
@@ -115,7 +140,7 @@ Include fewer candidates if fewer exist. If zero candidates have token overlap
 
 ### Step 5: Return
 
-ONLY an exact match (Step 2) returns an ID directly. Token ranking (Step 3)
+ONLY an exact catalog match in Step 0 or an exact profile match in Step 2 returns an ID directly. Token ranking (Step 3)
 exists solely to produce the candidate list inside Step 4's `blocked` detail —
 a token-ranked match is NEVER auto-applied, because silently substituting a
 different model than the plan named would make every downstream eval and
@@ -127,10 +152,10 @@ stops on abort.
 ## Notes
 
 - This skill is idempotent: calling it twice with the same already-validated
-  ID will hit Step 0 (mantle) or Step 2 (inference profile) and return immediately.
+  ID will hit Step 0 (documented bare-ID route) or Step 2 (inference profile) and return immediately.
 - Steps 1–5 assume the target is a `bedrock-runtime` model reachable through an
   inference profile. Mantle-only ids (GPT-5.5/5.4, and GPT-5.6 when the plan
-  targets the mantle endpoint) are handled entirely in Step 0; GPT-5.6 CRIS ids
+  targets the mantle endpoint), and London in-region Opus 5.5, are handled entirely in Step 0; GPT-5.6 CRIS ids
   flow through Steps 1–5 like any other inference profile. See
   `gcp-to-aws/references/shared/openai-on-bedrock.md` for the authoritative
   family split.

@@ -406,6 +406,11 @@ first failing model) plus `failing_models` (all failing ids); per-model verdicts
   `embedding_unprobed` (embedding family the preflight can't probe — remind the user to confirm
   model access in the console).
 
+For the supported Opus 5.5 London in-region route, retain the validated bare ID in
+`$TARGET_MODELS`, C0's saved/current contexts and C1's source→target pairs. The mandatory
+resolver has a matching Step 0 catalog path; neither initial analysis nor a resume should
+replace this target with a cross-region profile merely because a profile listing lacks it.
+
 ---
 
 ## Phase C — Execute

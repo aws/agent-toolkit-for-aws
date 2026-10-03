@@ -5,8 +5,10 @@ from pathlib import Path
 # The CLI test invokes the committed sibling script with fixed argv and no shell.
 import subprocess  # nosec B404
 import sys
+import re
 
 import pytest
+import jmespath
 
 from model_identity import same_model, same_model_family
 
@@ -64,3 +66,28 @@ def test_analyzer_cli_and_downstream_consumers_use_the_identity_gate():
     for contract in ["sampling-parameters-removed", "adaptive-thinking-required",
                      "prefill-and-forced-tool-choice", "typed-response-and-history"]:
         assert f"## {contract}" in recipes
+
+
+def test_london_resolver_query_retains_only_the_exact_active_foundation_model():
+    helper = Path(__file__).parents[1] / "references/helpers/resolve-bedrock-model-id/resolve-bedrock-model-id.md"
+    london = helper.read_text().split("**London Opus 5.5 runtime in-region.**", 1)[1].split(
+        "**OpenAI proprietary GPT IDs.**", 1)[0]
+    query = re.search(r'--query "([^"]+)"', london).group(1)
+    model = "anthropic.claude-opus-5-5"
+    payload = {"modelSummaries": [
+        {"modelId": model, "modelLifecycle": {"status": "ACTIVE"}},
+        {"modelId": "anthropic.claude-sonnet-5", "modelLifecycle": {"status": "ACTIVE"}},
+    ]}
+    assert jmespath.search(query, payload) == [model]
+    payload["modelSummaries"][0]["modelLifecycle"]["status"] = "LEGACY"
+    assert jmespath.search(query, payload) == []
+    assert jmespath.search(query, {"modelSummaries": []}) == []
+    assert "--region eu-west-2" in london
+
+
+def test_london_target_is_stable_in_saved_and_current_resume_contexts():
+    from validate_result import compare_run_contexts, EVALUATION_CONTRACT_VERSION
+
+    context = {"region": "eu-west-2", "target_models": ["anthropic.claude-opus-5-5"],
+               "evaluation_contract_version": EVALUATION_CONTRACT_VERSION}
+    assert compare_run_contexts(context, dict(context)) == []

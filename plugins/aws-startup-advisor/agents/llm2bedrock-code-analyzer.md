@@ -289,9 +289,14 @@ Example entry:
 }
 ```
 
-# 10. Validate target model IDs against live Bedrock profiles
+# 10. Validate target model IDs against the applicable live Bedrock catalog
 
 AWS credentials are configured locally. Validate each `target_model_id` from the plan against the account's real inference profiles in the region from your context (the `AWS region:` line) — stale plan artifacts frequently contain outdated or hypothetical IDs.
+
+Use the helper's documented bare-ID exceptions before profile lookup. In particular,
+Opus 5.5 in `eu-west-2` is a runtime in-region target: retain its exact bare ID after
+the helper's Step 0 catalog check, including on C0 resume. Do not replace a B4-validated
+in-region route merely because its ID is absent from `ListInferenceProfiles`.
 
 **You MUST use the `resolve-bedrock-model-id` skill.** Do NOT roll your own validation with `aws bedrock list-foundation-models`, `aws bedrock get-foundation-model`, or `aws bedrock-runtime converse`. The skill is the single source of truth for what counts as a valid invokable ID, because many modern Bedrock models (e.g. Claude 4.x Haiku/Sonnet/Opus) are only invokable through cross-region _inference profiles_ (`us.…`, `global.…`, `eu.…`) — NOT via raw foundation-model IDs. A foundation-model ID that exists in `list-foundation-models` will still fail `converse` with `ValidationException: … on-demand throughput isn't supported` if you skip the inference-profile lookup.
 
