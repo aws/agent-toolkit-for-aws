@@ -4,6 +4,28 @@
   "discovery_sources": [
     "terraform"
   ],
+  "clarify_fast_path": {
+    "_why": "discover-assemble.md \u00a7 Assembly rule 9 writes the Clarify fast-path verdict. Pinned because a run that skips the rule writes nothing (Clarify then silently runs the wizard \u2014 looks fine, isn't), and a run that eyeballs 'small estate' marks this corpus eligible. Both diverge from the correct answer: VMs, a ZoneRedundant Postgres, a Cosmos account and five clusters each independently disqualify the short path.",
+    "eligible": false,
+    "_cluster_count": 5,
+    "reasons_must_include": [
+      "has_vm",
+      "has_ha_database",
+      "cluster_count",
+      "total_resources"
+    ],
+    "_reasons_must_include_why": "Every failing input must be recorded, not just the first \u2014 Clarify uses the full list to explain why the wizard is running. has_cosmos_core is deliberately NOT required: the corpus declares the account with no API kind, so whether it counts as Core (SQL) is a defensible judgement either way.",
+    "allowed_reasons": [
+      "has_ai_profile",
+      "has_licensing_signal",
+      "has_vm",
+      "has_cosmos_core",
+      "has_ha_database",
+      "multi_region",
+      "cluster_count",
+      "total_resources"
+    ]
+  },
   "resource_counts": {
     "declared_in_corpus": 31,
     "expected_in_inventory": 30,

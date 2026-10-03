@@ -111,10 +111,11 @@ field on the workload's own configuration.
 
 ### Operations you will call
 
-Every operation runs through the `aws___call_aws` tool, which executes an
-`aws <service> <operation>` CLI command — here `aws cloudwatchomni <operation>`, with
-each input passed as a CLI flag (top-level keys become `--kebab-case` flags, and
-nested objects and arrays of objects are passed as single-quoted JSON strings).
+Every operation is an `aws <service> <operation>` CLI command — here
+`aws cloudwatchomni <operation>`, with each input passed as a CLI flag (top-level keys
+become `--kebab-case` flags, and nested objects and arrays of objects are passed as
+single-quoted JSON strings). Run it through the `aws___call_aws`
+tool when that tool is available; otherwise run the same command in a shell.
 
 **`aws cloudwatchomni` (CloudWatch Omni control-plane operations):**
 
