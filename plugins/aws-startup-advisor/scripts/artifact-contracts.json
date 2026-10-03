@@ -217,6 +217,25 @@
             "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
             "heading": "design_constraints.cpu_architecture",
             "path": "design_constraints.cpu_architecture"
+          },
+          {
+            "shape": "skills/azure-to-aws/references/phases/clarify/clarify-ai.md",
+            "heading": "Step 3: Rows returned",
+            "path": ""
+          },
+          {
+            "shape": "skills/azure-to-aws/references/phases/clarify/clarify-ai.md",
+            "heading": "workloads[]",
+            "path": "workloads[]"
+          }
+        ],
+        "route_shapes": [
+          {
+            "when_path": "metadata.migration_type",
+            "when_value": "ai-only",
+            "shape": "skills/azure-to-aws/references/phases/clarify/clarify-ai-only.md",
+            "root_heading": "preferences.json (AI-only)",
+            "_why": "clarify.md Step 0 sends an AI-only run through clarify-ai-only.md and skips the infra assembler. That file is a different preferences layout; infra requiredness (clarify_status) does not apply, and the AI fields stay required."
           }
         ]
       },

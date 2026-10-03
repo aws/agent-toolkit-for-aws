@@ -632,3 +632,89 @@ def test_azure_design_arrays_reject_a_scalar_after_the_empty_seed(tmp_path: Path
     blank = json.loads(json.dumps(design))
     blank["services"] = [{}]
     assert ("MISSING_REQUIRED", "services[0].routing_provenance") in run("svc-obj", blank)
+
+
+def test_azure_preferences_follow_the_producer_route(tmp_path: Path):
+    """Review finding on #387: the infra shape was the only preferences contract, so an
+    AI-only file failed clarify_status and the mixed flow's AI rows were unknown keys."""
+    infra = json.loads((PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-clarify/preferences.json").read_text())
+    rows = _doc_example(PLUGIN_ROOT / "skills/azure-to-aws/references/phases/clarify/clarify-ai.md",
+                        "Step 3: Rows returned")
+    mixed = json.loads(json.dumps(infra))
+    mixed.update(rows)
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "preferences.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    assert ("MISSING_REQUIRED", "clarify_status") not in run("infra", infra)
+    assert run("mixed", mixed) - run("infra", infra) == set()
+    bad = json.loads(json.dumps(mixed))
+    bad["not_a_preference"] = 1
+    assert ("UNKNOWN_KEY", "not_a_preference") in run("mixed-bad", bad)
+    bad = json.loads(json.dumps(mixed))
+    bad["workloads"] = [42]
+    assert ("TYPE_MISMATCH", "workloads[0]") in run("mixed-scalar", bad)
+
+    ai = _doc_example(PLUGIN_ROOT / "skills/azure-to-aws/references/phases/clarify/clarify-ai-only.md",
+                      "preferences.json (AI-only)")
+    assert run("ai", ai) == set(), run("ai", ai)
+    omitted = json.loads(json.dumps(ai))
+    del omitted["workloads"]
+    assert ("MISSING_REQUIRED", "workloads") in run("ai-omit", omitted)
+    dropped = json.loads(json.dumps(ai))
+    del dropped["ai_constraints"]["ai_framework"]
+    assert ("MISSING_REQUIRED", "ai_constraints.ai_framework") in run("ai-framework", dropped)
+    invented = json.loads(json.dumps(ai))
+    invented["metadata"]["invented"] = 1
+    assert ("UNKNOWN_KEY", "metadata.invented") in run("ai-invented", invented)
+    # the infra verdict stays required on the infra route
+    no_status = json.loads(json.dumps(infra))
+    no_status.pop("clarify_status", None)
+    assert ("MISSING_REQUIRED", "clarify_status") in run("infra-status", no_status)
+
+
+def test_gcp_drift_values_keep_their_json_types(tmp_path: Path):
+    """Review finding on #387: the live-discovery example typed drift values as strings,
+    so a numeric or boolean config change failed."""
+    inv = json.loads((PLUGIN_ROOT / "fixtures/gcp-workshop/seed/gcp-resource-inventory.json").read_text())
+    inv["live_metadata"] = {
+        "found": True,
+        "drift": {"config_conflicts": [{
+            "address": "google_compute_disk.d",
+            "field": "size_gb",
+            "terraform_value": 10,
+            "live_value": 20,
+        }]},
+    }
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "gcp-resource-inventory.json", data)),
+                            "--skill", "gcp-to-aws", "--json"))
+
+    assert ("TYPE_MISMATCH", "live_metadata.drift.config_conflicts[0].terraform_value") not in run("num", inv)
+    inv["live_metadata"]["drift"]["config_conflicts"][0]["terraform_value"] = False
+    inv["live_metadata"]["drift"]["config_conflicts"][0]["live_value"] = True
+    assert ("TYPE_MISMATCH", "live_metadata.drift.config_conflicts[0].live_value") not in run("bool", inv)
+    inv["live_metadata"]["drift"]["config_conflicts"][0]["terraform_value"] = "db-f1-micro"
+    assert ("TYPE_MISMATCH", "live_metadata.drift.config_conflicts[0].terraform_value") not in run("str", inv)
+    inv["live_metadata"]["drift"]["config_conflicts"][0]["address"] = 10
+    assert ("TYPE_MISMATCH", "live_metadata.drift.config_conflicts[0].address") in run("address", inv)
+
+
+def test_azure_workshop_index_records_capture_state(tmp_path: Path):
+    """Review finding on #387: the index example omitted the fields workshop-refresh writes."""
+    doc = PLUGIN_ROOT / "skills/azure-to-aws/references/shared/schema-workshop-scenarios.md"
+    index = _doc_example(doc, "scenarios/index.json")
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "scenarios/index.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    assert run("baseline", index) == set(), index
+    active = json.loads(json.dumps(index))
+    active["active_scenario_id"] = "scenario-002"
+    assert run("active", active) == set()
+    bad = json.loads(json.dumps(index))
+    bad["invented"] = 1
+    assert ("UNKNOWN_KEY", "invented") in run("bad", bad)

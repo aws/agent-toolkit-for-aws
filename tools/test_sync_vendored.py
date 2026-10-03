@@ -124,6 +124,18 @@ def test_cli_check_exit_codes(tmp_path: Path):
     assert r.returncode == 0 and r.stdout.startswith("PASS")
 
 
+def test_plugin_without_a_skills_directory_is_skipped(tmp_path: Path):
+    """Review finding on #387: iterating a missing skills/ raised FileNotFoundError."""
+    plugins = tmp_path / "plugins"
+    (plugins / "mcp-only").mkdir(parents=True)
+    (plugins / "mcp-only" / "manifest.json").write_text("{}\n")
+    for flag in (["--check"], []):
+        r = subprocess.run([sys.executable, str(SCRIPT), *flag, "--plugins-root", str(plugins)],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, (flag, r.stdout, r.stderr)
+        assert "FileNotFoundError" not in r.stderr
+
+
 def test_real_repository_is_in_sync():
     r = subprocess.run([sys.executable, str(SCRIPT), "--check"], capture_output=True, text=True, cwd=REPO_ROOT)
     assert r.returncode == 0, r.stdout

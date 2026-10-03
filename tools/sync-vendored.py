@@ -193,11 +193,18 @@ def main(argv=None) -> int:
     all_errors: List[str] = []
     copied = 0
     for plugin_dir in plugins:
+        skills_dir = plugin_dir / "skills"
+        # An MCP-only plugin has no skills directory. iterdir() on the missing
+        # path raises FileNotFoundError, and mise validate runs this task over
+        # every plugin. Skip before iterating. README checks still run for a
+        # plugin that has skills and a vendored directory.
+        if not skills_dir.is_dir():
+            continue
         files = vendored_files(plugin_dir)
         total_files += len(files)
         if not files and not any((skill / VENDORED_SUBDIR).is_dir()
-                                 for skill in (plugin_dir / "skills").iterdir()
-                                 if (plugin_dir / "skills").is_dir() and skill.is_dir()):
+                                 for skill in skills_dir.iterdir()
+                                 if skill.is_dir()):
             continue
         if args.check:
             all_errors.extend(check_plugin(plugin_dir))

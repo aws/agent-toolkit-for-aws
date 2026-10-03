@@ -857,6 +857,9 @@ class Contract:
     shape: Optional[ShapeContract] = None
     json_schema: Optional[Dict[str, Any]] = None
     json_schema_path: str = ""
+    # (json path, expected value, shape). The first match replaces the default shape,
+    # so requiredness follows the producer route that wrote the file.
+    routes: List[Tuple[str, Any, ShapeContract]] = field(default_factory=list)
 
 
 def load_manifest(path: Path) -> Dict[str, Any]:
@@ -886,8 +889,21 @@ def build_contracts(manifest: Dict[str, Any], skill: str, findings: List[Finding
                         f"_ANNOTATION_KEYWORDS (if it carries no constraint).", _rel(p)))
         if "shape" in spec:
             c.shape = build_shape_contract(spec, findings)
+        for route in spec.get("route_shapes", []):
+            built = build_shape_contract(route, findings)
+            if built is not None:
+                c.routes.append((route["when_path"], route.get("when_value"), built))
         contracts.append(c)
     return contracts
+
+
+def _value_at(value: Any, dotted: str) -> Any:
+    cur = value
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
 
 
 def artifact_name(p: Path) -> str:
@@ -931,8 +947,13 @@ def validate_run_dir(run_dir: Path, skill: str, manifest: Dict[str, Any], findin
         for c in matched:
             if c.json_schema is not None:
                 validate_json_schema(c.json_schema, value, "", rel, c.json_schema_path, findings)
-            if c.shape is not None:
-                validate_shape(c.shape.root, value, "", rel, c.shape.label, findings)
+            shape = c.shape
+            for path, expect, route in c.routes:
+                if _value_at(value, path) == expect:
+                    shape = route
+                    break
+            if shape is not None:
+                validate_shape(shape.root, value, "", rel, shape.label, findings)
     return checked
 
 
