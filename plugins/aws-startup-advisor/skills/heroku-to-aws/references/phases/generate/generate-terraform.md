@@ -356,6 +356,12 @@ variable "migration_id" {
   type        = string
   default     = "<migration_id from .phase-status.json>"
 }
+
+variable "writers_quiesced" {
+  description = "Phase 6 sets this true in terraform.tfvars before any apply during failback or rollback, and leaves it true until the next intentional handoff. Fargate desired_count becomes 0. Elastic Beanstalk cannot represent 0 instances (aws:autoscaling:asg MinSize is 1-10000); the guide drains that Auto Scaling group directly and does not apply the Beanstalk environment while this is true."
+  type        = bool
+  default     = false
+}
 ```
 
 **Baseline contact variables (always include — `baseline.tf` depends on them):** the three fill-once contact emails referenced by `baseline.tf`'s alternate contacts and budget alerts. They intentionally have no `default` — `terraform plan` must fail until the customer supplies real values — and each carries a `validation` block rejecting placeholder tokens, so a copied-through `TODO-ops@example.com` fails loudly at `terraform plan` instead of silently becoming the account's security contact:
@@ -1151,7 +1157,10 @@ resource "aws_ecs_service" "<app_sanitized>_<process_type>" {
   name            = "${var.project_name}-${var.environment}-<process_type>"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.<app_sanitized>_<process_type>.arn
-  desired_count   = <aws_config.desired_count>
+  # 0 while var.writers_quiesced is true, so a later apply (DNS rollback, a repair)
+  # cannot restart tasks that Phase 6 scaled to zero. Set the variable back to false
+  # only at the next intentional handoff.
+  desired_count   = var.writers_quiesced ? 0 : <aws_config.desired_count>
   launch_type     = "FARGATE"
 
   network_configuration {
@@ -1322,6 +1331,10 @@ resource "aws_elastic_beanstalk_environment" "<app_name>_<process_type>" {
     value     = aws_iam_instance_profile.eb_<app_name>.name
   }
 
+  # MinSize cannot be 0: this option accepts 1–10000, so a quiesced environment is NOT
+  # expressed here. Phase 6 drains the Auto Scaling group with the ASG API and must not
+  # apply this resource while var.writers_quiesced is true — an apply restores MinSize
+  # and starts writers again.
   setting {
     namespace = "aws:autoscaling:asg"
     name      = "MinSize"
@@ -2168,7 +2181,7 @@ resource "aws_cloudwatch_log_group" "msk" {
 
 **Never for an EKS design.** `design-eks.md` "All-or-Nothing Rule" puts every formation on EKS, so an EKS design has no EB or Fargate web service, `eligible_hostnames[]` is empty, and this step does not run — there is no Beanstalk fallback to fall into. The EKS web Service's endpoint exists only after the Phase 3 `kubectl apply`, so its DNS/TLS handoff is the manual branch of the guide (`generate-docs.md` § Phase 5 "DNS Cutover (your current DNS provider)" with `has_eks`). Do not emit `dns.tf`, and never reference an `aws_elastic_beanstalk_environment` or `aws_lb` that no other step declared.
 
-**What this file buys the user.** Cutover and rollback become one variable: `cutover_weight` 0 → 10 → 50 → 100 shifts traffic from Heroku to AWS one `terraform apply` at a time, and editing it back to 0 is the rollback — no hand-edited records, no "which TTL did we set" at 2 a.m. The value lives in `terraform.tfvars` and nowhere else: every cutover and rollback step edits that line and runs a plain `terraform apply -input=false`, never a `-var` override, because Terraform re-reads `terraform.tfvars` on every apply and the next ordinary apply would silently put the traffic back where the file says. The ACM certificate is issued and validated in the same apply, so HTTPS works the moment the first weighted record resolves to AWS.
+**What this file buys the user.** Cutover and rollback become one variable: `cutover_weight` 0 → 10 → 50 → 100 shifts traffic from Heroku to AWS one `terraform apply` at a time, and editing it back to 0 is the rollback — no hand-edited records, no "which TTL did we set" at 2 a.m. The value lives in `terraform.tfvars` and nowhere else: every cutover and rollback step edits that line and runs `terraform apply -input=false`, never a `-var` override, because Terraform re-reads `terraform.tfvars` on every apply and the next ordinary apply would silently put the traffic back where the file says. The one exception is a Phase 6 database failback while `writers_quiesced` is true and the design includes Elastic Beanstalk: that apply `-target`s the Route 53 records and does not apply `aws_elastic_beanstalk_environment`, because MinSize cannot be 0 and a full apply would start writers again. That exception is `-target`, not `-var`. The ACM certificate is issued and validated in the same apply, so HTTPS works the moment the first weighted record resolves to AWS.
 
 **Inputs.** `local.custom_domains` = every hostname in `generate-docs.md` Step 0 `eligible_hostnames[]` (deduplicated; `*.herokuapp.com` hostnames were never recorded). Each hostname keeps the associations the inventory and design already carry: the domain resource's `heroku_app` (`domain:{app_name}:{hostname}`) selects that app's **web** formation in `aws-design.json` — `alb:{app}:web` → `aws_lb.<app_sanitized>_web` (Step 6), `eb:{app}:web` → `aws_elastic_beanstalk_environment.<app_sanitized>_web` (Step 6.5) — and the generator writes that pairing out as a literal `local.aws_targets` entry. There is **no shared scalar target**: a production/staging pair or a mixed EB/Fargate inventory routes each hostname to its own app's endpoint. Hostnames whose app has no EB/Fargate web formation (`target_kind` `eks` or `none`) are left out of `dns.tf` and appended to `generation-warnings.json` (Step 10 schema; `service_id: "domain:<app>:<hostname>"`, `aws_service: "Route 53"`, reason `"no Elastic Beanstalk or Fargate web service for heroku_app <app>"`, recommendation `"create this record manually — MIGRATION_GUIDE.md Phase 5 manual DNS branch"`). Zones are per hostname too: `hosted_zone_ids` maps every hostname to the zone that is authoritative for it, so `admin.example.org` and `www.example.com` can live in different hosted zones. Heroku's DNS targets are **not** in the inventory today (`heroku domains` prints them as "DNS Target"; discovery records only `hostname` and `sni_endpoint`), so they are a required variable with a placeholder guard; the apex additionally needs the A records Heroku's target currently resolves to (`heroku_apex_ips`, see the apex comment in the file).
 
@@ -2508,6 +2521,10 @@ security_email   = "TODO-security@example.com" # security alternate contact
 # running a plain `terraform apply`; Phase 6 rollback sets it back to 0 the same way. Never pass
 # it as `-var` — the next apply re-reads this file and would silently undo the override.
 cutover_weight = 0
+# false until Phase 6. true keeps Fargate desired_count at 0 across later applies.
+# Leave it true until the next intentional handoff. Elastic Beanstalk still cannot store
+# 0 instances; while this is true, do not apply aws_elastic_beanstalk_environment.
+writers_quiesced = false
 # {{ELSE}}
 # ACM certificate (required if ALB is in the design)
 # acm_certificate_arn = "arn:aws:acm:<region>:<account_id>:certificate/<cert-id>"

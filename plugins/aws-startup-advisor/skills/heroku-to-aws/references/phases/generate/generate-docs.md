@@ -250,7 +250,16 @@ aws route53 get-hosted-zone --id <ZONE_ID> \
   --query DelegationSet.NameServers --output text             # what Route 53 would answer with
 ```
 
-If the two sets match, Route 53 is authoritative — continue with step 2. If they do not match, the zone is served by another provider: do step 3 first.
+If the two sets match, Route 53 is authoritative — continue with step 2. If they do not match, the zone is served by another provider: do step 3 first. This check uses `dig` and the Route 53 API only. Do not run Terraform yet.
+
+**Initialize and fill required inputs before any `terraform import`.** `terraform import` refuses to run in a directory that has not been initialized, and a required variable with no default stops it too. Do this before step 2 and before step 3, and do not apply yet.
+
+```bash
+cd terraform/
+terraform init
+```
+
+Fill every required assignment in `terraform.tfvars` (the contact emails, each Elastic Beanstalk web port and health path when those variables exist, and — once step 2 or 3 has produced them — `hosted_zone_ids`, `heroku_dns_targets`, and `heroku_apex_ips` for apex names). Leave `cutover_weight` at 0.
 
 **2. Route 53 is authoritative — convert any existing record for the hostname.** `aws route53 list-resource-record-sets --hosted-zone-id <ZONE_ID> --query "ResourceRecordSets[?Name=='www.example.com.']"`:
 
@@ -280,7 +289,7 @@ If the two sets match, Route 53 is authoritative — continue with step 2. If th
 2. Replicate every record from the current provider into the zone (MX, TXT/SPF/DKIM, other CNAMEs — everything), **except** the custom hostnames from the table above: create those directly in weighted `heroku` form (the `CREATE` half of the ChangeBatch in step 2) and import them. Lower the TTL of the hostnames to 60 at the old provider while you do this.
 3. Verify the new zone answers correctly before delegating: `dig @<one of the Route 53 name servers> www.example.com` and the same for MX/TXT.
 4. Switch the NS records at your registrar to the four Route 53 name servers. Wait for the old NS TTL (often 24–48 hours), then confirm `dig +short NS example.com` returns only Route 53 servers.
-5. Only now continue to the `terraform init` block below.
+5. Only now continue to the `terraform plan` / `terraform apply` block below. Init and the required inputs are already done; do not import before that init.
 
 If you cannot move the zone before cutover, do not run `dns.tf` against a non-authoritative zone: re-run Clarify with `dns_strategy: external` and use the manual cutover path instead.
 
@@ -910,11 +919,13 @@ This generated path uses standard ECS/Fargate Terraform. If an ECS Express Mode 
 {{IF has_route53_dns}}
 - [ ] Phase 1 § "DNS preparation (Route 53)" is complete: `dig +short NS <zone>` returns Route 53 name servers for every zone in `hosted_zone_ids`, and `terraform plan` shows no changes to `aws_route53_record.heroku` / `aws_route53_record.apex_heroku`
 {{ENDIF}}
+{{IF has_postgres}}
 {{IF migration_approach == "interim_cutover_data_first"}}
 - [ ] The database handoff is done: `heroku config:get DATABASE_URL -a {{app_name}}` shows the AWS host, and the interim path (`interim_heroku_ingress_cidrs`) is open — Heroku and AWS share the AWS database, so a weighted canary cannot split writes
 {{ENDIF}}
 {{IF migration_approach == "full_cutover"}}
 - [ ] Heroku is in maintenance mode and the Phase 2 export/import (cutover sequence steps 1–4) completed **after** `maintenance:on`, inside this maintenance window — Heroku Postgres is your rollback snapshot for data
+{{ENDIF}}
 {{ENDIF}}
 
 Each hostname has its own target; a hostname is never pointed at another app's endpoint:
@@ -940,7 +951,7 @@ Every step below is the same two actions: edit the `cutover_weight` line in `ter
 
 {{IF migration_approach == "interim_cutover_data_first"}}
 
-Cutover is three applies; rollback is one. The canary is safe because Heroku dynos and AWS compute write to the same AWS database since the Phase 2 handoff.
+Cutover is three applies; rollback is one. {{IF has_postgres}}The canary is safe because Heroku dynos and AWS compute write to the same AWS database since the Phase 2 handoff.{{ELSE}}There is no database to split across the two shares.{{ENDIF}}
 
 1. **Canary — 10 %:**
 
@@ -956,7 +967,7 @@ Cutover is three applies; rollback is one. The canary is safe because Heroku dyn
 
 {{ELSE}}
 
-Cutover is **one** apply; rollback is one. There is no 10 % / 50 % canary under full cutover: Heroku is in maintenance mode on Heroku Postgres while the AWS application uses the AWS database, so a split share would send part of your users to a maintenance page and, if Heroku were reopened, write to two different databases at once. Move everything in one step, inside the maintenance window that Phase 2 opened:
+Cutover is **one** apply; rollback is one. There is no 10 % / 50 % canary under full cutover. {{IF has_postgres}}Heroku is in maintenance mode on Heroku Postgres while the AWS application uses the AWS database, so a split share would send part of your users to a maintenance page and, if Heroku were reopened, write to two different databases at once. {{ENDIF}}Move everything in one step{{IF has_postgres}}, inside the maintenance window that Phase 2 opened{{ENDIF}}:
 
 1. **All — 100 %:**
 
@@ -992,10 +1003,10 @@ No `dns.tf` was generated ({{IF custom_domains is empty}}no custom domain was di
    ```
 
    {{IF has_eks}}
-   The EKS Service address is known only after Phase 3 (`kubectl get svc -n <app> web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`), so this step cannot run before the deploy. TLS termination for the EKS web Service is **not** generated: request an ACM certificate for these hostnames, validate it at your DNS provider, and set `service.beta.kubernetes.io/aws-load-balancer-ssl-cert: <certificate ARN>` on the Service in `kubernetes/<app>-web-service.yaml` before moving traffic.
+   The EKS Service address is known only after Phase 3 (`kubectl get svc -n <app> web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`), so this step cannot run before the deploy. The generated Service already declares port 80 and port 443, both targeting 8080, with `service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"`. Before any DNS change, request an ACM certificate for these hostnames, validate it at your DNS provider, set `service.beta.kubernetes.io/aws-load-balancer-ssl-cert` to that ARN on `kubernetes/<app>-web-service.yaml`, and apply the Service. Confirm the load balancer has a listener on 443 (`aws elbv2 describe-listeners --load-balancer-arn <arn>`) and that `curl -fsS -o /dev/null -w '%{http_code}' https://<load-balancer-hostname>` reaches the app. The certificate annotation does not create a listener; without port 443 there is nothing for HTTPS to land on.
    {{ENDIF}}
    Apex hostnames cannot be CNAMEs: use your provider's ALIAS/ANAME record type, or move the zone to Route 53 (re-run Clarify with `dns_strategy: route53` to get `dns.tf`{{IF has_eks}} — not available for an EKS design{{ENDIF}}).
-2. {{IF migration_approach == "interim_cutover_data_first"}}If your provider supports weighted or percentage routing, use it the same way as the Route 53 path (10 % → 50 % → 100 %) — safe, because Heroku and AWS share the AWS database since the Phase 2 handoff. If not, this is an all-at-once switch: do it at your lowest-traffic hour and keep the Heroku record value written down.{{ELSE}}Switch every hostname in one step, inside the maintenance window Phase 2 opened — do not use weighted or percentage routing: Heroku is in maintenance mode on Heroku Postgres and the AWS application writes to the AWS database, so a split share would show a maintenance page to part of your users or, with Heroku reopened, write to two databases. Keep the Heroku record values written down for rollback.{{ENDIF}}
+2. {{IF migration_approach == "interim_cutover_data_first"}}If your provider supports weighted or percentage routing, use it the same way as the Route 53 path (10 % → 50 % → 100 %){{IF has_postgres}} — safe, because Heroku and AWS share the AWS database since the Phase 2 handoff{{ENDIF}}. If not, this is an all-at-once switch: do it at your lowest-traffic hour and keep the Heroku record value written down.{{ELSE}}Switch every hostname in one step{{IF has_postgres}}, inside the maintenance window Phase 2 opened{{ENDIF}} — do not use weighted or percentage routing{{IF has_postgres}}: Heroku is in maintenance mode on Heroku Postgres and the AWS application writes to the AWS database, so a split share would show a maintenance page to part of your users or, with Heroku reopened, write to two databases{{ENDIF}}. Keep the Heroku record values written down for rollback.{{ENDIF}}
 3. Watch `dig` from two networks until resolvers have moved (TTL 60 means ~2 minutes after propagation), then run the Phase 4 checks at the custom domain.
 4. Restore TTLs to your normal value after the Phase 6 rollback window closes.
 
@@ -1015,7 +1026,7 @@ Rollback is cheap only while Heroku is still running. This section is the reason
 
 ### Rollback window
 
-Keep every Heroku dyno, add-on (Heroku Postgres included — it is the failback target), and the pre-cutover database export for **at least 72 hours** after reaching 100 % on AWS{{IF migration_approach == "interim_cutover_data_first"}}, and keep the interim Heroku→AWS database path open for the same period{{ENDIF}}. Nothing in Phase 7 (decommission) is reversible.
+Keep every Heroku dyno and add-on{{IF has_postgres}} (Heroku Postgres included — it is the failback target) and the pre-cutover database export{{ENDIF}} for **at least 72 hours** after reaching 100 % on AWS{{IF has_postgres}}{{IF migration_approach == "interim_cutover_data_first"}}, and keep the interim Heroku→AWS database path open for the same period{{ENDIF}}{{ENDIF}}. Nothing in Phase 7 (decommission) is reversible.
 
 ### Triggers — roll back when any of these holds after cutover
 
@@ -1033,14 +1044,24 @@ Keep every Heroku dyno, add-on (Heroku Postgres included — it is the failback 
 
 ### Rollback by phase — what it costs and how long it takes
 
+{{IF has_postgres}}
 The "Data at risk" column depends on one fact: **where the primary database is**. {{IF migration_approach == "interim_cutover_data_first"}}Under data-first migration the primary moves to AWS at the Phase 2 database handoff (cutover sequence step 5) and every writer — Heroku dynos and AWS compute — shares it from then on; after the handoff the AWS database is never a disposable copy.{{ELSE}}Under full cutover the primary is Heroku Postgres until the single Phase 5 flip, and the AWS database from then on; Heroku Postgres is a frozen snapshot from the moment `maintenance:on` ran.{{ENDIF}}
+{{ELSE}}
+This design has no PostgreSQL database. Rollback is the DNS revert below and, when you also want AWS compute stopped, scaling those services to 0. There is no database handoff and no `pg_dump`, `pg_restore`, or `migrate-postgres.sh` step.
+{{ENDIF}}
 
 | You are in… | Rollback action | Data at risk | RTO |
 | --- | --- | --- | --- |
-| Phase 1 (provisioned, nothing deployed) | `terraform destroy` | none — Heroku untouched | minutes |
-| Phase 2, before the database handoff (data copied, Heroku still on Heroku Postgres) | Ignore or drop the AWS copy; `heroku maintenance:off -a {{app_name}}` if it was on | none — Heroku Postgres is still the primary | minutes |
+| Phase 1, before any weighted Heroku record exists in Route 53 | `terraform destroy` | none — Heroku DNS is still answered by the previous provider | minutes |
 <!-- markdownlint-disable MD055 MD056 -->
+{{IF has_route53_dns}}
+| Phase 1, after DNS preparation (Route 53 is authoritative, weight still 0) | **Preserve the Heroku answers, then destroy the rest** (below). An unqualified `terraform destroy` deletes the weighted records that are answering for Heroku. | none if those records are preserved first | minutes |
+{{ENDIF}}
+{{IF has_postgres}}
+| Phase 2, before the database handoff (data copied, Heroku still on Heroku Postgres) | Ignore or drop the AWS copy; `heroku maintenance:off -a {{app_name}}` if it was on | none — Heroku Postgres is still the primary | minutes |
+{{ENDIF}}
 {{IF migration_approach == "interim_cutover_data_first"}}
+{{IF has_postgres}}
 | Phase 2, after the database handoff (Heroku dynos on the AWS database) | **Database failback** (below) — the AWS database is now the primary; never drop it | writes since the handoff unless failed back | failback time (dump + restore) |
 | Phase 3 (deployed, no traffic) | Scale AWS services to 0 or leave idle; Heroku keeps using the AWS database | none | none |
 | Phase 5 at 10 % / 50 % | **DNS back to Heroku** (below) | none — both shares wrote to the same AWS database | TTL (60 s) + resolver drain ≈ 5 min |
@@ -1048,10 +1069,39 @@ The "Data at risk" column depends on one fact: **where the primary database is**
 | Any time you must also leave the AWS database (cost, incident, decision to stay on Heroku) | **Database failback** (below), then DNS back to Heroku | none if writers were quiesced first | failback time |
 {{ELSE}}
 | Phase 3 (deployed, no traffic) | Scale AWS services to 0 or leave idle | none | none |
+| Phase 5 at 10 % / 50 % / 100 % | **DNS back to Heroku** (below) | none | TTL (60 s) + resolver drain ≈ 5 min |
+{{ENDIF}}
+{{ELSE}}
+{{IF has_postgres}}
+| Phase 3 (deployed, no traffic) | Scale AWS services to 0 or leave idle | none | none |
 | Phase 5 at 100 % | **Database failback** (below), then **DNS back to Heroku**, then `heroku maintenance:off -a {{app_name}}` | every write made on AWS since the flip, unless failed back | failback time + ≈ 5 min DNS |
+{{ELSE}}
+| Phase 3 (deployed, no traffic) | Scale AWS services to 0 or leave idle | none | none |
+| Phase 5 at 100 % | **DNS back to Heroku** (below), then `heroku maintenance:off -a {{app_name}}` | none — there is no database to fail back | ≈ 5 min DNS |
+{{ENDIF}}
 {{ENDIF}}
 <!-- markdownlint-enable MD055 MD056 -->
 | After decommission | **No rollback** — rebuild Heroku from scratch | all Heroku-side state | hours–days |
+
+{{IF has_route53_dns}}
+
+### Phase 1 rollback after Route 53 adoption
+
+Use this only when the weighted Heroku records already exist. `dns.tf` does not create the hosted zone (`hosted_zone_ids` is an input), but those records are the live answers while Route 53 is authoritative. An unqualified `terraform destroy` deletes them, including the apex, and every hostname goes dark.
+
+```bash
+cd terraform/
+# cutover_weight is still 0, so heroku and apex_heroku are the answers in service.
+# Drop both from state so destroy leaves them in the zone. Skip an address that is absent.
+terraform state list | grep -E 'aws_route53_record\.(heroku|apex_heroku)\[' | while read -r addr; do
+  terraform state rm "$addr"
+done
+terraform destroy -input=false
+```
+
+Confirm every hostname still answers for Heroku before you stop: `dig +short <hostname>` for each CNAME, and `dig +short A <apex>` for each apex. The AWS-weighted members may be gone; the Heroku members stay in the zone.
+
+{{ENDIF}}
 
 ### DNS back to Heroku
 
@@ -1068,11 +1118,17 @@ Edit the file, do not pass `-var cutover_weight=0`: Phase 5 wrote `cutover_weigh
 
 That single apply returns every hostname — apex included — to Heroku: both weighted members stay in the zone (the AWS record at weight 0), so nothing is deleted, Route 53 keeps answering authoritatively for the apex, and rolling forward later is the same edit with a higher number. Before the apply, re-resolve the apex's Heroku addresses (`dig +short A <heroku DNS target>`) and update `heroku_apex_ips` in `terraform.tfvars` if they moved; the `heroku` apex member is only as good as those addresses.
 
+{{IF has_beanstalk}}
+Do not use this plain apply during a database failback. That procedure sets `writers_quiesced = true` and then targets only the Route 53 records. `aws:autoscaling:asg` MinSize accepts 1–10000, so applying `aws_elastic_beanstalk_environment` restores a non-zero size and starts writers against the database you are replacing. The weight still lives only in `terraform.tfvars`; the exception is `-target`, not `-var`.
+{{ENDIF}}
+
 {{ELSE}}
 
 At your DNS provider, set each hostname back to its Heroku DNS target (the value you wrote down before cutover; `heroku domains -a {{app_name}}` shows it). With TTL 60 the change takes effect within about two minutes.
 
 {{ENDIF}}
+
+{{IF has_postgres}}
 
 {{IF migration_approach == "full_cutover"}}
 Do **not** run `heroku maintenance:off` before the database failback below has finished: reopening Heroku on a Heroku Postgres that is missing the AWS-side writes discards them silently.
@@ -1096,36 +1152,91 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
 
 {{ENDIF}}
 
-**Database failback — a full replacement, never a delta merge.** `pg_dump --data-only` into a database that already holds rows is not a synchronisation: it duplicates or collides on every table that both sides touched. The only safe move is to stop all writers, take a complete copy of the current primary, and replace the other side's contents with it.
+**Database failback — a full replacement, never a delta merge.** Loading only table data into a database that already holds rows is not a synchronisation: it duplicates or collides on every table that both sides touched. Stop every writer, confirm nothing is still writing, take a complete copy of the current primary, and replace the Heroku side. Heroku Postgres will not accept dropping the database. A restore that only drops objects present in the dump leaves behind a table that exists on Heroku but was removed on AWS, so reset the schema first and stop if restore fails.
 
-1. **Quiesce every writer.** Nothing may write to either database until step 6.
+1. **Quiesce every writer, and leave them stopped across later applies.** Nothing may write to either database until step 6. `heroku maintenance:on` does not stop worker dynos or Heroku Scheduler one-offs.
 
    ```bash
-   heroku maintenance:on -a {{app_name}}                                  # Heroku dynos
+   heroku maintenance:on -a {{app_name}}
+   # Scale every process type `heroku ps:scale -a {{app_name}}` prints. A missing type makes ps:scale fail.
+   heroku ps:scale -a {{app_name}}
+   heroku ps:scale web=0 -a {{app_name}}      # repeat once per printed type: worker=0, clock=0, ...
+   heroku ps -a {{app_name}}                  # must list no web, worker, clock, or run dynos
+   ```
+
+   If the app has the Heroku Scheduler add-on, open it (`heroku addons:open scheduler -a {{app_name}}`) and turn every job off. A Scheduler one-off writes during the dump, and `maintenance:on` does not stop it.
+
+   ```bash
+   cd terraform/
+   # Persist before any apply. Fargate desired_count is `var.writers_quiesced ? 0 : <formation quantity>`,
+   # so a later apply keeps those services at 0. Leave this true until the next intentional handoff.
+   sed -i.bak 's/^writers_quiesced *=.*/writers_quiesced = true/' terraform.tfvars
+   grep '^writers_quiesced' terraform.tfvars
    {{IF has_fargate}}
-   # repeat per Fargate service, workers included
-   aws ecs update-service --cluster {{app_name}}-cluster --service {{app_name}}-web --desired-count 0 --region {{target_region}}
+   {{IF has_beanstalk}}
+   # A full apply would also restore the Beanstalk environment. Target only ECS services.
+   # The pipe would hide `targets` in a subshell, so read it with process substitution.
+   targets=()
+   while read -r addr; do
+     targets+=("-target=$addr")
+   done < <(terraform state list | grep '^aws_ecs_service\.')
+   if [ "${#targets[@]}" -eq 0 ]; then
+     echo "No aws_ecs_service in state — do not apply; a full apply would start Beanstalk writers" >&2
+   else
+     terraform apply -input=false "${targets[@]}"
+   fi
+   {{ELSE}}
+   terraform apply -input=false
+   {{ENDIF}}
    {{ENDIF}}
    {{IF has_beanstalk}}
-   # repeat per Elastic Beanstalk environment
-   aws elasticbeanstalk update-environment --environment-name <env> --region {{target_region}} \
-     --option-settings Namespace=aws:autoscaling:asg,OptionName=MinSize,Value=0 Namespace=aws:autoscaling:asg,OptionName=MaxSize,Value=0
+   # MinSize cannot be 0 through `elasticbeanstalk update-environment` (the option accepts 1–10000).
+   # Drain the environment's Auto Scaling group directly. Do not apply
+   # aws_elastic_beanstalk_environment again until the next intentional handoff.
+   ENV_ID=$(aws elasticbeanstalk describe-environments --environment-names <env> --region {{target_region}} \
+     --query 'Environments[0].EnvironmentId' --output text)
+   ASG=$(aws elasticbeanstalk describe-environment-resources --environment-id "$ENV_ID" --region {{target_region}} \
+     --query 'EnvironmentResources.AutoScalingGroups[0].Name' --output text)
+   aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$ASG" \
+     --min-size 0 --max-size 0 --desired-capacity 0 --region {{target_region}}
+   aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG" --region {{target_region}} \
+     --query 'AutoScalingGroups[0].DesiredCapacity'
+   # expect 0. Repeat for every Elastic Beanstalk environment, workers included.
+   {{ENDIF}}
+   {{IF has_eks}}
+   # `kubectl scale` is undone by the next `kubectl apply` of the generated Deployment.
+   # Write replicas: 0 into each Deployment file, then apply those files.
+   sed -i.bak 's/^  replicas:.*/  replicas: 0/' kubernetes/*-deployment.yaml
+   kubectl apply -f kubernetes/
+   kubectl get deploy -A    # every app Deployment must show 0/0
    {{ENDIF}}
    ```
 
-2. **Dump the current primary (the AWS database) completely.**
+   Confirm the AWS database has no application writer before the dump. Repeat until the query returns zero rows:
+
+   ```bash
+   PGPASSWORD="{{TARGET_DB_PASSWORD}}" psql -h {{TARGET_DB_HOST}} -p {{TARGET_DB_PORT}} \
+     -U {{TARGET_DB_USER}} -d {{TARGET_DB_NAME}} -v ON_ERROR_STOP=1 -c \
+     "SELECT pid, usename, application_name, state FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state <> 'idle' AND backend_type = 'client backend';"
+   ```
+
+2. **Dump the current primary (the AWS database) completely.** Do not dump while the query above still returns rows.
 
    ```bash
    PGPASSWORD="{{TARGET_DB_PASSWORD}}" pg_dump -h {{TARGET_DB_HOST}} -p {{TARGET_DB_PORT}} -U {{TARGET_DB_USER}} -d {{TARGET_DB_NAME}} -Fc --no-owner --no-acl -f aws_failback_$(date +%Y%m%d_%H%M%S).dump
    ```
 
-3. **Replace the contents of Heroku Postgres with it.** `--clean --if-exists` drops and re-creates every object in the dump before loading, so stale pre-handoff rows cannot survive next to current ones.
+3. **Replace the contents of Heroku Postgres.** Dropping the database is not available. Reset `public`, then restore, and stop on the first error. Do not continue to DNS or `maintenance:off` if either command exits non-zero — a table that existed only on Heroku would otherwise survive next to the restored copy.
 
    ```bash
-   PGPASSWORD="{{SOURCE_DB_PASSWORD}}" pg_restore -h {{SOURCE_DB_HOST}} -p {{SOURCE_DB_PORT}} -U {{SOURCE_DB_USER}} -d {{SOURCE_DB_NAME}} --clean --if-exists --no-owner --no-acl aws_failback_*.dump
+   PGPASSWORD="{{SOURCE_DB_PASSWORD}}" psql -h {{SOURCE_DB_HOST}} -p {{SOURCE_DB_PORT}} \
+     -U {{SOURCE_DB_USER}} -d {{SOURCE_DB_NAME}} -v ON_ERROR_STOP=1 \
+     -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+   PGPASSWORD="{{SOURCE_DB_PASSWORD}}" pg_restore -h {{SOURCE_DB_HOST}} -p {{SOURCE_DB_PORT}} \
+     -U {{SOURCE_DB_USER}} -d {{SOURCE_DB_NAME}} --exit-on-error --no-owner --no-acl aws_failback_*.dump
    ```
 
-4. **Verify, read-only:** `./scripts/migrate-postgres.sh --verify` — both sides are quiesced, so the per-table counts must match exactly.
+4. **Verify, read-only:** `./scripts/migrate-postgres.sh --verify` — both sides are quiesced, so the per-table counts must match exactly. A non-zero exit stops the procedure.
 {{IF migration_approach == "interim_cutover_data_first"}}
 5. **Re-attach Heroku Postgres as `DATABASE`** so `DATABASE_URL` points back at it (use the add-on name you recorded at the handoff; it is still attached as `HEROKU_POSTGRESQL_LEGACY`). Remove the plain `DATABASE_URL` config var first so the attachment can own that name again:
 
@@ -1140,11 +1251,33 @@ Until the Phase 5 flip the primary is Heroku Postgres, frozen under `maintenance
 {{ELSE}}
 5. Heroku was never repointed: `DATABASE_URL` still names Heroku Postgres. Nothing to re-attach.
 {{ENDIF}}
-6. **DNS back to Heroku** (above: {{IF has_route53_dns}}`cutover_weight = 0` in `terraform.tfvars`, apply{{ELSE}}each hostname back to its Heroku DNS target at your provider{{ENDIF}}), then — and only then — `heroku maintenance:off -a {{app_name}}`.
+6. **DNS back to Heroku**, then — and only then — `heroku maintenance:off -a {{app_name}}`. Leave `writers_quiesced = true` until the next intentional handoff.
+   {{IF has_route53_dns}}
+   {{IF has_beanstalk}}
+   Persist `cutover_weight = 0` in `terraform.tfvars` (same edit as step 1's `writers_quiesced = true`) and apply only the weighted records, so the Beanstalk environment is not recreated:
+
+   ```bash
+   cd terraform/
+   sed -i.bak 's/^cutover_weight *=.*/cutover_weight = 0/' terraform.tfvars
+   terraform apply -input=false \
+     -target=aws_route53_record.heroku \
+     -target=aws_route53_record.aws \
+     -target=aws_route53_record.apex_heroku \
+     -target=aws_route53_record.apex_aws
+   ```
+
+   {{ELSE}}
+   Persist `cutover_weight = 0` in `terraform.tfvars` and run the plain apply in "DNS back to Heroku". Fargate stays at 0 because `writers_quiesced` is still true.
+   {{ENDIF}}
+   {{ELSE}}
+   At your DNS provider, set each hostname back to its Heroku DNS target. Do not run a full `terraform apply` of an Elastic Beanstalk environment while `writers_quiesced` is true.
+   {{ENDIF}}
+
+{{ENDIF}}
 
 ### After a rollback
 
-- Keep AWS resources provisioned; fix the cause{{IF has_route53_dns}} (its `terraform apply` is safe: `terraform.tfvars` still says `cutover_weight = 0`){{ENDIF}}; re-run Phase 4 at the direct endpoint; restart Phase 5 {{IF has_route53_dns}}by editing `terraform.tfvars` again{{ELSE}}at your DNS provider{{ENDIF}} — {{IF migration_approach == "interim_cutover_data_first"}}from 10 % (if you also failed the database back, redo the Phase 2 handoff first: the AWS database is stale){{ELSE}}a fresh maintenance window, Phase 2 steps 1–4 again (Heroku Postgres has new writes), then the single 100 % step{{ENDIF}}.
+- Keep AWS resources provisioned; fix the cause{{IF has_route53_dns}} (`terraform.tfvars` still says `cutover_weight = 0`, so a later apply keeps traffic on Heroku){{ENDIF}}{{IF has_postgres}}. If the failback set `writers_quiesced = true`, leave it true until the next intentional handoff{{IF has_beanstalk}}, and do not apply `aws_elastic_beanstalk_environment` while it is true{{ENDIF}}{{ENDIF}}; re-run Phase 4 at the direct endpoint; restart Phase 5 {{IF has_route53_dns}}by editing `terraform.tfvars` again{{ELSE}}at your DNS provider{{ENDIF}} — {{IF has_postgres}}{{IF migration_approach == "interim_cutover_data_first"}}from 10 % (if you also failed the database back, redo the Phase 2 handoff first: the AWS database is stale){{ELSE}}a fresh maintenance window, Phase 2 steps 1–4 again (Heroku Postgres has new writes), then the single 100 % step{{ENDIF}}{{ELSE}}from the same cutover step you rolled back{{ENDIF}}.
 - Record what tripped and what you changed in `ROLLBACK-NOTES.md` next to this guide — the next cutover attempt should start from that.
 
 ---
@@ -1255,11 +1388,11 @@ Replace template variables using these sources:
 
 **Strict enforcement — no empty sections:**
 
-- Phase 1 renders "DNS preparation (Route 53) — before the first apply" exactly when `has_route53_dns`, placed before the `terraform init` block; it lists every `eligible_hostnames[]` entry and always includes the authority check, the existing-record conversion/import, the zone-adoption path, and the apex `heroku_apex_ips` paragraph.
+- Phase 1 renders "DNS preparation (Route 53) — before the first apply" exactly when `has_route53_dns`. Inside that section the order is fixed: authority check (`dig` / `get-hosted-zone`, no Terraform), then `terraform init` and filling required inputs, then existing-record conversion and `terraform import`, then zone adoption, then the apex `heroku_apex_ips` paragraph. The `terraform plan` / `terraform apply` block comes after the section. No Route 53 write is instructed before the authority check. It lists every `eligible_hostnames[]` entry.
 - Phase 5 renders exactly ONE of its two DNS subsections: "DNS Cutover (Route 53, weighted)" when `has_route53_dns`, else "DNS Cutover (your current DNS provider)". Never both, never neither. The per-hostname table under "Before you move any traffic" always renders one row per `dns_hostnames[]` entry with that hostname's own app and endpoint; the manual branch renders one record line per entry (EKS and `none` entries get their own wording), and the EKS TLS note renders only when `has_eks`.
 - Phase 2 "Heroku CLI Cutover Sequence" renders steps 1–4 always; steps 5–7 (the database handoff, in this order: `heroku addons` → `addons:attach <add-on> --as HEROKU_POSTGRESQL_LEGACY` → `addons:detach DATABASE` → `config:set DATABASE_URL` → `maintenance:off`; no step ever detaches an add-on's last attachment) render only for `interim_cutover_data_first`, and the "Full cutover: Heroku is never repointed at AWS" paragraph only for `full_cutover`. Never both.
-- Phase 5 renders the 10 % → 50 % → 100 % ladder (Route 53 branch) / weighted-provider option (manual branch) only for `interim_cutover_data_first`; for `full_cutover` it renders the single 100 % step with the "different databases" reason. The "Before you move any traffic" checklist renders the approach-specific database-state item.
-- Phase 6 Rollback is ALWAYS rendered. "DNS back to Heroku" renders the `terraform.tfvars` edit + plain apply when `has_route53_dns`, else the provider-side revert to the Heroku DNS targets — and the failback's step 6 and "After a rollback" refer to whichever of the two rendered (they never mention `terraform.tfvars` in the manual branch). Its "Where the primary database is, and how to fail it back" subsection renders the data-first or `full_cutover` intro per `migration_approach`, never both, followed by the "Database failback" procedure for both approaches (step 5 re-attaches Heroku Postgres only for data-first). The rollback-by-phase table renders the approach-specific rows per `migration_approach`. The row-count trigger row renders only when `has_postgres`. Nowhere does the guide instruct dropping the AWS database after the database handoff, and no `pg_dump --data-only` "reverse sync" appears.
+- Phase 5 renders the 10 % → 50 % → 100 % ladder (Route 53 branch) / weighted-provider option (manual branch) only for `interim_cutover_data_first`; for `full_cutover` it renders the single 100 % step. The "different databases" reason and the "Before you move any traffic" database-state item render only when `has_postgres`.
+- Phase 6 Rollback is ALWAYS rendered. "DNS back to Heroku" renders the `terraform.tfvars` edit + plain apply when `has_route53_dns`, else the provider-side revert to the Heroku DNS targets. When `has_postgres` is false the Rollback section contains no `pg_dump`, `pg_restore`, or `migrate-postgres.sh` command and no database-handoff row. When `has_postgres` is true, "Where the primary database is, and how to fail it back" renders the data-first or `full_cutover` intro per `migration_approach`, never both, followed by the database failback: quiesce every writer (Heroku maintenance plus every process type at 0 and Scheduler off; Fargate through `writers_quiesced` so a later apply stays at 0; Elastic Beanstalk through the Auto Scaling group, never `MinSize=0` on `update-environment`, and later applies do not apply `aws_elastic_beanstalk_environment`; EKS by writing `replicas: 0` into the Deployment and applying it), confirm `pg_stat_activity` has no application writer, `DROP SCHEMA public CASCADE` then `pg_restore --exit-on-error` (not `--clean --if-exists`), and stop when restore fails. Step 5 re-attaches Heroku Postgres only for data-first. The rollback-by-phase table renders the approach-specific rows per `migration_approach`, and the Phase 1 Route 53 row tells the operator to `terraform state rm` the Heroku weighted records (apex and non-apex) before `terraform destroy`. The row-count trigger row renders only when `has_postgres`. Nowhere does the guide instruct dropping the AWS database after the database handoff, and no `pg_dump --data-only` "reverse sync" appears.
 
 - If `has_postgres == false`: Omit the entire "PostgreSQL Migration" subsection under Phase 2 (heading + content)
 - If `has_redis == false`: Omit the entire "Redis Migration" subsection under Phase 2 (heading + content)
@@ -1592,18 +1725,29 @@ import_target() {
 # n_live_tup is a planner estimate — confirm a listed table with SELECT count(*) on both sides.
 PER_TABLE_SQL="SELECT schemaname || '.' || relname, n_live_tup FROM pg_stat_user_tables ORDER BY 1;"
 
+# psql status is checked explicitly. verify_migration is invoked from `if`, which disables
+# set -e for the whole function, so a failing count query would otherwise leave an empty
+# string, diff equal, and a false success.
+psql_tables() {
+  local label="$1" host="$2" port="$3" user="$4" pass="$5" db="$6" out
+  if ! out=$(PGPASSWORD="$pass" psql \
+      -h "$host" -p "$port" -U "$user" -d "$db" \
+      -At -v ON_ERROR_STOP=1 -c "$PER_TABLE_SQL"); then
+    # stderr: this function's stdout is captured by the caller, so a log on stdout
+    # would be swallowed and the failure would look like an empty result.
+    log "ERROR: $label count query failed — not comparing empty output" >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
+}
+
 verify_migration() {
   log "Verifying migration (read-only: per-table row counts via psql)..."
 
-  SOURCE_TABLES=$(PGPASSWORD="$SOURCE_DB_PASSWORD" psql \
-    -h "$SOURCE_DB_HOST" -p "$SOURCE_DB_PORT" \
-    -U "$SOURCE_DB_USER" -d "$SOURCE_DB_NAME" \
-    -At -c "$PER_TABLE_SQL")
-
-  TARGET_TABLES=$(PGPASSWORD="$TARGET_DB_PASSWORD" psql \
-    -h "$TARGET_DB_HOST" -p "$TARGET_DB_PORT" \
-    -U "$TARGET_DB_USER" -d "$TARGET_DB_NAME" \
-    -At -c "$PER_TABLE_SQL")
+  SOURCE_TABLES=$(psql_tables source \
+    "$SOURCE_DB_HOST" "$SOURCE_DB_PORT" "$SOURCE_DB_USER" "$SOURCE_DB_PASSWORD" "$SOURCE_DB_NAME") || return 1
+  TARGET_TABLES=$(psql_tables target \
+    "$TARGET_DB_HOST" "$TARGET_DB_PORT" "$TARGET_DB_USER" "$TARGET_DB_PASSWORD" "$TARGET_DB_NAME") || return 1
 
   SOURCE_COUNT=$(printf '%s\n' "$SOURCE_TABLES" | awk -F'|' '{ s += $2 } END { print s + 0 }')
   TARGET_COUNT=$(printf '%s\n' "$TARGET_TABLES" | awk -F'|' '{ s += $2 } END { print s + 0 }')
@@ -1611,9 +1755,14 @@ verify_migration() {
   log "Source row count: $SOURCE_COUNT ($(printf '%s\n' "$SOURCE_TABLES" | grep -c . || true) tables)"
   log "Target row count: $TARGET_COUNT ($(printf '%s\n' "$TARGET_TABLES" | grep -c . || true) tables)"
 
-  DIFF_OUTPUT=$(diff <(printf '%s\n' "$SOURCE_TABLES") <(printf '%s\n' "$TARGET_TABLES") || true)
+  local diff_status
+  DIFF_OUTPUT=$(diff <(printf '%s\n' "$SOURCE_TABLES") <(printf '%s\n' "$TARGET_TABLES")) && diff_status=0 || diff_status=$?
+  if [ "$diff_status" -eq 2 ]; then
+    log "ERROR: diff itself failed — not treating that as a match or a mismatch"
+    return 1
+  fi
 
-  if [ -z "$DIFF_OUTPUT" ]; then
+  if [ "$diff_status" -eq 0 ]; then
     log "✓ Every table matches (n_live_tup estimate) — migration verified"
     return 0
   fi
@@ -1646,7 +1795,7 @@ main() {
       log "Log file: $LOG_FILE"
       exit 0
     fi
-    log "=== PostgreSQL Verification FAILED — tables differ ==="
+    log "=== PostgreSQL Verification FAILED ==="
     log "Log file: $LOG_FILE"
     exit 1
   fi
@@ -1846,7 +1995,8 @@ Verify all generated files:
    - If NOT `has_kafka`: Does NOT contain "Kafka Migration" subsection
    - If `has_postgres`: Contains "Heroku CLI Cutover Sequence" subsection; the database handoff (`addons:attach … --as HEROKU_POSTGRESQL_LEGACY` → `addons:detach DATABASE` → `config:set DATABASE_URL`, in that order) renders only for `interim_cutover_data_first`; no step runs `heroku config:set DATABASE_URL` while the add-on is still attached as `DATABASE`, and no step detaches an add-on's last attachment (the failback re-attaches `--as DATABASE` after `config:unset DATABASE_URL`)
    - If `has_postgres`: Phase 2 "Post-Migration Verification" and the Phase 6 trigger table use `scripts/migrate-postgres.sh --verify`, and `scripts/migrate-postgres.sh` has a `--verify` mode that never invokes `pg_dump` or `pg_restore` (stub-run it: only `psql` appears in the call log)
-   - Phase 6 "Where the primary database is, and how to fail it back" states which database is primary after the database handoff, never instructs dropping the AWS database as a copy once it is primary, and gives the failback as a quiesce → full `pg_dump` → `pg_restore --clean --if-exists` → `--verify` → (data-first) `addons:attach … --as DATABASE` → DNS → `maintenance:off` sequence; no `pg_dump --data-only` reverse-sync appears
+   - If `has_postgres`: Phase 6 "Where the primary database is, and how to fail it back" states which database is primary after the database handoff, never instructs dropping the AWS database as a copy once it is primary, and gives the failback as quiesce every writer (including Scheduler and a persisted `writers_quiesced` / ASG drain / EKS `replicas: 0`) → confirm no application session → full `pg_dump` → `DROP SCHEMA public CASCADE` → `pg_restore --exit-on-error` → `--verify` → (data-first) `addons:attach … --as DATABASE` → DNS → `maintenance:off`, stopping when restore fails; no `pg_restore --clean --if-exists` and no `pg_dump --data-only` reverse-sync appears
+   - If NOT `has_postgres`: Phase 6 contains no `pg_dump`, `pg_restore`, or `migrate-postgres.sh` command
    - If `migration_approach == "interim_cutover_data_first"`: "Interim Database Exposure" Step 4 closes the path after the Phase 6 rollback window, not at cutover, and Phase 7 lists it as a lockdown item
    - If `migration_method == "dms"`: Contains DMS limitation warning about CDC/continuous replication
    - If `migration_approach == "interim_cutover_data_first"`: Contains "Interim Database Exposure" section whose Step 1 is the TLS prerequisite gate and whose Step 2 offers only bounded-allowlist connectivity paths
@@ -1857,9 +2007,9 @@ Verify all generated files:
    - Contains "Config Var Migration" section
    - If `has_beanstalk_web`: Explains that each web app's `eb_application_port_<app>_web` and `eb_health_check_path_<app>_web` are required before planning
    - If `has_beanstalk`: Contains selected EB deploy method instructions and the EB DNS cutover target, and emits no CodePipeline artifact unless `eb_deploy_method` is `"codepipeline"`
-   - If `has_route53_dns`: Phase 1 contains "DNS preparation (Route 53)" before the `terraform init` block (authority check, existing-record conversion + `terraform import`, zone adoption, `heroku_apex_ips`), and no Route 53 write is instructed before that authority check
-   - Phase 5 lists every `dns_hostnames[]` hostname with its own Heroku app and its own AWS endpoint/output name (`alb_dns_name_<app_sanitized>` or `eb_environment_url_<app_sanitized>`; never a shared `alb_dns_name`/`eb_environment_url`, never `eb_environment_cname`); no two apps share a target. If `has_eks`: the manual branch names the Kubernetes Service `EXTERNAL-IP` as the target and states that EKS web TLS is not generated
-   - Every `cutover_weight` change in Phases 5 and 6 edits `terraform.tfvars` and runs a plain `terraform apply`; the guide contains no `-var cutover_weight` command
+   - If `has_route53_dns`: Phase 1 contains "DNS preparation (Route 53)" with this order: authority check, then `terraform init` and required inputs, then existing-record conversion + `terraform import`, then zone adoption, then `heroku_apex_ips`, and only then the plan/apply block. No Route 53 write is instructed before the authority check. The Phase 1 rollback after adoption runs `terraform state rm` on `aws_route53_record.heroku` and `aws_route53_record.apex_heroku` before `terraform destroy`
+   - Phase 5 lists every `dns_hostnames[]` hostname with its own Heroku app and its own AWS endpoint/output name (`alb_dns_name_<app_sanitized>` or `eb_environment_url_<app_sanitized>`; never a shared `alb_dns_name`/`eb_environment_url`, never `eb_environment_cname`); no two apps share a target. If `has_eks`: the manual branch names the Kubernetes Service `EXTERNAL-IP` as the target, and the Service ships with port 443 (`targetPort` 8080) plus `aws-load-balancer-ssl-ports: "443"`, with an apply-and-verify step (`describe-listeners` on 443) before any DNS change
+   - Every `cutover_weight` change in Phases 5 and 6 edits `terraform.tfvars` and never passes `-var cutover_weight`. The apply is plain, except the Phase 6 database-failback apply when Elastic Beanstalk is in the design: that apply `-target`s the Route 53 records and does not apply `aws_elastic_beanstalk_environment`
    - Does NOT hard-code a health check path for Elastic Beanstalk verification; use the applicable per-app `eb_health_check_path_<app>_web` instead
    - Contains "Verification" section with data-store-appropriate checks
    - If `deferred_addons.length > 0`: Contains "Manual Migration Items" section
