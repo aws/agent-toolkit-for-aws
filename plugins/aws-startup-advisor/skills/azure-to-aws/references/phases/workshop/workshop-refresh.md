@@ -62,6 +62,18 @@ Leave non-knob fields (licensing, identity, VM/DB cutover, app_service_plans
 isolation, cluster pattern confirmations) untouched — those are one-time
 migration-runbook decisions, not cost-shaping knobs this sidebar reprices.
 
+**Provenance update — for each knob the sheet edited:** keep
+`disposition: PROPOSED`, write the user's value, add `"source": "user_corrected"`,
+and remove the knob's dotted key from `metadata.questions_defaulted[]`. Knobs the
+sheet left untouched keep their list entry. This is the same three-part write the
+Decision gate's direct correction makes (`estimate-assemble.md` § Step 2;
+`schema-preferences.md` § Correction provenance), and it must happen **here, before
+§ 6 copies `preferences.json` into the snapshot** — otherwise the scenario carries a
+default-provenance row for a value the user chose, and the gate's "Assumptions
+behind this number" block re-lists the explicit choice as an assumption when the
+sidebar hands back. A corrected row disappears from that block; untouched defaults
+stay in it.
+
 **Forced-architecture guard:** If the sheet attempted to set
 `cpu_architecture` to `graviton` on a row whose `forced_by` is set, reject the
 patch for that field and keep the forced value — see `workshop-sheet.md` §
@@ -78,7 +90,10 @@ Inner workshop reprice. Chat note after Estimate:
 
 1. Next id `scenario-00N`.
 2. If length would exceed 5, **warn and name** oldest non-baseline before delete.
-3. Copy prefs / design / estimation into `scenarios/{id}.*`.
+3. Copy prefs / design / estimation into `scenarios/{id}.*`. This copy runs **after**
+   Step 3's provenance update, so the snapshot's `preferences.json` already carries
+   `source: "user_corrected"` and the trimmed `questions_defaulted[]` — the order is
+   load-bearing, not incidental.
 4. `preferences_subset`: differing knob paths vs baseline.
 5. Label: summarize the subset (e.g. "single-az, Elastic Beanstalk, aggressive
    cost optimization"). If a forced-architecture rejection occurred during
@@ -90,6 +105,15 @@ Inner workshop reprice. Chat note after Estimate:
    `estimation_summary.recommendation_outcome`; omit/null otherwise — this
    feeds the compare view's Outcome column and flip callout.
 7. Update index + `workshop.active_scenario_id`.
+
+Three manifest fields are **never written by the sidebar**: `stale` (bool, default
+`false`), `stale_reason` (string | null), and `corrected_at_gate` (string | null).
+`estimate-assemble.md` § Scenario reconciliation writes them when a decision-gate
+correction or a Step 3b answer rewrites the working tree after scenarios exist —
+it updates the active scenario in place and, when the estimate moved, marks every
+other one `stale`. A new
+snapshot written here starts with `stale: false` and the other two `null`; see
+`schema-workshop-scenarios.md` § Manifest fields written outside the sidebar.
 
 ### 7. Hand back
 
