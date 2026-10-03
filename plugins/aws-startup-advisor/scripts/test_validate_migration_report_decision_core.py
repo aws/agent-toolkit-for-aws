@@ -329,6 +329,30 @@ def test_metric_hero_only_in_template_fails() -> None:
     assert any("metric-hero" in err for err in errors), errors
 
 
+def test_verdict_headline_only_in_hidden_element_or_ancestor_fails() -> None:
+    validator = _load()
+    for replacement in (
+        '<p hidden class="verdict-headline">Go, with conditions</p>',
+        '<div hidden><p class="verdict-headline">Go, with conditions</p></div>',
+    ):
+        html = _reference_html().replace(
+            '<p class="verdict-headline">Go, with conditions</p>', replacement
+        )
+        errors = validator.validate_report(html, _reference_estimate(), None)
+        assert any("verdict-headline" in err for err in errors), (replacement, errors)
+
+
+def test_metric_hero_only_in_hidden_ancestor_fails() -> None:
+    validator = _load()
+    html = _reference_html().replace('<div class="metric metric-hero">', '<div class="metric">')
+    html = html.replace(
+        '<div class="metrics">',
+        '<div hidden><div class="metric metric-hero"></div></div>\n      <div class="metrics">',
+    )
+    errors = validator.validate_report(html, _reference_estimate(), None)
+    assert any("metric-hero" in err for err in errors), errors
+
+
 def test_metric_hero_unquoted_class_passes() -> None:
     # Class tokens are read from the parsed attribute, not a literal regex, so
     # any legal spelling of the attribute counts as rendered.
@@ -339,6 +363,19 @@ def test_metric_hero_unquoted_class_passes() -> None:
     assert html != _reference_html()
     errors = validator.validate_report(html, _reference_estimate(), None)
     assert not any("metric-hero" in err for err in errors), errors
+
+
+def test_would_flip_populated_list_only_in_hidden_element_or_ancestor_fails() -> None:
+    for replacement in (
+        '      <h3>What would flip this</h3>\n      <ul hidden>\n'
+        '        <li>Single-AZ acceptable: AWS estimate drops further, strengthens go</li>\n'
+        '        <li>BigQuery must cut over in the same window: defer for specialist evidence</li>\n'
+        '      </ul>',
+        '<div hidden>' + FLIP_BLOCK + '</div>',
+    ):
+        html = _reference_html().replace(FLIP_BLOCK, replacement)
+        errors = _flip_errors(html)
+        assert errors, replacement
 
 
 def test_deferred_service_without_callout_fails() -> None:

@@ -1654,22 +1654,82 @@ def _validate_fixture_bleed(html: str, migration_dir: Path | None) -> list[str]:
     return errors
 
 
+class _VisibleTextParser(HTMLParser):
+    """Collect decoded text from rendered content, excluding hidden ancestors."""
+
+    _INERT_TAGS = {"script", "style", "template"}
+    _INLINE_TAGS = {
+        "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em",
+        "i", "kbd", "mark", "q", "s", "samp", "small", "span", "strong",
+        "sub", "sup", "time", "u", "var", "wbr",
+    }
+    _VOID_TAGS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._inert_depth = 0
+        self._stack: list[dict[str, object]] = []
+
+    def _hidden(self) -> bool:
+        return bool(self._stack and self._stack[-1]["hidden"])
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        return "hidden" in dict(attrs)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS:
+            self._inert_depth += 1
+            return
+        if self._inert_depth > 0:
+            return
+        hidden = self._hidden() or self._is_hidden(attrs)
+        if tag not in self._INLINE_TAGS:
+            self.parts.append(" ")
+        if tag not in self._VOID_TAGS:
+            self._stack.append({"tag": tag, "hidden": hidden})
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        return
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._INERT_TAGS:
+            if self._inert_depth > 0:
+                self._inert_depth -= 1
+            return
+        if self._inert_depth > 0:
+            return
+        hidden = False
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index]["tag"] == tag:
+                hidden = any(bool(frame["hidden"]) for frame in self._stack[index:])
+                del self._stack[index:]
+                break
+        if tag not in self._INLINE_TAGS:
+            self.parts.append(" ")
+        if hidden:
+            return
+
+    def handle_data(self, data: str) -> None:
+        if self._inert_depth == 0 and not self._hidden():
+            self.parts.append(data)
+
+
 def _plain_text(fragment: str) -> str:
     """Decoded visible text, with dashes folded so artifact prose can be matched.
 
-    Inert subtrees (`<script>`, `<style>`, `<template>`) and HTML comments are
-    dropped first: the browser does not render their contents, so a decision-core
-    heading or condition hidden inside a `<template>` must not count as rendered.
-    This matches the Heroku validator's decoded-text semantics.
+    Inert subtrees (`<script>`, `<style>`, `<template>`), native-hidden
+    subtrees, and HTML comments are excluded because the browser does not render
+    their contents.
     """
-    stripped = re.sub(r"<!--.*?-->", " ", fragment, flags=re.DOTALL)
-    stripped = re.sub(
-        r"<(script|style|template)\b[^>]*>.*?</\1\s*>",
-        " ",
-        stripped,
-        flags=re.DOTALL | re.IGNORECASE,
-    )
-    text = unescape(re.sub(r"<[^>]+>", " ", stripped))
+    parser = _VisibleTextParser()
+    parser.feed(fragment)
+    parser.close()
+    text = "".join(parser.parts)
     text = text.replace("\u2014", "-").replace("\u2013", "-")
     return re.sub(r"\s+", " ", text).strip().lower()
 
@@ -1739,15 +1799,35 @@ class _RenderedFragmentParser(HTMLParser):
     _INLINE_TAGS = _DecodedTextRunParser._INLINE_TAGS
     _INERT_TAGS = _DecodedTextRunParser._INERT_TAGS
     _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+    _VOID_TAGS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.entries: list[tuple[str, str]] = []
         self.class_tokens: set[str] = set()
         self._inert_depth = 0
+        self._stack: list[dict[str, object]] = []
         self._li_depth = 0
         self._heading_depth = 0
         self._buf: list[str] = []
+
+    def _hidden(self) -> bool:
+        return bool(self._stack and self._stack[-1]["hidden"])
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        return "hidden" in dict(attrs)
+
+    def _pop_to(self, tag: str) -> bool:
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index]["tag"] == tag:
+                popped = self._stack[index:]
+                del self._stack[index:]
+                return any(bool(frame["hidden"]) for frame in popped)
+        return False
 
     def _flush(self) -> None:
         text = _plain_text(" ".join(self._buf))
@@ -1773,6 +1853,11 @@ class _RenderedFragmentParser(HTMLParser):
             return
         if self._inert_depth > 0:
             return
+        hidden = self._hidden() or self._is_hidden(attrs)
+        if tag not in self._VOID_TAGS:
+            self._stack.append({"tag": tag, "hidden": hidden})
+        if hidden:
+            return
         self._record_classes(attrs)
         if tag not in self._INLINE_TAGS:
             self._flush()
@@ -1782,7 +1867,9 @@ class _RenderedFragmentParser(HTMLParser):
             self._heading_depth += 1
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self._INERT_TAGS or self._inert_depth > 0:
+        if tag in self._INERT_TAGS or self._inert_depth > 0 or self._hidden():
+            return
+        if self._is_hidden(attrs):
             return
         self._record_classes(attrs)
         if tag not in self._INLINE_TAGS:
@@ -1795,6 +1882,9 @@ class _RenderedFragmentParser(HTMLParser):
             return
         if self._inert_depth > 0:
             return
+        hidden = self._pop_to(tag)
+        if hidden or self._hidden():
+            return
         if tag not in self._INLINE_TAGS:
             self._flush()
         if tag == "li" and self._li_depth > 0:
@@ -1803,7 +1893,7 @@ class _RenderedFragmentParser(HTMLParser):
             self._heading_depth -= 1
 
     def handle_data(self, data: str) -> None:
-        if self._inert_depth == 0:
+        if self._inert_depth == 0 and not self._hidden():
             self._buf.append(data)
 
     def close(self) -> None:

@@ -808,6 +808,31 @@ def test_th_inside_template_not_audited_for_scope() -> None:
     assert "REPORT_OK" in out
 
 
+def test_verdict_headline_only_in_hidden_element_or_ancestor_fails() -> None:
+    for replacement in (
+        '<p hidden class="verdict-headline">Go, with conditions</p>',
+        '<div hidden><p class="verdict-headline">Go, with conditions</p></div>',
+    ):
+        html = GOOD.replace(
+            '<p class="verdict-headline">Go, with conditions</p>', replacement
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = run(html, migration_dir=_rec_dir(tmp))
+        assert code == 1, (replacement, out)
+        assert "verdict-headline" in out.lower()
+
+
+def test_would_flip_populated_list_only_in_hidden_element_or_ancestor_fails() -> None:
+    for replacement in (
+        '<h3>What would flip this</h3><ul hidden>'
+        f'{FLIP_ITEMS}</ul>',
+        f'<div hidden><h3>What would flip this</h3><ul>{FLIP_ITEMS}</ul></div>',
+    ):
+        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + replacement))
+        assert code == 1, (replacement, out)
+        assert "would_flip" in out
+
+
 # --- Section-parser regressions (09-22 P2): section identity/counts come from the
 # stdlib parser, so comments and inert (script/style/template) subtrees never satisfy
 # a section gate, real quoted/unquoted/spaced ids pass, and data-id is not the id. ---
