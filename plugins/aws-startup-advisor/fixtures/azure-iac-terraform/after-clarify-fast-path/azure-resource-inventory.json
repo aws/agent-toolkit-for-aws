@@ -1,0 +1,152 @@
+{
+  "_what_this_is": "HAND-AUTHORED Discover inventory (not algorithm-traced) that pins the ELIGIBLE fast path: one Linux App Service Plan hosting two apps and one Postgres Flexible Server, one region, no VM, no Windows or SQL, no Cosmos, no HA. The committed Terraform corpus is ineligible by design (VMs, ZoneRedundant Postgres, five clusters), so without this estate the fast-path provenance contract has no golden. The Postgres entry DELIBERATELY lacks config.storage_mb: discover-live.md lets `az resource list` succeed and then records enrichment row 7 as skipped on a permission error (live_metadata.capture_warnings), so Clarify must take Q-D2's unknown-size fallback rather than invent a size.",
+  "phase": "discover",
+  "metadata": {
+    "discovery_timestamp": "2026-10-02T09:00:00Z",
+    "discovery_sources": [
+      "live"
+    ],
+    "subscriptions_discovered": [
+      "<subscription-fixture>"
+    ],
+    "total_resources": 5,
+    "clustering_mode": "simplified_live",
+    "confidence": "measured",
+    "clarify_fast_path": {
+      "eligible": true,
+      "reasons_ineligible": []
+    }
+  },
+  "resources": [
+    {
+      "azure_id": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop",
+      "azure_type": "Microsoft.Resources/resourceGroups",
+      "azure_type_provenance": "table",
+      "name": "rg-shop",
+      "resource_group": "rg-shop",
+      "subscription_id": "<subscription-fixture>",
+      "location": "westeurope",
+      "source": "live",
+      "config": {},
+      "tags": {},
+      "edges": [],
+      "drift": []
+    },
+    {
+      "azure_id": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web",
+      "azure_type": "Microsoft.Web/serverfarms",
+      "azure_type_provenance": "table",
+      "name": "asp-shop-web",
+      "resource_group": "rg-shop",
+      "subscription_id": "<subscription-fixture>",
+      "location": "westeurope",
+      "source": "live",
+      "config": {
+        "sku_name": "S1",
+        "worker_count": 1,
+        "os_type": "Linux"
+      },
+      "tags": {},
+      "edges": [],
+      "drift": []
+    },
+    {
+      "azure_id": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/sites/app-shop-storefront",
+      "azure_type": "Microsoft.Web/sites",
+      "azure_type_provenance": "table",
+      "name": "app-shop-storefront",
+      "resource_group": "rg-shop",
+      "subscription_id": "<subscription-fixture>",
+      "location": "westeurope",
+      "source": "live",
+      "config": {
+        "kind": "app,linux",
+        "service_plan_id": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web",
+        "runtime_stack": "node|20-lts",
+        "https_only": true,
+        "app_setting_names": [
+          "DATABASE_HOST",
+          "NODE_ENV"
+        ]
+      },
+      "tags": {},
+      "edges": [
+        {
+          "type": "hosted_on",
+          "to": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web",
+          "via": "serverFarmId"
+        },
+        {
+          "type": "data_ref",
+          "to": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.DBforPostgreSQL/flexibleServers/pg-shop-store",
+          "via": "app_settings.DATABASE_HOST"
+        }
+      ],
+      "drift": []
+    },
+    {
+      "azure_id": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/sites/app-shop-admin",
+      "azure_type": "Microsoft.Web/sites",
+      "azure_type_provenance": "table",
+      "name": "app-shop-admin",
+      "resource_group": "rg-shop",
+      "subscription_id": "<subscription-fixture>",
+      "location": "westeurope",
+      "source": "live",
+      "config": {
+        "kind": "app,linux",
+        "service_plan_id": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web",
+        "runtime_stack": "node|20-lts",
+        "https_only": true,
+        "app_setting_names": [
+          "DATABASE_HOST",
+          "NODE_ENV"
+        ]
+      },
+      "tags": {},
+      "edges": [
+        {
+          "type": "hosted_on",
+          "to": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web",
+          "via": "serverFarmId"
+        },
+        {
+          "type": "data_ref",
+          "to": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.DBforPostgreSQL/flexibleServers/pg-shop-store",
+          "via": "app_settings.DATABASE_HOST"
+        }
+      ],
+      "drift": []
+    },
+    {
+      "azure_id": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.DBforPostgreSQL/flexibleServers/pg-shop-store",
+      "azure_type": "Microsoft.DBforPostgreSQL/flexibleServers",
+      "azure_type_provenance": "table",
+      "name": "pg-shop-store",
+      "resource_group": "rg-shop",
+      "subscription_id": "<subscription-fixture>",
+      "location": "westeurope",
+      "source": "live",
+      "config": {
+        "sku_name": "Standard_B2s",
+        "version": "16",
+        "_note": "no storage_mb and no high_availability: the row-7 enrichment call (az postgres flexible-server list) was skipped, so only the az resource list projection (type, name, location, sku) is known. This is the Q-D2 unknown-size case."
+      },
+      "tags": {},
+      "edges": [],
+      "drift": []
+    }
+  ],
+  "live_metadata": {
+    "found": true,
+    "captured_at": "2026-10-02T08:58:00Z",
+    "subscription": "<subscription-fixture>",
+    "method": "resource_list",
+    "capture_warnings": [
+      "row 7 (az postgres flexible-server list) skipped: AuthorizationFailed — the Reader role on the subscription does not include Microsoft.DBforPostgreSQL/flexibleServers/read for this server; storage size and HA mode were not captured"
+    ],
+    "derived_types": {}
+  },
+  "warnings": [],
+  "unclustered": []
+}

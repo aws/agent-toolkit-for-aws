@@ -9,7 +9,7 @@ This skill is the single entry point for getting any AI agent project instrument
 
 This is a PROCEDURAL SCRIPT. Execute steps in EXACT order. Do NOT skip ahead, reorder, or optimize.
 
-**Before you start:** confirm a Space exists in the target Region (`aws cloudwatchomni list-spaces --region <region>`); if none, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering traces nowhere the customer can see. (Output the Step 1 checklist first; this probe is the first tool call after it.)
+**Before you start:** confirm a Space exists in the target Region. `list-spaces` is account-global (the `--region` flag only selects the endpoint; the response lists every Space in the account, each with its own `region`), so filter to the Region rather than trusting a non-empty list: `aws cloudwatchomni list-spaces --region <region> --query "items[?region=='<region>']"`. If that filtered list is empty, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering traces nowhere the customer can see. (Output the Step 1 checklist first; this probe is the first tool call after it.)
 
 **A custom metric from the agent** (a latency histogram, a tokens-per-call counter) follows the same rule as any application: it must reach Omni as an OTLP metric carrying the agent's resource attributes — through the OTel Metrics API on the SDK this flow installs, or through a collector — and `PutMetricData`/EMF do not put it on Omni's PromQL surface. Answer from `../instrumentation/instrumentation.md` (§ Custom metrics); do not run the onboarding checklist for that question.
 
@@ -369,9 +369,15 @@ Then verify a trace was captured. HTTP 2xx + non-empty response does NOT mean tr
 **Trace verification checks (all must pass):**
 
 1. A fresh, **non-error** trace exists.
-2. Root span has non-empty `input.value` and `output.value`.
+2. Root span has non-empty `input.value` and `output.value`. On the ADOT path nothing sets these for you — they come from Step 2.3 step 5 in the request handler. If they are missing, add step 5 rather than concluding the instrumentation is broken.
 3. **If ADOT:** a span with `gen_ai.operation.name` attribute exists (e.g. `chat`, `invoke_agent`). Spans without it (HTTP spans, Next.js routing, `BedrockRuntime.Converse`, telemetry POSTs) are infrastructure — they do NOT satisfy this check.
-4. **If ADOT:** at least one span in the trace carries message content. Accept ANY of: `gen_ai.input.messages` or `gen_ai.output.messages` on a framework or Bedrock runtime span; `gen_ai.prompt` or `gen_ai.completion` on a manually instrumented LLM span; for Strands only, `input.value` with `openinference.span.kind = AGENT` on the root agent span (Strands carries content there, not in `gen_ai.input.messages`). `gen_ai.system`/`gen_ai.request.model` alone do NOT count (metadata only, present even when broken).
+4. **If ADOT:** at least one span in the trace carries message content — as a span **attribute** or a span **event**. Accept ANY of:
+   - `gen_ai.input.messages` or `gen_ai.output.messages` on a framework or Bedrock runtime span;
+   - the OTel GenAI-semconv span **events** `gen_ai.user.message` / `gen_ai.choice`, whose `content`/`message` attribute carries the text. **This is where zero-code ADOT puts content for Strands** — a healthy Strands agent emits these events on its `invoke_agent`, event-loop and `chat` spans while every content *attribute* above is absent. Always inspect span events, not only attributes, before concluding content is missing — a trace whose attributes look empty is usually this case, not a broken exporter;
+   - `gen_ai.prompt` or `gen_ai.completion` on a manually instrumented LLM span;
+   - `input.value` / `output.value` set by hand in the request handler per Step 2.3 step 5.
+
+   `gen_ai.system`/`gen_ai.request.model` alone do NOT count (metadata only, present even when broken). Do **not** require `openinference.span.kind` here: only the OpenInference processor emits it, so on the ADOT path it is absent by construction (measured: 0 spans) — it belongs to check 6.
 5. **If ADOT:** no `traceloop.*` attributes on any span.
 6. **If OpenInference:** `openinference.span.kind` present on agent/LLM/tool spans.
 

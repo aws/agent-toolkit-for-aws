@@ -9,6 +9,27 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'python3 \"$0\" 2>/dev/null || python \"$0\" 2>/dev/null || py -3 \"$0\" 2>/dev/null || true' \"${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/consent/session_start.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'python3 \"$0\" 2>/dev/null || python \"$0\" 2>/dev/null || py -3 \"$0\" 2>/dev/null || true' \"${CLAUDE_PLUGIN_ROOT}/scripts/telemetry/metric_emission/skill_invoked.py\"",
+            "timeout": 5
+          }
+        ]
       }
     ]
   }

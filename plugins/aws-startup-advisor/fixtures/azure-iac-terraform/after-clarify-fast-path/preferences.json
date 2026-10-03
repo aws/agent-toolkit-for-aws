@@ -1,0 +1,177 @@
+{
+  "_what_this_is": "HAND-AUTHORED GOLDEN preferences.json for an ELIGIBLE fast-path Clarify (clarify.md Step 0.5 -> clarify-assemble.md Fast-path mode) over the estate in this directory. It pins the provenance contract the ineligible Terraform corpus cannot reach: every PROPOSED row took its default and is listed in metadata.questions_defaulted[] (array rows under index keys), the deferred db_cutover row is listed ONLY in metadata.deferred_to_generate[], the two ESSENTIAL rows (compliance, spend) were asked and answered, and db_cutover took Q-D2's unknown-size fallback because the Postgres server has no measured storage. clarify_status is COMPLETE and the handoff gate must pass with the isolation default recorded, not asked.",
+  "phase": "clarify",
+  "metadata": {
+    "clarify_mode": "fast_path",
+    "fast_path_eligible": true,
+    "questions_defaulted": [
+      "global.user_geography",
+      "design_constraints.cpu_architecture",
+      "design_constraints.compute_target",
+      "design_constraints.cost_optimization",
+      "design_constraints.traffic_pattern",
+      "design_constraints.long_lived_connections",
+      "data.availability",
+      "data.storage_io",
+      "identity",
+      "app_service_plans[0].isolation_split"
+    ],
+    "deferred_to_generate": [
+      "data.db_cutover"
+    ]
+  },
+  "clarify_status": "COMPLETE",
+  "global": {
+    "target_region": {
+      "disposition": "DETECTED",
+      "value": "eu-west-1",
+      "default": "eu-west-1",
+      "source": "every resource is westeurope; MAPPED, not assumed us-east-1"
+    },
+    "environment_scope": {
+      "disposition": "DETECTED",
+      "value": [
+        "unlabelled"
+      ],
+      "default": [
+        "unlabelled"
+      ],
+      "source": "one resource group, rg-shop, with no environment marker in its name"
+    },
+    "migration_window": {
+      "disposition": "PROPOSED",
+      "value": null,
+      "default": null
+    },
+    "user_geography": {
+      "disposition": "PROPOSED",
+      "value": "single-region",
+      "default": "single-region"
+    }
+  },
+  "design_constraints": {
+    "compliance": {
+      "disposition": "ESSENTIAL",
+      "value": [],
+      "default": null,
+      "context": "asked first on the fast path (Q-A1c always fires); the user answered none"
+    },
+    "cpu_architecture": {
+      "disposition": "PROPOSED",
+      "value": "x86_64",
+      "default": "x86_64"
+    },
+    "compute_target": {
+      "disposition": "PROPOSED",
+      "value": "elastic_beanstalk",
+      "default": "elastic_beanstalk"
+    },
+    "cost_optimization": {
+      "disposition": "PROPOSED",
+      "value": "balanced",
+      "default": "balanced"
+    },
+    "traffic_pattern": {
+      "disposition": "PROPOSED",
+      "value": "steady",
+      "default": "steady"
+    },
+    "long_lived_connections": {
+      "disposition": "PROPOSED",
+      "value": false,
+      "default": false
+    },
+    "vm_cutover": {
+      "disposition": "N/A",
+      "value": null,
+      "default": null,
+      "reason": "no Microsoft.Compute/virtualMachines or virtualMachineScaleSets in the inventory"
+    }
+  },
+  "data": {
+    "availability": {
+      "disposition": "PROPOSED",
+      "value": "single-az",
+      "default": "single-az",
+      "source_ha_context": "pg-shop-store: high_availability not captured (enrichment row 7 skipped); no HA signal, so Q-D1 is PROPOSED, not ESSENTIAL"
+    },
+    "db_cutover": {
+      "disposition": "PROPOSED",
+      "value": "dump_restore",
+      "default": "dump_restore",
+      "deferred_to_generate": true,
+      "default_basis": "relational DB size unmeasured (no storage_mb on pg-shop-store; az postgres flexible-server list was skipped on AuthorizationFailed); dump_restore assumed \u2014 size is confirmed at Step 3b",
+      "largest_relational_db_gib": null,
+      "size_coverage": "unknown"
+    },
+    "traffic_pattern": {
+      "disposition": "DETECTED",
+      "value": "steady",
+      "default": "steady",
+      "source": "the only relational server is Standard_B2s, a burstable tier, so Q-D3's DETECTED condition holds"
+    },
+    "storage_io": {
+      "disposition": "PROPOSED",
+      "value": "medium",
+      "default": "medium"
+    },
+    "cosmos_rw_split": {
+      "disposition": "N/A",
+      "value": null,
+      "default": null,
+      "reason": "no Microsoft.DocumentDB/databaseAccounts in the inventory"
+    },
+    "redis_modules": {
+      "disposition": "N/A",
+      "value": null,
+      "default": null,
+      "reason": "no Microsoft.Cache/* resource in the inventory"
+    }
+  },
+  "baseline": {
+    "azure_monthly_spend": {
+      "disposition": "ESSENTIAL",
+      "value": 410,
+      "default": null,
+      "context": "no billing export or RDfA report was discovered, so Q-A5 fired as the second fast-path question; the user stated roughly 410 USD/month"
+    }
+  },
+  "identity": {
+    "disposition": "PROPOSED",
+    "value": "identity_center_reinvite",
+    "default": "identity_center_reinvite",
+    "context": "0 user-assigned managed identities, 0 role assignments, 0 Key Vaults"
+  },
+  "licensing": {
+    "_fired": false,
+    "_firing_reason": null,
+    "disposition": "N/A",
+    "value": null,
+    "default": null,
+    "reason": "no Windows VM image, no Microsoft.Sql/* resource, no SQL-Server-on-VM image signature \u2014 the licensing fragment did not load",
+    "blockers": []
+  },
+  "app_service_plans": [
+    {
+      "plan_azure_id": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web",
+      "hosted_app_count": 2,
+      "isolation_split": {
+        "disposition": "PROPOSED",
+        "value": false,
+        "default": false
+      }
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "rg-shop-asp-shop-web",
+      "pattern_id": {
+        "disposition": "DETECTED",
+        "value": "unclassified",
+        "default": "unclassified",
+        "source": "patterns.md is absent (build step 4), so there is no recognised pattern to confirm"
+      }
+    }
+  ],
+  "workshop": {}
+}
