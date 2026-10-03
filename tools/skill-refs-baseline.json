@@ -1,0 +1,47 @@
+{
+  "_what_this_is": "Policy and burn-down for tools/check-skill-refs.py. `ignore` rules are permanent: the matched tokens are not references into the repository (they are paths the skill GENERATES into a run directory, or example paths in a user's own app). `entries` are known dead references with the fix that retires each one; an entry that stops matching is reported STALE and fails the gate, so this list only shrinks.",
+  "ignore": [
+    {
+      "source": "plugins/aws-startup-advisor/skills/*/references/phases/generate/*.md",
+      "ref": "*scripts/*.sh",
+      "reason": "Generate writes these scripts into $MIGRATION_DIR/scripts/ (01-validate-prerequisites.sh … 05-validate-migration.sh, migrate-postgres.sh, migrate-redis.sh). The phase files name them as OUTPUTS to produce and as commands for MIGRATION_GUIDE.md, not as repository files to load."
+    },
+    {
+      "source": "plugins/aws-startup-advisor/agents/llm2bedrock-code-rewriter.md",
+      "ref": "fixtures/data.json",
+      "reason": "Example of a path inside the USER's application (`Path(__file__).resolve().parent / \"fixtures/data.json\"`) used to illustrate a rewrite rule; not a plugin file."
+    }
+  ],
+  "entries": [
+    {
+      "source": "plugins/aws-startup-advisor/skills/azure-to-aws/references/phases/discover/discover-iac.md",
+      "ref": "references/shared/extract-bicep.md",
+      "reason": "Bicep extraction is not implemented; discover-iac.md:55 says 'HALT if a dialect is present and its ref is not on disk', so a Bicep workspace halts with a path that will never exist. Fix: either write extract-bicep.md or replace the row with an explicit 'Bicep not yet supported — export to Terraform or use live `az` discovery' message that does not point at a file."
+    },
+    {
+      "source": "plugins/aws-startup-advisor/skills/azure-to-aws/references/phases/discover/discover-iac.md",
+      "ref": "references/shared/extract-arm.md",
+      "reason": "Same as extract-bicep.md: ARM templates halt against a reference that does not exist."
+    },
+    {
+      "source": "plugins/aws-startup-advisor/skills/azure-to-aws/references/phases/design/design.md",
+      "ref": "design-refs/patterns.md",
+      "reason": "Pattern catalog not yet written; every cluster carries pattern_status: catalog_absent by design (discover-assemble.md § Status). Intentional forward reference. Retire when patterns.md lands or the gate wording stops naming a file."
+    },
+    {
+      "source": "plugins/aws-startup-advisor/skills/azure-to-aws/references/shared/schema-design-aws.md",
+      "ref": "design-refs/patterns.md",
+      "reason": "See design.md entry — same forward reference, in the pattern_status vocabulary table."
+    },
+    {
+      "source": "plugins/aws-startup-advisor/skills/contextual-offers-for-startups/SKILL.md",
+      "ref": "references/offers.md",
+      "reason": "The file is `../knowledge-base-for-startups/references/offers.md` (SKILL.md:29 has the correct path). Lines 3 and 149 use the unqualified short form, which resolves nowhere inside this skill. Fix: qualify both mentions."
+    },
+    {
+      "source": "plugins/aws-startup-advisor/skills/gcp-to-aws/references/phases/design/design-ai.md",
+      "ref": "shared/ai-model-lifecycle.md",
+      "reason": "Wrong path: gcp-to-aws has no references/shared/ai-model-lifecycle.md; the file is vendored at references/vendored/ai/ai-model-lifecycle.md (canonical skills/shared/ai/). design-ai.md:424 should say `references/vendored/ai/ai-model-lifecycle.md`."
+    }
+  ]
+}

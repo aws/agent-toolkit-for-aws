@@ -127,6 +127,25 @@ Q16–Q22, and write `"workloads": []` when none.
 A value taken from its default stays **PROPOSED** — never promoted to DETECTED (DETECTED means
 read from the estate; Design's rationale and the report distinguish "you chose" from "we assumed").
 
+### `workloads[]`
+
+```jsonc
+[
+  {
+    "workload_id": "wl-1", // REQUIRED
+    "model_id": "gpt-4o", // REQUIRED
+    "sdk_method": "chat.completions", // REQUIRED
+    "capability": "chat", // REQUIRED
+    "capability_confidence": "high", // REQUIRED
+    "structured_output": false, // REQUIRED
+    "call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED
+    "target_bedrock_model": "anthropic.claude", // REQUIRED
+    "priority": "balanced", // REQUIRED
+    "latency_tier": "standard" // REQUIRED
+  }
+]
+```
+
 ## Who consumes these
 
 | Field                                                                                  | Consumer                                            |

@@ -6,19 +6,19 @@ so the skill folder is **self-contained** — it runs standalone (lifted out, zi
 or used on its own) without reaching outside its own directory.
 
 **Do not hand-edit anything in this directory.** Edit the canonical source instead,
-then copy the changed file over every vendored copy in the same change so the
-copies stay byte-identical:
+then bring every vendored copy back in sync:
 
 ```sh
-# from the repository root, for each vendored path listed below
-cp plugins/aws-startup-advisor/skills/shared/<path> \
-   plugins/aws-startup-advisor/skills/azure-to-aws/references/vendored/<path>
+# from the repository root
+python3 tools/sync-vendored.py          # copies skills/shared/<path> over every vendored copy
+python3 tools/sync-vendored.py --check  # what CI runs (mise run lint:vendored-parity)
 ```
 
-This repository has no automated sync task for these copies — keeping them
-byte-identical is part of the change that touches the canonical file. Verify with
-`md5sum` (or `md5 -q`) over the canonical file and every vendored copy before
-opening a pull request; the hashes must match.
+CI fails when a vendored copy differs from its canonical source, has no canonical source,
+is listed in the table below but missing on disk, or is on disk but not listed below. So an
+edit to a `skills/shared/` file this skill vendors, or a deleted copy, cannot merge
+unnoticed. What CI cannot see is a **new** `skills/shared/` file that no skill vendors yet —
+if this skill needs one, add the copy **and** a row in the table below.
 
 | Vendored path                           | Canonical source                                      |
 | --------------------------------------- | ----------------------------------------------------- |
