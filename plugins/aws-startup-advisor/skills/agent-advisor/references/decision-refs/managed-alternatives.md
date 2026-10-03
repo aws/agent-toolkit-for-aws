@@ -11,7 +11,8 @@ Surface these as awareness with tradeoffs when the user is committed to a single
 
 ## Bedrock Managed Agents (OpenAI-committed)
 
-- Available in us-east-1 and expanding.
+- Now officially announced in preview (Sep 2026) in `us-east-1`, `us-west-2`, and `us-east-2` ([AWS announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/bedrock-managed-agents-preview/)).
+- Built on customized OpenAI Agents API, AWS-native, with IAM roles per agent, durable sessions, MCP tool support, human approval, and CloudTrail logging; no additional charge during preview beyond underlying AWS resources ([user guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-managed-agents-openai.html)).
 - If the customer needs model flexibility, governance, or code export → AgentCore wins.
 
 ## Rule
