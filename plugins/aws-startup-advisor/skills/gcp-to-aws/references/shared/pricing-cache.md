@@ -1,6 +1,6 @@
 # AWS Pricing Cache
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-03 (full-cache baseline; Opus 5.5 rows verified 2026-09-24)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±5-10% for infrastructure services (sourced from AWS Price List API), ±15-25% for AI models (sourced from public pricing pages)
@@ -385,63 +385,91 @@ Serverless inference: $0.0000200 per second per GB memory.
 
 ## Bedrock Models (On-Demand)
 
-**Anthropic Claude (Standard on-demand)** figures below match **US East (N. Virginia)** on [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) as of cache refresh. **Recommend defaults (new migrations):** Claude Sonnet 5 (flagship), Claude Opus 4.8 (hardest reasoning), Claude Haiku 4.5 (cost/speed). Do not default to any Claude Fable / Mythos frontier model (Fable 5, Fable 5.1, and successors). **Claude Fable 5** and **Claude Fable 5.1** (GA Sep 1, 2026) are the most expensive Anthropic models at $10/$50 per 1M tokens (Mythos-class); 5.1's on-demand rate difference is cache read at $0.25 (0.025x) vs $1.00; Bedrock lists no batch rate for either. Both are Anthropic **Covered Models**: using them requires opting the account into the `aws_review` data-retention mode, and Fable 5.1 is served commercially only via `us.`/`global.` CRIS profiles (no in-region — the bare `anthropic.claude-fable-5-1` id is not invokable on `bedrock-runtime`, hence the `us.` form in the table), with in-region access in AWS GovCloud (US) only. Claude Mythos 5.1 is a gated Preview for vetted cyber/bio research organizations and is not a migration target. **Claude Opus 4.8** keeps the same $5/$25 rate as Opus 4.6/4.7. **Claude Sonnet 5** launched June 30 at $2/$10; that launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled), so Sonnet 5 is now both newer and cheaper than Sonnet 4.6 ($3/$15). **Claude Opus 4.7** lists the same headline on-demand input/output as **Opus 4.6** on that page; confirm **batch** availability per model (Opus 4.7 batch was **not** listed on the global cross-region table when this row was added). **Claude Opus 4.1** entered **Legacy** on Jul 8, 2026 (EOL Jan 8, 2027). **Batch**, **prompt cache** (5m / 1h write + cache read), and **geo / in-region cross-region** rows on that page can differ; e.g. **US East (Ohio)** cross-region inference for Claude Sonnet 4.6 is listed at **$3.30 / $16.50** per 1M input/output (≈10% above N. Virginia). Long-context SKUs **do not** all use the same multiplier: **Sonnet 4.6** and **Opus 4.6** long-context modes share the same on-demand rates as the non–long-context rows on the standard table; **Sonnet 4.5** and **Sonnet 4** long-context rows are priced higher on that same table.
+**Anthropic Claude (Standard on-demand)** figures below match **US East (N. Virginia)** on [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) as of cache refresh. **Recommend defaults (new migrations):** Claude Sonnet 5 (flagship), Claude Opus 5.5 (demanding reasoning; 20% lower standard input/output token prices than Opus 5; [Anthropic reports improved token efficiency](https://claude.com/blog/what-a-task-costs-on-opus-5-5), with actual usage varying by task and effort setting), Claude Haiku 4.5 (cost/speed). Do not default to any Claude Fable / Mythos frontier model (Fable 5, Fable 5.1, and successors). **Claude Fable 5** and **Claude Fable 5.1** (GA Sep 1, 2026) are the most expensive Anthropic models at $10/$50 per 1M tokens (Mythos-class); 5.1's on-demand rate difference is cache read at $0.25 (0.025x) vs $1.00; Bedrock lists no batch rate for either. Both are Anthropic **Covered Models**: using them requires opting the account into the `aws_review` data-retention mode, and Fable 5.1 is served commercially only via `us.`/`global.` CRIS profiles (no in-region — the bare `anthropic.claude-fable-5-1` id is not invokable on `bedrock-runtime`, hence the `us.` form in the table), with in-region access in AWS GovCloud (US) only. Claude Mythos 5.1 is a gated Preview for vetted cyber/bio research organizations and is not a migration target. **Claude Opus 4.8** keeps the same $5/$25 rate as Opus 4.6/4.7. **Claude Sonnet 5** launched June 30 at $2/$10; that launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled), so Sonnet 5 is now both newer and cheaper than Sonnet 4.6 ($3/$15). **Claude Opus 4.7** lists the same headline on-demand input/output as **Opus 4.6** on that page; confirm **batch** availability per model (Opus 4.7 batch was **not** listed on the global cross-region table when this row was added). **Claude Opus 4.1** entered **Legacy** on Jul 8, 2026 (EOL Jan 8, 2027). **Batch**, **prompt cache** (5m / 1h write + cache read), and **geo / in-region cross-region** rows on that page can differ; e.g. **US East (Ohio)** cross-region inference for Claude Sonnet 4.6 is listed at **$3.30 / $16.50** per 1M input/output (≈10% above N. Virginia). Long-context SKUs **do not** all use the same multiplier: **Sonnet 4.6** and **Opus 4.6** long-context modes share the same on-demand rates as the non–long-context rows on the standard table; **Sonnet 4.5** and **Sonnet 4** long-context rows are priced higher on that same table.
+
+**Opus selection policy:** Recommend Opus 5.5 for new Opus migration targets. Opus 4.8
+rates are retained for existing deployments only; do not recommend it as a new target
+or automatic fallback. The separately documented Opus 4.6 Batch exception remains.
+
+**Opus 5.5 rates verified: 2026-09-24.** Source: AWS Price List API, service
+`AmazonBedrockFoundationModels`, filter `servicename = Claude Opus 5.5 (Amazon Bedrock Edition)`
+and the source `regionCode`; see [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/).
+The Opus 5.5 rows below are Standard on-demand, per 1M tokens: Global **$4/$20**;
+commercial Geo and Mantle in-region **$4.40/$22**; GovCloud **$4.80/$24**.
+For example, us-east-1 input/output SKUs are `KVG5FBPDJPKF5TJY` / `MWH4TD2A4D5CEBAP`
+(Global) and `J9QFZT8WAQABG9ZX` / `FCRGDQ596BG7EQKH` (Geo/Mantle).
+The [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html) lists Active lifecycle, 1M context, 128K output,
+and **no Batch**. Runtime uses `us.`/`eu.`/`au.`/`jp.` Geo or `global.` CRIS,
+or the bare ID in `eu-west-2` (in-region model-card and pricing verification: 2026-10-03);
+Global is not available in GovCloud. Mantle uses the bare ID only in `us-east-1`,
+`ap-southeast-4`, and `us-gov-west-1`. Choose the price row by region and inference
+profile; a generic model name alone is insufficient. Other cache rows retain the
+full-cache date at the top of this file.
 
 ### Multi-provider quick reference (per 1M tokens)
 
 See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommend Legacy models for new migrations.** Rows whose Status is `restricted (…)` are never `recommended_model` / `backup_model` and never a default (Covered Models, gated previews).
 
-| Model                            | Model ID                                 | Provider  | Input $/1M | Output $/1M | Context | Tier      | Status                                                       |
-| -------------------------------- | ---------------------------------------- | --------- | ---------- | ----------- | ------- | --------- | ------------------------------------------------------------ |
-| Claude Fable 5                   | anthropic.claude-fable-5                 | Anthropic | 10.00      | 50.00       | 1M      | frontier  | restricted (Covered Model; `aws_review` opt-in)              |
-| Claude Fable 5.1                 | us.anthropic.claude-fable-5-1            | Anthropic | 10.00      | 50.00       | 1M      | frontier  | restricted (Covered Model; `aws_review` opt-in; CRIS only)   |
-| Claude Sonnet 5                  | anthropic.claude-sonnet-5                | Anthropic | 2.00       | 10.00       | 1M      | flagship  | active ($2/$10 made the standard price Sep 1, 2026)          |
-| Claude Opus 4.8                  | anthropic.claude-opus-4-8                | Anthropic | 5.00       | 25.00       | 200K    | premium   | active                                                       |
-| Claude Sonnet 4.6                | anthropic.claude-sonnet-4-6              | Anthropic | 3.00       | 15.00       | 200K    | flagship  | active                                                       |
-| Claude Sonnet 4.6 — Long Context | anthropic.claude-sonnet-4-6              | Anthropic | 3.00       | 15.00       | 200K+   | flagship  | active                                                       |
-| Claude Opus 4.6                  | anthropic.claude-opus-4-6-v1             | Anthropic | 5.00       | 25.00       | 200K    | premium   | active                                                       |
-| Claude Opus 4.6 — Long Context   | anthropic.claude-opus-4-6-v1             | Anthropic | 5.00       | 25.00       | 200K+   | premium   | active                                                       |
-| Claude Opus 4.5                  | —                                        | Anthropic | 5.00       | 25.00       | 200K    | premium   | active                                                       |
-| Claude Sonnet 4.5                | —                                        | Anthropic | 3.00       | 15.00       | 200K    | flagship  | active                                                       |
-| Claude Sonnet 4.5 — Long Context | —                                        | Anthropic | 6.00       | 22.50       | 200K+   | flagship  | active                                                       |
-| Claude Haiku 4.5                 | anthropic.claude-haiku-4-5-20251001-v1:0 | Anthropic | 1.00       | 5.00        | 200K    | fast      | active                                                       |
-| Claude Opus 4.1                  | anthropic.claude-opus-4-1-20250805-v1:0  | Anthropic | 15.00      | 75.00       | 200K    | premium   | legacy (EOL Jan 8, 2027)                                     |
-| Claude Sonnet 4                  | anthropic.claude-sonnet-4-20250514-v1:0  | Anthropic | 3.00       | 15.00       | 200K    | flagship  | excluded (EOL Oct 14, 2026)                                  |
-| Llama 4 Maverick                 | meta.llama4-maverick-17b-instruct-v1:0   | Meta      | 0.24       | 0.97        | 1M      | mid       | active                                                       |
-| Llama 4 Scout                    | meta.llama4-scout-17b-instruct-v1:0      | Meta      | 0.17       | 0.66        | 10M     | efficient | active                                                       |
-| Llama 3.3 70B                    | meta.llama3-3-70b-instruct-v1:0          | Meta      | 0.72       | 0.72        | 128K    | mid       | active                                                       |
-| Llama 3.2 90B                    | meta.llama3-2-90b-instruct-v1:0          | Meta      | 0.72       | 0.72        | 128K    | mid       | EOL (Jul 7, 2026)                                            |
-| Nova 2 Lite                      | amazon.nova-2-lite-v1:0                  | Amazon    | 0.33       | 2.75        | 1M      | mid       | active                                                       |
-| Nova 2 Pro (Preview)             | amazon.nova-2-pro-v1:0                   | Amazon    | 1.375      | 11.00       | 1M      | flagship  | active                                                       |
-| Nova Pro                         | amazon.nova-pro-v1:0                     | Amazon    | 0.80       | 3.20        | 300K    | mid       | active                                                       |
-| Nova Pro (latency optimized)     | —                                        | Amazon    | 1.00       | 4.00        | 300K    | mid       | active                                                       |
-| Nova Lite                        | amazon.nova-lite-v1:0                    | Amazon    | 0.06       | 0.24        | 300K    | fast      | active                                                       |
-| Nova Micro                       | amazon.nova-micro-v1:0                   | Amazon    | 0.035      | 0.14        | 128K    | budget    | active                                                       |
-| Nova Premier                     | amazon.nova-premier-v1:0                 | Amazon    | 2.50       | 12.50       | 1M      | reasoning | EOL (2026-09-14)                                             |
-| Mistral Large 3                  | mistral.mistral-large-3-675b-instruct    | Mistral   | 0.50       | 1.50        | 256K    | flagship  | active                                                       |
-| DeepSeek-R1                      | deepseek.r1-v1:0                         | DeepSeek  | 1.35       | 5.40        | 128K    | reasoning | active                                                       |
-| DeepSeek-V3.1                    | —                                        | DeepSeek  | 0.58       | 1.68        | —       | mid       | active (Sydney only)                                         |
-| gpt-oss-20b                      | openai.gpt-oss-20b-1:0                   | OpenAI    | 0.07       | 0.30        | 128K    | budget    | active                                                       |
-| gpt-oss-120b                     | openai.gpt-oss-120b-1:0                  | OpenAI    | 0.15       | 0.60        | 128K    | efficient | active                                                       |
-| GPT-5.6 Sol                      | openai.gpt-5.6-sol                       | OpenAI    | 4.40       | 22.00       | 272K    | frontier  | active (mantle in-region + runtime CRIS; 1M tier 8.80/33.00) |
-| GPT-5.6 Terra                    | openai.gpt-5.6-terra                     | OpenAI    | 2.20       | 13.20       | 272K    | flagship  | active (mantle in-region + runtime CRIS; 1M tier 4.40/19.80) |
-| GPT-5.6 Luna                     | openai.gpt-5.6-luna                      | OpenAI    | 0.22       | 1.32        | 272K    | fast      | active (mantle in-region + runtime CRIS; 1M tier 0.44/1.98)  |
-| GPT-5.5                          | openai.gpt-5.5                           | OpenAI    | 5.50       | 33.00       | 272K    | frontier  | active (mantle only; no 1M tier)                             |
-| GPT-5.4                          | openai.gpt-5.4                           | OpenAI    | 2.75       | 16.50       | 272K    | flagship  | active (mantle only; no 1M tier)                             |
-| Gemma 4 31B                      | google.gemma-4-31b                       | Google    | 0.14       | 0.40        | 256K    | mid       | active (Mantle only)                                         |
-| Gemma 4 26B-A4B                  | google.gemma-4-26b-a4b                   | Google    | 0.13       | 0.40        | 256K    | efficient | active (Mantle only)                                         |
-| Gemma 4 E2B                      | google.gemma-4-e2b                       | Google    | 0.04       | 0.08        | 128K    | budget    | active (Mantle only)                                         |
-| Gemma 3 4B IT                    | google.gemma-3-4b-it                     | Google    | 0.04       | 0.08        | 128K    | budget    | active                                                       |
-| Gemma 3 12B IT                   | google.gemma-3-12b-it                    | Google    | 0.09       | 0.29        | 128K    | budget    | active                                                       |
-| Gemma 3 27B IT                   | google.gemma-3-27b-it                    | Google    | 0.23       | 0.38        | 128K    | efficient | active                                                       |
-| MiniMax M2                       | minimax.minimax-m2                       | MiniMax   | 0.30       | 1.20        | 1M      | mid       | active                                                       |
-| MiniMax M2.1                     | minimax.minimax-m2.1                     | MiniMax   | 0.30       | 1.20        | 196K    | mid       | active                                                       |
-| MiniMax M2.5                     | minimax.minimax-m2.5                     | MiniMax   | 0.30       | 1.20        | 196K    | mid       | active                                                       |
-| Jamba 1.5 Large                  | ai21.jamba-1-5-large-v1:0                | AI21 Labs | 2.00       | 8.00        | —       | mid       | excluded (EOL 2026-11-26)                                    |
-| Jamba 1.5 Mini                   | ai21.jamba-1-5-mini-v1:0                 | AI21 Labs | 0.20       | 0.40        | —       | efficient | excluded (EOL 2026-11-26)                                    |
-| Jurassic-2 Mid                   | —                                        | AI21 Labs | 12.50      | 12.50       | —       | legacy    | legacy                                                       |
-| Jurassic-2 Ultra                 | —                                        | AI21 Labs | 18.80      | 18.80       | —       | legacy    | legacy                                                       |
-| Jamba-Instruct                   | —                                        | AI21 Labs | 0.50       | 0.70        | —       | mid       | active                                                       |
+| Model                             | Model ID                                 | Provider  | Input $/1M | Output $/1M | Context | Tier      | Status                                                                   |
+| --------------------------------- | ---------------------------------------- | --------- | ---------- | ----------- | ------- | --------- | ------------------------------------------------------------------------ |
+| Claude Fable 5                    | anthropic.claude-fable-5                 | Anthropic | 10.00      | 50.00       | 1M      | frontier  | restricted (Covered Model; `aws_review` opt-in)                          |
+| Claude Fable 5.1                  | us.anthropic.claude-fable-5-1            | Anthropic | 10.00      | 50.00       | 1M      | frontier  | restricted (Covered Model; `aws_review` opt-in; CRIS only)               |
+| Claude Sonnet 5                   | anthropic.claude-sonnet-5                | Anthropic | 2.00       | 10.00       | 1M      | flagship  | active ($2/$10 made the standard price Sep 1, 2026)                      |
+| Claude Opus 5.5 (Global)          | global.anthropic.claude-opus-5-5         | Anthropic | 4.00       | 20.00       | 1M      | premium   | active (Global CRIS; no Batch; verified 2026-09-24)                      |
+| Claude Opus 5.5 (US Geo)          | us.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (commercial US Geo; no Batch; verified 2026-09-24)                |
+| Claude Opus 5.5 (EU Geo)          | eu.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (EU Geo; no Batch; verified 2026-09-24)                           |
+| Claude Opus 5.5 (AU Geo)          | au.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (AU Geo; no Batch; verified 2026-09-24)                           |
+| Claude Opus 5.5 (JP Geo)          | jp.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (JP Geo; no Batch; verified 2026-09-24)                           |
+| Claude Opus 5.5 (Mantle)          | anthropic.claude-opus-5-5                | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (commercial Mantle Messages; no Batch; verified 2026-09-24)       |
+| Claude Opus 5.5 (London in-region) | anthropic.claude-opus-5-5 | Anthropic | 4.40 | 22.00 | 1M | premium | active (eu-west-2 runtime only; no Batch; verified 2026-10-03) |
+| Claude Opus 5.5 (GovCloud Geo)    | us.anthropic.claude-opus-5-5             | Anthropic | 4.80       | 24.00       | 1M      | premium   | active (us-gov-east-1/us-gov-west-1 only; no Batch; verified 2026-09-24) |
+| Claude Opus 5.5 (GovCloud Mantle) | anthropic.claude-opus-5-5                | Anthropic | 4.80       | 24.00       | 1M      | premium   | active (us-gov-west-1 Mantle only; no Batch; verified 2026-09-24)        |
+| Claude Opus 4.8                   | anthropic.claude-opus-4-8                | Anthropic | 5.00       | 25.00       | 200K    | premium   | active                                                                   |
+| Claude Sonnet 4.6                 | anthropic.claude-sonnet-4-6              | Anthropic | 3.00       | 15.00       | 200K    | flagship  | active                                                                   |
+| Claude Sonnet 4.6 — Long Context  | anthropic.claude-sonnet-4-6              | Anthropic | 3.00       | 15.00       | 200K+   | flagship  | active                                                                   |
+| Claude Opus 4.6                   | anthropic.claude-opus-4-6-v1             | Anthropic | 5.00       | 25.00       | 200K    | premium   | active                                                                   |
+| Claude Opus 4.6 — Long Context    | anthropic.claude-opus-4-6-v1             | Anthropic | 5.00       | 25.00       | 200K+   | premium   | active                                                                   |
+| Claude Opus 4.5                   | —                                        | Anthropic | 5.00       | 25.00       | 200K    | premium   | active                                                                   |
+| Claude Sonnet 4.5                 | —                                        | Anthropic | 3.00       | 15.00       | 200K    | flagship  | active                                                                   |
+| Claude Sonnet 4.5 — Long Context  | —                                        | Anthropic | 6.00       | 22.50       | 200K+   | flagship  | active                                                                   |
+| Claude Haiku 4.5                  | anthropic.claude-haiku-4-5-20251001-v1:0 | Anthropic | 1.00       | 5.00        | 200K    | fast      | active                                                                   |
+| Claude Opus 4.1                   | anthropic.claude-opus-4-1-20250805-v1:0  | Anthropic | 15.00      | 75.00       | 200K    | premium   | legacy (EOL Jan 8, 2027)                                                 |
+| Claude Sonnet 4                   | anthropic.claude-sonnet-4-20250514-v1:0  | Anthropic | 3.00       | 15.00       | 200K    | flagship  | excluded (EOL Oct 14, 2026)                                              |
+| Llama 4 Maverick                  | meta.llama4-maverick-17b-instruct-v1:0   | Meta      | 0.24       | 0.97        | 1M      | mid       | active                                                                   |
+| Llama 4 Scout                     | meta.llama4-scout-17b-instruct-v1:0      | Meta      | 0.17       | 0.66        | 10M     | efficient | active                                                                   |
+| Llama 3.3 70B                     | meta.llama3-3-70b-instruct-v1:0          | Meta      | 0.72       | 0.72        | 128K    | mid       | active                                                                   |
+| Llama 3.2 90B                     | meta.llama3-2-90b-instruct-v1:0          | Meta      | 0.72       | 0.72        | 128K    | mid       | EOL (Jul 7, 2026)                                                        |
+| Nova 2 Lite                       | amazon.nova-2-lite-v1:0                  | Amazon    | 0.33       | 2.75        | 1M      | mid       | active                                                                   |
+| Nova 2 Pro (Preview)              | amazon.nova-2-pro-v1:0                   | Amazon    | 1.375      | 11.00       | 1M      | flagship  | active                                                                   |
+| Nova Pro                          | amazon.nova-pro-v1:0                     | Amazon    | 0.80       | 3.20        | 300K    | mid       | active                                                                   |
+| Nova Pro (latency optimized)      | —                                        | Amazon    | 1.00       | 4.00        | 300K    | mid       | active                                                                   |
+| Nova Lite                         | amazon.nova-lite-v1:0                    | Amazon    | 0.06       | 0.24        | 300K    | fast      | active                                                                   |
+| Nova Micro                        | amazon.nova-micro-v1:0                   | Amazon    | 0.035      | 0.14        | 128K    | budget    | active                                                                   |
+| Nova Premier                      | amazon.nova-premier-v1:0                 | Amazon    | 2.50       | 12.50       | 1M      | reasoning | EOL (2026-09-14)                                                         |
+| Mistral Large 3                   | mistral.mistral-large-3-675b-instruct    | Mistral   | 0.50       | 1.50        | 256K    | flagship  | active                                                                   |
+| DeepSeek-R1                       | deepseek.r1-v1:0                         | DeepSeek  | 1.35       | 5.40        | 128K    | reasoning | active                                                                   |
+| DeepSeek-V3.1                     | —                                        | DeepSeek  | 0.58       | 1.68        | —       | mid       | active (Sydney only)                                                     |
+| gpt-oss-20b                       | openai.gpt-oss-20b-1:0                   | OpenAI    | 0.07       | 0.30        | 128K    | budget    | active                                                                   |
+| gpt-oss-120b                      | openai.gpt-oss-120b-1:0                  | OpenAI    | 0.15       | 0.60        | 128K    | efficient | active                                                                   |
+| GPT-5.6 Sol                       | openai.gpt-5.6-sol                       | OpenAI    | 4.40       | 22.00       | 272K    | frontier  | active (mantle in-region + runtime CRIS; 1M tier 8.80/33.00)             |
+| GPT-5.6 Terra                     | openai.gpt-5.6-terra                     | OpenAI    | 2.20       | 13.20       | 272K    | flagship  | active (mantle in-region + runtime CRIS; 1M tier 4.40/19.80)             |
+| GPT-5.6 Luna                      | openai.gpt-5.6-luna                      | OpenAI    | 0.22       | 1.32        | 272K    | fast      | active (mantle in-region + runtime CRIS; 1M tier 0.44/1.98)              |
+| GPT-5.5                           | openai.gpt-5.5                           | OpenAI    | 5.50       | 33.00       | 272K    | frontier  | active (mantle only; no 1M tier)                                         |
+| GPT-5.4                           | openai.gpt-5.4                           | OpenAI    | 2.75       | 16.50       | 272K    | flagship  | active (mantle only; no 1M tier)                                         |
+| Gemma 4 31B                       | google.gemma-4-31b                       | Google    | 0.14       | 0.40        | 256K    | mid       | active (Mantle only)                                                     |
+| Gemma 4 26B-A4B                   | google.gemma-4-26b-a4b                   | Google    | 0.13       | 0.40        | 256K    | efficient | active (Mantle only)                                                     |
+| Gemma 4 E2B                       | google.gemma-4-e2b                       | Google    | 0.04       | 0.08        | 128K    | budget    | active (Mantle only)                                                     |
+| Gemma 3 4B IT                     | google.gemma-3-4b-it                     | Google    | 0.04       | 0.08        | 128K    | budget    | active                                                                   |
+| Gemma 3 12B IT                    | google.gemma-3-12b-it                    | Google    | 0.09       | 0.29        | 128K    | budget    | active                                                                   |
+| Gemma 3 27B IT                    | google.gemma-3-27b-it                    | Google    | 0.23       | 0.38        | 128K    | efficient | active                                                                   |
+| MiniMax M2                        | minimax.minimax-m2                       | MiniMax   | 0.30       | 1.20        | 1M      | mid       | active                                                                   |
+| MiniMax M2.1                      | minimax.minimax-m2.1                     | MiniMax   | 0.30       | 1.20        | 196K    | mid       | active                                                                   |
+| MiniMax M2.5                      | minimax.minimax-m2.5                     | MiniMax   | 0.30       | 1.20        | 196K    | mid       | active                                                                   |
+| Jamba 1.5 Large                   | ai21.jamba-1-5-large-v1:0                | AI21 Labs | 2.00       | 8.00        | —       | mid       | excluded (EOL 2026-11-26)                                                |
+| Jamba 1.5 Mini                    | ai21.jamba-1-5-mini-v1:0                 | AI21 Labs | 0.20       | 0.40        | —       | efficient | excluded (EOL 2026-11-26)                                                |
+| Jurassic-2 Mid                    | —                                        | AI21 Labs | 12.50      | 12.50       | —       | legacy    | legacy                                                                   |
+| Jurassic-2 Ultra                  | —                                        | AI21 Labs | 18.80      | 18.80       | —       | legacy    | legacy                                                                   |
+| Jamba-Instruct                    | —                                        | AI21 Labs | 0.50       | 0.70        | —       | mid       | active                                                                   |
 
 ### Stability AI — Image Generation (per image, US East)
 
@@ -477,18 +505,21 @@ Per 1M tokens unless noted. See [Bedrock pricing](https://aws.amazon.com/bedrock
 > batch metered IDs for Opus 4.6 / Sonnet 4.6 and collapses other batch/cache SKUs (known calculator defect, not a
 > pricing-page signal). The pricing page and the docs table above are the sources of truth.
 
-| Model                    | Batch in | Batch out | 5m cache write | 1h cache write | Cache read |
-| ------------------------ | -------- | --------- | -------------- | -------------- | ---------- |
-| Claude Fable 5           | N/A      | N/A       | 12.50          | 20.00          | 1.00       |
-| Claude Fable 5.1         | N/A      | N/A       | 12.50          | 20.00          | 0.25       |
-| Claude Sonnet 5          | 1.00 ‡   | 5.00 ‡    | 2.50           | 4.00           | 0.20       |
-| Claude Opus 4.8          | 2.50 ‡   | 12.50 ‡   | 6.25           | 10.00          | 0.50       |
-| Claude Sonnet 4.6 (+ LC) | 1.50     | 7.50      | 3.75           | 6.00           | 0.30       |
-| Claude Opus 4.6 (+ LC)   | 2.50     | 12.50     | 6.25           | 10.00          | 0.50       |
-| Claude Opus 4.5          | 2.50     | 12.50     | 6.25           | 10.00          | 0.50       |
-| Claude Haiku 4.5         | 0.50     | 2.50      | 1.25           | 2.00           | 0.10       |
-| Claude Sonnet 4.5        | 1.50     | 7.50      | 3.75           | 6.00           | 0.30       |
-| Claude Sonnet 4.5 — LC   | 3.00     | 11.25     | 7.50           | 12.00          | 0.60       |
+| Model                                   | Batch in | Batch out | 5m cache write | 1h cache write | Cache read |
+| --------------------------------------- | -------- | --------- | -------------- | -------------- | ---------- |
+| Claude Fable 5                          | N/A      | N/A       | 12.50          | 20.00          | 1.00       |
+| Claude Fable 5.1                        | N/A      | N/A       | 12.50          | 20.00          | 0.25       |
+| Claude Sonnet 5                         | 1.00 ‡   | 5.00 ‡    | 2.50           | 4.00           | 0.20       |
+| Claude Opus 5.5 (Global)                | N/A      | N/A       | 5.00           | 8.00           | 0.20       |
+| Claude Opus 5.5 (commercial Geo/Mantle/London runtime) | N/A      | N/A       | 5.50           | 8.80           | 0.22       |
+| Claude Opus 5.5 (GovCloud)              | N/A      | N/A       | 6.00           | 9.60           | 0.24       |
+| Claude Opus 4.8                         | 2.50 ‡   | 12.50 ‡   | 6.25           | 10.00          | 0.50       |
+| Claude Sonnet 4.6 (+ LC)                | 1.50     | 7.50      | 3.75           | 6.00           | 0.30       |
+| Claude Opus 4.6 (+ LC)                  | 2.50     | 12.50     | 6.25           | 10.00          | 0.50       |
+| Claude Opus 4.5                         | 2.50     | 12.50     | 6.25           | 10.00          | 0.50       |
+| Claude Haiku 4.5                        | 0.50     | 2.50      | 1.25           | 2.00           | 0.10       |
+| Claude Sonnet 4.5                       | 1.50     | 7.50      | 3.75           | 6.00           | 0.30       |
+| Claude Sonnet 4.5 — LC                  | 3.00     | 11.25     | 7.50           | 12.00          | 0.60       |
 
 _Batch: the Bedrock pricing page lists **N/A** for Claude Fable 5 and Fable 5.1 in both the Global and the Geo / In-region Anthropic tables (read 2026-09-03). Anthropic's first-party API offers a 50% batch discount on these models; Bedrock does not list one — do not assume a batch rate for Fable-class models._
 

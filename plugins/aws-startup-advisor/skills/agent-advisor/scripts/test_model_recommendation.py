@@ -225,7 +225,7 @@ def test_detected_version_features_emit_blocks_and_tuning():
         ({"governance": ["guardrails"]}, "runtime_converse"),
     ],
 )
-def test_structured_output_uses_portable_forced_tool_guidance(
+def test_older_target_forced_tool_guidance_requires_verified_support(
     requirements, expected_path
 ):
     rec = _recommend(
@@ -244,6 +244,7 @@ def test_structured_output_uses_portable_forced_tool_guidance(
         if item["code"] == "structured_output_portable_pattern"
     )
     assert "forced tool without strict" in finding["remediation"]
+    assert "only after verifying" in finding["remediation"]
 
 
 def test_structured_output_and_citations_emit_conflict():
@@ -396,7 +397,7 @@ def test_input_and_output_match_schemas():
 def test_catalog_records_path_specific_ids_and_limits():
     catalog = model_recommendation.load_catalog()
 
-    assert catalog["verified_at"] == "2026-07-21"
+    assert catalog["verified_at"] == "2026-09-24"
     assert catalog["verified_region"] == "us-east-1"
     assert (
         catalog["models"]["claude_sonnet_5"]["paths"]["mantle_messages"][
@@ -417,5 +418,5 @@ def test_catalog_records_path_specific_ids_and_limits():
         == "anthropic.claude-haiku-4-5-20251001-v1:0"
     )
     assert (
-        catalog["models"]["claude_opus_4_8"]["output_token_ceiling"] == 128000
+        catalog["models"]["claude_opus_5_5"]["output_token_ceiling"] == 128000
     )

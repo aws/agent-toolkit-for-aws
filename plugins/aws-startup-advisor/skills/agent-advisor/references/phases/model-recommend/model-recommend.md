@@ -267,6 +267,22 @@ model. Runtime recommendations with an unresolved CRIS profile produce `needs_re
 Keep `model-verification.json` when generated and show its per-workload status. A failed probe
 does not change the accepted recommendation; it blocks runnable POC claims until resolved.
 
+When this engine rewrites a recommendation, it removes the sibling `model-verification.json`
+if any workload's model, API, invocation ID, region, allowed profile set or allowed in-region
+model ARN set changed. An unchanged
+invocation contract retains its verification. After invalidation, treat verification as
+`not_run`; do not restore a passed result from an older design or report.
+
+For an Opus 5.5 application-profile ARN, the verifier first reads `GetInferenceProfile`
+for that ARN and the recommendation's `verification.allowed_inference_profiles`. It requires
+active destinations matching the selected model and an allowed regional profile before
+invoking the original ARN. The caller needs `bedrock:GetInferenceProfile` for these metadata
+reads; a failed or inconclusive check prevents inference and does not establish access.
+For London in-region profiles, `verification.allowed_in_region_model_arns` carries the
+exact permitted foundation-model destination. An ACTIVE application profile with only that
+destination is also valid; a different model, region or additional destination is not accepted
+by this rule. Cross-region application profiles still need the reference-profile comparison.
+
 ## Step 8 — Present the recommendation and advance
 
 For each workload, show the primary model, API path, resolved invocation ID or CRIS TODO,

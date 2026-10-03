@@ -266,6 +266,10 @@ Case 1 — `no_golden_cases: true` is in the evaluator's `notes`:
 Case 2 — `same_model_family: true — connectivity-only verification`
 is in the evaluator's `notes`:
 
+Consume the centrally validated analysis and evaluation supplied by the orchestrator.
+C0 invalidates older evaluation contracts before dispatch; `validate_result.py --schema analysis`
+checks the identity claim. This agent does not re-derive identity or dispatch earlier phases.
+
 > ℹ️ **Connectivity-only verification (same-model migration).** This run
 > keeps the same model on Bedrock — either Anthropic 1P → Bedrock Claude,
 > or OpenAI → the same GPT model on Bedrock. Rubric scoring was skipped

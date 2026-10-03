@@ -8,7 +8,7 @@ Verify all pricing against `references/shared/pricing-cache.md`.
 
 **Model lifecycle:** Before recommending any Bedrock model, check `references/vendored/ai/ai-model-lifecycle.md`. Do not recommend Legacy models as primary selections for new migrations. Legacy models are annotated below where they appear.
 
-**Recommend defaults (Sep 2026):** Claude Sonnet 5 (`anthropic.claude-sonnet-5`) for balanced/flagship; Claude Opus 4.8 for hardest reasoning; Claude Haiku 4.5 for cost/speed. Sonnet 5 is **$2/$10** — the launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled); comparison tables below use $2/$10. Do not default to any Claude Fable / Mythos frontier model.
+**Recommend defaults:** Claude Sonnet 5 for balanced/flagship; Claude Opus 5.5 for demanding reasoning (20% lower standard input/output token prices than Opus 5; [Anthropic reports improved token efficiency](https://claude.com/blog/what-a-task-costs-on-opus-5-5), with actual usage varying by task and effort setting); Claude Haiku 4.5 for cost/speed. Sonnet 5 is **$2/$10** — the launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled); comparison tables below use $2/$10. Do not default to any Claude Fable / Mythos frontier model.
 
 ---
 
@@ -39,21 +39,21 @@ Gemini 3.5 Flash is now GA (May 2026) — the current flagship Flash model. Gemi
 
 ## Bedrock Model Portfolio
 
-| Model            | Best For                                                            | Complexity | Speed  | Context |
-| ---------------- | ------------------------------------------------------------------- | ---------- | ------ | ------- |
-| Claude Sonnet 5  | Agentic tasks, tool use                                             | High       | High   | 1M      |
-| Claude Opus 4.6  | Maximum reasoning                                                   | High       | Medium | 200K    |
-| Claude Haiku 4.5 | Simple + fast                                                       | Medium     | High   | 200K    |
-| Llama 4 Maverick | Cost-effective + multimodal                                         | Medium     | High   | 1M      |
-| Llama 4 Scout    | Ultra-long context, cheapest                                        | Medium     | Medium | 10M     |
-| Nova 2 Pro       | AWS flagship, multimodal                                            | High       | High   | 1M      |
-| Nova 2 Lite      | AWS mid-tier, long context                                          | Medium     | High   | 1M      |
-| Nova Pro         | AWS balanced                                                        | Medium     | High   | 300K    |
-| Nova Lite        | AWS fast + cheapest                                                 | Medium     | High   | 300K    |
-| Nova Micro       | AWS fastest, text-only                                              | Low        | High   | 128K    |
-| Nova Premier     | Complex reasoning — **Legacy** (EOL Sep 14, 2026) prefer Nova 2 Pro | High       | Medium | 1M      |
-| DeepSeek-R1      | Chain-of-thought reasoning                                          | High       | Medium | 128K    |
-| Mistral Large 3  | EU/Multilingual                                                     | High       | Medium | 256K    |
+| Model            | Best For                                                            | Complexity | Speed   | Context |
+| ---------------- | ------------------------------------------------------------------- | ---------- | ------- | ------- |
+| Claude Sonnet 5  | Agentic tasks, tool use                                             | High       | High    | 1M      |
+| Claude Opus 5.5  | Demanding reasoning; no Batch                                       | High       | Measure | 1M      |
+| Claude Haiku 4.5 | Simple + fast                                                       | Medium     | High    | 200K    |
+| Llama 4 Maverick | Cost-effective + multimodal                                         | Medium     | High    | 1M      |
+| Llama 4 Scout    | Ultra-long context, cheapest                                        | Medium     | Medium  | 10M     |
+| Nova 2 Pro       | AWS flagship, multimodal                                            | High       | High    | 1M      |
+| Nova 2 Lite      | AWS mid-tier, long context                                          | Medium     | High    | 1M      |
+| Nova Pro         | AWS balanced                                                        | Medium     | High    | 300K    |
+| Nova Lite        | AWS fast + cheapest                                                 | Medium     | High    | 300K    |
+| Nova Micro       | AWS fastest, text-only                                              | Low        | High    | 128K    |
+| Nova Premier     | Complex reasoning — **Legacy** (EOL Sep 14, 2026) prefer Nova 2 Pro | High       | Medium  | 1M      |
+| DeepSeek-R1      | Chain-of-thought reasoning                                          | High       | Medium  | 128K    |
+| Mistral Large 3  | EU/Multilingual                                                     | High       | Medium  | 256K    |
 
 ---
 
@@ -61,17 +61,18 @@ Gemini 3.5 Flash is now GA (May 2026) — the current flagship Flash model. Gemi
 
 ### Gemini Pro Tier
 
-| Gemini Model   | Price (in/out per 1M) | Best Bedrock Match | Bedrock Price  | Winner              |
-| -------------- | --------------------- | ------------------ | -------------- | ------------------- |
-| Gemini 3.1 Pro | $2.00 / $12.00        | Claude Sonnet 5    | $2.00 / $10.00 | Bedrock 13% cheaper |
-| Gemini 3.1 Pro | $2.00 / $12.00        | Claude Opus 4.8    | $5.00 / $25.00 | Gemini 54% cheaper  |
-| Gemini 3.1 Pro | $2.00 / $12.00        | Nova 2 Pro         | $1.38 / $11.00 | Bedrock 14% cheaper |
-| Gemini 3 Pro   | $0.50 / $3.00         | Llama 4 Maverick   | $0.24 / $0.97  | Bedrock 64% cheaper |
-| Gemini 3 Pro   | $0.50 / $3.00         | Llama 4 Scout      | $0.17 / $0.66  | Bedrock 75% cheaper |
-| Gemini 3 Pro   | $0.50 / $3.00         | Nova Pro           | $0.80 / $3.20  | Gemini 17% cheaper  |
-| Gemini 2.5 Pro | $1.25 / $10.00        | Claude Sonnet 5    | $2.00 / $10.00 | Gemini 11% cheaper  |
-| Gemini 2.5 Pro | $1.25 / $10.00        | Nova Pro           | $0.80 / $3.20  | Bedrock 62% cheaper |
-| Gemini 2.5 Pro | $1.25 / $10.00        | Nova 2 Pro         | $1.38 / $11.00 | Gemini 9% cheaper   |
+| Gemini Model   | Price (in/out per 1M) | Best Bedrock Match               | Bedrock Price  | Winner              |
+| -------------- | --------------------- | -------------------------------- | -------------- | ------------------- |
+| Gemini 3.1 Pro | $2.00 / $12.00        | Claude Sonnet 5                  | $2.00 / $10.00 | Bedrock 13% cheaper |
+| Gemini 3.1 Pro | $2.00 / $12.00        | Claude Opus 5.5 (Global)         | $4.00 / $20.00 | Gemini 43% cheaper  |
+| Gemini 3.1 Pro | $2.00 / $12.00        | Claude Opus 5.5 (commercial Geo) | $4.40 / $22.00 | Gemini 48% cheaper  |
+| Gemini 3.1 Pro | $2.00 / $12.00        | Nova 2 Pro                       | $1.38 / $11.00 | Bedrock 14% cheaper |
+| Gemini 3 Pro   | $0.50 / $3.00         | Llama 4 Maverick                 | $0.24 / $0.97  | Bedrock 64% cheaper |
+| Gemini 3 Pro   | $0.50 / $3.00         | Llama 4 Scout                    | $0.17 / $0.66  | Bedrock 75% cheaper |
+| Gemini 3 Pro   | $0.50 / $3.00         | Nova Pro                         | $0.80 / $3.20  | Gemini 17% cheaper  |
+| Gemini 2.5 Pro | $1.25 / $10.00        | Claude Sonnet 5                  | $2.00 / $10.00 | Gemini 11% cheaper  |
+| Gemini 2.5 Pro | $1.25 / $10.00        | Nova Pro                         | $0.80 / $3.20  | Bedrock 62% cheaper |
+| Gemini 2.5 Pro | $1.25 / $10.00        | Nova 2 Pro                       | $1.38 / $11.00 | Gemini 9% cheaper   |
 
 > **Gemini 3.1 Pro breakpoint:** $4.00/$18.00 per 1M for prompts >200k tokens. Table above uses ≤200k rates.
 
@@ -110,7 +111,7 @@ Gemini 3.1 Pro Preview matches or beats Opus 4.6 on most reasoning benchmarks at
 
 - If user needs **general reasoning/coding quality** → Gemini 3.1 Pro is competitive or better. Migration case is weak unless driven by AWS consolidation.
 - If user needs **agentic reliability** (real-world multi-step tasks) → **Claude Sonnet 5** still leads on GDPval. This is the honest differentiator.
-- If user needs **maximum reasoning on hardest problems** → **Claude Opus 4.8** ($5/$25 headline on-demand, same tier as Opus 4.6) — use the latest [Claude on Bedrock](https://aws.amazon.com/bedrock/pricing/) model card for benchmark deltas vs Gemini; Opus 4.6 remains a same-price alternative where batch or regional availability matters.
+- If user needs **maximum reasoning on hardest problems** → **Claude Opus 5.5** (20% lower standard input/output token prices than Opus 5; [Anthropic reports improved token efficiency](https://claude.com/blog/what-a-task-costs-on-opus-5-5), with actual usage varying by task and effort setting) — use the latest [Claude on Bedrock](https://aws.amazon.com/bedrock/pricing/) model card for benchmark deltas vs Gemini; keep Opus 4.6 when Batch is required because Opus 5.5 has no Batch tier. Confirm regional availability before selecting either.
 
 ### Speed-First
 
@@ -155,19 +156,22 @@ Gemini Flash → **Nova Micro** (<200ms, text-only, cheapest), **Haiku 4.5** (<4
 
 ## Cost Comparison Table (150M input + 75M output per month)
 
-| Gemini Model                    | Monthly | Best Bedrock Match             | Monthly | Difference |
-| ------------------------------- | ------- | ------------------------------ | ------- | ---------- |
-| Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Claude Sonnet 5 ($2/$10)       | $1,050  | -13%       |
-| Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Claude Opus 4.8 ($5/$25)       | $2,625  | +54%       |
-| Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Nova 2 Pro ($1.38/$11.00)      | $1,032  | -14%       |
-| Gemini 3 Pro ($0.50/$3.00)      | $300    | Llama 4 Maverick ($0.24/$0.97) | $109    | -64%       |
-| Gemini 3 Pro ($0.50/$3.00)      | $300    | Llama 4 Scout ($0.17/$0.66)    | $75     | -75%       |
-| Gemini 2.5 Pro ($1.25/$10)      | $938    | Nova 2 Pro ($1.38/$11.00)      | $1,032  | +9%        |
-| Gemini 2.5 Pro ($1.25/$10)      | $938    | Nova Pro ($0.80/$3.20)         | $360    | -62%       |
-| Gemini 2.5 Flash ($0.30/$2.50)  | $233    | Nova Lite ($0.06/$0.24)        | $27     | -88%       |
-| Gemini 2.0 Flash ($0.10/$0.40)  | $45     | Nova Micro ($0.035/$0.14)      | $16     | -64%       |
+| Gemini Model                    | Monthly | Best Bedrock Match                         | Monthly | Difference |
+| ------------------------------- | ------- | ------------------------------------------ | ------- | ---------- |
+| Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Claude Sonnet 5 ($2/$10)                   | $1,050  | -13%       |
+| Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Claude Opus 5.5 Global ($4/$20)            | $2,100  | +75%       |
+| Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Claude Opus 5.5 commercial Geo ($4.40/$22) | $2,310  | +92.5%     |
+| Gemini 3.1 Pro Preview ($2/$12) | $1,200  | Nova 2 Pro ($1.38/$11.00)                  | $1,032  | -14%       |
+| Gemini 3 Pro ($0.50/$3.00)      | $300    | Llama 4 Maverick ($0.24/$0.97)             | $109    | -64%       |
+| Gemini 3 Pro ($0.50/$3.00)      | $300    | Llama 4 Scout ($0.17/$0.66)                | $75     | -75%       |
+| Gemini 2.5 Pro ($1.25/$10)      | $938    | Nova 2 Pro ($1.38/$11.00)                  | $1,032  | +9%        |
+| Gemini 2.5 Pro ($1.25/$10)      | $938    | Nova Pro ($0.80/$3.20)                     | $360    | -62%       |
+| Gemini 2.5 Flash ($0.30/$2.50)  | $233    | Nova Lite ($0.06/$0.24)                    | $27     | -88%       |
+| Gemini 2.0 Flash ($0.10/$0.40)  | $45     | Nova Micro ($0.035/$0.14)                  | $16     | -64%       |
 
-_Difference column shows blended savings at a 2:1 input/output token ratio. Positive = Bedrock costs more (Gemini cheaper), negative = Bedrock cheaper._
+_For the Opus 5.5 rows, Difference = (Bedrock monthly cost / Gemini monthly cost - 1). Global pricing applies only when worldwide routing is allowed; Geo preserves its supported geography. Costs use identical input/output token volumes, with no assumed token-efficiency discount._
+
+_Other rows retain their prior comparisons. Positive = Bedrock costs more (Gemini cheaper), negative = Bedrock cheaper._
 
 ---
 
