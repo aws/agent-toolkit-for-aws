@@ -1,4 +1,9 @@
 {
+  "_comment": "Minimal Estimate output for the decision-gate oracle. Carries the keys estimation-infra.schema.json marks required (phase, pricing_source.status, complexity_tier, recommendation.path) so scripts/validate-artifacts.py --fixtures keeps this golden on-contract; check_expected_decide.py reads only projected_costs, current_costs and recommendation.outcome*.",
+  "phase": "estimate",
+  "pricing_source": {
+    "status": "cached"
+  },
   "projected_costs": {
     "aws_monthly_balanced": 155,
     "aws_monthly_premium": 212,
@@ -9,6 +14,8 @@
   },
   "recommendation": {
     "outcome": "conditional_go",
-    "outcome_label": "Go, with conditions"
-  }
+    "outcome_label": "Go, with conditions",
+    "path": "migrate_optimized"
+  },
+  "complexity_tier": "small"
 }
