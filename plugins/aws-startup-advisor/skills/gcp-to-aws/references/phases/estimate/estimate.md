@@ -178,11 +178,14 @@ commit." Suggest at most one.
      `$MIGRATION_DIR/decision-report.html` and `$MIGRATION_DIR/DECISION.md`
      per that file's decision-mode rules (no appendices, no Terraform, CTA
      footer). Validate with
-     `python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision`
+     `python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
      and pass `--estimation-infra` / `--estimation-ai` / `--aws-design` when
      those files exist so the Cost Optimization gate can fire
      (absolute paths — cwd must not be load-bearing) and fix failures before
-     presenting.
+     presenting. `--migration-dir` is required on a real run: it is how the
+     validator finds `scenarios/index.json`, so the what-if column check
+     (Region, HA, Compute, Arch, the three tiers, Complexity) fires when
+     Workshop produced two or more scenarios before the user chose A.
   2. Set `run_mode: "decide"` and `current_phase: "complete"` in
      `.phase-status.json` (`phases.generate` **stays** `"pending"` — this
      combination means "decision complete, execution available on request";
