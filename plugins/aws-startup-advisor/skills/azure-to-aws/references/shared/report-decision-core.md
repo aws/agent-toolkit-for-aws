@@ -222,7 +222,8 @@ Resolve knobs from each scenario's preferences copy (or
 `design_constraints.cpu_architecture.value`. Costs and complexity ←
 `estimation_summary`.
 3. Mark the active row (`scenario_id == index.active_scenario_id`) with
-`class="active-scenario"` or an "(active)" label.
+`class="active-scenario"` or an "(active)" label. Rows whose manifest carries
+`stale: true` are labelled "(stale — priced before a decision-gate correction)".
 4. Under the table: active vs baseline knob deltas (plain language); any
 `graviton_note` / `region_note`;
 remind that discovery inventory is frozen

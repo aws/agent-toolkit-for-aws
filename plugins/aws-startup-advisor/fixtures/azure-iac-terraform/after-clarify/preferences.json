@@ -1,6 +1,14 @@
 {
   "_what_this_is": "GOLDEN preferences.json for the azure-iac-terraform corpus, with clarify-answers.json as the user. It is a BLOCKED Clarify: baseline.azure_monthly_spend is ESSENTIAL and unanswered, so the phase must emit GATE_FAIL. That is deliberate \u2014 it pins the completion gate rather than only the happy path.",
   "phase": "clarify",
+  "metadata": {
+    "clarify_mode": "wizard",
+    "fast_path_eligible": false,
+    "questions_defaulted": [],
+    "deferred_to_generate": [
+      "data.db_cutover"
+    ]
+  },
   "clarify_status": "BLOCKED_ON_ESSENTIAL",
   "global": {
     "target_region": {
@@ -80,9 +88,13 @@
       "context": "The source PostgreSQL flexible server is zone-redundant (high_availability.mode ZoneRedundant). Choosing single-az is a deliberate downgrade and Design will surface it as a finding; multi-az-ha would select Aurora instead of RDS."
     },
     "db_cutover": {
-      "disposition": "ESSENTIAL",
-      "value": "dms",
-      "default": null
+      "disposition": "PROPOSED",
+      "value": "dump_restore",
+      "default": "dump_restore",
+      "deferred_to_generate": true,
+      "default_basis": "largest relational DB 64 GiB <= 100 GiB",
+      "largest_relational_db_gib": 64,
+      "size_coverage": "complete"
     },
     "traffic_pattern": {
       "disposition": "PROPOSED",
