@@ -78,6 +78,8 @@ def normalize_api_path(plan_path: str | None, model_ids: list[str],
     use Mantle Responses; runtime targets retain the existing Converse default.
     A mixed legacy target set needs an explicit plan rather than an unsafe guess.
     """
+    if plan_path == "mantle" and model_ids and all(is_mantle_model(mid) for mid in model_ids):
+        return "mantle_openai_responses"
     if plan_path == "runtime_openai_cris":
         paths = {"converse": plan_path, "responses": "runtime_openai_responses",
                  "chat_completions": "runtime_openai_chat"}

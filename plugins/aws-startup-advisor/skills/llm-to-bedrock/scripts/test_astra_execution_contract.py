@@ -63,10 +63,16 @@ def test_astra_connectivity_uses_selected_openai_api(surface, mid, monkeypatch):
     ("us.openai.gpt-6-astra", "responses", "responses"),
     ("global.openai.gpt-6-astra", "chat_completions", "chat"),
     ("openai.gpt-5.6-sol", "responses", "responses"),
+    ("openai.gpt-6-astra", "legacy_mantle", "responses"),
+    ("openai.gpt-5.6-sol", "legacy_mantle", "responses"),
     ("us.openai.gpt-5.6-sol", "converse", "runtime"),
 ])
 def test_golden_loop_preserves_endpoint_images_and_resume(mid, surface, endpoint, monkeypatch, tmp_path):
     responses, chat, runtime = clients(monkeypatch)
+    if surface == "legacy_mantle":
+        path = preflight_bedrock.normalize_api_path("mantle", [mid])
+        surface = ("chat_completions" if path.endswith("_openai_chat") else
+                   "responses" if path.endswith("_openai_responses") else "converse")
     calls = {"responses": responses, "chat": chat, "runtime": runtime}
     data = tmp_path / ".saws-migrate/golden-dataset"
     out = tmp_path / ".saws-migrate/eval-results"

@@ -449,6 +449,8 @@ Read `plan_runtime_api` from the selected model row's `runtime_api`, falling bac
 `ai_architecture.code_migration.runtime_api`; absent means `None`. A `runtime_openai_cris`
 plan resolves to `runtime_openai_chat` or `runtime_openai_responses` when that API is explicit,
 and retains the Converse default otherwise. Do not ignore this field on dispatch or resume.
+The legacy `migration_path: "mantle"` alias with bare proprietary GPT targets resolves to
+`mantle_openai_responses`, so evaluator and rewriter keep the documented Responses default.
 Other explicit `migration_path` values are preserved. With no path, an all-bare proprietary GPT target
 set (including Astra) resolves to `mantle_openai_responses`; runtime targets use `converse`.
 A mixed legacy target set is `model_unresolvable`: stop before evaluation and request an
