@@ -9,7 +9,16 @@
       "<subscription-unknown>"
     ],
     "total_resources": 30,
-    "confidence": "inferred"
+    "confidence": "inferred",
+    "clarify_fast_path": {
+      "eligible": false,
+      "reasons_ineligible": [
+        "has_vm",
+        "has_ha_database",
+        "cluster_count",
+        "total_resources"
+      ]
+    }
   },
   "resources": [
     {

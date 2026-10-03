@@ -45,7 +45,9 @@ author, explain, or debug a body (full detail in "API save semantics", section 4
 - **A structural or key error is REJECTED at save (HTTP 400 `ValidationException`).**
   The root and panel objects are schema-validated (`additionalProperties` off), so this
   covers an unknown or misspelled key there (a top-level `refreshInterval`, a per-panel
-  `id`, a misspelled `title`), a bad `variant` enum, a missing or non-array `panels`, a
+  `id`, a misspelled `title`, or a **`source`** placed at panel level instead of inside
+  `config` — `panels[0]: does not satisfy the 'additionalProperties' constraint of the
+  dashboard body schema`), a bad `variant` enum, a missing or non-array `panels`, a
   panel missing its required `type` or `layout`, and an out-of-bounds coordinate FIELD
   (`x`/`y` below 0, `w` below 1). The save does NOT succeed — none of these is silently
   dropped. Validate the structure and every root/panel key against section 4.
@@ -125,11 +127,11 @@ not a re-paste of every detail.
 - **The two panel shapes authors most often mis-pick:** a single scalar aggregate →
   `number`, not `table`; a top-N ranking (`ORDER BY … LIMIT` / `topk`) → `table`, not
   `line` (§4, "Visualizations").
-- **The `number`-tile `COUNT(*)` product bug.** A `COUNT(*)`-shaped scalar in a `number`
-  panel renders the result-set ROW COUNT (usually `1`), not the count value; put the
-  `COUNT(*)` in a `table` panel instead, and for any other scalar aggregate make it the
-  first selected column so the `number` tile reads the value rather than the row count
-  (§4, "Visualizations", "`number` tile trap").
+- **The `number`-tile single-column product bug.** A `number` panel whose SQL selects
+  **one column** renders the result-set ROW COUNT, not the value — so every single-row
+  scalar aggregate reads `1`. This is not specific to `COUNT(*)`, and making the aggregate
+  the only/first selected column is exactly what triggers it. Put a scalar KPI in a
+  `table` panel (§4, "Visualizations", "`number` tile trap").
 - **The save boundary — where the API is loud vs silent.** SILENT (saves HTTP 200,
   fails only at render): an unknown key INSIDE `config` is stored, round-trips on read,
   and is silently ignored; and a cross-field `x + w > 60` overflow blanks the whole
@@ -228,6 +230,8 @@ through the service's control plane.
   **fixed** `scope.timeRange` (absolute start and end) on the dashboard so every
   panel covers the incident, then golden-signal charts plus a `spans` panel — or
   a `dashboard` panel with `source.id: "trace-details"` — for the offending path.
+  The fixed scope is what lets a pinned trace resolve at all, not a nicety of
+  presentation — such a `dashboard` panel outside it reports the trace as not found.
   Find the offending trace with a span query per
   [sql-logs-traces.md](query/sql-logs-traces.md) and pin its `traceId` in that
   panel's `source.params.traceConfig`.
@@ -428,7 +432,7 @@ blanks the canvas at render (see "API save semantics" below).
 
 ```jsonc
 "config": {
-  "queryString": "sum by (FunctionName) (rate({__name__=\"Invocations\", \"@instrumentation.@name\"=\"cloudwatch.aws/lambda\"}[5m]))",
+  "queryString": "sum by (FunctionName) (sum_over_time({__name__=\"Invocations\", \"@instrumentation.@name\"=\"cloudwatch.aws/lambda\"}[5m]))",
   "queryLanguage": "promql",      // 'sql' | 'promql' — REQUIRED; SET IT EXPLICITLY; not inferred; a mismatch silently blanks the panel
   "visualization": "line",         // REQUIRED; one of the nine below; missing or unknown silently blanks the panel (no 'table' fallback)
   "autoRun": true,                 // run on open — set this on any data panel
@@ -483,8 +487,9 @@ withdrawn (readable, not authorable). Author a `dashboard` panel instead:
 
 ```jsonc
 { "type": "dashboard",
-  "source": { "kind": "system", "id": "alert-details", "version": 1,
-              "params": { "alertName": "checkout-error-rate-high", "alertId": "6c89…" } },  // alertName required; alertId optional
+  "config": {   // `source` must sit INSIDE config — at panel level the save is rejected
+    "source": { "kind": "system", "id": "alert-details", "version": 1,
+                "params": { "alertName": "checkout-error-rate-high", "alertId": "6c89…" } } },  // alertName required; alertId optional
   "layout": { "x": 0, "y": 0, "w": 60, "h": "auto" } }
 ```
 
@@ -523,19 +528,31 @@ saves with HTTP 200 and blanks the canvas. Author a `dashboard` panel whose
 `source.id` is `trace-details`:
 
 ```jsonc
-{ "type": "dashboard",
-  "source": { "kind": "system", "id": "trace-details", "version": 1,
-              "params": { "traceConfig": {
-                "traceId": "…",                                    // required
-                "startTime": 1730000000000, "endTime": 1730000600000,
-                "initialMode": "waterfall",  // waterfall | graph | flame | raw (`flamegraph` is a legacy alias read as `graph`)
-                "focusSpanId": "…" } } },    // optional — deep-link to a specific span
-  "layout": { "x": 0, "y": 0, "w": 60, "h": "auto" } }
+{ "scope": { "timeRange": { "start": "2024-06-01T14:00:00Z", "end": "2024-06-01T15:00:00Z" } },
+  // ^ load-bearing: the trace is looked up inside this window (see below)
+  "panels": [
+    { "type": "dashboard",
+      "config": {   // `source` must sit INSIDE config — at panel level the save is rejected
+        "source": { "kind": "system", "id": "trace-details", "version": 1,
+                    "params": { "traceConfig": {
+                      "traceId": "…",                                    // required
+                      "initialMode": "waterfall",  // waterfall | graph | flame | raw (`flamegraph` is a legacy alias read as `graph`)
+                      "focusSpanId": "…" } } } },  // optional — deep-link to a specific span
+      "layout": { "x": 0, "y": 0, "w": 60, "h": "auto" } } ] }
 ```
 
-`startTime`/`endTime` are epoch **milliseconds** in `traceConfig` (not the panel
-scope), fixed at author time. A pinned trace is useful only while it is still
-retained — prefer a `spans` panel for a durable dashboard.
+**The dashboard's own `scope.timeRange` is what finds the trace — give it one that
+covers the trace's timestamps.** Whatever window the viewer is on is the window the
+lookup uses, so a trace older than that window reports `Trace not found — This trace
+has no spans in the selected time range` even though the id is right and the spans are
+retained. Pin an absolute `start`/`end` around the incident, exactly as the
+Incident-review recipe above does; a relative default such as the viewer's last 30
+minutes will lose the trace as soon as it ages past it.
+
+`traceConfig` may also carry `startTime`/`endTime` (epoch **milliseconds**), and a body
+that already has them still saves and reads back — but they do not select the lookup
+window and setting them is not a substitute for the scope. A pinned trace is useful only
+while it is still retained; prefer a `spans` panel for a durable dashboard.
 
 ### Visualizations — exactly nine legal values
 
@@ -549,12 +566,27 @@ retained — prefer a `spans` panel for a durable dashboard.
 > as `stacked-bar`, or the empty string `""` saves with HTTP 200 but silently blanks
 > the panel at render.
 
-**`number` tile trap (known product bug).** A `number` panel driven by a
-`SELECT count(*) AS n` (or similar `COUNT(*)`) query currently renders the ROW
-COUNT of the result set — usually `1` when the query aggregates to one row —
-instead of the value in the aliased column. Author the query so the aggregate
-value is the first column of the first row (e.g. `SELECT <aggregate_expression>`),
-and reserve `COUNT(*)`-shaped queries for `table` panels until the bug is fixed.
+**`number` tile trap (known product bug).** A `number` panel whose SQL result set has
+**exactly one column** renders the ROW COUNT of that result set instead of the value,
+and labels it with the literal legend `value` rather than the column alias. Measured on
+a live Space: a one-column query returning 5 rows renders `5`, one returning 3 rows
+renders `3`, and any single-row scalar aggregate therefore renders `1` —
+`SELECT max(severityNumber) AS m` and `SELECT count(*) AS n` both show `1` while the
+same queries return `9` and `810972`.
+
+The trigger is the **single column**, not `COUNT(*)`, so do **not** try to fix this by
+making the aggregate the only or first selected column — that is the shape that breaks.
+
+- **A single scalar KPI belongs in a `table` panel.** Verified: the same two queries in
+  `table` panels render `9` and `810972` under their own aliases. This is the only form
+  that reliably shows the value you asked for.
+- **A trend-shaped KPI works in a `number` panel** because the bucket column makes the
+  result two columns: `SELECT date_trunc('minute', \`@timestamp\`) AS t, count(*) AS n …
+  GROUP BY t ORDER BY t` renders the latest bucket's value, legend `n`.
+- Adding a second column does make a real value appear, but **which** column it reads is
+  not predictable from the query, so do not build a KPI tile on it: measured,
+  `SELECT max(…) AS m, count(*) AS n` rendered `n`, `SELECT count(*) AS n, 0 AS pad`
+  rendered `n`, and `SELECT max(…) AS m, 'x' AS pad` rendered `m`.
 
 Pick by signal kind:
 
@@ -1118,7 +1150,9 @@ re-sequence `y`.
 
 ### Lambda
 
-Serverless function — RED-shaped; scope `cloudwatch.aws/lambda` by `FunctionName`.
+Serverless function — RED-shaped; scope `cloudwatch.aws/lambda` by `FunctionName`. The vended
+Lambda counters (`Invocations`, `Errors`, `Throttles`) are **delta Sums**, so every count panel
+uses `sum_over_time(...[5m])`; `rate()` on them renders `NaN` (see promql-metrics.md section 4).
 `Duration` is a gauge with no percentile label; the error-rate tile is the derived
 `Errors / Invocations`.
 
@@ -1126,12 +1160,12 @@ Serverless function — RED-shaped; scope `cloudwatch.aws/lambda` by `FunctionNa
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Invocations/s | `number` | `sum(rate({__name__="Invocations", "@instrumentation.@name"="cloudwatch.aws/lambda", FunctionName="<fn>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
-| Error rate | `number` | `sum(rate({__name__="Errors", …, FunctionName="<fn>"}[5m])) / sum(rate({__name__="Invocations", …, FunctionName="<fn>"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
-| Throttles/s | `number` | `sum(rate({__name__="Throttles", …, FunctionName="<fn>"}[5m]))` | `{x:30,y:0,w:15,h:120}` |
+| Invocations (5m) | `number` | `sum(sum_over_time({__name__="Invocations", "@instrumentation.@name"="cloudwatch.aws/lambda", FunctionName="<fn>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
+| Error rate | `number` | `sum(sum_over_time({__name__="Errors", …, FunctionName="<fn>"}[5m])) / sum(sum_over_time({__name__="Invocations", …, FunctionName="<fn>"}[5m]))` | `{x:15,y:0,w:15,h:120}` |
+| Throttles (5m) | `number` | `sum(sum_over_time({__name__="Throttles", …, FunctionName="<fn>"}[5m]))` | `{x:30,y:0,w:15,h:120}` |
 | Concurrency | `number` | `max({__name__="ConcurrentExecutions", …, FunctionName="<fn>"})` | `{x:45,y:0,w:15,h:120}` |
-| Invocation rate | `line` | `sum by (FunctionName) (rate({__name__="Invocations", …, FunctionName="<fn>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
-| Errors/s | `line` | `sum by (FunctionName) (rate({__name__="Errors", …, FunctionName="<fn>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
+| Invocations over time | `line` | `sum by (FunctionName) (sum_over_time({__name__="Invocations", …, FunctionName="<fn>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
+| Errors over time | `line` | `sum by (FunctionName) (sum_over_time({__name__="Errors", …, FunctionName="<fn>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
 | Duration (ms) | `line` | `{__name__="Duration", …, FunctionName="<fn>"}` | `{x:0,y:440,w:60,h:320}` |
 | Recent errors | `table` (SQL) | scope to `/aws/lambda/<fn>` with a grounded log-group filter; `queryLanguage:'sql'` | `{x:0,y:760,w:60,h:360}` |
 
@@ -1151,14 +1185,14 @@ catalog (section 3).
 
 | Panel | Viz | Query template | Layout |
 |-------|-----|----------------|--------|
-| Request rate | `number` | `sum(rate({__name__="traces.span.metrics.calls", "@resource.service.name"="<svc>"}[5m]))` | `{x:0,y:0,w:15,h:120}` |
-| Error rate | `number` | ratio of `…calls, "@status.code"="ERROR"` to all calls | `{x:15,y:0,w:15,h:120}` |
+| Request rate | `number` | `sum(sum_over_time({__name__="traces.span.metrics.calls", "@resource.service.name"="<svc>"}[5m])) / 300` (delta Sum — `rate()` under-reads it) | `{x:0,y:0,w:15,h:120}` |
+| Error rate | `number` | ratio of `…calls, "status.code"="ERROR"` to all calls | `{x:15,y:0,w:15,h:120}` |
 | p99 latency | `number` | `histogram_quantile(0.99, rate({__name__="traces.span.metrics.duration", …}[5m]))` | `{x:30,y:0,w:15,h:120}` |
 | Running pods | `number` | `count({"k8s.pod.phase", "@resource.k8s.namespace.name"="<ns>", "@resource.k8s.deployment.name"="<deploy>"})` | `{x:45,y:0,w:15,h:120}` |
-| Request rate | `line` | `sum by ("@resource.service.name") (rate({__name__="traces.span.metrics.calls", …}[5m]))` | `{x:0,y:120,w:30,h:320}` |
-| Errors by status | `bar` | `sum by ("@status.code") (rate({__name__="traces.span.metrics.calls", …}[5m]))` | `{x:30,y:120,w:30,h:320}` |
+| Request rate | `line` | `sum by ("@resource.service.name") (sum_over_time({__name__="traces.span.metrics.calls", …}[5m])) / 300` | `{x:0,y:120,w:30,h:320}` |
+| Errors by status | `bar` | `sum by ("status.code") (sum_over_time({__name__="traces.span.metrics.calls", …}[5m]))` | `{x:30,y:120,w:30,h:320}` |
 | Latency p50/p90/p99 | `line` | `histogram_quantile(0.99, rate({__name__="traces.span.metrics.duration", …}[5m]))` — one series per quantile (0.50, 0.90, 0.99) | `{x:0,y:440,w:60,h:320}` |
-| Top services by errors | `table` | `topk(10, sum by ("@resource.service.name") (rate({__name__="traces.span.metrics.calls", "@status.code"="ERROR"}[5m])))` | `{x:0,y:760,w:60,h:360}` |
+| Top services by errors | `table` | `topk(10, sum by ("@resource.service.name") (sum_over_time({__name__="traces.span.metrics.calls", "status.code"="ERROR"}[5m])))` | `{x:0,y:760,w:60,h:360}` |
 
 **Optional depth (follow-up "infra / USE health"):** Pod CPU usage, Pod memory
 usage, Container restarts — grouped by `@resource.k8s.*` (`k8s.pod.cpu.usage`,
