@@ -163,7 +163,7 @@ console.log(counter);  // Always 0 on replay!
 counter = 0
 @durable_step
 def increment(step_ctx: StepContext):
-    nonlocal counter
+    global counter  # `nonlocal` would be a SyntaxError against a module-level name
     counter += 1  # This mutation is lost!
 
 context.step(increment())

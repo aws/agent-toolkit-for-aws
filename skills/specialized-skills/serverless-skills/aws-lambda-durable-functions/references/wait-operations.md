@@ -56,6 +56,7 @@ const result = await context.waitForCallback(
 // External system calls back with:
 // aws lambda send-durable-execution-callback-success \
 //   --callback-id <callbackId> \
+//   --cli-binary-format raw-in-base64-out \
 //   --result '{"approved": true}'
 ```
 
@@ -86,8 +87,12 @@ result = context.wait_for_callback(
 ```bash
 aws lambda send-durable-execution-callback-success \
   --callback-id <callbackId> \
+  --cli-binary-format raw-in-base64-out \
   --result '{"status": "approved", "comments": "Looks good"}'
 ```
+
+`--result` is a blob; AWS CLI v2 expects blobs base64-encoded by default, so inline JSON
+requires `--cli-binary-format raw-in-base64-out` (or use `fileb://result.json`).
 
 **SDK (TypeScript):**
 
@@ -121,9 +126,12 @@ lambda_client.send_durable_execution_callback_success(
 ```bash
 aws lambda send-durable-execution-callback-failure \
   --callback-id <callbackId> \
-  --error-type "ApprovalDenied" \
-  --error-message "Request denied by approver"
+  --error ErrorType=ApprovalDenied,ErrorMessage="Request denied by approver"
 ```
+
+The AWS CLI takes a single `--error` structure (not `--error-type` / `--error-message`,
+which are SAM CLI flags). The `--error` value also accepts JSON and supports `ErrorData`
+and `StackTrace`.
 
 ### Heartbeats
 
@@ -359,14 +367,14 @@ try {
     { timeout: { hours: 24 } }
   );
 } catch (error) {
-  if (error instanceof CallbackError) {
-    if (error.errorType === 'Timeout') {
-      context.logger.warn('Approval timed out');
-      // Handle timeout
-    } else {
-      context.logger.error('Callback failed', error);
-      // Handle failure
-    }
+  // A callback timeout raises CallbackTimeoutError (errorType is the literal
+  // "CallbackTimeoutError", never "Timeout"). Branch on the class, not the string.
+  if (error instanceof CallbackTimeoutError) {
+    context.logger.warn('Approval timed out');
+    // Handle timeout
+  } else if (error instanceof CallbackError) {
+    context.logger.error('Callback failed', error);
+    // Handle failure
   }
 }
 ```
@@ -374,7 +382,8 @@ try {
 **Python:**
 
 ```python
-from aws_durable_execution_sdk_python.exceptions import CallbackError
+# CallbackTimeoutError and CallbackError are exported from the package root.
+from aws_durable_execution_sdk_python import CallbackTimeoutError, CallbackError
 from aws_durable_execution_sdk_python.config import WaitForCallbackConfig
 
 try:
@@ -386,9 +395,11 @@ try:
         name='wait-approval',
         config=WaitForCallbackConfig(timeout=Duration.from_hours(24))
     )
+except CallbackTimeoutError:
+    # The cause is distinguished by subclass, not by an error-type string.
+    context.logger.warning('Approval timed out')
 except CallbackError as error:
-    if error.error_type == 'Timeout':
-        context.logger.warning('Approval timed out')
-    else:
-        context.logger.error(f'Callback failed: {error}')
+    # Other callback failures: CallbackExternalError (external system reported
+    # failure) or CallbackSubmitterError (the submitter step failed).
+    context.logger.error(f'Callback failed: {error}')
 ```
