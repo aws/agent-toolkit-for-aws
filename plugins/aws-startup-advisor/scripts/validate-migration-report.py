@@ -429,6 +429,27 @@ def _count_table_rows(section_html: str) -> int:
     return len(re.findall(r"<tr\b", tbody.group(1), re.IGNORECASE))
 
 
+def _accounted_service_count(estimation_infra: dict | None) -> int | None:
+    """Priced services plus specialist deferrals, when Estimate recorded both.
+
+    Skipped resources are not in deferred_count. None means the artifact did not
+    say, and the caller keeps the stub floor.
+    """
+    if not isinstance(estimation_infra, dict):
+        return None
+    inputs = estimation_infra.get("complexity_inputs")
+    if not isinstance(inputs, dict):
+        return None
+    try:
+        services = int(inputs["service_count"])
+        deferred = int(inputs["deferred_count"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if services < 0 or deferred < 0:
+        return None
+    return services + deferred
+
+
 def _section_content_depth(section_id: str, section_html: str) -> int:
     rows = _count_table_rows(section_html)
     if section_id == "appendix-services":
@@ -1707,11 +1728,19 @@ def validate_report(
         section = _section_html(html, section_id)
         if section is None:
             continue
+        floor = min_depth
+        if section_id == "appendix-services":
+            accounted = _accounted_service_count(estimation_infra)
+            # A one-resource estate has one truthful row. Do not demand a second
+            # row that the design does not have. A larger estate keeps the stub
+            # floor, so a single row of a many-service report still fails.
+            if accounted is not None and accounted < min_depth:
+                floor = accounted
         depth = _section_content_depth(section_id, section)
-        if depth < min_depth:
+        if floor > 0 and depth < floor:
             errors.append(
                 f"appendix section id={section_id} has insufficient content ({depth}), "
-                f"need >= {min_depth}"
+                f"need >= {floor}"
             )
 
     for stub in APPENDIX_STUB_PATTERNS:

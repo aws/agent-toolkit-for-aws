@@ -136,7 +136,10 @@ as no frameworks. `["unknown"]` does not add Config or Security Hub.
    `fedramp` → 1095; `gdpr` → 365.
 2. **Compute budget limit.** Read `estimation-infra.json` → `projected_costs.aws_monthly_balanced`
    (the Balanced total this skill's Estimate asserts). `budget_limit = max(50, ceil(aws_monthly_balanced * 1.2))`.
-   If the file or key is missing, use `50` and say so in an inline comment.
+   If the file or key is missing, use `50` and say so in an inline comment. That
+   limit is a floor on the priced workload. Estimate does not roll CloudTrail log
+   storage, GuardDuty, or Config and Security Hub into `aws_monthly_balanced`, so
+   the budget is not a price of those controls.
 3. **Header.** If compliance contains `soc2`, `pci`, `hipaa`, or `fedramp`, emit the
    compliance-expansion header. Otherwise emit the base header. Both name the resolved
    `cloudtrail_retention_days` and note that per-unit rates in the cost comments were
