@@ -195,9 +195,14 @@ def main(argv=None) -> int:
     for plugin_dir in plugins:
         files = vendored_files(plugin_dir)
         total_files += len(files)
+        skills_dir = plugin_dir / "skills"
+        # An MCP-only plugin has no skills/ and still passes the spec validator.
+        # iterdir() on the missing directory raises before the is_dir() filter can run.
+        if not skills_dir.is_dir():
+            continue
         if not files and not any((skill / VENDORED_SUBDIR).is_dir()
-                                 for skill in (plugin_dir / "skills").iterdir()
-                                 if (plugin_dir / "skills").is_dir() and skill.is_dir()):
+                                 for skill in skills_dir.iterdir()
+                                 if skill.is_dir()):
             continue
         if args.check:
             all_errors.extend(check_plugin(plugin_dir))

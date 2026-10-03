@@ -65,6 +65,16 @@ def test_enum_from_pipe_string_and_from_comment():
     assert n.keys["tier"].enum == {"network", "data", "compute"}
 
 
+def test_quoted_comment_enum_members_are_recognized():
+    """Review finding on #386: `"fast_path" | "wizard"` was invisible to the bare-token regex."""
+    n = _node('{"clarify_mode": "wizard", // "fast_path" | "wizard" — which flow\n'
+              ' "size_coverage": "complete", // "complete" | "partial" | "unknown"\n'
+              ' "note": "x", // "not a token" | "also free"\n}')
+    assert n.keys["clarify_mode"].enum == {"fast_path", "wizard"}
+    assert n.keys["size_coverage"].enum == {"complete", "partial", "unknown"}
+    assert n.keys["note"].enum is None  # quoted phrases with spaces stay free text
+
+
 def test_required_from_comment_and_placeholder_is_any_type():
     n = _node('{"id": "<uuid>", // REQUIRED\n "n": "<Q13 value>"}')
     assert "id" in n.required
@@ -120,6 +130,39 @@ def test_allowed_anywhere_vocabulary():
 
 
 # --------------------------------------------------------------------------- template merging
+
+
+def test_empty_array_item_is_replaced_when_a_concrete_shape_arrives():
+    """Review finding on #386: `"services": []` seeded an `any` item, and merging the
+    later object kept `any`, so a scalar member passed."""
+    seed = _node('{"services": [], "warnings": []}')
+    seed.merge(_node('{"services": [{"routing_provenance": "table", // REQUIRED\n "n": 1}]}'))
+    item = seed.keys["services"].item
+    assert not item.is_any() and "object" in item.kinds
+    assert "routing_provenance" in item.required
+    # a later empty array must not put `any` back
+    seed.merge(_node('{"services": []}'))
+    assert not seed.keys["services"].item.is_any()
+    ex = '{"services": [{"routing_provenance": "table", // REQUIRED\n "n": 1}]}'
+    # rebuild the same way the contract does: empty root, then the section
+    root = _node('{"services": []}')
+    root.merge(_node(ex))
+    def check(value):
+        out = []
+        va.validate_shape(root, value, "", "a", "c", out)
+        return {(f.code, f.path) for f in out}
+    assert check({"services": []}) == set()
+    assert check({"services": [{"routing_provenance": "table", "n": 1}]}) == set()
+    assert check({"services": [None]}) == set()  # null stays compatible
+    assert ("TYPE_MISMATCH", "services[0]") in check({"services": [42]})
+    assert ("TYPE_MISMATCH", "services[0]") in check({"services": [["nested"]]})
+    assert ("MISSING_REQUIRED", "services[0].routing_provenance") in check({"services": [{}]})
+    # a placeholder-only array is still open: the document never supplied a type
+    ph = _node('{"ids": ["<azure_id>"]}')
+    assert ph.keys["ids"].item.is_any()
+    out = []
+    va.validate_shape(ph, {"ids": [1]}, "", "a", "c", out)
+    assert out == []
 
 
 def test_merge_keeps_declared_enum_when_a_concrete_example_shows_one_member():
@@ -569,3 +612,87 @@ def test_gcp_preferences_chosen_by_enum_is_enforced_including_derived(tmp_path: 
     pref["design_constraints"]["cpu_architecture"] = {"value": "graviton", "chosen_by": "bogus"}
     r = _run("--run-dir", str(_write_run(tmp_path, "cpu", "preferences.json", pref)), "--skill", "gcp-to-aws", "--json")
     assert _errors(r) == {("ENUM_VIOLATION", "design_constraints.cpu_architecture.chosen_by")}, r.stdout
+
+
+def test_azure_design_arrays_reject_a_scalar_after_the_empty_seed(tmp_path: Path):
+    """Review finding on #386: services/clusters/deferred are seeded `[]` and refined by a
+    later object section. A scalar or nested list must fail; an empty array and a real
+    member stay valid. Null stays compatible."""
+    src = PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-design/aws-design.json"
+    design = json.loads(src.read_text())
+    control = _errors(_run("--run-dir", str(src.parent), "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "aws-design.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    for key in ("services", "clusters", "deferred"):
+        scalar = json.loads(json.dumps(design))
+        scalar[key] = [42]
+        assert ("TYPE_MISMATCH", f"{key}[0]") in run(key + "-scalar", scalar) - control
+        nested = json.loads(json.dumps(design))
+        nested[key] = [["nope"]]
+        assert ("TYPE_MISMATCH", f"{key}[0]") in run(key + "-list", nested) - control
+        empty = json.loads(json.dumps(design))
+        empty[key] = []
+        assert ("TYPE_MISMATCH", f"{key}[0]") not in run(key + "-empty", empty)
+        blank = json.loads(json.dumps(design))
+        blank[key] = [{}]
+        errs = run(key + "-obj", blank)
+        assert ("TYPE_MISMATCH", f"{key}[0]") not in errs
+    blank = json.loads(json.dumps(design))
+    blank["services"] = [{}]
+    assert ("MISSING_REQUIRED", "services[0].routing_provenance") in run("svc-obj", blank)
+    nulled = json.loads(json.dumps(design))
+    nulled["services"] = [None]
+    assert ("TYPE_MISMATCH", "services[0]") not in run("null-item", nulled)
+
+
+def test_gcp_cluster_edges_reject_a_scalar_member(tmp_path: Path):
+    """The clusters example seeds `edges: []` on one cluster and a typed edge on the next.
+    Merging those must keep the edge object shape."""
+    doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-discover-iac.md"
+    clusters = _doc_example(doc, "gcp-resource-clusters.json")
+    r = _run("--run-dir", str(_write_run(tmp_path, "ok", "gcp-resource-clusters.json", clusters)),
+             "--skill", "gcp-to-aws", "--no-baseline", "--json")
+    assert r.returncode == 0, r.stdout
+    bad = json.loads(json.dumps(clusters))
+    bad["clusters"][1]["edges"] = [42]
+    r = _run("--run-dir", str(_write_run(tmp_path, "scalar", "gcp-resource-clusters.json", bad)),
+             "--skill", "gcp-to-aws", "--no-baseline", "--json")
+    assert ("TYPE_MISMATCH", "clusters[1].edges[0]") in _errors(r), r.stdout
+    bad["clusters"][1]["edges"] = []
+    r = _run("--run-dir", str(_write_run(tmp_path, "empty", "gcp-resource-clusters.json", bad)),
+             "--skill", "gcp-to-aws", "--no-baseline", "--json")
+    assert r.returncode == 0, r.stdout
+
+
+def test_azure_quoted_preference_enums_reject_unknown_values(tmp_path: Path):
+    """`metadata.clarify_mode` and `data.db_cutover.size_coverage` are quoted comment enums."""
+    src = PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-clarify-fast-path/preferences.json"
+    pref = json.loads(src.read_text())
+    control = _errors(_run("--run-dir", str(src.parent), "--skill", "azure-to-aws", "--no-baseline", "--json"))
+    assert control == set(), control
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "preferences.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    for mode in ("fast_path", "wizard"):
+        ok = json.loads(json.dumps(pref))
+        ok["metadata"]["clarify_mode"] = mode
+        assert run("mode-" + mode, ok) == set()
+    bad = json.loads(json.dumps(pref))
+    bad["metadata"]["clarify_mode"] = "invented-mode"
+    assert run("mode-bad", bad) == {("ENUM_VIOLATION", "metadata.clarify_mode")}
+    for coverage in ("complete", "partial", "unknown"):
+        ok = json.loads(json.dumps(pref))
+        ok["data"]["db_cutover"]["size_coverage"] = coverage
+        assert run("cov-" + coverage, ok) == set(), coverage
+    bad = json.loads(json.dumps(pref))
+    bad["data"]["db_cutover"]["size_coverage"] = "invented-coverage"
+    assert run("cov-bad", bad) == {("ENUM_VIOLATION", "data.db_cutover.size_coverage")}
+    # the unquoted clarify_status control still rejects an unknown value
+    bad = json.loads(json.dumps(pref))
+    bad["clarify_status"] = "invented-status"
+    assert ("ENUM_VIOLATION", "clarify_status") in run("status-bad", bad)

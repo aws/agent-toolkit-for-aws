@@ -124,6 +124,31 @@ def test_cli_check_exit_codes(tmp_path: Path):
     assert r.returncode == 0 and r.stdout.startswith("PASS")
 
 
+def test_plugin_without_a_skills_directory_is_skipped(tmp_path: Path):
+    """Review finding on #386: `--check` called skills.iterdir() before the is_dir() filter,
+    so an MCP-only plugin (no skills/) raised FileNotFoundError."""
+    plugins = _tree(tmp_path)
+    (plugins / "mcp-only").mkdir()
+    r = subprocess.run([sys.executable, str(SCRIPT), "--check", "--plugins-root", str(plugins)],
+                       capture_output=True, text=True)
+    assert "Traceback" not in r.stderr, r.stderr
+    assert r.returncode == 1 and "FAIL" in r.stdout
+    # missing-copy still fails with the MCP-only plugin beside it
+    vend = plugins / "p" / "skills" / "alpha" / "references" / "vendored"
+    (vend / "dsl" / "INTERPRETER.md").unlink()
+    r = subprocess.run([sys.executable, str(SCRIPT), "--check", "--plugins-root", str(plugins)],
+                       capture_output=True, text=True)
+    assert r.returncode == 1 and "dsl/INTERPRETER.md" in r.stdout and "missing on disk" in r.stdout
+    # a clean tree plus the skills-less plugin passes
+    (vend / "orphan.md").unlink()
+    readme = vend / "README.md"
+    readme.write_text("\n".join(l for l in readme.read_text().splitlines() if "orphan" not in l) + "\n")
+    subprocess.run([sys.executable, str(SCRIPT), "--plugins-root", str(plugins)], check=True, capture_output=True)
+    r = subprocess.run([sys.executable, str(SCRIPT), "--check", "--plugins-root", str(plugins)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.startswith("PASS"), r.stdout + r.stderr
+
+
 def test_real_repository_is_in_sync():
     r = subprocess.run([sys.executable, str(SCRIPT), "--check"], capture_output=True, text=True, cwd=REPO_ROOT)
     assert r.returncode == 0, r.stdout
