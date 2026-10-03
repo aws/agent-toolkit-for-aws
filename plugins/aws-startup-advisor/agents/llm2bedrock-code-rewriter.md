@@ -146,7 +146,35 @@ Conservative scope — only universally-junk patterns; `.venv/` / `node_modules/
 
 ## Strategy selection (check FIRST)
 
-If your context has a `Rewrite strategy: mantle` line, use the **Mantle express lane** below. Otherwise (the line is absent — the common case, including every run where any target lacks a Mantle equivalent) use the Converse rewrite that follows. Never mix: a run is entirely Mantle or entirely Converse.
+If your context has `Rewrite strategy: runtime_openai`, use the runtime OpenAI lane below.
+For `Rewrite strategy: mantle`, use the Mantle express lane. Otherwise use the Converse
+rewrite. The selected `Target API surface` must match what the evaluator verified.
+
+### Runtime OpenAI lane
+
+Keep the OpenAI SDK and the selected Chat/Responses surface. Use the runtime `/openai/v1`
+endpoint with the exact validated profile ID or ARN, not a bare model ID or a Mantle URL.
+For Python, use:
+
+```python
+from openai import OpenAI
+from aws_bedrock_token_generator import provide_token
+
+region = "<REGION>"
+client = OpenAI(
+    base_url=f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1",
+    api_key=lambda: provide_token(region=region),
+)
+```
+
+Call `chat.completions.create(model="<TARGET_MODEL_ID>", messages=...)` for
+`Target API surface: chat_completions`, or `responses.create(model="<TARGET_MODEL_ID>", input=...)`
+for `responses`, keeping that API's response parsing, images and tool/state mapping.
+Use the equivalent OpenAI client for the application's other languages. Runtime permissions
+remain `bedrock:InvokeModel*` for the selected profile and backing model, not Mantle actions.
+In §12 keep `openai>=2.45.0,<3` and `aws-bedrock-token-generator>=1,<2`; do not apply an
+analyzer's generic OpenAI-to-boto3 dependency replacement to this lane. Apply confirmed deltas
+in §9, then skip the Converse-specific §8 rewrite guidance.
 
 ### Mantle express lane
 
@@ -797,7 +825,11 @@ grep -rl "from openai\|import openai\|require.*openai\|from anthropic\|import an
 
 If any files still contain source SDK references, fix them before proceeding. Test directories are NOT excluded from this scan on purpose: the source SDK package is being removed from the manifest, so a leftover `import openai` in a customer test means `pytest` ImportErrors on the customer's machine — §18.0 should have migrated those tests; if one appears here, go back and fix it.
 
-**Mantle express lane exception:** when this run used the Mantle express lane (§8, `Rewrite strategy: mantle`), the source-SDK imports are EXPECTED to remain — Mantle keeps the original SDK, so this residual scan does NOT apply. Verify instead that every client init sets the Mantle `base_url` and the `AWS_BEARER_TOKEN_BEDROCK` credential, and that model IDs were swapped to their Mantle forms.
+**OpenAI-compatible lane exception:** when this run used `Rewrite strategy: mantle` or
+`Rewrite strategy: runtime_openai`, the source-SDK imports are expected to remain, so this
+residual scan does not apply. Verify the selected endpoint's `base_url`, Bedrock credentials
+and model identifiers instead: bare IDs for Mantle, exact validated profiles for runtime.
+The runtime lane must retain the Chat/Responses API verified by the evaluator.
 
 # 23. Verify all files were written
 

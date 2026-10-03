@@ -6,12 +6,13 @@ Prints a JSON verdict to stdout; exit 0 if all models pass, 1 otherwise.
 Always prints JSON — including for missing credentials / bad region — so the
 caller can parse the verdict instead of a traceback. On failure the top level
 carries `reason`/`detail`/`failing_models` lifted from the first failing model.
-Chat models are probed via Converse; embedding models (which don't speak
+Chat models default to Converse; --runtime-api preserves an explicit proprietary
+GPT Chat/Responses selection. Embedding models (which don't speak
 Converse) via InvokeModel with their family's request body. Bare OpenAI
 proprietary GPT ids are mantle-served and probed via the OpenAI Responses API;
 GPT-6 Astra (us./global.) and GPT-5.6 (us./in./global.) CRIS ids are bedrock-runtime targets
-and take the normal Converse probe.
-The 1-token probe costs a fraction of a cent (noted in output).
+take the selected runtime API probe.
+Probe output budgets and cost depend on the selected API.
 """
 import argparse, json, sys
 
@@ -69,13 +70,20 @@ def is_mantle_model(model_id: str) -> bool:
 
 
 
-def normalize_api_path(plan_path: str | None, model_ids: list[str]) -> str:
+def normalize_api_path(plan_path: str | None, model_ids: list[str],
+                       runtime_api: str | None = None) -> str:
     """Resolve a missing legacy path once for evaluator and rewriter dispatch.
 
     Explicit plans retain their chosen API. Legacy bare proprietary GPT targets
     use Mantle Responses; runtime targets retain the existing Converse default.
     A mixed legacy target set needs an explicit plan rather than an unsafe guess.
     """
+    if plan_path == "runtime_openai_cris":
+        paths = {"converse": plan_path, "responses": "runtime_openai_responses",
+                 "chat_completions": "runtime_openai_chat"}
+        if runtime_api is not None and runtime_api not in paths:
+            raise ValueError("Unknown runtime API; resolve the saved migration plan")
+        return paths[runtime_api or "converse"]
     if plan_path:
         return plan_path
     if not model_ids:
@@ -86,6 +94,42 @@ def normalize_api_path(plan_path: str | None, model_ids: list[str]) -> str:
     if any(mantle):
         raise ValueError("Mixed Mantle and runtime targets require an explicit migration plan")
     return "converse"
+
+
+def create_openai_client(model_id: str, region: str, max_retries: int = 2):
+    """Build the selected endpoint's client without changing the invocation ID."""
+    from aws_bedrock_token_generator import provide_token
+    if is_mantle_model(model_id):
+        from openai import BedrockOpenAI
+        return BedrockOpenAI(
+            aws_region=region, bedrock_token_provider=lambda: provide_token(region=region),
+            max_retries=max_retries,
+        )
+    from openai import OpenAI
+    return OpenAI(
+        base_url=f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1",
+        api_key=lambda: provide_token(region=region), max_retries=max_retries,
+    )
+
+
+def probe_runtime_openai_model(model_id: str, region: str, api_surface: str) -> dict:
+    """Probe the selected runtime Chat/Responses API, not a Converse substitute."""
+    try:
+        client = create_openai_client(model_id, region, max_retries=0)
+        if api_surface == "chat_completions":
+            client.chat.completions.create(
+                model=model_id, messages=[{"role": "user", "content": "ping"}])
+        else:
+            client.responses.create(model=model_id, input="ping", max_output_tokens=16)
+        return {"ok": True, "reason": "ok", "detail": f"Runtime {api_surface} API authorized."}
+    except ImportError as e:
+        return {"ok": False, "reason": "openai_deps_missing",
+                "detail": f"Cannot verify the runtime OpenAI API: {e}. Re-sync scripts/pyproject.toml."}
+    except Exception as e:
+        code = {401: "UnrecognizedClientException", 403: "AccessDeniedException",
+                 404: "ResourceNotFoundException", 429: "ThrottlingException"}.get(
+                     getattr(e, "status_code", None), "unknown")
+        return classify_invoke_error(code, str(e))
 
 
 def classify_mantle_error(status: int | None, message: str) -> dict:
@@ -259,6 +303,8 @@ def main(argv=None) -> int:
     ap.add_argument("--region", required=True)
     ap.add_argument("--models", required=True, help="comma-separated model ids")
     ap.add_argument("--dataset-size", type=int, default=0)
+    ap.add_argument("--runtime-api", choices=["converse", "responses", "chat_completions"],
+                    default="converse")
     args = ap.parse_args(argv)
 
     model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
@@ -299,7 +345,11 @@ def main(argv=None) -> int:
                     "Do not assume GPT-5.6's cached-input quota exemption or RPM rules "
                     "apply; Astra's documented 10x output burndown is runtime-specific.")
         else:
-            verdict = probe_model(client, model_id)
+            if (args.runtime_api != "converse" and ".openai.gpt-" in model_id
+                    and "gpt-oss" not in model_id):
+                verdict = probe_runtime_openai_model(model_id, args.region, args.runtime_api)
+            else:
+                verdict = probe_model(client, model_id)
             rpm = quota_rpm(quotas, model_id)
             verdict["model_id"] = model_id
             verdict["rpm_quota"] = rpm
@@ -316,7 +366,7 @@ def main(argv=None) -> int:
         results.append(verdict)
 
     out = {"ok": all_ok, "region": args.region,
-           "probe_cost_note": "1-token InvokeModel probe per model (~$0.00001 each)",
+           "probe_cost_note": "Minimal model/API permission probes; output budgets and cost vary by API.",
            "models": results}
     out.update(aggregate_failure(results))
     print(json.dumps(out, indent=2))

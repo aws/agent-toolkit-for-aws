@@ -30,7 +30,8 @@ def clients(monkeypatch):
     runtime = Mock(return_value={"output": {"message": {"content": [{"text": "answer"}]}}})
     client = SimpleNamespace(responses=SimpleNamespace(create=responses),
                              chat=SimpleNamespace(completions=SimpleNamespace(create=chat)))
-    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(BedrockOpenAI=lambda **k: client))
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(
+        BedrockOpenAI=lambda **k: client, OpenAI=lambda **k: client))
     monkeypatch.setitem(sys.modules, "aws_bedrock_token_generator",
                         SimpleNamespace(provide_token=lambda **k: "test-token"))
     import boto3
@@ -39,14 +40,16 @@ def clients(monkeypatch):
 
 
 @pytest.mark.parametrize("surface", ["responses", "chat_completions"])
-def test_astra_connectivity_uses_selected_mantle_api(surface, monkeypatch):
+@pytest.mark.parametrize("mid", ["openai.gpt-6-astra", "us.openai.gpt-6-astra",
+                                "global.openai.gpt-6-astra"])
+def test_astra_connectivity_uses_selected_openai_api(surface, mid, monkeypatch):
     responses, chat, runtime = clients(monkeypatch)
-    code = snippet("# 6a. Mantle connectivity", "# 7. Load golden")
-    code = code.replace("<TARGET_MODEL_ID>", "openai.gpt-6-astra").replace("<TARGET_API_SURFACE>", surface)
+    code = snippet("# 6a. OpenAI-compatible connectivity", "# 7. Load golden")
+    code = code.replace("<TARGET_MODEL_ID>", mid).replace("<TARGET_API_SURFACE>", surface)
     monkeypatch.setenv("AWS_REGION", "us-west-2")
     exec(compile(code, str(EVALUATOR), "exec"), {})  # nosec B102 - committed test fixture
     selected = chat if surface == "chat_completions" else responses
-    assert selected.call_args.kwargs["model"] == "openai.gpt-6-astra"
+    assert selected.call_args.kwargs["model"] == mid
     assert selected.call_count == 1
     runtime.assert_not_called()
     (responses if surface == "chat_completions" else chat).assert_not_called()
@@ -55,10 +58,12 @@ def test_astra_connectivity_uses_selected_mantle_api(surface, monkeypatch):
 @pytest.mark.parametrize("mid,surface,endpoint", [
     ("openai.gpt-6-astra", "responses", "responses"),
     ("openai.gpt-6-astra", "chat_completions", "chat"),
-    ("us.openai.gpt-6-astra", "responses", "runtime"),
-    ("global.openai.gpt-6-astra", "responses", "runtime"),
+    ("us.openai.gpt-6-astra", "converse", "runtime"),
+    ("global.openai.gpt-6-astra", "converse", "runtime"),
+    ("us.openai.gpt-6-astra", "responses", "responses"),
+    ("global.openai.gpt-6-astra", "chat_completions", "chat"),
     ("openai.gpt-5.6-sol", "responses", "responses"),
-    ("us.openai.gpt-5.6-sol", "responses", "runtime"),
+    ("us.openai.gpt-5.6-sol", "converse", "runtime"),
 ])
 def test_golden_loop_preserves_endpoint_images_and_resume(mid, surface, endpoint, monkeypatch, tmp_path):
     responses, chat, runtime = clients(monkeypatch)
@@ -95,11 +100,14 @@ def test_golden_loop_preserves_endpoint_images_and_resume(mid, surface, endpoint
     assert calls[endpoint].call_count == 1
 
 
-def test_golden_mantle_throttle_returns_partial_without_scoring_error(monkeypatch, tmp_path):
-    responses, _, runtime = clients(monkeypatch)
+@pytest.mark.parametrize("mid", ["openai.gpt-6-astra", "global.openai.gpt-6-astra"])
+@pytest.mark.parametrize("surface", ["responses", "chat_completions"])
+def test_golden_openai_throttle_returns_partial_without_scoring_error(mid, surface, monkeypatch, tmp_path):
+    responses, chat, runtime = clients(monkeypatch)
+    selected = chat if surface == "chat_completions" else responses
     error = RuntimeError("throttled")
     error.status_code = 429
-    responses.side_effect = error
+    selected.side_effect = error
     import time
     monkeypatch.setattr(time, "sleep", lambda seconds: None)
     data = tmp_path / ".saws-migrate/golden-dataset"
@@ -108,15 +116,110 @@ def test_golden_mantle_throttle_returns_partial_without_scoring_error(monkeypatc
     out.mkdir(parents=True)
     (data / "prompts.jsonl").write_text(json.dumps({"id": "p", "user_prompt": "ping"}) + "\n")
     code = snippet("# 10. Run golden prompt evaluation", "# 11. Score")
-    code = (code.replace("<TARGET_MODEL_ID>", "openai.gpt-6-astra")
-            .replace("<TARGET_API_SURFACE>", "responses")
+    code = (code.replace("<TARGET_MODEL_ID>", mid)
+            .replace("<TARGET_API_SURFACE>", surface)
             .replace("<scriptsDir>", str(Path(__file__).parent)).replace("<repo>", str(tmp_path)))
     ns = {}
     exec(compile(code, str(EVALUATOR), "exec"), ns)  # nosec B102 - committed test fixture
     assert ns["throttled_out"] is True
-    assert responses.call_count == 6
+    assert selected.call_count == 6
     assert (out / "raw_results.jsonl").read_text() == ""
     runtime.assert_not_called()
+
+
+@pytest.mark.parametrize("surface,path", [
+    (None, "runtime_openai_cris"), ("converse", "runtime_openai_cris"),
+    ("responses", "runtime_openai_responses"), ("chat_completions", "runtime_openai_chat"),
+])
+def test_explicit_runtime_api_survives_normalization(surface, path):
+    assert preflight_bedrock.normalize_api_path(
+        "runtime_openai_cris", ["global.openai.gpt-6-astra"], surface) == path
+    with pytest.raises(ValueError, match="Unknown runtime API"):
+        preflight_bedrock.normalize_api_path("runtime_openai_cris", [], "unknown")
+
+
+@pytest.mark.parametrize("surface", ["responses", "chat_completions"])
+def test_runtime_preflight_uses_selected_api(surface, monkeypatch, capsys):
+    responses, chat, runtime = clients(monkeypatch)
+    monkeypatch.setattr(preflight_bedrock, "fetch_bedrock_quotas", lambda region: [])
+    mid = "global.openai.gpt-6-astra"
+    assert preflight_bedrock.main(
+        ["--region", "us-west-2", "--models", mid, "--runtime-api", surface]) == 0
+    selected = chat if surface == "chat_completions" else responses
+    assert selected.call_args.kwargs["model"] == mid
+    runtime.assert_not_called()
+    assert json.loads(capsys.readouterr().out)["ok"]
+
+
+@pytest.mark.parametrize("surface", ["responses", "chat_completions"])
+@pytest.mark.parametrize("mid", ["openai.gpt-6-astra", "global.openai.gpt-6-astra"])
+def test_vision_smoke_preserves_openai_endpoint_and_surface(surface, mid, monkeypatch):
+    import io
+    import urllib.request
+    responses, chat, runtime = clients(monkeypatch)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"test-image"))
+    code = snippet("# 9.5a OpenAI-compatible vision", "# 10. Run golden")
+    code = code.replace("<TARGET_MODEL_ID>", mid).replace("<TARGET_API_SURFACE>", surface)
+    exec(compile(code, str(EVALUATOR), "exec"), {})  # nosec B102 - committed smoke snippet
+    selected = chat if surface == "chat_completions" else responses
+    call = selected.call_args.kwargs
+    assert call["model"] == mid
+    if surface == "responses":
+        assert call["input"][0]["content"][1]["image_url"].startswith("data:image/jpeg;base64,")
+    else:
+        assert call["messages"][0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    runtime.assert_not_called()
+
+
+@pytest.mark.parametrize("surface,endpoint", [
+    ("responses", "responses"), ("chat_completions", "chat/completions"),
+])
+def test_runtime_openai_client_uses_real_sdk_wire_contract(surface, endpoint, monkeypatch):
+    import httpx
+    import openai
+    import aws_bedrock_token_generator
+    requests = []
+
+    def transport(request):
+        requests.append(request)
+        if surface == "chat_completions":
+            result = {"id": "chat-fixture", "object": "chat.completion", "created": 0,
+                      "model": "global.openai.gpt-6-astra", "choices": [{
+                          "index": 0, "finish_reason": "stop",
+                          "message": {"role": "assistant", "content": "answer"}}]}
+        else:
+            result = {"id": "response-fixture", "object": "response", "created_at": 0,
+                      "model": "global.openai.gpt-6-astra", "status": "completed", "output": [{
+                          "id": "message-fixture", "type": "message", "role": "assistant",
+                          "status": "completed", "content": [{
+                              "type": "output_text", "text": "answer", "annotations": []}]}]}
+        return httpx.Response(200, json=result)
+
+    real_client = openai.OpenAI
+    monkeypatch.setattr(aws_bedrock_token_generator, "provide_token", lambda **k: "fixture-token")
+    with httpx.Client(transport=httpx.MockTransport(transport)) as http_client:
+        monkeypatch.setattr(openai, "OpenAI",
+                            lambda **kwargs: real_client(http_client=http_client, **kwargs))
+        assert preflight_bedrock.probe_runtime_openai_model(
+            "global.openai.gpt-6-astra", "us-west-2", surface)["ok"]
+    assert len(requests) == 1
+    assert str(requests[0].url) == f"https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1/{endpoint}"
+    assert requests[0].headers["Authorization"] == "Bearer fixture-token"
+    body = json.loads(requests[0].content)
+    assert body["model"] == "global.openai.gpt-6-astra"
+    assert ("messages" in body) is (surface == "chat_completions")
+
+
+def test_dispatch_and_rewriter_preserve_runtime_openai_strategy():
+    skill = (PLUGIN / "skills/llm-to-bedrock/SKILL.md").read_text()
+    rewriter = (PLUGIN / "agents/llm2bedrock-code-rewriter.md").read_text()
+    assert "validated_target_model_ids, plan_runtime_api" in skill
+    assert 'set `rewrite_strategy = "runtime_openai"`' in skill
+    assert "Target API surface:" in skill
+    lane = rewriter.split("### Runtime OpenAI lane", 1)[1].split("### Mantle express lane", 1)[0]
+    assert "bedrock-runtime.{region}.amazonaws.com/openai/v1" in lane
+    assert "chat.completions.create" in lane and "responses.create" in lane
+    assert "OpenAI-to-boto3 dependency replacement" in lane
 
 
 def test_chat_image_helper_validates_missing_bytes():

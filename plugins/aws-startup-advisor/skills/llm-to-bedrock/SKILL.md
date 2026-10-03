@@ -388,7 +388,7 @@ reliably visible, and even that must be materialized to the file for the baselin
 ### B4 — Bedrock preflight
 
 ```bash
-uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION --models <comma-separated $TARGET_MODELS> --dataset-size 200
+uv run --project $SCRIPTS python $SCRIPTS/preflight_bedrock.py --region $REGION --models <comma-separated $TARGET_MODELS> --dataset-size 200 --runtime-api <selected code_migration.runtime_api, or converse when absent>
 ```
 
 (`--dataset-size 200` matches the golden-dataset cap, so the quota warning reflects the worst case. Prefix with `AWS_PROFILE=$AWS_PROFILE_CHOICE` if B2 chose a non-default profile.)
@@ -400,6 +400,7 @@ first failing model) plus `failing_models` (all failing ids); per-model verdicts
 - `ok == false` + `reason: model_access` → model access not enabled in the Bedrock console (NOT an IAM problem): point the user at the console Model access page for the failing models, stop; re-run B4 after they enable it.
 - `ok == false` + `reason: authz` → IAM denies inference. For a Converse/InvokeModel target the action to grant is `bedrock:InvokeModel`; for a bare proprietary GPT target (GPT-5.x or `openai.gpt-6-astra`) it is the `bedrock-mantle:*` set (see B4a). The `detail` names which. Tell the user the action to grant; stop.
 - `ok == false` + `reason: mantle_deps_missing` → the pinned scripts environment lacks `openai` / `aws-bedrock-token-generator`, so a mantle-only target could not be probed at all. This is an environment fault, not a Bedrock verdict: tell the user to re-sync (`uv sync --project $SCRIPTS`) and stop. Do NOT proceed — access was never verified.
+- `ok == false` + `reason: openai_deps_missing` → the selected runtime Chat/Responses API could not be probed because its SDK is missing. Re-sync the same scripts environment and stop; do not substitute Converse.
 - `ok == false` + `reason: model_unavailable` → Read the `resolve-bedrock-model-id` reference at `$HELPERS/resolve-bedrock-model-id/resolve-bedrock-model-id.md` and follow its procedure with each ID from `failing_models` + region. AskUserQuestion with the candidates: "Use `<candidate>` (cross-region inference profile)" / "Paste a different model ID" / "Abort". On a choice, replace the ID in `$TARGET_MODELS` and re-run B4.
 - `ok == false` + any other `reason` → show `detail` and stop.
 - `ok == true` → proceed. Surface any `quota_warning`, and any model whose `reason` is
@@ -440,10 +441,15 @@ Before any C1–C6 dispatch, normalize the API path from the saved plan and the 
 import sys
 sys.path.insert(0, "<absolute path to $SCRIPTS>")
 from preflight_bedrock import normalize_api_path
-resolved_api_path = normalize_api_path(plan_migration_path, validated_target_model_ids)
+resolved_api_path = normalize_api_path(
+    plan_migration_path, validated_target_model_ids, plan_runtime_api)
 ```
 
-An explicit `migration_path` is preserved. With no path, an all-bare proprietary GPT target
+Read `plan_runtime_api` from the selected model row's `runtime_api`, falling back to
+`ai_architecture.code_migration.runtime_api`; absent means `None`. A `runtime_openai_cris`
+plan resolves to `runtime_openai_chat` or `runtime_openai_responses` when that API is explicit,
+and retains the Converse default otherwise. Do not ignore this field on dispatch or resume.
+Other explicit `migration_path` values are preserved. With no path, an all-bare proprietary GPT target
 set (including Astra) resolves to `mantle_openai_responses`; runtime targets use `converse`.
 A mixed legacy target set is `model_unresolvable`: stop before evaluation and request an
 explicit plan instead of guessing. Recompute the same value on every dispatch/resume from
@@ -458,6 +464,7 @@ AWS region: <$REGION>
 AWS profile (pass as --profile / AWS_PROFILE= inline on every aws/boto3 invocation): <$AWS_PROFILE_CHOICE — omit line if default>
 Target Bedrock model(s): <comma-joined $TARGET_MODELS, with any resolved overrides already applied>
 Target API path: <resolved_api_path from normalize_api_path above>
+Target API surface: <chat_completions for *_openai_chat, responses for *_openai_responses, otherwise converse>
 Migration plan dir: <$MIGRATION_DIR>
 Resolved target model id: <override for the primary chat model — omit if none>
 Scripts directory (pinned uv toolchain): <$SCRIPTS>
@@ -631,7 +638,8 @@ Below, AskUserQuestion:
 
 **Gate (a.5) — Rewrite strategy (from the normalized API path).** Reuse
 `resolved_api_path` from the context-block normalization above. If it starts with `mantle`,
-set `rewrite_strategy = "mantle"`; otherwise set `rewrite_strategy = "converse"`.
+set `rewrite_strategy = "mantle"`. For `runtime_openai_chat` or `runtime_openai_responses`,
+set `rewrite_strategy = "runtime_openai"`; otherwise set `rewrite_strategy = "converse"`.
 An absent legacy plan field is not a second Converse default here: a validated bare Astra
 plan without that field has already resolved to Mantle Responses before C3. Explicit
 `mantle_openai_chat`, `mantle_openai_responses`, and runtime CRIS choices stay unchanged.
@@ -674,6 +682,10 @@ When `rewrite_strategy == "mantle"`, C5's context block ALSO includes:
   ARN, first take its resource ID after `/`). A Pro-to-Astra upgrade is
   `false` and still requires quality evaluation. This flag does not establish parameter parity;
   Astra sampling, `n`, and hosted-state behavior require the selected API's evidence.
+
+When `rewrite_strategy == "runtime_openai"`, add `Rewrite strategy: runtime_openai`.
+C5 must use the shared `Target API surface` and exact target profile at the runtime
+`/openai/v1` endpoint; it must not use the Mantle client or a Converse rewrite.
 
 Rebuild these context lines from the same normalized path on every dispatch/resume. The existing
 `assess_design_sha256` run-context check detects a changed model/API decision. If a bare

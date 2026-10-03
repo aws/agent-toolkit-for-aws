@@ -39,9 +39,9 @@ Read from prompt context (forwarded from llm2bedrock-code-analyzer, llm2bedrock-
 
 - **`<GOLDEN_DATASET_PATH>`** — `<repo>/.saws-migrate/golden-dataset/prompts.jsonl` (from T2-2). May be empty if T2-2 took the abort / paste / vision-no-images / embeddings path.
 - **`<TEMPLATE_PATH>`** — `<repo>/.saws-migrate/golden-dataset/templates/prompt_template.txt` (from T2-2).
-- **`<TARGET_MODEL_ID>`** — Bedrock target model ID from the migration plan, validated by llm2bedrock-code-analyzer §10. Substitute it in every Bedrock call below. **It also selects the API path:** a bare proprietary GPT id (`openai.gpt-5*` excluding `-oss`, or `openai.gpt-6-astra`) is mantle-served and must use the selected Chat or Responses client in §6a; a `us.`/`in.`/`global.`-prefixed `openai.gpt-5.6-*` CRIS id is a `bedrock-runtime` target and uses `boto3.converse` like any other profile; everything else uses `boto3.converse`. See the table at the top of §6.
+- **`<TARGET_MODEL_ID>`** — the exact validated target ID or ARN from the migration plan. It identifies the endpoint, not the API: bare proprietary GPT uses Mantle; supported CRIS uses runtime. `<TARGET_API_SURFACE>` selects Chat, Responses or Converse within that endpoint. Preserve both through every call; never remove a profile prefix to change the endpoint.
 - **`<REGION>`** — AWS region for Bedrock (the `AWS region:` line in your context).
-- **`<TARGET_API_SURFACE>`** — `chat_completions` when the saved `Target API path` is `mantle_openai_chat`; otherwise `responses` for a bare proprietary GPT target. Preserve that selection for connectivity, vision and golden calls. If an explicit runtime path names a bare Astra id, or a Mantle path names a CRIS id, return `model_unresolvable` rather than changing the endpoint. The orchestrator supplies the normalized legacy default before C3 and C5. If the context line itself is missing on a direct legacy dispatch, use `preflight_bedrock.normalize_api_path` with the saved plan path and validated target ids; do not invent a separate fallback.
+- **`<TARGET_API_SURFACE>`** — copy the normalized `Target API surface` context line: `chat_completions`, `responses`, or `converse`. It applies to both Mantle and runtime. If a direct legacy dispatch omits that line, call `preflight_bedrock.normalize_api_path` with the saved path, target IDs and `runtime_api`, then derive the same surface. An absent runtime API means Converse; never discard an explicit runtime Chat/Responses choice.
 - **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — key fields:
   - `source_provider` — `openai` / `anthropic` / `google` / `cohere` / `custom`. Drives §9 baseline gating. (Vertex AI customers are emitted as `google` here; the analyzer's `errors` field carries the `vertex AI auth detected` signal that gates baseline collection upstream — by the time you reach §9, `source_baseline_available` already reflects that.)
   - `source_models` — list of source-model IDs. Pass `<SOURCE_MODEL_ID>` to the §9 baseline skill verbatim.
@@ -128,13 +128,14 @@ When reporting results, clearly separate which layers passed / failed / skipped.
 Create the eval results directory and verify Bedrock connectivity against the
 target model using the SAME API path the evaluation will use.
 
-**First, pick the API path from `<TARGET_MODEL_ID>` — this decides every Bedrock
+**First, use `<TARGET_API_SURFACE>` and the validated model ID — this decides every Bedrock
 call in §6, §9.5 and §10:**
 
 | `<TARGET_MODEL_ID>` matches                               | API path            | Connectivity | Vision smoke | Golden eval                     |
 | --------------------------------------------------------- | ------------------- | ------------ | ------------ | ------------------------------- |
 | bare `openai.gpt-5*` (not `-oss`) or `openai.gpt-6-astra` | Selected Mantle API | §6a          | §9.5a        | §8 if same-model; otherwise §10 |
-| Supported Astra `us.` / `global.` or GPT-5.6 CRIS         | `boto3.converse`    | §6           | §9.5         | §8 loop (same-model)            |
+| Supported CRIS with selected Chat/Responses | Runtime OpenAI API | §6a | §9.5a | §8 if same-model; otherwise §10 |
+| Supported CRIS with Converse (legacy default) | `boto3.converse` | §6 | §9.5 | §8 if same-model; otherwise §10 |
 | anything else (Claude, Nova, `openai.gpt-oss-*`)          | `boto3.converse`    | §6           | §9.5         | §10, or §8 if same-model        |
 
 The bare proprietary GPT ids select the `bedrock-mantle` endpoint; supported CRIS ids select runtime. Calling `boto3.converse` against a bare Mantle id fails, so running the Converse
@@ -185,24 +186,26 @@ Interpret the result:
   `bedrock_provider_available` from the orchestrator context (it is a
   rewrite-strategy flag, not an account-capability flag).
 
-# 6a. Mantle connectivity check (proprietary OpenAI GPT targets)
+# 6a. OpenAI-compatible connectivity (Mantle or runtime)
 
-Use this INSTEAD of §6 for bare proprietary GPT ids, including `openai.gpt-6-astra`.
+Use this INSTEAD of §6 whenever the selected surface is Chat Completions or Responses,
+including explicit runtime OpenAI choices. Only a selected Converse surface uses §6.
 The script classifier `preflight_bedrock.is_mantle_model` defines this endpoint split.
 Astra Standard Mantle supports `us-east-1` and `us-west-2`; its `us.` / `global.` ids remain on runtime.
+For a runtime OpenAI target, interpret 401/403 as credential/model-access or `bedrock:InvokeModel`
+authorization failures, and 404 as an unavailable selected profile/API. Do not prescribe Mantle
+actions or change endpoint/API. The Mantle-specific recovery notes below apply only to bare IDs.
 
 ```bash
 mkdir -p <repo>/.saws-migrate/eval-results
 
 AWS_REGION=<REGION> <prepend AWS_PROFILE=<profile> when your context has an `AWS profile` line> uv run --project <scriptsDir> python - <<'PY'
 import os, sys
-from aws_bedrock_token_generator import provide_token
-from openai import BedrockOpenAI
+sys.path.insert(0, "<scriptsDir>")
+from preflight_bedrock import create_openai_client
 region = os.environ.get('AWS_REGION', 'us-east-1')
 try:
-    client = BedrockOpenAI(aws_region=region,
-                           bedrock_token_provider=lambda: provide_token(region=region),
-                           max_retries=2)
+    client = create_openai_client('<TARGET_MODEL_ID>', region, max_retries=2)
     if '<TARGET_API_SURFACE>' == 'chat_completions':
         r = client.chat.completions.create(
             model='<TARGET_MODEL_ID>', messages=[{'role': 'user', 'content': 'ping'}])
@@ -260,7 +263,7 @@ If `same_model_family: true` — either Anthropic 1P → Bedrock Claude, or Open
 
 - Skip rubric generation and scoring (no parameter-surface drift to score against).
 - Just verify each prompt works on Bedrock (connectivity + response format): run each prompt, check for errors, verify response is non-empty.
-- **Use the API path §6 selected.** Bare proprietary GPT ids, including Astra, use the selected Mantle Chat or Responses surface from §6a; supported CRIS ids use Converse. Reuse the endpoint-aware target call from §10 when iterating prompts, but skip quality scoring for this same-model branch. Do not infer the endpoint from `same_model_family`.
+- **Use the API path §6 selected.** Use §6a for selected Chat/Responses calls on either endpoint, or §6 for selected Converse calls. Reuse the endpoint-aware target call from §10 when iterating prompts, but skip quality scoring for this same-model branch. Do not infer the endpoint from `same_model_family`.
 - Output pass / fail per prompt; count successes as `success_count`.
 - Compute `pass_rate = success_count / total_cases` (connectivity-only ratio) and write `failures = total_cases - success_count`.
 - In §14, set `live_source_baseline: false` (no live comparison ran) and add `notes` prefix `same_model_family: true — connectivity-only verification, no rubric scoring`. T2-6 reads that prefix to render the report banner with "connectivity verified" instead of "judge scored X/Y prompts". Set `source_baseline_quality: 'unknown'` (no live baseline ran).
@@ -378,7 +381,7 @@ If `special_patterns.vision == false`, SKIP this section.
 
 **This section runs for same-model migrations too** (both Anthropic 1P → Claude and OpenAI → the same GPT model). §8 short-circuits scoring, not image verification: it is the only gate that proves image input works before per-case image calls, so skipping it would let a vision migration pass without ever sending an image.
 
-**Pick the API path exactly as §6 did.** The script below uses `boto3.converse` and is valid for Converse targets. For a bare proprietary GPT target (including Astra) use §9.5a instead — the GPT-5.x model cards list image input as supported, but it goes through the Responses API, not Converse.
+**Pick the API path exactly as §6 did.** The script below is only for a selected Converse surface. For selected Chat/Responses on either endpoint, use §9.5a instead.
 
 Otherwise, run a one-shot Bedrock call against a public Wikipedia image to prove the SDK accepts image input before §10 attempts it on every golden prompt. If the public CDN isn't reachable, the smoke is INCONCLUSIVE — do NOT attempt an inline-fixture fallback (tiny synthetic JPEGs trip Claude's minimum-dimension validators and produce false `VISION_FAIL` even when the SDK is fine):
 
@@ -418,9 +421,9 @@ Outcomes:
 - **`VISION_INFRA_SKIPPED`** — image download failed (DNS / proxy / air-gapped machine). Bedrock vision was NOT exercised; the test is inconclusive at this layer. Add to `notes`: `vision_smoke_skipped: CDN unreachable — Bedrock vision SDK path not exercised at smoke layer`. Proceed to §10 — golden cases carry their own images from T2-2, which will exercise the SDK directly.
 - **`VISION_FAIL`** — Bedrock rejected the image (`ValidationException`, `AccessDeniedException`, etc.). Surface the exact error in your result file's `notes`, STOP — golden vision eval will fail the same way. (If the failure is an `AccessDeniedException` on model access, route it through `{ blocked: { reason: 'model_access', detail: ... } }` per §6.)
 
-# 9.5a Mantle vision smoke test (proprietary OpenAI GPT targets)
+# 9.5a OpenAI-compatible vision smoke test (Mantle or runtime)
 
-Use this INSTEAD of §9.5 for a bare proprietary GPT target (including Astra) AND `special_patterns.vision == true`. Preserve `<TARGET_API_SURFACE>`; both Mantle variants send the image as a base64 data URL.
+Use this INSTEAD of §9.5 when the selected surface is Chat/Responses AND `special_patterns.vision == true`. Preserve `<TARGET_API_SURFACE>` on either endpoint; both variants send the image as a base64 data URL.
 
 ```bash
 AWS_REGION=<REGION> <prepend AWS_PROFILE=<profile> when your context has an `AWS profile` line> uv run --project <scriptsDir> python - <<'PY'
@@ -435,14 +438,12 @@ except Exception as e:
     print(f"VISION_INFRA_SKIPPED [{type(e).__name__}]: {e}", file=sys.stderr)
     sys.exit(0)
 
-from aws_bedrock_token_generator import provide_token
-from openai import BedrockOpenAI
+sys.path.insert(0, "<scriptsDir>")
+from preflight_bedrock import create_openai_client
 region = os.environ.get("AWS_REGION", "us-east-1")
 data_url = "data:image/jpeg;base64," + base64.b64encode(img).decode()
 try:
-    client = BedrockOpenAI(aws_region=region,
-                           bedrock_token_provider=lambda: provide_token(region=region),
-                           max_retries=2)
+    client = create_openai_client('<TARGET_MODEL_ID>', region, max_retries=2)
     if "<TARGET_API_SURFACE>" == "chat_completions":
         r = client.chat.completions.create(model="<TARGET_MODEL_ID>", messages=[{
             "role": "user", "content": [
@@ -487,18 +488,19 @@ import time
 import boto3
 from botocore.exceptions import ClientError
 sys.path.insert(0, "<scriptsDir>")
-from preflight_bedrock import is_mantle_model
+from preflight_bedrock import is_mantle_model, create_openai_client
 from image_input import converse_message, responses_message, chat_message
 
 region = os.environ.get("AWS_REGION", "us-east-1")
 model_id = "<TARGET_MODEL_ID>"
-mantle = is_mantle_model(model_id)
-if mantle:
-    from aws_bedrock_token_generator import provide_token
-    from openai import BedrockOpenAI
-    client = BedrockOpenAI(aws_region=region,
-                          bedrock_token_provider=lambda: provide_token(region=region),
-                          max_retries=0)
+api_surface = "<TARGET_API_SURFACE>"
+if api_surface not in {"responses", "chat_completions", "converse"}:
+    raise ValueError("Resolve the selected API surface before evaluation")
+openai_api = api_surface in {"responses", "chat_completions"}
+if is_mantle_model(model_id) and not openai_api:
+    raise ValueError("A bare Mantle model cannot use Converse")
+if openai_api:
+    client = create_openai_client(model_id, region, max_retries=0)
 else:
     bedrock = boto3.client("bedrock-runtime", region_name=region)
 
@@ -538,8 +540,8 @@ def target_with_backoff(prompt):
     delay = 2.0
     for attempt in range(6):
         try:
-            if mantle:
-                if "<TARGET_API_SURFACE>" == "chat_completions":
+            if openai_api:
+                if api_surface == "chat_completions":
                     messages = []
                     if prompt.get("system_prompt"):
                         messages.append({"role": "system", "content": prompt["system_prompt"]})
