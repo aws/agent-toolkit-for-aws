@@ -53,6 +53,12 @@ licensing exposure and found none" is a different statement from silence.
 ```jsonc
 {
   "phase": "clarify",
+  "metadata": {
+    "clarify_mode": "wizard", // "fast_path" | "wizard" — which Clarify flow produced this file
+    "fast_path_eligible": false, // copied from azure-resource-inventory.json metadata.clarify_fast_path.eligible
+    "questions_defaulted": [], // dotted row keys that took their documented default without being asked, e.g. "design_constraints.compute_target"; array rows use index notation — "app_service_plans[0].isolation_split", "clusters[1].pattern_id"
+    "deferred_to_generate": ["data.db_cutover"] // execution-only rows carrying a default here and asked for real at the Decision gate's [C] (estimate-assemble.md § Step 3b); Generate must not run while any of these is still unconfirmed. DISJOINT from questions_defaulted — a row is in exactly one list
+  },
   "global": {
     "target_region": { "disposition": "DETECTED", "value": "eu-west-1", "default": "eu-west-1" },
     "user_geography": {
@@ -79,7 +85,15 @@ licensing exposure and found none" is a different statement from silence.
       "default": null,
       "source_ha_context": "pg-contoso-store: ZoneRedundant, standby zone 2"
     },
-    "db_cutover": { "disposition": "ESSENTIAL", "value": "dms", "default": null },
+    "db_cutover": {
+      "disposition": "PROPOSED",
+      "value": "dump_restore",
+      "default": "dump_restore",
+      "deferred_to_generate": true, // asked for real at estimate-assemble.md § Step 3b when the user chooses [C] Generate; Step 3b sets it to false
+      "default_basis": "largest relational DB 64 GiB <= 100 GiB",
+      "largest_relational_db_gib": 64, // what Discover measured; null when no relational server carried storage_mb
+      "size_coverage": "complete" // "complete" | "partial" | "unknown" — whether every relational server had a measured size
+    },
     "traffic_pattern": { "disposition": "PROPOSED", "value": null, "default": "steady" },
     "storage_io": { "disposition": "PROPOSED", "value": null, "default": "medium" },
     "cosmos_rw_split": { "disposition": "N/A", "value": null, "default": null },
@@ -129,6 +143,7 @@ Which fragment owns which section:
 
 | Section                                                      | Fragment                                                                         |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `metadata`                                                   | the assembler (`clarify-assemble.md` § Assembly rule 0)                          |
 | `global`, `design_constraints.cost_optimization`, `baseline` | `clarify-global.md`                                                              |
 | the rest of `design_constraints`, `app_service_plans[]`      | `clarify-compute.md`                                                             |
 | `data`                                                       | `clarify-database.md`                                                            |
@@ -147,6 +162,19 @@ means _read from the estate_, and never to a user decision. Design's rationale p
 chose Elastic Beanstalk" differently from "we assumed Elastic Beanstalk", and the report
 distinguishes them — but only if this file recorded which happened.
 
+**Correction provenance.** A PROPOSED row the user later corrects — directly at the Decision
+gate's assumptions block (`estimate-assemble.md` § Step 2) or through the workshop sidebar
+(`workshop-refresh.md` § 3) — keeps `disposition: PROPOSED`, takes the user's `value`, gains
+`"source": "user_corrected"`, and its key **leaves `metadata.questions_defaulted[]`**. Both
+routes write the same three things, so the assumptions block never re-lists an explicit
+choice as an assumption and a scenario snapshot carries the corrected provenance. An entry
+in `questions_defaulted[]` therefore always resolves to a PROPOSED row whose `value` equals
+its `default` and which carries no `source`. The one exception is a row carrying
+`deferred_to_generate: true`: correcting it at the Decision gate is its confirmation, so it
+takes the Step 3b write (`"source": "user_confirmed_at_generate"`, `deferred_to_generate:
+false`, key removed from both `metadata` lists — see the `db_cutover` bullet below) rather
+than `user_corrected`.
+
 ## Non-obvious defaults
 
 - **`cpu_architecture` defaults to `x86_64`**, diverging from the repo-wide Graviton default
@@ -158,8 +186,28 @@ distinguishes them — but only if this file recorded which happened.
 - **`identity` defaults to a fresh IAM Identity Center re-invite**, not Entra ID federation:
   defaulting to federation would leave the migration depending on the cloud being left.
 - **`isolation_split` defaults to `false`**, because splitting multiplies compute cost.
-- **`vm_cutover` and `db_cutover` have no defaults at all.** They select entirely different
-  runbooks, not different numbers.
+- **`vm_cutover` has no default at all** (ESSENTIAL): MGN versus rebuild selects an entirely
+  different runbook, and no inventory fact makes one of them defensible.
+- **`db_cutover` has a size-derived default and is deferred, not asked, in Clarify:**
+  `dump_restore` when the largest **measured** relational database is ≤ 100 GiB, `dms`
+  above that. When no relational server carries a measured size (live enrichment skipped,
+  or `storage_mb` unset in Terraform) the default is still `dump_restore` — the runbook with
+  no AWS charge, so an unknown size never invents cost — and the row records the
+  uncertainty: `largest_relational_db_gib: null`, `size_coverage: "unknown"`, and a
+  `default_basis` that says the size was not measured. When only some servers are measured
+  the rule applies to the measured maximum with `size_coverage: "partial"` and the basis
+  names the unmeasured server(s). A size is never invented. The row is recorded PROPOSED
+  with `deferred_to_generate: true`, `default_basis`, `largest_relational_db_gib`, and
+  `size_coverage`, and is asked for real at `estimate-assemble.md` § Step 3b when the user
+  chooses [C] Generate — the two answers also select different runbooks, which is exactly
+  why the question is asked where the runbook is written rather than before the user has a
+  number. Step 3b carries the uncertainty into its prompt and asks for the size when
+  `size_coverage` is not `"complete"`. **After Step 3b** (or a correction of the row from
+  the Step 2 assumptions block, which applies the same write) the row carries the confirmed
+  `value`, `"source": "user_confirmed_at_generate"`, `deferred_to_generate: false`
+  (explicit, not deleted), and its key is removed from **both** `metadata` lists;
+  `default`, `default_basis`, `largest_relational_db_gib`, and `size_coverage` stay for the
+  audit trail.
 - **`global.user_geography` defaults to `single-region`** when Q-A1 maps one Azure region
   (PROPOSED, correctable). Design reads it for CloudFront / Route 53 (`networking.md` §2.3)
   and Q-D1's Catastrophic branch uses it before writing `data.availability: "multi-region"`.

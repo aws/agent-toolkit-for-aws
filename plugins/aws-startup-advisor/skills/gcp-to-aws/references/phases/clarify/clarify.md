@@ -247,8 +247,9 @@ instead:
 
 ## Step 1.5: Fast-Path Gate (Simple Stacks)
 
-**GCP-specific — `azure-to-aws` has no equivalent fast-path.** After presenting the
-Discovery Summary, check `$MIGRATION_DIR/migration-preview.json` for fast-path eligibility:
+**The reference fast path — `azure-to-aws` (`clarify.md` § Step 0.5) and `heroku-to-aws`
+mirror it with their own eligibility inputs.** After presenting the Discovery Summary,
+check `$MIGRATION_DIR/migration-preview.json` for fast-path eligibility:
 
 ```
 IF migration-preview.json exists
