@@ -30,31 +30,50 @@ Read the framework table of contents:
 https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json
 ```
 
-It returns a JSON tree of the whole framework:
+It returns a JSON tree of the whole framework. Pillars are NOT top-level — they sit
+under an "Appendix" node, and there's an extra "Category" grouping level between a
+pillar and its questions:
 
 ```json
 { "contents": [
-  { "title": "Operational excellence", "href": "operational-excellence.html", "contents": [
-    { "title": "OPS 1. How do you determine what your priorities are?", "href": "ops-01.html", "contents": [
-      { "title": "OPS01-BP01 Evaluate external customer needs", "href": "ops_priorities_ext_cust_needs.html" },
-      { "title": "OPS01-BP02 Evaluate internal customer needs", "href": "ops_priorities_int_cust_needs.html" }
+  { "title": "Abstract", "href": "abstract.html" },
+  { "title": "The pillars of the framework", "href": "the-pillars-of-the-framework.html" },
+  { "title": "Appendix", "href": "appendix.html", "contents": [
+    { "title": "Operational excellence", "href": "a-operational-excellence.html", "contents": [
+      { "title": "Organization", "href": "organization.html", "contents": [
+        { "title": "OPS 1. How do you determine what your priorities are?", "href": "ops-01.html", "contents": [
+          { "title": "OPS01-BP01 Evaluate external customer needs", "href": "ops_priorities_ext_cust_needs.html" },
+          { "title": "OPS01-BP02 Evaluate internal customer needs", "href": "ops_priorities_int_cust_needs.html" }
+        ] }
+      ] }
     ] }
-  ] }
+  ] },
+  { "title": "Notices", "href": "notices.html" }
 ] }
 ```
 
-Walk the tree recursively. Classify each node by its `title` / `href` using
-general patterns — do NOT hardcode the pillar prefixes, so any pillar AWS adds or
-renames is picked up automatically:
+Walk the tree recursively. Classify nodes structurally — by parent/child
+relationship, not by matching URL patterns — so opaque or renamed hrefs never break
+discovery:
 
+- **Pillar node** — a direct child of the "Appendix" node. Do not hardcode which
+  pillars exist or how many — discover them structurally so a newly added or renamed
+  pillar is still covered. Pillar hrefs carry an "a-" prefix (`a-operational-excellence.html`);
+  strip it if you need the bare stem for a URL elsewhere, it carries no other meaning.
 - **Best-practice node** — `title` matches `^[A-Z]{2,5}\d{2}-BP\d{2}\b`.
   Record: `bp_id` (the matched ID), `bp_title` (the remainder of the title),
-  `bp_url` (base + `href`), `question_id` (the `PILLAR##` prefix of the matched ID),
-  `pillar_id`/`pillar_name` (derived from the prefix and the enclosing pillar node's
-  title).
-- **Question node** — `href` matches `^[a-z]{2,5}-\d{2}\.html$` (the lowercased
-  pillar stem plus question number). Record its `title` and `href` to enrich the
-  question's `question_title` and `question_url`.
+  `bp_url` (base + `href`), `question_id` (the `PILLAR##` prefix of the matched ID).
+- **Question node** — structurally, any node whose direct children include at least
+  one best-practice node. Do NOT match by `href` pattern: `^[a-z]{2,5}-\d{2}\.html$`
+  matches 56 of the 57 real question nodes — Sustainability's SUS 1 ships at an opaque
+  generated href with no recognizable stem, and a pattern match silently drops it. The
+  structural rule (parent-of-a-BP-node) finds all 57 because it never depends on the
+  href shape.
+- **`pillar_id`/`pillar_name`** — NOT "the enclosing pillar node's title" (that
+  resolves one level too shallow, to the Category node, e.g. "Organization"/"Prepare",
+  because of the Pillar → Category → Question → BP nesting). Instead, climb ancestors
+  from the BP node until you reach the node whose own parent is "Appendix" — that is
+  the pillar node — and use its title.
 
 Base for relative `href`s: `https://docs.aws.amazon.com/wellarchitected/latest/framework/`.
 
@@ -102,12 +121,14 @@ Best-practice record (`wa-review.corpus.v1`):
 ## Validation gate (must pass before ASSESS)
 
 Write `corpus/manifest.json` with counts, per-pillar question counts, provenance
-(index URL + UTC retrieval time), and a validation verdict. The validator MUST
-confirm:
+(index URL + UTC retrieval time), which retrieval path was actually used
+(`retrieval_method`: one of `mcp_toc_index` / `https_toc_index` /
+`mcp_fallback_traversal` / `https_fallback_traversal` / `internal_knowledge_disclosed`),
+and a validation verdict. The validator MUST confirm:
 
-- Every pillar discovered in the TOC top-level entries is represented, and each
-  discovered pillar carries at least one best practice (do not assert a fixed pillar
-  count — a newly added pillar must not fail this check).
+- Every pillar discovered among the Appendix node's direct children is represented, and
+  each discovered pillar carries at least one best practice (do not assert a fixed
+  pillar count — a newly added pillar must not fail this check).
 - Every BP ID matches canonical `PILLAR##-BP##`; BP IDs are unique after dedupe.
 - Question IDs are unique; every question has at least one BP.
 - Every BP refers to a discovered question and pillar.
@@ -129,24 +150,46 @@ If `toc-contents.json` is unavailable (HTTP/parse error) or yields no best pract
 
 1. Retry the index read once.
 2. If still failing, fall back to **construct-and-iterate** over question pages, which
-   the reader supports even though it strips links. First discover the current set of
-   pillar stems dynamically: read the framework `appendix` page (or the framework landing
-   page) and take the lowercased stem of each pillar it lists — do not start from a
-   hardcoded stem list, so a newly added pillar is still covered. Then, for each
-   discovered stem, read `<base><stem>-01`, `-02`, … (i.e. `<stem>-NN`), incrementing
-   until the page is missing — that missing page is the clean pillar boundary, wherever
-   it falls, so do not assume a fixed per-pillar question count. Each question page lists
-   its `PILLAR##-BP##` IDs as text; derive `question_id` from the BP prefix (not the
+   the reader supports even though it strips links. The six pillar stems change
+   extremely rarely and the appendix/pillar landing pages are too sparse to derive them
+   from (each is a 357–610 byte blurb with zero `PILLAR##-BP##` IDs to anchor a
+   structural discovery) — for this fallback path only, use the current explicit list:
+   `ops` (Operational Excellence), `sec` (Security), `rel` (Reliability), `perf`
+   (Performance Efficiency), `cost` (Cost Optimization), `sus` (Sustainability). The
+   no-hardcode rule stays for the primary TOC-index path above, which discovers pillars
+   structurally; this fallback is already a last resort.
+
+   For each stem, read `<base><stem>-01`, `-02`, … (i.e. `<stem>-NN`), incrementing.
+   **Use a lookahead window of at least 2 consecutive missing pages before declaring
+   the pillar boundary** — do not stop at the first miss. `sus-01` itself 404s
+   (Sustainability's first question lives at an opaque generated slug, not the expected
+   stem — the same fact that breaks the primary path's href-pattern question matching),
+   so "stop at the first missing page" silently drops all of Sustainability; every
+   genuine pillar boundary has 3+ consecutive misses, so a window of 2 safely
+   distinguishes an interior gap from a real boundary. Each question page lists its
+   `PILLAR##-BP##` IDs as text; derive `question_id` from the BP prefix (not the
    heading, which varies: `SEC 2.` vs `SUS 6`).
 
-   **The page suffix and the missing-page signal depend on the retrieval tool.** The
-   canonical pages are served as `.html` (e.g. `operational-excellence.html`, `ops-01.html`):
-   - **`aws___read_documentation`:** request the markdown-suffixed form the reader accepts
-     (verified live) — `<base>appendix.md`, then `<base><stem>-NN.md` — and stop when a read
-     returns the reader's sentinel string `"Documentation page not found."`.
-   - **Non-MCP HTTPS web-fetch fallback:** request the canonical `.html` form —
-     `<base>appendix.html`, then `<base><stem>-NN.html` (a plain HTTPS fetch of a `.md`
-     suffix 404s because the site serves `.html`) — and stop on an HTTP 404.
+   **Residual gap:** the lookahead window fixes boundary *detection* — it stops the
+   traversal from terminating early at the `sus-01` 404 — but it does not recover SUS
+   1's *content*. Because SUS 1 ships at an opaque generated slug rather than a
+   `sus-NN` URL, this stem-based iteration never fetches it, and step 3's relocation
+   search below is scoped to relocating a moved page, never to supplying BP IDs
+   directly. If this fallback path is used, record in `corpus/manifest.json` and the
+   coverage audit that SUS 1's best practices could not be retrieved via this path and
+   are Cannot Determine — do not let a fallback-completed run appear fully covered
+   when SUS 1 is actually missing.
+
+   **The page suffix and missing-page signal are the same for both retrieval tools —
+   use the `.md` form for both, never `.html`, for this fallback traversal** (verified
+   live): `<base><stem>-NN.md`.
+   - **`aws___read_documentation`:** stops when a read returns the reader's sentinel
+     string `"Documentation page not found."`.
+   - **Non-MCP HTTPS web-fetch fallback:** requesting the `.md` form returns a clean
+     200 `text/markdown` when the page exists and a clean 404 when it does not — the
+     same unambiguous signal as the MCP path. Do NOT request the `.html` form for this
+     fallback: a missing `.html` page 302-redirects to the framework root and then
+     returns 200, so it never produces a 404 and the traversal cannot terminate.
 3. To relocate a specific moved page, use `aws___search_documentation` when the AWS MCP server is
    available; otherwise use the environment's web-search tool scoped to `docs.aws.amazon.com` over
    HTTPS; if neither is available, skip the relocated page and note the gap in the coverage audit.
