@@ -44,6 +44,8 @@ def invoke(p, *args, script=CLI, markers=None, keep_stdin_open=False):
     ({}, "OTHER", "cli"),
     ({"CLAUDECODE": "1"}, "CLAUDE_CODE", "hook"),
     ({"CLAUDE_CODE_ENTRYPOINT": "cli"}, "CLAUDE_CODE", "hook"),
+    ({"CURSOR_AGENT": "1"}, "CURSOR", "hook"),
+    ({"CURSOR_AGENT": ""}, "OTHER", "cli"),
     ({"CURSOR_VERSION": "fixture", "CLAUDECODE": "1"}, "CURSOR", "hook"),
     ({"CURSOR_PROJECT_DIR": "/fixture"}, "CURSOR", "hook"),
     ({"CURSOR_TRACE_ID": "fixture"}, "CURSOR", "hook"),
@@ -66,6 +68,8 @@ def test_status_is_read_only_and_routes_using_shared_host_markers(tmp_path, home
 @pytest.mark.parametrize("markers", [
     {"CLAUDECODE": "1"},
     {"CLAUDE_CODE_ENTRYPOINT": "cli"},
+    {"CURSOR_AGENT": "1"},
+    {"CURSOR_AGENT": "1", "CLAUDECODE": "1"},
     {"CURSOR_VERSION": "fixture", "CLAUDECODE": "1"},
     {"CURSOR_PROJECT_DIR": "/fixture"},
 ])

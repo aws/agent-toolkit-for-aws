@@ -62,13 +62,14 @@ SOURCE_CURSOR = "CURSOR"
 SOURCE_KIRO = "KIRO"
 SOURCE_OTHER = "OTHER"
 
-# First marker present wins. Only the Claude Code rows are verified against a
-# running host; an unmatched host reports OTHER rather than a plausible guess,
+# First marker present wins. Claude Code and Cursor Agent CLI markers have been
+# verified against running hosts; an unmatched host reports OTHER rather than a plausible guess,
 # because a wrong attribution silently moves one host's numbers into another's.
 # TODO(StartupEngBlend-3621): confirm the other three.
 # Cursor is checked first: it also exports Claude Code compatibility variables
 # to its hooks, so a Claude marker alone would misattribute every Cursor event.
 _HOST_MARKERS = (
+    ("CURSOR_AGENT", SOURCE_CURSOR),  # verified in Cursor Agent CLI
     ("CURSOR_VERSION", SOURCE_CURSOR),  # verified in Cursor's hook environment
     ("CURSOR_PROJECT_DIR", SOURCE_CURSOR),  # verified in Cursor's hook environment
     ("CURSOR_TRACE_ID", SOURCE_CURSOR),  # unverified
