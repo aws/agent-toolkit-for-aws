@@ -1,6 +1,6 @@
 # AI Pricing Cache (Bedrock + source-provider)
 
-**Last updated:** 2026-08-24
+**Last updated:** 2026-10-05 (re-verified via the AWS Pricing MCP server and aws.amazon.com/bedrock/pricing — Claude Sonnet 5 $2/$10, Opus 4.8 $5/$25, Sonnet 4.6 $3/$15, Opus 4.6 $5/$25, Haiku 4.5 $1/$5, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50, Llama 4 Maverick/Scout, Llama 3.3 70B, Nova 2 Lite/Pro/Lite/Micro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family, and the OpenAI/Azure OpenAI source-side table all confirmed unchanged; no rate changes this refresh)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±15-25% for AI models (sourced from public pricing pages)

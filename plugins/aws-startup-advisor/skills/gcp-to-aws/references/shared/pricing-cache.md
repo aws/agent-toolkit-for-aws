@@ -1,6 +1,6 @@
 # AWS Pricing Cache
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-10-05 (re-verified via the AWS Pricing MCP server and aws.amazon.com/bedrock/pricing — Claude Sonnet 5 $2/$10, Opus 4.8 $5/$25, Sonnet 4.6 $3/$15, Opus 4.6 $5/$25, Haiku 4.5 $1/$5, Opus 4.1 legacy $15/$75, Claude Fable 5/5.1 $10/$50, Llama 4 Maverick/Scout, Llama 3.3 70B, Nova Micro/Lite/Pro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family all confirmed unchanged via MCP; Fargate/EC2/RDS/ElastiCache/S3 infra rows cross-checked against the canonical aws-infra-pricing.json refresh (same date) — see that file's rate changes for EC2 r6i, RDS PostgreSQL Multi-AZ, Aurora PostgreSQL r6g, and ElastiCache cache.m6g; no AI-model rate changes this refresh)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±5-10% for infrastructure services (sourced from AWS Price List API), ±15-25% for AI models (sourced from public pricing pages)
