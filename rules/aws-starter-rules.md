@@ -42,7 +42,7 @@ Where this guidance conflicts with the project's own instructions, the project's
   3. If accountPlanType": "PAID", check the [Paid Tier supported services list](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html#supported-services-paid-plan).
   4. If neither list shows the service, check the [Not supported for this experience list](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html#unsupported-services). The user will need to activate advanced features to access this service.
 - Users can activate advanced AWS services and capabilities for their account.
-- Before any hands-on AWS task — creating, configuring, migrating, debugging, or operating an AWS service, writing AWS SDK code, or authoring CDK/CloudFormation — if a matching skill is already installed locally, load it; otherwise call `aws___search_documentation` with topic `agent_skills` and load the matching skill with `aws___retrieve_skill`. A local skill that only points to another skill is not the match — retrieve the one it names. Prefer the skill's guidance over general knowledge. Skip it for non-AWS work and simple AWS factual questions.
+- For any AWS task or question — building, configuring, migrating, debugging, or operating a service, writing SDK code, authoring CDK/CloudFormation, or answering how a service works — first call `aws___search_documentation` with topic `agent_skills` and load the matching skill with `aws___retrieve_skill`. Do this even when you believe you know the answer: skills carry current service behavior that your training may not. Prefer the skill's guidance over general knowledge. Skip it only for work that does not involve AWS.
 
 ### Help level
 
