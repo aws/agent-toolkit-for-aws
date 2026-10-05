@@ -75,7 +75,7 @@ Works from both standalone accounts and delegated administrator accounts.
    aws macie2 get-classification-export-configuration
    ```
 
-   **Security check:** Verify the export destination S3 bucket uses SSE-KMS encryption (`kmsKeyArn` is present in the `s3Destination` response). Flag if encryption is not configured or uses default S3 encryption.
+   **Security check:** Verify the export destination S3 bucket uses SSE-KMS encryption (`kmsKeyArn` is present in the `s3Destination` response) and TLS in transit for delivery and consumer access. Flag missing KMS or transport protection. Verify retention and successful delivery separately; destination configuration alone proves neither.
 
 6. Review allow lists:
 

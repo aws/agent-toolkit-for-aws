@@ -21,8 +21,9 @@ resource coverage and identifier guidance][MA], [discovery jobs](https://docs.aw
 ## Evidence delivery and use
 
 Request export destination/encryption metadata and a sanitized delivery/completion record
-for the selected dataset, then compare the observed retention with the required evidence
-window. A configured export destination and positive findings do not show which objects
+for the selected dataset. Require the destination to use KMS encryption at rest and TLS in
+transit for delivery and consumer access, then compare observed retention with the required
+evidence window. A configured export destination and positive findings do not show which objects
 were examined or that evidence arrived. The matrix's export recommendation needs this
 delivery check before being reported complete.
 

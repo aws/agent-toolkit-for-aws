@@ -428,7 +428,9 @@ aws macie2 list-members --only-associated false \
 ```
 
 **Pass conditions:** session `ENABLED`; automated sensitive data discovery `ENABLED`;
-classification export configured to an S3 bucket;
+classification export configured to an S3 bucket that uses KMS encryption at rest and TLS in
+transit for delivery and consumer access, with retention and successful delivery verified
+separately;
 `securityHubConfiguration.publishClassificationFindings` is `true` (the guide calls
 publishing sensitive data findings its highest-value configuration change, because Security
 Hub exposure scoring and GuardDuty attack sequences use the sensitive-data trait);

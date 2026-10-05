@@ -82,7 +82,7 @@ For agent rollout or image relevance, read [runtime and workload coverage](detec
 |---|---|---|
 | Any S3 bucket | GuardDuty `S3_DATA_EVENTS` | High |
 | Any S3 bucket | Macie automated sensitive data discovery | High |
-| Macie enabled | Classification export to S3 before Macie's retention period for discovery results ends | High |
+| Macie enabled | Classification export to S3 before Macie's retention period for discovery results ends; require KMS encryption at rest and TLS in transit for delivery and consumer access, and verify retention and successful delivery separately | High |
 | Macie enabled, sensitive data findings not published to Security Hub CSPM | Enable publishing so Security Hub exposure scoring and GuardDuty attack sequences see sensitive-data traits | High |
 | S3 bucket taking untrusted or third-party uploads | GuardDuty S3 Malware Protection, **per bucket** | High |
 | Many or large S3 buckets | Automated discovery over discovery jobs | Medium |
