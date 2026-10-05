@@ -21,6 +21,10 @@ metric_emission/   sending events, only ever when consent/ says yes
   migration_attributes.py   the MigrationActivity attribute vocabularies and lookups
 
 test/              the whole suite
+
+cli.py             read-only host/consent status and explicit reconciliation
+PROTOCOL.md        CLI-host workflow using the existing notice exchange
+sync_bundles.py    generate/check standalone migration-skill bundles
 ```
 
 Two directories, two jobs: `consent/` decides, `metric_emission/` sends. Every
@@ -47,6 +51,37 @@ uv run --with pytest python -m pytest -q
 ```
 
 `python3 -m pytest` does not work on a homebrew Python with no pytest installed.
+
+## CLI fallback
+
+The migration skills call `cli.py status` before starting or resuming. This
+read-only JSON result selects the reporting policy using the same host markers
+as the HTTP client: Claude Code and Cursor use hooks, other sources use explicit
+CLI reconciliation. The agent does not choose a path from its model name.
+This is host classification, not hook-health detection. Unknown sources remain
+`OTHER`; existing `CODEX` and `KIRO` classifications are preserved.
+
+`cli.py reconcile` calls the existing migration emitter with `--reconcile --via
+cli`, from the project root, without reading hook stdin. The emitter rejects
+CLI reporting on recognized Claude Code/Cursor hosts. Existing hook registrations,
+including the shared Codex registration, are unchanged; concurrent triggers use
+the same run lock and snapshot.
+
+`PROTOCOL.md` wires the existing notice, acknowledgement and opt-out scripts for
+CLI hosts. It adds no consent record, notice wording, environment opt-out, event
+schema, or HTTP client. The fallback only reports migration activity.
+
+Each Azure, GCP, Heroku and LLM-to-Bedrock skill vendors the required Python
+files and a generated version sidecar, so a single-skill install needs no sibling
+plugin directory. The production hook paths remain unchanged.
+
+```sh
+python3 scripts/telemetry/sync_bundles.py --write
+python3 scripts/telemetry/sync_bundles.py --check
+```
+
+The repository's `mise run validate` includes the bundle check. Python 3.8+ is the
+runtime requirement; unavailable Python or a denied tool call skips telemetry.
 
 ## Migration telemetry
 

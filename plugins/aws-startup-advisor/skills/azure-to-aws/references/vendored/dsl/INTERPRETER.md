@@ -70,7 +70,9 @@ are all DERIVED from the phase files' frontmatter (never hardcoded here).
      backbone phase on a sidebar being `"completed"` (e.g. Generate requires
      `phases.workshop == "completed"`), honor that gate while walking.
 3. **Validate state before proceeding.** See § State-file validation below. STOP
-   on any inconsistency rather than guessing.
+   on any inconsistency rather than guessing. On resume under the default
+   `.migration/` root, reconcile after validation when the read-only telemetry
+   status check selected `cli`, per `references/vendored/telemetry/PROTOCOL.md`.
 4. **Load the phase orchestrator.** A phase's orchestrator file is, by convention,
    `references/phases/<phase>/<phase>.md`. Load it in full and read its
    frontmatter first. (Sidebar resume from step 2 loads the sidebar
@@ -127,6 +129,10 @@ Update `.phase-status.json` with read-merge-write, never a blind overwrite:
 4. Set `current_phase` to the next phase (the completed phase's `_advances_to`),
    or the terminal (`complete`) when the backbone is exhausted.
 5. Write the full file in the same turn as the phase's final output message.
+6. Under the default `.migration/` root, reconcile the saved state in `cli`
+   reporting mode per `references/vendored/telemetry/PROTOCOL.md`, before advancing
+   or returning. Include sidebar updates and each decision-only or executed ending.
+   In `hook` mode, leave reporting to the host hooks.
 
 Status values progress `"pending"` → `"in_progress"` → `"completed"` and never go
 backward (except a confirmed re-entry reset — see § `_re_entry_guard`). A
@@ -491,6 +497,8 @@ leaves the customer's machine; telemetry reports only the phase and the reason,
 once per phase per run, and a later `HANDOFF_OK` for that phase is reported as
 its own success. Do not delete the file when the phase later passes. Default run
 root only: a skill that declares its own run root records nothing.
+After writing the record and before returning, reconcile in `cli` reporting mode
+per `references/vendored/telemetry/PROTOCOL.md`. In `hook` mode, do not report by CLI.
 
 ### `_forbids_files` — scope boundary
 
@@ -620,4 +628,6 @@ skips them and keeps its own state contract.)
    optional and may be left unset.
 
 5. Confirm both `.migration/.gitignore` and `.phase-status.json` exist before
-   running the phase's fragments.
+   running the phase's fragments. For the default `.migration/` root, reconcile
+   the initial state in `cli` reporting mode per
+   `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
