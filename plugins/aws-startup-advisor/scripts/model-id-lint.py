@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Model-ID drift lint (CI).
+"""Model-ID drift lint.
 
 Fails when a skill (or example, agent prompt, script, or fixture) names a
 Bedrock model the lifecycle registry has retired, outside the catalog files
 whose JOB is to record it.
+
+Everything this script reads lives inside this plugin directory
+(`plugins/aws-startup-advisor/`). It does not depend on, or write to, anything
+at the repository root.
 
 The banned-as-target set is READ FROM THE REGISTRY, not hardcoded. The single
 source of truth is `skills/shared/ai/ai-model-lifecycle.md`:
@@ -28,14 +32,21 @@ itself and the pricing rate cards) are allowlisted. A vendored copy under
 `skills/shared/<rel>` path so it inherits the canonical allowlist entry.
 
 Stdlib only. Exit 0 = clean.
+
+Modes (run from anywhere; paths resolve relative to this file):
+    python3 plugins/aws-startup-advisor/scripts/model-id-lint.py
+    python3 plugins/aws-startup-advisor/scripts/model-id-lint.py --plugin-root <dir>
+        # check a copy of the plugin tree somewhere else (used by the tests)
 """
 
+import argparse
 import re
 import sys
 from pathlib import Path
 
-PLUGIN = Path(__file__).resolve().parent.parent / "plugins" / "aws-startup-advisor"
-REGISTRY = PLUGIN / "skills" / "shared" / "ai" / "ai-model-lifecycle.md"
+# scripts/model-id-lint.py -> plugins/aws-startup-advisor/
+DEFAULT_PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+REGISTRY_REL = Path("skills/shared/ai/ai-model-lifecycle.md")
 EXTS = {".md", ".py", ".json", ".ts", ".tf", ".sh", ".template", ".html"}
 
 # Catalog files whose job is to record retired models. A model ID may appear
@@ -106,13 +117,14 @@ def _id_to_regex(model_id: str) -> re.Pattern:
     return re.compile(r"[^\s`]*".join(parts))
 
 
-def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
+def load_banned_ids(plugin: Path) -> tuple[list[tuple[str, re.Pattern]], list[str]]:
     """Parse ai-model-lifecycle.md. Returns (list of (model_id, regex), errors)."""
+    registry = plugin / REGISTRY_REL
     errors: list[str] = []
-    if not REGISTRY.is_file():
-        return [], [f"registry not found: {REGISTRY.relative_to(PLUGIN)}"]
+    if not registry.is_file():
+        return [], [f"registry not found: {REGISTRY_REL}"]
 
-    text = REGISTRY.read_text(encoding="utf-8")
+    text = registry.read_text(encoding="utf-8")
     ids: list[str] = []
     excluded_count = 0
     removed_count = 0
@@ -168,31 +180,29 @@ def load_banned_ids() -> tuple[list[tuple[str, re.Pattern]], list[str]]:
     # leave the excluded rows parsing, hiding the drop behind a non-zero total.
     if excluded_count == 0:
         errors.append(
-            f"{REGISTRY.relative_to(PLUGIN)}: parsed ZERO **excluded** table rows — "
+            f"{REGISTRY_REL}: parsed ZERO **excluded** table rows — "
             f"the Legacy/EOL table format may have changed. Refusing to run a no-op gate."
         )
     if removed_count == 0:
         errors.append(
-            f"{REGISTRY.relative_to(PLUGIN)}: parsed ZERO IDs from the **Removed** (past-EOL) "
+            f"{REGISTRY_REL}: parsed ZERO IDs from the **Removed** (past-EOL) "
             f"list — its header/format may have changed. Refusing to run a no-op gate."
         )
 
     return [(i, _id_to_regex(i)) for i in uniq], errors
 
 
-def main() -> int:
-    banned, errors = load_banned_ids()
+def lint(plugin: Path) -> tuple[list[str], list[str], int]:
+    """Return (setup errors, failures, banned-id count) for one plugin tree."""
+    banned, errors = load_banned_ids(plugin)
     if errors:
-        print(f"model-id lint: {len(errors)} setup problem(s)", file=sys.stderr)
-        for e in errors:
-            print(f"  - {e}", file=sys.stderr)
-        return 1
+        return errors, [], 0
 
     failures = []
-    for path in sorted(PLUGIN.rglob("*")):
+    for path in sorted(plugin.rglob("*")):
         if not path.is_file() or path.suffix not in EXTS or path.resolve() == SELF:
             continue
-        rel = str(path.relative_to(PLUGIN))
+        rel = str(path.relative_to(plugin))
         if "node_modules" in rel:
             continue
         canonical = canonicalize(rel)
@@ -218,12 +228,39 @@ def main() -> int:
                     f"this form never existed"
                 )
 
+    return [], failures, len(banned)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--plugin-root",
+        type=Path,
+        default=DEFAULT_PLUGIN_ROOT,
+        help="plugin directory to check (default: the plugin this script lives in)",
+    )
+    args = ap.parse_args()
+
+    plugin = args.plugin_root.resolve()
+    if not plugin.is_dir():
+        print(f"Plugin directory not found: {plugin}", file=sys.stderr)
+        return 2
+
+    errors, failures, banned_count = lint(plugin)
+    if errors:
+        print(f"model-id lint: {len(errors)} setup problem(s)", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        return 1
+
     if failures:
         print(f"model-id lint: {len(failures)} problem(s)", file=sys.stderr)
         for f in failures:
             print(f"  - {f}", file=sys.stderr)
         return 1
-    print(f"model-id lint: OK ({len(banned)} retired IDs enforced from the registry)")
+    print(f"model-id lint: OK ({banned_count} retired IDs enforced from the registry)")
     return 0
 
 

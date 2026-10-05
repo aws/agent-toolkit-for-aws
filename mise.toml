@@ -9,7 +9,7 @@ version = "0.18"
 
 [tasks.lint]
 description = "Run all linters"
-depends = ["lint:md", "lint:manifests", "lint:model-id"]
+depends = ["lint:md", "lint:manifests"]
 
 [tasks."lint:md"]
 description = "Lint markdown files"
@@ -22,10 +22,6 @@ run = "python3 tools/validate.py"
 [tasks."lint:skill-parity"]
 description = "Check plugin skills are in sync with canonical sources"
 run = "python3 tools/sync-plugin-skills.py --check"
-
-[tasks."lint:model-id"]
-description = "Fail when a skill references a Bedrock model the lifecycle registry has retired (EOL / excluded / fabricated)"
-run = "python3 tools/model-id-lint.py"
 
 [tasks."lint:spec"]
 description = "Validate Agent Plugins v1.0.0 conformance (plugins/)"
