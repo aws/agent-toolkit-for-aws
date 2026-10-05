@@ -167,7 +167,7 @@ independent evidence identifies the cause. Preserve account observations; mark o
 associated with a detector`** — GuardDuty is not enabled in this region. Treat as NOT
 ENABLED, not an error.
 
-**`ResourceNotFoundException` from `securityhub describe-hub`** — Security Hub is not
+**`ResourceNotFoundException` from `securityhub describe-hub`** — Security Hub CSPM is not
 enabled in this region. Treat as NOT ENABLED.
 
 **`AccessDeniedException` from `inspector2 batch-get-account-status`** — Inspector has
