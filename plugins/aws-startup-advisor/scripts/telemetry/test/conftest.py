@@ -60,6 +60,9 @@ def collector():
     process are the bytes the service's model accepts.
     """
     received = []
+    # What the stub answers; a test sets `collector.status` to 403 or 429 to stand
+    # in for a closed launch gate or a throttle.
+    answer = {"status": 200}
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_POST(self):  # noqa: N802  (http.server's required spelling)
@@ -71,7 +74,7 @@ def collector():
                     "body": self.rfile.read(length),
                 }
             )
-            self.send_response(200)
+            self.send_response(answer["status"])
             self.end_headers()
 
         def log_message(self, *args):
@@ -81,10 +84,21 @@ def collector():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield SimpleNamespace(
-            url="http://127.0.0.1:%d/v1/plugin-telemetry-event" % server.server_port,
-            received=received,
-        )
+        class Collector:
+            url = "http://127.0.0.1:%d/v1/plugin-telemetry-event" % server.server_port
+
+            def __init__(self):
+                self.received = received
+
+            @property
+            def status(self):
+                return answer["status"]
+
+            @status.setter
+            def status(self, value):
+                answer["status"] = value
+
+        yield Collector()
     finally:
         server.shutdown()
         server.server_close()
