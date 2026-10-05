@@ -82,7 +82,8 @@ def test_missing_reference_is_reported(tmp_path: Path):
 def test_run_artifacts_templates_urls_and_relative_outputs_are_not_references(tmp_path: Path):
     plugin = _plugin(tmp_path)
     got = _refs(plugin, "alpha",
-                "Write `$MIGRATION_DIR/scripts/02-migrate-data.sh`; read `.migration/<run>/references/x.md`; "
+                "Write `$MIGRATION_DIR/scripts/02-migrate-data.sh`; read `$BEDROCK_RUN_DIR/.phase-status.json`; "
+                "read `.migration/<run>/references/x.md`; "
                 "see https://example.com/references/phases/design.md ; open `references/offers/<slug>.md`; "
                 "then `./deploy.sh` and `../plan.md` and `scenarios/scenario-NNN.json`.")
     assert got == {}

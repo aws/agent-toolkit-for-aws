@@ -79,7 +79,7 @@ _GCP_DEPENDENTS = {"agent-advisor", "llm-to-bedrock"}
 _AGENTS_OWNER = "llm-to-bedrock"
 # anything carrying a run-artifact prefix or templating is not a repo path
 _SKIP_PREFIX_RE = re.compile(
-    r"(\$\{?(MIGRATION_DIR|RUN_DIR|REPO|PHASE_DIR|PLAN_DIR|OUT|TARGET|APP|WORKSPACE|TMP)\}?/"
+    r"(\$\{?(MIGRATION_DIR|RUN_DIR|BEDROCK_RUN_DIR|REPO|PHASE_DIR|PLAN_DIR|OUT|TARGET|APP|WORKSPACE|TMP)\}?/"
     r"|<(PLAN_DIR|MIGRATION_DIR|RUN_DIR|REPO|run_dir|migration_dir|path|repo)>/"
     r"|\.migration/|\.saws-migrate/|terraform/|ai-migration/|poc/|scaffold/|\.github/)"
 )
