@@ -13,7 +13,13 @@ their single creator and owns the validation checklist at the bottom.
     "discovery_sources": ["terraform"], // only sources that CONTRIBUTED, never merely ran
     "subscriptions_discovered": ["<subscription id>"],
     "total_resources": 0,
-    "confidence": "inferred" // deterministic | measured | inferred | billing_inferred
+    "clustering_mode": "full", // "full" | "simplified_live" (live-only runs cluster in simplified mode)
+    "confidence": "inferred", // deterministic | measured | inferred | billing_inferred
+    "clarify_fast_path": {
+      // REQUIRED. Written by discover-assemble.md § Assembly rule 9; read by clarify.md § Step 0.5.
+      "eligible": false,
+      "reasons_ineligible": ["has_vm", "has_licensing_signal"] // [] when eligible; closed vocabulary = the input names in rule 9's table plus "cluster_count" and "total_resources"
+    }
   },
   "resources": [
     {
@@ -28,10 +34,13 @@ their single creator and owns the validation checklist at the bottom.
       "config": {}, // per-type; NAMES only for app settings, connection strings, Key Vault entries
       "tags": {},
       "edges": [], // see § Typed edges
-      "drift": [] // see § Drift records
+      "drift": [], // see § Drift records
+      "unmanaged_by_iac": false, // OPTIONAL — set true on a live/rdfa resource with no matching IaC entry
+      "not_found_live": false // OPTIONAL — set true on an IaC resource a SUCCESSFUL live capture did not find
     }
   ],
-  "iac_metadata": {}, // present only when a dialect actually contributed
+  "iac_metadata": {}, // present only when an IaC dialect (terraform/bicep/arm) actually contributed
+  "live_metadata": {}, // present only when live `az` capture contributed — see § live_metadata
   "warnings": [], // see § Warnings — ALWAYS present, `[]` when clean
   "unclustered": [] // azure_ids no cluster claimed
 }
@@ -119,6 +128,24 @@ was not verified.
   case where the skill genuinely cannot say what the service is, and it is the only route to
   a halt from Discover. Expect it to be empty on almost every repo.
 
+## live_metadata
+
+Present only when live `az` capture contributed (the live counterpart of `iac_metadata`;
+written by `phases/discover/discover-live.md`). It records live-capture provenance that has
+no home on the per-resource entries:
+
+- **`found`** — `true` when a capture manifest was read and produced ≥1 resource.
+- **`captured_at`** / **`subscription`** / **`method`** — from the capture manifest
+  (`resource_list` or `per_service`).
+- **`capture_warnings`** — failed/skipped capture rows (a missing Reader role, a permission
+  denial). These live here, NOT in `warnings[]` — that vocabulary is closed and
+  IaC-parse-shaped (see § Warnings).
+- **`derived_types`** — the live counterpart of `iac_metadata.derived_types`: captured ARM
+  types resolved by derivation rather than a table lookup.
+- **`drift`** — a run-level rollup `{ resources_live_only, resources_iac_only,
+  conflicted_resources }` for reporting. The per-field disagreements themselves live on each
+  resource as `resources[].drift` (see § Drift records), NOT here.
+
 ## Warnings
 
 `warnings[]` is a **top-level array on the inventory**, always present, `[]` when
@@ -151,6 +178,7 @@ unstable and makes a fixture assertion on any code unreliable. Add a row here fi
 | `name_expression_unresolved`  | one or more resources' `name` is an expression, so `name` is `tf:<local>` and `azure_id` is **not** a real ARM ID — those resources cannot be drift-matched against a live capture. **ONE entry per run**, listing the affected `tf_address`es in `detail`, not one per resource: it routinely applies to most of a repo (a corpus naming everything `${var.prefix}` produced 21 of 25 warnings) and per-resource entries bury every actionable warning |
 | `subscription_id_unresolved`  | the subscription id came from a variable or the environment, so `azure_id` carries the `<subscription-unknown>` placeholder. One entry per run, not per resource                                                                                                                                                                                                                                                                                        |
 | `multiplicity_unresolved`     | a `count` / `for_each` expression was not evaluated; the entry represents an unknown number of real resources                                                                                                                                                                                                                                                                                                                                           |
+| `enrichment_id_unmatched`     | (live `az` discovery only) an enrichment row's captured `id` did not match any `az resource list` fast-path entry — a resource visible to one call but not the other (e.g. a permissions or propagation gap). The resource is retained as its own inventory entry rather than dropped or fuzzy-matched by name+type. `detail` names which capture row and which fast-path list disagreed                                                            |
 
 Secret discarding is **not** warned about. A count of discarded fields still discloses
 that they existed and roughly how many — the whole point of discarding rather than
@@ -218,6 +246,7 @@ discovery in a way a depth calculation is not.
 - [ ] No `azure_type` value matches `azurerm_*` — translation happened during extraction.
 - [ ] `azure_id` is unique across `resources[]`.
 - [ ] `metadata.discovery_sources` lists only sources that contributed at least one resource.
+- [ ] `metadata.clarify_fast_path` is present with a boolean `eligible` and a `reasons_ineligible[]` that is empty iff `eligible` is `true`, and every reason is one of the rule-9 input names.
 - [ ] For each dialect whose files were found in the workspace, at least one resource carries that dialect as its `source`.
 - [ ] No app-setting value, connection-string value, storage key, or Key Vault secret value appears anywhere.
 - [ ] `warnings[]` is present (possibly empty), and every entry has a `code` from the closed vocabulary, a `detail`, and an `azure_id` or an `identifier`.
@@ -229,12 +258,12 @@ discovery in a way a depth calculation is not.
 - [ ] No resource is a member of two clusters.
 - [ ] Any cluster whose `justification` is `edges` or `merge:*` has a non-empty `edges[]`. A `split:*` cluster may legitimately have an empty one.
 
-## Status — skeleton (build step 1)
+## Status — contract in force
 
 The shapes above are the real contract and downstream phases are written against them.
-Per-type `config` schemas land with each dialect and source (step 2); the reservation
-and utilization profiles land with the RDfA fragment (step 2); `pattern_id`'s value set
-lands with the pattern catalog (step 4).
+Terraform discovery writes these shapes today. Per-type `config` for Bicep and ARM,
+and the reservation and utilization profiles, wait on those sources — they are not
+implemented. `pattern_id`'s value set waits on `patterns.md`, which is not on disk.
 
 `split:*` and `merge:*` are reachable as of build step 4. A cluster still carrying
 `seed:resource_group` is one that survived both refinement steps untouched — a genuine

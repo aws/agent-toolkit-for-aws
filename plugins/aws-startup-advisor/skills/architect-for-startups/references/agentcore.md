@@ -42,11 +42,11 @@ Month 6+:    Add Memory, Gateway, Identity as specific needs emerge
 
 ### Multi-Agent: Don't Go There Early
 
-| Team size     | Agent architecture                          | Why                                                                  |
-| ------------- | ------------------------------------------- | -------------------------------------------------------------------- |
-| 1-3 engineers | Single agent, direct Bedrock calls          | You can't debug multi-agent orchestration AND build product features |
-| 4-8 engineers | One supervisor + 2-3 specialist agents max  | Complexity grows exponentially with agent count                      |
-| 8+ engineers  | Multi-agent with A2A or Bedrock Multi-Agent | You have the team to own the operational complexity                  |
+| Team size     | Agent architecture                                                                        | Why                                                                                                                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1-3 engineers | Single agent, direct Bedrock calls                                                        | You can't debug multi-agent orchestration AND build product features                                                                                                                 |
+| 4-8 engineers | One supervisor + 2-3 specialist agents max                                                | Complexity grows exponentially with agent count                                                                                                                                      |
+| 8+ engineers  | Multi-agent via Strands (A2A for cross-org, or a Strands supervisor on AgentCore Runtime) | You have the team to own the operational complexity — classic Bedrock Agents' built-in multi-agent collaboration is in maintenance mode and closed to new customers as of 2026-07-30 |
 
 ### PoC to Production Pitfall
 

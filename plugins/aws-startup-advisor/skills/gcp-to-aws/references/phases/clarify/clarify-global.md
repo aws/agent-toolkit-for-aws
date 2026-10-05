@@ -68,9 +68,15 @@ it exactly as written there — always ESSENTIAL, never skipped, never silently 
 
 ### Q3 — Approximately how much are you spending on GCP per month in total? — GCP-specific
 
-**Auto-extract signal:** If `billing-profile.json` exists, map `summary.total_monthly_spend`
-to the spend band below and **skip Q3** when unambiguous (`chosen_by: "extracted"`). If
-billing is absent or ambiguous, ask Q3.
+**Auto-extract signal:** If `billing-profile.json` exists **with non-empty `services[]`**,
+map `summary.total_monthly_spend` to the spend band below and **skip Q3** when unambiguous
+(`chosen_by: "extracted"`). A **skip-record** `billing-profile.json` (empty `services[]`,
+non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per
+`discover-billing.md`) is NOT usable spend: its `total_monthly_spend` is `0` because nothing
+was parsed, not because spend is actually zero. Extracting from it would silently tell the
+founder their GCP spend is "<$1K/month" when billing was never read. Treat a skip-record
+profile the same as absent billing — ask Q3. If billing is absent, a skip record, or
+ambiguous, ask Q3.
 
 | Monthly USD   | `gcp_monthly_spend` |
 | ------------- | ------------------- |
@@ -94,10 +100,13 @@ not uploaded.
 > 5. $100,000/month
 > 6. I don't know
 
-**Billing enrichment (when Q3 is not skipped):** If `billing-profile.json` exists but
-extraction was skipped due to ambiguity, show:
+**Billing enrichment (when Q3 is not skipped):** If `billing-profile.json` exists **with
+non-empty `services[]`** but extraction was skipped due to ambiguity, show:
 
 > Your billing data shows ~$[total_monthly_spend]/month. Does this match your expectation?
+
+(A skip-record profile has no `total_monthly_spend` worth showing — do not run this
+enrichment for one; just ask Q3 per the rule above.)
 
 | Answer                 | Recommendation Impact                                                                              |
 | ---------------------- | -------------------------------------------------------------------------------------------------- |

@@ -286,13 +286,14 @@ the compute rubric is still pending: the count of compute units is one per plan 
 that plan resolves to Elastic Beanstalk, Fargate, or EKS. A plan sitting in
 `pending_rubric[]` still accounts for its apps.
 
-## Status — build step 5 (both passes, partial)
+## Status — build step 5
 
 Pass 1 is complete: the disposition table, its contract, the routing index, the gate
-table, the split unknown-type policy, and the fan-in rule. Pass 2 covers **compute and
-database** (`design-refs/compute.md`, `design-refs/database.md`); the other eight category
-files are still to land, and a resource routed to one of them halts per § Missing rubric
-file rather than being mapped from model priors.
+table, the split unknown-type policy, and the fan-in rule. Pass 2 rubrics on disk:
+`compute.md`, `database.md`, `networking.md`, `messaging.md`, `analytics.md`,
+`storage.md`, `identity.md`, `fast-path.md`, and `ai.md`. Still absent: `licensing.md`,
+`gpu-hpc.md`, and `patterns.md`. A resource routed to a category file that is not on
+disk halts per § Missing rubric file rather than being mapped from model priors.
 
 The behaviours above are externally asserted against a committed fixture: the App Service
 Plan fan-in count, the unresolvable-type STOP, the three protocol/API-conditioned fast-path

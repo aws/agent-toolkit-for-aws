@@ -10,13 +10,16 @@ Usage: check_expected_decide.py <run_dir>
 from __future__ import annotations
 
 import json
-import subprocess  # nosec B404 — fixture asserter; runs only the committed validator via sys.executable
+import shutil
+import subprocess  # nosec B404 — fixture asserter; runs only committed scripts via sys.executable
 import sys
+import tempfile
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 VALIDATOR = PLUGIN_ROOT / "scripts" / "validate-migration-report.py"
 ESTIMATION_INFRA = Path(__file__).resolve().parent / "after-decide-complete" / "estimation-infra.json"
+WRITER = PLUGIN_ROOT / "scripts" / "emit-plan-json.py"
 FAILS: list[str] = []
 
 
@@ -85,6 +88,30 @@ def main() -> int:
         check('class="verdict-headline"' in html, "missing verdict-headline element (verdict typography)")
         check("not directly comparable" in html, "missing not-comparable baseline sentence")
         check("if you execute" in html, 'timeline must be labeled "if you execute" (band, not schedule)')
+
+    # The decision-only exit writes the web-handoff plan.json from the run's
+    # estimate artifacts. Run the writer against a scratch copy (so the golden
+    # dir stays clean) and assert it EMITS a schema-shaped file, not a skip.
+    with tempfile.TemporaryDirectory() as scratch:
+        scratch_run = Path(scratch) / "run"
+        shutil.copytree(run, scratch_run)
+        wr = subprocess.run(  # nosec B603 — list args, no shell, committed script path only
+            [sys.executable, str(WRITER), "--migration-dir", str(scratch_run),
+             "--plugin-json", str(PLUGIN_ROOT / ".claude-plugin" / "plugin.json")],
+            capture_output=True,
+            text=True,
+        )
+        plan = scratch_run / "plan.json"
+        check(wr.returncode == 0, f"emit-plan-json.py exited {wr.returncode}: {wr.stderr.strip()}")
+        check(plan.exists(), f"decision-only exit did not write plan.json (writer: {wr.stdout.strip()})")
+        if plan.exists():
+            data = json.loads(plan.read_text())
+            cost = data.get("cost") or {}
+            check(data.get("sourcePlatform") == "GCP", f"sourcePlatform={data.get('sourcePlatform')}")
+            check(data.get("scope") == "INFRA_ONLY", f"scope={data.get('scope')}")
+            check(cost.get("awsMonthlyBasis") == "BALANCED", f"awsMonthlyBasis={cost.get('awsMonthlyBasis')}")
+            check(isinstance(cost.get("awsMonthly"), (int, float)), "cost.awsMonthly missing/not a number")
+            check(bool(data.get("producerVersion")), "producerVersion missing — plugin.json was not read")
 
     if FAILS:
         print("FAIL")
