@@ -429,6 +429,27 @@ def _count_table_rows(section_html: str) -> int:
     return len(re.findall(r"<tr\b", tbody.group(1), re.IGNORECASE))
 
 
+def _accounted_service_count(estimation_infra: dict | None) -> int | None:
+    """Priced services plus specialist deferrals, when Estimate recorded both.
+
+    Skipped resources are not in deferred_count. None means the artifact did not
+    say, and the caller keeps the stub floor.
+    """
+    if not isinstance(estimation_infra, dict):
+        return None
+    inputs = estimation_infra.get("complexity_inputs")
+    if not isinstance(inputs, dict):
+        return None
+    try:
+        services = int(inputs["service_count"])
+        deferred = int(inputs["deferred_count"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if services < 0 or deferred < 0:
+        return None
+    return services + deferred
+
+
 def _section_content_depth(section_id: str, section_html: str) -> int:
     rows = _count_table_rows(section_html)
     if section_id == "appendix-services":
@@ -1246,6 +1267,14 @@ def _validate_appendix_config(html: str) -> list[str]:
         errors.append(
             'appendix-config table must include a "Question" or "Assumption" column (from preferences.prompt)'
         )
+    if "choice" not in hdr_text:
+        errors.append(
+            'appendix-config table must include a "Your choice" column (the value the reader confirmed)'
+        )
+    if "source" not in hdr_text:
+        errors.append(
+            'appendix-config table must include a "Source" column (user answer, extracted, or default)'
+        )
     if "consequence" not in hdr_text:
         errors.append(
             "appendix-config table must include a Design consequence column (from preferences.design_consequence)"
@@ -1646,6 +1675,496 @@ def _validate_fixture_bleed(html: str, migration_dir: Path | None) -> list[str]:
     return errors
 
 
+class _VisibleTextParser(HTMLParser):
+    """Collect decoded text from rendered content, excluding hidden ancestors."""
+
+    _INERT_TAGS = {"script", "style", "template"}
+    _INLINE_TAGS = {
+        "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em",
+        "i", "kbd", "mark", "q", "s", "samp", "small", "span", "strong",
+        "sub", "sup", "time", "u", "var", "wbr",
+    }
+    _VOID_TAGS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._inert_depth = 0
+        self._stack: list[dict[str, object]] = []
+
+    def _hidden(self) -> bool:
+        return bool(self._stack and self._stack[-1]["hidden"])
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        return "hidden" in dict(attrs)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS:
+            self._inert_depth += 1
+            return
+        if self._inert_depth > 0:
+            return
+        hidden = self._hidden() or self._is_hidden(attrs)
+        if tag not in self._INLINE_TAGS:
+            self.parts.append(" ")
+        if tag not in self._VOID_TAGS:
+            self._stack.append({"tag": tag, "hidden": hidden})
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        return
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._INERT_TAGS:
+            if self._inert_depth > 0:
+                self._inert_depth -= 1
+            return
+        if self._inert_depth > 0:
+            return
+        hidden = False
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index]["tag"] == tag:
+                hidden = any(bool(frame["hidden"]) for frame in self._stack[index:])
+                del self._stack[index:]
+                break
+        if tag not in self._INLINE_TAGS:
+            self.parts.append(" ")
+        if hidden:
+            return
+
+    def handle_data(self, data: str) -> None:
+        if self._inert_depth == 0 and not self._hidden():
+            self.parts.append(data)
+
+
+def _plain_text(fragment: str) -> str:
+    """Decoded visible text, with dashes folded so artifact prose can be matched.
+
+    Inert subtrees (`<script>`, `<style>`, `<template>`), native-hidden
+    subtrees, and HTML comments are excluded because the browser does not render
+    their contents.
+    """
+    parser = _VisibleTextParser()
+    parser.feed(fragment)
+    parser.close()
+    text = "".join(parser.parts)
+    text = text.replace("\u2014", "-").replace("\u2013", "-")
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _word_shingles(text: str, size: int = 4) -> set[str]:
+    """Word phrases used to recognize a rendered condition without requiring a verbatim copy."""
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    if not words:
+        return set()
+    if len(words) <= size:
+        return {" ".join(words)}
+    return {" ".join(words[i : i + size]) for i in range(len(words) - size + 1)}
+
+
+def _phrase_rendered(phrase: str, rendered_text: str, max_width: int = 4) -> bool:
+    """True when `rendered_text` shares a word phrase with the artifact `phrase`.
+
+    The shingle width is the phrase's own token count, capped at `max_width`:
+    a one-to-three-word condition such as "Confirm capacity" is a single
+    shingle, and the rendered text must be cut at that same width or the two
+    sets can never intersect (a fixed four-word cut only ever matched
+    conditions of four or more words). An empty phrase has nothing to render.
+    """
+    words = re.findall(r"[a-z0-9]+", _plain_text(phrase))
+    if not words:
+        return True
+    width = min(len(words), max_width)
+    return bool(_word_shingles(" ".join(words), width) & _word_shingles(rendered_text, width))
+
+
+def _unmatched_phrases(phrases: list[object], rendered_items: list[str]) -> list[str]:
+    """Return artifact phrases that cannot be assigned distinct rendered items."""
+    matched_items: dict[int, int] = {}
+
+    def assign(phrase_index: int, seen_items: set[int]) -> bool:
+        phrase = str(phrases[phrase_index])
+        for item_index, item in enumerate(rendered_items):
+            if item_index in seen_items or not _phrase_rendered(phrase, item):
+                continue
+            seen_items.add(item_index)
+            previous = matched_items.get(item_index)
+            if previous is None or assign(previous, seen_items):
+                matched_items[item_index] = phrase_index
+                return True
+        return False
+
+    for phrase_index in range(len(phrases)):
+        assign(phrase_index, set())
+    matched_phrases = set(matched_items.values())
+    return [str(phrase) for index, phrase in enumerate(phrases) if index not in matched_phrases]
+
+
+class _RenderedFragmentParser(HTMLParser):
+    """Flatten a fragment into what the browser would show, in document order.
+
+    Produces `entries` — `("heading", run)` for an `<h1>`–`<h6>`, `("li", item)`
+    for each list item and `("text", run)` for any other prose, all decoded,
+    lower-cased, whitespace-collapsed and dash-folded like `_plain_text` — plus
+    `class_tokens`, the set of class attribute tokens on rendered start tags.
+    Inert subtrees (`<script>`, `<style>`, `<template>`) and comments are
+    skipped entirely, so a heading, list item or class that exists only there
+    is not counted as rendered. Inline tags do not split a run ("What
+    <em>would</em> flip this" stays one phrase); every other tag closes the
+    current run.
+    """
+
+    _INLINE_TAGS = _DecodedTextRunParser._INLINE_TAGS
+    _INERT_TAGS = _DecodedTextRunParser._INERT_TAGS
+    _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+    _VOID_TAGS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.entries: list[tuple[str, str]] = []
+        self.class_tokens: set[str] = set()
+        self._inert_depth = 0
+        self._stack: list[dict[str, object]] = []
+        self._li_depth = 0
+        self._heading_depth = 0
+        self._buf: list[str] = []
+
+    def _hidden(self) -> bool:
+        return bool(self._stack and self._stack[-1]["hidden"])
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        return "hidden" in dict(attrs)
+
+    def _pop_to(self, tag: str) -> bool:
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index]["tag"] == tag:
+                popped = self._stack[index:]
+                del self._stack[index:]
+                return any(bool(frame["hidden"]) for frame in popped)
+        return False
+
+    def _flush(self) -> None:
+        text = _plain_text(" ".join(self._buf))
+        self._buf = []
+        if not text:
+            return
+        if self._li_depth:
+            kind = "li"
+        elif self._heading_depth:
+            kind = "heading"
+        else:
+            kind = "text"
+        self.entries.append((kind, text))
+
+    def _record_classes(self, attrs: list[tuple[str, str | None]]) -> None:
+        for name, value in attrs:
+            if name == "class" and value:
+                self.class_tokens.update(value.split())
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS:
+            self._inert_depth += 1
+            return
+        if self._inert_depth > 0:
+            return
+        hidden = self._hidden() or self._is_hidden(attrs)
+        if tag not in self._VOID_TAGS:
+            self._stack.append({"tag": tag, "hidden": hidden})
+        if hidden:
+            return
+        self._record_classes(attrs)
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+        if tag == "li":
+            self._li_depth += 1
+        elif tag in self._HEADING_TAGS:
+            self._heading_depth += 1
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._INERT_TAGS or self._inert_depth > 0 or self._hidden():
+            return
+        if self._is_hidden(attrs):
+            return
+        self._record_classes(attrs)
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._INERT_TAGS:
+            if self._inert_depth > 0:
+                self._inert_depth -= 1
+            return
+        if self._inert_depth > 0:
+            return
+        hidden = self._pop_to(tag)
+        if hidden or self._hidden():
+            return
+        if tag not in self._INLINE_TAGS:
+            self._flush()
+        if tag == "li" and self._li_depth > 0:
+            self._li_depth -= 1
+        elif tag in self._HEADING_TAGS and self._heading_depth > 0:
+            self._heading_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._inert_depth == 0 and not self._hidden():
+            self._buf.append(data)
+
+    def close(self) -> None:
+        super().close()
+        self._flush()
+
+
+def _rendered_fragment(fragment: str) -> _RenderedFragmentParser:
+    parser = _RenderedFragmentParser()
+    parser.feed(fragment)
+    parser.close()
+    return parser
+
+
+def _rendered_list_after_heading(
+    entries: list[tuple[str, str]], heading_phrase: str
+) -> list[str] | None:
+    """Items of the rendered list that `heading_phrase` introduces.
+
+    Two rendered shapes introduce the list, both legitimate under the report
+    specs ("short unordered list"):
+
+    - a heading (preferred) or prose run carrying the phrase, such as
+      `<h3>What would flip this</h3>`, then the list. Lead-in prose between the
+      heading and the first `<li>` is skipped; the items run ends at the first
+      non-item entry after it, and reaching another heading before any item
+      means the list is empty.
+    - a list item carrying the phrase as an inline label, such as
+      `<li>What would flip this: …</li>`. The remainder of that item plus its
+      following sibling items are the list.
+
+    Returns None when no rendered run carries the phrase, and an empty list when
+    the phrase is present but no item renders under it (heading only, empty
+    `<ul>`).
+    """
+
+    def items_from(start: int) -> list[str]:
+        items: list[str] = []
+        for kind, text in entries[start:]:
+            if kind != "li":
+                break
+            items.append(text)
+        return items
+
+    for wanted in ("heading", "text", "li"):
+        for index, (kind, text) in enumerate(entries):
+            if kind != wanted or heading_phrase not in text:
+                continue
+            if kind == "li":
+                remainder = text.split(heading_phrase, 1)[1].lstrip(" :;,.-")
+                return ([remainder] if remainder else []) + items_from(index + 1)
+            for offset, (next_kind, _next_text) in enumerate(entries[index + 1 :], index + 1):
+                if next_kind == "li":
+                    return items_from(offset)
+                if next_kind == "heading":
+                    break
+            return []
+    return None
+
+
+def _iter_aws_services(node: object):
+    if isinstance(node, dict):
+        service = node.get("aws_service")
+        if isinstance(service, str):
+            yield service
+        for value in node.values():
+            yield from _iter_aws_services(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_aws_services(item)
+
+
+def _design_has_clusters(aws_design: dict | None) -> bool:
+    if not aws_design:
+        return False
+    clusters = aws_design.get("clusters")
+    return isinstance(clusters, list) and len(clusters) > 0
+
+
+def _design_has_deferred_service(aws_design: dict | None) -> bool:
+    if not aws_design:
+        return False
+    return any(
+        service.strip().lower().startswith("deferred")
+        for service in _iter_aws_services(aws_design)
+    )
+
+
+def _what_if_column_errors(section: str) -> list[str]:
+    """Workshop compare tables must carry the decision-core column set."""
+    header = re.search(r"<thead\b.*?</thead>", section, re.DOTALL | re.IGNORECASE)
+    if not header:
+        return [
+            "what-if-scenarios must contain a table whose header includes "
+            "Scenario, Region, HA, Compute, Arch, the three monthly tiers, and Complexity"
+        ]
+    text = _plain_text(header.group(0))
+    missing: list[str] = []
+    for label, present in (
+        ("Scenario", "scenario" in text),
+        ("Region", "region" in text),
+        ("HA", "ha" in text or "availability" in text),
+        ("Compute", "compute" in text),
+        ("Arch", "arch" in text),
+        ("Complexity", "complexity" in text),
+    ):
+        if not present:
+            missing.append(label)
+    if not ("premium" in text and "balanced" in text and "optimized" in text):
+        missing.append("Premium/Balanced/Optimized")
+    if not missing:
+        return []
+    return [
+        "what-if-scenarios table is missing decision-core column(s): "
+        + ", ".join(missing)
+        + " (report-decision-core.md Section 3b)"
+    ]
+
+
+def _validate_decision_core_render(
+    html: str,
+    estimation_infra: dict | None,
+    aws_design: dict | None,
+    *,
+    mode: str,
+    migration_dir: Path | None,
+) -> list[str]:
+    """Fail when artifact fields that the decision core requires are not rendered.
+
+    REPORT_OK used to mean "the section IDs exist." A report can satisfy that
+    and still omit the verdict headline, hero metrics, flip conditions, the
+    specialist callout, and the architecture section. These checks fire only
+    when the corresponding artifact data was passed in, so a pre-extension
+    estimate is not rejected for fields it does not have.
+    """
+    if mode not in ("full", "decision"):
+        return []
+    errors: list[str] = []
+    summary = _section_html(html, "decision-summary") or ""
+    summary_text = _plain_text(summary)
+    # Rendered view of the summary: class tokens and list items are read from
+    # elements the browser shows, so markup that exists only inside a
+    # <template> (or a comment) cannot satisfy a check.
+    rendered = _rendered_fragment(summary)
+    recommendation = (estimation_infra or {}).get("recommendation") or {}
+
+    if recommendation:
+        if "metric-hero" not in rendered.class_tokens:
+            errors.append(
+                "recommendation block exists but decision-summary has no hero metric "
+                '(render the AWS run rate and migration shape with class="metric-hero")'
+            )
+        outcome = recommendation.get("outcome") or recommendation.get("outcome_label")
+        if outcome and "verdict-headline" not in rendered.class_tokens:
+            errors.append(
+                "recommendation.outcome exists but decision-summary has no "
+                'verdict-headline (render outcome_label as <p class="verdict-headline">)'
+            )
+
+    flips = recommendation.get("would_flip_if")
+    if isinstance(flips, list) and flips:
+        items = _rendered_list_after_heading(rendered.entries, "what would flip")
+        if items is None:
+            errors.append(
+                "recommendation.would_flip_if is non-empty but decision-summary has no "
+                '"What would flip this" list'
+            )
+        else:
+            # The heading alone is not the content: every artifact flip condition
+            # must appear as a rendered item of that list.
+            missing = _unmatched_phrases(flips, items)
+            if missing:
+                errors.append(
+                    f'"What would flip this" list renders {len(flips) - len(missing)} of '
+                    f"{len(flips)} recommendation.would_flip_if entries — missing: "
+                    + "; ".join(f'"{flip}"' for flip in missing)
+                )
+
+    tracks = recommendation.get("track_outcomes")
+    if isinstance(tracks, list) and tracks and "by track" not in summary_text:
+        errors.append(
+            "recommendation.track_outcomes exists but decision-summary has no "
+            '"By track" disposition line'
+        )
+
+    conditions = recommendation.get("conditions")
+    if (
+        recommendation.get("outcome") == "conditional_go"
+        and isinstance(conditions, list)
+        and conditions
+    ):
+        # The spec renders conditions[] as a checklist, so match each condition
+        # against the rendered list items only. Scanning the whole summary let a
+        # one-word condition ("Confirm") be satisfied by that word anywhere in
+        # the verdict prose, so it could never be reported as omitted.
+        checklist = [text for kind, text in rendered.entries if kind == "li"]
+        for condition in conditions:
+            if not any(_phrase_rendered(str(condition), item) for item in checklist):
+                errors.append(
+                    "recommendation.conditions is non-empty but decision-summary does "
+                    "not render that condition as a checklist (a shared phrase from the "
+                    "artifact condition is missing)"
+                )
+                break
+
+    if _design_has_deferred_service(aws_design) and "specialist engagement" not in summary_text:
+        errors.append(
+            'aws-design.json maps a service to "Deferred — specialist engagement" but '
+            "decision-summary has no specialist-engagement callout"
+        )
+
+    if mode == "full" and _design_has_clusters(aws_design):
+        if _section_html(html, "exec-architecture") is None:
+            errors.append(
+                'aws-design.json has clusters but no <section id="exec-architecture"> '
+                "(the architecture overview is required in full mode)"
+            )
+
+    risks = re.search(r'<section\b[^>]*\bid=["\']exec-risks["\']', html, re.IGNORECASE)
+    assumptions = re.search(
+        r'<section\b[^>]*\bid=["\']exec-assumptions["\']', html, re.IGNORECASE
+    )
+    if risks and assumptions and assumptions.start() < risks.start():
+        errors.append(
+            "exec-assumptions must follow exec-risks — the assumptions panel is the "
+            "last executive section (report-decision-core.md Section 8)"
+        )
+
+    risks_html = _section_html(html, "exec-risks")
+    if risks_html is not None and not re.search(r"<table\b", risks_html, re.IGNORECASE):
+        errors.append(
+            "exec-risks must render risks in a table (impact, likelihood, mitigation), "
+            "not a bullet list"
+        )
+
+    if migration_dir is not None:
+        index_path = migration_dir / "scenarios" / "index.json"
+        if index_path.is_file():
+            try:
+                index = json.loads(index_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                index = None
+            scenarios = (index or {}).get("scenarios") or []
+            section = _section_html(html, "what-if-scenarios")
+            if len(scenarios) >= 2 and section is not None:
+                errors.extend(_what_if_column_errors(section))
+
+    return errors
+
+
 def validate_report(
     html: str,
     estimation_infra: dict | None = None,
@@ -1707,11 +2226,19 @@ def validate_report(
         section = _section_html(html, section_id)
         if section is None:
             continue
+        floor = min_depth
+        if section_id == "appendix-services":
+            accounted = _accounted_service_count(estimation_infra)
+            # A one-resource estate has one truthful row. Do not demand a second
+            # row that the design does not have. A larger estate keeps the stub
+            # floor, so a single row of a many-service report still fails.
+            if accounted is not None and accounted < min_depth:
+                floor = accounted
         depth = _section_content_depth(section_id, section)
-        if depth < min_depth:
+        if floor > 0 and depth < floor:
             errors.append(
                 f"appendix section id={section_id} has insufficient content ({depth}), "
-                f"need >= {min_depth}"
+                f"need >= {floor}"
             )
 
     for stub in APPENDIX_STUB_PATTERNS:
@@ -1771,6 +2298,20 @@ def validate_report(
             require_toc=require_toc,
         )
     )
+
+    # Decision-core content. --no-require-toc remains the escape hatch for
+    # minimal unit fixtures; a normal Generate or Decision report must render
+    # the artifact fields, not only the section IDs.
+    if require_toc:
+        errors.extend(
+            _validate_decision_core_render(
+                html,
+                estimation_infra,
+                aws_design,
+                mode=mode,
+                migration_dir=migration_dir,
+            )
+        )
 
     # Catch verbatim copies of the reference fixture into a real run.
     errors.extend(_validate_fixture_bleed(html, migration_dir))
