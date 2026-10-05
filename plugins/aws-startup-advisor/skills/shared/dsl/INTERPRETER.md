@@ -95,9 +95,9 @@ are all DERIVED from the phase files' frontmatter (never hardcoded here).
      default).
 6. **Advance only on `HANDOFF_OK`.** A phase is complete ONLY when its completion
    gate emits the `HANDOFF_OK` line (§ Gate protocol). On `GATE_FAIL`, STOP — do
-   not update `.phase-status.json`, do not load the next phase; tell the user
-   which phase to re-run. Never load the next phase from a completion message that
-   lacks `HANDOFF_OK`.
+   not update `.phase-status.json`, do not load the next phase; record the failure
+   (§ Gate protocol) and tell the user which phase to re-run. Never load the next
+   phase from a completion message that lacks `HANDOFF_OK`.
 7. **Update state.** After `HANDOFF_OK`, apply the phase-status update protocol
    below, then load the next phase — the current phase's `_advances_to` — and
    repeat from step 4. When `_advances_to` is a terminal (`complete`), the
@@ -221,8 +221,9 @@ all required when the guard is present:
    GATE_FAIL | phase=<this phase's _phase> | field=<_stale_artifact> | reason=stale_downstream
    ```
 
-   Do NOT modify artifacts. Do NOT update `.phase-status.json`. Tell the user the
-   downstream work may be stale and they must confirm the re-run.
+   Do NOT modify artifacts. Do NOT update `.phase-status.json`. Record the failure
+   (§ Gate protocol, "Recording a failed gate"). Tell the user the downstream work
+   may be stale and they must confirm the re-run.
 3. If the user HAS explicitly confirmed the re-run (`_on_confirm:
    reset_downstream_to_pending`): before proceeding, set every phase downstream of
    this one (its `_advances_to` and everything after it on the backbone) back to
@@ -449,7 +450,8 @@ relevant artifacts from disk** (do not trust chat memory), then run each
   ```
 
   Do NOT modify artifacts to force a gate to pass. Do NOT update
-  `.phase-status.json`. Do NOT advance. Tell the user which phase to re-run.
+  `.phase-status.json`. Do NOT advance. Record the failure (below). Tell the user
+  which phase to re-run.
 
 - **On all-pass:** emit exactly:
 
@@ -463,6 +465,32 @@ relevant artifacts from disk** (do not trust chat memory), then run each
 `phase=` is reconstructed from the phase's own `_phase` (not stored in each check).
 The orchestrator (SKILL.md) MUST NOT load the next phase until it sees the
 `HANDOFF_OK` line; a completion message without it is not a valid handoff.
+
+### Recording a failed gate
+
+A gate failure is where a run stalls, and the telemetry hooks can only report what
+is on disk, so every `GATE_FAIL` line (completion gate or re-entry guard) is also
+recorded in `$MIGRATION_DIR/.gate-failures.json`. It is a separate file because a
+failed gate is not a phase transition: `.phase-status.json` keeps its rule that a
+status never moves backwards. The file is an object keyed by phase name (the same
+names as `phases` in `.phase-status.json`), one entry per phase; on a repeat
+failure overwrite that phase's entry and keep the others:
+
+```json
+{
+  "<this phase's _phase>": {
+    "reason": "<missing|invalid|stale_downstream>",
+    "field": "<the field= value>",
+    "at": "<ISO 8601 now>"
+  }
+}
+```
+
+`reason` and `field` are the same values as the `GATE_FAIL` line. The file never
+leaves the customer's machine; telemetry reports only the phase and the reason,
+once per phase per run, and a later `HANDOFF_OK` for that phase is reported as
+its own success. Do not delete the file when the phase later passes. Default run
+root only: a skill that declares its own run root records nothing.
 
 ### `_forbids_files` — scope boundary
 
