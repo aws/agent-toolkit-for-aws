@@ -5,7 +5,11 @@ observations. External-access analyzers need regional evidence; unused-access fi
 not vary by region. Preserve evidence states as defined in ../service-recommendations.md, including validated
 not-enabled responses. Parent-service enablement does not prove effective workload coverage.
 If a pass condition has no available read evidence, report it UNKNOWN or seek focused manual
-evidence; do not invent a check or label it passed.
+evidence; do not invent a check or label it passed. Apply the parent Skill's encryption,
+destination-policy and notification-recipient requirements to every logging, export,
+notification, publishing, trail and delivery-channel destination below. Record KMS, TLS,
+resource-policy, recipient, retention and successful-delivery evidence separately; any
+unverified control remains UNKNOWN.
 
 Only with an explicit request for detailed account-level enumeration, reconcile complete
 member IDs/status with scoped ACTIVE IDs from inventory, following all pages. Broad
@@ -224,9 +228,12 @@ certificate estate, successful notification delivery and adequate renewal lead t
 issuer-side checks; missing EventBridge/SNS routing alone is not a gap. Where an unmet
 need is demonstrated and ACM event applicability is verified, EventBridge expiry routing
 is an option: inspect the enabled rule's `aws.acm` source and "ACM Certificate Approaching
-Expiration" detail-type, relevant certificate scope and notification target. Rule/target
-existence proves configuration, not delivery. Missing monitoring or delivery evidence stays
-UNKNOWN, not absent protection. Prefer DNS validation where applicable.
+Expiration" detail-type, relevant certificate scope and notification target. If the target is
+SNS, require KMS encryption at rest and TLS in transit for publication and subscriber access,
+apply the parent topic-policy and authorized-recipient requirements, and verify successful
+delivery separately. Rule/target existence proves configuration, not delivery. Missing
+monitoring, destination-protection or delivery evidence stays UNKNOWN, not absent protection.
+Prefer DNS validation where applicable.
 
 ACM-requested public and private certificates may qualify for managed renewal: inspect
 `RenewalEligibility`, available `RenewalSummary` status, and the issuance/management path.
@@ -509,7 +516,9 @@ field value with OCSF table or S3 prefix naming such as `vpc_flow_2_0`, which ca
 in this field.
 
 **Prerequisite:** `CLOUD_TRAIL_MGMT` collection requires an existing multi-region
-organization trail capturing read and write management events.
+organization trail capturing read and write management events. Verify log file validation,
+KMS encryption at rest and TLS in transit for the trail's S3 destination and any CloudWatch
+Logs delivery, with retention and successful delivery assessed separately.
 
 **Delegated admin placement:** the Log Archive account, not the security tooling account
 used by the other five services.
@@ -603,10 +612,13 @@ aws configservice describe-delivery-channels --region <region>
 aws configservice describe-configuration-aggregators --region <region>
 ```
 
-**Pass conditions (standalone CSPM):** recorder exists, `recording` is `true`, and `lastStatus` is `SUCCESS`;
-delivery channel configured; recording group covers the resource types the enabled standards
-evaluate; global resources recorded in one region only (the guide's duplication-avoidance
-practice). The guide's standalone cost levers: record global resources in one region, turn
+**Pass conditions (standalone CSPM):** recorder exists, `recording` is `true`, and `lastStatus`
+is `SUCCESS`; delivery channel configured, with KMS encryption at rest and TLS in transit for
+its S3 destination and any SNS topic, plus the parent destination-policy and recipient checks;
+retention and successful delivery verified separately; recording group covers the resource
+types the enabled standards evaluate; global resources recorded in one region only (the guide's
+duplication-avoidance practice). The guide's standalone cost levers: record global resources in
+one region, turn
 off the compliance history timeline if Config serves only CSPM, and be cautious scoping the
 recorder down, since new controls arrive regularly. Whichever recorder is in play, CSPM emits
 `WARNING` findings for controls whose resource type is not being recorded; treat those as the

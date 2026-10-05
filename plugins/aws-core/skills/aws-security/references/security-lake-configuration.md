@@ -23,7 +23,11 @@ Works from both standalone and delegated administrator accounts.
 
    Verify each expected region has a data lake with `createStatus` = COMPLETED.
 
-   **Security check:** Verify data lake has KMS encryption configured — check `encryptionConfiguration.kmsKeyId` in the `list-data-lakes` output.
+   **Security check:** Verify the data lake has KMS encryption configured — check
+   `encryptionConfiguration.kmsKeyId` in the `list-data-lakes` output — and separately verify
+   TLS in transit for delivery and subscriber or consumer access. Apply the parent S3
+   destination-policy requirements. If the scoped reads do not prove transport protection,
+   report it UNKNOWN.
 
 2. Discover current supported AWS sources, then read configured coverage:
 

@@ -7,7 +7,10 @@ not UNKNOWN or NOT ASSESSED checks. Record NOT APPLICABLE when irrelevance is ve
 The priority column is conditional, not descriptive. No value in it may be emitted for a
 requirements-only or ADVISORY answer, or for any recommendation whose gap is not established by
 validated negative evidence. Reading a trigger row for its recommendation carries no priority
-with it.
+with it. Every recommendation that creates or selects a logging, export, notification,
+publishing, trail or delivery-channel destination inherits the parent Skill's encryption,
+destination-policy and notification-recipient requirements. Inline clauses are reminders;
+unverified KMS, TLS, policy, recipient, retention or delivery controls remain UNKNOWN.
 
 Centralized log store rows: the Security Reference Architecture names Amazon CloudWatch the
 recommended primary option for centralized log collection and analytics, with Amazon Security
@@ -39,7 +42,7 @@ These use account activity plus the row-specific conditions rather than a worklo
 | Recommendation | Priority | Rationale |
 |---|---|---|
 | GuardDuty foundational (CloudTrail, VPC flow, DNS analysis) | **Critical** | Threat detection with no data-source configuration; pulls streams directly |
-| AWS Config recorder, **when Security Hub CSPM runs standalone** | **Critical** | Standalone CSPM uses your recorder for most controls. With unified Security Hub also enabled, CSPM manages the service-linked recorder `AWSConfigurationRecorderForSecurityHubCSPM` and this row does not apply |
+| AWS Config recorder, **when Security Hub CSPM runs standalone** | **Critical** | Standalone CSPM uses your recorder for most controls. Require its delivery channel's S3 destination and any SNS topic to use KMS encryption at rest and TLS in transit, with parent destination-policy and recipient controls and separate retention/delivery evidence. With unified Security Hub also enabled, CSPM manages the service-linked recorder `AWSConfigurationRecorderForSecurityHubCSPM` and this row does not apply |
 | Security Hub CSPM with FSBP | **Critical** | Baseline posture standard; the guide's starting point |
 | IAM Access Analyzer external-access analyzer | **High** | Surfaces unintended external access to resources |
 | Cross-region finding aggregation, when more than one region is in use | **High** | Regional services produce fragmented findings otherwise |
@@ -128,7 +131,7 @@ For origin bypass, read [endpoint coverage](web-protection.md#endpoint-coverage-
 
 | Trigger from pass 1 | Recommend | Priority |
 |---|---|---|
-| Certificate estate with demonstrated unmet monitoring coverage, delivery or lead-time needs after evaluating the chosen monitoring method | Close the verified monitoring gap; EventBridge expiry routing to SNS is an option only when event applicability and unmet needs justify it. Adequate CloudWatch alarms or issuer-side checks require no duplicate route; unknown monitoring stays UNKNOWN | High (verified gap only) |
+| Certificate estate with demonstrated unmet monitoring coverage, delivery or lead-time needs after evaluating the chosen monitoring method | Close the verified monitoring gap; EventBridge expiry routing to SNS is an option only when event applicability and unmet needs justify it. If SNS is selected, require KMS encryption at rest, TLS in transit, the parent topic-policy and authorized-recipient controls, and separate successful-delivery evidence. Adequate CloudWatch alarms or issuer-side checks require no duplicate route; unknown monitoring or destination protection stays UNKNOWN | High (verified gap only) |
 | Certificate with `Type: IMPORTED` | Renewal automation (the guide's pattern is an AWS Config rule plus Lambda); ACM does not renew imports. Verify expiration monitoring separately | High |
 | Certificate issued via Private CA `IssueCertificate` | Separate renewal and expiration monitoring; verify ACM representation and event applicability before proposing ACM event routing | High |
 | ACM-requested public/private certificate with renewal eligibility or state unresolved | Record renewal evidence as UNKNOWN; verify issuance path, `RenewalEligibility` and available renewal status; do not infer failure from `Type: PRIVATE` | n/a |
@@ -177,7 +180,7 @@ coverage, then retire the old one. Flag a long-lived overlap, not the overlap it
 | Inspector config drift concern | AWS Organizations Inspector policy | High |
 | Per-account Security Hub setup | Central configuration policy | High |
 | Multi-region organization trail present | Security Lake `CLOUD_TRAIL_MGMT` | Medium |
-| No multi-region org trail | Create one before recommending Security Lake CloudTrail source | High |
+| No multi-region org trail | Create one before recommending the Security Lake CloudTrail source. Require log file validation, KMS encryption at rest and TLS in transit for its S3 destination and any CloudWatch Logs delivery, with parent destination-policy controls and separate retention/delivery evidence | High |
 | GuardDuty enabled, no log-correlation tooling | Detective | Medium |
 | Account count near the Detective behavior graph member-account quota (confirm the current value) | Note the quota | Medium |
 

@@ -60,7 +60,11 @@ state.
    aws guardduty describe-publishing-destination --detector-id <DETECTOR_ID> --destination-id <DEST_ID>
    ```
 
-   **Security check:** Verify publishing destination has SSE-KMS encryption configured — check for `KmsKeyArn` in the destination properties.
+   **Security check:** Verify the publishing destination has SSE-KMS encryption configured —
+   check for `KmsKeyArn` in the destination properties — and separately verify TLS in transit
+   for delivery and consumer access. Apply the parent S3 destination-policy requirements.
+   Destination configuration does not prove retention or successful delivery; report those
+   separately.
 
 5. Check IP sets and threat intel sets:
 
