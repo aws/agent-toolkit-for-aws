@@ -25,7 +25,11 @@ capped at five scenarios — beyond that the table stops informing a decision.
    - Complexity ← `estimation_summary.complexity_tier`
    - Outcome ← `estimation_summary.recommendation_outcome` when present (omit the column when no scenario carries it)
 3. Mark the active row.
-4. Present:
+4. Suffix `(stale)` to the Scenario cell of any row whose manifest carries
+   `stale: true`, and put its `stale_reason` under the table — that scenario was
+   priced before a decision-gate correction (`estimate-assemble.md` § Scenario
+   reconciliation) and its numbers no longer describe the working tree.
+5. Present:
 
 | Scenario | Region | HA | Compute | Arch | Premium $/mo | Balanced $/mo | Optimized $/mo | Complexity | Outcome |
 | -------- | ------ | -- | ------- | ---- | ------------ | ------------- | -------------- | ---------- | ------- |

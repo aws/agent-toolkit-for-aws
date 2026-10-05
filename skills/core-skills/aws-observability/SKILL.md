@@ -1,19 +1,19 @@
 ---
 name: aws-observability
 description: >-
-  Builds, configures, debugs, and optimizes AWS observability — operator-symptom questions and detecting Omni
-  vs classic CloudWatch. CloudWatch: Log Insights, alarms, Dynamic Instrumentation, and Application Signals —
-  instrumenting/onboarding a service to Application Signals with ADOT on EC2/ECS/EKS/Lambda:
-  auto-instrumentation, monitored service, reporting telemetry, ServiceEvents, CI/CD metadata,
-  Terraform/manifest. Also fleet health views. CloudWatch Omni on an existing Space: SQL over logs and traces,
-  PromQL over metrics, Omni dashboards, Omni alerts, context graph for root cause, programmatic/IaC access
-  (API/SDK/CLI/CloudFormation) and driving Omni from a coding agent or skills, and evaluating AI agent quality
-  from traces — on-demand and continuous online scoring of live agent traffic, readback, and custom trace
-  evaluators. For first-time Omni setup — creating a Space, granting access, ingestion, or ADOT
-  instrumentation — use setting-up-cloudwatch-observability. Not for app logging or threat detection.
-metadata:
-  version: "6"
+  Builds, configures, debugs, and optimizes AWS observability - operator-symptom questions and detecting Omni
+  vs classic CloudWatch. CloudWatch on an already-reporting service: Log Insights, metric/composite/anomaly
+  alarms, custom metrics/EMF, dashboards, X-Ray/ADOT tracing, canaries, CloudTrail, Dynamic Instrumentation
+  (live breakpoints/snapshots), the Application Signals service map, and fleet health views. CloudWatch Omni
+  on an existing Space: SQL over logs and traces, PromQL over metrics, Omni dashboards, Omni alerts, context
+  graph for root cause, programmatic/IaC access (API/SDK/CLI/CloudFormation), driving Omni from a coding agent
+  or skills, and evaluating AI agent quality from traces - on-demand and online scoring of live traffic,
+  readback, custom evaluators. For first-time setup - creating an Omni Space, granting access, ingestion, or
+  ADOT instrumentation for Application Signals (ServiceEvents, CI/CD metadata) or Omni - use
+  setting-up-cloudwatch-observability. Not for app logging or threat detection.
 
+metadata:
+  version: "7"
 ---
 
 # AWS Observability
@@ -33,7 +33,12 @@ control planes, data models, and APIs:
 | **Topology** | Application Signals service map | **Context graph** (GetContextGraph) |
 | **Access** | IAM only | Domain → Space → **access grants** and **access profiles** (set up in `setting-up-cloudwatch-observability`) |
 | **Only here** | Dynamic Instrumentation, Synthetics canaries, CloudTrail auditing, EMF | Agent-quality evaluation, views, context graph |
+| **First-time setup** | Application Signals onboarding — ADOT auto-instrumentation, the `amazon-cloudwatch-observability` add-on, ServiceEvents, CI/CD metadata | Domain → Space → grants → telemetry in → plain-ADOT instrumentation |
 | **References** | `references/cloudwatch/` | `references/cloudwatch-omni/` |
+
+**This skill covers *using* both products, never setting either one up.** Both first-time
+setup paths above live in **`setting-up-cloudwatch-observability`** (same two-folder split);
+route there rather than describing an onboarding procedure from memory.
 
 Enabling Omni does not replace CloudWatch; log groups, metrics, and alarms keep
 working, and most customers use both.
@@ -91,7 +96,7 @@ Decide this before routing. The natural wording ("set up an alert for high laten
 2a. **Authoring / how-to alert request** — "create / set up / write an Omni alert that
    fires when X", "how should I alert on Y" — with no Space or Region supplied and no
    go-ahead to actually create it, is a **HOW-TO** request. Deliver the authoring guidance
-   (the alert-authoring must-state checklist below, then
+   (the alert row of "Must-state checklists" below, then
    [alerts.md](references/cloudwatch-omni/alerts.md)) **FIRST**, from the reference files. Do
    **NOT** stall on a Region/Space clarifying question and do **NOT** fall back to a
    CloudWatch alarm for a request that explicitly says "Omni alert". Probe the account only
@@ -113,16 +118,13 @@ Decide this before routing. The natural wording ("set up an alert for high laten
    content question, which is answered from the catalog) → probe the target Region first:
 
    ```
-   aws___call_aws → aws cloudwatchomni list-domains
-   aws___call_aws → aws cloudwatchomni list-spaces        # scope to the target Region
+   aws cloudwatchomni list-domains
+   aws cloudwatchomni list-spaces --region <target-region> --query "items[?region=='<target-region>']"  # account-global; filter to the Region
    ```
 
-   - You MUST state, when resolving the ambiguity or asking the user, that a Space is
-     **one per account per Region**, so the probe (and any Omni query) targets the Region
-     the request concerns — not just the default Region — because an Omni query against the
-     wrong Region returns an empty result easily misread as "no data".
-   - A Domain and a Space exist in that Region → **Omni**.
-   - No Space → **CloudWatch**: alarms → [cloudwatch/alarms.md](references/cloudwatch/alarms.md),
+   - `list-spaces` is **account-global** (the `--region` flag only selects the endpoint), so filter its result to the target Region as shown rather than reading a non-empty list as proof; a Space is one per account per Region. See `references/cloudwatch-omni/concepts.md` for the full Region-probe rationale.
+   - A Domain and a Space in that Region (a non-empty filtered list) → **Omni**.
+   - No Space in that Region (an empty filtered list) → **CloudWatch**: alarms → [cloudwatch/alarms.md](references/cloudwatch/alarms.md),
      dashboards → [cloudwatch/dashboards.md](references/cloudwatch/dashboards.md), queries →
      [cloudwatch/log-insights.md](references/cloudwatch/log-insights.md), metrics →
      [cloudwatch/metrics.md](references/cloudwatch/metrics.md). If the customer explicitly asked
@@ -139,19 +141,25 @@ Decide this before routing. The natural wording ("set up an alert for high laten
      install -U`, `.pkg`/MSI); it mutates the customer's machine beyond the request and
      can break unrelated tooling — hand over the command and continue with the guidance.
      Never substitute a CloudWatch or X-Ray command for an Omni request. If the request
-     carried **no** Omni signal, do not block on the upgrade: proceed on the CloudWatch
-     path (the pre-Omni default) and mention the upgrade only in passing.
+     carried **no** Omni signal, do not block on the upgrade. When you are already going
+     back to the customer for missing inputs (for example an alert's threshold and
+     period), ask which product they want in that same question: say the Space probe could
+     not run on this CLI, describe both options, and build neither until they answer. When
+     the request is fully specified or says not to ask, proceed on the CloudWatch path (the
+     pre-Omni default) and mention the upgrade only in passing.
    - Still inconclusive → ask the customer.
-4. **First-time Omni setup** — creating a Domain or Space, granting access, provisioning
-   ingestion, forwarding log groups into the Dataset, connecting Slack, or instrumenting
-   an application or AI agent so traces reach a Space → **STOP and route to the
-   `setting-up-cloudwatch-observability` skill.** This skill covers a Space that already
-   has data. An instrumentation / ADOT / OTel-collector request that names neither
-   Application Signals, ServiceEvents, or the `amazon-cloudwatch-observability` add-on
-   nor Omni or a Space is ambiguous — probe `list-spaces` in the
-   target Region: a Space → route to the `setting-up-cloudwatch-observability` skill's
-   application-instrumentation reference (plain ADOT SDK, no add-on); no Space →
-   [cloudwatch/application-signals-onboarding.md](references/cloudwatch/application-signals-onboarding.md).
+4. **First-time setup, on EITHER product** → **STOP and route to the
+   `setting-up-cloudwatch-observability` skill.** This skill covers a service or Space that
+   already reports and holds no onboarding procedure for either product, so there is nothing
+   here to fall back on: not Omni setup (creating a Domain or Space, granting access,
+   ingestion, forwarding, Slack, instrumenting an app or AI agent for a Space) and not
+   CloudWatch setup (**onboarding a service to Application Signals** — ADOT
+   auto-instrumentation, the `amazon-cloudwatch-observability` add-on, monitored service,
+   ServiceEvents, CI/CD metadata, the per-platform enablement guides). Any
+   instrumentation / ADOT / collector request is a setup request either way; the setup skill
+   owns the product decision too, so hand the whole request over rather than probing
+   `list-spaces` yourself. Application Signals **once it is reporting** — service map,
+   alarms on its metrics, Dynamic Instrumentation debugging — belongs here.
 
 **Under-specified alert requests:** When an alert or alarm request names what to watch (a
 symptom or a service) but not the inputs it needs — the threshold value and the evaluation
@@ -164,7 +172,7 @@ which metrics, panels, or layout, ground those against the data and confirm the 
 rather than inventing panels; a dashboard has no threshold, period, or notification. For ANY
 dashboard authoring/save request, also open [dashboards.md](references/cloudwatch-omni/dashboards.md)
 and surface its "Facts you MUST surface when building or saving an Omni dashboard" checklist
-(see the dashboard must-state subsection below). Which signals or panels a named resource
+(see "Must-state checklists" below). Which signals or panels a named resource
 type needs is a Step 0.5 catalog question, not a dashboards-file question.
 
 ### Step 0.5 — Service-health investigation (routing)
@@ -201,43 +209,27 @@ in the reference file, not here:
   must-state callouts — a request about a service's latency or error *rate* (an aggregate
   signal) is the PromQL bullet above instead.
 
-### Authoring an Omni alert — surface the must-state checklist
+### Must-state checklists — the output contract
 
-When you author or advise on an Omni alert, open
-[alerts.md](references/cloudwatch-omni/alerts.md) and surface the items relevant to the task
-from its **"Facts you MUST surface when authoring an alert"** section. That section holds
-the per-item detail and is the source of truth, so state what fits the request rather than
-restating it here.
+Three Omni tasks carry a checklist the **answer text** must carry, not just the plan. Open the
+reference and surface every item relevant to the request; the reference holds the per-item
+detail and is the source of truth, so do not restate it here.
 
-### Agent evaluation — surface the must-state callouts
-
-When a request is about scoring traces, choosing an evaluator, reading stored scores,
-online/continuous evaluation, or evaluation datasets, open
-[agent-evaluation.md](references/cloudwatch-omni/agent-evaluation.md) and state every
-applicable item from its **"tell the user ALL of this"** callouts — level rules (one level
-per call, the three level semantics, tool-call level needs tool spans), evaluator redirect
-and ground truth, where scores are stored and the wrong-table read, and online-evaluation
-data-source verification. The callouts are the output contract; the answer text must
-carry them, not just the plan.
-
-### Building or saving an Omni dashboard — surface the must-state facts
-
-When you author, save, read back, or debug an Omni dashboard, open
-[dashboards.md](references/cloudwatch-omni/dashboards.md) and surface the items relevant to
-the task from its **"Facts you MUST surface when building or saving an Omni dashboard"**
-checklist. That checklist holds the per-item detail and is the source of truth.
+| Task | Open | Section to surface |
+|---|---|---|
+| Authoring or advising on an Omni **alert** | [alerts.md](references/cloudwatch-omni/alerts.md) | "Facts you MUST surface when authoring an alert" |
+| Scoring traces, choosing an evaluator, reading stored scores, online/continuous evaluation, evaluation datasets | [agent-evaluation.md](references/cloudwatch-omni/agent-evaluation.md) | every **"tell the user ALL of this"** callout |
+| Authoring, saving, reading back, or debugging an Omni **dashboard** | [dashboards.md](references/cloudwatch-omni/dashboards.md) | "Facts you MUST surface when building or saving an Omni dashboard" |
 
 ## Routing — CloudWatch (`references/cloudwatch/`)
 
 | User need | Action |
 |-----------|--------|
-| Enabling/onboarding a service to Application Signals (auto-instrumentation) | Read [application-signals-onboarding.md](references/cloudwatch/application-signals-onboarding.md) |
-| Propagating ServiceEvents git/deployment metadata through CI/CD | Read [application-signals-cicd-metadata.md](references/cloudwatch/application-signals-cicd-metadata.md) |
-| Per-platform/per-language Application Signals enablement steps | Read the matching `references/cloudwatch/appsignals-guides/<platform>-<language>.md` (e.g. [eks-python.md](references/cloudwatch/appsignals-guides/eks-python.md)) |
+| Enabling/onboarding a service to Application Signals (auto-instrumentation, the `amazon-cloudwatch-observability` add-on, monitored service), propagating ServiceEvents git/deployment metadata through CI/CD, or the per-platform × per-language enablement steps | **STOP** — this is first-time CloudWatch setup and no reference here covers it. Route to the **`setting-up-cloudwatch-observability`** skill |
 | Writing Log Insights queries (pipe-delimited syntax: fields, filter, stats, sort, parse, display) | Read [log-insights.md](references/cloudwatch/log-insights.md) |
 | Configuring alarms (metric, composite, anomaly) | Read [alarms.md](references/cloudwatch/alarms.md). For an Omni **alert**, see the Omni table |
 | Publishing custom metrics or using EMF | Read [metrics.md](references/cloudwatch/metrics.md) |
-| Setting up X-Ray tracing or ADOT | Read [tracing.md](references/cloudwatch/tracing.md) |
+| X-Ray / ADOT tracing **behaviour** — X-Ray-SDK-vs-ADOT choice, trace and segment structure, annotations vs metadata, sampling rules, collector pipeline config, X-Ray→OTel migration traps | Read [tracing.md](references/cloudwatch/tracing.md). Onboarding an un-instrumented service is the setup skill's job (see the first row) |
 | Building CloudWatch dashboards (widget mechanics; which signals a given AWS service needs is Step 0.5) | Read [dashboards.md](references/cloudwatch/dashboards.md) |
 | Debugging observability issues | Read [troubleshooting.md](references/cloudwatch/troubleshooting.md) — starts with the 5 most common fixes |
 | Debugging canary failures | Read [synthetics.md](references/cloudwatch/synthetics.md) — see Common failures table |
@@ -264,7 +256,7 @@ answered from the file directly.
 | **Context graph** — why is service X slow or failing, what depends on it, upstream/downstream, which direction to walk, edge types `CALLS` / `ACCESSES` / `RUNS_ON`, blast radius, walking from an insight or anomaly to a root cause, `GetContextGraph` | Read [context-graph.md](references/cloudwatch-omni/context-graph.md) and state every applicable item in its "facts you MUST surface" section |
 | **Agent evaluation** — score traces on demand, choose an evaluator, read back stored `gen_ai.evaluation.*` scores ("which evaluators are doing worst", "which online evaluators are unhealthy / underperforming"), build datasets from traces, set up online evaluation, author a custom evaluator, audit whether an agent's traces are flowing | Read [agent-evaluation.md](references/cloudwatch-omni/agent-evaluation.md) and state every applicable item in its "tell the user ALL of this" callouts |
 | **Programmatic access** — "is there an API or SDK for Omni", calling Omni from code, CI, IaC, or an AI coding agent | Read [programmatic-access.md](references/cloudwatch-omni/programmatic-access.md). Omni has a real public SigV4 API; never answer that it has none, never substitute the CloudWatch or X-Ray CLI/SDK, and answer without probing for a Space |
-| **Who has access to a Space**, granting or revoking access, access profiles, creating a Space or Domain, ingestion, forwarding, Slack, Azure, instrumenting an app or AI agent | Route to the **`setting-up-cloudwatch-observability`** skill |
+| **Who has access to a Space**, granting or revoking access, access profiles, creating a Space or Domain, ingestion, forwarding, Slack, Azure, instrumenting an app or AI agent — and, on the CloudWatch side, onboarding a service to Application Signals | Route to the **`setting-up-cloudwatch-observability`** skill. If it is not installed locally, load it with the AWS MCP `retrieve_skill` tool (`skill_name: setting-up-cloudwatch-observability`; pass `file` for a reference it cites) |
 | Spans multiple areas | Read the most specific reference first, then consult others as needed |
 
 ## Files
@@ -273,9 +265,6 @@ answered from the file directly.
 
 | File | Content |
 |------|---------|
-| [application-signals-onboarding.md](references/cloudwatch/application-signals-onboarding.md) | Enable Application Signals auto-instrumentation: EKS add-on, CloudWatch Agent IAM, OTLP endpoints, ServiceEvents env vars, Dynamic Instrumentation — two-tier scope by platform/language |
-| [application-signals-cicd-metadata.md](references/cloudwatch/application-signals-cicd-metadata.md) | ServiceEvents git & deployment metadata propagation through CI/CD (the 5 `OTEL_AWS_SERVICE_EVENTS_*` vars) |
-| `appsignals-guides/` (e.g. [eks-python.md](references/cloudwatch/appsignals-guides/eks-python.md)) | 16 per-platform × per-language Application Signals enablement guides (EC2/ECS/EKS/Lambda × Python/Node.js/Java/.NET) |
 | [alarms.md](references/cloudwatch/alarms.md) | Metric, composite, anomaly detection alarms — configuration, constraints, recommended defaults |
 | [log-insights.md](references/cloudwatch/log-insights.md) | Complete query syntax, commands, functions, known issues, reusable query library |
 | [metrics.md](references/cloudwatch/metrics.md) | Custom metrics, EMF spec, metric filters, high-resolution, retention |
@@ -287,6 +276,10 @@ answered from the file directly.
 | [dynamic-instrumentation.md](references/cloudwatch/dynamic-instrumentation.md) | Dynamic Instrumentation debugging loop — breakpoints/probes on live code, snapshot capture + correlation analysis, create/delete gating, snapshot PII handling. Runs via `scripts/cloudwatch/di_instrumentation.py` + `scripts/cloudwatch/di_snapshots.py`; details in `dynamic-instrumentation/` |
 | [alarm-template.ts](assets/cloudwatch/alarm-template.ts) | Best-practice CDK Lambda monitoring (alarms + dashboard) |
 | [otel-config.yaml](assets/cloudwatch/otel-config.yaml) | ADOT collector config for X-Ray traces + CloudWatch EMF metrics |
+
+**Not here, by design:** Application Signals onboarding (the enablement procedure, the
+ServiceEvents CI/CD chain, the 16 per-platform guides) is first-time setup and lives in
+**`setting-up-cloudwatch-observability`**. Do not reconstruct it here from memory; route.
 
 ### `references/cloudwatch-omni/`
 

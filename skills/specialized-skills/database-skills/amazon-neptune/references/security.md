@@ -41,6 +41,15 @@ Detailed security guidance for Amazon Neptune Database and Neptune Analytics.
 
 - Use ephemeral credentials only: IAM roles, STS `AssumeRole`, or SSO. Never long-lived IAM user access keys.
 
+## Recurring Neptune Analytics automation
+
+- Run scheduled snapshot, import, query, export, stop, and start workflows under a dedicated IAM role, such as a Lambda or Step Functions execution role. Use its ephemeral credentials and SigV4-signed AWS API calls; use IAM database authentication for Neptune Database access.
+- Grant only the lifecycle actions the workflow needs and scope them to the specific graph ARN. A stop/start workflow needs `neptune-graph:StopGraph` and `neptune-graph:StartGraph`; do not grant `neptune-graph:DeleteGraph` unless a separately authorized, change-controlled deletion workflow requires it. Never grant `neptune-graph:*` or use `Resource:"*"`.
+- Deliver CloudTrail continuously to CloudWatch Logs and monitor `CreateGraphUsingImportTask`, `ExecuteQuery`, `StopGraph`, `StartGraph`, and `DeleteGraph`. Create metric filters and CloudWatch alarms for `DeleteGraph` and for `StopGraph` calls whose principal is not an approved automation role, then route alarms to the team's SNS or on-call destination.
+- Encrypt both the CloudWatch Logs log group receiving CloudTrail events and the SNS alarm topic with a customer-managed KMS key; query and lifecycle events can contain sensitive graph-operation metadata.
+- Restrict the SNS topic access policy so only approved accounts and principals can publish or subscribe, and verify that every subscription endpoint belongs to authorized on-call personnel.
+- Neptune Analytics remains encrypted at rest while stopped. Use a customer-managed KMS key for sensitive workloads and TLS for every database or graph data-plane connection.
+
 ## FIPS endpoints
 
 - For regulated workloads, check the Neptune security documentation for FIPS endpoint availability across the control plane and data plane, plus the supported cipher suites, before committing to an architecture.

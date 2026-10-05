@@ -2,12 +2,12 @@
 
 ## When to Use Strands (vs. Alternatives)
 
-| Situation                                    | Recommendation       | Why                                                                         |
-| -------------------------------------------- | -------------------- | --------------------------------------------------------------------------- |
-| Building first AI agent on AWS               | **Strands**          | Thinnest abstraction, least vendor lock-in, direct Bedrock integration      |
-| Already invested in LangChain/LangGraph      | Stay on LangChain    | Migration cost isn't worth it unless you're hitting LangChain-specific pain |
-| Need managed multi-agent orchestration       | Bedrock Agents       | If you don't want to manage containers and agent routing yourself           |
-| Simple single-call LLM feature (no tool use) | Direct `InvokeModel` | Strands adds overhead you don't need for prompt-in/text-out                 |
+| Situation                                    | Recommendation                                                                                              | Why                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Building first AI agent on AWS               | **Strands**                                                                                                 | Thinnest abstraction, least vendor lock-in, direct Bedrock integration                                                                                                                                                                                                                                                                                |
+| Already invested in LangChain/LangGraph      | Stay on LangChain                                                                                           | Migration cost isn't worth it unless you're hitting LangChain-specific pain                                                                                                                                                                                                                                                                           |
+| Need multi-agent orchestration               | Strands multi-agent primitives (Agents-as-Tools, Swarms, Graphs, or A2A for cross-org) on AgentCore Runtime | AgentCore manages runtime infrastructure and can provide memory/gateway/identity, but you still own routing via Strands. Direct code deployment avoids image management; with container deployment, you own image maintenance. Classic Bedrock Agents' built-in collaboration is in maintenance mode and closed to new customers as of July 30, 2026. |
+| Simple single-call LLM feature (no tool use) | Direct `InvokeModel`                                                                                        | Strands adds overhead you don't need for prompt-in/text-out                                                                                                                                                                                                                                                                                           |
 
 ## TypeScript vs Python: Startup Perspective
 
@@ -42,15 +42,22 @@ Memory modes ranked by startup relevance:
 
 **Cost of premature LTM**: Memory extraction runs additional model calls per session. At 1000 sessions/day, that's meaningful token spend for personalization most early users won't notice.
 
-## Deployment: The Container Gotcha (TypeScript)
+## Deployment: Direct Code vs. Containers (TypeScript)
 
-TypeScript agents REQUIRE containerized deployment (`--deployment-type container`). This means:
+AgentCore Runtime supports [direct code deployment for Node.js, including compiled
+TypeScript](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-code-deploy-node.html).
+Prefer it when the supported runtime fits; it avoids owning a container image.
 
-- ECR image build in your CI/CD pipeline
-- Container image maintenance (base image updates, dependency patches)
-- Slightly higher cold-start than Python agents
+Choose container deployment when you need a custom runtime, native dependencies,
+or image-level control. Under the [container shared-responsibility model](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-code-deploy.html),
+you own:
 
-**If you're deploying to Lambda for cost reasons (scale-to-zero)**: Use Python Strands agents — they work with Lambda's native runtime. TypeScript agents need Lambda container image support (slower cold starts, 10GB image limit).
+- ECR image builds and CI/CD
+- Base-image and dependency patching
+- Rebuilding and redeploying images for security updates
+
+AgentCore manages the runtime infrastructure in either mode; it does not take over
+your Strands supervisor/routing logic.
 
 ## Evaluation: Ship Evals from Day One (But Cheaply)
 
