@@ -37,22 +37,31 @@ def parse_price_dimensions(price_item: dict) -> dict:
 # Used when the PriceList API doesn't return data (e.g. new cross-region inference profile IDs).
 # Source: https://aws.amazon.com/bedrock/pricing/, cross-checked row-by-row against
 # skills/gcp-to-aws/references/shared/pricing-cache.md (its per-1M rates / 1000).
-# Every row below was re-verified against that cache and the AWS Pricing MCP server on
-# 2026-10-05; all values confirmed unchanged (no corrections this refresh).
+# Every row below was re-verified against that cache, the Bedrock model cards
+# (Geo/Global inference ID tables), and the AWS Pricing MCP server on 2026-10-05.
+# IMPORTANT: for models that require a cross-Region inference profile for on-demand
+# throughput (Haiku 4.5, Sonnet 5, Opus 4.8, Sonnet 4.6 — see
+# bedrock-inference-profile-model-id.md), the `us.`/`eu.`/etc. Geo-prefixed ID is
+# ~10% MORE expensive than the bare/`global.` rate — Geo cross-Region inference
+# carries a price premium over Global cross-Region inference (AWS docs: global
+# saves "approximately 10%... compared to geographic cross-Region inference").
+# The bare id below is kept at the Global/base rate for display-name lookups and
+# because `global.<id>` is also a valid, separately-priced invocable form; the
+# `us.<id>` row carries the actual Geo premium a us-east-1 caller pays.
 # Re-check this table against that cache (and the public pricing page) whenever either moves.
 STATIC_FALLBACK = {
     "anthropic.claude-haiku-4-5-20251001-v1:0":     {"input_per_1k_usd": 0.001, "output_per_1k_usd": 0.005},
-    "us.anthropic.claude-haiku-4-5-20251001-v1:0":  {"input_per_1k_usd": 0.001, "output_per_1k_usd": 0.005},
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0":  {"input_per_1k_usd": 0.0011, "output_per_1k_usd": 0.0055},
     # Recommend default
     "anthropic.claude-sonnet-5":                    {"input_per_1k_usd": 0.002, "output_per_1k_usd": 0.010},
-    "us.anthropic.claude-sonnet-5":                 {"input_per_1k_usd": 0.002, "output_per_1k_usd": 0.010},
+    "us.anthropic.claude-sonnet-5":                 {"input_per_1k_usd": 0.0022, "output_per_1k_usd": 0.011},
     # Still Active — existing workloads / fallbacks
     "anthropic.claude-sonnet-4-6":                  {"input_per_1k_usd": 0.003, "output_per_1k_usd": 0.015},
-    "us.anthropic.claude-sonnet-4-6":               {"input_per_1k_usd": 0.003, "output_per_1k_usd": 0.015},
+    "us.anthropic.claude-sonnet-4-6":               {"input_per_1k_usd": 0.0033, "output_per_1k_usd": 0.0165},
 
     # Opus 4.8 has no dated foundation-model ID on the model card — suffix-less only.
     "anthropic.claude-opus-4-8":                    {"input_per_1k_usd": 0.005, "output_per_1k_usd": 0.025},
-    "us.anthropic.claude-opus-4-8":                 {"input_per_1k_usd": 0.005, "output_per_1k_usd": 0.025},
+    "us.anthropic.claude-opus-4-8":                 {"input_per_1k_usd": 0.0055, "output_per_1k_usd": 0.0275},
     "amazon.nova-micro-v1:0":                       {"input_per_1k_usd": 0.000035, "output_per_1k_usd": 0.00014},
     "amazon.nova-lite-v1:0":                        {"input_per_1k_usd": 0.00006, "output_per_1k_usd": 0.00024},
     "amazon.nova-pro-v1:0":                         {"input_per_1k_usd": 0.0008, "output_per_1k_usd": 0.0032},
@@ -154,8 +163,9 @@ def lookup(region: str, model_id: str) -> dict:
     # by display name and frequently lacks entries for new inference profiles.
     fb = _static_fallback(model_id)
     if fb:
-        fb["note"] = ("static pricing table (verified 2026-08-04 against "
-                      "aws.amazon.com/bedrock/pricing and the vendored pricing cache)")
+        fb["note"] = ("static pricing table (verified 2026-10-05 against "
+                      "aws.amazon.com/bedrock/pricing, the Bedrock model cards' "
+                      "Geo/Global inference ID tables, and the vendored pricing cache)")
         return fb
     if is_mantle_gpt(model_id):
         # Short-circuit: the PriceList API carries no rows for the proprietary GPT

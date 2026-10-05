@@ -1,6 +1,6 @@
 # AI Pricing Cache (Bedrock + source-provider)
 
-**Last updated:** 2026-10-05 (re-verified via the AWS Pricing MCP server and aws.amazon.com/bedrock/pricing — Claude Sonnet 5 $2/$10, Opus 4.8 $5/$25, Sonnet 4.6 $3/$15, Opus 4.6 $5/$25, Haiku 4.5 $1/$5, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50, Llama 4 Maverick/Scout, Llama 3.3 70B, Nova 2 Lite/Pro/Lite/Micro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family, and the OpenAI/Azure OpenAI source-side table all confirmed unchanged; no rate changes this refresh)
+**Last updated:** 2026-10-05 (re-verified via the AWS Pricing MCP server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50 (Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo), Opus 4.6 $5/$25, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50, Llama 4 Maverick/Scout, Llama 3.3 70B, Nova 2 Lite/Pro/Lite/Micro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family, and the OpenAI/Azure OpenAI source-side table all confirmed unchanged; this refresh corrects the Geo-vs-Global pricing gap for the four Anthropic models that require a cross-Region inference profile — see the Geo vs. Global note below)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±15-25% for AI models (sourced from public pricing pages)
@@ -29,6 +29,19 @@ reasoning), Claude Haiku 4.5 (cost/speed). Do not default to Claude Fable 5 (fro
 SKUs do not all use the same multiplier; confirm batch/cache and cross-region rows per model on
 that page. See `references/vendored/ai/ai-model-lifecycle.md` for lifecycle detail — **do not
 recommend Legacy/excluded models for new migrations.**
+
+> **Geo vs. Global inference pricing.** Sonnet 5, Opus 4.8, Sonnet 4.6, and Haiku 4.5 cannot be
+> invoked on-demand with their bare model ID on `bedrock-runtime` — they require a cross-Region
+> inference profile ID (see `references/helpers/bedrock-known-fixes/references/bedrock-inference-profile-model-id.md`).
+> The **Geo** profile (`us.`/`eu.`/`au.`/`jp.`/`in.` prefix) carries a ~10% price premium over
+> **Global** (`global.` prefix); AWS documents Global cross-Region inference as saving
+> "approximately 10%... compared to geographic cross-Region inference." The quick-reference
+> table's bare-id rows below are the **Global/base** rate; for a **Geo** (`us.`-prefixed, the
+> common choice for US-only data residency) deployment, multiply input/output by 1.10 — e.g.
+> Sonnet 5 Geo is $2.20/$11.00, Opus 4.8 Geo is $5.50/$27.50, Sonnet 4.6 Geo is $3.30/$16.50,
+> Haiku 4.5 Geo is $1.10/$5.50. `bedrock_pricing.py`'s `STATIC_FALLBACK` table keys the `us.`
+> id to the Geo rate and the bare id to the Global/base rate — read from that table, not this
+> one, when a migration plan pins a specific inference profile.
 
 ### Multi-provider quick reference (per 1M tokens)
 
