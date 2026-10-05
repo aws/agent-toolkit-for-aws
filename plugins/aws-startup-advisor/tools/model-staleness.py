@@ -32,14 +32,12 @@ Two failure classes, gated differently:
       quietly aged out does not block unrelated work.
 
 Modes (run from anywhere; paths resolve relative to this file):
-    python3 plugins/aws-startup-advisor/scripts/model-staleness.py
+    python3 plugins/aws-startup-advisor/tools/model-staleness.py
         # exit 1 on drift or a malformed contract; staleness is warn-only
-    python3 plugins/aws-startup-advisor/scripts/model-staleness.py --strict
+    python3 plugins/aws-startup-advisor/tools/model-staleness.py --strict
         # ALSO exit 1 on staleness (use for a scheduled refresh check)
-    python3 plugins/aws-startup-advisor/scripts/model-staleness.py --plugin-root <dir>
-        # check a copy of the plugin tree somewhere else (used by the tests)
 
-Stdlib only. Companion test: tests/test_model_staleness.py.
+Stdlib only.
 """
 from __future__ import annotations
 
@@ -50,8 +48,8 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-# scripts/model-staleness.py -> plugins/aws-startup-advisor/
-DEFAULT_PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+# tools/model-staleness.py -> plugins/aws-startup-advisor/
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 CANONICAL = Path("skills/shared/ai/ai-model-lifecycle.md")
 VENDORED_GLOB = "skills/*/references/vendored/ai/ai-model-lifecycle.md"
@@ -205,21 +203,10 @@ def main() -> int:
         action="store_true",
         help="also fail on staleness. Drift / malformed contract fail regardless.",
     )
-    ap.add_argument(
-        "--plugin-root",
-        type=Path,
-        default=DEFAULT_PLUGIN_ROOT,
-        help="plugin directory to check (default: the plugin this script lives in)",
-    )
     args = ap.parse_args()
 
-    plugin_root = args.plugin_root.resolve()
-    if not plugin_root.is_dir():
-        print(f"Plugin directory not found: {plugin_root}", file=sys.stderr)
-        return 2
-
     findings = Findings()
-    check_plugin(plugin_root, findings)
+    check_plugin(PLUGIN_ROOT, findings)
 
     for note in findings.notes:
         print(f"  ok: {note}")

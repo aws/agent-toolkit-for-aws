@@ -48,5 +48,8 @@ jobs:
       - name: Validate manifests, skills, and plugin parity
         run: mise run validate
 
+      - name: Check model-lifecycle registry (drift / contract; staleness warn-only)
+        run: mise run lint:model-staleness
+
       - name: Security scan (gitleaks)
         run: mise run security
