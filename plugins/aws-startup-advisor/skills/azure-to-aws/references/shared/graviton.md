@@ -83,7 +83,7 @@ Model **only** the hourly price discount. Use `pricing-cache.md` Graviton rows w
 The cost report should surface Graviton savings, but the report generator and its validator (`generate-artifacts-report.md`, `shared/validate-migration-report.md`, `scripts/validate-migration-report.py`) do not yet carry it. A follow-up should:
 
 - Render `architecture_comparison` in the report's cost breakdown / decision summary (a "Graviton savings" line: `graviton_monthly` vs `x86_equivalent_monthly`, `savings_percent`), reusing the report's existing section-ID and table conventions.
-- Add a numeric assertion to `validate-migration-report.py` that the rendered Graviton savings match `estimation-infra.json` → `architecture_comparison` (`savings_amount` / `savings_percent`). That validator is intentionally structural-only today, so this is a net-new check, not a modification of existing behavior.
+- Add a numeric assertion to `validate-migration-report.py` that the rendered Graviton savings match `estimation-infra.json` → `architecture_comparison` (`savings_amount` / `savings_percent`). That validator checks structure and decision-core content but does not yet audit dollar figures, so this is a net-new check, not a modification of existing behavior.
 
 Until then, numeric agreement between report and `architecture_comparison` is a manual self-check.
 

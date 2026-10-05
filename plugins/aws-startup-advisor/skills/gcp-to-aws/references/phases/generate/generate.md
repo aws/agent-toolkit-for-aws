@@ -162,7 +162,7 @@ Produces: `migration-report.html`
 
 **Validation gate:** Report generation runs `shared/validate-artifacts.md` first. If validation emits `GATE_FAIL`: log the failure to the user, **do not write** `migration-report.html`, and continue to Phase Completion (report is optional output; validation failure is not a silent skip). Do **NOT** patch artifacts to pass validation.
 
-After writing `migration-report.html`, run `shared/validate-migration-report.md` (automated script). Branch on the shell exit code per that doc's table — `0` (`REPORT_OK`), `1` (`REPORT_FAIL`: remove or rename incomplete HTML and warn the user — do not present a stub report as complete), or anything else (validator did not run, e.g. `python3` missing — tell the user validation was skipped, do not treat it as pass or fail).
+After writing `migration-report.html`, run `shared/validate-migration-report.md` (automated script). `REPORT_OK` means the decision-core content checks passed, not that the section IDs alone were present — the HTML must still have been rendered from `references/shared/report-decision-core.md`. Branch on the shell exit code per that doc's table — `0` (`REPORT_OK`), `1` (`REPORT_FAIL`: remove or rename incomplete HTML and warn the user — do not present a stub report as complete), or anything else (validator did not run, e.g. `python3` missing — tell the user validation was skipped, do not treat it as pass or fail).
 
 ## Phase Completion
 

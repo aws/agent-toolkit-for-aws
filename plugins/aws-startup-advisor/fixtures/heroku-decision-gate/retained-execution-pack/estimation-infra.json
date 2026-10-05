@@ -48,6 +48,9 @@
     ],
     "stay_if": [
       "need Heroku DX indefinitely"
+    ],
+    "would_flip_if": [
+      "A confirmed always-on traffic pattern would raise the AWS compute estimate materially."
     ]
   },
   "workshop": {
