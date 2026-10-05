@@ -106,7 +106,7 @@ For discovery completeness or export evidence, read the relevant [Macie decision
 | Internet-facing NLB or non-HTTP ingress with an established traffic-inspection requirement | Evaluate Network Firewall for that requirement; presence alone is not a gap. Shield Advanced follows its own row | Medium |
 | Confirmed public or private application needing AppSec assessment | Evaluate AWS Security Agent (part of AWS Continuum) through [application fit and scope](application-security.md#application-fit-and-scope); conditional AppSec-owner handoff | Low |
 | VPC with no DNS Firewall rule group association | Route 53 Resolver DNS Firewall with AWS-managed lists — route to the `route53` skill | High |
-| DNS Firewall associated, no query logging | Enable Resolver query logging | Medium |
+| DNS Firewall associated, no query logging | Enable Resolver query logging to a destination that uses KMS encryption at rest and TLS in transit for delivery and consumer access; verify retention and delivery separately | Medium |
 | DNS Firewall associated, Advanced rules off | DNS Firewall Advanced for tunneling and DGA detection | Medium |
 | Any VPC | Security Lake default sources `VPC_FLOW` and `ROUTE53`; no flow-log or query-log prerequisite | Medium |
 | Revenue-generating internet-facing workload on CloudFront, ALB, EIP, Global Accelerator, or Route 53, where downtime cost exceeds the subscription | Shield Advanced, verifying current WAF/Firewall Manager bundled eligibility — route to the `shieldadvanced` skill. CloudFront L3/L4 volumetric protection is already AWS's responsibility | Medium |
@@ -115,7 +115,7 @@ For discovery completeness or export evidence, read the relevant [Macie decision
 | Network Firewall deployed, default actions do not meet demonstrated enforcement or logging requirements under the selected compatible strategy | Review application-aware versus custom defaults and observed verdict/log evidence; do not universally pair drop and alert defaults or infer enforcement from configuration | High (verified gap only) |
 | Network Firewall deployed, stream-exception behavior conflicts with application recovery requirements | Review the selected policy against application recovery, active connections and idle-flow evidence; assess planned change impact with the owner rather than assuming a universal restart | High (verified gap only) |
 | Network Firewall deployed, endpoint coverage does not meet the verified deployment mode and traffic-path requirements | Review topology-specific endpoint/AZ coverage for inspection-VPC, native TGW or multi-endpoint mode; recommend changes only for a demonstrated path requirement | High (verified gap only) |
-| Network Firewall deployed, no logging configuration | Enable ALERT and FLOW logs, to separate destinations | Medium |
+| Network Firewall deployed, no logging configuration | Enable ALERT and FLOW logs to separate destinations that use KMS encryption at rest and TLS in transit for delivery and consumer access; verify retention and delivery separately | Medium |
 | 10+ accounts with **distributed** WAF, DNS Firewall, or Network Firewall deployments (per account or per VPC) | Firewall Manager for policy rollout and enforcement; requires Organizations and AWS Config; verify current pricing and Shield Advanced bundled eligibility. Limited value for a centralized single-firewall design | Medium |
 
 For the conditional Network Firewall rows, unresolved topology, intent or compatibility

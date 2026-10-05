@@ -268,7 +268,10 @@ aws network-firewall describe-firewall-policy --firewall-policy-arn <arn> --regi
 paths and compatible policy strategy (see the [matrix](recommendation-matrix.md#focused-suitability-beyond-enablement)). Assess endpoint/AZ coverage against that topology;
 do not apply an inspection-VPC rule universally to native TGW or multi-endpoint designs.
 Record observed rule order, stateless forwarding, default actions and logging destinations
-separately from evidence of effective blocking and log delivery. Evaluate strict order,
+separately from evidence of effective blocking and log delivery. Any recommended ALERT/FLOW
+destination MUST use KMS encryption at rest for its CloudWatch Logs log group or S3 sink and
+TLS in transit for delivery and consumer access. Verify encryption, transport, retention and
+delivery separately; destination configuration alone proves none of them. Evaluate strict order,
 application-aware versus custom defaults and required ALERT/FLOW visibility in that
 context; do not require every drop default to have a paired alert default. Unresolved
 topology, intent, compatibility or effectiveness remains UNKNOWN rather than a gap.
@@ -300,9 +303,11 @@ aws route53resolver list-resolver-query-log-config-associations \
 
 **Pass conditions:** at least one rule group associated with each VPC; AWS-managed domain
 lists attached as the first layer; DNS Firewall Advanced enabled for DNS tunneling and
-domain-generation-algorithm detection; query-log association `CREATED` for the actual VPC,
-with a deliberate retention policy. A query-log configuration alone does not prove VPC
-coverage; retention and delivery remain UNKNOWN without separate evidence.
+domain-generation-algorithm detection; query-log association `CREATED` for the actual VPC;
+and its CloudWatch Logs log group or S3 sink uses KMS encryption at rest and TLS in transit
+for delivery and consumer access, with a deliberate retention policy. A query-log
+configuration alone does not prove VPC coverage, encryption, transport, retention or delivery;
+missing evidence for any of those remains UNKNOWN.
 
 DNS Firewall is the earliest filter in the chain — blocking at the DNS layer stops traffic
 before it reaches Network Firewall, which reduces downstream processing cost.
