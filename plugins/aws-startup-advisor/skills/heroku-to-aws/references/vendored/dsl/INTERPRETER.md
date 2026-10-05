@@ -27,6 +27,11 @@ defaults. Where a skill declares a binding, the declaration is part of this cont
 Sidebar PLACEMENT was already the skill's to declare (§ Backbone vs sidebar);
 these bindings extend the same principle to naming, state shape, and routing.
 
+Telemetry instructions below apply only to the literal default `.migration/`
+root. Skills with a custom run root, such as `.agent-advisor/`, skip those
+instructions and do not load `references/vendored/telemetry/PROTOCOL.md`; that
+file need not be present in their bundle.
+
 ## The interpreter loop
 
 This is the execution controller — how you drive a migration from invocation to

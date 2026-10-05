@@ -34,6 +34,16 @@ def sync(plugin=PLUGIN, write=False):
     plugin = Path(plugin)
     telemetry = plugin / "scripts/telemetry"
     version = json.loads((plugin / "plugin.json").read_text(encoding="utf-8"))["version"]
+    problems = []
+    for name in (".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json"):
+        manifest = plugin / name
+        if manifest.is_file():
+            host_version = json.loads(manifest.read_text(encoding="utf-8")).get("version")
+            if host_version != version:
+                problems.append("%s: version %r does not match plugin.json version %r" % (name, host_version, version))
+    if problems:
+        return problems  # Refuse to generate bundles from conflicting version metadata.
+
     files = {name: (telemetry / name).read_bytes() for name in RUNTIME_FILES}
     files["version.json"] = (json.dumps({"version": version}, indent=2) + "\n").encode()
     expected = []
@@ -63,8 +73,9 @@ def main():
     args = parser.parse_args()
     problems = sync(write=args.write)
     if problems:
-        print("Telemetry bundles are missing or out of sync; run sync_bundles.py --write:")
+        print("Telemetry manifests or bundles are out of sync:")
         print("\n".join(problems))
+        print("Ensure manifest versions agree, then run sync_bundles.py --write.")
         return 1
     print("Telemetry bundles and DSL copies: OK")
     return 0

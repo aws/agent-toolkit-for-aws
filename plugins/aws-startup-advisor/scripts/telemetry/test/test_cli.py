@@ -188,7 +188,7 @@ def test_isolated_skill_bundle_reuses_consent_and_reports_its_version(tmp_path, 
     assert p.snapshot() == before
 
 
-def test_generated_bundles_are_current_and_checks_detect_missing_or_stale_files(tmp_path):
+def bundle_fixture(tmp_path):
     spec = importlib.util.spec_from_file_location("sync_bundles", TELEMETRY / "sync_bundles.py")
     syncer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(syncer)
@@ -202,14 +202,44 @@ def test_generated_bundles_are_current_and_checks_detect_missing_or_stale_files(
     shared = plugin / "skills/shared/dsl/INTERPRETER.md"
     shared.parent.mkdir(parents=True)
     shared.write_bytes((PLUGIN_ROOT / "skills/shared/dsl/INTERPRETER.md").read_bytes())
-    (plugin / "plugin.json").write_text('{"version":"2.0.3"}')
+    for name in ("plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json"):
+        manifest = plugin / name
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text('{"version":"2.0.3"}')
     syncer.sync(plugin, write=True)
+    return syncer, plugin
+
+
+def test_generated_bundles_are_current_and_checks_detect_missing_or_stale_files(tmp_path):
+    syncer, plugin = bundle_fixture(tmp_path)
     assert syncer.sync(plugin) == []
     target = plugin / "skills/gcp-to-aws/references/vendored/telemetry/metric_emission/client.py"
     target.unlink()
     assert str(target.relative_to(plugin)) in syncer.sync(plugin)
     syncer.sync(plugin, write=True)
-    (plugin / "plugin.json").write_text('{"version":"2.0.4"}')
+    for name in ("plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json"):
+        (plugin / name).write_text('{"version":"2.0.4"}')
     assert len(syncer.sync(plugin)) == 4
     syncer.sync(plugin, write=True)
     assert syncer.sync(plugin) == []
+
+
+@pytest.mark.parametrize("manifest", [
+    "plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json",
+])
+@pytest.mark.parametrize("mode", ["--check", "--write"])
+def test_bundle_command_rejects_manifest_version_drift_without_writing(tmp_path, manifest, mode):
+    _, plugin = bundle_fixture(tmp_path)
+    script = plugin / "scripts/telemetry/sync_bundles.py"
+    shutil.copyfile(TELEMETRY / "sync_bundles.py", script)
+    before = {path.relative_to(plugin): path.read_bytes() for path in (plugin / "skills").rglob("*") if path.is_file()}
+    (plugin / manifest).write_text('{"version":"2.0.4"}')
+    result = subprocess.run(  # nosec B603 — local script and fixed fixture arguments
+        [sys.executable, str(script), mode], capture_output=True, text=True,
+    )
+    assert result.returncode == 1
+    assert manifest in result.stdout
+    assert "does not match plugin.json version" in result.stdout
+    assert "2.0.3" in result.stdout and "2.0.4" in result.stdout
+    after = {path.relative_to(plugin): path.read_bytes() for path in (plugin / "skills").rglob("*") if path.is_file()}
+    assert after == before
