@@ -1,5 +1,13 @@
 {
   "phase": "clarify",
+  "metadata": {
+    "clarify_mode": "wizard",
+    "fast_path_eligible": false,
+    "questions_defaulted": [],
+    "deferred_to_generate": [
+      "data.db_cutover"
+    ]
+  },
   "clarify_status": "COMPLETE",
   "global": {
     "target_region": {
@@ -85,10 +93,13 @@
       "context": "Microsoft.DBforPostgreSQL/flexibleServers/tf:store (pg-${var.prefix}-store): high_availability.mode ZoneRedundant, standby_availability_zone 2, primary zone 1, backup_retention_days 14"
     },
     "db_cutover": {
-      "disposition": "ESSENTIAL",
-      "value": "dms",
-      "default": null,
-      "context": "One relational database: Postgres 16 Flexible Server, GP_Standard_D2s_v3, storage_mb 65536 (64 GiB allocated)."
+      "disposition": "PROPOSED",
+      "value": "dump_restore",
+      "default": "dump_restore",
+      "deferred_to_generate": true,
+      "default_basis": "largest relational DB 64 GiB <= 100 GiB",
+      "largest_relational_db_gib": 64,
+      "size_coverage": "complete"
     },
     "traffic_pattern": {
       "disposition": "PROPOSED",

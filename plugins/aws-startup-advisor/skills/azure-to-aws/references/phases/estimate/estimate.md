@@ -47,7 +47,7 @@ _preconditions:
     _on_failure: _unrecoverable
   - _validate_json: [aws-design.json, preferences.json, azure-resource-inventory.json]
     _on_failure: _unrecoverable
-  - _assert: "aws-design.json services[] exists and is non-empty, and every entry has aws_service and aws_config"
+  - _assert: "aws-design.json services[] exists and every entry has aws_service and aws_config. An EMPTY services[] is valid only in the case design.md allows — every inventory resource is in deferred[] or recorded in warnings[] as a skip — and then takes the all-deferred path in estimate-infra.md (priced workload totals 0, deferred_count equal to len(deferred[]) only, baseline controls called out as unpriced, decision gate still presented). An empty services[] with a resource in neither deferred[] nor warnings[] is an unaccounted design and is unrecoverable"
     _on_failure: _unrecoverable
 _postconditions:
   - _check_file_exists: estimation-infra.json

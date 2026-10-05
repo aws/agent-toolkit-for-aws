@@ -491,8 +491,8 @@ per-1M-token rates and the sample cost only, with the line
    ```
 
 2. **Set up AWS credentials:**
-   - Configure AWS credentials with Bedrock access
-   - Set environment variables per `.env.example`
+   - ECS uses the task role. Lambda uses the execution role. Any other server or container uses the boto3 default chain on its host (instance profile, App Runner instance role, or equivalent). A local run uses the default chain too (`aws sso login` or a named profile).
+   - `.env.example` sets `AWS_REGION` and the model id. Access keys stay commented. A Mantle bearer token, when present, is commented, expires within 12 hours, and is for a short local run — not an ECS task or a Lambda environment.
    - Apply the generated least-privilege IAM policy: `.saws-migrate/iam-policy.json`
      (scoped to the exact model ARNs used in this migration — review before attaching to a role)
 
@@ -511,7 +511,15 @@ per-1M-token rates and the sample cost only, with the line
    Review with your team, then merge.
 
 5. **Deploy:**
-   Deploy using your normal deployment process.
+   Deploy using your normal deployment process. Keep the source provider key in place through this step — the original deployment, and your rollback target, still read it.
+
+6. **Retire the source provider key** (only after step 5 is verified in production; the eval already used it):
+   - Confirm the cutover first: the Bedrock build serves production traffic, the original deployment is retired, and no rollback target, canary, cron job, other service, or CI job still reads the key. Revoking earlier takes down whatever is still running on the original provider.
+   - Revoke `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, or `GEMINI_API_KEY` — whichever this repo used — in that provider's console.
+   - Delete the same secret from CI (GitHub Actions, GitLab, and any other secret store) and from any ECS task definition or Lambda environment that still sets it.
+   - Confirm a search for those names is clean outside `.saws-migrate/` and `.migration/`.
+   - This migration does not revoke the key for you.
+   - If the key you pasted for the eval was a separate, evaluation-only key (not the one the application uses), it has no other consumer: revoke it as soon as you accept this branch.
 
 ## How to Undo
 
@@ -525,7 +533,7 @@ rm -rf .saws-migrate .migration   # removes all migration artifacts, including t
 rm MIGRATION_REPORT_*.md          # this report
 ```
 
-If you pasted a source-provider API key during the run, consider rotating it.
+Your original application keeps running on the source provider and still needs its key. Do not revoke it. If the key you pasted for the eval was a separate, evaluation-only key, revoke that one at the provider. Removing `.saws-migrate/` deletes the local copy. It does not revoke the key, and it does not remove the key from CI.
 
 ---
 

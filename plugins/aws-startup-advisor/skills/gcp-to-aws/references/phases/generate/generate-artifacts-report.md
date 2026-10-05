@@ -721,10 +721,20 @@ After generating the HTML file, verify:
 
 Load `shared/validate-migration-report.md`. Resolve script from plugin root: `$PLUGIN_ROOT/scripts/validate-migration-report.py`.
 
-The validator is **stdlib Python only**. It is the sole quality gate for generated
-reports. Do **not** ask the user to install Vale, Pa11y, axe, Lighthouse,
-Chromium, or any other prose/accessibility tooling. Do **not** skip validation
-because those tools are missing — they are never required.
+The validator is **stdlib Python only**. Do **not** ask the user to install Vale,
+Pa11y, axe, Lighthouse, Chromium, or any other prose/accessibility tooling. Do
+**not** skip validation because those tools are missing — they are never required.
+
+`REPORT_OK` is not a substitute for this file or for
+`references/shared/report-decision-core.md`. Load the decision core and render
+it in **full** mode before writing HTML. The validator then rejects a report
+that has the right section IDs but omits the decision-core content those
+artifacts require: the verdict headline, hero metrics, the per-track line, the
+conditions checklist, "What would flip this", the specialist-engagement
+callout, the architecture section when the design has clusters, the
+assumptions panel after risks, a risk table, and the what-if column set
+(Region, HA, Compute, Arch) when two or more scenarios exist. A report written
+only to satisfy an older structural gate will fail.
 
 ```bash
 python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \

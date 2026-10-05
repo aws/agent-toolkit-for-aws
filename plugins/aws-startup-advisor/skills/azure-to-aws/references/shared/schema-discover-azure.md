@@ -14,7 +14,12 @@ their single creator and owns the validation checklist at the bottom.
     "subscriptions_discovered": ["<subscription id>"],
     "total_resources": 0,
     "clustering_mode": "full", // "full" | "simplified_live" (live-only runs cluster in simplified mode)
-    "confidence": "inferred" // deterministic | measured | inferred | billing_inferred
+    "confidence": "inferred", // deterministic | measured | inferred | billing_inferred
+    "clarify_fast_path": {
+      // REQUIRED. Written by discover-assemble.md § Assembly rule 9; read by clarify.md § Step 0.5.
+      "eligible": false,
+      "reasons_ineligible": ["has_vm", "has_licensing_signal"] // [] when eligible; closed vocabulary = the input names in rule 9's table plus "cluster_count" and "total_resources"
+    }
   },
   "resources": [
     {
@@ -241,6 +246,7 @@ discovery in a way a depth calculation is not.
 - [ ] No `azure_type` value matches `azurerm_*` — translation happened during extraction.
 - [ ] `azure_id` is unique across `resources[]`.
 - [ ] `metadata.discovery_sources` lists only sources that contributed at least one resource.
+- [ ] `metadata.clarify_fast_path` is present with a boolean `eligible` and a `reasons_ineligible[]` that is empty iff `eligible` is `true`, and every reason is one of the rule-9 input names.
 - [ ] For each dialect whose files were found in the workspace, at least one resource carries that dialect as its `source`.
 - [ ] No app-setting value, connection-string value, storage key, or Key Vault secret value appears anywhere.
 - [ ] `warnings[]` is present (possibly empty), and every entry has a `code` from the closed vocabulary, a `detail`, and an `azure_id` or an `identifier`.
