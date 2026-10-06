@@ -25,11 +25,15 @@ What this gate cannot see: a NEW file added to skills/shared/ that no skill vend
 The vendored tree is a subset of shared/ by design — a skill vendors only what it loads —
 so adding a shared file a skill needs means adding the copy AND the README row.
 
+This gate is owned by, and only ever scans, the aws-startup-advisor plugin — it is the
+only plugin in this repository using the vendored/shared pattern. Everything this script
+reads lives inside this plugin directory (`plugins/aws-startup-advisor/`); it does not
+depend on, or write to, anything at the repository root or any other plugin.
+
 Usage
 -----
-    python3 tools/sync-vendored.py              # copy shared/ over every vendored copy
-    python3 tools/sync-vendored.py --check      # exit 1 if any copy differs / has no source
-    python3 tools/sync-vendored.py --plugin aws-startup-advisor
+    python3 plugins/aws-startup-advisor/tools/sync-vendored.py          # sync
+    python3 plugins/aws-startup-advisor/tools/sync-vendored.py --check  # exit 1 on drift
 
 Exit 0 when in sync (or after syncing), 1 on --check failure. Stdlib only.
 """
@@ -43,17 +47,17 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-PLUGINS_ROOT = REPO_ROOT / "plugins"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+SKILLS_DIR = PLUGIN_ROOT / "skills"
 VENDORED_SUBDIR = Path("references") / "vendored"
 SHARED_DIRNAME = "shared"
 SKIP_NAMES = {"README.md"}
 
 
 def _rel(p: Path) -> str:
-    """Repo-relative for display; absolute when the tree lives elsewhere (tests)."""
+    """Plugin-relative for display; absolute when the tree lives elsewhere (tests)."""
     try:
-        return str(p.resolve().relative_to(REPO_ROOT))
+        return str(p.resolve().relative_to(PLUGIN_ROOT))
     except ValueError:
         return str(p)
 
@@ -181,39 +185,27 @@ def sync_plugin(plugin_dir: Path) -> Tuple[int, List[str]]:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Keep skills' references/vendored/ copies identical to skills/shared/")
-    ap.add_argument("--plugin", help="Only this plugin (directory name under plugins/)")
+    ap = argparse.ArgumentParser(
+        description="Keep aws-startup-advisor skills' references/vendored/ copies identical to skills/shared/")
     ap.add_argument("--check", action="store_true", help="Report drift and exit 1; change nothing")
-    ap.add_argument("--plugins-root", type=Path, default=PLUGINS_ROOT, help=argparse.SUPPRESS)
+    ap.add_argument("--plugin-root", type=Path, default=PLUGIN_ROOT, help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
 
-    plugins = [args.plugins_root / args.plugin] if args.plugin else sorted(
-        p for p in args.plugins_root.iterdir() if p.is_dir())
+    plugin_dir = args.plugin_root
     total_files = 0
     all_errors: List[str] = []
     copied = 0
-    for plugin_dir in plugins:
-        skills_dir = plugin_dir / "skills"
-        # An MCP-only plugin has no skills directory. iterdir() on the missing
-        # path raises FileNotFoundError, and mise validate runs this task over
-        # every plugin. Skip before iterating. README checks still run for a
-        # plugin that has skills and a vendored directory.
-        if not skills_dir.is_dir():
-            continue
-        files = vendored_files(plugin_dir)
-        total_files += len(files)
-        if not files and not any((skill / VENDORED_SUBDIR).is_dir()
-                                 for skill in skills_dir.iterdir()
-                                 if skill.is_dir()):
-            continue
-        if args.check:
-            all_errors.extend(check_plugin(plugin_dir))
-            all_errors.extend(check_manifest(plugin_dir))
-        else:
-            n, errs = sync_plugin(plugin_dir)
-            copied += n
-            all_errors.extend(errs)
-            all_errors.extend(check_manifest(plugin_dir))
+
+    files = vendored_files(plugin_dir)
+    total_files += len(files)
+    if args.check:
+        all_errors.extend(check_plugin(plugin_dir))
+        all_errors.extend(check_manifest(plugin_dir))
+    else:
+        n, errs = sync_plugin(plugin_dir)
+        copied += n
+        all_errors.extend(errs)
+        all_errors.extend(check_manifest(plugin_dir))
 
     if all_errors:
         print(f"FAIL — {len(all_errors)} vendored file(s) out of contract:")

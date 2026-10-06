@@ -36,12 +36,16 @@ Resolution order for a bare path `P` found in `skills/<skill>/…/file.md`:
   5. `<plugin>/P` and `<repo>/P`            (plugin- or repo-relative)
 A path that resolves nowhere is MISSING_REF.
 
+This gate is plugin-local: it scans and is invoked only against aws-startup-advisor.
+Everything it reads lives inside this plugin directory (`plugins/aws-startup-advisor/`);
+it does not depend on, or write to, anything at the repository root.
+
 Usage
 -----
-    python3 tools/check-skill-refs.py --check            # CI: exit 1 on any non-baselined MISSING_REF
-    python3 tools/check-skill-refs.py --check --json
-    python3 tools/check-skill-refs.py --list             # print every resolved reference (debug)
-    --baseline tools/skill-refs-baseline.json            # known dead refs with reasons; stale entries fail
+    python3 plugins/aws-startup-advisor/tools/check-skill-refs.py --check     # CI: exit 1 on any non-baselined MISSING_REF
+    python3 plugins/aws-startup-advisor/tools/check-skill-refs.py --check --json
+    python3 plugins/aws-startup-advisor/tools/check-skill-refs.py --list      # print every resolved reference (debug)
+    --baseline plugins/aws-startup-advisor/tools/skill-refs-baseline.json     # known dead refs with reasons; stale entries fail
 
 Stdlib only (Python 3.9+).
 """
@@ -56,9 +60,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_PLUGIN = REPO_ROOT / "plugins" / "aws-startup-advisor"
-DEFAULT_BASELINE = REPO_ROOT / "tools" / "skill-refs-baseline.json"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = PLUGIN_ROOT.parent.parent
+DEFAULT_PLUGIN = PLUGIN_ROOT
+DEFAULT_BASELINE = PLUGIN_ROOT / "tools" / "skill-refs-baseline.json"
 
 EXTS = r"(?:md|json|py|sh|tf|ya?ml|html|txt|toml)"
 ROOTS = r"(?:references|knowledge|scripts|skills|agents|data|phases|shared|design-refs|fixtures|tools)"

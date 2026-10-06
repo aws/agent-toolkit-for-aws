@@ -1,7 +1,7 @@
-"""Tests for tools/check-skill-refs.py — the reference-path lint.
+"""Tests for check-skill-refs.py — the reference-path lint.
 
 A throwaway plugin tree exercises each resolution rule and each skip rule; the last test
-runs the real repository and requires PASS with no stale baseline entries.
+runs the real aws-startup-advisor plugin and requires PASS with no stale baseline entries.
 """
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "tools" / "check-skill-refs.py"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = PLUGIN_ROOT / "tools" / "check-skill-refs.py"
 
 
 def _load():
@@ -225,7 +225,7 @@ def test_baseline_ignore_vs_entries_and_stale(tmp_path: Path):
 
 
 def _run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, cwd=REPO_ROOT)
+    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, cwd=PLUGIN_ROOT)
 
 
 def test_cli_exit_codes(tmp_path: Path):

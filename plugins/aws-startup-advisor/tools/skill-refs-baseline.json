@@ -1,5 +1,5 @@
 {
-  "_what_this_is": "Policy and burn-down for tools/check-skill-refs.py. `ignore` rules are permanent: the matched tokens are not references into the repository (they are paths the skill GENERATES into a run directory, or example paths in a user's own app). `entries` are known dead references with the fix that retires each one; an entry that stops matching is reported STALE and fails the gate, so this list only shrinks.",
+  "_what_this_is": "Policy and burn-down for plugins/aws-startup-advisor/tools/check-skill-refs.py. `ignore` rules are permanent: the matched tokens are not references into the repository (they are paths the skill GENERATES into a run directory, or example paths in a user's own app). `entries` are known dead references with the fix that retires each one; an entry that stops matching is reported STALE and fails the gate, so this list only shrinks.",
   "ignore": [
     {
       "source": "plugins/aws-startup-advisor/skills/*/references/phases/generate/*.md",
