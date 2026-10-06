@@ -142,6 +142,7 @@ def _assert_scenario_semantics(snapshot: dict) -> None:
             families = set(source["model_families"])
             models = set(source["models"])
             seen_families = set()
+            seen_models = set()
             for family in upstream["model_families"]:
                 assert family["family"] not in seen_families, (
                     f"duplicate or overlapping upstream family: {family['family']}"
@@ -150,9 +151,21 @@ def _assert_scenario_semantics(snapshot: dict) -> None:
                 assert family["family"] in families, (
                     f"wrongly paired upstream family: {family['family']}"
                 )
-                assert set(family["models"]) <= models, (
+                assert family["model_evidence"] == source["model_evidence"], (
+                    f"wrongly paired upstream model evidence: {family['model_evidence']}"
+                )
+                family_models = set(family["models"])
+                assert family_models <= models, (
                     f"wrongly paired upstream models: {family['models']}"
                 )
+                seen_models.update(family_models)
+
+            assert seen_families == families, (
+                f"gateway upstream families do not match source: {seen_families}"
+            )
+            assert seen_models == models, (
+                f"gateway upstream models do not match source: {seen_models}"
+            )
 
 
 def _run_artifact_validator(case_dir: Path) -> subprocess.CompletedProcess[str]:
@@ -574,6 +587,52 @@ def test_gateway_upstreams_must_match_retained_ai_sources_exactly(mutation) -> N
         "heroku", "openai", "openai_api", "gpt", "gpt-4o", openrouter=True
     )
     mutation(scenario["dimensions"]["gateways"][0]["upstreams"][0])
+    with pytest.raises(AssertionError):
+        _assert_scenario_semantics(scenario)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda upstream: upstream["model_families"][1]["models"].remove(
+            "claude-3-haiku-20240307"
+        ),
+        lambda upstream: upstream["model_families"].pop(),
+        lambda upstream: upstream["model_families"][1].update(
+            model_evidence="not_observed", models=[]
+        ),
+    ],
+)
+def test_gateway_upstreams_cannot_omit_source_model_details(mutation) -> None:
+    scenario = _multi_openrouter_scenario()
+    source = next(
+        source
+        for source in scenario["dimensions"]["ai_sources"]
+        if source["provider"] == "anthropic"
+    )
+    upstream = next(
+        upstream
+        for upstream in scenario["dimensions"]["gateways"][0]["upstreams"]
+        if upstream["provider"] == "anthropic"
+    )
+    source["model_families"] = ["claude", "claude_haiku"]
+    upstream["model_families"] = [
+        {
+            "family": "claude",
+            "model_evidence": "observed",
+            "models": ["claude-3-5-sonnet-20240620"],
+        },
+        {
+            "family": "claude_haiku",
+            "model_evidence": "observed",
+            "models": ["claude-3-haiku-20240307"],
+        },
+    ]
+    _validate_scenario(scenario)
+    _assert_scenario_semantics(scenario)
+
+    mutation(upstream)
+
     with pytest.raises(AssertionError):
         _assert_scenario_semantics(scenario)
 
