@@ -1,13 +1,13 @@
 {
-  "id": "combined-azure-openrouter",
+  "id": "combined-heroku-anthropic",
   "mode": "combined",
-  "migration_id": "combined-azure-openrouter",
-  "run_id": "00000000-0000-4000-8000-000000000011",
+  "migration_id": "combined-heroku-anthropic",
+  "run_id": "00000000-0000-4000-8000-000000000014",
   "state": ".phase-status.json",
   "dimensions": {
-    "infrastructure_source": "azure",
+    "infrastructure_source": "heroku",
     "ai_sources": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": ["claude"]}],
-    "gateways": [{"product": "openrouter", "type": "llm_router", "upstream_provider_signals": ["anthropic"], "upstream_model_family_signals": ["claude"]}]
+    "gateways": []
   },
   "outcomes": {
     "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},

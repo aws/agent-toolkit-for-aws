@@ -6,10 +6,8 @@
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": "gcp",
-    "ai_provider": "openai",
-    "model_families": ["gpt"],
-    "gateway_type": "llm_router",
-    "upstream_provider_signals": ["openai"]
+    "ai_sources": [{"provider": "openai", "source_service": "openai_api", "model_families": ["gpt"]}],
+    "gateways": [{"product": "openrouter", "type": "llm_router", "upstream_provider_signals": ["openai"], "upstream_model_family_signals": ["gpt"]}]
   },
   "outcomes": {
     "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},

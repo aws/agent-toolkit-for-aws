@@ -1,12 +1,12 @@
 {
-  "id": "ai-only-openai",
+  "id": "ai-only-anthropic",
   "mode": "ai_only",
-  "migration_id": "ai-only-openai",
-  "run_id": "00000000-0000-4000-8000-000000000004",
+  "migration_id": "ai-only-anthropic",
+  "run_id": "00000000-0000-4000-8000-000000000013",
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": null,
-    "ai_sources": [{"provider": "openai", "source_service": "openai_api", "model_families": ["gpt"]}],
+    "ai_sources": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": ["claude"]}],
     "gateways": []
   },
   "outcomes": {

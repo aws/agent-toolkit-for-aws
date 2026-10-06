@@ -6,10 +6,8 @@
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": "azure",
-    "ai_provider": "gcp_ai",
-    "model_families": ["gemini"],
-    "gateway_type": null,
-    "upstream_provider_signals": ["gcp_ai"]
+    "ai_sources": [{"provider": "google", "source_service": "vertex_ai", "model_families": ["gemini"]}],
+    "gateways": []
   },
   "outcomes": {
     "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},

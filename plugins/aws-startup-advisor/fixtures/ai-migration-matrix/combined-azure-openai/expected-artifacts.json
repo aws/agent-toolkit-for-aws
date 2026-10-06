@@ -6,10 +6,8 @@
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": "azure",
-    "ai_provider": "azure_openai",
-    "model_families": ["gpt"],
-    "gateway_type": null,
-    "upstream_provider_signals": ["azure_openai"]
+    "ai_sources": [{"provider": "openai", "source_service": "azure_openai", "model_families": ["gpt"]}],
+    "gateways": []
   },
   "outcomes": {
     "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},
