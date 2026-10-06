@@ -288,7 +288,7 @@
           </tr>
         </tbody>
       </table>
-      <p><em>* Optimized AI assumes Nova Lite for text + Nova Canvas for images after A/B validation (see the optimized AI projection in Appendix D).</em></p>
+      <p><em>* Optimized AI assumes Nova Lite for text + Stable Image Core for images after A/B validation (see the optimized AI projection in Appendix D).</em></p>
 
       <h3>GCP infrastructure breakdown (baseline)</h3>
       <table>
@@ -422,13 +422,13 @@
           <tr><td>Cloud Storage</td><td>S3</td><td><span class="badge-conf badge-std">Standard pairing</span></td></tr>
           <tr><td>BigQuery</td><td>Deferred — specialist engagement</td><td><span class="badge-conf badge-defer">Specialist required</span></td></tr>
           <tr><td>Vertex AI / Gemini</td><td>Bedrock Claude Sonnet 5</td><td><span class="badge-conf badge-tail">Tailored to your setup</span> (quality priority)</td></tr>
-          <tr><td>Vertex AI Imagen</td><td>Bedrock Nova Canvas</td><td><span class="badge-conf badge-tail">Tailored to your setup</span></td></tr>
+          <tr><td>Vertex AI Imagen</td><td>Bedrock Stable Image Core</td><td><span class="badge-conf badge-tail">Tailored to your setup</span></td></tr>
         </tbody>
       </table>
 
       <h3>Architecture diagram</h3>
       <figure class="diagram-fig" role="img" aria-label="Proposed AWS architecture and migration cluster order">
-        <div class="diagram" role="img" aria-label="Internet users reach a public Application Load Balancer over HTTPS in AWS us-west-2. The ALB routes to ECS Fargate running sf-beach-ratings (1 vCPU, 512 MB, up to 10 tasks). Fargate connects to RDS PostgreSQL db.t4g.micro single-AZ, an S3 bucket for images and build artifacts, and Amazon Bedrock (Claude Sonnet plus Nova Canvas). An account-wide security baseline from baseline.tf provides CloudTrail, GuardDuty, Budgets, IAM roles, security groups, NAT Gateway and VPC. BigQuery sf_beach_analytics is deferred to a specialist engagement.">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+        <div class="diagram" role="img" aria-label="Internet users reach a public Application Load Balancer over HTTPS in AWS us-west-2. The ALB routes to ECS Fargate running sf-beach-ratings (1 vCPU, 512 MB, up to 10 tasks). Fargate connects to RDS PostgreSQL db.t4g.micro single-AZ, an S3 bucket for images and build artifacts, and Amazon Bedrock (Claude Sonnet plus Stable Image Core). An account-wide security baseline from baseline.tf provides CloudTrail, GuardDuty, Budgets, IAM roles, security groups, NAT Gateway and VPC. BigQuery sf_beach_analytics is deferred to a specialist engagement.">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
 &#9474;                         Internet / Users                                 &#9474;
 &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
                                     &#9474; HTTPS
@@ -437,7 +437,7 @@
   [ ALB (public) ] &#9472;&#9472;&#9658; [ ECS Fargate (sf-beach-ratings) 1 vCPU / 512 MB / max 10 tasks ]
                           &#9474;            &#9474;             &#9474;
               [ RDS Postgres ]   [ S3 images +    [ Amazon Bedrock
-              [ db.t4g.micro ]   [ build artifacts ] Sonnet + Canvas ]
+              [ db.t4g.micro ]   [ build artifacts ] Sonnet + Stable Image ]
               [ single-AZ    ]
   Security Baseline (baseline.tf): CloudTrail &middot; GuardDuty &middot; Budgets &middot;
   IAM roles &middot; Security Groups &middot; NAT Gateway &middot; VPC
@@ -517,7 +517,7 @@
           <tr><td>BigQuery AWS target not yet selected</td><td>Medium</td><td>Engage AWS account team to define the analytics migration path; does not block phased migration of compute, database, and AI</td></tr>
           <tr><td>Database replication lag at cutover</td><td>Medium</td><td>DMS with lag monitoring; maintenance window cutover</td></tr>
           <tr><td>Public S3 bucket security</td><td>Medium</td><td>Add CloudFront with Origin Access Identity (OAI); restrict direct S3 public access post-migration</td></tr>
-          <tr><td>Subjective image quality (Imagen &rarr; Nova Canvas)</td><td>Medium</td><td>Human eval before cutover; feature-flag rollback</td></tr>
+          <tr><td>Subjective image quality (Imagen &rarr; Stable Image Core)</td><td>Medium</td><td>Human eval before cutover; feature-flag rollback</td></tr>
           <tr><td>Claude cost vs Nova Lite if quality bar lower</td><td>Medium</td><td>A/B test; model downsizing saves ~$506/mo if Nova Lite sufficient</td></tr>
         </tbody>
       </table>
@@ -826,7 +826,7 @@ terraform apply</pre>
         <thead><tr><th scope="col">GCP model</th><th scope="col">Bedrock target</th><th scope="col">Workload</th><th scope="col">Complexity</th></tr></thead>
         <tbody>
           <tr><td>gemini-2.5-flash</td><td>anthropic.claude-sonnet-5</td><td>Text generation, structured output</td><td>Medium</td></tr>
-          <tr><td>imagen-3.0-generate-001</td><td>amazon.nova-canvas-v1:0</td><td>Image generation (~500/mo)</td><td>Medium</td></tr>
+          <tr><td>imagen-3.0-generate-001</td><td>stability.stable-image-core-v1:0</td><td>Image generation (~500/mo)</td><td>Medium</td></tr>
         </tbody>
       </table>
 
@@ -848,7 +848,7 @@ terraform apply</pre>
         <tbody>
           <tr><td>Input tokens</td><td>60,000,000 / month</td><td>$120</td></tr>
           <tr><td>Output tokens</td><td>40,000,000 / month</td><td>$400</td></tr>
-          <tr><td>Images (Nova Canvas)</td><td>500 / month</td><td>$20</td></tr>
+          <tr><td>Images (Stable Image Core)</td><td>500 / month</td><td>$20</td></tr>
           <tr><td><strong>Total (design target)</strong></td><td>&mdash;</td><td><strong>$540 projected</strong></td></tr>
         </tbody>
       </table>
@@ -867,7 +867,7 @@ terraform apply</pre>
 
       <h3>Production readiness checklist</h3>
       <ul class="compact">
-        <li>Bedrock model access enabled for Claude Sonnet 5 and Nova Canvas in us-west-2</li>
+        <li>Bedrock model access enabled for Claude Sonnet 5 and Stable Image Core in us-west-2</li>
         <li>IAM role with <code>bedrock:InvokeModel</code> on ECS task role</li>
         <li>Provider adapter deployed with <code>AI_PROVIDER</code> feature flag</li>
         <li>A/B test with &ge;100 representative prompts; image quality human evaluation</li>
