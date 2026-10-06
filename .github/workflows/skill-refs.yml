@@ -1,0 +1,27 @@
+# Reference-path gate for aws-startup-advisor's skill instructions.
+#
+# Runs on pull requests that touch plugins/aws-startup-advisor/, not on every
+# PR. A failing check is the notification: it shows on the pull request.
+# Checks only that every file path a skill's instructions mention actually
+# exists (see plugins/aws-startup-advisor/tools/check-skill-refs.py); does
+# not touch anything outside the plugin.
+name: Skill reference paths
+on:
+  pull_request:
+    paths:
+      - "plugins/aws-startup-advisor/**"
+      - ".github/workflows/skill-refs.yml"
+  workflow_dispatch: {}
+permissions:
+  actions: none
+  contents: none
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check every referenced skill file path exists
+        run: python3 plugins/aws-startup-advisor/tools/check-skill-refs.py --check

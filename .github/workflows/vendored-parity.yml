@@ -1,0 +1,27 @@
+# Parity gate for aws-startup-advisor's vendored/shared skill files.
+#
+# Runs on pull requests that touch plugins/aws-startup-advisor/, not on every
+# PR. A failing check is the notification: it shows on the pull request.
+# Checks only that each skill's references/vendored/ copies are byte-identical
+# to skills/shared/ (see plugins/aws-startup-advisor/tools/sync-vendored.py);
+# does not touch anything outside the plugin.
+name: Vendored parity
+on:
+  pull_request:
+    paths:
+      - "plugins/aws-startup-advisor/**"
+      - ".github/workflows/vendored-parity.yml"
+  workflow_dispatch: {}
+permissions:
+  actions: none
+  contents: none
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check vendored copies are in sync with skills/shared/
+        run: python3 plugins/aws-startup-advisor/tools/sync-vendored.py --check

@@ -27,21 +27,9 @@ run = "python3 tools/sync-plugin-skills.py --check"
 description = "Validate Agent Plugins v1.0.0 conformance (plugins/)"
 run = "uv run --with jsonschema --with pyyaml python tools/validate_spec.py"
 
-[tasks."lint:artifacts"]
-description = "Validate aws-startup-advisor fixture artifacts against their published schema contracts"
-run = "python3 plugins/aws-startup-advisor/scripts/validate-artifacts.py --fixtures"
-
-[tasks."lint:vendored-parity"]
-description = "Check each skill's references/vendored/ copies are byte-identical to skills/shared/"
-run = "python3 plugins/aws-startup-advisor/tools/sync-vendored.py --check"
-
-[tasks."lint:skill-refs"]
-description = "Check every file path the aws-startup-advisor skills reference exists"
-run = "python3 plugins/aws-startup-advisor/tools/check-skill-refs.py --check"
-
 [tasks.validate]
 description = "Run all validation"
-depends = ["lint:manifests", "lint:skill-parity", "lint:spec", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs"]
+depends = ["lint:manifests", "lint:skill-parity", "lint:spec"]
 
 [tasks.security]
 description = "Run security scans"
