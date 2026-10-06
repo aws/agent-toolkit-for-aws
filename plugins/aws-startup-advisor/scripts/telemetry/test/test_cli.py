@@ -243,3 +243,88 @@ def test_bundle_command_rejects_manifest_version_drift_without_writing(tmp_path,
     assert "2.0.3" in result.stdout and "2.0.4" in result.stdout
     after = {path.relative_to(plugin): path.read_bytes() for path in (plugin / "skills").rglob("*") if path.is_file()}
     assert after == before
+
+
+@pytest.mark.parametrize("skill", SKILLS)
+@pytest.mark.parametrize("markers", [{"CLAUDECODE": "1"}, {"CURSOR_AGENT": "1"}])
+def test_standalone_hook_host_uses_cli_without_plugin_hooks(tmp_path, home, collector, skill, markers):
+    installed = tmp_path / "installed" / skill / "references/vendored/telemetry"
+    shutil.copytree(PLUGIN_ROOT / "skills" / skill / "references/vendored/telemetry", installed)
+    p = Project(tmp_path, home, collector, phase_status())
+    info = json.loads(invoke(p, "status", script=installed / "cli.py", markers=markers)[0])
+    assert info["reportingMode"] == "cli"
+    assert len(invoke(p, "reconcile", script=installed / "cli.py", markers=markers)[1]) == 2
+    assert invoke(p, "reconcile", script=installed / "cli.py", markers=markers)[1] == []
+
+
+@pytest.mark.parametrize("marker,source", [("CODEX_SANDBOX", "CODEX"), ("KIRO_IDE", "KIRO")])
+def test_nested_cli_marker_wins_over_inherited_cursor_agent(tmp_path, home, collector, marker, source):
+    p = Project(tmp_path, home, collector, phase_status())
+    markers = {"CURSOR_AGENT": "1", marker: "fixture"}
+    info = json.loads(invoke(p, "status", markers=markers)[0])
+    assert info["source"] == source and info["reportingMode"] == "cli"
+    assert {body["source"] for body in invoke(p, "reconcile", markers=markers)[1]} == {source}
+
+
+@pytest.mark.parametrize("missing", [
+    "metric_emission/client.py", "metric_emission/migration.py", "consent/record.py",
+])
+def test_incomplete_bundle_imports_fail_open(tmp_path, home, collector, missing):
+    installed = tmp_path / "installed" / "references/vendored/telemetry"
+    shutil.copytree(PLUGIN_ROOT / "skills/gcp-to-aws/references/vendored/telemetry", installed)
+    (installed / missing).unlink()
+    p = Project(tmp_path, home, collector, phase_status(), consent=None)
+    output, bodies = invoke(p, "status", script=installed / "cli.py")
+    assert output == "" and bodies == []
+    assert not p.has_snapshot()
+
+
+def test_bundle_version_ignores_unrelated_references_manifest(tmp_path, home, collector):
+    references = tmp_path / "installed-skill" / "references"
+    installed = references / "vendored/telemetry"
+    shutil.copytree(PLUGIN_ROOT / "skills/gcp-to-aws/references/vendored/telemetry", installed)
+    (references / "plugin.json").write_text('{"name":"unrelated","version":"9.9.9"}')
+    p = Project(tmp_path, home, collector, phase_status())
+    info = json.loads(invoke(p, "status", script=installed / "cli.py")[0])
+    assert info["pluginVersion"] == json.loads((PLUGIN_ROOT / "plugin.json").read_text())["version"]
+
+
+@pytest.mark.parametrize("write", [False, True])
+@pytest.mark.parametrize("filename", ["obsolete.py", "obsolete.pyc"])
+def test_bundle_sync_reports_orphans_without_deleting_them(tmp_path, write, filename):
+    syncer, plugin = bundle_fixture(tmp_path)
+    bundle = plugin / "skills/gcp-to-aws/references/vendored/telemetry"
+    cache = bundle / "consent/__pycache__/record.cpython-312.pyc"
+    cache.parent.mkdir()
+    cache.write_bytes(b"runtime cache")
+    orphan = bundle / filename
+    orphan.write_text("obsolete = True\n")
+    problems = syncer.sync(plugin, write=write)
+    assert any(str(orphan.relative_to(plugin)) in problem for problem in problems)
+    assert orphan.exists()
+    orphan.unlink()
+    assert syncer.sync(plugin) == []
+
+
+@pytest.mark.parametrize("markers,hook_file", [
+    ({"CLAUDECODE": "1"}, "com.anthropic.claude-code/hooks/hooks.json"),
+    ({"CURSOR_AGENT": "1"}, ".cursor-plugin/hooks.json"),
+])
+def test_plugin_bundled_entry_uses_reachable_hooks_then_falls_back(tmp_path, home, collector, markers, hook_file):
+    plugin = tmp_path / "plugin"
+    shutil.copytree(TELEMETRY, plugin / "scripts/telemetry",
+                    ignore=shutil.ignore_patterns("test", "__pycache__"))
+    relative = "skills/gcp-to-aws/references/vendored/telemetry"
+    shutil.copytree(PLUGIN_ROOT / relative, plugin / relative)
+    for name in ("plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json",
+                 "com.anthropic.claude-code/hooks/hooks.json", ".cursor-plugin/hooks.json"):
+        target = plugin / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(PLUGIN_ROOT / name, target)
+    script = plugin / relative / "cli.py"
+    p = Project(tmp_path, home, collector, phase_status())
+    assert json.loads(invoke(p, "status", script=script, markers=markers)[0])["reportingMode"] == "hook"
+    assert invoke(p, "reconcile", script=script, markers=markers)[1] == []
+    (plugin / hook_file).unlink()
+    assert json.loads(invoke(p, "status", script=script, markers=markers)[0])["reportingMode"] == "cli"
+    assert len(invoke(p, "reconcile", script=script, markers=markers)[1]) == 2

@@ -16,12 +16,14 @@ from pathlib import Path
 TELEMETRY = Path(__file__).resolve().parent
 sys.path[:0] = [str(TELEMETRY / "consent"), str(TELEMETRY / "metric_emission")]
 
-import client  # noqa: E402
-import migration  # noqa: E402
-import record  # noqa: E402
-
 
 def main(argv):
+    # Imports can fail when a standalone bundle is incomplete. Keep them inside
+    # the guarded invocation so optional telemetry still exits without blocking.
+    import client
+    import migration
+    import record
+
     if argv == ["status"]:
         print(json.dumps({
             "source": client.detect_source(),

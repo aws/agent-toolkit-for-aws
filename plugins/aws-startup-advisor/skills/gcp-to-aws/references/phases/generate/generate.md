@@ -1,5 +1,13 @@
 # Phase 5: Generate Migration Artifacts (Orchestrator)
 
+## Telemetry boundary
+
+Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
+when this phase is executed inline by another skill. In `cli` mode, reconcile
+after each persisted `.phase-status.json` update and before waiting, returning,
+or advancing, including the final completion write. In `hook` mode, leave
+reporting to the configured hooks.
+
 > **CONSENT GUARD (check before Step 1):** This phase runs only by explicit
 > opt-in. If `.phase-status.json` → `run_mode` is not `"decide_and_execute"`:
 > when this turn's user message is an explicit Execute request ("generate the

@@ -62,6 +62,15 @@ def sync(plugin=PLUGIN, write=False):
             path.write_bytes(content)
         else:
             problems.append(str(path.relative_to(plugin)))
+    for skill in SKILLS:
+        target = plugin / "skills" / skill / "references/vendored/telemetry"
+        for path in sorted(target.rglob("*")):
+            if not path.is_file():
+                continue
+            if "__pycache__" in path.relative_to(target).parts and path.suffix == ".pyc":
+                continue
+            if path.relative_to(target).as_posix() not in files:
+                problems.append("Unexpected bundle file: %s" % path.relative_to(plugin))
     return problems
 
 
@@ -76,6 +85,7 @@ def main():
         print("Telemetry manifests or bundles are out of sync:")
         print("\n".join(problems))
         print("Ensure manifest versions agree, then run sync_bundles.py --write.")
+        print("Review and remove unexpected bundle files manually; --write does not delete them.")
         return 1
     print("Telemetry bundles and DSL copies: OK")
     return 0

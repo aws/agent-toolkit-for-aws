@@ -56,14 +56,17 @@ uv run --with pytest python -m pytest -q
 
 The migration skills call `cli.py status` before starting or resuming. This
 read-only JSON result selects the reporting policy using the same host markers
-as the HTTP client: Claude Code and Cursor use hooks, other sources use explicit
-CLI reconciliation. The agent does not choose a path from its model name.
-This is host classification, not hook-health detection. Unknown sources remain
-`OTHER`; existing `CODEX` and `KIRO` classifications are preserved.
+as the HTTP client, together with the install layout: Claude Code and Cursor use
+hooks when the enclosing plugin's migration-hook configuration and runtime are
+reachable. Standalone skills without those files use CLI reconciliation, as do
+other hosts. The agent does not choose a path from its model name. This does not
+detect whether a host enabled its hooks or whether they are healthy. Unknown
+sources remain `OTHER`; explicit `CODEX`/`KIRO` markers outrank an inherited
+`CURSOR_AGENT` marker.
 
 `cli.py reconcile` calls the existing migration emitter with `--reconcile --via
 cli`, from the project root, without reading hook stdin. The emitter rejects
-CLI reporting on recognized Claude Code/Cursor hosts. Existing hook registrations,
+CLI reporting when the status check selects plugin hooks. Existing hook registrations,
 including the shared Codex registration, are unchanged; concurrent triggers use
 the same run lock and snapshot.
 
@@ -84,9 +87,16 @@ After changing a bundled source file or plugin version, run `--write` and commit
 the updated copies. Run `--check` before submitting changes; the telemetry test
 suite also checks bundle parity. These checks are separate from the repository's
 `mise run validate` and `mise run build`.
+Unexpected files in a telemetry bundle are reported by both modes; `--write`
+does not delete them. Review and remove stale files manually. Python bytecode
+caches are ignored.
 
 Python 3.8+ is the runtime requirement; unavailable Python or a denied tool call
 skips telemetry.
+
+CLI reporting runs at the documented state boundaries and on resume. It has no
+automatic session-end callback, so an interrupted boundary may remain unreported
+until the next reconciliation.
 
 ## Migration telemetry
 

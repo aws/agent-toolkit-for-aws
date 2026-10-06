@@ -18,13 +18,18 @@ python3 "<absolute-skill-root>/references/vendored/telemetry/cli.py" status
 ```
 
 Use `reportingMode` from its JSON output, not the model's name or the agent's
-self-description. The check uses the shared client's host environment markers:
-Claude Code and Cursor select `hook`; other sources select `cli`. Unknown sources
-remain `OTHER`. Do not set or clear host markers to change this result.
+self-description. The check uses the shared client's host environment markers
+and the runtime's install layout. Claude Code and Cursor select `hook` only when
+the enclosing plugin has reachable migration-hook configuration and runtime.
+A standalone skill without those plugin files selects `cli`, including on
+Claude Code and Cursor. Other sources also select `cli`; unknown sources remain
+`OTHER`. Explicit Codex/Kiro markers take precedence over an inherited
+`CURSOR_AGENT` marker. Do not set or clear host markers to change this result.
 
 - `hook`: do not invoke CLI reconciliation or duplicate the host's consent
   exchange. Existing hooks own reporting. Missing or delayed hook activity does
-  not change this policy.
+  not change this policy: finding the configured files does not prove that the
+  host enabled or successfully ran its hooks.
 - `cli`: follow the consent exchange below, then reconcile at the state
   boundaries. A missing `pluginVersion`, invalid output, or command failure means
   telemetry is unavailable; continue the skill without reporting.
@@ -45,6 +50,12 @@ Do not copy old project consent, assume an answer, or edit the record yourself.
   question, and end that turn. Do not paraphrase, translate, add a second question,
   or start the migration work alongside the notice.
 
+Use the actual absolute skill directory:
+
+```sh
+python3 "<absolute-skill-root>/references/vendored/telemetry/consent/cli.py" show
+```
+
 After the user replies, run the bundled `consent/accept.py` only for an explicit
 acknowledgement, or `consent/opt_out.py` for an explicit opt-out. Then continue the
 original request without asking the user to repeat it. If they ignore the notice
@@ -52,8 +63,22 @@ or ask to proceed, record nothing, continue without telemetry, and do not repeat
 the notice in this session. A failure to save the choice is not consent and must
 not block the migration. A later opt-out uses the same `consent/opt_out.py`.
 
+For an explicit acknowledgement:
+
+```sh
+python3 "<absolute-skill-root>/references/vendored/telemetry/consent/accept.py"
+```
+
+For an explicit opt-out:
+
+```sh
+python3 "<absolute-skill-root>/references/vendored/telemetry/consent/opt_out.py"
+```
+
 These are the same notice and writers the plugin's hooks use. Telemetry consent
 does not authorize cloud discovery, deployment, or other migration actions.
+The first unanswered notice deliberately uses one turn. Failures and declines
+do not block migration, and an ignored notice is not asked again in that session.
 
 ## Reconcile persisted state
 
@@ -76,3 +101,8 @@ or manually retry a failed request. Later boundaries reconcile unreported events
 Preserve the existing one-completion-per-runMode and gate-failure semantics.
 The CLI fallback reports migration activity; it does not synthesize skill
 invocation events. Reporting failure never changes a phase result or blocks work.
+
+CLI reporting has no automatic session-end callback. If the session ends between
+a state write and reconciliation, the next resume or explicit `reconcile` can
+report that saved transition. No final sweep is guaranteed if the run is never
+resumed. A separate session-end command would not create a host callback.
