@@ -1,7 +1,7 @@
 # Posture, correlation and investigation decisions
 
-Use the parent skill’s focused-recommendation rules. Load the [full workflow](../service-recommendations.md) only for collection, broad review or cost reduction.
-Existing [enablement checks](enablement-checks.md) retain collection and scoped negative-state rules.
+Use the parent skill’s focused-recommendation rules. Load the [full workflow](references/service-recommendations.md) only for collection, broad review or cost reduction.
+Existing [enablement checks](references/service-recommendations/enablement-checks.md) retain collection and scoped negative-state rules.
 
 ## Hub capability and producer coverage
 
@@ -13,7 +13,7 @@ Existing [enablement checks](enablement-checks.md) retain collection and scoped 
 | Confirmed Azure use and supplied subscription/federation/app-permission metadata | Check integration scope and health without secrets or a cross-cloud crawl. Unknown permissions remain an integration question, not evidence that Azure is unprotected. |
 | Routing order, connector state, ticket/update consumer and delivery evidence | Recommend closing a demonstrated ownership/delivery gap. A rule or connector's existence does not prove response coverage; preserve findings severity and visibility. |
 
-For AI-related exposure, use [AI and malware scope](detection-and-vulnerability.md#ai-and-malware-scope)
+For AI-related exposure, use [AI and malware scope](references/service-recommendations/detection-and-vulnerability.md#ai-and-malware-scope)
 only when producer eligibility is in question. Exposure traits/trends do not establish
 producer completeness or justify invented score transformations. Source: [Hub traits,
 policies, integrations and Extended guidance][HU].
@@ -27,7 +27,7 @@ under investigation. It
 deploys suppression rules only by agreement with its engineering team, and surfaces them in
 the GuardDuty or Security Hub CSPM console; report any such rule as observed service
 behaviour and still never recommend suppression. Enablement and coverage evidence is in
-[enablement checks](enablement-checks.md#aws-security-incident-response). Not guide-sourced;
+[enablement checks](references/service-recommendations/enablement-checks.md#aws-security-incident-response). Not guide-sourced;
 sources: [service boundaries](https://docs.aws.amazon.com/security-ir/latest/userguide/what-is.html),
 [onboarding prerequisites](https://docs.aws.amazon.com/security-ir/latest/userguide/onboarding-prerequisites.html).
 
@@ -38,7 +38,7 @@ Compare control coverage during transition: simultaneous old/new standards are n
 a gap. Retirements/version claims need current evidence before recommending a migration.
 
 Resolve standalone CSPM versus unified Hub plus CSPM before advising on Config. The
-standalone recorder check in [enablement checks](enablement-checks.md) owns status and scope
+standalone recorder check in [enablement checks](references/service-recommendations/enablement-checks.md) owns status and scope
 validation; the service-linked recorder case must not become a missing customer-recorder gap.
 For other Config uses, establish CMDB, rule, conformance-pack, remediation and audit consumers
 before considering scope reduction. This is supplemental Config context, not a separate audit.
@@ -130,7 +130,7 @@ repeating analyzers by region is not coverage expansion. Verify internal-access 
 Compare the actual access question with the analyzer type and resource scope: an existing
 unused-access analyzer cannot by itself answer an external-sharing question. Policy presence
 or aggregation likewise does not establish an identity boundary; route Lattice-specific advice
-to [segmentation](network-protection.md#segmentation-and-identity) only when that path is relevant.
+to [segmentation](references/service-recommendations/network-protection.md#segmentation-and-identity) only when that path is relevant.
 
 [HU]: https://github.com/aws/aws-security-services-best-practices/blob/f2b28d7c31c490ad676273307cbdb900c16daed8/docs/en/guides/security-hub/index.md
 [CS]: https://github.com/aws/aws-security-services-best-practices/blob/f2b28d7c31c490ad676273307cbdb900c16daed8/docs/en/guides/security-hub-cspm/index.md

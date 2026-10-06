@@ -17,7 +17,7 @@ recommended primary option for centralized log collection and analytics, with Am
 Lake the secondary option for organizations with existing investments or subscriber-based
 access requirements. The Security Lake source rows below stay correct for an existing
 deployment and no row here implies the service is going away. Read the
-[log-store decision](posture-and-investigation.md#lake-sources-and-consumers) before
+[log-store decision](references/service-recommendations/posture-and-investigation.md#lake-sources-and-consumers) before
 recommending either store.
 
 ## Contents
@@ -46,7 +46,7 @@ These use account activity plus the row-specific conditions rather than a worklo
 | Security Hub CSPM with FSBP | **Critical** | Baseline posture standard; the guide's starting point |
 | IAM Access Analyzer external-access analyzer | **High** | Surfaces unintended external access to resources |
 | Cross-region finding aggregation, when more than one region is in use | **High** | Regional services produce fragmented findings otherwise |
-| AWS Security Incident Response, where GuardDuty or Security Hub CSPM produces findings and validated evidence shows no triage or escalation owner | Medium (verified gap only) | Sits downstream of detection: it ingests and triages threat detection findings from GuardDuty and Security Hub, and never substitutes for either. It triages threat detection findings only — posture and compliance findings are not triaged. Evaluate and hand off; unverified ownership is UNKNOWN, not a gap. Read [producer coverage](posture-and-investigation.md#hub-capability-and-producer-coverage) for the boundaries |
+| AWS Security Incident Response, where GuardDuty or Security Hub CSPM produces findings and validated evidence shows no triage or escalation owner | Medium (verified gap only) | Sits downstream of detection: it ingests and triages threat detection findings from GuardDuty and Security Hub, and never substitutes for either. It triages threat detection findings only — posture and compliance findings are not triaged. Evaluate and hand off; unverified ownership is UNKNOWN, not a gap. Read [producer coverage](references/service-recommendations/posture-and-investigation.md#hub-capability-and-producer-coverage) for the boundaries |
 
 ## Triggered by compute
 
@@ -61,7 +61,7 @@ These use account activity plus the row-specific conditions rather than a worklo
 | Any Lambda function | GuardDuty `LAMBDA_NETWORK_LOGS` | Medium |
 | Any AI service documented as covered by GuardDuty AI Protection in use, after verifying the latest service and event-type eligibility | GuardDuty `AI_PROTECTION` | High |
 
-For scanner/coverage nuances, read [runtime and workload coverage](detection-and-vulnerability.md#runtime-and-workload-coverage).
+For scanner/coverage nuances, read [runtime and workload coverage](references/service-recommendations/detection-and-vulnerability.md#runtime-and-workload-coverage).
 
 ## Triggered by containers
 
@@ -77,7 +77,7 @@ For scanner/coverage nuances, read [runtime and workload coverage](detection-and
 | Any EKS cluster | Security Lake `EKS_AUDIT` source | Medium |
 | EKS cluster | Detective for cross-account container visibility | Medium |
 
-For agent rollout or image relevance, read [runtime and workload coverage](detection-and-vulnerability.md#runtime-and-workload-coverage).
+For agent rollout or image relevance, read [runtime and workload coverage](references/service-recommendations/detection-and-vulnerability.md#runtime-and-workload-coverage).
 
 ## Triggered by data
 
@@ -93,8 +93,8 @@ For agent rollout or image relevance, read [runtime and workload coverage](detec
 | RDS / Aurora database meeting current supported engine/version and applicable prerequisites | GuardDuty `RDS_LOGIN_EVENTS` | High |
 | Backup vaults protecting recovery-critical workloads (EBS snapshots, AMIs, S3 recovery points) | Malware Protection for AWS Backup, those vaults first | Medium |
 
-For RDS eligibility or selective malware scope, read [AI and malware scope](detection-and-vulnerability.md#ai-and-malware-scope).
-For discovery completeness or export evidence, read the relevant [Macie decision](data-discovery.md#assurance-and-scanability).
+For RDS eligibility or selective malware scope, read [AI and malware scope](references/service-recommendations/detection-and-vulnerability.md#ai-and-malware-scope).
+For discovery completeness or export evidence, read the relevant [Macie decision](references/service-recommendations/data-discovery.md#assurance-and-scanability).
 
 ## Triggered by network and edge
 
@@ -107,7 +107,7 @@ For discovery completeness or export evidence, read the relevant [Macie decision
 | Internal ALB, no WebACL | n/a unless it indirectly handles unfiltered traffic from a network you do not control | n/a |
 | API Gateway REST API not behind CloudFront, no WebACL | AWS WAF — route to the `waf` skill | High |
 | Internet-facing NLB or non-HTTP ingress with an established traffic-inspection requirement | Evaluate Network Firewall for that requirement; presence alone is not a gap. Shield Advanced follows its own row | Medium |
-| Confirmed public or private application needing AppSec assessment | Evaluate AWS Security Agent (part of AWS Continuum) through [application fit and scope](application-security.md#application-fit-and-scope); conditional AppSec-owner handoff | Low |
+| Confirmed public or private application needing AppSec assessment | Evaluate AWS Security Agent (part of AWS Continuum) through [application fit and scope](references/service-recommendations/application-security.md#application-fit-and-scope); conditional AppSec-owner handoff | Low |
 | VPC with no DNS Firewall rule group association | Route 53 Resolver DNS Firewall with AWS-managed lists — route to the `route53` skill | High |
 | DNS Firewall associated, no query logging | Enable Resolver query logging to a destination that uses KMS encryption at rest and TLS in transit for delivery and consumer access; verify retention and delivery separately | Medium |
 | DNS Firewall associated, Advanced rules off | DNS Firewall Advanced for tunneling and DGA detection | Medium |
@@ -125,7 +125,7 @@ For the conditional Network Firewall rows, unresolved topology, intent or compat
 is an UNKNOWN evidence disposition, not a recommendation priority. Assign High only
 to a verified gap; unassessed or advisory-only decisions have no gap priority.
 
-For origin bypass, read [endpoint coverage](web-protection.md#endpoint-coverage-and-bypass); for inspection paths, read [routed inspection](network-firewall.md#routed-inspection-and-policy).
+For origin bypass, read [endpoint coverage](references/service-recommendations/web-protection.md#endpoint-coverage-and-bypass); for inspection paths, read [routed inspection](references/service-recommendations/network-firewall.md#routed-inspection-and-policy).
 
 ## Triggered by certificates
 
@@ -138,7 +138,7 @@ For origin bypass, read [endpoint coverage](web-protection.md#endpoint-coverage-
 | Email-validated certificate | Migrate to DNS validation for automatic renewal | Medium |
 | Certificate with `InUse: false` | Review and remove — unused certs count against quota | Low |
 | `DaysBeforeExpiry` at its default | Confirm the configured value suits the renewal process (check the allowed range in the ACM documentation) | Low |
-| Private CA present or PKI architecture requested | Assess [trust domains and root isolation](certificates.md#trust-domains-and-root-isolation) against issuing requirements; no fixed depth gate | Medium (verified gap only) |
+| Private CA present or PKI architecture requested | Assess [trust domains and root isolation](references/service-recommendations/certificates.md#trust-domains-and-root-isolation) against issuing requirements; no fixed depth gate | Medium (verified gap only) |
 | Internal hostnames in a public certificate | Consider disabling Certificate Transparency logging | Low |
 
 ACM cannot be "enabled" — it is always available. These are monitoring gaps rather than
@@ -174,7 +174,7 @@ coverage, then retire the old one. Flag a long-lived overlap, not the overlap it
 |---|---|---|
 | More than one member account | Delegated administrator per service in the security tooling account | **Critical** |
 | Security Lake in use | Delegated administrator in the **Log Archive** account | High |
-| Centralized log collection and analytics in use or being selected | CloudWatch delegated administrator in a dedicated **Monitoring** account in the Security OU, the SRA's recommended primary option. Log Archive stays a storage sink and runs no analytics workloads. The SRA's own pages diverge on this placement; disclose the conflict with the [log-store decision](posture-and-investigation.md#lake-sources-and-consumers) | High |
+| Centralized log collection and analytics in use or being selected | CloudWatch delegated administrator in a dedicated **Monitoring** account in the Security OU, the SRA's recommended primary option. Log Archive stays a storage sink and runs no analytics workloads. The SRA's own pages diverge on this placement; disclose the conflict with the [log-store decision](references/service-recommendations/posture-and-investigation.md#lake-sources-and-consumers) | High |
 | CloudWatch pipelines and Security Lake both collecting the same AWS vended logs with no stated reason | Audit which store each consumer actually reads before changing either. Both can collect CloudTrail management events, CloudTrail S3 and Lambda data events, VPC Flow Logs, WAF logs, Route 53 resolver logs and EKS audit logs, and CloudWatch can also ingest Security Hub CSPM findings, so overlap alone is not a gap | Medium |
 | Members enrolled, auto-enable off under local configuration | Auto-enable for new accounts | **Critical** |
 | Inspector config drift concern | AWS Organizations Inspector policy | High |
@@ -237,32 +237,32 @@ Use the workflow's bounded evidence and handoff rules. Requirements-only advice 
 
 | Confirmed need | Decision / read when relevant |
 |---|---|
-| Runtime health, scanner paths or image cadence | [Resolve effective workload coverage](detection-and-vulnerability.md#runtime-and-workload-coverage) |
-| AI or bucket/vault malware coverage | [Match protection to use and eligibility](detection-and-vulnerability.md#ai-and-malware-scope) |
-| Repositories, CI/CD, CIS or SBOM | [Identify the missing assurance stage](detection-and-vulnerability.md#repository-and-benchmark-suitability) |
-| Macie sampling or unscannable data | [Match discovery depth to assurance](data-discovery.md#assurance-and-scanability) |
-| Macie export or publication | [Separate retained evidence from correlation](data-discovery.md#evidence-delivery-and-use) |
-| Hub reachability, partner, Azure or response need | [Validate capability and producer coverage](posture-and-investigation.md#hub-capability-and-producer-coverage) |
-| Standards, Config or ingestion overlap | [Resolve obligations, recorder and consumers](posture-and-investigation.md#standards-and-recorder-context) |
-| Detective or investigation tooling | [Compare analyst need with usable context](posture-and-investigation.md#investigation-fit) |
-| Lake ingestion, subscribers or retention | [Validate useful, recoverable consumer data](posture-and-investigation.md#lake-sources-and-consumers) |
-| Identity-analysis scope | [Choose the relevant analyzer question](posture-and-investigation.md#identity-analysis-context) |
-| SG/NACL or endpoint boundaries | [Compare effective permissions with required flows](network-protection.md#flow-boundaries-and-endpoints) |
-| TGW, Cloud WAN or Lattice segmentation | [Verify connectivity and identity separately](network-protection.md#segmentation-and-identity) |
-| DNS filtering effectiveness | [Establish the actual query path](network-protection.md#dns-path-and-enforcement) |
-| Shield Advanced or Firewall Manager | [Justify DDoS or fleet-management value](network-protection.md#ddos-and-fleet-policy) |
-| Network Firewall routing, order or defaults | [Compare intended inspection with actual paths](network-firewall.md#routed-inspection-and-policy) |
-| Network Firewall TLS | [Resolve content need and client compatibility](network-firewall.md#tls-eligibility-and-trust) |
-| Network Firewall Proxy | [Check explicit client path and current eligibility](network-firewall.md#proxy-suitability) |
-| Network Firewall verdicts, streams or logs | [Distinguish configuration from enforcement](network-firewall.md#verdicts-and-operational-evidence) |
-| Web endpoint association or origin bypass | [Establish where filtering applies](web-protection.md#endpoint-coverage-and-bypass) |
-| Existing WAF or application abuse | [Select controls from observed harm and compatibility](web-protection.md#rules-and-application-abuse) |
-| WAF order, labels or logs | [Validate evaluation and retained evidence](web-protection.md#evaluation-and-evidence-limits) |
-| Certificate renewal or monitoring | [Resolve issuance and existing monitoring adequacy](certificates.md#renewal-and-monitoring) |
-| Private PKI hierarchy | [Require root-isolation and issuing evidence](certificates.md#trust-domains-and-root-isolation) |
-| CA sharing, revocation, connectors or export | [Match issuer boundaries and client needs](certificates.md#sharing-and-client-compatibility) |
-| Certificate Transparency or dated PKI claims | [Check disclosure and current-source limits](certificates.md#disclosure-and-source-limits) |
-| Public/private AppSec assessment | [Establish application assurance and authorized scope](application-security.md#application-fit-and-scope) |
-| Private AppSec target | [Resolve target and dependency reachability](application-security.md#private-connectivity) |
-| AppSec authentication, permissions or data | [Check identity and data readiness](application-security.md#identity-and-data-readiness) |
-| Existing AppSec test results | [Limit conclusions to evidenced tested paths](application-security.md#interpreting-existing-results) |
+| Runtime health, scanner paths or image cadence | [Resolve effective workload coverage](references/service-recommendations/detection-and-vulnerability.md#runtime-and-workload-coverage) |
+| AI or bucket/vault malware coverage | [Match protection to use and eligibility](references/service-recommendations/detection-and-vulnerability.md#ai-and-malware-scope) |
+| Repositories, CI/CD, CIS or SBOM | [Identify the missing assurance stage](references/service-recommendations/detection-and-vulnerability.md#repository-and-benchmark-suitability) |
+| Macie sampling or unscannable data | [Match discovery depth to assurance](references/service-recommendations/data-discovery.md#assurance-and-scanability) |
+| Macie export or publication | [Separate retained evidence from correlation](references/service-recommendations/data-discovery.md#evidence-delivery-and-use) |
+| Hub reachability, partner, Azure or response need | [Validate capability and producer coverage](references/service-recommendations/posture-and-investigation.md#hub-capability-and-producer-coverage) |
+| Standards, Config or ingestion overlap | [Resolve obligations, recorder and consumers](references/service-recommendations/posture-and-investigation.md#standards-and-recorder-context) |
+| Detective or investigation tooling | [Compare analyst need with usable context](references/service-recommendations/posture-and-investigation.md#investigation-fit) |
+| Lake ingestion, subscribers or retention | [Validate useful, recoverable consumer data](references/service-recommendations/posture-and-investigation.md#lake-sources-and-consumers) |
+| Identity-analysis scope | [Choose the relevant analyzer question](references/service-recommendations/posture-and-investigation.md#identity-analysis-context) |
+| SG/NACL or endpoint boundaries | [Compare effective permissions with required flows](references/service-recommendations/network-protection.md#flow-boundaries-and-endpoints) |
+| TGW, Cloud WAN or Lattice segmentation | [Verify connectivity and identity separately](references/service-recommendations/network-protection.md#segmentation-and-identity) |
+| DNS filtering effectiveness | [Establish the actual query path](references/service-recommendations/network-protection.md#dns-path-and-enforcement) |
+| Shield Advanced or Firewall Manager | [Justify DDoS or fleet-management value](references/service-recommendations/network-protection.md#ddos-and-fleet-policy) |
+| Network Firewall routing, order or defaults | [Compare intended inspection with actual paths](references/service-recommendations/network-firewall.md#routed-inspection-and-policy) |
+| Network Firewall TLS | [Resolve content need and client compatibility](references/service-recommendations/network-firewall.md#tls-eligibility-and-trust) |
+| Network Firewall Proxy | [Check explicit client path and current eligibility](references/service-recommendations/network-firewall.md#proxy-suitability) |
+| Network Firewall verdicts, streams or logs | [Distinguish configuration from enforcement](references/service-recommendations/network-firewall.md#verdicts-and-operational-evidence) |
+| Web endpoint association or origin bypass | [Establish where filtering applies](references/service-recommendations/web-protection.md#endpoint-coverage-and-bypass) |
+| Existing WAF or application abuse | [Select controls from observed harm and compatibility](references/service-recommendations/web-protection.md#rules-and-application-abuse) |
+| WAF order, labels or logs | [Validate evaluation and retained evidence](references/service-recommendations/web-protection.md#evaluation-and-evidence-limits) |
+| Certificate renewal or monitoring | [Resolve issuance and existing monitoring adequacy](references/service-recommendations/certificates.md#renewal-and-monitoring) |
+| Private PKI hierarchy | [Require root-isolation and issuing evidence](references/service-recommendations/certificates.md#trust-domains-and-root-isolation) |
+| CA sharing, revocation, connectors or export | [Match issuer boundaries and client needs](references/service-recommendations/certificates.md#sharing-and-client-compatibility) |
+| Certificate Transparency or dated PKI claims | [Check disclosure and current-source limits](references/service-recommendations/certificates.md#disclosure-and-source-limits) |
+| Public/private AppSec assessment | [Establish application assurance and authorized scope](references/service-recommendations/application-security.md#application-fit-and-scope) |
+| Private AppSec target | [Resolve target and dependency reachability](references/service-recommendations/application-security.md#private-connectivity) |
+| AppSec authentication, permissions or data | [Check identity and data readiness](references/service-recommendations/application-security.md#identity-and-data-readiness) |
+| Existing AppSec test results | [Limit conclusions to evidenced tested paths](references/service-recommendations/application-security.md#interpreting-existing-results) |

@@ -227,7 +227,7 @@ aws acm-pca list-certificate-authorities \
 
 **Pass conditions:** the chosen monitoring method demonstrates coverage of the relevant
 certificate estate, successful notification delivery and adequate renewal lead time
-(see the [matrix](recommendation-matrix.md#triggered-by-certificates)). Accept adequate CloudWatch expiry alarms or scheduled
+(see the [matrix](references/service-recommendations/recommendation-matrix.md#triggered-by-certificates)). Accept adequate CloudWatch expiry alarms or scheduled
 issuer-side checks; missing EventBridge/SNS routing alone is not a gap. Where an unmet
 need is demonstrated and ACM event applicability is verified, EventBridge expiry routing
 is an option: inspect the enabled rule's `aws.acm` source and "ACM Certificate Approaching
@@ -261,7 +261,7 @@ These reads establish presence, logging and policy settings. `list-firewalls`,
 `describe-firewall` and `describe-logging-configuration` cover the firewall resource itself;
 policy-level settings (stateless/stateful rule groups, default actions, rule order) live on the
 policy, not on the firewall, and are read with `describe-firewall-policy`. Continue with the selected
-[network suitability guidance](recommendation-matrix.md#focused-suitability-beyond-enablement) for deployment, HOME_NET/rule
+[network suitability guidance](references/service-recommendations/recommendation-matrix.md#focused-suitability-beyond-enablement) for deployment, HOME_NET/rule
 applicability, TLS/trust suitability using focused evidence. Do not author or
 execute Suricata rules, mutation recipes, scans or analyses. Configuration alone does not
 prove symmetric routing, enforcement or client compatibility.
@@ -275,7 +275,7 @@ aws network-firewall describe-firewall-policy --firewall-policy-arn <arn> --regi
 ```
 
 **Assessment conditions:** first establish the actual deployment mode, intended traffic
-paths and compatible policy strategy (see the [matrix](recommendation-matrix.md#focused-suitability-beyond-enablement)). Assess endpoint/AZ coverage against that topology;
+paths and compatible policy strategy (see the [matrix](references/service-recommendations/recommendation-matrix.md#focused-suitability-beyond-enablement)). Assess endpoint/AZ coverage against that topology;
 do not apply an inspection-VPC rule universally to native TGW or multi-endpoint designs.
 Record observed rule order, stateless forwarding, default actions and logging destinations
 separately from evidence of effective blocking and log delivery. Any recommended ALERT/FLOW
@@ -384,7 +384,7 @@ supported-scan-type completeness UNKNOWN rather than comparing against a remembe
 `LAMBDA` covers package vulnerabilities, `LAMBDA_CODE` covers custom application code.
 
 `CODE_REPOSITORY` is Inspector Code Security (repository SAST, SCA, and IaC scanning).
-A confirmed repository or CI/CD use case selects the [matrix guidance](recommendation-matrix.md#focused-suitability-beyond-enablement),
+A confirmed repository or CI/CD use case selects the [matrix guidance](references/service-recommendations/recommendation-matrix.md#focused-suitability-beyond-enablement),
 with focused integration/language/gate evidence and an AppSec handoff. Account inventory
 alone neither triggers this recommendation nor establishes absence of repositories.
 

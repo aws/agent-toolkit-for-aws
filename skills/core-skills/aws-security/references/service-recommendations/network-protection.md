@@ -1,6 +1,6 @@
 # Network protection selection
 
-Use the parent skill’s focused-recommendation rules. Load the [full workflow](../service-recommendations.md) only for collection, broad review or cost reduction.
+Use the parent skill’s focused-recommendation rules. Load the [full workflow](references/service-recommendations.md) only for collection, broad review or cost reduction.
 Start from required flows and trust boundaries, not a checklist of absent services.
 
 ## Flow boundaries and endpoints
@@ -45,7 +45,7 @@ ALLOW, ALERT and BLOCK behavior from the intended policy.
 SGs cannot block AmazonProvidedDNS; DNS filtering does not cover hardcoded-IP egress.
 A requirement to constrain both domains and direct-IP destinations therefore needs separate
 path evidence. Do not credit a DNS policy with complete egress enforcement. The existing
-fail-open observation remains in [enablement checks](enablement-checks.md); apply it only
+fail-open observation remains in [enablement checks](references/service-recommendations/enablement-checks.md); apply it only
 under its scoped semantics. Source: [DNS Firewall query logging and policy guidance][DN].
 
 ## DDoS and fleet policy

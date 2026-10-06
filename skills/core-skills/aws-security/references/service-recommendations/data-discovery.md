@@ -1,7 +1,7 @@
 # Sensitive-data discovery decisions
 
-Use the parent skill’s focused-recommendation rules. Load the [full workflow](../service-recommendations.md) only for collection, broad review or cost reduction.
-Read only the matching [enablement checks](enablement-checks.md) when collection is needed.
+Use the parent skill’s focused-recommendation rules. Load the [full workflow](references/service-recommendations.md) only for collection, broad review or cost reduction.
+Read only the matching [enablement checks](references/service-recommendations/enablement-checks.md) when collection is needed.
 
 ## Assurance and scanability
 
@@ -35,7 +35,7 @@ application owner's response. Preserve the source findings in both cases.
 
 GuardDuty suspicious-access and malware signals do not replace classification. Conversely,
 Macie presence does not prove malware inspection. Keep publication dependencies when considering
-[Hub/CSPM consolidation](posture-and-investigation.md#standards-and-recorder-context).
+[Hub/CSPM consolidation](references/service-recommendations/posture-and-investigation.md#standards-and-recorder-context).
 Source: [Macie discovery results, publication and findings guidance][MA].
 
 [MA]: https://github.com/aws/aws-security-services-best-practices/blob/f2b28d7c31c490ad676273307cbdb900c16daed8/docs/en/guides/macie/index.md

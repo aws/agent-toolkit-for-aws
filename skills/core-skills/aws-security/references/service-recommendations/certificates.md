@@ -1,7 +1,7 @@
 # Certificate and private PKI decisions
 
-Use the parent skill’s focused-recommendation rules. Load the [full workflow](../service-recommendations.md) only for collection, broad review or cost reduction.
-The [certificate checks](enablement-checks.md) own collection and adequate-monitoring semantics.
+Use the parent skill’s focused-recommendation rules. Load the [full workflow](references/service-recommendations.md) only for collection, broad review or cost reduction.
+The [certificate checks](references/service-recommendations/enablement-checks.md) own collection and adequate-monitoring semantics.
 Use issuance, chain, policy and client metadata only; no private-key retrieval or issuance.
 
 ## Renewal and monitoring

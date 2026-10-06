@@ -37,7 +37,7 @@ skill must not perform one.
 
 These are IAM action names, resolved per operation from the Service Authorization Reference. Most match the
 operation name; some do not, for example `detective:ListOrganizationAdminAccount` for the
-`ListOrganizationAdminAccounts` operation. The Security Hub V2 exceptions are listed in [Security Hub](../security-hub.md).
+`ListOrganizationAdminAccounts` operation. The Security Hub V2 exceptions are listed in [Security Hub](references/security-hub.md).
 
 Identity confirmation uses `sts:GetCallerIdentity`. Optional simulation uses
 `iam:SimulatePrincipalPolicy`; it is not required for the assessment. Request only the
@@ -84,9 +84,9 @@ explicitly rather than presenting single-account results as organization-wide.
 
 ## Focused evidence and scoped coverage
 
-The [matrix](recommendation-matrix.md) adds focused customer-evidence paths, not blanket new permissions.
+The [matrix](references/service-recommendations/recommendation-matrix.md) adds focused customer-evidence paths, not blanket new permissions.
 Existing `inspector2:ListCoverage` and `guardduty:ListCoverage` authorize reads whose API
-requests must still use the account predicates in [enablement checks](enablement-checks.md).
+requests must still use the account predicates in [enablement checks](references/service-recommendations/enablement-checks.md).
 An allowed IAM result or delegated-admin role does not widen the approved collection scope.
 Verify exact new action/resource permissions separately before any future read is added;
 manual configuration excerpts do not justify granting provisioning or scan permissions.

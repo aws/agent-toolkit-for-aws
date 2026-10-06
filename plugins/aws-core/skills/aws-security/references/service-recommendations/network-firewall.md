@@ -1,7 +1,7 @@
 # Network Firewall suitability and enforcement
 
-Use the parent skill’s focused-recommendation rules. Load the [full workflow](../service-recommendations.md) only for collection, broad review or cost reduction.
-Absence alone is not a gap. The [existing checks](enablement-checks.md) own reads and validated
+Use the parent skill’s focused-recommendation rules. Load the [full workflow](references/service-recommendations.md) only for collection, broad review or cost reduction.
+Absence alone is not a gap. The [existing checks](references/service-recommendations/enablement-checks.md) own reads and validated
 negative states; use supplied topology/ruleset excerpts for decisions those reads cannot resolve.
 
 ## Routed inspection and policy

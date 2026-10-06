@@ -64,7 +64,7 @@ Detective investigations use a severity score:
   needed before Detective: it is the substantive relationship that replaces the superseded
   prerequisite claim. Do not recommend enabling GuardDuty solely to satisfy a prerequisite gate.
   Fit and package detail is in
-  [investigation fit](service-recommendations/posture-and-investigation.md#investigation-fit).
+  [investigation fit](references/service-recommendations/posture-and-investigation.md#investigation-fit).
 
 ## Output Sensitivity
 

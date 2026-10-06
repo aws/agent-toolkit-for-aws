@@ -70,7 +70,7 @@ See the [current CLI contract](https://docs.aws.amazon.com/cli/latest/reference/
 ## Workflow A: Account Findings Summary
 
 1. Get finding statistics. Interpret returned OCSF severity IDs using the mapping in
-   [Security Hub](security-hub.md). Preserve reported IDs and unknown/unmapped
+   [Security Hub](references/security-hub.md). Preserve reported IDs and unknown/unmapped
    values rather than applying CSPM/ASFF or GuardDuty severity scales:
 
    ```bash

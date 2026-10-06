@@ -1,6 +1,6 @@
 # AWS Security Service Recommendations
 
-Use only when selected by the [parent registry](../SKILL.md). Factual configuration and
+Use only when selected by the [parent registry](SKILL.md). Factual configuration and
 findings requests keep their existing procedures, service severity and AttackSequence /
 Exposure-first ordering. This workflow selects protections and assesses scoped evidence;
 implementation and deeper lifecycle guidance belong in the linked guide and a separate task.
@@ -18,18 +18,18 @@ steps apply only to an authorized account assessment.
 
 1. Confirm identity with `aws sts get-caller-identity`, the selected accounts and regions,
    and organization role using the projected organization read in
-   [inventory commands](service-recommendations/inventory-commands.md).
+   [inventory commands](references/service-recommendations/inventory-commands.md).
    `AWSOrganizationsNotInUseException` means standalone. Propagate the user's
    `--profile <selected-profile>` to **every** CLI call, including identity and global
    reads; configure the equivalent MCP session. Never fall back silently to default credentials.
-2. Select requirements from the [matrix](service-recommendations/recommendation-matrix.md)
+2. Select requirements from the [matrix](references/service-recommendations/recommendation-matrix.md)
    before discovery. Read only the directly linked domain section when its nuanced decision
    is at issue, before resolving it; no all-domain loading. Ask about relevant planned workloads, private/public applications,
    repositories and existing protections that inventory cannot establish. Unconfirmed
    requirements are NOT ASSESSED; do not launch a broad scan to resolve ambiguous intent.
-3. Use only relevant [inventory](service-recommendations/inventory-commands.md) and
-   [enablement checks](service-recommendations/enablement-checks.md), with their
-   [IAM map](service-recommendations/iam-permissions.md). Prefer connected AWS MCP execution;
+3. Use only relevant [inventory](references/service-recommendations/inventory-commands.md) and
+   [enablement checks](references/service-recommendations/enablement-checks.md), with their
+   [IAM map](references/service-recommendations/iam-permissions.md). Prefer connected AWS MCP execution;
    otherwise use CLI. Reuse complete scope-matched observations; global discovery runs once.
 4. Record account, region/global scope, resource predicate, timestamp, source/collection
    method, pagination/completion and errors. Follow all pages of authorized reads; never
@@ -89,7 +89,7 @@ Reference Architecture places GuardDuty, Hub, Inspector, Macie, Detective and Se
 Incident Response in security tooling, Security Lake in Log Archive, and the CloudWatch
 delegated administrator in a dedicated Monitoring account in the Security OU. The SRA's own
 pages diverge on that last placement; the
-[log-store decision](service-recommendations/posture-and-investigation.md#lake-sources-and-consumers)
+[log-store decision](references/service-recommendations/posture-and-investigation.md#lake-sources-and-consumers)
 records the conflict.
 
 Broad coverage requests do not authorize detailed member enumeration. Prefer verified
@@ -196,7 +196,7 @@ delegated administrator; otherwise enablement is UNKNOWN, because a member accou
 graph also gets an empty list. GuardDuty is not a prerequisite, so do not recommend enabling it to
 satisfy a gate. The live relationship is administrator-account alignment; see the
 eligibility note in
-[enablement checks](service-recommendations/enablement-checks.md#amazon-detective).
+[enablement checks](references/service-recommendations/enablement-checks.md#amazon-detective).
 
 **Config recorder exists but reports no resources (standalone CSPM)** — Check
 `describe-configuration-recorder-status` for `recording: true` and `lastStatus: SUCCESS`,

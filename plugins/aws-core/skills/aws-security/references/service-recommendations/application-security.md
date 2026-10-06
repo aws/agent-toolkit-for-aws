@@ -1,6 +1,6 @@
 # AWS Security Agent (part of AWS Continuum) application suitability
 
-Use the parent skill’s focused-recommendation rules. Load the [full workflow](../service-recommendations.md) only for collection, broad review or cost reduction.
+Use the parent skill’s focused-recommendation rules. Load the [full workflow](references/service-recommendations.md) only for collection, broad review or cost reduction.
 Security Agent suitability is application-specific, not an account-wide enabled state.
 
 Current service documentation names the capability this file covers Continuum for penetration

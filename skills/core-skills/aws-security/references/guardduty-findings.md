@@ -29,7 +29,7 @@ Works from both standalone accounts and delegated administrator accounts.
    aws guardduty get-findings-statistics --detector-id <DETECTOR_ID> --group-by SEVERITY --finding-criteria '{"Criterion":{"service.archived":{"Eq":["false"]}}}'
    ```
 
-   AttackSequence findings have documented Critical classification; preserve the actual reported severity and flag any discrepancy rather than rewriting it. See [GuardDuty severity](guardduty.md).
+   AttackSequence findings have documented Critical classification; preserve the actual reported severity and flag any discrepancy rather than rewriting it. See [GuardDuty severity](references/guardduty.md).
 
    **Severity mapping:** 9.0+ = Critical, 7.0–8.9 = High, 4.0–6.9 = Medium, 1.0–3.9 = Low
 

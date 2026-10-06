@@ -43,7 +43,7 @@ Both Security Hub and Security Hub CSPM share the `aws securityhub` CLI namespac
 | Security Hub APIs | Suffixed with `-v2` | `get-findings-v2`, `describe-security-hub-v2`, `list-aggregators-v2` |
 | Security Hub CSPM APIs | No suffix | `get-findings`, `describe-hub`, `get-enabled-standards`, `list-members` |
 
-Keep Security Hub and Security Hub CSPM API operations and results attributed to their respective products; never substitute one product's evidence for the other. The recommendation workflow intentionally inspects both separately. For service selection, prioritized coverage advice, or cost review, follow [service-recommendations.md](service-recommendations.md); this overview alone is not a recommendation assessment.
+Keep Security Hub and Security Hub CSPM API operations and results attributed to their respective products; never substitute one product's evidence for the other. The recommendation workflow intentionally inspects both separately. For service selection, prioritized coverage advice, or cost review, follow [service-recommendations.md](references/service-recommendations.md); this overview alone is not a recommendation assessment.
 
 ## Membership Models
 

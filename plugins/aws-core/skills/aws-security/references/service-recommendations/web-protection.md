@@ -1,6 +1,6 @@
 # Web protection decisions
 
-Use the parent skill’s focused-recommendation rules. Load the [full workflow](../service-recommendations.md) only for collection, broad review or cost reduction.
+Use the parent skill’s focused-recommendation rules. Load the [full workflow](references/service-recommendations.md) only for collection, broad review or cost reduction.
 An existing WebACL can need tuning; an absent feature is not automatically an application gap.
 
 ## Endpoint coverage and bypass
@@ -50,7 +50,7 @@ resource and protocol restrictions remain explicit eligibility checks.
 Compare configured logging with delivered records, retention and redaction. Filtering away
 needed allowed/blocked/nonterminating evidence can undermine investigation; a lower log bill
 alone does not justify it. Existing WAF protection also does not prove application exploitability
-was tested; use [application assessment scope](application-security.md#application-fit-and-scope)
+was tested; use [application assessment scope](references/service-recommendations/application-security.md#application-fit-and-scope)
 only when that separate question is asked. Source: [pinned rule-order guidance](https://github.com/aws/aws-security-services-best-practices/blob/f2b28d7c31c490ad676273307cbdb900c16daed8/docs/en/guides/waf/recommended-waf-rule-order/docs/index.md).
 
 [WM]: https://github.com/aws/aws-security-services-best-practices/blob/f2b28d7c31c490ad676273307cbdb900c16daed8/docs/en/guides/waf/aws-managed-rules/docs/index.md
