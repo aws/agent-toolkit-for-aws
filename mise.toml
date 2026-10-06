@@ -33,7 +33,7 @@ run = "python3 plugins/aws-startup-advisor/scripts/validate-artifacts.py --fixtu
 
 [tasks."lint:vendored-parity"]
 description = "Check each skill's references/vendored/ copies are byte-identical to skills/shared/"
-run = "python3 tools/sync-vendored.py --check"
+run = "python3 plugins/aws-startup-advisor/tools/sync-vendored.py --check"
 
 [tasks.validate]
 description = "Run all validation"
