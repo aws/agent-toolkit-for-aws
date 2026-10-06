@@ -183,11 +183,13 @@ def _base_profile() -> dict:
 
 
 def test_empty_model_observations_on_an_observed_source_is_rejected() -> None:
-    """Lock in that _assert_profile_semantics rejects an observed source whose
-    model_observations has been emptied while models[] and model_evidence stay intact
-    (the JSON Schema alone cannot express this correspondence)."""
+    """The schema's observed branch now requires model_observations non-empty (minItems: 1),
+    so clearing model_observations on an observed source is rejected directly at the schema
+    level. _assert_profile_semantics remains as defense-in-depth for the exact-set-equality
+    check (model_observations keys == models[]) that minItems alone cannot express."""
     profile = _base_profile()
     profile["ai_sources"][0]["model_observations"] = []
+    assert _profile_findings(profile) != []
     with pytest.raises(AssertionError):
         _assert_profile_semantics(profile)
 

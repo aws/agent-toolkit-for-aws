@@ -84,7 +84,8 @@
         {
           "properties": {
             "model_evidence": {"const": "observed"},
-            "models": {"minItems": 1}
+            "models": {"minItems": 1},
+            "model_observations": {"minItems": 1}
           }
         },
         {
