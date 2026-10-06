@@ -23,9 +23,16 @@ REPO = PLUGIN.parents[1]
 OLD_CACHE = "plugins/aws-startup-advisor/skills/gcp-to-aws/references/shared/pricing-cache.md"
 OLD_SCRIPT = "plugins/aws-startup-advisor/skills/llm-to-bedrock/scripts/bedrock_pricing.py"
 OLD_SKILL = "plugins/aws-startup-advisor/skills/gcp-to-aws/SKILL.md"
+OLD_AZURE_CACHE = "plugins/aws-startup-advisor/skills/azure-to-aws/references/shared/pricing-cache.md"
 CANONICAL = PLUGIN / "skills/shared/ai/bedrock-pricing-cache.md"
 GCP_CACHE = PLUGIN / "skills/gcp-to-aws/references/shared/pricing-cache.md"
 GCP_SKILL = PLUGIN / "skills/gcp-to-aws/SKILL.md"
+GCP_ESTIMATE = PLUGIN / "skills/gcp-to-aws/references/phases/estimate/estimate.md"
+GCP_ESTIMATE_AI = PLUGIN / "skills/gcp-to-aws/references/phases/estimate/estimate-ai.md"
+AZURE_CACHE = PLUGIN / "skills/azure-to-aws/references/shared/pricing-cache.md"
+AZURE_ESTIMATE = PLUGIN / "skills/azure-to-aws/references/phases/estimate/estimate.md"
+AZURE_ESTIMATE_AI = PLUGIN / "skills/azure-to-aws/references/phases/estimate/estimate-ai.md"
+AZURE_OPENAI = PLUGIN / "skills/azure-to-aws/references/shared/openai-on-bedrock.md"
 VENDORED = (
     PLUGIN / "skills/gcp-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
     PLUGIN / "skills/azure-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
@@ -71,6 +78,17 @@ def model_rows(text: str) -> dict[str, tuple[str, str]]:
         if re.fullmatch(r"\d+(?:\.\d+)?", cells[3]) and re.fullmatch(r"\d+(?:\.\d+)?", cells[4]):
             rows[cells[1]] = (cells[3], cells[4])
     return rows
+
+
+def markdown_data_rows(text: str) -> list[str]:
+    """Return table data rows while excluding separators and headers."""
+    return [
+        line
+        for line in text.splitlines()
+        if line.startswith("|")
+        and not re.match(r"^\|[\s:-]+\|", line)
+        and not line.startswith("| Model ")
+    ]
 
 
 def pricing_accuracy_bands(text: str) -> tuple[str, str]:
@@ -123,6 +141,13 @@ def main() -> int:
     old = git_show(OLD_CACHE)
     canonical = CANONICAL.read_text()
     remaining = GCP_CACHE.read_text()
+    gcp_estimate = GCP_ESTIMATE.read_text()
+    gcp_estimate_ai = GCP_ESTIMATE_AI.read_text()
+    azure_old = git_show(OLD_AZURE_CACHE)
+    azure_cache = AZURE_CACHE.read_text()
+    azure_estimate = AZURE_ESTIMATE.read_text()
+    azure_estimate_ai = AZURE_ESTIMATE_AI.read_text()
+    azure_openai = AZURE_OPENAI.read_text()
     old_accuracy = pricing_accuracy_bands(git_show(OLD_SKILL))
     new_accuracy = pricing_accuracy_bands(GCP_SKILL.read_text())
 
@@ -131,7 +156,14 @@ def main() -> int:
     old_bedrock = section(old, "Bedrock Models (On-Demand)")
     new_bedrock = section(canonical, "Bedrock Models (On-Demand)")
     assert new_bedrock.rstrip() == old_bedrock.rstrip(), "Bedrock section changed during extraction"
-    assert metadata(canonical) == metadata(old), "freshness/source metadata changed"
+    old_metadata = metadata(old)
+    canonical_metadata = metadata(canonical)
+    for field in ("Last updated", "Region", "Currency"):
+        assert canonical_metadata[field] == old_metadata[field], f"Bedrock {field} metadata changed"
+    assert canonical_metadata["Accuracy"].startswith("±15-25% for AI/Bedrock")
+    assert "±5-10%" not in canonical_metadata["Accuracy"]
+    assert "other services in this file" not in canonical
+    assert "infrastructure services" not in canonical_metadata["Accuracy"]
 
     for heading in (
         "Compute", "Database", "Storage", "Networking", "Supporting Services",
@@ -140,6 +172,23 @@ def main() -> int:
         assert section(remaining, heading) == section(old, heading), f"non-Bedrock section changed: {heading}"
     assert "## Bedrock Models (On-Demand)" not in remaining
     assert "references/vendored/ai/bedrock-pricing-cache.md" in remaining
+    assert metadata(remaining)["Accuracy"].startswith("±5-10%")
+    assert "±15-25%" not in metadata(remaining)["Accuracy"]
+    assert "Bedrock subsection" not in remaining
+    assert "Amazon Nova" not in remaining[: remaining.index("## Compute")]
+    assert "±5-25%" not in gcp_estimate
+    assert "infrastructure/source-provider cache (updated [date], ±5-10%)" in gcp_estimate
+    assert "Bedrock cache (updated [date], ±15-25%)" in gcp_estimate
+    assert "a `references/vendored/ai/bedrock-pricing-cache.md` cell marked `_unverified_`" in gcp_estimate_ai
+
+    assert "references/vendored/ai/bedrock-pricing-cache.md" in azure_estimate
+    assert "references/vendored/ai/bedrock-pricing-cache.md` (primary for Bedrock)" in azure_estimate_ai
+    assert "`shared/pricing-cache.md` (primary for source providers)" in azure_estimate_ai
+    assert "## Bedrock Models (On-Demand)" not in azure_cache
+    assert "Claude Fable" not in azure_cache
+    assert metadata(azure_cache)["Last updated"] == metadata(azure_old)["Last updated"]
+    assert markdown_data_rows(section(azure_cache, "Source Provider Pricing (for Migration Comparison)")) == markdown_data_rows(section(azure_old, "Source Provider Pricing (for Migration Comparison)")), "Azure source-provider rate rows changed"
+    assert "any Bedrock rate change into\n   `references/vendored/ai/bedrock-pricing-cache.md`" in azure_openai
 
     canonical_bytes = CANONICAL.read_bytes()
     for copy in VENDORED:

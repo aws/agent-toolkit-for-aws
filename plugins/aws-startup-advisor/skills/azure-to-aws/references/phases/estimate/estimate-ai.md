@@ -24,28 +24,35 @@ The parent `estimate.md` selects the pricing mode before loading this file.
 
 **Price lookup order:**
 
-1. **`shared/pricing-cache.md` (primary)** — Look up Bedrock model pricing and source
-   provider pricing by table. Set `pricing_source: "cached"`.
-2. **Unavailable** — If a model is NOT in the cache, consult `shared/pricing-fallback.md`,
-   set `pricing_source: "unavailable"`, emit `null` for the affected per-token fields, and warn
-   the user. Never fabricate a token price. An `_unverified_` cache cell is blocking — do not
-   use it as if it were a confirmed price. There is no live pricing lookup to top the cache up.
+1. **`references/vendored/ai/bedrock-pricing-cache.md` (primary for Bedrock)** — Look up
+   Bedrock model and service pricing, lifecycle-sensitive statuses, and per-token units by table.
+   Set `pricing_source: "cached"`.
+2. **`shared/pricing-cache.md` (primary for source providers)** — Look up OpenAI / Azure OpenAI
+   source-provider comparison pricing by table. Set `pricing_source: "cached"`.
+3. **Unavailable** — If a model is NOT in its applicable cache, consult
+   `shared/pricing-fallback.md`, set `pricing_source: "unavailable"`, emit `null` for the affected
+   per-token fields, and warn the user. Never fabricate a token price. An `_unverified_` cache
+   cell is blocking — do not use it as if it were a confirmed price. There is no live pricing
+   lookup to top either cache up.
 
-For typical migrations (Claude, Llama, Nova, Mistral, DeepSeek, Gemma, OpenAI gpt-oss, and the
-proprietary GPT-5.x source rows), ALL prices are in `pricing-cache.md`.
+For typical migrations, Bedrock target prices are in the vendored Bedrock cache. Proprietary
+OpenAI / Azure OpenAI source comparison rows are in `shared/pricing-cache.md`.
 
-**Staleness:** if `pricing-cache.md` is more than 30 days past its **Last updated** date, treat
-AI prices as potentially stale, set `pricing_source: "cached_stale"`, and note it — per that
-file's staleness warning.
+**Staleness:** check each applicable cache's **Last updated** date. If the vendored Bedrock cache
+is more than 30 days old, treat Bedrock prices as potentially stale; if the source-provider cache
+is more than 30 days old, treat source comparison prices as potentially stale. Set
+`pricing_source: "cached_stale"` and note the applicable warning.
 
-**Bedrock pricing is per-1M-tokens.** Every generative Bedrock figure in `pricing-cache.md` is
-stated per 1M input tokens and per 1M output tokens. Divide token counts by 1,000,000 before
-multiplying by the rate. **Embedding models are input-only** — the § Embeddings — Bedrock table
-gives a single per-1M-input rate and no output column; price an embedding workload as
-input_tokens × rate (no output term), and compare against the § Embeddings — OpenAI / Azure OpenAI
-source rate for the "$X today" baseline. A source `text-embedding-3-*` → Titan v2 move is a
-re-embedding task (dimension change), not a free swap — carry the note into the estimate. There is no per-hour or baked-in-Multi-AZ dimension here — that RDS-style rule belongs
-to `estimate-infra.md` and does NOT apply to token pricing.
+**Bedrock pricing is per-1M-tokens.** Every generative Bedrock figure in
+`references/vendored/ai/bedrock-pricing-cache.md` is stated per 1M input tokens and per 1M output
+tokens. Divide token counts by 1,000,000 before multiplying by the rate. **Embedding models are
+input-only** — the vendored cache's § Embeddings — Bedrock table gives a single per-1M-input rate
+and no output column; price an embedding workload as input_tokens × rate (no output term), and
+compare against the § Embeddings — OpenAI / Azure OpenAI source rate in `shared/pricing-cache.md`
+for the "$X today" baseline. A source `text-embedding-3-*` → Titan v2 move is a re-embedding task
+(dimension change), not a free swap — carry the note into the estimate. There is no per-hour or
+baked-in-Multi-AZ dimension here — that RDS-style rule belongs to `estimate-infra.md` and does NOT
+apply to token pricing.
 
 **Model lifecycle:** When building the model comparison table, check
 `references/vendored/ai/ai-model-lifecycle.md` and apply the 90-day exclusion rule:
@@ -107,7 +114,8 @@ match wins:**
    too short to be a monthly baseline — do NOT rank it above levels 3–4; fall back and present the
    partial actuals as a reference figure only, labeled with `active_days`.
 3. **Estimated from token volume** — use `ai_constraints.ai_token_volume.value` from
-   `preferences.json` with **OpenAI / Azure OpenAI source list prices** from `pricing-cache.md`
+   `preferences.json` with **OpenAI / Azure OpenAI source list prices** from
+   `shared/pricing-cache.md`
    (under "Source Provider Pricing → OpenAI / Azure OpenAI"). Azure OpenAI serves the same GPT
    models and reads those same OpenAI rows — there is no separate Azure-OpenAI table. Apply the
    60/40 input/output ratio if the actual ratio is unknown.
@@ -225,9 +233,10 @@ and — for a same-model move — the elimination of behavior-delta and prompt-r
 
 **Pricing source caveat for OpenAI models:** the AWS Price List API does not carry the
 proprietary GPT-5.x models. A missing or empty price-list result is **not** evidence the model is
-unavailable or free. Use `shared/pricing-cache.md`, and treat rows
-marked `unverified` there as blocking for any quoted figure — resolve them from the Bedrock
-pricing page first. See `shared/openai-on-bedrock.md`.
+unavailable or free. Use `references/vendored/ai/bedrock-pricing-cache.md` for Bedrock rates and
+statuses, and treat rows marked `unverified` there as blocking for any quoted figure — resolve
+them from the Bedrock pricing page first. Use `shared/pricing-cache.md` only for OpenAI / Azure
+OpenAI source-provider comparison rates. See `shared/openai-on-bedrock.md`.
 
 **Note:** Human / professional-services one-time migration costs are intentionally out of scope
 for this advisor and excluded from ROI calculations.

@@ -16,6 +16,7 @@ _knowledge:
   - { file: knowledge/estimate/rightsizing-thresholds.json }
   - { file: knowledge/estimate/estimate-defaults.json }
   - { file: references/shared/pricing-cache.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
+  - { file: references/vendored/ai/bedrock-pricing-cache.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
   - { file: references/shared/pricing-fallback.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
   - { file: references/vendored/ai/ai-model-lifecycle.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
   - { file: references/vendored/ai/bedrock-quotas.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }

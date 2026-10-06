@@ -17,9 +17,11 @@ Read `shared/pricing-cache.md` for AWS infrastructure and source-provider rates.
 
 **Before any sub-estimate file runs**, display the pricing mode to the user so they know what to expect:
 
-- **If cache ≤ 90 days**: "Pricing source: cached (updated [date], ±5-25% accuracy). No live pricing API required."
-- **If cache > 90 days**: "⚠️ Pricing source: stale cache only (updated [date]). Proceeding with cached pricing; accuracy may be ±15-25% for AI models."
-- **If a required service is NOT in cache**: "⚠️ Some services not in pricing cache. Those services will show `pricing_source: unavailable` in the estimate."
+- **Infrastructure/source-provider cache only, ≤ 90 days**: "Pricing source: cached (updated [date], ±5-10% accuracy). No live pricing API required."
+- **Bedrock cache only, ≤ 90 days**: "Pricing source: cached (updated [date], ±15-25% accuracy). No live pricing API required."
+- **Both caches, ≤ 90 days**: "Pricing sources: infrastructure/source-provider cache (updated [date], ±5-10%) and Bedrock cache (updated [date], ±15-25%). No live pricing API required."
+- **If an applicable cache > 90 days**: "⚠️ Pricing source: stale cache only (updated [date]). Proceeding with cached pricing; the applicable accuracy band may widen."
+- **If a required service is NOT in cache**: "⚠️ Some services not in the applicable pricing cache. Those services will show `pricing_source: unavailable` in the estimate."
 
 This prevents silent failures — the user sees the pricing constraint upfront, not after 5 minutes of estimation work.
 
@@ -27,7 +29,7 @@ This prevents silent failures — the user sees the pricing constraint upfront, 
 
 Each sub-estimate file uses this lookup order per service:
 
-1. **`shared/pricing-cache.md`** (primary for infrastructure and source providers) — Cached prices (±5-25% accuracy). Set `pricing_source: "cached"`.
+1. **`shared/pricing-cache.md`** (primary for infrastructure and source providers) — Cached prices (±5-10% accuracy). Set `pricing_source: "cached"`.
 2. **`references/vendored/ai/bedrock-pricing-cache.md`** (primary for Bedrock models and services) — Cached prices (±15-25% accuracy). Set `pricing_source: "cached"`.
 3. **Unavailable** — If a service is NOT in its applicable cache, set `pricing_source: "unavailable"` for that service. Add the service to `services_with_missing_fallback` and display a warning to the user: "Pricing unavailable for [service] — not in cache. Exclude from totals or provide a manual estimate."
 
@@ -265,7 +267,7 @@ _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FA
 
 ## Reference Files
 
-- `shared/pricing-cache.md` — Cached AWS infrastructure + source-provider pricing (±5-25%)
+- `shared/pricing-cache.md` — Cached AWS infrastructure + source-provider pricing (±5-10%)
 - `references/vendored/ai/bedrock-pricing-cache.md` — Cached provider-neutral Bedrock pricing (±15-25%)
 
 ## Scope Boundary
