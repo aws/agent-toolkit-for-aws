@@ -1,0 +1,3 @@
+["lint:artifacts"]
+description = "Validate aws-startup-advisor fixture artifacts against their published schema contracts"
+run = "python3 plugins/aws-startup-advisor/scripts/validate-artifacts.py --fixtures"

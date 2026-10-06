@@ -7,6 +7,20 @@ uv = "latest"
 [tools."npm:markdownlint-cli2"]
 version = "0.18"
 
+[task_config]
+# Keep mise's default file-task directories, and additionally let each plugin define
+# its own tasks in a plugin-local file instead of writing them into this root config.
+# This is the ONE repo-root touch a plugin needs to register its tasks; the task
+# definitions themselves (description, run command) live under the plugin.
+includes = [
+  "mise-tasks",
+  ".mise-tasks",
+  ".mise/tasks",
+  ".config/mise/tasks",
+  "mise/tasks",
+  "plugins/aws-startup-advisor/mise-tasks.toml",
+]
+
 [tasks.lint]
 description = "Run all linters"
 depends = ["lint:md", "lint:manifests"]
@@ -26,10 +40,6 @@ run = "python3 tools/sync-plugin-skills.py --check"
 [tasks."lint:spec"]
 description = "Validate Agent Plugins v1.0.0 conformance (plugins/)"
 run = "uv run --with jsonschema --with pyyaml python tools/validate_spec.py"
-
-[tasks."lint:artifacts"]
-description = "Validate aws-startup-advisor fixture artifacts against their published schema contracts"
-run = "python3 plugins/aws-startup-advisor/scripts/validate-artifacts.py --fixtures"
 
 [tasks.validate]
 description = "Run all validation"
