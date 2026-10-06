@@ -1,6 +1,6 @@
 # Pausing and stopping AWS DevOps Agent
 
-Cover this **during DISCLOSE, before the user commits** — not only when they ask. A founder deciding
+Cover this **in the DISCLOSE notice, before anything is created** — not only when they ask. A founder deciding
 whether to enable a metered agent needs to know the exit before they take the entrance.
 
 ## What pausing stops
