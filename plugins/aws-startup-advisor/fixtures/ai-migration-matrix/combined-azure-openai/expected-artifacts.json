@@ -6,7 +6,7 @@
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": "azure",
-    "ai_sources": [{"provider": "openai", "source_service": "azure_openai", "model_families": ["gpt"]}],
+    "ai_sources": [{"provider": "openai", "source_service": "azure_openai", "model_families": ["gpt"], "model_evidence": "observed", "models": ["gpt-4o"]}],
     "gateways": []
   },
   "outcomes": {

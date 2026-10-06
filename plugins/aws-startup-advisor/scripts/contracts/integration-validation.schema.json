@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:awslabs:startups:migration:integration-validation",
   "title": "integration-validation.json",
-  "description": "Target snapshot contract for cross-track validation in a combined infrastructure and AI migration.",
+  "description": "Target snapshot contract for cross-track validation in a combined migration. Under Option A, track_results.infrastructure is the single zero-or-one infrastructure-source track; polycloud runs are deferred.",
   "type": "object",
   "required": ["schema_version", "run_id", "verdict", "track_results", "checks"],
   "additionalProperties": false,

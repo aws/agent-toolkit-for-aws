@@ -20,6 +20,8 @@ PLUGIN_ROOT = FIXTURE_ROOT.parent.parent
 ARTIFACT_VALIDATOR = PLUGIN_ROOT / "scripts" / "validate-artifacts.py"
 ARTIFACT_MANIFEST = PLUGIN_ROOT / "scripts" / "artifact-contracts.json"
 SCENARIO_SCHEMA = PLUGIN_ROOT / "scripts" / "contracts" / "ai-migration-scenario.schema.json"
+INTEGRATION_SCHEMA = PLUGIN_ROOT / "scripts" / "contracts" / "integration-validation.schema.json"
+PHASE_STATUS_SCHEMA = PLUGIN_ROOT / "skills" / "shared" / "state" / "phase-status.schema.json"
 _VALIDATOR_SPEC = importlib.util.spec_from_file_location("artifact_validator", ARTIFACT_VALIDATOR)
 assert _VALIDATOR_SPEC and _VALIDATOR_SPEC.loader
 ARTIFACT_VALIDATOR_MODULE = importlib.util.module_from_spec(_VALIDATOR_SPEC)
@@ -53,6 +55,12 @@ REQUIRED_ADDITIONS = {
     "ai-only-anthropic",
     "combined-heroku-anthropic",
 }
+MODELS = {
+    "google": "gemini-1.5-pro",
+    "openai": "gpt-4o",
+    "anthropic": "claude-3-5-sonnet-20240620",
+    "future_provider": "future-model-v1",
+}
 
 
 def _load(path: Path) -> dict:
@@ -61,7 +69,7 @@ def _load(path: Path) -> dict:
 
 def _manifest() -> dict:
     manifest = _load(FIXTURE_ROOT / "expected-matrix.json")
-    assert manifest["contract_version"] == "2.0"
+    assert manifest["contract_version"] == "3.0"
     return manifest
 
 
@@ -76,36 +84,75 @@ def _cases() -> dict[str, tuple[Path, dict]]:
     return loaded
 
 
-def _scenario_validation_findings(snapshot: dict) -> list:
+def _schema_findings(schema_path: Path, instance: dict, name: str) -> list:
     findings = []
     ARTIFACT_VALIDATOR_MODULE.validate_json_schema(
-        _load(SCENARIO_SCHEMA),
-        snapshot,
+        _load(schema_path),
+        instance,
         "",
-        "expected-artifacts.json",
-        str(SCENARIO_SCHEMA),
+        name,
+        str(schema_path),
         findings,
     )
     return findings
+
+
+def _scenario_validation_findings(snapshot: dict) -> list:
+    return _schema_findings(SCENARIO_SCHEMA, snapshot, "expected-artifacts.json")
 
 
 def _validate_scenario(snapshot: dict) -> None:
     assert not _scenario_validation_findings(snapshot)
 
 
-def _assert_gateway_correspondence(snapshot: dict) -> None:
+def _assert_scenario_semantics(snapshot: dict) -> None:
     dimensions = snapshot["dimensions"]
-    providers = {source["provider"] for source in dimensions["ai_sources"]}
-    model_families = {
-        family
-        for source in dimensions["ai_sources"]
-        for family in source["model_families"]
-    }
     assert dimensions["infrastructure_source"] != "openrouter"
-    assert "openrouter" not in providers
+
+    sources = {}
+    for source in dimensions["ai_sources"]:
+        key = (source["provider"], source["source_service"])
+        assert key not in sources, f"duplicate or overlapping AI source: {key}"
+        assert source["provider"] != "openrouter"
+        sources[key] = source
+
     for gateway in dimensions["gateways"]:
-        assert set(gateway["upstream_provider_signals"]) <= providers
-        assert set(gateway["upstream_model_family_signals"]) <= model_families
+        upstream_keys = set()
+        for upstream in gateway["upstreams"]:
+            key = (upstream["provider"], upstream.get("source_service"))
+            assert key not in upstream_keys, (
+                f"duplicate or overlapping gateway upstream: {key}"
+            )
+            upstream_keys.add(key)
+
+            if "source_service" in upstream:
+                source = sources.get((upstream["provider"], upstream["source_service"]))
+                assert source is not None, f"unmatched gateway upstream: {key}"
+            else:
+                candidates = [
+                    source
+                    for (provider, _), source in sources.items()
+                    if provider == upstream["provider"]
+                ]
+                assert len(candidates) == 1, (
+                    f"service-less upstream must match one source: {upstream['provider']}"
+                )
+                source = candidates[0]
+
+            families = set(source["model_families"])
+            models = set(source["models"])
+            seen_families = set()
+            for family in upstream["model_families"]:
+                assert family["family"] not in seen_families, (
+                    f"duplicate or overlapping upstream family: {family['family']}"
+                )
+                seen_families.add(family["family"])
+                assert family["family"] in families, (
+                    f"wrongly paired upstream family: {family['family']}"
+                )
+                assert set(family["models"]) <= models, (
+                    f"wrongly paired upstream models: {family['models']}"
+                )
 
 
 def _run_artifact_validator(case_dir: Path) -> subprocess.CompletedProcess[str]:
@@ -128,37 +175,95 @@ def _run_artifact_validator(case_dir: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _source(provider: str, source_service: str, family: str, *models: str) -> dict:
+    return {
+        "provider": provider,
+        "source_service": source_service,
+        "model_families": [family],
+        "model_evidence": "observed",
+        "models": list(models),
+    }
+
+
+def _upstream(provider: str, source_service: str, family: str, *models: str) -> dict:
+    return {
+        "provider": provider,
+        "source_service": source_service,
+        "model_families": [
+            {
+                "family": family,
+                "model_evidence": "observed",
+                "models": list(models),
+            }
+        ],
+    }
+
+
+def _gateway(*upstreams: dict) -> dict:
+    return {
+        "product": "openrouter",
+        "type": "llm_router",
+        "upstream_evidence": "observed",
+        "upstreams": list(upstreams),
+    }
+
+
 def _synthetic(
     infrastructure_source: str,
     provider: str,
     source_service: str,
     family: str,
+    model: str,
     *,
     openrouter: bool = False,
 ) -> dict:
     scenario = copy.deepcopy(_cases()["combined-heroku-anthropic"][1])
     scenario["id"] = "synthetic-composition"
     scenario["migration_id"] = "synthetic-composition"
+    source = _source(provider, source_service, family, model)
     scenario["dimensions"] = {
         "infrastructure_source": infrastructure_source,
-        "ai_sources": [
-            {
-                "provider": provider,
-                "source_service": source_service,
-                "model_families": [family],
-            }
-        ],
+        "ai_sources": [source],
         "gateways": [],
     }
     if openrouter:
         scenario["dimensions"]["gateways"] = [
-            {
-                "product": "openrouter",
-                "type": "llm_router",
-                "upstream_provider_signals": [provider],
-                "upstream_model_family_signals": [family],
-            }
+            _gateway(_upstream(provider, source_service, family, model))
         ]
+    return scenario
+
+
+def _multi_openrouter_scenario(infrastructure_source: str = "heroku") -> dict:
+    scenario = copy.deepcopy(_cases()["combined-heroku-anthropic"][1])
+    scenario["id"] = "multi-cardinality-openrouter"
+    scenario["migration_id"] = "multi-cardinality-openrouter"
+    associations = [
+        (
+            "anthropic",
+            "anthropic_api",
+            "claude",
+            ["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307"],
+        ),
+        ("google", "vertex_ai", "gemini", ["gemini-1.5-pro"]),
+        ("openai", "openai_api", "gpt", ["gpt-4o"]),
+        ("openai", "azure_openai", "gpt", ["gpt-4o"]),
+        ("future_provider", "future_api", "future_family", ["future-model-v1"]),
+    ]
+    scenario["dimensions"] = {
+        "infrastructure_source": infrastructure_source,
+        "ai_sources": [
+            _source(provider, service, family, *models)
+            for provider, service, family, models in associations
+        ],
+        "gateways": [
+            _gateway(
+                *[
+                    _upstream(provider, service, family, *models)
+                    for provider, service, family, models in associations
+                ]
+            )
+        ],
+    }
     return scenario
 
 
@@ -178,7 +283,7 @@ def test_every_snapshot_validates_against_scenario_schema() -> None:
     assert ARTIFACT_VALIDATOR_MODULE.unsupported_keywords(schema) == []
     for _, snapshot in _cases().values():
         _validate_scenario(snapshot)
-        _assert_gateway_correspondence(snapshot)
+        _assert_scenario_semantics(snapshot)
 
 
 def test_supported_axes_have_independent_representatives() -> None:
@@ -189,12 +294,14 @@ def test_supported_axes_have_independent_representatives() -> None:
     for infrastructure_source in supported["infrastructure_sources"]:
         assert any(
             snapshot["mode"] == "infrastructure_only"
-            and snapshot["dimensions"]["infrastructure_source"] == infrastructure_source
+            and snapshot["dimensions"]["infrastructure_source"]
+            == infrastructure_source
             for snapshot in snapshots
         )
         assert any(
             snapshot["mode"] == "combined"
-            and snapshot["dimensions"]["infrastructure_source"] == infrastructure_source
+            and snapshot["dimensions"]["infrastructure_source"]
+            == infrastructure_source
             for snapshot in snapshots
         )
 
@@ -232,27 +339,28 @@ def test_openai_provider_preserves_direct_and_azure_endpoint_provenance() -> Non
     cases = _cases()
     direct = cases["combined-gcp-openai"][1]["dimensions"]["ai_sources"][0]
     azure = cases["combined-azure-openai"][1]["dimensions"]["ai_sources"][0]
-    assert direct == {
-        "provider": "openai",
-        "source_service": "openai_api",
-        "model_families": ["gpt"],
-    }
-    assert azure == {
-        "provider": "openai",
-        "source_service": "azure_openai",
-        "model_families": ["gpt"],
-    }
+    assert direct == _source("openai", "openai_api", "gpt", "gpt-4o")
+    assert azure == _source("openai", "azure_openai", "gpt", "gpt-4o")
 
 
-def test_each_case_has_one_shared_run_state_validated_by_repository_tooling() -> None:
+def test_each_case_shared_artifacts_validate_directly() -> None:
     for case_dir, snapshot in _cases().values():
         assert snapshot["state"] == ".phase-status.json"
         state = _load(case_dir / snapshot["state"])
         assert state["migration_id"] == snapshot["migration_id"]
         assert state["run_id"] == snapshot["run_id"]
         assert set(state["phases"].values()) == {"completed"}
-        result = _run_artifact_validator(case_dir)
-        assert result.returncode == 0, result.stdout + result.stderr
+        assert not _schema_findings(
+            PHASE_STATUS_SCHEMA, state, ".phase-status.json"
+        )
+
+        integration_path = case_dir / "integration-validation.json"
+        if integration_path.is_file():
+            assert not _schema_findings(
+                INTEGRATION_SCHEMA,
+                _load(integration_path),
+                "integration-validation.json",
+            )
 
 
 def test_required_artifacts_and_verdicts_match_each_mode() -> None:
@@ -301,43 +409,173 @@ def test_combined_validation_references_both_tracks_and_all_categories() -> None
 
 
 @pytest.mark.parametrize(
-    ("infrastructure_source", "provider", "source_service", "family", "openrouter"),
+    ("provider", "source_service", "family", "model"),
     [
-        ("heroku", "google", "vertex_ai", "gemini", False),
-        ("heroku", "openai", "openai_api", "gpt", False),
-        ("heroku", "openai", "openai_api", "gpt", True),
-        ("gcp", "anthropic", "anthropic_api", "claude", False),
-        ("azure", "anthropic", "anthropic_api", "claude", False),
+        ("google", "vertex_ai", "gemini", "gemini-1.5-pro"),
+        ("openai", "openai_api", "gpt", "gpt-4o"),
+        ("anthropic", "anthropic_api", "claude", "claude-3-5-sonnet-20240620"),
     ],
 )
-def test_non_materialized_compositions_are_schema_valid(
-    infrastructure_source: str,
-    provider: str,
-    source_service: str,
-    family: str,
-    openrouter: bool,
+def test_heroku_composes_with_each_direct_ai_provider(
+    provider: str, source_service: str, family: str, model: str
 ) -> None:
-    scenario = _synthetic(
-        infrastructure_source,
-        provider,
-        source_service,
-        family,
-        openrouter=openrouter,
-    )
+    scenario = _synthetic("heroku", provider, source_service, family, model)
     _validate_scenario(scenario)
-    _assert_gateway_correspondence(scenario)
+    _assert_scenario_semantics(scenario)
 
 
-def test_future_sources_and_multiple_direct_providers_need_no_schema_enum_change() -> None:
-    scenario = _synthetic("future_platform", "future_provider", "future_api", "future_model")
-    scenario["dimensions"]["ai_sources"].append(
-        {
-            "provider": "anthropic",
-            "source_service": "anthropic_api",
-            "model_families": ["claude"],
+@pytest.mark.parametrize("infrastructure_source", ["gcp", "azure", "heroku"])
+def test_openrouter_dimensions_compose_with_each_infrastructure_source(
+    infrastructure_source: str,
+) -> None:
+    scenario = _multi_openrouter_scenario(infrastructure_source)
+    assert isinstance(scenario["dimensions"]["infrastructure_source"], str)
+    _validate_scenario(scenario)
+    _assert_scenario_semantics(scenario)
+
+
+def test_multi_cardinality_openrouter_preserves_exact_associations() -> None:
+    scenario = _multi_openrouter_scenario()
+    dimensions = scenario["dimensions"]
+    sources = dimensions["ai_sources"]
+    upstreams = dimensions["gateways"][0]["upstreams"]
+
+    assert len({source["provider"] for source in sources}) > 1
+    assert len({family for source in sources for family in source["model_families"]}) > 1
+    assert len({model for source in sources for model in source["models"]}) > 1
+    claude = next(
+        family
+        for upstream in upstreams
+        if upstream["provider"] == "anthropic"
+        for family in upstream["model_families"]
+        if family["family"] == "claude"
+    )
+    assert claude["models"] == [
+        "claude-3-5-sonnet-20240620",
+        "claude-3-haiku-20240307",
+    ]
+    assert {
+        (upstream["provider"], upstream["source_service"]): {
+            family["family"]: family["models"]
+            for family in upstream["model_families"]
         }
+        for upstream in upstreams
+    } == {
+        (source["provider"], source["source_service"]): {
+            source["model_families"][0]: source["models"]
+        }
+        for source in sources
+    }
+    assert [
+        source["source_service"]
+        for source in sources
+        if source["provider"] == "openai"
+    ] == ["openai_api", "azure_openai"]
+    _validate_scenario(scenario)
+    _assert_scenario_semantics(scenario)
+
+
+def test_future_structural_identity_does_not_claim_runtime_support() -> None:
+    scenario = _synthetic(
+        "future_platform",
+        "future_provider",
+        "future_api",
+        "future_family",
+        "future-model-v1",
+    )
+    scenario["dimensions"]["ai_sources"].append(
+        _source(
+            "anthropic",
+            "anthropic_api",
+            "claude",
+            "claude-3-5-sonnet-20240620",
+        )
     )
     _validate_scenario(scenario)
+    _assert_scenario_semantics(scenario)
+    assert "future_provider" not in _manifest()["supported"]["direct_ai_providers"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda scenario: scenario["dimensions"]["ai_sources"].append(
+            copy.deepcopy(scenario["dimensions"]["ai_sources"][0])
+        ),
+        lambda scenario: scenario["dimensions"]["ai_sources"].append(
+            _source("anthropic", "anthropic_api", "claude", "claude-3-haiku-20240307")
+        ),
+    ],
+)
+def test_duplicate_or_overlapping_ai_sources_are_rejected(mutation) -> None:
+    scenario = _synthetic(
+        "heroku",
+        "anthropic",
+        "anthropic_api",
+        "claude",
+        "claude-3-5-sonnet-20240620",
+    )
+    mutation(scenario)
+    if not _scenario_validation_findings(scenario):
+        with pytest.raises(AssertionError):
+            _assert_scenario_semantics(scenario)
+    else:
+        assert _scenario_validation_findings(scenario)
+
+
+@pytest.mark.parametrize("overlap", ["exact", "split", "ambiguous-service"])
+def test_duplicate_or_overlapping_gateway_upstreams_are_rejected(overlap: str) -> None:
+    scenario = _multi_openrouter_scenario()
+    gateway = scenario["dimensions"]["gateways"][0]
+    if overlap == "exact":
+        gateway["upstreams"].append(copy.deepcopy(gateway["upstreams"][0]))
+    elif overlap == "split":
+        gateway["upstreams"].append(
+            _upstream(
+                "anthropic",
+                "anthropic_api",
+                "claude",
+                "claude-3-haiku-20240307",
+            )
+        )
+    else:
+        gateway["upstreams"].append(
+            {
+                "provider": "openai",
+                "model_families": [
+                    {
+                        "family": "gpt",
+                        "model_evidence": "observed",
+                        "models": ["gpt-4o"],
+                    }
+                ],
+            }
+        )
+    if not _scenario_validation_findings(scenario):
+        with pytest.raises(AssertionError):
+            _assert_scenario_semantics(scenario)
+    else:
+        assert _scenario_validation_findings(scenario)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda upstream: upstream.update(provider="google"),
+        lambda upstream: upstream.update(source_service="azure_openai"),
+        lambda upstream: upstream["model_families"][0].update(family="claude"),
+        lambda upstream: upstream["model_families"][0].update(
+            models=["claude-3-5-sonnet-20240620"]
+        ),
+    ],
+)
+def test_gateway_upstreams_must_match_retained_ai_sources_exactly(mutation) -> None:
+    scenario = _synthetic(
+        "heroku", "openai", "openai_api", "gpt", "gpt-4o", openrouter=True
+    )
+    mutation(scenario["dimensions"]["gateways"][0]["upstreams"][0])
+    with pytest.raises(AssertionError):
+        _assert_scenario_semantics(scenario)
 
 
 @pytest.mark.parametrize(
@@ -345,43 +583,99 @@ def test_future_sources_and_multiple_direct_providers_need_no_schema_enum_change
     [
         lambda scenario: scenario.update(mode="ai_only"),
         lambda scenario: scenario["dimensions"].update(infrastructure_source=None),
+        lambda scenario: scenario["dimensions"].update(infrastructure_source=["heroku", "gcp"]),
+        lambda scenario: (
+            scenario.update(mode="ai_only"),
+            scenario["dimensions"].update(
+                infrastructure_source=None, ai_sources=[], gateways=[]
+            ),
+            scenario["outcomes"].update(
+                infrastructure=None, ai=None, integration_validation=None
+            ),
+        ),
         lambda scenario: scenario["dimensions"].update(ai_sources=[]),
         lambda scenario: scenario["outcomes"].update(infrastructure=None),
         lambda scenario: scenario["outcomes"].update(ai=None),
         lambda scenario: scenario["outcomes"].update(integration_validation=None),
         lambda scenario: scenario["dimensions"].update(infrastructure_source="both"),
+        lambda scenario: scenario["dimensions"].update(infrastructure_source="openrouter"),
         lambda scenario: scenario["dimensions"]["ai_sources"][0].update(provider="both"),
         lambda scenario: scenario["dimensions"]["ai_sources"][0].update(provider="openrouter"),
         lambda scenario: scenario["dimensions"]["ai_sources"][0].update(source_service="both"),
         lambda scenario: scenario["dimensions"]["ai_sources"][0].update(model_families=[]),
+        lambda scenario: scenario["dimensions"]["ai_sources"][0].update(provider="OpenAI"),
+        lambda scenario: scenario["dimensions"]["ai_sources"][0].update(source_service="openai-api"),
+        lambda scenario: scenario["dimensions"]["ai_sources"][0].update(model_families=["GPT"]),
+        lambda scenario: scenario["dimensions"]["ai_sources"][0].update(models=["GPT-4o"]),
+        lambda scenario: scenario["dimensions"]["ai_sources"][0].update(models=["unknown"]),
+        lambda scenario: scenario["dimensions"]["ai_sources"][0].update(models=[]),
+        lambda scenario: scenario["dimensions"]["ai_sources"][0].update(
+            model_evidence="not_observed"
+        ),
         lambda scenario: scenario["dimensions"].update(
             gateways=[
                 {
                     "product": "both",
                     "type": "llm_router",
-                    "upstream_provider_signals": ["anthropic"],
-                    "upstream_model_family_signals": ["claude"],
+                    "upstream_evidence": "observed",
+                    "upstreams": [
+                        _upstream("anthropic", "anthropic_api", "claude", MODELS["anthropic"])
+                    ],
+                }
+            ]
+        ),
+        lambda scenario: scenario["dimensions"].update(
+            gateways=[
+                {
+                    "product": "openrouter",
+                    "type": "llm_router",
+                    "upstream_evidence": "observed",
+                    "upstreams": [],
+                }
+            ]
+        ),
+        lambda scenario: scenario["dimensions"].update(
+            gateways=[
+                {
+                    "product": "openrouter",
+                    "type": "llm_router",
+                    "upstream_evidence": "unresolved",
+                    "upstreams": [
+                        _upstream("anthropic", "anthropic_api", "claude", MODELS["anthropic"])
+                    ],
                 }
             ]
         ),
     ],
 )
-def test_schema_rejects_invalid_mode_dimensions_tracks_and_sentinels(mutation) -> None:
+def test_schema_rejects_invalid_modes_ids_cardinality_and_sentinels(mutation) -> None:
     scenario = copy.deepcopy(_cases()["combined-heroku-anthropic"][1])
     mutation(scenario)
     assert _scenario_validation_findings(scenario)
 
 
-def test_gateway_signals_must_match_retained_ai_sources() -> None:
-    scenario = _synthetic("heroku", "openai", "openai_api", "gpt", openrouter=True)
-    scenario["dimensions"]["gateways"][0]["upstream_provider_signals"] = ["anthropic"]
-    with pytest.raises(AssertionError):
-        _assert_gateway_correspondence(scenario)
+def test_unresolved_gateway_upstreams_are_explicit_and_unambiguous() -> None:
+    scenario = _synthetic(
+        "heroku", "openai", "openai_api", "gpt", "gpt-4o", openrouter=True
+    )
+    scenario["dimensions"]["gateways"] = [
+        {
+            "product": "openrouter",
+            "type": "llm_router",
+            "upstream_evidence": "unresolved",
+            "upstreams": [],
+        }
+    ]
+    _validate_scenario(scenario)
+    _assert_scenario_semantics(scenario)
 
-    scenario = _synthetic("heroku", "openai", "openai_api", "gpt", openrouter=True)
-    scenario["dimensions"]["gateways"][0]["upstream_model_family_signals"] = ["claude"]
-    with pytest.raises(AssertionError):
-        _assert_gateway_correspondence(scenario)
+    for evidence in ["observed", None]:
+        invalid = copy.deepcopy(scenario)
+        if evidence is None:
+            del invalid["dimensions"]["gateways"][0]["upstream_evidence"]
+        else:
+            invalid["dimensions"]["gateways"][0]["upstream_evidence"] = evidence
+        assert _scenario_validation_findings(invalid)
 
 
 def test_integration_validation_accepts_uppercase_and_lowercase_run_ids(tmp_path: Path) -> None:

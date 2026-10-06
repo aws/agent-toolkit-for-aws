@@ -6,8 +6,8 @@
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": null,
-    "ai_sources": [{"provider": "openai", "source_service": "openai_api", "model_families": ["gpt"]}],
-    "gateways": [{"product": "openrouter", "type": "llm_router", "upstream_provider_signals": ["openai"], "upstream_model_family_signals": ["gpt"]}]
+    "ai_sources": [{"provider": "openai", "source_service": "openai_api", "model_families": ["gpt"], "model_evidence": "observed", "models": ["gpt-4o"]}],
+    "gateways": [{"product": "openrouter", "type": "llm_router", "upstream_evidence": "observed", "upstreams": [{"provider": "openai", "source_service": "openai_api", "model_families": [{"family": "gpt", "model_evidence": "observed", "models": ["gpt-4o"]}]}]}]
   },
   "outcomes": {
     "infrastructure": null,

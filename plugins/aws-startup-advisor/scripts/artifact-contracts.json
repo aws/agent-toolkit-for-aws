@@ -3,8 +3,7 @@
   "fixture_prefixes": {
     "gcp-": "gcp-to-aws",
     "heroku-": "heroku-to-aws",
-    "azure-": "azure-to-aws",
-    "ai-migration-matrix": "gcp-to-aws"
+    "azure-": "azure-to-aws"
   },
   "shared": {
     ".phase-status.json": {

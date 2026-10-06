@@ -6,8 +6,8 @@
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": "azure",
-    "ai_sources": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": ["claude"]}],
-    "gateways": [{"product": "openrouter", "type": "llm_router", "upstream_provider_signals": ["anthropic"], "upstream_model_family_signals": ["claude"]}]
+    "ai_sources": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": ["claude"], "model_evidence": "observed", "models": ["claude-3-5-sonnet-20240620"]}],
+    "gateways": [{"product": "openrouter", "type": "llm_router", "upstream_evidence": "observed", "upstreams": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": [{"family": "claude", "model_evidence": "observed", "models": ["claude-3-5-sonnet-20240620"]}]}]}]
   },
   "outcomes": {
     "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},

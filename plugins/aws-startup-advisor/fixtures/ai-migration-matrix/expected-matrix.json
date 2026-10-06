@@ -1,6 +1,6 @@
 {
-  "contract_version": "2.0",
-  "description": "Target-only representative contracts for composable migration dimensions; these fixtures do not assert current runtime support or enumerate a Cartesian matrix.",
+  "contract_version": "3.0",
+  "description": "Target-only represented contract coverage for composable migration dimensions; this is not a runtime capability catalog, does not assert current runtime support, and does not enumerate a Cartesian matrix.",
   "supported": {
     "infrastructure_sources": ["gcp", "azure", "heroku"],
     "direct_ai_providers": ["google", "openai", "anthropic"],

@@ -6,7 +6,7 @@
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": "gcp",
-    "ai_sources": [{"provider": "google", "source_service": "vertex_ai", "model_families": ["gemini"]}],
+    "ai_sources": [{"provider": "google", "source_service": "vertex_ai", "model_families": ["gemini"], "model_evidence": "observed", "models": ["gemini-1.5-pro"]}],
     "gateways": []
   },
   "outcomes": {

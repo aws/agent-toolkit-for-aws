@@ -6,7 +6,7 @@
   "state": ".phase-status.json",
   "dimensions": {
     "infrastructure_source": null,
-    "ai_sources": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": ["claude"]}],
+    "ai_sources": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": ["claude"], "model_evidence": "observed", "models": ["claude-3-5-sonnet-20240620"]}],
     "gateways": []
   },
   "outcomes": {
