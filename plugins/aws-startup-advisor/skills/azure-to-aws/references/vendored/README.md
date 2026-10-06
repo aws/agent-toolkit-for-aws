@@ -34,6 +34,7 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `ai/ai-migration-guardrails.md`         | `skills/shared/ai/ai-migration-guardrails.md`         |
 | `ai/ai-model-lifecycle.md`              | `skills/shared/ai/ai-model-lifecycle.md`              |
 | `ai/ai-openai-to-bedrock.md`            | `skills/shared/ai/ai-openai-to-bedrock.md`            |
+| `ai/bedrock-pricing-cache.md`           | `skills/shared/ai/bedrock-pricing-cache.md`           |
 | `ai/bedrock-quotas.md`                  | `skills/shared/ai/bedrock-quotas.md`                  |
 | `ai/design-ref-agentic-to-agentcore.md` | `skills/shared/ai/design-ref-agentic-to-agentcore.md` |
 | `ai/design-ref-harness.md`              | `skills/shared/ai/design-ref-harness.md`              |

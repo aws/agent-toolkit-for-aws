@@ -4,7 +4,7 @@
 
 This file is loaded by `design-ai.md` when `ai-workload-profile.json` has `summary.ai_source` = `"gemini"` or `"both"`. It provides model mapping tables with pricing and honest competitive analysis for Gemini → Bedrock migration decisions.
 
-Verify all pricing against `references/shared/pricing-cache.md`.
+Verify source-provider pricing against `references/shared/pricing-cache.md` and Bedrock pricing against `references/vendored/ai/bedrock-pricing-cache.md`.
 
 **Model lifecycle:** Before recommending any Bedrock model, check `references/vendored/ai/ai-model-lifecycle.md`. Do not recommend Legacy models as primary selections for new migrations. Legacy models are annotated below where they appear.
 
@@ -95,7 +95,7 @@ Gemini 3.5 Flash is now GA (May 2026) — the current flagship Flash model. Gemi
 | Gemini 1.5 Pro                                               | **Legacy — EOL Sep 24, 2025. Migrate to Gemini 2.5 Pro or 3.x Pro.**          | Claude Sonnet 5                   | $2.00 / $10.00                                                                              | If still in use, migrate source model first                               |
 | text-bison / chat-bison                                      | Legacy                                                                        | Llama 4 Scout                     | $0.17 / $0.66                                                                               | Bedrock (better quality + cheaper)                                        |
 | text-embedding-004                                           | $0.025 / N/A                                                                  | Titan Embeddings V2               | $0.02 / N/A                                                                                 | Bedrock 20% cheaper                                                       |
-| Gemini Embedding 2 (multimodal — text/image/video/audio/PDF) | text $0.20/1M, image $0.45/1M ($0.00012/img), audio $6.50/1M, video $12.00/1M | Amazon Nova Multimodal Embeddings | text $0.135/1M, image $0.00006/unit (see `shared/pricing-cache.md` § Multimodal embeddings) | Bedrock ~32% cheaper on text, ~50% cheaper on image                       |
+| Gemini Embedding 2 (multimodal — text/image/video/audio/PDF) | text $0.20/1M, image $0.45/1M ($0.00012/img), audio $6.50/1M, video $12.00/1M | Amazon Nova Multimodal Embeddings | text $0.135/1M, image $0.00006/unit (see `references/vendored/ai/bedrock-pricing-cache.md` § Multimodal embeddings) | Bedrock ~32% cheaper on text, ~50% cheaper on image                       |
 | imagen-*                                                     | Varies                                                                        | Stable Image Core                 | $0.04/img                                                                                   | Nova Canvas excluded (EOL Sep 30, 2026); Ultra $0.08/img if quality-first |
 
 _Percentages are blended savings using a 2:1 input-to-output token ratio. Actual savings depend on your input/output ratio._

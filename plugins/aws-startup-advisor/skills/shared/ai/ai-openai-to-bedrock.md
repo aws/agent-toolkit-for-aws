@@ -131,7 +131,7 @@ See "Cost-optimized cross-family alternatives" below for the numbers.
 
 All figures per 1M tokens. Percentages are blended savings at a 2:1 input-to-output ratio. **Both sides of these
 comparisons are now Bedrock prices** where the OpenAI model is on Bedrock — this is a Bedrock-vs-Bedrock model
-choice, not a provider comparison. Verify rates via `shared/pricing-cache.md` — pricing is cache-only, so a
+choice, not a provider comparison. Verify rates via `references/vendored/ai/bedrock-pricing-cache.md` — pricing is cache-only, so a
 GPT-5.x rate that is absent or `_unverified_` in the cache has no live lookup to fall back to and must be
 reported as unavailable rather than priced (see `shared/openai-on-bedrock.md`).
 

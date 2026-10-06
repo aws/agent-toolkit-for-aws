@@ -18,14 +18,13 @@ before opening a pull request.
 | `design-ref-harness.md`              | AgentCore Harness design reference                             |
 | `design-ref-agentic-to-agentcore.md` | Strands Agents + AgentCore Runtime design reference            |
 | `sdk-capability-map.json`            | SDK method → capability lookup used by app-code discovery      |
+| `bedrock-pricing-cache.md`           | Provider-neutral Bedrock model and service pricing             |
 
 Deliberately NOT here: a source-cloud's own mapping guide (e.g. gcp-to-aws's
 `ai-gemini-to-bedrock.md`) and its `schema-discover-ai.md`, both of which are
 written against one provider's SDK surface.
 
-**Consumer contract.** A skill that vendors `references/vendored/ai/` must also ship
-`references/shared/pricing-cache.md` and `references/shared/pricing-fallback.md` —
-the files below reference them by that path for Bedrock model rates. They are
-deliberately NOT part of this canonical set: `pricing-cache.md` doubles as some
-skills' AWS-infrastructure rate card and carries source-provider rates, so it is
-per-skill by design.
+**Consumer contract.** A skill that consumes Bedrock pricing must vendor
+`references/vendored/ai/bedrock-pricing-cache.md` from this canonical set. Source-cloud
+and AWS infrastructure caches remain skill-owned; pricing fallback policy remains at
+`references/shared/pricing-fallback.md` in each consuming skill.

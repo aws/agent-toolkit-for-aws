@@ -116,7 +116,7 @@ Before recommending any Bedrock model in an agentic design:
 
 For agentic workload cost estimation:
 
-1. **Primary:** `references/shared/pricing-cache.md` (±5-10% accuracy)
+1. **Primary:** `references/vendored/ai/bedrock-pricing-cache.md` (±15-25% accuracy)
 2. **Fallback:** `references/shared/pricing-fallback.md` (cache-miss → `estimated`/`unavailable`)
 
 AgentCore Runtime and Harness pricing: consumption-based, no upfront cost. Include in estimate only if the user selects Harness or Strands path.

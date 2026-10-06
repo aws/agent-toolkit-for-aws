@@ -255,7 +255,7 @@ Replace `MMDD-HHMM` with the actual migration ID, generate the `last_updated` IS
 
 - Provides `aws___search_documentation`, `aws___read_documentation`, `aws___list_regions`, `aws___get_regional_availability`, `aws___retrieve_skill` tools
 - Used during Design for regional availability checks and documentation lookups.
-- Primary pricing source: `references/shared/pricing-cache.md` (cached 2026 rates, ±5-10% for infrastructure, ±15-25% for AI models). Pricing is cache-only — no live pricing MCP.
+- Primary pricing sources: `references/shared/pricing-cache.md` (cached 2026 infrastructure and source-provider rates, ±5-25%) and `references/vendored/ai/bedrock-pricing-cache.md` (provider-neutral Bedrock rates, ±15-25%). Pricing is cache-only — no live pricing MCP.
 
 ---
 
@@ -340,13 +340,15 @@ gcp-to-aws/
 │       ├── validate-artifacts.md               # Pre-report validation (Generate Step 0; read-only)
 │       ├── validate-migration-report.md          # Post-write HTML completeness (Generate Step 4; also decision-report.html via --mode decision)
 │       ├── migration-complexity.md             # Complexity tier definitions (small/medium/large) for timeline scaling
-│       ├── pricing-cache.md                    # Cached AWS + source provider pricing (±5-25%, primary source)
+│       ├── pricing-cache.md                    # Cached AWS infrastructure + source provider pricing
+│       ├── gcp-infra-pricing-cache.md          # Cached source-side GCP infrastructure pricing
 │       ├── graviton.md                         # Graviton/ARM64 tiers, mapping, per-phase rules (conditional load)
 │       └── schema-graviton.md                  # graviton_profile + cpu_architecture + architecture_comparison schemas
 │
 └── references/vendored/                        # byte-synced copies of skills/shared/ — DO NOT EDIT
     ├── workshop/workshop-invariants.md         # cross-skill what-if workshop contract
     └── ai/                                     # plugin-neutral, source-cloud-agnostic AI content
+        ├── bedrock-pricing-cache.md            # Canonical provider-neutral Bedrock model + service rates
         ├── ai-model-lifecycle.md               # Bedrock Active/Legacy/EOL registry + 90-day exclusion rule
         ├── ai-migration-guardrails.md          # shared constraints for every agentic migration path
         ├── bedrock-quotas.md                   # Bedrock TPM/RPM quota awareness, burndown rates, capacity planning
@@ -361,7 +363,7 @@ gcp-to-aws/
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No GCP sources found (no `.tf`, no app code, no billing data) | Offer live gcloud discovery per `discover.md` Step 1d. Only if declined or unavailable: Stop. Output: "No GCP sources detected. Provide at least one source type (Terraform files, application code, or billing exports), or re-run and accept live discovery." |
 | `.phase-status.json` missing phase gate                       | Stop. Output: "Cannot enter Phase X: Phase Y-1 not completed. Start from Phase Y or resume Phase Y-1."                                                                                                                                                          |
-| Service not in pricing cache                                  | Display user warning about ±5-25% accuracy. Use `pricing-cache.md`. Set `pricing_source: "unavailable"` for that service in the applicable `estimation-*.json` file.                                                                                            |
+| Service not in applicable pricing cache                       | Display user warning about ±5-25% accuracy. Use the infrastructure/source-provider cache or Bedrock cache as applicable. Set `pricing_source: "unavailable"` for that service in the applicable `estimation-*.json` file.                                      |
 | User skips questions or says "use defaults for the rest"      | Apply documented defaults for all remaining questions (essential questions and any unconfirmed sheet rows in wizard mode; current and subsequent batches in full mode). Q2/Q3 defaults add a report caveat. Phase 2 completes either way.                       |
 | `aws-design.json` missing required clusters                   | Stop Phase 4. Output: "Re-run Phase 3 to generate missing cluster designs."                                                                                                                                                                                     |
 

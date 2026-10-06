@@ -94,7 +94,7 @@ Record what was applied: every constraint that changed a model choice or region 
 
 ## Part 1: Bedrock Model Selection
 
-**Restricted models — applies whichever guide Step 0 loaded and whatever the compliance value:** a row whose `Status` in `shared/pricing-cache.md` is `restricted (…)` (Covered Models such as Claude Fable 5 / 5.1, gated previews such as Claude Mythos) is never `recommended_model` or `backup_model` and never a default in any mapping guide. Offer one only when the user explicitly asks for a frontier model, and state its data-retention opt-in and any endpoint-specific regional or CRIS-only restrictions in the same sentence.
+**Restricted models — applies whichever guide Step 0 loaded and whatever the compliance value:** a row whose `Status` in `references/vendored/ai/bedrock-pricing-cache.md` is `restricted (…)` (Covered Models such as Claude Fable 5 / 5.1, gated previews such as Claude Mythos) is never `recommended_model` or `backup_model` and never a default in any mapping guide. Offer one only when the user explicitly asks for a frontier model, and state its data-retention opt-in and any endpoint-specific regional or CRIS-only restrictions in the same sentence.
 
 **Multi-workload iteration (when `workloads[]` is present):**
 
@@ -188,7 +188,7 @@ Treat model mapping as compatibility-guided, not 1:1 parity. Before cutover, req
 | `ai_priority = "quality"` | Prefer Claude Sonnet/Opus regardless of cost                                                                                                                                     |
 | `ai_priority = "speed"`   | Prefer Claude Sonnet (fastest integration)                                                                                                                                       |
 | `ai_latency = "critical"` | Prefer smaller/faster models (Haiku, Nova Lite)                                                                                                                                  |
-| `ai_latency = "flexible"` | Any model; flag Batch API for 50% savings — but only for confirmed-batch models (skip the discount for models whose batch cells are `_unverified_` in `shared/pricing-cache.md`) |
+| `ai_latency = "flexible"` | Any model; flag Batch API for 50% savings — but only for confirmed-batch models (skip the discount for models whose batch cells are `_unverified_` in `references/vendored/ai/bedrock-pricing-cache.md`) |
 
 **Stay-or-migrate assessment per model:**
 

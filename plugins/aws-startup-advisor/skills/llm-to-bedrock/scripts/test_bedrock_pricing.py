@@ -28,7 +28,7 @@ def test_static_fallback_returns_known_model():
 
 def test_static_fallback_opus_4_8_rate_is_5_and_25_per_1m():
     """Opus 4.8 is $5/$25 per 1M tokens (0.005/0.025 per 1K), NOT Opus 4.1's legacy
-    $15/$75 — see skills/gcp-to-aws/references/shared/pricing-cache.md for the
+    $15/$75 — see skills/shared/ai/bedrock-pricing-cache.md for the
     source rates. The table
     now keys by dateless family id, so the raw entries are asserted on those keys and
     ALL four id shapes (bare/us., dateless/date-pinned) must resolve behaviorally —
