@@ -7,9 +7,14 @@ all scenarios are supported by the current skills.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 FIXTURE_ROOT = Path(__file__).resolve().parent.parent / "fixtures" / "ai-migration-matrix"
+PLUGIN_ROOT = FIXTURE_ROOT.parent.parent
+ARTIFACT_VALIDATOR = PLUGIN_ROOT / "scripts" / "validate-artifacts.py"
+ARTIFACT_MANIFEST = PLUGIN_ROOT / "scripts" / "artifact-contracts.json"
 INFRA_ARTIFACTS = {
     "aws-design.json",
     "estimation-infra.json",
@@ -174,3 +179,41 @@ def test_combined_validation_references_both_tracks_and_all_categories() -> None
         for result in [*validation["track_results"].values(), *validation["checks"].values()]:
             assert result["verdict"] == "passed"
             assert result["references"]
+
+
+def test_success_verdict_rejects_any_failed_child(tmp_path: Path) -> None:
+    source = FIXTURE_ROOT / "combined-gcp-gemini" / "integration-validation.json"
+    failed_children = [
+        ("track_results", "infrastructure"),
+        ("track_results", "ai"),
+        ("checks", "iam_and_secrets"),
+    ]
+
+    for section, child in failed_children:
+        invalid = _load(source)
+        invalid[section][child]["verdict"] = "failed"
+        case_dir = tmp_path / f"{section}-{child}"
+        case_dir.mkdir()
+        (case_dir / "integration-validation.json").write_text(json.dumps(invalid))
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ARTIFACT_VALIDATOR),
+                "--run-dir",
+                str(case_dir),
+                "--skill",
+                "gcp-to-aws",
+                "--manifest",
+                str(ARTIFACT_MANIFEST),
+                "--no-baseline",
+                "--json",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        assert result.returncode == 1
+        findings = json.loads(result.stdout)["errors"]
+        assert any(finding["code"] == "SCHEMA_VIOLATION" for finding in findings)

@@ -36,6 +36,37 @@
       }
     }
   },
+  "oneOf": [
+    {
+      "properties": {
+        "verdict": {"const": "passed"},
+        "track_results": {
+          "properties": {
+            "infrastructure": {"properties": {"verdict": {"const": "passed"}}},
+            "ai": {"properties": {"verdict": {"const": "passed"}}}
+          }
+        },
+        "checks": {
+          "properties": {
+            "networking": {"properties": {"verdict": {"const": "passed"}}},
+            "iam_and_secrets": {"properties": {"verdict": {"const": "passed"}}},
+            "data_flow": {"properties": {"verdict": {"const": "passed"}}},
+            "observability": {"properties": {"verdict": {"const": "passed"}}},
+            "deployment_order": {"properties": {"verdict": {"const": "passed"}}},
+            "cutover": {"properties": {"verdict": {"const": "passed"}}},
+            "rollback": {"properties": {"verdict": {"const": "passed"}}},
+            "cost_estimate": {"properties": {"verdict": {"const": "passed"}}},
+            "validation_dependencies": {"properties": {"verdict": {"const": "passed"}}}
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "verdict": {"const": "failed"}
+      }
+    }
+  ],
   "definitions": {
     "result": {
       "type": "object",
