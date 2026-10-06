@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration:aws-design-ai",
+  "title": "aws-design-ai.json (canonical, target-only design contract)",
+  "description": "Provider-neutral, target-only contract for the aws-design-ai.json AI design fragment. Structural validity does NOT imply an implemented detector, adapter, route, model mapping, or runtime-supported identity, and does NOT imply that any skill's current design-ai.md actually emits this shape — this is a design-time target, canonicalized from Azure's prior single-scalar metadata.ai_source contract. metadata.ai_sources[] and metadata.gateways[] are byte-identical in shape to ai-workload-profile.schema.json's ai_sources[]/gateways[] and project verbatim from the ai-workload-profile.json the design was built from.",
+  "type": "object",
+  "required": ["phase", "focus", "timestamp", "source_profile", "metadata", "design_blocks", "ai_architecture", "regional_warnings", "multi_model_warnings"],
+  "additionalProperties": false,
+  "properties": {
+    "phase": {"const": "design"},
+    "focus": {"const": "ai"},
+    "timestamp": {"type": "string", "minLength": 1},
+    "source_profile": {"const": "ai-workload-profile.json"},
+    "metadata": {"$ref": "#/definitions/metadata"},
+    "design_blocks": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/designBlock"}
+    },
+    "ai_architecture": {"type": "object"},
+    "regional_warnings": {"type": "array"},
+    "multi_model_warnings": {"type": "array"},
+    "agentic_design": {"oneOf": [{"type": "null"}, {"type": "object"}]},
+    "halt": {"type": "object"}
+  },
+  "definitions": {
+    "extensibleIdentity": {"type": "string", "pattern": "^(?!(?:both|openrouter|unknown)$)[a-z][a-z0-9_]*$"},
+    "modelFamily": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_.-]*$"},
+    "normalizedModel": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$"},
+    "gatewayIdentity": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_]*$"},
+    "provenance": {"enum": ["code", "iac", "live_api", "usage_api", "user_confirmed"]},
+    "confidence": {"enum": ["confirmed", "high", "medium", "low"]},
+    "evidenceEntry": {
+      "type": "object",
+      "required": ["provenance", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "provenance": {"$ref": "#/definitions/provenance"},
+        "confidence": {"$ref": "#/definitions/confidence"},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "modelObservation": {
+      "description": "Byte-identical in shape to ai-workload-profile.schema.json's modelObservation.",
+      "type": "object",
+      "required": ["normalized_model", "raw_model", "model_family", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "normalized_model": {"$ref": "#/definitions/normalizedModel"},
+        "raw_model": {"type": "string", "minLength": 1},
+        "model_family": {"$ref": "#/definitions/modelFamily"},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/definitions/evidenceEntry"}
+        }
+      }
+    },
+    "aiSource": {
+      "description": "Byte-identical in shape to ai-workload-profile.schema.json's aiSource (provider, source_service, model_families, model_evidence, models, model_observations). metadata.ai_sources[] projects this verbatim from the profile.",
+      "type": "object",
+      "required": ["provider", "source_service", "model_families", "model_evidence", "models", "model_observations"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "model_families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/modelFamily"}
+        },
+        "model_evidence": {"enum": ["observed", "not_observed"]},
+        "models": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/normalizedModel"}
+        },
+        "model_observations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/modelObservation"}
+        }
+      },
+      "oneOf": [
+        {"properties": {"model_evidence": {"const": "observed"}, "models": {"minItems": 1}}},
+        {"properties": {"model_evidence": {"const": "not_observed"}, "models": {"maxItems": 0}, "model_observations": {"maxItems": 0}}}
+      ]
+    },
+    "upstreamModelFamily": {
+      "description": "Byte-identical in shape to ai-workload-profile.schema.json's upstreamModelFamily.",
+      "type": "object",
+      "required": ["family", "model_evidence", "models"],
+      "additionalProperties": false,
+      "properties": {
+        "family": {"$ref": "#/definitions/modelFamily"},
+        "model_evidence": {"enum": ["observed", "not_observed"]},
+        "models": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/normalizedModel"}
+        }
+      },
+      "oneOf": [
+        {"properties": {"model_evidence": {"const": "observed"}, "models": {"minItems": 1}}},
+        {"properties": {"model_evidence": {"const": "not_observed"}, "models": {"maxItems": 0}}}
+      ]
+    },
+    "gatewayUpstream": {
+      "description": "Byte-identical in shape to ai-workload-profile.schema.json's gatewayUpstream.",
+      "type": "object",
+      "required": ["provider", "model_families"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "model_families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/upstreamModelFamily"}
+        }
+      }
+    },
+    "gateway": {
+      "description": "Byte-identical in shape to ai-workload-profile.schema.json's gateway. metadata.gateways[] projects this verbatim from the profile.",
+      "type": "object",
+      "required": ["product", "type", "upstream_evidence", "upstreams"],
+      "additionalProperties": false,
+      "properties": {
+        "product": {"$ref": "#/definitions/gatewayIdentity"},
+        "type": {"$ref": "#/definitions/extensibleIdentity"},
+        "upstream_evidence": {"enum": ["observed", "unresolved"]},
+        "upstreams": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/gatewayUpstream"}
+        }
+      },
+      "oneOf": [
+        {"properties": {"upstream_evidence": {"const": "observed"}, "upstreams": {"minItems": 1}}},
+        {"properties": {"upstream_evidence": {"const": "unresolved"}, "upstreams": {"maxItems": 0}}}
+      ]
+    },
+    "metadata": {
+      "description": "Replaces the retired single-scalar ai_source (MUST equal summary.ai_source) with many-valued ai_sources[]/gateways[] mirroring ai-workload-profile.schema.json exactly. additionalProperties: false means a vestigial scalar ai_source field is rejected, not merely undocumented.",
+      "type": "object",
+      "required": ["ai_sources", "gateways", "bedrock_models_selected", "regional_validation"],
+      "additionalProperties": false,
+      "properties": {
+        "ai_sources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/aiSource"}
+        },
+        "gateways": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/gateway"}
+        },
+        "bedrock_models_selected": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "regional_validation": {"enum": ["checked", "fallback_static"]}
+      }
+    },
+    "designBlock": {
+      "type": "object",
+      "required": ["workload_id", "model_id", "target_bedrock_model", "target_aws_service", "capability", "capability_confidence", "rationale", "confidence_warning"],
+      "additionalProperties": false,
+      "properties": {
+        "workload_id": {"type": "string", "minLength": 1},
+        "model_id": {"type": "string", "minLength": 1},
+        "target_bedrock_model": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1}]},
+        "target_aws_service": {
+          "oneOf": [
+            {"type": "null"},
+            {"enum": ["textract", "rekognition", "transcribe", "comprehend", "translate", "polly", "sagemaker"]}
+          ]
+        },
+        "capability": {
+          "enum": [
+            "text_generation", "structured_output", "image_generation", "embedding",
+            "speech_to_text", "text_to_speech", "unknown",
+            "document_extraction", "image_analysis", "speech_transcription"
+          ]
+        },
+        "capability_confidence": {"enum": ["high", "medium", "low"]},
+        "rationale": {"type": "string", "minLength": 1},
+        "confidence_warning": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1}]}
+      },
+      "oneOf": [
+        {"properties": {"target_bedrock_model": {"type": "string"}, "target_aws_service": {"type": "null"}}},
+        {"properties": {"target_bedrock_model": {"type": "null"}, "target_aws_service": {"type": "string"}}}
+      ]
+    }
+  }
+}

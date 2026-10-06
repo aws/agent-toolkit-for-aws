@@ -14,6 +14,9 @@
     },
     "ai-workload-profile.json": {
       "json_schema": "scripts/contracts/ai-workload-profile.schema.json"
+    },
+    "aws-design-ai.json": {
+      "json_schema": "scripts/contracts/aws-design-ai.schema.json"
     }
   },
   "skills": {
@@ -256,10 +259,6 @@
             "_heading_why": "schema-graviton.md has both '`graviton_profile` (emitted by Discover…)' and '`graviton` block (added to each compute service…)'. Heading matches end on a word boundary so 'graviton' alone no longer selects graviton_profile, but the full 'graviton block' names the design section explicitly."
           }
         ]
-      },
-      "aws-design-ai.json": {
-        "shape": "skills/azure-to-aws/references/shared/schema-design-aws-ai.md",
-        "root_heading": "Shape"
       },
       "estimation-infra.json": {
         "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
