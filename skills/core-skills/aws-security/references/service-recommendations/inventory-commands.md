@@ -48,9 +48,12 @@ aws lambda list-functions \
   --query 'Functions[].{Name:FunctionName,Runtime:Runtime}' \
   --region <region>
 
-# AI workloads — GuardDuty AI Protection covers Bedrock, Bedrock AgentCore, and SageMaker AI.
-# Provisioning lists and logging configuration cannot exclude on-demand use.
-# Accept scoped user or telemetry confirmation; otherwise mark AI use UNKNOWN.
+# AI workloads — discover the current GuardDuty AI Protection covered services and event types
+# from GuardDuty documentation before selecting inventory reads. The commands below are
+# candidate reads for service families shown in the latest documentation, not a closed coverage list; add or omit
+# reads to match the current documented set. Provisioning lists and logging configuration cannot
+# exclude on-demand use. Accept scoped user or telemetry confirmation; otherwise mark AI use and
+# service eligibility UNKNOWN.
 aws bedrock get-model-invocation-logging-configuration --region <region>
 aws bedrock list-custom-models --region <region>
 aws bedrock-agent list-agents --region <region>
@@ -166,7 +169,10 @@ aws ec2 describe-subnets \
 ```bash
 # ACM-managed inventory across the current documented key-type set. Read the current
 # ListCertificates Includes keyTypes values from ACM documentation and substitute all of them
-# below. If that set cannot be read, omit --includes and mark key-type completeness UNKNOWN.
+# below. If that set cannot be read, an unfiltered call is partial evidence only: ACM's default
+# key-type filter can omit whole certificate classes, including EC and non-default RSA types.
+# Report returned certificates, but mark non-default key types potentially present and
+# unenumerated; do not claim fleet completeness.
 # Type alone does not prove renewal eligibility or monitoring; use the enablement reference.
 # Direct CA issuance may be outside ACM.
 aws acm list-certificates \
@@ -227,7 +233,7 @@ only after complete relevant reads; distinguish UNKNOWN, NOT ASSESSED and NOT AP
 | ECS clusters | | Fargate vs EC2 per service/task; unresolved providers |
 | EKS clusters | | mixed compute; unresolved self-managed nodes; audit logs |
 | Lambda functions | | |
-| AI workloads | | Bedrock, AgentCore, or SageMaker AI in use? |
+| AI workloads | | GuardDuty AI Protection-covered services from the latest documentation in use; unresolved use or eligibility UNKNOWN |
 | S3 buckets | | which take untrusted uploads |
 | Backup vaults | | which protect recovery-critical workloads |
 | RDS / Aurora | | engine/version and documented eligibility; unresolved prerequisites |

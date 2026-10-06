@@ -53,7 +53,7 @@ GuardDuty solely to satisfy a prerequisite gate.
    aws detective list-members --graph-arn <graph-arn>
    ```
 
-   Report observed member status, such as ENABLED, VERIFICATION_FAILED or VERIFICATION_IN_PROGRESS. The current [ListMembers contract](https://docs.aws.amazon.com/boto3/latest/reference/services/detective/client/list_members.html) defines ENABLED as currently contributing data to the graph. Report this as service-reported contribution; it does not establish completeness, freshness or coverage of every required source.
+   Report observed member status, such as ENABLED, VERIFICATION_FAILED or VERIFICATION_IN_PROGRESS. The current [ListMembers contract](https://docs.aws.amazon.com/boto3/latest/reference/services/detective/client/list_members.html) defines ENABLED as contributing data to the graph at query time. Report this as service-reported contribution; it does not establish completeness, freshness or coverage of every required source.
 
 4. Check pending invitations (from member perspective):
 

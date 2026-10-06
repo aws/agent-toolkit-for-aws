@@ -73,7 +73,7 @@ applicability examples, not a closed feature catalog:
 | `LAMBDA_NETWORK_LOGS` | Lambda network activity | Any Lambda function |
 | `RUNTIME_MONITORING` | EC2, ECS, EKS runtime | EC2, ECS, or EKS on EC2 |
 | `EKS_RUNTIME_MONITORING` | EKS runtime (superseded by `RUNTIME_MONITORING`) | EKS on EC2 |
-| `AI_PROTECTION` | AI workload activity currently documented as covered by GuardDuty; confirm the current covered services and event types before assessing it | Any currently documented covered AI service in use; unresolved service eligibility is UNKNOWN |
+| `AI_PROTECTION` | AI workload activity documented as covered by GuardDuty; confirm the latest covered services and event types before assessing it | Any documented covered AI service in use; unresolved service eligibility is UNKNOWN |
 | `AI_ANALYST` | GuardDuty Investigation, AI-powered finding analysis. Check its preview status, console name, and Region eligibility in the GuardDuty documentation before proposing it | Optional; requires an active detector in the same Region |
 
 Runtime Monitoring has an `AdditionalConfiguration` array for agent management:
@@ -196,7 +196,10 @@ monitoring and configuration hygiene.
 ```bash
 # Certificate inventory across the current documented ACM key-type set. Read the current
 # ListCertificates Includes keyTypes values from ACM documentation and substitute all of them
-# below. If that set cannot be read, omit --includes and mark key-type completeness UNKNOWN.
+# below. If that set cannot be read, an unfiltered call is partial evidence only: ACM's default
+# key-type filter can omit whole certificate classes, including EC and non-default RSA types.
+# Report returned certificates, but treat non-default key types as potentially present and
+# unenumerated; monitoring coverage and fleet completeness remain UNKNOWN.
 aws acm list-certificates \
   --includes keyTypes=<comma-separated-current-key-types> \
   --query 'CertificateSummaryList[].{Arn:CertificateArn,Domain:DomainName,Status:Status,NotAfter:NotAfter,InUse:InUse,Type:Type}' \
@@ -403,7 +406,7 @@ completeness UNKNOWN rather than comparing against a remembered list.
 **Pass conditions:** every scan type with corresponding resources is `ENABLED`;
 `autoEnable` covers new member accounts; EC2 scanning on Enhanced EC2 Scanning (the VM
 Scanner), with a legacy SSM-plugin setup flagged as a migration finding; Deep Inspection on
-for currently supported platforms with Enhanced EC2 Scanning, after confirming the current
+for supported platforms with Enhanced EC2 Scanning, after confirming the latest
 platform set in Amazon Inspector documentation, and custom paths reviewed against where
 software is actually installed; ECR rescan durations match build cadence (a cost lever only
 for standalone Inspector).

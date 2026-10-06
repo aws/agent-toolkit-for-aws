@@ -64,7 +64,7 @@ Works from both standalone and delegated administrator accounts.
    | AWS source `<sourceName>` | Configured / Not Configured / UNKNOWN | Account, Region, version and returned status |
    | Subscribers | N configurations observed | Delivery/consumption NOT ASSESSED unless evidenced |
 
-6. MUST report every configured source returned by the account APIs and assess every currently supported source identified from current documentation for the reviewed Region. Newly supported source names are included automatically.
+6. MUST report every configured source returned by the account APIs and assess every supported source identified from the latest documentation for the reviewed Region. Newly supported source names are included automatically.
 
 7. SHOULD flag any source with a non-healthy status. If current supported-source documentation could not be read, state that completeness against the supported catalog is UNKNOWN.
 
@@ -97,7 +97,7 @@ Works from both standalone and delegated administrator accounts.
 
    | Account | Region | Source | Exception Reason |
    |---|---|---|---|
-   | `<account-id>` | us-east-1 | VPC_FLOW | INTERNAL_ERROR |
+   | 111122223333 | us-east-1 | VPC_FLOW | INTERNAL_ERROR |
 
 5. MUST report all exceptions.
 

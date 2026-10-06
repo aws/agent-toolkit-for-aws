@@ -56,10 +56,10 @@ These use account activity plus the row-specific conditions rather than a worklo
 | Any EC2 instance | Inspector `EC2` scanning through Enhanced EC2 Scanning (the VM Scanner), not the legacy SSM plugin | High |
 | EC2 instance, SSM-managed | GuardDuty `RUNTIME_MONITORING` with `EC2_AGENT_MANAGEMENT` | High |
 | EC2 instance, **not** SSM-managed, Runtime Monitoring wanted | Default Host Management Configuration via SSM Quick Setup first; GuardDuty EC2 agent management requires SSM | High |
-| Any EC2 instance on a platform currently supported for Deep Inspection, confirmed from current Inspector documentation | Inspector Deep Inspection with Enhanced EC2 Scanning | Medium |
+| Any EC2 instance on a platform documented as supported for Deep Inspection, verified against the latest Inspector documentation | Inspector Deep Inspection with Enhanced EC2 Scanning | Medium |
 | Any Lambda function | Inspector `LAMBDA` **and** `LAMBDA_CODE` | High |
 | Any Lambda function | GuardDuty `LAMBDA_NETWORK_LOGS` | Medium |
-| Bedrock, Bedrock AgentCore, or SageMaker AI in use | GuardDuty `AI_PROTECTION` | High |
+| Any AI service documented as covered by GuardDuty AI Protection in use, after verifying the latest service and event-type eligibility | GuardDuty `AI_PROTECTION` | High |
 
 For scanner/coverage nuances, read [runtime and workload coverage](detection-and-vulnerability.md#runtime-and-workload-coverage).
 
