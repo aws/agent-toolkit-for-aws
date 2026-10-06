@@ -11,6 +11,9 @@
     },
     "integration-validation.json": {
       "json_schema": "scripts/contracts/integration-validation.schema.json"
+    },
+    "ai-workload-profile.json": {
+      "json_schema": "scripts/contracts/ai-workload-profile.schema.json"
     }
   },
   "skills": {

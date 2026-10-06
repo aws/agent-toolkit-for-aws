@@ -33,7 +33,7 @@ def _load_module(name: str, path: Path):
 VALIDATOR = _load_module("ai_workload_profile__validator", VALIDATOR_PATH)
 MATRIX = _load_module("ai_workload_profile__matrix_contracts", MATRIX_TEST_PATH)
 
-POSITIVE_FIXTURES = sorted(FIXTURE_ROOT.glob("*.json"))
+POSITIVE_FIXTURES = sorted(FIXTURE_ROOT.glob("*/ai-workload-profile.json"))
 
 
 def _load(path: Path) -> dict:
@@ -131,18 +131,18 @@ def test_schema_is_valid_json_and_draft07_shaped() -> None:
 
 # --------------------------------------------------------------------------- positive fixtures
 
-@pytest.mark.parametrize("fixture_path", POSITIVE_FIXTURES, ids=lambda p: p.stem)
+@pytest.mark.parametrize("fixture_path", POSITIVE_FIXTURES, ids=lambda p: p.parent.name)
 def test_positive_fixtures_validate_against_profile_schema(fixture_path: Path) -> None:
     profile = _load(fixture_path)
     assert _profile_findings(profile) == []
 
 
-@pytest.mark.parametrize("fixture_path", POSITIVE_FIXTURES, ids=lambda p: p.stem)
+@pytest.mark.parametrize("fixture_path", POSITIVE_FIXTURES, ids=lambda p: p.parent.name)
 def test_positive_fixtures_satisfy_semantic_invariants(fixture_path: Path) -> None:
     _assert_profile_semantics(_load(fixture_path))
 
 
-@pytest.mark.parametrize("fixture_path", POSITIVE_FIXTURES, ids=lambda p: p.stem)
+@pytest.mark.parametrize("fixture_path", POSITIVE_FIXTURES, ids=lambda p: p.parent.name)
 def test_positive_fixtures_project_exactly_into_pr410_semantics(fixture_path: Path) -> None:
     profile = _load(fixture_path)
     scenario = _project_to_scenario(profile)
@@ -151,13 +151,13 @@ def test_positive_fixtures_project_exactly_into_pr410_semantics(fixture_path: Pa
 
 
 def test_openrouter_multi_upstream_fixture_has_two_models_in_one_family() -> None:
-    profile = _load(FIXTURE_ROOT / "openrouter-multi-upstream.json")
+    profile = _load(FIXTURE_ROOT / "openrouter-multi-upstream" / "ai-workload-profile.json")
     claude = next(s for s in profile["ai_sources"] if s["provider"] == "anthropic")
     assert len(claude["models"]) >= 2
 
 
 def test_openai_direct_and_azure_fixture_preserves_distinct_provenance() -> None:
-    profile = _load(FIXTURE_ROOT / "openai-direct-and-azure-openai.json")
+    profile = _load(FIXTURE_ROOT / "openai-direct-and-azure-openai" / "ai-workload-profile.json")
     services = {s["source_service"] for s in profile["ai_sources"] if s["provider"] == "openai"}
     assert services == {"openai_api", "azure_openai"}
     # raw_model differs across services even though normalized_model is identical —
@@ -170,7 +170,7 @@ def test_openai_direct_and_azure_fixture_preserves_distinct_provenance() -> None
 
 
 def test_unresolved_gateway_fixture_has_empty_upstreams() -> None:
-    profile = _load(FIXTURE_ROOT / "openrouter-unresolved.json")
+    profile = _load(FIXTURE_ROOT / "openrouter-unresolved" / "ai-workload-profile.json")
     gateway = profile["gateways"][0]
     assert gateway["upstream_evidence"] == "unresolved"
     assert gateway["upstreams"] == []
@@ -179,7 +179,17 @@ def test_unresolved_gateway_fixture_has_empty_upstreams() -> None:
 # --------------------------------------------------------------------------- negative mutations
 
 def _base_profile() -> dict:
-    return copy.deepcopy(_load(FIXTURE_ROOT / "ai-only-multi-direct.json"))
+    return copy.deepcopy(_load(FIXTURE_ROOT / "ai-only-multi-direct" / "ai-workload-profile.json"))
+
+
+def test_empty_model_observations_on_an_observed_source_is_rejected() -> None:
+    """Lock in that _assert_profile_semantics rejects an observed source whose
+    model_observations has been emptied while models[] and model_evidence stay intact
+    (the JSON Schema alone cannot express this correspondence)."""
+    profile = _base_profile()
+    profile["ai_sources"][0]["model_observations"] = []
+    with pytest.raises(AssertionError):
+        _assert_profile_semantics(profile)
 
 
 def test_duplicate_ai_source_identity_is_rejected() -> None:
@@ -199,7 +209,7 @@ def test_duplicate_ai_source_identity_is_rejected() -> None:
 
 
 def test_dropped_model_under_a_resolved_upstream_is_rejected() -> None:
-    profile = _load(FIXTURE_ROOT / "openrouter-multi-upstream.json")
+    profile = _load(FIXTURE_ROOT / "openrouter-multi-upstream" / "ai-workload-profile.json")
     scenario = _project_to_scenario(profile)
     # Drop one of Claude's two models from the gateway upstream while the source keeps both.
     upstream = next(
@@ -234,7 +244,7 @@ def test_empty_upstreams_on_an_observed_gateway_is_rejected() -> None:
 
 
 def test_invented_upstream_on_an_unresolved_gateway_is_rejected() -> None:
-    profile = _load(FIXTURE_ROOT / "openrouter-multi-upstream.json")
+    profile = _load(FIXTURE_ROOT / "openrouter-multi-upstream" / "ai-workload-profile.json")
     gateway = profile["gateways"][0]
     gateway["upstream_evidence"] = "unresolved"
     # upstreams[] still populated — invented upstream on an unresolved gateway.
