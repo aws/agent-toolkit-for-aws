@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration:ai-workload-profile",
+  "title": "AI workload profile (target-only observation contract)",
+  "description": "Provider-neutral, target-only contract for a future ai-workload-profile.json observation/normalization output. Structural validity does NOT imply an implemented detector, adapter, route, model mapping, or runtime-supported identity. This document is a design-time target for a schema that does not yet have a producer.",
+  "type": "object",
+  "required": ["schema_version", "ai_sources", "gateways"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "ai_sources": {
+      "description": "Retained AI sources. Semantic uniqueness is the provider and source_service pair; duplicate or overlapping pairs are invalid, while one provider through distinct services is valid. Projects verbatim (provider, source_service, model_families, model_evidence, models) into ai-migration-scenario.schema.json's aiSource.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/aiSource"}
+    },
+    "gateways": {
+      "description": "Gateways independent of direct providers and infrastructure. OpenRouter is representable only here, never as a provider or infrastructure source. Projects verbatim into ai-migration-scenario.schema.json's gateway.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/gateway"}
+    }
+  },
+  "definitions": {
+    "extensibleIdentity": {"type": "string", "pattern": "^(?!(?:both|openrouter|unknown)$)[a-z][a-z0-9_]*$"},
+    "modelFamily": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_.-]*$"},
+    "normalizedModel": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$"},
+    "gatewayIdentity": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_]*$"},
+    "provenance": {"enum": ["code", "iac", "live_api", "usage_api", "user_confirmed"]},
+    "confidence": {"enum": ["confirmed", "high", "medium", "low"]},
+    "evidenceEntry": {
+      "type": "object",
+      "required": ["provenance", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "provenance": {"$ref": "#/definitions/provenance"},
+        "confidence": {"$ref": "#/definitions/confidence"},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "modelObservation": {
+      "description": "One exact normalized model's raw/observed alias and evidence trail. raw_model is the verbatim observed string and is never discarded even when it equals normalized_model.",
+      "type": "object",
+      "required": ["normalized_model", "raw_model", "model_family", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "normalized_model": {"$ref": "#/definitions/normalizedModel"},
+        "raw_model": {"type": "string", "minLength": 1},
+        "model_family": {"$ref": "#/definitions/modelFamily"},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/definitions/evidenceEntry"}
+        }
+      }
+    },
+    "aiSource": {
+      "description": "A provider-neutral AI source keyed semantically by provider and source_service (e.g. direct openai vs azure_openai is a distinct source_service on the same provider). model_families/model_evidence/models mirror ai-migration-scenario.schema.json's aiSource exactly; model_observations carries the richer raw-alias/evidence trail and is cross-checked against models[] by the test suite, not by this schema (no $data support in the enforced subset).",
+      "type": "object",
+      "required": ["provider", "source_service", "model_families", "model_evidence", "models", "model_observations"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "model_families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/modelFamily"}
+        },
+        "model_evidence": {"enum": ["observed", "not_observed"]},
+        "models": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/normalizedModel"}
+        },
+        "model_observations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/modelObservation"}
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "model_evidence": {"const": "observed"},
+            "models": {"minItems": 1}
+          }
+        },
+        {
+          "properties": {
+            "model_evidence": {"const": "not_observed"},
+            "models": {"maxItems": 0},
+            "model_observations": {"maxItems": 0}
+          }
+        }
+      ]
+    },
+    "upstreamModelFamily": {
+      "description": "Byte-identical in shape to ai-migration-scenario.schema.json's upstreamModelFamily.",
+      "type": "object",
+      "required": ["family", "model_evidence", "models"],
+      "additionalProperties": false,
+      "properties": {
+        "family": {"$ref": "#/definitions/modelFamily"},
+        "model_evidence": {"enum": ["observed", "not_observed"]},
+        "models": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/normalizedModel"}
+        }
+      },
+      "oneOf": [
+        {"properties": {"model_evidence": {"const": "observed"}, "models": {"minItems": 1}}},
+        {"properties": {"model_evidence": {"const": "not_observed"}, "models": {"maxItems": 0}}}
+      ]
+    },
+    "gatewayUpstream": {
+      "description": "Byte-identical in shape to ai-migration-scenario.schema.json's gatewayUpstream.",
+      "type": "object",
+      "required": ["provider", "model_families"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "model_families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/upstreamModelFamily"}
+        }
+      }
+    },
+    "gateway": {
+      "description": "Byte-identical in shape to ai-migration-scenario.schema.json's gateway. An observed gateway cannot have an empty upstreams array; an unresolved gateway cannot invent upstreams.",
+      "type": "object",
+      "required": ["product", "type", "upstream_evidence", "upstreams"],
+      "additionalProperties": false,
+      "properties": {
+        "product": {"$ref": "#/definitions/gatewayIdentity"},
+        "type": {"$ref": "#/definitions/extensibleIdentity"},
+        "upstream_evidence": {"enum": ["observed", "unresolved"]},
+        "upstreams": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/gatewayUpstream"}
+        }
+      },
+      "oneOf": [
+        {"properties": {"upstream_evidence": {"const": "observed"}, "upstreams": {"minItems": 1}}},
+        {"properties": {"upstream_evidence": {"const": "unresolved"}, "upstreams": {"maxItems": 0}}}
+      ]
+    }
+  }
+}
