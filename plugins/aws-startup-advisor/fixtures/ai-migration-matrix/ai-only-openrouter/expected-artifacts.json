@@ -1,0 +1,19 @@
+{
+  "id": "ai-only-openrouter",
+  "mode": "ai_only",
+  "migration_id": "ai-only-openrouter",
+  "run_id": "00000000-0000-4000-8000-000000000005",
+  "state": ".phase-status.json",
+  "dimensions": {
+    "infrastructure_source": null,
+    "ai_provider": "openai",
+    "model_families": ["gpt"],
+    "gateway_type": "llm_router",
+    "upstream_provider_signals": ["openai"]
+  },
+  "outcomes": {
+    "infrastructure": null,
+    "ai": {"verdict": "passed", "artifacts": ["ai-workload-profile.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json"]},
+    "integration_validation": null
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "infra-only-gcp",
+  "mode": "infrastructure_only",
+  "migration_id": "infra-only-gcp",
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "state": ".phase-status.json",
+  "dimensions": {
+    "infrastructure_source": "gcp",
+    "ai_provider": null,
+    "model_families": [],
+    "gateway_type": null,
+    "upstream_provider_signals": []
+  },
+  "outcomes": {
+    "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},
+    "ai": null,
+    "integration_validation": null
+  }
+}

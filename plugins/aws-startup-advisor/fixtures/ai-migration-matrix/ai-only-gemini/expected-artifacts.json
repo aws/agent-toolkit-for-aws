@@ -1,0 +1,19 @@
+{
+  "id": "ai-only-gemini",
+  "mode": "ai_only",
+  "migration_id": "ai-only-gemini",
+  "run_id": "00000000-0000-4000-8000-000000000003",
+  "state": ".phase-status.json",
+  "dimensions": {
+    "infrastructure_source": null,
+    "ai_provider": "gcp_ai",
+    "model_families": ["gemini"],
+    "gateway_type": null,
+    "upstream_provider_signals": ["gcp_ai"]
+  },
+  "outcomes": {
+    "infrastructure": null,
+    "ai": {"verdict": "passed", "artifacts": ["ai-workload-profile.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json"]},
+    "integration_validation": null
+  }
+}

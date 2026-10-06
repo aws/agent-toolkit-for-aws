@@ -1,0 +1,17 @@
+{
+  "contract_version": "1.0",
+  "description": "Target migration-mode contracts only; these fixtures do not assert current runtime support.",
+  "cases": [
+    {"id": "infra-only-gcp", "snapshot": "infra-only-gcp/expected-artifacts.json"},
+    {"id": "infra-only-azure", "snapshot": "infra-only-azure/expected-artifacts.json"},
+    {"id": "ai-only-gemini", "snapshot": "ai-only-gemini/expected-artifacts.json"},
+    {"id": "ai-only-openai", "snapshot": "ai-only-openai/expected-artifacts.json"},
+    {"id": "ai-only-openrouter", "snapshot": "ai-only-openrouter/expected-artifacts.json"},
+    {"id": "combined-gcp-gemini", "snapshot": "combined-gcp-gemini/expected-artifacts.json"},
+    {"id": "combined-azure-openai", "snapshot": "combined-azure-openai/expected-artifacts.json"},
+    {"id": "combined-gcp-openai", "snapshot": "combined-gcp-openai/expected-artifacts.json"},
+    {"id": "combined-azure-gemini", "snapshot": "combined-azure-gemini/expected-artifacts.json"},
+    {"id": "combined-gcp-openrouter", "snapshot": "combined-gcp-openrouter/expected-artifacts.json"},
+    {"id": "combined-azure-openrouter", "snapshot": "combined-azure-openrouter/expected-artifacts.json"}
+  ]
+}

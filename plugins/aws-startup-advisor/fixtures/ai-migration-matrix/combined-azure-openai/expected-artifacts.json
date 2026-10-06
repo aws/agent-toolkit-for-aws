@@ -1,0 +1,19 @@
+{
+  "id": "combined-azure-openai",
+  "mode": "combined",
+  "migration_id": "combined-azure-openai",
+  "run_id": "00000000-0000-4000-8000-000000000007",
+  "state": ".phase-status.json",
+  "dimensions": {
+    "infrastructure_source": "azure",
+    "ai_provider": "azure_openai",
+    "model_families": ["gpt"],
+    "gateway_type": null,
+    "upstream_provider_signals": ["azure_openai"]
+  },
+  "outcomes": {
+    "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},
+    "ai": {"verdict": "passed", "artifacts": ["ai-workload-profile.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json"]},
+    "integration_validation": {"verdict": "passed", "artifact": "integration-validation.json"}
+  }
+}
