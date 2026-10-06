@@ -866,10 +866,11 @@ def load_manifest(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def build_contracts(manifest: Dict[str, Any], skill: str, findings: List[Finding]) -> List[Contract]:
+def build_contracts(manifest: Dict[str, Any], skill: Optional[str], findings: List[Finding]) -> List[Contract]:
     specs: Dict[str, Any] = {}
     specs.update(manifest.get("shared", {}))
-    specs.update(manifest.get("skills", {}).get(skill, {}))
+    if skill is not None:
+        specs.update(manifest.get("skills", {}).get(skill, {}))
     contracts: List[Contract] = []
     for glob_, spec in specs.items():
         c = Contract(artifact_glob=glob_)
@@ -928,7 +929,7 @@ def find_artifacts(run_dir: Path) -> List[Path]:
     return out
 
 
-def validate_run_dir(run_dir: Path, skill: str, manifest: Dict[str, Any], findings: List[Finding]) -> int:
+def validate_run_dir(run_dir: Path, skill: Optional[str], manifest: Dict[str, Any], findings: List[Finding]) -> int:
     contracts = build_contracts(manifest, skill, findings)
     checked = 0
     for p in find_artifacts(run_dir):
@@ -936,7 +937,8 @@ def validate_run_dir(run_dir: Path, skill: str, manifest: Dict[str, Any], findin
         matched = [c for c in contracts if fnmatch.fnmatch(name, c.artifact_glob)]
         rel = _rel(p)
         if not matched:
-            findings.append(Finding("NO_CONTRACT", rel, "", f"no contract covers '{name}' for skill {skill}", ""))
+            if skill is not None:
+                findings.append(Finding("NO_CONTRACT", rel, "", f"no contract covers '{name}' for skill {skill}", ""))
             continue
         try:
             value = json.loads(p.read_text(encoding="utf-8"))
@@ -1026,8 +1028,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         fixtures_root = PLUGIN_ROOT / "fixtures"
         for d in sorted(p for p in fixtures_root.iterdir() if p.is_dir()):
             skill = skill_for_fixture(d.name, manifest)
-            if skill is None:
-                continue
             checked += validate_run_dir(d, skill, manifest, findings)
     else:
         if not args.skill:

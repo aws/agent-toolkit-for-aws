@@ -320,6 +320,62 @@ def test_fixtures_pass_with_baseline_and_no_stale_entries():
     assert report["stale_baseline_entries"] == [], "remove baseline entries that no longer match anything"
 
 
+def test_neutral_matrix_shared_artifacts_extend_the_mapped_fixture_count():
+    manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
+    fixtures_root = PLUGIN_ROOT / "fixtures"
+    matrix = fixtures_root / "ai-migration-matrix"
+    shared_artifacts = [p for p in va.find_artifacts(matrix) if p.name in manifest["shared"]]
+    assert sum(p.name == ".phase-status.json" for p in shared_artifacts) == 14
+    assert sum(p.name == "integration-validation.json" for p in shared_artifacts) == 7
+    assert not any(p.name.startswith("expected-") for p in va.find_artifacts(matrix))
+
+    matrix_findings = []
+    matrix_checked = va.validate_run_dir(matrix, None, manifest, matrix_findings)
+    assert matrix_checked == len(shared_artifacts)
+    assert matrix_findings == []
+
+    mapped_checked = 0
+    mapped_findings = []
+    for fixture_dir in sorted(p for p in fixtures_root.iterdir() if p.is_dir()):
+        skill = va.skill_for_fixture(fixture_dir.name, manifest)
+        if skill is not None:
+            mapped_checked += va.validate_run_dir(fixture_dir, skill, manifest, mapped_findings)
+
+    r = _run("--fixtures", "--json")
+    assert r.returncode == 0, r.stdout + r.stderr
+    report = json.loads(r.stdout)
+    assert report["checked_artifacts"] - mapped_checked == len(shared_artifacts)
+
+
+def test_invalid_neutral_shared_artifacts_fail_their_schemas(tmp_path: Path):
+    matrix = PLUGIN_ROOT / "fixtures" / "ai-migration-matrix"
+    manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
+    mutations = {
+        ".phase-status.json": lambda value: value.pop("migration_id"),
+        "integration-validation.json": lambda value: value.pop("run_id"),
+    }
+    for name, mutate in mutations.items():
+        source = next(matrix.rglob(name))
+        value = json.loads(source.read_text())
+        mutate(value)
+        neutral = tmp_path / name.lstrip(".")
+        neutral.mkdir()
+        (neutral / name).write_text(json.dumps(value))
+        findings = []
+        assert va.validate_run_dir(neutral, None, manifest, findings) == 1
+        assert any(f.code == "SCHEMA_VIOLATION" for f in findings), findings
+
+
+def test_neutral_fixture_skips_provider_artifacts_and_expected_snapshots(tmp_path: Path):
+    manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
+    (tmp_path / "gcp-resource-inventory.json").write_text("{}")
+    (tmp_path / "expected-artifacts.json").write_text("not json")
+    findings = []
+    assert va.validate_run_dir(tmp_path, None, manifest, findings) == 0
+    assert findings == []
+    assert [p.name for p in va.find_artifacts(tmp_path)] == ["gcp-resource-inventory.json"]
+
+
 def test_injected_off_contract_key_fails(tmp_path: Path):
     """The regression this tool exists for: a producer emits a key its contract never
     documented. Copy a golden run, plant the key, expect exit 1 naming the path."""
