@@ -260,6 +260,10 @@
           }
         ]
       },
+      "aws-design-ai.json": {
+        "shape": "skills/azure-to-aws/references/shared/schema-design-aws-ai.md",
+        "root_heading": "Shape"
+      },
       "estimation-infra.json": {
         "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
       },

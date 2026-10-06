@@ -266,10 +266,19 @@ rubric file (`ai.md`, a provider-to-Bedrock mapping guide, or a `vendored/ai/*` 
 
 ## Status — target-only, no producer yet
 
-This canonical contract has no producer in this change. `design-ai.md` (GCP and Azure) still
-writes against the prior Azure-only `metadata.ai_source` scalar documented in each skill's own
-`references/shared/schema-design-aws-ai.md` (Azure) / absence of a contract (GCP). Repointing
-either skill's `design-ai.md` to emit this shape is deferred runtime-adoption work, named
-explicitly so a future PR does not silently assume today's runtime output already satisfies
-this contract. `estimate-ai.md` and `generate-artifacts-ai.md` are unchanged and still read
-today's artifact shape.
+This canonical contract has no producer in this change. The CURRENT emission contract for
+Azure's `aws-design-ai.json` is still
+`skills/azure-to-aws/references/shared/schema-design-aws-ai.md` — the single-scalar
+`metadata.ai_source` shape (MUST equal `summary.ai_source` from the profile) that `design.md`,
+`design-ai.md`, and `estimate-ai.md` read and assert today. `scripts/artifact-contracts.json`'s
+`azure-to-aws` entry for `aws-design-ai.json` shadows the shared `json_schema` entry with that
+file's `Shape` block for exactly this reason: Azure's actual runtime output has not changed.
+GCP has no `aws-design-ai.json` contract today, so GCP's artifacts (if any) validate directly
+against this canonical, target-only schema.
+
+This document (and its companion JSON Schema, `scripts/contracts/aws-design-ai.schema.json`)
+is the TARGET contract — the many-valued `ai_sources[]`/`gateways[]` shape neither skill's
+`design-ai.md` emits yet. Repointing either skill's `design-ai.md` to emit this shape is
+deferred runtime-adoption work, named explicitly so a future PR does not silently assume
+today's runtime output already satisfies this contract. `estimate-ai.md` and
+`generate-artifacts-ai.md` are unchanged and still read today's artifact shape.

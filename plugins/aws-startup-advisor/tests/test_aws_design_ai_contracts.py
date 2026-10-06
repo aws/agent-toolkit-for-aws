@@ -20,6 +20,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_ROOT = PLUGIN_ROOT / "fixtures" / "aws-design-ai"
 DESIGN_AI_SCHEMA = PLUGIN_ROOT / "scripts" / "contracts" / "aws-design-ai.schema.json"
 VALIDATOR_PATH = PLUGIN_ROOT / "scripts" / "validate-artifacts.py"
+MANIFEST_PATH = PLUGIN_ROOT / "scripts" / "artifact-contracts.json"
 WORKLOAD_PROFILE_TEST_PATH = Path(__file__).resolve().parent / "test_ai_workload_profile_contracts.py"
 
 
@@ -195,3 +196,110 @@ def test_fabricated_unknown_model_in_metadata_is_rejected() -> None:
     design["metadata"]["ai_sources"][0]["models"] = ["unknown"]
     design["metadata"]["ai_sources"][0]["model_observations"][0]["normalized_model"] = "unknown"
     assert _design_ai_findings(design) != []
+
+
+def test_observed_source_with_empty_model_observations_is_rejected_by_profile_semantics() -> None:
+    """The schema's observed branch (model_evidence: 'observed') only requires models[]
+    non-empty; it does not require model_observations[] non-empty (Draft-07 cannot express
+    the models[]/model_observations[] correspondence without $data). The projected-profile
+    semantic oracle (#415's _assert_profile_semantics, reused unmodified) already closes
+    this gap, so this is the lock: clearing model_observations on an observed source must
+    still pass the schema but fail the semantic oracle."""
+    design = _base_design()
+    anthropic = next(s for s in design["metadata"]["ai_sources"] if s["provider"] == "anthropic")
+    anthropic["model_observations"] = []
+    assert _design_ai_findings(design) == []  # schema alone accepts this — expected, not the lock
+    profile = _project_to_profile(design)
+    with pytest.raises(AssertionError):
+        WORKLOAD_PROFILE._assert_profile_semantics(profile)
+
+
+# --------------------------------------------------------------------------- model traceability
+
+
+def _assert_model_traceability(design: dict) -> None:
+    """Every design_blocks[].model_id MUST trace to a metadata.ai_sources[] entry (directly)
+    or a metadata.gateways[].upstreams[] entry (through a gateway upstream model_family) —
+    schema-design-aws-ai.md's model_id provenance rule. Draft-07 cannot express this
+    cross-array correspondence without $data, so this helper is the lock, mirroring the
+    pattern _assert_profile_semantics already established for ai_sources[]/gateways[]
+    internal consistency."""
+    reachable_models: set[str] = set()
+    for source in design["metadata"]["ai_sources"]:
+        reachable_models.update(source["models"])
+    for gateway in design["metadata"]["gateways"]:
+        for upstream in gateway["upstreams"]:
+            for family in upstream["model_families"]:
+                reachable_models.update(family["models"])
+    for block in design["design_blocks"]:
+        assert block["model_id"] in reachable_models, (
+            f"design_blocks[] model_id {block['model_id']!r} traces to no "
+            f"metadata.ai_sources[] entry or metadata.gateways[] upstream"
+        )
+
+
+@pytest.mark.parametrize("fixture_path", POSITIVE_FIXTURES, ids=lambda p: p.parent.name)
+def test_positive_fixtures_have_traceable_design_block_models(fixture_path: Path) -> None:
+    design = _load(fixture_path)
+    _assert_model_traceability(design)
+
+
+def test_design_block_naming_an_untraceable_model_is_rejected() -> None:
+    design = _base_design()
+    design["design_blocks"][0]["model_id"] = "made-up-model"
+    with pytest.raises(AssertionError):
+        _assert_model_traceability(design)
+
+
+# --------------------------------------------------------------------------- manifest shadowing (Azure)
+
+
+def _azure_scalar_design() -> dict:
+    """A document matching Azure's OLD single-scalar metadata.ai_source shape — the shape
+    Azure's design-ai.md actually emits today (schema-design-aws-ai.md, restored from #415's
+    head). Everything else matches the canonical top-level shape so only `metadata` differs."""
+    design = _base_design()
+    design["metadata"] = {
+        "ai_source": "azure_openai",
+        "bedrock_models_selected": design["metadata"]["bedrock_models_selected"],
+        "regional_validation": design["metadata"]["regional_validation"],
+    }
+    return design
+
+
+def test_azure_scalar_ai_source_validates_under_the_restored_azure_shape_contract() -> None:
+    """Validated AS skill=azure-to-aws, the scalar document follows the restored Shape
+    contract at skills/azure-to-aws/references/shared/schema-design-aws-ai.md and is
+    accepted — Azure's own manifest entry shadows the shared target-only schema."""
+    manifest = VALIDATOR.load_manifest(MANIFEST_PATH)
+    findings: list = []
+    contracts = VALIDATOR.build_contracts(manifest, "azure-to-aws", findings)
+    matched = [c for c in contracts if c.artifact_glob == "aws-design-ai.json"]
+    assert len(matched) == 1
+    assert matched[0].shape is not None, (
+        "azure-to-aws must shadow the shared aws-design-ai.json schema with its own Shape "
+        "contract, or Azure's actual scalar emission is validated against the target-only "
+        "schema and rejected"
+    )
+    design = _azure_scalar_design()
+    design_findings: list = []
+    VALIDATOR.validate_shape(matched[0].shape.root, design, "", "design", matched[0].shape.label, design_findings)
+    assert design_findings == []
+
+
+def test_azure_scalar_ai_source_fails_the_target_only_schema_with_no_skill() -> None:
+    """The SAME scalar document, validated with no skill (shared contracts only), fails the
+    target schema: additionalProperties:false on metadata plus missing
+    ai_sources/gateways/regional_validation-shaped required fields."""
+    manifest = VALIDATOR.load_manifest(MANIFEST_PATH)
+    findings: list = []
+    contracts = VALIDATOR.build_contracts(manifest, None, findings)
+    matched = [c for c in contracts if c.artifact_glob == "aws-design-ai.json"]
+    assert len(matched) == 1
+    assert matched[0].json_schema is not None
+    design = _azure_scalar_design()
+    design_findings: list = []
+    VALIDATOR.validate_json_schema(
+        matched[0].json_schema, design, "", "design", matched[0].json_schema_path, design_findings
+    )
+    assert design_findings != []
