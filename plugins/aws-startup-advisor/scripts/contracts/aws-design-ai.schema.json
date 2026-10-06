@@ -82,7 +82,7 @@
         }
       },
       "oneOf": [
-        {"properties": {"model_evidence": {"const": "observed"}, "models": {"minItems": 1}}},
+        {"properties": {"model_evidence": {"const": "observed"}, "models": {"minItems": 1}, "model_observations": {"minItems": 1}}},
         {"properties": {"model_evidence": {"const": "not_observed"}, "models": {"maxItems": 0}, "model_observations": {"maxItems": 0}}}
       ]
     },

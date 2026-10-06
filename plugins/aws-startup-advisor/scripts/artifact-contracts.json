@@ -60,6 +60,10 @@
         "shape": "skills/gcp-to-aws/references/shared/schema-discover-ai.md",
         "root_heading": "ai-workload-profile.json"
       },
+      "aws-design-ai.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-design-aws-ai.md",
+        "root_heading": "Shape"
+      },
       "preferences.json": {
         "shape": "skills/gcp-to-aws/references/shared/schema-preferences.md",
         "root_heading": "Top-level shape",
