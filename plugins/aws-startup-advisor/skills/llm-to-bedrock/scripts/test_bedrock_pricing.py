@@ -38,7 +38,7 @@ def test_static_fallback_opus_4_8_rate_is_5_and_25_per_1m():
         assert entry["input_per_1k_usd"] == 0.005, key
         assert entry["output_per_1k_usd"] == 0.025, key
     # Dated forms are built by concatenation: Opus 4.8 Bedrock IDs are undated
-    # (tools/model-id-lint.py), but a stale plan can still carry a fabricated
+    # (scripts/model-id-lint.py), but a stale plan can still carry a fabricated
     # dated form and the lookup must repair it rather than lose the price.
     for model_id in ("anthropic.claude-opus-4-8",
                      "us.anthropic.claude-opus-4-8",
@@ -66,7 +66,7 @@ def test_static_fallback_keeps_sonnet_4_6():
 def test_static_fallback_dated_id_matches_undated_key():
     # A dated ID form (even a fabricated one from a stale plan) should still
     # resolve to the undated table key after the date stamp is stripped.
-    # Built by concatenation so tools/model-id-lint.py doesn't flag a literal
+    # Built by concatenation so scripts/model-id-lint.py doesn't flag a literal
     # fabricated ID — this test exists precisely to handle such broken inputs.
     dated_id = "us.anthropic.claude-sonnet-4-6" + "-20250514-v1:0"
     out = bp._static_fallback(dated_id)
