@@ -1,19 +1,16 @@
-# Scheduled freshness gate for the Bedrock model-lifecycle registry.
+# Freshness gate for the Bedrock model-lifecycle registry.
 #
-# The design/estimate phases pick Bedrock models against a vendored
-# `ai-model-lifecycle.md` registry (Active/Legacy/EOL table + the 90-day
-# exclusion rule). That registry declares its own freshness contract
-# (**Last updated** + **Staleness window**), but nothing enforced it — a
-# snapshot that quietly crosses its window silently degrades every model
-# recommendation (a model can go Active -> Legacy -> gone in a 45-day Legacy
-# period). `mise run lint:model-staleness` reports staleness warn-only (a stale
-# registry must not fail unrelated PRs); this weekly job runs the same tool with
-# --strict so staleness becomes a visible failure someone owns, prompting a
-# data-refresh PR. Strict mode also fails on a drifted vendored copy.
+# Runs on pull requests that touch plugins/aws-startup-advisor/, not on every
+# PR and not on a schedule. A failing check is the notification: it shows on
+# the pull request. --strict also fails once the registry's Last updated date
+# crosses its staleness window, so the author of the plugin change owns the
+# refresh. Drift and a malformed contract fail in either mode.
 name: Model lifecycle staleness
 on:
-  schedule:
-    - cron: "23 14 * * 1" # weekly, Monday
+  pull_request:
+    paths:
+      - "plugins/aws-startup-advisor/**"
+      - ".github/workflows/model-staleness.yml"
   workflow_dispatch: {}
 permissions:
   actions: none
@@ -26,6 +23,5 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
       - name: Check Bedrock model-lifecycle registry freshness (strict)
         run: python3 plugins/aws-startup-advisor/tools/model-staleness.py --strict

@@ -6,9 +6,10 @@
 > `references/vendored/ai/ai-model-lifecycle.md`. Edit HERE, then copy over
 > every vendored copy in the same change. Drift between the copies (or a
 > missing / malformed freshness contract below) fails
-> `python3 plugins/aws-startup-advisor/tools/model-staleness.py` — and
-> pull-request CI — regardless of flags. A stale **Last updated** date fails
-> only the weekly job (`--strict`).
+> `python3 plugins/aws-startup-advisor/tools/model-staleness.py` regardless of
+> flags. The same check runs in CI only on pull requests that touch
+> `plugins/aws-startup-advisor/`, with `--strict`, so a stale **Last updated**
+> date fails that pull request rather than a scheduled job.
 
 <!-- freshness-contract: enforced by plugins/aws-startup-advisor/tools/model-staleness.py -->
 
@@ -171,6 +172,6 @@ When refreshing the cache, recompute `days_to_eol` and refresh the `active` / `l
 
 **Newer models are not covered by the table.** A model launched on or after 2026-09-07 will never appear in the Legacy/EOL table above, and its absence is not evidence that it is Active. When a candidate is not in the table, verify it by calling `GetFoundationModel` (or `ListFoundationModels`) and reading `modelLifecycle.status`: `LEGACY` and `EOL` are never valid targets for a new migration. If the model is Legacy, read its model card for the actual EOL date and whether the Legacy period is 6 months or 45 days. If neither the API nor the card is reachable, treat the model's lifecycle as **unverified** and say so in the output rather than inferring `active` from a `Status` column in a pricing cache.
 
-**Periodic table refresh:** When the table itself needs updating (new models added, EOL dates changed by AWS, or past-EOL rows to remove), update this file and `pricing-cache.md` together. Edit the canonical `skills/shared/ai/ai-model-lifecycle.md`, then copy it over every vendored copy in the same change so they stay byte-identical. Bump the **Last updated** line at the top of this file. `plugins/aws-startup-advisor/tools/model-staleness.py` fails pull-request CI when a vendored copy has drifted or the freshness contract is missing/malformed, and additionally fails under `--strict` once this snapshot crosses the 45-day staleness window.
+**Periodic table refresh:** When the table itself needs updating (new models added, EOL dates changed by AWS, or past-EOL rows to remove), update this file and `pricing-cache.md` together. Edit the canonical `skills/shared/ai/ai-model-lifecycle.md`, then copy it over every vendored copy in the same change so they stay byte-identical. Bump the **Last updated** line at the top of this file. `plugins/aws-startup-advisor/tools/model-staleness.py` fails when a vendored copy has drifted or the freshness contract is missing/malformed. CI runs that check with `--strict` only for pull requests that touch `plugins/aws-startup-advisor/`, so a snapshot past the 45-day staleness window fails those pull requests.
 
 **Past-EOL rows:** Once `days_to_eol ≤ 0`, move the model out of the live table into **Removed**, and grep this plugin's skill trees for the model ID to catch any remaining reference to it as a target. Keep the Removed entry long enough that users already on the model still get a warning.
