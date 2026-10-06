@@ -332,6 +332,8 @@
         "azure-openai",
         "entra-id",
         "blob-storage",
+        "bicep",
+        "arm-template",
         "devops-agent",
         "incident-response",
         "root-cause-analysis",
