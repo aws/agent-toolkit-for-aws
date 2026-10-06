@@ -181,6 +181,47 @@ def test_combined_validation_references_both_tracks_and_all_categories() -> None
             assert result["references"]
 
 
+def test_integration_validation_accepts_uppercase_and_lowercase_run_ids(tmp_path: Path) -> None:
+    source = FIXTURE_ROOT / "combined-gcp-gemini" / "integration-validation.json"
+    run_ids = {
+        "uppercase": ("ABCDEF12-ABCD-4ABC-8DEF-ABCDEF123456", 0),
+        "lowercase": ("abcdef12-abcd-4abc-8def-abcdef123456", 0),
+        "malformed": ("not-a-uuid", 1),
+    }
+
+    for label, (run_id, expected_returncode) in run_ids.items():
+        validation = _load(source)
+        validation["run_id"] = run_id
+        case_dir = tmp_path / label
+        case_dir.mkdir()
+        (case_dir / "integration-validation.json").write_text(json.dumps(validation))
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ARTIFACT_VALIDATOR),
+                "--run-dir",
+                str(case_dir),
+                "--skill",
+                "gcp-to-aws",
+                "--manifest",
+                str(ARTIFACT_MANIFEST),
+                "--no-baseline",
+                "--json",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        assert result.returncode == expected_returncode
+        findings = json.loads(result.stdout)["errors"]
+        if expected_returncode == 0:
+            assert findings == []
+        else:
+            assert any(finding["code"] == "SCHEMA_VIOLATION" for finding in findings)
+
+
 def test_success_verdict_rejects_any_failed_child(tmp_path: Path) -> None:
     source = FIXTURE_ROOT / "combined-gcp-gemini" / "integration-validation.json"
     failed_children = [

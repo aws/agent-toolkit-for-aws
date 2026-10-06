@@ -8,7 +8,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {"const": "1.0"},
-    "run_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "run_id": {"type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},
     "verdict": {"enum": ["passed", "failed"]},
     "track_results": {
       "type": "object",

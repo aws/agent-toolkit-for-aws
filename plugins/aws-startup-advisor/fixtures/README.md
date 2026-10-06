@@ -2,7 +2,7 @@
 
 Also see:
 
-- `ai-migration-matrix/` — target-only contract snapshots for infrastructure-only, AI-only, and combined migration modes. These fixtures do not claim current runtime support. They keep infrastructure source, AI provider/model family, and router/gateway independent; combined cases use one `.phase-status.json` and a separate `integration-validation.json` cross-track verdict.
+- `ai-migration-matrix/` — target-only contract snapshots for infrastructure-only, AI-only, and combined migration modes. These fixtures do not claim current runtime support. They keep infrastructure source, AI provider/model family, and router/gateway independent; combined cases use one `.phase-status.json` and a separate `integration-validation.json` cross-track verdict. The two combined OpenRouter cases deliberately pair different infrastructure sources with different underlying providers/models (GCP + OpenAI/GPT and Azure + Anthropic/Claude), proving that OpenRouter is an infrastructure-independent gateway rather than duplicating one provider case.
 - `heroku-workshop/` — Heroku what-if workshop seed + arm64 reprice snapshot + `check_expected_workshop.py`
 - `heroku-nonweb-scaling/` — Heroku Design seed + golden output for the Horizontal Non-Web Capacity Guard (`eco`/`basic` worker at `quantity: 2` → Fargate) + `check_expected_nonweb_scaling.py`
 - `gcp-workshop/` — GCP what-if workshop seed + graviton reprice + `check_expected_workshop.py`
