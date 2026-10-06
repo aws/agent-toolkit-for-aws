@@ -109,6 +109,49 @@ def test_static_fallback_unknown_returns_none():
     assert out is None
 
 
+def test_global_and_eu_anthropic_prefixes_resolve_to_the_correct_inference_option():
+    """Regression: global.anthropic.* and eu.anthropic.* IDs previously fell through
+    to None (no table entry, no exact-id fallback-table coverage), so a GDPR-driven
+    eu. request or an explicit global. request returned available=false despite the
+    cached model-family prices being known. global. must get the Global/base rate;
+    eu. (same inference-option tier as us., just a different Geo region) must get
+    the same ~10% Geo premium as us. — verified against the AWS Pricing MCP server
+    for both regions (Sonnet 4.6: Global $3/$15, EU Geo $3.30/$16.50, matching the
+    us-east-1 Geo rate exactly)."""
+    cases = {
+        "global.anthropic.claude-sonnet-4-6":                  (0.003, 0.015),
+        "eu.anthropic.claude-sonnet-4-6":                      (0.0033, 0.0165),
+        "global.anthropic.claude-haiku-4-5-20251001-v1:0":     (0.001, 0.005),
+        "eu.anthropic.claude-haiku-4-5-20251001-v1:0":         (0.0011, 0.0055),
+        "global.anthropic.claude-opus-4-8":                    (0.005, 0.025),
+        "eu.anthropic.claude-opus-4-8":                        (0.0055, 0.0275),
+        "global.anthropic.claude-sonnet-5":                    (0.002, 0.010),
+        "eu.anthropic.claude-sonnet-5":                        (0.0022, 0.011),
+    }
+    for model_id, (exp_in, exp_out) in cases.items():
+        out = bp._static_fallback(model_id)
+        assert out is not None, model_id
+        assert out["available"] is True
+        assert out["input_per_1k_usd"] == exp_in, model_id
+        assert out["output_per_1k_usd"] == exp_out, model_id
+
+
+def test_eu_lookup_with_api_unavailable_still_prices_from_the_static_table(monkeypatch):
+    """The reviewed scenario: lookup('eu-west-1', 'eu.anthropic.claude-sonnet-4-6')
+    with the PriceList API unavailable must not return available=false — the static
+    table now has an exact eu. entry, so the API is never reached."""
+    import boto3
+
+    def boom(*a, **k):
+        raise AssertionError("must not call the PriceList API for a static-table model")
+
+    monkeypatch.setattr(boto3, "client", boom)
+    out = bp.lookup("eu-west-1", "eu.anthropic.claude-sonnet-4-6")
+    assert out["available"] is True
+    assert out["input_per_1k_usd"] == 0.0033
+    assert out["output_per_1k_usd"] == 0.0165
+
+
 def test_display_name_guess_derives_pricing_api_display_names():
     # The Pricing API's 'model' attribute holds display names, not model ids.
     assert bp.display_name_guess("us.anthropic.claude-haiku-4-5-20251001-v1:0") == "Claude Haiku 4.5"

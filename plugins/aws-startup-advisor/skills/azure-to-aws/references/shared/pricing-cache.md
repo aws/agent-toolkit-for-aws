@@ -117,10 +117,16 @@ Per 1M tokens unless noted.
 
 | Model             | Batch in | Batch out | 5m cache write | 1h cache write | Cache read |
 | ----------------- | -------- | --------- | -------------- | -------------- | ---------- |
-| Claude Sonnet 5   | 1.00     | 5.00      | 2.50           | 4.00           | 0.20       |
-| Claude Opus 4.8   | 2.50     | 12.50     | 6.25           | 10.00          | 0.50       |
+| Claude Sonnet 5   | 1.00 ‡   | 5.00 ‡    | 2.50           | 4.00           | 0.20       |
+| Claude Opus 4.8   | 2.50 ‡   | 12.50 ‡   | 6.25           | 10.00          | 0.50       |
 | Claude Sonnet 4.6 | 1.50     | 7.50      | 3.75           | 6.00           | 0.30       |
 | Claude Haiku 4.5  | 0.50     | 2.50      | 1.25           | 2.00           | 0.10       |
+
+‡ Not listed on the [batch-supported models table](https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-supported.html)
+as of 2026-10-05 — the figure above is the standard 50%-of-on-demand projection, not a confirmed
+SKU. Mark these batch cells `_unverified_` in estimate output; the `unverified` gate in
+`estimate-ai.md` treats any `_unverified_` row as blocking for a quoted figure — resolve from
+the Bedrock pricing page first before quoting a Sonnet 5 or Opus 4.8 batch savings figure.
 
 ### OpenAI on Bedrock — the same-model path
 
