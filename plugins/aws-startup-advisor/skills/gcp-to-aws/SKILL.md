@@ -255,7 +255,7 @@ Replace `MMDD-HHMM` with the actual migration ID, generate the `last_updated` IS
 
 - Provides `aws___search_documentation`, `aws___read_documentation`, `aws___list_regions`, `aws___get_regional_availability`, `aws___retrieve_skill` tools
 - Used during Design for regional availability checks and documentation lookups.
-- Primary pricing sources: `references/shared/pricing-cache.md` (cached 2026 infrastructure and source-provider rates, ±5-25%) and `references/vendored/ai/bedrock-pricing-cache.md` (provider-neutral Bedrock rates, ±15-25%). Pricing is cache-only — no live pricing MCP.
+- Primary pricing sources: `references/shared/pricing-cache.md` (cached 2026 infrastructure and source-provider rates, ±5-10%) and `references/vendored/ai/bedrock-pricing-cache.md` (provider-neutral Bedrock rates, ±15-25%). Pricing is cache-only — no live pricing MCP.
 
 ---
 

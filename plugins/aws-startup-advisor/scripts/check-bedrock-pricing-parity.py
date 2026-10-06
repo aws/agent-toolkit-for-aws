@@ -22,8 +22,10 @@ PLUGIN = Path(__file__).resolve().parent.parent
 REPO = PLUGIN.parents[1]
 OLD_CACHE = "plugins/aws-startup-advisor/skills/gcp-to-aws/references/shared/pricing-cache.md"
 OLD_SCRIPT = "plugins/aws-startup-advisor/skills/llm-to-bedrock/scripts/bedrock_pricing.py"
+OLD_SKILL = "plugins/aws-startup-advisor/skills/gcp-to-aws/SKILL.md"
 CANONICAL = PLUGIN / "skills/shared/ai/bedrock-pricing-cache.md"
 GCP_CACHE = PLUGIN / "skills/gcp-to-aws/references/shared/pricing-cache.md"
+GCP_SKILL = PLUGIN / "skills/gcp-to-aws/SKILL.md"
 VENDORED = (
     PLUGIN / "skills/gcp-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
     PLUGIN / "skills/azure-to-aws/references/vendored/ai/bedrock-pricing-cache.md",
@@ -71,6 +73,17 @@ def model_rows(text: str) -> dict[str, tuple[str, str]]:
     return rows
 
 
+def pricing_accuracy_bands(text: str) -> tuple[str, str]:
+    line = next(
+        (line for line in text.splitlines() if line.startswith("- Primary pricing source")),
+        None,
+    )
+    assert line, "missing primary pricing source contract"
+    bands = re.findall(r"±\d+-\d+%", line)
+    assert len(bands) == 2, "expected infrastructure and AI pricing accuracy bands"
+    return bands[0], bands[1]
+
+
 def load_module(path: Path, name: str):
     module = types.ModuleType(name)
     code = compile(
@@ -110,6 +123,10 @@ def main() -> int:
     old = git_show(OLD_CACHE)
     canonical = CANONICAL.read_text()
     remaining = GCP_CACHE.read_text()
+    old_accuracy = pricing_accuracy_bands(git_show(OLD_SKILL))
+    new_accuracy = pricing_accuracy_bands(GCP_SKILL.read_text())
+
+    assert new_accuracy == old_accuracy, "estimate accuracy metadata changed"
 
     old_bedrock = section(old, "Bedrock Models (On-Demand)")
     new_bedrock = section(canonical, "Bedrock Models (On-Demand)")
@@ -170,6 +187,10 @@ def main() -> int:
         "bedrock_model_lookup_keys": len(new_rows),
         "static_fallback_keys": len(pricing_behavior(after)["table"]),
         "representative_monthly_estimates": new_estimates,
+        "pricing_accuracy_bands": {
+            "infrastructure": new_accuracy[0],
+            "ai_models": new_accuracy[1],
+        },
         "vendored_copies": len(VENDORED),
         "baseline": BASE_SHA,
     }, indent=2, sort_keys=True))
