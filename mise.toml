@@ -29,11 +29,7 @@ run = "uv run --with jsonschema --with pyyaml python tools/validate_spec.py"
 
 [tasks.validate]
 description = "Run all validation"
-depends = ["lint:manifests", "lint:skill-parity", "lint:spec", "lint:startup-telemetry"]
-
-[tasks."lint:startup-telemetry"]
-description = "Check standalone Startup Advisor telemetry bundles and shared DSL copies"
-run = "python3 plugins/aws-startup-advisor/scripts/telemetry/sync_bundles.py --check"
+depends = ["lint:manifests", "lint:skill-parity", "lint:spec"]
 
 [tasks.security]
 description = "Run security scans"

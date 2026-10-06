@@ -80,8 +80,13 @@ python3 scripts/telemetry/sync_bundles.py --write
 python3 scripts/telemetry/sync_bundles.py --check
 ```
 
-The repository's `mise run validate` includes the bundle check. Python 3.8+ is the
-runtime requirement; unavailable Python or a denied tool call skips telemetry.
+After changing a bundled source file or plugin version, run `--write` and commit
+the updated copies. Run `--check` before submitting changes; the telemetry test
+suite also checks bundle parity. These checks are separate from the repository's
+`mise run validate` and `mise run build`.
+
+Python 3.8+ is the runtime requirement; unavailable Python or a denied tool call
+skips telemetry.
 
 ## Migration telemetry
 
