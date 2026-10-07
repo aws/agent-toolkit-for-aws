@@ -21,6 +21,10 @@ recommend Legacy models as primary selections for new migrations.
 
 **Recommend defaults (Sep 2026):** Claude Sonnet 5 (`anthropic.claude-sonnet-5`) for balanced/flagship; Claude Opus 4.8 for hardest reasoning; Claude Haiku 4.5 for cost/speed. Sonnet 5 is **$2/$10** — the launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled); comparison tables below use $2/$10. Do not default to any Claude Fable / Mythos frontier model.
 
+**Sonnet 5.5 release (2026-09-28):** [Claude Sonnet 5.5](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) is a separate model. Its Amazon Bedrock ID is `anthropic.claude-sonnet-5-5`; `claude-sonnet-5-5` is the Claude API / Claude Platform on AWS ID. The defaults, mapping tables, and cached prices in this guide still describe Sonnet 5. Do not relabel those records or promote 5.5 from the release announcement alone; a 5.5 recommendation needs its own model/path, lifecycle, pricing, and compatibility evidence.
+
+For an explicitly requested 5.5 assessment, read its [Bedrock model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html) and [migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide). Turning off up-front thinking uses `thinking: {"type": "between_tools"}` at `high` effort or below; forced `tool_choice` values `any` and `tool` are rejected, and thinking-history reuse has model/conversation constraints. These are model-specific requirements, not a client-only ID swap. The `computer_20251124` removal applies to the Claude API and Google Cloud; Bedrock still accepts that tool.
+
 ---
 
 ## Key Insight: OpenAI's Own Models Run on Bedrock

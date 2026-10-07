@@ -98,6 +98,10 @@ def test_governance_selects_runtime_converse():
     assert rec["decision_status"] == "recommended"
     assert rec["api_path"] == "runtime_converse"
     assert rec["primary_model"] == "anthropic.claude-sonnet-5"
+    assert rec["model_identity"]["display_name"] == (
+        "Claude Sonnet 5 (Converse tier match for GPT-5.6 Terra / 5.5 / 5.4)"
+    )
+    assert rec["model_identity"]["version"] == "5"
 
 
 def test_continuity_plus_runtime_only_returns_decision_required():

@@ -30,6 +30,8 @@ SKUs do not all use the same multiplier; confirm batch/cache and cross-region ro
 that page. See `references/vendored/ai/ai-model-lifecycle.md` for lifecycle detail — **do not
 recommend Legacy/excluded models for new migrations.**
 
+**Sonnet 5.5 release (2026-09-28):** Sonnet 5.5 (`anthropic.claude-sonnet-5-5` on Bedrock) is a distinct model and has no row in this cache yet. Keep the current Sonnet 5 default and rate rows until 5.5 has a separately verified entry. For an explicit 5.5 estimate, apply the unavailable-pricing contract in `estimate-ai.md`; do not silently reuse Sonnet 5 rates. Read the [5.5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide) before recommending its request/response handling.
+
 ### Multi-provider quick reference (per 1M tokens)
 
 | Model             | Model ID                                 | Provider  | Input $/1M | Output $/1M | Context | Tier      | Status                                                                                         |
