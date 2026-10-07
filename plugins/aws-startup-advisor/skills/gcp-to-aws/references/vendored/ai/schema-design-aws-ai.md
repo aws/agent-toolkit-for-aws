@@ -85,6 +85,10 @@ definition `aiSource`). Each entry:
 }
 ```
 
+The JSON Schema (`scripts/contracts/aws-design-ai.schema.json`) enforces `model_observations`
+non-empty whenever `model_evidence == "observed"`, in addition to `models` non-empty — an
+observed source can no longer carry an empty `model_observations[]`.
+
 Semantic uniqueness is the `(provider, source_service)` pair; a design can carry multiple
 simultaneous sources (one Anthropic-sourced workload and one OpenAI-sourced workload in the
 same `aws-design-ai.json` is valid and expected — this is the shape change this canonicalization
@@ -273,8 +277,12 @@ Azure's `aws-design-ai.json` is still
 `design-ai.md`, and `estimate-ai.md` read and assert today. `scripts/artifact-contracts.json`'s
 `azure-to-aws` entry for `aws-design-ai.json` shadows the shared `json_schema` entry with that
 file's `Shape` block for exactly this reason: Azure's actual runtime output has not changed.
-GCP has no `aws-design-ai.json` contract today, so GCP's artifacts (if any) validate directly
-against this canonical, target-only schema.
+GCP now has its own shadow entry mirroring Azure's: `scripts/artifact-contracts.json`'s
+`gcp-to-aws` entry for `aws-design-ai.json` points at
+`skills/gcp-to-aws/references/shared/schema-design-aws-ai.md`, which names GCP's current
+single-scalar `metadata.ai_source` emission (the shape `design-ai.md` writes today) as the
+emission contract, with this file as the target. GCP's actual runtime output has not changed
+either.
 
 This document (and its companion JSON Schema, `scripts/contracts/aws-design-ai.schema.json`)
 is the TARGET contract — the many-valued `ai_sources[]`/`gateways[]` shape neither skill's
