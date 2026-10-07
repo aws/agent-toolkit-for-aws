@@ -1,11 +1,11 @@
 ---
 name: operate-on-aws
-description: "Operate a live AWS workload with AWS DevOps Agent — incident investigation, root-cause analysis, and release-readiness review — for startups with no dedicated DevOps or SRE engineer. Use when a live AWS workload is misbehaving (production is down, 5xx errors, latency spike, timeouts, it broke after the last deploy, an alarm fired, a pasted CloudWatch alarm or stack trace, find the root cause, write a postmortem, no one on call), for pre-merge review (is this PR safe to ship, blast radius), or to set up, pause, stop, or check the cost of AWS DevOps Agent. Detects existing setup first and never re-onboards. Cost, account access, and code egress are separate hard gates: nothing metered is connected before the user has seen the price and said yes. Do not use for: new architecture (architect-for-startups), scaffolding (start-building-for-startups), migrations (gcp-to-aws, azure-to-aws, heroku-to-aws, llm-to-bedrock), or general Activate and credits questions (knowledge-base-for-startups)."
+description: "Operate a live AWS workload with AWS DevOps Agent — incident investigation, root-cause analysis, and release-readiness review — for startups with no dedicated DevOps or SRE engineer. Use when a live AWS workload is misbehaving (production is down, 5xx errors, latency spike, timeouts, it broke after the last deploy, an alarm fired, a pasted CloudWatch alarm or stack trace, find the root cause, write a postmortem, no one on call), for pre-merge review (is this PR safe to ship, blast radius), or to set up, pause, stop, or check the cost of AWS DevOps Agent. Detects existing setup first and never re-onboards. Cost, account access, and code egress are each disclosed in one line with safe defaults: cost and access proceed, code egress stays off unless asked. Do not use for: new architecture (architect-for-startups), scaffolding (start-building-for-startups), migrations (gcp-to-aws, azure-to-aws, heroku-to-aws, llm-to-bedrock), or general Activate and credits questions (knowledge-base-for-startups)."
 ---
 
 # Operate on AWS — AWS DevOps Agent for startups
 
-**Last updated:** 2026-09-30
+**Last updated:** 2026-10-05
 
 ## Philosophy
 
@@ -14,15 +14,16 @@ the product are also the on-call rotation. AWS DevOps Agent investigates inciden
 probable root cause, and proposes fixes — but it is **metered**, and on most startup accounts it is paid
 for with AWS Activate credits the founder budgeted against runway.
 
-So this skill has two non-negotiable rules:
+So this skill has three non-negotiable rules:
 
-> **1. Never connect or enable AWS DevOps Agent before the user has seen what it costs and said yes.**
+> **1. Never connect or enable AWS DevOps Agent without first telling the user what it costs.** One line,
+> then proceed — the default is to continue. If they object, stop.
 >
-> **2. Never enable anything that copies their source code out of their AWS account without a separate,
-> explicit yes.** Cost consent is not code consent. Ask again, ask plainly, and default to off.
+> **2. Never enable anything that copies their source code out of their AWS account unless they ask for
+> it.** The default is off. Say that it is off and how to turn it on; do not ask them to choose.
 >
-> **3. Never grant the agent access to their AWS account without a separate, explicit yes.** Cost consent
-> is not access consent either. This is the broadest permission in the flow — see Phase 2.5.
+> **3. Never grant the agent access to their AWS account without saying what that access is.** One line
+> on what the role allows and how to revoke it, then create it — see Phase 2.5.
 
 A startup running on credits is spending money it has budgeted against runway. Nobody should learn what
 something costs from a bill. Tell them first, every time, including when they are in a hurry.
@@ -73,7 +74,7 @@ any of them.
 |---|---|
 | Invoking this skill, DETECT, ASSESS | **nothing** |
 | DISCLOSE with real numbers | AWS credentials in the environment. Degrades to general pricing without them |
-| ACCESS gate | **nothing** — it is a conversation, and it happens before any write |
+| ACCESS notice | **nothing** to give it; creating the role in SET UP needs IAM write |
 | SET UP (Agent Space, monitoring role, association) | AWS credentials **with IAM write**. No console, no browser |
 | CONNECT, OPERATE | AWS credentials (SigV4) or a bearer token |
 
@@ -101,31 +102,42 @@ down.
 
 ## State machine
 
-Phases run in order. **DISCLOSE gates CONNECT.** There is no path from ASSESS to CONNECT.
+Phases run in order. **DISCLOSE always comes before CONNECT.** There is no path from ASSESS to CONNECT that
+skips telling the user the cost.
 
 ```
 DETECT ──▶ already connected? ──▶ OPERATE
    │
    └──▶ ASSESS ──▶ DISCLOSE ──▶ ACCESS ──▶ SET UP ──▶ CONNECT ──▶ OPERATE
                       │           │
-                      └───────────┴──▶ (user declines) ──▶ STOP. Leave nothing configured.
+                      └───────────┴──▶ (user objects) ──▶ STOP. Roll back what this setup created.
 ```
 
 | Phase | Goal | Exit condition |
 |---|---|---|
 | DETECT | Find out what already exists | Connection state known |
 | ASSESS | Work out which half of the product fits, if either | User's stage and workload state are known |
-| DISCLOSE | Show cost, credit impact, and how to stop | **User has explicitly confirmed** |
-| ACCESS | Show what the agent will be able to see, and how to revoke it | **User has explicitly confirmed** |
+| DISCLOSE | Show cost, credit impact, and how to stop | Cost notice given (default: proceed) |
+| ACCESS | Show what the agent will be able to see, and how to revoke it | Access notice given (default: create the role) |
 | SET UP | Create the Agent Space | A workspace exists in the right region |
 | CONNECT | Create the connection | MCP server reachable, a test call succeeds |
 | OPERATE | Investigate, review, report | — |
 
 SET UP comes **after** DISCLOSE deliberately. Creating an Agent Space is a write to the user's account, so
-it belongs on the far side of the consent gate, not before it.
+the user hears what it costs and what it can see before anything is written.
 
-If the user asks to skip ahead — *"just set it up"* — you still run DISCLOSE. Keep it to a few lines, but
-run it. Consent that was never informed is not consent.
+The notices do not wait for an answer. Give them, then carry on with the defaults: **cost — proceed;
+access — create the role; code egress — off.**
+
+What "stop" means depends on where they are:
+
+- **During onboarding** (before CONNECT succeeds), an objection cancels setup. Stop and roll back what this
+  setup created. Never touch anything that existed before it.
+- **After setup**, "stop" means stop the work, not remove the setup. Cancel the running task or pause the
+  agent as described in [`references/stopping.md`](references/stopping.md). Keep the Agent Space, role, and
+  investigation records. Delete resources only when the user explicitly asks to remove them.
+
+If the user asks to skip ahead — *"just set it up"* — you still give the notices. Keep them to a line each.
 
 ## Phase 0 — DETECT (always first)
 
@@ -158,12 +170,13 @@ to review — and none of them discloses cost. So a user connected through it ma
 investigation costs. Whichever skill's flow ends up running, these still hold:
 
 - **Before the first investigation in a session** on a connection this skill did not set up, give the cost
-  in one line — about $2.50–$4.00 per investigation, billed per second, and how to cancel — and wait for a
-  yes. Once per session; do not repeat it before every investigation.
-- **Before first-time setup**, run DISCLOSE and ACCESS in full, even if that plugin's setup flow is the one
-  writing the MCP configuration.
-- **Before a release review with automated testing**, ask the code-egress question in
-  [`references/release-review.md`](references/release-review.md) on its own, and keep the default off.
+  in one line — about $2.50–$4.00 per investigation, billed per second, and how to cancel — then proceed.
+  Once per session; do not repeat it before every investigation.
+- **Before first-time setup**, give the DISCLOSE and ACCESS notices, even if that plugin's setup flow is the
+  one writing the MCP configuration.
+- **Before a release review**, keep automated testing off unless the user asks for it. This also applies
+  when that plugin runs the review: pass `skip_automated_testing=true` and do not relay its testing
+  question. See [`references/release-review.md`](references/release-review.md).
 - **One connection only.** Never register a second DevOps Agent MCP server alongside `aws-devops-agent`.
 
 ## Phase 1 — ASSESS
@@ -226,13 +239,13 @@ Four cases where the honest recommendation is no. Check for them before recommen
 ### Whose money is it?
 
 At this size the AWS account is often the founder's, and the person in the chat may not be the founder.
-Before enabling anything metered, ask once:
+Fold one clause into the cost notice rather than asking a separate question:
 
-> "This draws on your AWS account's credits — are you the right person to okay that, or is there someone
-> else who'd want to know?"
+> "This draws on your AWS account's credits — if someone else signs off on that spend, tell me and I'll
+> hold off."
 
 An engineer switching on a metered agent on the company account without the founder knowing is a bad
-outcome, and it is common at three people. Asking costs one line.
+outcome, and it is common at three people. Saying so costs one clause.
 
 Route on the answers:
 
@@ -271,14 +284,13 @@ Three rules for this moment:
   call, and the region, MCP config, auth and verification are all yours too. Nothing here needs the
   console or needs them. Say so — an offer to set it up in the background costs them nothing, which is a
   much better offer than "go click through a console while your site is down".
-- **Keep the disclosure short here.** The DISCLOSE gate still runs — consent that was never informed is
-  not consent — but a founder mid-outage needs the rate, whether credits cover it, and how to stop. Three
-  lines, not the full walkthrough.
+- **Keep the disclosure short here.** The cost notice still comes first, but a founder mid-outage needs
+  only the rate, whether credits cover it, and how to stop — one or two lines, then carry on.
 
 If they choose to wait, come back to it once the incident is resolved. That is when the value is most
 obvious, and it makes a better first impression than an interrupted wizard.
 
-## Phase 2 — DISCLOSE (hard gate)
+## Phase 2 — DISCLOSE (cost notice)
 
 Cover four things. Be specific; do not round the numbers away.
 
@@ -312,7 +324,8 @@ release-readiness review, which is free during preview and prevents a share of t
 afford to investigate. Saying "you'd get more from spending this on compute" to someone you could sell to
 is what makes every other recommendation credible.
 
-Still their call. Recommend against; do not refuse.
+Still their call. Recommend against, then wait for their answer before setting up — this is the one case
+where the cost notice ends on a question. Do not refuse.
 
 The stance does not need the data. If credits are unreadable, give the qualitative version rather than
 skipping the conversation.
@@ -320,68 +333,54 @@ skipping the conversation.
 **3. What it will not do.** DevOps Agent proposes fixes; the user approves them. Nothing is applied to
 their account without an explicit decision. Say this — it is the reassurance that makes the rest land.
 
-**4. How to stop it.** Before they say yes, not after. See [`references/stopping.md`](references/stopping.md).
+**4. How to stop it.** In the same notice, before anything is created. See
+[`references/stopping.md`](references/stopping.md).
 
-**If they are heading for release review, there is a second gate.** Automated verification testing copies
-their repository out of their AWS account. That needs its own explicit approval, separate from this one —
-see [`references/release-review.md`](references/release-review.md). Never fold it into the cost
-confirmation.
+**If they are heading for release review, automated verification testing stays off.** It copies their
+repository out of their AWS account, so it is enabled only when they ask for it — see
+[`references/release-review.md`](references/release-review.md). Mention it in one line; do not ask.
 
-**Then end on the question — do not trail off into the next step.** Something like:
+**Then carry on — do not wait for a yes.** Keep it to a line or two, something like:
 
-> "That's the whole cost picture. Do you want me to go ahead? Nothing is enabled until you say so."
+> "Heads up on cost: about $29.88 per agent-hour, roughly $2.50–$4.00 per investigation, billed per second.
+> No Activate credits found on this account, so it would bill to your payment method. Say stop at any time
+> and I'll pause it. Continuing with setup."
 
-If they decline, stop cleanly and leave nothing configured. Do not re-ask later in the same session.
+If they object before setup finishes, stop cleanly and roll back what this setup created. Do not raise it
+again in the same session. A "stop" once setup is done means pause or cancel, not remove. See the state
+machine above.
 
-## Phase 2.5 — ACCESS (second hard gate)
+## Phase 2.5 — ACCESS (access notice)
 
-Runs after DISCLOSE and **before anything is created**. Cost consent is not access consent, the same way
-cost consent is not code consent.
+Runs after DISCLOSE and **before the role is created**. The default is to create it; the notice exists so
+the founder knows what was granted and how to take it back.
 
-This is where the founder grants AWS DevOps Agent read access across their AWS account. It is the largest
-permission in the whole flow and, until now, the only one with no gate — while a $3 investigation had
-runway arithmetic. Fix that here.
+This is where AWS DevOps Agent gets read access across their AWS account. It is the largest permission in
+the whole flow, so it is never granted silently.
 
 **Assume they do not know what an IAM role is.** Lead with what it does, give the real name second — the
 same pattern as Agent Space, and for the same reason: they will see the term in the console, and they may
 need to forward it to whoever holds IAM rights.
 
-Say roughly this, adjusted to what you already know about them:
+Say roughly this, adjusted to what you already know about them, then go on to create it:
 
-> "Before I create anything — DevOps Agent needs permission to look at this AWS account, so it can work
-> out what you're actually running: which services exist, how they connect, what's healthy. Without that
-> there's nothing for it to investigate.
->
-> That permission takes the form of an **IAM role** — AWS's way of granting access. It gets created in
-> your account, and it's yours.
->
-> Three things worth knowing before you say yes:
->
-> - **It's broad, on purpose.** The agent can't map your architecture without seeing all of it, so the
->   access covers the account. AWS's own policy for this is `AIDevOpsAgentAccessPolicy`.
-> - **It's read-only.** Nothing it can reach lets it change your infrastructure. Separately, when it does
->   find a fix later, it shows you — applying it is always your call.
-> - **Only your workspace can use it.** The role is written so that only the Agent Space in this account
->   can assume it. No other AWS account can, including anyone else's.
->
-> Taking it away is one step: delete the role, or delete the workspace.
->
-> Are you happy for me to create it? Nothing happens until you say so — and if you would rather have
-> someone look at it first, I can give you the role name and the policy to send them."
+> "DevOps Agent needs permission to look at this AWS account so it can work out what you're running. I'm
+> creating a read-only **IAM role** for that (AWS's `AIDevOpsAgentAccessPolicy`) — account-wide on
+> purpose, and only your Agent Space can use it. To revoke it, delete the role or the workspace."
 
-**End on the question, every time.** A gate that explains and then trails off is not a gate. The founder
-should be in no doubt that (a) they are being asked, (b) nothing has happened yet, and (c) "not yet" is a
-real answer with a real next step rather than a dead end.
+Rules for this notice:
 
-Rules for this gate:
-
-- **Never create the role before they answer.** Same standard as DISCLOSE.
+- **Check the identity can create the role first** — the permission check in
+  [`references/readiness.md`](references/readiness.md). If it can, create the role. If it cannot, this is
+  not a question for the founder but a blocker: say which action was denied and give them the forwardable
+  version for whoever holds IAM rights — role name, the trust policy from `references/connecting.md`, and
+  the managed policy ARN.
 - **Do not oversell the guardrail.** "Only your workspace can use it" is true and specific. Do not stretch
   it into "it's completely safe" — they are granting account-wide read and should know that plainly.
-- **If they decline**, stop and leave nothing behind. Say what they can still do: release-readiness review
-  needs a repository, not account access, so that path stays open.
-- **If they want someone else to look first**, give them the forwardable version — role name, the trust
-  policy from `references/connecting.md`, and the managed policy ARN. See `references/readiness.md`.
+- **If they object before setup finishes**, delete the role and anything else this setup created. Say what
+  they can still do:
+  release-readiness review needs a repository, not account access, so that path stays open.
+- **If they want someone else to look first**, hold off and give them the forwardable version.
 
 ## Phase 3 — SET UP
 
