@@ -1,5 +1,6 @@
 import json
 import pathlib
+import re
 
 import jsonschema
 import pytest
@@ -420,3 +421,23 @@ def test_catalog_records_path_specific_ids_and_limits():
     assert (
         catalog["models"]["claude_opus_5_5"]["output_token_ceiling"] == 128000
     )
+
+
+@pytest.mark.parametrize("relative_path", [
+    "references/phases/model-recommend/model-recommend.md",
+    "references/phases/model-recommend/model-recommend-assemble.md",
+    "references/decision-refs/model-selection.md",
+])
+def test_current_catalog_readers_match_engine_defaults(relative_path):
+    skill = pathlib.Path(model_recommendation.__file__).parent.parent
+    text = (skill / relative_path).read_text()
+    expected = {
+        model_recommendation.DEFAULT_CATALOG.name,
+        model_recommendation.OPENAI_CATALOG.name,
+    }
+    catalog_pattern = r"(?:anthropic|openai)-bedrock-\d{4}-\d{2}-\d{2}\.json"
+    assert set(re.findall(catalog_pattern, text)) == expected
+    if text.startswith("---\n"):
+        frontmatter = text.split("---", 2)[1]
+        loaded = set(re.findall(r"\bfile:\s*references/models/(" + catalog_pattern + r")", frontmatter))
+        assert loaded == expected
