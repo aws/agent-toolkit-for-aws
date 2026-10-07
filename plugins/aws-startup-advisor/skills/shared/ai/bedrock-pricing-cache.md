@@ -416,7 +416,7 @@ Per 1M tokens. **Nova 2 Omni** and **Nova 2 Pro** are **Preview**. Image column 
 
 #### Creative — US East (N. Virginia)
 
-> **Lifecycle note:** Nova Canvas v1 and Nova Reel v1 are **excluded** — both are Legacy with EOL 2026-09-30, inside the 90-day exclusion zone. Do not list them in recommendation or comparison tables. Rates are retained for users already on them. See `vendored/ai/ai-model-lifecycle.md`.
+> **Lifecycle note:** Nova Canvas v1 and Nova Reel v1 are **past EOL** (2026-09-30) and listed under Removed in `ai-model-lifecycle.md`. Inference requests fail. Do not list them in recommendation or comparison tables. Rates below are historical, retained so users who were on them can see what they paid. See `vendored/ai/ai-model-lifecycle.md`.
 
 **Amazon Nova Canvas** (on-demand, per image): up to **1024×1024** — Standard **$0.04**, Premium **$0.06**; up to **2048×2048** — Standard **$0.06**, Premium **$0.08**.
 
