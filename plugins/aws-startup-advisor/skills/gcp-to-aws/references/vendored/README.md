@@ -37,3 +37,14 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `clarify/clarify-cost-appetite.md`      | `skills/shared/clarify/clarify-cost-appetite.md`      |
 | `clarify/clarify-multicloud.md`         | `skills/shared/clarify/clarify-multicloud.md`         |
 | `clarify/clarify-region.md`             | `skills/shared/clarify/clarify-region.md`             |
+| `telemetry/PROTOCOL.md`                            | `skills/shared/telemetry/PROTOCOL.md`                            |
+| `telemetry/cli.py`                                 | `skills/shared/telemetry/cli.py`                                 |
+| `telemetry/version.json`                           | `skills/shared/telemetry/version.json`                           |
+| `telemetry/consent/accept.py`                      | `skills/shared/telemetry/consent/accept.py`                      |
+| `telemetry/consent/cli.py`                          | `skills/shared/telemetry/consent/cli.py`                          |
+| `telemetry/consent/notice.py`                       | `skills/shared/telemetry/consent/notice.py`                       |
+| `telemetry/consent/opt_out.py`                      | `skills/shared/telemetry/consent/opt_out.py`                      |
+| `telemetry/consent/record.py`                       | `skills/shared/telemetry/consent/record.py`                       |
+| `telemetry/metric_emission/client.py`               | `skills/shared/telemetry/metric_emission/client.py`               |
+| `telemetry/metric_emission/migration.py`            | `skills/shared/telemetry/metric_emission/migration.py`            |
+| `telemetry/metric_emission/migration_attributes.py` | `skills/shared/telemetry/metric_emission/migration_attributes.py` |

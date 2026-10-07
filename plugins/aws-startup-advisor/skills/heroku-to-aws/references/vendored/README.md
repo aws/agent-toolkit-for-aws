@@ -30,3 +30,14 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `estimate/ri-sp-eligibility.md`         | `skills/shared/estimate/ri-sp-eligibility.md`         |
 | `pricing/aws-infra-pricing.json`        | `skills/shared/pricing/aws-infra-pricing.json`        |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
+| `telemetry/PROTOCOL.md`                            | `skills/shared/telemetry/PROTOCOL.md`                            |
+| `telemetry/cli.py`                                 | `skills/shared/telemetry/cli.py`                                 |
+| `telemetry/version.json`                           | `skills/shared/telemetry/version.json`                           |
+| `telemetry/consent/accept.py`                      | `skills/shared/telemetry/consent/accept.py`                      |
+| `telemetry/consent/cli.py`                          | `skills/shared/telemetry/consent/cli.py`                          |
+| `telemetry/consent/notice.py`                       | `skills/shared/telemetry/consent/notice.py`                       |
+| `telemetry/consent/opt_out.py`                      | `skills/shared/telemetry/consent/opt_out.py`                      |
+| `telemetry/consent/record.py`                       | `skills/shared/telemetry/consent/record.py`                       |
+| `telemetry/metric_emission/client.py`               | `skills/shared/telemetry/metric_emission/client.py`               |
+| `telemetry/metric_emission/migration.py`            | `skills/shared/telemetry/metric_emission/migration.py`            |
+| `telemetry/metric_emission/migration_attributes.py` | `skills/shared/telemetry/metric_emission/migration_attributes.py` |

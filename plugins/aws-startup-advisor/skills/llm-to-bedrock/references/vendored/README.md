@@ -20,30 +20,8 @@ edit to a `skills/shared/` file this skill vendors, or a deleted copy, cannot me
 unnoticed. What CI cannot see is a **new** `skills/shared/` file that no skill vendors yet —
 if this skill needs one, add the copy **and** a row in the table below.
 
-| Vendored path                           | Canonical source                                      |
-| --------------------------------------- | ----------------------------------------------------- |
-| `dsl/INTERPRETER.md`                    | `skills/shared/dsl/INTERPRETER.md`                    |
-| `state/phase-status.schema.json`        | `skills/shared/state/phase-status.schema.json`        |
-| `estimate/complexity-tiers.json`        | `skills/shared/estimate/complexity-tiers.json`        |
-| `estimate/estimation-infra.schema.json` | `skills/shared/estimate/estimation-infra.schema.json` |
-| `estimate/pricing-mode.md`              | `skills/shared/estimate/pricing-mode.md`              |
-| `estimate/ri-sp-eligibility.md`         | `skills/shared/estimate/ri-sp-eligibility.md`         |
-| `pricing/aws-infra-pricing.json`        | `skills/shared/pricing/aws-infra-pricing.json`        |
-| `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
-| `ai/ai-anthropic-to-bedrock.md`         | `skills/shared/ai/ai-anthropic-to-bedrock.md`         |
-| `ai/ai-migration-guardrails.md`         | `skills/shared/ai/ai-migration-guardrails.md`         |
-| `ai/ai-model-lifecycle.md`              | `skills/shared/ai/ai-model-lifecycle.md`              |
-| `ai/ai-openai-to-bedrock.md`            | `skills/shared/ai/ai-openai-to-bedrock.md`            |
-| `ai/bedrock-quotas.md`                  | `skills/shared/ai/bedrock-quotas.md`                  |
-| `ai/design-ref-agentic-to-agentcore.md` | `skills/shared/ai/design-ref-agentic-to-agentcore.md` |
-| `ai/design-ref-harness.md`              | `skills/shared/ai/design-ref-harness.md`              |
-| `ai/sdk-capability-map.json`            | `skills/shared/ai/sdk-capability-map.json`            |
-| `ai/schema-design-aws-ai.md`            | `skills/shared/ai/schema-design-aws-ai.md`            |
-| `clarify/clarify-availability.md`       | `skills/shared/clarify/clarify-availability.md`       |
-| `clarify/clarify-compliance.md`         | `skills/shared/clarify/clarify-compliance.md`         |
-| `clarify/clarify-cost-appetite.md`      | `skills/shared/clarify/clarify-cost-appetite.md`      |
-| `clarify/clarify-multicloud.md`         | `skills/shared/clarify/clarify-multicloud.md`         |
-| `clarify/clarify-region.md`             | `skills/shared/clarify/clarify-region.md`             |
+| Vendored path                                       | Canonical source                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------- |
 | `telemetry/PROTOCOL.md`                            | `skills/shared/telemetry/PROTOCOL.md`                            |
 | `telemetry/cli.py`                                 | `skills/shared/telemetry/cli.py`                                 |
 | `telemetry/version.json`                           | `skills/shared/telemetry/version.json`                           |
