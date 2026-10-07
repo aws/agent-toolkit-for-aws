@@ -1,6 +1,6 @@
 # AI Pricing Cache (Bedrock + source-provider)
 
-**Last updated:** 2026-08-24
+**Last updated:** 2026-10-05 (re-verified via the AWS Pricing MCP server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50 (Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo), Opus 4.6 $5/$25, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50, Llama 4 Maverick/Scout, Llama 3.3 70B, Nova 2 Lite/Pro/Lite/Micro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family, and the OpenAI/Azure OpenAI source-side table all confirmed unchanged; this refresh corrects the Geo-vs-Global pricing gap for the four Anthropic models that require a cross-Region inference profile — see the Geo vs. Global note below)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±15-25% for AI models (sourced from public pricing pages)
@@ -29,6 +29,28 @@ reasoning), Claude Haiku 4.5 (cost/speed). Do not default to Claude Fable 5 (fro
 SKUs do not all use the same multiplier; confirm batch/cache and cross-region rows per model on
 that page. See `references/vendored/ai/ai-model-lifecycle.md` for lifecycle detail — **do not
 recommend Legacy/excluded models for new migrations.**
+
+> **Geo vs. Global inference pricing.** Sonnet 5, Opus 4.8, Sonnet 4.6, and Haiku 4.5 cannot be
+> invoked on-demand with their bare model ID in **US regions** on `bedrock-runtime` — they require
+> a cross-Region inference profile ID there (see
+> `references/helpers/bedrock-known-fixes/references/bedrock-inference-profile-model-id.md`).
+> This is per-model and per-region, not universal: Haiku 4.5's model card states the bare ID is
+> never supported for on-demand throughput on any `bedrock-runtime` region. Sonnet 5 and Sonnet
+> 4.6, by contrast, DO support true in-Region (bare-ID) invocation — but only from **eu-west-2
+> (London)**; every US region (and every other region checked) shows In-Region unsupported for
+> both models. Opus 4.8 behaves like Haiku 4.5: no in-Region support anywhere. Confirm the
+> target model's actual In-Region/Geo/Global support table on its model card before assuming
+> either outcome.
+>
+> The **Geo** profile (`us.`/`eu.`/`au.`/`jp.`/`in.` prefix) carries a ~10% price premium over
+> **Global** (`global.` prefix); AWS documents Global cross-Region inference as saving
+> "approximately 10%... compared to geographic cross-Region inference." The quick-reference
+> table's bare-id rows below are the **Global/base** rate; for a **Geo** (`us.`-prefixed, the
+> common choice for US-only data residency) deployment, multiply input/output by 1.10 — e.g.
+> Sonnet 5 Geo is $2.20/$11.00, Opus 4.8 Geo is $5.50/$27.50, Sonnet 4.6 Geo is $3.30/$16.50,
+> Haiku 4.5 Geo is $1.10/$5.50. `bedrock_pricing.py`'s `STATIC_FALLBACK` table keys the `us.`
+> id to the Geo rate and the bare id to the Global/base rate — read from that table, not this
+> one, when a migration plan pins a specific inference profile.
 
 ### Multi-provider quick reference (per 1M tokens)
 
@@ -104,10 +126,16 @@ Per 1M tokens unless noted.
 
 | Model             | Batch in | Batch out | 5m cache write | 1h cache write | Cache read |
 | ----------------- | -------- | --------- | -------------- | -------------- | ---------- |
-| Claude Sonnet 5   | 1.00     | 5.00      | 2.50           | 4.00           | 0.20       |
-| Claude Opus 4.8   | 2.50     | 12.50     | 6.25           | 10.00          | 0.50       |
+| Claude Sonnet 5   | 1.00 ‡   | 5.00 ‡    | 2.50           | 4.00           | 0.20       |
+| Claude Opus 4.8   | 2.50 ‡   | 12.50 ‡   | 6.25           | 10.00          | 0.50       |
 | Claude Sonnet 4.6 | 1.50     | 7.50      | 3.75           | 6.00           | 0.30       |
 | Claude Haiku 4.5  | 0.50     | 2.50      | 1.25           | 2.00           | 0.10       |
+
+‡ Not listed on the [batch-supported models table](https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-supported.html)
+as of 2026-10-05 — the figure above is the standard 50%-of-on-demand projection, not a confirmed
+SKU. Mark these batch cells `_unverified_` in estimate output; the `unverified` gate in
+`estimate-ai.md` treats any `_unverified_` row as blocking for a quoted figure — resolve from
+the Bedrock pricing page first before quoting a Sonnet 5 or Opus 4.8 batch savings figure.
 
 ### OpenAI on Bedrock — the same-model path
 
