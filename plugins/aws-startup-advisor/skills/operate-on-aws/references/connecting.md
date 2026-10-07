@@ -1,6 +1,6 @@
 # Connecting to AWS DevOps Agent over MCP
 
-Run this **only after** the DISCLOSE gate has been passed and the user has confirmed.
+Run this **only after** the DISCLOSE cost notice has been given.
 
 ## Assume they are starting from nothing
 
@@ -239,7 +239,7 @@ aws devops-agent associate-service --agent-space-id <AGENT_SPACE_ID> \
 
 `--service-id` is the literal string **`aws`**. A successful association returns `status: "valid"`.
 
-**Run the ACCESS gate before any of this** — SKILL.md Phase 2.5. It grants an AWS service read access
+**Give the ACCESS notice before any of this** — SKILL.md Phase 2.5. It grants an AWS service read access
 across the account, which is the broadest permission in the flow and the one the founder is least likely
 to have thought about. Lead with what it lets the agent see, not with the words "IAM role", and give them
 the revocation path in the same breath.

@@ -22,32 +22,24 @@ care, and finding out later is far worse than being told.
 You can decline that half: **automated verification testing is a separate toggle** from the review itself.
 Static review without code execution is a legitimate starting point.
 
-## The code-egress gate — required, and separate from cost
+## Code egress — off by default, on only when asked
 
-**Do not connect a repository with verification testing enabled until the user has explicitly approved
-their source code leaving their AWS account.** Cost consent is not code consent. Founders are more
-protective of source than of spend, and a founder who discovers this after the fact will not give it back.
+**Do not connect a repository with verification testing enabled unless the user has asked for it.** It
+copies their source code out of their AWS account. Founders are more protective of source than of spend,
+and a founder who discovers this after the fact will not give it back.
 
-AWS enables both capabilities by default on every connected repository. **Invert that.** Turn verification
-testing off unless the user opts in, having been told exactly what it does.
+AWS enables both capabilities by default on every connected repository. **Invert that.** Connect with
+verification testing off, and say so in one line — do not ask them to choose:
 
-Say this, in full, before connecting anything:
+> "Connecting with static review only — automated verification testing is off, so your code stays in your
+> AWS account. Review still covers dependency, permission and cross-repo risk. Say if you want testing on."
 
-> "One decision before we connect a repository.
->
-> Release review has two parts. The review itself analyses your code for dependency risk, permission
-> drift, and cross-repository breakage.
->
-> **Automated verification testing goes further: it copies your repository into an AWS-managed build
-> environment outside your AWS account, installs your dependencies, and builds and runs your code there.**
-> That environment is dedicated compute, its outbound network is limited to a fixed allowlist, and the
-> agent is blocked from changing anything in your AWS infrastructure. But your source does leave your
-> account, and that is your call, not mine.
->
-> You can have the review without it — you keep dependency, permission and cross-repo checks, and lose the
-> build-and-run validation.
->
-> Verification testing on, or review only?"
+**If they ask to turn it on,** tell them exactly what it does before enabling it:
+
+> "Automated verification testing copies your repository into an AWS-managed build environment outside
+> your AWS account, installs your dependencies, and builds and runs your code there. That environment is
+> dedicated compute, its outbound network is limited to a fixed allowlist, and the agent is blocked from
+> changing anything in your AWS infrastructure. But your source does leave your account. Turning it on now."
 
 **If they ask how long the copy is kept, say you do not know.** AWS's security guide has a section headed
 *"Data storage and retention"* which states only *where* data is stored — the Region of the Agent Space —
@@ -55,16 +47,16 @@ and never says for how long, or whether the cloned repository is discarded after
 silence. *"It's copied into an AWS-managed environment; AWS documents where that lives but not how long
 it's kept, so I can't tell you"* is the honest answer, and it is better than implying it is ephemeral.
 
-Three rules for this gate:
+Three rules for this default:
 
-- **Default to review only.** If they do not give a clear yes, connect with verification testing off. It
+- **Default to review only.** Unless they ask for testing, connect with verification testing off. It
   can be switched on later in thirty seconds; unsaying that their code was copied is impossible. **Say
   that static review alone is strong** — this is not a degraded mode. A static-only review of a pull
   request carrying six deliberate production defects returned `BLOCK` in about four minutes and found all
   six, plus an unbounded-scan risk nobody had planted, citing exact line ranges. Their code never left
   their AWS account.
-- **Do not bundle it with the cost question.** Two separate decisions, asked separately, even though it
-  costs an extra exchange.
+- **Keep it separate from the cost notice.** Say it in its own line, so it is not lost inside the cost
+  picture.
 - **Offer read-only repository access alongside it.** The GitHub App defaults to Read & Write, which lets
   the agent post comments, propose fixes, and trigger workflows. A founder who is cautious about code
   egress is usually cautious about write access too — offer both narrower settings together.
@@ -183,3 +175,9 @@ exercise before they have seen output.
 
 `aws-agents-for-devsecops` already connects Claude Code to an Agent Space and can invoke release reviews.
 If it is installed, use it. Do not build a parallel path.
+
+The testing choice stays with this skill, though. That plugin's release-readiness flow stops to ask
+whether to run static analysis only or full analysis with automated testing. Do not relay that
+question. Pass `skip_automated_testing=true` (or `metadata.skipAutomatedTesting=true` where the parameter
+is not accepted), and give the one-line static-review notice above. Pass `false` only when the user has
+explicitly asked for automated testing.

@@ -67,6 +67,8 @@ TIMEOUT_SECONDS = 3.0
 # DNS, refused): unlike a timeout, nothing can have reached the service.
 UNREACHABLE = 0
 
+USER_AGENT = "aws-startup-advisor-plugin"
+
 SOURCE_CLAUDE_CODE = "CLAUDE_CODE"
 SOURCE_CODEX = "CODEX"
 SOURCE_CURSOR = "CURSOR"
@@ -230,7 +232,7 @@ def post_event_status(event, install_id, url, timeout=TIMEOUT_SECONDS):
         request = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
             method="POST",
         )
         try:
