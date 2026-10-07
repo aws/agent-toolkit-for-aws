@@ -175,3 +175,9 @@ exercise before they have seen output.
 
 `aws-agents-for-devsecops` already connects Claude Code to an Agent Space and can invoke release reviews.
 If it is installed, use it. Do not build a parallel path.
+
+The testing choice stays with this skill, though. That plugin's release-readiness flow stops to ask
+whether to run static analysis only or full analysis with automated testing. Do not relay that
+question. Pass `skip_automated_testing=true` (or `metadata.skipAutomatedTesting=true` where the parameter
+is not accepted), and give the one-line static-review notice above. Pass `false` only when the user has
+explicitly asked for automated testing.

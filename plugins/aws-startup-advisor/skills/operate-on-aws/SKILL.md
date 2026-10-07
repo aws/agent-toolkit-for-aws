@@ -110,7 +110,7 @@ DETECT ──▶ already connected? ──▶ OPERATE
    │
    └──▶ ASSESS ──▶ DISCLOSE ──▶ ACCESS ──▶ SET UP ──▶ CONNECT ──▶ OPERATE
                       │           │
-                      └───────────┴──▶ (user objects) ──▶ STOP. Roll back anything created.
+                      └───────────┴──▶ (user objects) ──▶ STOP. Roll back what this setup created.
 ```
 
 | Phase | Goal | Exit condition |
@@ -127,8 +127,15 @@ SET UP comes **after** DISCLOSE deliberately. Creating an Agent Space is a write
 the user hears what it costs and what it can see before anything is written.
 
 The notices do not wait for an answer. Give them, then carry on with the defaults: **cost — proceed;
-access — create the role; code egress — off.** If the user objects at any point, stop and roll back
-whatever was created.
+access — create the role; code egress — off.**
+
+What "stop" means depends on where they are:
+
+- **During onboarding** (before CONNECT succeeds), an objection cancels setup. Stop and roll back what this
+  setup created. Never touch anything that existed before it.
+- **After setup**, "stop" means stop the work, not remove the setup. Cancel the running task or pause the
+  agent as described in [`references/stopping.md`](references/stopping.md). Keep the Agent Space, role, and
+  investigation records. Delete resources only when the user explicitly asks to remove them.
 
 If the user asks to skip ahead — *"just set it up"* — you still give the notices. Keep them to a line each.
 
@@ -167,8 +174,9 @@ investigation costs. Whichever skill's flow ends up running, these still hold:
   Once per session; do not repeat it before every investigation.
 - **Before first-time setup**, give the DISCLOSE and ACCESS notices, even if that plugin's setup flow is the
   one writing the MCP configuration.
-- **Before a release review**, keep automated testing off unless the user asks for it — see
-  [`references/release-review.md`](references/release-review.md).
+- **Before a release review**, keep automated testing off unless the user asks for it. This also applies
+  when that plugin runs the review: pass `skip_automated_testing=true` and do not relay its testing
+  question. See [`references/release-review.md`](references/release-review.md).
 - **One connection only.** Never register a second DevOps Agent MCP server alongside `aws-devops-agent`.
 
 ## Phase 1 — ASSESS
@@ -338,8 +346,9 @@ repository out of their AWS account, so it is enabled only when they ask for it 
 > No Activate credits found on this account, so it would bill to your payment method. Say stop at any time
 > and I'll pause it. Continuing with setup."
 
-If they object, stop cleanly and roll back anything already created. Do not raise it again in the same
-session.
+If they object before setup finishes, stop cleanly and roll back what this setup created. Do not raise it
+again in the same session. A "stop" once setup is done means pause or cancel, not remove. See the state
+machine above.
 
 ## Phase 2.5 — ACCESS (access notice)
 
@@ -368,7 +377,8 @@ Rules for this notice:
   the managed policy ARN.
 - **Do not oversell the guardrail.** "Only your workspace can use it" is true and specific. Do not stretch
   it into "it's completely safe" — they are granting account-wide read and should know that plainly.
-- **If they object**, delete the role and anything else already created. Say what they can still do:
+- **If they object before setup finishes**, delete the role and anything else this setup created. Say what
+  they can still do:
   release-readiness review needs a repository, not account access, so that path stays open.
 - **If they want someone else to look first**, hold off and give them the forwardable version.
 
