@@ -255,7 +255,7 @@ _Skip when:_ `integration.capabilities_summary` in `ai-workload-profile.json` ha
 | ----------- | --------------------------------------------------------------------------------------------------------------- |
 | Text only   | Full model catalog                                                                                              |
 | Vision      | Claude Sonnet or Haiku (both support multimodal vision); Nova Micro excluded (text-only)                        |
-| Audio/Video | Nova 2 Sonic (audio); Nova Reel v1 for video (Legacy — EOL Sep 30, 2026); Claude excluded for audio/video input |
+| Audio/Video | Nova 2 Sonic (audio). Nova Reel v1 is past EOL (2026-09-30) with no Active replacement in the registry — do not recommend it. Claude excluded for audio/video input |
 
 Interpret → `ai_vision`. Default: 1 → no constraint.
 
