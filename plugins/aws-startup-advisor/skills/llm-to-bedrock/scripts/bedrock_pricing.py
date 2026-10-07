@@ -39,9 +39,11 @@ def parse_price_dimensions(price_item: dict) -> dict:
 # skills/gcp-to-aws/references/shared/pricing-cache.md (its per-1M rates / 1000).
 # Every row below was re-verified against that cache, the Bedrock model cards
 # (Geo/Global inference ID tables), and the AWS Pricing MCP server on 2026-10-05.
-# IMPORTANT: for models that require a cross-Region inference profile for on-demand
+# IMPORTANT: for the common case where a cross-Region inference profile is used for on-demand
 # throughput (Haiku 4.5, Sonnet 5, Opus 4.8, Sonnet 4.6 — see
-# bedrock-inference-profile-model-id.md), every Geo-prefixed ID (`us.`, `eu.`, etc.)
+# bedrock-inference-profile-model-id.md; note Sonnet 5/Sonnet 4.6 DO support true in-Region
+# invocation from eu-west-2/London specifically, unlike Haiku 4.5/Opus 4.8 which never do),
+# every Geo-prefixed ID (`us.`, `eu.`, etc.)
 # is ~10% MORE expensive than the Global-prefixed/bare rate — Geo cross-Region
 # inference carries a price premium over Global cross-Region inference (AWS docs:
 # global saves "approximately 10%... compared to geographic cross-Region inference").

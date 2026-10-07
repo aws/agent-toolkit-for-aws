@@ -31,8 +31,17 @@ that page. See `references/vendored/ai/ai-model-lifecycle.md` for lifecycle deta
 recommend Legacy/excluded models for new migrations.**
 
 > **Geo vs. Global inference pricing.** Sonnet 5, Opus 4.8, Sonnet 4.6, and Haiku 4.5 cannot be
-> invoked on-demand with their bare model ID on `bedrock-runtime` — they require a cross-Region
-> inference profile ID (see `references/helpers/bedrock-known-fixes/references/bedrock-inference-profile-model-id.md`).
+> invoked on-demand with their bare model ID in **US regions** on `bedrock-runtime` — they require
+> a cross-Region inference profile ID there (see
+> `references/helpers/bedrock-known-fixes/references/bedrock-inference-profile-model-id.md`).
+> This is per-model and per-region, not universal: Haiku 4.5's model card states the bare ID is
+> never supported for on-demand throughput on any `bedrock-runtime` region. Sonnet 5 and Sonnet
+> 4.6, by contrast, DO support true in-Region (bare-ID) invocation — but only from **eu-west-2
+> (London)**; every US region (and every other region checked) shows In-Region unsupported for
+> both models. Opus 4.8 behaves like Haiku 4.5: no in-Region support anywhere. Confirm the
+> target model's actual In-Region/Geo/Global support table on its model card before assuming
+> either outcome.
+>
 > The **Geo** profile (`us.`/`eu.`/`au.`/`jp.`/`in.` prefix) carries a ~10% price premium over
 > **Global** (`global.` prefix); AWS documents Global cross-Region inference as saving
 > "approximately 10%... compared to geographic cross-Region inference." The quick-reference
