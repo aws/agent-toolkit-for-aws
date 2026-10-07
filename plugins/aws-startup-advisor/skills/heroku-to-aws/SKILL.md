@@ -12,6 +12,13 @@ harness emits at load time. Call it `<SKILL_BASE>`. The report validator lives a
 `npx skills add --skill heroku-to-aws` install carries only this skill's own
 directory tree, not the plugin's top-level `scripts/`.
 
+## Optional usage telemetry
+
+Before starting or resuming, load `references/vendored/telemetry/PROTOCOL.md` and
+run its read-only status check. Use the returned reporting mode rather than the
+model's identity. Complete the existing notice exchange only when that protocol
+requires it; unavailable or declined telemetry never blocks this skill.
+
 ## Philosophy
 
 - **Full platform exit by default**: Heroku is in sustaining engineering (KTLO) — stability and support only, no new investment. Enterprise contracts are no longer sold to new customers. This skill assumes complete departure from Heroku (compute, data, and add-ons) within a user-defined window. Do not recommend indefinite continued use of Heroku.

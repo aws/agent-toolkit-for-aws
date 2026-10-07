@@ -21,6 +21,10 @@ metric_emission/   sending events, only ever when consent/ says yes
   migration_attributes.py   the MigrationActivity attribute vocabularies and lookups
 
 test/              the whole suite
+
+cli.py             read-only host/consent status and explicit reconciliation
+PROTOCOL.md        CLI-host workflow using the existing notice exchange
+sync_bundles.py    generate/check standalone migration-skill bundles
 ```
 
 Two directories, two jobs: `consent/` decides, `metric_emission/` sends. Every
@@ -47,6 +51,52 @@ uv run --with pytest python -m pytest -q
 ```
 
 `python3 -m pytest` does not work on a homebrew Python with no pytest installed.
+
+## CLI fallback
+
+The migration skills call `cli.py status` before starting or resuming. This
+read-only JSON result selects the reporting policy using the same host markers
+as the HTTP client, together with the install layout: Claude Code and Cursor use
+hooks when the enclosing plugin's migration-hook configuration and runtime are
+reachable. Standalone skills without those files use CLI reconciliation, as do
+other hosts. The agent does not choose a path from its model name. This does not
+detect whether a host enabled its hooks or whether they are healthy. Unknown
+sources remain `OTHER`; explicit `CODEX`/`KIRO` markers outrank an inherited
+`CURSOR_AGENT` marker.
+
+`cli.py reconcile` calls the existing migration emitter with `--reconcile --via
+cli`, from the project root, without reading hook stdin. The emitter rejects
+CLI reporting when the status check selects plugin hooks. Existing hook registrations,
+including the shared Codex registration, are unchanged; concurrent triggers use
+the same run lock and snapshot.
+
+`PROTOCOL.md` wires the existing notice, acknowledgement and opt-out scripts for
+CLI hosts. It adds no consent record, notice wording, environment opt-out, event
+schema, or HTTP client. The fallback only reports migration activity.
+
+Each Azure, GCP, Heroku and LLM-to-Bedrock skill vendors the required Python
+files and a generated version sidecar, so a single-skill install needs no sibling
+plugin directory. The production hook paths remain unchanged.
+
+```sh
+python3 scripts/telemetry/sync_bundles.py --write
+python3 scripts/telemetry/sync_bundles.py --check
+```
+
+After changing a bundled source file or plugin version, run `--write` and commit
+the updated copies. Run `--check` before submitting changes; the telemetry test
+suite also checks bundle parity. These checks are separate from the repository's
+`mise run validate` and `mise run build`.
+Unexpected files in a telemetry bundle are reported by both modes; `--write`
+does not delete them. Review and remove stale files manually. Python bytecode
+caches are ignored.
+
+Python 3.8+ is the runtime requirement; unavailable Python or a denied tool call
+skips telemetry.
+
+CLI reporting runs at the documented state boundaries and on resume. It has no
+automatic session-end callback, so an interrupted boundary may remain unreported
+until the next reconciliation.
 
 ## Migration telemetry
 

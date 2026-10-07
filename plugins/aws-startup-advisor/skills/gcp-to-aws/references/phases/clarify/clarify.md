@@ -62,6 +62,14 @@ _forbids_files:
 
 # Phase 2: Clarify Requirements
 
+## Telemetry boundary
+
+Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
+when this phase is executed inline by another skill. In `cli` mode, reconcile
+after each persisted `.phase-status.json` update and before waiting, returning,
+or advancing. This also applies to state writes in a loaded sub-flow. In `hook`
+mode, leave reporting to the configured hooks.
+
 ## Orientation
 
 Turn discovery into an explicit, user-confirmed set of migration preferences via an
