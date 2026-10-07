@@ -97,7 +97,7 @@ Works from both standalone and delegated administrator accounts.
 
    | Account | Region | Source | Exception Reason |
    |---|---|---|---|
-   | 111122223333 | us-east-1 | VPC_FLOW | INTERNAL_ERROR |
+   | `<account-id>` | us-east-1 | VPC_FLOW | INTERNAL_ERROR |
 
 5. MUST report all exceptions.
 
