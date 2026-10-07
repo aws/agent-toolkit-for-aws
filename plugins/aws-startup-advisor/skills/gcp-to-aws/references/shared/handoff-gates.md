@@ -69,6 +69,10 @@ A failed gate is where a run stalls, and the telemetry hooks can only report wha
 
 `reason` and `field` are the same values as the `GATE_FAIL` line. The file never leaves the customer's machine; telemetry reports only the phase and the reason, once per phase per run, and a later `HANDOFF_OK` for that phase is reported as its own success. Do not delete the file when the phase later passes.
 
+After writing the record and before returning, reconcile in `cli` reporting mode
+per `references/vendored/telemetry/PROTOCOL.md` (relative to the skill root).
+In `hook` mode, leave reporting to the host hooks.
+
 ---
 
 ## Decide-complete is terminal, not a failure

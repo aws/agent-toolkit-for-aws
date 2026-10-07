@@ -1,6 +1,6 @@
 # Heroku Pricing Cache
 
-**Last updated:** 2026-07-19 (dyno rates re-verified against devcenter.heroku.com/articles/dyno-types — Eco $5 flat, Basic $7, Standard-1X $25, Standard-2X $50, Performance-M $250, Performance-L/L-RAM $500 all unchanged; no rate changes this refresh)
+**Last updated:** 2026-10-05 (dyno rates re-verified against devcenter.heroku.com/articles/dyno-sizes and heroku.com/pricing — Eco $5 flat, Basic $7, Standard-1X $25, Standard-2X $50, Performance-M $250, Performance-L/L-RAM $500 all unchanged; no rate changes this refresh)
 **Source:** https://elements.heroku.com/addons/heroku-postgresql, https://elements.heroku.com/addons/heroku-redis, https://elements.heroku.com/addons/heroku-kafka, https://devcenter.heroku.com/articles/dyno-sizes
 **Currency:** USD
 **Accuracy:** ±5% for dynos (published flat rates); ±10% for data services (Elements "Max of" pricing, actual may vary by usage pattern)
