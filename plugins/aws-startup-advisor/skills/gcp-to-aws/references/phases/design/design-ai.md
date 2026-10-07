@@ -14,7 +14,7 @@ Read `$MIGRATION_DIR/ai-workload-profile.json`:
 - `models[]` — Detected AI models with service, capabilities, evidence
 - `integration` — SDK, frameworks, languages, gateway type, capability summary
 - `infrastructure[]` — Terraform resources related to AI (may be empty)
-- `current_costs` — Present only if billing data or OpenAI usage API data was provided (`source` field records which)
+- `current_costs` — Present only if billing data, OpenAI usage API data, or OpenRouter usage API data was provided (`source` field records which)
 
 Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If absent: use defaults (prefer managed Bedrock, no latency constraint, no budget cap).
 
@@ -277,7 +277,7 @@ If `models[]` contains more than one model, check for coordination patterns and 
    > ⚠️ "Multiple models detected ([count]). Recommend a tiered migration strategy: migrate and validate one model at a time, starting with the lowest-risk (highest-volume, simplest task). See Part 1B for tiered routing recommendations."
 
 4. **Text generation + image generation** — If `models[]` contains both text generation AND image generation capabilities:
-   > ⚠️ "Image generation migration (e.g., DALL-E/gpt-image → Stability AI) requires separate evaluation. Image quality is subjective — plan for human evaluation alongside automated metrics. Default to Stable Image Core (cost-first) or Stable Image Ultra (quality-first); do not recommend Nova Canvas."
+   > ⚠️ "Image generation migration (e.g., DALL-E/gpt-image → Stability AI) requires separate evaluation. Image quality is subjective — plan for human evaluation alongside automated metrics. Default to Stable Image Core (cost-first) or Stable Image Ultra (quality-first); do not recommend Nova Canvas (past EOL 2026-09-30)."
 
 5. **Speech models** — If `models[]` contains speech-to-text or text-to-speech capabilities:
    > ⚠️ "Speech model migration targets different AWS services (Whisper → Amazon Transcribe, TTS → Amazon Polly or Nova Sonic) with different pricing models and APIs. These are not Bedrock model swaps — they require separate integration work."

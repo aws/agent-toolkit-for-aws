@@ -20,72 +20,136 @@ def test_unavailable_returns_banner_not_exception():
     assert "network error" in out["note"]
 
 def test_static_fallback_returns_known_model():
+    # us.anthropic.claude-haiku-4-5... is the Geo inference-profile id: $1.10/$5.50
+    # per 1M (10% premium over the bare $1/$5 rate), matching the Bedrock model
+    # card's Geo inference ID table and AWS's documented Geo-vs-Global pricing gap.
     out = bp._static_fallback("us.anthropic.claude-haiku-4-5-20251001-v1:0")
     assert out is not None
     assert out["available"] is True
-    assert out["input_per_1k_usd"] == 0.001
-    assert out["output_per_1k_usd"] == 0.005
+    assert out["input_per_1k_usd"] == 0.0011
+    assert out["output_per_1k_usd"] == 0.0055
 
 def test_static_fallback_opus_4_8_rate_is_5_and_25_per_1m():
-    """Opus 4.8 is $5/$25 per 1M tokens (0.005/0.025 per 1K), NOT Opus 4.1's legacy
-    $15/$75 — see skills/gcp-to-aws/references/shared/pricing-cache.md for the
-    source rates. The table
-    now keys by dateless family id, so the raw entries are asserted on those keys and
-    ALL four id shapes (bare/us., dateless/date-pinned) must resolve behaviorally —
-    a date-pinned id failing to match the family key was a live regression."""
-    for key in ("anthropic.claude-opus-4-8", "us.anthropic.claude-opus-4-8"):
-        entry = bp.STATIC_FALLBACK[key]
-        assert entry["input_per_1k_usd"] == 0.005, key
-        assert entry["output_per_1k_usd"] == 0.025, key
+    """Opus 4.8's bare/Global rate is $5/$25 per 1M tokens (0.005/0.025 per 1K), NOT
+    Opus 4.1's legacy $15/$75 — see skills/gcp-to-aws/references/shared/pricing-cache.md
+    for the source rates. The Geo (`us.`) inference-profile id carries a ~10% price
+    premium over Global/base ($5.50/$27.50, i.e. 0.0055/0.0275 per 1K) per the Bedrock
+    model card and AWS's documented Geo-vs-Global cross-Region inference pricing gap —
+    it must NOT be priced the same as the bare id. The table keys by dateless family
+    id, so the raw entries are asserted on those keys and ALL four id shapes
+    (bare/us., dateless/date-pinned) must resolve behaviorally — a date-pinned id
+    failing to match the family key was a live regression."""
+    bare = bp.STATIC_FALLBACK["anthropic.claude-opus-4-8"]
+    assert bare["input_per_1k_usd"] == 0.005
+    assert bare["output_per_1k_usd"] == 0.025
+    geo = bp.STATIC_FALLBACK["us.anthropic.claude-opus-4-8"]
+    assert geo["input_per_1k_usd"] == 0.0055
+    assert geo["output_per_1k_usd"] == 0.0275
     # Dated forms are built by concatenation: Opus 4.8 Bedrock IDs are undated
-    # (tools/model-id-lint.py), but a stale plan can still carry a fabricated
+    # (scripts/model-id-lint.py), but a stale plan can still carry a fabricated
     # dated form and the lookup must repair it rather than lose the price.
-    for model_id in ("anthropic.claude-opus-4-8",
-                     "us.anthropic.claude-opus-4-8",
-                     "anthropic.claude-opus-4-8" + "-20250610-v1:0",
-                     "us.anthropic.claude-opus-4-8" + "-20250610-v1:0"):
+    for model_id, (exp_in, exp_out) in (
+            ("anthropic.claude-opus-4-8", (0.005, 0.025)),
+            ("us.anthropic.claude-opus-4-8", (0.0055, 0.0275)),
+            ("anthropic.claude-opus-4-8" + "-20250610-v1:0", (0.005, 0.025)),
+            ("us.anthropic.claude-opus-4-8" + "-20250610-v1:0", (0.0055, 0.0275))):
         out = bp.lookup("us-east-1", model_id)
         assert out["available"] is True
-        assert out["input_per_1k_usd"] == 0.005, model_id
-        assert out["output_per_1k_usd"] == 0.025, model_id
+        assert out["input_per_1k_usd"] == exp_in, model_id
+        assert out["output_per_1k_usd"] == exp_out, model_id
 
 
 def test_static_fallback_partial_match():
-    # us.anthropic.claude-sonnet-5 (no version suffix) should match the $2/$10 rate (launch rate, made standard Sep 1, 2026)
+    # us.anthropic.claude-sonnet-5 is the Geo inference-profile id, which carries a
+    # ~10% premium over the bare/Global $2/$10 launch rate: $2.20/$11 (0.0022/0.011
+    # per 1K) per the Bedrock model card and AWS's Geo-vs-Global pricing docs.
     out = bp._static_fallback("us.anthropic.claude-sonnet-5")
     assert out is not None
     assert out["available"] is True
-    assert out["input_per_1k_usd"] == 0.002
-    assert out["output_per_1k_usd"] == 0.010
+    assert out["input_per_1k_usd"] == 0.0022
+    assert out["output_per_1k_usd"] == 0.011
+    # The bare id (used for Global cross-Region inference and display-name lookups)
+    # stays at the $2/$10 base rate.
+    bare = bp._static_fallback("anthropic.claude-sonnet-5")
+    assert bare["input_per_1k_usd"] == 0.002
+    assert bare["output_per_1k_usd"] == 0.010
 
 def test_static_fallback_keeps_sonnet_4_6():
+    # us.anthropic.claude-sonnet-4-6 is the Geo id: $3.30/$16.50 (10% premium over
+    # the bare $3/$15 rate), matching the documented US East (Ohio) cross-region row.
     out = bp._static_fallback("us.anthropic.claude-sonnet-4-6")
     assert out is not None
-    assert out["input_per_1k_usd"] == 0.003
+    assert out["input_per_1k_usd"] == 0.0033
+    assert out["output_per_1k_usd"] == 0.0165
 
 def test_static_fallback_dated_id_matches_undated_key():
     # A dated ID form (even a fabricated one from a stale plan) should still
     # resolve to the undated table key after the date stamp is stripped.
-    # Built by concatenation so tools/model-id-lint.py doesn't flag a literal
+    # Built by concatenation so scripts/model-id-lint.py doesn't flag a literal
     # fabricated ID — this test exists precisely to handle such broken inputs.
     dated_id = "us.anthropic.claude-sonnet-4-6" + "-20250514-v1:0"
     out = bp._static_fallback(dated_id)
     assert out is not None
-    assert out["input_per_1k_usd"] == 0.003
+    # us. prefix carries the Geo premium: $3.30/1K-scaled 0.0033, not the bare $3.00.
+    assert out["input_per_1k_usd"] == 0.0033
 
 
 def test_static_fallback_opus_48_rate_matches_cache():
-    # Guards the $5/$25 per-1M rate (pricing-cache.md § Anthropic) — this entry
-    # previously carried Opus-4-class $15/$75, a 3x overstatement.
+    # Guards the Geo (us.) rate at $5.50/$27.50 per 1M (10% premium over the bare
+    # $5/$25 rate in pricing-cache.md § Anthropic) — this entry previously carried
+    # Opus-4-class $15/$75, a 3x overstatement, and later the un-premiumed bare rate.
     out = bp._static_fallback("us.anthropic.claude-opus-4-8")
     assert out is not None
-    assert out["input_per_1k_usd"] == 0.005
-    assert out["output_per_1k_usd"] == 0.025
+    assert out["input_per_1k_usd"] == 0.0055
+    assert out["output_per_1k_usd"] == 0.0275
 
 
 def test_static_fallback_unknown_returns_none():
     out = bp._static_fallback("totally.fake.model-id")
     assert out is None
+
+
+def test_global_and_eu_anthropic_prefixes_resolve_to_the_correct_inference_option():
+    """Regression: global.anthropic.* and eu.anthropic.* IDs previously fell through
+    to None (no table entry, no exact-id fallback-table coverage), so a GDPR-driven
+    eu. request or an explicit global. request returned available=false despite the
+    cached model-family prices being known. global. must get the Global/base rate;
+    eu. (same inference-option tier as us., just a different Geo region) must get
+    the same ~10% Geo premium as us. — verified against the AWS Pricing MCP server
+    for both regions (Sonnet 4.6: Global $3/$15, EU Geo $3.30/$16.50, matching the
+    us-east-1 Geo rate exactly)."""
+    cases = {
+        "global.anthropic.claude-sonnet-4-6":                  (0.003, 0.015),
+        "eu.anthropic.claude-sonnet-4-6":                      (0.0033, 0.0165),
+        "global.anthropic.claude-haiku-4-5-20251001-v1:0":     (0.001, 0.005),
+        "eu.anthropic.claude-haiku-4-5-20251001-v1:0":         (0.0011, 0.0055),
+        "global.anthropic.claude-opus-4-8":                    (0.005, 0.025),
+        "eu.anthropic.claude-opus-4-8":                        (0.0055, 0.0275),
+        "global.anthropic.claude-sonnet-5":                    (0.002, 0.010),
+        "eu.anthropic.claude-sonnet-5":                        (0.0022, 0.011),
+    }
+    for model_id, (exp_in, exp_out) in cases.items():
+        out = bp._static_fallback(model_id)
+        assert out is not None, model_id
+        assert out["available"] is True
+        assert out["input_per_1k_usd"] == exp_in, model_id
+        assert out["output_per_1k_usd"] == exp_out, model_id
+
+
+def test_eu_lookup_with_api_unavailable_still_prices_from_the_static_table(monkeypatch):
+    """The reviewed scenario: lookup('eu-west-1', 'eu.anthropic.claude-sonnet-4-6')
+    with the PriceList API unavailable must not return available=false — the static
+    table now has an exact eu. entry, so the API is never reached."""
+    import boto3
+
+    def boom(*a, **k):
+        raise AssertionError("must not call the PriceList API for a static-table model")
+
+    monkeypatch.setattr(boto3, "client", boom)
+    out = bp.lookup("eu-west-1", "eu.anthropic.claude-sonnet-4-6")
+    assert out["available"] is True
+    assert out["input_per_1k_usd"] == 0.0033
+    assert out["output_per_1k_usd"] == 0.0165
 
 
 def test_display_name_guess_derives_pricing_api_display_names():

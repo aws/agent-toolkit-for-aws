@@ -12,7 +12,7 @@ _fragments:
     _trigger: { _always: true }
     _file: phases/clarify/clarify-global.md
   - _id: compute
-    _trigger: { _when: "(billing-profile.json exists AND gcp-resource-inventory.json does NOT exist) OR any compute resource is present — Cloud Run, Cloud Functions, GKE, GCE, App Engine" }
+    _trigger: { _when: "(billing-profile.json exists with non-empty services[] AND gcp-resource-inventory.json does NOT exist) OR any compute resource is present — Cloud Run, Cloud Functions, GKE, GCE, App Engine. A skip-record billing-profile.json (empty services[], non-empty warnings[]) does NOT satisfy the billing clause — there is no billing signal to ask compute questions about." }
     _file: phases/clarify/clarify-compute.md
   - _id: database
     _trigger: { _when: "database resources present in the inventory — Cloud SQL, Spanner, Memorystore" }
@@ -61,6 +61,14 @@ _forbids_files:
 ---
 
 # Phase 2: Clarify Requirements
+
+## Telemetry boundary
+
+Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
+when this phase is executed inline by another skill. In `cli` mode, reconcile
+after each persisted `.phase-status.json` update and before waiting, returning,
+or advancing. This also applies to state writes in a loaded sub-flow. In `hook`
+mode, leave reporting to the configured hooks.
 
 ## Orientation
 
@@ -197,10 +205,16 @@ At least one discovery artifact must exist to proceed.
 
 ### Migration Type Detection
 
-- **Full migration**: `gcp-resource-inventory.json` or `billing-profile.json` exists (may
-  also have `ai-workload-profile.json`)
-- **AI-only migration**: ONLY `ai-workload-profile.json` exists (no infrastructure or billing
-  artifacts)
+**A `billing-profile.json` with empty `services[]` and non-empty `warnings[]` is a SKIP
+RECORD (see `discover-billing.md` § skip record), not parsed billing — it carries no
+spend or resource signal and must NOT count as a billing artifact for routing below.**
+Test `services.length > 0`, not file existence.
+
+- **Full migration**: `gcp-resource-inventory.json` exists, OR `billing-profile.json`
+  exists with non-empty `services[]` (may also have `ai-workload-profile.json`)
+- **AI-only migration**: ONLY `ai-workload-profile.json` exists, counting a skip-record
+  `billing-profile.json` as absent — no infrastructure and no non-empty-services billing
+  artifact
 
 **If AI-only**: Read `clarify-ai-only.md` NOW and follow that flow. Skip all remaining steps
 below, including the fragment/assembler split — `clarify-ai-only.md` is a standalone flow
@@ -226,15 +240,24 @@ Present a discovery summary:
 > **Capabilities in use:** [from `integration.capabilities_summary` where true]
 > **Integration pattern:** [from `integration.pattern`] via [from `integration.primary_sdk`]
 
-**If `billing-profile.json` exists:**
+**If `billing-profile.json` exists with non-empty `services[]`:**
 
 > **Monthly GCP spend:** $[total_monthly_spend]
 > **Top services by cost:** [top 3–5 from billing data]
 
+**If `billing-profile.json` exists but is a skip record (empty `services[]`, non-empty
+`warnings[]`):** do NOT show a `$0` spend line — that reads as "confirmed no GCP spend,"
+which is a different, stronger claim than "billing files were seen and skipped." Show
+instead:
+
+> **Billing:** N billing file(s) skipped — not a recognized GCP/BigQuery export. No
+> spend signal available; relying on infrastructure/AI discovery.
+
 ## Step 1.5: Fast-Path Gate (Simple Stacks)
 
-**GCP-specific — `azure-to-aws` has no equivalent fast-path.** After presenting the
-Discovery Summary, check `$MIGRATION_DIR/migration-preview.json` for fast-path eligibility:
+**The reference fast path — `azure-to-aws` (`clarify.md` § Step 0.5) and `heroku-to-aws`
+mirror it with their own eligibility inputs.** After presenting the Discovery Summary,
+check `$MIGRATION_DIR/migration-preview.json` for fast-path eligibility:
 
 ```
 IF migration-preview.json exists

@@ -66,7 +66,7 @@ should NOT be used to call any live pricing MCP (none is configured).
 
 Determine the current GCP monthly infrastructure costs. Use the best available source:
 
-1. **`billing-profile.json` (preferred)** — Use actual billing data as the GCP baseline. Highest confidence (±5%).
+1. **`billing-profile.json` (preferred)** — Use actual billing data as the GCP baseline. Highest confidence (±5%). **Only when it has non-empty `services[]`.** A **skip-record** profile (empty `services[]` with non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) is **not** usable spend: skip this source and fall through to the inventory rate card below. Never take a $0 baseline from a skip record.
 2. **`gcp-resource-inventory.json` (fallback)** — Derive costs from discovered
    resource sizing using `references/shared/gcp-infra-pricing-cache.md` — never
    from remembered GCP prices. Wider range (±20-30%). Procedure:
@@ -186,7 +186,7 @@ All rates from `pricing-cache.md § CloudWatch` and `§ X-Ray`. No MCP calls nee
 
 ### Step 1: Determine log volume
 
-**IF billing data IS available** (`billing-profile.json` exists):
+**IF billing data IS available** (`billing-profile.json` exists **with non-empty `services[]`** — a skip-record profile does not count):
 
 Check for Cloud Logging line items:
 
@@ -340,7 +340,7 @@ Model **only the hourly price discount** — never the performance uplift. For t
 
 Emit an `architecture_comparison` block in `estimation-infra.json` per the `schema-graviton.md` schema. This is **not** a fourth pricing tier — Graviton is the architecture within the Balanced/Premium/Optimized tiers, and the Balanced tier totals already reflect Graviton pricing when selected.
 
-**Report consistency:** the migration report must render these exact figures (no recomputation in the report layer). Numeric agreement is currently a **manual self-check** — the post-write report validator (`shared/validate-migration-report.md`) is a structural/readability gate and explicitly does not audit dollar figures. Rendering the Graviton savings in the report and adding an automated `architecture_comparison` numeric assertion to `validate-migration-report.py` are tracked as a **follow-up** (see `shared/graviton.md` → "Report rendering").
+**Report consistency:** the migration report must render these exact figures (no recomputation in the report layer). Numeric agreement is currently a **manual self-check** — the post-write report validator (`shared/validate-migration-report.md`) gates structure and decision-core content but explicitly does not audit dollar figures. Rendering the Graviton savings in the report and adding an automated `architecture_comparison` numeric assertion to `validate-migration-report.py` are tracked as a **follow-up** (see `shared/graviton.md` → "Report rendering").
 
 ---
 
@@ -390,9 +390,9 @@ If `commitments.has_active_cuds == false` or the section is absent, omit `commit
 
 This section covers **GCP vendor/network charges** for outbound data during migration — not human labor or professional-services costs (those are never presented as dollar estimates by this advisor).
 
-**Billing data check:** Before generating this section, check if `$MIGRATION_DIR/billing-profile.json` exists.
+**Billing data check:** Before generating this section, check if `$MIGRATION_DIR/billing-profile.json` exists **AND has non-empty `services[]`**. A **skip-record** profile (empty `services[]`, non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) does NOT count as billing data being available — there are no service line items to estimate egress volume from. Route a skip-record profile to the "IF billing data is NOT available" branch below (never to the "IS available" branch, even though the file exists on disk).
 
-### IF billing data IS available (`billing-profile.json` exists):
+### IF billing data IS available (`billing-profile.json` exists with non-empty `services[]`):
 
 **Data transfer** — egress fees from GCP during migration. GCP charges for outbound data transfer; volume depends on database sizes and storage to migrate. Use the billing data to estimate the volume of data that needs to move.
 

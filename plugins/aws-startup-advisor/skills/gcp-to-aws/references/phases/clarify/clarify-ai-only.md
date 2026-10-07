@@ -255,13 +255,13 @@ _Skip when:_ `integration.capabilities_summary` in `ai-workload-profile.json` ha
 | ----------- | --------------------------------------------------------------------------------------------------------------- |
 | Text only   | Full model catalog                                                                                              |
 | Vision      | Claude Sonnet or Haiku (both support multimodal vision); Nova Micro excluded (text-only)                        |
-| Audio/Video | Nova 2 Sonic (audio); Nova Reel v1 for video (Legacy — EOL Sep 30, 2026); Claude excluded for audio/video input |
+| Audio/Video | Nova 2 Sonic (audio). Nova Reel v1 is past EOL (2026-09-30) with no Active replacement in the registry — do not recommend it. Claude excluded for audio/video input |
 
 Interpret → `ai_vision`. Default: 1 → no constraint.
 
 ## Q7 — Monthly AI usage volume
 
-**Auto-resolve (skip the question):** If `openai-usage-profile.json` exists with non-zero usage, compute total monthly tokens = Σ `usage_by_model[].input_tokens + output_tokens`, map to the tiers below (< 1M → `"low"`, 1–10M → `"medium"`, 10–100M → `"high"`, > 100M → `"very_high"`), record the extraction (`chosen_by: "extracted"`, `source: "openai-usage-profile:usage_by_model"`), and tell the user: "Resolved from your OpenAI usage data: [N tokens/month → tier]." Ask Q7 only if the profile is absent or `partial_window` makes the volume unreliable.
+**Auto-resolve (skip the question):** If `openai-usage-profile.json` and/or `openrouter-usage-profile.json` exists with non-zero usage, compute total monthly tokens = the SUM across every full-window profile of Σ `usage_by_model[].input_tokens + output_tokens` — for `openrouter-usage-profile.json` that means `prompt_tokens + completion_tokens` (its field names differ from the OpenAI profile's; normalize before summing rather than reading a missing `input_tokens` key as zero) — map to the tiers below (< 1M → `"low"`, 1–10M → `"medium"`, 10–100M → `"high"`, > 100M → `"very_high"`), record the extraction (`chosen_by: "extracted"`, `source` naming whichever profile(s) contributed — `"openai-usage-profile:usage_by_model"`, `"openrouter-usage-profile:usage_by_model"`, or both), and tell the user: "Resolved from your usage data: [N tokens/month → tier]" (name the source(s): OpenAI, OpenRouter, or both). Ask Q7 if EVERY existing profile is absent, or if `partial_window` makes every existing profile's volume unreliable (a full-window profile still resolves the question even if a different, partial-window profile also exists — sum only the full-window profiles' tokens in that case).
 
 > 1\) < 1M tokens | 2\) 1–10M | 3\) 10–100M | 4\) > 100M | 5\) Don't know
 

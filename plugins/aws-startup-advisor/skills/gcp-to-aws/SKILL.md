@@ -5,6 +5,13 @@ description: "Migrate workloads from Google Cloud Platform to AWS — plus AI an
 
 # GCP-to-AWS Migration Skill
 
+## Optional usage telemetry
+
+Before starting or resuming, load `references/vendored/telemetry/PROTOCOL.md` and
+run its read-only status check. Use the returned reporting mode rather than the
+model's identity. Complete the existing notice exchange only when that protocol
+requires it; unavailable or declined telemetry never blocks this skill.
+
 ## Philosophy
 
 - **Re-platform by default**: Select AWS services that match GCP workload types (e.g., Cloud Run → Fargate, Cloud SQL → RDS).
@@ -142,7 +149,7 @@ Load `references/shared/handoff-gates.md` when executing any phase completion st
 1. **Single `$MIGRATION_DIR`**: Use one run directory for the entire migration. Do not mix artifacts across `.migration/*/` sessions.
 2. **Re-read from disk**: Before each phase (and before each handoff gate), Read required artifacts from `$MIGRATION_DIR/`. Do not rely on chat memory.
 3. **Advance only on `HANDOFF_OK`**: A phase is complete only when its orchestrator emits `HANDOFF_OK | phase=<name> | artifacts=...`. Do not load the next phase without it.
-4. **On `GATE_FAIL`**: Output the failure line(s) to the user in plain language. **Do NOT modify artifacts** to pass the gate. **Do NOT continue** to the next phase. Tell the user which phase to re-run.
+4. **On `GATE_FAIL`**: Output the failure line(s) to the user in plain language. **Do NOT modify artifacts** to pass the gate. **Do NOT continue** to the next phase. Record the failure per `handoff-gates.md`. Tell the user which phase to re-run.
 5. **Re-entry**: Re-running an earlier phase after downstream phases completed requires explicit user confirmation; downstream phases must be reset to `"pending"`. See `handoff-gates.md` re-entry table.
 
 Generate phase additionally loads `references/shared/validate-artifacts.md` before writing `migration-report.html`, then `references/shared/validate-migration-report.md` after the HTML is written.
@@ -155,7 +162,7 @@ When reading `$MIGRATION_DIR/.phase-status.json`, validate before proceeding:
 
 1. **Multiple sessions**: If multiple directories exist under `.migration/`, list them with their phase status and ask: [A] Resume latest, [B] Start fresh, [C] Cancel.
 2. **Invalid JSON**: If `.phase-status.json` fails to parse, do NOT delete it and do NOT restart from Discover — the phase artifacts on disk are the durable record of progress. Reconstruct instead:
-   1. Enumerate `$MIGRATION_DIR` and infer completed phases from artifacts: any of `gcp-resource-inventory.json` / `billing-profile.json` / `ai-workload-profile.json` → discover completed; `preferences.json` → clarify completed; `aws-design.json` / `aws-design-ai.json` / `aws-design-billing.json` → design completed; `estimation-*.json` → estimate completed (**partial-write check:** if `preferences.json` has an `ai_constraints` section — or `ai-workload-profile.json` / `aws-design-ai.json` is present — but `estimation-ai.json` is missing while another `estimation-*.json` exists, treat estimate as **incomplete**, not completed; propose resume at estimate); `generation-*.json` or `MIGRATION_GUIDE.md` → generate completed.
+   1. Enumerate `$MIGRATION_DIR` and infer completed phases from artifacts: any of `gcp-resource-inventory.json` / `ai-workload-profile.json` — or a `billing-profile.json` with non-empty `services[]` — → discover completed (a **skip-record** `billing-profile.json`, empty `services[]` + non-empty `warnings[]`, does NOT by itself mean discover completed — it records skipped billing, not a discovered workload); `preferences.json` → clarify completed; `aws-design.json` / `aws-design-ai.json` / `aws-design-billing.json` → design completed; `estimation-*.json` → estimate completed (**partial-write check:** if `preferences.json` has an `ai_constraints` section — or `ai-workload-profile.json` / `aws-design-ai.json` is present — but `estimation-ai.json` is missing while another `estimation-*.json` exists, treat estimate as **incomplete**, not completed; propose resume at estimate); `generation-*.json` or `MIGRATION_GUIDE.md` → generate completed.
    2. Present the inferred status to the user: "Your state file was corrupted, but I can see [phases] completed from the artifacts on disk. Resume at [next phase]? (Y/N)". **Confirmation is the safety net for residual ambiguity** (e.g. other partial writes the heuristic misses) — on N, the user picks the phase to resume.
    3. On Y: rewrite `.phase-status.json` with the inferred phases marked `"completed"`, the next phase `"pending"`, `current_phase` set to it, a fresh `last_updated`, `owning_skill` set to `GCP_TO_AWS`, and a fresh `run_id` (the original is unrecoverable from a corrupt file). Continue normally. On N: ask which phase to resume from and write that instead.
       This is reconstruction of ground truth from artifacts, not artifact-patching to pass a gate — the handoff-gate prohibition does not apply to `.phase-status.json` recovery.
@@ -209,6 +216,10 @@ Use **read-merge-write** updates for `.phase-status.json`:
 3. Keep prior completed phases unchanged.
 4. Set `current_phase` to the next deterministic phase — or `complete` after Generate, **or** after Estimate when the user chose Decision-gate **A** (`run_mode: "decide"`; Generate stays pending).
 5. Write the full file in the same turn as your final phase work message.
+6. Reconcile the saved state in `cli` reporting mode per
+   `references/vendored/telemetry/PROTOCOL.md` before advancing or returning,
+   including sidebar updates and decision-only or executed completion. In `hook`
+   mode, leave reporting to the host hooks.
 
 Example — after completing the Clarify phase, write `$MIGRATION_DIR/.phase-status.json` with:
 
@@ -239,7 +250,7 @@ Replace `MMDD-HHMM` with the actual migration ID, generate the `last_updated` IS
 
 | Phase        | Inputs                                                                                                                                                                   | Outputs                                                                                                                                                                                                                                       | Reference                                |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| **Discover** | `.tf` files, app source code, and/or billing exports (at least one required); optional OpenAI Admin API access supplements with real AI spend                            | `gcp-resource-inventory.json`, `gcp-resource-clusters.json`, `ai-workload-profile.json`, `billing-profile.json`, `openai-usage-profile.json`, `.phase-status.json` updated (outputs vary by input)                                            | `references/phases/discover/discover.md` |
+| **Discover** | `.tf` files, app source code, and/or billing exports (at least one required); optional OpenAI Admin API access or OpenRouter provisioning-key access supplements with real AI spend                            | `gcp-resource-inventory.json`, `gcp-resource-clusters.json`, `ai-workload-profile.json`, `billing-profile.json`, `openai-usage-profile.json`, `openrouter-usage-profile.json`, `.phase-status.json` updated (outputs vary by input)                                            | `references/phases/discover/discover.md` |
 | **Clarify**  | Discovery artifacts (`gcp-resource-inventory.json`, `gcp-resource-clusters.json`, `ai-workload-profile.json`, `billing-profile.json` — whichever exist)                  | `preferences.json`, `.phase-status.json` updated                                                                                                                                                                                              | `references/phases/clarify/clarify.md`   |
 | **Design**   | `preferences.json` + discovery artifacts                                                                                                                                 | `aws-design.json` (infra), `aws-design-ai.json` (AI), `aws-design-billing.json` (billing-only)                                                                                                                                                | `references/phases/design/design.md`     |
 | **Estimate** | `aws-design.json` or `aws-design-billing.json` or `aws-design-ai.json`, `preferences.json`                                                                               | `estimation-infra.json` or `estimation-ai.json` or `estimation-billing.json`, `.phase-status.json` updated                                                                                                                                    | `references/phases/estimate/estimate.md` |
@@ -381,7 +392,9 @@ When invoked, the agent **MUST follow this exact sequence**:
 
 1. **Load phase status**: Read `.phase-status.json` from `.migration/*/`.
    - If missing: Initialize for Phase 1 (Discover)
-   - If exists: Determine current phase using deterministic rules in **State Machine**
+   - If exists: Determine current phase using deterministic rules in **State Machine**.
+     After selecting and validating the run, reconcile in `cli` reporting mode
+     per `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
 
 2. **Determine phase to execute**:
    - If `current_phase` exists: execute that phase.
@@ -394,7 +407,7 @@ When invoked, the agent **MUST follow this exact sequence**:
 
 5. **Validate outputs**: Confirm all required output files exist with correct schema before proceeding. Phase orchestrators run **Completion Handoff Gate** checks per `shared/handoff-gates.md`.
 
-6. **Handoff gate**: Emit `HANDOFF_OK` or `GATE_FAIL` per `shared/handoff-gates.md`. On `GATE_FAIL`, stop — do not update phase status or load the next phase.
+6. **Handoff gate**: Emit `HANDOFF_OK` or `GATE_FAIL` per `shared/handoff-gates.md`. On `GATE_FAIL`, stop — record the failure, do not update phase status or load the next phase.
 
 7. **Update phase status**: Only after `HANDOFF_OK`. Use the Phase Status Update Protocol (read-merge-write) in the same turn as the phase's final output message.
 
@@ -455,8 +468,8 @@ User can invoke the skill again to resume from `current_phase` (or deterministic
 This is a mandatory closing step of every final recommendation — complete it before you consider your answer done. Run this offer check inline yourself; do not depend on loading another skill. The recommendation is decided on merit first; this step never changes, re-ranks, or re-opens it, and the offer is looked up only after the advice is final.
 
 1. Read [`../knowledge-base-for-startups/references/offers.md`](../knowledge-base-for-startups/references/offers.md) — the offer index (Offer · Summary · Keywords), one row per offer.
-2. Judge relevance against what the founder actually surfaced this session. Surface an offer only if **one** holds: a **named-product match** (you recommended a specific partner product by name and it has a row); a **direct intent/component match** (an offer's Keywords directly serve a concrete workload, a component in the final recommendation, or a need the founder raised). Keep a high bar — if the match is weak, or you would be inferring an unstated need, append nothing.
-3. If (and only if) one offer clears the bar, open only its detail file `../knowledge-base-for-startups/references/offers/<slug>.md` and append exactly **one** quiet, dismissible italic line — stating the value and condensing eligibility faithfully from that file (drop no qualifying criterion; never fabricate), with the redeem link built from the canonical `source_url` plus a `source` attribution param — append `?source=ide-startupAdvisor-<host>` (or `&source=...` if the url already has a query string), filling `<host>` from your execution environment (Claude Code → `claude`; AWS Startup Advisor IDE extension / VS Code → `vscode`; Cursor → `cursor`; Kiro → `kiro`; Codex → `codex`), or the generic `ide-startupAdvisor` when you cannot tell. Only append the query param; never change the destination. Show one or none, never a list.
+2. Judge relevance against what the founder actually surfaced this session. Surface an offer only if **one** holds: a **named-product match** (you recommended a specific partner product by name and it has a row); a **direct intent/component match** (an offer's Keywords directly serve a concrete workload, a component in the final recommendation, or a need the founder raised). Keep a high bar — if the match is weak, or you would be inferring an unstated need, append nothing. In this migration, only surface an offer that is a credit on a product the design already kept or selected (e.g. an existing Auth0 kept as-is); otherwise append none — never an offer that competes with a service in the design or the Terraform Generate emits (e.g. Confluent vs SNS/SQS for Pub/Sub, Supabase/TiDB vs RDS/Aurora for Cloud SQL, Pulumi vs the emitted Terraform), and none for a specialist-deferred resource (e.g. BigQuery → no ClickHouse or Databricks).
+3. If (and only if) one offer clears the bar, open only its detail file `../knowledge-base-for-startups/references/offers/<slug>.md` and append exactly **one** quiet, dismissible italic line — stating the value and condensing eligibility faithfully from that file (drop no qualifying criterion; never fabricate), with the redeem link built from the canonical `source_url` plus a `source` attribution param — append `?source=ide-startupAdvisor-<host>` (or `&source=...` if the url already has a query string), filling `<host>` from your execution environment (Claude Code → `claude`; AWS Startup Advisor IDE extension / VS Code → `vscode`; Cursor → `cursor`; Kiro → `kiro`; Codex → `codex`), or the generic `ide-startupAdvisor` when you cannot tell. Only append the query param; never change the destination. Show one or none, never a list. If none clears the bar, append nothing and do not mention offers, partner alternatives, or why none appeared.
 
 Standard line:
 

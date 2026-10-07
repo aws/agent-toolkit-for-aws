@@ -1,0 +1,60 @@
+{
+  "phase": "estimate",
+  "design_source": "aws-design.json",
+  "timestamp": "2026-07-19T18:30:00Z",
+  "pricing_source": {
+    "status": "cached",
+    "message": "us-east-1 cache"
+  },
+  "accuracy_confidence": "+/-5-10%",
+  "current_costs": {
+    "source": "unavailable",
+    "baseline_note": "no billing"
+  },
+  "projected_costs": {
+    "aws_monthly_premium": 265.0,
+    "aws_monthly_balanced": 210.0,
+    "aws_monthly_optimized": 178.0,
+    "aws_annual_optimized": 2136.0,
+    "breakdown": {
+      "total": {
+        "premium": 265.0,
+        "mid": 210.0,
+        "low": 178.0
+      },
+      "Elastic Beanstalk": {
+        "premium": 145.0,
+        "mid": 115.0,
+        "low": 100.0,
+        "pricing_source": "cached"
+      },
+      "RDS PostgreSQL": {
+        "premium": 120.0,
+        "mid": 95.0,
+        "low": 78.0,
+        "pricing_source": "cached"
+      }
+    }
+  },
+  "complexity_tier": "small",
+  "complexity_inputs": {
+    "service_count": 2
+  },
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate with Optimized pricing scenario",
+    "migrate_if": [
+      "want AWS control plane"
+    ],
+    "stay_if": [
+      "need Heroku DX indefinitely"
+    ],
+    "would_flip_if": [
+      "A confirmed always-on traffic pattern would raise the AWS compute estimate materially."
+    ]
+  },
+  "workshop": {
+    "scenario_id": null,
+    "region_note": null
+  }
+}

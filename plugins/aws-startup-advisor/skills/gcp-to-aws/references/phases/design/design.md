@@ -1,5 +1,13 @@
 # Phase 3: Design AWS Architecture (Orchestrator)
 
+## Telemetry boundary
+
+Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
+when this phase is executed inline by another skill. In `cli` mode, reconcile
+after each persisted `.phase-status.json` update and before waiting, returning,
+or advancing. This also applies to state writes in a loaded sub-flow. In `hook`
+mode, leave reporting to the configured hooks.
+
 **Execute ALL steps in order. Do not skip or optimize.**
 
 ## Prerequisites
@@ -28,11 +36,13 @@ Produces: `aws-design.json`
 
 ### Billing-Only Design (fallback)
 
-IF `billing-profile.json` exists AND `gcp-resource-inventory.json` does **NOT** exist:
+IF `billing-profile.json` exists with **non-empty `services[]`** AND `gcp-resource-inventory.json` does **NOT** exist:
 
 → Load `design-billing.md`
 
 Produces: `aws-design-billing.json`
+
+> A **skip-record** `billing-profile.json` (empty `services[]`, non-empty `warnings[]` — every billing file was an unrecognized non-GCP export) does **NOT** trigger the billing-only route: there is nothing to map, and a $0 design over zero services is not a real result. Treat it as "no billing signal" and rely on the IaC or AI route instead.
 
 ### AI Workload Design
 
@@ -53,7 +63,7 @@ Before marking Design complete, enforce route output gates (fail closed):
 
 1. Determine which design routes ran:
    - IaC route: `gcp-resource-inventory.json` AND `gcp-resource-clusters.json` exist
-   - Billing-only route: `billing-profile.json` exists AND `gcp-resource-inventory.json` does NOT exist
+   - Billing-only route: `billing-profile.json` exists **with non-empty `services[]`** AND `gcp-resource-inventory.json` does NOT exist (a skip-record profile — empty `services[]`, non-empty `warnings[]` — does not count)
    - AI route: `ai-workload-profile.json` exists
 2. Require at least one route to be active. If none active: STOP.
 3. For each active route, require its expected artifact:
