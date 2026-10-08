@@ -109,6 +109,25 @@ def test_new_shared_file_nobody_vendors_is_not_an_error(tmp_path: Path):
     assert sv.check_manifest(plugin) == []
 
 
+def test_telemetry_bundle_is_owned_by_its_separate_sync_gate(tmp_path: Path):
+    """Telemetry is generated from scripts/telemetry, not skills/shared."""
+    plugin = _tree(tmp_path)
+    vend = plugin / "skills" / "alpha" / "references" / "vendored"
+    (vend / "telemetry").mkdir()
+    (vend / "telemetry" / "PROTOCOL.md").write_text("generated bundle\n")
+    (vend / "telemetry" / "version.json").write_text('{"version": "1.0.0"}\n')
+    (vend / "orphan.md").unlink()
+    readme = vend / "README.md"
+    readme.write_text("\n".join(l for l in readme.read_text().splitlines() if "orphan" not in l) + "\n")
+    (vend / "pricing.json").write_text('{"a": 1}\n')
+    telemetry_only = plugin / "skills" / "telemetry-only" / "references" / "vendored" / "telemetry"
+    telemetry_only.mkdir(parents=True)
+    (telemetry_only / "cli.py").write_text("# generated bundle\n")
+
+    assert sv.check_plugin(plugin) == []
+    assert sv.check_manifest(plugin) == []
+
+
 def test_cli_check_exit_codes(tmp_path: Path):
     plugin = _tree(tmp_path)
     r = subprocess.run([sys.executable, str(SCRIPT), "--check", "--plugin-root", str(plugin)],
