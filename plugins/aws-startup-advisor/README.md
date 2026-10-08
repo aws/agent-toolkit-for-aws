@@ -7,7 +7,7 @@ AWS Startup Advisor puts an [AWS Startups](https://aws.amazon.com/startups/) Sol
 Ask it things like:
 
 - "We're pre-seed with two engineers. What should our AWS architecture look like?"
-- "Migrate us off Heroku and tell me what it costs."
+- "Migrate us off Google Cloud and tell me what it costs."
 - "Which runtime should this agent use?"
 - "Our API started returning 502s after the last deploy."
 
