@@ -28,6 +28,13 @@ emits at load time. Call it `<SKILL_BASE>`. Derived paths:
 
 ---
 
+## Optional usage telemetry
+
+Before starting or resuming, load `references/vendored/telemetry/PROTOCOL.md` and
+run its read-only status check. Use the returned reporting mode rather than the
+model's identity. Complete the existing notice exchange only when that protocol
+requires it; unavailable or declined telemetry never blocks this skill.
+
 ## Step 0 — Check prerequisites
 
 ### 0a. Check that `uv` is available
@@ -305,6 +312,10 @@ work to the telemetry hooks.
    run-level events (`RUN_STARTED`, `RUN_COMPLETED`) leave the machine for this run; the AI
    journey's entry point is already visible through the delegated run's events, which carry
    `initiatingSkill`.
+
+2. After creating or validating the resumed Bedrock run, reconcile in `cli`
+   reporting mode per `references/vendored/telemetry/PROTOCOL.md`.
+   In `hook` mode, leave reporting to the host hooks.
 
 ---
 
@@ -726,6 +737,8 @@ user's own pre-existing branch and deleting it would destroy their work):
 **Close this skill's run state** (read-merge-write on `$BEDROCK_RUN_DIR/.phase-status.json`):
 set `phases.execute` to `"completed"`, `current_phase` to `"complete"`, and update
 `last_updated`. This is what marks the AI migration finished in the usage funnel.
+After writing this state, reconcile in `cli` reporting mode per
+`references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
 
 ---
 

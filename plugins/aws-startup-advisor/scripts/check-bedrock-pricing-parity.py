@@ -4,8 +4,13 @@
 Run from anywhere:
     python3 plugins/aws-startup-advisor/scripts/check-bedrock-pricing-parity.py
 
-The immutable pre-split comparison point is the stacked PR #387 head on which this
-branch was created. The check uses only the standard library and local git data.
+The immutable pre-split comparison point was originally the stacked PR #387 head on
+which this branch was created. It was bumped to upstream's 2026-10-05 pricing-cache
+refresh commit (#408) so the "preserve pre-split behavior" check compares against
+content that already includes both the Nova Canvas/Nova Reel EOL wording fix (#409)
+and the Oct 5 refresh — the Sep 3 snapshot never had either, so comparing against it
+would flag legitimate upstream data changes as regressions. The check uses only the
+standard library and local git data.
 """
 from __future__ import annotations
 
@@ -17,7 +22,7 @@ import tempfile
 import types
 from pathlib import Path
 
-BASE_SHA = "9e60fce74ff65ef4752dd2c4a1ae0a0bca6007a8"
+BASE_SHA = "883270642209b06e1e76dcc4f944a1174abf0675"
 PLUGIN = Path(__file__).resolve().parent.parent
 REPO = PLUGIN.parents[1]
 OLD_CACHE = "plugins/aws-startup-advisor/skills/gcp-to-aws/references/shared/pricing-cache.md"
@@ -185,7 +190,13 @@ def main() -> int:
     assert "references/vendored/ai/bedrock-pricing-cache.md` (primary for Bedrock)" in azure_estimate_ai
     assert "`shared/pricing-cache.md` (primary for source providers)" in azure_estimate_ai
     assert "## Bedrock Models (On-Demand)" not in azure_cache
-    assert "Claude Fable" not in azure_cache
+    # Scoped to a reinstated Bedrock model row/recommendation sentence, not the whole
+    # file: the Oct 5 refresh's "Last updated" provenance note (reproduced verbatim
+    # from upstream per the metadata equality check below) legitimately names
+    # "Claude Fable 5" while listing which models' rates it re-verified unchanged —
+    # that is not the deleted Bedrock section leaking back in.
+    assert "| Claude Fable" not in azure_cache
+    assert "default to Claude Fable" not in azure_cache
     assert metadata(azure_cache)["Last updated"] == metadata(azure_old)["Last updated"]
     assert markdown_data_rows(section(azure_cache, "Source Provider Pricing (for Migration Comparison)")) == markdown_data_rows(section(azure_old, "Source Provider Pricing (for Migration Comparison)")), "Azure source-provider rate rows changed"
     assert "any Bedrock rate change into\n   `references/vendored/ai/bedrock-pricing-cache.md`" in azure_openai

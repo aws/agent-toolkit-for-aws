@@ -295,6 +295,22 @@ class TestPayloadMatchesTheModel:
         client.post_event({"consentRecorded": {}}, accept(home), collector.url)
         assert collector.received[0]["content_type"] == "application/json"
 
+    def test_carries_the_plugin_user_agent(self, home, collector):
+        client.post_event({"consentRecorded": {}}, accept(home), collector.url)
+        assert collector.received[0]["user_agent"] == "aws-startup-advisor-plugin"
+
+    def test_every_event_type_carries_the_user_agent(self, home, collector):
+        install_id = accept(home)
+        for event in (
+            {"consentRecorded": {}},
+            {"skillInvoked": {"skill": "GCP_TO_AWS", "eventName": "SKILL_INVOKED"}},
+            {"migrationActivity": {}},
+        ):
+            client.post_event(event, install_id, collector.url)
+        assert [r["user_agent"] for r in collector.received] == [
+            "aws-startup-advisor-plugin"
+        ] * 3
+
     def test_occurred_at_is_epoch_milliseconds_not_seconds(self, home, collector):
         # Seconds would land in 1970 and the service drops nothing, so this is a
         # mistake only a test can catch.

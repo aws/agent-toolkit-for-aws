@@ -1,5 +1,13 @@
 # Phase 4: Estimate AWS Costs (Orchestrator)
 
+## Telemetry boundary
+
+Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
+when this phase is executed inline by another skill. In `cli` mode, reconcile
+after each persisted `.phase-status.json` update and before waiting, returning,
+or advancing. This includes the post-Estimate decision and workshop state writes.
+In `hook` mode, leave reporting to the configured hooks.
+
 **Execute ALL steps in order. Do not skip or optimize.**
 
 ## Step 0: Pricing Mode Selection

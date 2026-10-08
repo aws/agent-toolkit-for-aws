@@ -1,6 +1,6 @@
 # AWS Pricing Cache
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-10-05 (re-verified via the AWS Pricing MCP server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50 (Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo), Opus 4.6 $5/$25, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50 (Global/base), Fable 5.1 $10/$50 (Global — a real, commercially supported option from us-east-1) / $11/$55 (Geo, `us.`-prefixed, for US-only residency), Llama 4 Maverick/Scout, Llama 3.3 70B, Nova Micro/Lite/Pro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family all confirmed unchanged via MCP; Fargate/EC2/RDS/ElastiCache/S3 infra rows cross-checked against the canonical aws-infra-pricing.json refresh (same date) — see that file's rate changes for EC2 r6i, RDS PostgreSQL Multi-AZ, Aurora PostgreSQL r6g, and ElastiCache cache.m6g; this refresh corrects the Geo-vs-Global pricing gap for the four Anthropic models that require a cross-Region inference profile — see the Geo vs. Global note in the Bedrock Models section)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±5-10% for infrastructure and source-provider services (sourced from public pricing pages and the AWS Price List API)
