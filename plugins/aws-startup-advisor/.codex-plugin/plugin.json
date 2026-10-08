@@ -1,7 +1,7 @@
 {
   "name": "aws-startup-advisor",
   "version": "2.0.3",
-  "description": "Personalized AWS guidance built on patterns from 350,000+ startups—architecture, cost, security, and migration, from day-one account setup to production-ready infrastructure. Migrate to AWS from Azure, GCP, or Heroku—including your entire AI stack: OpenAI/Gemini/Anthropic SDK rewrites to Amazon Bedrock, agentic systems (LangChain, CrewAI, AutoGen) to AWS-native runtimes, and Temporal workers. Operate what you run with AWS DevOps Agent—incident investigation and release-readiness review, with the cost shown before anything is enabled. Includes AWS Activate credits eligibility and 60+ exclusive startup offers. Built by AWS Startup Solutions Architects, with multi-account, multi-region support.",
+  "description": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate a production incident.",
   "author": {
     "name": "Amazon Web Services",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
@@ -93,8 +93,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "AWS Startup Advisor",
-    "shortDescription": "Build and migrate on AWS with startup-focused architecture, cost, and security guidance plus Azure/GCP/Heroku-to-AWS and AI-stack (Bedrock, agents) migration workflows.",
-    "longDescription": "Personalized architecture, cost, security, and migration guidance for startups. From day-one account setup and security baselines to production-ready infrastructure, cost optimization, and beyond. Includes AWS Activate Credits eligibility, 60+ exclusive startup offers, and multi-account multi-region support. Built on expertise from AWS Startup Solutions Architects and patterns from 350,000+ startups.\n\nFeatures\nVetted prompts for startups at every stage:\n\n\nDay-one account setup, security baseline, least-privilege roles\nScaffold a production architecture for your stack\nSet up GuardDuty, Security Hub, and a vulnerability scanner\nMigrate from Azure, GCP, Heroku, OpenAI, or Gemini — infrastructure, AI SDKs to Amazon Bedrock, and agentic systems\n\n\nAWS Activate Benefits\nCheck eligibility and explore offers available to startups on AWS:\n\n\nAWS Activate Credits: Check eligibility and learn how to apply for credits to offset costs across 200+ services, including infrastructure, data services, and AI/ML models on Bedrock.\nExclusive Startup Offers: Access discounts and extended trials on dozens of tools for payments, analytics, communications, and developer productivity.",
+    "shortDescription": "Puts an AWS Startups Solutions Architect in your coding assistant.",
+    "longDescription": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate a production incident.\n\nAsk it things like:\nWe're pre-seed with two engineers. What should our AWS architecture look like?\nMigrate us off Heroku and tell me what it costs.\nWhich runtime should this agent use?\nOur API started returning 502s after the last deploy.",
     "defaultPrompt": [
       "Help me build an MVP on AWS",
       "Find AWS Startups articles on cost optimization",

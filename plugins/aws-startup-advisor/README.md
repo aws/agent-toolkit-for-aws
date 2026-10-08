@@ -2,16 +2,16 @@
 
 ## Overview
 
-This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise directly into your coding assistant. Its skills encode the patterns AWS Startup Solutions Architects use with founders every day — stage-aware architecture advice, credit-conscious cost planning, and phased migrations onto AWS — so your agent gives startup-appropriate answers instead of enterprise-sized ones. Currently, skills are provided to assist with the following capability areas:
+AWS Startup Advisor puts an [AWS Startups](https://aws.amazon.com/startups/) Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate a production incident.
 
-- **Startup Architecture Advice** — Recommend and review non-agent AWS architectures against a company's stage (pre-revenue through Series B+), team size, runway, and available credits, including preparing an architecture for a fundraise or technical diligence. An AI agent as the workload is AI Agent Runtimes, below.
-- **Guided Building** — Run an interactive discovery flow (intent, scope, constraints, preferences), scan what the codebase already implies, then write an AWS architectural scaffold and implementation into the project.
-- **AI Agent Runtimes** — Choose a runtime for an agentic workload (Amazon Bedrock AgentCore, Amazon ECS, Amazon EKS, AWS Lambda, and Lambda MicroVMs), plan a migration for agents already running elsewhere, and build an executable proof of concept.
-- **Cloud Migration** — Migrate from Microsoft Azure, Google Cloud Platform, or Heroku to AWS through a phased flow: discover, clarify, design, estimate, generate artifacts, and collect feedback.
-- **AI Stack Migration** — Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock and deliver a ready-to-review git branch, or enable Bedrock model access for named models with no rewrite.
-- **Operating on AWS** — Investigate incidents, find root cause, and review pull requests for release readiness with AWS DevOps Agent, with the cost, account access, and code handling each disclosed before anything is enabled.
-- **Terraform Quality Gate** — Apply AWS Terraform authoring posture and a security baseline while generating a `terraform/` directory, then run a read-only policy verdict over what was written.
-- **Startup Reference Content** — Answer factual questions about AWS Activate, credits, programs, and partner offers, and serve AWS-curated learn articles, sample architectures, and copy-paste prompts for AI coding agents.
+Ask it things like:
+
+- "We're pre-seed with two engineers. What should our AWS architecture look like?"
+- "Migrate us off Heroku and tell me what it costs."
+- "Which runtime should this agent use?"
+- "Our API started returning 502s after the last deploy."
+
+The twelve skills below are the catalog. Install them together.
 
 ## Agent Skills
 
