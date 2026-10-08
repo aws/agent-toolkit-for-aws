@@ -46,6 +46,7 @@ SKILL_IDS = {
     "knowledge-base-for-startups": "KNOWLEDGE_BASE_FOR_STARTUPS",
     "llm-to-bedrock": "LLM_TO_BEDROCK",
     "operate-on-aws": "OPERATE_ON_AWS",
+    "prefill-aws-activate-credits-application": "APPLY_FOR_ACTIVATE_CREDITS",
     "prompt-library-for-startups": "PROMPT_LIBRARY_FOR_STARTUPS",
     "start-building-for-startups": "START_BUILDING_FOR_STARTUPS",
     "tf-best-practices": "TF_BEST_PRACTICES",

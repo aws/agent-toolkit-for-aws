@@ -24,6 +24,7 @@ import skill_invoked
 # PluginSkillId, transcribed from model/types/plugin-telemetry.smithy.
 MODELLED_SKILL_IDS = {
     "AGENT_ADVISOR",
+    "APPLY_FOR_ACTIVATE_CREDITS",
     "ARCHITECT_FOR_STARTUPS",
     "AZURE_TO_AWS",
     "CONTEXTUAL_OFFERS_FOR_STARTUPS",

@@ -29,6 +29,7 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 | 10 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
 | 11 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
 | 12 | `contextual-offers-for-startups` | Appends at most one relevant AWS Activate partner offer as optional context after another skill's output is final | [SKILL.md](skills/contextual-offers-for-startups/SKILL.md) |
+| 13 | `prefill-aws-activate-credits-application` | Interviews a founder, stages an AWS Activate credits application, and returns a one-time link for them to sign in and submit. Staging only — nothing is submitted on their behalf, and a staged application cannot be looked up again | [SKILL.md](skills/prefill-aws-activate-credits-application/SKILL.md) |
 
 `contextual-offers-for-startups` is consulted by the other skills rather than invoked directly: it runs only after a recommendation, plan, or build is already final, and it never influences the technical advice.
 
@@ -67,7 +68,7 @@ For standalone skill installs — Kiro, fx, and other hosts that consume skills 
 npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill '*'
 ```
 
-Install all 12 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
+Install all 13 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
 ## Startup Architecture Advice
 
