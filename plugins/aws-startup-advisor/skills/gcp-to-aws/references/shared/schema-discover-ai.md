@@ -24,7 +24,8 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
       "application_code": true,
       "billing_data": false,
       "openai_usage_api": false,
-      "openrouter_usage_api": false
+      "openrouter_usage_api": false,
+      "anthropic_usage_api": false
     }
   },
 
@@ -117,10 +118,11 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
   "current_costs": {
     "monthly_ai_spend": 450,
     "services_detected": ["Vertex AI Predictions", "Generative AI API"],
-    "source": "billing_data|openai_usage_api|openrouter_usage_api|mixed",
+    "source": "billing_data|openai_usage_api|openrouter_usage_api|anthropic_usage_api|mixed",
     "breakdown": [
       { "provider": "openai", "monthly_spend": 105, "source": "openai_usage_api" },
       { "provider": "openrouter", "monthly_spend": 60, "source": "openrouter_usage_api" },
+      { "provider": "anthropic", "monthly_spend": 40, "source": "anthropic_usage_api" },
       { "provider": "gcp", "monthly_spend": 345, "source": "billing_data" }
     ],
     "conflicting_sources": []
@@ -168,12 +170,12 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
 - `integration.pattern` — How the app connects to AI (`direct_sdk`, `framework`, `rest_api`, `mixed`, or `unknown` for IaC-only)
 - `integration.capabilities_summary` — Union of all capabilities across all models
 - `infrastructure[]` — Terraform resources related to AI (empty array if no Terraform provided)
-- `current_costs` — Present ONLY if billing data OR OpenAI usage API data OR OpenRouter usage API data was provided; omitted entirely otherwise. `source` records provenance. Merge is provider-aware: billing CSVs measure GCP/Vertex spend, the OpenAI usage API measures OpenAI-direct spend, the OpenRouter usage API measures OpenRouter (router) spend — when sources exist for DIFFERENT providers, `monthly_ai_spend` is their SUM with `source: "mixed"` and the per-provider split in `breakdown[]` (never max/pick-one — that drops a provider). Same-provider overlap: the usage API wins and the displaced figure lands in `conflicting_sources[]` (never silently resolved). `breakdown` is present only for `source: "mixed"`.
-- `detection_signals[]` — Raw signals from AI detection for transparency. `method` values include `terraform`, `code`, `live_gcloud`, `openai_usage_api`, and `openrouter_usage_api`.
+- `current_costs` — Present ONLY if billing data OR OpenAI usage API data OR OpenRouter usage API data OR Anthropic usage API data was provided; omitted entirely otherwise. `source` records provenance. Merge is provider-aware: billing CSVs measure GCP/Vertex spend, the OpenAI usage API measures OpenAI-direct spend, the OpenRouter usage API measures OpenRouter (router) spend, the Anthropic usage API measures Anthropic-direct spend — when sources exist for DIFFERENT providers, `monthly_ai_spend` is their SUM with `source: "mixed"` and the per-provider split in `breakdown[]` (never max/pick-one — that drops a provider). Same-provider overlap: the usage API wins and the displaced figure lands in `conflicting_sources[]` (never silently resolved). `breakdown` is present only for `source: "mixed"`.
+- `detection_signals[]` — Raw signals from AI detection for transparency. `method` values include `terraform`, `code`, `live_gcloud`, `openai_usage_api`, `openrouter_usage_api`, and `anthropic_usage_api`.
 
 **Conditional sections:**
 
-- `current_costs` — Include ONLY if billing data was provided (billing discovery ran), OpenAI usage API discovery ran (`discover-openai-api.md`), or OpenRouter usage API discovery ran (`discover-openrouter-api.md`). Omit entirely if none.
+- `current_costs` — Include ONLY if billing data was provided (billing discovery ran), OpenAI usage API discovery ran (`discover-openai-api.md`), OpenRouter usage API discovery ran (`discover-openrouter-api.md`), or Anthropic usage API discovery ran (`discover-anthropic-api.md`). Omit entirely if none.
 - `infrastructure` — Set to `[]` if no Terraform files were provided (IaC discovery did not run).
 - `agentic_profile` — Include ONLY if agentic signals detected (`is_agentic: true`). Omit entirely otherwise.
 - `tool_manifest` — Include ONLY if `agentic_profile` exists. Set to `[]` if agentic but no tools detected.

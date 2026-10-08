@@ -11,6 +11,7 @@ Lightweight orchestrator that delegates to domain-specific discoverers. Each sub
 - **discover-billing.md** → `billing-profile.json` (if billing data found)
 - **discover-openai-api.md** → `openai-usage-profile.json` from the OpenAI Admin API (read-only, consent-gated); fills `ai-workload-profile.json` → `current_costs` with real spend when that profile exists
 - **discover-openrouter-api.md** → `openrouter-usage-profile.json` from the OpenRouter API (read-only, consent-gated, provisioning key); per-model usage + spend for an OpenRouter-fronted workload; fills `ai-workload-profile.json` → `current_costs` when that profile exists
+- **discover-anthropic-api.md** → `anthropic-usage-profile.json` from the Anthropic Admin API (read-only, consent-gated); per-model usage + spend for an Anthropic-direct workload; fills `ai-workload-profile.json` → `current_costs` when that profile exists
 
 Multiple artifacts can be produced in a single run — they are not mutually exclusive.
 
@@ -86,7 +87,7 @@ Glob for: `**/*.py`, `**/*.js`, `**/*.ts`, `**/*.jsx`, `**/*.tsx`, `**/*.go`, `*
 **1c. Check for billing data:**
 Glob for: `**/*billing*.csv`, `**/*billing*.json`, `**/*cost*.csv`, `**/*cost*.json`, `**/*usage*.csv`, `**/*usage*.json`
 
-**Exclude `.migration/**` from these globs** — migration run artifacts (e.g. `openai-usage-profile.json`, `openai-capture/`, `openrouter-usage-profile.json`, `openrouter-capture/`) must never be re-ingested as billing input.
+**Exclude `.migration/**` from these globs** — migration run artifacts (e.g. `openai-usage-profile.json`, `openai-capture/`, `openrouter-usage-profile.json`, `openrouter-capture/`, `anthropic-usage-profile.json`, `anthropic-capture/`) must never be re-ingested as billing input.
 
 - If not found → Skip. Log: "No billing files found — skipping billing discovery."
 - If found AND **no** Terraform files from 1a → Load `references/phases/discover/discover-billing.md` (billing is the primary source — needs full processing for the billing-only design path).
@@ -200,6 +201,25 @@ is a router, so its `usage` already includes the upstream providers it fronts;
 adding an "openai via openrouter" line on top would double-count. The sub-file's
 merge handles this distinction.
 
+**1g. Anthropic usage discovery (Admin API):**
+
+Runs AFTER 1a–1d complete, so its merge sees any `ai-workload-profile.json`.
+Load `references/phases/discover/discover-anthropic-api.md` when EITHER
+condition holds; otherwise skip silently:
+
+- `ai-workload-profile.json` exists with `summary.ai_source` of `anthropic`
+  or `both`
+- No billing files were found in 1c AND the user mentions Anthropic/Claude
+  usage or spend
+
+The sub-file's Step 0 consent gate is the single consent point for this
+source — do not pre-ask here (loading the file only presents the gate;
+declining `[B]` exits cleanly and must not be re-asked this run). If
+`$MIGRATION_DIR/anthropic-capture/manifest.json` already exists (a resumed
+run), execute from its Step 3 (parse the existing captures; consent and
+capture already happened). This source supplements billing files — both may
+run in the same run.
+
 ## Step 2: Check Outputs
 
 After all loaded sub-discoveries complete, check what artifacts were produced in `$MIGRATION_DIR/`:
@@ -211,6 +231,7 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
    - `billing-profile.json` — Billing data parsed (or, when `services[]` is empty and `warnings[]` is non-empty, a skip record: billing files seen but not a GCP/BigQuery export)
    - `openai-usage-profile.json` — OpenAI Admin API usage captured
    - `openrouter-usage-profile.json` — OpenRouter API usage captured
+   - `anthropic-usage-profile.json` — Anthropic Admin API usage captured
 2. **If NO artifacts were produced** (sub-discoveries ran but produced no output): STOP and output: "Discovery ran but produced no artifacts. Check that your input files contain valid GCP resources and try again."
 3. **Route output gate (fail closed):** For each triggered sub-discovery route, require the expected artifact(s) before completion:
    - If `discover-iac.md` ran -> require `gcp-resource-inventory.json` and `gcp-resource-clusters.json`
@@ -222,6 +243,7 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
    - If full `discover-billing.md` ran OR lightweight billing extraction ran -> require `billing-profile.json`
    - If `discover-openai-api.md` ran AND capture happened (`$MIGRATION_DIR/openai-capture/manifest.json` exists) -> require `openai-usage-profile.json`; when `ai-workload-profile.json` also exists, require `metadata.sources_analyzed.openai_usage_api` = `true` in it. (If the user declined consent or had no Admin key, the sub-file exited cleanly — no artifact required.)
    - If `discover-openrouter-api.md` ran AND capture happened (`$MIGRATION_DIR/openrouter-capture/manifest.json` exists) -> check the manifest's `/activity` entry: `status: "ok"` requires `openrouter-usage-profile.json` (and, when `ai-workload-profile.json` also exists, requires `metadata.sources_analyzed.openrouter_usage_api` = `true` in it); `status: "skipped"` requires NO artifact — the user deliberately abandoned this source with no per-model signal to build a profile from, which is a valid terminal outcome, not a failure; `status: "failed"` means the run did not reach a terminal state for this source and must not have completed Discover at all (the sub-file's own resume rule routes back to its retry path before Discover can finish). (If the user declined consent or had no provisioning key at Step 0/1, the sub-file exited cleanly before ever writing a manifest — no artifact required.)
+   - If `discover-anthropic-api.md` ran AND capture happened (`$MIGRATION_DIR/anthropic-capture/manifest.json` exists) -> require `anthropic-usage-profile.json`; when `ai-workload-profile.json` also exists, require `metadata.sources_analyzed.anthropic_usage_api` = `true` in it. (If the user declined consent or had no Admin key, the sub-file exited cleanly — no artifact required.)
    - If any triggered route is missing its required artifact(s): STOP and output: "Discover route [name] did not produce required artifacts. Resolve the sub-discovery failure before completing Phase 1."
 
 ## Step 3: Migration Preview
@@ -250,7 +272,7 @@ to be silently re-selected.
 
 **Checks (all must PASS):**
 
-1. At least one discovery artifact exists (`gcp-resource-inventory.json`, `ai-workload-profile.json`, or `billing-profile.json`). Neither `openai-usage-profile.json` nor `openrouter-usage-profile.json` satisfies this check on its own — each is a supplement (spend and volumes, no integration or capability detail; see SKILL.md Prerequisites) and cannot anchor a run by itself. A **skip-record** `billing-profile.json` (empty `services[]` **and** non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) ALSO does not satisfy this check on its own: it records that billing input was skipped, not parsed. The run must anchor on IaC, code scan, or AI discovery instead.
+1. At least one discovery artifact exists (`gcp-resource-inventory.json`, `ai-workload-profile.json`, or `billing-profile.json`). None of `openai-usage-profile.json`, `openrouter-usage-profile.json`, or `anthropic-usage-profile.json` satisfies this check on its own — each is a supplement (spend and volumes, no integration or capability detail; see SKILL.md Prerequisites) and cannot anchor a run by itself. A **skip-record** `billing-profile.json` (empty `services[]` **and** non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) ALSO does not satisfy this check on its own: it records that billing input was skipped, not parsed. The run must anchor on IaC, code scan, or AI discovery instead.
 2. Route output gates from Step 2 all pass.
 3. If any discovery artifact exists → `migration-preview.json` exists with `complexity_signal` set.
 
@@ -274,6 +296,7 @@ Output to user — build message from whichever artifacts exist:
 - If `billing-profile.json` exists with non-empty `services[]`: "Parsed billing data ($Z/month across N services)." If it is a skip record (empty `services[]`, non-empty `warnings[]`): "Skipped N billing files (not GCP/BigQuery exports) — see billing-profile.json warnings." (never report "$0/month across 0 services" as parsed spend).
 - If `openai-usage-profile.json` exists: "Captured OpenAI usage via Admin API ($X/month across M models)." Plus, when `metadata.capture_warnings` is non-empty: "W usage endpoints failed — affected categories are unknown, not zero (see profile metadata)."
 - If `openrouter-usage-profile.json` exists: "Captured OpenRouter usage via API ($X/month across M models)." Plus, when `metadata.capture_warnings` is non-empty: "W usage endpoints failed — affected categories are unknown, not zero (see profile metadata)."
+- If `anthropic-usage-profile.json` exists: "Captured Anthropic usage via Admin API ($X/month across M models)." Plus, when `metadata.capture_warnings` is non-empty: "W usage endpoints failed — affected categories are unknown, not zero (see profile metadata)."
 
 Append the preview block from Step 3 to the output message below.
 
@@ -293,7 +316,8 @@ _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FA
 4. `billing-profile.json` — from discover-billing.md
 5. `openai-usage-profile.json` — from discover-openai-api.md (plus `openai-capture/` raw captures inside the gitignored run directory; the transient `.openai-admin-env` key file is deleted by that sub-file's Step 4 and is never a phase output)
 6. `openrouter-usage-profile.json` — from discover-openrouter-api.md (plus `openrouter-capture/` raw captures inside the gitignored run directory; the transient `.openrouter-key-env` key file is deleted by that sub-file's Step 4 and is never a phase output)
-7. `migration-preview.json` — from discover-preview.md (always written when any artifact exists)
+7. `anthropic-usage-profile.json` — from discover-anthropic-api.md (plus `anthropic-capture/` raw captures inside the gitignored run directory; the transient `.anthropic-admin-env` key file is deleted by that sub-file's Step 4 and is never a phase output)
+8. `migration-preview.json` — from discover-preview.md (always written when any artifact exists)
 
 **No other files must be created:**
 
