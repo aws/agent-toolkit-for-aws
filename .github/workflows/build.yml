@@ -39,8 +39,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
 
       - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
 
@@ -52,26 +50,3 @@ jobs:
 
       - name: Security scan (gitleaks)
         run: mise run security
-
-      - name: Detect startup advisor changes
-        id: startup-advisor-changes
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" || "$BASE_SHA" =~ ^0+$ ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            changed_files=$(git diff --name-only --no-renames "$BASE_SHA" HEAD -- \
-              plugins/aws-startup-advisor/ mise.toml .github/workflows/build.yml)
-            if [[ -n "$changed_files" ]]; then
-              echo "changed=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "changed=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
-      - name: Run startup advisor checks
-        if: steps.startup-advisor-changes.outputs.changed == 'true'
-        run: |
-          mise -C plugins/aws-startup-advisor install
-          mise -C plugins/aws-startup-advisor run ci
