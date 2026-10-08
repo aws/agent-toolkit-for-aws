@@ -11,7 +11,7 @@ Ask it things like:
 - "Which runtime should this agent use?"
 - "Our API started returning 502s after the last deploy."
 
-The sixteen skills below are the catalog. Install them together.
+The seventeen skills below are the catalog. Install them together.
 
 ## Agent Skills
 
@@ -33,6 +33,7 @@ The sixteen skills below are the catalog. Install them together.
 | 14 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`), can measure OpenAI, Anthropic, and OpenRouter usage read-only with your consent, runs the AI-only migration questions, designs a Bedrock target, endpoint, and client API per workload, and estimates the monthly Bedrock cost. Needs no infrastructure skill. This release stops after Estimate; Generate lands in a later release | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
 | 15 | `cost-regression-check` | Prices an infrastructure-as-code change on every pull request before apply: the fixed monthly floor it adds and the change in cost per unit of usage, at list price before credits, against thresholds derived from your monthly ceiling | [SKILL.md](skills/cost-regression-check/SKILL.md) |
 | 16 | `self-hosted-llm-batch-inference` | Recurring offline inference for a self-hosted 1B to 8B model on one GPU with AWS Batch on Spot, vLLM, deterministic shards, and verified completion and capacity release | [SKILL.md](skills/self-hosted-llm-batch-inference/SKILL.md) |
+| 17 | `prefill-aws-activate-credits-application` | Interviews a founder, stages an AWS Activate credits application, and returns a one-time link for them to sign in and submit. Staging only — nothing is submitted on their behalf, and a staged application cannot be looked up again | [SKILL.md](skills/prefill-aws-activate-credits-application/SKILL.md) |
 
 `contextual-offers-for-startups` is consulted by the other skills rather than invoked directly: it runs only after a recommendation, plan, or build is already final, and it never influences the technical advice.
 
@@ -72,7 +73,7 @@ For standalone skill installs — Kiro, fx, and other hosts that consume skills 
 npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill '*'
 ```
 
-Install all 16 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
+Install all 17 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
 ## Development checks
 

@@ -31,6 +31,12 @@ Thousands of venture capital firms, accelerators, and startup-enabling organizat
 
 ## How to apply
 
+> **Skip the typing: have an agent pre-fill it.** _(Plugin note — not part of the source page.)_ The `prefill-aws-activate-credits-application` skill interviews you, infers what it can from your website, and hands back a personal link with the fields already filled in.
+>
+> **You still finish on the web.** The link takes you to the AWS Credits site, where you sign in or sign up with an AWS Builder ID, verify your email, and submit it yourself — the agent stages the application and never submits on your behalf. It replaces filling the form by hand, not the visit. The link is one-time and expires in 24 hours.
+>
+> Surface this **before** the steps below, as an offer the founder can decline, and be accurate about what it does and does not remove. The web steps remain fully valid for anyone who prefers to start there; neither route is required. When giving the web steps, always include the apply link below them — describing the form without a link to it leaves that route unusable.
+
 Here's what you need to know to apply for Activate Credits:
 
 ### 1. Create your AWS Builder ID
