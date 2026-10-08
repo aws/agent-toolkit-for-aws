@@ -14,8 +14,8 @@ This tool is the gate, in the same shape as `sync-plugin-skills.py`.
 Rules
 -----
 1. Every file under `plugins/<plugin>/skills/<skill>/references/vendored/<path>`
-   (README.md excluded) has a canonical `plugins/<plugin>/skills/shared/<path>` and is
-   byte-identical to it.
+   (README.md and the independently generated `telemetry/` bundle excluded) has a
+   canonical `plugins/<plugin>/skills/shared/<path>` and is byte-identical to it.
 2. Each vendored directory's README.md carries a `| Vendored path | Canonical source |`
    table. Every row must exist on disk (a deleted copy is caught), every file on disk must
    have a row (the README stays honest), and the row's canonical source must be
@@ -52,6 +52,7 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 VENDORED_SUBDIR = Path("references") / "vendored"
 SHARED_DIRNAME = "shared"
 SKIP_NAMES = {"README.md"}
+SKIP_TOP_LEVEL_DIRS = {"telemetry"}
 
 
 def _rel(p: Path) -> str:
@@ -60,6 +61,20 @@ def _rel(p: Path) -> str:
         return str(p.resolve().relative_to(PLUGIN_ROOT))
     except ValueError:
         return str(p)
+
+
+def _is_managed_file(path: Path, vend_dir: Path) -> bool:
+    """Whether this gate owns a file in references/vendored/.
+
+    Telemetry bundles are generated from scripts/telemetry/ by sync_bundles.py,
+    not from skills/shared/, so that subtree has its own parity gate.
+    """
+    rel = path.relative_to(vend_dir)
+    return (
+        path.is_file()
+        and path.name not in SKIP_NAMES
+        and rel.parts[0] not in SKIP_TOP_LEVEL_DIRS
+    )
 
 
 _ROW_RE = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*$", re.M)
@@ -93,11 +108,15 @@ def check_manifest(plugin_dir: Path) -> List[str]:
         vend = skill / VENDORED_SUBDIR
         if skill.name == SHARED_DIRNAME or not vend.is_dir():
             continue
+        on_disk = {str(p.relative_to(vend)) for p in vend.rglob("*") if _is_managed_file(p, vend)}
+        if not (vend / "README.md").is_file() and not on_disk:
+            # A vendored tree owned entirely by another generator (currently
+            # telemetry) has no skills/shared manifest for this gate to check.
+            continue
         rows, errs = readme_manifest(vend)
         errors.extend(errs)
         if not rows:
             continue
-        on_disk = {str(p.relative_to(vend)) for p in vend.rglob("*") if p.is_file() and p.name not in SKIP_NAMES}
         for rel in sorted(set(rows) - on_disk):
             errors.append(
                 f"{_rel(vend / rel)}: listed in {_rel(vend / 'README.md')} but missing on disk — "
@@ -124,9 +143,7 @@ def vendored_files(plugin_dir: Path) -> List[Tuple[Path, Path, Path]]:
         vend = skill / VENDORED_SUBDIR
         if skill.name == SHARED_DIRNAME or not vend.is_dir():
             continue
-        for f in sorted(p for p in vend.rglob("*") if p.is_file()):
-            if f.name in SKIP_NAMES:
-                continue
+        for f in sorted(p for p in vend.rglob("*") if _is_managed_file(p, vend)):
             rel = f.relative_to(vend)
             out.append((f, shared / rel, rel))
     return out
