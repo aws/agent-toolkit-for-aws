@@ -251,13 +251,25 @@ without any credentials at all.
 
 ## Detecting whether an Agent Space exists
 
-You can just look — this is not something to ask about:
+You can just look — this is not something to ask about. Check **every** region DevOps Agent runs in, the
+user's region first:
 
 ```bash
-aws devops-agent list-agent-spaces --region <region>
+for r in <their-region> us-east-1 us-west-2 eu-west-1 eu-central-1 ap-northeast-1 ap-southeast-2; do
+  echo "$r: $(aws devops-agent list-agent-spaces --region "$r" --query 'agentSpaces[].name' --output text)"
+done
 ```
 
-Empty list means none, and creating one is a single call (`references/connecting.md`).
+One region is not enough. Asking a region DevOps Agent does not run in returns an empty list, not an
+error, so a space in another region looks exactly like no space at all. Stopping at the first empty
+answer means telling someone they have no Agent Space, or creating a second one, when they already have
+one. The list of regions is in [Supported Regions](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-supported-regions.html).
+
+If you find one in another region, say where and use that region from then on:
+
+> "You already have an Agent Space, `<name>`, in us-east-1 — I'll use that one."
+
+Empty in every region means none, and creating one is a single call (`references/connecting.md`).
 `AccessDeniedException` means an IAM gap on `aidevops:*`, which is a different conversation from "not set
 up" — say which action was denied.
 

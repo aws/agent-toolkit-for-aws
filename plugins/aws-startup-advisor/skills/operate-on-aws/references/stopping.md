@@ -22,7 +22,13 @@ enough to actually use.
 An investigation runs 5–8 minutes and bills per second throughout. If a user starts one by mistake, cancel
 it rather than letting it finish — that is real money, roughly $0.50 per minute.
 
-Use the `CancelTask` operation on the Agent Space. Confirm it stopped; do not assume.
+Set the task's status to `CANCELED` with `UpdateBacklogTask`, then read it back and confirm the status
+changed. Do not assume it stopped:
+
+```bash
+aws devops-agent update-backlog-task --agent-space-id <id> --task-id <id> --task-status CANCELED --region <region>
+aws devops-agent get-backlog-task --agent-space-id <id> --task-id <id> --region <region> --query task.status
+```
 
 ## Stopping completely
 

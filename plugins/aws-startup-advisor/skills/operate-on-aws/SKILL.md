@@ -5,7 +5,7 @@ description: "Operate a live AWS workload with AWS DevOps Agent — incident inv
 
 # Operate on AWS — AWS DevOps Agent for startups
 
-**Last updated:** 2026-10-05
+**Last updated:** 2026-10-08
 
 ## Philosophy
 
@@ -149,14 +149,18 @@ been paying attention.
    [`references/readiness.md`](references/readiness.md) — three read-only commands that tell you whether
    there is a CLI, whether there are credentials, whether they are *expired* rather than absent, and which
    region. Expired is a ten-second fix and must not be treated as "not set up".
-2. **Is an AWS DevOps Agent MCP server already registered?** Look in the agent's MCP configuration for a
+2. **Is there an Agent Space in any region?** Check every region DevOps Agent runs in, not only theirs —
+   see "Detecting whether an Agent Space exists" in [`references/readiness.md`](references/readiness.md).
+   A space in another region looks exactly like no space if you only ask one.
+3. **Is an AWS DevOps Agent MCP server already registered?** Look in the agent's MCP configuration for a
    server pointing at `connect.aidevops.*`.
-3. **Does it actually work?** One cheap call, not just the presence of a config file.
+4. **Does it actually work?** One cheap call, not just the presence of a config file.
 
 | What you find | What to do |
 |---|---|
 | Registered and responding | **Go straight to OPERATE.** Do not re-disclose cost — they already decided and are already paying. Do not re-run setup. |
 | Registered but failing | **Repair, do not re-onboard.** Usually an expired token or a region mismatch. See the troubleshooting table in `connecting.md`. |
+| An Agent Space in another region | **Use it, and say where.** Do not create a second one. |
 | The `aws-agents-for-devsecops` plugin is installed (an MCP server named `aws-devops-agent`) | Use its connection. Do not build a second one alongside it. See below — that plugin does not disclose cost. |
 | Nothing found | Continue to ASSESS. |
 
@@ -396,7 +400,8 @@ Nearly every user arriving here has **no Agent Space and has never heard of one*
   default, preferring infrastructure-as-code in the workspace over the CLI default
 - **Create it for them:** `aws devops-agent create-agent-space --name "<name>" --region <region>`. Only
   `name` is required. The CLI service is `devops-agent`; the endpoint and IAM signing name are `aidevops`
-- Check `aws devops-agent list-agent-spaces` first — they may already have one
+- Check `aws devops-agent list-agent-spaces` in **every** supported region first — they may already have
+  one, and it may not be in their default region (`references/readiness.md`)
 - `AccessDeniedException` means an IAM gap on `aidevops:*`, not a missing feature. Name the denied action.
   The console is the fallback for someone who cannot widen their permissions, not the default
 
