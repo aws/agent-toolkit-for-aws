@@ -69,6 +69,14 @@ npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --sk
 
 Install all 12 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
+## Development checks
+
+From the repository root, run `mise -C plugins/aws-startup-advisor run ci`.
+The plugin's [`mise.toml`](mise.toml) inherits the root tool configuration and runs model-reference lint plus the contract tests in `tests/`.
+To add a check, define a task in this file and add it to `tasks.ci.depends`; the shared workflow keeps calling the same `ci` task.
+
+The Build workflow runs these checks when this plugin, the root `mise.toml`, or `.github/workflows/build.yml` changes. Manual runs always include them.
+
 ## Startup Architecture Advice
 
 The `architect-for-startups` skill answers "what should we build on AWS?" for a workload that is not an AI agent, the way a Startup Solutions Architect would: it establishes the company's stage, team size, runway, and credit position first, then recommends the smallest architecture that clears the bar, and names what to revisit at the next stage.
