@@ -1,6 +1,6 @@
 # Pausing and stopping AWS DevOps Agent
 
-Cover this **during DISCLOSE, before the user commits** — not only when they ask. A founder deciding
+Cover this **in the DISCLOSE notice, before anything is created** — not only when they ask. A founder deciding
 whether to enable a metered agent needs to know the exit before they take the entrance.
 
 ## What pausing stops
@@ -33,6 +33,10 @@ So when a user says "turn it off," establish which they mean:
 
 - **"Stop it costing me money"** → pause or disable in the Agent Space. Removing the MCP config is not enough.
 - **"Get it out of my editor"** → removing the MCP server config is sufficient.
+
+Neither one deletes the Agent Space, the access role, or investigation records. Remove those only when the
+user explicitly asks to delete the setup. Rolling back resources applies only to an onboarding the user
+cancelled before it finished.
 
 Getting this wrong is the expensive direction. If in doubt, do both and say so.
 

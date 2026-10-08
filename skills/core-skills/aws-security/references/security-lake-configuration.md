@@ -23,29 +23,30 @@ Works from both standalone and delegated administrator accounts.
 
    Verify each expected region has a data lake with `createStatus` = COMPLETED.
 
-   **Security check:** Verify data lake has KMS encryption configured — check `encryptionConfiguration.kmsKeyId` in the `list-data-lakes` output.
+   **Security check:** Verify the data lake has KMS encryption configured — check
+   `encryptionConfiguration.kmsKeyId` in the `list-data-lakes` output — and separately verify
+   TLS in transit for delivery and subscriber or consumer access. Apply the parent S3
+   destination-policy requirements. If the scoped reads do not prove transport protection,
+   report it UNKNOWN.
 
-2. Check configured AWS sources:
+2. Discover current supported AWS sources, then read configured coverage:
+
+   - Use the current Amazon Security Lake documentation as the source of truth for supported AWS log source names and regional availability. Prefer AWS MCP documentation search/read when available; otherwise use the official Security Lake documentation over HTTPS. Do not treat examples in this Skill as a closed source list.
+   - If current documentation is unavailable, report the source names returned by the account APIs and mark supported-but-unconfigured coverage UNKNOWN rather than comparing against a remembered list.
 
    ```bash
    aws securitylake get-data-lake-sources
    ```
 
-   Verify these source types are present:
+   Report every returned `sourceName`, account and `sourceStatuses` entry, including source names not previously seen. A source absent from this response is not proven unsupported or unconfigured outside the queried account and Region scope.
 
-   - ROUTE53
-   - VPC_FLOW
-   - SH_FINDINGS
-   - CLOUD_TRAIL_MGMT
-   - LAMBDA_EXECUTION
-   - S3_DATA
-   - EKS_AUDIT
-
-3. List log sources for detail:
+3. List configured log sources for detail:
 
    ```bash
    aws securitylake list-log-sources
    ```
+
+   Treat `list-log-sources` as configured-source inventory, not as the catalog of every source type Security Lake supports.
 
 4. Check subscribers:
 
@@ -53,24 +54,19 @@ Works from both standalone and delegated administrator accounts.
    aws securitylake list-subscribers
    ```
 
-   For each subscriber, note access type (S3, LAKEFORMATION) and status.
+   For each subscriber, report returned access type and configuration fields. Do not invent an active/healthy status; subscriber existence does not prove consumption or delivery.
 
 5. Present results:
 
    | Check | Status | Detail |
    |---|---|---|
    | Data lake enabled (region) | Configured | createStatus=COMPLETED |
-   | CloudTrail Management | Configured / Not Configured | ... |
-   | VPC Flow Logs | Configured / Not Configured | ... |
-   | Route53 | Configured / Not Configured | ... |
-   | S3 Data Events | Configured / Not Configured | ... |
-   | Lambda Execution | Configured / Not Configured | ... |
-   | EKS Audit | Configured / Not Configured | ... |
-   | Subscribers | Configured | N subscribers active |
+   | AWS source `<sourceName>` | Configured / Not Configured / UNKNOWN | Account, Region, version and returned status |
+   | Subscribers | N configurations observed | Delivery/consumption NOT ASSESSED unless evidenced |
 
-6. MUST check all standard AWS sources listed above.
+6. MUST report every configured source returned by the account APIs and assess every supported source identified from the latest documentation for the reviewed Region. Newly supported source names are included automatically.
 
-7. SHOULD flag any source with a non-healthy status.
+7. SHOULD flag any source with a non-healthy status. If current supported-source documentation could not be read, state that completeness against the supported catalog is UNKNOWN.
 
 ## Workflow B: Review Organization Coverage
 
@@ -101,11 +97,11 @@ Works from both standalone and delegated administrator accounts.
 
    | Account | Region | Source | Exception Reason |
    |---|---|---|---|
-   | 111122223333 | us-east-1 | VPC_FLOW | INTERNAL_ERROR |
+   | `<account-id>` | us-east-1 | VPC_FLOW | INTERNAL_ERROR |
 
 5. MUST report all exceptions.
 
-6. SHOULD compare auto-enable sources against full source list.
+6. SHOULD compare auto-enable sources against the current supported and default source set from official documentation for each reviewed Region. If that documentation could not be read, report the comparison as UNKNOWN.
 
 7. MUST NOT paginate through all member accounts by default.
 
