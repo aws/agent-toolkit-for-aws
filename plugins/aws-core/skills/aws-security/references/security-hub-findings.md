@@ -19,9 +19,59 @@ This skill works from both standalone accounts and delegated administrator accou
 | Single account findings, top risks, resource breakdown | A: Account Findings Summary |
 | Cross-account view, org-wide risk, hotspot accounts | B: Organization Findings Overview |
 
+## Exposure filter template
+
+For CLI syntax questions, explain this template without querying an account.
+Replace both placeholders with a supported string field and an exact,
+case-sensitive value verified from current documentation or authorized OCSF
+evidence. The example does not establish which discriminator identifies Exposure
+findings in the customer's data. If that remains unknown, leave the template
+unfilled and state the limitation instead of guessing or repeatedly searching for
+a universal `class_name=Exposure` value.
+
+Pass this filter to `--filters` as an inline JSON string. Do not read it from a local
+file: `file://` inputs do not work through the AWS MCP server's `call_aws`.
+
+```json
+{
+  "CompositeFilters": [
+    {
+      "StringFilters": [
+        {
+          "FieldName": "<verified-string-field>",
+          "Filter": {
+            "Value": "<verified-exposure-value>",
+            "Comparison": "EQUALS"
+          }
+        }
+      ],
+      "Operator": "AND"
+    }
+  ],
+  "CompositeOperator": "AND"
+}
+```
+
+After verification, retain the authorized account/resource constraints in the
+filter and use the selected profile and region:
+
+```bash
+aws securityhub get-findings-v2 \
+  --profile <profile> --region <region> \
+  --filters '{"CompositeFilters":[{"StringFilters":[{"FieldName":"<verified-string-field>","Filter":{"Value":"<verified-exposure-value>","Comparison":"EQUALS"}}],"Operator":"AND"}],"CompositeOperator":"AND"}' \
+  --page-size 100 --max-items 100
+```
+
+`--page-size` controls the service page size; `--max-items` caps the total returned
+by the CLI paginator. A limited result is a sample, not complete findings coverage.
+The API's `MaxResults` is a per-page limit, not a total-result cap.
+See the [current CLI contract](https://docs.aws.amazon.com/cli/latest/reference/securityhub/get-findings-v2.html).
+
 ## Workflow A: Account Findings Summary
 
-1. Get finding statistics:
+1. Get finding statistics. Interpret returned OCSF severity IDs using the mapping in
+   [Security Hub](references/security-hub.md). Preserve reported IDs and unknown/unmapped
+   values rather than applying CSPM/ASFF or GuardDuty severity scales:
 
    ```bash
    aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"severity"}]'
@@ -35,11 +85,14 @@ This skill works from both standalone accounts and delegated administrator accou
    aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"class_name"}]'
    ```
 
-   If Exposure findings exist, retrieve them with a server-side filter:
+   If Exposure findings exist, retrieve them with the server-side
+   [Exposure filter template](#exposure-filter-template):
 
-   ```bash
-   aws securityhub get-findings-v2 --filters '{"CompositeFilters":[{"StringFilters":[{"FieldName":"class_name","Filter":{"Value":"Exposure","Comparison":"EQUALS"}}]}]}' --max-results 50
-   ```
+   Verify the Exposure discriminator and exact case-sensitive value from the observed
+   schema/product/type data and current API documentation, then apply a supported
+   server-side filter within the authorized scope. Do not assume `class_name=Exposure`.
+   An empty result from an unvalidated discriminator does not establish absence;
+   retain unresolved Exposure coverage as UNKNOWN without expanding collection.
 
    Present Exposure findings first in summary.
 
@@ -54,13 +107,13 @@ This skill works from both standalone accounts and delegated administrator accou
 4. Get active findings:
 
    ```bash
-   aws securityhub get-findings-v2 --max-results 100
+   aws securityhub get-findings-v2 --page-size 100 --max-items 100
    ```
 
 5. Get resource-centric view:
 
    ```bash
-   aws securityhub get-resources-v2 --max-results 100
+   aws securityhub get-resources-v2 --page-size 100 --max-items 100
    ```
 
 6. Get resource statistics:
@@ -91,11 +144,14 @@ This skill works from both standalone accounts and delegated administrator accou
    aws securityhub get-finding-statistics-v2 --group-by-rules '[{"GroupByField":"class_name"}]'
    ```
 
-   If Exposure findings exist, retrieve and present first:
+   If Exposure findings exist, retrieve with the
+   [Exposure filter template](#exposure-filter-template) and present first:
 
-   ```bash
-   aws securityhub get-findings-v2 --filters '{"CompositeFilters":[{"StringFilters":[{"FieldName":"class_name","Filter":{"Value":"Exposure","Comparison":"EQUALS"}}]}]}' --max-results 50
-   ```
+   Verify the Exposure discriminator and exact case-sensitive value from the observed
+   schema/product/type data and current API documentation, then apply a supported
+   server-side filter within the authorized scope. Do not assume `class_name=Exposure`.
+   An empty result from an unvalidated discriminator does not establish absence;
+   retain unresolved Exposure coverage as UNKNOWN without expanding collection.
 
 3. Get org-wide trends:
 
@@ -112,7 +168,7 @@ This skill works from both standalone accounts and delegated administrator accou
 5. For drill-down:
 
    ```bash
-   aws securityhub get-findings-v2 --max-results 100
+   aws securityhub get-findings-v2 --page-size 100 --max-items 100
    ```
 
 6. Get resource trends:
@@ -124,6 +180,9 @@ This skill works from both standalone accounts and delegated administrator accou
    **Security check:** See SKILL.md Security considerations for CloudTrail audit logging, CloudWatch anomaly alarms, KMS/TLS encryption, SNS recipient validation, and current AWS security best-practice references.
 
 ## Constraints
+
+- Name the count unit and scope: finding records, deduplicated findings or resource occurrences. Do not sum overlapping type/class buckets as unique findings; deduplicate stable identifiers in matching account/region scope first.
+- Attribute severity/counts to a product only from matching product-scoped evidence. A detection-class total is not a GuardDuty total, and overall severity counts are not Inspector-specific counts. Reconcile breakdown sums and label samples separately from totals.
 
 - MUST use get-finding-statistics-v2 for aggregated summaries (not paginating all findings)
 - MUST prioritize Exposure findings (attack paths, resource exposure) first in output
