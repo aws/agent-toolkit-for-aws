@@ -110,6 +110,7 @@ PLUGIN_SKILL_IDS = frozenset(
         "TF_BEST_PRACTICES",
         "CONTEXTUAL_OFFERS_FOR_STARTUPS",
         "OPERATE_ON_AWS",
+        "APPLY_FOR_ACTIVATE_CREDITS",
     }
 )
 

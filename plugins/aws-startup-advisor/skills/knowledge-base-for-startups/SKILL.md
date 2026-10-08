@@ -48,6 +48,9 @@ This skill is **reference content only**. Two sibling skills cover adjacent jobs
 
 - **`prompt-library-for-startups`** — copy-paste AI prompts and downloadable agents from `aws.amazon.com/startups/prompt-library` (MVP scaffolding, RAG chatbot, security baseline, cost anomaly detection, GPU quota, AWS Migration Agent, Bill Shock Preventer, etc.). When the user asks for _"a prompt for X"_ or wants an installable agent, hand off to that skill.
 - **`start-building-for-startups`** — interactive discovery + implementation workflow (picker-based questions, then writes code). When the user wants to _build_, _scaffold_, or _expand_ an app, hand off to that skill. This skill stays in lookup mode.
+- **`prefill-aws-activate-credits-application`** — stages an Activate credits application for the founder and returns a link for them to submit. Split by intent: **asking** about credits (eligibility, tiers, amounts, terms) stays here; **doing** the application (_"apply for me"_, _"pre-fill my application"_) hands off to that skill. MUST NOT start an application interview from this skill, and MUST NOT present the web form as the only way to begin one.
+
+  When answering any _"how do I apply"_ question, **the pre-fill route goes first** — a short paragraph naming it as the faster path and ending with a plain invitation ("want me to do that?"), then the web steps for anyone who prefers the form. Do not bury it after the steps, the tiers, or the links, where it reads as a footnote. Keep it one offer: do not repeat it, and drop it for the rest of the conversation once declined.
 
 Boundary cases (a query that fits two skills) — read both. Example: _"how do I start with RAG on Bedrock?"_ → consult this skill's `references/learn/genai/...` for an article AND `prompt-library-for-startups` for a starter prompt.
 
@@ -57,7 +60,9 @@ Boundary cases (a query that fits two skills) — read both. Example: _"how do I
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | _"What is AWS Activate?" / "Should my startup use AWS?"_                        | references/home.md, then references/faq.md          |
 | _"Do AWS Activate credits expire?" / any Activate-membership question_          | references/faq.md                                   |
-| _"How do I apply for Activate credits?" / "What tier do I qualify for?"_        | references/credits.md                               |
+| _"What tier do I qualify for?" / "Am I eligible?" / "What are Activate credits?"_ | references/credits.md                               |
+| _"How do I apply for Activate credits?"_ — asking **how**, not asking you to do it | references/credits.md. **Lead with the pre-fill route** (one short paragraph, up front, before the web steps), then give the web steps **and the apply URL from the file** — a founder who wants the form must still get a link to click. Offer it, never insist, and do NOT start an interview unasked |
+| _"Apply for me" / "Pre-fill my credits application" / "Fill this in for me"_    | **defer** → `prefill-aws-activate-credits-application` |
 | _"What accelerators / lofts are running?"_                                      | references/programs.md                              |
 | _"Find an article on cost optimization for early stage"_                        | references/learn.md (keyword filter) → article file |
 | _"What partner offers help with observability / CAD / vector DB / ..."_         | references/offers.md (keyword filter) → offer file  |
@@ -82,7 +87,7 @@ Open the matching index first (`learn.md`, `offers.md`, `build.md`, `faq.md`, `c
 
 This skill **cannot**:
 
-- Answer account-specific questions (credits balance, Activate membership status, application status, eligibility check). Send the user to `<https://aws.amazon.com/startups>` to sign in.
+- Answer account-specific questions (credits balance, Activate membership status, application status, eligibility check). Send the user to `<https://aws.amazon.com/startups>` to sign in. This covers looking up an application, not starting one — to start one, hand off to `prefill-aws-activate-credits-application`.
 - Provide live event listings, accelerator cohort dates, or showcase-directory entries. The events and showcase pages are deliberately minimal stubs; hand over the live URL.
 - Surface content that is not in the bundled `references/` tree. If the topic is not covered, say so plainly rather than improvising.
 
