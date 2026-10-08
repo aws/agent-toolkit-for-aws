@@ -9,7 +9,7 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 - **AI Agent Runtimes** — Choose a runtime for an agentic workload (Amazon Bedrock AgentCore, Amazon ECS, Amazon EKS, AWS Lambda, and Lambda MicroVMs), plan a migration for agents already running elsewhere, and build an executable proof of concept.
 - **Cloud Migration** — Migrate from Microsoft Azure, Google Cloud Platform, or Heroku to AWS through a phased flow: discover, clarify, design, estimate, generate artifacts, and collect feedback.
 - **AI Stack Migration** — Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock and deliver a ready-to-review git branch, or enable Bedrock model access for named models with no rewrite.
-- **Operating on AWS** — Investigate incidents, find root cause, and review pull requests for release readiness with AWS DevOps Agent, with the cost, account access, and code handling each confirmed before anything is enabled.
+- **Operating on AWS** — Investigate incidents, find root cause, and review pull requests for release readiness with AWS DevOps Agent, with the cost, account access, and code handling each disclosed before anything is enabled.
 - **Terraform Quality Gate** — Apply AWS Terraform authoring posture and a security baseline while generating a `terraform/` directory, then run a read-only policy verdict over what was written.
 - **Startup Reference Content** — Answer factual questions about AWS Activate, credits, programs, and partner offers, and serve AWS-curated learn articles, sample architectures, and copy-paste prompts for AI coding agents.
 
@@ -25,7 +25,7 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 | 6 | `heroku-to-aws` | Six-phase Heroku to AWS migration with deterministic add-on mapping and an optional what-if repricing workshop | [SKILL.md](skills/heroku-to-aws/SKILL.md) |
 | 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch. The full migration requires `gcp-to-aws` alongside it. Access-only mode (enable model access, no rewrite) does not | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
 | 8 | `tf-best-practices` | AWS Terraform authoring posture, security-baseline spec, and a read-only policy gate over generated Terraform | [SKILL.md](skills/tf-best-practices/SKILL.md) |
-| 9 | `operate-on-aws` | Incident investigation, root-cause analysis, and release-readiness review with AWS DevOps Agent, behind cost, access, and code-egress gates | [SKILL.md](skills/operate-on-aws/SKILL.md) |
+| 9 | `operate-on-aws` | Incident investigation, root-cause analysis, and release-readiness review with AWS DevOps Agent, with cost, access, and code-egress disclosed up front | [SKILL.md](skills/operate-on-aws/SKILL.md) |
 | 10 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
 | 11 | `prompt-library-for-startups` | AWS-curated copy-paste prompts for AI coding agents, plus downloadable installable agents | [SKILL.md](skills/prompt-library-for-startups/SKILL.md) |
 | 12 | `contextual-offers-for-startups` | Appends at most one relevant AWS Activate partner offer as optional context after another skill's output is final | [SKILL.md](skills/contextual-offers-for-startups/SKILL.md) |
@@ -179,16 +179,16 @@ Neither skill can look up account-specific state such as your credits balance, A
 
 ## Operating on AWS
 
-The `operate-on-aws` skill connects a startup with no dedicated DevOps or SRE engineer to [AWS DevOps Agent](https://aws.amazon.com/devops-agent/), which investigates incidents autonomously, finds probable root cause, and reviews pull requests before they ship. DevOps Agent is metered, so the skill treats consent as the core of the workflow.
+The `operate-on-aws` skill connects a startup with no dedicated DevOps or SRE engineer to [AWS DevOps Agent](https://aws.amazon.com/devops-agent/), which investigates incidents autonomously, finds probable root cause, and reviews pull requests before they ship. DevOps Agent is metered, so the skill is upfront about cost and access at every step.
 
 ### How It Works
 
 - **Detect first** — Checks for an existing DevOps Agent connection and goes straight to work if there is one. Someone already set up is never walked through setup again.
 - **Recommend only when it fits** — Looks for evidence of a live workload or active pull requests, and recommends nothing to a team with neither. If credit runway is short, it recommends against setup and points to the free alternative.
-- **Three separate gates** — Cost and credit impact, read access to the AWS account, and (for release review) copying source code out of the account are each confirmed on their own. Automated verification testing defaults to off.
+- **Safe defaults, stated up front** — Cost and credit impact, the read-only access role it creates in the AWS account, and (for release review) code handling are each stated in one line before setup continues. Automated verification testing, which copies source code out of the account, stays off unless you ask for it. Say stop during setup and the skill halts and rolls back what it created; say stop after setup and it cancels or pauses the work, keeping the setup.
 - **Propose, never apply** — Findings and proposed fixes are shown for approval; nothing is changed in the account without an explicit decision.
 
-The DevOps Agent MCP server is region-specific and per-user, so the skill registers it during setup rather than the plugin declaring it. If the [`aws-agents-for-devsecops`](../aws-agents-for-devsecops/) plugin is already installed, the skill reuses its `aws-devops-agent` connection instead of creating a second one, and still runs its own cost and consent gates on top.
+The DevOps Agent MCP server is region-specific and per-user, so the skill registers it during setup rather than the plugin declaring it. If the [`aws-agents-for-devsecops`](../aws-agents-for-devsecops/) plugin is already installed, the skill reuses its `aws-devops-agent` connection instead of creating a second one, and still gives its own cost and access notices on top.
 
 ### Examples
 

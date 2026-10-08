@@ -12,6 +12,13 @@ description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrat
 > sidebar (wiring only); and `patterns.md`, `licensing.md`, and `gpu-hpc.md`.
 > The live `az` capture path is implemented (`discover-live.md`).
 
+## Optional usage telemetry
+
+Before starting or resuming, load `references/vendored/telemetry/PROTOCOL.md` and
+run its read-only status check. Use the returned reporting mode rather than the
+model's identity. Complete the existing notice exchange only when that protocol
+requires it; unavailable or declined telemetry never blocks this skill.
+
 ## Philosophy
 
 - **Re-platform by default**: pick the AWS service that matches the Azure workload type (App Service → Elastic Beanstalk, AKS → EKS, VMs → EC2, Flexible Server → RDS/Aurora, Azure Cache for Redis → ElastiCache). Re-architecting is a user decision, not a default.
