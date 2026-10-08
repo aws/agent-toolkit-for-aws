@@ -43,9 +43,11 @@ Both Security Hub and Security Hub CSPM share the `aws securityhub` CLI namespac
 | Security Hub APIs | Suffixed with `-v2` | `get-findings-v2`, `describe-security-hub-v2`, `list-aggregators-v2` |
 | Security Hub CSPM APIs | No suffix | `get-findings`, `describe-hub`, `get-enabled-standards`, `list-members` |
 
-Skills MUST NOT cross API namespaces.
+Keep Security Hub and Security Hub CSPM API operations and results attributed to their respective products; never substitute one product's evidence for the other. The recommendation workflow intentionally inspects both separately. For service selection, prioritized coverage advice, or cost review, follow [service-recommendations.md](references/service-recommendations.md); this overview alone is not a recommendation assessment.
 
 ## Membership Models
+
+Account/member enumeration and denominator reconciliation require an explicit request for detailed account-level information under the parent rules. Prefer statistics/counts where available; otherwise mark unrequested account detail NOT ASSESSED. A broad posture or recommendation request alone does not authorize account enumeration.
 
 | Service | Organizations (delegated admin) | Invitation-based |
 |---------|:----:|:----:|
@@ -107,4 +109,4 @@ APIs used across multiple security service workflows.
 
 | API | Purpose |
 |-----|---------|
-| `s3:GetBucketEncryption` | Verify bucket encryption configuration (used by Macie export, Security Lake) |
+| `s3:GetEncryptionConfiguration` (operation `GetBucketEncryption`) | Verify bucket encryption configuration (used by Macie export, Security Lake) |

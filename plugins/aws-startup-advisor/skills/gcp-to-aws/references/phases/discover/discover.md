@@ -64,6 +64,8 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
    `run_id` is minted once here: run `uuidgen` (or an equivalent random UUID source) and write its output verbatim; never copy a value from an example or a previous run. It is never changed or reused across runs; unlike `migration_id` it carries no timestamp, so it uniquely identifies this run for telemetry and for the plugin-to-web handoff. `owning_skill` is always `GCP_TO_AWS`. If another skill invoked this run (llm-to-bedrock does, for Assess), also set `initiated_by` to that skill's identifier, e.g. `"initiated_by": "LLM_TO_BEDROCK"`.
 
 5. Confirm both `.migration/.gitignore` and `.phase-status.json` exist before proceeding to Step 1.
+6. Reconcile the initial state in `cli` reporting mode per
+   `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
 
 ## Step 1: Scan for Input Sources and Run Sub-Discoveries
 

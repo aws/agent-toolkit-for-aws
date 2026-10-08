@@ -71,6 +71,7 @@ def collector():
                 {
                     "path": self.path,
                     "content_type": self.headers.get("Content-Type"),
+                    "user_agent": self.headers.get("User-Agent"),
                     "body": self.rfile.read(length),
                 }
             )
