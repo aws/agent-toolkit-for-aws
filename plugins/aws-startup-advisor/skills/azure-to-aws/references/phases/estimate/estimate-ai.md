@@ -83,7 +83,10 @@ Read from `$MIGRATION_DIR/`:
   total token volume, SUM all four fields — `input_tokens + cache_read_tokens +
   cache_creation_tokens + output_tokens` — never exclude the two cache fields; doing so drops most
   of the volume for a prompt-cached workload. Check `metadata.capture_warnings` first, same rule as
-  the OpenAI profile.
+  the OpenAI profile. **Check `metadata.cost_status` before touching `summary.monthly_cost_usd`:**
+  `cost_status: "cost_unavailable"` means `summary.monthly_cost_usd` is `null` — the usage/token
+  side is fine (feed it into Part 2 normally) but the dollar side must NOT be read as `0` or any
+  other number; see the `cost_status` exception in Parts 1 and 2 below.
 - **`preferences.json`** — `ai_constraints.ai_token_volume.value`,
   `ai_constraints.ai_capabilities_required.value`.
 - **`aws-design-ai.json`** — `metadata.ai_source`, `ai_architecture.honest_assessment`,
@@ -125,7 +128,15 @@ match wins:**
    `metadata.partial_window` is `true`, that profile's figure is too short a window to be a
    monthly baseline — do NOT rank it above levels 3–4; fall back and present its partial actuals
    as a reference figure only, labeled with `active_days` (a full-window profile that exists
-   alongside it still resolves normally).
+   alongside it still resolves normally). **Second, parallel exception — `cost_status`
+   (Anthropic profile only, currently the only profile that writes this field): if
+   `metadata.cost_status` is `"cost_unavailable"`, `summary.monthly_cost_usd` is `null` for that
+   profile — exclude it from this SUM entirely (do not add `null`, and do not substitute `0`);
+   fall through to levels 3–4 for THAT profile's dollar contribution only, while its token
+   volume still flows into Part 2 normally (see Part 2's `cost_status` note). This is a distinct
+   failure mode from `partial_window`: `partial_window` means "window too short to be monthly,"
+   `cost_unavailable` means "usage is known, cost specifically is not" — a profile can be
+   `partial_window: false` and still `cost_status: "cost_unavailable"`.**
 3. **Estimated from token volume** — use `ai_constraints.ai_token_volume.value` from
    `preferences.json` with **OpenAI / Azure OpenAI source list prices** from `pricing-cache.md`
    (under "Source Provider Pricing → OpenAI / Azure OpenAI"). Azure OpenAI serves the same GPT
@@ -175,7 +186,13 @@ profile whose `metadata.partial_window` is `true`, a few days of tokens is NOT a
 for that profile — projecting it as one understates the Bedrock estimate. Use the tier table
 (from `ai_token_volume`) for a profile with no full-window data, and present that profile's
 partial actuals as a reference figure only, labeled with `active_days` (a different, full-window
-profile that exists alongside it still contributes its real totals).
+profile that exists alongside it still contributes its real totals). **`cost_status` exception
+(independent of the `partial_window` exception above — a profile can trip one, both, or neither):**
+`metadata.cost_status: "cost_unavailable"` does NOT disqualify a profile's token volume — token
+counts came from `usage_report/messages`, which succeeded; only `cost_report` failed. Include
+that profile's `usage_by_model[]` token totals in Part 2's volume sum as normal. The
+disqualification is dollar-only (Part 1 above): a `cost_unavailable` profile contributes volume
+here but no dollar figure there.
 
 **Cost formula:** `Monthly = (input_tokens / 1M × input_rate) + (output_tokens / 1M × output_rate)`
 

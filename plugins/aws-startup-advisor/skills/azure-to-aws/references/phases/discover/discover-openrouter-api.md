@@ -295,6 +295,20 @@ of rows` self-check.
   the warning is what tells a reader "$0 last 30 days" is not the same fact as
   "$0 ever."
 
+- **`metadata.cost_provenance` — always `"unknown"` today (documented limitation, not a gap
+  to silently leave unflagged).** This field exists so downstream SUM-discipline logic
+  (`llm-to-bedrock/SKILL.md` Step 1.5) has somewhere to read a BYOK-vs-router-fee distinction
+  from, once detection becomes feasible — it does NOT mean detection is implemented here.
+  `/activity`'s documented row shape (`date`, `model`, `model_permaslug`, `provider_name`,
+  `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `usage`) carries no
+  field distinguishing a BYOK-routed call (OpenRouter forwarding to a key the user supplied
+  directly to the underlying provider — e.g. an Anthropic key configured in OpenRouter's BYOK
+  settings) from a router-fee call (OpenRouter's own credits paying for the underlying
+  provider call). Writing a confident `router_only` / `byok_passthrough` / `mixed` value from
+  this response shape alone would be fabricated, not observed. Always write
+  `"unknown"` and leave this comment in place until a future revision adds real per-row BYOK
+  detection (e.g. if OpenRouter's API adds a `byok` field to `/activity` rows).
+
 Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
 
 ```json
@@ -306,6 +320,7 @@ Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
     "window_days": 30,
     "active_days": 30,
     "partial_window": false,
+    "cost_provenance": "unknown",
     "credits_lifetime": { "total_credits": 100.5, "total_usage": 25.75 },
     "capture_warnings": ["key.json skipped (403)"]
   },

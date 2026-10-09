@@ -153,6 +153,20 @@ present:
   number. When `false`, present `monthly_cost_usd` as a normal blended monthly baseline.
 - `usage_by_model[]` rows carry `provider` and `partial_window` — use `partial_window` the
   same way, per row, when breaking the figure down by model.
+- **`windows.<provider>.cost_status` — the source-side dollar comparison can be unavailable
+  even when token volume is known.** Check every contributing provider's `cost_status` before
+  computing a savings percentage. When any provider's `cost_status` is `"cost_unavailable"`:
+  that provider's dollars were already excluded from `usage-baseline.json`'s
+  `summary.monthly_cost_usd` (Step 1.5 step 6) — do NOT treat the resulting total as "the full
+  source cost" without saying so. Present that provider's token volume normally (it feeds the
+  Bedrock-side cost computation below exactly as any other provider's volume would), but flag
+  the source-side dollar comparison for that provider as unavailable — e.g. "Source cost
+  unavailable for Anthropic — usage captured, cost data could not be retrieved. Bedrock cost
+  shown below; no $ comparison for this provider's traffic." Do NOT compute an overall savings
+  percentage that silently treats the missing provider's dollar contribution as zero — a
+  savings % computed against an incomplete source total overstates savings. If every
+  contributing provider is `cost_unavailable`, skip the savings-percentage line entirely and
+  state plainly that no source-side cost baseline exists for this run.
 
 The migration plan may map multiple source models to multiple Bedrock models (e.g., `gpt-4o → claude-sonnet` for complex tasks, `gpt-4o-mini → nova-lite` for simple tasks). Each pair has different per-token prices AND likely different token volumes, so costs MUST be computed per pair, not once globally.
 

@@ -224,7 +224,30 @@ short-circuit it.
    cache_read_input_tokens + cache_creation_input_tokens` contract). Apply the
    `metadata.partial_window` exception: a
    partial-window profile's figures are a reference figure labeled with `active_days`, never
-   blended into the monthly baseline (schema consequence specified below).
+   blended into the monthly baseline (schema consequence specified below). **Second, parallel
+   exception — `metadata.cost_status` (Anthropic profile only, currently the only profile that
+   writes this field):** a profile whose `cost_status` is `"cost_unavailable"` has `null` for
+   `summary.monthly_cost_usd` — EXCLUDE it from this dollar SUM entirely (never add `null`,
+   never substitute `0`), but STILL include its `usage_by_model[]` token totals in
+   `usage_by_model[]` below — usage succeeded for that profile, only its cost side failed. This
+   mirrors the `partial_window` exception's shape (one disqualifies dollars only, the other
+   disqualifies dollars only) but is a distinct, independent condition — a profile can be
+   `partial_window: false` and still `cost_status: "cost_unavailable"`. **Third exception —
+   OpenRouter BYOK/overlap de-duplication:** when BOTH an `openrouter-usage-profile.json` and
+   a direct provider profile (`anthropic-usage-profile.json` or `openai-usage-profile.json`)
+   exist in the winning run directory AND the OpenRouter profile's `metadata.cost_provenance`
+   is `"byok_passthrough"` or `"mixed"`, do NOT sum both profiles' dollar figures for the
+   overlapping model(s) — the same underlying provider spend would otherwise be counted twice
+   (once via the direct provider's own usage API, once via OpenRouter routing the same
+   traffic). Prefer the direct provider's own figure for the overlapping model(s) as ground
+   truth, and treat the OpenRouter profile's corresponding `usage_by_model[]` dollar entries as
+   router-fee-only for that overlap (exclude them from this SUM). When `cost_provenance` is
+   `"unknown"` (the only value this flow currently writes — see `discover-openrouter-api.md`'s
+   own documented detection limitation), there is no reliable signal to resolve the overlap
+   automatically: sum both profiles as today, but flag it in the summary presented to the user
+   as "OpenRouter and \<provider\> usage profiles both present — possible overlap if OpenRouter
+   is BYOK-routing \<provider\> traffic; provenance unknown, manual reconciliation may be
+   needed."
 7. Present a short summary and record the computed figures (see `usage-baseline.json` below)
    for Phase C's report-generator: *"Found existing usage data: $X/month across N models
    (source: [provider list], captured `<date>`). I'll use this as your current-cost baseline
@@ -255,8 +278,8 @@ representable):**
   "captured_at": "<ISO 8601, max across source profiles>",
   "capture_warnings": [],
   "windows": {
-    "anthropic": { "window_days": 30, "active_days": 12, "partial_window": true },
-    "openai": { "window_days": 30, "active_days": 30, "partial_window": false }
+    "anthropic": { "window_days": 30, "active_days": 12, "partial_window": true, "cost_status": "partial_window" },
+    "openai": { "window_days": 30, "active_days": 30, "partial_window": false, "cost_status": "complete" }
   },
   "summary": {
     "monthly_cost_usd": 0.0,
@@ -295,6 +318,16 @@ representable):**
   normal blended monthly baseline. This satisfies step 6 above's discipline WITHOUT splitting
   `summary` into two separate top-level figures — the one `monthly_cost_usd` number remains
   the SUM step 6 computes, and the boolean tells the consumer how to present it.
+- **`windows.<provider>.cost_status`**: `"complete" | "partial_window" | "cost_unavailable"`,
+  copied straight from that provider's source usage-profile `metadata.cost_status` (currently
+  only the Anthropic usage profile writes this field — see `discover-anthropic-api.md` Step 3
+  in either sibling skill; OpenAI/OpenRouter profiles that don't yet write it default to
+  `"complete"` when `partial_window` is `false` and `"partial_window"` when it is `true`, since
+  for those providers window-completeness and cost-completeness haven't been split apart yet).
+  When ANY `windows.<provider>.cost_status` is `"cost_unavailable"`, that provider's dollars
+  were already excluded from `summary.monthly_cost_usd` in step 6 above — a consumer reading
+  `windows` to explain a dollar total that is lower than the token volume would suggest finds
+  the reason here, per-provider, without re-opening the source profile file.
 - **`source_run_dir` path resolution, stated explicitly:** `source_run_dir` is POSIX,
   **relative to `$REPO`** (the same `$REPO` passed in every subagent's context block as the
   `Repository:` line) — never an absolute path, and never relative to `$BEDROCK_RUN_DIR`.

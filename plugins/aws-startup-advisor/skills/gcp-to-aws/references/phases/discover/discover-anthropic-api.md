@@ -296,6 +296,27 @@ Sum across the window (a throwaway extraction script if captures are large):
   non-zero bucket is < 30 days old, set `partial_window: true` and report the
   actual span in `active_days`.
 
+- **`metadata.cost_status` — cost completeness, independent of `partial_window`.**
+  `partial_window` only says whether the USAGE window itself is short; it says
+  nothing about whether the dollar figure is known at all. `cost_status` is a
+  separate enum covering that:
+  - `"cost_unavailable"` — `cost_report` failed or was skipped (any row of the
+    per-workspace loop in Step 2c), REGARDLESS of whether `usage_report/messages`
+    succeeded fully or partially. Token volume is known; the dollar figure is
+    NOT. Set `summary.monthly_cost_usd: null` in this case — **never `0` and
+    never a stale/partial figure** — and record the failure in
+    `metadata.capture_warnings` as today.
+  - `"partial_window"` — `cost_report` succeeded, but the usage window itself is
+    short (`partial_window: true`, existing meaning): the dollar figure is a
+    real but short-span total, not a monthly baseline.
+  - `"complete"` — `cost_report` succeeded AND the usage window is full
+    (`partial_window: false`). `summary.monthly_cost_usd` is a normal monthly
+    figure.
+  Check `cost_report`'s own status first: a `cost_report` failure always sets
+  `cost_status: "cost_unavailable"`, even on an otherwise full-window run — do
+  not let a successful `usage_report/messages` call mask a failed cost call by
+  reporting `partial_window: false` with a stale or zeroed dollar figure.
+
 Write `$MIGRATION_DIR/anthropic-usage-profile.json`:
 
 ```json
@@ -307,6 +328,7 @@ Write `$MIGRATION_DIR/anthropic-usage-profile.json`:
     "window_days": 30,
     "active_days": 30,
     "partial_window": false,
+    "cost_status": "complete",
     "workspaces": [{ "id": "wrkspc_abc", "label": "production" }],
     "capture_warnings": ["cost-report.json failed (403)"]
   },
@@ -434,6 +456,7 @@ The parent `discover.md` owns the phase status update — do not touch
 | 401 mid-capture (probe succeeded, key then revoked/rotated) | Script aborts remaining calls, keeping completed files. Tell the user the key stopped working mid-run; offer Step 1 re-intake or skip. `KEY_INVALID_MID_RUN`. On resume, re-run Step 2 — captures overwrite |
 | 429 rate limit | Wait 30s, retry once; second 429 → record `failed`, continue |
 | Individual endpoint fails | Record `failed`/`skipped` in manifest, continue — zero usage on an endpoint is normal, never a halt |
+| `cost_report` fails or is skipped (any per-workspace row in Step 2c), `usage_report/messages` succeeds (fully or partially) | Still write the profile — usage/token volume is known. Set `metadata.cost_status: "cost_unavailable"` and `summary.monthly_cost_usd: null` (never `0`, never a stale figure) regardless of `partial_window`'s value |
 | Both endpoints failed | Exit with no output; tell the user which scope is missing |
 | Selected workspaces have zero usage in the window | Re-show the per-workspace spend list from 2b and let the user re-select once; still zero → write the profile with zeros and `partial_window: true` |
 | All buckets zero (new org, no usage yet) | Write the profile with zeros and `partial_window: true`; warn that Estimate will fall back to token-volume tiers |
