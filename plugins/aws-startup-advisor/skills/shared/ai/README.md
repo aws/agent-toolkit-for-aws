@@ -18,6 +18,7 @@ before opening a pull request.
 | `design-ref-harness.md`              | AgentCore Harness design reference                             |
 | `design-ref-agentic-to-agentcore.md` | Strands Agents + AgentCore Runtime design reference            |
 | `sdk-capability-map.json`            | SDK method → capability lookup used by app-code discovery      |
+| `schema-design-aws-ai.md`            | Target-only `aws-design-ai.json` contract; `metadata.ai_sources[]`/`gateways[]` mirror `ai-workload-profile.schema.json` exactly |
 
 Deliberately NOT here: a source-cloud's own mapping guide (e.g. gcp-to-aws's
 `ai-gemini-to-bedrock.md`) and its `schema-discover-ai.md`, both of which are

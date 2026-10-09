@@ -1,0 +1,17 @@
+{
+  "id": "combined-gcp-gemini",
+  "mode": "combined",
+  "migration_id": "combined-gcp-gemini",
+  "run_id": "00000000-0000-4000-8000-000000000006",
+  "state": ".phase-status.json",
+  "dimensions": {
+    "infrastructure_source": "gcp",
+    "ai_sources": [{"provider": "google", "source_service": "vertex_ai", "model_families": ["gemini"], "model_evidence": "observed", "models": ["gemini-1.5-pro"]}],
+    "gateways": []
+  },
+  "outcomes": {
+    "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},
+    "ai": {"verdict": "passed", "artifacts": ["ai-workload-profile.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json"]},
+    "integration_validation": {"verdict": "passed", "artifact": "integration-validation.json"}
+  }
+}

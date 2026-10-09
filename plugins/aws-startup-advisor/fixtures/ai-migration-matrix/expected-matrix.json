@@ -1,0 +1,25 @@
+{
+  "contract_version": "3.0",
+  "description": "Target-only represented contract coverage for composable migration dimensions; this is not a runtime capability catalog, does not assert current runtime support, and does not enumerate a Cartesian matrix.",
+  "supported": {
+    "infrastructure_sources": ["gcp", "azure", "heroku"],
+    "direct_ai_providers": ["google", "openai", "anthropic"],
+    "gateway_products": ["openrouter"]
+  },
+  "cases": [
+    {"id": "infra-only-gcp", "snapshot": "infra-only-gcp/expected-artifacts.json"},
+    {"id": "infra-only-azure", "snapshot": "infra-only-azure/expected-artifacts.json"},
+    {"id": "infra-only-heroku", "snapshot": "infra-only-heroku/expected-artifacts.json"},
+    {"id": "ai-only-gemini", "snapshot": "ai-only-gemini/expected-artifacts.json"},
+    {"id": "ai-only-openai", "snapshot": "ai-only-openai/expected-artifacts.json"},
+    {"id": "ai-only-anthropic", "snapshot": "ai-only-anthropic/expected-artifacts.json"},
+    {"id": "ai-only-openrouter", "snapshot": "ai-only-openrouter/expected-artifacts.json"},
+    {"id": "combined-gcp-gemini", "snapshot": "combined-gcp-gemini/expected-artifacts.json"},
+    {"id": "combined-azure-openai", "snapshot": "combined-azure-openai/expected-artifacts.json"},
+    {"id": "combined-gcp-openai", "snapshot": "combined-gcp-openai/expected-artifacts.json"},
+    {"id": "combined-azure-gemini", "snapshot": "combined-azure-gemini/expected-artifacts.json"},
+    {"id": "combined-gcp-openrouter", "snapshot": "combined-gcp-openrouter/expected-artifacts.json"},
+    {"id": "combined-azure-openrouter", "snapshot": "combined-azure-openrouter/expected-artifacts.json"},
+    {"id": "combined-heroku-anthropic", "snapshot": "combined-heroku-anthropic/expected-artifacts.json"}
+  ]
+}

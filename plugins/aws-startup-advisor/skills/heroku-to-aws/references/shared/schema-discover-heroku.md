@@ -38,7 +38,10 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
       "resource_id": "formation:my-web-app:web",
       "resource_type": "formation",
       "heroku_app": "my-web-app",
-      "config": {}
+      "config": {},
+      "source": "terraform|live|live+terraform",
+      "unmanaged_by_terraform": false,
+      "not_found_live": false
     }
   ],
   "billing_profile": {},
@@ -178,7 +181,18 @@ Deterministic ID format per resource type:
   "addon_service": "heroku-postgresql",
   "plan": "standard-0",
   "provider": "heroku",
-  "connection_pooling": true
+  "connection_pooling": true,
+  "ha_enabled": false,
+  "encryption_in_transit": true,
+  "redis_version": "7.0",
+  "topic_count": 4,
+  "partitions_per_topic": 8,
+  "replication_factor": 3,
+  "monthly_price_usd": 50,
+  "pg_version": "16",
+  "data_size_gb": 2.1,
+  "table_count": 42,
+  "maxmemory_policy": "noeviction"
 }
 ```
 

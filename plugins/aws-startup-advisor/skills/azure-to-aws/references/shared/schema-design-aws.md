@@ -46,6 +46,11 @@ A resource with an AWS target.
   "confidence": "deterministic", // deterministic | measured | inferred | billing_inferred
   "fast_path_row": "Microsoft.Cache/Redis", // REQUIRED when confidence is deterministic
   "rubric_applied": "compute.md", // REQUIRED when pass 2 ran
+  "routing_provenance": "table", // REQUIRED — table | index_md | child_type_rule | namespace_rule | model_category — see § routing_provenance
+  "is_compute_unit": false, // true on the entry that carries a cluster's compute sizing
+  "sizing_source": {}, // REQUIRED when is_compute_unit — see § sizing_provenance
+  "sizing_provenance": "table", // REQUIRED whenever aws_config carries a size — see § sizing_provenance
+  "hosted_app_azure_ids": [], // REQUIRED on a Microsoft.Web/serverfarms entry — the apps folded into this plan
   "rationale": "<one or two sentences a customer can read>"
 }
 ```
@@ -104,7 +109,8 @@ A specialist gate fired. See `design-refs/specialist-gates.md`.
   "azure_type": "Microsoft.Sql/managedInstances",
   "aws_service": "Deferred — specialist engagement",
   "reason": "<the gate row's reason, verbatim — it is the customer-facing explanation>",
-  "recommendation": "Engage your AWS account team; this workload needs a migration assessment."
+  "recommendation": "Engage your AWS account team; this workload needs a migration assessment.",
+  "routing_provenance": "index_md" // how the entry was routed to the gate — same vocabulary as services[]
 }
 ```
 
