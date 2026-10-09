@@ -39,10 +39,17 @@
    manifest, and the key file is **deleted by default** when capture completes
    (Step 4).
 3. **Aggregate data only.** `/activity` returns per-day, per-model bucketed token
-   counts and cost — no prompts, no completions, no request content. Do NOT pass
-   `group_by=workspace` unless the user explicitly asks to scope to one workspace
-   (it splits the response per workspace but adds no content); model-level
-   granularity is all downstream phases need.
+   counts and cost — no prompts, no completions, no request content.
+   `group_by=workspace` and `workspace_id` are two DIFFERENT parameters — do not
+   conflate them. `group_by=workspace` only SPLITS the response per workspace
+   (it adds no content and is never needed by this flow); `workspace_id` FILTERS
+   the response to one workspace's rows. **A workspace-scoping request from the
+   user is honored ONLY via the `workspace_id` filter (Step 1.5) — grouping alone
+   must never be used to satisfy a scoping request**, because a grouped-but-
+   unfiltered response still returns every workspace's rows and summing across
+   all of them silently reports account-wide spend as if it were scoped.
+   (`workspace_id` is documented at OpenRouter's `/activity` reference; not
+   independently verified against a live multi-workspace account.)
 4. **Capture to files, not context.** The capture script writes responses under
    `$MIGRATION_DIR/openrouter-capture/`. Parse capture files with a throwaway
    extraction script if any exceeds ~500 rows — do NOT Read oversized raw
@@ -137,6 +144,38 @@ and deleted when capture completes.)
 do not persist across Bash tool calls. The capture script reads the file path
 above.
 
+## Step 1.5: Workspace scoping (optional)
+
+*(Unverified against external docs: the `workspace_id` filter param and the
+`GET /workspaces` endpoint below are documented at OpenRouter's API reference
+but not independently confirmed against a live multi-workspace account.)*
+
+1. Call `GET https://openrouter.ai/api/v1/workspaces` (List Workspaces — returns
+   `id`, `name`, `slug` per workspace) through the same capture script used in
+   Step 2 (same key-handling rules apply — never a bare curl with the key).
+2. **0 or 1 workspace on the account:** skip this step silently — there is
+   nothing to scope, and nothing to ask the user. Leave `$WORKSPACE_ID` unset.
+3. **More than one workspace:** show the list and ask —
+
+   ```
+   This OpenRouter account has multiple workspaces:
+     [name / slug / id for each]
+
+   Scope this capture to one workspace, or capture all?
+   [A] All workspaces (default — matches today's unscoped behavior)
+   [B] Pick one workspace
+   ```
+
+   Never silently default to a single workspace, and never silently default to
+   "all" without showing the list — the choice must be stated, not assumed.
+4. **On `[B]`:** record the chosen workspace's `id` as `$WORKSPACE_ID` (and its
+   `name` for the profile metadata). OpenRouter's `workspace_id` filter takes one
+   workspace at a time — no documented array form, unlike Anthropic's
+   `workspace_ids[]`.
+5. **On `[A]`, or when this step was skipped (≤1 workspace):** leave
+   `$WORKSPACE_ID` unset — capture proceeds unscoped, exactly as before this
+   step existed.
+
 ## Step 2: Capture
 
 Create `$MIGRATION_DIR/openrouter-capture/`.
@@ -186,7 +225,7 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
 | # | Endpoint (GET)  | Purpose                                                                                                  | Output file     |
 | - | --------------- | --------------------------------------------------------------------------------------------------------- | --------------- |
 | 1 | `/credits`      | `total_credits` purchased and `total_usage` used (account lifetime) — a spend sanity anchor              | `credits.json`  |
-| 2 | `/activity`     | daily rows: `date`, `model`, `model_permaslug`, `provider_name`, `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `usage` (USD) — the workhorse | `activity.json` |
+| 2 | `/activity`     | daily rows: `date`, `model`, `model_permaslug`, `provider_name`, `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `usage` (USD) — the workhorse. **When `$WORKSPACE_ID` is set (Step 1.5), append `&workspace_id=$WORKSPACE_ID` — this FILTERS the response to that workspace's rows, not just splits them.** | `activity.json` |
 | 3 | `/key`          | rate-limit + remaining credit on the calling key (context only; optional — record `skipped` on any error)| `key.json`      |
 
 **Notes:**
@@ -196,8 +235,10 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
   OpenRouter-namespaced (`openai/gpt-4.1`, `anthropic/claude-...`); keep it verbatim
   — Design maps the namespaced id to a Bedrock target the same way the app-code
   `llm_router` path does.
-- Do NOT pass `group_by=workspace` (Security Contract rule 3) unless the user asks
-  to scope to one workspace.
+- Do NOT pass `group_by=workspace` (Security Contract rule 3) — it only splits
+  rows and is never needed by this flow. When `$WORKSPACE_ID` is set, filter at
+  capture time with `workspace_id` instead (above); when unset, the call is
+  unchanged from today — unscoped, all workspaces.
 
 **2d. Run the script, then delete it.** Record results in
 `$MIGRATION_DIR/openrouter-capture/manifest.json`:
@@ -261,6 +302,14 @@ with no user decision yet).
 
 ## Step 3: Parse Captures into the Usage Profile
 
+**Workspace scope was already applied at capture time, not here.** When
+`$WORKSPACE_ID` was set in Step 1.5, the `/activity` call in Step 2 carried
+`&workspace_id=$WORKSPACE_ID`, so `activity.json`'s rows are already filtered
+to that workspace by the API itself — `usage_by_model[]` reflects only the
+selected workspace's activity, and no additional client-side filtering by
+workspace is needed or correct here. Group-and-sum below operates on whatever
+rows `activity.json` contains, scoped or not.
+
 Sum across the window (a throwaway extraction script if captures are large):
 
 Both OpenRouter responses wrap their payload in a top-level `data` key — **unwrap
@@ -279,7 +328,10 @@ of rows` self-check.
   `active_days`.
 - **Credits** (`credits.json`): read `data.total_credits` / `data.total_usage`
   (lifetime figures) — record them as context, NOT as the monthly baseline (the
-  monthly figure comes from `/activity` summed over the window).
+  monthly figure comes from `/activity` summed over the window), and always
+  **account-wide**: `/credits` has no workspace filter parameter, so this figure
+  is never workspace-scoped even when `$WORKSPACE_ID` is set — label it plainly
+  as account-wide wherever it is surfaced (see Step 4's report line).
 - **Stale-lifetime-usage check (live-verified — this happens on a real account,
   not a hypothetical edge case).** If `data[]` is EMPTY (zero `/activity` rows —
   `active_days: 0`) but `credits.data.total_usage > 0`: the account has genuine
@@ -322,6 +374,7 @@ Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
     "partial_window": false,
     "cost_provenance": "unknown",
     "credits_lifetime": { "total_credits": 100.5, "total_usage": 25.75 },
+    "workspace_scope": null,
     "capture_warnings": ["key.json skipped (403)"]
   },
   "summary": {
@@ -351,6 +404,13 @@ convention as the OpenAI usage path — so downstream phases can tell a failed
 capture (UNKNOWN volume) from a genuinely unused one (zero). Validate: valid JSON,
 `summary.monthly_cost_usd` equals the sum of `usage_by_model[].monthly_cost_usd`
 (± rounding).
+
+`metadata.workspace_scope` is `null` when the capture was unscoped (today's
+default, all workspaces) or `{ "workspace_id": "<id>", "workspace_name": "<name>"
+}` when `$WORKSPACE_ID` was set in Step 1.5. This retains the selected scope in
+the written profile so downstream consumers (Clarify, Estimate,
+`llm-to-bedrock/SKILL.md` Step 1.5) can tell a workspace-scoped baseline from an
+account-wide one.
 
 ## Step 4: Merge into the AI Workload Profile (if it exists), Then Clean Up
 
@@ -435,8 +495,12 @@ user it was deleted and that they can also revoke the provisioning key at
 openrouter.ai/settings/provisioning-keys if it was created just for this run.
 
 Report: "OpenRouter usage discovery: $X/month across N models (window: 30
-days[, partial: only M active days])." If `metadata.capture_warnings` is
-non-empty (including the stale-lifetime-usage case above), append it plainly —
+days[, partial: only M active days])[, scoped to workspace '<name>']." When
+`$WORKSPACE_ID` was set, append the workspace-scope clause above AND ", lifetime
+credits figures remain account-wide" — so the workspace-scoped monthly figure
+and the account-wide lifetime credits are never conflated in the one message.
+If `metadata.capture_warnings` is non-empty (including the stale-lifetime-usage
+case above), append it plainly —
 e.g. "Note: no billed usage in the last 30 days, but your account shows
 $<total_usage> in lifetime usage — that spend falls outside this window and
 isn't reflected in the figure above." Do NOT let a `$0/month` report stand

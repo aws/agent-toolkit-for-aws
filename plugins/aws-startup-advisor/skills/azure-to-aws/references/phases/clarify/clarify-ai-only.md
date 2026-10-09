@@ -78,6 +78,7 @@ mechanism as Q7's existing auto-resolve below:** read `current_costs.monthly_ai_
 merge stamps `partial_window` (and `cost_status`, per the cost-completeness work) onto each
 `current_costs.breakdown[]` entry at merge time, so follow `current_costs.source` back to its
 contributor(s) before auto-resolving:
+
 - **`source` is a single provider** (not `"mixed"`) — check that provider's contributing
   profile via `breakdown[]` if present, or re-derive from the single-source case (no
   `breakdown[]` is written when there is only one contributor — treat it as that profile's own

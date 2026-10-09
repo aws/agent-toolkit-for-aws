@@ -205,7 +205,7 @@ reading an archive the customer already handed over is not interactive.
    condition — running them any earlier (as a pre-dispatch action, before
    fragments/assembly) would see that file not yet exist on a fresh run.
 
-   #### OpenAI usage-API consent + capture
+   ### OpenAI usage-API consent + capture
 
    Run `discover-openai-api.md` in full (Steps 0–4) when EITHER:
 
@@ -229,7 +229,7 @@ reading an archive the customer already handed over is not interactive.
    present and continue. This action never fails the phase; it only determines whether
    `openai-usage-profile.json` is present and current for THIS attempt.
 
-   #### OpenRouter usage-API consent + capture
+   ### OpenRouter usage-API consent + capture
 
    Run `discover-openrouter-api.md` in full (Steps 0–4) when EITHER:
 
@@ -255,7 +255,7 @@ reading an archive the customer already handed over is not interactive.
    it only determines whether `openrouter-usage-profile.json` is present and current for THIS
    attempt.
 
-   #### Anthropic usage-API consent + capture
+   ### Anthropic usage-API consent + capture
 
    Run `discover-anthropic-api.md` in full (Steps 0–4) when EITHER:
 
