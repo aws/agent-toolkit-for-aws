@@ -230,7 +230,7 @@ discovery is never indistinguishable from a promoted default. No nulls. Delete
       "workload_id": "wl-1", // REQUIRED
       "model_id": "gpt-4o", // REQUIRED
       "sdk_method": "chat.completions", // REQUIRED
-      "capability": "chat", // REQUIRED
+      "capability": "text_generation", // REQUIRED — the schema-discover-ai.md / design-ai.md capability enum (text_generation, structured_output, image_generation, embedding, …), not an ad hoc "chat" value
       "capability_confidence": "high", // REQUIRED
       "structured_output": false, // REQUIRED
       "call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED

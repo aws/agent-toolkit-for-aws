@@ -209,7 +209,11 @@ def strip_jsonc(text: str) -> Tuple[str, Dict[int, str], Dict[int, str]]:
                 between = line[key_start + 1:pos]
                 if between.strip() == "":
                     last_key_at_depth[depth] = line[string_open_pos + 1:key_start]
-            if ch not in '"':
+                key_start = None
+            elif ch not in '"' and not ch.isspace():
+                # Whitespace/tabs between a closed key string and its `:` must NOT drop
+                # the pending key (`"priority" : ...` is still a key, just spaced out) —
+                # only a genuinely different, non-whitespace character invalidates it.
                 key_start = None
             pos += 1
         # A key's value can legitimately still be OPEN at end-of-line (e.g.

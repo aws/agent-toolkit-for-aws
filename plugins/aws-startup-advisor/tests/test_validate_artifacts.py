@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = PLUGIN_ROOT / "scripts" / "validate-artifacts.py"
 
@@ -66,6 +68,32 @@ def test_strip_jsonc_still_binds_to_the_last_of_several_flat_sibling_keys():
     case this attribution logic was designed for.
     """
     text = '{\n  "a": 1, "b": 2 // REQUIRED\n}'
+    _, comments, keys = va.strip_jsonc(text)
+    assert comments[1] == "REQUIRED"
+    assert keys[1] == "b"
+
+
+@pytest.mark.parametrize("separator", [" ", "\t", "  "])
+def test_strip_jsonc_keeps_the_pending_key_across_whitespace_before_the_colon(separator: str):
+    """`"priority" : "balanced", // REQUIRED` (a space or tab between the closed key
+    string and its `:`) must still bind the comment to `priority`. The depth-tracking fix
+    unconditionally reset the pending key on any character that was not a `"`, including
+    whitespace encountered before the colon was reached, so a spaced key lost its
+    REQUIRED annotation entirely. Only a genuinely different, non-whitespace character
+    (not whitespace waiting for `:`) may invalidate the pending key.
+    """
+    text = f'{{\n  "priority"{separator}: "balanced", // REQUIRED\n}}'
+    _, comments, keys = va.strip_jsonc(text)
+    assert comments[1] == "REQUIRED"
+    assert keys[1] == "priority"
+
+
+def test_strip_jsonc_still_invalidates_a_key_followed_by_a_real_token_before_the_colon():
+    """A non-whitespace, non-colon character between a closed key string and a `:`
+    elsewhere on the line (not actually this key's own colon) must still drop the
+    pending key -- the whitespace exemption must not silently accept arbitrary content.
+    """
+    text = '{\n  "a" junk "b": 1 // REQUIRED\n}'
     _, comments, keys = va.strip_jsonc(text)
     assert comments[1] == "REQUIRED"
     assert keys[1] == "b"
@@ -788,7 +816,17 @@ def test_azure_preferences_follow_the_producer_route(tmp_path: Path):
                             "--skill", "azure-to-aws", "--no-baseline", "--json"))
 
     assert ("MISSING_REQUIRED", "clarify_status") not in run("infra", infra)
-    assert run("mixed", mixed) - run("infra", infra) == set()
+    mixed_errors = run("mixed", mixed)
+    assert mixed_errors - run("infra", infra) == set()
+    # The mixed-route AI rows are imported directly from clarify-ai.md's own "Step 3:
+    # Rows returned" example (via _doc_example above), so they must now be the final
+    # assembled {disposition, value, default} envelope clarify-assemble.md's merge
+    # rules require, not the bare per-fragment values the example previously showed
+    # ("ai_priority": "balanced" with no wrapper). Assert zero AI-specific errors
+    # explicitly, not merely "no new errors beyond infra's own pre-existing ones" --
+    # confirms the AI rows genuinely validate, not that two broken sets happen to match.
+    assert not any(path.startswith(("ai_", "startup_program_status", "ai_constraints"))
+                   for _, path in mixed_errors), mixed_errors
     bad = json.loads(json.dumps(mixed))
     bad["not_a_preference"] = 1
     assert ("UNKNOWN_KEY", "not_a_preference") in run("mixed-bad", bad)
@@ -826,10 +864,47 @@ def test_azure_preferences_follow_the_producer_route(tmp_path: Path):
     with_source["design_constraints"]["target_region"]["source"] = "discovery.ai-workload-profile.json"
     assert run("ai-source", with_source) == set(), run("ai-source", with_source)
 
+    # Q21 (ai_latency) is documented in clarify-ai.md's own prose and "Who consumes
+    # these" table but, like every other top-level AI row here, was never marked
+    # `// REQUIRED` in the contract itself (only `workloads[]`'s own fields are).
+    # The review finding is that ADDING the documented row used to fail UNKNOWN_KEY
+    # because the example omitted it; prove the now-fixed example accepts it (part of
+    # the `mixed` assertions above) and that it is a genuinely typed row, not that this
+    # top-level field is contractually required (it is not).
+    assert "ai_latency" in mixed and mixed["ai_latency"]["value"] == "important"
+
     # the infra verdict stays required on the infra route
     no_status = json.loads(json.dumps(infra))
     no_status.pop("clarify_status", None)
     assert ("MISSING_REQUIRED", "clarify_status") in run("infra-status", no_status)
+
+
+def test_ai_workload_capability_uses_the_discovery_design_vocabulary(tmp_path: Path):
+    """Review finding: clarify-ai-only.md's and clarify-ai.md's workloads[] examples both
+    persisted `capability: "chat"`, but schema-discover-ai.md's capability enum is
+    `text_generation`, `structured_output`, `image_generation`, `embedding`, … -- "chat"
+    is not a member, and design-ai.md has no routing case for it. Clarify's persisted
+    workloads[] is Design's source of truth, so a published example using an off-vocabulary
+    value is a real source-contract mismatch even though the shape validator (which only
+    checks type, not enum membership against a different file) accepts it either way.
+    """
+    discover_vocab_text = (
+        PLUGIN_ROOT / "skills/azure-to-aws/references/shared/schema-discover-ai.md"
+    ).read_text()
+    assert "`capability` enum: `text_generation`" in discover_vocab_text
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "preferences.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    ai = _doc_example(PLUGIN_ROOT / "skills/azure-to-aws/references/phases/clarify/clarify-ai-only.md",
+                      "preferences.json (AI-only)")
+    assert ai["workloads"][0]["capability"] == "text_generation", ai["workloads"][0]["capability"]
+    assert run("ai-only-capability", ai) == set(), run("ai-only-capability", ai)
+
+    mixed_workloads = _doc_example(PLUGIN_ROOT / "skills/azure-to-aws/references/phases/clarify/clarify-ai.md",
+                                   "workloads[]")
+    assert mixed_workloads[0]["capability"] == "text_generation", mixed_workloads[0]["capability"]
 
 
 def test_gcp_drift_values_keep_their_json_types(tmp_path: Path):
