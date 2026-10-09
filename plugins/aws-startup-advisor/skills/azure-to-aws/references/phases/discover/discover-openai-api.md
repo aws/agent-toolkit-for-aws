@@ -52,6 +52,16 @@
    `[A]` in Step 0 — no key intake, no key file on disk, no API call. The
    Step 0 consent is THE consent gate for this source (the orchestrator only
    decides whether to load this file).
+6. **Delete the key file at every exit except an explicit pending retry.**
+   Every terminal-exit branch in Step 2 (an all-usage-rows-failed capture, or
+   any other hand-off to the user) deletes `$MIGRATION_DIR/.openai-admin-env`
+   immediately and tells the user it was deleted — except the one documented
+   case: a `KEY_INVALID_MID_RUN` abort writes `retry_pending: true` to the
+   manifest and leaves the key file in place, because the resume path ("On
+   resume, re-run Step 2 — captures overwrite") legitimately needs it. That
+   pending state is cleared (file deleted, `retry_pending: false`) the moment
+   the retry either succeeds or is itself abandoned. Step 0/1 declines happen
+   before the key file exists, so there is nothing to delete there.
 
 ---
 
@@ -164,7 +174,12 @@ Create `$MIGRATION_DIR/openai-capture/`.
   a missing endpoint or zero usage is normal, never a halt. **Exception: a 401
   AFTER the probe succeeded** means the key was revoked or rotated mid-run —
   abort the remaining calls (keep completed capture files) and exit with a
-  distinct `KEY_INVALID_MID_RUN` line so the agent can hand off.
+  distinct `KEY_INVALID_MID_RUN` line so the agent can hand off. This is the
+  one exit that keeps the key file: write `retry_pending: true` to the
+  manifest and do NOT delete `$MIGRATION_DIR/.openai-admin-env` — the user
+  may resume by re-running Step 1 (re-intake if needed) then Step 2, which
+  overwrites captures. The moment that retry either succeeds or is
+  abandoned, delete the key file and set `retry_pending: false`.
 - Prints one line per call: `<file> ok|failed|skipped <n_buckets>`.
 
 **2b. Probe and project scoping.** The capture script runs the probe call first
@@ -220,14 +235,20 @@ triggers the all-usage-failed exit with no output.
   "window_days": 30,
   "admin_key_sha256": "<sha256 of .openai-admin-env contents — fingerprint only>",
   "project_filter": ["proj_abc", "proj_def"],
+  "retry_pending": false,
   "captures": [
     { "endpoint": "<row endpoint>", "file": "<file>", "status": "ok|failed|skipped", "note": null }
   ]
 }
 ```
 
+`retry_pending` is `true` only for the `KEY_INVALID_MID_RUN` exit described in
+the Security Contract above (the key file survives that one exit); every
+other manifest write — including the one below — sets it `false`.
+
 Every attempted or deliberately skipped call gets an entry. If EVERY usage row
-failed, exit with no output and tell the user which scope is missing.
+failed, delete `$MIGRATION_DIR/.openai-admin-env`, exit with no output, and
+tell the user which scope is missing.
 
 ## Step 3: Parse Captures into the Usage Profile
 
@@ -353,10 +374,10 @@ The parent `discover.md` owns the phase status update — do not touch
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | curl / script runtime missing, or user skips                | Exit cleanly with no output (orchestrator falls back to billing files)                                                                                                                                                                |
 | 401 on probe                                                 | Not an Admin key or Usage is not set to Read (API error may say `api.usage.read`) — offer re-intake or skip                                                                                                                           |
-| 401 mid-capture (probe succeeded, key then revoked/rotated) | Script aborts remaining calls, keeping completed files. Tell the user the key stopped working mid-run; offer Step 1 re-intake ("create/fix the key, then tell me to continue") or skip. On resume, re-run Step 2 — captures overwrite |
+| 401 mid-capture (probe succeeded, key then revoked/rotated) | Script aborts remaining calls, keeping completed files. Tell the user the key stopped working mid-run; offer Step 1 re-intake ("create/fix the key, then tell me to continue") or skip. `KEY_INVALID_MID_RUN`: write `retry_pending: true` and keep the key file (the ONE exit that does). On resume, re-run Step 2 — captures overwrite; once the retry succeeds or is abandoned, delete the key file and set `retry_pending: false` |
 | 429 rate limit                                               | Wait 30s, retry once; second 429 → record `failed`, continue                                                                                                                                                                          |
 | Individual endpoint fails                                   | Record `failed`/`skipped` in manifest, continue — zero usage on an endpoint is normal, never a halt                                                                                                                                   |
-| Every usage endpoint failed                                 | Exit with no output; tell the user which scope is missing                                                                                                                                                                            |
+| Every usage endpoint failed                                 | Delete the key file (`retry_pending: false`); exit with no output; tell the user which scope is missing                                                                                                                              |
 | Selected projects have zero usage in the window             | Re-show the per-project spend list from 2b and let the user re-select once; still zero → write the profile with zeros and `partial_window: true`                                                                                      |
 | All buckets zero (new org, no usage yet)                    | Write the profile with zeros and `partial_window: true`; warn that Estimate will fall back to token-volume tiers                                                                                                                      |
 

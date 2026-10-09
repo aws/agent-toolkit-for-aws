@@ -57,6 +57,17 @@
    `[A]` in Step 0 — no key intake, no key file on disk, no API call. The
    Step 0 consent is THE consent gate for this source (the orchestrator's 1g
    check only decides whether to load this file).
+6. **Delete the key file at every exit except an explicit pending retry.**
+   Every terminal-exit branch in Step 2 (the organization-type fork, an
+   all-rows-failed capture, or any other hand-off to the user) deletes
+   `$MIGRATION_DIR/.anthropic-admin-env` immediately and tells the user it
+   was deleted — except the one documented case: a `KEY_INVALID_MID_RUN`
+   abort writes `retry_pending: true` to the manifest and leaves the key
+   file in place, because the resume path ("On resume, re-run Step 2 —
+   captures overwrite") legitimately needs it. That pending state is
+   cleared (file deleted, `retry_pending: false`) the moment the retry
+   either succeeds or is itself abandoned. Step 0/1 declines happen before
+   the key file exists, so there is nothing to delete there.
 
 ---
 
@@ -186,13 +197,19 @@ the key:
   missing endpoint or zero usage is normal, never a halt. **Exception: a 401
   AFTER the probe succeeded** means the key was revoked or rotated mid-run —
   abort the remaining calls (keep completed capture files) and exit with a
-  distinct `KEY_INVALID_MID_RUN` line so the agent can hand off.
+  distinct `KEY_INVALID_MID_RUN` line so the agent can hand off. This is the
+  one exit that keeps the key file: write `retry_pending: true` to the
+  manifest and do NOT delete `$MIGRATION_DIR/.anthropic-admin-env` — the
+  user may resume by re-running Step 1 (re-intake if needed) then Step 2,
+  which overwrites captures. The moment that retry either succeeds or is
+  abandoned, delete the key file and set `retry_pending: false`.
 - **Org-type fork handling:** if the probe call fails in a way suggesting an
   Enterprise-only org (a 404 on the organizations endpoint path, or an error
   message naming Enterprise/Analytics), tell the user: "This looks like a
   Claude Enterprise organization — Enterprise Analytics API support is not
-  yet implemented in this flow" and exit cleanly (not a hard failure, not
-  `KEY_INVALID_MID_RUN`).
+  yet implemented in this flow", delete `$MIGRATION_DIR/.anthropic-admin-env`
+  (this is a terminal exit, not a pending retry — `retry_pending: false`),
+  and exit cleanly (not a hard failure, not `KEY_INVALID_MID_RUN`).
 - Prints one line per call: `<file> ok|failed|skipped <n_buckets>`.
 
 **2b. Probe and workspace scoping.** The capture script runs the probe call
@@ -255,14 +272,20 @@ derivable from tokens alone.
   "window_days": 30,
   "admin_key_sha256": "<sha256 of .anthropic-admin-env contents — fingerprint only>",
   "workspace_filter": ["wrkspc_abc"],
+  "retry_pending": false,
   "captures": [
     { "endpoint": "<row endpoint>", "file": "<file>", "status": "ok|failed|skipped", "note": null }
   ]
 }
 ```
 
+`retry_pending` is `true` only for the `KEY_INVALID_MID_RUN` exit described in
+the Security Contract above (the key file survives that one exit); every
+other manifest write — including the one below — sets it `false`.
+
 Every attempted or deliberately skipped call gets an entry. If EVERY row
-failed, exit with no output and tell the user which scope is missing.
+failed, delete `$MIGRATION_DIR/.anthropic-admin-env`, exit with no output,
+and tell the user which scope is missing.
 
 ## Step 3: Parse Captures into the Usage Profile
 
@@ -452,12 +475,12 @@ The parent `discover.md` owns the phase status update — do not touch
 |---|---|
 | curl / script runtime missing, or user skips | Exit cleanly with no output (orchestrator falls back to billing files) |
 | 401 on probe | Not an Admin key — offer re-intake or skip |
-| Probe fails in an Enterprise-org-shaped way | Tell the user Enterprise Analytics API is not yet implemented in this flow; exit cleanly |
-| 401 mid-capture (probe succeeded, key then revoked/rotated) | Script aborts remaining calls, keeping completed files. Tell the user the key stopped working mid-run; offer Step 1 re-intake or skip. `KEY_INVALID_MID_RUN`. On resume, re-run Step 2 — captures overwrite |
+| Probe fails in an Enterprise-org-shaped way | Tell the user Enterprise Analytics API is not yet implemented in this flow; delete the key file (`retry_pending: false`); exit cleanly |
+| 401 mid-capture (probe succeeded, key then revoked/rotated) | Script aborts remaining calls, keeping completed files. Tell the user the key stopped working mid-run; offer Step 1 re-intake or skip. `KEY_INVALID_MID_RUN`: write `retry_pending: true` and keep the key file (the ONE exit that does). On resume, re-run Step 2 — captures overwrite; once the retry succeeds or is abandoned, delete the key file and set `retry_pending: false` |
 | 429 rate limit | Wait 30s, retry once; second 429 → record `failed`, continue |
 | Individual endpoint fails | Record `failed`/`skipped` in manifest, continue — zero usage on an endpoint is normal, never a halt |
 | `cost_report` fails or is skipped (any per-workspace row in Step 2c), `usage_report/messages` succeeds (fully or partially) | Still write the profile — usage/token volume is known. Set `metadata.cost_status: "cost_unavailable"` and `summary.monthly_cost_usd: null` (never `0`, never a stale figure) regardless of `partial_window`'s value |
-| Both endpoints failed | Exit with no output; tell the user which scope is missing |
+| Both endpoints failed | Delete the key file (`retry_pending: false`); exit with no output; tell the user which scope is missing |
 | Selected workspaces have zero usage in the window | Re-show the per-workspace spend list from 2b and let the user re-select once; still zero → write the profile with zeros and `partial_window: true` |
 | All buckets zero (new org, no usage yet) | Write the profile with zeros and `partial_window: true`; warn that Estimate will fall back to token-volume tiers |
 
