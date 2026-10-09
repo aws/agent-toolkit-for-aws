@@ -251,13 +251,51 @@ without any credentials at all.
 
 ## Detecting whether an Agent Space exists
 
-You can just look — this is not something to ask about:
+You can just look — this is not something to ask about. Check **every** region DevOps Agent runs in, the
+user's region first if it is one of them, and keep a failed lookup separate from an empty one:
 
 ```bash
-aws devops-agent list-agent-spaces --region <region>
+supported="us-east-1 us-west-2 ca-central-1 sa-east-1 ap-south-1 ap-southeast-1 ap-southeast-2 \
+           ap-northeast-1 eu-central-1 eu-west-1 eu-west-2"
+mine=<their-region>
+case " $supported " in
+  *" $mine "*) regions="$mine ${supported/$mine/}" ;;   # theirs first, if DevOps Agent runs there
+  *)           regions="$supported" ;;                 # otherwise skip it: no space can live there
+esac
+for r in $(echo "$regions"); do   # works in bash and zsh
+  if out=$(aws devops-agent list-agent-spaces --region "$r" --query 'agentSpaces[].name' --output json 2>&1); then
+    flat=$(echo "$out" | tr -d '\n')
+    if [ "$flat" = "[]" ]; then echo "$r: empty"; else echo "$r: FOUND $flat"; fi
+  else
+    echo "$r: UNKNOWN — $(echo "$out" | tr -d '\n')"
+  fi
+done
 ```
 
-Empty list means none, and creating one is a single call (`references/connecting.md`).
+The list is the eleven regions in
+[Supported Regions](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-supported-regions.html);
+check it there if a region seems missing. One region is never enough: an empty answer from one says
+nothing about the others, and the founder's default region is often not where their space was created.
+A default region DevOps Agent does not run in is skipped, not checked — a space there is impossible, and
+a space in a supported region still monitors workloads in every region.
+
+Read the result in this order. `FOUND` is decided by whether the list has entries, not by what the
+spaces are called, so a space with any name — even `none` — is found:
+
+- **`FOUND` in any region** — say where and use it: *"You already have an Agent Space, `<name>`, in
+  us-east-1 — I'll use that one."* See the release-review exception below.
+- **Any region `UNKNOWN`** — do not conclude there is no space. The error is the readiness state for that
+  region (expired, denied, throttled, unreachable): name it, fix it or retry, and check again. Creating a
+  space while a region is unknown is how a founder ends up with two.
+- **`empty` in every region, with no `UNKNOWN`** — there is no Agent Space. Creating one is a single call
+  (`references/connecting.md`).
+
+**Release review runs only in `us-east-1` during preview.** Investigations, prevention evaluations and
+chat work in every supported region, so reuse the space wherever it is for those. For a release review,
+reuse it only if it is in `us-east-1`. If it is elsewhere, say so, explain that release review needs a
+space in `us-east-1`, and let the founder decide whether to add one there — that second space is a
+deliberate choice, not a duplicate.
+
 `AccessDeniedException` means an IAM gap on `aidevops:*`, which is a different conversation from "not set
 up" — say which action was denied.
 
