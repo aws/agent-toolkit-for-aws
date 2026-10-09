@@ -136,11 +136,14 @@ If the source model is not in this table (likely for any model released after th
 ## 6.3 Sum token usage + compute costs (per model pair)
 
 **Precedence check — existing usage-baseline takes priority over golden-dataset extrapolation.**
-Before doing anything else in this section, check whether
-`$BEDROCK_RUN_DIR/usage-baseline.json` exists (written by `SKILL.md`'s Step 1.5, from either
-`gcp-to-aws`'s or `azure-to-aws`'s Discover). **If it is absent, nothing below changes — run
-the rest of §6.3 exactly as written, extrapolating from the golden-dataset sample.** If it is
-present:
+Before doing anything else in this section, read the **`Usage baseline path:`** line from
+your own context block (passed by `SKILL.md`'s dispatch — do NOT derive or assume
+`$BEDROCK_RUN_DIR` yourself; you are a fresh, stateless dispatch and have no other way to
+resolve it). That line is written by `SKILL.md`'s Step 1.5 / A3 (from either `gcp-to-aws`'s
+or `azure-to-aws`'s Discover) and is omitted entirely from your context when no baseline file
+exists. **If the line is absent, nothing below changes — run the rest of §6.3 exactly as
+written, extrapolating from the golden-dataset sample.** If the line is present, read the
+`usage-baseline.json` file at that path:
 
 - Use its `summary.monthly_cost_usd` and `usage_by_model[]` as the SOURCE-side current-cost
   figure instead of extrapolating from the sampled golden dataset — skip the

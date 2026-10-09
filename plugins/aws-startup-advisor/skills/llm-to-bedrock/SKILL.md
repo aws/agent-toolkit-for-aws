@@ -193,20 +193,31 @@ short-circuit it.
 2. **Zero matches across all three** → no change to current behavior; proceed to Phase A
    exactly as today.
 3. **Determine which run's artifact to use (deterministic tiebreak, source-run status
-   surfaced):** for each distinct run directory with at least one match, use the run
-   directory's own `<MMDD-HHMM>` name as the primary, deterministic sort key (lexicographic
-   sort on this name IS chronological, since the name is itself a zero-padded timestamp —
-   this removes the need to compare `.phase-status.json` timestamps as the primary signal,
-   and removes tie ambiguity, since two distinct run directories cannot share a name). The
-   lexicographically greatest directory name wins. Use `.phase-status.json` →
-   `current_phase` ONLY as a secondary piece of information to SURFACE to the user (not to
-   break ties) — e.g. a run whose `current_phase` shows Discover never advanced past Clarify
-   tells the user this was likely an abandoned/declined session, even though its
-   usage-profile file is still the most recent one. **State both pieces to the user
-   explicitly before adopting the figures:** *"Found an existing [provider] usage profile
-   from your `<MMDD-HHMM>` run (status: `<current_phase>`) — using that one."* If a run
-   directory's `.phase-status.json` is missing/unparseable, still allow it as a candidate by
-   directory-name recency, but surface `status: unknown` instead of a phase name.
+   surfaced):** for each distinct run directory with at least one match, read that
+   directory's `.phase-status.json` → `last_updated` (a full ISO-8601 timestamp, which DOES
+   carry the year) and use it as the **primary** sort key — the greatest `last_updated` wins.
+   **Do not treat the directory's own `<MMDD-HHMM>` name as chronological on its own:** a
+   plain lexicographic comparison of `<MMDD-HHMM>` is only chronological WITHIN a single
+   calendar year — `1231-1200` (Dec 31) lexicographically sorts after `0102-1200` (Jan 2) of
+   the FOLLOWING, objectively later year, so using the name alone can pick a stale run. Fall
+   back to the `<MMDD-HHMM>` directory name ONLY when a candidate's `last_updated` is
+   missing or unparseable, and when you do, say so explicitly — that fallback is a same-year
+   assumption, not a general chronological guarantee, and must never be presented to the user
+   as equivalent to a real timestamp comparison. Use `.phase-status.json` → `current_phase`
+   as a secondary piece of information to SURFACE to the user (not to break ties) — e.g. a
+   run whose `current_phase` shows Discover never advanced past Clarify tells the user this
+   was likely an abandoned/declined session, even though its usage-profile file is still the
+   most recent one. **State both pieces to the user explicitly before adopting the
+   figures:** *"Found an existing [provider] usage profile from your `<MMDD-HHMM>` run
+   (status: `<current_phase>`) — using that one."* If a run directory's `.phase-status.json`
+   is missing/unparseable entirely, still allow it as a candidate via the `<MMDD-HHMM>`
+   fallback, but surface `status: unknown` instead of a phase name. **Genuine tie or
+   ambiguity** (two or more candidates all lack a usable `last_updated`, so only the
+   same-year-limited `<MMDD-HHMM>` fallback is available for them, or their `last_updated`
+   values are otherwise ambiguous): do NOT silently guess — surface every ambiguous candidate
+   to the user (directory name + whatever status is known for each) and ask which one is
+   actually the one to use, reusing the "state both pieces to the user explicitly" pattern
+   above rather than picking one automatically.
 4. For the winning run directory, read **every** usage-profile file present in it (a run can
    have multiple providers' profiles simultaneously — including a mix of gcp-produced and
    azure-produced profiles — B1 does not need to distinguish which skill wrote which file,
@@ -248,25 +259,37 @@ short-circuit it.
    as "OpenRouter and \<provider\> usage profiles both present — possible overlap if OpenRouter
    is BYOK-routing \<provider\> traffic; provenance unknown, manual reconciliation may be
    needed."
-7. Present a short summary and record the computed figures (see `usage-baseline.json` below)
-   for Phase C's report-generator: *"Found existing usage data: $X/month across N models
-   (source: [provider list], captured `<date>`). I'll use this as your current-cost baseline
-   instead of estimating from sampled golden-dataset traffic."*
+7. **Hold these computed figures — do not write them yet.** `$BEDROCK_RUN_DIR` does not exist
+   at this point in the document (it is only established in "### A3 — Locate Assess output,
+   then establish this skill's own run state" below, after Phase A runs); writing to it here
+   would write to a directory variable that is not yet assigned. Carry the computed
+   `source_run_dir`, `source_profiles`,
+   `captured_at`, `capture_warnings`, `windows`, `summary`, and `usage_by_model[]` values
+   forward (the shape is specified in "New artifact" below) and present the short summary now:
+   *"Found existing usage data: $X/month across N models (source: [provider list], captured
+   `<date>`). I'll use this as your current-cost baseline instead of estimating from sampled
+   golden-dataset traffic."* The actual file write happens in A3, immediately after
+   `$BEDROCK_RUN_DIR` is set — see the cross-reference there.
 8. **This step never prompts for consent** — it only reads a file a prior, already-consented
    run already wrote. No new attack surface; no new consent gate needed.
 9. **Idempotency:** this step is safe to re-run on every Phase-B start, including a resumed
-   session (A2's resume path). It performs read-only file operations until the final write of
-   `usage-baseline.json`, and that write is itself idempotent — overwriting
-   `usage-baseline.json` on a rerun with the same inputs produces the same output, and a
-   rerun with DIFFERENT inputs (e.g. a newer profile appeared since the last run) correctly
-   re-resolves and overwrites. Re-running this step on a resume where it already ran is
-   therefore harmless; it is not gated behind any "already ran" check.
+   session (A2's resume path). It performs read-only file operations only — the actual write
+   of `usage-baseline.json` happens later, in A3 (see step 7 above), and that write is itself
+   idempotent — overwriting `usage-baseline.json` on a rerun with the same inputs produces the
+   same output, and a rerun with DIFFERENT inputs (e.g. a newer profile appeared since the
+   last run) correctly re-resolves and overwrites. Re-running this step on a resume where it
+   already ran is therefore harmless; it is not gated behind any "already ran" check.
 
 ### New artifact: `$BEDROCK_RUN_DIR/usage-baseline.json`
 
-Written to `$BEDROCK_RUN_DIR` (`$REPO/.migration/.bedrock-<id>/`, established in Phase A3
-below), so Phase C's report-generator has a stable, already-resolved place to read from
-without re-globbing `.migration/*/` itself (that glob belongs only to this step).
+Written to `$BEDROCK_RUN_DIR` (`$REPO/.migration/.bedrock-<id>/`) in "### A3 — Locate Assess
+output, then establish this skill's own run state" below, immediately after
+`$BEDROCK_RUN_DIR` is set — **not** at Step 1.5 itself, since `$BEDROCK_RUN_DIR` does not
+exist yet when Step 1.5 runs (Step 1.5's steps 1–6 above still run here, before Phase A, so
+Phase A1's own fresh-Discover fallback decision can short-circuit correctly; only the file
+WRITE is deferred). This gives Phase C's report-generator a stable, already-resolved place
+to read from without re-globbing `.migration/*/` itself (that glob belongs only to this
+step).
 
 **Schema (per-provider window-status map, so a mixed partial/full combination is
 representable):**
@@ -354,10 +377,11 @@ in place, covering both clouds.
 
 One adjustment: when Phase A's inline Discover captures a FRESH profile in a NEW
 `$MIGRATION_DIR`, re-run steps 4–7 above against that run's own directory (no cross-run
-search needed) at the end of Phase A's Discover sub-step, and write `usage-baseline.json`
-the same way — so Phase C always reads from one consistent place regardless of whether the
-profile came from this step (reuse) or Phase A's fresh capture, and regardless of which
-cloud's Assess skill produced it.
+search needed) at the end of Phase A's Discover sub-step, and hold the resulting figures the
+same way (step 7's deferred-write discipline applies here too — `$BEDROCK_RUN_DIR` still does
+not exist at this point, since A3 has not run yet) — so Phase C always reads from one
+consistent place regardless of whether the profile came from this step (reuse) or Phase A's
+fresh capture, and regardless of which cloud's Assess skill produced it.
 
 **Additive, optional — existing flow unaffected:** `usage-baseline.json` absent means no
 behavior change — the existing behavior-delta comparison and golden-dataset-sample
@@ -372,11 +396,13 @@ This phase reads `$ASSESS_SKILL`'s own phase instruction files off disk and foll
 exactly as if `$ASSESS_SKILL` were running standalone — the same content, the same state file,
 the same artifacts. The only difference from invoking `$ASSESS_SKILL` as a separate skill is
 that there is no tool call and no turn boundary: everything below runs inline, in this session.
-Step 1.5 above already checked for and, when found, reused an existing usage-API profile
-(from either `gcp-to-aws`'s or `azure-to-aws`'s Discover) as the Bedrock cost baseline
-(`$BEDROCK_RUN_DIR/usage-baseline.json`, see Phase A3's other artifacts below); Phase A below
-still runs fully regardless — it only falls back to Discover's own fresh usage-API capture or
-golden-dataset extrapolation when no existing profile was found.
+Step 1.5 above already checked for and, when found, computed the figures for an existing
+usage-API profile (from either `gcp-to-aws`'s or `azure-to-aws`'s Discover) as the Bedrock
+cost baseline — held in memory until "### A3 — Locate Assess output, then establish this
+skill's own run state" below writes them to `$BEDROCK_RUN_DIR/usage-baseline.json` once
+`$BEDROCK_RUN_DIR` exists; Phase A
+below still runs fully regardless — it only falls back to Discover's own fresh usage-API
+capture or golden-dataset extrapolation when no existing profile was found.
 
 **Path resolution.** `$ASSESS_SKILL` instruction files use relative references
 (`references/phases/...`, `references/shared/...`, `references/vendored/...`,
@@ -482,7 +508,7 @@ is actively repricing (`workshop-refresh.md` is rewriting `aws-design-ai.json` b
 and a new mapping) — finish that loop (it resolves `phases.workshop` back to `"completed"` on
 exit or decline) before treating Design as done.
 
-### A3 — Locate Assess output
+### A3 — Locate Assess output, then establish this skill's own run state
 
 **Use the SAME `$MIGRATION_DIR` A1/A2 already resolved and confirmed — do NOT re-select a
 directory here.** `$MIGRATION_DIR` is already set from A1 step 1 (and re-confirmed, not
@@ -519,7 +545,8 @@ work to the telemetry hooks.
    of the `ls -td "$REPO/.migration"/*/` lookup above, so it can never be mistaken for the
    Assess run directory; keying it to the delegated run means a resumed migration reuses it.
    `$BEDROCK_RUN_DIR` also holds `usage-baseline.json` when Step 1.5 (or Phase A's own fresh
-   Discover capture) found an existing usage-API profile — see Step 1.5 above.
+   Discover capture) found an existing usage-API profile — written in step 2 below, once
+   this directory exists (see Step 1.5's "New artifact" section above for the schema).
    - If `$BEDROCK_RUN_DIR/.phase-status.json` already exists, this migration is being
      resumed: keep the file (including its `run_id`) and continue.
    - Otherwise create the directory and write `.phase-status.json`:
@@ -540,7 +567,15 @@ work to the telemetry hooks.
    journey's entry point is already visible through the delegated run's events, which carry
    `initiatingSkill`.
 
-2. After creating or validating the resumed Bedrock run, reconcile in `cli`
+2. **Write `usage-baseline.json`, now that `$BEDROCK_RUN_DIR` exists.** If Step 1.5 (or
+   Phase A's own fresh Discover capture, per Step 1.5's "Standalone invocation" note) held
+   computed figures in step 7, write them to `$BEDROCK_RUN_DIR/usage-baseline.json` now,
+   using the schema in Step 1.5's "New artifact" section above. If no figures were held
+   (zero matches in Step 1.5, and no fresh profile from Phase A's Discover either), skip this
+   write entirely — `usage-baseline.json`'s absence is itself the "no baseline" signal
+   `llm2bedrock-report-generator.md` §6.3 checks for.
+
+3. After creating or validating the resumed Bedrock run, reconcile in `cli`
    reporting mode per `references/vendored/telemetry/PROTOCOL.md`.
    In `hook` mode, leave reporting to the host hooks.
 
@@ -730,6 +765,7 @@ Migration plan dir: <$MIGRATION_DIR>
 Resolved target model id: <override for the primary chat model — omit if none>
 Scripts directory (pinned uv toolchain): <$SCRIPTS>
 Report date suffix: <saved suffix from run-context — C5/C6 dispatches only>
+Usage baseline path: <$BEDROCK_RUN_DIR/usage-baseline.json — C5/C6 dispatches only, omit line if the file is absent>
 Source baseline available: <true|false>
 Source provider env file: <path — omit if none>
 User-supplied log files: <comma-joined — omit if none>
@@ -780,6 +816,7 @@ Bedrock at their expense, capped at 200 cases.
   "source_provider": "<from B1>",
   "source_baseline_available": <true|false from B3>,
   "source_key_sha256": "<sha256 of .source-provider-env contents, \"\" when absent>",
+  "usage_baseline_sha256": "<sha256 of $BEDROCK_RUN_DIR/usage-baseline.json contents, \"\" when absent>",
   "log_files": [{"path": "...", "sha256": "..."}],
   "max_golden_cases": 200,
   "assess_design_sha256": "<sha256 of $MIGRATION_DIR/aws-design-ai.json>",
@@ -826,6 +863,7 @@ uv run --project $SCRIPTS python $SCRIPTS/validate_result.py --check-run-context
 | target_models / resolved_model_overrides                                                                                          | ANALYSIS, EVAL, REWRITE, REPORT | INGESTION |
 | log_files / max_golden_cases                                                                                                      | everything                      | —         |
 | source_key_sha256 / source_baseline_available                                                                                     | ANALYSIS, EVAL, REWRITE, REPORT | INGESTION |
+| usage_baseline_sha256                                                                                                              | EVAL, REWRITE, REPORT           | ANALYSIS, INGESTION |
 
 Units: ANALYSIS = analysis.json · INGESTION = ingestion.json + `.saws-migrate/golden-dataset/`
 · EVAL = eval.json + `.saws-migrate/eval-results/` (minus cost_compare.py) · REWRITE =
