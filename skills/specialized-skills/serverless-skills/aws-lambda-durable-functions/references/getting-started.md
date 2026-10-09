@@ -35,6 +35,13 @@ Override syntax:
 - "use Python" → Generate Python code
 - "use JavaScript" → Generate JavaScript code
 
+Durable execution is also supported for **Java** (`java17`/`java21`/`java25`; Maven artifact
+`software.amazon.lambda.durable:aws-durable-execution-sdk-java`) and **C#** (`dotnet8`/`dotnet10`;
+NuGet package `Amazon.Lambda.DurableExecution`). This skill's worked examples currently cover
+TypeScript and Python only; for Java or C#, point the user to the published SDK for that
+language rather than stating durable execution is unavailable. Full Java and C# examples are a
+tracked follow-up.
+
 When not specified, ALWAYS use TypeScript
 
 ### IaC framework selection
@@ -52,9 +59,12 @@ When not specified, ALWAYS use CDK
 
 #### Unsupported Language
 
-- List detected language
-- State: "Durable Execution SDK is not yet available for [framework]"
-- Suggest supported languages as alternatives
+Durable execution supports TypeScript/JavaScript, Python, Java, and C#. Only when the detected
+language is outside that set:
+
+- List the detected language
+- State: "The Durable Execution SDK does not currently support [language]"
+- Suggest a supported language as an alternative
 
 #### Unsupported IaC Framework
 
@@ -327,51 +337,40 @@ Install the ESLint plugin to catch common durable function mistakes at developme
 npm install --save-dev @aws/durable-execution-sdk-js-eslint-plugin
 ```
 
-### Option A: Flat Config (eslint.config.js)
+### Flat Config (eslint.config.js)
+
+Register the plugin under the `@aws/durable-functions` namespace — the namespace the
+plugin's own rules use — and enable all three rules:
 
 ```javascript
-import durableExecutionPlugin from '@aws/durable-execution-sdk-js-eslint-plugin';
+import durableFunctions from '@aws/durable-execution-sdk-js-eslint-plugin';
 
 export default [
   {
+    files: ['src/**/*.ts'],
     plugins: {
-      '@aws/durable-execution-sdk-js': durableExecutionPlugin,
+      '@aws/durable-functions': durableFunctions,
     },
     rules: {
-      '@aws/durable-execution-sdk-js/no-nested-durable-operations': 'error',
+      '@aws/durable-functions/no-nested-durable-operations': 'error',
+      '@aws/durable-functions/no-non-deterministic-outside-step': 'error',
+      '@aws/durable-functions/no-closure-in-durable-operations': 'error',
     },
   },
 ];
 ```
 
-### Option B: Recommended Config
-
-```javascript
-import durableExecutionPlugin from '@aws/durable-execution-sdk-js-eslint-plugin';
-
-export default [
-  durableExecutionPlugin.configs.recommended,
-  // Your other configs...
-];
-```
-
-### Option C: Legacy .eslintrc.json
-
-```json
-{
-  "plugins": ["@aws/durable-execution-sdk-js-eslint-plugin"],
-  "extends": ["plugin:@aws/durable-execution-sdk-js-eslint-plugin/recommended"],
-  "rules": {
-    "@aws/durable-execution-sdk-js-eslint-plugin/no-nested-durable-operations": "error"
-  }
-}
-```
+The plugin also ships a `recommended` config, but it is in the **legacy** (`.eslintrc`)
+format. Do not spread `durableExecutionPlugin.configs.recommended` into a flat-config
+array — its `plugins` field is a string array, which flat config rejects. For legacy
+`.eslintrc` projects, follow the plugin's README for the correct `extends`/`plugins`
+entries (the rules are namespaced `@aws/durable-functions/...`).
 
 **What the plugin catches:**
 
-- Nested durable operations inside step functions
-- Incorrect usage of durable context outside handler
-- Common replay model violations
+- `no-nested-durable-operations` — a durable operation nested inside another operation's callback
+- `no-non-deterministic-outside-step` — non-deterministic code (`Date.now`, `Math.random`, I/O) outside a step
+- `no-closure-in-durable-operations` — closure variables mutated inside a durable operation
 
 ## Jest Configuration
 
@@ -455,14 +454,6 @@ When starting a new durable function project:
 - [ ] Write tests using `DurableFunctionTestRunner` class
 - [ ] Run tests: `pytest`
 - [ ] Review replay model rules (no non-deterministic code outside steps)
-
-## Error Scenarios
-
-### Unsupported Language
-
-- List detected language
-- State: "Durable Execution SDK is not yet available for [language]"
-- List supported languages as alternatives
 
 ## Next Steps
 
