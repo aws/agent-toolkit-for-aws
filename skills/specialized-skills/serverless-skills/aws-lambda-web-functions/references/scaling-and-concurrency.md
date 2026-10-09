@@ -26,7 +26,7 @@ revision, defaults to 64, and can be set between 1–128. Most users don't need
 to change this field and can rely on Lambda Web's dynamic concurrency limit to
 balance environment utilization and performance.
 
-See Multi-Concurrency Considerations in [architecture-patterns.md](architecture-patterns.md).
+See Multi-Concurrency Considerations in [architecture-patterns.md](references/architecture-patterns.md).
 
 ## Endpoint Scaling Controls
 
@@ -45,7 +45,7 @@ endpoint can scale to. Optional, default is null.
 - A large `maxEnvironments` value does not guarantee the ability to scale to
   that many environments. An endpoint's environment scaling is always limited
   by the regional vCPU account quota. See Service Limits in
-  [SKILL.md](../SKILL.md).
+  [SKILL.md](SKILL.md).
 - If `maxEnvironments` is configured, an endpoint's total concurrency limit
   can be thought of as `maxEnvironments` × dynamic concurrency limit.
 
@@ -54,7 +54,7 @@ to a value lower than account quotas. Optional, default is null.
 
 - An endpoint's request rate is always limited by the two related account
   quotas: Per-endpoint rate limit and account total rate limit. See Service
-  Limits in [SKILL.md](../SKILL.md).
+  Limits in [SKILL.md](SKILL.md).
 - A `rateLimit` of 0 blocks all traffic.
 
 ## Reference Table
@@ -64,6 +64,6 @@ to a value lower than account quotas. Optional, default is null.
 | `serviceConfig.maxConcurrencyPerEnvironment` | Revision | Required, default 64, 1–128 | — |
 | `scalingConfig.maxEnvironments` | Endpoint | Optional, default null | — |
 | `throttleConfig.rateLimit` | Endpoint | Optional, default null; `0` blocks all traffic | — |
-| Endpoint RPS limit | Account Quota | 10,000 RPS | See Service Limits in [SKILL.md](../SKILL.md) |
-| Account RPS limit | Account Quota | 100,000 RPS | See Service Limits in [SKILL.md](../SKILL.md) |
-| Account vCPU limit | Account Quota | 2,000 vCPUs | See Service Limits in [SKILL.md](../SKILL.md) |
+| Endpoint RPS limit | Account Quota | 10,000 RPS | See Service Limits in [SKILL.md](SKILL.md) |
+| Account RPS limit | Account Quota | 100,000 RPS | See Service Limits in [SKILL.md](SKILL.md) |
+| Account vCPU limit | Account Quota | 2,000 vCPUs | See Service Limits in [SKILL.md](SKILL.md) |

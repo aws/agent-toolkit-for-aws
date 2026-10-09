@@ -120,10 +120,10 @@ aws lambda-web deploy --name {name} --code . --region {region}              # ev
 | `--execution-role-arn` | Use this role. On create, omitting it creates `awscli-lambdaweb-{name}`; on update the existing role is kept |
 | `--bucket-name` | Use this existing bucket for the code ZIP instead of the managed `awscli-lambdaweb-{account}-{region}-an` |
 | `--env KEY=VAL` / `--unset-env KEY` | Repeatable. Merged into the existing environment on update; `--unset-env` removes a key. Not for secrets: command-line values land in shell history and process listings, and revision environment variables are readable in plaintext. Keep secrets in Secrets Manager or Parameter Store and pass only the name (see Environment Variables below) |
-| `--timeout-seconds`, `--max-concurrency-per-environment`, `--application-log-level`, `--system-log-level`, `--kms-key-arn`, `--revision-description` | Revision settings. On update, anything you omit keeps its current value. `--kms-key-arn` encrypts the code and environment variables, not the log group; to encrypt logs with your own key, see [observability.md](observability.md) |
+| `--timeout-seconds`, `--max-concurrency-per-environment`, `--application-log-level`, `--system-log-level`, `--kms-key-arn`, `--revision-description` | Revision settings. On update, anything you omit keeps its current value. `--kms-key-arn` encrypts the code and environment variables, not the log group; to encrypt logs with your own key, see [observability.md](references/observability.md) |
 | `--endpoint-name` | Endpoint whose settings the command creates or updates (first one defaults to `dev`). Naming one that does not exist adds it, with `--create`. The new revision is served by every endpoint in `LatestRevision` mode, not only this one; pin other endpoints with `autoDeploymentMode: Disabled` |
 | `--endpoint-type`, `--regions` | `HomeRegion` (default), `MultiRegion` or `PerRegion`, used only when the endpoint is created |
-| `--auth-type` | `ApplicationManaged` (default, public) or `IamAuth`. Ask the user before choosing. A public endpoint has no AWS-layer auth or WAF: the app owns authentication, input validation, rate limiting and security headers, and CloudFront + AWS WAF in front adds L7 protection — see the checklist in [iam-and-security.md](iam-and-security.md) |
+| `--auth-type` | `ApplicationManaged` (default, public) or `IamAuth`. Ask the user before choosing. A public endpoint has no AWS-layer auth or WAF: the app owns authentication, input validation, rate limiting and security headers, and CloudFront + AWS WAF in front adds L7 protection — see the checklist in [iam-and-security.md](references/iam-and-security.md) |
 | `--auto-deployment-mode`, `--max-environments`, `--rate-limit`, `--description` | Endpoint settings, applied on create or when they differ from the existing endpoint |
 | `--tags KEY=VAL` | Resource tags, on create only |
 | `--include-hidden-files` | Include dotfiles in the bundle. They are left out by default, and `.env` is always left out |
@@ -136,7 +136,7 @@ first place; use `create-web-function-revision` for that. It does not lose one e
 builds the new revision from the previous one and carries
 `serviceConfig.egressNetworkConnectorArn` forward, so shipping a code change keeps VPC egress. The
 ARN it carries forward is version-qualified, so a redeploy after a connector update keeps the old
-version. See [networking.md](networking.md).
+version. See [networking.md](references/networking.md).
 
 **Entry point.** `deploy` looks for `index.js`, `server.js` (and their `.mjs` / `.cjs` forms),
 their `dist/` and `build/` variants, and `package.json` `main`. When the entry is not `index.js`
@@ -159,7 +159,7 @@ zip -r function.zip index.js package.json node_modules/ public/ \
   -x "*.test.*" -x ".git/*" -x ".env" -x "node_modules/.cache/*"
 ```
 
-Include: `index.js`, package.json, node_modules/, public/. See Service Limits in [SKILL.md](../SKILL.md) for the package size cap.
+Include: `index.js`, package.json, node_modules/, public/. See Service Limits in [SKILL.md](SKILL.md) for the package size cap.
 
 **If you have a build step** (esbuild for JSX or TypeScript), build *before* pruning. `npm ci --omit=dev` deletes the bundler along with the other devDependencies, so a later `npm run build` fails with `esbuild: command not found`:
 
@@ -216,7 +216,7 @@ Code always comes from S3 — `codeConfig.s3Object` is the only source, and it i
 
 ## Timeout
 
-Request timeout is configurable via `serviceConfig.timeoutSeconds` (see Service Limits in [SKILL.md](../SKILL.md) for the range and default). Changing this requires a new revision.
+Request timeout is configurable via `serviceConfig.timeoutSeconds` (see Service Limits in [SKILL.md](SKILL.md) for the range and default). Changing this requires a new revision.
 
 ```json
 "serviceConfig": {
@@ -229,7 +229,7 @@ Request timeout is configurable via `serviceConfig.timeoutSeconds` (see Service 
 
 Each execution environment handles multiple concurrent requests. Write thread-safe application code — avoid global mutable state.
 
-Configure a non-default concurrency limit via `serviceConfig.maxConcurrencyPerEnvironment` (see Service Limits in [SKILL.md](../SKILL.md) for the range and default). Changing this requires a new revision.
+Configure a non-default concurrency limit via `serviceConfig.maxConcurrencyPerEnvironment` (see Service Limits in [SKILL.md](SKILL.md) for the range and default). Changing this requires a new revision.
 
 ```json
 "serviceConfig": {
@@ -238,7 +238,7 @@ Configure a non-default concurrency limit via `serviceConfig.maxConcurrencyPerEn
 }
 ```
 
-See [scaling-and-concurrency.md](scaling-and-concurrency.md) for more details.
+See [scaling-and-concurrency.md](references/scaling-and-concurrency.md) for more details.
 
 ## Endpoint Scaling and Throttling
 
@@ -251,7 +251,7 @@ Concurrency above is configured on the revision; these two are configured on the
 }
 ```
 
-See [scaling-and-concurrency.md](scaling-and-concurrency.md) for more details.
+See [scaling-and-concurrency.md](references/scaling-and-concurrency.md) for more details.
 
 ## Environment Variables
 
@@ -295,4 +295,4 @@ These are set by the runtime and readable from customer code (but not overridabl
 
 ## Logs
 
-CloudWatch Logs, centralized to the function's home region. The log group and log levels are configurable via `serviceConfig.telemetryConfig.loggingConfig` (defaults to `/aws/lambda/web/{function-name}` at `INFO` if unset). Each function also gets a `{logGroup}.local` group holding just the logs of the region that served them. See [observability.md](observability.md) for the full logging config.
+CloudWatch Logs, centralized to the function's home region. The log group and log levels are configurable via `serviceConfig.telemetryConfig.loggingConfig` (defaults to `/aws/lambda/web/{function-name}` at `INFO` if unset). Each function also gets a `{logGroup}.local` group holding just the logs of the region that served them. See [observability.md](references/observability.md) for the full logging config.

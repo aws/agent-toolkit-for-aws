@@ -24,7 +24,7 @@ The platform also emits its own records under a `type` field — `platform.initS
 nested `record` object. `platform.initReport` is the one worth alerting on: it carries
 `status: success` or `status: failure` with an `errorType`, and it is the only reliable signal that
 a revision actually started. See the deployment warning on `LatestRevision` in
-[deployment.md](deployment.md).
+[deployment.md](references/deployment.md).
 
 Cold start cost is reported in `platform.initReport.record.metrics`, so measure your own app rather
 than assuming a figure — the dominant term for most apps is module resolution, and importing the

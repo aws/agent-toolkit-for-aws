@@ -8,7 +8,7 @@ reach private resources (Amazon RDS, ElastiCache, internal APIs, VPC endpoints, 
 over Direct Connect or VPN), reference an **egress network connector** from a revision.
 
 The connector changes outbound traffic only. The endpoint stays a public HTTPS URL, so it is not
-access control; for who can call the endpoint, see [iam-and-security.md](iam-and-security.md).
+access control; for who can call the endpoint, see [iam-and-security.md](references/iam-and-security.md).
 
 ### How It Fits Together
 
@@ -18,7 +18,7 @@ access control; for who can call the endpoint, see [iam-and-security.md](iam-and
   only `create-web-function` (in `--revision-config`) and `create-web-function-revision` (in
   `--service-config`) accept it; in CloudFormation and CDK it is
   `ServiceConfig.EgressNetworkConnectorArn` on `AWS::Lambda::WebFunctionRevision` (see
-  [infrastructure-as-code.md](infrastructure-as-code.md)). A revision is immutable, so
+  [infrastructure-as-code.md](references/infrastructure-as-code.md)). A revision is immutable, so
   adding, changing or removing a connector always means a new revision plus a traffic shift.
 - The ARN must be **version-qualified** (`...:network-connector:nc-...:2`). Updating a connector
   publishes a new version; revisions keep the version they name.
@@ -35,7 +35,7 @@ access control; for who can call the endpoint, see [iam-and-security.md](iam-and
   the version-qualified ARN it found, so a `deploy` after a connector update keeps the old version
   (see Change or Remove a Connector). Declaring the connector in a CloudFormation or CDK template
   covers both: every revision the stack creates carries it, and an `update-stack` moves to the new
-  version (see [infrastructure-as-code.md](infrastructure-as-code.md)).
+  version (see [infrastructure-as-code.md](references/infrastructure-as-code.md)).
 
 ### Egress Paths
 
@@ -130,7 +130,7 @@ aws lambda-web get-web-function-revision --function-name {name} --revision-id {r
 
 **7. Shift traffic deliberately.** There is no health gate on `LatestRevision`, so for a revision
 that changes the egress path, set the endpoint to `Disabled` and move `revisionWeights` yourself,
-keeping the previous revision as the rollback target (see [deployment.md](deployment.md)). During a
+keeping the previous revision as the rollback target (see [deployment.md](references/deployment.md)). During a
 split, each request takes the egress path of the revision that serves it.
 
 **8. Verify from application code.** There is no shell access to an execution environment. Deploy
@@ -164,7 +164,7 @@ a `::/0` route to an egress-only internet gateway.
 
 ### IAM for the Deploying Identity
 
-In addition to the Web Function actions in [iam-and-security.md](iam-and-security.md):
+In addition to the Web Function actions in [iam-and-security.md](references/iam-and-security.md):
 
 - `lambda:PassNetworkConnector` whenever a create request names a connector. Scope it to the
   connectors the deployer may use. Lambda checks the version-qualified ARN, so end the resource

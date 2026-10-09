@@ -1,6 +1,6 @@
 # Infrastructure as Code (CloudFormation and CDK)
 
-The AWS CLI (`aws lambda-web`) is the quickest path — see [deployment.md](deployment.md) and the CLI section of `SKILL.md`. Use CloudFormation when you want infrastructure-as-code (IaC): repeatable deployments, rollback support, and resources managed as a stack.
+The AWS CLI (`aws lambda-web`) is the quickest path — see [deployment.md](references/deployment.md) and the CLI section of `SKILL.md`. Use CloudFormation when you want infrastructure-as-code (IaC): repeatable deployments, rollback support, and resources managed as a stack.
 
 Load this file only when the user asks about CloudFormation or infrastructure-as-code for Lambda Web Functions.
 
@@ -54,11 +54,11 @@ Outputs:
 `{runtime}` is the Node.js runtime named in `SKILL.md`. For an existing function, read the current
 value from `buildConfig.runtimeConfig.runtime` with `aws lambda-web get-web-function-revision`.
 
-You must create the execution role yourself (trust `lambda.amazonaws.com`, attach `AWSLambdaBasicExecutionRole` for CloudWatch Logs) — see [iam-and-security.md](iam-and-security.md).
+You must create the execution role yourself (trust `lambda.amazonaws.com`, attach `AWSLambdaBasicExecutionRole` for CloudWatch Logs) — see [iam-and-security.md](references/iam-and-security.md).
 
 ## VPC Egress in a Stack
 
-To reach private VPC resources, add an `AWS::Lambda::NetworkConnector` and reference it from the revision's `ServiceConfig.EgressNetworkConnectorArn`. One stack can own the whole path — the connector does not have to exist first, and you never write a version number by hand. For what a connector does and how to size the subnets, security groups and operator role, see [networking.md](networking.md).
+To reach private VPC resources, add an `AWS::Lambda::NetworkConnector` and reference it from the revision's `ServiceConfig.EgressNetworkConnectorArn`. One stack can own the whole path — the connector does not have to exist first, and you never write a version number by hand. For what a connector does and how to size the subnets, security groups and operator role, see [networking.md](references/networking.md).
 
 ```yaml
   Connector:
@@ -163,8 +163,8 @@ aws s3 cp function.zip s3://{bucket}/{name}/function.zip --region {region}
 
 - Versioning must be enabled (required by `AWS::Lambda::WebFunctionRevision`).
 - The code artifact is encrypted at rest by default (SSE-S3); for a customer-managed key, see
-  [getting-started.md](getting-started.md). The function's log group is not encrypted with
-  your own KMS key by default; to associate one, see [observability.md](observability.md).
+  [getting-started.md](references/getting-started.md). The function's log group is not encrypted with
+  your own KMS key by default; to associate one, see [observability.md](references/observability.md).
 - Bucket policy must grant Lambda read access:
 
 ```json

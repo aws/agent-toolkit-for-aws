@@ -106,7 +106,7 @@ Bandwidth is shaped per request **and** capped per execution environment, so siz
 workload on the per-environment budget divided by expected concurrency rather than on the
 per-request figure (see Multi-Concurrency Considerations below), and check Service Quotas for
 current values. Streaming is server-to-client: do not write the response while the request body
-is still uploading (see Anti-Patterns in [SKILL.md](../SKILL.md)).
+is still uploading (see Anti-Patterns in [SKILL.md](SKILL.md)).
 
 ## Background Tasks
 
@@ -141,7 +141,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
 
 ## Multi-Concurrency Considerations
 
-Each environment serves many concurrent requests (see [scaling-and-concurrency.md](scaling-and-concurrency.md) for more details). Key patterns:
+Each environment serves many concurrent requests (see [scaling-and-concurrency.md](references/scaling-and-concurrency.md) for more details). Key patterns:
 
 - **CPU-bound work**: an environment is allowed 2 vCPU, but a single-threaded Node process uses only one. Use `worker_threads` (or `cluster`) to occupy both; I/O-bound handlers do not need it
 - **Network bandwidth**: the per-environment budget is shared by every concurrent request, so per-request throughput falls as concurrency rises

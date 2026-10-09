@@ -70,7 +70,7 @@ A deployer that creates revisions with an egress network connector also needs
 `lambda:PassNetworkConnector` (scoped to
 `arn:aws:lambda:{region}:{account}:network-connector:{connector-id}:*`; the unqualified connector
 ARN does not match) and `lambda:GetNetworkConnector`; see
-[networking.md](networking.md).
+[networking.md](references/networking.md).
 
 ## Auth Types
 

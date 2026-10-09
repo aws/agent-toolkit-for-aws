@@ -53,7 +53,7 @@ zip -r function.zip index.js package.json node_modules/ public/
 
 ## Size Tips
 
-- Package size is capped — see Service Limits in [SKILL.md](../SKILL.md)
+- Package size is capped — see Service Limits in [SKILL.md](SKILL.md)
 - Optimize images (WebP, compressed PNG)
 - Minify CSS/JS for production
 - For image-heavy sites, host media on S3 separately and reference by URL

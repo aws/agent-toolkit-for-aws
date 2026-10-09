@@ -18,7 +18,7 @@ the adapter, the handler export, and the API Gateway wiring all go away.
 ## Preflight — confirm before committing
 
 Walk these before rewriting anything. A "no" means Web Functions is the wrong destination —
-see the decision gates in [SKILL.md](../SKILL.md).
+see the decision gates in [SKILL.md](SKILL.md).
 
 - [ ] The app is Node.js, or can run on `nodejs24.x`. Runtime support can change, so confirm the supported runtimes with `aws lambda-web help` or the AWS docs rather than assuming this is the only one.
 - [ ] Every native dependency has an arm64 build, and the deployment package is built on arm64. Execution environments are Graviton, so an x86-built native addon will not load.
@@ -27,8 +27,8 @@ see the decision gates in [SKILL.md](../SKILL.md).
 - [ ] The app is safe to run with several concurrent requests in one process — no module-level per-request state. This is the single most common source of post-migration bugs, because Event Functions gave every request its own environment and hid the problem.
 - [ ] Nothing depends on state surviving in the environment or `/tmp` between requests.
 - [ ] The package, including `node_modules`, fits in 512 MB.
-- [ ] 2 vCPU / 2 GB per environment is enough (see Service Limits in [SKILL.md](../SKILL.md)).
-- [ ] If the current function is VPC-attached, plan an egress network connector for the new revision; subnets and security groups move to the connector (see [networking.md](networking.md), and confirm the connector commands with `aws lambda-core help` or the AWS docs).
+- [ ] 2 vCPU / 2 GB per environment is enough (see Service Limits in [SKILL.md](SKILL.md)).
+- [ ] If the current function is VPC-attached, plan an egress network connector for the new revision; subnets and security groups move to the connector (see [networking.md](references/networking.md), and confirm the connector commands with `aws lambda-core help` or the AWS docs).
 
 ## Path 1 — Express/Fastify behind an adapter
 
@@ -65,7 +65,7 @@ Steps:
 3. Add the `app.listen(...)` call above. Do not hardcode a port.
 4. Audit for concurrency safety — see the preflight checklist. Search for module-level `let`/`var` that a request writes to.
 5. Run it locally with `node index.js` and curl it. Local and deployed behaviour are now the same code path, which they were not under the adapter.
-6. Package and deploy per [deployment.md](deployment.md).
+6. Package and deploy per [deployment.md](references/deployment.md).
 
 What you can delete along the way: base64 request/response encoding, `isBase64Encoded`
 handling, API Gateway event shape translation, and any `context.callbackWaitsForEmptyEventLoop`
@@ -86,7 +86,7 @@ commitment rather than a convenience, because nothing authenticates in front of 
 authentication must be implemented and verified against the new endpoint before any traffic
 shifts to it. A public endpoint also needs defence in depth beyond authentication: front it with
 AWS WAF and set the standard security response headers (HSTS, CSP, X-Frame-Options), which
-`helmet` handles for Express and Fastify. See [iam-and-security.md](iam-and-security.md).
+`helmet` handles for Express and Fastify. See [iam-and-security.md](references/iam-and-security.md).
 
 **Option B — keep API Gateway in front of the endpoint.** Keep this when you depend on usage
 plans and API keys, Cognito or Lambda authorizers, request/response mapping, mTLS, edge WAF, or
@@ -101,17 +101,17 @@ Either way, translate the handler as in Path 1 — the event-shape code goes awa
 | Stage variables | `serviceConfig.environmentVariables` on the revision |
 | Stage-level canary | `revisionWeights` on the endpoint (at most 2 revisions, summing to 100) |
 | Per-method throttling | `throttleConfig.rateLimit`, which is endpoint-wide rather than per-method or per-client |
-| CORS configuration | Middleware in the app → [domains-and-routing.md](domains-and-routing.md) |
-| Access logs | CloudWatch Logs from the app → [observability.md](observability.md) |
+| CORS configuration | Middleware in the app → [domains-and-routing.md](references/domains-and-routing.md) |
+| Access logs | CloudWatch Logs from the app → [observability.md](references/observability.md) |
 
 ## Path 3 — Lambda function URL
 
 The closest existing shape — a function already reachable over HTTPS without API Gateway.
 
 1. Drop the handler export; add a listening server as in Path 1.
-2. `authType` here has exactly two values, `ApplicationManaged` and `IamAuth` (see [iam-and-security.md](iam-and-security.md)). A function URL's `NONE` corresponds to the first and `AWS_IAM` to the second; confirm that mapping against the API reference before relying on it for an access-control decision.
-3. Response streaming via `awslambda.streamifyResponse` becomes ordinary Node streaming — write to the response as you go. See [architecture-patterns.md](architecture-patterns.md).
-4. There is no reserved- or provisioned-concurrency setting. Bound scale with `throttleConfig.rateLimit` (RPS) or `scalingConfig.maxEnvironments` (see [scaling-and-concurrency.md](scaling-and-concurrency.md)); `throttleConfig.rateLimit: 0` is the equivalent of the `reservedConcurrency: 0` kill switch.
+2. `authType` here has exactly two values, `ApplicationManaged` and `IamAuth` (see [iam-and-security.md](references/iam-and-security.md)). A function URL's `NONE` corresponds to the first and `AWS_IAM` to the second; confirm that mapping against the API reference before relying on it for an access-control decision.
+3. Response streaming via `awslambda.streamifyResponse` becomes ordinary Node streaming — write to the response as you go. See [architecture-patterns.md](references/architecture-patterns.md).
+4. There is no reserved- or provisioned-concurrency setting. Bound scale with `throttleConfig.rateLimit` (RPS) or `scalingConfig.maxEnvironments` (see [scaling-and-concurrency.md](references/scaling-and-concurrency.md)); `throttleConfig.rateLimit: 0` is the equivalent of the `reservedConcurrency: 0` kill switch.
 5. The domain changes, so update clients and any DNS records that pointed at the function URL.
 
 ## Path 4 — Container on Fargate, App Runner or EC2
@@ -130,7 +130,7 @@ Plan replacements for these before you migrate, not after:
 
 | Feature | Replacement |
 |---|---|
-| Reserved / provisioned concurrency | Bound scale with `throttleConfig.rateLimit` or `scalingConfig.maxEnvironments` → [scaling-and-concurrency.md](scaling-and-concurrency.md). `throttleConfig.rateLimit: 0` is the kill switch that `reservedConcurrency: 0` gives you on Event Functions |
+| Reserved / provisioned concurrency | Bound scale with `throttleConfig.rateLimit` or `scalingConfig.maxEnvironments` → [scaling-and-concurrency.md](references/scaling-and-concurrency.md). `throttleConfig.rateLimit: 0` is the kill switch that `reservedConcurrency: 0` gives you on Event Functions |
 | Lambda layers | No layers concept in the revision API. Bundle shared code into the ZIP |
 | Event source mappings (SQS, Kinesis, DynamoDB Streams) | Keep an Event Function for those paths — `aws-serverless`. A Web Function serves HTTP only |
 | Container (OCI) image deployment | `codeConfig.s3Object` is the only code source in `BuildConfig` |
@@ -184,13 +184,13 @@ Do not repoint DNS as the first step.
 5. Keep the old stack until error rates and p99 latency have been stable across a full traffic cycle, then decommission.
 
 For canarying between revisions of the Web Function itself — as opposed to between old and new
-stacks — use `revisionWeights` on the endpoint. See [deployment.md](deployment.md).
+stacks — use `revisionWeights` on the endpoint. See [deployment.md](references/deployment.md).
 
 ## Post-migration verification
 
 - [ ] Endpoint state is `Active` and `curl https://{domainName}/` returns the expected response.
 - [ ] A concurrency test at realistic load shows no cross-request data bleed.
-- [ ] Logs arrive in the configured log group → [observability.md](observability.md).
+- [ ] Logs arrive in the configured log group → [observability.md](references/observability.md).
 - [ ] The log group is encrypted with a KMS key. HTTP request and response logs routinely carry tokens, headers and PII, so encrypt by default rather than treating it as a judgement call.
 - [ ] `authType` matches intent — `ApplicationManaged` endpoints are public.
 - [ ] The execution role carries only the permissions the app actually uses.

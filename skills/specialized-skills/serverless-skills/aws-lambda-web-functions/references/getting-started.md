@@ -28,7 +28,7 @@ aws s3api put-bucket-policy --bucket {bucket} --policy '{
 }'
 ```
 
-S3 encrypts every new object at rest with SSE-S3 by default, so the code artifact is encrypted without an extra step. To encrypt the code artifact and environment variables with a customer-managed key instead, set `revisionConfig.kmsKeyArn` — see [deployment.md](deployment.md).
+S3 encrypts every new object at rest with SSE-S3 by default, so the code artifact is encrypted without an extra step. To encrypt the code artifact and environment variables with a customer-managed key instead, set `revisionConfig.kmsKeyArn` — see [deployment.md](references/deployment.md).
 
 Create execution role:
 
@@ -72,7 +72,7 @@ app.listen(PORT, HOST);
 
 This starter deploys with `authType: ApplicationManaged` — public to anyone with the URL.
 It has no auth, which is fine for a hello-world. Before exposing anything non-public,
-implement auth in the app (see [iam-and-security.md](iam-and-security.md)) or use
+implement auth in the app (see [iam-and-security.md](references/iam-and-security.md)) or use
 `IamAuth`.
 
 ## 4. Test Locally
@@ -111,14 +111,14 @@ observability: confirm a CloudTrail trail is enabled in the account so control-p
 calls (`CreateWebFunction`, `CreateWebFunctionRevision`, `UpdateWebFunctionEndpoint`,
 `DeleteWebFunction`) are audited, and add a CloudWatch alarm on endpoint error rate so
 regressions surface before a traffic shift. See
-[observability.md](observability.md) for log configuration, alarms and multi-region
+[observability.md](references/observability.md) for log configuration, alarms and multi-region
 log centralization.
 
 ## One-command alternative: `aws lambda-web deploy`
 
 `deploy` sets up the bucket, role and endpoint above for you. **Choose endpoint auth first.** `deploy` creates a public (`ApplicationManaged`) endpoint unless
 you pass `--auth-type IamAuth`, and anyone with a public URL can call it. Ask the user which they
-want before running either command below; see [iam-and-security.md](iam-and-security.md) for what a
+want before running either command below; see [iam-and-security.md](references/iam-and-security.md) for what a
 public endpoint needs.
 
 ```bash
@@ -136,7 +136,7 @@ cd my-app && aws lambda-web deploy --name my-app --code . --region {region}
 ```
 
 For an app you already have, install its dependencies and deploy the directory; see
-[deployment.md](deployment.md) for every flag:
+[deployment.md](references/deployment.md) for every flag:
 
 ```bash
 npm ci --omit=dev

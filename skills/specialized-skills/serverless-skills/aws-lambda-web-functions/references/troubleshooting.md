@@ -96,7 +96,7 @@ the origin request policy rather than forwarding everything.
 | HTTP 502 `Platform.InvalidNetworkConfiguration` | Serving revision references a deleted connector | Shift traffic to a working revision |
 | `ValidationException` ... "A version qualifier is required" | Unqualified connector ARN | Use `LatestVersionArn` from `aws lambda-core get-network-connector` |
 
-Full table, including connector creation errors: [networking.md](networking.md).
+Full table, including connector creation errors: [networking.md](references/networking.md).
 
 ## Debug Steps
 

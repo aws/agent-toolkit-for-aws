@@ -59,7 +59,7 @@ aws lambda-web create-web-function-endpoint \
 | `ApplicationManaged` | **Public — anyone on the internet with the URL; no AWS-layer auth.** | Public websites/APIs where the **app** handles its own auth (JWT, sessions, API keys). Authorization header passed through to your code. |
 | `IamAuth` | Private — only IAM-signed (SigV4) callers. | Internal / service-to-service endpoints. |
 
-For public websites, use `ApplicationManaged` — but the app is then responsible for its own authentication, authorization, input validation, and rate limiting. See [iam-and-security.md](iam-and-security.md#security-considerations).
+For public websites, use `ApplicationManaged` — but the app is then responsible for its own authentication, authorization, input validation, and rate limiting. See [iam-and-security.md](references/iam-and-security.md#security-considerations).
 
 **L7 protection.** There is no built-in WAF on the managed domain, and `throttleConfig.rateLimit` is endpoint-wide rather than per-client. For production `ApplicationManaged` workloads that need L7 DDoS protection, bot mitigation or IP filtering, put your own CloudFront distribution with AWS WAF in front of the endpoint and treat the endpoint domain as the origin.
 
