@@ -46,6 +46,31 @@ def test_strip_jsonc_handles_ellipsis_and_bool_alternation():
     assert json.loads(out) == {"a": ["Q1", "..."], "b": True}
 
 
+def test_strip_jsonc_binds_a_trailing_comment_to_the_enclosing_field_not_a_nested_key():
+    """`"call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED` must attribute the
+    comment to `call_sites` (the field this line actually declares), not to `line` (the
+    last key opened on the line, which is nested two levels deeper inside the inline
+    array/object value). Picking the textually-last key regardless of depth let a
+    `// REQUIRED` on an inline array/object value silently annotate one of its own nested
+    keys instead of the enclosing field, so the enclosing field was never marked required.
+    """
+    text = '{\n  "call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED\n}'
+    _, comments, keys = va.strip_jsonc(text)
+    assert comments[1] == "REQUIRED"
+    assert keys[1] == "call_sites"
+
+
+def test_strip_jsonc_still_binds_to_the_last_of_several_flat_sibling_keys():
+    """Several sibling keys packed on one flat line (no nesting) must still resolve to the
+    LAST one, preserving the original intent for the common `"a": 1, "b": 2 // REQUIRED`
+    case this attribution logic was designed for.
+    """
+    text = '{\n  "a": 1, "b": 2 // REQUIRED\n}'
+    _, comments, keys = va.strip_jsonc(text)
+    assert comments[1] == "REQUIRED"
+    assert keys[1] == "b"
+
+
 # --------------------------------------------------------------------------- template inference
 
 
@@ -668,6 +693,38 @@ def test_azure_preferences_follow_the_producer_route(tmp_path: Path):
     invented = json.loads(json.dumps(ai))
     invented["metadata"]["invented"] = 1
     assert ("UNKNOWN_KEY", "metadata.invented") in run("ai-invented", invented)
+
+    # Review finding: Q1 is documented as select-all with a ["direct"] array default,
+    # skipped/defaulted Q1.5 compliance is documented as appending a
+    # metadata.report_caveats entry, and Step 3's prose permits per-constraint `source`
+    # provenance. Each of these three documented variations independently used to fail
+    # against the committed example (ai_framework typed as a bare string, report_caveats
+    # absent from metadata, source never accepted) even though the literal, unmodified
+    # example passed. Prove the producer contract now actually accepts the documented
+    # shapes it describes, not only its own single literal example.
+    multi_framework = json.loads(json.dumps(ai))
+    multi_framework["ai_constraints"]["ai_framework"]["value"] = ["direct", "langchain"]
+    assert run("ai-multi-framework", multi_framework) == set(), run("ai-multi-framework", multi_framework)
+    with_caveat = json.loads(json.dumps(ai))
+    with_caveat["metadata"]["report_caveats"] = ["Compliance requirements were not confirmed by the user"]
+    assert run("ai-caveat", with_caveat) == set(), run("ai-caveat", with_caveat)
+    with_source = json.loads(json.dumps(ai))
+    with_source["design_constraints"]["target_region"]["source"] = "discovery.ai-workload-profile.json"
+    assert run("ai-source", with_source) == set(), run("ai-source", with_source)
+
+    # Review finding: workloads[0].call_sites is declared `"call_sites": [{ "file": ...,
+    # "line": 1 }], // REQUIRED` -- an inline array of objects on one line. Before the
+    # strip_jsonc key-attribution fix, the trailing comment bound to `line` (the last key
+    # opened on the line, nested inside the array) instead of `call_sites` (the enclosing
+    # field), so omitting the entire call_sites array passed with no finding in both Azure
+    # preferences routes. model_id is the control: a plain sibling, correctly flagged
+    # either way, proving the fix did not just start over-flagging unrelated keys.
+    ai_no_call_sites = json.loads(json.dumps(ai))
+    del ai_no_call_sites["workloads"][0]["call_sites"]
+    assert ("MISSING_REQUIRED", "workloads[0].call_sites") in run("ai-no-call-sites", ai_no_call_sites)
+    ai_no_model_id = json.loads(json.dumps(ai))
+    del ai_no_model_id["workloads"][0]["model_id"]
+    assert ("MISSING_REQUIRED", "workloads[0].model_id") in run("ai-no-model-id", ai_no_model_id)
     # the infra verdict stays required on the infra route
     no_status = json.loads(json.dumps(infra))
     no_status.pop("clarify_status", None)

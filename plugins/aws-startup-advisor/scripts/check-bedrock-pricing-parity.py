@@ -74,7 +74,18 @@ def metadata(text: str) -> dict[str, str]:
 
 def model_rows(text: str) -> dict[str, tuple[str, str]]:
     rows = {}
-    for line in section(text, "Bedrock Models (On-Demand)").splitlines():
+    bedrock_section = section(text, "Bedrock Models (On-Demand)")
+    # Exclude the "### Embeddings — Bedrock" subsection: it is an input-only table (price,
+    # Dimensions) rather than this scanner's assumed input/output price-pair shape, and
+    # three of its five Dimensions values (single numbers like "1536") coincidentally pass
+    # the same numeric fullmatch as a real output price, which would otherwise mix
+    # embedding rows into the generative-model lookup-key comparison below.
+    embed_match = re.search(r"(?m)^### Embeddings — Bedrock.*$", bedrock_section)
+    if embed_match:
+        embed_end = re.search(r"(?m)^### ", bedrock_section[embed_match.end() :])
+        stop = embed_match.end() + embed_end.start() if embed_end else len(bedrock_section)
+        bedrock_section = bedrock_section[: embed_match.start()] + bedrock_section[stop:]
+    for line in bedrock_section.splitlines():
         if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -160,7 +171,18 @@ def main() -> int:
 
     old_bedrock = section(old, "Bedrock Models (On-Demand)")
     new_bedrock = section(canonical, "Bedrock Models (On-Demand)")
-    assert new_bedrock.rstrip() == old_bedrock.rstrip(), "Bedrock section changed during extraction"
+    # The GCP-origin "## Bedrock Models (On-Demand)" section itself nests the
+    # "### Embeddings — Bedrock" subsection reinstated below (it was previously only in
+    # Azure's cache, under the same heading level, and was lost entirely during the
+    # original split). Strip exactly that known, reviewed addition before the
+    # byte-equality check, the same way the Claude Fable exception below is scoped to one
+    # named, reviewed change rather than widened wholesale.
+    new_bedrock_without_embeddings = re.sub(
+        r"(?s)### Embeddings — Bedrock \(per 1M input tokens, US East\).*?(?=### Stability AI)",
+        "",
+        new_bedrock,
+    )
+    assert new_bedrock_without_embeddings.rstrip() == old_bedrock.rstrip(), "Bedrock section changed during extraction"
     old_metadata = metadata(old)
     canonical_metadata = metadata(canonical)
     for field in ("Last updated", "Region", "Currency"):
@@ -200,6 +222,28 @@ def main() -> int:
     assert metadata(azure_cache)["Last updated"] == metadata(azure_old)["Last updated"]
     assert markdown_data_rows(section(azure_cache, "Source Provider Pricing (for Migration Comparison)")) == markdown_data_rows(section(azure_old, "Source Provider Pricing (for Migration Comparison)")), "Azure source-provider rate rows changed"
     assert "any Bedrock rate change into\n   `references/vendored/ai/bedrock-pricing-cache.md`" in azure_openai
+
+    # The pre-split Azure cache's own "Embeddings — Bedrock" target table (Titan/Cohere) is
+    # NOT part of GCP's "Bedrock Models (On-Demand)" section the checks above already cover,
+    # so a prior split silently dropped it entirely instead of moving it to the canonical
+    # cache. Prove every target row survived the move byte-for-byte and that each embedding
+    # model ID is still reachable from the canonical cache's own quick-reference rows.
+    def subsection(text: str, heading: str) -> str:
+        """Like `section()` but for a `### ` subsection nested inside a `## ` section."""
+        match = re.search(rf"(?m)^### {re.escape(heading)}.*$", text)
+        assert match, f"missing subsection: {heading}"
+        end = re.search(r"(?m)^#{2,3} ", text[match.end() :])
+        stop = match.end() + end.start() if end else len(text)
+        return text[match.start() : stop]
+
+    azure_old_embed_rows = markdown_data_rows(subsection(azure_old, "Embeddings — Bedrock"))
+    assert azure_old_embed_rows, "pre-split Azure cache's Embeddings — Bedrock table is missing; nothing to compare against"
+    canonical_embed_rows = markdown_data_rows(subsection(canonical, "Embeddings — Bedrock"))
+    assert canonical_embed_rows == azure_old_embed_rows, "Bedrock embedding target rows were not preserved during the split"
+    for vendored_copy in VENDORED:
+        assert markdown_data_rows(subsection(vendored_copy.read_text(), "Embeddings — Bedrock")) == azure_old_embed_rows, (
+            f"Bedrock embedding target rows drifted in vendored copy: {vendored_copy}"
+        )
 
     canonical_bytes = CANONICAL.read_bytes()
     for copy in VENDORED:

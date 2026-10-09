@@ -94,6 +94,28 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | Jurassic-2 Ultra                 | —                                        | AI21 Labs | 18.80      | 18.80       | —       | legacy    | legacy                                                       |
 | Jamba-Instruct                   | —                                        | AI21 Labs | 0.50       | 0.70        | —       | mid       | active                                                       |
 
+### Embeddings — Bedrock (per 1M input tokens, US East)
+
+Embedding models are **input-only** — priced per 1M input tokens, no output charge. Use for
+`embedding` capability workloads (RAG corpora, semantic search, FAQ retrieval). A migration from
+an OpenAI/Azure embedding deployment lands on one of these; note the **dimension** must match (or
+the corpus must be re-embedded and any similarity threshold recalibrated).
+
+| Model                        | Model ID                     | Provider | Input $/1M | Dimensions        | Tier     | Status |
+| ---------------------------- | ----------------------------- | -------- | ---------- | ----------------- | -------- | ------ |
+| Titan Text Embeddings v2     | amazon.titan-embed-text-v2:0 | Amazon   | 0.02       | 1024/512/256      | default  | active |
+| Titan Text Embeddings v1     | amazon.titan-embed-text-v1   | Amazon   | 0.10       | 1536              | legacy   | active |
+| Cohere Embed v4              | cohere.embed-v4:0            | Cohere   | 0.12       | 1536/1024/512/256 | flagship | active |
+| Cohere Embed English v3      | cohere.embed-english-v3      | Cohere   | 0.10       | 1024              | mid      | active |
+| Cohere Embed Multilingual v3 | cohere.embed-multilingual-v3 | Cohere   | 0.10       | 1024              | mid      | active |
+
+**Default target for a migrating OpenAI/Azure embedding workload:** Titan Text Embeddings v2
+(`amazon.titan-embed-text-v2:0`) — cheapest, configurable dimensions (1024 default; 512/256 for
+cost/latency). Choose Cohere Embed v4 when the source used a large-dimension model and matrix
+compatibility or multilingual quality matters. Titan v2 output dimension is configurable, so map
+`text-embedding-3-large` (3072-dim) or `-small` (1536-dim) to Titan 1024 and **re-embed** — there
+is no dimension-preserving swap. See `references/vendored/ai/ai-openai-to-bedrock.md`.
+
 ### Stability AI — Image Generation (per image, US East)
 
 Active image generation models on Bedrock. Priced **per image** (not per token). Use for `image_generation` capability workloads.
