@@ -194,14 +194,22 @@ GET /v1/organization/costs?start_time=<t>&bucket_width=1d&group_by=project_id&li
 **2c. Capture Endpoint Table.** Every row is filtered to the selected projects
 via repeated `project_ids[]=<id>` query parameters.
 
+**Bucket limit note — do NOT copy row 1's `limit=180` onto rows 2–6:** the
+Costs endpoint (row 1) accepts `bucket_width=1d&limit` up to 180 (default 7),
+but every usage endpoint (rows 2–6) caps `bucket_width=1d&limit` at **31**
+(default 7) — this is a copy-paste trap when modeling a usage row on the
+Costs row's own query string. A `limit=180` request against any usage
+endpoint is rejected outright, which (per the Error Handling table below)
+triggers the all-usage-failed exit with no output.
+
 | # | Endpoint (GET, `https://api.openai.com`)      | Query parameters                                                                     | Output file                       |
 | - | --------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------- |
 | 1 | `/v1/organization/costs`                      | `start_time`, `bucket_width=1d`, `group_by=line_item`, `project_ids[]…`, `limit=180` | `costs.json`                      |
-| 2 | `/v1/organization/usage/completions`          | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=180`     | `usage-completions.json`          |
-| 3 | `/v1/organization/usage/embeddings`           | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=180`     | `usage-embeddings.json`           |
-| 4 | `/v1/organization/usage/images`               | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=180`     | `usage-images.json`               |
-| 5 | `/v1/organization/usage/audio_speeches`       | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=180`     | `usage-audio-speeches.json`       |
-| 6 | `/v1/organization/usage/audio_transcriptions` | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=180`     | `usage-audio-transcriptions.json` |
+| 2 | `/v1/organization/usage/completions`          | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-completions.json`          |
+| 3 | `/v1/organization/usage/embeddings`           | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-embeddings.json`           |
+| 4 | `/v1/organization/usage/images`               | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-images.json`               |
+| 5 | `/v1/organization/usage/audio_speeches`       | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-audio-speeches.json`       |
+| 6 | `/v1/organization/usage/audio_transcriptions` | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-audio-transcriptions.json` |
 
 **2d. Run the script, then delete it.** Record results in
 `$MIGRATION_DIR/openai-capture/manifest.json`:

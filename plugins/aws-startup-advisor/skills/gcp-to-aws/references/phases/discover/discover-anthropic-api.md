@@ -75,10 +75,14 @@ a fixed list of two usage/cost endpoints:
     creation), and USD cost by workspace or by model/inference-geo — scoped
     to the workspace(s) YOU select as belonging to this application.
   ✗ Never captured: prompts or completions content, org member data,
-    per-key/per-user attribution, data from workspaces you don't select, or
-    any non-GET request. No request that creates, changes, or deletes
-    anything will run — and no Admin, Compliance, Spend Limits, or Rate
-    Limits endpoint is ever called, even though the same key can reach them.
+    per-key/per-user attribution, or any non-GET request. No request that
+    creates, changes, or deletes anything will run — and no Admin,
+    Compliance, Spend Limits, or Rate Limits endpoint is ever called, even
+    though the same key can reach them. Per-model/per-description DATA from
+    workspaces you don't select is never captured — but building the
+    workspace picker below (Step 2b) necessarily reads an org-wide,
+    per-workspace SPEND TOTAL first, before you choose; that one probe call
+    is the single exception to "workspaces you don't select are never read."
 
 Window: last 30 days. You'll need an Anthropic ADMIN API key
 (`sk-ant-admin01-...`). Important: Anthropic's Console-tier Admin key has NO
@@ -217,18 +221,28 @@ GET /v1/organizations/cost_report?starting_at=<t>&group_by=workspace_id&limit=31
   "Selected workspaces account for $X of $Y total org spend in this window.
   Capture these? [Y] Proceed / [N] Re-select". On [N], re-show the list once.
 
-**2c. Capture Endpoint Table.** Every row is filtered to the selected
-workspaces via repeated `workspace_ids[]=<id>` query parameters.
+**2c. Capture Endpoint Table.** Row 1 is filtered to the selected workspaces
+in a single call via repeated `workspace_ids[]=<id>` query parameters. Row 2
+(cost_report) cannot: the API's `group_by` only accepts one dimension per
+call, and `description` (needed to recover `model`/`inference_geo` per row)
+is a different dimension than `workspace_id` — so row 2 runs **once PER
+selected workspace** (loop over `$WORKSPACE_IDS`, one call per iteration,
+each still scoped with `workspace_ids[]=<single id>` + `group_by=description`),
+and the script attaches that iteration's `workspace_id` to every row of its
+response before concatenating all iterations' results into one output file.
 
 | # | Endpoint (GET, `https://api.anthropic.com`) | Query parameters | Output file |
 |---|---|---|---|
-| 1 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1d`, `group_by=model`, `workspace_ids[]…`, `limit=31` | `usage-messages.json` |
-| 2 | `/v1/organizations/cost_report` | `starting_at`, `bucket_width=1d`, `group_by=description`, `workspace_ids[]…`, `limit=31` | `cost-report.json` |
+| 1 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1d`, `group_by=model`, `workspace_ids[]…` (all selected, one call), `limit=31` | `usage-messages.json` |
+| 2 | `/v1/organizations/cost_report` | `starting_at`, `bucket_width=1d`, `group_by=description`, `workspace_ids[]=<single id>` (one call PER selected workspace), `limit=31` | `cost-report.json` (concatenated across all workspace calls, each row tagged with its `workspace_id`) |
 
 Grouping the cost endpoint by `description` (not `workspace_id`, which is
 reserved for the Step 2b probe only) is what parses out `model`/
-`inference_geo` fields per-row — Step 3 needs the `description` breakdown to
-attribute cost per model. Code-execution costs appear only in
+`inference_geo` fields per-row — Step 3 needs the `description` breakdown
+AND the per-call `workspace_id` tag to attribute cost per model per
+workspace; without the per-workspace loop, a multi-workspace selection would
+aggregate every selected workspace's spend into one `description` bucket
+with no way to break it back out. Code-execution costs appear only in
 `cost-report.json`, never in `usage-messages.json` — do not assume cost is
 derivable from tokens alone.
 
@@ -269,10 +283,14 @@ Sum across the window (a throwaway extraction script if captures are large):
   `reasoning_tokens` (already included inside `completion_tokens`), a cache
   token is NEVER double-counted inside `uncached_input_tokens`. Also read
   `num_model_requests` if present in the response shape.
-- **Cost** (`cost-report.json`, grouped by `description`): parse `model`/
-  `inference_geo` out of each `description` row. Cost values are **decimal
-  strings in cents** — convert to USD dollars (divide by 100, parse as
-  decimal, do not treat as already-dollars float) before writing
+- **Cost** (`cost-report.json`, grouped by `description`, concatenated across
+  the per-workspace calls from Step 2c): parse `model`/`inference_geo` out of
+  each `description` row, and carry the `workspace_id` each row was tagged
+  with during capture through to `costs_by_description[].workspace_id` — this
+  is what lets a multi-workspace selection be broken back out per workspace
+  instead of aggregating into one `description` bucket. Cost values are
+  **decimal strings in cents** — convert to USD dollars (divide by 100, parse
+  as decimal, do not treat as already-dollars float) before writing
   `monthly_cost_usd`. `monthly_cost_usd` = the last-30-days ACTUAL total —
   **never scale a partial window up to a month**. If the org's first
   non-zero bucket is < 30 days old, set `partial_window: true` and report the
@@ -299,7 +317,7 @@ Write `$MIGRATION_DIR/anthropic-usage-profile.json`:
     "total_requests": 2856
   },
   "costs_by_description": [
-    { "description": "claude-sonnet-5, workspace production", "model": "claude-sonnet-5", "inference_geo": "us", "monthly_cost_usd": 41.61 }
+    { "description": "claude-sonnet-5, workspace production", "model": "claude-sonnet-5", "inference_geo": "us", "workspace_id": "wrkspc_abc", "monthly_cost_usd": 41.61 }
   ],
   "usage_by_model": [
     {
