@@ -17,15 +17,18 @@
 
 ```jsonc
 {
-  "phase": "design",
-  "focus": "ai",
-  "timestamp": "<ISO 8601>",
-  "source_profile": "ai-workload-profile.json",
   "metadata": {
+    // design-ai.md's own "top-level fields" table: `metadata` is `phase`, `focus`,
+    // `ai_source`, `bedrock_models_selected`, `timestamp` — all five nested here, not
+    // split across the top level and `metadata` the way Azure's parallel shape does.
+    "phase": "design",
+    "focus": "ai",
     "ai_source": "gemini", // "gemini" | "openai" | "anthropic" | "both" | "other" — summary.ai_source from the profile
     "bedrock_models_selected": [], // aws_model_id strings chosen (Bedrock targets only)
-    "regional_validation": "checked" // checked | fallback_static
+    "timestamp": "<ISO 8601>",
+    "regional_validation": "checked" // checked | fallback_static — ONLY present when the fallback-static path fires (design-ai.md Step 0.5); absent on the normal checked path
   },
+  "source_profile": "ai-workload-profile.json",
   "design_blocks": [], // one per workloads[] entry — see § design_blocks
   "ai_architecture": {}, // see design-ai.md Part 6 field table
   "regional_warnings": [], // ALWAYS present, [] when clean
@@ -47,7 +50,8 @@ One row per confirmed workload — see `design-ai.md` Part 6 field table.
   "capability": "text_generation", // see § capability vocabulary
   "capability_confidence": "medium", // high | medium | low
   "rationale": "<one or two sentences a customer can read>",
-  "confidence_warning": null // non-null string when capability_confidence == "low"
+  "confidence_warning": null, // non-null string when capability_confidence == "low"
+  "honest_assessment": "not_applicable" // ONLY present on traditional-AI rows (document_extraction/image_analysis/speech_transcription), always "not_applicable" there; absent on Bedrock-model rows, whose overall assessment lives at ai_architecture.honest_assessment instead
 }
 ```
 
@@ -57,6 +61,12 @@ One row per confirmed workload — see `design-ai.md` Part 6 field table.
   leave `target_aws_service` null. The three traditional-AI capabilities
   (`document_extraction`, `image_analysis`, `speech_transcription`) set `target_aws_service`
   (one of `"textract"`, `"rekognition"`, `"transcribe"`) and leave `target_bedrock_model` null.
+- **`honest_assessment`** is present on `design_blocks[]` rows ONLY for the three
+  traditional-AI capabilities, and is always `"not_applicable"` there — these are
+  feature/service swaps, not a cost-driven model migration decision. Bedrock-model rows do
+  not carry a per-row `honest_assessment`; the overall assessment is
+  `ai_architecture.honest_assessment` instead (one value for the whole design, driven by the
+  weakest model).
 - **`confidence_warning`** is a non-null string when `capability_confidence == "low"`; null
   for `high`/`medium`.
 - **Input order preserved:** `design_blocks[]` order matches the profile's `workloads[]` order.

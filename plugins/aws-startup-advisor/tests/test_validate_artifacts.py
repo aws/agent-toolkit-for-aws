@@ -334,17 +334,30 @@ def test_neutral_matrix_shared_artifacts_extend_the_mapped_fixture_count():
     assert matrix_checked == len(shared_artifacts)
     assert matrix_findings == []
 
+    # Several fixture families besides ai-migration-matrix are unmapped (no
+    # fixture_prefix entry) and so validate only against artifact-contracts.json's
+    # "shared" section too -- e.g. ai-workload-profiles/ (#415) and aws-design-ai/
+    # (#416). Count every unmapped family's shared artifacts, not only the matrix's,
+    # so this assertion does not silently drift whenever a future PR adds another one.
     mapped_checked = 0
     mapped_findings = []
+    unmapped_shared_count = 0
     for fixture_dir in sorted(p for p in fixtures_root.iterdir() if p.is_dir()):
         skill = va.skill_for_fixture(fixture_dir.name, manifest)
         if skill is not None:
             mapped_checked += va.validate_run_dir(fixture_dir, skill, manifest, mapped_findings)
+        else:
+            unmapped_shared_count += len(
+                [p for p in va.find_artifacts(fixture_dir) if p.name in manifest["shared"]]
+            )
+    assert unmapped_shared_count >= len(shared_artifacts), (
+        "the matrix's own shared artifacts must be a subset of every unmapped family's total"
+    )
 
     r = _run("--fixtures", "--json")
     assert r.returncode == 0, r.stdout + r.stderr
     report = json.loads(r.stdout)
-    assert report["checked_artifacts"] - mapped_checked == len(shared_artifacts)
+    assert report["checked_artifacts"] - mapped_checked == unmapped_shared_count
 
 
 def test_invalid_neutral_shared_artifacts_fail_their_schemas(tmp_path: Path):

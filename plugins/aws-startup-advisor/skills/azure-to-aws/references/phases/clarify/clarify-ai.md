@@ -101,31 +101,68 @@ Q16–Q22, and write `"workloads": []` when none.
 
 ## Step 3: Rows returned
 
+Every row is merged into the final `preferences.json` by `clarify-assemble.md`'s Step
+"Assemble the artifact" rules 1–2: it carries `disposition`, `value`, and `default`, exactly
+like every other fragment's rows (see `clarify-global.md`'s `## Rows returned` for the same
+convention). A row whose value came from its default stays **PROPOSED** — never promoted to
+DETECTED (DETECTED means read from the estate; Design's rationale and the report distinguish
+"you chose" from "we assumed"). A `DETECTED` row additionally carries `source` naming where
+the value was read from (per `schema-preferences.md`'s `allowed_anywhere` provenance keys).
+
 ```jsonc
 {
-  "ai_framework": ["direct"], // DETECTED | PROPOSED
-  "ai_monthly_spend": "$500-$2K", // DETECTED | PROPOSED
-  "ai_priority": "balanced", // PROPOSED
-  "ai_critical_feature": null, // PROPOSED
-  "ai_token_volume": "low", // PROPOSED
-  "ai_model_baseline": "gpt-4o", // DETECTED | PROPOSED
-  "ai_vision": false, // DETECTED | PROPOSED
-  "ai_complexity": "moderate", // PROPOSED
-  "startup_program_status": null, // ESSENTIAL — value null until answered (the Gate-2 completion gate)
-  "ai_constraints": { // agentic block present ONLY when agentic_profile.is_agentic
+  "ai_framework": { "disposition": "PROPOSED", "value": ["direct"], "default": ["direct"] },
+  "ai_monthly_spend": {
+    "disposition": "DETECTED",
+    "value": "$500-$2K",
+    "default": "$500-$2K",
+    "source": "current_costs.monthly_ai_spend"
+  },
+  "ai_priority": { "disposition": "PROPOSED", "value": "balanced", "default": "balanced" },
+  "ai_critical_feature": { "disposition": "PROPOSED", "value": null, "default": null },
+  "ai_token_volume": { "disposition": "PROPOSED", "value": "low", "default": "low" },
+  "ai_model_baseline": {
+    "disposition": "DETECTED",
+    "value": "gpt-4o",
+    "default": "gpt-4o",
+    "source": "models[] confidence >= 0.8"
+  },
+  "ai_vision": {
+    "disposition": "DETECTED",
+    "value": false,
+    "default": false,
+    "source": "capabilities_summary.vision"
+  },
+  "ai_latency": { "disposition": "PROPOSED", "value": "important", "default": "important" },
+  "ai_complexity": { "disposition": "PROPOSED", "value": "moderate", "default": "moderate" },
+  "startup_program_status": {
+    "disposition": "ESSENTIAL",
+    "value": null, // null until answered (the Gate-2 completion gate)
+    "default": null
+  },
+  "ai_constraints": { // agentic block present ONLY when agentic_profile.is_agentic — rows, not raw values, same disposition/value/default wrapping
     "agentic": {
-      "migration_approach": "undecided",
-      "memory_requirement": "session",
-      "task_duration": "medium",
-      "incremental_migration": false
+      "migration_approach": {
+        "disposition": "PROPOSED",
+        "value": "undecided",
+        "default": "undecided"
+      },
+      "memory_requirement": {
+        "disposition": "PROPOSED",
+        "value": "session",
+        "default": "session"
+      },
+      "task_duration": { "disposition": "PROPOSED", "value": "medium", "default": "medium" },
+      "incremental_migration": {
+        "disposition": "PROPOSED",
+        "value": false,
+        "default": false
+      }
     }
   },
-  "workloads": [] // the confirmed array (persist rule above)
+  "workloads": [] // NOT a row — the confirmed array itself (persist rule above), same as clarify-ai-only.md's workloads[]
 }
 ```
-
-A value taken from its default stays **PROPOSED** — never promoted to DETECTED (DETECTED means
-read from the estate; Design's rationale and the report distinguish "you chose" from "we assumed").
 
 ### `workloads[]`
 

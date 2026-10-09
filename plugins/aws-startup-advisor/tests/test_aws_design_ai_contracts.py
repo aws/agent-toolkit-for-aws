@@ -101,6 +101,16 @@ def test_positive_fixtures_project_exactly_into_pr415_semantics(fixture_path: Pa
     profile = _project_to_profile(design)
     assert WORKLOAD_PROFILE._profile_findings(profile) == []
     WORKLOAD_PROFILE._assert_profile_semantics(profile)
+    # `_assert_profile_semantics` checks source observations and duplicate upstream
+    # identities, but not whether a gateway upstream's retained models/families actually
+    # match its resolved source's full set — that stronger correspondence oracle lives one
+    # layer up, in #410's `_assert_scenario_semantics`. Run it here too so every POSITIVE
+    # fixture is protected by the same oracle the dedicated negative mutation test already
+    # proves is strict (`test_dropped_model_under_a_resolved_gateway_upstream_is_rejected`),
+    # not only the weaker profile-level check.
+    WORKLOAD_PROFILE.MATRIX._assert_scenario_semantics(
+        WORKLOAD_PROFILE._project_to_scenario(profile)
+    )
 
 
 def test_multi_provider_fixture_carries_two_simultaneous_direct_sources() -> None:
@@ -346,17 +356,42 @@ def test_azure_scalar_ai_source_fails_the_target_only_schema_with_no_skill() -> 
 
 
 def _gcp_scalar_design() -> dict:
-    """A document matching GCP's CURRENT single-scalar metadata.ai_source shape — the shape
-    GCP's design-ai.md actually emits today (skills/gcp-to-aws/references/shared/
-    schema-design-aws-ai.md). Everything else matches the canonical top-level shape so only
-    `metadata` differs."""
-    design = _base_design()
-    design["metadata"] = {
-        "ai_source": "gemini",
-        "bedrock_models_selected": design["metadata"]["bedrock_models_selected"],
-        "regional_validation": design["metadata"]["regional_validation"],
+    """A document matching GCP's CURRENT producer envelope — the shape `design-ai.md`'s own
+    "top-level fields" table documents and `design-ai.md`'s Validation Checklist requires,
+    not the canonical target shape with only `metadata` swapped. Per that table, `metadata`
+    nests `phase`, `focus`, `ai_source`, `bedrock_models_selected`, and `timestamp` (GCP does
+    NOT split those across the top level and `metadata` the way the canonical/Azure shape
+    does), and `source_profile` stays top-level alongside `design_blocks`/`ai_architecture`/
+    `regional_warnings`/`multi_model_warnings`/`agentic_design`. One `design_blocks[]` row
+    uses a traditional-AI capability so `honest_assessment: "not_applicable"` is exercised
+    (design-ai.md's Validation Checklist requires it on exactly those rows)."""
+    return {
+        "metadata": {
+            "phase": "design",
+            "focus": "ai",
+            "ai_source": "gemini",
+            "bedrock_models_selected": ["anthropic.claude-sonnet-5"],
+            "timestamp": "2026-10-06T00:00:00Z",
+        },
+        "source_profile": "ai-workload-profile.json",
+        "design_blocks": [
+            {
+                "workload_id": "wl_doc1",
+                "model_id": "gemini-1.5-pro-vision",
+                "target_bedrock_model": None,
+                "target_aws_service": "textract",
+                "capability": "document_extraction",
+                "capability_confidence": "high",
+                "rationale": "Traditional-AI capability swap, not a model migration.",
+                "confidence_warning": None,
+                "honest_assessment": "not_applicable",
+            }
+        ],
+        "ai_architecture": {},
+        "regional_warnings": [],
+        "multi_model_warnings": [],
+        "agentic_design": None,
     }
-    return design
 
 
 def test_gcp_scalar_ai_source_validates_under_the_gcp_shape_contract() -> None:
