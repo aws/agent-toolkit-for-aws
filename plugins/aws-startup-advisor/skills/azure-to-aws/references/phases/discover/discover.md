@@ -19,6 +19,9 @@ _produces:
   - azure-resource-inventory.json
   - azure-resource-clusters.json
   - ai-workload-profile.json
+  - openai-usage-profile.json
+  - openrouter-usage-profile.json
+  - anthropic-usage-profile.json
 _advances_to: clarify
 _interactive: false
 _exec:
@@ -36,7 +39,13 @@ _preconditions:
   - _assert: "at least one migratable source is available: an IaC source (a .tf file containing an azurerm_* resource, a .bicep file, or an ARM template whose $schema contains 'deploymentTemplate'), OR application source code / a dependency manifest that the app-code fragment can scan for an AI signal, OR a live-capture manifest ($MIGRATION_DIR/live-capture/manifest.json written by the live-az pre-work above). A workspace with NONE of these — no IaC, no source code, and no successful live capture — is the only unrecoverable case, matching gcp's 'stop only when nothing will produce any artifact'"
     _on_failure: _unrecoverable
 _postconditions:
-  - _assert: "at least one discovery artifact was produced: azure-resource-inventory.json (when an IaC source was found OR live `az` capture produced resources) OR ai-workload-profile.json (when application code had an AI signal, or a live Cognitive Services / ML signal was captured). This is the completion anchor — an app-code-only run that produced only the AI profile satisfies discover, matching gcp's 'stop only when nothing will produce any artifact'"
+  - _assert: "at least one discovery artifact was produced: azure-resource-inventory.json (when an IaC source was found OR live `az` capture produced resources) OR ai-workload-profile.json (when application code had an AI signal, or a live Cognitive Services / ML signal was captured). This is the completion anchor — an app-code-only run that produced only the AI profile satisfies discover, matching gcp's 'stop only when nothing will produce any artifact'. None of openai-usage-profile.json, openrouter-usage-profile.json, or anthropic-usage-profile.json satisfies this check on its own — each is a supplement, not an anchor."
+    _on_failure: _halt_and_inform
+  - _assert: "if the 'OpenAI usage-API consent + capture' pre-dispatch action ran (ai-workload-profile.json matched the ai_source condition, or the user mentioned OpenAI usage with no billing signal present), either $MIGRATION_DIR/openai-usage-profile.json exists, or the action was skipped/declined and no stale profile from a prior attempt is left on disk"
+    _on_failure: _halt_and_inform
+  - _assert: "same contract as the OpenAI assert above, substituting the OpenRouter pre-dispatch action and openrouter-usage-profile.json"
+    _on_failure: _halt_and_inform
+  - _assert: "same contract as the OpenAI assert above, substituting the Anthropic pre-dispatch action and anthropic-usage-profile.json"
     _on_failure: _halt_and_inform
   - _assert: "WHEN an IaC source (.tf/.bicep/ARM) was found OR live `az` capture produced at least one resource: azure-resource-inventory.json and azure-resource-clusters.json exist, validate as JSON, and the inventory has at least one resources[] entry with metadata carrying discovery_timestamp, discovery_sources, and subscriptions_discovered. WHEN the run is app-code-only (no IaC source found and no live capture): the inventory and clusters artifacts are ABSENT (not written empty — see discover-assemble.md) and this is vacuously satisfied"
     _on_failure: _halt_and_inform
@@ -121,6 +130,91 @@ CREATION step moves earlier, for this phase alone, to break the cycle.
    manifest. This action never fails the phase; it only determines whether
    `live-capture/manifest.json` is present and current for THIS attempt.
 
+### OpenAI usage-API consent + capture
+
+Run `discover-openai-api.md` in full (Steps 0–4) when EITHER:
+
+- `ai-workload-profile.json` exists with `summary.ai_source` of `openai` or `both`, OR
+- no Azure Cost Management billing signal exists in this run AND the user mentions direct
+  OpenAI usage/spend in conversation (NOT Azure OpenAI — see the file's own disambiguation note).
+
+This is a judgment call made HERE, in the main window — not expressed as a DSL `_trigger`
+predicate, because the decision requires reading conversational context no dispatched
+fragment ever sees (the SAME reasoning the existing live-`az` offer step already states for
+itself).
+
+**Re-entry check (do this FIRST, before offering consent), same rule as live `az`:** if
+`$MIGRATION_DIR/openai-usage-profile.json` already exists from a prior attempt in THIS run
+directory, do NOT silently trust it — re-offer `discover-openai-api.md`'s Step 0 consent gate
+for THIS attempt; on decline, delete/rename the existing profile file before continuing.
+
+The file's own Step 0 consent gate is the single consent point for this source — do not
+pre-ask here; loading the file only presents the gate. If `discover-openai-api.md`'s Step 0
+consent is declined, or the key is unavailable, ensure no `openai-usage-profile.json` is
+present and continue. This action never fails the phase; it only determines whether
+`openai-usage-profile.json` is present and current for THIS attempt.
+
+### OpenRouter usage-API consent + capture
+
+Run `discover-openrouter-api.md` in full (Steps 0–4) when EITHER:
+
+- app-code discovery (`discover-app-code.md`) detected `integration.gateway_type: llm_router`
+  with an `openrouter.ai` base URL, OR
+- no Azure Cost Management billing signal exists in this run AND the user mentions OpenRouter
+  usage/spend in conversation.
+
+This is a judgment call made HERE, in the main window — not expressed as a DSL `_trigger`
+predicate, because the decision requires reading conversational context no dispatched
+fragment ever sees (the SAME reasoning the existing live-`az` offer step already states for
+itself).
+
+**Re-entry check (do this FIRST, before offering consent), same rule as live `az`:** if
+`$MIGRATION_DIR/openrouter-usage-profile.json` already exists from a prior attempt in THIS run
+directory, do NOT silently trust it — re-offer `discover-openrouter-api.md`'s Step 0 consent
+gate for THIS attempt; on decline, delete/rename the existing profile file before continuing.
+
+The file's own Step 0 consent gate is the single consent point for this source — do not
+pre-ask here; loading the file only presents the gate. If `discover-openrouter-api.md`'s
+Step 0 consent is declined, or the key is unavailable, ensure no
+`openrouter-usage-profile.json` is present and continue. This action never fails the phase;
+it only determines whether `openrouter-usage-profile.json` is present and current for THIS
+attempt.
+
+### Anthropic usage-API consent + capture
+
+Run `discover-anthropic-api.md` in full (Steps 0–4) when EITHER:
+
+- `ai-workload-profile.json` exists with `summary.ai_source` of `anthropic` or `both`, OR
+- no Azure Cost Management billing signal exists in this run AND the user mentions direct
+  Anthropic/Claude usage or spend in conversation.
+
+This is a judgment call made HERE, in the main window — not expressed as a DSL `_trigger`
+predicate, because the decision requires reading conversational context no dispatched
+fragment ever sees (the SAME reasoning the existing live-`az` offer step already states for
+itself).
+
+**Re-entry check (do this FIRST, before offering consent), same rule as live `az`:** if
+`$MIGRATION_DIR/anthropic-usage-profile.json` already exists from a prior attempt in THIS run
+directory, do NOT silently trust it — re-offer `discover-anthropic-api.md`'s Step 0 consent
+gate for THIS attempt; on decline, delete/rename the existing profile file before continuing.
+
+The file's own Step 0 consent gate is the single consent point for this source — do not
+pre-ask here; loading the file only presents the gate. If `discover-anthropic-api.md`'s
+Step 0 consent is declined, or the key is unavailable, ensure no
+`anthropic-usage-profile.json` is present and continue. This action never fails the phase;
+it only determines whether `anthropic-usage-profile.json` is present and current for THIS
+attempt.
+
+**Billing-export precondition, named honestly:** azure's discover phase today has exactly
+three fragments — `iac`, `app-code`, `live` — and no billing fragment at all; Azure Cost
+Management export discovery is not yet implemented in this skill. The three sub-sections
+above therefore read "no Azure Cost Management billing signal exists in this run," which
+today is unconditionally true (there is no billing fragment to produce one) — phrased this
+way so the condition degrades gracefully and starts working automatically, with no further
+edit needed, the day a billing fragment lands; it is not a blocking gap for this PR, since
+the OR's left-hand branches (profile/app-code signal) and the plain "user mentions it" branch
+already cover the common case.
+
 ## Orientation
 
 Inventory what exists on Azure into `azure-resource-inventory.json` in
@@ -188,5 +282,40 @@ reading an archive the customer already handed over is not interactive.
    initialization.
 2. Run each fragment whose `_trigger` holds.
 3. Run `discover-assemble.md`.
-4. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK`; on any failure emit
+4. Output to user — build message from whichever artifacts exist:
+   - If `azure-resource-inventory.json` exists: "Discovered X total resources across Y clusters."
+   - If `ai-workload-profile.json` exists: "Detected AI workload: [summary]."
+   - If `openai-usage-profile.json` exists: "Captured OpenAI usage via Admin API ($X/month across
+     M models)." Plus, when `metadata.capture_warnings` is non-empty: "W usage endpoints failed —
+     affected categories are unknown, not zero (see profile metadata)."
+   - If `openrouter-usage-profile.json` exists: "Captured OpenRouter usage via API ($X/month
+     across M models)." Plus the same capture_warnings addendum.
+   - If `anthropic-usage-profile.json` exists: "Captured Anthropic usage via Admin API ($X/month
+     across M models)." Plus the same capture_warnings addendum.
+5. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK`; on any failure emit
    `GATE_FAIL` and stop. Do not patch an artifact to force a gate to pass.
+
+## Output Files
+
+**Discover phase writes files to `$MIGRATION_DIR/`. Possible outputs (depending on what runs):**
+
+1. `azure-resource-inventory.json` — from `discover-iac.md` and/or `discover-live.md`
+2. `azure-resource-clusters.json` — from `discover-iac.md` and/or `discover-live.md`
+3. `ai-workload-profile.json` — from `discover-app-code.md` (confidence ≥ 70%, optionally merged)
+   and/or infrastructure-inferred (IaC Cognitive-Services-strong or live Cognitive Services / ML
+   signal)
+4. `openai-usage-profile.json` — from `discover-openai-api.md` (plus `openai-capture/` raw
+   captures inside the gitignored run directory; the transient `.openai-admin-env` key file is
+   deleted by that sub-file's Step 4 and is never a phase output)
+5. `openrouter-usage-profile.json` — from `discover-openrouter-api.md` (plus
+   `openrouter-capture/` raw captures inside the gitignored run directory; the transient
+   `.openrouter-key-env` key file is deleted by that sub-file's Step 4 and is never a phase
+   output)
+6. `anthropic-usage-profile.json` — from `discover-anthropic-api.md` (plus
+   `anthropic-capture/` raw captures inside the gitignored run directory; the transient
+   `.anthropic-admin-env` key file is deleted by that sub-file's Step 4 and is never a phase
+   output)
+
+**No other files must be created:** no README.md, no discovery-summary.md, no `*.txt` report,
+no generated `terraform/`, no `preferences.json` — see `_forbids_files` in the frontmatter.
+All user communication is via output messages only.

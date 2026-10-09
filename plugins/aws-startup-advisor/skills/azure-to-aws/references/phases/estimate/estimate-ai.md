@@ -68,6 +68,17 @@ Read from `$MIGRATION_DIR/`:
   usage API). Check `metadata.capture_warnings` first: a failed usage endpoint means that
   category's volume is UNKNOWN, not zero — say so in the output and do not price the affected
   capability from this profile.
+- **`openrouter-usage-profile.json`** (if present) — `summary.monthly_cost_usd`,
+  `usage_by_model[]` (real per-model usage from the OpenRouter API). OpenRouter's fields are
+  `prompt_tokens`/`completion_tokens`, not `input_tokens`/`output_tokens` — normalize to
+  `input_tokens`/`output_tokens` before combining with the other profiles. Check
+  `metadata.capture_warnings` first, same rule as the OpenAI profile.
+- **`anthropic-usage-profile.json`** (if present) — `summary.monthly_cost_usd`,
+  `usage_by_model[]` (real per-model usage from the Anthropic Admin API). Anthropic's rows also
+  carry `cache_read_tokens`/`cache_creation_tokens` — these are a sub-accounting of input tokens,
+  NOT additional volume, and must be EXCLUDED from any `input_tokens + output_tokens` volume sum
+  (adding them would double-count). Check `metadata.capture_warnings` first, same rule as the
+  OpenAI profile.
 - **`preferences.json`** — `ai_constraints.ai_token_volume.value`,
   `ai_constraints.ai_capabilities_required.value`.
 - **`aws-design-ai.json`** — `metadata.ai_source`, `ai_architecture.honest_assessment`,
@@ -92,30 +103,40 @@ match wins:**
 
 1. **`current_costs.monthly_ai_spend` (preferred whenever present)** — from
    `ai-workload-profile.json`. This figure is already provider-aware: Discover merges billing
-   (an **Azure Cost Management export**) and OpenAI / Azure OpenAI usage-API spend there, summing
-   across providers with `source: "mixed"` and a per-provider `breakdown[]`. Do NOT bypass it by
-   reading `openai-usage-profile.json → summary.monthly_cost_usd` directly — that drops the
-   non-OpenAI half of a mixed workload. When `breakdown[]` exists, carry the per-provider split
-   into the comparison output. **Partial-window check:** if `source` is `openai_usage_api` or
-   `mixed` AND `openai-usage-profile.json → metadata.partial_window` is `true`, the OpenAI
-   portion is not a monthly baseline — apply level 2's exception to that portion (reference figure
-   only, labeled with `active_days`; for `mixed`, keep the Azure portion from `breakdown[]` and
-   cover the OpenAI portion via levels 3–4).
-2. **OpenAI usage profile dollars (fallback)** — use `summary.monthly_cost_usd` from
-   `openai-usage-profile.json` ONLY when no `current_costs` exists (standalone usage capture with
-   no AI workload profile). **Exception:** if `metadata.partial_window` is `true`, the window is
-   too short to be a monthly baseline — do NOT rank it above levels 3–4; fall back and present the
-   partial actuals as a reference figure only, labeled with `active_days`.
+   (an **Azure Cost Management export**) and the OpenAI / OpenRouter / Anthropic usage-API spend
+   there, summing across providers with `source: "mixed"` and a per-provider `breakdown[]`. Do
+   NOT bypass it by reading `openai-usage-profile.json → summary.monthly_cost_usd` (or the
+   OpenRouter/Anthropic equivalents) directly — that drops the other providers' share of a mixed
+   workload. When `breakdown[]` exists, carry the per-provider split into the comparison output.
+   **Partial-window check:** if `source` is `openai_usage_api` / `openrouter_usage_api` /
+   `anthropic_usage_api` / `mixed` AND that provider's usage-profile `metadata.partial_window` is
+   `true`, that provider's portion is not a monthly baseline — apply level 2's exception to that
+   portion (reference figure only, labeled with `active_days`; for `mixed`, keep the Azure
+   portion from `breakdown[]` and cover the partial-window provider's portion via levels 3–4).
+2. **Usage profile dollars (fallback)** — use `summary.monthly_cost_usd`, SUMMED across whichever
+   of `openai-usage-profile.json`, `openrouter-usage-profile.json`, and
+   `anthropic-usage-profile.json` exist, ONLY when no `current_costs` exists (standalone usage
+   capture with no AI workload profile). **Exception:** for any profile whose
+   `metadata.partial_window` is `true`, that profile's figure is too short a window to be a
+   monthly baseline — do NOT rank it above levels 3–4; fall back and present its partial actuals
+   as a reference figure only, labeled with `active_days` (a full-window profile that exists
+   alongside it still resolves normally).
 3. **Estimated from token volume** — use `ai_constraints.ai_token_volume.value` from
    `preferences.json` with **OpenAI / Azure OpenAI source list prices** from `pricing-cache.md`
    (under "Source Provider Pricing → OpenAI / Azure OpenAI"). Azure OpenAI serves the same GPT
    models and reads those same OpenAI rows — there is no separate Azure-OpenAI table. Apply the
-   60/40 input/output ratio if the actual ratio is unknown.
+   60/40 input/output ratio if the actual ratio is unknown. **`pricing-cache.md` has no
+   source-side listed-price row for Anthropic-direct or OpenRouter today** — level 3 does not
+   apply to an Anthropic-direct or OpenRouter workload with no usage profile and no
+   `current_costs`; fall straight through to level 4 (multi-tier, no dollar comparison) for
+   those two. Do not add new fallback pricing as a side effect of this gap.
 4. **None available / multi-tier** — note in output and present the model comparison at multiple
    volume tiers so the user can find their range.
 
-Regardless of which dollar source wins, `openai-usage-profile.json → usage_by_model[]` remains
-the Part 2 token-volume source (subject to the same `partial_window` exception there).
+Regardless of which dollar source wins, `openai-usage-profile.json → usage_by_model[]` (and the
+OpenRouter/Anthropic profiles' equivalents, combined per the normalization rules in
+Prerequisites above) remains the Part 2 token-volume source (subject to the same
+`partial_window` exception there).
 
 **IaC-only profile:** If `metadata.profile_source` is `iac_cognitive` or
 `summary.inferred_from_iac` is true and billing/token data is missing, state explicitly that
@@ -138,12 +159,17 @@ Calculate the monthly Bedrock cost for **every viable model** at the user's toke
 | `"very_high"`     | 6B                 | 4B                  | 60/40 |
 
 If the design or discover phase has more specific token estimates, use those instead. In
-particular, when `openai-usage-profile.json` exists with `metadata.partial_window` `false`, use
-its `usage_by_model[]` actual monthly input/output token totals (and actual ratio) instead of the
-tier table — a real observed month beats a tier midpoint. **Exception:** if
-`metadata.partial_window` is `true`, a few days of tokens is NOT a monthly volume — projecting it
-as one understates the Bedrock estimate. Use the tier table (from `ai_token_volume`) and present
-the partial actuals as a reference figure only, labeled with `active_days`.
+particular, when any of `openai-usage-profile.json`, `openrouter-usage-profile.json`, or
+`anthropic-usage-profile.json` exists with `metadata.partial_window` `false`, combine their
+`usage_by_model[]` actual monthly token totals (and actual ratio) instead of the tier table — a
+real observed month beats a tier midpoint. Normalize per Prerequisites above: OpenRouter's
+`prompt_tokens`/`completion_tokens` → `input_tokens`/`output_tokens`; Anthropic's
+`cache_read_tokens`/`cache_creation_tokens` excluded from the sum. **Exception:** for any
+profile whose `metadata.partial_window` is `true`, a few days of tokens is NOT a monthly volume
+for that profile — projecting it as one understates the Bedrock estimate. Use the tier table
+(from `ai_token_volume`) for a profile with no full-window data, and present that profile's
+partial actuals as a reference figure only, labeled with `active_days` (a different, full-window
+profile that exists alongside it still contributes its real totals).
 
 **Cost formula:** `Monthly = (input_tokens / 1M × input_rate) + (output_tokens / 1M × output_rate)`
 

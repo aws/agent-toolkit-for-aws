@@ -10,7 +10,10 @@ description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrat
 > step filled a file in. It is not a signal to skip the file or to treat its
 > body as a stub. Still missing: Bicep, ARM templates, and RDfA; the feedback
 > sidebar (wiring only); and `patterns.md`, `licensing.md`, and `gpu-hpc.md`.
-> The live `az` capture path is implemented (`discover-live.md`).
+> The live `az` capture path is implemented (`discover-live.md`). OpenAI,
+> OpenRouter, and Anthropic usage-API discovery (interactive, consent-gated,
+> main-window — same shape as `discover-live.md`'s pre-dispatch live-`az`
+> capture) is implemented.
 
 ## Optional usage telemetry
 
@@ -241,7 +244,7 @@ phase contract. Both are `_kind: sidebar` — off-backbone, trigger-entered, nev
 - **Region**: `us-east-1` unless the user specifies otherwise; Azure regions are mapped, not assumed
 - **Sizing**: Development tier, upgraded from measured utilization when RDfA or `az monitor` metrics are available
 - **CPU architecture**: `x86_64` (see Philosophy — Graviton is an offered optimization here, not the default)
-- **Migration mode**: adapts to available inputs — Terraform (`azurerm_*`) IaC, live `az` capture (read-only, consent-gated), and application code are supported today, with billing exports as a fallback. RDfA, Bicep, and ARM templates are planned follow-ups, not yet available.
+- **Migration mode**: adapts to available inputs — Terraform (`azurerm_*`) IaC, live `az` capture (read-only, consent-gated), and application code are supported today, with billing exports as a fallback. OpenAI, OpenRouter, and Anthropic usage-API discovery (read-only, consent-gated) are available supplements for real AI spend and token volumes when the app calls those APIs directly. RDfA, Bicep, and ARM templates are planned follow-ups, not yet available.
 - **Cost currency**: USD
 - **Timeline assumption**: 2–18 weeks depending on complexity. Tiers per `references/vendored/estimate/complexity-tiers.json`.
 

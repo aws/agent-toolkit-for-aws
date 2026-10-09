@@ -47,7 +47,15 @@ models detected, capabilities, integration pattern + SDK, gateway/router, framew
   (`low|medium|high|very_high`). Drives the estimate token tiers.
 - **Q19 — Which model do you use today.** DETECTED from `models[]` when confidence is high, else
   PROPOSED. → `ai_model_baseline`. **Azure catalog:** Azure OpenAI deployments — GPT-4o, GPT-4.1,
-  GPT-4.1 mini/nano, o3, o4-mini, GPT-5.x. (No Gemini — azure has no `gemini` source.)
+  GPT-4.1 mini/nano, o3, o4-mini, GPT-5.x. (No Gemini — azure has no `gemini` source.) If
+  `openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or
+  `anthropic-usage-profile.json` exists, prefer the top model by token volume across ALL
+  profiles combined (normalizing OpenRouter's `prompt_tokens`/`completion_tokens` before ranking,
+  and excluding Anthropic's `cache_read_tokens`/`cache_creation_tokens` from the volume sum —
+  do not rank by `usage_by_model[0]` from just one profile when more than one exists, since that
+  profile's own #1 may not be the combined #1) as the baseline — billed usage is stronger
+  evidence than code detection — and mention the runner-up models to the user rather than
+  re-asking.
 - **Q20 — Input modalities.** DETECTED from `capabilities_summary.vision`, else PROPOSED
   text-only. → `ai_vision`.
 - **Q21 — Response speed.** PROPOSED, default `"important"`. → `ai_latency`.

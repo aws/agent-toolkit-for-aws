@@ -72,8 +72,16 @@ Explicit "None" → `["none"]` `chosen_by: user`. Skip/default → `["unknown"]`
 **Q2 — What matters most?** Quality (Sonnet/Opus) / Speed (Haiku, Nova) / Cost (Haiku, Nova
 Micro) / Special (→Q10) / Balanced (Sonnet). → `ai_priority`. Default `"balanced"`.
 
-**Q3 — Monthly AI spend on Azure OpenAI / OpenAI?** `<$500` / `$500-$2K` / `$2K-$10K` / `>$10K` /
-don't know. → `ai_monthly_spend`. Default `"$500-$2K"`.
+**Q3 — Monthly AI spend on Azure OpenAI / OpenAI?** **Auto-resolve (skip the question), same
+mechanism as Q7's existing auto-resolve below:** read `current_costs.monthly_ai_spend` from
+`ai-workload-profile.json` first when present; else sum `summary.monthly_cost_usd` across
+whichever of `openai-usage-profile.json`, `openrouter-usage-profile.json`, and
+`anthropic-usage-profile.json` exist (skip a profile whose `metadata.partial_window` is `true`
+in the sum — a partial window is not a monthly spend figure; if EVERY existing profile is
+partial, fall through and ask normally); record the extraction (`chosen_by: "extracted"`,
+`source` naming whichever of `current_costs` / the usage profiles contributed). Ask normally
+only when none of these sources exist. `<$500` / `$500-$2K` / `$2K-$10K` / `>$10K` / don't know.
+→ `ai_monthly_spend`. Default `"$500-$2K"`.
 
 **Q4 — Cross-cloud API call concerns** (unique to AI-only — infra stays on Azure while AI calls
 route to AWS): Latency critical (VPC endpoint, closest region) / Acceptable (standard endpoint,
@@ -109,9 +117,20 @@ defaults for the rest" during Batch 1, skip the draft save (assembly happens sam
 ### Batch 2 — Technical requirements (Q6–Q11)
 
 **Q6 — Input types** (text / vision / audio-video). Skip when `capabilities_summary` is
-definitive. → `ai_vision`. **Q7 — Monthly usage volume.** Auto-resolve from
-`openai-usage-profile.json` when present (tiers `<1M`→low, `1–10M`→medium, `10–100M`→high,
-`>100M`→very_high). → `ai_token_volume`. Default `"medium"`. **Q8 — Response speed** (critical /
+definitive. → `ai_vision`. **Q7 — Monthly usage volume.** Auto-resolve when
+`openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or
+`anthropic-usage-profile.json` exist with non-zero usage: compute total monthly tokens = the
+SUM across every full-window profile of Σ `usage_by_model[].input_tokens + output_tokens` — for
+`openrouter-usage-profile.json` that means `prompt_tokens + completion_tokens` (normalize before
+summing, do not treat a missing `input_tokens` key as zero) — Anthropic's `usage_by_model[]`
+already uses `input_tokens`/`output_tokens` (no normalization needed), but ALSO carries
+`cache_read_tokens`/`cache_creation_tokens`, which must NOT be added into this sum (cache tokens
+are a sub-accounting of input, not additional volume). Skip a profile whose
+`metadata.partial_window` is `true` from the sum; ask Q7 normally only if EVERY existing profile
+is partial. Map the combined total to tiers (`<1M`→low, `1–10M`→medium, `10–100M`→high,
+`>100M`→very_high), record the extraction (`chosen_by: "extracted"`, `source` naming whichever
+profile(s) contributed), and tell the user: "Resolved from your usage data: [N tokens/month →
+tier]." → `ai_token_volume`. Default `"medium"`. **Q8 — Response speed** (critical /
 important / flexible). → `ai_latency`. Default `"important"`. **Q9 — Task complexity** (simple /
 moderate / complex). → `ai_complexity`. Default `"moderate"`. **Q10 — Specialized features**
 (function calling / ultra-long-context / extended-thinking / prompt-caching / RAG / agentic /
