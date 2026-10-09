@@ -23,7 +23,7 @@ the user to choose when the match is ambiguous.
 ### Step 0: Route the OpenAI proprietary GPT ids by family
 
 **Check this before Step 1.** The proprietary GPT models split into two cases (verified 2026-08-21; see
-`gcp-to-aws/references/shared/openai-on-bedrock.md`):
+`$ASSESS_BASE/references/shared/openai-on-bedrock.md`):
 
 **Case A — GPT-5.5 / GPT-5.4 (`openai.gpt-5.5`, `openai.gpt-5.4`): mantle-only, no inference profile.** The
 inference-profile path below cannot resolve them — `list-inference-profiles` never returns them, and Step 3's token
@@ -170,7 +170,7 @@ stops on abort.
   inference profile. Mantle-only ids (GPT-5.5/5.4, and GPT-5.6 when the plan
   targets the mantle endpoint) are handled entirely in Step 0; GPT-5.6 CRIS ids
   flow through Steps 1–5 like any other inference profile. See
-  `gcp-to-aws/references/shared/openai-on-bedrock.md` for the authoritative
+  `$ASSESS_BASE/references/shared/openai-on-bedrock.md` for the authoritative
   family split.
 - Output of this skill should replace the plan's `target_model_id` in the
   caller's context — downstream phases (evaluator, rewriter) receive the

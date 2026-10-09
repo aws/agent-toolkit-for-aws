@@ -135,6 +135,25 @@ If the source model is not in this table (likely for any model released after th
 
 ## 6.3 Sum token usage + compute costs (per model pair)
 
+**Precedence check — existing usage-baseline takes priority over golden-dataset extrapolation.**
+Before doing anything else in this section, check whether
+`$BEDROCK_RUN_DIR/usage-baseline.json` exists (written by `SKILL.md`'s Step 1.5, from either
+`gcp-to-aws`'s or `azure-to-aws`'s Discover). **If it is absent, nothing below changes — run
+the rest of §6.3 exactly as written, extrapolating from the golden-dataset sample.** If it is
+present:
+
+- Use its `summary.monthly_cost_usd` and `usage_by_model[]` as the SOURCE-side current-cost
+  figure instead of extrapolating from the sampled golden dataset — skip the
+  golden-dataset-token-aggregation and `cost_compare.py` steps below for the source side.
+  §6.1 (Bedrock pricing lookup) and the Bedrock-side computation below are UNCHANGED — only
+  the source-provider dollar figure and token volumes change source.
+- Read `summary.monthly_cost_usd_is_blended_estimate` first: when `true`, label the figure as
+  a **reference** figure (with the `active_days` value from the relevant `windows` entry)
+  rather than an unqualified monthly baseline — do not present it as if it were a full-month
+  number. When `false`, present `monthly_cost_usd` as a normal blended monthly baseline.
+- `usage_by_model[]` rows carry `provider` and `partial_window` — use `partial_window` the
+  same way, per row, when breaking the figure down by model.
+
 The migration plan may map multiple source models to multiple Bedrock models (e.g., `gpt-4o → claude-sonnet` for complex tasks, `gpt-4o-mini → nova-lite` for simple tasks). Each pair has different per-token prices AND likely different token volumes, so costs MUST be computed per pair, not once globally.
 
 If the golden dataset records which source model each prompt used (e.g., a `source_model` field), aggregate tokens per source model. If it does not, fall back to attributing all tokens to the primary pair and flag the approximation in the Risk Assessment section.
