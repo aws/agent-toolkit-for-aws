@@ -244,7 +244,7 @@ customer's IAM policies, inside their VPC, logged to CloudTrail, and in-region i
 **Codex on Bedrock: unverified — do not price it.** An earlier revision of this file stated Codex is GA on Bedrock
 with pay-per-token pricing. As of 2026-09-02, Codex does not appear on the
 [OpenAI model card index](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html), and no
-Codex rate exists on the Bedrock pricing page, in `pricing-cache.md`, or in `bedrock_pricing.py`'s static table.
+Codex rate exists on the Bedrock pricing page, in `references/vendored/ai/bedrock-pricing-cache.md`, or in `bedrock_pricing.py`'s static table.
 When the source workload is a coding agent, re-check the model card index first; if Codex is still absent, treat it
 as "a model not in the catalog above" (see the table in this section): plan a cross-family target (GPT-5.6 Sol /
 Terra are the coding-agent tier fits) and price that target — or report `pricing_source: "unverified"` with no
@@ -264,7 +264,7 @@ This model family is moving fast (two GA waves and a repricing inside 10 weeks).
 4. Recheck whether the Price List API has gained GPT-5.x coverage; if it has, drop the caveat above and let
    `estimate-ai.md` price these models from the MCP.
 5. Recheck whether Chat Completions and `bedrock-runtime` support have been added or clarified.
-6. Feed any lifecycle change into `ai-model-lifecycle.md` and any rate change into `pricing-cache.md`.
+6. Feed any lifecycle change into `ai-model-lifecycle.md` and any rate change into `references/vendored/ai/bedrock-pricing-cache.md`.
 7. **Re-verify within 14 days of any merge touching this file.** Item 5's prediction fired on 2026-08-21: between
    2026-08-10 and 2026-08-21 the GPT-5.6 family gained a `bedrock-runtime`/CRIS path, published Global CRIS pricing
    at standard-price parity, and listed Chat Completions/Converse as supported — invalidating three of this file's

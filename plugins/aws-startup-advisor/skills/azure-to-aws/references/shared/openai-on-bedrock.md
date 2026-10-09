@@ -257,7 +257,8 @@ This model family is moving fast (two GA waves and a repricing inside 10 weeks).
 4. Recheck whether the Price List API has gained GPT-5.x coverage; if it has, drop the caveat above and let
    `estimate-ai.md` price these models from the MCP.
 5. Recheck whether Chat Completions and `bedrock-runtime` support have been added or clarified.
-6. Feed any lifecycle change into `ai-model-lifecycle.md` and any rate change into `pricing-cache.md`.
+6. Feed any lifecycle change into `ai-model-lifecycle.md` and any Bedrock rate change into
+   `references/vendored/ai/bedrock-pricing-cache.md` through its canonical shared source.
 7. **Re-verify within 14 days of any merge touching this file.** Item 5's prediction fired on 2026-08-21: between
    2026-08-10 and 2026-08-21 the GPT-5.6 family gained a `bedrock-runtime`/CRIS path, published Global CRIS pricing
    at standard-price parity, and listed Chat Completions/Converse as supported — invalidating three of this file's

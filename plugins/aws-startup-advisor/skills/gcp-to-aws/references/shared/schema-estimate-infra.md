@@ -61,6 +61,7 @@ Validation: when all three tiers are present, `scenario_deltas.premium` and `sce
     "services_with_missing_fallback": []
   },
   "accuracy_confidence": "±5-10%|±15-25%",
+  "complexity_tier": "small|medium|large",
 
   "current_costs": {
     "source": "billing_data|inventory_estimate|preferences|user_provided|unavailable",

@@ -62,7 +62,7 @@ Cached anchors (order-of-magnitude, us-east-1, verify; last updated 2025-07-14):
   for that component with a note to verify the EC2 rate before committing.
 - Lambda MicroVMs: ~$0.0997/vCPU-hour, ~$0.0132/GB-hour
 - Fargate: ~$0.04048/vCPU-hour, ~$0.004445/GB-hour
-- Bedrock model token rates: defer to the `gcp-to-aws` pricing cache (`skills/gcp-to-aws/references/shared/pricing-cache.md`) for exact figures
+- Bedrock model token rates: defer to `references/vendored/ai/bedrock-pricing-cache.md` for exact figures
 
 ## Step 3 — Produce a magnitude per unit, not a quote
 

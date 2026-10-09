@@ -53,6 +53,7 @@ licensing exposure and found none" is a different statement from silence.
 ```jsonc
 {
   "phase": "clarify",
+  "clarify_status": "COMPLETE", // REQUIRED — COMPLETE | BLOCKED_ON_ESSENTIAL — the phase's own verdict (clarify-assemble.md § clarify_status)
   "metadata": {
     "clarify_mode": "wizard", // "fast_path" | "wizard" — which Clarify flow produced this file
     "fast_path_eligible": false, // copied from azure-resource-inventory.json metadata.clarify_fast_path.eligible
@@ -108,6 +109,9 @@ licensing exposure and found none" is a different statement from silence.
     "default": "identity_center_reinvite"
   },
   "licensing": {
+    "disposition": "N/A", // unfired stub only — clarify-licensing.md § Step 3; absent when the per-model rows below are present
+    "value": null,
+    "default": null,
     "windows_model": {
       "disposition": "ESSENTIAL",
       "value": "license_included",

@@ -80,7 +80,7 @@ for spend, AI-only Q7 for usage volume).
 
 For each model in `models[]` of `ai-workload-profile.json`, map to the closest Bedrock
 equivalent using the table below, then look up both source and Bedrock per-token prices
-from `references/shared/pricing-cache.md` (Source Provider Pricing + Bedrock Models sections).
+from `references/shared/pricing-cache.md` (Source Provider Pricing) and `references/vendored/ai/bedrock-pricing-cache.md` (Bedrock Models).
 
 **Source model → Bedrock equivalent mapping:**
 

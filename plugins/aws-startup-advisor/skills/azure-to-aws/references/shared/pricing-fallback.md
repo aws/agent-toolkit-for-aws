@@ -5,7 +5,8 @@
 
 ## Policy
 
-When a service is NOT in `references/shared/pricing-cache.md` (AI models) or
+When a service is NOT in `references/vendored/ai/bedrock-pricing-cache.md` (Bedrock),
+`references/shared/pricing-cache.md` (OpenAI / Azure OpenAI source-provider models), or
 `references/vendored/pricing/aws-infra-pricing.json` (infrastructure):
 
 1. If the cost engine's own formulas carry a well-known published rate (stated verbatim), set `pricing_source: "estimated"` and include a warning naming the rate and its source.
