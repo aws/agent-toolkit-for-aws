@@ -255,10 +255,19 @@ short-circuit it.
    router-fee-only for that overlap (exclude them from this SUM). When `cost_provenance` is
    `"unknown"` (the only value this flow currently writes — see `discover-openrouter-api.md`'s
    own documented detection limitation), there is no reliable signal to resolve the overlap
-   automatically: sum both profiles as today, but flag it in the summary presented to the user
-   as "OpenRouter and \<provider\> usage profiles both present — possible overlap if OpenRouter
-   is BYOK-routing \<provider\> traffic; provenance unknown, manual reconciliation may be
-   needed."
+   automatically: match models across the two profiles — OpenRouter's `usage_by_model[].model`
+   uses a `provider/model-name` form (e.g. `"openai/gpt-4.1"`); a model is "the same" as the
+   direct profile's bare model name (e.g. `"claude-sonnet-5"`) if the direct name equals the
+   OpenRouter model name's substring after its last `/`. For every OpenRouter
+   `usage_by_model[]` row whose model matches a model present on the direct profile, EXCLUDE
+   that row's dollar AND token figures from this SUM entirely (not dollars alone — the direct
+   profile already counts that traffic's tokens, so including OpenRouter's figures too would
+   double-count both). Keep every OpenRouter-only model (no match on the direct profile) in
+   the sum as before. Flag the exclusion in the summary presented to the user as "OpenRouter
+   and \<provider\> usage profiles both present; N overlapping model(s) excluded from
+   OpenRouter's totals to avoid double-counting BYOK traffic — provenance is unknown, so this
+   exclusion assumes full overlap for those models, which may undercount if OpenRouter is only
+   partially BYOK-routing them."
 7. **Hold these computed figures — do not write them yet.** `$BEDROCK_RUN_DIR` does not exist
    at this point in the document (it is only established in "### A3 — Locate Assess output,
    then establish this skill's own run state" below, after Phase A runs); writing to it here

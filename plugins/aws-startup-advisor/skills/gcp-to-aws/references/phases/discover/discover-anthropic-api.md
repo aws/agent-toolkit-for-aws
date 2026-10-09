@@ -47,8 +47,8 @@
    are filtered to the Anthropic workspace(s) the user selects in Step 2b —
    never attribute whole-org spend to this application. Do NOT add
    `group_by=api_key_id` or `group_by=account_id`/`service_account_id` to any
-   call: group by `model` on the usage endpoint, and by `description` or
-   `workspace_id` on the cost endpoint, only.
+   call: group by `model` and `service_tier` on the usage endpoint, and by
+   `description` and/or `workspace_id` on the cost endpoint, only.
 4. **Capture to files, not context.** The capture script writes responses
    under `$MIGRATION_DIR/anthropic-capture/`. Parse capture files with a
    throwaway extraction script if any exceeds ~500 buckets — do NOT Read
@@ -240,28 +240,31 @@ GET /v1/organizations/cost_report?starting_at=<t>&group_by=workspace_id&limit=31
 
 **2c. Capture Endpoint Table.** Row 1 is filtered to the selected workspaces
 in a single call via repeated `workspace_ids[]=<id>` query parameters. Row 2
-(cost_report) cannot: the API's `group_by` only accepts one dimension per
-call, and `description` (needed to recover `model`/`inference_geo` per row)
-is a different dimension than `workspace_id` — so row 2 runs **once PER
-selected workspace** (loop over `$WORKSPACE_IDS`, one call per iteration,
-each still scoped with `workspace_ids[]=<single id>` + `group_by=description`),
-and the script attaches that iteration's `workspace_id` to every row of its
-response before concatenating all iterations' results into one output file.
+(cost_report) has no `workspace_ids[]` parameter at all — the endpoint has
+none — but it does accept `group_by` as an array, so it runs in **one single
+call** with both dimensions together: `group_by[]=workspace_id&group_by[]=description`.
+Each returned row already carries its own `workspace_id` field plus the
+parsed `description` dimension. After the call returns, filter the rows
+client-side to KEEP only those whose `workspace_id` is in `$WORKSPACE_IDS` —
+discard the rest before anything is written to the output file. Unselected
+workspaces' rows pass through this one response but are never stored past
+that filter, consistent with the Step 0 consent promise.
 
 | # | Endpoint (GET, `https://api.anthropic.com`) | Query parameters | Output file |
 |---|---|---|---|
-| 1 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1d`, `group_by=model`, `workspace_ids[]…` (all selected, one call), `limit=31` | `usage-messages.json` |
-| 2 | `/v1/organizations/cost_report` | `starting_at`, `bucket_width=1d`, `group_by=description`, `workspace_ids[]=<single id>` (one call PER selected workspace), `limit=31` | `cost-report.json` (concatenated across all workspace calls, each row tagged with its `workspace_id`) |
+| 1 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1d`, `group_by=model,service_tier`, `workspace_ids[]…` (all selected, one call), `limit=31` | `usage-messages.json` |
+| 2 | `/v1/organizations/cost_report` | `starting_at`, `bucket_width=1d`, `group_by[]=workspace_id&group_by[]=description` (one call total, no `workspace_ids[]` param), `limit=31` | `cost-report.json` (single response, filtered client-side to rows whose `workspace_id ∈ $WORKSPACE_IDS`) |
 
-Grouping the cost endpoint by `description` (not `workspace_id`, which is
-reserved for the Step 2b probe only) is what parses out `model`/
-`inference_geo` fields per-row — Step 3 needs the `description` breakdown
-AND the per-call `workspace_id` tag to attribute cost per model per
-workspace; without the per-workspace loop, a multi-workspace selection would
-aggregate every selected workspace's spend into one `description` bucket
-with no way to break it back out. Code-execution costs appear only in
-`cost-report.json`, never in `usage-messages.json` — do not assume cost is
-derivable from tokens alone.
+Grouping the cost endpoint by both `workspace_id` and `description` together
+(the endpoint's `group_by` accepts either or both dimensions in one call) is
+what parses out `model`/`inference_geo` fields per-row AND keeps each row's
+own `workspace_id` in the same response — Step 3 needs the `description`
+breakdown AND each row's `workspace_id` to attribute cost per model per
+workspace. A single compound-`group_by` call already returns every
+workspace's rows split out individually, so no per-workspace loop is needed
+to break a multi-workspace selection back out. Code-execution costs appear
+only in `cost-report.json`, never in `usage-messages.json` — do not assume
+cost is derivable from tokens alone.
 
 **2d. Run the script, then delete it.** Record results in
 `$MIGRATION_DIR/anthropic-capture/manifest.json`:
@@ -305,13 +308,16 @@ Sum across the window (a throwaway extraction script if captures are large):
   cache_read_input_tokens + cache_creation_input_tokens` — unlike OpenRouter's
   `reasoning_tokens` (already included inside `completion_tokens`), a cache
   token is NEVER double-counted inside `uncached_input_tokens`. Also read
-  `num_model_requests` if present in the response shape.
-- **Cost** (`cost-report.json`, grouped by `description`, concatenated across
-  the per-workspace calls from Step 2c): parse `model`/`inference_geo` out of
-  each `description` row, and carry the `workspace_id` each row was tagged
-  with during capture through to `costs_by_description[].workspace_id` — this
-  is what lets a multi-workspace selection be broken back out per workspace
-  instead of aggregating into one `description` bucket. Cost values are
+  `num_model_requests` if present in the response shape. Also read each row's
+  `service_tier` (present because Row 1's `group_by` now includes
+  `service_tier`) — this is what Priority Tier detection below checks.
+- **Cost** (`cost-report.json`, a single response grouped by both
+  `workspace_id` and `description`, filtered client-side per Step 2c to the
+  selected workspaces): parse `model`/`inference_geo` out of each
+  `description` dimension, and carry each row's own `workspace_id` field
+  through to `costs_by_description[].workspace_id` — this is what lets a
+  multi-workspace selection be broken back out per workspace instead of
+  aggregating into one `description` bucket. Cost values are
   **decimal strings in cents** — convert to USD dollars (divide by 100, parse
   as decimal, do not treat as already-dollars float) before writing
   `monthly_cost_usd`. `monthly_cost_usd` = the last-30-days ACTUAL total —
@@ -319,22 +325,44 @@ Sum across the window (a throwaway extraction script if captures are large):
   non-zero bucket is < 30 days old, set `partial_window: true` and report the
   actual span in `active_days`.
 
+- **Priority Tier detection.** Scan every `usage-messages.json` row's
+  `service_tier` field. If any row has `service_tier` ∈ `{"priority",
+  "priority_on_demand"}`, Priority Tier traffic exists for this org, and the
+  `cost_report` endpoint categorically does not include Priority Tier dollars
+  (a documented API limitation, not a per-call failure) — this changes
+  `cost_status` below and requires an extra `capture_warnings` line, even
+  when `cost_report` itself succeeded on a full window.
+
 - **`metadata.cost_status` — cost completeness, independent of `partial_window`.**
   `partial_window` only says whether the USAGE window itself is short; it says
   nothing about whether the dollar figure is known at all. `cost_status` is a
   separate enum covering that:
-  - `"cost_unavailable"` — `cost_report` failed or was skipped (any row of the
-    per-workspace loop in Step 2c), REGARDLESS of whether `usage_report/messages`
+  - `"cost_unavailable"` — `cost_report` failed or was skipped (the single
+    call in Step 2c), REGARDLESS of whether `usage_report/messages`
     succeeded fully or partially. Token volume is known; the dollar figure is
     NOT. Set `summary.monthly_cost_usd: null` in this case — **never `0` and
     never a stale/partial figure** — and record the failure in
     `metadata.capture_warnings` as today.
-  - `"partial_window"` — `cost_report` succeeded, but the usage window itself is
-    short (`partial_window: true`, existing meaning): the dollar figure is a
-    real but short-span total, not a monthly baseline.
-  - `"complete"` — `cost_report` succeeded AND the usage window is full
-    (`partial_window: false`). `summary.monthly_cost_usd` is a normal monthly
-    figure.
+  - `"partial_window"` — either (a) `cost_report` succeeded, but the usage
+    window itself is short (`partial_window: true`, the original meaning): the
+    dollar figure is a real but short-span total, not a monthly baseline; OR
+    (b) **Priority Tier reuse:** `cost_report` succeeded on a full window
+    (`partial_window` may still be `false`) but Priority Tier detection above
+    found at least one `priority`/`priority_on_demand` row — `cost_status` is
+    set to `"partial_window"` here too, even though the window length itself
+    is full, because the dollar figure is real but structurally incomplete
+    (Priority spend is categorically absent from `cost_report`, not merely a
+    short span). `summary.monthly_cost_usd` is the sum of only the
+    `standard`/`batch`-tier rows `cost_report` returned — **never set it to
+    `null`** in this case, the figure is real, just incomplete — and add
+    `metadata.capture_warnings`: `"Priority Tier dollars are not in
+    cost_report; this total excludes them."` A reader should not assume
+    `partial_window: false` plus `cost_status: "partial_window"` is a
+    contradiction: it means "window was full-length but Priority Tier
+    dollars are excluded from the total."
+  - `"complete"` — `cost_report` succeeded, the usage window is full
+    (`partial_window: false`), AND no Priority Tier usage was detected.
+    `summary.monthly_cost_usd` is a normal monthly figure.
   Check `cost_report`'s own status first: a `cost_report` failure always sets
   `cost_status: "cost_unavailable"`, even on an otherwise full-window run — do
   not let a successful `usage_report/messages` call mask a failed cost call by
@@ -486,7 +514,8 @@ The parent `discover.md` owns the phase status update — do not touch
 | 401 mid-capture (probe succeeded, key then revoked/rotated) | Script aborts remaining calls, keeping completed files. Tell the user the key stopped working mid-run; offer Step 1 re-intake or skip. `KEY_INVALID_MID_RUN`: write `retry_pending: true` and keep the key file (the ONE exit that does). On resume, re-run Step 2 — captures overwrite; once the retry succeeds or is abandoned, delete the key file and set `retry_pending: false` |
 | 429 rate limit | Wait 30s, retry once; second 429 → record `failed`, continue |
 | Individual endpoint fails | Record `failed`/`skipped` in manifest, continue — zero usage on an endpoint is normal, never a halt |
-| `cost_report` fails or is skipped (any per-workspace row in Step 2c), `usage_report/messages` succeeds (fully or partially) | Still write the profile — usage/token volume is known. Set `metadata.cost_status: "cost_unavailable"` and `summary.monthly_cost_usd: null` (never `0`, never a stale figure) regardless of `partial_window`'s value |
+| `cost_report` fails or is skipped (the single call in Step 2c), `usage_report/messages` succeeds (fully or partially) | Still write the profile — usage/token volume is known. Set `metadata.cost_status: "cost_unavailable"` and `summary.monthly_cost_usd: null` (never `0`, never a stale figure) regardless of `partial_window`'s value |
+| Priority Tier usage detected (any `usage-messages.json` row with `service_tier` of `priority`/`priority_on_demand`), `cost_report` otherwise succeeds on a full window | Do not set `cost_status: "complete"` — set `cost_status: "partial_window"` instead (reused for this structural-gap case). Set `summary.monthly_cost_usd` from the standard/batch rows that did return (never `null`); add the `capture_warnings` line noting Priority Tier dollars are excluded |
 | Both endpoints failed | Delete the key file (`retry_pending: false`); exit with no output; tell the user which scope is missing |
 | Selected workspaces have zero usage in the window | Re-show the per-workspace spend list from 2b and let the user re-select once; still zero → write the profile with zeros and `partial_window: true` |
 | All buckets zero (new org, no usage yet) | Write the profile with zeros and `partial_window: true`; warn that Estimate will fall back to token-volume tiers |
@@ -506,8 +535,9 @@ FORBIDDEN — Do NOT include ANY of:
   Compliance, Spend Limits, or Rate Limits management endpoint — even though
   the same Admin key can technically call them
 - Any per-key, per-user, or per-account grouping
-- Unscoped org-wide capture — every Step 2c call carries the user's
-  `workspace_ids[]` selection
+- Unscoped org-wide capture — Row 1 carries the user's `workspace_ids[]`
+  selection, and Row 2's single compound-`group_by` response is filtered
+  client-side to the same selection before anything is stored
 - Claude Enterprise (claude.ai) Analytics API calls — out of scope for v1
 - The Admin key value anywhere outside `.anthropic-admin-env` (no echoes, no
   command args, no artifacts, no context) — and that file is deleted in Step 4

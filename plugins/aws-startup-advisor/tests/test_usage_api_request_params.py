@@ -99,14 +99,29 @@ def test_anthropic_cost_report_carries_workspace_id_per_row() -> None:
         )
 
 
-def test_anthropic_cost_report_captures_once_per_workspace() -> None:
+def test_anthropic_cost_report_uses_single_call_with_compound_group_by() -> None:
     for f in ANTHROPIC_FILES:
         text = f.read_text(encoding="utf-8")
         step2 = text.split("## Step 2:", 1)[-1].split("## Step 3", 1)[0]
         normalized = re.sub(r"\s+", " ", step2).lower()
-        assert "once per selected workspace" in normalized, (
-            f"{f}: Step 2c no longer documents looping the cost_report call once "
-            f"per selected workspace — see finding 1"
+        assert "group_by[]=workspace_id&group_by[]=description" in normalized, (
+            f"{f}: Step 2c no longer documents a single cost_report call "
+            f"grouped by both workspace_id and description — see finding A "
+            f"(PR 425 review 5475407077)"
+        )
+        # Row 2 (cost_report) must not carry workspace_ids[] — the endpoint has
+        # no such parameter. Row 1 (usage_report/messages) legitimately keeps
+        # workspace_ids[], so scope the "must not contain" check to the
+        # cost_report table row specifically, not the whole Step 2 section.
+        table_row_match = re.search(
+            r"\|\s*2\s*\|\s*`/v1/organizations/cost_report`.*?\|\s*$",
+            step2,
+            re.MULTILINE,
+        )
+        assert table_row_match, f"{f}: could not find the cost_report table row"
+        assert "workspace_ids[]=" not in table_row_match.group(0), (
+            f"{f}: the cost_report table row still requests workspace_ids[]=, "
+            f"but that endpoint has no such parameter — see finding A"
         )
 
 

@@ -271,6 +271,38 @@ def test_openrouter_discover_copies_remain_mirrored_for_cost_provenance_text() -
     )
 
 
+# ---------------------------------------------------------------------------
+# PR #425 review 5475407077, Finding B — Priority Tier dollars excluded from
+# cost_report are not allowed to produce a "complete" cost_status.
+# ---------------------------------------------------------------------------
+
+
+def test_both_anthropic_discover_copies_detect_priority_tier_rows() -> None:
+    for f in ANTHROPIC_DISCOVER_FILES:
+        text = f.read_text(encoding="utf-8")
+        assert "service_tier" in text, (
+            f"{f}: no service_tier parsing documented — Priority Tier rows "
+            f"cannot be detected (finding B)"
+        )
+        assert '"priority"' in text and '"priority_on_demand"' in text, (
+            f"{f}: must check for both priority and priority_on_demand "
+            f"service_tier values"
+        )
+
+
+def test_both_anthropic_discover_copies_do_not_mark_priority_tier_as_complete() -> None:
+    for f in ANTHROPIC_DISCOVER_FILES:
+        text = f.read_text(encoding="utf-8")
+        assert "Priority Tier dollars are not in" in text, (
+            f"{f}: missing the capture_warnings line for excluded Priority "
+            f"Tier dollars (finding B)"
+        )
+        assert "no Priority Tier usage was detected" in text, (
+            f"{f}: the 'complete' branch must require that no Priority Tier "
+            f"usage was detected, not just a full window + successful cost_report"
+        )
+
+
 def test_skill_md_sum_step_has_byok_overlap_exception() -> None:
     text = SKILL_MD.read_text(encoding="utf-8")
     step15_idx = text.index("## Step 1.5")
