@@ -146,10 +146,10 @@ Write `$MIGRATION_DIR/preferences.json`:
   the downstream source of truth (design-ai reads it, not the profile).
 
 Each constraint carries the full clarify field shape (`value`, `chosen_by` ∈
-`user|extracted|default|derived`, `prompt`, `design_consequence`, `question_id`). Every
-constraint in this flow is tied to a specific numbered question, so `question_id` is always
-present and `source` (the inventory/billing-derived provenance tag used in
-`clarify-assemble.md`'s infra flow) is not part of this AI-only shape. No nulls. Delete
+`user|extracted|default|derived`, `prompt`, `design_consequence`, `question_id`), plus
+`source` on every `chosen_by: "extracted"` row — per `schema-preferences.md`'s rule that the
+`DETECTED`-equivalent disposition must say what in the estate was read, so a value taken from
+discovery is never indistinguishable from a promoted default. No nulls. Delete
 `preferences-draft.json` after writing.
 
 ## preferences.json (AI-only)
@@ -192,22 +192,22 @@ present and `source` (the inventory/billing-derived provenance tag used in
   },
   "ai_constraints": { // REQUIRED
     "ai_framework": { // REQUIRED
-      "value": ["direct"], "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q16"
+      "value": ["direct"], "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q16", "source": "integration.pattern + integration.gateway_type"
     },
     "ai_priority": { // REQUIRED
       "value": "balanced", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q17"
     },
     "ai_monthly_spend": { // REQUIRED
-      "value": "$500-$2K", "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q18"
+      "value": "$500-$2K", "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q18", "source": "current_costs.monthly_ai_spend"
     },
     "cross_cloud": { // REQUIRED
       "value": "latency-acceptable", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q4"
     },
     "ai_model_baseline": { // REQUIRED
-      "value": "gpt-4o", "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q19"
+      "value": "gpt-4o", "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q19", "source": "models[] confidence >= 0.8"
     },
     "ai_vision": { // REQUIRED
-      "value": false, "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q20"
+      "value": false, "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q20", "source": "integration.capabilities_summary.vision"
     },
     "ai_token_volume": { // REQUIRED
       "value": "low", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q21"

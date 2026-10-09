@@ -808,6 +808,24 @@ def test_azure_preferences_follow_the_producer_route(tmp_path: Path):
     invented = json.loads(json.dumps(ai))
     invented["metadata"]["invented"] = 1
     assert ("UNKNOWN_KEY", "metadata.invented") in run("ai-invented", invented)
+
+    # Q1 is documented as select-all with a ["direct"] array default, skipped/defaulted
+    # Q1.5 compliance is documented as appending a metadata.report_caveats entry, and
+    # source is REQUIRED on every chosen_by: "extracted" row per schema-preferences.md's
+    # own fundamental rule -- but route_shapes does not inherit the parent preferences
+    # .json entry's allowed_anywhere, so source was previously rejected on this route even
+    # though the general contract requires it. Prove the producer contract now accepts
+    # the documented shapes it describes, not only its own single literal example.
+    multi_framework = json.loads(json.dumps(ai))
+    multi_framework["ai_constraints"]["ai_framework"]["value"] = ["direct", "langchain"]
+    assert run("ai-multi-framework", multi_framework) == set(), run("ai-multi-framework", multi_framework)
+    with_caveat = json.loads(json.dumps(ai))
+    with_caveat["metadata"]["report_caveats"] = ["Compliance requirements were not confirmed by the user"]
+    assert run("ai-caveat", with_caveat) == set(), run("ai-caveat", with_caveat)
+    with_source = json.loads(json.dumps(ai))
+    with_source["design_constraints"]["target_region"]["source"] = "discovery.ai-workload-profile.json"
+    assert run("ai-source", with_source) == set(), run("ai-source", with_source)
+
     # the infra verdict stays required on the infra route
     no_status = json.loads(json.dumps(infra))
     no_status.pop("clarify_status", None)

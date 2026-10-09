@@ -238,7 +238,21 @@
             "when_value": "ai-only",
             "shape": "skills/azure-to-aws/references/phases/clarify/clarify-ai-only.md",
             "root_heading": "preferences.json (AI-only)",
-            "_why": "clarify.md Step 0 sends an AI-only run through clarify-ai-only.md and skips the infra assembler. That file is a different preferences layout; infra requiredness (clarify_status) does not apply, and the AI fields stay required."
+            "allowed_anywhere": [
+              "source",
+              "reason",
+              "context",
+              "note",
+              "unanswered",
+              "blocks_phase",
+              "conflict",
+              "forced_by",
+              "residency_warning",
+              "detail",
+              "default_basis",
+              "deferred_to_generate"
+            ],
+            "_why": "clarify.md Step 0 sends an AI-only run through clarify-ai-only.md and skips the infra assembler. That file is a different preferences layout; infra requiredness (clarify_status) does not apply, and the AI fields stay required. route_shapes does not inherit the parent entry's allowed_anywhere (build_shape_contract is called with only this route object), so it is repeated here -- schema-preferences.md's row-annotation vocabulary, especially `source` REQUIRED on a chosen_by: extracted row, applies to this route's rows the same as the infra route's."
           }
         ]
       },
