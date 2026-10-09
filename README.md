@@ -88,6 +88,16 @@ Add this repository as a team marketplace from **Settings → Plugins → Team M
 
 Then open the **Plugins** panel and install the **aws-core** plugin (start here), or **aws-agents** and **aws-data-analytics** as needed. Each plugin bundles the AWS MCP Server configuration and agent skills.
 
+### Devin
+
+In Devin, type the prompt:
+
+```
+Install the Agent Toolkit for AWS plugin
+```
+
+Then, answer the follow-up questions from the agent to complete the installation.
+
 ### Kiro
 
 Kiro setup has two independent parts: the AWS MCP Server (for runtime AWS API access and documentation search) and local skills (for task-specific agent guidance). They complement each other but work independently — skills don't require the MCP server, and the MCP server doesn't serve locally-installed skills.
@@ -189,7 +199,7 @@ Plugins bundle the AWS MCP Server configuration and agent skills into a single i
 | [aws-agents-for-devsecops](plugins/aws-agents-for-devsecops/) | Investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with [AWS DevOps Agent](https://aws.amazon.com/devops-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr) and [AWS Security Agent](https://aws.amazon.com/security-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr). |
 | [aws-startup-advisor](plugins/aws-startup-advisor/)           | Personalized AWS guidance for startups, built on patterns from 350,000+ startups. Covers architecture, cost, security, day-one account setup, AWS Activate credits eligibility and startup offers, and migration to AWS from Azure, GCP, Heroku, and AI stacks (Azure OpenAI/OpenAI/Gemini SDK rewrites to Amazon Bedrock, agentic systems to AWS-native runtimes).                                    |
 
-Plugins are currently available for Claude Code, Codex, and Cursor. For other agents, configure the AWS MCP Server directly and install skills from this repository.
+Plugins are currently available for Claude Code, Codex, Cursor, and Devin. For other agents, configure the AWS MCP Server directly and install skills from this repository.
 
 ### Skills
 
