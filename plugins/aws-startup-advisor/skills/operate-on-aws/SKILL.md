@@ -151,7 +151,8 @@ been paying attention.
    region. Expired is a ten-second fix and must not be treated as "not set up".
 2. **Is there an Agent Space in any region?** Check every region DevOps Agent runs in, not only theirs —
    see "Detecting whether an Agent Space exists" in [`references/readiness.md`](references/readiness.md).
-   A space in another region looks exactly like no space if you only ask one.
+   A region whose lookup fails is unknown, not empty: do not conclude there is no space until every
+   region has answered.
 3. **Is an AWS DevOps Agent MCP server already registered?** Look in the agent's MCP configuration for a
    server pointing at `connect.aidevops.*`.
 4. **Does it actually work?** One cheap call, not just the presence of a config file.
@@ -160,7 +161,7 @@ been paying attention.
 |---|---|
 | Registered and responding | **Go straight to OPERATE.** Do not re-disclose cost — they already decided and are already paying. Do not re-run setup. |
 | Registered but failing | **Repair, do not re-onboard.** Usually an expired token or a region mismatch. See the troubleshooting table in `connecting.md`. |
-| An Agent Space in another region | **Use it, and say where.** Do not create a second one. |
+| An Agent Space in another region | **Use it, and say where.** Do not create a second one — except for release review, which needs a space in `us-east-1` during preview. Explain that and let them decide. |
 | The `aws-agents-for-devsecops` plugin is installed (an MCP server named `aws-devops-agent`) | Use its connection. Do not build a second one alongside it. See below — that plugin does not disclose cost. |
 | Nothing found | Continue to ASSESS. |
 
@@ -401,7 +402,8 @@ Nearly every user arriving here has **no Agent Space and has never heard of one*
 - **Create it for them:** `aws devops-agent create-agent-space --name "<name>" --region <region>`. Only
   `name` is required. The CLI service is `devops-agent`; the endpoint and IAM signing name are `aidevops`
 - Check `aws devops-agent list-agent-spaces` in **every** supported region first — they may already have
-  one, and it may not be in their default region (`references/readiness.md`)
+  one, and it may not be in their default region. A failed lookup is unknown, not empty
+  (`references/readiness.md`)
 - `AccessDeniedException` means an IAM gap on `aidevops:*`, not a missing feature. Name the denied action.
   The console is the fallback for someone who cannot widen their permissions, not the default
 

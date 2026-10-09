@@ -90,6 +90,7 @@ The Agent Space should live where the **workload** runs, because that is what th
 is usually but not always the CLI default — profiles on one machine routinely span regions. It must also
 be a region where DevOps Agent is available; check the supported list before committing to one. If an
 Agent Space already exists, its region wins over all of the above — find it first (`references/readiness.md`).
+The exception is release review, which runs only in `us-east-1` during preview.
 
 ## Endpoint
 
