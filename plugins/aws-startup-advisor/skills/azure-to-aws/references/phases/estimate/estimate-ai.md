@@ -75,10 +75,15 @@ Read from `$MIGRATION_DIR/`:
   `metadata.capture_warnings` first, same rule as the OpenAI profile.
 - **`anthropic-usage-profile.json`** (if present) — `summary.monthly_cost_usd`,
   `usage_by_model[]` (real per-model usage from the Anthropic Admin API). Anthropic's rows also
-  carry `cache_read_tokens`/`cache_creation_tokens` — these are a sub-accounting of input tokens,
-  NOT additional volume, and must be EXCLUDED from any `input_tokens + output_tokens` volume sum
-  (adding them would double-count). Check `metadata.capture_warnings` first, same rule as the
-  OpenAI profile.
+  carry `cache_read_tokens`/`cache_creation_tokens` — these are ADDITIONAL volume, NOT a
+  sub-accounting of `input_tokens` (the opposite of what a naive OpenRouter-style analogy would
+  suggest). The profile's `input_tokens` field is read from the Admin API's `uncached_input_tokens`
+  field, which by Anthropic's own definition excludes cached tokens: `total prompt tokens =
+  uncached_input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. When computing
+  total token volume, SUM all four fields — `input_tokens + cache_read_tokens +
+  cache_creation_tokens + output_tokens` — never exclude the two cache fields; doing so drops most
+  of the volume for a prompt-cached workload. Check `metadata.capture_warnings` first, same rule as
+  the OpenAI profile.
 - **`preferences.json`** — `ai_constraints.ai_token_volume.value`,
   `ai_constraints.ai_capabilities_required.value`.
 - **`aws-design-ai.json`** — `metadata.ai_source`, `ai_architecture.honest_assessment`,
@@ -164,7 +169,8 @@ particular, when any of `openai-usage-profile.json`, `openrouter-usage-profile.j
 `usage_by_model[]` actual monthly token totals (and actual ratio) instead of the tier table — a
 real observed month beats a tier midpoint. Normalize per Prerequisites above: OpenRouter's
 `prompt_tokens`/`completion_tokens` → `input_tokens`/`output_tokens`; Anthropic's
-`cache_read_tokens`/`cache_creation_tokens` excluded from the sum. **Exception:** for any
+`cache_read_tokens`/`cache_creation_tokens` INCLUDED in the sum (additional volume, not a
+sub-accounting of `input_tokens`). **Exception:** for any
 profile whose `metadata.partial_window` is `true`, a few days of tokens is NOT a monthly volume
 for that profile — projecting it as one understates the Bedrock estimate. Use the tier table
 (from `ai_token_volume`) for a profile with no full-window data, and present that profile's

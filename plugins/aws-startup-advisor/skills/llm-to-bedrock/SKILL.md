@@ -218,7 +218,11 @@ short-circuit it.
    gcp's and azure's `estimate-ai.md` apply the identical rule), combining `usage_by_model[]`
    with the same normalization rules (OpenRouter `prompt_tokens`/`completion_tokens` →
    `input_tokens`/`output_tokens`; Anthropic `cache_read_tokens`/`cache_creation_tokens`
-   excluded from volume sums). Apply the `metadata.partial_window` exception: a
+   INCLUDED in volume sums — these are additional token pools the Admin API reports
+   separately from `input_tokens`, not a sub-accounting of it; see `estimate-ai.md`'s
+   Prerequisites section in either sibling skill for the full `uncached_input_tokens +
+   cache_read_input_tokens + cache_creation_input_tokens` contract). Apply the
+   `metadata.partial_window` exception: a
    partial-window profile's figures are a reference figure labeled with `active_days`, never
    blended into the monthly baseline (schema consequence specified below).
 7. Present a short summary and record the computed figures (see `usage-baseline.json` below)

@@ -51,7 +51,8 @@ models detected, capabilities, integration pattern + SDK, gateway/router, framew
   `openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or
   `anthropic-usage-profile.json` exists, prefer the top model by token volume across ALL
   profiles combined (normalizing OpenRouter's `prompt_tokens`/`completion_tokens` before ranking,
-  and excluding Anthropic's `cache_read_tokens`/`cache_creation_tokens` from the volume sum —
+  and including Anthropic's `cache_read_tokens`/`cache_creation_tokens` in the volume sum (these
+  are additional token pools, not a sub-accounting of `input_tokens`) —
   do not rank by `usage_by_model[0]` from just one profile when more than one exists, since that
   profile's own #1 may not be the combined #1) as the baseline — billed usage is stronger
   evidence than code detection — and mention the runner-up models to the user rather than

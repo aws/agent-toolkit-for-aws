@@ -254,9 +254,20 @@ failed, exit with no output and tell the user which scope is missing.
 
 Sum across the window (a throwaway extraction script if captures are large):
 
-- **Usage** (`usage-messages.json`): per model — `input_tokens`,
-  `output_tokens`, `cache_read_tokens`, `cache_creation_tokens` (Anthropic's
-  cache-token dimension — do not drop these fields), and
+- **Usage** (`usage-messages.json`): per model — read `uncached_input_tokens`
+  and `output_tokens` directly from each result row and write them to the
+  profile's `input_tokens`/`output_tokens` fields (the API's own field is
+  named `uncached_input_tokens`, not `input_tokens` — rename on write, do not
+  invent an `input_tokens` field that doesn't exist in the response). Read
+  `cache_read_input_tokens` directly into `cache_read_tokens`. Compute
+  `cache_creation_tokens` as the SUM of `cache_creation.ephemeral_5m_input_tokens`
+  and `cache_creation.ephemeral_1h_input_tokens` (two separate sub-fields on
+  the response's nested `cache_creation` object — not a single top-level
+  field). **These three token pools are mutually exclusive, not nested:**
+  Anthropic's own contract is `total prompt tokens = uncached_input_tokens +
+  cache_read_input_tokens + cache_creation_input_tokens` — unlike OpenRouter's
+  `reasoning_tokens` (already included inside `completion_tokens`), a cache
+  token is NEVER double-counted inside `uncached_input_tokens`. Also read
   `num_model_requests` if present in the response shape.
 - **Cost** (`cost-report.json`, grouped by `description`): parse `model`/
   `inference_geo` out of each `description` row. Cost values are **decimal
@@ -303,9 +314,12 @@ Write `$MIGRATION_DIR/anthropic-usage-profile.json`:
 }
 ```
 
-`usage_by_model` sorted descending by `input_tokens + output_tokens`. Include
-only models with non-zero usage. `metadata.capture_warnings` carries every
-`failed`/`skipped` manifest entry (empty array when all rows succeeded) — the
+`usage_by_model` sorted descending by `input_tokens + cache_read_tokens +
+cache_creation_tokens + output_tokens` (total volume, not just the uncached
+portion — a prompt-cached model can rank far higher on total volume than its
+`input_tokens` field alone would suggest). Include only models with non-zero
+usage. `metadata.capture_warnings` carries every `failed`/`skipped` manifest
+entry (empty array when all rows succeeded) — the
 same convention as the other usage profiles — so downstream phases can tell a
 failed usage category (UNKNOWN volume) from a genuinely unused one (zero).
 Validate: valid JSON, `summary.monthly_cost_usd` approximately equals the sum

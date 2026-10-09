@@ -124,8 +124,10 @@ SUM across every full-window profile of Σ `usage_by_model[].input_tokens + outp
 `openrouter-usage-profile.json` that means `prompt_tokens + completion_tokens` (normalize before
 summing, do not treat a missing `input_tokens` key as zero) — Anthropic's `usage_by_model[]`
 already uses `input_tokens`/`output_tokens` (no normalization needed), but ALSO carries
-`cache_read_tokens`/`cache_creation_tokens`, which must NOT be added into this sum (cache tokens
-are a sub-accounting of input, not additional volume). Skip a profile whose
+`cache_read_tokens`/`cache_creation_tokens`, which MUST be added into this sum (these are
+additional token pools the Admin API reports separately — `input_tokens` is populated from
+`uncached_input_tokens`, which excludes cached tokens by definition — omitting them understates
+volume rather than avoiding a double-count). Skip a profile whose
 `metadata.partial_window` is `true` from the sum; ask Q7 normally only if EVERY existing profile
 is partial. Map the combined total to tiers (`<1M`→low, `1–10M`→medium, `10–100M`→high,
 `>100M`→very_high), record the extraction (`chosen_by: "extracted"`, `source` naming whichever
