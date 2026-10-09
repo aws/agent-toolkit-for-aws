@@ -23,7 +23,7 @@ This plugin brings [AWS Startups](https://aws.amazon.com/startups/) expertise di
 | 4 | `azure-to-aws` | Six-phase Microsoft Azure to AWS migration. Discovery reads Terraform (`azurerm_*`), a live `az` CLI capture (read-only, consent-gated), application code, and billing exports — not Bicep or ARM templates. Direct OpenAI, OpenRouter, and Anthropic usage-API discovery (read-only, consent-gated) supplement real AI spend. Generate is opt-in, and the what-if workshop is optional | [SKILL.md](skills/azure-to-aws/SKILL.md) |
 | 5 | `gcp-to-aws` | Six-phase Google Cloud to AWS migration. Discovery reads Terraform, a live `gcloud` capture (read-only, consent-gated), application code, and billing exports. Generate is opt-in. BigQuery is not mapped to an AWS analytics service | [SKILL.md](skills/gcp-to-aws/SKILL.md) |
 | 6 | `heroku-to-aws` | Six-phase Heroku to AWS migration with deterministic add-on mapping and an optional what-if repricing workshop | [SKILL.md](skills/heroku-to-aws/SKILL.md) |
-| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch. The full migration requires `gcp-to-aws` alongside it. Access-only mode (enable model access, no rewrite) does not | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
+| 7 | `llm-to-bedrock` | Rewrite OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluate quality, and deliver a git branch. The full migration requires `gcp-to-aws` or `azure-to-aws` alongside it (`gcp-to-aws` preferred when both are installed). Access-only mode (enable model access, no rewrite) does not | [SKILL.md](skills/llm-to-bedrock/SKILL.md) |
 | 8 | `tf-best-practices` | AWS Terraform authoring posture, security-baseline spec, and a read-only policy gate over generated Terraform | [SKILL.md](skills/tf-best-practices/SKILL.md) |
 | 9 | `operate-on-aws` | Incident investigation, root-cause analysis, and release-readiness review with AWS DevOps Agent, with cost, access, and code-egress disclosed up front | [SKILL.md](skills/operate-on-aws/SKILL.md) |
 | 10 | `knowledge-base-for-startups` | AWS Activate FAQ, credits guide, programs, partner offers, sample architectures, and AWS-curated learn articles | [SKILL.md](skills/knowledge-base-for-startups/SKILL.md) |
@@ -144,11 +144,13 @@ The `azure-to-aws`, `gcp-to-aws`, and `heroku-to-aws` skills run the same six-ph
 
 The `llm-to-bedrock` skill is a focused model and SDK rewrite. It assesses the codebase, rewrites OpenAI, Gemini, or Anthropic API call sites to Amazon Bedrock, evaluates the rewritten behavior against a golden prompt set, and delivers a ready-to-review git branch with a migration report.
 
-**A full migration requires `gcp-to-aws` installed alongside it.** Assess runs the `gcp-to-aws` discover, clarify, design, and estimate phases in the same session, and installing `llm-to-bedrock` on its own stops there. Access-only mode does not need `gcp-to-aws`: it checks the models you name, walks the access step for each, and stops, with no rewrite and no branch. Install both for a migration:
+**A full migration requires `gcp-to-aws` or `azure-to-aws` installed alongside it.** Assess runs whichever sibling is present's discover, clarify, design, and estimate phases in the same session (`gcp-to-aws` preferred when both are installed), and installing `llm-to-bedrock` on its own stops there. Access-only mode does not need either sibling: it checks the models you name, walks the access step for each, and stops, with no rewrite and no branch. Install the pair for a migration:
 
 ```bash
 npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill llm-to-bedrock --skill gcp-to-aws
 ```
+
+(Substitute `azure-to-aws` if your source infra runs on Azure.)
 
 (The `--skill '*'` install above already includes both.)
 
