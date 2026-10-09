@@ -203,8 +203,8 @@ short-circuit it.
    break ties) — e.g. a run whose `current_phase` shows Discover never advanced past Clarify
    tells the user this was likely an abandoned/declined session, even though its
    usage-profile file is still the most recent one. **State both pieces to the user
-   explicitly before adopting the figures:** _"Found an existing [provider] usage profile
-   from your `<MMDD-HHMM>` run (status: `<current_phase>`) — using that one."_ If a run
+   explicitly before adopting the figures:** *"Found an existing [provider] usage profile
+   from your `<MMDD-HHMM>` run (status: `<current_phase>`) — using that one."* If a run
    directory's `.phase-status.json` is missing/unparseable, still allow it as a candidate by
    directory-name recency, but surface `status: unknown` instead of a phase name.
 4. For the winning run directory, read **every** usage-profile file present in it (a run can
@@ -222,9 +222,9 @@ short-circuit it.
    partial-window profile's figures are a reference figure labeled with `active_days`, never
    blended into the monthly baseline (schema consequence specified below).
 7. Present a short summary and record the computed figures (see `usage-baseline.json` below)
-   for Phase C's report-generator: _"Found existing usage data: $X/month across N models
-   (source: [provider list], captured <date>). I'll use this as your current-cost baseline
-   instead of estimating from sampled golden-dataset traffic."_
+   for Phase C's report-generator: *"Found existing usage data: $X/month across N models
+   (source: [provider list], captured `<date>`). I'll use this as your current-cost baseline
+   instead of estimating from sampled golden-dataset traffic."*
 8. **This step never prompts for consent** — it only reads a file a prior, already-consented
    run already wrote. No new attack surface; no new consent gate needed.
 9. **Idempotency:** this step is safe to re-run on every Phase-B start, including a resumed

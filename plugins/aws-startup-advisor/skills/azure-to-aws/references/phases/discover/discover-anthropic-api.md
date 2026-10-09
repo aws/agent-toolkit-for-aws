@@ -206,7 +206,7 @@ GET /v1/organizations/cost_report?starting_at=<t>&group_by=workspace_id&limit=31
   skip. On 429, wait 30 seconds and retry once.
 - On an Enterprise-shaped failure: apply the org-type-fork exit from 2a.
 - On success: sum spend per `workspace_id` and present the list (workspace id
-  + window spend, sorted descending). Then ask: "Which of these Anthropic
+  - window spend, sorted descending). Then ask: "Which of these Anthropic
   workspaces belong to THIS application? List the workspace IDs, or answer
   `all` only if this org serves just this app." Set `$WORKSPACE_IDS` to the
   selection. **Never default to `all`** — org-wide spend attributed to one
