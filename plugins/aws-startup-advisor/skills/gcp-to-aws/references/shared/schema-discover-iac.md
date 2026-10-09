@@ -175,6 +175,18 @@ Live gcloud discovery produces the same inventory/cluster schemas with these add
 
 ```json
 {
+  "metadata": {
+    "discovery_sources": ["terraform", "live"],
+    "clustering_mode": "simplified"
+  },
+  "resources": [
+    {
+      "address": "google_sql_database_instance.db",
+      "source": "live+terraform",
+      "unmanaged_by_terraform": false,
+      "not_found_live": false
+    }
+  ],
   "live_metadata": {
     "found": true,
     "captured_at": "2026-07-20T18:20:00Z",
@@ -191,8 +203,8 @@ Live gcloud discovery produces the same inventory/cluster schemas with these add
         {
           "address": "google_sql_database_instance.db",
           "field": "settings.tier",
-          "terraform_value": "db-f1-micro",
-          "live_value": "db-custom-2-8192"
+          "terraform_value": "<json>", // the overwritten value as JSON: a string tier, a numeric disk size, or a boolean flag
+          "live_value": "<json>"
         }
       ]
     }

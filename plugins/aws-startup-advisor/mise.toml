@@ -1,0 +1,11 @@
+[tasks."lint:artifacts"]
+description = "Validate aws-startup-advisor fixture artifacts against their published schema contracts"
+run = "python3 scripts/validate-artifacts.py --fixtures"
+
+[tasks."lint:vendored-parity"]
+description = "Check each skill's references/vendored/ copies are byte-identical to skills/shared/"
+run = "python3 tools/sync-vendored.py --check"
+
+[tasks."lint:skill-refs"]
+description = "Check every file path the aws-startup-advisor skills reference exists"
+run = "python3 tools/check-skill-refs.py --check"
