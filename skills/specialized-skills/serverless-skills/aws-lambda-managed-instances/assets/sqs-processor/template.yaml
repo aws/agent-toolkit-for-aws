@@ -58,6 +58,7 @@ Resources:
       # Up to 5400 (90 min) for async + ESM invocations on Managed Instances (SQS is an ESM source).
       # Uses the existing Timeout field - no separate API/property/tag/code change required.
       # Sync/On-Demand invokes stay capped at 15 min.
+      # The ProcessingQueue VisibilityTimeout below MUST stay >= this value.
       Timeout: 5400
       CapacityProviderConfig:
         LambdaManagedInstancesCapacityProviderConfig:

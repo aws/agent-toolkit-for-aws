@@ -15,7 +15,7 @@ How traffic gets in and out of a MicroVM, what protocols are supported, and how 
 
 > The proxy agent auto-detects whether the guest application speaks TLS.
 
-Each MicroVM gets a **dedicated, service-managed HTTPS endpoint** (`https://<microvm-id>.lambda-microvm.<region>.on.aws`).
+Each MicroVM gets a **dedicated, service-managed HTTPS endpoint** (`https://<microvm>.lambda-microvm.<region>.on.aws`).
 
 ## Ingress (inbound)
 
@@ -150,6 +150,14 @@ Constraints:
 - `NetworkProtocol` supports both `IPv4` and `DualStack`.
 - The connector is **bound at run time** — you can't swap connectors on suspend/resume.
 - For internet *and* VPC access, configure a **NAT gateway** in your VPC.
+
+### Connector versioning
+
+Network connectors are versioned. This is **purely additive** for MicroVMs — existing unversioned ARNs keep working unchanged, and the run-time binding rule above is unaffected.
+
+- **A new version is minted by `update-network-connector`.** There is no separate "publish" call; each update to a connector's configuration produces a new version. There is a cap on versions per connector, so an update past the cap returns `NetworkConnectorLimitExceededException`.
+- **Versioned vs unversioned ARN.** A versioned ARN carries a numeric `:<n>` suffix (`…:network-connector:<id>:<n>`); an unversioned ARN omits it. When you pass an **unversioned** ARN to `run-microvm`, the MicroVM uses the connector's **latest** version. There is no `Latest` alias — pin a specific version by passing its versioned ARN.
+- **API surface.** `list-network-connector-versions` lists the versions of a connector. `create-network-connector` and `update-network-connector` return the `Version` and `VersionArn` they produced. `get-network-connector` returns `Version`/`VersionArn` when queried with a versioned ARN, or `LatestVersion`/`LatestVersionArn` when queried with an unversioned one. No new IAM permissions are required for versioning.
 
 ## Reserved / stripped headers
 
