@@ -27,9 +27,13 @@ run = "python3 tools/sync-plugin-skills.py --check"
 description = "Validate Agent Plugins v1.0.0 conformance (plugins/)"
 run = "uv run --with jsonschema --with pyyaml python tools/validate_spec.py"
 
+[tasks."lint:startup-model-pricing"]
+description = "Validate Startup Advisor model pricing coverage"
+run = "python3 plugins/aws-startup-advisor/scripts/validate-model-pricing.py"
+
 [tasks.validate]
 description = "Run all validation"
-depends = ["lint:manifests", "lint:skill-parity", "lint:spec"]
+depends = ["lint:manifests", "lint:skill-parity", "lint:spec", "lint:startup-model-pricing"]
 
 [tasks.security]
 description = "Run security scans"

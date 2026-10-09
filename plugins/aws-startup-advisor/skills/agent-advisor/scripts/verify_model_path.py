@@ -33,6 +33,40 @@ def _default_runtime_client(region):
     return boto3.client("bedrock-runtime", region_name=region)
 
 
+def _default_control_client(region):
+    import boto3
+
+    return boto3.client("bedrock", region_name=region)
+
+
+def _verify_application_profile(client, model_id, path_model_id, allowed_profiles,
+                                allowed_in_region_model_arns=()):
+    def destinations(profile):
+        models = {item["modelArn"] for item in profile.get("models", [])}
+        if profile.get("status") != "ACTIVE" or not models:
+            raise ValueError("Inference profile has no active model destinations")
+        if any(arn.split(":", 5)[-1] != f"foundation-model/{path_model_id}" for arn in models):
+            raise ValueError("Inference profile does not match the selected model")
+        return models
+
+    profile = client.get_inference_profile(inferenceProfileIdentifier=model_id)
+    actual = destinations(profile)
+    if len(actual) == 1 and actual.issubset(set(allowed_in_region_model_arns)):
+        return
+    errors = []
+    for reference_id in allowed_profiles:
+        try:
+            reference = client.get_inference_profile(inferenceProfileIdentifier=reference_id)
+            if actual == destinations(reference):
+                return
+        except Exception as exc:
+            errors.append(exc)
+    error = ValueError("Application profile destinations do not match a verified allowed inference profile")
+    if errors:
+        raise error from errors[0]
+    raise error
+
+
 def _default_openai_responses_client(region):
     """Lazily build an OpenAI SDK client pointed at the Bedrock Mantle endpoint.
 
@@ -119,6 +153,7 @@ def verify_workload(
     runtime_client_factory=None,
     openai_responses_client_factory=None,
     now=None,
+    control_client_factory=None,
 ):
     result = _base_result(workload_id, recommendation)
     if recommendation["decision_status"] != "recommended":
@@ -141,6 +176,16 @@ def verify_workload(
 
     path = result["api_path"]
     try:
+        if (":application-inference-profile/" in model_id
+                and result["path_model_id"] == "anthropic.claude-opus-5-5"):
+            allowed = recommendation["verification"].get("allowed_inference_profiles")
+            in_region = recommendation["verification"].get("allowed_in_region_model_arns", [])
+            if not allowed and not in_region:
+                raise ValueError("Application profile requires verified model and residency constraints")
+            factory = control_client_factory or _default_control_client
+            _verify_application_profile(
+                factory(result["region"]), model_id, result["path_model_id"], allowed or [], in_region
+            )
         if path == "mantle_messages":
             factory = mantle_client_factory or _default_mantle_client
             response = _probe_mantle(factory(result["region"]), model_id)
@@ -175,6 +220,7 @@ def verify_recommendation(
     runtime_client_factory=None,
     openai_responses_client_factory=None,
     now=None,
+    control_client_factory=None,
 ):
     selected = set(workload_ids or recommendation["workloads"])
     unknown = sorted(selected - set(recommendation["workloads"]))
@@ -193,6 +239,7 @@ def verify_recommendation(
             runtime_client_factory=runtime_client_factory,
             openai_responses_client_factory=openai_responses_client_factory,
             now=generated_at,
+            control_client_factory=control_client_factory,
         )
     return {
         "schema_version": 1,

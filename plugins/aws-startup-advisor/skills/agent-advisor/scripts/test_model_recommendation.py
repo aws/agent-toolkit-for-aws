@@ -1,5 +1,6 @@
 import json
 import pathlib
+import re
 
 import jsonschema
 import pytest
@@ -225,7 +226,7 @@ def test_detected_version_features_emit_blocks_and_tuning():
         ({"governance": ["guardrails"]}, "runtime_converse"),
     ],
 )
-def test_structured_output_uses_portable_forced_tool_guidance(
+def test_older_target_forced_tool_guidance_requires_verified_support(
     requirements, expected_path
 ):
     rec = _recommend(
@@ -244,6 +245,7 @@ def test_structured_output_uses_portable_forced_tool_guidance(
         if item["code"] == "structured_output_portable_pattern"
     )
     assert "forced tool without strict" in finding["remediation"]
+    assert "only after verifying" in finding["remediation"]
 
 
 def test_structured_output_and_citations_emit_conflict():
@@ -396,7 +398,7 @@ def test_input_and_output_match_schemas():
 def test_catalog_records_path_specific_ids_and_limits():
     catalog = model_recommendation.load_catalog()
 
-    assert catalog["verified_at"] == "2026-07-21"
+    assert catalog["verified_at"] == "2026-09-24"
     assert catalog["verified_region"] == "us-east-1"
     assert (
         catalog["models"]["claude_sonnet_5"]["paths"]["mantle_messages"][
@@ -417,5 +419,25 @@ def test_catalog_records_path_specific_ids_and_limits():
         == "anthropic.claude-haiku-4-5-20251001-v1:0"
     )
     assert (
-        catalog["models"]["claude_opus_4_8"]["output_token_ceiling"] == 128000
+        catalog["models"]["claude_opus_5_5"]["output_token_ceiling"] == 128000
     )
+
+
+@pytest.mark.parametrize("relative_path", [
+    "references/phases/model-recommend/model-recommend.md",
+    "references/phases/model-recommend/model-recommend-assemble.md",
+    "references/decision-refs/model-selection.md",
+])
+def test_current_catalog_readers_match_engine_defaults(relative_path):
+    skill = pathlib.Path(model_recommendation.__file__).parent.parent
+    text = (skill / relative_path).read_text()
+    expected = {
+        model_recommendation.DEFAULT_CATALOG.name,
+        model_recommendation.OPENAI_CATALOG.name,
+    }
+    catalog_pattern = r"(?:anthropic|openai)-bedrock-\d{4}-\d{2}-\d{2}\.json"
+    assert set(re.findall(catalog_pattern, text)) == expected
+    if text.startswith("---\n"):
+        frontmatter = text.split("---", 2)[1]
+        loaded = set(re.findall(r"\bfile:\s*references/models/(" + catalog_pattern + r")", frontmatter))
+        assert loaded == expected

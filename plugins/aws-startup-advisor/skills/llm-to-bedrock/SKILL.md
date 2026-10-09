@@ -465,6 +465,11 @@ first failing model) plus `failing_models` (all failing ids); per-model verdicts
   `embedding_unprobed` (embedding family the preflight can't probe — remind the user to confirm
   model access in the console).
 
+For the supported Opus 5.5 London in-region route, retain the validated bare ID in
+`$TARGET_MODELS`, C0's saved/current contexts and C1's source→target pairs. The mandatory
+resolver has a matching Step 0 catalog path; neither initial analysis nor a resume should
+replace this target with a cross-region profile merely because a profile listing lacks it.
+
 ---
 
 ## Phase C — Execute
@@ -558,6 +563,7 @@ Bedrock at their expense, capped at 200 cases.
   "assess_design_sha256": "<sha256 of $MIGRATION_DIR/aws-design-ai.json>",
   "report_date_suffix": "<date +%Y-%m-%d>",
   "schema_version": 1,
+  "evaluation_contract_version": 3,
   "plugin_version": "<version from <plugin>/.claude-plugin/plugin.json>"
 }
 ```
@@ -585,6 +591,10 @@ uv run --project $SCRIPTS python $SCRIPTS/validate_result.py --check-run-context
   STOP the walk at the first missing/invalid/control-state file — blocked/partial files
   route to their flows below, NEVER count as completed. Offer the user "skip completed
   phases X..Y, resume at Z". Files after an unexplained gap: archive them with the gap.
+  The analysis validator checks every claimed same-model identity using `model_identity.py`;
+  downstream agents consume its validated flag. If cached analysis fails that check, archive
+  ANALYSIS, EVAL, REWRITE and REPORT and restart at C1, applying the post-C5 recovery rule below
+  when a rewrite already exists. Do not reuse a connectivity-only evaluation from that cache.
 - `RUN_CONTEXT=mismatch` → scoped invalidation. Map each MISMATCH line through this table,
   archive the named units to `$REPO/.saws-migrate/phase-results-archive/<saved suffix>-$(date +%H%M%S)/`
   (a SIBLING of phase-results/ — never nest it inside), **then immediately overwrite
@@ -597,12 +607,19 @@ uv run --project $SCRIPTS python $SCRIPTS/validate_result.py --check-run-context
 | repo_root, migration_dir, region, aws_profile, aws_account, source_provider, assess_design_sha256, schema_version, plugin_version | everything                      | —         |
 | repo_head_sha / repo_branch / repo_dirty_sha256                                                                                   | everything                      | —         |
 | target_models / resolved_model_overrides                                                                                          | ANALYSIS, EVAL, REWRITE, REPORT | INGESTION |
+| evaluation_contract_version                                                                                                     | ANALYSIS, EVAL, REWRITE, REPORT | INGESTION |
 | log_files / max_golden_cases                                                                                                      | everything                      | —         |
 | source_key_sha256 / source_baseline_available                                                                                     | ANALYSIS, EVAL, REWRITE, REPORT | INGESTION |
 
 Units: ANALYSIS = analysis.json · INGESTION = ingestion.json + `.saws-migrate/golden-dataset/`
 · EVAL = eval.json + `.saws-migrate/eval-results/` (minus cost_compare.py) · REWRITE =
 rewrite.json + delta-decisions.json · REPORT = `MIGRATION_REPORT_<saved suffix>.md`.
+
+`evaluation_contract_version` is enforced by `validate_result.py`, independently of the
+plugin release version. Missing or older versions invalidate results produced by the old
+provider-only identity shortcut or text-only comparative image requests. Persist version 3
+in both current and saved contexts after invalidation so subsequent resumes can reuse the
+newly validated results.
 
 **Post-C5 reruns of C1–C3 need the pre-migration tree.** If rewrite.json was payload-valid
 and the table invalidates ANALYSIS/INGESTION/EVAL: confirm with the user that the old
