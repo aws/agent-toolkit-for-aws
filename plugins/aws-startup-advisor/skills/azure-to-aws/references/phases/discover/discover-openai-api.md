@@ -336,16 +336,39 @@ and volume:
    `{ "method": "openai_usage_api", "pattern": "billed usage for <model>",
    "confidence": 0.99, "evidence": "<N> requests, <X> tokens in last 30d" }`
    for each of the top 5 models by usage.
-4. For any `usage_by_model` model absent from `models[]`: append
-   `{ "model_id": "<model>", "service": "openai_api", "detected_via":
-   ["usage_api"], "evidence": [{ "source": "usage_api", "pattern": "billed
-   usage in last 30 days" }], "capabilities_used": [<from endpoint_type:
-   completions→"text_generation", embeddings→"embeddings",
-   images→"image_generation", audio_speeches→"speech_generation",
-   audio_transcriptions→"transcription">], "usage_context": "Observed in
-   OpenAI usage data — call sites not yet located in code" }`. Code-derived
-   entries always win on conflict; usage-only entries tell Clarify what code
-   analysis missed.
+4. **These are two INDEPENDENT checks over every `usage_by_model` entry — run
+   both:**
+
+   a. **Model row:** for any `usage_by_model` model absent from `models[]`:
+      append `{ "model_id": "<model>", "service": "openai_api",
+      "detected_via": ["usage_api"], "evidence": [{ "source": "usage_api",
+      "pattern": "billed usage in last 30 days" }], "capabilities_used":
+      [<from endpoint_type: completions→"text_generation",
+      embeddings→"embeddings", images→"image_generation",
+      audio_speeches→"speech_generation",
+      audio_transcriptions→"transcription">], "usage_context": "Observed in
+      OpenAI usage data — call sites not yet located in code" }`.
+      Code-derived entries always win on conflict; usage-only entries tell
+      Clarify what code analysis missed.
+   b. **Workload row:** for any `usage_by_model` model with NO `workloads[]`
+      entry whose `model_id` matches it (any `sdk_method`) — append
+      `{workload_id: "wl_" + sha256(model_id + "|usage_api|plain")[:6],
+      model_id: "<model>", sdk_method: "usage_api", capability: [<from
+      endpoint_type: completions→"text_generation",
+      embeddings→"embeddings", images→"image_generation",
+      audio_speeches→"speech_generation",
+      audio_transcriptions→"transcription">], capability_confidence: "low",
+      structured_output: false, call_sites: [{"file": "<usage_api>", "line":
+      0}]}` (per `schema-discover-ai.md` § workloads[] "Usage-only
+      workloads"). Without this, the model can exist in `models[]` with no
+      corresponding `workloads[]` entry — Clarify's multi-workload
+      confirmation table and Design's per-workload iteration both read
+      `workloads[]`, not `models[]`. Before appending, confirm no existing
+      `workloads[]` entry already has this exact `workload_id` (the sha256
+      is deterministic per model, so a second merge of the same model
+      naturally collides on it instead of duplicating).
+
+   Recompute `summary.total_models_detected` to include any (a) addition.
 5. If `summary.ai_source` is `"azure_openai"` and direct OpenAI usage was
    found, set it to `"both"` (azure has no `gemini` value).
 

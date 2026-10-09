@@ -431,8 +431,8 @@ volume:
       entries always win on conflict; usage-only entries tell Clarify what
       code analysis missed.
    b. **Workload row:** for any `usage_by_model` model with NO `workloads[]`
-      entry whose `model_id` matches it AND `sdk_method: "usage_api"` —
-      append `{workload_id: "wl_" + sha256(model_id + "|usage_api|plain")[:6],
+      entry whose `model_id` matches it (any `sdk_method`) — append
+      `{workload_id: "wl_" + sha256(model_id + "|usage_api|plain")[:6],
       model_id: "<model>", sdk_method: "usage_api", capability:
       "text_generation", capability_confidence: "low", structured_output:
       false, call_sites: [{"file": "<usage_api>", "line": 0}]}` (per

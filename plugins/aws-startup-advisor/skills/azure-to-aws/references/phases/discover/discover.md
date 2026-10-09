@@ -45,7 +45,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "same contract as the OpenAI assert above, substituting the OpenRouter step and openrouter-usage-profile.json"
     _on_failure: _halt_and_inform
-  - _assert: "same contract as the OpenAI assert above, substituting the Anthropic step and anthropic-usage-profile.json"
+  - _assert: "same contract as the OpenAI assert above, substituting the Anthropic step and anthropic-usage-profile.json; additionally, a $MIGRATION_DIR/anthropic-capture/manifest.json whose captures[] rows are ALL 'failed' (and whose retry_pending is not true) is itself a valid 'failed capture, no profile' terminal outcome, not a precondition for requiring anthropic-usage-profile.json — the manifest's mere existence never substitutes for at least one captures[].status == 'ok' row"
     _on_failure: _halt_and_inform
   - _assert: "WHEN an IaC source (.tf/.bicep/ARM) was found OR live `az` capture produced at least one resource: azure-resource-inventory.json and azure-resource-clusters.json exist, validate as JSON, and the inventory has at least one resources[] entry with metadata carrying discovery_timestamp, discovery_sources, and subscriptions_discovered. WHEN the run is app-code-only (no IaC source found and no live capture): the inventory and clusters artifacts are ABSENT (not written empty — see discover-assemble.md) and this is vacuously satisfied"
     _on_failure: _halt_and_inform
@@ -269,9 +269,17 @@ reading an archive the customer already handed over is not interactive.
    itself).
 
    **Re-entry check (do this FIRST, before offering consent), same rule as live `az`:** if
-   `$MIGRATION_DIR/anthropic-usage-profile.json` already exists from a prior attempt in THIS run
-   directory, do NOT silently trust it — re-offer `discover-anthropic-api.md`'s Step 0 consent
-   gate for THIS attempt; on decline, delete/rename the existing profile file before continuing.
+   `$MIGRATION_DIR/anthropic-capture/manifest.json` already exists from a prior attempt in THIS
+   run directory, check its `captures[]` rows first — do NOT silently trust bare manifest
+   existence. At least one `status: "ok"` row means capture already happened cleanly; still
+   re-offer `discover-anthropic-api.md`'s Step 0 consent gate for THIS attempt (same rule as
+   live `az`), and on decline, delete/rename the existing manifest and
+   `anthropic-usage-profile.json` before continuing. A manifest whose `captures[]` rows are ALL
+   `"failed"` (and whose `retry_pending` is not `true`) means the prior attempt never reached a
+   terminal successful state — this is a valid "failed capture, no profile" outcome, not a
+   resumable one; treat it like a Step 0 consent decline (exit cleanly, no re-ask) unless
+   `retry_pending` is `true` (the `KEY_INVALID_MID_RUN` carve-out), in which case re-run from
+   Step 2.
 
    The file's own Step 0 consent gate is the single consent point for this source — do not
    pre-ask here; loading the file only presents the gate. If `discover-anthropic-api.md`'s

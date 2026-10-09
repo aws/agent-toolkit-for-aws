@@ -76,7 +76,7 @@ One per detected model. **Field names are exact** (the §13.3b drift class):
 {
   "model_id": "gpt-4o", // NOT model_name / name
   "service": "azure_openai", // NOT service_type / azure_service (see below)
-  "detected_via": ["code"], // NOT detection_method — subset of code|terraform|billing
+  "detected_via": ["code"], // NOT detection_method — subset of code|terraform|billing|usage_api
   "evidence": [{ "source": "code", "file": "app/llm.py", "line": 42, "pattern": "AzureOpenAI(" }],
   "capabilities_used": ["text_generation"], // NOT capabilities / features
   "usage_context": "chat completion endpoint" // NOT description / purpose

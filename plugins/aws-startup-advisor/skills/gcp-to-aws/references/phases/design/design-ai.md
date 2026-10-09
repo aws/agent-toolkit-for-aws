@@ -28,7 +28,18 @@ Read `$MIGRATION_DIR/preferences.json` → `ai_constraints` (if present). If abs
   caching). OpenAI's proprietary GPT models run on Bedrock, so the source model is often itself the target — the
   mapping guide's Tier 0 path is the default, not a cross-family swap.
 - `"anthropic"` → load `references/vendored/ai/ai-anthropic-to-bedrock.md` (Anthropic SDK → Bedrock Converse API client swap; do NOT use ai-openai-to-bedrock.md for Anthropic SDK users)
-- `"both"` → load both `ai-gemini-to-bedrock.md` and `ai-openai-to-bedrock.md`
+- `"both"` → `both` never means exactly "Gemini+OpenAI" — per
+  `discover-anthropic-api.md` Step 4.5, `both` is also reached when Anthropic
+  usage joins a Gemini-or-OpenAI codebase, so it can mean "Gemini+Anthropic"
+  or "OpenAI+Anthropic" too. Select guides from which providers are ACTUALLY
+  present in `models[]`/`summary` (checking `service` values —
+  `vertex_ai_generative`/`vertex_ai_embeddings` for Gemini,
+  `openai_api` for OpenAI, `anthropic_api` for Anthropic): load
+  `ai-gemini-to-bedrock.md` when a Gemini/Vertex model is present, load
+  `ai-openai-to-bedrock.md` when an OpenAI model is present, and, if an
+  Anthropic model is also present, also load `ai-anthropic-to-bedrock.md`
+  (mirroring Azure's existing conditional pattern for its own `"both"`
+  branch)
 - `"other"` or absent → load `references/design-refs/ai.md` (traditional ML rubric — Vision API, Speech API, Document AI, custom models only; do NOT use for Anthropic SDK users)
 
 **Additional load, independent of `ai_source` above:** If any entry in `workloads[]` (from `preferences.json`, falling back to `ai-workload-profile.json`) has `capability` equal to `document_extraction`, `image_analysis`, or `speech_transcription`, ALSO load `references/design-refs/ai.md` — even when a generative `ai_source` already selected a different ref above. A workload's non-generative capability is evaluated independently of the codebase's primary LLM provider; e.g. an `ai_source: "openai"` codebase that also calls `documentai.process_document` needs both `ai-openai-to-bedrock.md` (for its GPT workload) and `ai.md` (for its Document AI workload).
