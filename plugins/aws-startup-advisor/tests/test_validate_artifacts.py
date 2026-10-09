@@ -46,6 +46,31 @@ def test_strip_jsonc_handles_ellipsis_and_bool_alternation():
     assert json.loads(out) == {"a": ["Q1", "..."], "b": True}
 
 
+def test_strip_jsonc_binds_a_trailing_comment_to_the_enclosing_field_not_a_nested_key():
+    """`"call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED` must attribute the
+    comment to `call_sites` (the field this line actually declares), not to `line` (the
+    last key opened on the line, which is nested two levels deeper inside the inline
+    array/object value). Picking the textually-last key regardless of depth let a
+    `// REQUIRED` on an inline array/object value silently annotate one of its own nested
+    keys instead of the enclosing field, so the enclosing field was never marked required.
+    """
+    text = '{\n  "call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED\n}'
+    _, comments, keys = va.strip_jsonc(text)
+    assert comments[1] == "REQUIRED"
+    assert keys[1] == "call_sites"
+
+
+def test_strip_jsonc_still_binds_to_the_last_of_several_flat_sibling_keys():
+    """Several sibling keys packed on one flat line (no nesting) must still resolve to the
+    LAST one, preserving the original intent for the common `"a": 1, "b": 2 // REQUIRED`
+    case this attribution logic was designed for.
+    """
+    text = '{\n  "a": 1, "b": 2 // REQUIRED\n}'
+    _, comments, keys = va.strip_jsonc(text)
+    assert comments[1] == "REQUIRED"
+    assert keys[1] == "b"
+
+
 # --------------------------------------------------------------------------- template inference
 
 
@@ -391,6 +416,65 @@ def test_injected_off_contract_key_fails(tmp_path: Path):
     report = json.loads(r.stdout)
     assert any(e["code"] == "UNKNOWN_KEY" and e["path"] == "resources[0].invented_by_a_phase_file"
                for e in report["errors"]), report["errors"]
+
+
+def _ai_only_preferences_example() -> dict:
+    """Load the real `## preferences.json (AI-only)` example from
+    `clarify-ai-only.md`, filling in its `chosen_by` placeholder so it is a concrete,
+    schema-valid document rather than a documentation template."""
+    doc = (
+        PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "clarify"
+        / "clarify-ai-only.md"
+    ).read_text()
+    import re
+    m = re.search(r"## preferences\.json \(AI-only\)\s*```jsonc\n(.*?)\n```", doc, re.S)
+    lines = []
+    for line in m.group(1).split("\n"):
+        idx = line.find(" //")
+        lines.append(line[:idx] if idx != -1 else line)
+    data = json.loads("\n".join(lines))
+
+    def fix_chosen_by(node):
+        if isinstance(node, dict):
+            if node.get("chosen_by") == "user|extracted|default|derived":
+                node["chosen_by"] = "extracted"
+            for v in node.values():
+                fix_chosen_by(v)
+        elif isinstance(node, list):
+            for v in node:
+                fix_chosen_by(v)
+
+    fix_chosen_by(data)
+    return data
+
+
+def test_required_inline_array_field_cannot_be_omitted_on_either_route(tmp_path: Path):
+    """Finding 3 regression. `clarify-ai-only.md`'s `workloads[].call_sites` is declared
+    `// REQUIRED` as `"call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED` — an
+    inline array of objects on one line. Before the `strip_jsonc` key-attribution fix,
+    the trailing comment bound to `line` (the last key opened on the line, nested inside
+    the array) instead of `call_sites` (the enclosing field), so omitting the entire
+    `call_sites` array passed validation with no MISSING_REQUIRED finding. `priority` is
+    the control: a plain top-level sibling on the same object, correctly flagged either
+    way, proving the fix did not just start over-flagging unrelated keys."""
+    manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
+
+    base = _ai_only_preferences_example()
+    for mutate, missing_path in (
+        (lambda d: d["workloads"][0].pop("call_sites"), "workloads[0].call_sites"),
+        (lambda d: d["workloads"][0].pop("priority"), "workloads[0].priority"),
+    ):
+        import copy
+        data = copy.deepcopy(base)
+        mutate(data)
+        run = tmp_path / missing_path.replace("[", "_").replace("]", "").replace(".", "_")
+        run.mkdir()
+        (run / "preferences.json").write_text(json.dumps(data))
+        findings = []
+        va.validate_run_dir(run, "azure-to-aws", manifest, findings)
+        assert any(
+            f.code == "MISSING_REQUIRED" and f.path == missing_path for f in findings
+        ), (missing_path, [f.as_dict() for f in findings])
 
 
 def test_empty_phases_fails_min_properties(tmp_path: Path):

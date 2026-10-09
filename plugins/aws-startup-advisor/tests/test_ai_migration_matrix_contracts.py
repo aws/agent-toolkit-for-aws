@@ -117,17 +117,18 @@ def _assert_scenario_semantics(snapshot: dict) -> None:
         sources[key] = source
 
     for gateway in dimensions["gateways"]:
-        upstream_keys = set()
+        resolved_keys = set()
         for upstream in gateway["upstreams"]:
-            key = (upstream["provider"], upstream.get("source_service"))
-            assert key not in upstream_keys, (
-                f"duplicate or overlapping gateway upstream: {key}"
-            )
-            upstream_keys.add(key)
-
+            # Resolve the upstream's optional provenance to its effective source FIRST.
+            # Deduplicating on the raw (provider, source_service-or-None) tuple before
+            # resolution lets an explicit-service upstream and a service-less upstream
+            # that both resolve to the same single retained source carry different keys
+            # and silently pass as "distinct" — exactly the overlapping association the
+            # uniqueness contract forbids.
             if "source_service" in upstream:
-                source = sources.get((upstream["provider"], upstream["source_service"]))
-                assert source is not None, f"unmatched gateway upstream: {key}"
+                raw_key = (upstream["provider"], upstream["source_service"])
+                source = sources.get(raw_key)
+                assert source is not None, f"unmatched gateway upstream: {raw_key}"
             else:
                 candidates = [
                     source
@@ -138,6 +139,15 @@ def _assert_scenario_semantics(snapshot: dict) -> None:
                     f"service-less upstream must match one source: {upstream['provider']}"
                 )
                 source = candidates[0]
+
+            # Check the EFFECTIVE provider/service pair — the resolved source's own key,
+            # not the upstream's possibly-service-less raw key — so the explicit-service
+            # and service-less spellings of the same source collide correctly.
+            resolved_key = (source["provider"], source["source_service"])
+            assert resolved_key not in resolved_keys, (
+                f"duplicate or overlapping gateway upstream: {resolved_key}"
+            )
+            resolved_keys.add(resolved_key)
 
             families = set(source["model_families"])
             models = set(source["models"])
@@ -564,6 +574,37 @@ def test_duplicate_or_overlapping_gateway_upstreams_are_rejected(overlap: str) -
                 ],
             }
         )
+    if not _scenario_validation_findings(scenario):
+        with pytest.raises(AssertionError):
+            _assert_scenario_semantics(scenario)
+    else:
+        assert _scenario_validation_findings(scenario)
+
+
+@pytest.mark.parametrize("explicit_service_first", [True, False])
+def test_overlapping_explicit_and_service_less_upstream_for_one_retained_source_is_rejected(
+    explicit_service_first: bool,
+) -> None:
+    """A gateway with exactly one retained ``openai``/``openai_api`` source must not accept
+    both an explicit ``source_service: "openai_api"`` upstream and a service-less copy with
+    the same family/models. The two specs have different raw (provider, source_service)
+    keys but resolve to the identical source — the uniqueness contract is about the
+    *resolved* association, not the upstream's raw provenance spelling. Both argument
+    orderings are checked: the dedup bug this guards against was order-independent (each
+    upstream's raw key differed from the other's regardless of which was added first), so
+    this proves the fix does not depend on insertion order.
+    """
+    scenario = copy.deepcopy(_cases()["ai-only-openrouter"][1])
+    gateway = scenario["dimensions"]["gateways"][0]
+    explicit_service_upstream = copy.deepcopy(gateway["upstreams"][0])
+    service_less_upstream = {
+        "provider": "openai",
+        "model_families": copy.deepcopy(explicit_service_upstream["model_families"]),
+    }
+    if explicit_service_first:
+        gateway["upstreams"] = [explicit_service_upstream, service_less_upstream]
+    else:
+        gateway["upstreams"] = [service_less_upstream, explicit_service_upstream]
     if not _scenario_validation_findings(scenario):
         with pytest.raises(AssertionError):
             _assert_scenario_semantics(scenario)

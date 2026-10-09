@@ -146,8 +146,11 @@ Write `$MIGRATION_DIR/preferences.json`:
   the downstream source of truth (design-ai reads it, not the profile).
 
 Each constraint carries the full clarify field shape (`value`, `chosen_by` ∈
-`user|extracted|default|derived`, `prompt`, `design_consequence`, `source`/`question_id`). No
-nulls. Delete `preferences-draft.json` after writing.
+`user|extracted|default|derived`, `prompt`, `design_consequence`, `question_id`). Every
+constraint in this flow is tied to a specific numbered question, so `question_id` is always
+present and `source` (the inventory/billing-derived provenance tag used in
+`clarify-assemble.md`'s infra flow) is not part of this AI-only shape. No nulls. Delete
+`preferences-draft.json` after writing.
 
 ## preferences.json (AI-only)
 
@@ -159,7 +162,8 @@ nulls. Delete `preferences-draft.json` after writing.
     "clarify_mode": "full", // fast_path | full
     "questions_asked": [],
     "questions_defaulted": [],
-    "questions_extracted": []
+    "questions_extracted": [],
+    "report_caveats": [] // REQUIRED — [] when none; Q1.5 skip/default appends a caveat here
   },
   "design_constraints": { // REQUIRED — region and compliance only; no infra constraints
     "target_region": { // REQUIRED
@@ -188,7 +192,7 @@ nulls. Delete `preferences-draft.json` after writing.
   },
   "ai_constraints": { // REQUIRED
     "ai_framework": { // REQUIRED
-      "value": "direct", "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q16"
+      "value": ["direct"], "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q16"
     },
     "ai_priority": { // REQUIRED
       "value": "balanced", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q17"

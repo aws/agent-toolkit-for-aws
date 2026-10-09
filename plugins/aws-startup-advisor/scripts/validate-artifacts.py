@@ -152,10 +152,75 @@ def strip_jsonc(text: str) -> Tuple[str, Dict[int, str], Dict[int, str]]:
         if idx is not None:
             comments[i] = line[idx + 2:].strip()
             line = line[:idx].rstrip()
-        # the key a trailing comment annotates is the LAST `"key":` opened on the line
-        key_matches = re.findall(r'"((?:[^"\\]|\\.)*)"\s*:', line)
-        if key_matches:
-            keys[i] = key_matches[-1]
+        # The key a trailing comment annotates is the LAST `"key":` opened on the line
+        # WHOSE OWN NESTING DEPTH MATCHES THE DEPTH AT THE END OF THE LINE — i.e. a key
+        # that is still "current" by the time the comment is reached, not merely the
+        # last key-like string that happens to appear earliest in the text. Two cases
+        # must resolve differently and both are exercised by tests:
+        #   - `"routing_provenance": "table", // REQUIRED` (depth stays open on this
+        #     key's own value, never closed back out before the comment) → the comment
+        #     belongs to `routing_provenance` itself, the last key opened, matching the
+        #     original design for a key immediately followed by its own `// REQUIRED`.
+        #   - `"call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED` (the inline
+        #     array/object value is fully opened AND closed before the comment, so depth
+        #     returns to the level `call_sites` itself was opened at) → the comment
+        #     belongs to `call_sites`, the enclosing field, not to `line` (a key nested
+        #     inside that value, whose own depth no longer matches the end-of-line depth).
+        # Tracking bracket depth while re-scanning the comment-stripped line, and keeping
+        # the LAST key seen at each depth, implements this without changing the plain
+        # same-depth case (several flat `"a": 1, "b": 2 // REQUIRED` siblings still
+        # resolve to the last one, `b`, because nothing nests and depth never changes).
+        depth = 0
+        last_key_at_depth: Dict[int, str] = {}
+        k_in_str = False
+        k_esc = False
+        pos = 0
+        key_start: Optional[int] = None
+        string_open_pos = 0
+        while pos < len(line):
+            ch = line[pos]
+            if k_in_str:
+                if k_esc:
+                    k_esc = False
+                elif ch == "\\":
+                    k_esc = True
+                elif ch == '"':
+                    k_in_str = False
+                    key_start = pos  # candidate string just closed at `pos`
+                pos += 1
+                continue
+            if ch == '"':
+                k_in_str = True
+                string_open_pos = pos
+                pos += 1
+                continue
+            if ch in "{[":
+                depth += 1
+                pos += 1
+                continue
+            if ch in "}]":
+                depth -= 1
+                pos += 1
+                continue
+            if ch == ":" and key_start is not None:
+                # the string that just closed, immediately followed by `:` (ignoring
+                # whitespace), is a key opened at the CURRENT depth (before this colon's
+                # value opens any further nesting of its own)
+                between = line[key_start + 1:pos]
+                if between.strip() == "":
+                    last_key_at_depth[depth] = line[string_open_pos + 1:key_start]
+            if ch not in '"':
+                key_start = None
+            pos += 1
+        # A key's value can legitimately still be OPEN at end-of-line (e.g.
+        # `"workloads": [ // REQUIRED` whose `]` closes on a later line) — that key was
+        # recorded one level shallower than `depth` (the depth its own `[`/`{` pushed to).
+        # Prefer an exact depth match (the fully-closed-on-this-line case); fall back to
+        # `depth - 1` (the still-open-at-end-of-line case) only when no exact match exists.
+        if depth in last_key_at_depth:
+            keys[i] = last_key_at_depth[depth]
+        elif (depth - 1) in last_key_at_depth:
+            keys[i] = last_key_at_depth[depth - 1]
         out_lines.append(line)
     joined = "\n".join(out_lines)
     # bare `...` ellipses in arrays/objects (`["Q1", "Q2", ...]`) → a placeholder string
