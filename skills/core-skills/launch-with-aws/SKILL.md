@@ -2,7 +2,7 @@
 name: launch-with-aws
 description: "Migrates vibe-coded web applications to AWS. Handles the full workflow from analysis through migration to deployment, producing deployable AWS Blocks infrastructure code. Supports full-stack apps built with vibe-coding platforms (Lovable, Bolt.new, Replit) and frontend web applications and websites: React, Vue, Angular, Next.js, Nuxt, Astro, SvelteKit, Gatsby, Vite, Svelte, Solid, Docusaurus, and others (static sites, SPAs, and SSR frameworks with static export). Triggers on: launch with AWS, launch on AWS, deploy to AWS, migrate to AWS, host my app on AWS, move my app to AWS, transfer my app to AWS. Activates when the user wants to migrate a vibe-coded app or frontend web app to AWS, even if they don't say 'migrate' explicitly."
 metadata:
-  version: "3"
+  version: "5"
 ---
 
 # Launch with AWS
@@ -24,6 +24,8 @@ where `scripts/` is relative to this skill directory. The agent MUST set the wor
 Required files: [launch_with_aws.py](scripts/launch_with_aws.py), [launch_config.py](scripts/launch_config.py), [auth.py](scripts/auth.py), [auth_callback_server.py](scripts/auth_callback_server.py), [launch_api_client.py](scripts/launch_api_client.py), [archive.py](scripts/archive.py), [service model](references/launchwithaws-2026-06-15.json). When loaded via MCP, fetch all and write to a temp directory preserving structure before invoking.
 
 Each command outputs JSON to stdout on success, or exits non-zero with a JSON error on stderr.
+
+Two global flags may be added to any command: `--region <region>` selects the region the service runs the migration in, and `--aws-mcp-url <url>` passes the URL of the AWS MCP server the agent is connected to. See step 2.
 
 Dependencies: Python 3.10+ and `boto3`. The script checks both on startup and exits with a clear error if either is missing.
 
@@ -79,10 +81,10 @@ Replit app infrastructure and code are migrated to AWS-native services, but exis
 
 ## Input Resolution
 
-Resolve the user's input to a local directory path or GitHub URL:
+Resolve the user's input to a local directory path:
 
 - If the user provides a **local path**: pass that path directly.
-- If the user provides a **GitHub URL**: pass it directly (the service clones it server-side).
+- If the user provides a **GitHub URL**: clone the repository locally and use that directory.
 - If neither is provided: use the current working directory. If it doesn't look like an app directory, ask the user for the path.
 
 ## Flow
@@ -122,50 +124,47 @@ python3 scripts/launch_with_aws.py sign-out
 
 ### 2. Create Launch
 
-For a local directory, present this confirmation and wait for explicit approval:
+For a local directory, present this data-handling confirmation verbatim and wait for explicit approval:
 
-> Your source code will be uploaded to the Launch with AWS service to analyze your application and generate a migration plan. If you later approve execution, an AWS-hosted agent will modify a copy of your source code according to the plan and produce a migrated snapshot for you to download. Your uploaded source code and associated launch data are encrypted in transit and at rest and retained for up to 48 hours for recovery. Your data is never used to train AI models. We exclude Git history, Git-ignored files, and files matching common sensitive-file patterns. Sensitive-file filtering is best effort; review your project for secrets. Continue?
+> Your source code will be uploaded to the Launch with AWS service in **[regionName], [region]** ([sourceLabel]) to analyze your application and generate a migration plan. If you later approve execution, an AWS-hosted agent will modify a copy of your source code according to the plan and produce a migrated snapshot for you to download. Your uploaded source code and associated launch data are encrypted in transit and at rest and retained for up to 48 hours for recovery. Your data is never used to train AI models. We exclude Git history, Git-ignored files, and files matching common sensitive-file patterns. Sensitive-file filtering is best effort; review your project for secrets. Continue? Or reply with **[otherRegions regionName]** to run the migration there instead.
 
-Do NOT call `create-launch` for a local directory until the user explicitly confirms. A missing or ambiguous response means no.
+Fill in the region fields from `resolve-region`, verbatim, and offer each `otherRegions` entry as an alternative. If the agent is connected to an AWS MCP server, pass that server's URL verbatim. The script reads the region from it and decides whether it counts as a signal.
 
 ```bash
-python3 scripts/launch_with_aws.py create-launch <source-path-or-github-url> [name]
+python3 scripts/launch_with_aws.py resolve-region [--aws-mcp-url https://aws-mcp.<region>.api.aws/mcp]
 ```
 
-Creates a launch from a local directory (zips, uploads, then creates) or a GitHub URL (passes directly). Returns JSON with the full `launch` object including `launch.launchId`.
+Returns `{"region": ..., "regionName": ..., "source": ..., "sourceLabel": ..., "baseUrl": ..., "otherRegions": [{"region": ..., "regionName": ...}]}`.
+
+Do NOT call `create-launch` until the user explicitly confirms; a missing or ambiguous response means no. Naming one of `otherRegions` is both a region choice and approval — pass its `region` as `--region` and do not ask again.
+
+```bash
+python3 scripts/launch_with_aws.py create-launch <app-directory> [name] --region <region>
+```
+
+Zips the directory, uploads it, then creates the launch. Returns the full `launch` object including `launch.launchId` and the `region` it was created in, which becomes the user's saved default. **A launch exists only in its own region** — pass its `--region` on every later command.
 
 The launch starts in `analyzing` status and automatically progresses through analysis and planning.
 
 ### 3. Poll Launch Status
 
 ```bash
-python3 scripts/launch_with_aws.py get-launch-status <launch-id>
+python3 scripts/launch_with_aws.py get-launch-status <launch-id> --region <region>
 ```
 
-Poll until `status` is `planned` (ready for execution), `awaiting_input` (needs context answers — see step 4), or `failed`. Key status progression:
+Poll until `status` is `planned` (ready for execution) or `failed`; report any other status to the user. Key status progression:
 
 - `analyzing` → detecting app type and dependencies
-- `awaiting_input` → needs context answers (see `refine-plan`)
 - `planning` → generating migration plan
 - `planned` → ready for execution
 - `executing` → deployment in progress
 - `completed` → done
 - `failed` → check `failureReason`
 
-If `status` is `awaiting_input`, check `contextInputs` for the questions that need answering. Inputs with `required: true` must be answered before the launch can proceed; others are optional enrichment.
-
-### 4. Refine Plan (if awaiting_input)
+### 4. Get Full Launch Details & Confirm
 
 ```bash
-python3 scripts/launch_with_aws.py refine-plan <launch-id> key1=value1 key2=value2
-```
-
-Provide context answers to refine the plan. Triggers re-planning.
-
-### 5. Get Full Launch Details & Confirm
-
-```bash
-python3 scripts/launch_with_aws.py get-launch <launch-id> plan,cost_estimate
+python3 scripts/launch_with_aws.py get-launch <launch-id> plan,cost_estimate --region <region>
 ```
 
 Get full launch details. Optional second argument is a comma-separated include list: `analysis`, `plan`, `execution`, `cost_estimate`, `download_url`.
@@ -178,37 +177,39 @@ Present the cost estimate and plan to the user. The `costEstimate` field in the 
 >
 > - App type: [detected type from analysis]
 > - Architecture: [target architecture from plan]
-> - Estimated monthly cost: $X.XX/month
-> - Region: us-east-1
+> - Estimated monthly cost: $X.XX/month ([costEstimate.region] pricing)
+> - Migration runs in: [regionName], [region]
 >
 > Ready to proceed? This will execute the migration in an AWS-managed environment (no cost to you) and produce the migrated snapshot for you to download.
 
 Do NOT call `start-launch-execution` until the user explicitly confirms.
 
-### 6. Start Execution
+### 5. Start Execution
 
 ```bash
-python3 scripts/launch_with_aws.py start-launch-execution <launch-id>
+python3 scripts/launch_with_aws.py start-launch-execution <launch-id> --region <region>
 ```
 
 Starts deployment. Then poll with `get-launch-status` until `status` is `completed` or `failed`. Sleep at least 30 seconds between polls.
 
-### 7. Download
+### 6. Download
 
 ```bash
-python3 scripts/launch_with_aws.py get-launch-download-url <launch-id>
+python3 scripts/launch_with_aws.py get-launch-download-url <launch-id> --region <region>
 ```
 
 **Always present the full download URL to the user** — they may need it to download the migrated snapshot directly or for reference.
 
-### 8. List or Delete Launches
+### 7. List or Delete Launches
 
 ```bash
 python3 scripts/launch_with_aws.py list-launches
-python3 scripts/launch_with_aws.py delete-launch <launch-id>
+python3 scripts/launch_with_aws.py delete-launch <launch-id> --region <region>
 ```
 
-### 9. Post-Migration: Apply Migrated Code Locally
+`list-launches` queries both regions and returns `items` with a `region` on each launch; add `--region` to query one. A region that cannot be reached is reported under `errors` instead of failing the command, unless every queried region fails, in which case the command exits with that error.
+
+### 8. Post-Migration: Apply Migrated Code Locally
 
 After obtaining the download URL (adapt commands for the user's platform if not POSIX):
 
@@ -268,4 +269,4 @@ If a launch fails during analysis with a `failureReason` indicating an unsupport
 
 1. Tell the user: "This app type isn't directly supported by Launch with AWS yet. Let me search for other skills that can help deploy this kind of application."
 
-2. Search for relevant skills based on the app type (e.g. `aws-serverless`, `aws-containers`, `databases-on-aws`, `deploy-on-aws`, `aws-cdk`, `sagemaker-ai`).
+2. Search for relevant skills based on the app type (e.g. `aws-serverless`, `aws-containers`, `aws-database`, `aws-deployment`, `aws-cdk`, `aws-ai-ml`).

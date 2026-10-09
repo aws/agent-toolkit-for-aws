@@ -4,7 +4,7 @@
 
 # Cell 1: Install Dependencies
 
-# %pip install --upgrade 'sagemaker>=3.7.1,<4.0' boto3 -q  # NOTEBOOK_ONLY
+# %pip install --upgrade 'sagemaker>=3.22.0,<4.0' boto3 -q  # NOTEBOOK_ONLY
 
 # Cell 2: Setup & Credentials
 
@@ -91,6 +91,8 @@ print("Here are the recommended hyperparameters for the current training job:")
 print(f"Batch size:    {trainer.hyperparameters.global_batch_size}")
 print(f"Learning rate: {trainer.hyperparameters.learning_rate}")
 print(f"Epochs:        {trainer.hyperparameters.max_epochs}")
+
+# To see all available hyperparameters and their valid ranges: trainer.hyperparameters.get_info()
 
 # Cell 5: Hyperparameter Overrides
 
