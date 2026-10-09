@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": ["claude"],
+      "model_evidence": "observed",
+      "models": ["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307"],
+      "model_observations": [
+        {"normalized_model": "claude-3-5-sonnet-20240620", "raw_model": "anthropic/claude-3.5-sonnet", "model_family": "claude", "evidence": [{"provenance": "usage_api", "confidence": "high"}]},
+        {"normalized_model": "claude-3-haiku-20240307", "raw_model": "anthropic/claude-3-haiku", "model_family": "claude", "evidence": [{"provenance": "usage_api", "confidence": "medium"}]}
+      ]
+    },
+    {
+      "provider": "google",
+      "source_service": "vertex_ai",
+      "model_families": ["gemini"],
+      "model_evidence": "observed",
+      "models": ["gemini-1.5-pro"],
+      "model_observations": [
+        {"normalized_model": "gemini-1.5-pro", "raw_model": "google/gemini-pro-1.5", "model_family": "gemini", "evidence": [{"provenance": "usage_api", "confidence": "high"}]}
+      ]
+    },
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": ["gpt"],
+      "model_evidence": "observed",
+      "models": ["gpt-4o"],
+      "model_observations": [
+        {"normalized_model": "gpt-4o", "raw_model": "openai/gpt-4o", "model_family": "gpt", "evidence": [{"provenance": "usage_api", "confidence": "high"}]}
+      ]
+    }
+  ],
+  "gateways": [
+    {
+      "product": "openrouter",
+      "type": "llm_router",
+      "upstream_evidence": "observed",
+      "upstreams": [
+        {"provider": "anthropic", "source_service": "anthropic_api", "model_families": [{"family": "claude", "model_evidence": "observed", "models": ["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307"]}]},
+        {"provider": "google", "source_service": "vertex_ai", "model_families": [{"family": "gemini", "model_evidence": "observed", "models": ["gemini-1.5-pro"]}]},
+        {"provider": "openai", "source_service": "openai_api", "model_families": [{"family": "gpt", "model_evidence": "observed", "models": ["gpt-4o"]}]}
+      ]
+    }
+  ]
+}

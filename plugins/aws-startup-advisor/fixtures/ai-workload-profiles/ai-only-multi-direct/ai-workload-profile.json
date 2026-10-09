@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": ["claude"],
+      "model_evidence": "observed",
+      "models": ["claude-3-5-sonnet-20240620"],
+      "model_observations": [
+        {
+          "normalized_model": "claude-3-5-sonnet-20240620",
+          "raw_model": "claude-3-5-sonnet-20240620",
+          "model_family": "claude",
+          "evidence": [{"provenance": "code", "confidence": "high", "detail": "src/ai/anthropic_client.py:18"}]
+        }
+      ]
+    },
+    {
+      "provider": "google",
+      "source_service": "vertex_ai",
+      "model_families": ["gemini"],
+      "model_evidence": "observed",
+      "models": ["gemini-1.5-pro"],
+      "model_observations": [
+        {
+          "normalized_model": "gemini-1.5-pro",
+          "raw_model": "models/gemini-1.5-pro-latest",
+          "model_family": "gemini",
+          "evidence": [{"provenance": "iac", "confidence": "high", "detail": "vertex.tf:google_vertex_ai_endpoint.main"}]
+        }
+      ]
+    }
+  ],
+  "gateways": []
+}

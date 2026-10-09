@@ -6,11 +6,12 @@ so the skill folder is **self-contained** — it runs standalone (lifted out, zi
 or used on its own) without reaching outside its own directory.
 
 **Do not hand-edit anything in this directory.** Edit the canonical source instead,
-then re-copy it over every skill's `references/vendored/` copy of the same file.
-
-Every copy must stay **byte-identical** to the canonical source. A stale copy means
-this skill and the canonical source disagree, so verify the copies match (for example
-with `md5sum`) after editing the canonical file.
+then run `python3 plugins/aws-startup-advisor/tools/sync-vendored.py` from the repository root to bring every
+skill's `references/vendored/` copy back in sync. Every copy must stay **byte-identical**
+to the canonical source; CI runs `python3 plugins/aws-startup-advisor/tools/sync-vendored.py --check`
+(`mise run lint:vendored-parity`) and fails on any drift, any copy with no canonical source,
+any row in the table below with no file on disk, and any file on disk with no row. It cannot
+see a new `skills/shared/` file no skill vendors yet — adding one here means the copy **and** a row.
 
 | Vendored path        | Canonical source                   |
 | -------------------- | ---------------------------------- |

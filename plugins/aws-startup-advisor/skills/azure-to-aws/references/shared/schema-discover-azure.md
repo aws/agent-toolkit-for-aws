@@ -203,7 +203,8 @@ Design writes its own `warnings[]` with a separate vocabulary; see
       "justification": "seed:resource_group", // REQUIRED — see below
       "edges": [], // the edge set that JUSTIFIED this grouping
       "pattern_id": "unclassified",
-      "pattern_confidence": "inferred"
+      "pattern_confidence": "inferred",
+      "pattern_status": "catalog_absent" // catalog_absent until patterns.md exists — a defined state, not a gap (discover-assemble.md § Status)
     }
   ],
   "unclustered": []
