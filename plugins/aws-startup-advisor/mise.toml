@@ -1,0 +1,11 @@
+[tasks.ci]
+description = "Run startup advisor CI checks"
+depends = ["lint:model-id", "test"]
+
+[tasks."lint:model-id"]
+description = "Check model references against the lifecycle registry"
+run = "uv run --no-project python scripts/model-id-lint.py"
+
+[tasks.test]
+description = "Run plugin contract tests"
+run = "uv run --no-project --with pytest python -m pytest tests -q"
