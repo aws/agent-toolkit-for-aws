@@ -21,7 +21,7 @@ _knowledge:
   - { file: references/vendored/ai/bedrock-quotas.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
 _fragments:
   - _id: infra
-    _trigger: { _always: true }
+    _trigger: { _when: "azure-resource-inventory.json exists in $MIGRATION_DIR" }
     _file: phases/estimate/estimate-infra.md
   - _id: ai
     _trigger: { _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
@@ -43,46 +43,46 @@ _preconditions:
     _on_failure: _halt_and_inform
   - _check_single_active_phase: true
     _on_failure: _halt_and_inform
-  - _check_file_exists: [aws-design.json, preferences.json, azure-resource-inventory.json]
+  - _check_file_exists: preferences.json
     _on_failure: _unrecoverable
-  - _validate_json: [aws-design.json, preferences.json, azure-resource-inventory.json]
+  - _validate_json: preferences.json
     _on_failure: _unrecoverable
-  - _assert: "aws-design.json services[] exists and every entry has aws_service and aws_config. An EMPTY services[] is valid only in the case design.md allows — every inventory resource is in deferred[] or recorded in warnings[] as a skip — and then takes the all-deferred path in estimate-infra.md (priced workload totals 0, deferred_count equal to len(deferred[]) only, baseline controls called out as unpriced, decision gate still presented). An empty services[] with a resource in neither deferred[] nor warnings[] is an unaccounted design and is unrecoverable"
+  - _assert: "WHEN an infra route is active (azure-resource-inventory.json and aws-design.json both exist): both validate as JSON and the services[] assert below applies. WHEN the run is AI-only (azure-resource-inventory.json absent): aws-design-ai.json and ai-workload-profile.json exist and validate instead — this phase's AI fragment (estimate-ai.md) is what an AI-only run actually needs"
+    _on_failure: _unrecoverable
+  - _assert: "WHEN aws-design.json exists: its services[] exists and every entry has aws_service and aws_config. An EMPTY services[] is valid only in the case design.md allows — every inventory resource is in deferred[] or recorded in warnings[] as a skip — and then takes the all-deferred path in estimate-infra.md (priced workload totals 0, deferred_count equal to len(deferred[]) only, baseline controls called out as unpriced, decision gate still presented). An empty services[] with a resource in neither deferred[] nor warnings[] is an unaccounted design and is unrecoverable"
     _on_failure: _unrecoverable
 _postconditions:
-  - _check_file_exists: estimation-infra.json
+  - _assert: "WHEN an infra route is active (aws-design.json exists): estimation-infra.json exists and validates. WHEN the run is AI-only (aws-design.json absent): estimation-infra.json is NOT required to exist — there is no infra to price — and estimation-ai.json alone satisfies this phase's completion in combination with the AI-only postcondition already present below"
     _on_failure: _halt_and_inform
-  - _validate_json: estimation-infra.json
+  - _assert: "WHEN estimation-infra.json exists: projected_costs carries BOTH a 1:1 lift total and a right-sized total, and cost_comparison.rightsizing_delta states the difference between them"
     _on_failure: _halt_and_inform
-  - _assert: "projected_costs carries BOTH a 1:1 lift total and a right-sized total, and cost_comparison.rightsizing_delta states the difference between them"
+  - _assert: "WHEN estimation-infra.json exists: cost_comparison.rightsizing_delta.explanation is non-empty, and when the delta is 0 it states WHY — a $0 delta must be distinguishable from an uncomputed one"
     _on_failure: _halt_and_inform
-  - _assert: "cost_comparison.rightsizing_delta.explanation is non-empty, and when the delta is 0 it states WHY — a $0 delta must be distinguishable from an uncomputed one"
+  - _assert: "WHEN estimation-infra.json exists: current_costs.source is one of {cost_management_export, consumption_data, user_stated, derived_from_skus, unavailable}, and baseline_note is present for every source except cost_management_export"
     _on_failure: _halt_and_inform
-  - _assert: "current_costs.source is one of {cost_management_export, consumption_data, user_stated, derived_from_skus, unavailable}, and baseline_note is present for every source except cost_management_export"
+  - _assert: "WHEN estimation-infra.json exists: reservation_substitutions is present as an array; empty is correct when the baseline carries no per-resource consumption figures. No resource was priced from a literal $0 consumption figure without a recorded substitution"
     _on_failure: _halt_and_inform
-  - _assert: "reservation_substitutions is present as an array; empty is correct when the baseline carries no per-resource consumption figures. No resource was priced from a literal $0 consumption figure without a recorded substitution"
+  - _assert: "WHEN estimation-infra.json exists: optimization_opportunities is present as an array and follows references/vendored/estimate/ri-sp-eligibility.md's three-state rendering model. WHEN the design contains Fargate, EC2, or Lambda: a separate entry names Compute Savings Plan and attributes only those eligible services. WHEN the design contains provisioned RDS or Aurora: separate entries name Database Savings Plan and RDS Reserved Instances; they state that the products are mutually exclusive on the same workload. A generic 'commitment discounts' entry never substitutes for product-specific rows. Below the $50/month preliminary sizing threshold, retain each applicable product row with a null dollar value and its supported percentage range rather than omitting it. Compute Savings Plans remain percent-only until 30–90 days of AWS usage establishes a commitment floor. Every RI/Savings Plan rendering states that Activate credits do not cover upfront commitment costs"
     _on_failure: _halt_and_inform
-  - _assert: "optimization_opportunities is present as an array and follows references/vendored/estimate/ri-sp-eligibility.md's three-state rendering model. WHEN the design contains Fargate, EC2, or Lambda: a separate entry names Compute Savings Plan and attributes only those eligible services. WHEN the design contains provisioned RDS or Aurora: separate entries name Database Savings Plan and RDS Reserved Instances; they state that the products are mutually exclusive on the same workload. A generic 'commitment discounts' entry never substitutes for product-specific rows. Below the $50/month preliminary sizing threshold, retain each applicable product row with a null dollar value and its supported percentage range rather than omitting it. Compute Savings Plans remain percent-only until 30–90 days of AWS usage establishes a commitment floor. Every RI/Savings Plan rendering states that Activate credits do not cover upfront commitment costs"
+  - _assert: "WHEN estimation-infra.json exists: every rate key the design requires resolved to a rate row, or its line carries an exclusion_reason of 'no_rate', 'partial_rate' or 'no_quantity'. No line was priced from a neighbouring rate row of a different service, instance family, or operating system"
     _on_failure: _halt_and_inform
-  - _assert: "every rate key the design requires resolved to a rate row, or its line carries an exclusion_reason of 'no_rate', 'partial_rate' or 'no_quantity'. No line was priced from a neighbouring rate row of a different service, instance family, or operating system"
+  - _assert: "WHEN estimation-infra.json exists: every line whose design states license_model 'License Included', or otherwise states a Windows or SQL Server target, carries exclusion_reason 'partial_rate' with missing_component naming the licence, and is excluded from the totals — a Windows workload priced silently at the Linux rate is a gate failure"
     _on_failure: _halt_and_inform
-  - _assert: "every line whose design states license_model 'License Included', or otherwise states a Windows or SQL Server target, carries exclusion_reason 'partial_rate' with missing_component naming the licence, and is excluded from the totals — a Windows workload priced silently at the Linux rate is a gate failure"
+  - _assert: "WHEN estimation-infra.json exists: if any line carries an exclusion_reason then both totals carry is_floor true; if none does, neither total claims to be a floor"
     _on_failure: _halt_and_inform
-  - _assert: "if any line carries an exclusion_reason then both totals carry is_floor true; if none does, neither total claims to be a floor"
+  - _assert: "WHEN estimation-infra.json exists: recommendation.outcome is one of {go, conditional_go, defer_for_evidence, stay}; conditions is a non-empty array when outcome is conditional_go; outcome 'stay' only ever accompanies path 'stay'"
     _on_failure: _halt_and_inform
-  - _assert: "recommendation.outcome is one of {go, conditional_go, defer_for_evidence, stay}; conditions is a non-empty array when outcome is conditional_go; outcome 'stay' only ever accompanies path 'stay'"
+  - _assert: "WHEN aws-design.json exists: every service in its services[] appears in the cost breakdown exactly once — priced, or carrying an exclusion_reason with excluded_from_total true. None silently dropped from the breakdown"
     _on_failure: _halt_and_inform
-  - _assert: "every service in aws-design.json services[] appears in the cost breakdown exactly once — priced, or carrying an exclusion_reason with excluded_from_total true. None silently dropped from the breakdown"
-    _on_failure: _halt_and_inform
-  - _assert: "each total equals the arithmetic sum of its own per-service costs, excluding every line that carries an exclusion_reason"
+  - _assert: "WHEN estimation-infra.json exists: each total equals the arithmetic sum of its own per-service costs, excluding every line that carries an exclusion_reason"
     _on_failure: _halt_and_inform
   - _assert: "complexity_tier is one of {small, medium, large} and complexity_inputs records the values it was derived from"
     _on_failure: _halt_and_inform
-  - _assert: "a licensing_delta line is present if and only if preferences.json licensing._fired is true; when the Windows rate is unavailable its monthly_delta is null with a stated basis, never a remembered figure"
+  - _assert: "WHEN estimation-infra.json exists: a licensing_delta line is present if and only if preferences.json licensing._fired is true; when the Windows rate is unavailable its monthly_delta is null with a stated basis, never a remembered figure"
     _on_failure: _halt_and_inform
   - _assert: "no human labor, professional services, or people-time appears as a dollar figure or a one-time migration cost category"
     _on_failure: _halt_and_inform
-  - _assert: "when the design's target_region differs from the pricing cache _meta.region, the mismatch is stated on the artifact and carried into recommendation.conditions"
+  - _assert: "WHEN estimation-infra.json exists and the design's target_region differs from the pricing cache _meta.region: the mismatch is stated on the artifact and carried into recommendation.conditions"
     _on_failure: _halt_and_inform
   - _assert: "WHEN ai-workload-profile.json exists: estimation-ai.json exists, validates, and carries pricing_source (cached|live|cached_fallback|unavailable), cost_comparison with current_azure_monthly and projected_bedrock_monthly, and a recommendation whose path is migrate_optimized, migrate_phased, or stay. Traditional-AI workloads (document_extraction/image_analysis/speech_transcription) appear in services_not_estimated[], not in the token cost. When the profile is absent this is vacuously satisfied"
     _on_failure: _halt_and_inform

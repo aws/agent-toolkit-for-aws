@@ -223,7 +223,7 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
 `https://openrouter.ai/api/v1`.
 
 | # | Endpoint (GET)  | Purpose                                                                                                  | Output file     |
-| - | --------------- | -------------------------------------------------------------------------------------------------------- | --------------- |
+| - | --------------- | --------------------------------------------------------------------------------------------------------- | --------------- |
 | 1 | `/credits`      | `total_credits` purchased and `total_usage` used (account lifetime) — a spend sanity anchor              | `credits.json`  |
 | 2 | `/activity`     | daily rows: `date`, `model`, `model_permaslug`, `provider_name`, `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `usage` (USD) — the workhorse. **When `$WORKSPACE_ID` is set (Step 1.5), append `&workspace_id=$WORKSPACE_ID` — this FILTERS the response to that workspace's rows, not just splits them.** | `activity.json` |
 | 3 | `/key`          | rate-limit + remaining credit on the calling key (context only; optional — record `skipped` on any error)| `key.json`      |
@@ -414,7 +414,7 @@ account-wide one.
 
 ## Step 4: Merge into the AI Workload Profile (if it exists), Then Clean Up
 
-If `$MIGRATION_DIR/ai-workload-profile.json` exists (from app-code or IaC
+If `$MIGRATION_DIR/ai-workload-profile.json` exists (from app-code or live `az`
 discovery), update it — the API data is authoritative for OpenRouter spend and
 volume:
 
@@ -423,13 +423,14 @@ volume:
    - **No existing `current_costs`** → set
      `{ "monthly_ai_spend": <summary.monthly_cost_usd>, "services_detected":
      ["OpenRouter"], "source": "openrouter_usage_api" }`.
-   - **Existing costs for a DIFFERENT provider** (e.g. a billing CSV captured
-     Vertex spend, or the OpenAI usage path captured OpenAI-direct spend) → SUM
-     the providers: `source: "mixed"`, and record the per-provider split in
-     `breakdown[]` (`{ "provider": "openrouter", "monthly_spend": X, "source":
-     "openrouter_usage_api" }`, plus the other provider's entry). OpenRouter is a
-     router — its spend already includes the upstream providers it fronts, so do
-     NOT also add a separate "openai via openrouter" line; that would double-count.
+   - **Existing costs for a DIFFERENT provider** (e.g. an Azure Cost Management
+     export captured Azure OpenAI spend, or the direct-OpenAI usage path
+     captured OpenAI spend) → SUM the providers: `source: "mixed"`, and
+     record the per-provider split in `breakdown[]` (`{ "provider":
+     "openrouter", "monthly_spend": X, "source": "openrouter_usage_api" }`,
+     plus the other provider's entry). OpenRouter is a router — its spend
+     already includes the upstream providers it fronts, so do NOT also add a
+     separate "openai via openrouter" line; that would double-count.
    - **Existing costs from the SAME source window** → the API wins
      (`source: "openrouter_usage_api"`); move the displaced figure into
      `current_costs.conflicting_sources[]` — never silently resolved.
@@ -482,8 +483,8 @@ volume:
 If `ai-workload-profile.json` does NOT exist, Clarify and Estimate read
 `openrouter-usage-profile.json` directly for spend and volumes — but it is a
 **supplement, not an anchor**: the run still needs at least one primary artifact
-(resource inventory, AI workload profile, or billing profile) to pass the Discover
-handoff gate.
+(resource inventory, AI workload profile, or live-capture manifest) to pass the
+Discover handoff gate.
 
 **Clean up (default, not optional):** delete
 `$MIGRATION_DIR/.openrouter-key-env` now — the key is no longer needed. (This is

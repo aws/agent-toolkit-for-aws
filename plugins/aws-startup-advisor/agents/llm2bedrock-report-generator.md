@@ -135,6 +135,50 @@ If the source model is not in this table (likely for any model released after th
 
 ## 6.3 Sum token usage + compute costs (per model pair)
 
+**Precedence check — existing usage-baseline takes priority over golden-dataset extrapolation.**
+Before doing anything else in this section, read the **`Usage baseline path:`** line from
+your own context block (passed by `SKILL.md`'s dispatch — do NOT derive or assume
+`$BEDROCK_RUN_DIR` yourself; you are a fresh, stateless dispatch and have no other way to
+resolve it). That line is written by `SKILL.md`'s Step 1.5 / A3 (from either `gcp-to-aws`'s
+or `azure-to-aws`'s Discover) and is omitted entirely from your context when no baseline file
+exists. **If the line is absent, nothing below changes — run the rest of §6.3 exactly as
+written, extrapolating from the golden-dataset sample.** If the line is present, read the
+`usage-baseline.json` file at that path:
+
+- For every model pair whose source model appears in `usage_by_model[]`, price BOTH sides of
+  that pair — source AND Bedrock — from the baseline's real monthly token volume, never from
+  the golden-dataset sample. Never mix volume sources for the same pair (e.g. a real-monthly
+  source figure compared against a sample-volume Bedrock figure overstates savings — this was
+  finding 12's bug). `cost_compare.py` below does this automatically: before running it,
+  populate its `BASELINE_TOKENS_BY_SOURCE` dict from `usage_by_model[]`, summing
+  `input_tokens + output_tokens` per model id (normalizing OpenRouter's
+  `prompt_tokens`/`completion_tokens`, and including Anthropic's
+  `cache_read_tokens`/`cache_creation_tokens` in the sum — same rule as `estimate-ai.md`'s
+  Prerequisites section). A model pair whose source model is absent from `usage_by_model[]`
+  still falls back to the golden-dataset-sample aggregation (unchanged, current behavior) —
+  §6.1 (Bedrock pricing lookup) is unchanged either way; only the TOKEN VOLUME each pair is
+  priced over changes source, per pair.
+- Read `summary.monthly_cost_usd_is_blended_estimate` first: when `true`, label the figure as
+  a **reference** figure (with the `active_days` value from the relevant `windows` entry)
+  rather than an unqualified monthly baseline — do not present it as if it were a full-month
+  number. When `false`, present `monthly_cost_usd` as a normal blended monthly baseline.
+- `usage_by_model[]` rows carry `provider` and `partial_window` — use `partial_window` the
+  same way, per row, when breaking the figure down by model.
+- **`windows.<provider>.cost_status` — the source-side dollar comparison can be unavailable
+  even when token volume is known.** Check every contributing provider's `cost_status` before
+  computing a savings percentage. When any provider's `cost_status` is `"cost_unavailable"`:
+  that provider's dollars were already excluded from `usage-baseline.json`'s
+  `summary.monthly_cost_usd` (Step 1.5 step 6) — do NOT treat the resulting total as "the full
+  source cost" without saying so. Present that provider's token volume normally (it feeds the
+  Bedrock-side cost computation below exactly as any other provider's volume would), but flag
+  the source-side dollar comparison for that provider as unavailable — e.g. "Source cost
+  unavailable for Anthropic — usage captured, cost data could not be retrieved. Bedrock cost
+  shown below; no $ comparison for this provider's traffic." Do NOT compute an overall savings
+  percentage that silently treats the missing provider's dollar contribution as zero — a
+  savings % computed against an incomplete source total overstates savings. If every
+  contributing provider is `cost_unavailable`, skip the savings-percentage line entirely and
+  state plainly that no source-side cost baseline exists for this run.
+
 The migration plan may map multiple source models to multiple Bedrock models (e.g., `gpt-4o → claude-sonnet` for complex tasks, `gpt-4o-mini → nova-lite` for simple tasks). Each pair has different per-token prices AND likely different token volumes, so costs MUST be computed per pair, not once globally.
 
 If the golden dataset records which source model each prompt used (e.g., a `source_model` field), aggregate tokens per source model. If it does not, fall back to attributing all tokens to the primary pair and flag the approximation in the Risk Assessment section.
@@ -159,7 +203,20 @@ MODEL_PAIRS = [
     # ("gpt-4o-mini", "amazon.nova-lite-v1:0",                    0.15,  0.60, 0.06,  0.24),
 ]
 
-# Aggregate tokens per source model. Falls back to a single bucket when source_model is absent.
+# Populate ONLY when the §6.3 precedence check found a `Usage baseline path:` AND the pair's
+# source model appears in that usage-baseline.json's `usage_by_model[]`. Key = source_model_id
+# (matching MODEL_PAIRS[i][0]); value = that model's real monthly {"input": N, "output": N}
+# token totals (sum of usage_by_model[] rows for that model id across all contributing
+# providers — normalize OpenRouter's prompt_tokens/completion_tokens and include Anthropic's
+# cache_read_tokens/cache_creation_tokens, per estimate-ai.md's Prerequisites rule). A model
+# pair whose source model is NOT a key here falls back to the golden-dataset sample below —
+# both sides of a pair always share the SAME volume source, never mixed.
+BASELINE_TOKENS_BY_SOURCE = {
+    # "gpt-4o": {"input": 42_000_000, "output": 9_000_000},
+}
+
+# Aggregate golden-dataset tokens per source model (used ONLY for pairs absent from
+# BASELINE_TOKENS_BY_SOURCE). Falls back to a single bucket when source_model is absent.
 tokens_by_source = defaultdict(lambda: {"input": 0, "output": 0})
 with open("<repo>/.saws-migrate/golden-dataset/prompts.jsonl") as f:
     for line in f:
@@ -171,9 +228,10 @@ with open("<repo>/.saws-migrate/golden-dataset/prompts.jsonl") as f:
 
 # Resolve unattributed tokens into the PRIMARY pair exactly once (avoids double-counting
 # across model pairs). Uses += so it merges cleanly when the primary pair also has its
-# own attributed tokens.
+# own attributed tokens. Skipped entirely when the primary pair is baseline-covered (its
+# volume source is the baseline, not this sample).
 unattributed = tokens_by_source.pop("__unattributed__", None)
-if unattributed and MODEL_PAIRS:
+if unattributed and MODEL_PAIRS and MODEL_PAIRS[0][0] not in BASELINE_TOKENS_BY_SOURCE:
     primary = MODEL_PAIRS[0][0]
     tokens_by_source[primary]["input"] += unattributed["input"]
     tokens_by_source[primary]["output"] += unattributed["output"]
@@ -182,23 +240,34 @@ total_source_cost = 0.0
 total_bedrock_cost = 0.0
 rows = []
 for src, tgt, s_in, s_out, b_in, b_out in MODEL_PAIRS:
-    bucket = tokens_by_source.get(src, {"input": 0, "output": 0})
+    if src in BASELINE_TOKENS_BY_SOURCE:
+        bucket = BASELINE_TOKENS_BY_SOURCE[src]
+        basis = "baseline"
+    else:
+        bucket = tokens_by_source.get(src, {"input": 0, "output": 0})
+        basis = "sample"
     in_tok, out_tok = bucket["input"], bucket["output"]
+    # Both costs below are computed from `in_tok`/`out_tok` — the SAME volume for this pair,
+    # whichever source it came from. Never price one side from the baseline and the other
+    # from the golden-dataset sample for the same pair.
     source_cost = (in_tok * s_in + out_tok * s_out) / 1_000_000
     bedrock_cost = (in_tok * b_in + out_tok * b_out) / 1_000_000
     total_source_cost += source_cost
     total_bedrock_cost += bedrock_cost
-    rows.append((src, tgt, in_tok, out_tok, source_cost, bedrock_cost))
+    rows.append((src, tgt, basis, in_tok, out_tok, source_cost, bedrock_cost))
 
-for src, tgt, in_tok, out_tok, sc, bc in rows:
-    print(f"{src} -> {tgt}: input={in_tok} output={out_tok} source=${sc:.4f} bedrock=${bc:.4f}")
+for src, tgt, basis, in_tok, out_tok, sc, bc in rows:
+    print(f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} source=${sc:.4f} bedrock=${bc:.4f}")
 print(f"TOTAL source=${total_source_cost:.4f} bedrock=${total_bedrock_cost:.4f}")
 if total_source_cost > 0:
     savings_pct = (total_source_cost - total_bedrock_cost) / total_source_cost * 100
     print(f"Estimated savings: {savings_pct:+.1f}%")
 ```
 
-If the plan has only ONE model pair, `MODEL_PAIRS` simply has one tuple — the structure is the same.
+If the plan has only ONE model pair, `MODEL_PAIRS` simply has one tuple — the structure is the
+same. `BASELINE_TOKENS_BY_SOURCE` stays empty (as shown) when §6.3's precedence check found no
+`Usage baseline path:` line — in that case every pair resolves from the golden-dataset sample
+exactly as before this fix.
 
 **Pre-run check.** Before running the cost script, verify you have populated `MODEL_PAIRS` with at least one tuple — leaving the placeholder commented-out tuples in place produces `TOTAL source=$0.0000 bedrock=$0.0000` and a missing savings line. If you cannot resolve pricing for any pair (e.g. §6.1 returned `available: false` for the only Bedrock target AND §6.2 has no entry for the source), skip the cost script entirely; in §7's Cost Comparison section, replace the table with the fallback line `> *Cost comparison unavailable — pricing could not be resolved for this model pair. See Risk Assessment.*` and report `cost_savings_percent: 0` in §8.
 
@@ -464,11 +533,19 @@ versus the source provider.
 
 _Based on <N> prompt/response pairs from <log source>_
 
-Monthly-cost rule: the golden dataset is a SAMPLE, not a month of traffic. If the log source
-includes a time span (timestamps covering D days), extrapolate: `monthly = sample_cost * (30 / D)`
-and state the basis. If no time span is known, do NOT invent a monthly figure — render the
-per-1M-token rates and the sample cost only, with the line
-`*Monthly estimate unavailable — sample has no time-span information.*`
+**State the basis per row, not just once for the whole table.** `cost_compare.py`'s stdout
+tags each row `(baseline)` or `(sample)` — carry that tag into this table (e.g. a "Basis"
+column, or an inline note per row) so the reader knows which figures are real-usage-driven
+(priced from `usage-baseline.json`'s actual monthly token volume) and which are
+sample-extrapolated (priced from the golden dataset). Do NOT present a blended total as if
+every row shared one basis.
+
+Monthly-cost rule (sample-basis rows only — a baseline-basis row's volume IS already a real
+month, no extrapolation needed): the golden dataset is a SAMPLE, not a month of traffic. If
+the log source includes a time span (timestamps covering D days), extrapolate:
+`monthly = sample_cost * (30 / D)` and state the basis. If no time span is known, do NOT
+invent a monthly figure — render the per-1M-token rates and the sample cost only, with the
+line `*Monthly estimate unavailable — sample has no time-span information.*`
 
 ---
 
