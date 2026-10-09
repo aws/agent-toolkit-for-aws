@@ -9,7 +9,7 @@ Surface these as awareness with tradeoffs when the user is committed to a single
 - If the customer needs HIPAA/SOC/FedRAMP, governance, multi-agent A2A, code export, or
   multi-model → AgentCore wins regardless.
 
-## Bedrock Managed Agents (OpenAI-committed)
+## Bedrock Managed Agents (OpenAI-committed) — now in Public Preview (Oct 2026)
 
 - Available in us-east-1 and expanding.
 - If the customer needs model flexibility, governance, or code export → AgentCore wins.
