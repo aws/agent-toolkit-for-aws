@@ -181,13 +181,22 @@ particular, when any of `openai-usage-profile.json`, `openrouter-usage-profile.j
 real observed month beats a tier midpoint. Normalize per Prerequisites above: OpenRouter's
 `prompt_tokens`/`completion_tokens` → `input_tokens`/`output_tokens`; Anthropic's
 `cache_read_tokens`/`cache_creation_tokens` INCLUDED in the sum (additional volume, not a
-sub-accounting of `input_tokens`). **Exception:** for any
-profile whose `metadata.partial_window` is `true`, a few days of tokens is NOT a monthly volume
-for that profile — projecting it as one understates the Bedrock estimate. Use the tier table
-(from `ai_token_volume`) for a profile with no full-window data, and present that profile's
-partial actuals as a reference figure only, labeled with `active_days` (a different, full-window
-profile that exists alongside it still contributes its real totals). **`cost_status` exception
-(independent of the `partial_window` exception above — a profile can trip one, both, or neither):**
+sub-accounting of `input_tokens`) — a workload with 1M/0.1M tokens direct plus 9M/0.9M tokens
+via OpenRouter is a 10M/1M-token workload, not a 1M/0.1M one. **Exception:** if a profile's
+`metadata.partial_window` is `true`, a few days of tokens from THAT profile is NOT a monthly
+volume — projecting it as one understates the Bedrock estimate. **Do NOT fall back to the
+`ai_token_volume` tier table for the partial profile's portion** — that tier (when set by
+Clarify's auto-resolve, `clarify-ai-only.md` § Q3) was derived by summing ONLY the full-window
+profile(s), so it already represents a DIFFERENT provider's observed volume, not this partial
+one; substituting it infers a volume for the partial provider that was never actually observed
+for that provider. Instead: keep the other, full-window profile's actual totals for its own
+portion, and treat the partial profile's portion as **unresolved** — show its partial actuals
+as a reference figure labeled with `active_days`, plus explicit low/medium/high scenario rows
+(using the tier table's absolute volumes, each labeled "(scenario for the partial provider's
+portion, not derived from the other provider's volume)") so the comparison's sensitivity to
+that provider's true monthly volume is visible, rather than presenting one blended number as
+if it were fully data-derived. **`cost_status` exception (independent of the `partial_window`
+exception above — a profile can trip one, both, or neither):**
 `metadata.cost_status: "cost_unavailable"` does NOT disqualify a profile's token volume — token
 counts came from `usage_report/messages`, which succeeded; only `cost_report` failed. Include
 that profile's `usage_by_model[]` token totals in Part 2's volume sum as normal. The

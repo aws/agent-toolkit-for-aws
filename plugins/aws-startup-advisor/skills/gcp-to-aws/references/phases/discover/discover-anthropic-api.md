@@ -400,14 +400,21 @@ volume:
    providers, so never pick one with max():
    - **No existing `current_costs`** → set
      `{ "monthly_ai_spend": <summary.monthly_cost_usd>, "services_detected":
-     ["Anthropic Claude API"], "source": "anthropic_usage_api" }`.
+     ["Anthropic Claude API"], "source": "anthropic_usage_api", "partial_window":
+     <this profile's metadata.partial_window>, "cost_status": <this profile's
+     metadata.cost_status> }` — stamp both fields here even in the single-provider
+     case, so Clarify's Q3 (`clarify-ai-only.md`) can check them without re-opening
+     the usage-profile file itself.
    - **Existing billing-CSV costs for a DIFFERENT provider** (e.g. `ai_source`
      is `both`, CSV captured Vertex spend) → SUM the providers:
      `monthly_ai_spend` = Anthropic + GCP (+ any other provider already
      present), `source: "mixed"`, and record the per-provider split in
      `breakdown[]`:
-     `{ "provider": "anthropic", "monthly_spend": X, "source": "anthropic_usage_api" }`
-     alongside the other providers' existing entries.
+     `{ "provider": "anthropic", "monthly_spend": X, "source": "anthropic_usage_api",
+     "partial_window": <this profile's metadata.partial_window>, "cost_status": <this
+     profile's metadata.cost_status> }`
+     alongside the other providers' existing entries (each stamped with its own
+     `partial_window`/`cost_status` the same way).
    - **Existing costs for the SAME provider** (a billing export that already
      contains Anthropic spend, same window) → the API wins (`source:
      "anthropic_usage_api"`); move the displaced figure into

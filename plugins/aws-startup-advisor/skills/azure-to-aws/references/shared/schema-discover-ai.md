@@ -176,10 +176,23 @@ for the main resource inventory. See `discover.md`'s producer-agreement rule for
 Present ONLY if billing (Azure Cost Management export) OR one of the usage APIs ran; omit
 otherwise. `{ monthly_ai_spend, services_detected[], source, breakdown[], conflicting_sources[] }`,
 `source ∈ billing_data | openai_usage_api | openrouter_usage_api | anthropic_usage_api | mixed`.
-`breakdown[]` (present only when `mixed`): `{ provider, monthly_spend, source }`,
-`provider ∈ azure | openai | openrouter | anthropic`. Provider-aware merge: billing (Azure) and
-any combination of the OpenAI / OpenRouter / Anthropic usage APIs → SUM with `source: mixed`;
-same-provider overlap → the usage API wins, displaced → `conflicting_sources[]`.
+`breakdown[]` (present only when `mixed`): `{ provider, monthly_spend, source, partial_window,
+cost_status }`, `provider ∈ azure | openai | openrouter | anthropic`. Provider-aware merge:
+billing (Azure) and any combination of the OpenAI / OpenRouter / Anthropic usage APIs → SUM
+with `source: mixed`; same-provider overlap → the usage API wins, displaced →
+`conflicting_sources[]`. **`partial_window`/`cost_status` provenance (finding 14):** the
+Anthropic usage-API merge (both single-provider and `mixed` cases) and the OpenAI usage-API
+merge (`discover-anthropic-api.md` and `discover-openai-api.md` Step 4) stamp that provider's
+own `metadata.partial_window` and `metadata.cost_status` onto its
+`current_costs`/`breakdown[]` entry at merge time — this is how Clarify's Q3
+(`clarify-ai-only.md`) can trust or discount a merged `monthly_ai_spend` figure without
+re-opening the source usage-profile file. The OpenRouter merge
+(`discover-openrouter-api.md`) does not yet stamp these fields (out of scope for finding 14 —
+Clarify's Q3 only reads `current_costs.monthly_ai_spend`, which the OpenRouter merge also
+writes, but no Clarify path keys off OpenRouter's `partial_window`/`cost_status`
+specifically yet). A `billing_data`-only entry (no usage API contributed) has no
+`partial_window`/`cost_status` of its own — billing exports are always full-window, complete
+figures by construction.
 
 ## detection_signals[]
 

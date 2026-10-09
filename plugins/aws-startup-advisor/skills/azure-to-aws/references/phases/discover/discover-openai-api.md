@@ -320,12 +320,19 @@ and volume:
    - **No existing `current_costs`** → set
      `{ "monthly_ai_spend": <summary.monthly_cost_usd>, "services_detected":
      [<distinct endpoint_type values, prefixed "OpenAI ">], "source":
-     "openai_usage_api" }`.
+     "openai_usage_api", "partial_window": <this profile's metadata.partial_window>,
+     "cost_status": <this profile's metadata.cost_status, or the
+     partial_window-derived default per SKILL.md's rule if this profile doesn't
+     write cost_status itself> }` — stamp both fields here even in the
+     single-provider case, so Clarify's Q3 (`clarify-ai-only.md`) can check them
+     without re-opening the usage-profile file itself.
    - **Existing Azure-Cost-Management costs for a DIFFERENT provider** (e.g.
      `ai_source` is `both`, the export captured Azure OpenAI spend) → SUM the
      providers: `monthly_ai_spend` = OpenAI + Azure, `source: "mixed"`, and
      record the per-provider split in `breakdown[]`:
-     `[{ "provider": "openai", "monthly_spend": X, "source": "openai_usage_api" },
+     `[{ "provider": "openai", "monthly_spend": X, "source": "openai_usage_api",
+     "partial_window": <this profile's metadata.partial_window>, "cost_status":
+     <this profile's metadata.cost_status> },
      { "provider": "azure", "monthly_spend": Y, "source": "billing_data" }]`.
    - **Existing costs for the SAME provider** (an export that already
      contains direct-OpenAI spend, same window) → the API wins (`source:
