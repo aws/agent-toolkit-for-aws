@@ -93,7 +93,8 @@ an error if it differs (inventory changed — user must re-Discover).
     "complexity_tier": "small",
     "pricing_source": "cached",
     "region_note": null,
-    "calculator_url": null
+    "calculator_url": null,
+    "recommendation_outcome": "conditional_go" // optional, nullable — workshop-invariants.md § 4. Absent until the estimate wrote v2 decision fields.
   },
   "paths": {
     "preferences": "scenarios/scenario-003.preferences.json",
