@@ -24,6 +24,14 @@ _knowledge:
 
 ## Step 1: Assemble the artifact
 
+0. **AI-only run (the infra fragment did not run because
+   `azure-resource-inventory.json` is absent): do not write `estimation-infra.json`
+   at all.** There is no infra to price, so an empty or placeholder file would
+   misrepresent a route that was never run. Write only `estimation-ai.json`
+   (when the AI fragment ran) and skip the rest of this step — `estimate.md`'s
+   AI-only postcondition no longer requires `estimation-infra.json` on this
+   route. The decision gate in Step 2 still presents, built from
+   `estimation-ai.json` alone.
 1. Merge the cost-engine contribution into `estimation-infra.json` per
    `references/vendored/estimate/estimation-infra.schema.json`. That schema has
    no `additionalProperties: false`, so the azure-specific keys the cost engine
