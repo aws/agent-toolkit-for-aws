@@ -309,11 +309,13 @@ commit." Suggest at most one.
 For AI-only / billing-only runs (no infra inventory), present the gate without
 option B and set `phases.workshop` → `"completed"`. Prefix the presented gate
 with the same breadcrumb line: "Phase 4 of 6 complete (Estimate). Remaining:
-Generate (+ optional Feedback)." Also replace option C's label with
-`[C] Generate the Bedrock setup script, provider adapter, and A/B test harness`
-and add a line to the presented gate stating that this does not create
-servers and does not rewrite application code — the AI-only Generate route
-produces no infrastructure and no application-code changes.
+Generate (+ optional Feedback)." For an AI-only run, also replace option C's
+label with `[C] Generate the Bedrock setup script, provider adapter, and A/B
+test harness` and add a line to the presented gate stating that this does not
+create servers and does not rewrite application code — the AI-only Generate
+route produces no infrastructure and no application-code changes. A
+billing-only run keeps option C's existing label (`[C] Generate Terraform and
+migration scripts`); that route writes `terraform/skeleton.tf`.
 
 _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FAIL`, never from inner workshop reprices._
 

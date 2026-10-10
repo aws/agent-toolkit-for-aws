@@ -185,8 +185,9 @@ Costs endpoint (row 1) accepts `bucket_width=1d&limit` up to 180 (default 7),
 but every usage endpoint (rows 2–6) caps `bucket_width=1d&limit` at **31**
 (default 7) — this is a copy-paste trap when modeling a usage row on the
 Costs row's own query string. A `limit=180` request against any usage
-endpoint is rejected outright, which (per the Error Handling table below)
-triggers the all-usage-failed exit with no output.
+endpoint is rejected outright; if it happens on every usage endpoint, that
+matches the Error Handling table's "Every usage endpoint failed" row below —
+exit with no output and tell the user which scope is missing.
 
 | # | Endpoint (GET, `https://api.openai.com`)      | Query parameters                                                                     | Output file                       |
 | - | --------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------- |
