@@ -310,12 +310,28 @@ For AI-only / billing-only runs (no infra inventory), present the gate without
 option B and set `phases.workshop` → `"completed"`. Prefix the presented gate
 with the same breadcrumb line: "Phase 4 of 6 complete (Estimate). Remaining:
 Generate (+ optional Feedback)." For an AI-only run, also replace option C's
-label with `[C] Generate the Bedrock setup script, provider adapter, and A/B
-test harness` and add a line to the presented gate stating that this does not
-create servers and does not rewrite application code — the AI-only Generate
-route produces no infrastructure and no application-code changes. A
-billing-only run keeps option C's existing label (`[C] Generate Terraform and
-migration scripts`); that route writes `terraform/skeleton.tf`.
+label to match the selected migration route — read `aws-design-ai.json` →
+`ai_architecture.code_migration.migration_path` (see
+`generate-artifacts-ai.md`'s Step 0 table for the full mapping):
+
+- `"mantle"` → `[C] Generate the Mantle migration script and A/B test harness`
+  (no provider adapter on this path — the OpenAI SDK stays, only base
+  URL/credential/model ID change).
+- `migration_path` is `"llm_router"`, `"api_gateway"`, `"voice_platform"`, or
+  `"framework"` → `[C] Generate the gateway config, Bedrock setup script, and
+  A/B test harness` (no provider adapter on this path either — the gateway
+  config is the adapter).
+- `"direct"`, `"gpt-oss"`, or absent → `[C] Generate the Bedrock setup script,
+  provider adapter, and A/B test harness`.
+
+Whichever label is shown, add a line to the presented gate stating that this
+does not deploy any servers and does not rewrite the existing application
+code — but it DOES write `ai-migration/bedrock_monitoring.tf` (budget,
+anomaly detection, inference profiles — Step 3F, emitted on every path): say
+so explicitly rather than claiming "no infrastructure," since that file is
+real Terraform the user will see land in Generate's output. A billing-only
+run keeps option C's existing label (`[C] Generate Terraform and migration
+scripts`); that route writes `terraform/skeleton.tf`.
 
 _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FAIL`, never from inner workshop reprices._
 

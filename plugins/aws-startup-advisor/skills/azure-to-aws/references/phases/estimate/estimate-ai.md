@@ -138,14 +138,16 @@ match wins:**
    `cost_unavailable` means "usage is known, cost specifically is not" — a profile can be
    `partial_window: false` and still `cost_status: "cost_unavailable"`.**
 3. **Estimated from token volume** — use `ai_constraints.ai_token_volume.value` from
-   `preferences.json` with **OpenAI / Azure OpenAI source list prices** from `pricing-cache.md`
-   (under "Source Provider Pricing → OpenAI / Azure OpenAI"). Azure OpenAI serves the same GPT
-   models and reads those same OpenAI rows — there is no separate Azure-OpenAI table. Apply the
-   60/40 input/output ratio if the actual ratio is unknown. **`pricing-cache.md` has no
-   source-side listed-price row for Anthropic-direct or OpenRouter today** — level 3 does not
-   apply to an Anthropic-direct or OpenRouter workload with no usage profile and no
-   `current_costs`; fall straight through to level 4 (multi-tier, no dollar comparison) for
-   those two. Do not add new fallback pricing as a side effect of this gap.
+   `preferences.json` with source-provider list prices from `pricing-cache.md` (under "Source
+   Provider Pricing"), matched to the workload's source: **OpenAI / Azure OpenAI** → the
+   "OpenAI / Azure OpenAI" table (Azure OpenAI serves the same GPT models and reads those same
+   OpenAI rows — there is no separate Azure-OpenAI table); **Anthropic-direct** → the "Anthropic
+   (Standard Tier, 1P API)" table (Claude Haiku 4.5 / Sonnet 4.5 / Sonnet 5). Apply the 60/40
+   input/output ratio if the actual ratio is unknown. **`pricing-cache.md` still has no
+   source-side listed-price row for OpenRouter** — level 3 does not apply to an OpenRouter
+   workload with no usage profile and no `current_costs`; fall straight through to level 4
+   (multi-tier, no dollar comparison) for that case. Do not add new fallback pricing as a side
+   effect of this gap.
 4. **None available / multi-tier** — note in output and present the model comparison at multiple
    volume tiers so the user can find their range.
 

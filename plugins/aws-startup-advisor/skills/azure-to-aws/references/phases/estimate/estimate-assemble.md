@@ -96,11 +96,24 @@ Say a row name to change it — I'll re-run Design and Estimate and show this pa
 
 For an AI-only run (Step 1 item 0 — no `estimation-infra.json` because
 `azure-resource-inventory.json` is absent), present the gate without option B
-(there is no infra to reprice) and replace option C's label with
-`[C] Generate the Bedrock setup script, provider adapter, and A/B test harness`,
-adding a line to the presented gate stating that this does not create servers
-and does not rewrite application code — the AI-only Generate route produces
-no infrastructure and no application-code changes.
+(there is no infra to reprice) and replace option C's label to match the
+selected migration route — read `aws-design-ai.json` →
+`ai_architecture.code_migration.migration_path` (see
+`generate-artifacts-ai.md`'s Step 0 table for the full mapping):
+
+- `mantle_openai_responses` → `[C] Generate the Mantle migration script and A/B test harness`
+  (no provider adapter on this path — the OpenAI SDK stays, only base URL/credential/model ID change).
+- `migration_path` is `llm_router` / `api_gateway` / `voice_platform` / `framework` →
+  `[C] Generate the gateway config, Bedrock setup script, and A/B test harness`
+  (no provider adapter on this path either — the gateway config is the adapter).
+- `direct`, `gpt-oss`, or absent → `[C] Generate the Bedrock setup script, provider adapter, and A/B test harness`.
+
+Whichever label is shown, add a line to the presented gate stating that this
+does not deploy any servers and does not rewrite the existing application
+code — but it DOES write `ai-migration/bedrock_monitoring.tf` (budget,
+anomaly detection, inference profiles — Step 3F, emitted on every path): say
+so explicitly rather than claiming "no infrastructure," since that file is
+real Terraform the user will see land in Generate's output.
 
 **The "Assumptions behind this number" block** is built from `preferences.json`:
 one row per key in `metadata.questions_defaulted[]`, plus one per key in
