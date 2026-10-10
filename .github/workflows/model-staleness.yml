@@ -1,0 +1,27 @@
+# Freshness gate for the Bedrock model-lifecycle registry.
+#
+# Runs on pull requests that touch plugins/aws-startup-advisor/, not on every
+# PR and not on a schedule. A failing check is the notification: it shows on
+# the pull request. --strict also fails once the registry's Last updated date
+# crosses its staleness window, so the author of the plugin change owns the
+# refresh. Drift and a malformed contract fail in either mode.
+name: Model lifecycle staleness
+on:
+  pull_request:
+    paths:
+      - "plugins/aws-startup-advisor/**"
+      - ".github/workflows/model-staleness.yml"
+  workflow_dispatch: {}
+permissions:
+  actions: none
+  contents: none
+jobs:
+  staleness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check Bedrock model-lifecycle registry freshness (strict)
+        run: python3 plugins/aws-startup-advisor/tools/model-staleness.py --strict
