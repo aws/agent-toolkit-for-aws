@@ -219,7 +219,7 @@ per-workspace spend list needed for selection, mirroring the project-scoping
 probe pattern used for other providers):
 
 ```
-GET /v1/organizations/cost_report?starting_at=<t>&group_by=workspace_id&limit=31  →  cost-by-workspace.json
+GET /v1/organizations/cost_report?starting_at=<t>&group_by[]=workspace_id&limit=31  →  cost-by-workspace.json
 ```
 
 - On 401: stop and tell the user: "The key was rejected. Confirm it is an
@@ -252,7 +252,7 @@ that filter, consistent with the Step 0 consent promise.
 
 | # | Endpoint (GET, `https://api.anthropic.com`) | Query parameters | Output file |
 |---|---|---|---|
-| 1 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1d`, `group_by=model,service_tier`, `workspace_ids[]…` (all selected, one call), `limit=31` | `usage-messages.json` |
+| 1 | `/v1/organizations/usage_report/messages` | `starting_at`, `bucket_width=1d`, `group_by[]=model&group_by[]=service_tier`, `workspace_ids[]…` (all selected, one call), `limit=31` | `usage-messages.json` |
 | 2 | `/v1/organizations/cost_report` | `starting_at`, `bucket_width=1d`, `group_by[]=workspace_id&group_by[]=description` (one call total, no `workspace_ids[]` param), `limit=31` | `cost-report.json` (single response, filtered client-side to rows whose `workspace_id ∈ $WORKSPACE_IDS`) |
 
 Grouping the cost endpoint by both `workspace_id` and `description` together

@@ -94,6 +94,14 @@ Say a row name to change it — I'll re-run Design and Estimate and show this pa
 [C] Generate the migration artifacts — Terraform, migration scripts, and docs
 ```
 
+For an AI-only run (Step 1 item 0 — no `estimation-infra.json` because
+`azure-resource-inventory.json` is absent), present the gate without option B
+(there is no infra to reprice) and replace option C's label with
+`[C] Generate the Bedrock setup script, provider adapter, and A/B test harness`,
+adding a line to the presented gate stating that this does not create servers
+and does not rewrite application code — the AI-only Generate route produces
+no infrastructure and no application-code changes.
+
 **The "Assumptions behind this number" block** is built from `preferences.json`:
 one row per key in `metadata.questions_defaulted[]`, plus one per key in
 `metadata.deferred_to_generate[]` (labelled "confirmed before Generate"). The two lists

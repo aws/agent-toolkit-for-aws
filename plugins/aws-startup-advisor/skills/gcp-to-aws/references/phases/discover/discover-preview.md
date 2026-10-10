@@ -39,7 +39,7 @@ Read from `ai-workload-profile.json`:
 | ------------------------- | -------------------------- | ---------------------------------------------------------------------------------- |
 | `model_count`             | `ai-workload-profile.json` | Count of distinct entries in `models[]`                                            |
 | `is_agentic`              | `ai-workload-profile.json` | `agentic_profile.is_agentic == true`                                               |
-| `has_multi_model_routing` | `ai-workload-profile.json` | `integration.gateway_type` is `"openrouter"`, `"litellm"`, `"kong"`, or `"apigee"` |
+| `has_multi_model_routing` | `ai-workload-profile.json` | `integration.gateway_type` is `"openrouter"`, `"litellm"`, `"kong"`, `"apigee"`, or `"llm_router"` |
 | `has_multiple_providers`  | `ai-workload-profile.json` | `summary.ai_source == "both"` or distinct provider values across `models[]` > 1    |
 | `capability_count`        | `ai-workload-profile.json` | Count of `true` values in `integration.capabilities_summary`                       |
 

@@ -125,6 +125,40 @@ def test_anthropic_cost_report_uses_single_call_with_compound_group_by() -> None
         )
 
 
+def test_anthropic_probe_uses_bracket_group_by() -> None:
+    """The Step 2b probe call must use `group_by[]=workspace_id` (bracket array
+    syntax), not the bare scalar `group_by=workspace_id` — a live Anthropic
+    API call with the scalar form returns HTTP 400 'Invalid parameter
+    group_by. Use group_by[] for array parameters.'"""
+    for f in ANTHROPIC_FILES:
+        text = f.read_text(encoding="utf-8")
+        step2 = text.split("## Step 2:", 1)[-1].split("## Step 3", 1)[0]
+        assert "group_by=workspace_id" not in step2, (
+            f"{f}: Step 2b probe still uses the bare scalar `group_by=workspace_id`"
+            f" — must be `group_by[]=workspace_id`"
+        )
+        assert "group_by[]=workspace_id&limit=31" in step2, (
+            f"{f}: Step 2b probe is missing the bracket-array `group_by[]=workspace_id` form"
+        )
+
+
+def test_anthropic_usage_messages_row_uses_bracket_group_by() -> None:
+    """The Capture Endpoint Table's usage_report/messages row (Row 1) must
+    group by model and service_tier using the bracket-array form, not the
+    comma-separated scalar form `group_by=model,service_tier`."""
+    for f in ANTHROPIC_FILES:
+        text = f.read_text(encoding="utf-8")
+        step2 = text.split("## Step 2:", 1)[-1].split("## Step 3", 1)[0]
+        assert "group_by=model,service_tier" not in step2, (
+            f"{f}: usage_report/messages row still uses the comma-separated "
+            f"scalar form `group_by=model,service_tier`"
+        )
+        assert "group_by[]=model&group_by[]=service_tier" in step2, (
+            f"{f}: usage_report/messages row is missing the bracket-array "
+            f"`group_by[]=model&group_by[]=service_tier` form"
+        )
+
+
 def test_anthropic_consent_block_discloses_preselection_probe() -> None:
     for f in ANTHROPIC_FILES:
         text = f.read_text(encoding="utf-8")
