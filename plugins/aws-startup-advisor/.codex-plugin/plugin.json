@@ -1,7 +1,7 @@
 {
   "name": "aws-startup-advisor",
   "version": "2.0.3",
-  "description": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate a production incident.",
+  "description": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate production incidents. It also answers your AWS Activate credits eligibility questions and finds startup offers you can use.",
   "author": {
     "name": "Amazon Web Services",
     "url": "https://github.com/aws/agent-toolkit-for-aws"
@@ -94,7 +94,7 @@
   "interface": {
     "displayName": "AWS Startup Advisor",
     "shortDescription": "Puts an AWS Startups Solutions Architect in your coding assistant.",
-    "longDescription": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate a production incident.\n\nAsk it things like:\nWe're pre-seed with two engineers. What should our AWS architecture look like?\nMigrate us off Google Cloud and tell me what it costs.\nWhich runtime should this agent use?\nOur API started returning 502s after the last deploy.",
+    "longDescription": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate production incidents. It also answers your AWS Activate credits eligibility questions and finds startup offers you can use.\n\nAsk it things like:\nWe're pre-seed with two engineers. What should our AWS architecture look like?\nMigrate us off Google Cloud and tell me what it costs.\nWhich runtime should this agent use?\nOur API started returning 502s after the last deploy.",
     "defaultPrompt": [
       "Help me build an MVP on AWS",
       "Find AWS Startups articles on cost optimization",
