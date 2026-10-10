@@ -1,0 +1,143 @@
+{
+  "_what_this_is": "Known findings from scripts/validate-artifacts.py --fixtures that do not fail the build YET. Every entry is a real gap between what a phase emits (as witnessed by a fixture golden) and what its contract document says, with a reason and the fix that would retire it. This file is a burn-down list, not an allow-list: an entry that stops matching anything is reported as STALE_BASELINE so it gets removed. Add an entry only with a reason that names the document or phase that must change.",
+  "entries": [
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/gcp-*/*gcp-resource-inventory.json",
+      "path": "resources[[]*[]].id",
+      "reason": "schema-discover-iac.md:107 says the resource identifier is `address` — 'NOT `id`'. The live-capture seed and the workshop goldens carry `id` anyway. Either discover-live.md is emitting an off-contract key or the doc must admit `id` for live-sourced resources. Decide, fix one side, remove this entry."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/gcp-*/*gcp-resource-inventory.json",
+      "path": "edges",
+      "reason": "Top-level `edges[]` is produced by discover-live / clustering (schema-discover-iac.md:312 describes edges inside clusters only). Add a top-level `edges` entry to the inventory example or move the array under clusters."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/gcp-*/*gcp-resource-inventory.json",
+      "path": "migration_id",
+      "reason": "Discover stamps `migration_id` on the inventory root; schema-discover-iac.md does not list it. Add to the root example (it is useful provenance) or stop emitting it."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/gcp-*/*gcp-resource-inventory.json",
+      "path": "metadata.discovery_timestamp",
+      "reason": "Live discovery writes `metadata.discovery_timestamp`; the doc's metadata example has `report_date` only. Reconcile the two timestamp fields in schema-discover-iac.md § Live discovery extensions."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/gcp-*/*gcp-resource-inventory.json",
+      "path": "metadata.project",
+      "reason": "Live discovery writes `metadata.project` as well as `live_metadata.project`. Document one home for the GCP project id."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/heroku-*/*heroku-resource-inventory.json",
+      "path": "migration_id",
+      "reason": "Discover stamps `migration_id` on the inventory root; schema-discover-heroku.md does not list it. Add to the root example or stop emitting."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/heroku-*/*heroku-resource-inventory.json",
+      "path": "skill",
+      "reason": "Discover stamps `skill: heroku-to-aws` on the inventory root; schema-discover-heroku.md does not list it. Same fix as migration_id."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/heroku-*/*heroku-resource-inventory.json",
+      "path": "resources[[]*[]].config.config_var_keys",
+      "reason": "discover-live-capture.md captures config var KEY NAMES into app config; schema-discover-heroku.md's addon/formation config tables do not list `config_var_keys`. Add it to the `formation` (or app-level) config schema with the names-only rule stated."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/heroku-*/*heroku-resource-inventory.json",
+      "path": "resources[[]*[]].config.hostname",
+      "reason": "Domain resources carry `config.hostname`; schema-discover-heroku.md documents `domain` resource IDs (line 149) but has no `domain` config block. Add a `### domain config` block."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/heroku-*/*heroku-resource-inventory.json",
+      "path": "resources[[]*[]].config.sni_endpoint",
+      "reason": "Domain resources carry `config.sni_endpoint`; undocumented. Same `### domain config` block as hostname."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*aws-design.json",
+      "path": "services[[]*[]].sizing_note",
+      "reason": "Design writes a free-text `sizing_note` beside `sizing_source`; schema-design-aws.md § sizing_provenance does not mention it. Add to the services[] example or fold the text into `rationale`."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*aws-design.json",
+      "path": "target_region",
+      "reason": "Design copies `global.target_region` to the artifact root; schema-design-aws.md § Shape has no `target_region`. Add it (Estimate reads it) or have Estimate read preferences.json instead."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "app_service_plans[[]*[]].plan_name_expression",
+      "reason": "clarify-compute.md Q-C2 carries the plan's name expression, SKU and worker count on the isolation row so the sheet can render them; schema-preferences.md's app_service_plans[] example lists only plan_azure_id / hosted_app_count / isolation_split. Add the three fields to the example."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "app_service_plans[[]*[]].sku_name",
+      "reason": "See plan_name_expression."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "app_service_plans[[]*[]].worker_count",
+      "reason": "See plan_name_expression."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "licensing.blockers[[]*[]].severity",
+      "reason": "clarify-assemble.md § clarify_status requires `severity: \"blocker\"` on licensing.blockers[] entries; schema-preferences.md's blockers[] example has azure_id and code only. Add severity (and message/detail) to the example."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "licensing.blockers[[]*[]].message",
+      "reason": "See severity."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "baseline.azure_monthly_spend.currency",
+      "reason": "clarify-global.md Q-A5 records currency and period alongside the spend figure; schema-preferences.md's baseline example has the bare row. Add both."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "baseline.azure_monthly_spend.period",
+      "reason": "See currency."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "clusters[[]*[]].confirmed",
+      "reason": "The assembler writes `confirmed` and `pattern_status` on each clusters[] row (pattern confirmation, clarify.md § Orientation); schema-preferences.md's clusters[] example has pattern_id only. Add both."
+    },
+    {
+      "code": "UNKNOWN_KEY",
+      "artifact": "fixtures/azure-*/*preferences.json",
+      "path": "clusters[[]*[]].pattern_status",
+      "reason": "See confirmed."
+    },
+    {
+      "code": "MISSING_REQUIRED",
+      "artifact": "fixtures/heroku-*/*heroku-resource-inventory.json",
+      "path": "apps",
+      "reason": "schema-discover-heroku.md § `apps[]` (REQUIRED): every Discover output carries one apps[] row per Heroku app. The heroku-nonweb-scaling (seed, after-design) and heroku-workshop (seed, after-arm64-reprice) inventories are hand-authored seeds for Design/Workshop fixtures and carry only resources[] (+ billing_profile). Add an apps[] row for each heroku_app the resources reference (app_name, heroku_generation, generation_action, discovery_status, failure_reason), then remove this entry."
+    },
+    {
+      "code": "MISSING_REQUIRED",
+      "artifact": "fixtures/heroku-workshop/*heroku-resource-inventory.json",
+      "path": "metadata",
+      "reason": "schema-discover-heroku.md § `metadata` (REQUIRED). The heroku-workshop seed and after-arm64-reprice inventories have no metadata block at all (migration_id/skill on the root only). Add metadata (report_date, discovery_sources, confidence) to both goldens, then remove this entry."
+    }
+  ]
+}
