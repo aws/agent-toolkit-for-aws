@@ -72,8 +72,38 @@ Explicit "None" → `["none"]` `chosen_by: user`. Skip/default → `["unknown"]`
 **Q2 — What matters most?** Quality (Sonnet/Opus) / Speed (Haiku, Nova) / Cost (Haiku, Nova
 Micro) / Special (→Q10) / Balanced (Sonnet). → `ai_priority`. Default `"balanced"`.
 
-**Q3 — Monthly AI spend on Azure OpenAI / OpenAI?** `<$500` / `$500-$2K` / `$2K-$10K` / `>$10K` /
-don't know. → `ai_monthly_spend`. Default `"$500-$2K"`.
+**Q3 — Monthly AI spend on Azure OpenAI / OpenAI?** **Auto-resolve (skip the question), same
+mechanism as Q7's existing auto-resolve below:** read `current_costs.monthly_ai_spend` from
+`ai-workload-profile.json` first when present — but do NOT trust it blindly. Discover's Step 4
+merge stamps `partial_window` (and `cost_status`, per the cost-completeness work) onto each
+`current_costs.breakdown[]` entry at merge time, so follow `current_costs.source` back to its
+contributor(s) before auto-resolving:
+
+- **`source` is a single provider** (not `"mixed"`) — check that provider's contributing
+  profile via `breakdown[]` if present, or re-derive from the single-source case (no
+  `breakdown[]` is written when there is only one contributor — treat it as that profile's own
+  `metadata.partial_window`/`cost_status`, which Discover's merge already read when it set
+  `monthly_ai_spend` unconditionally from `summary.monthly_cost_usd`). If that profile is
+  `partial_window: true` or `cost_status: "cost_unavailable"`, do NOT auto-resolve from this
+  figure — fall through to the `else sum` branch below (which independently re-checks every
+  profile) or, if that also finds nothing usable, ask normally.
+- **`source` is `"mixed"`** — check every `breakdown[].partial_window` /
+  `breakdown[].cost_status` entry. If ALL contributors are partial/cost-unavailable, do NOT
+  auto-resolve — fall through to asking normally. If SOME contributors are full/complete and
+  others are not, exclude the partial/unavailable contributors' dollar amounts from the
+  auto-resolved figure (same discipline as the estimate-side `cost_status` exception) and note
+  the exclusion to the user ("Resolved from your usage data, excluding `<provider>` whose cost
+  data is partial/unavailable").
+
+Else (no usable `current_costs`) sum `summary.monthly_cost_usd` across whichever of
+`openai-usage-profile.json`, `openrouter-usage-profile.json`, and `anthropic-usage-profile.json`
+exist (skip a profile whose `metadata.partial_window` is `true` in the sum — a partial window is
+not a monthly spend figure; also skip a profile whose `metadata.cost_status` is
+`"cost_unavailable"` — its dollar figure is `null`, never add `null` or substitute `0`; if EVERY
+existing profile is partial or cost-unavailable, fall through and ask normally); record the
+extraction (`chosen_by: "extracted"`, `source` naming whichever of `current_costs` / the usage
+profiles contributed). Ask normally only when none of these sources exist. `<$500` / `$500-$2K`
+/ `$2K-$10K` / `>$10K` / don't know. → `ai_monthly_spend`. Default `"$500-$2K"`.
 
 **Q4 — Cross-cloud API call concerns** (unique to AI-only — infra stays on Azure while AI calls
 route to AWS): Latency critical (VPC endpoint, closest region) / Acceptable (standard endpoint,
@@ -109,9 +139,22 @@ defaults for the rest" during Batch 1, skip the draft save (assembly happens sam
 ### Batch 2 — Technical requirements (Q6–Q11)
 
 **Q6 — Input types** (text / vision / audio-video). Skip when `capabilities_summary` is
-definitive. → `ai_vision`. **Q7 — Monthly usage volume.** Auto-resolve from
-`openai-usage-profile.json` when present (tiers `<1M`→low, `1–10M`→medium, `10–100M`→high,
-`>100M`→very_high). → `ai_token_volume`. Default `"medium"`. **Q8 — Response speed** (critical /
+definitive. → `ai_vision`. **Q7 — Monthly usage volume.** Auto-resolve when
+`openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or
+`anthropic-usage-profile.json` exist with non-zero usage: compute total monthly tokens = the
+SUM across every full-window profile of Σ `usage_by_model[].input_tokens + output_tokens` — for
+`openrouter-usage-profile.json` that means `prompt_tokens + completion_tokens` (normalize before
+summing, do not treat a missing `input_tokens` key as zero) — Anthropic's `usage_by_model[]`
+already uses `input_tokens`/`output_tokens` (no normalization needed), but ALSO carries
+`cache_read_tokens`/`cache_creation_tokens`, which MUST be added into this sum (these are
+additional token pools the Admin API reports separately — `input_tokens` is populated from
+`uncached_input_tokens`, which excludes cached tokens by definition — omitting them understates
+volume rather than avoiding a double-count). Skip a profile whose
+`metadata.partial_window` is `true` from the sum; ask Q7 normally only if EVERY existing profile
+is partial. Map the combined total to tiers (`<1M`→low, `1–10M`→medium, `10–100M`→high,
+`>100M`→very_high), record the extraction (`chosen_by: "extracted"`, `source` naming whichever
+profile(s) contributed), and tell the user: "Resolved from your usage data: [N tokens/month →
+tier]." → `ai_token_volume`. Default `"medium"`. **Q8 — Response speed** (critical /
 important / flexible). → `ai_latency`. Default `"important"`. **Q9 — Task complexity** (simple /
 moderate / complex). → `ai_complexity`. Default `"moderate"`. **Q10 — Specialized features**
 (function calling / ultra-long-context / extended-thinking / prompt-caching / RAG / agentic /

@@ -5,12 +5,34 @@ Select a base model to deploy by filtering the catalog against the user's `use_c
 ## Prerequisites
 
 - A `use_case_spec.md` file exists with a **Deployment Constraints** section. If not, activate the `use-case-specification` skill first.
+- Public-Hub Search requires the boto3 and botocore versions enforced by `search_deployable_models.py`'s `MINIMUM_SDK_VERSION`. SageMaker PySDK v3 does not expose `Search(Resource="HubContent")`, so the public path intentionally uses the version-gated boto3 client. An older client triggers the visible List-and-filter fallback described in Step 3.
 
 ## Step 1: Discover Available Filter Values
 
-Run: `python3 model-selection/scripts/get_deployable_models.py <hub-name> --list-values`
+Branch on the selected Hub.
 
-This returns a JSON object showing all unique values available for each filterable field in the catalog. For example:
+### SageMakerPublicHub
+
+Create one unique, short-lived catalog snapshot while discovering values:
+
+```bash
+python3 model-selection/scripts/get_deployable_models.py \
+    SageMakerPublicHub --list-values --create-snapshot <region>
+```
+
+The command creates a unique private temporary file and returns both `available_values` and `snapshot_file` in one JSON object. It removes the file automatically if snapshot creation fails. Record the exact `snapshot_file` value in conversation context; later commands MUST use that literal path.
+
+The snapshot is a per-selection-session cache of compact, normalized `ListHubContents` summaries. It provides current exact keyword spellings, raw size values, and `OriginalCreationTime` without a second catalog call after confirmation. It does not contain credentials, model documents, or markdown. Reuse it only while the Hub and region remain unchanged, and delete it as described under **Snapshot cleanup**.
+
+### Private Hub
+
+Run the existing discovery command without a snapshot:
+
+```bash
+python3 model-selection/scripts/get_deployable_models.py <hub-name> --list-values <region>
+```
+
+Both commands return a JSON object showing all unique values available for each filterable field. For example:
 
 ```json
 {
@@ -114,9 +136,23 @@ image/tabular/token classification).
 
 For **license, language, provider, model name**, and **modalities**, do not use a
 lookup table — the user names a concrete value. Match it against the Step 1
-`--list-values` output using substring matching (e.g. "apache" matches both
-`apache 2.0` and `apache-2.0`). If the named value is absent from the catalog,
-tell the user rather than substituting a different one.
+`--list-values` output using substring matching. The public Search adapter repeats
+this lookup against the session snapshot and sends every matching exact value;
+for example, `license:apache` searches both `@license:Apache 2.0` and
+`@license:Apache-2.0`. This explicit expansion is required until Hub license
+metadata uses one standardized spelling. If the named value is absent from the
+catalog, tell the user rather than substituting a different one.
+
+The filter keys you pass are the same for every field. Internally the adapter
+sends `data_type`, `input_modality`, `output_modality`, `model_type`, `bedrock`,
+`size`, and `context_window` as exact `Metadata.*` filters over the model
+document, and the other keys as `HubContentSearchKeywords` tags. A `size` or
+`context_window` filter can return a few models the private-Hub path would not:
+the Hub writes at most 50 keywords per model, and a model with many languages
+can run out of slots before its size or context window is written. The document
+still carries the value, so Search finds the model and the script fills in
+`size_raw` and `context_window` from the document. Present those models exactly
+like the others.
 
 **General rules:**
 
@@ -133,18 +169,45 @@ Present your resolved mapping to the user for confirmation before filtering:
 
 ⏸ Wait for user confirmation. If they disagree, adjust — but only to other values that exist in the tables above or the Step 1 catalog values.
 
-## Step 3: List Models and Apply Filters
+## Step 3: Retrieve and Filter Candidates
 
-Run: `python3 model-selection/scripts/get_deployable_models.py <hub-name> > /tmp/deployable_models.json`
+Branch on the selected Hub after the user confirms the complete filter mapping.
 
-Then run the filter script with the resolved filter values:
+### SageMakerPublicHub: Search
 
+Run Search with the literal snapshot path recorded in Step 1:
+
+```bash
+python3 model-selection/scripts/search_deployable_models.py \
+    SageMakerPublicHub --region <region> \
+    --snapshot-file <recorded-snapshot-path> \
+    <filter1> <filter2> ...
 ```
-python3 model-selection/scripts/filter_deployable_models.py /tmp/deployable_models.json <filter1> <filter2> ...
 
+The adapter uses Search for candidate membership, restores each result's cached `OriginalCreationTime`, and applies the existing deterministic order. It never substitutes Search `CreationTime`, because that timestamp belongs to the indexed version and can move when a new version becomes `latestSupported`.
+
+Inspect these output fields before presenting candidates:
+
+- `retrieval_backend: "search"` means Search returned the candidate set.
+- `retrieval_backend: "list_fallback"` means an explicit SDK, permission, service, transport, or Search-response failure caused the adapter to apply the complete confirmed filter set to the cached List catalog. The adapter performs this fallback internally from the existing snapshot. Do not call `get_deployable_models.py` or `filter_deployable_models.py` after a Search failure, and do not make another List request. Tell the user: "SageMaker Search was unavailable, so I used the existing complete Hub catalog filtering path for this selection."
+- A successful Search with `matched: 0` is a real empty result and does not invoke fallback.
+- Present every entry in `warnings`. In particular, if a Search result lacks cached `OriginalCreationTime`, explain that it was placed after dated models and ordered by name.
+
+Never merge Search and List results. One invocation uses either the Search result or the complete local fallback.
+
+### Private Hub: existing local filtering
+
+Run the unchanged List-and-filter path:
+
+```bash
+python3 model-selection/scripts/get_deployable_models.py \
+    <hub-name> <region> > /tmp/deployable_models.json
+
+python3 model-selection/scripts/filter_deployable_models.py \
+    /tmp/deployable_models.json <filter1> <filter2> ...
 ```
 
-After filtering, report:
+For either Hub, report:
 
 > "Based on your constraints, I applied these filters: [list each]. This narrowed [total_models] models down to [matched] candidates."
 
@@ -152,7 +215,7 @@ After filtering, report:
 
 ### If results are non-empty (≤20 models)
 
-The filter script returns models in a fixed, deterministic order: **newest
+The candidate script returns models in a fixed, deterministic order: **newest
 first** (by original creation date, descending), with model name (A→Z) breaking
 ties and any models lacking a creation date placed last (also A→Z). **Present
 the models in exactly the order the script returned them — do NOT re-sort,
@@ -184,11 +247,23 @@ Show the first 20 (the 20 newest, since the script returns newest-first — pres
 
 ### If results are empty
 
-Re-run the filter script with one constraint removed at a time to identify which filter is most restrictive (eliminates the most models). Report:
+Re-run the active Hub's candidate command with one constraint removed at a time to identify which filter is most restrictive. For `SageMakerPublicHub`, reuse the same snapshot and rerun `search_deployable_models.py`; for a private Hub, rerun `filter_deployable_models.py`.
+
+Do not treat a successful zero-result Search as an availability failure and do not switch to List merely because the result is empty. Report:
 
 > "No models matched all your constraints. The most restrictive filter was [field]: [value], which eliminated [N] candidates. Would you like to relax this constraint?"
 
 If the user agrees, adjust the filter and re-run from Step 3. If they want to change their use case spec, activate the `use-case-specification` skill, then re-run from Step 1.
+
+### Snapshot cleanup
+
+For `SageMakerPublicHub`, keep the snapshot while the user may refine filters or ask to see more. When the user selects a model, cancels selection, changes Hub or region, or the workflow ends with an unrecoverable error, delete only the exact temporary file created in Step 1:
+
+```bash
+rm -f -- "<recorded-snapshot-path>"
+```
+
+If the Hub or region changes, delete the old snapshot and create a new one before filtering. The snapshot is selection-session state, not a shared or long-lived cache.
 
 ## Step 5A: Select Instance Type
 

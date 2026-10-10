@@ -28,7 +28,9 @@ sources_analyzed).
       "live": false, // true iff live `az` capture contributed AT LEAST ONE qualifying AI resource — see § infrastructure[]
       "application_code": false,
       "billing_data": false,
-      "openai_usage_api": false
+      "openai_usage_api": false,
+      "openrouter_usage_api": false,
+      "anthropic_usage_api": false
     }
   },
   "summary": {
@@ -74,7 +76,7 @@ One per detected model. **Field names are exact** (the §13.3b drift class):
 {
   "model_id": "gpt-4o", // NOT model_name / name
   "service": "azure_openai", // NOT service_type / azure_service (see below)
-  "detected_via": ["code"], // NOT detection_method — subset of code|terraform|billing
+  "detected_via": ["code"], // NOT detection_method — subset of code|terraform|billing|usage_api
   "evidence": [{ "source": "code", "file": "app/llm.py", "line": 42, "pattern": "AzureOpenAI(" }],
   "capabilities_used": ["text_generation"], // NOT capabilities / features
   "usage_context": "chat completion endpoint" // NOT description / purpose
@@ -171,15 +173,31 @@ for the main resource inventory. See `discover.md`'s producer-agreement rule for
 
 ## current_costs
 
-Present ONLY if billing (Azure Cost Management export) OR the OpenAI usage API ran; omit
+Present ONLY if billing (Azure Cost Management export) OR one of the usage APIs ran; omit
 otherwise. `{ monthly_ai_spend, services_detected[], source, breakdown[], conflicting_sources[] }`,
-`source ∈ billing_data | openai_usage_api | mixed`. `breakdown[]` (present only when `mixed`):
-`{ provider, monthly_spend, source }`, `provider ∈ azure | openai`. Provider-aware merge: both →
-SUM with `source: mixed`; same-provider overlap → usage API wins, displaced → `conflicting_sources[]`.
+`source ∈ billing_data | openai_usage_api | openrouter_usage_api | anthropic_usage_api | mixed`.
+`breakdown[]` (present only when `mixed`): `{ provider, monthly_spend, source, partial_window,
+cost_status }`, `provider ∈ azure | openai | openrouter | anthropic`. Provider-aware merge:
+billing (Azure) and any combination of the OpenAI / OpenRouter / Anthropic usage APIs → SUM
+with `source: mixed`; same-provider overlap → the usage API wins, displaced →
+`conflicting_sources[]`. **`partial_window`/`cost_status` provenance (finding 14):** the
+Anthropic usage-API merge (both single-provider and `mixed` cases) and the OpenAI usage-API
+merge (`discover-anthropic-api.md` and `discover-openai-api.md` Step 4) stamp that provider's
+own `metadata.partial_window` and `metadata.cost_status` onto its
+`current_costs`/`breakdown[]` entry at merge time — this is how Clarify's Q3
+(`clarify-ai-only.md`) can trust or discount a merged `monthly_ai_spend` figure without
+re-opening the source usage-profile file. The OpenRouter merge
+(`discover-openrouter-api.md`) does not yet stamp these fields (out of scope for finding 14 —
+Clarify's Q3 only reads `current_costs.monthly_ai_spend`, which the OpenRouter merge also
+writes, but no Clarify path keys off OpenRouter's `partial_window`/`cost_status`
+specifically yet). A `billing_data`-only entry (no usage API contributed) has no
+`partial_window`/`cost_status` of its own — billing exports are always full-window, complete
+figures by construction.
 
 ## detection_signals[]
 
-`{ method, pattern, confidence, evidence }`, `method ∈ terraform | code | live_az | openai_usage_api`.
+`{ method, pattern, confidence, evidence }`,
+`method ∈ terraform | code | live_az | openai_usage_api | openrouter_usage_api | anthropic_usage_api`.
 
 ## workloads[]
 
@@ -256,6 +274,7 @@ Present ONLY if `agentic_profile` exists (`[]` if agentic but no tools). Provide
 | `detection_signals[].method`         | `live_gcloud`               | `live_az`                                         |
 | `current_costs.breakdown[].provider` | `gcp`                       | `azure`                                           |
 | field-name rule                      | NOT `gcp_service`           | NOT `azure_service` — the field is `service`      |
+| OpenRouter / Anthropic usage APIs    | same two sources exist      | not cloud-specific plumbing — no azure-specific swap needed; `openrouter_usage_api` / `anthropic_usage_api` are ported unchanged into `sources_analyzed`, `current_costs.source`, `breakdown[].provider`, and `detection_signals[].method` |
 
 ## Validation Checklist
 

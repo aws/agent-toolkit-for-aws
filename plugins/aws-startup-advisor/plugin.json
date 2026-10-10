@@ -47,6 +47,8 @@
     "durable-execution",
     "anthropic",
     "claude",
+    "usage-api",
+    "cost-discovery",
     "gcp-to-aws",
     "cloud-run",
     "cloud-sql",

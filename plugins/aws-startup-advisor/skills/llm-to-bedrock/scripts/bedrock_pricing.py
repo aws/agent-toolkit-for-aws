@@ -36,7 +36,8 @@ def parse_price_dimensions(price_item: dict) -> dict:
 # Static fallback table: per-1K-token USD rates from public pricing pages.
 # Used when the PriceList API doesn't return data (e.g. new cross-region inference profile IDs).
 # Source: https://aws.amazon.com/bedrock/pricing/, cross-checked row-by-row against
-# skills/gcp-to-aws/references/shared/pricing-cache.md (its per-1M rates / 1000).
+# skills/gcp-to-aws/references/shared/pricing-cache.md and
+# skills/azure-to-aws/references/shared/pricing-cache.md (their per-1M rates / 1000).
 # Every row below was re-verified against that cache, the Bedrock model cards
 # (Geo/Global inference ID tables), and the AWS Pricing MCP server on 2026-10-05.
 # IMPORTANT: for the common case where a cross-Region inference profile is used for on-demand

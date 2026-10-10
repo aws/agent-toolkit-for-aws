@@ -32,6 +32,7 @@ def test_static_fallback_returns_known_model():
 def test_static_fallback_opus_4_8_rate_is_5_and_25_per_1m():
     """Opus 4.8's bare/Global rate is $5/$25 per 1M tokens (0.005/0.025 per 1K), NOT
     Opus 4.1's legacy $15/$75 — see skills/gcp-to-aws/references/shared/pricing-cache.md
+    and skills/azure-to-aws/references/shared/pricing-cache.md
     for the source rates. The Geo (`us.`) inference-profile id carries a ~10% price
     premium over Global/base ($5.50/$27.50, i.e. 0.0055/0.0275 per 1K) per the Bedrock
     model card and AWS's documented Geo-vs-Global cross-Region inference pricing gap —
