@@ -20,12 +20,20 @@ is excluded from Part 1), `llm-to-bedrock/SKILL.md` Step 1.5's
 
 Finding 5 — OpenRouter BYOK-routed spend can double-count against the same
 traffic's direct-provider usage profile. The fix adds
-`metadata.cost_provenance` to the OpenRouter usage-profile schema (documented
-as always `"unknown"` today — true per-row BYOK detection is not feasible
-from the documented `/activity` response shape, so the field is a forward
-hook for `llm-to-bedrock`'s SUM-discipline exception rather than a working
-detector) and a matching SUM-discipline exception in
-`llm-to-bedrock/SKILL.md` Step 1.5.
+`metadata.cost_provenance` to the OpenRouter usage-profile schema. Originally
+this was documented as always `"unknown"` (true per-row BYOK detection was
+not feasible from the `/activity` response shape alone). A later revision
+(openrouter-byok-detection) adds a new `/analytics/query` capture
+(`byok_usage`/`openrouter_usage` per model) that makes real detection
+possible: `cost_provenance` is now derived per model
+(`usage_by_model[].cost_provenance`) and rolled up to
+`metadata.cost_provenance`, using a 4-value enum
+(`byok_passthrough|mixed|no_byok|unknown`) — `no_byok` is new, a positive
+confirmation of no BYOK overlap, distinct from the no-signal `unknown`. The
+matching SUM-discipline exception in `llm-to-bedrock/SKILL.md` Step 1.5 now
+reads the per-model field (gated on its presence, for backward compatibility
+with profiles written before this change) rather than only the profile-level
+field.
 
 These are documentation-contract checks (string/shape assertions against the
 markdown), matching the existing `test_decision_gate_wiring.py` /
@@ -241,34 +249,53 @@ def test_report_generator_documents_cost_unavailable_presentation_rule() -> None
 # ---------------------------------------------------------------------------
 
 
-def test_both_openrouter_discover_copies_document_cost_provenance_as_unknown() -> None:
+def test_both_openrouter_discover_copies_document_real_cost_provenance_detection() -> None:
     for f in OPENROUTER_DISCOVER_FILES:
         text = f.read_text(encoding="utf-8")
         assert "metadata.cost_provenance" in text, (
             f"{f}: missing metadata.cost_provenance (finding 5 — BYOK/overlap "
             f"spend provenance)"
         )
-        assert '"cost_provenance": "unknown"' in text, (
-            f"{f}: cost_provenance must be documented as always-unknown today "
-            f"(detection not feasible from the documented /activity shape)"
+        assert "usage_by_model[].cost_provenance" in text, (
+            f"{f}: missing the per-model usage_by_model[].cost_provenance field "
+            f"(openrouter-byok-detection — per-model is the precise signal the "
+            f"llm-to-bedrock consumer needs)"
         )
-        assert "not feasible" in text or "cannot be" in text or "would be fabricated" in text, (
-            f"{f}: must explicitly state why detection is not implemented, "
-            f"rather than silently leaving the field unexplained"
+        assert '"byok_passthrough" | "mixed" | "no_byok" |' in text, (
+            f"{f}: cost_provenance enum must document the 4-value set including "
+            f"the new no_byok value"
+        )
+        assert "POST /analytics/query" in text, (
+            f"{f}: missing the new /analytics/query capture step that supplies "
+            f"the real byok_usage/openrouter_usage detection signal"
+        )
+        assert "byok_usage" in text and "openrouter_usage" in text, (
+            f"{f}: missing the Analytics metrics (byok_usage/openrouter_usage) "
+            f"the detection logic classifies on"
         )
 
 
 def test_openrouter_discover_copies_remain_mirrored_for_cost_provenance_text() -> None:
     gcp_text = OPENROUTER_DISCOVER_FILES[0].read_text(encoding="utf-8")
     azure_text = OPENROUTER_DISCOVER_FILES[1].read_text(encoding="utf-8")
-    marker = "**`metadata.cost_provenance` — always `\"unknown\"` today"
+    marker = "**`cost_provenance` — now derived from `/analytics/query`"
     assert marker in gcp_text and marker in azure_text
-    gcp_block = gcp_text[gcp_text.index(marker):gcp_text.index(marker) + 1000]
-    azure_block = azure_text[azure_text.index(marker):azure_text.index(marker) + 1000]
+    gcp_block = gcp_text[gcp_text.index(marker):gcp_text.index(marker) + 1800]
+    azure_block = azure_text[azure_text.index(marker):azure_text.index(marker) + 1800]
     assert gcp_block == azure_block, (
         "cost_provenance block text has drifted between the gcp-to-aws and "
         "azure-to-aws discover-openrouter-api.md copies"
     )
+
+
+def test_both_openrouter_discover_copies_have_fourth_analytics_table_row() -> None:
+    for f in OPENROUTER_DISCOVER_FILES:
+        text = f.read_text(encoding="utf-8")
+        assert "| 4 | `POST /analytics/query`" in text, (
+            f"{f}: Step 2c Capture Endpoint Table is missing the 4th row for "
+            f"the new /analytics/query capture"
+        )
+        assert "analytics.json" in text
 
 
 # ---------------------------------------------------------------------------
@@ -314,3 +341,26 @@ def test_skill_md_sum_step_has_byok_overlap_exception() -> None:
     )
     assert "cost_provenance" in step15_section
     assert "openrouter-usage-profile.json" in step15_section
+
+
+def test_skill_md_step15_consumes_per_model_cost_provenance() -> None:
+    """openrouter-byok-detection: Step 1.5's de-dupe exception must read the
+    per-model usage_by_model[].cost_provenance field the producer now writes,
+    including the new no_byok value, while keeping an explicit old-profile
+    (field-absent) fallback path for backward compatibility."""
+    text = SKILL_MD.read_text(encoding="utf-8")
+    step15_idx = text.index("## Step 1.5")
+    phase_a_idx = text.index("## Phase A")
+    step15_section = text[step15_idx:phase_a_idx]
+    assert "no_byok" in step15_section, (
+        "Step 1.5 does not mention no_byok — the new positive-signal "
+        "cost_provenance value from the per-model detection"
+    )
+    assert "usage_by_model[].cost_provenance" in step15_section, (
+        "Step 1.5 does not read the per-model usage_by_model[].cost_provenance "
+        "field produced by discover-openrouter-api.md Step 3"
+    )
+    assert "old profile" in step15_section.lower() or "backward compat" in step15_section.lower(), (
+        "Step 1.5 must document the backward-compatibility fallback for "
+        "OpenRouter profiles written before per-model cost_provenance existed"
+    )

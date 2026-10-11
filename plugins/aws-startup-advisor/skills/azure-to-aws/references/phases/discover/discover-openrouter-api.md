@@ -21,12 +21,16 @@
 
 ## Security Contract (applies to every step)
 
-1. **Exact-endpoint allowlist, GET only.** Call ONLY the endpoints in the Step 2
-   Capture Endpoint Table. All are `GET` against `https://openrouter.ai/api/v1`.
-   Never any other endpoint, never any other HTTP method, never a chat/completion
-   or `/generation` call (those run inference and can return prompt/response
-   content — this flow reads aggregate usage only), never a key-management
-   endpoint.
+1. **Exact-endpoint allowlist, GET + one scoped POST.** Call ONLY the endpoints
+   in the Step 2 Capture Endpoint Table. All are against
+   `https://openrouter.ai/api/v1`; all are `GET` EXCEPT
+   `POST /analytics/query`, which is a read-only aggregate query (no body field
+   it accepts can create, change, or delete anything — `metrics`/`dimensions`/
+   `time_range`/`filters` only shape which existing aggregate rows come back).
+   Never any other endpoint, never any other HTTP method on any OTHER endpoint,
+   never a chat/completion or `/generation` call (those run inference and can
+   return prompt/response content — this flow reads aggregate usage only),
+   never a key-management endpoint.
 2. **The OpenRouter key must never enter this conversation (HARD RULE).** Do not
    ask the user to paste the key in chat, and never echo, cat, or interpolate its
    VALUE into any command, question, or output — the agent only ever handles the
@@ -50,6 +54,10 @@
    all of them silently reports account-wide spend as if it were scoped.
    (`workspace_id` is documented at OpenRouter's `/activity` reference; not
    independently verified against a live multi-workspace account.)
+   `/analytics/query` is likewise aggregate-only — its response rows are
+   per-model cost totals (`byok_usage`, `openrouter_usage`), never per-generation
+   content; it is queried with `dimensions: ["model"]` and no `generation_id`
+   dimension, which this flow never requests.
 4. **Capture to files, not context.** The capture script writes responses under
    `$MIGRATION_DIR/openrouter-capture/`. Parse capture files with a throwaway
    extraction script if any exceeds ~500 rows — do NOT Read oversized raw
@@ -74,7 +82,10 @@ usage/credits endpoints:
 
   ✓ Captured: daily usage per model — request counts, prompt /
     completion / reasoning token counts, and dollar cost — plus your
-    credits purchased/used total.
+    credits purchased/used total, and an aggregate BYOK-vs-credits cost
+    split per model (no new content, same aggregate-usage category: how
+    much of each model's spend ran on your own upstream key vs.
+    OpenRouter credits).
   ✗ Never captured: prompts or completions content, API keys, or
     anything from a chat/generation endpoint. No request that creates,
     changes, or deletes anything will run.
@@ -222,11 +233,12 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
 **2c. Capture Endpoint Table.** Every row is `GET` against
 `https://openrouter.ai/api/v1`.
 
-| # | Endpoint (GET)  | Purpose                                                                                                  | Output file     |
-| - | --------------- | --------------------------------------------------------------------------------------------------------- | --------------- |
-| 1 | `/credits`      | `total_credits` purchased and `total_usage` used (account lifetime) — a spend sanity anchor              | `credits.json`  |
-| 2 | `/activity`     | daily rows: `date`, `model`, `model_permaslug`, `provider_name`, `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `usage` (USD) — the workhorse. **When `$WORKSPACE_ID` is set (Step 1.5), append `&workspace_id=$WORKSPACE_ID` — this FILTERS the response to that workspace's rows, not just splits them.** | `activity.json` |
-| 3 | `/key`          | rate-limit + remaining credit on the calling key (context only; optional — record `skipped` on any error)| `key.json`      |
+| # | Endpoint                | Purpose                                                                                                  | Output file     |
+| - | ------------------------ | -------------------------------------------------------------------------------------------------------- | --------------- |
+| 1 | `GET /credits`          | `total_credits` purchased and `total_usage` used (account lifetime) — a spend sanity anchor              | `credits.json`  |
+| 2 | `GET /activity`         | daily rows: `date`, `model`, `model_permaslug`, `provider_name`, `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `usage` (USD) — the workhorse. **When `$WORKSPACE_ID` is set (Step 1.5), append `&workspace_id=$WORKSPACE_ID` — this FILTERS the response to that workspace's rows, not just splits them.** | `activity.json` |
+| 3 | `GET /key`              | rate-limit + remaining credit on the calling key (context only; optional — record `skipped` on any error)| `key.json`      |
+| 4 | `POST /analytics/query` | per-model `byok_usage` + `openrouter_usage` over the same 30-day window as `/activity`, for `cost_provenance` classification | `analytics.json` |
 
 **Notes:**
 
@@ -239,6 +251,34 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
   rows and is never needed by this flow. When `$WORKSPACE_ID` is set, filter at
   capture time with `workspace_id` instead (above); when unset, the call is
   unchanged from today — unscoped, all workspaces.
+- Row 4 `/analytics/query` sends this exact JSON body (same window as
+  `/activity` — `window_start`/`window_end` computed identically, never widened
+  per-metric):
+
+  ```json
+  {
+    "metrics": ["byok_usage", "openrouter_usage"],
+    "dimensions": ["model"],
+    "time_range": { "start": "<window_start>", "end": "<window_end>" },
+    "limit": 1000
+  }
+  ```
+
+  **Auth-failure handling on this row** mirrors Step 2d's existing `/activity`
+  mid-table-failure branch, not the probe's: this call is NOT the probe (that's
+  still `/credits`), so a 401/403 here is a mid-table failure — record `failed`
+  for this row and continue (do not print `KEY_INVALID`, do not abort, do not
+  delete the key file). A 403 specifically, on a key that already passed the
+  `/credits` probe and succeeded on `/activity`, is a confirmed
+  management/provisioning key already — treat it as a transient/anomalous
+  failure, not a key-validity signal, and fall into the standard
+  retry-on-next-invocation behavior below. On **429**, wait 30 seconds and
+  retry once (same rule as the `/credits` probe).
+  **Unlike `/activity`, a `failed` or `skipped` status on this row is NOT
+  terminal for the whole source** — `/activity`'s data alone is still
+  sufficient to write a profile; a failed Analytics call only means
+  `cost_provenance` falls back to `"unknown"` everywhere (Step 3), not that
+  Step 3 is skipped.
 
 **2d. Run the script, then delete it.** Record results in
 `$MIGRATION_DIR/openrouter-capture/manifest.json`:
@@ -296,6 +336,18 @@ not just manifest presence:** read the existing manifest first.
 - `/activity` entry's `status` is `ok` → proceed to Step 3 as normal (the only
   status where a real capture exists to parse).
 
+**`/analytics/query`'s resume handling is INDEPENDENT of `/activity`'s** — a
+resumed run can have `/activity: ok` and `analytics: failed` simultaneously,
+and must retry only the failed row, never both:
+
+- `/analytics/query` entry's `status` is `failed` → retry ONLY that row on the
+  next invocation.
+- `/analytics/query` entry's `status` is `skipped` → leave
+  `cost_provenance: "unknown"` permanently for this run; do not re-ask, do not
+  retry.
+- `/analytics/query` entry's `status` is `ok` → proceed with classification as
+  normal.
+
 Delete the key file once `/activity` reaches a terminal `ok`/`skipped` state
 (per Step 4's cleanup) — never while a retry is still live (a `failed` status
 with no user decision yet).
@@ -316,9 +368,12 @@ Both OpenRouter responses wrap their payload in a top-level `data` key — **unw
 `data` before reading anything below.** `/activity` returns
 `{ "data": [ { "date", "model", "usage", ... } ] }` (an array under `data`);
 `/credits` returns `{ "data": { "total_credits", "total_usage" } }` (an object under
-`data`). Reading the response body's top level directly yields nothing and would
-produce a profile of zeros that still (wrongly) passes the `monthly_cost_usd == sum
-of rows` self-check.
+`data`). `/analytics/query` is wrapped an EXTRA level deep —
+`{ "data": { "data": [ { "model", "byok_usage", "openrouter_usage" } ], "metadata": {...} } }`
+— unwrap `data.data` for the row array, not just `data` (do not conflate this
+with `/activity`/`/credits`'s single-level unwrap above). Reading the response
+body's top level directly yields nothing and would produce a profile of zeros
+that still (wrongly) passes the `monthly_cost_usd == sum of rows` self-check.
 
 - **Activity** (`activity.json`): group the rows in `data[]` by `model`; per model
   sum `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, and
@@ -347,19 +402,47 @@ of rows` self-check.
   the warning is what tells a reader "$0 last 30 days" is not the same fact as
   "$0 ever."
 
-- **`metadata.cost_provenance` — always `"unknown"` today (documented limitation, not a gap
-  to silently leave unflagged).** This field exists so downstream SUM-discipline logic
-  (`llm-to-bedrock/SKILL.md` Step 1.5) has somewhere to read a BYOK-vs-router-fee distinction
-  from, once detection becomes feasible — it does NOT mean detection is implemented here.
-  `/activity`'s documented row shape (`date`, `model`, `model_permaslug`, `provider_name`,
-  `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `usage`) carries no
-  field distinguishing a BYOK-routed call (OpenRouter forwarding to a key the user supplied
-  directly to the underlying provider — e.g. an Anthropic key configured in OpenRouter's BYOK
-  settings) from a router-fee call (OpenRouter's own credits paying for the underlying
-  provider call). Writing a confident `router_only` / `byok_passthrough` / `mixed` value from
-  this response shape alone would be fabricated, not observed. Always write
-  `"unknown"` and leave this comment in place until a future revision adds real per-row BYOK
-  detection (e.g. if OpenRouter's API adds a `byok` field to `/activity` rows).
+- **`cost_provenance` — now derived from `/analytics/query`'s per-model
+  `byok_usage`/`openrouter_usage` rows (`analytics.json`), not left `"unknown"`
+  (prior limitation, now resolved).** `/activity`'s row shape still carries no
+  BYOK-vs-credits signal on its own — that limitation is unchanged — but
+  `/analytics/query` (Step 2c row 4) now supplies the signal `/activity` lacks:
+  `byok_usage` is BYOK inference cost in USD, `openrouter_usage` is non-BYOK
+  (credits-billed) inference cost in USD, both keyed by `model` over the SAME
+  30-day window as `/activity`.
+
+  Build a `model → { byok_usage, openrouter_usage }` map from `analytics.json`.
+  For each model present in BOTH that map and the `/activity` group-by-model
+  result, classify using a $0.005 (half-cent) threshold — chosen to absorb
+  float/display rounding noise without swallowing genuine low-but-real BYOK
+  spend:
+
+  - `byok_usage > 0.005` AND `openrouter_usage <= 0.005` → `"byok_passthrough"`
+  - `byok_usage > 0.005` AND `openrouter_usage > 0.005` → `"mixed"`
+  - `byok_usage <= 0.005` AND `openrouter_usage > 0.005` → `"no_byok"` (positive
+    confirmation of no BYOK overlap — NOT the same as "no signal")
+  - both `<= 0.005` → `"unknown"` (no signal either way)
+
+  A model present in `/activity` but ABSENT from the Analytics response also
+  gets `"unknown"` (nothing to classify it with). A model present only in
+  Analytics but not `/activity` is dropped silently — it has no `/activity` row
+  to attach `cost_provenance` to.
+
+  Write this as `usage_by_model[].cost_provenance` (per model, see schema
+  below). Then roll it up to `metadata.cost_provenance` (profile-level, kept
+  for backward compatibility with code that only reads the top-level field),
+  computed over models with nonzero `/activity` usage in the window:
+  - all classified `"byok_passthrough"` → profile-level `"byok_passthrough"`
+  - all classified `"no_byok"` → profile-level `"no_byok"`
+  - any model `"mixed"`, or a mix of `byok_passthrough`/`mixed`/`no_byok`
+    across models → profile-level `"mixed"`
+  - the Analytics query itself failed (Step 2c row 4 `status: "failed"` or
+    `"skipped"` in the manifest), or zero models were classifiable → profile-
+    level `"unknown"`, AND set every model's `usage_by_model[].cost_provenance`
+    to `"unknown"` too, AND append a `metadata.capture_warnings` entry
+    (`"analytics.json <failed|skipped> — cost_provenance is unknown for all
+    models"`). Do NOT fail Step 3 or skip writing the profile in this case —
+    `/activity` data is still valid and must still be written.
 
 Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
 
@@ -372,7 +455,7 @@ Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
     "window_days": 30,
     "active_days": 30,
     "partial_window": false,
-    "cost_provenance": "unknown",
+    "cost_provenance": "mixed",
     "credits_lifetime": { "total_credits": 100.5, "total_usage": 25.75 },
     "workspace_scope": null,
     "capture_warnings": ["key.json skipped (403)"]
@@ -391,11 +474,28 @@ Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
       "prompt_tokens": 1300000,
       "completion_tokens": 145000,
       "reasoning_tokens": 0,
-      "monthly_cost_usd": 41.61
+      "monthly_cost_usd": 41.61,
+      "cost_provenance": "no_byok"
+    },
+    {
+      "model": "anthropic/claude-sonnet-4",
+      "provider_name": "Anthropic",
+      "requests": 180,
+      "prompt_tokens": 900000,
+      "completion_tokens": 90000,
+      "reasoning_tokens": 0,
+      "monthly_cost_usd": 63.42,
+      "cost_provenance": "byok_passthrough"
     }
   ]
 }
 ```
+
+`cost_provenance` enum (both `metadata.cost_provenance` and
+`usage_by_model[].cost_provenance`): `"byok_passthrough" | "mixed" | "no_byok" |
+"unknown"`. `no_byok` is a positive-signal classification distinct from
+`unknown` (no-signal) — the `llm-to-bedrock/SKILL.md` consumer treats them
+differently (see that file's Step 1.5).
 
 `usage_by_model` sorted descending by `prompt_tokens + completion_tokens`.
 Include only models with non-zero usage. `metadata.capture_warnings` carries every
