@@ -1,6 +1,15 @@
 # AI Pricing Cache (Bedrock + source-provider)
 
-**Last updated:** 2026-10-05 (re-verified via the AWS Pricing MCP server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50 (Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo), Opus 4.6 $5/$25, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50, Llama 4 Maverick/Scout, Llama 3.3 70B, Nova 2 Lite/Pro/Lite/Micro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family, and the OpenAI/Azure OpenAI source-side table all confirmed unchanged; this refresh corrects the Geo-vs-Global pricing gap for the four Anthropic models that require a cross-Region inference profile — see the Geo vs. Global note below)
+**Last updated:** 2026-10-10 (added the GPT-6 family — GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-6.1 Sol — sourced
+from each model's own AWS Bedrock model card and OpenAI's own API pricing page, fetched 2026-10-10; see
+`shared/openai-on-bedrock.md` for full citations. Prior refresh, 2026-10-05: re-verified via the AWS Pricing MCP
+server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude
+Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50
+(Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo),
+Opus 4.6 $5/$25, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50, Llama 4 Maverick/Scout, Llama 3.3 70B, Nova 2
+Lite/Pro/Lite/Micro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family, and the OpenAI/Azure
+OpenAI source-side table all confirmed unchanged; this refresh corrects the Geo-vs-Global pricing gap for the four
+Anthropic models that require a cross-Region inference profile — see the Geo vs. Global note below)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±15-25% for AI models (sourced from public pricing pages)
@@ -74,6 +83,10 @@ recommend Legacy/excluded models for new migrations.**
 | DeepSeek-R1       | deepseek.r1-v1:0                         | DeepSeek  | 1.35       | 5.40        | 128K    | reasoning | active                                                                                         |
 | gpt-oss-20b       | openai.gpt-oss-20b-1:0                   | OpenAI    | 0.07       | 0.30        | 128K    | budget    | active                                                                                         |
 | gpt-oss-120b      | openai.gpt-oss-120b-1:0                  | OpenAI    | 0.15       | 0.60        | 128K    | efficient | active                                                                                         |
+| GPT-6 Astra       | openai.gpt-6-astra                       | OpenAI    | 11.00      | 55.00       | 272K    | frontier  | active (mantle in-region us-east-1/us-west-2 + runtime CRIS; Global CRIS 10.00/50.00; 1M-tier 22.00/82.50; Ultrafast 6x available) |
+| GPT-6.1 Sol       | openai.gpt-6.1-sol                       | OpenAI    | 2.20       | 11.00       | 272K    | flagship  | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 2.00/10.00; 1M-tier 4.40/16.50; Ultrafast 6x available) |
+| GPT-6 Sol         | openai.gpt-6-sol                         | OpenAI    | 2.20       | 11.00       | 272K    | flagship  | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 2.00/10.00; 1M-tier 4.40/16.50) |
+| GPT-6 Luna        | openai.gpt-6-luna                        | OpenAI    | 0.11       | 0.55        | 272K    | fast      | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 0.10/0.50; 1M-tier 0.22/0.825) |
 | GPT-5.6 Sol       | openai.gpt-5.6-sol                       | OpenAI    | 4.40       | 22.00       | 272K    | frontier  | active (mantle in-region + runtime CRIS; 1M tier 8.80/33.00)                                   |
 | GPT-5.6 Terra     | openai.gpt-5.6-terra                     | OpenAI    | 2.20       | 13.20       | 272K    | flagship  | active (mantle in-region + runtime CRIS; 1M tier 4.40/19.80)                                   |
 | GPT-5.6 Luna      | openai.gpt-5.6-luna                      | OpenAI    | 0.22       | 1.32        | 272K    | fast      | active (mantle in-region + runtime CRIS; 1M tier 0.44/1.98)                                    |
@@ -145,6 +158,22 @@ the OpenAI standard rates below, and run **`bedrock-mantle` only, in-region only
 `bedrock-runtime`. For endpoint paths, region matrix, quotas, and prompt-caching detail see
 `references/shared/openai-on-bedrock.md` (the fact base the mapping guide reads).
 
+**GPT-6 family** (Astra, Sol, Luna, 6.1 Sol) also runs on Bedrock, with Global CRIS rates at cost
+parity to OpenAI standard and In-Region/Geo-CRIS at the familiar ~10% premium:
+
+| Model       | In-Region/Geo-CRIS (in · cache-write · cache-read · out) | Global CRIS (in · cache-write · cache-read · out) |
+| ----------- | ------------------------------------------------------- | --------------------------------------------------- |
+| GPT-6 Astra | 11.00 · 13.75 · 1.10 · 55.00                             | 10.00 · 12.50 · 1.00 · 50.00                        |
+| GPT-6 Sol   | 2.20 · 2.75 · 0.22 · 11.00                               | 2.00 · 2.50 · 0.20 · 10.00                          |
+| GPT-6 Luna  | 0.11 · 0.1375 · 0.011 · 0.55                             | 0.10 · 0.125 · 0.01 · 0.50                          |
+| GPT-6.1 Sol | 2.20 · 2.75 · 0.11 · 11.00                               | 2.00 · 2.50 · 0.10 · 10.00                          |
+
+Long context (>272K; 1.05M context window): Astra 22.00/27.50/2.20/82.50 (In-Region/Geo) or
+20.00/25.00/2.00/75.00 (Global); Sol 4.40/5.50/0.44/16.50 or 4.00/5.00/0.40/15.00; Luna
+0.22/0.275/0.022/0.825 or 0.20/0.25/0.02/0.75; 6.1 Sol 4.40/5.50/0.22/16.50 or 4.00/5.00/0.20/15.00.
+Astra and 6.1 Sol also support a 6x-Standard **Ultrafast** tier; Sol and Luna are Standard-only.
+See `shared/openai-on-bedrock.md` for the full breakdown.
+
 ## Source Provider Pricing (for Migration Comparison)
 
 Use alongside the Bedrock rates to compute migration ROI. This is the **source-side baseline** —
@@ -170,6 +199,10 @@ Prices per 1M tokens.
 
 | Model         | Input $/1M   | Output $/1M  | Context | Tier      |
 | ------------- | ------------ | ------------ | ------- | --------- |
+| GPT-6 Astra   | 10.00        | 50.00        | 1.05M   | frontier  |
+| GPT-6.1 Sol   | 2.00         | 10.00        | 1.05M   | flagship  |
+| GPT-6 Sol     | 2.00         | 10.00        | 1.05M   | flagship  |
+| GPT-6 Luna    | 0.10         | 0.50         | 1.05M   | fast      |
 | GPT-5.6 Sol   | _unverified_ | _unverified_ | 1M      | frontier  |
 | GPT-5.6 Terra | _unverified_ | _unverified_ | 1M      | flagship  |
 | GPT-5.6 Luna  | 0.20         | 1.20         | 1M      | fast      |
