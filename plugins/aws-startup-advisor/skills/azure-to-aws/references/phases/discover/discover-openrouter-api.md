@@ -77,8 +77,10 @@ Output exactly, then wait for the user's choice:
 ─── OpenRouter Usage Discovery (read-only) ───
 
 I can pull your OpenRouter cost and per-model usage directly from the
-OpenRouter API. This runs GET requests only, against a fixed list of
-usage/credits endpoints:
+OpenRouter API. This runs GET requests against a fixed list of
+usage/credits endpoints, plus one read-only POST to `/analytics/query` for an
+aggregate BYOK-vs-credits cost split per model — no request anywhere
+creates, changes, or deletes anything:
 
   ✓ Captured: daily usage per model — request counts, prompt /
     completion / reasoning token counts, and dollar cost — plus your
@@ -112,7 +114,8 @@ and deleted when capture completes.)
    "OpenRouter usage discovery needs a **provisioning key** (also called a
    management key) — a regular inference key (`sk-or-v1-...`) cannot read account
    usage or credits. Create one at openrouter.ai/settings/provisioning-keys.
-   It is read-only for this flow — I only call GET usage/credits endpoints."
+   It is read-only for this flow — I only call those GET usage/credits
+   endpoints and one read-only POST to `/analytics/query`."
 3. **Check the environment first** (presence only, never the value):
 
    ```bash
@@ -230,8 +233,9 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
 - On success: continue to the capture table (the manifest is written in 2d, only
   after the probe authenticates).
 
-**2c. Capture Endpoint Table.** Every row is `GET` against
-`https://openrouter.ai/api/v1`.
+**2c. Capture Endpoint Table.** Rows 1–3 are `GET` against
+`https://openrouter.ai/api/v1`. Row 4 is `POST` to that same base, read-only
+(an aggregate query, no body field creates, mutates, or deletes anything).
 
 | # | Endpoint                | Purpose                                                                                                  | Output file     |
 | - | ------------------------ | -------------------------------------------------------------------------------------------------------- | --------------- |
@@ -251,18 +255,34 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
   rows and is never needed by this flow. When `$WORKSPACE_ID` is set, filter at
   capture time with `workspace_id` instead (above); when unset, the call is
   unchanged from today — unscoped, all workspaces.
-- Row 4 `/analytics/query` sends this exact JSON body (same window as
-  `/activity` — `window_start`/`window_end` computed identically, never widened
-  per-metric):
+- Row 4 `/analytics/query` sends this exact JSON body. `time_range` is NOT
+  copied from `/activity`'s date-filtering logic — `/activity` only keeps rows
+  whose `date` falls in the last 30 days, it never constructs a timestamp
+  pair. Build `start`/`end` directly as UTC `YYYY-MM-DDTHH:MM:SSZ` strings
+  (seconds required — the API rejects minute-precision values like
+  `2026-05-01T00:00Z` with 400): `end` = now (UTC), `start` = now minus 30
+  days. The span MUST stay at or under 30 days — `openrouter_usage` is capped
+  at 31 days by the API, and widening the window risks a 400 on this row only
+  (not on `/activity`, which has its own independent 30-day filter). When
+  `$WORKSPACE_ID` is set (Step 1.5), add a `filters` array scoping to that
+  workspace — same rule as row 2's `&workspace_id=$WORKSPACE_ID`, so this
+  row's classification matches the same workspace scope `/activity` already
+  captured, instead of silently reverting to account-wide:
 
   ```json
   {
     "metrics": ["byok_usage", "openrouter_usage"],
     "dimensions": ["model"],
-    "time_range": { "start": "<window_start>", "end": "<window_end>" },
+    "time_range": { "start": "<UTC now minus 30 days, YYYY-MM-DDTHH:MM:SSZ>", "end": "<UTC now, YYYY-MM-DDTHH:MM:SSZ>" },
     "limit": 1000
   }
   ```
+
+  When `$WORKSPACE_ID` is set, add `"filters": [{ "field": "workspace",
+  "operator": "eq", "value": "<$WORKSPACE_ID>" }]` to that body (the workspace
+  UUID, not its display name — same value already captured in Step 1.5). When
+  unset, omit `filters` entirely — the call stays account-wide, unchanged from
+  today.
 
   **Auth-failure handling on this row** mirrors Step 2d's existing `/activity`
   mid-table-failure branch, not the probe's: this call is NOT the probe (that's
@@ -436,13 +456,19 @@ that still (wrongly) passes the `monthly_cost_usd == sum of rows` self-check.
   - all classified `"no_byok"` → profile-level `"no_byok"`
   - any model `"mixed"`, or a mix of `byok_passthrough`/`mixed`/`no_byok`
     across models → profile-level `"mixed"`
+  - some models classified (any of `byok_passthrough`/`mixed`/`no_byok`) and
+    at least one other model `"unknown"` (not every model, which is the next
+    bullet) → profile-level `"mixed"` — the profile has at least one model
+    carrying a real BYOK-overlap risk, so `"unknown"` would understate it. Do
+    NOT use `"unknown"` just because one model's row couldn't be classified.
   - the Analytics query itself failed (Step 2c row 4 `status: "failed"` or
-    `"skipped"` in the manifest), or zero models were classifiable → profile-
-    level `"unknown"`, AND set every model's `usage_by_model[].cost_provenance`
-    to `"unknown"` too, AND append a `metadata.capture_warnings` entry
-    (`"analytics.json <failed|skipped> — cost_provenance is unknown for all
-    models"`). Do NOT fail Step 3 or skip writing the profile in this case —
-    `/activity` data is still valid and must still be written.
+    `"skipped"` in the manifest), or every classifiable model is `"unknown"`
+    → profile-level `"unknown"`, AND set every model's
+    `usage_by_model[].cost_provenance` to `"unknown"` too, AND append a
+    `metadata.capture_warnings` entry (`"analytics.json <failed|skipped> —
+    cost_provenance is unknown for all models"`). Do NOT fail Step 3 or skip
+    writing the profile in this case — `/activity` data is still valid and
+    must still be written.
 
 Write `$MIGRATION_DIR/openrouter-usage-profile.json`:
 
