@@ -246,28 +246,49 @@ short-circuit it.
    `partial_window: false` and still `cost_status: "cost_unavailable"`. **Third exception —
    OpenRouter BYOK/overlap de-duplication:** when BOTH an `openrouter-usage-profile.json` and
    a direct provider profile (`anthropic-usage-profile.json` or `openai-usage-profile.json`)
-   exist in the winning run directory AND the OpenRouter profile's `metadata.cost_provenance`
-   is `"byok_passthrough"` or `"mixed"`, do NOT sum both profiles' dollar figures for the
-   overlapping model(s) — the same underlying provider spend would otherwise be counted twice
-   (once via the direct provider's own usage API, once via OpenRouter routing the same
-   traffic). Prefer the direct provider's own figure for the overlapping model(s) as ground
-   truth, and treat the OpenRouter profile's corresponding `usage_by_model[]` dollar entries as
-   router-fee-only for that overlap (exclude them from this SUM). When `cost_provenance` is
-   `"unknown"` (the only value this flow currently writes — see `discover-openrouter-api.md`'s
-   own documented detection limitation), there is no reliable signal to resolve the overlap
-   automatically: match models across the two profiles — OpenRouter's `usage_by_model[].model`
-   uses a `provider/model-name` form (e.g. `"openai/gpt-4.1"`); a model is "the same" as the
-   direct profile's bare model name (e.g. `"claude-sonnet-5"`) if the direct name equals the
-   OpenRouter model name's substring after its last `/`. For every OpenRouter
-   `usage_by_model[]` row whose model matches a model present on the direct profile, EXCLUDE
-   that row's dollar AND token figures from this SUM entirely (not dollars alone — the direct
-   profile already counts that traffic's tokens, so including OpenRouter's figures too would
-   double-count both). Keep every OpenRouter-only model (no match on the direct profile) in
-   the sum as before. Flag the exclusion in the summary presented to the user as "OpenRouter
-   and \<provider\> usage profiles both present; N overlapping model(s) excluded from
-   OpenRouter's totals to avoid double-counting BYOK traffic — provenance is unknown, so this
-   exclusion assumes full overlap for those models, which may undercount if OpenRouter is only
-   partially BYOK-routing them."
+   exist in the winning run directory, resolve the overlap. Match models across the two
+   profiles the same way regardless of which branch below applies — OpenRouter's
+   `usage_by_model[].model` uses a `provider/model-name` form (e.g. `"openai/gpt-4.1"`); a
+   model is "the same" as the direct profile's bare model name (e.g. `"claude-sonnet-5"`) if
+   the direct name equals the OpenRouter model name's substring after its last `/`.
+
+   **Gate on field presence, not on the profile-level value, for backward compatibility:**
+   if the OpenRouter profile has NO `usage_by_model[].cost_provenance` field at all (an OLD
+   profile written before per-model detection existed), fall straight into the pre-existing
+   blanket-unknown behavior described below — do not require the per-model field to be
+   present, since old `.migration/` run directories on disk will not have it. If the field
+   IS present (a new-format profile), use the **per-model branch** instead:
+
+   - For each OpenRouter `usage_by_model[]` row whose model name-matches a model on the direct
+     profile:
+     - row's `cost_provenance` is `"byok_passthrough"` or `"mixed"` → EXCLUDE this row's
+       dollar AND token figures from this SUM entirely (not dollars alone — the direct profile
+       already counts that traffic's tokens, so including OpenRouter's figures too would
+       double-count both; the same underlying provider spend would otherwise be counted twice —
+       once via the direct provider's own usage API, once via OpenRouter routing the same
+       traffic). Prefer the direct provider's own figure for this model as ground truth.
+     - row's `cost_provenance` is `"no_byok"` → do **NOT** exclude; this is a confirmed
+       non-overlapping-provider case, so OpenRouter's own figures for this model are the
+       correct spend to sum (more precise than the blanket-unknown fallback below).
+     - row's `cost_provenance` is `"unknown"` → fall back to the conservative "match by name,
+       exclude everything that matches" behavior for this row only (same as the old-profile
+       path below), and keep the same caveat sentence, but scope it to just the rows that
+       actually used the fallback this run (not every overlapping model, since some may have
+       resolved via `no_byok`/`byok_passthrough`/`mixed`).
+   - Keep every OpenRouter-only model (no match on the direct profile) in the sum as before.
+   - The profile-level `metadata.cost_provenance` field is NOT read to decide whether this
+     per-model branch runs — only the presence of the per-model field decides that (see gate
+     above).
+
+   **Old-profile fallback (no per-model field present):** there is no reliable signal to
+   resolve the overlap automatically — match models across the two profiles (same name-match
+   rule above). For every OpenRouter `usage_by_model[]` row whose model matches a model present
+   on the direct profile, EXCLUDE that row's dollar AND token figures from this SUM entirely.
+   Keep every OpenRouter-only model (no match on the direct profile) in the sum as before. Flag
+   the exclusion in the summary presented to the user as "OpenRouter and \<provider\> usage
+   profiles both present; N overlapping model(s) excluded from OpenRouter's totals to avoid
+   double-counting BYOK traffic — provenance is unknown, so this exclusion assumes full overlap
+   for those models, which may undercount if OpenRouter is only partially BYOK-routing them."
 7. **Hold these computed figures — do not write them yet.** `$BEDROCK_RUN_DIR` does not exist
    at this point in the document (it is only established in "### A3 — Locate Assess output,
    then establish this skill's own run state" below, after Phase A runs); writing to it here
