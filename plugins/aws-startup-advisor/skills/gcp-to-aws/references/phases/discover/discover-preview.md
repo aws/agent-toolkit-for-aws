@@ -100,10 +100,16 @@ the comparison is a ~10% premium (Bedrock in-region is at OpenAI's data-residenc
 | `gpt-5.5` (not `-pro`)                 | GPT-5.5            | `openai.gpt-5.5`       |
 | `gpt-5.4` (not `-pro`/`-mini`/`-nano`) | GPT-5.4            | `openai.gpt-5.4`       |
 
-On the mantle endpoint these are in-region only (us-east-1, us-east-2; us-west-2 additionally for Terra, Luna,
-and GPT-5.4; AWS GovCloud us-gov-west-1 / us-gov-east-1 for Terra and Luna, us-gov-west-1 also for GPT-5.4).
-GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS ids; GPT-5.5 / GPT-5.4 have no
-CRIS. At Discover time the target region may not be known — record the same-model mapping and let Design apply
+For the GPT-5.x rows, the mantle endpoint is in-region only (us-east-1, us-east-2; us-west-2 additionally for
+Terra, Luna, and GPT-5.4; AWS GovCloud us-gov-west-1 / us-gov-east-1 for Terra and Luna, us-gov-west-1 also for
+GPT-5.4). GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS ids; GPT-5.5 / GPT-5.4
+have no CRIS.
+
+For the GPT-6 rows, mantle is us-east-1 only, except GPT-6 Astra which is also available in us-west-2. All four
+GPT-6 models additionally reach a broad set of commercial regions via `bedrock-runtime` CRIS (`us.` / `global.`
+prefixes).
+
+At Discover time the target region may not be known — record the same-model mapping and let Design apply
 the region gate. See `references/shared/openai-on-bedrock.md`.
 
 **Cross-family rows** — for sources with no Bedrock equivalent:

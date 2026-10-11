@@ -53,11 +53,15 @@ Apply in order. Stop at the first tier that resolves.
 
 ### Tier 0 — Source model is on Bedrock (default path)
 
-If the detected model is GPT-5.6 Sol / Terra / Luna, GPT-5.5, or GPT-5.4, the target is **the same model on
-Bedrock**.
+If the detected model is GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-6.1 Sol, GPT-5.6 Sol / Terra / Luna, GPT-5.5, or
+GPT-5.4, the target is **the same model on Bedrock**.
 
 | Source model  | Bedrock target | Model ID (mantle / runtime CRIS)                        | Assessment                                                      |
 | ------------- | -------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
+| GPT-6 Astra   | GPT-6 Astra    | `openai.gpt-6-astra` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
+| GPT-6 Sol     | GPT-6 Sol      | `openai.gpt-6-sol` / `us.` `global.` prefixed           | `strong_migrate` — same model; parity on Global CRIS, else +10% |
+| GPT-6 Luna    | GPT-6 Luna     | `openai.gpt-6-luna` / `us.` `global.` prefixed          | `strong_migrate` — same model; parity on Global CRIS, else +10% |
+| GPT-6.1 Sol   | GPT-6.1 Sol    | `openai.gpt-6.1-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Sol   | GPT-5.6 Sol    | `openai.gpt-5.6-sol` / `us.` `global.` prefixed         | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Terra | GPT-5.6 Terra  | `openai.gpt-5.6-terra` / `us.` `in.` `global.` prefixed | `strong_migrate` — same model; parity on Global CRIS, else +10% |
 | GPT-5.6 Luna  | GPT-5.6 Luna   | `openai.gpt-5.6-luna` / `us.` `in.` `global.` prefixed  | `strong_migrate` — same model; parity on Global CRIS, else +10% |
