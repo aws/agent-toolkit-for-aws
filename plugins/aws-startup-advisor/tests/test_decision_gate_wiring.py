@@ -18,8 +18,10 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 # Every skill exit that must emit plan.json and present the web CTA.
 HANDOFF_FILES = [
     PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "estimate" / "estimate.md",
+    PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "estimate" / "estimate-assemble.md",
     PLUGIN_ROOT / "skills" / "heroku-to-aws" / "references" / "phases" / "estimate" / "estimate-assemble.md",
     PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "generate" / "generate.md",
+    PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "generate" / "generate.md",
     PLUGIN_ROOT / "skills" / "heroku-to-aws" / "references" / "phases" / "generate" / "generate-assemble.md",
 ]
 

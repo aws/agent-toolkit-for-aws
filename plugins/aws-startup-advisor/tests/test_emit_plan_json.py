@@ -52,6 +52,26 @@ def test_lowercase_uuid_run_id_is_unchanged(tmp_path: Path) -> None:
     assert data["runId"] == lower, f"runId altered: {data.get('runId')!r}"
 
 
+def test_azure_infra_run_emits_plan(tmp_path: Path) -> None:
+    """AZURE_TO_AWS was previously skipped as 'no web handoff yet'. An infra run
+    must emit plan.json with the Azure source monthly copied from
+    current_costs.azure_monthly."""
+    golden = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-estimate"
+    run = tmp_path / "run"
+    shutil.copytree(golden, run)
+    status_path = run / ".phase-status.json"
+    status = json.loads(status_path.read_text())
+    status["owning_skill"] = "AZURE_TO_AWS"
+    status["run_id"] = "8c1e4f2a-3b6d-4a7e-9f10-5d2c8b7a6e41"
+    status_path.write_text(json.dumps(status, indent=2))
+    infra = json.loads((run / "estimation-infra.json").read_text())
+    data = _emit(run)
+    assert data["sourcePlatform"] == "AZURE"
+    assert data["scope"] == "INFRA_ONLY"
+    assert data["cost"]["sourceMonthly"] == infra["current_costs"]["azure_monthly"]
+    assert data["cost"]["awsMonthly"] == infra["projected_costs"]["aws_monthly_balanced"]
+
+
 def test_heroku_skill_writer_matches_plugin_copy() -> None:
     """heroku-to-aws invokes the writer from its own scripts/ dir so a standalone
     ``npx skills add --skill heroku-to-aws`` install (which carries only the skill

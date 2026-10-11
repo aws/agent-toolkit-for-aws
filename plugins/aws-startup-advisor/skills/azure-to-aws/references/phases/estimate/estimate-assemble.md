@@ -175,7 +175,7 @@ no shared schema change.
 
 | Choice                   | `run_mode`             | `current_phase`    | `phases.workshop`        | Then                                                                                                                                                                                           |
 | ------------------------ | ---------------------- | ------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A** — done for now     | `"decide"`             | `"complete"`       | `"completed"` (declined) | **Write `DECISION.md` (Step 3a below)**, then close out. `phases.generate` **stays** `"pending"`: that combination means "decision complete, execution available on request"                   |
+| **A** — done for now     | `"decide"`             | `"complete"`       | `"completed"` (declined) | **Write `DECISION.md` and, fail-open, `plan.json` (Step 3a below)**, then close out. `phases.generate` **stays** `"pending"`: that combination means "decision complete, execution available on request" |
 | **B** — what-if workshop | `"decide"`             | stays `"estimate"` | `"in_progress"`          | Enter the `workshop` sidebar. **Re-present this gate when the sidebar resolves** (options A and C; the active scenario carries into either). Never advance to Generate from inside the sidebar |
 | **C** — generate         | `"decide_and_execute"` | `"generate"`       | `"completed"` (declined) | **Run Step 3b first** (confirm deferred execution choices), then continue to Generate                                                                                                           |
 
@@ -343,6 +343,94 @@ Content (match gcp-to-aws's `DECISION.md` twin — same shape, Azure wording):
 > marker and stands alone as plain Markdown; the HTML report is a presentation upgrade, not
 > the handoff signal.
 
+After `DECISION.md` is written:
+
+1. **Write the web-handoff summary (fail-open):** run
+   `python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+   (absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and
+   writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …`
+   or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip
+   or error the decision is still complete — continue without it and do not surface the
+   script output to the user.
+2. Run the post-gate feedback checkpoint per `SKILL.md`. Step 1 has already run, so you
+   know its `PLAN_OK`/`PLAN_SKIP` status — author the close **once** with that knowledge,
+   never as a two-pass edit of an already-shown message:
+   - If step 1 printed `PLAN_SKIP` (no `plan.json`), close with: "Your decision is saved
+     at `DECISION.md`. If you decide to migrate, say 'generate the Terraform and
+     migration scripts' — everything is saved and I'll pick up from here."
+   - If step 1 printed `PLAN_OK`, close with that same sentence and also name `plan.json`
+     in it as plain text, with no link (the What's next block below carries the only
+     link) — e.g. "Your decision is saved at `DECISION.md`, and your uploadable plan at
+     `plan.json` — upload it to AWS Startups Migrate to see if you qualify for AWS
+     credits. If you decide to migrate, say 'generate the Terraform and migration
+     scripts' — everything is saved and I'll pick up from here."
+3. **Web-handoff — only when step 1 printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit
+   this whole step; there is no file to upload).
+
+   **Show the user their `plan.json`.** The `.migration` folder is hidden by default
+   on macOS and Linux, so open the file's location for them instead of leaving them
+   to find it. Run the command for the user's OS once, as an ordinary command — the
+   agent's own permission prompt is the user's choice, so do not ask separately first:
+
+   - macOS: `open -R "$MIGRATION_DIR/plan.json"` — opens Finder with the file selected,
+     even inside the hidden folder.
+   - Windows: `MSYS_NO_PATHCONV=1 explorer.exe /select,"<absolute Windows path to plan.json>"`
+     — the prefix stops Git Bash from rewriting `/select,` as a path (drop it in
+     PowerShell or cmd). In Git Bash, get the Windows path with
+     `cygpath -w "$MIGRATION_DIR/plan.json"`. `explorer.exe` exits non-zero even when it
+     succeeds, so treat it as opened unless it prints an error.
+   - Linux: `xdg-open "$MIGRATION_DIR"` — opens the folder (it cannot select the file).
+
+   Then show exactly ONE of the two messages below, as plain text (not in a code block).
+   Do not reword them — this copy is owned by the web experience.
+
+   If the folder opened:
+
+   > **The folder is open with your plan.json selected.**
+
+   On Linux, where the file cannot be selected, show **The folder with your plan.json
+   is open.** instead.
+
+   If the command failed, was not available, or the user declined it, show this as its
+   own message and do not add any other explanation of why it did not open. Replace
+   `<absolute path to plan.json>` with the real absolute path:
+
+   > The folder did not open. The open command is blocked in your permissions.
+   >
+   > Your plan.json is saved at:
+   > `<absolute path to plan.json>`
+   >
+   > The .migration folder is hidden by default on macOS. In Finder, press Command + Shift + Period (.) to show it.
+
+   On Linux, use this last line instead: "The .migration folder is hidden by default on
+   Linux. In your file manager, press Ctrl + H to show it." On Windows, the folder is
+   not hidden, so omit the last line. Keep "The open command is blocked in your
+   permissions." only when a permission rule blocked it, and drop that sentence when the
+   user declined or the command failed for another reason.
+
+   Then append the What's next block below, verbatim, replacing `<run_id>` in the link
+   with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so
+   the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next"
+   heading. The call-to-action must be a Markdown link so it renders as clickable text
+   with no bare URL. Do not reword it — this copy is owned by the web experience. Name
+   `plan.json` in exactly one place in the close above; this block is the link, not a
+   second mention of the filename as a file the user must hunt for.
+
+> **💬 What's next**
+>
+> - **Refine your plan**
+>   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
+> - **See your AWS credits**
+>   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+>
+> [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+>
+> After you upload, you also get:
+>
+> - Interactive plan dashboard
+> - Monthly cost estimate
+> - Migration paths: AI agent, AWS expert, or AWS Partner
+
 ### Why C writes `run_mode` before Generate loads
 
 Write `run_mode: "decide_and_execute"` **before** `generate.md` loads, not after
@@ -366,9 +454,9 @@ a reason to be more careful, not less.
 ### On A, do not nag
 
 Option A is a complete, successful run, not an abandoned one: the customer got a
-design and a costed decision. Close with where the artifacts are and how to
-resume — "if you decide to migrate, say 'generate the Terraform and migration
-scripts' and I'll pick up from here" — and stop there.
+design and a costed decision. The close is the Step 3a sentence (the `PLAN_SKIP`
+wording, or the `PLAN_OK` wording plus the What's next block). Do not add a second
+pitch after it, and stop there.
 
 ---
 

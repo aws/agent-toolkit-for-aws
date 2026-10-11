@@ -167,3 +167,73 @@ and step 5 run in the MAIN window — the worker cannot invoke skills or run
      and blocks completion (the `_postconditions` `_assert`).
 5. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK` and advance to
    `complete`; on any failure emit `GATE_FAIL` and stop.
+
+**Write the web-handoff summary (fail-open), only after `HANDOFF_OK`:** run
+`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+(absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and
+writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …`
+or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip
+or error the migration is still complete — continue without it and do not surface the
+script output to the user.
+
+**Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit this whole block; there is no file to upload). Do three things, in order:
+
+- **(a)** In the completion summary, add exactly one plain-text entry (no link — the clickable link is the What's next call-to-action below): `plan.json — upload to AWS Startups Migrate to see if you qualify for AWS credits`.
+- **(b)** Then show the user their `plan.json`. The `.migration` folder is hidden by default
+  on macOS and Linux, so open the file's location for them instead of leaving them to
+  find it. Run the command for the user's OS once, as an ordinary command — the agent's
+  own permission prompt is the user's choice, so do not ask separately first:
+
+  - macOS: `open -R "$MIGRATION_DIR/plan.json"` — opens Finder with the file selected,
+    even inside the hidden folder.
+  - Windows: `MSYS_NO_PATHCONV=1 explorer.exe /select,"<absolute Windows path to plan.json>"`
+    — the prefix stops Git Bash from rewriting `/select,` as a path (drop it in
+    PowerShell or cmd). In Git Bash, get the Windows path with
+    `cygpath -w "$MIGRATION_DIR/plan.json"`. `explorer.exe` exits non-zero even when it
+    succeeds, so treat it as opened unless it prints an error.
+  - Linux: `xdg-open "$MIGRATION_DIR"` — opens the folder (it cannot select the file).
+
+  Then show exactly ONE of the two messages below, as plain text (not in a code block).
+  Do not reword them — this copy is owned by the web experience.
+
+  If the folder opened:
+
+  > **The folder is open with your plan.json selected.**
+
+  On Linux, where the file cannot be selected, show **The folder with your plan.json
+  is open.** instead.
+
+  If the command failed, was not available, or the user declined it, show this as its
+  own message, separate from the phase summary, and do not add any other explanation
+  of why it did not open. Replace `<absolute path to plan.json>` with the real absolute
+  path:
+
+  > The folder did not open. The open command is blocked in your permissions.
+  >
+  > Your plan.json is saved at:
+  > `<absolute path to plan.json>`
+  >
+  > The .migration folder is hidden by default on macOS. In Finder, press Command + Shift + Period (.) to show it.
+
+  On Linux, use this last line instead: "The .migration folder is hidden by default on
+  Linux. In your file manager, press Ctrl + H to show it." On Windows, the folder is
+  not hidden, so omit the last line. Keep "The open command is blocked in your
+  permissions." only when a permission rule blocked it, and drop that sentence when the
+  user declined or the command failed for another reason.
+
+- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience:
+
+> **💬 What's next**
+>
+> - **Refine your plan**
+>   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
+> - **See your AWS credits**
+>   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+>
+> [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+>
+> After you upload, you also get:
+>
+> - Interactive plan dashboard
+> - Monthly cost estimate
+> - Migration paths: AI agent, AWS expert, or AWS Partner
