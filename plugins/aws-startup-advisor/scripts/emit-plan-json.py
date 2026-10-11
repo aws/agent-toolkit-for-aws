@@ -16,7 +16,7 @@ which runs independently and can accompany infra or billing). The route(s) prese
 decide scope and basis: infra/billing alone -> INFRA_ONLY; a base route + AI -> FULL
 (the two figures summed). A standalone AI-only run is deferred — the contract only
 accepts AI_ONLY with sourcePlatform OPENAI, and the LLM-to-Bedrock path persists no
-cost file, so a GCP AI-only run has no valid mapping yet.
+cost file, so a GCP or Azure AI-only run has no valid mapping yet.
 
 Usage:
   python3 scripts/emit-plan-json.py --migration-dir <dir>
@@ -69,6 +69,7 @@ _UUID_RE = re.compile(
 SKILL_TO_PLATFORM = {
     "GCP_TO_AWS": "GCP",
     "HEROKU_TO_AWS": "HEROKU",
+    "AZURE_TO_AWS": "AZURE",
 }
 
 # Bounds the strict web import contract enforces. Mirrored here so an out-of-bounds
@@ -88,12 +89,14 @@ _ORPHAN_TEMP_AGE_S = 3600
 
 # Where each platform's source-monthly baseline lives in its infra estimate, as
 # (container, field). The location differs by skill: GCP writes current_costs.gcp_monthly;
-# Heroku writes its baseline under cost_comparison.heroku_monthly_baseline (its
-# current_costs holds only source/accuracy metadata, not a number). Reading only the
-# platform's own field keeps an unrelated number from being copied by accident.
+# Azure writes current_costs.azure_monthly; Heroku writes its baseline under
+# cost_comparison.heroku_monthly_baseline (its current_costs holds only source/accuracy
+# metadata, not a number). Reading only the platform's own field keeps an unrelated
+# number from being copied by accident.
 PLATFORM_SOURCE_FIELD = {
     "GCP": ("current_costs", "gcp_monthly"),
     "HEROKU": ("cost_comparison", "heroku_monthly_baseline"),
+    "AZURE": ("current_costs", "azure_monthly"),
 }
 
 # The plugin's pricing_source.status values -> the web contract's pricingSource enum.
@@ -114,6 +117,7 @@ PRICING_SOURCE_MAP = {
 VALID_SCOPES_BY_PLATFORM = {
     "GCP": {"INFRA_ONLY", "FULL"},
     "HEROKU": {"INFRA_ONLY"},
+    "AZURE": {"INFRA_ONLY", "FULL"},
     "OPENAI": {"AI_ONLY"},
 }
 
@@ -441,10 +445,10 @@ def build_plan(migration_dir: Path, plugin_json_path: Path) -> tuple[dict, str, 
             base_items,
         )
     else:
-        # AI-only. sourcePlatform here is GCP/HEROKU, but the contract only accepts
-        # AI_ONLY with sourcePlatform OPENAI (and the LLM-to-Bedrock path persists no
-        # cost file), so a GCP AI-only run has no valid mapping yet — defer rather than
-        # emit a plan the import would reject.
+        # AI-only. sourcePlatform here is GCP/HEROKU/AZURE, but the contract only
+        # accepts AI_ONLY with sourcePlatform OPENAI (and the LLM-to-Bedrock path
+        # persists no cost file), so a GCP or Azure AI-only run has no valid mapping
+        # yet — defer rather than emit a plan the import would reject.
         raise SkipEmit("AI-only run has no valid web mapping yet (deferred)")
 
     # Never emit a (platform, scope) the import handler rejects (e.g. HEROKU must be
