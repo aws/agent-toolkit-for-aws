@@ -25,6 +25,224 @@ HANDOFF_FILES = [
     PLUGIN_ROOT / "skills" / "heroku-to-aws" / "references" / "phases" / "generate" / "generate-assemble.md",
 ]
 
+UPFRONT_NOTICE = PLUGIN_ROOT / "skills" / "shared" / "migration" / "upfront-credits.md"
+LLM_UPFRONT_NOTICE = (
+    PLUGIN_ROOT / "skills" / "shared" / "migration" / "upfront-credits-llm.md"
+)
+LLM_VENDORED_NOTICE = (
+    PLUGIN_ROOT / "skills" / "llm-to-bedrock" / "references" / "vendored"
+    / "migration" / "upfront-credits-llm.md"
+)
+LLM_SKILL = PLUGIN_ROOT / "skills" / "llm-to-bedrock" / "SKILL.md"
+PLUGIN_README = PLUGIN_ROOT / "README.md"
+UPFRONT_DISCOVER_FILES = {
+    "azure": PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "discover" / "discover.md",
+    "gcp": PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "discover" / "discover.md",
+    "heroku": PLUGIN_ROOT / "skills" / "heroku-to-aws" / "references" / "phases" / "discover" / "discover.md",
+}
+AGENT_ADVISOR_MIGRATION_PLAN = (
+    PLUGIN_ROOT / "skills" / "agent-advisor" / "references" / "phases"
+    / "migration-plan" / "migration-plan.md"
+)
+AGENT_ADVISOR_LLM_HANDOFF = (
+    PLUGIN_ROOT / "skills" / "agent-advisor" / "references" / "handoff"
+    / "handoff-migration.md"
+)
+APPROVED_CREDIT_COPY = (
+    "Get $1,500 in AWS Promotional Credits for your migration when you create "
+    "an assessment. Migrating a larger workload? You may be eligible for more. "
+    "Talk to your AWS representative. Final eligibility determined by AWS."
+)
+STALE_CREDIT_COPY = (
+    "Get $1,500 in migration credits when you create an assessment.",
+    "up to $1,500",
+    "Credits are not guaranteed",
+    "Qualification and credits are not guaranteed",
+)
+
+
+def test_migration_credit_notice_is_vendored_and_qualified() -> None:
+    canonical = UPFRONT_NOTICE.read_bytes()
+    text = canonical.decode()
+    assert APPROVED_CREDIT_COPY in text
+    assert all(stale not in text for stale in STALE_CREDIT_COPY)
+    assert "plan.json" in text and "migrate/credits" in text
+    assert "upload below" not in text.lower()
+    for provider in UPFRONT_DISCOVER_FILES:
+        vendored = (
+            PLUGIN_ROOT / "skills" / f"{provider}-to-aws" / "references"
+            / "vendored" / "migration" / "upfront-credits.md"
+        )
+        assert vendored.read_bytes() == canonical
+
+
+def test_llm_migration_credit_notice_is_vendored_and_qualified() -> None:
+    canonical = LLM_UPFRONT_NOTICE.read_bytes()
+    text = canonical.decode()
+
+    assert LLM_VENDORED_NOTICE.read_bytes() == canonical
+    assert APPROVED_CREDIT_COPY in text
+    assert all(stale not in text for stale in STALE_CREDIT_COPY)
+    assert (
+        "[AWS Startups Migrate](https://startups.aws.com/startups/en-US/"
+        "migrate/credits?source=plugin)" in text
+    )
+    assert "does not currently create an uploadable `plan.json`" in text
+    assert "upload below" not in text.lower()
+    assert "upload that" not in text.lower()
+
+
+def test_readme_uses_approved_migration_credit_copy() -> None:
+    text = PLUGIN_README.read_text(encoding="utf-8")
+
+    assert text.count(APPROVED_CREDIT_COPY) == 3
+    assert all(stale not in text for stale in STALE_CREDIT_COPY)
+
+
+def test_llm_migration_credit_notice_runs_once_before_delegated_discover() -> None:
+    text = LLM_SKILL.read_text(encoding="utf-8")
+    a1_start = text.index("### A1 — Run Discover, Clarify, Design, and Estimate")
+    a2_start = text.index("### A2 — Confirm Assess is complete", a1_start)
+    a1 = text[a1_start:a2_start]
+    resolution_idx = a1.index("offer Resume/Fresh/Cancel")
+    notice_ref = "references/vendored/migration/upfront-credits-llm.md"
+    marker = ".llm-upfront-credits-offered"
+    marker_idx = a1.index(marker)
+    notice_idx = a1.index(notice_ref)
+    discover_idx = a1.index(
+        "$ASSESS_BASE/references/phases/discover/discover.md", notice_idx
+    )
+
+    assert a1.count(notice_ref) == 1
+    assert a1.count(marker) == 1
+    assert resolution_idx < marker_idx < notice_idx < discover_idx
+    contract = a1[marker_idx - 200:discover_idx]
+    for required in (
+        "Fresh",
+        "standalone full migrations only",
+        "Resume",
+        "A2 re-entry",
+        "access-only mode",
+        "agent-advisor delegation",
+    ):
+        assert required in contract
+    assert "set -o noclobber" in contract
+    assert "OFFER_FIRST_ATTEMPT" in contract
+    assert "OFFER_ALREADY_RECORDED" in contract
+    assert "state-less directory left by interruption" in contract
+    assert "$INVOCATION_ORIGIN` is not `AGENT_ADVISOR" in contract
+
+
+def test_agent_advisor_handoff_durably_suppresses_llm_notice() -> None:
+    handoff = AGENT_ADVISOR_LLM_HANDOFF.read_text(encoding="utf-8")
+    llm = LLM_SKILL.read_text(encoding="utf-8")
+    marker = "initiated_by: AGENT_ADVISOR"
+    origin_check = "first line is exactly\n`initiated_by: AGENT_ADVISOR`"
+    a1_start = llm.index("### A1 — Run Discover, Clarify, Design, and Estimate")
+
+    assert marker in handoff
+    assert "durable downstream origin" in handoff
+    assert origin_check in llm[:a1_start]
+    assert "$INVOCATION_ORIGIN=AGENT_ADVISOR" in llm[:a1_start]
+    assert "$INVOCATION_ORIGIN` is not `AGENT_ADVISOR" in llm[a1_start:]
+
+
+def test_migration_credit_notice_runs_once_at_fresh_discover_start() -> None:
+    for provider, path in UPFRONT_DISCOVER_FILES.items():
+        text = path.read_text(encoding="utf-8")
+        notice_idx = text.index("references/vendored/migration/upfront-credits.md")
+        assert "fresh run" in text[max(0, notice_idx - 250):notice_idx + 250].lower()
+        assert "resum" in text[notice_idx:notice_idx + 500].lower()
+        assert "render it later" in text[notice_idx:notice_idx + 600].lower()
+        if provider == "azure":
+            init_origin_idx = text.index(
+                'initiated_by: "LLM_TO_BEDROCK"'
+            )
+            assert init_origin_idx < notice_idx < text.index(
+                "1. **Re-entry check", notice_idx
+            )
+            assert "AI-only" in text[notice_idx:notice_idx + 600]
+            assert "initiated_by: LLM_TO_BEDROCK" in text[notice_idx:notice_idx + 600]
+        elif provider == "gcp":
+            initiated_by_write_idx = text.index("also set `initiated_by`")
+            assert initiated_by_write_idx < notice_idx < text.index("## Step 1: Scan")
+            assert "AI-only" in text[notice_idx:notice_idx + 600]
+            assert "initiated_by: LLM_TO_BEDROCK" in text[notice_idx:notice_idx + 600]
+        else:
+            assert notice_idx < text.index("**When to offer capture:**", notice_idx)
+
+
+def test_agent_advisor_delegation_uses_resume_routable_state() -> None:
+    advisor_text = AGENT_ADVISOR_MIGRATION_PLAN.read_text(encoding="utf-8")
+    discover_text = UPFRONT_DISCOVER_FILES["gcp"].read_text(encoding="utf-8")
+    envelope_start = advisor_text.index('"initiated_by": "AGENT_ADVISOR"')
+
+    assert '{"initiated_by":"AGENT_ADVISOR"}' not in advisor_text
+    assert envelope_start < advisor_text.index("### Phase A — Discover")
+    for required in (
+        '"migration_id": "[MMDD-HHMM]"',
+        '"run_id": "[fresh random UUID from uuidgen]"',
+        '"owning_skill": "GCP_TO_AWS"',
+        '"current_phase": "discover"',
+        '"discover": "in_progress"',
+    ):
+        assert required in advisor_text
+    assert "schema-valid `.phase-status.json`" in discover_text
+    assert "normal Resume" in discover_text
+    assert "do not recreate state" in discover_text
+    assert "change its `migration_id`/`run_id`" in discover_text
+    assert "creates its initial delegated envelope in Step 1" in advisor_text
+    assert "Discover reuses that envelope" in advisor_text
+    assert "migration-plan.md does NOT touch it" not in advisor_text
+
+
+def test_azure_skill_describes_only_implemented_discovery_sources() -> None:
+    text = (
+        PLUGIN_ROOT / "skills" / "azure-to-aws" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    description = text.split("---", 2)[1]
+    defaults = text[text.index("## Defaults"):text.index("## Scope Notes")]
+
+    for section in (description, defaults):
+        assert "Terraform" in section
+        assert "consent-gated" in section
+        assert "application code" in section
+        assert "Billing exports, RDfA, Bicep, and ARM" in section
+        assert "not implemented" in section
+        assert "user-stated" in section or "azure_monthly_spend" in section
+    input_security = text[
+        text.index("### Input Security"):text.index("## State Validation")
+    ]
+    assert "unsupported" in input_security
+    assert "do not read, extract, or ingest them" in input_security
+    assert "Bicep files or ARM templates are present" in input_security
+    assert "halt per `discover-iac.md` Step 2" in input_security
+    assert re.search(r"even\s+when supported sources are also present", input_security)
+    assert "RDfA report archive is the only source" in input_security
+    assert "RDfA archive or billing export" in input_security
+    assert "accompanies at least one supported source" in input_security
+    assert "continue with the supported sources" in input_security
+    assert "billing-export-only workspace" in input_security
+    assert "halts at Discover's precondition" in input_security
+
+    iac_text = (
+        PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases"
+        / "discover" / "discover-iac.md"
+    ).read_text(encoding="utf-8")
+    assert "HALT if a dialect is present and its ref is not on disk" in iac_text
+    assert "No dialect present\" is a clean exit" in iac_text
+
+    for stale_claim in (
+        "billing exports as a fallback",
+        "Azure Cost Management exports",
+        "Resource Discovery for Azure report archives",
+        "extracted RDfA archives",
+        "RDfA measurements",
+        "fragment covers Terraform, Bicep, and ARM",
+        "Azure invoice line items",
+    ):
+        assert stale_claim not in text
+
 
 def test_handoff_exits_invoke_plan_writer() -> None:
     for f in HANDOFF_FILES:

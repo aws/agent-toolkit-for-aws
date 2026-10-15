@@ -96,6 +96,12 @@ because the dispatched `rw` worker has no shell and cannot converse with the use
 dispatch the phase's work. Capture writes into `$MIGRATION_DIR/live-capture/`, so
 it cannot run before `_init` has created the run directory.
 
+Immediately after `_init` resolves to a fresh run, before evaluating the source
+precondition or offering live capture, load
+`references/vendored/migration/upfront-credits.md` and render it verbatim once.
+Skip it when `_init` resumed an existing run or on a confirmed re-entry. Do not
+render it later in the run.
+
 **When to offer capture:** while evaluating the source `_precondition`, scan the
 workspace first (free). If NO `heroku_*` Terraform is found, offer live capture as
 the primary source — load `discover-live-capture.md` — instead of failing the check.

@@ -133,7 +133,12 @@ which is exactly why Phase A no longer uses it.)
 
 ## Step 1 — Collect source code path
 
-If `$ARGUMENTS` contains a path, use it as `$REPO`. Otherwise use **AskUserQuestion**:
+First inspect any `handoff-summary.md` path in `$ARGUMENTS`. If the file's first line is exactly
+`initiated_by: AGENT_ADVISOR`, set `$INVOCATION_ORIGIN=AGENT_ADVISOR`; this durable marker is
+how the Fresh-only offer in A1 distinguishes an agent-advisor delegation. Do not treat the
+handoff-summary file itself as `$REPO`.
+
+If `$ARGUMENTS` contains another path, use it as `$REPO`. Otherwise use **AskUserQuestion**:
 "Where is your source code? Enter a local path or GitHub URL."
 
 If a GitHub URL, `git clone` it to a temp dir; use that path as `$REPO`.
@@ -516,6 +521,29 @@ Then, in order:
    discover.md's Step 0 writes `.phase-status.json` would otherwise leave exactly this
    directory (present, but state-less) for a later resume, and discover.md's Resume branch
    would then try to read a `.phase-status.json` that doesn't exist.
+
+   **Fresh-only upfront migration-credit offer (standalone full migrations only):** after
+   step 1 selects **Fresh**, atomically reserve this run's one-time offer before rendering it:
+
+   ```bash
+   if (set -o noclobber; : > "$MIGRATION_DIR/.llm-upfront-credits-offered") 2>/dev/null; then
+     echo OFFER_FIRST_ATTEMPT
+   else
+     echo OFFER_ALREADY_RECORDED
+   fi
+   ```
+
+   Exclusive `noclobber` creation is the durable interruption marker. Only when it prints
+   `OFFER_FIRST_ATTEMPT` **and** `$INVOCATION_ORIGIN` is not `AGENT_ADVISOR`, read
+   `references/vendored/migration/upfront-credits-llm.md` and render it verbatim once before
+   delegated Discover scans anything. `OFFER_ALREADY_RECORDED` means a prior attempt reached
+   this boundary, including a state-less directory left by interruption before provider state
+   initialization, so do not render again. Do not render when step 1 selects **Resume**, during
+   A2 re-entry, in access-only mode, or when the durable handoff marker identified
+   agent-advisor delegation. The delegated provider's `initiated_by: LLM_TO_BEDROCK`
+   suppression remains in force, so it does not render the separate infrastructure/mixed
+   notice.
+
 2. **Read and execute** `$ASSESS_BASE/references/phases/discover/discover.md` in full, exactly
    as written, including its own Step 0 state-file initialization (skip Step 0 if resuming —
    `$MIGRATION_DIR` already has a `.phase-status.json`) and its Step 1 sub-discovery gates
@@ -530,11 +558,14 @@ Then, in order:
    note this as an adjacent, pre-existing inaccuracy fixed at its source rather than carried
    forward.)
 
-   When Discover's Step 0 writes the run's `.phase-status.json`, it must record
+   When Discover initializes the run's `.phase-status.json`, it must record
    `"initiated_by": "LLM_TO_BEDROCK"` beside `owning_skill` (which is set to whichever of
    `GCP_TO_AWS` / `AZURE_TO_AWS` actually ran — i.e. `$ASSESS_SKILL`'s own identifier — per
-   `discover.md`'s own instruction for a run started by another skill): this run was started
-   by llm-to-bedrock, and that is how telemetry attributes it.
+   `discover.md`'s own instruction for a run started by another skill) **before** the provider
+   evaluates its infrastructure/mixed migration-credit notice suppression. GCP writes this
+   field in Discover Step 0 and then evaluates the notice; Azure's special early `_init`
+   explicitly writes it before evaluating the notice. This run was started by llm-to-bedrock,
+   and that is how telemetry attributes it.
 
    On `HANDOFF_OK`: at least one of `ai-workload-profile.json`, `gcp-resource-inventory.json`
    / `azure-resource-inventory.json`, or `billing-profile.json` is present in

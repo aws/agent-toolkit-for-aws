@@ -98,8 +98,10 @@ which does not exist until `_init` has run. **For this phase specifically,
 reverse that ordering: perform `_init` state setup per `INTERPRETER.md` §
 `_init: true` NOW**, before step 1 below — resolve resume-vs-fresh, set
 `$MIGRATION_DIR`, and (on a fresh run) create the directory, `.gitignore`, and
-`.phase-status.json` exactly as that section specifies. This makes "Step: Run
-the phase" step 1's `_init` call (below) a no-op confirmation for this phase —
+`.phase-status.json` exactly as that section specifies. When LLM A1 entered this
+phase, the same fresh-state write MUST include `initiated_by: "LLM_TO_BEDROCK"`
+beside `owning_skill` before evaluating the migration-credit notice below. This makes
+"Step: Run the phase" step 1's `_init` call (below) a no-op confirmation for this phase —
 `_init` is idempotent by construction (a resumed run's `_init` setup only reads
 the existing `.phase-status.json` and reuses `$MIGRATION_DIR`; nothing is
 re-created), so running it here and having it "run again" later does not
@@ -107,6 +109,14 @@ double-initialize state or re-prompt resume-vs-fresh. Every other check this
 phase's `_preconditions`/`_postconditions` perform, and the state transition
 itself, still run at their normal point in the MAIN window — only the state
 CREATION step moves earlier, for this phase alone, to break the cycle.
+
+**Fresh-run migration-credit notice.** Immediately after `_init` resolves to a
+fresh run, before the re-entry check or any live-`az` consent/scanning, load
+`references/vendored/migration/upfront-credits.md` and render it verbatim once.
+Skip it when `_init` resumed an existing run, on a confirmed re-entry, when the
+state records `initiated_by: LLM_TO_BEDROCK`, or when the user's request is
+explicitly a direct AI-only assessment with no infrastructure track. Do not
+render it later in the run.
 
 1. **Re-entry check (do this FIRST, before offering consent).** If
    `$MIGRATION_DIR/live-capture/manifest.json` already exists (this run directory

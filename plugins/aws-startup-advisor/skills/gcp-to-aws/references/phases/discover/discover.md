@@ -28,6 +28,14 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
      - `[A] Resume: Continue with [latest run]`
      - `[B] Fresh: Create new migration run`
      - `[C] Cancel`
+   - **Initialized agent-advisor delegation:** If `$MIGRATION_DIR` is already selected and
+     its schema-valid `.phase-status.json` records `owning_skill: GCP_TO_AWS`,
+     `initiated_by: AGENT_ADVISOR`, `current_phase: discover`, and
+     `phases.discover: in_progress`, treat it as the already initialized delegated run:
+     skip the resume/Fresh/Cancel prompt, reuse `$MIGRATION_DIR`, do not recreate state or
+     change its `migration_id`/`run_id`, and continue to step 5. If a later invocation finds
+     this state without a preselected `$MIGRATION_DIR`, normal Resume recognizes
+     `current_phase: discover` and routes back to Discover.
    - **If resuming:** Set `$MIGRATION_DIR` to the selected run's directory. Read its `.phase-status.json` and skip to the appropriate phase per the State Machine in SKILL.md.
    - **If fresh or no existing runs:** Continue to step 2.
 2. Create `.migration/[MMDD-HHMM]/` directory (e.g., `.migration/0226-1430/`) using current timestamp (MMDD = month/day, HHMM = hour/minute). Set `$MIGRATION_DIR` to this new directory.
@@ -62,7 +70,14 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
    }
    ```
 
-   `run_id` is minted once here: run `uuidgen` (or an equivalent random UUID source) and write its output verbatim; never copy a value from an example or a previous run. It is never changed or reused across runs; unlike `migration_id` it carries no timestamp, so it uniquely identifies this run for telemetry and for the plugin-to-web handoff. `owning_skill` is always `GCP_TO_AWS`. If another skill invoked this run (llm-to-bedrock does, for Assess), also set `initiated_by` to that skill's identifier, e.g. `"initiated_by": "LLM_TO_BEDROCK"`.
+   `run_id` is minted once here: run `uuidgen` (or an equivalent random UUID source) and write its output verbatim; never copy a value from an example or a previous run. It is never changed or reused across runs; unlike `migration_id` it carries no timestamp, so it uniquely identifies this run for telemetry and for the plugin-to-web handoff. `owning_skill` is always `GCP_TO_AWS`. If another skill invoked this run, also set `initiated_by` to that skill's supplied identifier (for example, `"LLM_TO_BEDROCK"` for its Assess flow).
+
+   After the resume-vs-Fresh choice resolves and this state write is complete, if this is a
+   fresh run, load `references/vendored/migration/upfront-credits.md` and render it verbatim
+   once before any scanning. Skip this notice when resuming or re-entering an existing run,
+   when the initialized state records `initiated_by: LLM_TO_BEDROCK` or
+   `initiated_by: AGENT_ADVISOR`, or when the user's request is explicitly a direct AI-only
+   assessment with no infrastructure track. Do not render it later in the run.
 
 5. Confirm both `.migration/.gitignore` and `.phase-status.json` exist before proceeding to Step 1.
 6. Reconcile the initial state in `cli` reporting mode per

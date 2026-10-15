@@ -136,7 +136,34 @@ existing workload, set `phases.migration_plan = "not_applicable"`, and continue 
 
 Set `$MIGRATION_DIR` using the gcp-to-aws convention: `$REPO/.migration/<MMDD-HHMM>/`
 (current timestamp). Create the directory and `.migration/.gitignore` (`*\n!.gitignore`).
-All gcp-to-aws artifacts are written here.
+Before loading gcp-to-aws Discover, mint a fresh `run_id` with `uuidgen` (or an equivalent
+random UUID source) and write `$MIGRATION_DIR/.phase-status.json` as one schema-valid provider
+state envelope:
+
+```json
+{
+  "migration_id": "[MMDD-HHMM]",
+  "run_id": "[fresh random UUID from uuidgen]",
+  "owning_skill": "GCP_TO_AWS",
+  "last_updated": "[ISO 8601 timestamp]",
+  "current_phase": "discover",
+  "initiated_by": "AGENT_ADVISOR",
+  "phases": {
+    "discover": "in_progress",
+    "clarify": "pending",
+    "design": "pending",
+    "estimate": "pending",
+    "workshop": "pending",
+    "generate": "pending",
+    "feedback": "pending"
+  }
+}
+```
+
+This durable origin signal suppresses standalone migration promotions that do not apply to
+agent-advisor's AI-only planning engine, while leaving a normal, resume-routable GCP state if
+the session is interrupted. GCP Discover reuses this initialized envelope without recreating
+it or changing `migration_id` or `run_id`. All gcp-to-aws artifacts are written here.
 
 ## Step 2 — Assemble the injection context
 
@@ -287,9 +314,10 @@ relative references in those files resolve from `$GCP_BASE`.
 
 **Two separate state files — do NOT mix them up:**
 
-- `$MIGRATION_DIR/.phase-status.json` — gcp-to-aws's own state. Each phase file
-  (discover.md, clarify.md, etc.) writes and reads this file itself per its own protocol.
-  migration-plan.md does NOT touch it — let each phase file manage it.
+- `$MIGRATION_DIR/.phase-status.json` — gcp-to-aws's own state. migration-plan.md
+  creates its initial delegated envelope in Step 1. Discover reuses that envelope, and
+  each gcp-to-aws phase thereafter reads and advances it per its own protocol; do not
+  recreate it or perform extra provider-state writes from migration-plan.md.
 - `$RUN_DIR/.phase-status.json` — agent-advisor's state. Already set to
   `current_phase = "migration_plan"` in Step 0 and NOT touched again until Step 5.
   gcp-to-aws's files never read or write this file (they only know about `$MIGRATION_DIR`).
@@ -303,10 +331,13 @@ Read and execute: `$GCP_BASE/references/phases/discover/discover.md`
 
 Key behaviors:
 
-- `$MIGRATION_DIR` is already created (Step 1) — when discover.md Step 0 checks for
-  existing runs, the directory exists but has no `.phase-status.json` yet → treat as
-  fresh run (skip the resume/fresh/cancel prompt)
-- discover.md writes its own `.phase-status.json` to `$MIGRATION_DIR` — let it do so
+- `$MIGRATION_DIR` is already created (Step 1) with a schema-valid `.phase-status.json`
+  envelope containing `owning_skill: GCP_TO_AWS`, `initiated_by: AGENT_ADVISOR`,
+  `current_phase: discover`, and `phases.discover: in_progress` → treat it as an already
+  initialized delegated run (skip the resume/fresh/cancel prompt), reuse it without changing
+  `migration_id` or `run_id`, and suppress the standalone migration-credit notice
+- if interruption occurs, normal GCP Resume uses `current_phase: discover` and the phase map
+  to route back here
 - Injection context is NOT applied at this stage; it's carried as live context for Clarify
 - On `HANDOFF_OK`: `ai-workload-profile.json` (and/or IaC artifacts) present in `$MIGRATION_DIR`
 

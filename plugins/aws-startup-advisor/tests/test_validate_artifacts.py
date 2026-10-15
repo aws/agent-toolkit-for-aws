@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -542,6 +543,35 @@ def test_required_inline_array_field_cannot_be_omitted_on_either_route(tmp_path:
         assert any(
             f.code == "MISSING_REQUIRED" and f.path == missing_path for f in findings
         ), (missing_path, [f.as_dict() for f in findings])
+
+
+def test_agent_advisor_delegated_state_envelope_passes_shared_schema(
+    tmp_path: Path,
+) -> None:
+    """The documented delegated GCP state is valid and routes Resume to Discover."""
+    doc = (
+        PLUGIN_ROOT / "skills" / "agent-advisor" / "references" / "phases"
+        / "migration-plan" / "migration-plan.md"
+    ).read_text(encoding="utf-8")
+    section = doc[doc.index("one schema-valid provider\nstate envelope"):]
+    match = re.search(r"```json\n(.*?)\n```", section, re.S)
+    assert match is not None
+    state = json.loads(match.group(1))
+    state["migration_id"] = "0412-0930"
+    state["run_id"] = "12345678-1234-4abc-8def-1234567890ab"
+    state["last_updated"] = "2026-04-12T09:30:00Z"
+
+    run = tmp_path / state["migration_id"]
+    run.mkdir()
+    (run / ".phase-status.json").write_text(json.dumps(state))
+    manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
+    findings = []
+
+    assert va.validate_run_dir(run, "gcp-to-aws", manifest, findings) == 1
+    assert findings == []
+    assert state["current_phase"] == "discover"
+    assert state["phases"][state["current_phase"]] == "in_progress"
+    assert state["initiated_by"] == "AGENT_ADVISOR"
 
 
 def test_empty_phases_fails_min_properties(tmp_path: Path):
