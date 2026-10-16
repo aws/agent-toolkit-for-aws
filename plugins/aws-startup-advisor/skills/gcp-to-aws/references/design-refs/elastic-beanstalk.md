@@ -16,7 +16,7 @@ This is not a "Terraform required" policy — it reflects which discovery paths 
 ## Key Distinction
 
 - **EB is application management** (AWS manages lifecycle: provisioning, load balancing, scaling, patching) vs **ECS/Fargate as infrastructure management** (user manages task definitions, service configs, scaling policies).
-- "Don't want to manage servers" does **NOT** mean serverless/Lambda. Lambda imposes a different programming model: stateless functions, cold starts, event-driven invocation, 15-min max execution, no persistent connections.
+- "Don't want to manage servers" does **NOT** automatically mean classic Lambda Event Functions. Lambda Event Functions impose a different programming model: stateless functions, cold starts, event-driven invocation, 15-min max execution, no persistent connections. Lambda Web Functions, however, let code listen on a port like a normal HTTP server with no adapters, so this blanket claim no longer applies to all of Lambda.
 - EB eliminates server management while preserving the standard application programming model: long-running processes, persistent connections, threads, local state, WebSockets.
 
 ## When to Use

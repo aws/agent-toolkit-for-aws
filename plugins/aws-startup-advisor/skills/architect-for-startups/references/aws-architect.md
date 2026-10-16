@@ -11,7 +11,7 @@
 | Series A / Steady traffic | ECS Fargate                       | Predictable costs at steady-state; Savings Plans eligible                                                                                                                    |
 | Series B+ / Team has K8s  | EKS only if team already knows it | Never adopt K8s as a startup unless you're hiring K8s engineers                                                                                                              |
 
-**Counterintuitive**: ECS Fargate at seed stage feels heavy, but the ALB + target group + task definition setup is a one-time cost (~1 day). You avoid a forced re-platform when you outgrow Lambda's 15-minute timeout or need persistent connections. For simpler cases, Lambda function URLs with response streaming can bridge the gap without a full container deploy.
+**Counterintuitive**: ECS Fargate at seed stage feels heavy, but the ALB + target group + task definition setup is a one-time cost (~1 day). You avoid a forced re-platform when you outgrow Lambda's 15-minute request timeout or need WebSockets. For Node.js HTTP services, Lambda Web Functions offer a server-style programming model and native response streaming, with a [maximum request duration of 900 seconds](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-revisions.html) (30 seconds by default). Their HTTP endpoint [removes the `Connection` and `Upgrade` headers](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-http.html), so use containers for WebSockets or requests that exceed that limit. For simpler cases, Lambda function URLs with response streaming can bridge the gap without a full container deploy.
 
 ### Database — The Startup Trap
 
