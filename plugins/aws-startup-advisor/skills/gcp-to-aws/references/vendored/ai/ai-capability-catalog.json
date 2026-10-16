@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "catalog_version": 1,
+  "verified_at": "2026-10-13",
+  "providers": [
+    {
+      "identity": "anthropic",
+      "aliases": ["claude"],
+      "source_services": ["anthropic_api"],
+      "model_families": ["claude"],
+      "status": "supported",
+      "implemented_adapter": null
+    },
+    {
+      "identity": "openai",
+      "aliases": ["chatgpt", "gpt"],
+      "source_services": ["openai_api", "azure_openai"],
+      "model_families": ["gpt"],
+      "status": "supported",
+      "implemented_adapter": null
+    },
+    {
+      "identity": "google",
+      "aliases": ["gemini"],
+      "source_services": ["vertex_ai"],
+      "model_families": ["gemini"],
+      "status": "unknown",
+      "implemented_adapter": null,
+      "note": "Gemini's only Bedrock-mapping guide (ai-gemini-to-bedrock.md) lives under skills/gcp-to-aws/references/design-refs/, scoped to that one skill's adapter. It is not a shared, cross-skill guide under skills/shared/ai/ the way anthropic's and openai's guides are, so this provider does not clear the bar for status: supported."
+    }
+  ],
+  "gateways": [
+    {
+      "identity": "openrouter",
+      "aliases": ["openrouter"],
+      "product": "openrouter",
+      "upstream_providers": ["anthropic", "openai", "google"],
+      "status": "unknown",
+      "route": null,
+      "note": "status: unknown reflects documentation coverage only, not code: discover-openrouter-api.md already detects OpenRouter usage and BYOK-vs-credits attribution per upstream model at runtime. What is missing is a shared, cross-skill mapping GUIDE (the ai-anthropic-to-bedrock.md / ai-openai-to-bedrock.md equivalent) that documents how an OpenRouter-fronted upstream model maps onto a Bedrock target. Until that guide exists, this entry stays unknown rather than supported, per this catalog's rule that a mapping-guide document is the bar for supported and an implemented adapter/route is a separate, stricter bar tracked by implemented_adapter."
+    }
+  ]
+}

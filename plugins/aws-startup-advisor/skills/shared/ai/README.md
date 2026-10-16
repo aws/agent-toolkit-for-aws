@@ -18,6 +18,7 @@ before opening a pull request.
 | `design-ref-harness.md`              | AgentCore Harness design reference                             |
 | `design-ref-agentic-to-agentcore.md` | Strands Agents + AgentCore Runtime design reference            |
 | `sdk-capability-map.json`            | SDK method → capability lookup used by app-code discovery      |
+| `ai-capability-catalog.json`         | Target-only source-provider/gateway capability catalog (schema_version, provider/gateway status, no implemented-adapter claim) |
 | `bedrock-pricing-cache.md`           | Provider-neutral Bedrock model and service pricing             |
 | `schema-design-aws-ai.md`            | Target-only `aws-design-ai.json` contract; `metadata.ai_sources[]`/`gateways[]` mirror `ai-workload-profile.schema.json` exactly |
 

@@ -24,6 +24,7 @@ if this skill needs one, add the copy **and** a row in the table below.
 | --------------------------------------- | ----------------------------------------------------- |
 | `workshop/workshop-invariants.md`       | `skills/shared/workshop/workshop-invariants.md`       |
 | `ai/ai-anthropic-to-bedrock.md`         | `skills/shared/ai/ai-anthropic-to-bedrock.md`         |
+| `ai/ai-capability-catalog.json`         | `skills/shared/ai/ai-capability-catalog.json`         |
 | `ai/ai-migration-guardrails.md`         | `skills/shared/ai/ai-migration-guardrails.md`         |
 | `ai/ai-model-lifecycle.md`              | `skills/shared/ai/ai-model-lifecycle.md`              |
 | `ai/ai-openai-to-bedrock.md`            | `skills/shared/ai/ai-openai-to-bedrock.md`            |
