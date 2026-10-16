@@ -1,6 +1,7 @@
 [tasks."lint:artifacts"]
 description = "Validate aws-startup-advisor fixture artifacts against their published schema contracts"
 run = "python3 scripts/validate-artifacts.py --fixtures"
+
 [tasks."lint:vendored-parity"]
 description = "Check each skill's references/vendored/ copies are byte-identical to skills/shared/"
 run = "python3 tools/sync-vendored.py --check"
@@ -8,9 +9,14 @@ run = "python3 tools/sync-vendored.py --check"
 [tasks."lint:skill-refs"]
 description = "Check every file path the aws-startup-advisor skills reference exists"
 run = "python3 tools/check-skill-refs.py --check"
+
+[tasks."lint:consent-disclosure"]
+description = "Usage-API discovery consent text must not contradict its own Capture Endpoint Table"
+run = "python3 scripts/consent-disclosure-audit.py"
+
 [tasks.ci]
 description = "Run startup advisor CI checks"
-depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs", "test", "test:heroku-source-review"]
+depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs", "lint:consent-disclosure", "test", "test:heroku-source-review"]
 
 [tasks."lint:md"]
 description = "Lint startup advisor markdown using the shared rules"
@@ -19,12 +25,15 @@ run = "markdownlint-cli2 --config ../../.markdownlint-cli2.yaml '**/*.md' '#node
 [tasks."lint:model-staleness"]
 description = "Check Bedrock model-lifecycle registry freshness"
 run = "python3 tools/model-staleness.py --strict"
+
 [tasks."lint:model-id"]
 description = "Check model references against the lifecycle registry"
 run = "uv run --no-project python scripts/model-id-lint.py"
+
 [tasks.test]
 description = "Run plugin contract tests"
 run = "uv run --no-project --with pytest python -m pytest tests -q"
+
 [tasks."test:heroku-source-review"]
 description = "Run Heroku application-source contract and validator tests"
 run = [
