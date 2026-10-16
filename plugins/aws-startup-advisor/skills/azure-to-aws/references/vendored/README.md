@@ -40,6 +40,8 @@ if this skill needs one, add the copy **and** a row in the table below.
 | `ai/design-ref-harness.md`              | `skills/shared/ai/design-ref-harness.md`              |
 | `ai/sdk-capability-map.json`            | `skills/shared/ai/sdk-capability-map.json`            |
 | `ai/schema-design-aws-ai.md`            | `skills/shared/ai/schema-design-aws-ai.md`            |
+| `ai/schema-estimate-ai.md`              | `skills/shared/ai/schema-estimate-ai.md`              |
+| `ai/schema-generate-ai.md`              | `skills/shared/ai/schema-generate-ai.md`              |
 | `clarify/clarify-availability.md`       | `skills/shared/clarify/clarify-availability.md`       |
 | `clarify/clarify-compliance.md`         | `skills/shared/clarify/clarify-compliance.md`         |
 | `clarify/clarify-cost-appetite.md`      | `skills/shared/clarify/clarify-cost-appetite.md`      |

@@ -20,6 +20,8 @@ before opening a pull request.
 | `sdk-capability-map.json`            | SDK method → capability lookup used by app-code discovery      |
 | `bedrock-pricing-cache.md`           | Provider-neutral Bedrock model and service pricing             |
 | `schema-design-aws-ai.md`            | Target-only `aws-design-ai.json` contract; `metadata.ai_sources[]`/`gateways[]` mirror `ai-workload-profile.schema.json` exactly |
+| `schema-estimate-ai.md`               | Target-only `estimation-ai.json` contract; `cost_by_source[]` traces per-source/per-model cost back to `aws-design-ai.json` |
+| `schema-generate-ai.md`               | Target-only `generation-ai.json` contract; `artifacts_by_source[]` traces per-source/per-model generated artifacts back to `estimation-ai.json` |
 
 Deliberately NOT here: a source-cloud's own mapping guide (e.g. gcp-to-aws's
 `ai-gemini-to-bedrock.md`) and its `schema-discover-ai.md`, both of which are

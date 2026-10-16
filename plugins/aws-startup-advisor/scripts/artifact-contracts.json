@@ -17,6 +17,12 @@
     },
     "aws-design-ai.json": {
       "json_schema": "scripts/contracts/aws-design-ai.schema.json"
+    },
+    "estimation-ai.json": {
+      "json_schema": "scripts/contracts/estimation-ai.schema.json"
+    },
+    "generation-ai.json": {
+      "json_schema": "scripts/contracts/generation-ai.schema.json"
     }
   },
   "skills": {
