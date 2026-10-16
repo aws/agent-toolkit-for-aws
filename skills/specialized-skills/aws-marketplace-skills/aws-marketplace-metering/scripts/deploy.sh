@@ -242,7 +242,9 @@ verify_boundary_exists() {
     case "$err" in
         *NoSuchEntity*)
             echo "ERROR: permissions boundary '${BOUNDARY_NAME}' not found (${boundary_arn})."
-            echo "       Create it before deploying (see references/iam-credentials.md):"
+            echo "       This is the ONE-TIME IAM prerequisite — create it (and the"
+            echo "       MarketplaceMeteringDeployer role) before deploying. See the step-by-step"
+            echo "       bootstrap in references/iam-credentials.md -> 'Prerequisite setup (do this FIRST...)':"
             echo "         aws iam create-policy --policy-name ${BOUNDARY_NAME} --policy-document file://boundary.json"
             echo "       The deployer role's iam:CreateRole is gated on this exact boundary, so"
             echo "       SAM role creation would otherwise fail with AccessDenied."
