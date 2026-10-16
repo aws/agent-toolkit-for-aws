@@ -96,8 +96,15 @@ OpenAI is handled by a dedicated provider module (`openai-bedrock-2026-08-21.jso
 GPT-5.x on Mantle is Responses-only, so a Chat Completions source is reshaped, not routed to
 `mantle_openai_chat`. GPT-5.6 sources additionally carry a SAME-MODEL `runtime_converse`
 candidate via CRIS ids (verified 2026-08-21) — governance requirements no longer force a
-family switch for them, while GPT-5.5/5.4 remain mantle-only. Azure OpenAI remains an
-explicit `provider_module_pending` generic result.
+family switch for them, while GPT-5.5/5.4 remain mantle-only. The catalog also carries the
+GPT-6 family (Astra, Sol, Luna, 6.1 Sol); the same same-model routing logic applies — Mantle
+Responses in-region, or `runtime_converse` via CRIS otherwise — and unlike GPT-5.x, the GPT-6
+model cards list Chat Completions as supported on mantle, not just Responses. GPT-6's in-region
+mantle footprint is narrower than GPT-5.6's: Astra reaches us-east-1 and us-west-2 only; Sol,
+Luna, and 6.1 Sol reach us-east-1 only. GPT-6 Astra's `runtime_converse` CRIS path lacks `Invoke`
+support (Responses/Chat Completions/Converse only), where Sol/Luna/6.1 Sol have all four APIs —
+this is a per-model capability gap to check before assuming parity, not a family-wide rule.
+Azure OpenAI remains an explicit `provider_module_pending` generic result.
 
 **OpenRouter/LiteLLM-sourced OpenAI models still use the OpenAI module.** Discover records the
 underlying `provider` (e.g. `openai`) even when the calls transit a gateway — see `discover.md`'s
