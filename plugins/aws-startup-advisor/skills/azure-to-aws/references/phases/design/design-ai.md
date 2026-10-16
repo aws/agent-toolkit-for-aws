@@ -95,6 +95,17 @@ choice adds a `regional_warnings[]` entry or a Part 5 line, and the summary name
 
 ## Part 1: Bedrock model selection
 
+**New-target eligibility — before every selection or same-model shortcut, including the
+per-model fallback:** apply `references/vendored/ai/bedrock-pricing-cache.md`'s target policy and the
+model lifecycle restrictions first. Active availability alone does not make a model eligible.
+For an Opus 4.8 source, follow the Opus 5.5 mapping in
+`references/vendored/ai/ai-anthropic-to-bedrock.md`, subject to region, compliance and feature
+constraints; never retain Opus 4.8 as a new target or automatic fallback. If no eligible
+target satisfies those constraints, report the block instead. Preserve source model IDs and
+historical pricing, and retain the explicitly accepted, verified Opus 4.6 Batch alternative.
+Derive `model_change` from the final source/target identities: Opus 4.8 → 5.5 requires
+`model_change: true`; an eligible exact same-model selection remains false.
+
 **Iterate per `workloads[]` entry** (read from `preferences.json` — Clarify may have edited or
 confirmed rows; fall back to the profile's `workloads[]` only if preferences has none). For
 each workload:
@@ -116,22 +127,35 @@ each workload:
    `target_aws_service`, skip the override hierarchy, and set `honest_assessment:
    "not_applicable"`.
 
-2. For text/reasoning: apply the override hierarchy — Q17 special features (hard override) >
-   **same-model availability** > Q16 priority > Q18/Q21 volume & latency > source baseline.
-   Same-model availability outranks a `balanced`/unset priority: if the source model is on
-   Bedrock and the region carries it, keep it (`model_change: false`).
+2. For text/reasoning: apply the override hierarchy — Q17 special features (hard override
+   within eligible targets) > **same-model availability among eligible targets** > Q16
+   priority > Q18/Q21 volume & latency > source baseline. Eligible same-model availability
+   outranks a `balanced`/unset priority: if the source model is eligible as a new target,
+   on Bedrock and carried by the region, keep it (`model_change: false`).
 
 3. Emit one `design_blocks[]` row per workload (see `references/shared/schema-design-aws-ai.md`
    for the exact shape and the `target_bedrock_model` XOR `target_aws_service` rule). Preserve
    input order. Set `confidence_warning` when `capability_confidence == "low"`.
 
-**Stay-or-migrate (check same-model FIRST):** source model on Bedrock AND region carries it →
-`strong_migrate`, `model_change: false` (the rationale is risk + governance, not cost; Bedrock
-in-region runs ~10% above OpenAI standard — report a modest increase, not parity, and never
-claim free). Bedrock cheaper → `strong_migrate`. Within 25% and priority≠cost →
+**Stay-or-migrate (after eligibility filtering and final target selection):** selected target is the same eligible source model,
+available on Bedrock AND carried by the region →
+`strong_migrate`, `model_change: false` (the rationale is risk + governance, not an assumed
+cost saving; same identity does not imply cost parity or a universal premium).
+Otherwise keep `model_change` consistent with the final target and use the
+cost comparison: Bedrock cheaper → `strong_migrate`. Within 25% and priority≠cost →
 `moderate_migrate`. Source >25% cheaper and priority=cost → `weak_migrate`/`recommend_stay`.
 Overall = weakest across models. `recommend_stay` REQUIRES a non-cost reason in
 `honest_assessment_reason` when the source provider's models are on Bedrock.
+
+**Model-specific same-model pricing:** for OpenAI GPT targets, read
+`references/shared/openai-on-bedrock.md`: verified In-Region/Geo options use the
+data-residency-tier premium, while supported Global CRIS uses standard-rate parity.
+Report the actual option; do not downgrade solely for the modest verified premium.
+**GPT-5.6/GPT-6 only:** above 272K context, apply 2.0x input and 1.5x output rates only when
+the selected model and inference option support that tier; the resulting gap may change
+the assessment. GPT-5.5/5.4 have no 1M tier. **Opus 5.5:** use the selected region/profile's
+flat rates from `references/vendored/ai/bedrock-pricing-cache.md` throughout the full 1M context;
+do not apply the GPT multiplier. Verify other models' tiers individually.
 
 **Quota risk** (per `references/vendored/ai/bedrock-quotas.md`): high/very_high volume →
 `quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× burndown) →

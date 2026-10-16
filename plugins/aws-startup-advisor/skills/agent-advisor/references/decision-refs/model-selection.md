@@ -19,9 +19,9 @@ Model choice is **independent of runtime choice** — it never changes which run
 The per-workload `(model, api_path)` decision is deterministic and lives in code, not in this
 file — it is dispatched by source provider so the path vocabulary and rules differ per provider:
 
-- **Anthropic** → `scripts/anthropic_model_recommendation.py` + `references/models/anthropic-bedrock-2026-07-21.json`
+- **Anthropic** → `scripts/anthropic_model_recommendation.py` + `references/models/anthropic-bedrock-2026-09-24.json`
   (paths: `mantle_messages`, `runtime_converse`, `runtime_invoke`).
-- **OpenAI** → `scripts/openai_model_recommendation.py` + `references/models/openai-bedrock-2026-08-21.json`
+- **OpenAI** → `scripts/openai_model_recommendation.py` + `references/models/openai-bedrock-2026-09-24.json`
   (paths: `mantle_openai_responses`, `runtime_converse`; Chat Completions reshapes to Responses).
 - **Azure OpenAI / other** → generic `provider_module_pending` until a dedicated module exists.
 

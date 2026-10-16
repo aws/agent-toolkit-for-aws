@@ -9,6 +9,7 @@ decision or a provisional limitation rather than inventing a comparative order.
 
 import re
 
+import anthropic_model_recommendation
 
 # --- Source model-family detection (ported from the reference compatibility matrix) ---
 # Reasoning generation: gpt-5 / gpt5 / gpt-5.4 / openai.gpt-5.4, and o1/o3/o4.
@@ -116,13 +117,13 @@ _HOSTED_TOOL_IMPACTS = {
 
 # Converse tier map: a governance workload keeps its capability tier when moving
 # from the (Mantle-only) GPT-5.x family to Claude on runtime Converse.
-#   GPT-5.6 Sol (frontier)      -> Claude Opus 4.8
+#   GPT-5.6 Sol (frontier)      -> Claude Opus 5.5
 #   GPT-5.6 Terra / 5.5 / 5.4   -> Claude Sonnet 5 (also the default tier)
 #   GPT-5.6 Luna (fast/low-cost)-> Claude Haiku 4.5
 _CONVERSE_TIER_DEFAULT = "anthropic_claude_sonnet_5"
 _CONVERSE_TIER_ORDER = (
     "anthropic_claude_sonnet_5",
-    "anthropic_claude_opus_4_8",
+    "anthropic_claude_opus_5_5",
     "anthropic_claude_haiku_4_5",
 )
 
@@ -130,7 +131,7 @@ _CONVERSE_TIER_ORDER = (
 def _converse_tier_for_source(source):
     sid = _primary_source_id(source).lower()
     if "5.6-sol" in sid:
-        return "anthropic_claude_opus_4_8"
+        return "anthropic_claude_opus_5_5"
     if "5.6-luna" in sid:
         return "anthropic_claude_haiku_4_5"
     # 5.6-terra, 5.5, 5.4, legacy, and unknown sources all map to the balanced tier.
@@ -151,8 +152,12 @@ def _same_model_runtime_key(source):
     return None
 
 
-def _converse_candidate_order(source):
-    tier = _converse_tier_for_source(source)
+def _converse_candidate_order(source, requirements=None):
+    tier = (
+        "anthropic_claude_opus_5_5"
+        if (requirements or {}).get("priority") == "quality"
+        else _converse_tier_for_source(source)
+    )
     order = [tier] + [k for k in _CONVERSE_TIER_ORDER if k != tier]
     same = _same_model_runtime_key(source)
     if same:
@@ -193,7 +198,11 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
     return first, first_unmet
 
 
-def _resolve_invocation_model_id(model_id, requires_cris, requirements):
+def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=None, region=None):
+    if (model or {}).get("inference_profiles"):
+        return anthropic_model_recommendation._resolve_invocation_model_id(
+            model_id, requires_cris, requirements, model, region
+        )
     if not requires_cris:
         return model_id
     explicit = requirements.get("inference_profile_id")
@@ -229,7 +238,7 @@ def _runtime_required(requirements):
     )
 
 
-def _model_identity(model_key, model, path_config):
+def _model_identity(model_key, model, path_config, invocation_model_id=None):
     return {
         "model_key": model_key,
         "display_name": model["display_name"],
@@ -238,7 +247,9 @@ def _model_identity(model_key, model, path_config):
         "context_window": model["context_window"],
         "output_token_ceiling": model["output_token_ceiling"],
         "path_model_id": path_config["model_id"],
-        "requires_cris": path_config["requires_cris"],
+        "requires_cris": anthropic_model_recommendation._invocation_requires_cris(
+            path_config, invocation_model_id
+        ),
     }
 
 
@@ -334,7 +345,7 @@ def _source_analysis(source, target_model=None):
     }
 
 
-def _reasoning_findings(source, requirements, target_model, path):
+def _reasoning_findings(source, requirements, target_model, path, detected_features=()):
     """Version- and surface-specific parameter findings, derived from the SELECTED
     target model and path — never from the source id, and never Anthropic's blanket
     sampling-removal rule."""
@@ -367,7 +378,22 @@ def _reasoning_findings(source, requirements, target_model, path):
         )
 
     # Sampling acceptance is a property of the TARGET model and the selected path.
-    if path == "runtime_converse":
+    if target_model and target_model.get("sampling_parameters_supported") is False:
+        remediation = (
+            "Remove temperature/top_p/top_k from requests to this target; do not rescale them "
+            "or disable thinking. Route user-visible controls through the existing "
+            "parameter_removed confirmation before changing them."
+        )
+        finding = _finding(
+            "sampling_parameters_removed",
+            "[BLOCKS]" if "sampling_params" in detected_features else "[TUNE]",
+            f"{target_name} does not support sampling controls with its required thinking mode.",
+            remediation,
+        )
+        (blocks if finding["tag"] == "[BLOCKS]" else tuning).append(finding)
+        if "sampling_params" in detected_features:
+            deltas.append(_delta("sampling_parameters_removed", "feature", remediation))
+    elif path == "runtime_converse":
         tuning.append(
             _finding(
                 "sampling_via_converse",
@@ -649,7 +675,8 @@ def _evaluation(detected_features, requirements):
     return {"mode": "trajectory" if trajectory else "prompt", "gates": gates}
 
 
-def _verification(region, catalog, path, requires_cris, invocation_model_id, selected):
+def _verification(region, catalog, path, requires_cris, invocation_model_id, selected,
+                  model=None, requirements=None):
     if not selected:
         return {
             "region": region,
@@ -662,6 +689,9 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
                 "Resolve the model/path decision before running an availability probe."
             ],
         }
+    requires_cris = requires_cris and invocation_model_id != (model or {}).get(
+        "paths", {}
+    ).get(path, {}).get("model_id")
     checks = [
         "Probe the selected model through the selected API path in the target account and region.",
         "Verify path-specific IAM, model access, and quota before code rewrite or POC generation.",
@@ -678,6 +708,10 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
         "availability_claim": "provisional",
         "invocation_model_id": invocation_model_id,
         "required_checks": checks,
+        **anthropic_model_recommendation._profile_verification(
+            (model or {}).get("paths", {}).get(path, {}).get("model_id"),
+            requires_cris, model, region, requirements,
+        ),
     }
 
 
@@ -696,7 +730,8 @@ def _decision_options(catalog, workload, region):
                 "model": path_config["model_id"],
                 "api_path": "mantle_openai_responses",
                 "invocation_model_id": _resolve_invocation_model_id(
-                    path_config["model_id"], path_config["requires_cris"], workload["requirements"]
+                    path_config["model_id"], path_config["requires_cris"], workload["requirements"],
+                    model, region,
                 ),
                 "requires_cris": path_config["requires_cris"],
                 "reason": "Preserves the OpenAI SDK and Responses surface; gives up runtime-only "
@@ -705,19 +740,23 @@ def _decision_options(catalog, workload, region):
         )
     runtime, _ = _catalog_model_for_path(
         catalog, "runtime_converse", detected, workload["requirements"],
-        candidate_order=_converse_candidate_order(workload["source"]),
+        candidate_order=_converse_candidate_order(workload["source"], workload["requirements"]),
     )
     if runtime:
         model_key, model, path_config = runtime
+        invocation_model_id = _resolve_invocation_model_id(
+            path_config["model_id"], path_config["requires_cris"], workload["requirements"],
+            model, region,
+        )
         options.append(
             {
                 "model_key": model_key,
                 "model": path_config["model_id"],
                 "api_path": "runtime_converse",
-                "invocation_model_id": _resolve_invocation_model_id(
-                    path_config["model_id"], path_config["requires_cris"], workload["requirements"]
+                "invocation_model_id": invocation_model_id,
+                "requires_cris": anthropic_model_recommendation._invocation_requires_cris(
+                    path_config, invocation_model_id
                 ),
-                "requires_cris": path_config["requires_cris"],
                 "reason": (
                     "SAME-MODEL governance path: this GPT-5.6 target runs on bedrock-runtime via a "
                     "CRIS id — Guardrails (Converse API only), invocation logging, and cost parity "
@@ -837,7 +876,7 @@ def recommend_openai_workload(workload, region, catalog):
     candidate_order = None
     if runtime_required:
         path = "runtime_converse"
-        candidate_order = _converse_candidate_order(source)
+        candidate_order = _converse_candidate_order(source, requirements)
         same = _same_model_runtime_key(source)
         if same:
             rationale_head = (
@@ -905,16 +944,26 @@ def recommend_openai_workload(workload, region, catalog):
         )
 
     invocation_model_id = _resolve_invocation_model_id(
-        path_config["model_id"], path_config["requires_cris"], requirements
+        path_config["model_id"], path_config["requires_cris"], requirements, model, region
     )
     source_analysis = _source_analysis(source, model)
 
     # --- Findings (target- and path-derived) ---
-    r_blocks, r_tuning, r_deltas = _reasoning_findings(source, requirements, model, path)
+    r_blocks, r_tuning, r_deltas = _reasoning_findings(source, requirements, model, path, detected)
     f_blocks, f_tuning, f_deltas, impacts = _feature_findings(detected, requirements, path)
     blocks = r_blocks + f_blocks
     tuning = r_tuning + f_tuning
     deltas = list(r_deltas)
+    if model.get("adaptive_thinking_only"):
+        finding = _finding(
+            "adaptive_thinking_required",
+            "[BLOCKS]" if requirements.get("thinking_enabled") is False else "[TUNE]",
+            "Opus 5.5 always uses adaptive thinking and does not support disabled thinking, manual budgets, or forced any/tool choice.",
+            "Set output_config.effort as needed (default medium), and size max_tokens "
+            "for thinking plus response text. Use auto/none tool choice; a hard forced-tool "
+            "requirement needs a verified compatible target. Verify billed usage on the workload.",
+        )
+        (blocks if finding["tag"] == "[BLOCKS]" else tuning).append(finding)
 
     if path == "runtime_converse" and path_config["requires_cris"] and invocation_model_id is None:
         # GPT-5.6 on bedrock-runtime is CRIS-only — there is no in-region invocation
@@ -969,7 +1018,7 @@ def recommend_openai_workload(workload, region, catalog):
             "source_analysis": source_analysis,
             "feature_assessment": feature_assessment,
             "primary_model": path_config["model_id"],
-            "model_identity": _model_identity(model_key, model, path_config),
+            "model_identity": _model_identity(model_key, model, path_config, invocation_model_id),
             "api_path": path,
             "invocation_model_id": invocation_model_id,
             "decision_options": [],
@@ -987,7 +1036,8 @@ def recommend_openai_workload(workload, region, catalog):
                 "gate": "Compare source and target on the golden set before percentage rollout.",
             },
             "verification": _verification(
-                region, catalog, path, path_config["requires_cris"], invocation_model_id, selected=True
+                region, catalog, path, path_config["requires_cris"], invocation_model_id,
+                selected=True, model=model, requirements=requirements,
             ),
         }
     )

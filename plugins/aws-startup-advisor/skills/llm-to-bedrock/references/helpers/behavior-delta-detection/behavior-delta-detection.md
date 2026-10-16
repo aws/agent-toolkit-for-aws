@@ -1,37 +1,37 @@
 # Behavior Delta Detection
 
-This skill enumerates known parameter-surface differences between a source LLM provider (OpenAI, Gemini) and Bedrock. The **analyzer** uses it to find user-visible occurrences in source code; the **rewriter** uses it to confirm each user-visible change with the user before modifying code.
+This skill enumerates known parameter-surface differences between a source LLM provider (OpenAI, Gemini, Anthropic) and Bedrock. The **analyzer** uses it to find user-visible occurrences in source code; the orchestration checkpoint confirms each user-visible change before the **rewriter** applies it.
 
 The motivation is to prevent silent UX changes during migration. Example: OpenAI accepts `temperature ∈ [0, 2]` but Bedrock/Claude only accepts `[0, 1]`. A naive rewriter sees a UI slider with `max=2` and silently caps it to `1`, removing the upper half of the range without consent. This skill is the safeguard.
 
 ## When to load
 
 - Track 2 migration AND
-- `source_provider ∈ {openai, google}` (the analyzer emits `google` for both Gemini API and Vertex AI) AND
-- `same_model_family == false`
+- `source_provider ∈ {openai, google, anthropic}` (the analyzer emits `google` for both Gemini API and Vertex AI).
 
-For Anthropic 1P → Bedrock (`same_model_family: true`), parameter surfaces are identical — skip this skill entirely. For custom OpenAI-compatible providers (Together, Fireworks, etc.), v1 also skips — emit `behavior_deltas: []`.
+`same_model_family` means exact model identity/version, verified with `scripts/model_identity.py` for every source→validated-target pair. It does not mean the same provider. Anthropic version changes (including Opus 4.8 → 5.5) load all target checks in `references/anthropic-to-bedrock.md`; exact same-model moves still check the target API/path. Custom OpenAI-compatible providers (Together, Fireworks, etc.) remain outside these recipes — emit `behavior_deltas: []`.
 
-**OpenAI → the same GPT model on Bedrock is also `same_model_family: true`.** When the target is a proprietary GPT model on `bedrock-mantle` (`openai.gpt-5.6-sol` / `-terra` / `-luna`, `openai.gpt-5.5`, `openai.gpt-5.4`), the model is unchanged, so the model-parameter deltas in `references/openai-to-bedrock.md` — temperature range, penalty parameters, stop-sequence limits — **do not apply**. Applying them would prompt the user to accept range changes that are not happening.
+**OpenAI → the same GPT model on Bedrock is also `same_model_family: true`.** When every source/target pair is the identical GPT model and the target is on `bedrock-mantle` (`openai.gpt-5.6-sol` / `-terra` / `-luna`, `openai.gpt-5.5`, `openai.gpt-5.4`), the model is unchanged, so the model-parameter deltas in `references/openai-to-bedrock.md` — temperature range, penalty parameters, stop-sequence limits — **do not apply**. Applying them would prompt the user to accept range changes that are not happening.
 
 That case is not delta-free, though: the **API surface** can change (Chat Completions → Responses) and reasoning models require reasoning items to be echoed back across turns. Read only the "Same-model (mantle) deltas" section of `references/openai-to-bedrock.md` for those, and skip the parameter-surface blocks.
 
 Decide from the resolved target model id, not from `source_provider`:
 
-| Source | Target model id          | What to load                                              |
-| ------ | ------------------------ | --------------------------------------------------------- |
-| openai | `openai.gpt-5*` (mantle) | Same-model (mantle) deltas ONLY                           |
-| openai | Claude / Nova / DeepSeek | Full parameter-surface deltas (cross-family)              |
-| openai | `openai.gpt-oss-*`       | Full parameter-surface deltas — different model, Converse |
+| Source | Target model id                          | What to load                                              |
+| ------ | ---------------------------------------- | --------------------------------------------------------- |
+| openai | Identical `openai.gpt-5*` model (mantle) | Same-model (mantle) deltas ONLY                           |
+| openai | Claude / Nova / DeepSeek                 | Full parameter-surface deltas (cross-family)              |
+| openai | `openai.gpt-oss-*`                       | Full parameter-surface deltas — different model, Converse |
 
 ## Choose the right reference
 
-| source_provider | reference file                  |
-| --------------- | ------------------------------- |
-| openai          | references/openai-to-bedrock.md |
-| google          | references/gemini-to-bedrock.md |
+| source_provider | reference file                     |
+| --------------- | ---------------------------------- |
+| openai          | references/openai-to-bedrock.md    |
+| google          | references/gemini-to-bedrock.md    |
+| anthropic       | references/anthropic-to-bedrock.md |
 
-Read ONLY the matching reference. Do not read both.
+Read the matching reference and any target-specific sections it explicitly references.
 
 ---
 

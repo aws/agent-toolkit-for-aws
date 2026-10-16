@@ -598,7 +598,7 @@ def test_tier_map_sol_cross_family_fallback_is_opus():
     from openai_model_recommendation import _converse_candidate_order
     order = _converse_candidate_order({"model_ids": ["gpt-5.6-sol"]})
     assert order[0] == "openai_gpt_5_6_sol"
-    assert order[1] == "anthropic_claude_opus_4_8"
+    assert order[1] == "anthropic_claude_opus_5_5"
 
 def test_tier_map_luna_source_maps_to_haiku_on_converse():
     # Same-model-first (2026-08-21): Luna keeps Luna; Haiku is the cross-family
