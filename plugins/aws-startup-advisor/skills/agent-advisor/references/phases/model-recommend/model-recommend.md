@@ -92,7 +92,7 @@ reuse the Anthropic `preserve_messages_api` switch):
 - minimum context window and expected output-token ceiling?
 - allow Global CRIS or require a geography-scoped profile (runtime Converse only)?
 
-OpenAI is handled by a dedicated provider module (`openai-bedrock-2026-08-21.json` catalog):
+OpenAI is handled by a dedicated provider module (`openai-bedrock-2026-08-21.json` catalog, now including GPT-6 Astra's UltraFast speed tier for latency-sensitive workloads):
 GPT-5.x on Mantle is Responses-only, so a Chat Completions source is reshaped, not routed to
 `mantle_openai_chat`. GPT-5.6 sources additionally carry a SAME-MODEL `runtime_converse`
 candidate via CRIS ids (verified 2026-08-21) — governance requirements no longer force a
