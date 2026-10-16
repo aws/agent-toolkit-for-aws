@@ -1,0 +1,10 @@
+{
+  "name": "startup-advisor-pr-checklist",
+  "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "marked": "18.1.1"
+  }
+}
