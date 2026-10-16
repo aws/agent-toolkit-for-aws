@@ -150,7 +150,7 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 | Speed    | Claude Haiku 4.5; also Nova Micro/Lite              |
 | Cost     | Claude Haiku 4.5 or Nova Micro                      |
 | Special  | Deferred to Q10                                     |
-| Balanced | Claude Sonnet 5                                     |
+| Balanced | Claude Sonnet 5.5 (recommended upgrade path from Sonnet 5)                                     |
 
 Interpret → `ai_priority`. Default: 5 → `"balanced"`.
 
