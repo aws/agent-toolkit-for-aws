@@ -43,7 +43,9 @@ the validation checklist.
    an archive may be days old, wins on measurement because live has no rollup), then
    **IaC** (authoritative for provenance, module structure, and declared-but-
    undeployed resources; authoritative for nothing about state), then **billing**
-   (fallback only, `billing_inferred`).
+   (fallback only, `billing_inferred`). `config.measured_utilization`
+   (`discover-rdfa.md` § Step 3) is the field the `measured` confidence tier (§
+   Confidence vocabulary below) now has a real producer for.
 5. **Every disagreement becomes a drift entry.** Record both values, both sources,
    and which won, so the report can say "your Terraform declares `Standard_D2s_v3`,
    your tenant is running `Standard_D4s_v3`" instead of quietly picking one.

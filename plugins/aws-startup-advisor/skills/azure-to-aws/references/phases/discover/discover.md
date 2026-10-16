@@ -10,6 +10,9 @@ _fragments:
   - _id: app-code
     _trigger: { _when: "source code or a dependency manifest is present in the workspace (.py/.js/.ts/.go/.java/.cs, requirements.txt, package.json, go.mod, pom.xml, *.csproj)" }
     _file: phases/discover/discover-app-code.md
+  - _id: rdfa
+    _trigger: { _when: "an RDfA report is reachable per discover-rdfa.md § Step 0 (an extracted rdfa-report/ directory already exists under $MIGRATION_DIR, OR a *ResourcesReport*.zip / already-extracted directory containing an Inventory_*.json is present in the workspace). This fragment ONLY reads that archive; it never runs anything and never prompts." }
+    _file: phases/discover/discover-rdfa.md
   - _id: live
     _trigger: { _when: "$MIGRATION_DIR/live-capture/manifest.json exists AND is fresh for THIS attempt — i.e. the 'Pre-dispatch main-window action' below ran, the user consented, and (on a re-entry) any manifest from a prior attempt was invalidated per that section's decline rule. This dispatched fragment ONLY parses that directory; it never runs az or prompts. Absent (or invalidated) manifest ⇒ the trigger is false and the fragment does not run." }
     _file: phases/discover/discover-live.md
@@ -170,7 +173,7 @@ AI signal.
 | Lands in | What                                                                                                                                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | step 2   | Bicep + ARM inside `discover-iac.md`; the `billing` fragment                                                                                                                                                           |
-| step 2   | The `rdfa` fragment (RDfA archive parse). Live `az` has landed (`discover-live.md`)                                                                                                                                    |
+| step 2   | RDfA archive parsing is real (`discover-rdfa.md`), alongside live `az` (`discover-live.md`)                                                                                                                            |
 | step 4   | `patterns.md` — pattern RECOGNITION only. Seed / split / merge / tier / primary / roles are implemented in `references/clustering/`; every cluster carries `pattern_status: "catalog_absent"` until the catalog exists |
 
 The live `az` path is NOT a plain fragment. This phase runs under
