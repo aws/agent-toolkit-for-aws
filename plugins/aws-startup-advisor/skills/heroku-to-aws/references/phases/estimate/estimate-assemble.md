@@ -58,12 +58,16 @@ This is deliberately the OPPOSITE sign of
 Heroku) — same fact, savings-vs-difference framing. When presenting either,
 always label the direction in words; never print a bare signed value.
 
-Also attach optional workshop metadata when present (does not affect Property-16):
+Also attach optional workshop metadata when present (does not affect Property-16).
+For Apply & reprice, the caller supplies `estimate_scenario_id` allocated before
+pricing; use that destination even while preferences still select the prior
+scenario. Ordinary Estimate calls without this invocation value keep the existing
+active-ID behavior. Do not derive a new ID in the assembler.
 
 ```json
 {
   "workshop": {
-    "scenario_id": "<preferences.workshop.active_scenario_id or null>",
+    "scenario_id": "<estimate_scenario_id when supplied; otherwise preferences.workshop.active_scenario_id or null>",
     "region_note": "<from cost-engine, or null>"
   }
 }
