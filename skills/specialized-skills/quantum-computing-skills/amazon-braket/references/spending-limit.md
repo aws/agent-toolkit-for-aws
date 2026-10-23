@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD013 -->
+
 # Spending limits & Cost tracking
 
 ## Spending limits
@@ -6,14 +8,14 @@ Amazon Braket spending limits provide optional per-device cost controls for quan
 
 ```bash
 # Replace every <placeholder> with a value you looked up or the user supplied.
-aws braket create-spending-limit \
+aws braket create-spending-limit --region <region-of-device> \
     --device-arn "arn:aws:braket:<region>::device/qpu/<provider>/<device-name>" \
     --spending-limit "<amount-usd>" \
     --time-period startAt=<epoch-seconds-start>,endAt=<epoch-seconds-end>
 
-aws braket search-spending-limits
-aws braket update-spending-limit --spending-limit-arn <arn> --spending-limit "<amount-usd>"
-aws braket delete-spending-limit --spending-limit-arn <arn>
+aws braket search-spending-limits --region <region-of-device>
+aws braket update-spending-limit --region <region-of-device> --spending-limit-arn <arn> --spending-limit "<amount-usd>"
+aws braket delete-spending-limit --region <region-of-device> --spending-limit-arn <arn>
 ```
 
 Note that spending limits apply only to quantum tasks that were created during the spending limit's time period and when the spending limit already exists.
@@ -26,13 +28,13 @@ See the [Getting Started notebook](https://github.com/amazon-braket/amazon-brake
 ## Common mistakes
 
 | Symptom | Cause | Fix |
-|---|---|---|
+| --- | --- | --- |
 | Looks for a spending limit in `amazon-braket-sdk` | Wrong layer | Control-plane only — boto3 `braket` client, CLI, or CloudFormation |
 | Creates one limit and expects it to cap the account | A limit is scoped to one `deviceArn`, and so to that ARN's region | Create one limit per device you want to cap |
 | Targets a simulator | Limits apply to QPU ARNs | Confirm supported device types in the [CreateSpendingLimit reference](https://docs.aws.amazon.com/braket/latest/APIReference/API_CreateSpendingLimit.html) |
-| Raises or deletes a limit to unblock its own task | Treating the guardrail as an obstacle | Report the rejection and stop; a change needs an explicit instruction — see above |
+| Raises or deletes a limit to unblock its own task | Treating the guardrail as an obstacle | Report the rejection and stop; change a limit only on an explicit instruction from the user |
 | Expects `Tracker` to stop a run at a threshold | Estimate ≠ enforcement | Only a spending limit rejects tasks |
-| Reaches for `qml.Tracker` to count Braket shots | Assuming the Braket tracker is cost-only | `quantum_tasks_statistics()` reports per-device shots and task counts |
+| Reaches for PennyLane's `Tracker` to count Braket shots | Assuming the Braket tracker is cost-only | `quantum_tasks_statistics()` reports per-device shots and task counts |
 | Assumes modifying a spending limit leaves no trace | Limit changes are management events | CloudTrail records `CreateSpendingLimit`, `UpdateSpendingLimit` and `DeleteSpendingLimit` under `braket.amazonaws.com` — read the trail to see who changed a limit |
 
 ## References
