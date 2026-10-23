@@ -268,7 +268,17 @@ def _source_monthly(data: dict, source_platform: str) -> float | None:
 
 
 def _service_items(projected: object) -> list[dict]:
-    """Per-service line items copied from projected_costs.breakdown.
+    """Project selected infrastructure rows onto the existing import contract."""
+    return [item for _, _, item in _service_rows(projected)]
+
+
+def _service_rows(projected: object) -> list[tuple[str, str | None, dict]]:
+    """Select (source key, amount field, import item) from projected_costs.breakdown.
+
+    Keep the original key and amount field alongside the item so retained cost
+    inputs can refer to the exact priced row, even when display names repeat.
+    A bare-number row has no amount field. These selectors identify estimate rows,
+    not design resources; a resource join needs evidence from the estimator.
 
     The breakdown is keyed by service, and its shape varies across skills and rows.
     An entry is either a bare monthly number, or an object carrying the figure under
@@ -291,7 +301,7 @@ def _service_items(projected: object) -> list[dict]:
     if not isinstance(breakdown, dict):
         return []
 
-    items: list[dict] = []
+    rows: list[tuple[str, str | None, dict]] = []
     for key, entry in breakdown.items():
         # Drop the aggregate row (any casing) so the total is never shown as a service.
         if not isinstance(key, str) or key.strip().lower() == "total":
@@ -300,6 +310,7 @@ def _service_items(projected: object) -> list[dict]:
         if _is_usable_amount(entry):
             # Bare-number form: {"compute": 75}.
             name, monthly = key, entry
+            amount_field = None
         elif isinstance(entry, dict):
             # Azure marks a row excluded with `excluded_from_total` and/or
             # `exclusion_reason` (no_rate / no_quantity / partial_rate) — skip it
@@ -315,7 +326,8 @@ def _service_items(projected: object) -> list[dict]:
             # another when the primary figure is present but out of range, which would
             # misreport a different number. `right_sized_monthly` is last so GCP/Heroku
             # behavior is unaffected when `monthly`/`mid` are present.
-            raw = next((entry[k] for k in ("monthly", "mid", "right_sized_monthly") if k in entry), None)
+            amount_field = next((k for k in ("monthly", "mid", "right_sized_monthly") if k in entry), None)
+            raw = entry[amount_field] if amount_field is not None else None
             if not _is_usable_amount(raw):
                 continue
             monthly = raw
@@ -329,18 +341,29 @@ def _service_items(projected: object) -> list[dict]:
         # name the strict import would reject for length.
         if not name or name.lower() == "total" or _import_str_len(name) > MAX_SERVICE_NAME_LEN:
             continue
-        items.append(
-            {
+        rows.append(
+            (key, amount_field, {
                 "serviceName": name,
                 "monthlyCost": monthly,
                 "classification": "INFRASTRUCTURE",
-            }
+            })
         )
-    return items
+    return rows
 
 
 def _billing_service_items(aws_projection: object) -> list[dict]:
-    """Per-service line items from a billing estimate's `aws_projection.services[]` (a
+    """Project selected billing rows onto the existing import contract."""
+    return [item for _, item in _billing_service_rows(aws_projection)]
+
+
+def _billing_service_rows(aws_projection: object) -> list[tuple[int, dict]]:
+    """Select (source index, import item) from `aws_projection.services[]`.
+
+    Keep the original index before filtering; repeated service names cannot identify
+    which billing row supplied an amount. This is estimate evidence, not AWS
+    resource configuration.
+
+    Per-service line items from a billing estimate's `aws_projection.services[]` (a
     list, unlike the infra breakdown). Each service carries `aws_target` (name) and
     `aws_mid` (mid monthly cost); same bounds and skips as the infra items."""
     if not isinstance(aws_projection, dict):
@@ -348,8 +371,8 @@ def _billing_service_items(aws_projection: object) -> list[dict]:
     services = aws_projection.get("services")
     if not isinstance(services, list):
         return []
-    items: list[dict] = []
-    for svc in services:
+    rows: list[tuple[int, dict]] = []
+    for index, svc in enumerate(services):
         if not isinstance(svc, dict):
             continue
         cost = svc.get("aws_mid")
@@ -361,8 +384,8 @@ def _billing_service_items(aws_projection: object) -> list[dict]:
         name = name.strip()
         if not name or name.lower() == "total" or _import_str_len(name) > MAX_SERVICE_NAME_LEN:
             continue
-        items.append({"serviceName": name, "monthlyCost": cost, "classification": "INFRASTRUCTURE"})
-    return items
+        rows.append((index, {"serviceName": name, "monthlyCost": cost, "classification": "INFRASTRUCTURE"}))
+    return rows
 
 
 def _load_route(path: Path) -> dict | None:
