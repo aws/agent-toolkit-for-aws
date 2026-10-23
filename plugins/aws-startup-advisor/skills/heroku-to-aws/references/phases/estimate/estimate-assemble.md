@@ -71,6 +71,10 @@ Also attach optional workshop metadata when present (does not affect Property-16
 
 Write to `$MIGRATION_DIR/estimation-infra.json`.
 
+Preserve the cost-engine's optional `export_inputs` object unchanged, following
+`references/vendored/estimate/cost-export-inputs.md`. Do not reconstruct missing
+row evidence or recapture a pre-pricing snapshot in the assembler.
+
 ---
 
 ## Completion Handoff Gate (Fail Closed)
