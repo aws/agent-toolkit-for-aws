@@ -20,6 +20,8 @@ When `scenarios/` or `scenarios/index.json` is absent:
    - `scenarios/scenario-001.preferences.json`
    - `scenarios/scenario-001.aws-design.json`
    - `scenarios/scenario-001.estimation-infra.json`
+   - For each contributing AI or billing track, its matching design and estimate
+     under the same `scenario-001.` prefix. Preserve the estimates' `export_inputs`.
 4. Write `scenarios/scenario-001.json` (`source: "baseline"`, summary from
    estimation-infra including three monthly tiers).
 5. Write `scenarios/index.json` (`baseline` / `active` = `scenario-001`,
@@ -65,6 +67,8 @@ workshop reprice. Chat note after Estimate:
 1. Next id `scenario-00N`.
 2. If length would exceed 5, **warn and name** oldest non-baseline before delete.
 3. Copy prefs / design / estimation into `scenarios/{id}.*`.
+   Include every contributing track's design and estimate, with `export_inputs`
+   unchanged, so a mixed export can verify the same selected scenario for all rows.
 4. `preferences_subset`: differing knob paths vs baseline.
 5. Label: summarize the subset; if `workshop.graviton_note` is set, append
    `(caveat: <graviton_note>)` to the scenario `label` and copy the note into

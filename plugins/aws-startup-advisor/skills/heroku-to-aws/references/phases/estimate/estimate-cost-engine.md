@@ -16,6 +16,11 @@ _contributes:
 
 **Execute ALL steps in order. Do not skip or optimize.**
 
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-infra.json`. Capture the input snapshot, retain the selected rows'
+actual resource/configuration/usage and upfront evidence, and pass the optional
+`export_inputs` object to the assembler with the calculated costs.
+
 ---
 
 ## Step 0: Pricing Mode Selection
