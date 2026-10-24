@@ -201,6 +201,14 @@ def test_runtime_schema_subset_covers_every_keyword_in_the_vendored_schema() -> 
     assert _schema_keywords(schema) <= RUNTIME_SUBSET_KEYWORDS
 
 
+def test_sidecar_profile_origin_is_only_the_terraform_primary_flag() -> None:
+    valid = {"schema_version": 1, "kind": "BMA_GCP_AI_SIDECAR", "workloads": [],
+             "profile_origin": {"terraform_primary": True}}
+    assert runtime.validate_ai_sidecar(valid) is valid
+    with pytest.raises(ValueError, match="ai_sidecar_invalid"):
+        runtime.validate_ai_sidecar({**valid, "profile_origin": {"terraform_primary": "yes"}})
+    with pytest.raises(ValueError, match="ai_sidecar_invalid"):
+        runtime.validate_ai_sidecar({**valid, "profile_origin": {"profile_source": "merged"}})
 def test_sidecar_accepts_infrastructure_and_model_context_only_as_arrays() -> None:
     valid = {"schema_version": 1, "kind": "BMA_GCP_AI_SIDECAR", "workloads": [],
              "infrastructure": [{"address": "x"}], "model_context": [{"model_id": "gpt-4o", "capabilities_used": ["embeddings"]}]}

@@ -55,7 +55,7 @@
         "references/runtime/bma-input-patterns.json",
         "scripts/bma-route-classifier.py"
       ],
-      "sha256": "9b0d38d8f6979e64727739ad2b0baea5a23e4e66cc590efcd0e71ef0bdaf2c76",
+      "sha256": "f0bbe4cab444a5c7f2d9eb80371fd1091b61eb90483d154e0e224e29e865ab64",
       "type": "script"
     },
     {
@@ -120,7 +120,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "eb2a0e3eb1c0329519a535b918ca4152f7582664272abdded7fc1b3d8ce2ccff",
+      "sha256": "3556566cb9e9239585bca16bab2e9cbaa44fcd31387d73950e5ede3791eebb16",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai.md",
       "type": "instruction"
     },
@@ -223,7 +223,7 @@
         "references/vendored/ai/ai-model-lifecycle.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "c0043fa61fc896d44ebb482a7851bea76ad77dcf68612148fdc8ac638f9fc4ec",
+      "sha256": "25781ae906da51f4c9e6d821990248bb29b2b6024ea954a4bd1af5d35d23b6e7",
       "source_path": "skills/gcp-to-aws/references/phases/estimate/estimate-ai.md",
       "type": "instruction"
     },
@@ -345,7 +345,7 @@
         "references/contracts/ai-workload-profile.schema.json",
         "references/vendored/ai/sdk-capability-map.json"
       ],
-      "sha256": "cc0d12f4f7986cc0e4197e82f4f68e2daaadccd4eb51d033e365faa2bc312c65",
+      "sha256": "8b9b05962c17080ec2410d96604abb63e399648ef7b01d13a73370fb9abc0379",
       "source_path": "skills/gcp-to-aws/references/shared/schema-discover-ai.md",
       "type": "instruction"
     },
@@ -891,5 +891,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "094b2ead3da751fe4494528c749ccc92949db3f709fdbc0474205bf9c6255a1a"
+  "self_hash": "a4893ce6ca85315f4e5df33102341d614c1d17e84891c9fdf60dcf9acac709eb"
 }

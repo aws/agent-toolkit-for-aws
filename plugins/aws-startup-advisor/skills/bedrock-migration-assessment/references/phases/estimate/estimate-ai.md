@@ -53,7 +53,7 @@ Determine current AI spending from the best available source:
 
 Regardless of which dollar source wins, `usage_by_model[]` from EVERY usage profile that exists (`openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or `anthropic-usage-profile.json`) remains the Part 2 token-volume source — not just whichever profile happened to be readable first. When more than one exists, combine their per-model rows (normalizing OpenRouter's `prompt_tokens`/`completion_tokens` to `input_tokens`/`output_tokens`, and INCLUDING Anthropic's `cache_read_tokens`/`cache_creation_tokens` in the sum — these are additional volume the Admin API reports separately from `input_tokens`, per the Prerequisites note) into one volume figure, the same SUM discipline as their dollar figures above — a token-volume comparison that reads only a subset of profiles while the dollar comparison above already summed all of them understates the workload by exactly the fraction the omitted profile(s) carry (subject to the same `partial_window` exception there, applied per profile).
 
-**IaC-only profile:** If every evidence entry in `ai-workload-profile.json` has `provenance: "iac"` and billing/token data is missing, state explicitly that **current GCP AI spend is unverified** and widen uncertainty bands (use the same multi-tier comparison approach as in case 3).
+**IaC-only profile:** In delegated GCP runs, when the sidecar carries `profile_origin.terraform_primary: true`, or otherwise when every evidence entry in `ai-workload-profile.json` has `provenance: "iac"`, and billing/token data is missing, state explicitly that **current GCP AI spend is unverified** and widen uncertainty bands (use the same multi-tier comparison approach as in case 3).
 
 ---
 

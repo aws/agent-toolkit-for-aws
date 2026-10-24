@@ -113,6 +113,7 @@ Workloads, the agentic profile, and the tool manifest have no #415 slot yet. Obs
 - `integration_context` is optional. It holds the SDK, frameworks, languages, pattern, and capability summary that Design and Clarify read. Each key is also optional.
 - `infrastructure` is optional. It is an array of source AI infrastructure resources (the former legacy `infrastructure[]`) that Design Part 4 maps to AWS equivalents. Delegated GCP runs only.
 - `model_context` is optional. It is an array of `{service, model_id, capabilities_used, usage_context}` objects, one per model that had those fields. Design matches them to `ai_sources[].models` by `model_id`. Only the fields present are kept.
+- `profile_origin` is optional. It is `{"terraform_primary": <bool>}`, true when the legacy profile was `iac_vertex` or `inferred_from_iac`. Clarify and Estimate use it for the Terraform-primary wording and IaC-only handling in delegated GCP runs. Direct runs derive that wording from evidence provenance.
 - In delegated GCP runs the sidecar is written by the GCP boundary conversion step and carries the GCP cost, integration, infrastructure, and per-model context. In direct runs BMA writes it.
 - **Follow-up:** this sidecar is temporary. A follow-up will fold `observed_costs`, `integration_context`, `infrastructure`, and `model_context` into #415 under a new schema version, and retire this file.
 

@@ -24,7 +24,8 @@ The mapping is deterministic. The same legacy input always produces the same #41
 | `models[].service`, `models[].model_id`, `models[].capabilities_used`, `models[].usage_context` (for models with either capability or usage field) | `ai-workload-sidecar.json` → `model_context[]` | Not representable in #415. Copied per model as `{service, model_id, capabilities_used, usage_context}`, keeping only the fields present. | none |
 | `infrastructure[]` | `ai-workload-sidecar.json` → `infrastructure[]` | Not representable in #415. Copied verbatim when non-empty. Must be an array, otherwise `LEGACY_SHAPE_UNEXPECTED`. | `LEGACY_SHAPE_UNEXPECTED` |
 | `current_costs` | `ai-workload-sidecar.json` → `observed_costs` | Not representable in #415. Copied verbatim into the GCP-owned sidecar. Must be an object, otherwise `LEGACY_SHAPE_UNEXPECTED`. | `LEGACY_SHAPE_UNEXPECTED` |
-| `metadata.*`, `detection_signals` as a whole | none | Provenance only, beyond the rows above. | none |
+| `metadata.profile_source` and `summary.inferred_from_iac` | `ai-workload-sidecar.json` → `profile_origin` | Not representable in #415. Reduced to `{terraform_primary}`, true when `profile_source` is `iac_vertex` or `inferred_from_iac` is true. Omitted when neither field is present. | none |
+| `metadata.*` (other keys), `detection_signals` as a whole | none | Provenance only, beyond the rows above. | none |
 | Any non-object `models[]` entry, or `summary`, `integration`, `detection_signals` of the wrong type | none | Input shape check. | `LEGACY_SHAPE_UNEXPECTED` |
 | Converted document fails the vendored #415 schema | none | Final gate before any write. The error reports the first failing field path. | `SCHEMA_415_INVALID` |
 
@@ -37,7 +38,7 @@ The mapping is deterministic. The same legacy input always produces the same #41
 ## Decisions
 
 - Nothing populated fails closed for sidecar-carried fields. Those values go through the temporary sidecar so GCP outputs stay the same.
-- `metadata` is provenance only and is not carried. BMA derives IaC-only handling from #415 evidence provenance (`provenance: "iac"`), not from `metadata.profile_source`.
+- `metadata` is provenance only beyond `profile_source`. The Terraform-primary condition travels as the sidecar `profile_origin.terraform_primary` boolean, so delegated GCP runs keep the legacy Profile origin and IaC-only wording. Direct BMA runs still derive it from #415 evidence provenance.
 - The converted document is written to `bma-input/ai-workload-profile.json`. The public GCP `ai-workload-profile.json` keeps its legacy content.
 - Follow-up: the temporary sidecar (`observed_costs`, `integration_context`, `infrastructure`, `model_context`) folds into #415 under a new schema version. See `schema-discover-ai.md` in bedrock-migration-assessment.
 

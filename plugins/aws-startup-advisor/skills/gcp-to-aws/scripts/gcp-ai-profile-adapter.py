@@ -299,6 +299,20 @@ def convert_legacy_profile(legacy: Any) -> dict[str, Any]:
     return document
 
 
+def _profile_origin(legacy: dict[str, Any]) -> dict[str, bool] | None:
+    """Reduce the legacy origin fields to the one boolean the Terraform-primary wording needs.
+
+    Legacy rule: Terraform is primary when metadata.profile_source is iac_vertex or summary.inferred_from_iac
+    is true. Returns None when the legacy profile states neither field.
+    """
+    metadata = legacy.get("metadata") if isinstance(legacy.get("metadata"), dict) else {}
+    summary = legacy.get("summary") if isinstance(legacy.get("summary"), dict) else {}
+    if "profile_source" not in metadata and "inferred_from_iac" not in summary:
+        return None
+    terraform_primary = metadata.get("profile_source") == "iac_vertex" or summary.get("inferred_from_iac") is True
+    return {"terraform_primary": terraform_primary}
+
+
 def convert_legacy_sidecar(legacy: dict[str, Any], existing: Any = None) -> dict[str, Any] | None:
     """Build the GCP-owned temporary sidecar that carries observed spend and integration context.
 
@@ -335,6 +349,9 @@ def convert_legacy_sidecar(legacy: dict[str, Any], existing: Any = None) -> dict
     ]
     if model_context:
         carried["model_context"] = model_context
+    origin = _profile_origin(legacy)
+    if origin is not None:
+        carried["profile_origin"] = origin
     if not carried and existing is None:
         return None
     sidecar = copy.deepcopy(existing) if existing is not None else {"schema_version": 1, "kind": SIDECAR_KIND, "workloads": []}

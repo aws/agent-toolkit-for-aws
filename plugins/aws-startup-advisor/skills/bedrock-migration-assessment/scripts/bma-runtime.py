@@ -241,7 +241,7 @@ LEGACY_SOURCE_KEYS = ("service", "detected_via", "evidence", "model_id", "capabi
 # version is a follow-up (tracked against issue #389).
 AI_SIDECAR_KEYS = {
     "schema_version", "kind", "workloads", "agentic_profile", "tool_manifest",
-    "observed_costs", "integration_context", "infrastructure", "model_context",
+    "observed_costs", "integration_context", "infrastructure", "model_context", "profile_origin",
 }
 AI_SIDECAR_KIND = "BMA_GCP_AI_SIDECAR"
 
@@ -347,10 +347,13 @@ def validate_ai_sidecar(value: Any) -> dict[str, Any]:
     for optional, expected in (
         ("agentic_profile", dict), ("tool_manifest", list),
         ("observed_costs", dict), ("integration_context", dict),
-        ("infrastructure", list), ("model_context", list),
+        ("infrastructure", list), ("model_context", list), ("profile_origin", dict),
     ):
         if optional in value and not isinstance(value[optional], expected):
             raise ValueError("ai_sidecar_invalid")
+    origin = value.get("profile_origin")
+    if origin is not None and (set(origin) != {"terraform_primary"} or not isinstance(origin["terraform_primary"], bool)):
+        raise ValueError("ai_sidecar_invalid")
     return value
 
 

@@ -36,7 +36,7 @@ Before presenting questions, show:
 
 > **AI Context Summary:**
 > **AI source:** [from `ai_sources[].provider`: "Gemini" for `google`, "OpenAI" for `openai`, "Anthropic" for `anthropic`, "Both" when more than one provider, or "Other" when none]
-> **Profile origin:** [from evidence `provenance`: if every evidence entry is `iac`, state that Terraform was the primary signal and application code did not fully characterize the workload]
+> **Profile origin:** [in delegated GCP runs, from the sidecar's `profile_origin.terraform_primary` when the sidecar carries it; otherwise from evidence `provenance`: if every evidence entry is `iac`. When that condition holds, state that Terraform was the primary signal and application code did not fully characterize the workload]
 > **Models detected:** [from `ai_sources[].models`; if empty, say **None inferred from code or IaC** — the following questions will pin down models and frameworks]
 > **Capabilities in use:** [from the sidecar's `integration_context.capabilities_summary` where true; if all false or pattern is `unknown`, say **Not inferred — confirm below**]
 > **Integration pattern:** [from the sidecar's `integration_context.pattern`; if `unknown`, say **Unknown (IaC-only)**] via [from `integration_context.primary_sdk`, or **not determined**]

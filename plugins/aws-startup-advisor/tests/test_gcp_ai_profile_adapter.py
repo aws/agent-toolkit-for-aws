@@ -66,6 +66,7 @@ SIDECAR_EXPECTED = {
     "workloads": [],
     "observed_costs": LEGACY_SAMPLE["current_costs"],
     "integration_context": {"pattern": "direct_sdk", "primary_sdk": "anthropic", "languages": ["python"]},
+    "profile_origin": {"terraform_primary": False},
     "model_context": [
         {"service": "anthropic_api", "model_id": "claude-3-5-sonnet-20240620", "capabilities_used": ["text_generation"], "usage_context": "Summarization"},
         {"service": "openai_api", "model_id": "gpt-4o", "capabilities_used": ["text_generation"], "usage_context": "Classification"},
@@ -209,10 +210,20 @@ def test_non_array_infrastructure_fails_closed():
     assert (info.value.code, info.value.field_path) == ("LEGACY_SHAPE_UNEXPECTED", "$.infrastructure")
 
 
+def test_sidecar_carries_terraform_primary_origin_for_iac_profiles():
+    def iac_origin(doc):
+        doc["metadata"]["profile_source"] = "merged"
+        doc["summary"]["inferred_from_iac"] = True
+    assert adapter.convert_legacy_sidecar(_legacy(iac_origin))["profile_origin"] == {"terraform_primary": True}
+    def iac_vertex(doc):
+        doc["metadata"]["profile_source"] = "iac_vertex"
+    assert adapter.convert_legacy_sidecar(_legacy(iac_vertex))["profile_origin"] == {"terraform_primary": True}
 def test_sidecar_is_not_written_when_there_is_nothing_to_carry():
     def bare(doc):
         doc.pop("current_costs")
         doc.pop("integration")
+        doc.pop("metadata")
+        doc.pop("summary")
         for model in doc["models"]:
             model.pop("capabilities_used")
             model.pop("usage_context")
