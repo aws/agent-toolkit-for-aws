@@ -1,7 +1,7 @@
 # Design Phase: AI Workloads (Bedrock)
 
 > Loaded by `design.md` when `ai-workload-profile.json` exists.
-> **Input gate:** before reading any AI profile field, run `bma-runtime.py validate-profile --profile $AI_PROFILE --sidecar $MIGRATION_DIR/ai-workload-sidecar.json` (the sidecar is required when present). `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/bma-input/ai-workload-profile.json` in delegated mode. Exit 1 stops this phase. Legacy-shaped input is rejected by name (`BmaLegacyProfileRejected`).
+> **Input gate:** before reading any AI profile field, run `bma-runtime.py validate-profile --profile $AI_PROFILE --sidecar $AI_SIDECAR` (the sidecar is required when present). `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-profile.json` in delegated mode (`$AI_SIDECAR` is `$AI_SIDECAR` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-sidecar.json` in delegated mode). Exit 1 stops this phase. Legacy-shaped input is rejected by name (`BmaLegacyProfileRejected`).
 
 **Execute ALL steps in order. Do not skip or optimize.**
 
@@ -9,7 +9,7 @@
 
 ## Step 0: Load Inputs
 
-Read `$AI_PROFILE` (#415) and `$MIGRATION_DIR/ai-workload-sidecar.json` after the input gate passes:
+Read `$AI_PROFILE` (#415) and `$AI_SIDECAR` after the input gate passes:
 
 - `ai_sources[]` — provider, `source_service`, `model_families`, `model_evidence`, and `models` for each AI source
 - `gateways[]` — gateway `product`, `type`, `upstream_evidence`, and `upstreams`

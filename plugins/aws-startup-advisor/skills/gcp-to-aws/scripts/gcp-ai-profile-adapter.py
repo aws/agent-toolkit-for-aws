@@ -365,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
     convert = commands.add_parser("convert", help="Convert a legacy profile to a #415 document and its GCP sidecar")
     convert.add_argument("--legacy", type=Path, required=True)
     convert.add_argument("--out", type=Path, required=True)
-    convert.add_argument("--sidecar", type=Path, required=True, help="Run-level ai-workload-sidecar.json (read if present, then written)")
+    convert.add_argument("--sidecar", type=Path, required=True, help=".bma-input/ai-workload-sidecar.json (read if present, then written)")
     args = parser.parse_args(argv)
     try:
         legacy = json.loads(args.legacy.read_text(encoding="utf-8"))

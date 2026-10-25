@@ -359,7 +359,7 @@ def test_nested_write_rejects_symlink_parent_without_external_mutation(tmp_path:
 def test_semantic_trace_rejects_unknown_source_model() -> None:
     request = {
         "schema_version": 2, "mode": "direct", "source_containing": True,
-        "has_ai_profile": True, "iac_vertex": False,
+        "has_ai_profile": True, "iac_route_signal": False,
         "source_evidence": [{
             "provider": "openai", "source_service": "openai_api", "gateway": None,
             "models": ["different-model"], "call_sites": [{"file": "app.py", "line": 1}],

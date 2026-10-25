@@ -14,7 +14,7 @@ _contributes:
 > `clarify-assemble.md` presents them. (The "ask me everything" Full Flow variant in
 > `clarify.md` presents these questions directly in batches — see that file — because the
 > user explicitly opted out of the sheet-first wizard.)
-> **Input gate:** before reading any AI profile field, run `bma-runtime.py validate-profile --profile $AI_PROFILE --sidecar $MIGRATION_DIR/ai-workload-sidecar.json` (the sidecar is required when present). `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/bma-input/ai-workload-profile.json` in delegated mode. Exit 1 stops this phase. Legacy-shaped input is rejected by name (`BmaLegacyProfileRejected`).
+> **Input gate:** before reading any AI profile field, run `bma-runtime.py validate-profile --profile $AI_PROFILE --sidecar $AI_SIDECAR` (the sidecar is required when present). `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-profile.json` in delegated mode (`$AI_SIDECAR` is `$AI_SIDECAR` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-sidecar.json` in delegated mode). Exit 1 stops this phase. Legacy-shaped input is rejected by name (`BmaLegacyProfileRejected`).
 
 _Fire when:_ `ai-workload-profile.json` exists in `$MIGRATION_DIR/`.
 

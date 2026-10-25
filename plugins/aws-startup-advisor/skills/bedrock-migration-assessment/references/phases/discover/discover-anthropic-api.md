@@ -1,6 +1,6 @@
 # Discover Phase: Anthropic Usage API Discovery
 
-> Self-contained Anthropic usage discovery sub-file. Captures real cost and `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/bma-input/ai-workload-profile.json` in delegated mode (the GCP adapter writes the delegated input there; the public GCP file keeps its legacy content).
+> Self-contained Anthropic usage discovery sub-file. Captures real cost and `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-profile.json` in delegated mode (`$AI_SIDECAR` is `$AI_SIDECAR` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-sidecar.json` in delegated mode) (the GCP adapter writes the delegated input there; the public GCP file keeps its legacy content).
 > token-usage data directly from the Anthropic Admin API — read-only,
 > consent-gated — as an alternative to the user exporting billing CSVs by
 > hand. Produces `anthropic-usage-profile.json` and, when
@@ -420,7 +420,7 @@ of `costs_by_description[].monthly_cost_usd` (± rounding).
 
 If `$AI_PROFILE` exists (from app-code or IaC discovery), update it. The API data is authoritative for Anthropic spend and volume:
 
-1. **Observed cost → sidecar `observed_costs`.** Write to `$MIGRATION_DIR/ai-workload-sidecar.json`, creating it with `schema_version: 1`, `kind: "BMA_GCP_AI_SIDECAR"`, and `workloads: []` if absent. The merge rules are those in `schema-discover-ai.md` § Usage-API merge, with the Anthropic-specific stamping below:
+1. **Observed cost → sidecar `observed_costs`.** Write to `$AI_SIDECAR`, creating it with `schema_version: 1`, `kind: "BMA_GCP_AI_SIDECAR"`, and `workloads: []` if absent. The merge rules are those in `schema-discover-ai.md` § Usage-API merge, with the Anthropic-specific stamping below:
    - **No existing `observed_costs`** → `{ "monthly_ai_spend": <summary.monthly_cost_usd>, "services_detected": ["Anthropic Claude API"], "source": "anthropic_usage_api", "partial_window": <this profile's metadata.partial_window>, "cost_status": <this profile's metadata.cost_status> }`. Stamp both fields even in the single-provider case, so Clarify's Q3 (`clarify-ai-only.md`) can check them without re-opening the usage-profile file.
    - **Existing costs for a DIFFERENT provider** → SUM the providers. Set `source: "mixed"` with a per-provider `breakdown[]`. The Anthropic row is `{ "provider": "anthropic", "monthly_spend": X, "source": "anthropic_usage_api", "partial_window": ..., "cost_status": ... }`, alongside the other providers' entries. Each provider keeps its own identity and `partial_window`/`cost_status` where applicable. In direct mode, never relabel a provider as GCP.
    - **Existing costs for the SAME provider** → the API wins (`source: "anthropic_usage_api"`). Move the displaced figure into `observed_costs.conflicting_sources[]`, never silently resolved.

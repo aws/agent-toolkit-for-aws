@@ -1,6 +1,6 @@
 # Discover Phase: OpenRouter Usage API Discovery
 
-> Self-contained OpenRouter usage discovery sub-file. Captures real cost and `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/bma-input/ai-workload-profile.json` in delegated mode (the GCP adapter writes the delegated input there; the public GCP file keeps its legacy content).
+> Self-contained OpenRouter usage discovery sub-file. Captures real cost and `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-profile.json` in delegated mode (`$AI_SIDECAR` is `$AI_SIDECAR` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-sidecar.json` in delegated mode) (the GCP adapter writes the delegated input there; the public GCP file keeps its legacy content).
 > token-usage data directly from the OpenRouter API — read-only, consent-gated,
 > aggregate per-model/per-day counts only — as an alternative to the user
 > exporting usage by hand. Produces `openrouter-usage-profile.json` and, when
@@ -665,7 +665,7 @@ account-wide one.
 
 If `$AI_PROFILE` exists (from app-code or IaC discovery), update it. The API data is authoritative for OpenRouter spend and volume:
 
-1. **Observed cost → sidecar `observed_costs`.** Write to `$MIGRATION_DIR/ai-workload-sidecar.json`, creating it with `schema_version: 1`, `kind: "BMA_GCP_AI_SIDECAR"`, and `workloads: []` if absent. The merge rules are those in `schema-discover-ai.md` § Usage-API merge, with the OpenRouter specifics below:
+1. **Observed cost → sidecar `observed_costs`.** Write to `$AI_SIDECAR`, creating it with `schema_version: 1`, `kind: "BMA_GCP_AI_SIDECAR"`, and `workloads: []` if absent. The merge rules are those in `schema-discover-ai.md` § Usage-API merge, with the OpenRouter specifics below:
    - **No existing `observed_costs`** → `{ "monthly_ai_spend": <summary.monthly_cost_usd>, "services_detected": ["OpenRouter"], "source": "openrouter_usage_api" }`.
    - **Existing costs for a DIFFERENT provider** → SUM the providers. Set `source: "mixed"` and record the per-provider split in `breakdown[]`. OpenRouter is a router, and its spend already includes the upstream providers it fronts, so do NOT also add a separate line per upstream provider. That would double-count.
    - **Existing costs from the SAME source window** → the API wins (`source: "openrouter_usage_api"`). Move the displaced figure into `observed_costs.conflicting_sources[]`, never silently resolved.

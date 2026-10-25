@@ -57,9 +57,10 @@ WRITERS = {
         ".gate-failures.json": GCP_OWNER,
         "migration-preview.json": GCP_OWNER,
         "ai-workload-profile.json": BMA_OWNER,
-        # Delegated BMA input: the GCP adapter converts the legacy profile into this #415 file.
-        "bma-input/ai-workload-profile.json": GCP_OWNER,
-        "ai-workload-sidecar.json": GCP_OWNER,
+        # Delegated BMA input in a hidden internal directory GCP does not publish. The GCP adapter
+        # converts the legacy profile into this #415 file and writes the temporary sidecar beside it.
+        ".bma-input/ai-workload-profile.json": GCP_OWNER,
+        ".bma-input/ai-workload-sidecar.json": GCP_OWNER,
         "openai-usage-profile.json": BMA_OWNER,
         "anthropic-usage-profile.json": BMA_OWNER,
         "openrouter-usage-profile.json": BMA_OWNER,
@@ -78,7 +79,7 @@ WRITERS = {
 }
 MUTABLE_OUTPUTS = {
     ".phase-status.json", ".gate-failures.json", "migration-preview.json",
-    "ai-workload-profile.json", "ai-workload-sidecar.json", "openai-usage-profile.json",
+    "ai-workload-profile.json", ".bma-input/ai-workload-sidecar.json", "openai-usage-profile.json",
     "anthropic-usage-profile.json", "openrouter-usage-profile.json",
     "preferences-draft.json",
 }
@@ -124,10 +125,10 @@ def resolve_region(compliance: list[str], explicit_regions: list[str], cross_clo
 
 
 def route(mode: str, has_ai_profile: bool, source_containing: bool,
-          iac_vertex: bool = False) -> dict[str, Any]:
+          iac_route_signal: bool = False) -> dict[str, Any]:
     if mode not in {"direct", "delegated"}:
         raise ValueError("mode_invalid")
-    active = has_ai_profile or iac_vertex
+    active = has_ai_profile or iac_route_signal
     return {
         "mode": mode,
         "scan_neutral_source": source_containing,
@@ -400,7 +401,7 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
     """
     required = {
         "schema_version", "mode", "source_containing", "has_ai_profile",
-        "iac_vertex", "source_evidence", "state", "user_decisions",
+        "iac_route_signal", "source_evidence", "state", "user_decisions",
         "capture_observations",
     }
     if not required <= set(request) <= required | {"delegated_route"} or request["schema_version"] != 2:
@@ -411,7 +412,7 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
     )
     route_result = route(
         mode, request["has_ai_profile"], request["source_containing"],
-        request["iac_vertex"],
+        request["iac_route_signal"],
     )
     decisions = request["user_decisions"]
     if not isinstance(decisions, dict) or set(decisions) != {

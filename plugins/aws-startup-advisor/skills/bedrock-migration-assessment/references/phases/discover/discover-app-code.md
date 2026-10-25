@@ -1,6 +1,6 @@
 # Discover Phase: App Code Discovery
 
-> Self-contained source-neutral application code discovery. Scans source and dependency manifests for AI providers, SDKs, frameworks, gateways, models, capabilities, and call sites. At AI confidence >= 70%, it writes the #415 `ai-workload-profile.json` and the temporary `ai-workload-sidecar.json` (workloads, agentic profile, tool manifest). In delegated GCP mode only, the explicitly marked adapter sections may also preserve selected-base GCP SDK/resource evidence. `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/bma-input/ai-workload-profile.json` in delegated mode (the GCP adapter writes the delegated input there; the public GCP file keeps its legacy content).
+> Self-contained source-neutral application code discovery. Scans source and dependency manifests for AI providers, SDKs, frameworks, gateways, models, capabilities, and call sites. At AI confidence >= 70%, it writes the #415 `ai-workload-profile.json` and the temporary `ai-workload-sidecar.json` (workloads, agentic profile, tool manifest). In delegated GCP mode only, the explicitly marked adapter sections may also preserve selected-base GCP SDK/resource evidence. `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-profile.json` in delegated mode (`$AI_SIDECAR` is `$AI_SIDECAR` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-sidecar.json` in delegated mode) (the GCP adapter writes the delegated input there; the public GCP file keeps its legacy content).
 > If no source code files are found, exits cleanly with no output.
 
 **Dead-end handling:** If this file exits without producing artifacts (no source code found, or AI confidence < 70%), report the signals found (if any) and confidence level. In direct mode, ask for supported application source/dependency evidence or explicit OpenAI, Anthropic, or OpenRouter provider-usage intent. In delegated GCP mode only, ask for Terraform files or billing exports.
@@ -540,14 +540,14 @@ For each tool detected in Step 5.5 (from agent `tools` lists) or Step 3B.7 (tool
 Load `references/shared/schema-discover-ai.md` and write two files under `$MIGRATION_DIR`:
 
 1. `$AI_PROFILE` — the #415 document. Group the detected models into `ai_sources[]` by `(provider, source_service)`. Gemini/Vertex models map to `google`/`vertex_ai`, OpenAI SDK models to `openai`/`openai_api`, Azure OpenAI endpoints to `openai`/`azure_openai`, and Anthropic SDK models to `anthropic`/`anthropic_api`. Each entry has `model_families`, `model_evidence` (`observed` when a model was located, otherwise `not_observed` with empty `models` and `model_observations`), `models`, and one `model_observations` entry per model with `raw_model`, `model_family`, and at least one `evidence` item (`provenance` `code`, `confidence` from Step 4).
-2. `ai-workload-sidecar.json` — `schema_version` `1`, `kind` `"BMA_GCP_AI_SIDECAR"`, `workloads` (Step 5B, always present, empty when no call sites), and `agentic_profile` and `tool_manifest` only when Step 3.5 found agents.
+2. `$AI_SIDECAR` — `schema_version` `1`, `kind` `"BMA_GCP_AI_SIDECAR"`, `workloads` (Step 5B, always present, empty when no call sites), and `agentic_profile` and `tool_manifest` only when Step 3.5 found agents.
 
 OpenRouter is never an `ai_sources` entry. Record it under `gateways[]` with `upstream_evidence: "observed"` and its upstreams only when code shows the upstream provider prefixes. Otherwise record `upstream_evidence: "unresolved"` with `upstreams: []`.
 
 Run the gate before reporting the phase complete:
 
 ```
-python3 <skill root>/scripts/bma-runtime.py validate-profile --profile $AI_PROFILE --sidecar $MIGRATION_DIR/ai-workload-sidecar.json
+python3 <skill root>/scripts/bma-runtime.py validate-profile --profile $AI_PROFILE --sidecar $AI_SIDECAR
 ```
 
 Exit 0 is required. Exit 1 is a stop. Do not reshape the output to pass the gate.

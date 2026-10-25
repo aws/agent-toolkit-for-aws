@@ -55,7 +55,7 @@
         "references/runtime/bma-input-patterns.json",
         "scripts/bma-route-classifier.py"
       ],
-      "sha256": "f0bbe4cab444a5c7f2d9eb80371fd1091b61eb90483d154e0e224e29e865ab64",
+      "sha256": "0ed1ac15a8f520e3264061f1a3b6d9d14ae97c2b97dddb40061ceddd5ddcd9ca",
       "type": "script"
     },
     {
@@ -107,7 +107,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "ba162e28faf1063357262469918a7866c2e4a3c07bda3ddf42da618e584e5614",
+      "sha256": "cc61f6eb791b1cdaa3d4f6fd8030f64cca0e5120d9fb5b19a4414ee069e4527d",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai-only.md",
       "type": "instruction"
     },
@@ -120,7 +120,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "3556566cb9e9239585bca16bab2e9cbaa44fcd31387d73950e5ede3791eebb16",
+      "sha256": "c9728c5a276d459ff5de65f7dccff5019183b112248dd606153e60b2ab34d9c0",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai.md",
       "type": "instruction"
     },
@@ -146,7 +146,7 @@
         "references/vendored/ai/design-ref-agentic-to-agentcore.md",
         "references/vendored/ai/design-ref-harness.md"
       ],
-      "sha256": "0157627c3417bc60947248431545880a1079bfb6c6bb15aee9deaf4ea77dbdb4",
+      "sha256": "4a77d49cff052ae4248cacd058d701ae592524928104903c87510d287d2f087b",
       "source_path": "skills/gcp-to-aws/references/phases/design/design-ai.md",
       "type": "instruction"
     },
@@ -157,7 +157,7 @@
       "origin": "selected-base-source",
       "parity": "adapted",
       "runtime_references": [],
-      "sha256": "c456d616d3aef63b248c5d3dda46b5d1e8bfbf4815b494994c21431ace1acd19",
+      "sha256": "718d0dd97a271f9ea185673fa11c6b1e7ad40c56dd1fa36ee5847e2085d70a19",
       "source_path": "skills/gcp-to-aws/references/phases/discover/discover-anthropic-api.md",
       "type": "instruction"
     },
@@ -172,7 +172,7 @@
         "references/shared/schema-discover-ai.md",
         "references/vendored/ai/sdk-capability-map.json"
       ],
-      "sha256": "88ee432ab16eb931b8b53c4fa3d479eb0a4b481df15f45950da46f2fef571837",
+      "sha256": "639ebd6e84bb7a503b3b27537fcc35440255191290c84023c61e973e63ab06d5",
       "source_path": "skills/gcp-to-aws/references/phases/discover/discover-app-code.md",
       "type": "instruction"
     },
@@ -183,7 +183,7 @@
       "origin": "selected-base-source",
       "parity": "adapted",
       "runtime_references": [],
-      "sha256": "2dcd383050b9e55802a29272eb811dc18bebff0bc12953a3f96eefe23fff953a",
+      "sha256": "c69c53f884cbe3715e489aa23be16c96d8416d28be665312c7a5c6897dd7be54",
       "source_path": "skills/gcp-to-aws/references/phases/discover/discover-openai-api.md",
       "type": "instruction"
     },
@@ -194,7 +194,7 @@
       "origin": "selected-base-source",
       "parity": "adapted",
       "runtime_references": [],
-      "sha256": "014f16d1aae80bde4dc586de3f4c14a480179a21851f208184e07b77cc32eadf",
+      "sha256": "846e14c075d1806ff32463dacff64a25737e344f25d9cbc40839f4aa0a3d3ae1",
       "source_path": "skills/gcp-to-aws/references/phases/discover/discover-openrouter-api.md",
       "type": "instruction"
     },
@@ -223,7 +223,7 @@
         "references/vendored/ai/ai-model-lifecycle.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "25781ae906da51f4c9e6d821990248bb29b2b6024ea954a4bd1af5d35d23b6e7",
+      "sha256": "a1de3e884d9990f9fcfc7bcec40610797719bf16601dd0a0f99cca10330b8f2c",
       "source_path": "skills/gcp-to-aws/references/phases/estimate/estimate-ai.md",
       "type": "instruction"
     },
@@ -236,7 +236,7 @@
       "runtime_references": [
         "scripts/validate-startup-program-artifacts.py"
       ],
-      "sha256": "73693b0dba32274abc10c5c82feebb44fb575e9432d696034ebad6d1764be661",
+      "sha256": "323b32b1eb4db74814d9d1528435e1920a0135f3d71c1a9e7c71e6ae2fa58bd7",
       "source_path": "skills/gcp-to-aws/references/phases/generate/generate-ai.md",
       "type": "instruction"
     },
@@ -247,7 +247,7 @@
       "origin": "selected-base-source",
       "parity": "adapted",
       "runtime_references": [],
-      "sha256": "601e57a992a3e45930a03f504fcf4a5f6cb01ac9252bf712852feb205a7ff58e",
+      "sha256": "3ce0eb9b21395047834f846f4124396f2db5e523101fd271d04b24052b4007dc",
       "source_path": "skills/gcp-to-aws/references/phases/generate/generate-artifacts-ai.md",
       "type": "instruction"
     },
@@ -345,7 +345,7 @@
         "references/contracts/ai-workload-profile.schema.json",
         "references/vendored/ai/sdk-capability-map.json"
       ],
-      "sha256": "8b9b05962c17080ec2410d96604abb63e399648ef7b01d13a73370fb9abc0379",
+      "sha256": "a9dbaafe8048ab23191426e070eb670b84e66d1ff5f0279a0cc3e9448e841be8",
       "source_path": "skills/gcp-to-aws/references/shared/schema-discover-ai.md",
       "type": "instruction"
     },
@@ -891,5 +891,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "a4893ce6ca85315f4e5df33102341d614c1d17e84891c9fdf60dcf9acac709eb"
+  "self_hash": "e8dd7ec434ba261414c06221cb43e4a42d17860c81921c6b2ea22a1f57e421b4"
 }

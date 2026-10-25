@@ -1,6 +1,6 @@
 # AI-Only Migration — Clarify Requirements
 
-> **Input gate:** before reading any AI profile field, run `bma-runtime.py validate-profile --profile $AI_PROFILE --sidecar $MIGRATION_DIR/ai-workload-sidecar.json` (the sidecar is required when present). `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/bma-input/ai-workload-profile.json` in delegated mode. Exit 1 stops this phase. Legacy-shaped input is rejected by name (`BmaLegacyProfileRejected`).
+> **Input gate:** before reading any AI profile field, run `bma-runtime.py validate-profile --profile $AI_PROFILE --sidecar $AI_SIDECAR` (the sidecar is required when present). `$AI_PROFILE` is `$MIGRATION_DIR/ai-workload-profile.json` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-profile.json` in delegated mode (`$AI_SIDECAR` is `$AI_SIDECAR` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-sidecar.json` in delegated mode). Exit 1 stops this phase. Legacy-shaped input is rejected by name (`BmaLegacyProfileRejected`).
 **Standalone flow** — Used when ONLY `ai-workload-profile.json` exists (no infrastructure or billing artifacts). The existing application environment remains unchanged; only AI/LLM calls move to AWS Bedrock.
 
 Produces the same `preferences.json` output but with `design_constraints` limited to region and compliance, `startup_constraints` populated, and `ai_constraints` fully populated. Questions are presented in **two progressive batches** with an intermediate save — partial answers persist across sessions.

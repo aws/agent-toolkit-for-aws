@@ -247,7 +247,7 @@ def test_non_object_current_costs_fails_closed():
     assert (info.value.code, info.value.field_path) == ("LEGACY_SHAPE_UNEXPECTED", "$.current_costs")
 def test_sidecar_passes_bma_validate_profile_next_to_the_415_document(tmp_path):
     legacy_path = tmp_path / "legacy.json"
-    out_path = tmp_path / "bma-input" / "ai-workload-profile.json"
+    out_path = tmp_path / ".bma-input" / "ai-workload-profile.json"
     sidecar_path = tmp_path / "ai-workload-sidecar.json"
     legacy_path.write_text(json.dumps(_legacy()), encoding="utf-8")
     converted = subprocess.run(
@@ -284,7 +284,7 @@ def test_adapter_schema_subset_covers_every_keyword_in_the_vendored_schema():
     assert _schema_keywords(json.loads(VENDORED_SCHEMA.read_text(encoding="utf-8"))) <= ADAPTER_SUBSET_KEYWORDS
 def test_cli_writes_valid_document_and_nothing_on_failure(tmp_path):
     legacy_path = tmp_path / "legacy.json"
-    out_path = tmp_path / "bma-input" / "ai-workload-profile.json"
+    out_path = tmp_path / ".bma-input" / "ai-workload-profile.json"
     sidecar_path = tmp_path / "ai-workload-sidecar.json"
     legacy_path.write_text(json.dumps(_legacy()), encoding="utf-8")
     ok = subprocess.run(

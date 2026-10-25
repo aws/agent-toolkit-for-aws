@@ -59,7 +59,7 @@ def _trace_request_from_profile(profile: dict) -> dict:
             })
     return {
         "schema_version": 2, "mode": "direct", "source_containing": True, "has_ai_profile": True,
-        "iac_vertex": False, "source_evidence": rows, "state": {"phases": {}}, "capture_observations": [],
+        "iac_route_signal": False, "source_evidence": rows, "state": {"phases": {}}, "capture_observations": [],
         "user_decisions": {"execute_requested": False, "generate": False, "include_rollback": False,
                            "report_scope": "none"},
     }
@@ -230,6 +230,6 @@ def test_bma_never_imports_or_invokes_gcp_to_aws() -> None:
 
 
 def test_delegated_bma_input_is_gcp_adapter_owned_and_public_profile_unchanged():
-    # Delegated runs: the adapter writes the #415 input under bma-input/; the public root file keeps its label.
-    assert runtime.writer("delegated", "bma-input/ai-workload-profile.json") == "gcp-to-aws"
+    # Delegated runs: the adapter writes the #415 input under the hidden .bma-input/; the public root file keeps its label.
+    assert runtime.writer("delegated", ".bma-input/ai-workload-profile.json") == "gcp-to-aws"
     assert runtime.writer("delegated", "ai-workload-profile.json") == "bedrock-migration-assessment"

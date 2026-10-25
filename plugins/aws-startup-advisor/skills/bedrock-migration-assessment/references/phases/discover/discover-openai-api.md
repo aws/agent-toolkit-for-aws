@@ -6,7 +6,7 @@
 > alternative to the user exporting billing CSVs by hand. Produces
 > `openai-usage-profile.json` and, when `ai-workload-profile.json` exists, fills
 > its `observed_costs` entry in the sidecar with real spend. If the user declines consent or
-> has no Admin API key, exits cleanly with no output.
+> has no Admin API key, exits cleanly with no output. `$AI_SIDECAR` is `$MIGRATION_DIR/ai-workload-sidecar.json` in direct mode and `$MIGRATION_DIR/.bma-input/ai-workload-sidecar.json` in delegated mode.
 
 **Execute ALL steps in order. Do not skip or optimize.**
 
@@ -276,7 +276,7 @@ equals the sum of `costs_by_line_item` (± rounding).
 ## Step 4: Merge into the AI Workload Profile (if it exists), Then Clean Up
 The usage API is authoritative for OpenAI spend and volume. Merge its results as follows.
 
-1. **Observed cost → sidecar `observed_costs`.** Write to `$MIGRATION_DIR/ai-workload-sidecar.json` (create it with `schema_version: 1`, `kind: "BMA_GCP_AI_SIDECAR"`, and `workloads: []` if it does not exist). The merge rules are those in `schema-discover-ai.md` § Usage-API merge:
+1. **Observed cost → sidecar `observed_costs`.** Write to `$AI_SIDECAR` (create it with `schema_version: 1`, `kind: "BMA_GCP_AI_SIDECAR"`, and `workloads: []` if it does not exist). The merge rules are those in `schema-discover-ai.md` § Usage-API merge:
    - **No existing `observed_costs`** → `{ "monthly_ai_spend": <summary.monthly_cost_usd>, "services_detected": [<distinct endpoint_type values, prefixed "OpenAI ">], "source": "openai_usage_api" }`.
    - **Existing costs for a DIFFERENT provider** → SUM the providers. Set `source: "mixed"` with a per-provider `breakdown[]`. Preserve each provider's actual identity. In direct mode, never relabel it as GCP. Different providers are never resolved with `max()`.
    - **Existing costs for the SAME provider** → the API wins (`source: "openai_usage_api"`). Move the displaced figure into `observed_costs.conflicting_sources[]`, never silently resolved.
