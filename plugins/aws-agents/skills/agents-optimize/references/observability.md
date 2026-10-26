@@ -4,19 +4,24 @@ Set up logging, tracing, and monitoring for your AgentCore agent.
 
 ## What's auto-enabled
 
-AgentCore automatically enables:
+For **deployed** agents (`agentcore deploy` + invoke), AgentCore automatically enables:
 
 - **X-Ray tracing** — every invocation generates a trace
 - **CloudWatch logging** — agent logs ship to CloudWatch
+- **CloudWatch Transaction Search** — `agentcore deploy` turns it on for the target account and region if it isn't already (best-effort: if it can't, deploy prints `skipping Transaction Search: ...` and continues). Opt out globally with `agentcore config transactionSearch false`. Without it, spans are ingested but not searchable, so `agentcore traces ... list` and `agentcore eval` commands return nothing.
 
-These are on by default whether you're running **deployed** (`agentcore deploy` + invoke) or **locally** (`agentcore dev`). The dev server auto-instruments your agent with the AWS OpenTelemetry distro the same way the deployed runtime does; opt out with `agentcore dev --no-traces`.
+AgentCore Runtime auto-instruments the deployed agent, so you don't need to configure OTEL exporters in your code — but the OTEL distro must be in your dependencies (`aws-opentelemetry-distro` for Python; the CLI's Python templates already include it). A runtime with `"instrumentation": { "enableOtel": false }` in `agentcore/agentcore.json` opts out.
 
-Two prerequisites for the local path to work end-to-end:
+**Harnesses** (`agentcore add harness`) are fully managed — there's no code to instrument; use the `harness` forms of the `logs` and `traces` commands below.
 
-1. **AWS credentials available locally** — the OTEL exporter needs them to ship spans.
-2. **CloudWatch Transaction Search is enabled on the account** (one-time setup per account) — see "Viewing traces" below. Without it, spans are ingested but not searchable, so `agentcore traces list` and `agentcore run eval --session-id` return empty.
+**Locally** (`agentcore dev`), traces don't go to CloudWatch. The dev server starts an in-process OTLP collector and points the agent's OTEL SDK at it (OTLP endpoint and service-name env vars). Traces are written to `agentcore/.cli/traces/otlp/` and shown in the Agent Inspector:
 
-After deploy, AgentCore Runtime also auto-instruments the container (the default CMD wraps the app with `opentelemetry-instrument`). You don't need to configure OTEL in your code for either path — but you do need your agent code to be instrumented correctly.
+```bash
+agentcore dev --mode browser          # Agent Inspector web UI, including traces
+agentcore dev --no-traces             # turn local trace collection off
+```
+
+For Python CodeZip runtimes the dev server injects the OTEL auto-instrumentation via `PYTHONPATH` (so uvicorn's reloaded workers are traced too). If it prints "OTEL auto-instrumentation is not installed in the agent environment", add `aws-opentelemetry-distro` to the runtime's dependencies.
 
 ## Ensuring logs appear in CloudWatch
 
@@ -30,7 +35,7 @@ Your Dockerfile CMD must use the OpenTelemetry wrapper:
 CMD ["opentelemetry-instrument", "python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
-For CodeZip builds, this is handled automatically. For Container builds, you must add it.
+For CodeZip builds, this is handled automatically. For Container builds, you must add it (the `agent-python-strands-container` template's Dockerfile already does).
 
 ### 2. IAM permissions for CloudWatch and X-Ray
 
@@ -50,6 +55,8 @@ Your runtime execution role needs:
 }
 ```
 
+If you bring your own role with `executionRoleArn` on the runtime in `agentcore.json`, make sure it includes these.
+
 ### 3. Use the `logging` module, not `print()`
 
 AgentCore captures structured logs via the Python `logging` module. `print()` statements go to stdout but are not captured by the OTEL pipeline.
@@ -67,32 +74,44 @@ print(f"Processing request {session_id}")
 
 ## Viewing traces
 
-Traces show the full execution path of one agent invocation — model calls, tool calls, and timing.
+Traces show the full execution path of one agent invocation — model calls, tool calls, and timing. Run these from the project directory; `--name` can be omitted when the project has only one Runtime (or harness).
 
 ```bash
-# List recent traces
-agentcore traces list --runtime <AgentName> --since 1h --limit 10
+# List recent traces (default window: last 12h, 20 traces)
+agentcore traces runtime list --name <RuntimeName> --since 1h --limit 10
 
-# Get a specific trace
-agentcore traces get <traceId> --runtime <AgentName>
+# Download a specific trace's records to a JSON file (default: <traceId>.json)
+agentcore traces runtime get <traceId> --name <RuntimeName> --output trace.json
+
+# Harness equivalents
+agentcore traces harness list --name <HarnessName>
+agentcore traces harness get <traceId> --name <HarnessName>
 ```
 
-**Trace delay:** Traces appear **~10 seconds** after invocation (previously 30–60s). Don't panic if they're not immediate, and don't bake longer waits into scripts — older skills and docs that say "30–60 seconds" or "2–5 minutes" are stale.
+Add `--target <name>` for a non-default deployment target and `--qualifier <endpoint>` for a non-default endpoint.
 
-Also verify **Transaction Search** is enabled in CloudWatch — this is a prerequisite for trace visibility in the console.
+**Trace delay:** Traces appear **~10 seconds** after invocation (previously 30–60s). Don't panic if they're not immediate, and don't bake longer waits into scripts — older skills and docs that say "30–60 seconds" or "2–5 minutes" are stale.
 
 ## Viewing logs
 
 ```bash
-# Stream recent logs
-agentcore logs --runtime <AgentName> --since 30m
+# Search recent logs
+agentcore logs runtime --name <RuntimeName> --since 30m
+
+# Follow new log records
+agentcore logs runtime --name <RuntimeName> --tail
 
 # Filter by level
-agentcore logs --runtime <AgentName> --level error --since 1h
+agentcore logs runtime --name <RuntimeName> --level error --since 1h
 
-# Search for specific text
-agentcore logs --runtime <AgentName> --query "timeout" --since 2h
+# CloudWatch Logs filter pattern
+agentcore logs runtime --name <RuntimeName> --query "timeout" --since 2h
+
+# Harness logs
+agentcore logs harness --name <HarnessName> --since 30m
 ```
+
+Online-eval results have their own log stream — see `agentcore eval online-eval logs` in [`references/evals.md`](evals.md).
 
 ## CloudWatch dashboard
 
@@ -114,7 +133,7 @@ The setup order matters — do it in this sequence or the console won't show sou
 1. **Pick a monitoring account.** This is where you'll view everything. Often a central observability account, not a workload account.
 2. **Configure the monitoring account first.** CloudWatch console → Settings → Monitoring account configuration → Configure. Choose which telemetry types to share (enable Metrics **and** Logs — traces go through X-Ray's own cross-account mechanism).
 3. **Link each source account.** Either via AWS Organizations (if your accounts are in one) or via individual linking. Source accounts must accept the link.
-4. **Deploy AgentCore agents in the source accounts with observability enabled** — same default OTEL wrap-up as single-account. No code changes needed.
+4. **Deploy AgentCore agents in the source accounts with observability enabled** — same default OTEL setup as single-account. No code changes needed.
 5. **View from the monitoring account.** AgentCore Observability in the CloudWatch console now shows data from all linked accounts side-by-side, identified by source account ID.
 
 **Order-of-operations trap:** if you deploy agents in source accounts *before* linking, the telemetry still flows correctly — it just won't be visible from the monitoring account until the link is active. You don't need to redeploy, just wait a few minutes after linking.

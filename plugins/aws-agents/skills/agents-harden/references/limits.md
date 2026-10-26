@@ -12,7 +12,7 @@ Understand AgentCore Runtime quotas, diagnose which one you're hitting, and requ
 
 ## Step 0: Verify CLI version
 
-Run `agentcore --version`. This skill requires v0.9.0 or later. If older, run `agentcore update`.
+Run `agentcore --version`. This skill requires v1.0.0 or later. If older, run `npm install -g @aws/agentcore@latest` (or `agentcore update`).
 
 ---
 

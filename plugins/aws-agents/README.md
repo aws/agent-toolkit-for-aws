@@ -11,13 +11,13 @@ This plugin provides 8 skills covering the full agent lifecycle — from scaffol
 | Skill | When to use | References |
 |---|---|---|
 | `agents-get-started` | "build an agent", "create an agent", "get started", "which framework" | example-support-agent |
-| `agents-build` | "add memory", "remember across sessions", "call agent from app", "VPC", "multi-agent", "migrate from Bedrock" | memory, integrate, vpc, multi-agent, migrate, local-vs-deployed |
+| `agents-build` | "add memory", "remember across sessions", "call agent from app", "VPC", "multi-agent", "migrate from Bedrock" | memory, integrate, vpc, multi-agent, migrate, local-vs-deployed, browser, code-interpreter, payments, request-headers, teardown |
 | `agents-connect` | "connect to API", "add gateway", "give my agent tools", "Cedar policy", "restrict tools" | policy |
 | `agents-deploy` | "deploy my agent", "deploy failed", "CDK error", "rollback", "canary" | versioning |
 | `agents-debug` | "agent not working", "check logs", "command not found", "check my setup" | doctor |
-| `agents-optimize` | "evaluate my agent", "measure quality", "quality gate", "observability", "traces", "cost" | evals, observability, cost |
+| `agents-optimize` | "evaluate my agent", "measure quality", "quality gate", "regression suite", "observability", "traces", "cost" | evals, observability, cost |
 | `agents-harden` | "production checklist", "go to production", "secure agent", "before launch", "cold start" | limits |
-| `agents-pay` | "this agent needs to pay", "x402", "402 Payment Required", "spend limit for agent" — the agent paying for itself at run time | operator-guide, security-model, setup, troubleshooting |
+| `agents-pay` | "this agent needs to pay", "x402", "402 Payment Required", "spend limit for agent" — the agent paying for itself at run time | operator-guide, security-model, setup, troubleshooting, openclaw-setup |
 
 ## Routing guide
 
@@ -55,10 +55,10 @@ Discovered automatically from the marketplace manifest.
 
 ## Prerequisites
 
-- AgentCore CLI v0.9.0+ (`npm install -g @aws/agentcore`)
+- AgentCore CLI v1.0.0+ (`npm install -g @aws/agentcore@latest`). Projects created with CLI v0 can be upgraded with `agentcore migrate`.
 - AWS CLI with configured credentials
-- Node.js 20+
-- Python 3.11+ with `uv`
+- Node.js 20.12+
+- For Python agents and code-based evaluators: Python 3.10+ with [`uv`](https://docs.astral.sh/uv/). TypeScript agents need only Node.js.
 
 ## Examples
 

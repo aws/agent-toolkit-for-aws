@@ -9,7 +9,8 @@ description: >
   dashboard", "how much does my agent cost", "cost optimization", "logs
   not showing up", "logs missing", "spans not found", "eval failing",
   "eval error", "dev traces", "local traces", "agentcore dev traces",
-  "traces to CloudWatch".
+  "traces to CloudWatch", "batch evaluation", "eval dataset",
+  "regression suite", "A/B test", "improve system prompt".
   Not for debugging errors or crashes — use agents-debug. Slow but
   correct routes here; broken routes to debug.
 allowed-tools: Read Grep Glob Bash
@@ -17,7 +18,7 @@ metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
-  requires-cli: ">=0.9.0"
+  requires-cli: ">=1.0.0"
 ---
 
 # optimize
@@ -50,20 +51,24 @@ Do NOT use for:
 
 ### Step 0: Verify CLI version
 
-Run `agentcore --version`. This skill requires v0.9.0 or later.
+Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding — the eval, logs, and traces commands in this skill's references are v1 forms.
 
 ### Step 1: Read project context
 
-Read `agentcore/agentcore.json` to understand existing evaluators, online eval configs, and agent setup.
+Read `agentcore/agentcore.json` to understand existing `evaluators`, `onlineEvalConfigs`, `configBundles`, and the agents being measured (`runtimes` for your own code, `harnesses` for config-defined agents).
 
 If `agentcore/agentcore.json` is not found:
 > "This skill requires an AgentCore project. Use `agents-get-started` to create one."
+
+The `agentcore eval ...` commands work without a project (they take deployed resource IDs), so a developer with only a deployed runtime ID can still use the on-demand and batch evaluation paths in `references/evals.md`.
+
+If `agentcore.json` has no `"version": 2`, it is a v0 project. CLI v1 runs it in compatibility mode and blocks `add`/`remove`, so `agentcore add evaluator` and `agentcore add online-eval` will fail. Tell the developer to run `agentcore migrate` from the project root first (it shows the planned changes and asks before applying; `--yes` skips the prompt, `--target <name>` picks a target when the project is deployed to several).
 
 ### Step 2: Determine the workflow
 
 | Developer intent | Action |
 |---|---|
-| Measure quality, add evaluator, run eval, CI/CD gate, online monitoring | Load [`references/evals.md`](references/evals.md) and follow its workflow |
+| Measure quality, add evaluator, run eval, CI/CD gate, online monitoring, datasets / regression runs, A/B tests, prompt recommendations | Load [`references/evals.md`](references/evals.md) and follow its workflow |
 | Set up observability, CloudWatch, X-Ray, logs, metrics, dashboards | Load [`references/observability.md`](references/observability.md) and follow its workflow |
 | Understand or reduce AgentCore costs | Load [`references/cost.md`](references/cost.md) |
 | Both — "I want to understand and improve my agent" | Start with observability setup, then add evals |
@@ -84,8 +89,10 @@ Depends on the workflow — see the loaded reference for specific outputs.
 
 ## Quality criteria
 
-- Evaluator configuration uses only valid CLI flags
+- Evaluator configuration uses only valid CLI flags (check `agentcore <command> --help` when unsure)
+- LLM-as-a-Judge instructions contain placeholders valid for the evaluator's level
 - Online eval sampling rate is appropriate (not 100% in production without discussion)
 - CI/CD quality gate has a clear pass/fail threshold
 - Observability setup includes both tracing and logging
-- The developer understands the eval data delay: **~10 seconds put-to-get, end-to-end** — one ingestion step covers both trace reads and eval queries; there is no separate indexing wait
+- The developer understands the eval data delay: **~10 seconds put-to-get, end-to-end** for deployed agents — one ingestion step covers both trace reads and eval queries; there is no separate indexing wait
+- The developer understands that `agentcore dev` traces stay local (Agent Inspector / `agentcore/.cli/traces/`) and are not visible to `agentcore eval` commands, which read CloudWatch

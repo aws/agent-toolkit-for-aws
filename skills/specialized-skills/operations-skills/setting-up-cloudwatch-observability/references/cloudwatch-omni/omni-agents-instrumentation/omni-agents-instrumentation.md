@@ -63,13 +63,17 @@ Confirm by scanning source file imports.
 
 ### Detect AgentCore CLI platform
 
-After identifying the framework and language, check whether this project uses the **new AgentCore CLI** (`agentcore dev`). The ONLY reliable signal is:
+After identifying the framework and language, check whether this project uses the **AgentCore CLI** (`agentcore dev`). The ONLY reliable signal is:
 
-- An `agentcore/` directory containing `agentcore.json` at the project root
+- An `agentcore/` directory containing `agentcore.json` at the project root. A current (CLI v1) project has `"version": 2` in that file.
 
-**Important:** The `bedrock-agentcore` Python package or `@aws/bedrock-agentcore` npm package alone does NOT mean the new CLI is in use — those are SDK dependencies that exist in both old-CLI and new-CLI projects. Only the `agentcore/agentcore.json` config file indicates the new CLI structure.
+**Important:** The `bedrock-agentcore` Python or npm package alone does NOT mean the CLI is in use — those are SDK dependencies that exist with or without the CLI. Only the `agentcore/agentcore.json` config file indicates the CLI project structure.
 
-If `agentcore/agentcore.json` is present, set `platform` to `"agentcore"` (the AgentCore CLI is **Python-only**). Do NOT ask the user — auto-detect and proceed.
+If `agentcore/agentcore.json` is present, set `platform` to `"agentcore"`. Do NOT ask the user — auto-detect and proceed. Then read it:
+
+- **`runtimes[]`** are the agents with code. Each entry's `codeLocation` is the agent directory (e.g. `app/agent`), `entrypoint` the entry file (`main.py`, or `main.js` for TypeScript, which `agentcore dev` runs from `main.ts`), and `build` either `CodeZip` or `Container`. Runtimes can be Python or TypeScript — detect the language per runtime from its entrypoint and dependency file in `codeLocation`, and instrument that directory.
+- **Harness-only project** (`harnesses[]` has entries, `runtimes[]` is empty or missing): a harness is a managed, config-defined agent with no local code or local server, so there is nothing to instrument and Phase 3's local server does not apply. Tell the user, then go to "Production deployment → AgentCore (managed runtime)" Action 1 only; traces for a deployed harness are listed with `agentcore traces harness list`.
+- **No `"version": 2`** — a project from AgentCore CLI v0. CLI v1 still runs `agentcore dev` on it in compatibility mode, but blocks commands that edit the project; recommend the user run `agentcore migrate` (it shows the planned changes and asks before applying). Continue with `platform: "agentcore"` either way.
 
 If NO AgentCore signals are found, set `platform` to `"generic"`. The start command will be the project's natural server command (e.g., `uvicorn app:app --host 0.0.0.0 --reload`). Do NOT use the `opentelemetry-instrument` wrapper — hot-reload servers spawn child subprocesses; the wrapper only instruments the parent process; PYTHONPATH injection reaches all processes.
 
@@ -246,7 +250,7 @@ Read `references/cloudwatch-omni/omni-agents-instrumentation/openinference-frame
 - Preferred: `uv pip install --python .venv/bin/python <package>`
 - Fallback: `.venv/bin/python -m pip install <package>`
 - If no venv exists, recommend creating one (`uv venv .venv` or `python -m venv .venv`)
-- **AgentCore stale venv:** `agentcore dev` only installs dependencies when it first creates the venv. If a newly added package fails to import, run `uv sync` (without `--frozen`/`--locked`) to refresh, then restart the server.
+- **AgentCore dependencies:** `agentcore dev` starts Python runtimes with `uv run` from the runtime's `codeLocation`, which syncs that directory's `.venv` from its `pyproject.toml`. Declare new packages in the runtime's `pyproject.toml` (`uv add <package>` in `codeLocation`) — a package only `uv pip install`ed into the venv is not deployed and may be dropped on the next sync. If a newly added package still fails to import, run `uv sync` in `codeLocation`, then restart the server.
 
 ### Completion
 
@@ -283,7 +287,8 @@ Determine the entry point:
 
 Build the command based on platform and instrumentation approach:
 
-- **AgentCore CLI platform:** `agentcore dev -l --skip-deploy` (PYTHONPATH injection handles instrumentation; `-l` = local mode, `--skip-deploy` = don't deploy to cloud)
+- **AgentCore CLI platform, Python runtime:** `agentcore dev --no-traces --agent <RuntimeName> --port <port>`, with the OTEL variables in `agentcore/.env.local` (see Step 3.3). `agentcore dev` runs the runtime locally (nothing is deployed) and, for Python CodeZip runtimes, injects the ADOT auto-instrumentation via PYTHONPATH itself. `--no-traces` is required: without it the CLI points every `OTEL_*` exporter variable at its own local collector, overriding yours, and Omni receives nothing. `--agent` is the runtime's `name` in `agentcore.json`. Pass `--port` so the port is predictable — without it the CLI takes the first free port from 8080 (HTTP/AG-UI), 8000 (MCP), or 9000 (A2A); an explicit `--port` that is busy fails instead.
+- **AgentCore CLI platform, TypeScript runtime:** `agentcore dev` runs `tsx watch <entrypoint>` without the ADOT loader, so use the TypeScript start command below from the runtime's `codeLocation` instead.
 - **Generic Python:** PYTHONPATH injection + project's natural server command
 - **TypeScript:** `--require`/`--import` flags for ADOT, or normal run command for OpenInference
 
@@ -303,11 +308,26 @@ Persist the start command to `.omni/server-config.json`:
 
 **TypeScript:** `npm install` (use `--legacy-peer-deps` for Strands)
 
+**AgentCore CLI platform:** run these in the runtime's `codeLocation`. For Python runtimes, `uv sync` there is enough — `agentcore dev` starts the agent with `uv run`, which uses that directory's `.venv`.
+
 ### Step 3.3: Start Server
 
 Start the server in background with shell commands:
 
-**Python (PYTHONPATH injection):**
+**AgentCore CLI platform (Python runtime):** add the OTEL settings to `agentcore/.env.local` — `agentcore dev` loads this file into the agent process. They must be in this file, not just exported in the shell: the CLI only injects the ADOT PYTHONPATH when `OTEL_EXPORTER_OTLP_ENDPOINT` is in the dev environment it builds from `.env.local` and the runtime's `envVars`. Don't put the local endpoint in `envVars` — those are deployed with the runtime. For a `Container` build runtime, use `http://host.docker.internal:<OTLP_PORT>` as the endpoint so the container can reach the host.
+
+```bash
+cat >> agentcore/.env.local <<'ENV'
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:<OTLP_PORT>
+OTEL_SERVICE_NAME=<agent-name>
+ENV
+agentcore dev --no-traces --agent <RuntimeName> --port <port> > .omni/server.log 2>&1 &
+echo $! > .omni/server.pid
+```
+
+If the log shows "OTEL auto-instrumentation is not installed in the agent environment", add `aws-opentelemetry-distro` to the runtime's `pyproject.toml` and restart.
+
+**Generic Python (PYTHONPATH injection):**
 
 ```bash
 source .venv/bin/activate
@@ -465,7 +485,7 @@ Use when the user says "deploy to production", "cloud traces", "what env vars fo
 
 ### AgentCore (managed runtime)
 
-**Action 1:** Run once per AWS account (enables trace delivery to CloudWatch); replace `<region>` with your value:
+**Action 1:** Run once per AWS account (enables trace delivery to CloudWatch); replace `<region>` with your value. `agentcore deploy` also attempts this automatically (CloudWatch Transaction Search) unless the user has run `agentcore config transactionSearch false`, so this is a no-op if a deploy already succeeded at it:
 
 ```bash
 aws xray update-trace-segment-destination --destination CloudWatchLogs --region <region>
@@ -486,7 +506,9 @@ Allow ~10 minutes before traces appear after running this.
 ]
 ```
 
-Then run `agentcore validate` to confirm the config is valid.
+Then run `agentcore build` from the project root. It validates `agentcore.json` (a schema error is reported as `Failed to deserialize file ...` with the failing path, e.g. `runtimes[0].envVars[0].name`) and builds the deployable artifacts locally without deploying. `agentcore deploy` applies the change.
+
+`envVars` is a per-runtime list of `{ "name", "value" }` objects inside each `runtimes[]` entry — there is no project-level `envVars`. Harnesses use a separate `environmentVariables` map and are configured by the service, so skip this action for them.
 
 AgentCore handles the rest internally (OTLP endpoint, SigV4, trace routing).
 
