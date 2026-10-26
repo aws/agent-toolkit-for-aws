@@ -221,8 +221,7 @@ def consent_decision(status: str, requests: int = 0, retry_pending: bool = False
 
 
 MODEL_TARGETS = {
-    "claude-3-5-sonnet-20240620": ("anthropic.claude-sonnet-4-5-v1:0", "anthropic_sdk", 3.0, 15.0),
-    "claude-3-haiku-20240307": ("anthropic.claude-haiku-4-5-v1:0", "anthropic_sdk", 0.25, 1.25),
+    "claude-3-haiku-20240307": ("anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic_sdk", 0.25, 1.25),
     "gpt-4o": ("openai.gpt-6-luna", "direct_api", 0.11, 0.55),
     "gemini-2.5-pro": ("amazon.nova-pro-v1:0", "google_genai_sdk", 0.8, 3.2),
 }

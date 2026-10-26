@@ -163,11 +163,12 @@ def test_trace_preserves_openrouter_cardinality_null_zero_and_writer_boundary(tm
         tmp_path,
         "openrouter-cardinality",
     ))
-    assert len(openrouter["associations"]) == 3
+    assert len(openrouter["associations"]) == 2
     assert openrouter["associations"][0][2] == "openrouter"
     assert openrouter["associations"][1][2] == "openrouter"
-    # claude-3-5-sonnet has no Active target now, so the target and delta are unknown, not zero.
-    assert openrouter["costs"][1:3] == [None, None]
+    # Both targets (Haiku 4.5, GPT-6 Luna) are Active and priced; the sources are not in the registry, so
+    # the delta is unknown, not zero.
+    assert openrouter["costs"][1:3] == [2.16, None]
 
     gemini = projection(trace(
         CASE_VALUE["cases"]["gemini-application"],

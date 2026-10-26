@@ -127,7 +127,7 @@ One row per confirmed workload. This is the per-workload target decision.
 {
   "workload_id": "wl_3a1f2c", // from the profile's workloads[]; preserve verbatim
   "model_id": "gpt-4o", // the source model / SDK method the workload used
-  "target_bedrock_model": "anthropic.claude-sonnet-4-5-v1:0", // XOR target_aws_service — see below
+  "target_bedrock_model": "anthropic.claude-sonnet-5-5", // XOR target_aws_service — see below
   "target_aws_service": null, // XOR target_bedrock_model — see below
   "capability": "text_generation", // the workload's capability (see § capability vocabulary)
   "capability_confidence": "high", // high | medium | low

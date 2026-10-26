@@ -110,23 +110,33 @@ def test_gpt4o_unverified_source_with_active_target_is_priced_without_delta() ->
     _assert_no_hardcoded_retirement_wording(result)
 
 
-def test_claude_haiku_source_keeps_target_name_and_is_unpriced() -> None:
+def test_claude_haiku_source_maps_to_documented_haiku_4_5_id_and_is_priced() -> None:
+    # decisions.md entry 8: the Haiku target is the documented anthropic.claude-haiku-4-5-20251001-v1:0
+    # (Active in the registry), keeping its existing 0.25 / 1.25 price.
+    assert runtime.MODEL_TARGETS["claude-3-haiku-20240307"] == (
+        "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic_sdk", 0.25, 1.25)
     result = _trace("claude-3-haiku-20240307", "anthropic", "anthropic_api")
+    assert result["associations"][0]["lifecycle_label"] == "lifecycle unverified"
     assert result["design_mappings"] == [
-        {"source_model": "claude-3-haiku-20240307", "target_model": "anthropic.claude-haiku-4-5-v1:0",
-         "migration_path": "anthropic_sdk", "retirement_status": "unverified", "note": UNVERIFIED_NOTE}
+        {"source_model": "claude-3-haiku-20240307", "target_model": "anthropic.claude-haiku-4-5-20251001-v1:0",
+         "migration_path": "anthropic_sdk", "retirement_status": "active"}
     ]
-    assert result["estimate"]["target_monthly"] is None
-    assert result["estimate"]["pricing_source"] == "unavailable"
+    assert result["estimate"]["target_monthly"] == 1.5  # 1M x 0.25 + 1M x 1.25
+    assert result["estimate"]["monthly_delta"] is None
+    assert result["estimate"]["pricing_source"] == "bedrock_cache"
 
 
-def test_claude_3_5_sonnet_row_is_restored_and_its_target_is_unverified_and_unpriced() -> None:
-    assert runtime.MODEL_TARGETS["claude-3-5-sonnet-20240620"] == (
-        "anthropic.claude-sonnet-4-5-v1:0", "anthropic_sdk", 3.0, 15.0)
+def test_legacy_sonnet_rows_are_gone_and_claude_3_5_sonnet_source_is_unmapped() -> None:
+    # decisions.md entries 6 and 8: no Sonnet 3.5 migration row, and anthropic.claude-sonnet-4-5 (Legacy) is
+    # not a target. A claude-3-5-sonnet source stays visible as a real model, unmapped and unpriced.
+    assert "claude-3-5-sonnet-20240620" not in runtime.MODEL_TARGETS
+    assert not any(target.startswith("anthropic.claude-sonnet-4-5") for target, *_ in runtime.MODEL_TARGETS.values())
     result = _trace("claude-3-5-sonnet-20240620", "anthropic", "anthropic_api")
     assert result["associations"][0]["lifecycle_label"] == "lifecycle unverified"
-    assert result["design_mappings"][0]["retirement_status"] == "unverified"
-    assert result["design_mappings"][0]["target_model"] == "anthropic.claude-sonnet-4-5-v1:0"
+    assert result["design_mappings"] == [
+        {"source_model": "claude-3-5-sonnet-20240620", "target_model": None, "migration_path": None,
+         "retirement_status": "unverified", "note": UNVERIFIED_NOTE}
+    ]
     assert result["estimate"]["target_monthly"] is None
     assert result["estimate"]["pricing_source"] == "unavailable"
 
