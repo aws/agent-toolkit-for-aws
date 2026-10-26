@@ -396,6 +396,54 @@ def validate_ai_sidecar(value: Any) -> dict[str, Any]:
     return value
 
 
+AI_CAPABILITY_MAP_RELATIVE = "references/vendored/ai/sdk-capability-map.json"
+_UNCLASSIFIED = {"capability": "unknown", "capability_confidence": "low", "structured_output": False}
+# Design-ai.md Part 1: image_generation -> Stability AI. Core is the cost-first default; Ultra is quality-first.
+IMAGE_GENERATION_TARGETS = {"core": "stability.stable-image-core-v1:0", "ultra": "stability.stable-image-ultra-v1:0"}
+
+
+def design_target(capability: str, priority: str) -> dict[str, Any]:
+    """Design-ai.md Part 1 target for a capability whose routing is deterministic. Only image_generation is."""
+    if capability != "image_generation":
+        raise ValueError("design_target_not_deterministic")
+    model = IMAGE_GENERATION_TARGETS["ultra" if priority == "quality" else "core"]
+    return {"capability": capability, "target_aws_service": None, "target_bedrock_model": model}
+
+
+def _call_block(lines: list[str], index: int) -> str:
+    """Text of the call that starts on lines[index], through its matching closing parenthesis."""
+    text = "\n".join(lines[index:])
+    depth = 0
+    for position, char in enumerate(text):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return text[: position + 1]
+    return text
+
+
+def classify_ai_call(source: Path, line: int, model_id: str, method: str, capability_map: Path) -> dict[str, Any]:
+    """Discover Step 5B.2-5B.4 for one call site. Image output is checked before structured output and text."""
+    cmap = json.loads(capability_map.read_text(encoding="utf-8"))
+    if method not in cmap["entries"]:
+        return dict(_UNCLASSIFIED)
+    if method not in cmap["structured_output_trio"]:
+        return {"capability": cmap["entries"][method], "capability_confidence": "high", "structured_output": False}
+    lines = source.read_text(encoding="utf-8").splitlines()
+    if not 1 <= line <= len(lines):
+        raise ValueError("call_line_out_of_range")
+    block = _call_block(lines, line - 1)
+    if any(token in block for token in cmap["image_output_indicators"]) or any(
+        pattern in model_id for pattern in cmap["image_output_model_patterns"]
+    ):
+        return {"capability": "image_generation", "capability_confidence": "high", "structured_output": False}
+    if any(re.search(r"\b" + re.escape(ind) + r"\b", block) for ind in cmap["structured_output_indicators"]):
+        return {"capability": "structured_output", "capability_confidence": "high", "structured_output": True}
+    return {"capability": "text_generation", "capability_confidence": "medium", "structured_output": False}
+
+
 GENERATED_FILES = {
     "anthropic_sdk": ["ai-migration/anthropic-adapter.ts"],
     "direct_api": ["ai-migration/bedrock-client.py"],
@@ -1092,7 +1140,23 @@ def main() -> int:
     validate = commands.add_parser("validate-profile", help="Gate every AI phase: #415 profile, optional sidecar")
     validate.add_argument("--profile", type=Path, required=True)
     validate.add_argument("--sidecar", type=Path)
+    classify = commands.add_parser("classify-ai-call", help="Discover Step 5B capability for one AI call site")
+    classify.add_argument("--source", type=Path, required=True)
+    classify.add_argument("--line", type=int, required=True)
+    classify.add_argument("--model", required=True)
+    classify.add_argument("--method", required=True)
+    target = commands.add_parser("design-target", help="Design Part 1 target for a deterministic capability")
+    target.add_argument("--capability", required=True)
+    target.add_argument("--priority", default="balanced")
     args = parser.parse_args()
+    if args.command == "design-target":
+        try:
+            output = design_target(args.capability, args.priority)
+        except ValueError as exc:
+            print(json.dumps({"error": "ValueError", "message": str(exc)}, sort_keys=True), file=sys.stderr)
+            return 1
+        print(json.dumps(output, sort_keys=True))
+        return 0
     if args.command == "validate-profile":
         try:
             output = validate_ai_workload_profile(
@@ -1112,6 +1176,9 @@ def main() -> int:
         output = closure_preflight(args.bma_base)
     elif args.command == "trace":
         output = semantic_trace(_json_input(args.request))
+    elif args.command == "classify-ai-call":
+        output = classify_ai_call(args.source, args.line, args.model, args.method,
+                                  Path(__file__).resolve().parents[1] / AI_CAPABILITY_MAP_RELATIVE)
     else:
         output = execute_contract(_json_input(args.request))
     print(json.dumps(output, sort_keys=True))

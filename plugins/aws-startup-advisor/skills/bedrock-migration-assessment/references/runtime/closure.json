@@ -55,7 +55,7 @@
         "references/runtime/bma-input-patterns.json",
         "scripts/bma-route-classifier.py"
       ],
-      "sha256": "f4c902ce276d14fb0f38fd238ac07c5d96cba7c67102a5d4d4fd8f4c2981732e",
+      "sha256": "8f183626b77673f967815f38bd89f2a948c3f756ef85f7efb503dcfa4a12b4df",
       "type": "script"
     },
     {
@@ -146,7 +146,7 @@
         "references/vendored/ai/design-ref-agentic-to-agentcore.md",
         "references/vendored/ai/design-ref-harness.md"
       ],
-      "sha256": "5fea860fb3f62382b49620569ff85fd546bd6028c66cc93faf491751ee6fda25",
+      "sha256": "c426363e5259b311dc03d61702dd9d1a03e6693fa7ecf1e603d6474845db284e",
       "source_path": "skills/gcp-to-aws/references/phases/design/design-ai.md",
       "type": "instruction"
     },
@@ -172,7 +172,7 @@
         "references/shared/schema-discover-ai.md",
         "references/vendored/ai/sdk-capability-map.json"
       ],
-      "sha256": "b4719751b57ef00838bbf1129e908b5c3a935a53a20f27cc7ad71fc50be8e070",
+      "sha256": "0229f2cab4efc53c5bcc15d3c40e727be46affccc2c246845a368dbb1615db31",
       "source_path": "skills/gcp-to-aws/references/phases/discover/discover-app-code.md",
       "type": "instruction"
     },
@@ -346,7 +346,7 @@
         "references/contracts/ai-workload-profile.schema.json",
         "references/vendored/ai/sdk-capability-map.json"
       ],
-      "sha256": "a9dbaafe8048ab23191426e070eb670b84e66d1ff5f0279a0cc3e9448e841be8",
+      "sha256": "2637af4b9dddd8ab7c0cd1ae04d93a9b30cc9e61f6de1fe82729da63feb3c7d7",
       "source_path": "skills/gcp-to-aws/references/shared/schema-discover-ai.md",
       "type": "instruction"
     },
@@ -550,7 +550,7 @@
       "origin": "canonical-shared",
       "parity": "byte-identical",
       "runtime_references": [],
-      "sha256": "51fc001846122e6a4ef434b2e5e3219bb1fc9f67895a1d9a031c64f1d59ec23f",
+      "sha256": "c0ece110ea4e1609baab32bc6a4c70b9ee3c9f9692530f0060fd1794a3a9988d",
       "source_path": "skills/shared/ai/sdk-capability-map.json",
       "type": "data"
     },
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "224b8ee02cef0155054cee8a161f0820a1de7d4d75e989b4ea61a6dc43860afe"
+  "self_hash": "415d39b2f57cdf1cb61419264d4ca06f3eaf57c0cfdff201f64ae33e5f469ea5"
 }

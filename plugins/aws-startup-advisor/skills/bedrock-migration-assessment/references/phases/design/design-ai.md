@@ -126,7 +126,7 @@ For each `workloads[]` entry:
    | ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------ |
    | `text_generation`      | Text/reasoning                                                    | Apply override hierarchy below                                     |
    | `structured_output`    | Text/reasoning (same models support structured output)            | Apply override hierarchy below                                     |
-   | `image_generation`     | Image generation                                                  | Stability AI (Core / Ultra)                                        |
+   | `image_generation`     | Image generation                                                  | Stability AI Core via design-target (see below)                    |
    | `embedding`            | Embedding                                                         | Amazon Titan Embed Text v2                                         |
    | `speech_to_text`       | Speech-to-text                                                    | Amazon Transcribe                                                  |
    | `text_to_speech`       | Text-to-speech                                                    | Amazon Polly                                                       |
@@ -134,6 +134,8 @@ For each `workloads[]` entry:
    | `image_analysis`       | Traditional AI (non-Bedrock) — see `references/design-refs/ai.md` | AWS Rekognition                                                    |
    | `speech_transcription` | Traditional AI (non-Bedrock) — see `references/design-refs/ai.md` | AWS Transcribe                                                     |
    | `unknown`              | Text/reasoning (default)                                          | Apply override hierarchy below                                     |
+
+   **`image_generation` routes deterministically.** Run `python3 <skill root>/scripts/bma-runtime.py design-target --capability image_generation --priority <ai_priority>` and copy its `target_bedrock_model` (Stability Image Core by default, Stable Image Ultra when `ai_priority` is `"quality"`) and `target_aws_service` (null) into the design block. Do not pick a text or Claude model for this capability; the Claude default never applies to image workloads.
 
    **`document_extraction`, `image_analysis`, `speech_transcription` are not Bedrock models.** For these three capabilities:
    - Do NOT set `target_bedrock_model` — leave it `null`.

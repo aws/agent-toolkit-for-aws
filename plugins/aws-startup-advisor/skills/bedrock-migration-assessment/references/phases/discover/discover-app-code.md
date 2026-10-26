@@ -308,15 +308,20 @@ After extracting model details (Step 5), split the detected AI usage into distin
 
 **For each AI call site detected in Steps 3–5:**
 
-1. **Resolve the SDK method** — the fully qualified method name (e.g., `ai.models.generateContent`, `openai.chat.completions.create`, `openai.images.generate`). Match against `sdk-capability-map.json` entries using exact, case-sensitive equality.
+1. **Resolve the SDK method and classify the call** — resolve the fully qualified method name (e.g., `ai.models.generateContent`, `openai.chat.completions.create`, `openai.images.generate`), then run:
 
-2. **Detect structured output** — for methods in `structured_output_trio` (`chat.completions.create`, `messages.create`, `generateContent`), check if the call passes any of: `response_format`, `responseSchema`, or `responseMimeType: 'application/json'`. If yes → `structured_output: true`, `capability: "structured_output"`, `confidence: "high"`. If no → `structured_output: false`, `capability: "text_generation"`, `confidence: "medium"`.
+   `python3 <skill root>/scripts/bma-runtime.py classify-ai-call --source <file> --line <line> --model <model_id> --method <method>`
 
-3. **Assign capability from map** — for methods NOT in the structured-output trio, use the map value directly with `confidence: "high"`. For methods not in the map at all → `capability: "unknown"`, `confidence: "low"`.
+   The script applies the map rules and prints JSON with `capability`, `capability_confidence`, and `structured_output`. Use its output as written; do not re-derive the capability by hand. Methods not in the map return `capability: "unknown"`, `capability_confidence: "low"`.
 
-4. **Collapse by workload tuple** — group call sites sharing the same `(model_id, sdk_method, structured_output)` into a single workload entry. Record all `call_sites` (file + line).
+   The rules it applies, in order:
+   - For methods in `structured_output_trio`, image output is checked first: the call's arguments contain one of the map's `image_output_indicators` (for example `responseModalities: [Modality.IMAGE]`), or the model_id contains one of `image_output_model_patterns` (for example `gemini-3.1-flash-image`, `imagen-*`, `dall-e-*`, `gpt-image-*`). Match → `capability: "image_generation"`, `capability_confidence: "high"`, `structured_output: false`. Image output is not text, so it never falls through to the text rule.
+   - Next, for trio methods without image output: if the call passes any of `response_format`, `responseSchema`, or `responseMimeType` → `capability: "structured_output"`, `capability_confidence: "high"`, `structured_output: true`. Otherwise → `capability: "text_generation"`, `capability_confidence: "medium"`, `structured_output: false`.
+   - For methods NOT in the trio, the map value is used with `capability_confidence: "high"`.
 
-5. **Generate workload_id** — deterministic hash: `"wl_" + sha256(model_id + "|" + sdk_method + "|" + ("structured" if structured_output else "plain"))[:6]`
+2. **Collapse by workload tuple** — group call sites sharing the same `(model_id, sdk_method, structured_output)` into a single workload entry. Record all `call_sites` (file + line).
+
+3. **Generate workload_id** — deterministic hash: `"wl_" + sha256(model_id + "|" + sdk_method + "|" + ("structured" if structured_output else "plain"))[:6]`
 
 **Output:** Write the `workloads` array to the sidecar `ai-workload-sidecar.json`. It does not go into the #415 profile.
 

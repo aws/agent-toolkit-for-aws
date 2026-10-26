@@ -35,5 +35,16 @@
     "response_format",
     "responseSchema",
     "responseMimeType"
+  ],
+  "image_output_indicators": [
+    "Modality.IMAGE",
+    "'IMAGE'",
+    "\"IMAGE\""
+  ],
+  "image_output_model_patterns": [
+    "-image",
+    "imagen-",
+    "dall-e",
+    "gpt-image"
   ]
 }
