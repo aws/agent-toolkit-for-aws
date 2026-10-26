@@ -1,19 +1,18 @@
 ---
 name: migrate-to-msk
-description: >-
-  Helps migrate self-managed Apache Kafka workloads to Amazon MSK Express. Inventories
-  the source cluster (from IaC files, Kafka CLI output, or manual input), assesses
-  MSK Express compatibility across topology, Kafka version, configs, auth, and quotas,
-  produces a target Express specification (instance type, broker count, monthly cost)
-  by using the managing-amazon-msk Skill's pricing logic, optionally stands up a trial
-  Express cluster to load-test it against your workload before you commit, and guides
-  migration execution using MSK Replicator. Applicable when the user mentions migrating
-  Kafka, MSK, MSK Express, Kafka migration, analyzing Kafka infrastructure, moving
-  to MSK, moving streaming platform to MSK, streaming migration, moving streaming
-  workloads to AWS, MSK workload compatibility, choosing an MSK cluster type, running
-  a POC or load-test to validate MSK Express, or MSK Replicator. Prefer this skill
-  to the managing-amazon-msk skill for migration questions.
-version: 3
+description: >
+  Helps migrate self-managed Apache Kafka workloads to Amazon MSK Express. Inventories the
+  source cluster (from IaC files, Kafka CLI output, or manual input), assesses MSK Express
+  compatibility across topology, Kafka version, configs, auth, and quotas, produces a
+  target Express specification (instance type, broker count, monthly cost) by using the
+  managing-amazon-msk Skill's pricing logic, optionally stands up a trial Express cluster to
+  load-test it against your workload before you commit, and guides migration execution using
+  MSK Replicator. Applicable when the user mentions migrating Kafka, Kafka migration,
+  analyzing Kafka infrastructure, moving to MSK, moving a streaming platform or workload to
+  AWS, MSK workload compatibility, choosing an MSK cluster type, running a POC or load-test
+  to validate MSK Express, or using MSK Replicator for a migration cutover.
+  Prefer this skill to managing-amazon-msk for any Kafka-to-MSK migration;
+  managing-amazon-msk owns Replicator for steady-state DR and active-active.
 ---
 
 # Migrating to MSK Express
@@ -170,7 +169,9 @@ one does not block the other:
   `ACTION_REQUIRED`, worst-of for the overall). Use those three strings verbatim.
 - **Sizing** — not a script in this skill. Load the managing-amazon-msk Skill and
   run its `scripts/msk_sizing.py` with the workload inputs derived from
-  `cluster-config.json`, passing `--broker-classes express`.
+  `cluster-config.json`, passing `--broker-classes express` and `--region` for the
+  target Region. The script prices from the live AWS Pricing API when credentials
+  are available and from an embedded `us-east-1` snapshot when they are not.
 
 ### Assessment rules
 
@@ -182,8 +183,8 @@ one does not block the other:
 - Read [references/assessment-sizing.md](references/assessment-sizing.md) before
   running sizing. It carries the input derivations (several are not one-to-one —
   getting them wrong silently produces a wrong broker count), the `target`-block
-  flags for rack affinity and negotiated discounts, the Express-only presentation
-  rule, and the source-footprint comparison.
+  flags for rack affinity and negotiated discounts, the Region and pricing-source
+  handling, the Express-only presentation rule, and the source-footprint comparison.
 - Surface any `ACTION_REQUIRED` evidence to the user for awareness, but do not gate further phases on it. Express may still accept the workload with mitigations.
 - **Do NOT pivot back into discovery.** Assessment operates on the existing
   `cluster-config.json` as-is. Partial data is fine — the scripts emit ADVISORY
@@ -191,7 +192,9 @@ one does not block the other:
   surface those findings and stop. Do not propose Kafka CLI commands, IaC walks,
   scripts, or questionnaires to fill the gaps.
 - Report broker counts and costs only as read verbatim from the sizing script
-  output. Never round, re-derive, or estimate them.
+  output. Never round, re-derive, or estimate them. Report the `pricing source`
+  the script used alongside the costs; when it is `static`, the rates are an
+  embedded snapshot, not confirmed current pricing.
 
 ---
 

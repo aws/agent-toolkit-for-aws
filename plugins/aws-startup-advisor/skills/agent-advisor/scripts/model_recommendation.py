@@ -17,8 +17,8 @@ import openai_model_recommendation
 
 SKILL_DIR = pathlib.Path(__file__).parent.parent
 MODELS_DIR = SKILL_DIR / "references" / "models"
-DEFAULT_CATALOG = MODELS_DIR / "anthropic-bedrock-2026-07-21.json"
-OPENAI_CATALOG = MODELS_DIR / "openai-bedrock-2026-08-21.json"
+DEFAULT_CATALOG = MODELS_DIR / "anthropic-bedrock-2026-09-24.json"
+OPENAI_CATALOG = MODELS_DIR / "openai-bedrock-2026-09-24.json"
 
 # Which provider module owns a source. This is a TWO-way decision, not a per-provider table: OpenAI
 # has its own module, and everything else goes to the Anthropic one — including `none`/`unknown` (no
@@ -168,6 +168,25 @@ def recommend(input_data, catalog=None, openai_catalog=None):
     }
 
 
+def _invocation_contract(recommendation):
+    return {
+        workload_id: {
+            "decision_status": workload.get("decision_status"),
+            "model": (workload.get("model_identity") or {}).get("path_model_id"),
+            "api_path": workload.get("api_path"),
+            "invocation_model_id": workload.get("invocation_model_id"),
+            "region": workload["verification"]["region"],
+            "allowed_inference_profiles": sorted(
+                workload["verification"].get("allowed_inference_profiles", [])
+            ),
+            "allowed_in_region_model_arns": sorted(
+                workload["verification"].get("allowed_in_region_model_arns", [])
+            ),
+        }
+        for workload_id, workload in recommendation["workloads"].items()
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="agent-advisor Bedrock model recommendation"
@@ -197,6 +216,13 @@ def main(argv=None):
     result = recommend(input_data, load_catalog(args.catalog))
     validate(result, "model-recommendation.json")
     output = args.output or args.input.parent / "model-recommendation.json"
+    try:
+        previous = json.loads(output.read_text())
+        previous_contract = _invocation_contract(previous)
+    except (OSError, ValueError, KeyError, TypeError):
+        previous_contract = None
+    if previous_contract != _invocation_contract(result):
+        output.with_name("model-verification.json").unlink(missing_ok=True)
     output.write_text(json.dumps(result, indent=2) + "\n")
     validated = "no" if jsonschema is None else "yes"
     print(f"RESULT=ok WORKLOADS={len(result['workloads'])} SCHEMA_VALIDATED={validated}")

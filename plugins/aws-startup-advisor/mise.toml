@@ -6,21 +6,29 @@ run = "python3 scripts/validate-artifacts.py --fixtures"
 description = "Check each skill's references/vendored/ copies are byte-identical to skills/shared/"
 run = "python3 tools/sync-vendored.py --check"
 
+[tasks."lint:skill-refs"]
+description = "Check every file path the aws-startup-advisor skills reference exists"
+run = "python3 tools/check-skill-refs.py --check"
+
+[tasks."lint:consent-disclosure"]
+description = "Usage-API discovery consent text must not contradict its own Capture Endpoint Table"
+run = "python3 scripts/consent-disclosure-audit.py"
+
 [tasks.ci]
 description = "Run startup advisor CI checks"
-depends = ["lint:model-id", "lint:model-staleness", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs", "test", "test:heroku-source-review"]
+depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:startup-model-pricing", "lint:artifacts", "lint:vendored-parity", "lint:skill-refs", "lint:consent-disclosure", "test", "test:heroku-source-review"]
 
-[tasks."lint:model-id"]
-description = "Check model references against the lifecycle registry"
-run = "uv run --no-project python scripts/model-id-lint.py"
+[tasks."lint:md"]
+description = "Lint startup advisor markdown using the shared rules"
+run = "markdownlint-cli2 --config ../../.markdownlint-cli2.yaml '**/*.md' '#node_modules'"
 
 [tasks."lint:model-staleness"]
 description = "Check Bedrock model-lifecycle registry freshness"
 run = "python3 tools/model-staleness.py --strict"
 
-[tasks."lint:skill-refs"]
-description = "Check every file path the aws-startup-advisor skills reference exists"
-run = "python3 tools/check-skill-refs.py --check"
+[tasks."lint:model-id"]
+description = "Check model references against the lifecycle registry"
+run = "uv run --no-project python scripts/model-id-lint.py"
 
 [tasks.test]
 description = "Run plugin contract tests"
@@ -32,3 +40,7 @@ run = [
   "node --test tests/tools/application-source-contract.test.ts",
   "node --test tests/tools/application-source-review.test.ts",
 ]
+
+[tasks."lint:startup-model-pricing"]
+description = "Validate model pricing coverage"
+run = "uv run --no-project python scripts/validate-model-pricing.py"

@@ -1,6 +1,6 @@
 ---
 name: azure-to-aws
-description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrate from Azure, Azure to AWS, move off Azure, migrate AKS to EKS, migrate App Service or Azure VMs to AWS compute, migrate Azure SQL or Azure Database to RDS, migrate Cosmos DB to DynamoDB, migrate Azure OpenAI to Bedrock, move Azure AI or agentic workloads to AWS, estimate AWS costs for my Azure infrastructure, what-if workshop. Runs a 6-phase process: discover Azure resources from Terraform, the live `az` CLI, app code, and billing exports, then clarify, design, estimate costs, optionally reprice scenarios, generate artifacts, and collect feedback. Clarify gates Design, Estimate, and Generate; Generate is opt-in at the post-Estimate decision gate. Bicep/ARM discovery is not yet implemented; a Bicep/ARM-only workspace halts. Do not use for: GCP migrations (see gcp-to-aws), Heroku migrations (see heroku-to-aws), general AWS architecture advice (see architect-for-startups), AWS-to-Azure reverse migration, or Azure-to-Azure refactoring."
+description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrate from Azure, Azure to AWS, migrate AKS to EKS, migrate App Service or Azure VMs to AWS compute, migrate Azure SQL or Azure Database to RDS, migrate Cosmos DB to DynamoDB, migrate Azure OpenAI to Bedrock, estimate AWS costs for Azure, what-if workshop. Runs a 6-phase process: discover Azure resources from Terraform, the live `az` CLI, a customer-supplied Resource Discovery for Azure (RDfA) report, and app code, then clarify, design, estimate, optionally reprice, generate artifacts, and collect feedback. Clarify gates Design, Estimate, and Generate; Generate is opt-in at the post-Estimate gate. Bicep/ARM discovery is not yet implemented; a Bicep/ARM-only workspace halts. Azure Cost Management billing-export discovery is not implemented. Do not use for: GCP (see gcp-to-aws) or Heroku (see heroku-to-aws) migrations, general AWS architecture advice (see architect-for-startups), AWS-to-Azure reverse migration, or Azure-to-Azure refactoring."
 ---
 
 # Azure-to-AWS Migration Skill
@@ -8,8 +8,9 @@ description: "Migrate workloads from Microsoft Azure to AWS. Triggers on: migrat
 > **Build status.** Discover, Clarify, Design, Estimate, Generate, and the
 > what-if workshop are implemented. A `## Status` block records which build
 > step filled a file in. It is not a signal to skip the file or to treat its
-> body as a stub. Still missing: Bicep, ARM templates, and RDfA; the feedback
+> body as a stub. Still missing: Bicep, ARM templates; the feedback
 > sidebar (wiring only); and `patterns.md`, `licensing.md`, and `gpu-hpc.md`.
+> RDfA archive parsing is implemented (`discover-rdfa.md`).
 > The live `az` capture path is implemented (`discover-live.md`). OpenAI,
 > OpenRouter, and Anthropic usage-API discovery (interactive, consent-gated,
 > main-window — same shape as `discover-live.md`'s pre-dispatch live-`az`
@@ -262,7 +263,7 @@ phase contract. Both are `_kind: sidebar` — off-backbone, trigger-entered, nev
 - **Region**: `us-east-1` unless the user specifies otherwise; Azure regions are mapped, not assumed
 - **Sizing**: Development tier, upgraded from measured utilization when RDfA or `az monitor` metrics are available
 - **CPU architecture**: `x86_64` (see Philosophy — Graviton is an offered optimization here, not the default)
-- **Migration mode**: adapts to available inputs — Terraform (`azurerm_*`) IaC, live `az` capture (read-only, consent-gated), and application code are supported today, with billing exports as a fallback. OpenAI, OpenRouter, and Anthropic usage-API discovery (read-only, consent-gated) are available supplements for real AI spend and token volumes when the app calls those APIs directly. RDfA, Bicep, and ARM templates are planned follow-ups, not yet available.
+- **Migration mode**: adapts to available inputs — Terraform (`azurerm_*`) IaC, live `az` capture (read-only, consent-gated), RDfA archive parsing (read-only, file-only), and application code are supported today. Azure Cost Management billing exports are not implemented; user-stated spend is the infrastructure baseline when no measured cost source exists. OpenAI, OpenRouter, and Anthropic usage-API discovery (read-only, consent-gated) are available supplements for real AI spend and token volumes when the app calls those APIs directly. Bicep and ARM templates are planned follow-ups, not yet available.
 - **Cost currency**: USD
 - **Timeline assumption**: 2–18 weeks depending on complexity. Tiers per `references/vendored/estimate/complexity-tiers.json`.
 

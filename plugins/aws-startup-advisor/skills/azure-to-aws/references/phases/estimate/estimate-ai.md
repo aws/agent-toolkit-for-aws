@@ -24,28 +24,35 @@ The parent `estimate.md` selects the pricing mode before loading this file.
 
 **Price lookup order:**
 
-1. **`shared/pricing-cache.md` (primary)** — Look up Bedrock model pricing and source
-   provider pricing by table. Set `pricing_source: "cached"`.
-2. **Unavailable** — If a model is NOT in the cache, consult `shared/pricing-fallback.md`,
-   set `pricing_source: "unavailable"`, emit `null` for the affected per-token fields, and warn
-   the user. Never fabricate a token price. An `_unverified_` cache cell is blocking — do not
-   use it as if it were a confirmed price. There is no live pricing lookup to top the cache up.
+1. **`references/vendored/ai/bedrock-pricing-cache.md` (primary for Bedrock)** — Look up
+   Bedrock model and service pricing, lifecycle-sensitive statuses, and per-token units by table.
+   Set `pricing_source: "cached"`.
+2. **`shared/pricing-cache.md` (primary for source providers)** — Look up OpenAI / Azure OpenAI
+   source-provider comparison pricing by table. Set `pricing_source: "cached"`.
+3. **Unavailable** — If a model is NOT in its applicable cache, consult
+   `shared/pricing-fallback.md`, set `pricing_source: "unavailable"`, emit `null` for the affected
+   per-token fields, and warn the user. Never fabricate a token price. An `_unverified_` cache
+   cell is blocking — do not use it as if it were a confirmed price. There is no live pricing
+   lookup to top either cache up.
 
-For typical migrations (Claude, Llama, Nova, Mistral, DeepSeek, Gemma, OpenAI gpt-oss, and the
-proprietary GPT-5.x source rows), ALL prices are in `pricing-cache.md`.
+For typical migrations, Bedrock target prices are in the vendored Bedrock cache. Proprietary
+OpenAI / Azure OpenAI source comparison rows are in `shared/pricing-cache.md`.
 
-**Staleness:** if `pricing-cache.md` is more than 30 days past its **Last updated** date, treat
-AI prices as potentially stale, set `pricing_source: "cached_stale"`, and note it — per that
-file's staleness warning.
+**Staleness:** check each applicable cache's **Last updated** date. If the vendored Bedrock cache
+is more than 30 days old, treat Bedrock prices as potentially stale; if the source-provider cache
+is more than 30 days old, treat source comparison prices as potentially stale. Set
+`pricing_source: "cached_stale"` and note the applicable warning.
 
-**Bedrock pricing is per-1M-tokens.** Every generative Bedrock figure in `pricing-cache.md` is
-stated per 1M input tokens and per 1M output tokens. Divide token counts by 1,000,000 before
-multiplying by the rate. **Embedding models are input-only** — the § Embeddings — Bedrock table
-gives a single per-1M-input rate and no output column; price an embedding workload as
-input_tokens × rate (no output term), and compare against the § Embeddings — OpenAI / Azure OpenAI
-source rate for the "$X today" baseline. A source `text-embedding-3-*` → Titan v2 move is a
-re-embedding task (dimension change), not a free swap — carry the note into the estimate. There is no per-hour or baked-in-Multi-AZ dimension here — that RDS-style rule belongs
-to `estimate-infra.md` and does NOT apply to token pricing.
+**Bedrock pricing is per-1M-tokens.** Every generative Bedrock figure in
+`references/vendored/ai/bedrock-pricing-cache.md` is stated per 1M input tokens and per 1M output
+tokens. Divide token counts by 1,000,000 before multiplying by the rate. **Embedding models are
+input-only** — the vendored cache's § Embeddings — Bedrock table gives a single per-1M-input rate
+and no output column; price an embedding workload as input_tokens × rate (no output term), and
+compare against the § Embeddings — OpenAI / Azure OpenAI source rate in `shared/pricing-cache.md`
+for the "$X today" baseline. A source `text-embedding-3-*` → Titan v2 move is a re-embedding task
+(dimension change), not a free swap — carry the note into the estimate. There is no per-hour or
+baked-in-Multi-AZ dimension here — that RDS-style rule belongs to `estimate-infra.md` and does NOT
+apply to token pricing.
 
 **Model lifecycle:** When building the model comparison table, check
 `references/vendored/ai/ai-model-lifecycle.md` and apply the 90-day exclusion rule:
@@ -138,12 +145,12 @@ match wins:**
    `cost_unavailable` means "usage is known, cost specifically is not" — a profile can be
    `partial_window: false` and still `cost_status: "cost_unavailable"`.**
 3. **Estimated from token volume** — use `ai_constraints.ai_token_volume.value` from
-   `preferences.json` with source-provider list prices from `pricing-cache.md` (under "Source
+   `preferences.json` with source-provider list prices from `shared/pricing-cache.md` (under "Source
    Provider Pricing"), matched to the workload's source: **OpenAI / Azure OpenAI** → the
    "OpenAI / Azure OpenAI" table (Azure OpenAI serves the same GPT models and reads those same
    OpenAI rows — there is no separate Azure-OpenAI table); **Anthropic-direct** → the "Anthropic
    (Standard Tier, 1P API)" table (Claude Haiku 4.5 / Sonnet 4.5 / Sonnet 5). Apply the 60/40
-   input/output ratio if the actual ratio is unknown. **`pricing-cache.md` still has no
+   input/output ratio if the actual ratio is unknown. **`shared/pricing-cache.md` still has no
    source-side listed-price row for OpenRouter** — level 3 does not apply to an OpenRouter
    workload with no usage profile and no `current_costs`; fall straight through to level 4
    (multi-tier, no dollar comparison) for that case. Do not add new fallback pricing as a side
@@ -207,11 +214,37 @@ here but no dollar figure there.
 
 **Cost formula:** `Monthly = (input_tokens / 1M × input_rate) + (output_tokens / 1M × output_rate)`
 
-**Long-context surcharge:** If `ai_critical_feature = "ultra_long_context"` in `preferences.json`,
-Claude models charge 2x the standard input rate for tokens beyond 200K context. Apply the
-surcharge to the portion of input tokens that exceeds 200K per request. If per-request token
-counts are unknown, assume 50% of input tokens fall in the long-context tier as a conservative
-estimate.
+**Long-context pricing:** If `ai_critical_feature = "ultra_long_context"`, use the
+published rate for the exact model, source region, and inference profile. **Opus 5.5 has
+no long-context surcharge**: it uses the same per-token rates throughout its 1M context
+window (Global $4/$20, commercial Geo/Mantle $4.40/$22, GovCloud $4.80/$24 per 1M
+input/output tokens). Do not apply a generic 2x multiplier or assume that 50% of input
+falls in a premium tier. For other models, apply a long-context tier only when its
+threshold and rates are verified in the pricing cache or an authoritative source;
+if the required tier is unverified, report pricing as unavailable instead of guessing.
+
+**OpenAI/GPT source-side long-context parity:** When comparing a GPT-5.x/GPT-6 source cost
+against its Bedrock target, both sides MUST use the same context tier. If `usage_by_model[]` or
+`ai-workload-profile.json` carries no per-request token-size data (so it is unknown whether any
+requests exceed 272K input), do NOT assume the short-context rate for the source side while the
+Bedrock side may be priced long-context (or vice versa) — flag the comparison
+`pricing_tier: "approximate — request-size distribution unknown"` and present both a
+short-context and a long-context scenario row rather than a single blended number. When
+request-size data IS available (e.g., `ai_workload_profile.json` → `workloads[].typical_request_tokens`
+or measured usage profile per-request stats), apply the GPT breakpoint at 272,000 input tokens on
+BOTH sides consistently: a request above the threshold reprices input, cache, and output
+2x/2x/1.5x on the OpenAI source row the same way it does on the Bedrock row (see
+`pricing-cache.md`'s GPT-6 breakpoint note). Measured source spend (Part 1's
+`current_costs`/usage-profile dollar figures) always takes precedence over this list-rate
+comparison when it exists.
+
+**Worked example:** 100 requests of GPT-6 Sol at 300,000 input / 10,000 output tokens each (30M
+input / 1M output total) is ABOVE the 272,000-token breakpoint on every request. Source cost at
+the flat ≤272K rate ($2.00/$10.00) is $70 — wrong, because it ignores the breakpoint. Source cost
+at the correct long-context rate ($4.00 input / $15.00 output, per `pricing-cache.md`'s GPT-6
+family — long context table, Global column) is $135. Bedrock Global CRIS long-context is $135
+(parity); Bedrock In-Region/Geo-CRIS long-context ($4.40 input / $16.50 output) is $148.50 — a
+~10% premium, not the 112% a flat-rate comparison would produce.
 
 **Comparison table columns:** Model, Bedrock Monthly, vs Source Provider ($ and %), vs Current
 Azure, Quality, Capabilities Match (checked against `ai_capabilities_required`).
@@ -265,14 +298,22 @@ Do **not** repeat these as "costs" in the user-facing summary.
 Present the monthly and annual cost difference between current Azure AI spend and projected
 Bedrock cost:
 
-- **If the model is unchanged** (`model_change: false`): projected cost is **about 10% higher**,
-  not the same — Bedrock in-region is priced at OpenAI's data-residency tier, which is 1.10x
-  OpenAI / Azure OpenAI standard. Quote the increase plainly and make the case on non-cost
-  grounds. If any workload exceeds 272K context, price it at the long-context tier and show that
-  separately; it can dominate the comparison.
+- **If the model is unchanged** (`model_change: false`): derive the difference from the selected
+  model's inference option/context tier and verified source rate. For Astra use its dedicated
+  short/long-context In-Region/Geo/Global rows. A $60 Global target versus $60 source is 0%,
+  not a fixed premium. If the source rate is unverified, mark the source comparison unavailable.
 - **If Bedrock is cheaper:** present monthly and annual savings clearly.
 - **If Bedrock is more expensive:** state clearly, justify with non-cost benefits, or note "not
   justified if cost is the only priority".
+
+When both monthly totals are established for the same workload volume:
+
+```python
+monthly_difference = bedrock_monthly - source_monthly
+percentage_difference = monthly_difference / source_monthly * 100 if source_monthly > 0 else None
+```
+
+A zero source total has no percentage comparison; show its dollar difference only.
 
 Reference `aws-design-ai.json` → `honest_assessment`. If `"recommend_stay"`, present prominently
 along with `honest_assessment_reason`.
@@ -281,13 +322,15 @@ along with `honest_assessment_reason`.
 IAM/VPC/PrivateLink/KMS/CloudTrail governance, in-region processing for data residency, prompt
 caching (Claude, and GPT-5.6 at 90% off cached input with cached tokens exempt from the input-TPM
 quota), model flexibility (100+ models), AWS ecosystem (Guardrails, Knowledge Bases, AgentCore),
-and — for a same-model move — the elimination of behavior-delta and prompt-regression risk.
+and — for a same-model move — reduced model-change risk, while endpoint/API compatibility
+still requires evaluation.
 
 **Pricing source caveat for OpenAI models:** the AWS Price List API does not carry the
 proprietary GPT-5.x models. A missing or empty price-list result is **not** evidence the model is
-unavailable or free. Use `shared/pricing-cache.md`, and treat rows
-marked `unverified` there as blocking for any quoted figure — resolve them from the Bedrock
-pricing page first. See `shared/openai-on-bedrock.md`.
+unavailable or free. Use `references/vendored/ai/bedrock-pricing-cache.md` for Bedrock rates and
+statuses, and treat rows marked `unverified` there as blocking for any quoted figure — resolve
+them from the Bedrock pricing page first. Use `shared/pricing-cache.md` only for OpenAI / Azure
+OpenAI source-provider comparison rates. See `shared/openai-on-bedrock.md`.
 
 **Note:** Human / professional-services one-time migration costs are intentionally out of scope
 for this advisor and excluded from ROI calculations.
@@ -329,7 +372,7 @@ equivalent of `estimate-infra.md` Part 8.
 
 | Condition                                                                                                                         | Verdict             | `recommendation.path` |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------- |
-| **Same model on Bedrock** (`model_change: false`) — ~10% higher, short-context; non-cost benefits carry it                        | Migrate with caveat | `migrate_optimized`   |
+| **Same model on Bedrock** (`model_change: false`) — use the verified Part 5 cost delta and applicable non-cost benefits           | Migrate with caveat | `migrate_optimized`   |
 | Bedrock cheaper AND capabilities match                                                                                            | Migrate             | `migrate_optimized`   |
 | Bedrock more expensive BUT non-cost benefits justify (vendor diversification, Guardrails, multi-model) AND user priority ≠ `cost` | Migrate with caveat | `migrate_optimized`   |
 | Bedrock more expensive AND user priority = `cost` AND no compelling non-cost reason                                               | Stay                | `stay`                |
@@ -355,13 +398,12 @@ equivalent of `estimate-infra.md` Part 8.
   state why in `rationale`.
 - If `honest_assessment` from `aws-design-ai.json` says `recommend_stay`, `recommendation.path`
   MUST be `stay` regardless of cost numbers.
-- **A same-model move is a modest cost increase, not parity.** When
-  `bedrock_models[].model_change` is `false`, Bedrock in-region costs ~10% more than OpenAI /
-  Azure OpenAI standard for the same model. Report that figure rather than "no savings
-  identified", and argue the case on commitments, governance, residency, prompt caching, and
-  eliminated behavior-delta risk. A ~10% increase alone should not route to `stay` unless
-  `ai_priority = cost` and no non-cost driver applies; a long-context workload at the 1M tier is a
-  different matter and may legitimately favour staying.
+- **Same-model cost is the computed Part 5 result, not a fixed premium.** The final
+  `recommendation.rationale` must use the selected inference option/context tier and verified
+  source baseline. Report parity, savings or an increase as actually calculated. When the
+  source comparison is unavailable, say so, set confidence appropriately and do not invent a
+  percentage. Apply the decision table to those actual costs and the user's non-cost drivers;
+  the `honest_assessment: recommend_stay` override still takes precedence.
 - For multi-workload runs: if some workloads favor migration and others don't, use
   `migrate_phased` and list which workloads to migrate vs. keep in `rationale`.
 

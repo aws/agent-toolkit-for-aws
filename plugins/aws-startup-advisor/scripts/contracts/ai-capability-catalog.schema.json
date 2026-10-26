@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration:ai-capability-catalog",
+  "title": "AI source-provider capability catalog (target-only)",
+  "description": "Provider-neutral, target-only contract for the static ai-capability-catalog.json reference data file: which direct AI providers and gateways this plugin's migration flow knows about today, and whether AWS ships shared migration guidance for them. Structural validity does NOT imply an implemented adapter, route, or runtime-supported identity. implemented_adapter/route are null until a corresponding skills/ai-to-bedrock/-equivalent extraction stage (issue #389 stages 3a-3e) lands.",
+  "type": "object",
+  "required": ["schema_version", "catalog_version", "verified_at", "providers", "gateways"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "catalog_version": {"type": "integer", "minimum": 1},
+    "verified_at": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "providers": {
+      "description": "Direct AI providers this catalog knows about. Semantic uniqueness is the identity field; duplicate identities are invalid.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/providerEntry"}
+    },
+    "gateways": {
+      "description": "Upstream-routing gateways (e.g. OpenRouter-style) independent of direct providers. Semantic uniqueness is the identity field; duplicate identities are invalid.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/gatewayEntry"}
+    }
+  },
+  "definitions": {
+    "extensibleIdentity": {"type": "string", "pattern": "^(?!(?:both|openrouter|unknown)$)[a-z][a-z0-9_]*$"},
+    "modelFamily": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_.-]*$"},
+    "gatewayIdentity": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z][a-z0-9_]*$"},
+    "status": {"enum": ["supported", "restricted", "unknown"]},
+    "providerEntry": {
+      "description": "One direct AI provider. status reflects whether AWS ships shared, cross-skill migration guidance for this provider today — it is NOT a claim that an adapter is implemented. implemented_adapter stays null until a real adapter skill-identity exists.",
+      "type": "object",
+      "required": ["identity", "aliases", "source_services", "model_families", "status", "implemented_adapter"],
+      "additionalProperties": false,
+      "properties": {
+        "identity": {"$ref": "#/definitions/extensibleIdentity"},
+        "aliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "source_services": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/extensibleIdentity"}
+        },
+        "model_families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/modelFamily"}
+        },
+        "status": {"$ref": "#/definitions/status"},
+        "implemented_adapter": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/extensibleIdentity"}]},
+        "note": {"type": "string", "minLength": 1}
+      }
+    },
+    "gatewayEntry": {
+      "description": "One upstream-routing gateway (e.g. OpenRouter). status reflects whether AWS ships shared migration guidance for routing through this gateway today — NOT a claim that a route is implemented. route stays null until a real route skill-identity exists.",
+      "type": "object",
+      "required": ["identity", "aliases", "product", "upstream_providers", "status", "route"],
+      "additionalProperties": false,
+      "properties": {
+        "identity": {"$ref": "#/definitions/gatewayIdentity"},
+        "aliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "product": {"$ref": "#/definitions/gatewayIdentity"},
+        "upstream_providers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/extensibleIdentity"}
+        },
+        "status": {"$ref": "#/definitions/status"},
+        "route": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/extensibleIdentity"}]},
+        "note": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "Metrics": [
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-app",
+      "Name": "vm-web-01",
+      "Location": "eastus",
+      "Service": "Virtual Machines",
+      "Metric": "Percentage CPU",
+      "MetricAggregate": "Average",
+      "MetricTimeGrain": "PT1H",
+      "MetricMeasure": "Average",
+      "MetricPercentile": 42.3,
+      "MetricValue": 18.1,
+      "MetricCount": 720,
+      "MetricTotalCount": 744,
+      "MetricSeries": [],
+      "MetricError": false
+    },
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-app",
+      "Name": "vm-web-01",
+      "Location": "eastus",
+      "Service": "Virtual Machines",
+      "Metric": "Available Memory Bytes",
+      "MetricAggregate": "Average",
+      "MetricTimeGrain": "PT1H",
+      "MetricMeasure": "Average",
+      "MetricPercentile": 0,
+      "MetricValue": 0,
+      "MetricCount": 0,
+      "MetricTotalCount": 0,
+      "MetricSeries": [],
+      "MetricError": true
+    },
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-empty",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-app",
+      "Name": "vm-empty",
+      "Location": "eastus",
+      "Service": "Virtual Machines",
+      "Metric": "Percentage CPU",
+      "MetricPercentile": 0,
+      "MetricCount": 0,
+      "MetricError": false
+    },
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-idle",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-app",
+      "Name": "vm-idle",
+      "Location": "eastus",
+      "Service": "Virtual Machines",
+      "Metric": "Percentage CPU",
+      "MetricPercentile": 0,
+      "MetricCount": 720,
+      "MetricError": false
+    },
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-data/providers/Microsoft.Sql/servers/sql-core/databases/orders",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-data",
+      "Name": "orders",
+      "Location": "eastus",
+      "Service": "SQL Database",
+      "Metric": "cpu_used",
+      "MetricPercentile": 1.8,
+      "MetricCount": 720,
+      "MetricError": false
+    }
+  ]
+}

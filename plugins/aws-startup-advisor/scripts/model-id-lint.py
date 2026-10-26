@@ -54,7 +54,7 @@ EXTS = {".md", ".py", ".json", ".ts", ".tf", ".sh", ".template", ".html"}
 # canonical shared path (below), so only canonical paths are listed.
 CATALOG_ALLOWLIST = {
     "skills/shared/ai/ai-model-lifecycle.md",
-    "skills/gcp-to-aws/references/shared/pricing-cache.md",
+    "skills/shared/ai/bedrock-pricing-cache.md",
     "skills/azure-to-aws/references/shared/pricing-cache.md",
 }
 

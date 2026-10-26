@@ -5,7 +5,7 @@
 
 ## Policy
 
-When a service is NOT in `references/shared/pricing-cache.md`:
+When a service is NOT in `references/shared/pricing-cache.md`, or a Bedrock model or service is NOT in `references/vendored/ai/bedrock-pricing-cache.md`:
 
 1. If the cost engine's own formulas carry a well-known published rate (stated verbatim), set `pricing_source: "estimated"` and include a warning naming the rate and its source.
 2. Otherwise set `pricing_source: "unavailable"`, add the service to `services_with_missing_fallback`, and warn the user: "Pricing unavailable for [service] — not in cache and no formula constant. Exclude from totals or provide a manual estimate."

@@ -3,19 +3,20 @@ name: managing-amazon-msk
 description: >
   Operates Amazon MSK Provisioned clusters (Standard and Express brokers).
   Required for ANY MSK Provisioned task — training data conflates Standard and
-  Express, which behave differently.
+  Express.
   Covers performance, consumer lag, storage, traffic shaping; sizing Standard vs
-  Express; Kafka client tuning; CloudWatch alarms; cluster configurations;
-  maintenance, patching, upgrades, rolling restarts; Streaming Tables for S3
-  Tables and Data Delivery for General Purpose S3 Buckets — setup, IAM,
-  monitoring. Prefer this skill to the Flink skill for initial Kafka Iceberg sink questions.
-  Triggers: MSK Provisioned (Express/Standard),
-  Kafka, `kafka.*` or `express.*` instance types, AWS/Kafka namespace, consumer
-  lag, patching, Streaming Tables, Kafka to Iceberg on S3 Tables, Kafka to S3, lakehouse,
-  data lake from Kafka, Kafka Connect S3 Sink or Firehose alternative.
-  DO NOT USE for MSK Connect or Replicator — search documentation instead. Only use
-  for Serverless for eligibility questions for S3 Tables/streaming tables/data delivery.
-version: 6
+  Express; Kafka client tuning; CloudWatch alarms; cluster configs; maintenance,
+  patching, rolling restarts; topic management; MSK Replicator setup for DR and
+  active-active/active-passive replication (same-/cross-account), including
+  throughput and partition sizing; Streaming Tables for S3 Tables and Data
+  Delivery for General Purpose S3 — setup, IAM, monitoring.
+  Prefer Flink for Kafka Iceberg sink questions. Migrations: use migrate-to-msk.
+  Triggers: MSK Provisioned, Kafka, `kafka.*`/`express.*` types, AWS/Kafka
+  namespace, cross-cluster replication, Kafka to Iceberg on S3 Tables, Kafka to
+  S3, lakehouse, data lake from Kafka, Kafka Connect S3 Sink or Firehose
+  alternative.
+  DO NOT USE for MSK Connect — search docs instead. Serverless: only S3
+  Tables/data delivery eligibility.
 ---
 
 # Amazon MSK
@@ -43,6 +44,9 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 | Producer/consumer configuration, IAM/SCRAM/TLS auth | [configure-clients.md](references/configure-clients.md) |
 | Creating/applying MSK configurations (`server.properties`); custom domain names on brokers via `custom.advertised.listeners` (advertised listeners, static/custom bootstrap endpoint) — validation rules, apply/rollback, scaling; migrating from the dynamic per-broker `kafka-configs.sh` override to the static property | [configure-cluster.md](references/configure-cluster.md) |
 | Client-side connectivity for a custom domain: NLB + ACM certificate + Route 53 fronting, TLS handshake/termination, mTLS through an NLB, cross-zone load balancing | [configure-clients.md](references/configure-clients.md) (Custom Domain Name Connectivity section) |
+| Create, update, delete, list, or describe Kafka topics; when to use the native topic APIs / `CfnTopic` vs. a Kafka admin client | [manage-topics.md](references/manage-topics.md) |
+| MSK Replicator setup, migration, DR, active-active/active-passive, cross-account replication, self-managed-to-MSK or MSK-to-MSK, loop-prevention/topic-naming behavior | [msk-replicator.md](references/msk-replicator.md) |
+| Replication throughput per partition, how many partitions a replicator needs, why replicator scaling isn't increasing throughput, replicator quotas (topics, ingress, record size), `ReplicationLatency`/`MessageLag`/`ReplicatorThroughput` | [msk-replicator.md](references/msk-replicator.md) (Size partition count section) |
 | Setting up monitoring, dashboards, alarms | [monitor-and-alarm.md](references/monitor-and-alarm.md) |
 | Full CloudWatch metric list (Standard or Express) | Prefer [monitor-and-alarm.md](references/monitor-and-alarm.md) for strategic recommendations and how to interpret metrics, only search documentation if you need to understand a metric not included in this reference file ([MSK Standard CloudWatch Metrics](https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details.html), [MSK Express CloudWatch Metrics](https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details-express.html)) for full list |
 | Rolling restart impact, patching, maintenance resilience | [maintenance-operations.md](references/maintenance-operations.md) |
@@ -60,7 +64,7 @@ Determine the broker type first: `aws kafka describe-cluster-v2 --cluster-arn <a
 
 ## Available scripts
 
-- **`scripts/msk_sizing.py`** — **MUST** be run for any sizing question (broker count, instance choice, cost). See [size-and-choose-cluster.md](references/size-and-choose-cluster.md) for the required workflow and script reference.
+- **`scripts/msk_sizing.py`** — **MUST** be run for any sizing question (broker count, instance choice, cost). Prices from the live AWS Pricing API when AWS credentials with `pricing:GetProducts` are available, and falls back to an embedded `us-east-1` snapshot when they are not, so it runs with or without credentials. See [size-and-choose-cluster.md](references/size-and-choose-cluster.md) for the required workflow and script reference.
 
 ## Guardrail — where this skill's own files live (MCP vs local install)
 

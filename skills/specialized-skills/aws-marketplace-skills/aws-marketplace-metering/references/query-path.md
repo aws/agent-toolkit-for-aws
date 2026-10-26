@@ -170,7 +170,7 @@ range, and never quote a partial aggregate as a definitive total.
 
 Request-level exceptions (fail the whole `BatchMeterUsage` call — NOT per-record `Results` statuses; the pipeline isolates the offending record by bisection so co-batched records still meter):
 
-- `InvalidUsageDimensionException` — a dimension not defined in the catalog (fix the dimension key / define it in AMMP; isolated to `RejectedClientSide` reason `InvalidUsageDimensionException`, surfaced on the `BatchMeterUsageException` metric).
+- `InvalidUsageDimensionException` — a dimension not defined in the catalog (fix the dimension key / define it in AMMP; isolated to the aggregated record as `meteringStatus = Error` with `meteringStatusReason = InvalidUsageDimensionException` — a SERVER-SIDE failure, NOT `RejectedClientSide` — surfaced on the `BatchMeterUsageException` metric).
 - `TimestampOutOfBoundsException` — a record older than 24 hours (fix the timestamp).
 
 ## Data Tiers

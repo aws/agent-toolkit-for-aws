@@ -120,7 +120,7 @@ Additional vector stores may be available — refer to the latest [AWS documenta
 - After creating the IAM role, you MUST allow time for IAM propagation before using it in `create-knowledge-base`. If you get an error indicating Bedrock cannot assume the role, retry with exponential backoff up to 3 attempts. IAM role creation is eventually consistent — newly created roles may not be immediately assumable by AWS services (see [IAM eventual consistency](https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot_general.html#troubleshoot_general_eventual-consistency))
 - For the full and latest set of permissions for all vector store types, refer to [Create a service role for Amazon Bedrock Knowledge Bases](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-permissions.html)
 
-#### Step 4a: Create the IAM service role
+#### Step 4a: Create the IAM service role with trust policy
 
 Trust policy allows `bedrock.amazonaws.com` to assume the role with confused deputy protection (source: [AWS docs — KB trust relationship](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-permissions.html#kb-permissions-trust)):
 

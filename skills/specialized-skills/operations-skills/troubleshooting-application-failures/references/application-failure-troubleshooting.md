@@ -57,11 +57,12 @@ Verify the selected log groups exist and determine the available time range for 
 - You MUST validate each confirmed log group using: `aws logs describe-log-groups --log-group-name-prefix ${log_group_name} --region ${region}`
 - You MUST list available log streams for each log group: `aws logs describe-log-streams --log-group-name ${log_group_name} --order-by LastEventTime --descending --max-items 10 --region ${region}`
 - You MUST verify that log streams exist before attempting any log queries
-- You MUST calculate the effective time range based on log retention and creation time
+- Use the requested time window. A log group's `creationTime` is not the start of its data:
+  recreated, imported or backfilled groups can hold older events. Only retention limits how far back events exist.
 - You MUST extract the `lastEventTimestamp` from log streams to determine the most recent activity
 - You MUST inform the user if any log groups are empty or have no recent activity
 - You MUST inform the user if the requested time window exceeds available log data
-- You MUST adjust the analysis time window to fit within the available log data range
+- Report any part of the window that retention has expired, and analyze the rest.
 
 ### 4. Analyze Application Logs
 
@@ -71,9 +72,9 @@ Search CloudWatch logs for error patterns and failure indicators.
 
 - You MUST only proceed with log analysis if log streams were found in the previous step
 - You MUST derive timestamps from existing AWS response data rather than calculating independently
-- You MUST use the `lastEventTimestamp` from the log streams as the reference point for time calculations
+- If the user gave a time window, use it as given. Otherwise use the `lastEventTimestamp` from the log streams as the reference point for time calculations
 - You MUST convert the validated time window to Unix timestamps (milliseconds since epoch)
-- **Timestamp Derivation Process:**
+- **Timestamp Derivation Process, when the user gave no window:**
   1. Extract `lastEventTimestamp` from the log streams response (step 3)
   2. Use this as your end time for the analysis window
   3. Calculate start time by subtracting the desired time window in milliseconds
@@ -83,7 +84,8 @@ Search CloudWatch logs for error patterns and failure indicators.
   - **Exception Query**: `aws logs start-query --log-group-name ${log_group_name} --start-time ${start_timestamp} --end-time ${end_timestamp} --query-string 'fields @timestamp, @message | filter @message like /(?i)(exception|stack trace|caused by|at .+\\.java:|at .+\\.py:)/ | sort @timestamp desc | limit 100' --region ${region}`
 - You MUST remember all query IDs for result retrieval
 - You MUST handle cases where log groups don't exist or are empty
-- You MUST handle query errors gracefully and adjust time ranges if needed
+- If StartQuery rejects the window as before the log group's creation time, do not shrink the
+  window. Read it with `filter-log-events`, following `nextToken` until it is absent.
 
 ### 5. Wait for Log Query Results
 
@@ -347,4 +349,4 @@ If CloudWatch Logs Insights queries timeout, reduce the time window or limit the
 For applications spanning multiple regions, run the analysis in each region separately since CloudWatch Logs are region-specific.
 
 ### Log Retention Issues
-If the requested time window exceeds log retention settings, adjust the analysis period to fit within the available log data range.
+If the requested time window exceeds log retention settings, say which part has expired and analyze the rest. A log group's creation time is not a retention limit.

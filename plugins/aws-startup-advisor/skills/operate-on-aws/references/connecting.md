@@ -1,6 +1,16 @@
 # Connecting to AWS DevOps Agent over MCP
 
-Run this **only after** the DISCLOSE cost notice has been given.
+Run this **only after** the user has said Yes to the combined cost-and-access question (SKILL.md, CONFIRM).
+
+**Mandatory prerequisite:** the user has explicitly answered Yes to the single combined cost-and-account-access
+approval for the intended AWS account. A cost notice alone, a previous unrelated request, or a lack of
+objection does not satisfy this requirement. If approval is missing, do not perform setup writes.
+
+**Standard monitoring setup only.** Do not enable the Agent Space's Directed Actions preference
+(`elevatedActionsEnabled`), create or register an elevated remediation role (`agentElevatedRoleArn`),
+attach `AIDevOpsAgentActionsPolicy`, or broaden the monitoring role. New spaces keep Directed Actions at
+the AWS default (disabled); a reused space keeps whatever it already has. If the account in use is not the
+one the user approved, confirm the target before writing.
 
 ## Assume they are starting from nothing
 
@@ -241,10 +251,10 @@ aws devops-agent associate-service --agent-space-id <AGENT_SPACE_ID> \
 
 `--service-id` is the literal string **`aws`**. A successful association returns `status: "valid"`.
 
-**Give the ACCESS notice before any of this** — SKILL.md Phase 2.5. It grants an AWS service read access
-across the account, which is the broadest permission in the flow and the one the founder is least likely
-to have thought about. Lead with what it lets the agent see, not with the words "IAM role", and give them
-the revocation path in the same breath.
+**None of this runs before the Yes** — the access part of the combined notice (SKILL.md Phase 2.5 and
+CONFIRM) is what the user approved. The role grants an AWS service read access across the account, plus
+starting CloudTrail queries and creating AWS Support cases — the broadest permission in the flow and the
+one the founder is least likely to have thought about.
 
 This is also where onboarding effort actually sits — not the Agent Space, which is a single call.
 
@@ -269,8 +279,11 @@ Not run: `chat` or `investigate`, because those bill.
 
 ## Verify before declaring success
 
-Make one cheap call — a `chat` request, not an `investigate` — and confirm a real response. Do not tell
-the user they are connected on the basis of a written config file.
+Make one authenticated call that starts no agent work — MCP `tools/list`, or `tools/call
+list_agent_spaces` — and confirm a real response. Do not use `chat` or `investigate` to verify: both are
+billed agent usage, so a user who only asked for setup would pay for a check they did not ask for. Run
+those only for an operational request. Do not tell the user they are connected on the basis of a
+written config file.
 
 | Symptom | Cause | Fix |
 |---|---|---|

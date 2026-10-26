@@ -130,12 +130,11 @@ a service and never touch capacity; adding one would break first-match-wins.
 
 - **No utilization data** → dev-tier default from `knowledge/design/appservice-eb-sizing.json`
   (or `vm-ec2-sizing.json` for VMs), `confidence: inferred`.
-- **P95 utilization available** (RDfA rollup or `az monitor metrics list`) → apply the
-  bands and the aggressiveness slider in `knowledge/estimate/rightsizing-thresholds.json`,
-  and stamp `confidence: measured` citing the evidence.
-- **Metrics window under ~14 days** → size from them but keep `confidence: inferred`, and
-  say why. A short window over a quiet fortnight is how a workload gets sized for a
-  trough it will leave.
+- **Eligible P95 utilization available** (`metric_error: false`, `sample_count > 0`, and
+  numeric `window_days >= min_window_days`) → apply the bands and aggressiveness slider
+  and stamp `confidence: measured`, citing all evidence. A sampled P95 of zero is valid.
+- **Error, zero samples, short window, or unknown/null window** → do not apply measured
+  bands; use the declared/table path with `confidence: inferred` and state why.
 
 Sizing never revisits the service choice. If the right size for the chosen service does
 not exist, that is a finding for the report, not a reason to re-run the rubric.

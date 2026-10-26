@@ -39,12 +39,13 @@ Read from prompt context (forwarded from llm2bedrock-code-analyzer, llm2bedrock-
 
 - **`<GOLDEN_DATASET_PATH>`** — `<repo>/.saws-migrate/golden-dataset/prompts.jsonl` (from T2-2). May be empty if T2-2 took the abort / paste / vision-no-images / embeddings path.
 - **`<TEMPLATE_PATH>`** — `<repo>/.saws-migrate/golden-dataset/templates/prompt_template.txt` (from T2-2).
-- **`<TARGET_MODEL_ID>`** — Bedrock target model ID from the migration plan, validated by llm2bedrock-code-analyzer §10. Substitute it in every Bedrock call below. **It also selects the API path:** a bare `openai.gpt-5*` id (excluding `-oss`) is mantle-served and must use the Responses client in §6a; a `us.`/`in.`/`global.`-prefixed `openai.gpt-5.6-*` CRIS id is a `bedrock-runtime` target and uses `boto3.converse` like any other profile; everything else uses `boto3.converse`. See the table at the top of §6.
+- **`<TARGET_MODEL_ID>`** — the exact validated target ID or ARN from the migration plan. It identifies the endpoint, not the API: bare proprietary GPT uses Mantle; supported CRIS uses runtime. `<TARGET_API_SURFACE>` selects Chat, Responses or Converse within that endpoint. Preserve both through every call; never remove a profile prefix to change the endpoint.
 - **`<REGION>`** — AWS region for Bedrock (the `AWS region:` line in your context).
+- **`<TARGET_API_SURFACE>`** — copy the normalized `Target API surface` context line: `chat_completions`, `responses`, or `converse`. It applies to both Mantle and runtime. If a direct legacy dispatch omits that line, call `preflight_bedrock.normalize_api_path` with the saved path, target IDs and `runtime_api`, then derive the same surface. An absent runtime API means Converse; never discard an explicit runtime Chat/Responses choice.
 - **From `llm2bedrock-code-analyzer` (`AiAnalysisData`)** — key fields:
   - `source_provider` — `openai` / `anthropic` / `google` / `cohere` / `custom`. Drives §9 baseline gating. (Vertex AI customers are emitted as `google` here; the analyzer's `errors` field carries the `vertex AI auth detected` signal that gates baseline collection upstream — by the time you reach §9, `source_baseline_available` already reflects that.)
   - `source_models` — list of source-model IDs. Pass `<SOURCE_MODEL_ID>` to the §9 baseline skill verbatim.
-  - `same_model_family` — `true` when the model is unchanged: Anthropic 1P → Bedrock Claude, or OpenAI → the same GPT model on Bedrock (`openai.gpt-5*`). Triggers the §8 short-circuit.
+  - `same_model_family` — exact unchanged model identity/version, checked centrally by `validate_result.py --schema analysis` before dispatch or cache reuse. Consume that validated value without deriving it again; Anthropic provider membership alone does not qualify.
   - `source_baseline_available` — `true` iff the user supplied a source-provider API key (orchestration skill Phase B3) and it was written to `<repo>/.saws-migrate/.source-provider-env`. When `false`, §9 skips and the report banner will note the gap.
   - `special_patterns` — `{streaming, function_calling, embeddings, vision}` booleans. Drives §5 layer selection.
   - `bedrock_provider_available` — informational ONLY. This is a rewrite-strategy flag for T2-5, NOT an account-capability flag. Do NOT use it to decide whether your Bedrock calls will work — Step §6 verifies that directly.
@@ -127,17 +128,17 @@ When reporting results, clearly separate which layers passed / failed / skipped.
 Create the eval results directory and verify Bedrock connectivity against the
 target model using the SAME API path the evaluation will use.
 
-**First, pick the API path from `<TARGET_MODEL_ID>` — this decides every Bedrock
+**First, use `<TARGET_API_SURFACE>` and the validated model ID — this decides every Bedrock
 call in §6, §9.5 and §10:**
 
-| `<TARGET_MODEL_ID>` matches                       | API path         | Connectivity | Vision smoke | Golden eval              |
-| ------------------------------------------------- | ---------------- | ------------ | ------------ | ------------------------ |
-| bare `openai.gpt-5*` (not `-oss`)                 | Mantle Responses | §6a          | §9.5a        | §8 loop (same-model)     |
-| `us.`/`in.`/`global.` + `openai.gpt-5.6-*` (CRIS) | `boto3.converse` | §6           | §9.5         | §8 loop (same-model)     |
-| anything else (Claude, Nova, `openai.gpt-oss-*`)  | `boto3.converse` | §6           | §9.5         | §10, or §8 if same-model |
+| `<TARGET_MODEL_ID>` matches                               | API path            | Connectivity | Vision smoke | Golden eval                     |
+| --------------------------------------------------------- | ------------------- | ------------ | ------------ | ------------------------------- |
+| bare `openai.gpt-5*` (not `-oss`) or `openai.gpt-6*` | Selected Mantle API | §6a          | §9.5a        | §8 if same-model; otherwise §10 |
+| Supported CRIS with selected Chat/Responses | Runtime OpenAI API | §6a | §9.5a | §8 if same-model; otherwise §10 |
+| Supported CRIS with Converse (legacy default) | `boto3.converse` | §6 | §9.5 | §8 if same-model; otherwise §10 |
+| anything else (Claude, Nova, `openai.gpt-oss-*`)          | `boto3.converse`    | §6           | §9.5         | §10, or §8 if same-model        |
 
-The proprietary OpenAI GPT models are served ONLY on the `bedrock-mantle`
-endpoint. Calling `boto3.converse` against one fails, so running the Converse
+The bare proprietary GPT ids select the `bedrock-mantle` endpoint; supported CRIS ids select runtime. Calling `boto3.converse` against a bare Mantle id fails, so running the Converse
 check below for a mantle target would abort this agent before it ever reached
 §8's same-model short-circuit. Route those to §6a instead.
 
@@ -158,7 +159,8 @@ try:
         messages=[{'role': 'user', 'content': [{'text': 'ping'}]}],
         inferenceConfig={'maxTokens': 10},
     )
-    print('OK:', r['output']['message']['content'][0]['text'])
+    text = "".join(block["text"] for block in r["output"]["message"]["content"] if "text" in block)
+    print("OK:", text or "(invocation succeeded; no text)", f"stopReason={r.get('stopReason', 'unknown')}")
 except Exception as e:
     print(f'FAIL [{type(e).__name__}]: {e}', file=sys.stderr)
     sys.exit(1)
@@ -185,26 +187,35 @@ Interpret the result:
   `bedrock_provider_available` from the orchestrator context (it is a
   rewrite-strategy flag, not an account-capability flag).
 
-# 6a. Mantle connectivity check (proprietary OpenAI GPT targets)
+# 6a. OpenAI-compatible connectivity (Mantle or runtime)
 
-Use this INSTEAD of §6 when `<TARGET_MODEL_ID>` matches `openai.gpt-5*` (excluding
-`-oss`). Same purpose, different endpoint and SDK.
+Use this INSTEAD of §6 whenever the selected surface is Chat Completions or Responses,
+including explicit runtime OpenAI choices. Only a selected Converse surface uses §6.
+The script classifier `preflight_bedrock.is_mantle_model` defines this endpoint split.
+Astra Standard Mantle supports `us-east-1` and `us-west-2`; its `us.` / `global.` ids remain on runtime.
+For a runtime OpenAI target, interpret 401/403 as credential/model-access or `bedrock:InvokeModel`
+authorization failures, and 404 as an unavailable selected profile/API. Do not prescribe Mantle
+actions or change endpoint/API. The Mantle-specific recovery notes below apply only to bare IDs.
 
 ```bash
 mkdir -p <repo>/.saws-migrate/eval-results
 
 AWS_REGION=<REGION> <prepend AWS_PROFILE=<profile> when your context has an `AWS profile` line> uv run --project <scriptsDir> python - <<'PY'
 import os, sys
-from aws_bedrock_token_generator import provide_token
-from openai import BedrockOpenAI
+sys.path.insert(0, "<scriptsDir>")
+from preflight_bedrock import create_openai_client
 region = os.environ.get('AWS_REGION', 'us-east-1')
 try:
-    client = BedrockOpenAI(aws_region=region,
-                           bedrock_token_provider=lambda: provide_token(region=region),
-                           max_retries=2)
-    r = client.responses.create(model='<TARGET_MODEL_ID>', input='ping',
-                                max_output_tokens=16, store=False)
-    print('OK:', r.output_text)
+    client = create_openai_client('<TARGET_MODEL_ID>', region, max_retries=2)
+    if '<TARGET_API_SURFACE>' == 'chat_completions':
+        r = client.chat.completions.create(
+            model='<TARGET_MODEL_ID>', messages=[{'role': 'user', 'content': 'ping'}])
+        text = r.choices[0].message.content
+    else:
+        r = client.responses.create(model='<TARGET_MODEL_ID>', input='ping',
+                                    max_output_tokens=16, store=False)
+        text = r.output_text
+    print('OK:', text)
 except Exception as e:
     print(f'FAIL [{type(e).__name__}]: {e}', file=sys.stderr)
     sys.exit(1)
@@ -218,10 +229,10 @@ Interpret the result:
   region. These models are **in-region only**, so there is no cross-region
   inference profile to fall back to and `resolve-bedrock-model-id`'s
   inference-profile ranking does not apply. Return
-  `{ blocked: { reason: 'model_unresolvable', detail: '<the exact error> — <TARGET_MODEL_ID> is not available on the bedrock-mantle endpoint in <REGION>. Mantle is in-region only; for GPT-5.6 a bedrock-runtime CRIS id (us./in./global. prefixed) may cover the region instead, while GPT-5.5/5.4 need a supported region or a different model.' } }`.
+  `{ blocked: { reason: 'model_unresolvable', detail: '<the exact error> — <TARGET_MODEL_ID> is not available on the bedrock-mantle endpoint in <REGION>. Mantle is in-region only; for Astra use Virginia/Oregon Standard Mantle or a supported us./global. runtime profile with an explicit plan change; GPT-5.6 may use its us./in./global. CRIS forms, while GPT-5.5/5.4 need a supported region or a different model.' } }`.
   Use `model_unresolvable` rather than a new reason — its recovery path (user
   picks or pastes an ID, recorded in `resolved_model_overrides`) is exactly right
-  here. For GPT-5.6 a `us.`/`in.`/`global.`-prefixed CRIS candidate is legitimate
+  here. Astra may use only supported `us.` / `global.` CRIS candidates; check its own region matrix. For GPT-5.6 a `us.`/`in.`/`global.`-prefixed CRIS candidate is legitimate
   (it switches the run to the Converse path); for GPT-5.5 / GPT-5.4 no prefixed
   form exists — do not offer one.
 - **HTTP 401 / 403** — distinguish the two causes from the message. If it names
@@ -249,23 +260,33 @@ If `total_golden_cases == 0` (T2-2 abort / paste / vision-no-images / embeddings
 
 # 8. Same-model-family short-circuit
 
-If `same_model_family: true` — either Anthropic 1P → Bedrock Claude, or OpenAI → the same GPT model on Bedrock (`openai.gpt-5*`):
+Use the analyzer's centrally validated identity flag. C0 invalidates older evaluation
+contracts before resuming, and the analysis validator rejects incorrect true claims.
+Opus 4.8 → 5.5 follows §9–§13 baseline, comparative scoring and adaptation, subject to the
+existing dataset/key availability gates.
+
+If `same_model_family: true`:
+
+Pending API/path behavior deltas do not change model identity or choose the evaluation
+transport. C3 runs this connectivity/response-format loop on the API selected in §6;
+C4 later confirms user-visible deltas and C5 applies them. Do not route a same-model
+Mantle target into §10 because its API changes have not yet been confirmed.
 
 - Skip rubric generation and scoring (no parameter-surface drift to score against).
 - Just verify each prompt works on Bedrock (connectivity + response format): run each prompt, check for errors, verify response is non-empty.
-- **Use the API path §6 selected, not §10's script.** For an Anthropic 1P → Claude run that is `boto3.converse`. For an `openai.gpt-5*` run it is the Mantle Responses client from §6a — `client.responses.create(model='<TARGET_MODEL_ID>', input=<prompt>, max_output_tokens=<n>, store=False)`, reading `r.output_text`. §10's script is Converse-only and will fail against a mantle target; do not call it here.
+- **Use the API path §6 selected.** Use §6a for selected Chat/Responses calls on either endpoint, or §6 for selected Converse calls. Reuse the endpoint-aware target call from §10 when iterating prompts, but skip quality scoring for this same-model branch. Do not infer the endpoint from `same_model_family`.
 - Output pass / fail per prompt; count successes as `success_count`.
 - Compute `pass_rate = success_count / total_cases` (connectivity-only ratio) and write `failures = total_cases - success_count`.
 - In §14, set `live_source_baseline: false` (no live comparison ran) and add `notes` prefix `same_model_family: true — connectivity-only verification, no rubric scoring`. T2-6 reads that prefix to render the report banner with "connectivity verified" instead of "judge scored X/Y prompts". Set `source_baseline_quality: 'unknown'` (no live baseline ran).
-- **§9.5 still runs when `special_patterns.vision == true`** — do NOT skip it. It is the Layer 2 gate that proves image input works before any per-case image call, and skipping it would let a vision migration report `pass_rate: 1.0` without a single image request. §9.5 selects its own API path (Converse or Responses) the same way §6 does, so it is valid for both same-model variants.
+- **§9.5 still runs when `special_patterns.vision == true`** — do NOT skip it. It is the Layer 2 gate that proves image input works before any per-case image call, and skipping it would let a vision migration report `pass_rate: 1.0` without a single image request. §9.5 selects its own API path (Converse, Responses or Chat) the same way §6 does, so it is valid for the selected same-model path.
 - **Send image input for every golden case that has one.** If a case's `image_path` is non-null, the verification call MUST include the image, not just the prompt text — see the per-path shapes below. A vision run whose cases are sent as text-only is not a verification, and the resulting pass rate is meaningless.
-- Skip to §14 (no §9 baseline, no §10 Converse eval, no §11 scoring, no §12–§13 adaptation). §10 is Converse-only, so for a mantle target it is replaced by the loop described here, not merely skipped.
+- Skip to §14 after the connectivity loop (no §9 baseline, §11 scoring, or §12–§13 adaptation). For a Pro-to-Astra or other model change this shortcut does not apply; continue through the selected API's golden evaluation and quality scoring.
 
 Build the request with the shared helper — do NOT assemble these dicts inline:
 
 ```python
 import sys; sys.path.insert(0, "<scriptsDir>")
-from image_input import converse_message, responses_message
+from image_input import converse_message, responses_message, chat_message
 
 # Golden-case fields are `user_prompt`, `system_prompt`, `image_path` — NOT `prompt`.
 # (Canonical record shape: llm2bedrock-log-ingestor §9.)
@@ -287,6 +308,13 @@ if case.get("system_prompt"):
 items.append(responses_message(case["user_prompt"], case.get("image_path"), raw))
 r = client.responses.create(model="<TARGET_MODEL_ID>", input=items,
                             max_output_tokens=512, store=False)
+
+# Mantle Chat target (select this instead of the Responses call above):
+messages = []
+if case.get("system_prompt"):
+    messages.append({"role": "system", "content": case["system_prompt"]})
+messages.append(chat_message(case["user_prompt"], case.get("image_path"), raw))
+r = client.chat.completions.create(model="<TARGET_MODEL_ID>", messages=messages)
 ```
 
 Two things the helper exists to get right, both of which fail _only_ on golden cases
@@ -318,8 +346,7 @@ Count a case as failed if the call errors or returns empty output. If a case wit
   for the final report. The report will
   surface a banner explaining the pass rate is not a side-by-side
   comparison.
-- `same_model_family == true` (Anthropic 1P → Bedrock Claude, or OpenAI →
-  the same GPT model on Bedrock) → SKIP. §8 already short-circuits scoring
+- `same_model_family == true` (centrally validated exact identities) → SKIP. §8 already short-circuits scoring
   entirely; a live baseline would compare the model against itself.
 
 **Procedure:**
@@ -364,7 +391,7 @@ If `special_patterns.vision == false`, SKIP this section.
 
 **This section runs for same-model migrations too** (both Anthropic 1P → Claude and OpenAI → the same GPT model). §8 short-circuits scoring, not image verification: it is the only gate that proves image input works before per-case image calls, so skipping it would let a vision migration pass without ever sending an image.
 
-**Pick the API path exactly as §6 did.** The script below uses `boto3.converse` and is valid for Converse targets. For a mantle-only `openai.gpt-5*` target use §9.5a instead — the GPT-5.x model cards list image input as supported, but it goes through the Responses API, not Converse.
+**Pick the API path exactly as §6 did.** The script below is only for a selected Converse surface. For selected Chat/Responses on either endpoint, use §9.5a instead.
 
 Otherwise, run a one-shot Bedrock call against a public Wikipedia image to prove the SDK accepts image input before §10 attempts it on every golden prompt. If the public CDN isn't reachable, the smoke is INCONCLUSIVE — do NOT attempt an inline-fixture fallback (tiny synthetic JPEGs trip Claude's minimum-dimension validators and produce false `VISION_FAIL` even when the SDK is fine):
 
@@ -391,7 +418,8 @@ try:
         ]}],
         inferenceConfig={"maxTokens": 20},
     )
-    print("VISION_OK:", r["output"]["message"]["content"][0]["text"])
+    text = "".join(block["text"] for block in r["output"]["message"]["content"] if "text" in block)
+    print("VISION_OK:", text or "(image request accepted; no text)", f"stopReason={r.get('stopReason', 'unknown')}")
 except Exception as e:
     print(f"VISION_FAIL [{type(e).__name__}]: {e}", file=sys.stderr)
     sys.exit(1)
@@ -400,13 +428,13 @@ PY
 
 Outcomes:
 
-- **`VISION_OK:`** — SDK + content path both work. Proceed to §10.
+- **`VISION_OK:`** — the SDK accepted the image request. A no-text/stop-reason note does not prove answer quality; the golden evaluation in §10 checks that.
 - **`VISION_INFRA_SKIPPED`** — image download failed (DNS / proxy / air-gapped machine). Bedrock vision was NOT exercised; the test is inconclusive at this layer. Add to `notes`: `vision_smoke_skipped: CDN unreachable — Bedrock vision SDK path not exercised at smoke layer`. Proceed to §10 — golden cases carry their own images from T2-2, which will exercise the SDK directly.
 - **`VISION_FAIL`** — Bedrock rejected the image (`ValidationException`, `AccessDeniedException`, etc.). Surface the exact error in your result file's `notes`, STOP — golden vision eval will fail the same way. (If the failure is an `AccessDeniedException` on model access, route it through `{ blocked: { reason: 'model_access', detail: ... } }` per §6.)
 
-# 9.5a Mantle vision smoke test (proprietary OpenAI GPT targets)
+# 9.5a OpenAI-compatible vision smoke test (Mantle or runtime)
 
-Use this INSTEAD of §9.5 when `<TARGET_MODEL_ID>` matches `openai.gpt-5*` (excluding `-oss`) AND `special_patterns.vision == true`. Same purpose and same three outcomes; the image travels as a base64 data URL on the Responses API rather than as Converse image bytes.
+Use this INSTEAD of §9.5 when the selected surface is Chat/Responses AND `special_patterns.vision == true`. Preserve `<TARGET_API_SURFACE>` on either endpoint; both variants send the image as a base64 data URL.
 
 ```bash
 AWS_REGION=<REGION> <prepend AWS_PROFILE=<profile> when your context has an `AWS profile` line> uv run --project <scriptsDir> python - <<'PY'
@@ -421,25 +449,28 @@ except Exception as e:
     print(f"VISION_INFRA_SKIPPED [{type(e).__name__}]: {e}", file=sys.stderr)
     sys.exit(0)
 
-from aws_bedrock_token_generator import provide_token
-from openai import BedrockOpenAI
+sys.path.insert(0, "<scriptsDir>")
+from preflight_bedrock import create_openai_client
 region = os.environ.get("AWS_REGION", "us-east-1")
 data_url = "data:image/jpeg;base64," + base64.b64encode(img).decode()
 try:
-    client = BedrockOpenAI(aws_region=region,
-                           bedrock_token_provider=lambda: provide_token(region=region),
-                           max_retries=2)
-    r = client.responses.create(
-        model="<TARGET_MODEL_ID>",
-        input=[{"role": "user", "content": [
-            {"type": "input_text", "text": "Describe this image briefly."},
-            # `detail` is Required on ResponseInputImageParam in the pinned SDK.
-            {"type": "input_image", "image_url": data_url, "detail": "auto"},
-        ]}],
-        max_output_tokens=32,
-        store=False,
-    )
-    print("VISION_OK:", r.output_text)
+    client = create_openai_client('<TARGET_MODEL_ID>', region, max_retries=2)
+    if "<TARGET_API_SURFACE>" == "chat_completions":
+        r = client.chat.completions.create(model="<TARGET_MODEL_ID>", messages=[{
+            "role": "user", "content": [
+                {"type": "text", "text": "Describe this image briefly."},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]}])
+        text = r.choices[0].message.content
+    else:
+        r = client.responses.create(
+            model="<TARGET_MODEL_ID>",
+            input=[{"role": "user", "content": [
+                {"type": "input_text", "text": "Describe this image briefly."},
+                {"type": "input_image", "image_url": data_url, "detail": "auto"},
+            ]}], max_output_tokens=32, store=False)
+        text = r.output_text
+    print("VISION_OK:", text)
 except Exception as e:
     print(f"VISION_FAIL [{type(e).__name__}]: {e}", file=sys.stderr)
     sys.exit(1)
@@ -448,17 +479,18 @@ PY
 
 Outcomes are the same as §9.5: `VISION_OK` → proceed; `VISION_INFRA_SKIPPED` → record `vision_smoke_skipped` in `notes` and proceed (the golden cases carry their own images and will exercise the path directly); `VISION_FAIL` → surface the exact error and STOP, routing a model-access denial through `{ blocked: { reason: 'model_access', ... } }` and an IAM denial through `{ blocked: { reason: 'authz', ... } }` per §6a.
 
-**On `VISION_FAIL` specifically, do not fall back to text-only prompts.** The migration's vision capability is unverified at that point, and a text-only pass rate would misrepresent it as working. The content-block shape above is the documented OpenAI Responses form; if it is rejected for a reason other than access, report the exact error rather than guessing at an alternative shape.
+**On `VISION_FAIL` specifically, do not fall back to text-only prompts.** The migration's vision capability is unverified at that point, and a text-only pass rate would misrepresent it as working. The content-block shapes above match their selected OpenAI API; if it is rejected for a reason other than access, report the exact error rather than guessing at an alternative shape.
 
 # 10. Run golden prompt evaluation
 
-> **Converse-only.** The script below calls `boto3.converse` and is valid only for
-> the API path §6 selected. A `openai.gpt-5*` target never reaches this section —
-> §8's same-model short-circuit fires first and verifies prompts through the Mantle
-> Responses client from §6a. If you somehow arrive here with a mantle target,
-> stop and report the contradiction rather than running a call that cannot work.
+> **Use the endpoint and API selected in §6.** A model change (including Pro-to-Astra)
+> still requires golden evaluation and scoring on Mantle. Same-model runs use §8's
+> connectivity-only branch. Never send a bare Astra id to Converse.
 
 For each prompt in the golden dataset, run the evaluation via `python` stdin (avoids the brittle nested-heredoc + escaped-quote pattern that breaks on any literal `'` inside the script):
+
+Send each case's `image_path` through the same shared image builder used by §8.
+An unreadable or unsupported image is a failed case; never silently evaluate its text alone.
 
 ```bash
 AWS_REGION=<REGION> <prepend AWS_PROFILE=<profile> when your context has an `AWS profile` line> uv run --project <scriptsDir> python - <<'PY'
@@ -469,8 +501,22 @@ import sys
 import time
 import boto3
 from botocore.exceptions import ClientError
+sys.path.insert(0, "<scriptsDir>")
+from preflight_bedrock import is_mantle_model, create_openai_client
+from image_input import converse_message, responses_message, chat_message
 
-bedrock = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+region = os.environ.get("AWS_REGION", "us-east-1")
+model_id = "<TARGET_MODEL_ID>"
+api_surface = "<TARGET_API_SURFACE>"
+if api_surface not in {"responses", "chat_completions", "converse"}:
+    raise ValueError("Resolve the selected API surface before evaluation")
+openai_api = api_surface in {"responses", "chat_completions"}
+if is_mantle_model(model_id) and not openai_api:
+    raise ValueError("A bare Mantle model cannot use Converse")
+if openai_api:
+    client = create_openai_client(model_id, region, max_retries=0)
+else:
+    bedrock = boto3.client("bedrock-runtime", region_name=region)
 
 gd_path = "<repo>/.saws-migrate/golden-dataset/prompts.jsonl"
 if not os.path.exists(gd_path) or os.path.getsize(gd_path) == 0:
@@ -499,17 +545,45 @@ if done_ids:
     print(f"RESUME: {len(done_ids)} cases already evaluated, {len(prompts)} remaining")
 
 
-def converse_with_backoff(**kwargs):
-    """§10 throttling rule: 429 → exponential backoff + jitter, 2s start,
-    double each retry, 60s cap, max 5 retries. Raises Throttled on exhaustion
-    so the caller stops and returns the `partial` control state."""
+def target_with_backoff(prompt):
+    """Preserve endpoint/API and the existing bounded retry/partial-resume contract."""
+    raw = None
+    if prompt.get("image_path"):
+        with open(prompt["image_path"], "rb") as image:
+            raw = image.read()
     delay = 2.0
-    for attempt in range(6):  # initial try + 5 retries
+    for attempt in range(6):
         try:
-            return bedrock.converse(**kwargs)
-        except ClientError as e:
-            code = e.response.get("Error", {}).get("Code", "")
-            if code != "ThrottlingException" or attempt == 5:
+            if openai_api:
+                if api_surface == "chat_completions":
+                    messages = []
+                    if prompt.get("system_prompt"):
+                        messages.append({"role": "system", "content": prompt["system_prompt"]})
+                    messages.append(chat_message(prompt["user_prompt"], prompt.get("image_path"), raw))
+                    r = client.chat.completions.create(model=model_id, messages=messages)
+                    return r.choices[0].message.content
+                args = {"model": model_id, "input": [responses_message(
+                    prompt["user_prompt"], prompt.get("image_path"), raw)],
+                        "max_output_tokens": 4096, "store": False}
+                if prompt.get("system_prompt"):
+                    args["instructions"] = prompt["system_prompt"]
+                return client.responses.create(**args).output_text
+            system = [{"text": prompt["system_prompt"]}] if prompt.get("system_prompt") else []
+            r = bedrock.converse(modelId=model_id,
+                messages=[converse_message(prompt["user_prompt"], prompt.get("image_path"), raw)],
+                system=system, inferenceConfig={"maxTokens": 4096})
+            text = "".join(block["text"] for block in r["output"]["message"]["content"] if "text" in block)
+            stop_reason = r.get("stopReason", "unknown")
+            if stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
+                raise ValueError(f"non_final_response (stopReason={stop_reason})")
+            if not text:
+                raise ValueError(f"no_text_response (stopReason={stop_reason})")
+            return text
+        except Exception as e:
+            throttled = (getattr(e, "status_code", None) == 429 or
+                         isinstance(e, ClientError) and
+                         e.response.get("Error", {}).get("Code") == "ThrottlingException")
+            if not throttled or attempt == 5:
                 raise
             time.sleep(min(delay, 60) + random.uniform(0, 1))
             delay *= 2
@@ -529,37 +603,16 @@ except FileNotFoundError:
 results = []
 throttled_out = False
 for prompt in prompts:
-    # Build Bedrock request
-    messages = []
-    if prompt.get("system_prompt"):
-        system = [{"text": prompt["system_prompt"]}]
-    else:
-        system = []
-
-    messages.append({"role": "user", "content": [{"text": prompt["user_prompt"]}]})
-
     try:
-        # IMPORTANT: substitute the §6-validated ID here, not the raw plan ID — if §6's
-        # `resolve-bedrock-model-id` skill ran, the plan ID was stale and the validated
-        # one is what works for converse calls.
-        response = converse_with_backoff(
-            modelId="<TARGET_MODEL_ID>",
-            messages=messages,
-            system=system,
-            inferenceConfig={"maxTokens": 4096}
-        )
-        bedrock_output = response["output"]["message"]["content"][0]["text"]
+        bedrock_output = target_with_backoff(prompt)
         status = "success"
-    except ClientError as e:
-        if e.response.get("Error", {}).get("Code", "") == "ThrottlingException":
-            # Retry budget exhausted — stop here; remaining prompts stay unevaluated.
-            # Throttling is a pacing problem, NOT a quality failure: do not record it
-            # as an error row that §11 would score as FAIL.
+    except Exception as e:
+        throttled = (getattr(e, "status_code", None) == 429 or
+                     isinstance(e, ClientError) and
+                     e.response.get("Error", {}).get("Code") == "ThrottlingException")
+        if throttled:
             throttled_out = True
             break
-        bedrock_output = ""
-        status = f"error: {str(e)}"
-    except Exception as e:
         bedrock_output = ""
         status = f"error: {str(e)}"
 
@@ -599,7 +652,7 @@ if throttled_out:
 PY
 ```
 
-**Throttling rule (429).** The script above implements it: on `ThrottlingException` each call retries with exponential backoff + jitter (start 2s, double each retry, cap 60s, max 5 retries via `converse_with_backoff`). Do NOT treat throttling as a block or a quality failure. If stdout contains a `THROTTLED_PARTIAL completed=<N> total=<M>` line, the retry budget was exhausted with cases unscored: score the completed cases normally if you wish, but your RETURN must be `{ partial: { completed: <N>, total: <M>, reason: 'throttled' } }` instead of the normal eval object (see §14). The same backoff applies to any re-scoring calls in §12 — reuse `converse_with_backoff` there. New accounts have floor Bedrock quotas, so throttling is expected here, not exceptional.
+**Throttling rule (429).** The script above implements it: on `ThrottlingException` each call retries with exponential backoff + jitter (start 2s, double each retry, cap 60s, max 5 retries via `target_with_backoff`). Do NOT treat throttling as a block or a quality failure. If stdout contains a `THROTTLED_PARTIAL completed=<N> total=<M>` line, the retry budget was exhausted with cases unscored: score the completed cases normally if you wish, but your RETURN must be `{ partial: { completed: <N>, total: <M>, reason: 'throttled' } }` instead of the normal eval object (see §14). The same backoff applies to any re-scoring calls in §12 — reuse `target_with_backoff` there. New accounts have floor Bedrock quotas, so throttling is expected here, not exceptional.
 
 If the script's stdout contains `EMPTY_DATASET`, §7's gate was missed upstream — skip §11–§13 entirely and jump to §14 with the **zero-cases payload** (per §14). Do NOT proceed to §11; there are no successful evaluations to score.
 

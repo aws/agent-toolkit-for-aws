@@ -80,48 +80,64 @@ for spend, AI-only Q7 for usage volume).
 
 For each model in `models[]` of `ai-workload-profile.json`, map to the closest Bedrock
 equivalent using the table below, then look up both source and Bedrock per-token prices
-from `references/shared/pricing-cache.md` (Source Provider Pricing + Bedrock Models sections).
+from `references/shared/pricing-cache.md` (Source Provider Pricing) and `references/vendored/ai/bedrock-pricing-cache.md` (Bedrock Models).
 
 **Source model → Bedrock equivalent mapping:**
 
-**Same-model rows first.** OpenAI's proprietary GPT models run on Bedrock, so these sources map to themselves and
-the comparison is a ~10% premium (Bedrock in-region is at OpenAI's data-residency tier, 1.10x standard — see
-`references/shared/openai-on-bedrock.md`). Match these before falling through to the cross-family rows.
+**Same-model rows first.** Match GPT-6 Astra and the GPT-5.x sources below before cross-family rows.
+For each same-model row, derive the price direction from verified source rates and the selected Bedrock
+inference option and context tier. Do not assume a fixed premium or parity.
+See `references/shared/openai-on-bedrock.md` for the model-specific pricing rules.
 
 | Source model pattern                   | Bedrock equivalent | Bedrock model ID       |
 | -------------------------------------- | ------------------ | ---------------------- |
+| `gpt-6-astra`                           | GPT-6 Astra         | `openai.gpt-6-astra`   |
+| `gpt-6.1-sol`, `gpt-6-1-sol`            | GPT-6.1 Sol         | `openai.gpt-6.1-sol`   |
+| `gpt-6-sol`                             | GPT-6 Sol           | `openai.gpt-6-sol`     |
+| `gpt-6-luna`                            | GPT-6 Luna          | `openai.gpt-6-luna`    |
 | `gpt-5.6-sol`, `gpt-5.6` flagship      | GPT-5.6 Sol        | `openai.gpt-5.6-sol`   |
 | `gpt-5.6-terra`                        | GPT-5.6 Terra      | `openai.gpt-5.6-terra` |
 | `gpt-5.6-luna`                         | GPT-5.6 Luna       | `openai.gpt-5.6-luna`  |
 | `gpt-5.5` (not `-pro`)                 | GPT-5.5            | `openai.gpt-5.5`       |
 | `gpt-5.4` (not `-pro`/`-mini`/`-nano`) | GPT-5.4            | `openai.gpt-5.4`       |
 
-On the mantle endpoint these are in-region only (us-east-1, us-east-2; us-west-2 additionally for Terra, Luna,
-and GPT-5.4; AWS GovCloud us-gov-west-1 / us-gov-east-1 for Terra and Luna, us-gov-west-1 also for GPT-5.4).
-GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS ids; GPT-5.5 / GPT-5.4 have no
-CRIS. At Discover time the target region may not be known — record the same-model mapping and let Design apply
+For the GPT-5.x rows, the mantle endpoint is in-region only (us-east-1, us-east-2; us-west-2 additionally for
+Terra, Luna, and GPT-5.4; AWS GovCloud us-gov-west-1 / us-gov-east-1 for Terra and Luna, us-gov-west-1 also for
+GPT-5.4). GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS ids; GPT-5.5 / GPT-5.4
+have no CRIS.
+
+For the GPT-6 rows, mantle is us-east-1 only, except GPT-6 Astra which is also available in us-west-2. All four
+GPT-6 models additionally reach a broad set of commercial regions via `bedrock-runtime` CRIS (`us.` / `global.`
+prefixes).
+
+At Discover time the target region may not be known — record the same-model mapping and let Design apply
 the region gate. See `references/shared/openai-on-bedrock.md`.
 
-**Cross-family rows** — for sources with no Bedrock equivalent:
+**Pro sources need a choice.** For `gpt-*-pro`, `o1-pro`, and `o3-pro`, offer GPT-6 Astra as the
+capability-first same-vendor upgrade and GPT-5.6 Sol as the lower-cost GPT alternative, alongside Nova 2 Pro
+below. Astra is 2.5x Sol at the recorded matching context/inference tier. This is a model change requiring eval;
+record the choice in `key_decisions_ahead` instead of silently selecting Nova. Apply the Astra region gate.
 
-| Source model pattern                                    | Bedrock equivalent               | Bedrock model ID                           |
-| ------------------------------------------------------- | -------------------------------- | ------------------------------------------ |
-| `gpt-4o`, `gpt-4.1`, `gpt-5`/`5.1`/`5.2`                | Claude Sonnet 5                  | `anthropic.claude-sonnet-5`                |
-| `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.*-mini`           | Claude Haiku 4.5                 | `anthropic.claude-haiku-4-5-20251001-v1:0` |
-| `gpt-3.5-turbo`, `gpt-4.1-nano`, `gpt-5.*-nano`         | Amazon Nova Micro                | `amazon.nova-micro-v1:0`                   |
-| `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | Amazon Nova 2 Pro                | `amazon.nova-2-pro-v1:0`                   |
-| `o3`, `o4-mini`, reasoning models                       | Claude Sonnet 5                  | `anthropic.claude-sonnet-5`                |
-| `gemini-2.5-pro`, `gemini-3.*-pro`                      | Claude Sonnet 5                  | `anthropic.claude-sonnet-5`                |
-| `gemini-2.5-flash`, `gemini-2.0-flash`                  | Claude Haiku 4.5                 | `anthropic.claude-haiku-4-5-20251001-v1:0` |
-| `gemini-2.0-flash-lite`                                 | Amazon Nova Lite                 | `amazon.nova-lite-v1:0`                    |
-| `claude-3-5-sonnet`, `claude-sonnet-*`                  | Claude Sonnet 5                  | `anthropic.claude-sonnet-5`                |
-| `claude-3-5-haiku`, `claude-haiku-*`                    | Claude Haiku 4.5                 | `anthropic.claude-haiku-4-5-20251001-v1:0` |
-| `claude-3-opus`, `claude-opus-*`                        | Claude Opus 4.6                  | `anthropic.claude-opus-4-6-v1`             |
-| `text-embedding-*`, `*-embedding-*`                     | Amazon Titan Embeddings v2       | `amazon.titan-embed-text-v2:0`             |
-| `dall-e-*`, `gpt-image-*`, `imagen-*`, image generation | Stability AI — Stable Image Core | `stability.stable-image-core-v1:0`         |
-| `whisper-*`, speech-to-text                             | Amazon Transcribe                | (non-token service — note separately)      |
-| `tts-*`, text-to-speech                                 | Amazon Polly                     | (non-token service — note separately)      |
-| Unknown / other                                         | Amazon Nova Pro                  | `amazon.nova-pro-v1:0`                     |
+**Alternatives for sources with no Bedrock equivalent** — the Pro row offers both vendor paths:
+
+| Source model pattern                                    | Bedrock equivalent                             | Bedrock model ID                                                       |
+| ------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| `gpt-4o`, `gpt-4.1`, `gpt-5`/`5.1`/`5.2`                | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
+| `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.*-mini`           | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
+| `gpt-3.5-turbo`, `gpt-4.1-nano`, `gpt-5.*-nano`         | Amazon Nova Micro                              | `amazon.nova-micro-v1:0`                                               |
+| `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Sol for lower cost; or Nova 2 Pro | `openai.gpt-6-astra` / `openai.gpt-5.6-sol` / `amazon.nova-2-pro-v1:0` |
+| `o3`, `o4-mini`, reasoning models                       | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
+| `gemini-2.5-pro`, `gemini-3.*-pro`                      | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
+| `gemini-2.5-flash`, `gemini-2.0-flash`                  | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
+| `gemini-2.0-flash-lite`                                 | Amazon Nova Lite                               | `amazon.nova-lite-v1:0`                                                |
+| `claude-3-5-sonnet`, `claude-sonnet-*`                  | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
+| `claude-3-5-haiku`, `claude-haiku-*`                    | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
+| `claude-3-opus`, `claude-opus-*`                        | Claude Opus 4.6                                | `anthropic.claude-opus-4-6-v1`                                         |
+| `text-embedding-*`, `*-embedding-*`                     | Amazon Titan Embeddings v2                     | `amazon.titan-embed-text-v2:0`                                         |
+| `dall-e-*`, `gpt-image-*`, `imagen-*`, image generation | Stability AI — Stable Image Core               | `stability.stable-image-core-v1:0`                                     |
+| `whisper-*`, speech-to-text                             | Amazon Transcribe                              | (non-token service — note separately)                                  |
+| `tts-*`, text-to-speech                                 | Amazon Polly                                   | (non-token service — note separately)                                  |
+| Unknown / other                                         | Amazon Nova Pro                                | `amazon.nova-pro-v1:0`                                                 |
 
 For each mapped model pair, record `source_model`, `bedrock_equivalent`, both per-token
 prices, and `cost_direction` (`"higher"`, `"lower"`, or `"comparable"` — Bedrock relative

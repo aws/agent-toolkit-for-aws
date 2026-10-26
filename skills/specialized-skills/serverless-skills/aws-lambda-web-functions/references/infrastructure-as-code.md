@@ -107,6 +107,54 @@ to it. The CLI path does not do this: `aws lambda-web deploy` carries the previo
 connector ARN forward verbatim, and that ARN is version-qualified, so a redeploy keeps the old
 version.
 
+## CloudFront-Only Access in a Stack
+
+To let only a CloudFront distribution invoke an `IamAuth` endpoint, attach the function's
+resource-based policy with `AWS::Lambda::ResourcePolicy`. The property is **`ResourceArn`**, set to
+the web-function ARN; `FunctionResourceArn` is not a property and CloudFormation rejects it. The
+distribution's origin uses an `AWS::CloudFront::OriginAccessControl` with
+`OriginAccessControlOriginType: lambda` and `SigningBehavior: always-amz-auth`. Why each piece is
+needed: [domains-and-routing.md](references/domains-and-routing.md).
+
+```yaml
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: {name}-oac
+        OriginAccessControlOriginType: lambda
+        SigningBehavior: always-amz-auth
+        SigningProtocol: sigv4
+        # On the distribution's origin: OriginAccessControlId: !GetAtt OriginAccessControl.Id
+
+  CloudFrontInvokePolicy:
+    Type: AWS::Lambda::ResourcePolicy
+    Properties:
+      ResourceArn: !GetAtt WebFunction.FunctionArn       # the web-function/... ARN
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: lambda:InvokeWebFunctionEndpoint
+            Resource: !GetAtt WebFunctionEndpoint.EndpointArn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                aws:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+```
+
+`aws:SourceArn` must be the distribution's full ARN, so build it with `!Sub` as above.
+`!Ref Distribution` returns only the distribution ID and `AWS::CloudFront::Distribution` has no
+`Arn` attribute, so either form gives a condition that never matches and CloudFront gets 403.
+
+In CDK the generated L1 is `CfnResourcePolicy` (`aws-cdk-lib/aws-lambda`), whose property is
+`resourceArn`; pass `fn.attrFunctionArn` from `CfnWebFunction`. A literal web-function ARN string
+makes `cdk synth` warn that `ResourceArn` does not match the pattern
+(`CloudFormation-Validate::F3017` and `F3031`), because CDK's built-in validation carries an older
+schema; cfn-lint can report the same. The template is valid and the stack deploys; do not switch
+to a custom resource to set the policy.
+
 ## CDK
 
 There is no L2 construct for Web Functions. If your `aws-cdk-lib` has no generated L1

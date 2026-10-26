@@ -1,14 +1,12 @@
-# Affordability — is this a good use of their money?
+# Affordability — when they ask what it would cost them
 
-Relevance is not the bar. **The startups that need DevOps Agent most can least afford it.**
+Use this only when the user asks — *"how long would our credits last?"*, *"can we afford this?"*. It is
+not a gate: the setup notice gives the trial, credits, and rate, and whether to go ahead is their
+decision. Do not volunteer a runway estimate or recommend against setup on cost.
 
-A pre-seed team with no operations engineer needs it badly and may hold $1,000 in credits — which five
-investigations a week would consume in under two months. A Series A team can absorb the cost comfortably
-and may already run PagerDuty.
-
-So after establishing that DevOps Agent *fits*, establish whether it is a good use of what they have. This
-is the one judgement no enterprise tool would make on a customer's behalf, and it is only credible because
-we can see the numbers.
+**The trial comes first.** New DevOps Agent customers get a two-month free trial with up to 20 hours of
+investigations per trial month. No check reliably says whether a given account is still in it, so say
+any estimate below applies to usage beyond the trial allowance, or after the trial ends.
 
 ## What you need, and what to do without it
 
@@ -18,13 +16,12 @@ Advisor — this runs on whatever `aws configure`, `AWS_PROFILE`, or SSO session
 | State | Do |
 |---|---|
 | Credits readable | Full arithmetic below |
-| Credentials present, billing access off | Say why you cannot read it (root-user setting), then use the **qualitative** version |
+| Credentials present, billing access off | Use the **qualitative** version; explain the root-user setting only if asked |
 | No credentials at all | Qualitative version only |
 
-**The stance does not require the data.** Even with no numbers you can say: *"If you're pre-seed and
-watching runway, the thing to know is that each investigation is about $3–4 and this is easy to leave
-running. Point it at production only, and check back after a week."* That is still more useful than a
-price list.
+**The answer does not require the data.** Even with no numbers you can say: *"Each investigation is
+about $3–4 after the trial, and it's easy to leave running. Point it at production only, and check back
+after a week."* That is still more useful than a price list.
 
 ## The arithmetic
 
@@ -42,29 +39,23 @@ $4 is the top of the per-investigation range and the right number to plan agains
    you're doing?"* Founders answer that accurately; they do not answer "what's your incident rate."
 3. **Default to 3 a week** if there is nothing to go on. Low enough not to alarm, high enough to be honest.
 
-## Where the line sits
+## Saying the result
 
-| Runway | Say |
-|---|---|
-| **> 6 months** | Straightforwardly affordable. Recommend it. |
-| **2–6 months** | Recommend it, and say plainly when it will run out and what happens then. |
-| **< 2 months** | **Say so before they enable it.** *"At that rate this would use most of your remaining credits inside a month. That may still be worth it — you decide — but you should know before, not after."* |
-| **< 3 weeks** | **Recommend against, and mean it.** Offer the alternatives below. |
+Give the number plainly — *"after the trial, at about three investigations a week (about $12), your $200
+in credits would last roughly four months, unless they expire sooner or other AWS usage draws on them"* —
+and say what happens when credits run out (usage bills to their payment method). If it is short, they may want the lower-cost options below; mention them, but do not
+recommend against setup. A founder who has just lost a day to an outage may reasonably decide four dollars
+is cheap.
 
-That last row is the point of this file. Saying *"you'd get more from spending this on compute"* to
-someone who could be sold something is what makes the rest of the recommendation trustworthy.
+Never assume a trial is active, and never invent a balance or runway the data does not support.
 
-**It is still their call.** Recommend against; do not refuse. A founder who has just lost a day to an
-outage may reasonably decide four dollars is cheap. Give them the number and let them weigh it.
+## Lower-cost options, if they want them
 
-## The "instead" path — this has to be genuinely useful
-
-Declining without an alternative is not advice, it is a shrug. In descending order of value:
+In descending order of value:
 
 **1. Release-readiness review, which is free during preview.** The strongest answer by some distance. It
 costs nothing today, works with zero production traffic, and prevents a share of the incidents they cannot
-currently afford to investigate. If someone fails the affordability test for investigations, route them
-here — same product, no cost, real value.
+currently afford to investigate — same product, no cost, real value.
 
 **2. CloudWatch alarms.** If Startup Advisor is reporting `scalability.no-cloudwatch-alarms`, that is the
 gap to close first and it is nearly free — the AWS free tier covers ten alarms. An alarm that pages them at
