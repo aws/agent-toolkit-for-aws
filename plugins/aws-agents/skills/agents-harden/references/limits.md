@@ -92,7 +92,12 @@ See `agents-harden` SKILL.md (Session lifecycle management) for patterns and cod
 HTTP 429 Too Many Requests
 ```
 
-**What it means:** Rate of new session creation (per endpoint, per account). Default 100 TPM for container deployments; 25 TPS for direct code deployments. Adjustable.
+**What it means:** Rate of new Runtime session creation — Service Quotas code `L-8EE2AEA2`, default 25, adjustable. Check your applied value:
+
+```bash
+aws service-quotas get-service-quota --service-code bedrock-agentcore --quota-code L-8EE2AEA2 \
+  --region <REGION> --query 'Quota.[QuotaName,Value,Adjustable]' --output text
+```
 
 **Before requesting an increase:**
 
@@ -176,7 +181,7 @@ With an item name referencing Code Interpreter or Browser sessions.
 
 2. **Service Quotas console:** https://console.aws.amazon.com/servicequotas/home → **AWS services** → search for "Amazon Bedrock AgentCore". Shows your current applied quota values and lets you request increases directly. Virtually every adjustable AgentCore quota is available here today — this should be your default path.
 
-3. **`aws service-quotas list-services`** / **`list-service-quotas`:** Programmatic view — run `aws service-quotas list-services` and grep for "agentcore" or "bedrock" to find the current service code, then list quotas with `list-service-quotas --service-code <code>`.
+3. **`aws service-quotas list-service-quotas --service-code bedrock-agentcore`:** Programmatic view of your applied values.
 
 ---
 
@@ -202,27 +207,21 @@ Use the Service Quotas console. Virtually every adjustable AgentCore quota is av
 **CLI equivalent** — for scripted workflows:
 
 ```bash
-# Discover the Service Quotas service code for AgentCore (it follows the
-# service's API prefix — run this once to confirm the exact code)
-aws service-quotas list-services \
-  --region <REGION> \
-  --query "Services[?contains(ServiceName, 'AgentCore') || contains(ServiceCode, 'agentcore')]"
-
-# List quotas for that service code
+# List AgentCore quotas (service code bedrock-agentcore) to find the quota code
 aws service-quotas list-service-quotas \
-  --service-code <SERVICE_CODE> \
+  --service-code bedrock-agentcore \
   --region <REGION>
 
 # Submit the increase request
 aws service-quotas request-service-quota-increase \
-  --service-code <SERVICE_CODE> \
+  --service-code bedrock-agentcore \
   --quota-code <QUOTA_CODE> \
   --desired-value <NEW_VALUE> \
   --region <REGION>
 
 # Check status
 aws service-quotas list-requested-service-quota-change-history-by-quota \
-  --service-code <SERVICE_CODE> \
+  --service-code bedrock-agentcore \
   --quota-code <QUOTA_CODE> \
   --region <REGION>
 ```

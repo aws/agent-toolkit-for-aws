@@ -100,7 +100,7 @@ agentcore traces harness get <traceId> --name <HarnessName>
 
 Add `--target <name>` for a non-default deployment target and `--qualifier <endpoint>` for a non-default endpoint.
 
-**Trace delay:** Traces take **30–60 seconds** after an invocation to show up in `traces ... list`, and the `SESSION ID` column can show `-` for a little while after the trace itself appears. In scripts, poll `list` until the trace you expect is there instead of sleeping a fixed time.
+**Trace delay:** Traces take **30–90 seconds** after an invocation to show up in `traces ... list`, and the `SESSION ID` column can show `-` for a little while after the trace itself appears. In scripts, poll `list` until the trace you expect is there instead of sleeping a fixed time.
 
 ### Finding the slowest requests
 
@@ -111,7 +111,7 @@ mkdir -p traces
 agentcore traces runtime list --name <RuntimeName> --since 1h --limit 50 --json \
   | jq -r '.traces[].traceId' \
   | while read -r t; do
-      agentcore traces runtime get "$t" --name <RuntimeName> --since 1h --output "traces/$t.json" > /dev/null
+      agentcore traces runtime get "$t" --name <RuntimeName> --since 1h --output "traces/$t.json" > /dev/null 2>&1 || echo "failed to fetch $t" >&2
     done
 
 for f in traces/*.json; do

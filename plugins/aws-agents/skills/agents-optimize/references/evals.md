@@ -55,11 +55,11 @@ Read `agentcore/agentcore.json` if it exists. Check:
 agentcore status --json
 ```
 
-`status` lists each resource with `resourceType`, `name`, `deploymentState`, and its deployed `arn` or `id`. A Runtime ID is the last path segment of the Runtime ARN (`arn:aws:bedrock-agentcore:<region>:<account>:runtime/<runtimeId>`). For example:
+`status` lists each resource with `resourceType`, `name`, `deploymentState`, and its deployed `arn` (`id` is usually `null`, so use the ARN). A Runtime ID is the last path segment of the Runtime ARN (`arn:aws:bedrock-agentcore:<region>:<account>:runtime/<runtimeId>`). For example:
 
 ```bash
 RUNTIME_ID=$(agentcore status --json \
-  | jq -r '.resources[] | select(.resourceType=="runtime" and .name=="MyAgent") | (.id // (.arn | split("/") | last))')
+  | jq -r '.resources[] | select(.resourceType=="runtime" and .name=="MyAgent") | .arn | split("/") | last')
 ```
 
 Built-in evaluators are referenced as `Builtin.<Name>` everywhere. Project-defined custom evaluators are referenced by name inside `agentcore.json` (e.g. in `add online-eval --evaluators`) but by their deployed evaluator ID in `agentcore eval ...` commands — look them up the same way (`resourceType=="evaluator"`).
@@ -94,7 +94,7 @@ agentcore deploy
 SESSION_ID=$(uuidgen)   # Runtime session IDs must be at least 33 characters
 agentcore invoke --runtime MyAgent --session-id "$SESSION_ID" --payload '{"prompt": "What is the weather in Seattle?"}'
 
-# Traces take 30–60s to land in CloudWatch: poll until the session shows up, then evaluate
+# Traces take 30–90s to land in CloudWatch: poll until the session shows up, then evaluate
 found=
 for i in $(seq 1 18); do   # up to 3 minutes
   if agentcore traces runtime list --name MyAgent --since 10m --json \
@@ -141,7 +141,7 @@ response = client.evaluate(
 print(response["evaluationResults"])
 ```
 
-Minimal hand-written spans are rejected: every span needs at least `traceId`, `spanId`, and `startTimeUnixNano` (plus the `session.id` attribute and the `gen_ai.*` content the evaluator reads), which is why copying a real trace is the practical route. The full span schema and field list is in the [`Understanding input spans`](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/understanding-input-spans.html) doc. This path is overkill for a one-time eval but invaluable when a custom code evaluator needs regression-test fixtures that don't depend on CloudWatch at all.
+Minimal hand-written spans are rejected: every span needs at least `traceId`, `spanId`, and `startTimeUnixNano` (plus the `session.id` attribute and the `gen_ai.*` content the evaluator reads), which is why copying a real trace is the practical route. The input shape is in the [`EvaluationInput`](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_EvaluationInput.html) API reference. This path is overkill for a one-time eval but invaluable when a custom code evaluator needs regression-test fixtures that don't depend on CloudWatch at all.
 
 ---
 
@@ -162,11 +162,13 @@ Start with built-in evaluators — they require no setup and cover the most comm
 | `Builtin.Coherence` | TRACE | Is the response logically coherent? |
 | `Builtin.Refusal` | TRACE | Did the agent appropriately refuse out-of-scope requests? |
 | `Builtin.ToolSelectionAccuracy` | TOOL_CALL | Did the agent pick the right tool for the task? |
+| `Builtin.ToolParameterAccuracy` | TOOL_CALL | Did the agent pass the right parameters to the tool? |
 | `Builtin.GoalSuccessRate` | SESSION | Did the agent complete the user's goal? (supports ground truth) |
+| `Builtin.TrajectoryExactOrderMatch` / `InOrderMatch` / `AnyOrderMatch` | SESSION | Did the agent call the tools in `expected_trajectory` (exact order / in order / any order)? |
 
 **Built-in evaluator names may change.** Check the AgentCore docs for the current list — new evaluators are added across releases.
 
-**Recommendation:** Start with `Builtin.Helpfulness` for a general quality check. Add `Builtin.GoalSuccessRate` for task completion. Use `Builtin.ToolSelectionAccuracy` when your agent uses tools. Use `Builtin.Correctness` or `Builtin.Faithfulness` when you have ground truth to compare against.
+**Recommendation:** Start with `Builtin.Helpfulness` for a general quality check. Add `Builtin.GoalSuccessRate` for task completion. Use `Builtin.ToolSelectionAccuracy` when your agent uses tools. Use `Builtin.Correctness` when you have ground truth (`expected_response`) to compare against, and `Builtin.Faithfulness` to check the response stays grounded in retrieved context.
 
 #### Step A2: Run the eval
 
@@ -276,7 +278,7 @@ The online eval config starts in `CREATING` state and becomes `ACTIVE` shortly a
 
 #### Step B4: View results
 
-Results are not immediate. A session is scored only after it has been idle for the config's session timeout — 5 minutes by default for `agentcore add online-eval`, 15 minutes by default for `agentcore eval online-eval create` (`--session-timeout-minutes`). Expect the first results roughly that long after the last invocation, plus the 30–60s trace delay. The deploy honors `sessionTimeoutMinutes` (1–1440) on the `onlineEvalConfigs` entry in `agentcore.json`, but the CLI's own schema doesn't declare it, so the next `agentcore add` or `agentcore remove` silently rewrites the file without it. If you set it, re-check the entry after every CLI edit before deploying — or leave the 5-minute default. Sessions that already existed in the trace source when the config became active can be sampled and scored too, so the first results may be for traffic sent before the deploy.
+Results are not immediate. A session is scored only after it has been idle for the config's session timeout — 5 minutes by default for `agentcore add online-eval`, 15 minutes by default for `agentcore eval online-eval create` (`--session-timeout-minutes`). In practice, first results take 10–15+ minutes after the last invocation — poll `agentcore eval online-eval logs` rather than waiting a fixed time. The deploy honors `sessionTimeoutMinutes` (1–1440) on the `onlineEvalConfigs` entry in `agentcore.json`, but the CLI's own schema doesn't declare it, so the next `agentcore add` or `agentcore remove` silently rewrites the file without it. If you set it, re-check the entry after every CLI edit before deploying — or leave the 5-minute default. Sessions that already existed in the trace source when the config became active can be sampled and scored too, so the first results may be for traffic sent before the deploy.
 
 Results stream to CloudWatch Logs:
 
@@ -286,7 +288,7 @@ Results stream to CloudWatch Logs:
 
 View in the AWS console: CloudWatch → GenAI Observability → Bedrock AgentCore → Evaluations tab.
 
-Read eval logs from the CLI (look up the deployed config ID with `agentcore status --json`, `resourceType=="online-eval"`):
+Read eval logs from the CLI (the config ID is the last `/` segment of the `arn` for `resourceType=="online-eval"` in `agentcore status --json`):
 
 ```bash
 agentcore eval online-eval logs --id <online-eval-id> --since 1h
@@ -327,19 +329,18 @@ echo "Running quality gate eval..."
 result=$(agentcore eval ondemand evaluate \
   --agent "$RUNTIME_ID" \
   --evaluators "$EVALUATOR" \
-  --lookback-days 1)
+  --lookback-days 1) || { echo "⚠️  Eval failed or found no sessions. Has the agent been invoked recently?" >&2; exit 1; }
 # Dataset regression gate (instead of the above):
 # result=$(agentcore eval ondemand simulate \
 #   --runtime-id "$RUNTIME_ID" \
 #   --dataset ./evals/regression.jsonl \
 #   --payload-template '{"prompt":"{input}"}' \
-#   --evaluators "$EVALUATOR")
+#   --evaluators "$EVALUATOR") || { echo "⚠️  Dataset replay failed" >&2; exit 1; }
 
 score=$(echo "$result" | jq -r '[.results[] | select(.value != null) | .value] | if length == 0 then empty else add / length end')
 
 if [ -z "$score" ]; then
-  echo "⚠️  No eval results. Has the agent been invoked recently?"
-  echo "   Invoke the agent at least once, wait 30–60 seconds, then re-run."
+  echo "⚠️  No eval results. Invoke the agent, wait for its traces (up to ~90s), then re-run." >&2
   exit 1
 fi
 
@@ -353,7 +354,7 @@ fi
 echo "✅ Quality gate PASSED"
 ```
 
-**Note:** Traces take **30–60 seconds** after an invocation to become readable, and the same ingestion step unlocks both trace reads and eval queries. For the recent-traffic gate, invoke the agent as part of your integration tests, then poll `agentcore traces runtime list --json` until the test sessions appear (as in Step 2's example) before running the gate — don't rely on a short fixed `sleep`. The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000).
+**Note:** Traces take **30–90 seconds** after an invocation to become readable, and the same ingestion step unlocks both trace reads and eval queries. For the recent-traffic gate, invoke the agent as part of your integration tests, then poll `agentcore traces runtime list --json` until the test sessions appear (as in Step 2's example) before running the gate — don't rely on a short fixed `sleep`. The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000).
 
 The gate needs no project checkout — every command above takes the deployed Runtime ID, so pass it to CI as a variable.
 
@@ -380,14 +381,14 @@ Choose the right level first:
 agentcore add evaluator llm-as-a-judge \
   --name ResponseQuality \
   --level TRACE \
-  --model "global.anthropic.claude-sonnet-5-5" \
+  --model "global.anthropic.claude-sonnet-4-5-20250929-v1:0" \
   --instructions "Evaluate the assistant's response for helpfulness and accuracy. Context: {context}. Response to evaluate: {assistant_turn}" \
   --rating-scale 1-5-quality
 ```
 
-`--instructions` also accepts `file://<path>` or `-` (stdin) — easier for long prompts. `--model-provider OpenResponses` uses an OpenResponses model ID instead of Bedrock. To create the evaluator directly in the account without a project, use `agentcore eval evaluator llm-as-a-judge create` with the same flags; update a deployed one with `agentcore eval evaluator llm-as-a-judge update --id <evaluator-id>`.
+`--instructions` also accepts `file://<path>` or `-` (stdin) — easier for long prompts. `--model-provider OpenResponses` uses an OpenResponses model ID instead of Bedrock. To create the evaluator directly in the account without a project, use `agentcore eval evaluator llm-as-a-judge create` with the same flags except `--description` (it has none); update a deployed one with `agentcore eval evaluator llm-as-a-judge update --id <evaluator-id>`.
 
-Note: The evaluator model ID above is an example — check the AgentCore docs for current supported evaluator model IDs and cross-region inference profiles.
+Pick the judge model carefully: some newer models (e.g. `global.anthropic.claude-sonnet-5-5`) reject the evaluator's inference config (`temperature` is deprecated for this model) at `CreateEvaluator`, so the deploy rolls back. There's no CLI flag to change that config, so use a model that accepts it, like the one above.
 
 **Placeholder rules by level.** Instructions must contain at least one placeholder from the evaluator's level, and none from outside it. The CLI doesn't check this — the service does, and with `agentcore add` a bad prompt only surfaces as a failed `agentcore deploy`. Allowed placeholders at the time of writing:
 
@@ -399,12 +400,12 @@ Note: The evaluator model ID above is an example — check the AgentCore docs fo
 
 The service may add placeholders over time — check the AgentCore Evaluations docs if a deploy rejects your instructions.
 
-**Rating scale presets** (pass as literal strings to `--rating-scale`):
+**Rating scale presets** (pass as literal strings to `--rating-scale`). Labels for `agentcore add evaluator`; `eval evaluator llm-as-a-judge create` uses different ones (in parentheses):
 
-- `1-5-quality` — Very Poor/Poor/Fair/Good/Excellent
-- `1-3-simple` — Poor/Acceptable/Good
-- `pass-fail` — pass/fail
-- `good-neutral-bad` — good/neutral/bad
+- `1-5-quality` — Very Poor/Poor/Fair/Good/Excellent (Poor/Fair/Good/Very Good/Excellent)
+- `1-3-simple` — Poor/Acceptable/Good (Low/Medium/High)
+- `pass-fail` — pass/fail (Pass/Fail)
+- `good-neutral-bad` — good/neutral/bad (Good/Neutral/Bad)
 
 **Custom rating scale:** pass a JSON rating scale with either a `numerical` list (integer `value` + `label` + `definition`) or a `categorical` list (`label` + `definition`) — not both:
 
@@ -542,7 +543,7 @@ For **LLM-as-a-Judge** evaluators, there's no equivalent unit-test surface (the 
 
 ```bash
 agentcore deploy
-# Look up the deployed evaluator ID (resourceType=="evaluator") with agentcore status --json
+# The evaluator ID is the last / segment of the arn for resourceType=="evaluator" in agentcore status --json
 agentcore eval ondemand evaluate --agent "$RUNTIME_ID" --evaluators <evaluator-id> --lookback-days 7
 ```
 
@@ -583,7 +584,7 @@ For a shared, versioned suite, upload the dataset and run it service-side:
 
 ```bash
 agentcore eval dataset create --name support_regression --source file://evals/regression.jsonl --schema-type predefined
-agentcore eval dataset publish --id <dataset-id>            # freezes the DRAFT as an immutable version
+agentcore eval dataset publish --id <dataset-id>            # freezes the DRAFT; prints the datasetVersion
 
 agentcore eval batch-evaluation simulate \
   --name support_regression_v42 \
@@ -595,7 +596,7 @@ agentcore eval batch-evaluation simulate \
 agentcore eval batch-evaluation get --id <batch-evaluation-id>
 ```
 
-Edit a dataset with `agentcore eval dataset update --id <dataset-id> --file-path evals/regression.jsonl` (reconciles the DRAFT), then publish again. `--bearer-token` is needed for Runtimes using CUSTOM_JWT auth.
+Pass the `datasetVersion` that `publish` printed to `--dataset-version` (`dataset get` keeps showing the DRAFT). Edit a dataset with `agentcore eval dataset update --id <dataset-id> --file-path evals/regression.jsonl` (reconciles the DRAFT), then publish again. `--bearer-token` is needed for Runtimes using CUSTOM_JWT auth.
 
 ---
 
@@ -637,7 +638,7 @@ Edit a dataset with `agentcore eval dataset update --id <dataset-id> --file-path
   - `agentcore eval ab-test target-based run --name <name> --gateway <gateway-id> --control '{"gateway-target":"<name>","online-eval":"<id>"}' --treatment '{...}'` — two Gateway Targets, each with its own online eval
   - `--treatment-weight` (1–99, default 50) sets the split. Inspect with `agentcore eval ab-test get --id <id>`; `pause`, `resume`, `stop` (terminal), and `delete` (after stop) manage it.
 
-**A/B tests need more setup than the commands above show.** Before `ab-test ... run` will work you need:
+**This skill doesn't take you through an A/B test end to end.** The commands above are real, but before `ab-test ... run` will work you need:
 
 - A deployed **Gateway with an HTTP target pointing at the agent Runtime**, and clients sending traffic through the Gateway (traffic that calls the Runtime directly isn't split). See `agents-connect` if the agent isn't behind a Gateway yet.
 - **Config-based tests:** one Runtime and two configuration-bundle versions (or two bundles), plus agent code that reads its configuration from the bundle the Gateway passes it, and one online-eval config on that Runtime.
@@ -652,7 +653,7 @@ The `components.json` shape for a bundle and how the agent reads the active bund
 
 ### "No telemetry found for agent" / no results
 
-- Wait 30–60 seconds after invoking the agent — that's how long traces take to reach CloudWatch (there's no separate eval-indexing step beyond that). Poll `agentcore traces runtime list` until the session appears; its session ID can show as `-` at first
+- Wait 30–90 seconds after invoking the agent — that's how long traces take to reach CloudWatch (there's no separate eval-indexing step beyond that). Poll `agentcore traces runtime list` until the session appears; its session ID can show as `-` at first
 - For online-eval results, also wait for the session timeout: a session is only scored after it has been idle for `sessionTimeoutMinutes` (see Path B, Step B4)
 - Confirm you passed the deployed Runtime or harness **ID**, not the project name
 - Confirm the sessions came from the deployed agent — `agentcore dev` runs never reach CloudWatch
@@ -666,6 +667,7 @@ The `components.json` shape for a bundle and how the agent reads the active bund
 ### Deploy fails after adding an LLM-as-a-Judge evaluator
 
 - Usually the instructions: check the placeholders against the level table in Path D. The CLI accepts any text; the service rejects invalid placeholders at deploy.
+- `temperature is deprecated for this model` (ValidationException at `CreateEvaluator`): the judge model rejects the evaluator's inference config. Change `config.llmAsAJudge.model` on the evaluator in `agentcore.json` to another model (e.g. `global.anthropic.claude-sonnet-4-5-20250929-v1:0`) and redeploy.
 
 ### Online eval config stuck in CREATING
 
@@ -680,7 +682,7 @@ The `components.json` shape for a bundle and how the agent reads the active bund
 
 ### `add evaluator` / `add online-eval` fails on an existing project
 
-- If `agentcore/agentcore.json` has no `"version": 2`, it's a v0 project and `add` is blocked in compatibility mode — run `agentcore migrate` first
+- If `agentcore/agentcore.json` has `"version": 1`, it's a v0 project and `add` is blocked in compatibility mode. Commit first (`git add -A && git commit`): migrate refuses a dirty tree even to print the plan. Then run `agentcore migrate` to print the plan, show it to the developer, and only after they approve run `agentcore migrate --yes`.
 
 ## Cross-region inference (data residency)
 

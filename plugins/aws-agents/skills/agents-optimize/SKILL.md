@@ -58,11 +58,11 @@ Run `agentcore --version`. This skill requires v1.0.0 or later. If the version i
 Read `agentcore/agentcore.json` to understand existing `evaluators`, `onlineEvalConfigs`, `configBundles`, and the agents being measured (`runtimes` for your own code, `harnesses` for config-defined agents).
 
 If `agentcore/agentcore.json` is not found:
-> "This skill requires an AgentCore project. Use `agents-get-started` to create one."
+> "Most of this skill expects an AgentCore project. Use `agents-get-started` to create one."
 
 The `agentcore eval ...` commands work without a project (they take deployed resource IDs), so a developer with only a deployed runtime ID can still use the on-demand and batch evaluation paths in `references/evals.md`.
 
-If `agentcore.json` has no `"version": 2`, it is a v0 project. CLI v1 runs it in compatibility mode and blocks `add`/`remove`, so `agentcore add evaluator` and `agentcore add online-eval` will fail. Migrate first, from the project root. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts. A dirty tree stops it with `Commit or stash your changes before migrating`.
+If `agentcore.json` has `"version": 1`, it is a v0 project. CLI v1 runs it in compatibility mode and blocks `add`/`remove`, so `agentcore add evaluator` and `agentcore add online-eval` will fail. Migrate first, from the project root. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan (`Commit or stash your changes before migrating`), and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 ### Step 2: Determine the workflow
 
@@ -94,5 +94,5 @@ Depends on the workflow — see the loaded reference for specific outputs.
 - Online eval sampling rate is appropriate (not 100% in production without discussion)
 - CI/CD quality gate has a clear pass/fail threshold
 - Observability setup includes both tracing and logging
-- The developer understands the eval data delay for deployed agents: traces take **30–60 seconds** to become readable (the session ID can show as `-` at first), so scripts poll rather than sleep a fixed time; online-eval results only arrive after a session has been idle for its session timeout (5 minutes by default for `agentcore add online-eval`)
+- The developer understands the eval data delay for deployed agents: traces take **30–90 seconds** to become readable (the session ID can show as `-` at first), so scripts poll rather than sleep a fixed time; online-eval results only arrive after a session has been idle for its session timeout (5 minutes by default for `agentcore add online-eval`), so first results can take 10–15+ minutes after the last invocation — poll `agentcore eval online-eval logs`
 - The developer understands that `agentcore dev` traces stay local (Agent Inspector / `agentcore/.cli/traces/`) and are not visible to `agentcore eval` commands, which read CloudWatch
