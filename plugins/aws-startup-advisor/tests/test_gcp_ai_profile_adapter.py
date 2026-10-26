@@ -227,15 +227,220 @@ def test_sidecar_is_not_written_when_there_is_nothing_to_carry():
             model.pop("capabilities_used")
             model.pop("usage_context")
     assert adapter.convert_legacy_sidecar(_legacy(bare)) is None
-def test_sidecar_keeps_existing_app_code_workloads_and_replaces_only_gcp_keys():
+def test_sidecar_keeps_existing_app_code_workloads_and_merges_observed_costs():
+    # BMA discovery already recorded OpenAI usage-API spend; the GCP legacy profile brings Anthropic spend.
+    # Per schema-discover-ai.md § Usage-API merge, different providers are summed, never replaced.
     existing = {
         "schema_version": 1, "kind": "BMA_GCP_AI_SIDECAR",
-        "workloads": [{"capability": "text_generation"}], "observed_costs": {"monthly_ai_spend": 1},
+        "workloads": [{"capability": "text_generation"}],
+        "observed_costs": {"monthly_ai_spend": 105, "source": "openai_usage_api", "services_detected": ["OpenAI chat"]},
     }
+    snapshot = copy.deepcopy(existing)
     sidecar = adapter.convert_legacy_sidecar(_legacy(), existing)
     assert sidecar["workloads"] == [{"capability": "text_generation"}]
-    assert sidecar["observed_costs"] == LEGACY_SAMPLE["current_costs"]
-    assert existing["observed_costs"] == {"monthly_ai_spend": 1}
+    assert sidecar["observed_costs"] == {
+        "monthly_ai_spend": 205, "source": "mixed", "services_detected": ["OpenAI chat", "Anthropic API"],
+        "breakdown": [
+            {"provider": "openai", "monthly_spend": 105, "source": "openai_usage_api", "services_detected": ["OpenAI chat"]},
+            {"provider": "anthropic", "monthly_spend": 100, "source": "anthropic_usage_api", "services_detected": ["Anthropic API"]},
+        ],
+    }
+    assert "conflicting_sources" not in sidecar["observed_costs"]
+    assert existing == snapshot
+
+
+def test_merge_observed_costs_same_provider_conflict_is_recorded_not_dropped():
+    existing = {"monthly_ai_spend": 400, "source": "code_estimate", "services_detected": ["Google Gen AI"]}
+    incoming = {"monthly_ai_spend": 450, "source": "billing_data", "services_detected": ["Vertex AI Predictions"]}
+    merged = adapter.merge_observed_costs(existing, incoming)
+    assert merged["monthly_ai_spend"] == 450
+    assert merged["source"] == "billing_data"
+    assert merged["services_detected"] == ["Google Gen AI", "Vertex AI Predictions"]
+    assert "breakdown" not in merged
+    assert merged["conflicting_sources"] == [
+        {"provider": "google", "monthly_spend": 400, "source": "code_estimate", "services_detected": ["Google Gen AI"]},
+    ]
+    # Equal same-provider rows are a no-op, and a missing existing side returns the incoming object verbatim.
+    assert adapter.merge_observed_costs(incoming, incoming) == incoming
+    assert adapter.merge_observed_costs(None, incoming) == incoming
+
+
+def _415_source(provider, source_service, models, provenance="code", family=None):
+    families = sorted({family or adapter._model_identity(model, "$")[1] for model in models}) if models else [family]
+    return {
+        "provider": provider, "source_service": source_service, "model_families": families,
+        "model_evidence": "observed" if models else "not_observed", "models": list(models),
+        "model_observations": [
+            {"normalized_model": model, "raw_model": model, "model_family": family or adapter._model_identity(model, "$")[1],
+             "evidence": [{"provenance": provenance, "confidence": "high"}]}
+            for model in models
+        ],
+    }
+
+
+def test_merge_415_profiles_unions_sources_models_observations_and_gateways():
+    existing = {
+        "schema_version": "1.0",
+        "ai_sources": [
+            _415_source("openai", "openai_api", ["gpt-4o", "gpt-4o-mini"]),
+            _415_source("google", "vertex_ai", [], family="gemini"),
+        ],
+        "gateways": [{
+            "product": "openrouter", "type": "llm_router", "upstream_evidence": "observed",
+            "upstreams": [{"provider": "anthropic", "source_service": "anthropic_api",
+                           "model_families": [{"family": "claude", "model_evidence": "observed", "models": ["claude-3.5-sonnet"]}]}],
+        }],
+    }
+    converted = {
+        "schema_version": "1.0",
+        "ai_sources": [
+            _415_source("anthropic", "anthropic_api", ["claude-3-5-sonnet-20240620"], provenance="iac"),
+            _415_source("google", "vertex_ai", ["gemini-2.5-pro"], provenance="iac"),
+            _415_source("openai", "openai_api", ["gpt-4o", "text-embedding-3-small"], provenance="iac"),
+        ],
+        "gateways": [{
+            "product": "openrouter", "type": "llm_router", "upstream_evidence": "observed",
+            "upstreams": [
+                {"provider": "anthropic", "source_service": "anthropic_api",
+                 "model_families": [{"family": "claude", "model_evidence": "observed", "models": ["claude-3-opus"]}]},
+                {"provider": "google", "source_service": "vertex_ai",
+                 "model_families": [{"family": "gemini", "model_evidence": "observed", "models": ["gemini-1.5-pro"]}]},
+            ],
+        }],
+    }
+    merged = adapter.merge_415_profiles(existing, converted)
+    keys = [(source["provider"], source["source_service"]) for source in merged["ai_sources"]]
+    assert keys == [("openai", "openai_api"), ("google", "vertex_ai"), ("anthropic", "anthropic_api")]
+    openai = merged["ai_sources"][0]
+    assert openai["models"] == ["gpt-4o", "gpt-4o-mini", "text-embedding-3-small"]
+    assert openai["model_families"] == ["gpt", "embedding"]
+    gpt4o = openai["model_observations"][0]
+    assert gpt4o["normalized_model"] == "gpt-4o"
+    assert gpt4o["evidence"] == [{"provenance": "code", "confidence": "high"}, {"provenance": "iac", "confidence": "high"}]
+    google = merged["ai_sources"][1]
+    assert google["model_evidence"] == "observed" and google["models"] == ["gemini-2.5-pro"]
+    gateway = merged["gateways"][0]
+    assert [(up["provider"], up["source_service"]) for up in gateway["upstreams"]] == [("anthropic", "anthropic_api"), ("google", "vertex_ai")]
+    assert gateway["upstreams"][0]["model_families"] == [
+        {"family": "claude", "model_evidence": "observed", "models": ["claude-3.5-sonnet", "claude-3-opus"]},
+    ]
+    assert _validate_jsonschema(merged) == []
+    assert adapter.merge_415_profiles(merged, converted) == merged
+    assert adapter.merge_415_profiles(None, converted) == converted
+
+
+def test_existing_bma_input_that_is_not_415_fails_closed(tmp_path):
+    legacy_path = tmp_path / "legacy.json"
+    out_path = tmp_path / ".bma-input" / "ai-workload-profile.json"
+    sidecar_path = tmp_path / ".bma-input" / "ai-workload-sidecar.json"
+    out_path.parent.mkdir()
+    legacy_path.write_text(json.dumps(_legacy()), encoding="utf-8")
+    out_path.write_text(json.dumps(_legacy()), encoding="utf-8")
+    before = out_path.read_bytes()
+    failed = subprocess.run(
+        [sys.executable, str(ADAPTER_PATH), "convert", "--legacy", str(legacy_path), "--out", str(out_path), "--sidecar", str(sidecar_path)],
+        capture_output=True, text=True,
+    )
+    assert failed.returncode == 1
+    assert json.loads(failed.stderr)["code"] == "EXISTING_415_INVALID"
+    assert out_path.read_bytes() == before
+    assert not sidecar_path.exists()
+    with pytest.raises(adapter.GcpProfileNotRepresentable) as info:
+        adapter.merge_415_profiles({"schema_version": "1.0", "ai_sources": [], "gateways": [], "workloads": []}, EXPECTED_SAMPLE_415)
+    assert info.value.code == "EXISTING_415_INVALID"
+
+
+# Review PR #483 (vagmur-aws, thread PRRT_kwDOSKiaLs6wWifC): BMA discovery found gpt-4o in code and the usage-API step
+# recorded $555 (Google $450 + OpenAI $105); the GCP Vertex seed then ran `convert` and erased both.
+VAGMUR_BMA_PROFILE = {
+    "schema_version": "1.0", "gateways": [],
+    "ai_sources": [{
+        "provider": "openai", "source_service": "openai_api", "model_families": ["gpt"], "model_evidence": "observed",
+        "models": ["gpt-4o"],
+        "model_observations": [{
+            "normalized_model": "gpt-4o", "raw_model": "gpt-4o", "model_family": "gpt",
+            "evidence": [{"provenance": "code", "confidence": "high", "detail": "src/ai.py:9"}],
+        }],
+    }],
+}
+VAGMUR_SIDECAR = {
+    "schema_version": 1, "kind": "BMA_GCP_AI_SIDECAR",
+    "workloads": [{
+        "workload_id": "wl_a1b2c3", "model_id": "gpt-4o", "sdk_method": "chat.completions.create",
+        "capability": "text_generation", "capability_confidence": "high", "structured_output": False,
+        "call_sites": [{"file": "src/ai.py", "line": 9}],
+    }],
+    "observed_costs": {
+        "monthly_ai_spend": 555, "source": "mixed", "services_detected": ["Vertex AI Predictions", "OpenAI chat"],
+        "breakdown": [
+            {"provider": "google", "monthly_spend": 450, "source": "billing_data"},
+            {"provider": "openai", "monthly_spend": 105, "source": "openai_usage_api"},
+        ],
+    },
+}
+VERTEX_SEED_LEGACY = {
+    "metadata": {"profile_source": "iac_vertex", "report_date": "2026-10-26"},
+    "summary": {"ai_source": "gemini", "inferred_from_iac": True, "overall_confidence": 0.9},
+    "models": [{
+        "model_id": "gemini-2.5-pro", "service": "vertex_ai_generative", "detected_via": ["terraform"],
+        "evidence": [{"resource": "google_vertex_ai_endpoint.chat", "source": "terraform"}],
+    }],
+    "detection_signals": [{"method": "terraform", "confidence": 0.9}],
+    "integration": {"gateway_type": "direct", "pattern": "direct_sdk"},
+    "current_costs": {"monthly_ai_spend": 450, "services_detected": ["Vertex AI Predictions"], "source": "billing_data"},
+}
+
+
+def _convert(run: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(ADAPTER_PATH), "convert", "--legacy", str(run / "ai-workload-profile.json"),
+         "--out", str(run / ".bma-input" / "ai-workload-profile.json"),
+         "--sidecar", str(run / ".bma-input" / "ai-workload-sidecar.json")],
+        capture_output=True, text=True,
+    )
+
+
+def _validate_bma_input(run: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(BMA_RUNTIME), "validate-profile",
+         "--profile", str(run / ".bma-input" / "ai-workload-profile.json"),
+         "--sidecar", str(run / ".bma-input" / "ai-workload-sidecar.json")],
+        capture_output=True, text=True,
+    )
+
+
+def test_convert_merges_into_bma_discovered_profile_and_sidecar_vagmur_repro(tmp_path):
+    run = tmp_path / "run"
+    (run / ".bma-input").mkdir(parents=True)
+    (run / "ai-workload-profile.json").write_text(json.dumps(VERTEX_SEED_LEGACY), encoding="utf-8")
+    (run / ".bma-input" / "ai-workload-profile.json").write_text(json.dumps(VAGMUR_BMA_PROFILE), encoding="utf-8")
+    (run / ".bma-input" / "ai-workload-sidecar.json").write_text(json.dumps(VAGMUR_SIDECAR), encoding="utf-8")
+    converted = _convert(run)
+    assert converted.returncode == 0, converted.stderr
+    profile = json.loads((run / ".bma-input" / "ai-workload-profile.json").read_text(encoding="utf-8"))
+    sources = {(source["provider"], source["source_service"]): source for source in profile["ai_sources"]}
+    assert set(sources) == {("google", "vertex_ai"), ("openai", "openai_api")}
+    openai = sources[("openai", "openai_api")]
+    assert openai["models"] == ["gpt-4o"]
+    assert openai["model_observations"][0]["evidence"] == [{"provenance": "code", "confidence": "high", "detail": "src/ai.py:9"}]
+    google = sources[("google", "vertex_ai")]
+    assert google["models"] == ["gemini-2.5-pro"]
+    assert google["model_observations"][0]["evidence"] == [{"provenance": "iac", "confidence": "high", "detail": "google_vertex_ai_endpoint.chat"}]
+    sidecar = json.loads((run / ".bma-input" / "ai-workload-sidecar.json").read_text(encoding="utf-8"))
+    costs = sidecar["observed_costs"]
+    assert costs["monthly_ai_spend"] == 555
+    assert costs["source"] == "mixed"
+    assert costs["services_detected"] == ["Vertex AI Predictions", "OpenAI chat"]
+    assert costs["breakdown"] == [
+        {"provider": "google", "monthly_spend": 450, "source": "billing_data"},
+        {"provider": "openai", "monthly_spend": 105, "source": "openai_usage_api"},
+    ]
+    assert "conflicting_sources" not in costs
+    assert sidecar["workloads"] == VAGMUR_SIDECAR["workloads"]
+    assert sidecar["integration_context"] == {"pattern": "direct_sdk"}
+    assert sidecar["profile_origin"] == {"terraform_primary": True}
+    validated = _validate_bma_input(run)
+    assert validated.returncode == 0, validated.stderr
 def test_existing_sidecar_of_another_kind_fails_closed():
     with pytest.raises(adapter.GcpProfileNotRepresentable) as info:
         adapter.convert_legacy_sidecar(_legacy(), {"schema_version": 1, "kind": "OTHER", "workloads": []})
