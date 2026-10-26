@@ -257,6 +257,7 @@ RETIRED_MODELS = frozenset({
     "gemini-embedding-exp",
     "gemini-embedding-exp-03-07",
     "gemini-live-2.5-flash-preview",
+    "gemini-omni-flash-preview",
     "imagen-3.0-generate-002",
     "imagen-4.0-fast-generate-001",
     "imagen-4.0-generate-001",

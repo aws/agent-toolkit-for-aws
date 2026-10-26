@@ -55,7 +55,7 @@
         "references/runtime/bma-input-patterns.json",
         "scripts/bma-route-classifier.py"
       ],
-      "sha256": "b41af8e4ee4462d0f4dd5b91f740f61b11e1862ca7c48998179913f7eb78135e",
+      "sha256": "f4c902ce276d14fb0f38fd238ac07c5d96cba7c67102a5d4d4fd8f4c2981732e",
       "type": "script"
     },
     {
@@ -405,7 +405,7 @@
         "references/vendored/ai/ai-model-lifecycle.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "644a7f57ea3becfd29086099d55a950c267902b0aea5dfc9e1410ee3738c2a5e",
+      "sha256": "8811f08cab0c723c2c09341e07a63080457ae89814f028eb16d1a76f3c5d5878",
       "source_path": "skills/shared/ai/ai-anthropic-to-bedrock.md",
       "type": "instruction"
     },
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "d9703fd3eb5c8185a52c1f18b5066b4777d328d9b83ce6b56440c0fe53401992"
+  "self_hash": "224b8ee02cef0155054cee8a161f0820a1de7d4d75e989b4ea61a6dc43860afe"
 }
