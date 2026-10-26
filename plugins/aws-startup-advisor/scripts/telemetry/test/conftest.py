@@ -16,6 +16,8 @@ TELEMETRY = Path(__file__).resolve().parents[1]
 CONSENT = TELEMETRY / "consent"
 EMISSION = TELEMETRY / "metric_emission"
 PLUGIN_ROOT = TELEMETRY.parent.parent
+ENDPOINT_ENV = "AWS_STARTUP_ADVISOR_PLUGIN_TELEMETRY_ENDPOINT"
+TEST_ENDPOINT = "http://127.0.0.1:1/telemetry-test-disabled"
 
 # The same two directories the scripts put on their own path, so a test imports a
 # module by the name its callers use.
@@ -33,6 +35,7 @@ def run(script, *args, home, env=None):
         "HOME": str(home),
         "PATH": "/usr/bin:/bin",
         "USERPROFILE": str(home),  # Path.home() on Windows
+        ENDPOINT_ENV: TEST_ENDPOINT,
     }
     full_env.update(env or {})
     return subprocess.run(  # nosec B603 — fixed argv, no shell
@@ -48,6 +51,8 @@ def home(tmp_path, monkeypatch):
     """An empty HOME, so no test can read or clobber a real consent record."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Path.home() on Windows
+    # Direct imports and child processes must never default to production.
+    monkeypatch.setenv(ENDPOINT_ENV, TEST_ENDPOINT)
     return tmp_path
 
 

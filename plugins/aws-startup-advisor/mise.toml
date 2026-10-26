@@ -24,7 +24,7 @@ run = "python3 scripts/consent-disclosure-audit.py"
 
 [tasks.ci]
 description = "Run startup advisor CI checks"
-depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:startup-model-pricing", "lint:artifacts", "lint:vendored-parity", "lint:runtime-copy-parity", "lint:bma-closure", "lint:skill-refs", "lint:consent-disclosure", "test", "test:heroku-source-review"]
+depends = ["lint:md", "lint:model-id", "lint:model-staleness", "lint:startup-model-pricing", "lint:artifacts", "lint:vendored-parity", "lint:runtime-copy-parity", "lint:bma-closure", "lint:skill-refs", "lint:consent-disclosure", "test", "test:telemetry", "test:heroku-source-review"]
 
 [tasks."lint:md"]
 description = "Lint startup advisor markdown using the shared rules"
@@ -41,6 +41,10 @@ run = "uv run --no-project python scripts/model-id-lint.py"
 [tasks.test]
 description = "Run plugin contract tests"
 run = "uv run --no-project --with pytest --with jsonschema==4.25.1 python -m pytest tests -q"
+
+[tasks."test:telemetry"]
+description = "Run Startup Advisor telemetry tests"
+run = "uv run --no-project --with pytest python -m pytest scripts/telemetry/test -q"
 
 [tasks."test:heroku-source-review"]
 description = "Run Heroku application-source contract and validator tests"
