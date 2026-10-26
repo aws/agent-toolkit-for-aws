@@ -8,14 +8,14 @@ AgentCore charges for several things independently:
 
 | Component | What you pay for | Published rate (verify for current) | Biggest cost drivers |
 |---|---|---|---|
-| **Runtime compute** | vCPU-hours + GB-hours while the session is active | v1 microVMs: $0.0895/vCPU-hr, $0.00945/GB-hr. v2 microVMs (consumption): $0.1276/vCPU-hr, $0.0169/GB-hr, billed per second on actual use, idle memory reclaimed after 120s | Session length, idle timeout, cold starts |
+| **Runtime compute** | vCPU-hours + GB-hours while the session is active | v1 microVMs: $0.0895/vCPU-hr, $0.00945/GB-hr. v2 microVMs (consumption): $0.1276/vCPU-hr, $0.0169/GB-hr, billed per second on actual use, idle memory reclaimed after 120s; v2 committed baseline: $0.0997/vCPU-hr, $0.0132/GB-hr | Session length, idle timeout, cold starts |
 | **Short-term memory** | Events ingested, retrieved, and stored | From 2026-10-06: $1.00/GB ingested, $0.20/GB retrieved, $0.10/GB-month stored (through 2026-10-05 it was $0.25 per 1,000 new events) | Session volume, event payload size |
 | **Long-term memory storage** | Long-term memory records stored | $0.75 per 1,000 records/month (built-in strategies); $0.25 (override/self-managed) | Number of strategies, expiry duration |
 | **Long-term memory retrieval** | Retrieving memory records | $0.50 per 1,000 retrievals | Retrieval frequency, top_k value |
 | **Gateway** | Per API call routed through gateway, plus search indexing | $0.005 per 1,000 (ListTools/InvokeTool/Ping); $0.025 per 1,000 (Search); tool indexing $0.02 per 100 tools/month | Tool call volume, number of indexed tools |
-| **Evaluations** | Evaluator model usage | Built-in: $0.0024 per 1,000 input tokens, $0.012 per 1,000 output tokens. Custom: $1.50 per 1,000 evaluations (model usage billed separately). Batch evaluations: $0.0018 per 1,000 input tokens, $0.009 per 1,000 output tokens | Online eval sampling rate × session volume |
+| **Evaluations** | Evaluator model usage | Built-in: $0.0024 per 1,000 input tokens, $0.012 per 1,000 output tokens. Custom: $1.50 per 1,000 evaluations (model usage billed separately). Batch evaluations: $0.0018 per 1,000 input tokens, $0.009 per 1,000 output tokens. Recommendations: free (you pay for the evaluations they run) | Online eval sampling rate × session volume |
 | **Bedrock model usage** | Input/output tokens for every model call | Varies by model — check Bedrock pricing | Model choice (Sonnet vs Haiku), conversation length |
-| **Policy authorization** | Per authorization request + input tokens | $0.000025/request, $0.13 per 1,000 input tokens | Tool call volume with policy engine attached |
+| **Policy authorization** | Per authorization request, plus input tokens for natural-language policy authoring | $0.000025/request; authoring $0.13 per 1,000 input tokens | Tool call volume with policy engine attached |
 | **Identity** | Token/API key requests for non-AWS resources | $0.010 per 1,000 requests (no charge when used through Runtime or Gateway) | Credential fetch frequency |
 | **CloudWatch logs/traces** | Ingestion and storage | Standard CloudWatch pricing | Log verbosity, retention policy |
 | **ECR storage** (Container builds only) | Image storage | Standard ECR pricing | Image size, build frequency |
@@ -53,9 +53,9 @@ CLI templates can scaffold Bedrock, Anthropic, OpenAI, OpenAI-compatible, Gemini
 
 | Model tier | Examples | Good for |
 |---|---|---|
-| **Cheapest / simplest** | `amazon.nova-micro-v1:0`, `claude-3-5-haiku-*`, Gemini Flash, GPT-5-nano | Classification, extraction, simple routing, short responses |
-| **Mid-tier** | `amazon.nova-lite-v1:0`, Gemini 2.5 Flash | Most general-purpose agents with light reasoning |
-| **Premium / reasoning** | `anthropic.claude-sonnet-4-5-*`, GPT-5, Gemini 2.5 Pro | Complex reasoning, code generation, multi-step planning |
+| **Cheapest / simplest** | `us.amazon.nova-micro-v1:0`, `global.anthropic.claude-haiku-4-5-20251001-v1:0`, Gemini Flash, GPT-5-nano | Classification, extraction, simple routing, short responses |
+| **Mid-tier** | `us.amazon.nova-lite-v1:0`, Gemini 2.5 Flash | Most general-purpose agents with light reasoning |
+| **Premium / reasoning** | `global.anthropic.claude-sonnet-4-5-20250929-v1:0`, GPT-5, Gemini 2.5 Pro | Complex reasoning, code generation, multi-step planning |
 
 Rules of thumb:
 
@@ -104,6 +104,6 @@ Rules of thumb:
 
 ## Cross-references
 
-- For model selection decisions, see [`references/evals.md`](evals.md) Path A (evaluator model choice applies the same way)
+- For model selection decisions, see [`references/evals.md`](evals.md) Path D, Step D2 (evaluator model choice applies the same way)
 - For memory strategy decisions, see [`agents-build/references/memory.md`](../../agents-build/references/memory.md)
 - For log retention (a harden concern), see `agents-harden` Observability section

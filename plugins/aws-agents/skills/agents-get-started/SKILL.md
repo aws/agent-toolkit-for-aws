@@ -76,7 +76,7 @@ Before jumping into template selection, figure out where the developer is:
 
 - **Exploring** → Go to Step 2. Present the options, answer questions, and wait. Do not construct a `create` command until they signal they're ready.
 - **Ready to create** → Skip to Step 3 (create the project). If they already said Harness, or named a template or framework, skip Step 2 entirely.
-- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has no `"version": 2`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts.
+- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has `"version": 1`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 If the developer's intent is clear from `$ARGUMENTS` (e.g., "create a Strands agent called MyBot"), skip straight to Step 3.
 
@@ -185,7 +185,7 @@ Build the commands based on the developer's choices.
 
 Say the count back out loud when close to the limit: "That name is 24 characters — the CLI caps project names at 23. Want to shorten it to `<suggestion>`?"
 
-Harness and Runtime names follow a different rule: start with a letter, then letters, digits, or underscores (Harness ≤ 40 characters, Runtime ≤ 48). A deployed Harness name also includes the project and target names (`<project>_<target>_<harness>`), and that combination must fit in 40 characters — keep project and Harness names short.
+Harness and Runtime names follow a different rule: start with a letter, then letters, digits, or underscores (Harness ≤ 40 characters, Runtime ≤ 48). The deployed name also includes the project and target names (`<project>_<target>_<name>`), and that combination must fit the same limit (40 for a Harness, 48 for a Runtime) — keep project, target, and agent names short.
 
 **Construct the command, then present it for confirmation before the developer runs it.** Show the full commands and explain what each choice means. Wait for the developer to confirm or adjust before proceeding. Exception: if the request already names everything the command needs (a valid project name and the template, or "a Harness"), treat it as the confirmation — show the command you're running and run it.
 
@@ -240,6 +240,8 @@ There are no `--framework`, `--model-provider`, `--build`, `--memory`, `--protoc
 
 Run `agentcore create` outside any existing project — project commands find the project by walking up from the current directory.
 
+`create` runs `git init` but makes no commit. Check that `.gitignore` lists `agentcore/.cache/` (add it if not — it holds 100+ MB of staged dependencies after a build), then make an initial commit (`git add -A && git commit -m "Initial project"`) so later rollbacks have a baseline.
+
 ### Step 4: Explain what was created
 
 After the project exists, read `agentcore/agentcore.json` and the generated code to explain the project structure.
@@ -255,7 +257,8 @@ The layout below reflects CLI v1.0.0. If the CLI version is different, run `tree
 │   ├── agentcore.json      ← Project spec ("version": 2): runtimes, harnesses, memories, gateways, ...
 │   ├── aws-targets.json    ← Deployment targets (starts as []; filled on first deploy)
 │   ├── .env.local          ← Local-only env vars and API keys for `agentcore dev` (gitignored)
-│   ├── .cli/               ← CLI state (deployed-state.json after deploy, local traces)
+│   ├── .cli/               ← CLI state (deployed-state.json, local traces); appears after the first dev or deploy
+│   ├── .cache/             ← CodeZip dependency staging (after the first build/deploy; gitignore it)
 │   └── cdk/                ← Vended CDK app (bin/cdk.ts, lib/cdk-stack.ts) — yours to extend
 └── app/
     └── agent/               ← The template's Runtime is always named `agent`
@@ -295,7 +298,7 @@ TypeScript templates have `main.ts`, `model/load.ts`, `package.json`, and `tscon
 - `agentcore/.env.local` — local environment variables for `agentcore dev`. Keep secrets here, not in `app/` (everything in a CodeZip Runtime's folder is uploaded).
 - `agentcore/cdk/lib/cdk-stack.ts` — where to add your own AWS resources (tables, buckets) and grant your agents access.
 
-**Heads-up on resource environment variables.** Resources you add are passed to a deployed Runtime as environment variables: `MEMORY_<NAME>_ID` / `MEMORY_<NAME>_ARN` for memories and `AGENTCORE_GATEWAY_<NAME>_URL` for gateways (names upper-cased). The Strands template's `memory/session.py` reads `MEMORY_AGENTMEMORY_ID` and returns no session manager when it's unset — which it is under `agentcore dev` unless you put it in `agentcore/.env.local`. So locally the agent runs without long-term memory, with no error. Code you add for gateways should handle the same case; see the "Local dev gap" section in `agents-connect` for the guard pattern.
+**Heads-up on resource environment variables.** Resources you add are passed to a deployed Runtime as environment variables: `MEMORY_<NAME>_ID` / `MEMORY_<NAME>_ARN` for memories and `AGENTCORE_GATEWAY_<NAME>_URL` for gateways (names upper-cased, other non-alphanumeric characters become `_`). The Strands template's `memory/session.py` reads `MEMORY_AGENTMEMORY_ID` and returns no session manager when it's unset — which it is under `agentcore dev` unless you put it in `agentcore/.env.local`. So locally the agent runs without long-term memory, with no error. Code you add for gateways should handle the same case; see the "Local dev gap" section in `agents-connect` for the guard pattern.
 
 ### Step 5: Local development
 
@@ -329,7 +332,7 @@ agentcore invoke --runtime agent --local --payload '{"prompt": "Hello"}'
 
 The streaming templates answer with server-sent events, and `invoke` prints them raw — one `data: {"event": {...}}` line per chunk (the reply text is in the `contentBlockDelta` events), followed by a `status=200 ...` summary line. That's expected, not an error.
 
-**Stop the dev server** with Ctrl+C in the terminal running `agentcore dev`; it stops every Runtime it started and the local trace collector.
+**Stop the dev server** with Ctrl+C in the terminal running `agentcore dev`; it stops every Runtime it started and the local trace collector. If you started it from a non-interactive shell, send it SIGINT: `kill -INT $(pgrep -f '^node .*agentcore dev')`. Don't use `pkill -f agentcore`, which can match and kill the calling shell.
 
 **Important limitations to mention:**
 
