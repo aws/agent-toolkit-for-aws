@@ -6,6 +6,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 
 - **Data Lake Operations** — Build and operate a data lake on AWS: create managed Iceberg tables on Amazon S3 Tables, ingest data from diverse sources (S3, JDBC databases, Snowflake, BigQuery, DynamoDB, AWS Glue catalog tables), and query across default and federated catalogs with Amazon Athena.
 - **Data Discovery** — Inventory and audit your AWS Glue Data Catalog across S3 Tables, Amazon Redshift-federated, and remote Iceberg catalogs. Resolve data asset references by name, keyword, column, or reverse-lookup from S3 location metadata in the catalog.
+- **Data Governance (Amazon SageMaker Catalog)** — Curate business metadata in Amazon SageMaker Catalog or the AWS Glue Data Catalog (descriptions, READMEs, glossaries, metadata forms, publishing, and safe asset retirement), and request, approve, share, audit, and revoke access to catalog assets through subscriptions.
 - **Vector Storage** — Store and query vector embeddings using Amazon S3 Vectors for cost-effective semantic search and RAG workloads.
 - **External Connectivity** — Create and troubleshoot AWS Glue connections to JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS, Aurora), Amazon Redshift, Snowflake, and BigQuery.
 - **Search & Observability (OpenSearch)** — Migrate from Solr/Elasticsearch/self-managed OpenSearch into Amazon OpenSearch Service or Serverless, provision domains and collections, and build vector/semantic/hybrid search, log analytics, and trace analytics.
@@ -34,6 +35,8 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 | 14 | `managing-amazon-msk` | Operate Amazon MSK Provisioned clusters (Standard and Express): sizing and cost, performance and consumer lag, topic management, MSK Replicator, and Streaming Tables delivery to S3 Tables | [SKILL.md](skills/managing-amazon-msk/SKILL.md) |
 | 15 | `migrate-to-msk` | Assess a self-managed Apache Kafka cluster for MSK Express compatibility, produce a target specification and cost, and guide the migration | [SKILL.md](skills/migrate-to-msk/SKILL.md) |
 | 16 | `developing-applications-on-managed-service-for-apache-flink` | Develop, deploy, and tune Apache Flink applications on Amazon Managed Service for Apache Flink, including checkpointing, connectors, and Flink 2.x migration | [SKILL.md](skills/developing-applications-on-managed-service-for-apache-flink/SKILL.md) |
+| 17 | `managing-data-catalog` | Write and curate business metadata in Amazon SageMaker Catalog or the AWS Glue Data Catalog: descriptions, READMEs, glossaries, metadata forms, publishing, and safe asset retirement | [SKILL.md](skills/managing-data-catalog/SKILL.md) |
+| 18 | `managing-data-asset-access` | Request, approve, share, audit, and revoke access to Amazon SageMaker Catalog assets through subscriptions, and confirm grants have settled | [SKILL.md](skills/managing-data-asset-access/SKILL.md) |
 
 ## MCP Servers
 

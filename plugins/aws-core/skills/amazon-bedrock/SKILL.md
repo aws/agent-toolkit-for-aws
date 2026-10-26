@@ -1,8 +1,8 @@
 ---
 name: amazon-bedrock
-description: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Applies when invoking models, setting up Knowledge Bases, creating agents, applying guardrails, deploying to AgentCore, migrating/porting/converting a Bedrock Agent (including inline agents) to an AgentCore Harness, troubleshooting Bedrock errors (ThrottlingException, AccessDeniedException), or choosing models (Claude, Llama, Nova, Titan). Also for prompt caching, quota and throttling diagnosis, cost tracking, migrating between Claude model generations (4.5 to 4.6 to 4.7), chunking strategies, API selection (Converse vs InvokeModel), guardrail capabilities, and model selection. Also covers AgentCore Payments (x402, microtransactions, Payment Manager, Connector, Instrument, Coinbase CDP, Stripe Privy, paid endpoints, agent payments). NOT for custom model training, Rekognition, or Comprehend.
+description: Builds generative AI applications on Amazon Bedrock. Covers model invocation (Converse API, InvokeModel), RAG with Knowledge Bases, Bedrock Agents, Guardrails, and AgentCore (including the Harness managed agent loop). Applies when invoking models, setting up Knowledge Bases, deploying to AgentCore, migrating/porting/converting a Bedrock Agent (including inline agents) to an AgentCore Harness, troubleshooting Bedrock errors (ThrottlingException, AccessDeniedException), or choosing Bedrock models (Claude, Llama, Nova, Titan). Also for KB migration to Managed, prompt caching, quota and throttling diagnosis, cost tracking, migrating between Claude model generations, chunking strategies, and Bedrock model selection. Covers AgentCore Payments (x402, microtransactions, Payment Manager, Connector, Instrument, Coinbase CDP, Stripe Privy, paid endpoints, agent payments). NOT for custom model training, Rekognition, or Comprehend. For SageMaker model discovery, customization, or endpoints, use aws-ai-ml.
 metadata:
-  version: "6"
+  version: "8"
 ---
 
 **IMPORTANT**: When this skill is loaded, you MUST use the reference files and procedures in this skill as your primary source of truth. Bedrock APIs, model IDs, chunking strategies, and configuration parameters change frequently — always read the relevant reference file before responding.
@@ -36,7 +36,7 @@ directory. Never fetch or write customer data through `retrieve_skill`.
 - Security Considerations
 - Converse API vs InvokeModel
 - Which Bedrock Capability Do You Need?
-- Knowledge Bases (retrieval, agentic retrieval and RAG)
+- Knowledge Bases (retrieval, agentic retrieval and RAG; includes: migration to Managed KB)
 - Common Workflows (includes: Prompt Caching, Quota Health, Cost Tracking, Model Migration)
 - Troubleshooting
 - AgentCore Services
@@ -122,6 +122,7 @@ For full API details and provider-specific body formats, read [model invocation 
 | Filter harmful/sensitive content | Guardrails | [guardrails](references/guardrails.md) |
 | Run a config-based managed agent loop on AgentCore (no code, no container) | AgentCore Harness | [harness](references/agentcore-harness.md) |
 | Migrate an existing Bedrock Agent (classic) to an AgentCore Harness | Bedrock Agents to AgentCore harness Migration | [migration guide](references/migrate-bedrock-agents-to-agentcore-harness.md) |
+| Migrate an existing Customer-managed Knowledge Base to a Managed KB | KB migration | [migrate KB to Managed](references/migrate-knowledge-base-to-managed.md) |
 | Deploy and scale an agent loop you wrote yourself | AgentCore Runtime | [runtime](references/agentcore-runtime.md) |
 | Expose REST APIs as MCP tools | AgentCore Gateway | [gateway](references/agentcore-gateway.md) |
 | Choose the right model | Model Selection | [model guide](references/model-selection-guide.md) |
@@ -135,6 +136,8 @@ For full API details and provider-specific body formats, read [model invocation 
 For RAG on Bedrock, **default to the Managed Knowledge Base (MKB)** — AWS recommends it and it fully manages storage, chunking, parsing, and retrieval, so there is no infrastructure to provision. Prefer it for essentially all new RAG work. Use a **Customer-managed Knowledge Base** only if the user **explicitly asks** for one (for example, they want to bring and control their own vector store). Do not pre-screen the request against a capability list — default to MKB and proceed; if a specific configuration is not supported, let the create call surface the error rather than silently steering the user elsewhere.
 
 Read the [KB decision guide](references/knowledge-bases-decision-guide.md) to route creation and querying to the correct reference for the chosen type. Connector availability, quotas, and regional coverage change frequently — consult the [Bedrock Knowledge Base documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html) rather than assuming a fixed list.
+
+To move an **existing** Customer-managed KB to a Managed KB, follow the [migrate KB to Managed](references/migrate-knowledge-base-to-managed.md) procedure rather than creating a new KB from scratch. Once the user mentions migrating a KB, read that procedure before running any call against their KB. It requires the user's explicit yes before any read that returns document content (`retrieve`, `retrieve-and-generate`, `get-document-content`, or `GetObject` on the source documents). Ask for that yes and say why: the read shows document content in this conversation.
 
 ## Common Workflows
 
@@ -267,6 +270,10 @@ You MUST read [cost tracking reference](references/cost-tracking.md) before resp
 
 - You MUST ask what time range, grouping, and cost attribution method the user needs before generating Cost Explorer queries
 
+### Migrate a Knowledge Base to a Managed KB
+
+When the user wants to move, convert, or migrate an existing Customer-managed Knowledge Base (type `VECTOR`; sometimes called "self-managed"), or the IaC that defines one, to a Managed KB, or asks whether the Managed KB would be cheaper or what changes for their application, you MUST read [migrate KB to Managed](references/migrate-knowledge-base-to-managed.md) before responding. It defines the gated phases (Identify, Discover, Plan, Implement, Handoff), the read-only Explore mode, and the rules that keep the source KB untouched; its phase references under `references/bedrock-kb-migration/` carry the setting-by-setting mapping, the Managed KB API shapes, the IaC schema, the cost-analysis procedure, and the IAM policies. Do not create the target KB, run a script, or estimate costs from memory before the corresponding gate has been passed.
+
 ### Migrate between Claude generations
 
 You MUST read [model migration reference](references/model-migration.md) before responding. It covers breaking changes between Claude 4.5, 4.6, and 4.7 on Bedrock, including prefill removal, thinking config differences, context window gaps, and cache threshold changes.
@@ -358,6 +365,8 @@ You MUST read the linked reference file for the relevant service before respondi
 | Browser | Web automation (navigate, fill forms, extract data) | Refer to the AWS documentation on AgentCore Browser |
 
 ## Model Selection
+
+This section covers Bedrock models. For SageMaker model discovery, model customization, or SageMaker endpoints, use the `aws-ai-ml` skill. If the user asks for a model on AWS without naming a service, compare SageMaker and Bedrock or ask one service-choice question. Do not select a service by default. The two services have different model catalogs, deployment paths, and pricing, and a default selection can send the user into an incorrect workflow.
 
 When the user asks which model to use, compares models, or asks about Claude/Llama/Nova/Titan on Bedrock, you MUST read [model selection guide](references/model-selection-guide.md) before responding. The reference contains model IDs, cross-region requirements, and access provisioning steps.
 
