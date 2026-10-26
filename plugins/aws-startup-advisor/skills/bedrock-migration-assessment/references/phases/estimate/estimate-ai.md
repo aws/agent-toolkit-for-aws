@@ -59,7 +59,7 @@ Regardless of which dollar source wins, `usage_by_model[]` from EVERY usage prof
 
 ## Part 2: Build Model Comparison Table
 
-Calculate the monthly Bedrock cost for **every viable model** at the user's token volume.
+Calculate the monthly Bedrock cost for **every viable model** at the user's token volume. Source models on the retired list in `scripts/bma-runtime.py` (`RETIRED_MODELS`, for example `gemini-1.5-pro` and the shut-down Imagen IDs) are marked retired, get no target price, and are excluded from generation.
 
 **Token volume mapping** (from `ai_token_volume` in `preferences.json`):
 

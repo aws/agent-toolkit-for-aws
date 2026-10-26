@@ -226,8 +226,21 @@ MODEL_TARGETS = {
     "gemini-2.5-pro": ("amazon.nova-pro-v1:0", "google_genai_sdk", 0.8, 3.2),
 }
 # Retired source models have no Bedrock target price. The trace marks them retired and leaves
-# pricing unavailable instead of pricing or generating code for them.
-RETIRED_MODELS = frozenset({"gemini-1.5-pro"})
+# pricing unavailable instead of pricing or generating code for them. IDs are the shutdown rows
+# on the Gemini API deprecations page (https://ai.google.dev/gemini-api/docs/deprecations),
+# checked 2026-10-25. Add an ID only when its shutdown is listed there.
+RETIRED_MODELS = frozenset({
+    "gemini-1.5-pro",
+    "gemini-2.0-flash-preview-image-generation",
+    "gemini-2.5-flash-image-preview",
+    "gemini-3-pro-image-preview",
+    "imagen-3.0-generate-002",
+    "imagen-4.0-generate-001",
+    "imagen-4.0-ultra-generate-001",
+    "imagen-4.0-fast-generate-001",
+    "imagen-4.0-generate-preview-06-06",
+    "imagen-4.0-ultra-generate-preview-06-06",
+})
 
 # #415 is the only AI profile contract BMA accepts. Its vendored copy sits beside this runtime.
 AI_PROFILE_SCHEMA_RELATIVE = "references/contracts/ai-workload-profile.schema.json"
