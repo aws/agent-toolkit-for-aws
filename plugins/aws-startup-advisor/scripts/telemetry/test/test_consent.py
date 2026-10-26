@@ -459,9 +459,10 @@ class TestSessionStartHook:
         would kill the hook at its timeout, and the notice would silently never
         appear.
 
-        `stdin=subprocess.PIPE` plus `communicate()` will NOT catch that —
-        communicate closes stdin at once, so a blocking read passes. The write end
-        has to stay open.
+        The write end stays open in the parent. Passing the external read fd
+        means communicate() drains stdout without closing that write end, so
+        an accidental stdin read still hangs. Waiting without draining stdout
+        can instead deadlock on a small output pipe and misdiagnose the hook.
         """
         read_fd, write_fd = os.pipe()  # parent keeps write_fd open: no EOF
         try:
@@ -475,12 +476,11 @@ class TestSessionStartHook:
             )
             os.close(read_fd)
             try:
-                proc.wait(timeout=10)
+                stdout, _ = proc.communicate(timeout=10)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.communicate()
                 pytest.fail("hook blocked on stdin instead of exiting")
-            stdout = proc.stdout.read()
-            proc.stdout.close()
         finally:
             os.close(write_fd)
 

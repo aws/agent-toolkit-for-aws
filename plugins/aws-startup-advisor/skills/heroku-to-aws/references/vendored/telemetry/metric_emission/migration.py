@@ -5,6 +5,7 @@
     python3 scripts/telemetry/metric_emission/migration.py --reconcile     # Stop
     python3 scripts/telemetry/metric_emission/migration.py --session-end   # SessionEnd
     python3 scripts/telemetry/metric_emission/migration.py --reconcile --via cli  # other hosts
+    python3 scripts/telemetry/metric_emission/migration.py --reconcile --via cli --project-root /project
 
 Nothing is inferred from the conversation and no skill instruction has to be
 followed. The migration skills maintain `.migration/<id>/.phase-status.json` (and
@@ -520,13 +521,22 @@ def reconcile(start_dir, session_id=None, session_end=False, edited_path=None, u
 
 def main(argv, stdin=None):
     cli = via_mode(argv) == "cli"
-    if cli and client.migration_reporting_mode() == "hook":
+    project_root = None
+    if cli and "--project-root" in argv:
+        try:
+            project_root = Path(argv[argv.index("--project-root") + 1])
+            # An explicit target never falls back to a parent or sibling tree.
+            if not project_root.is_absolute() or not (project_root / ".migration").is_dir():
+                return 0
+        except (IndexError, OSError, ValueError):
+            return 0
+    if cli and project_root is None and client.migration_reporting_mode() == "hook":
         return 0  # Claude Code and Cursor retain their existing hook path.
     if cli and client.plugin_version() is None:
         return 0  # do not advance a snapshot when a standalone bundle is incomplete
     session_end = "--session-end" in argv
-    # Explicit CLI calls use cwd; they have no hook payload and must not wait
-    # for stdin or accept a caller-supplied hook session/project identity.
+    # CLI calls use an explicit project root or cwd, without reading hook stdin.
+    # Targeted reconciliation shares the hook's run lock and snapshot.
     payload = {} if cli else read_hook_payload(stdin)
     # Claude Code sends session_id on every hook; Cursor sends conversation_id.
     session_id = payload.get("session_id") or payload.get("conversation_id")
@@ -547,7 +557,7 @@ def main(argv, stdin=None):
     # deep inside a run's artifacts still resolves to its run.
     marker = edited_path.find("%s.migration%s" % (os.sep, os.sep)) if edited_path else -1
     roots = payload.get("workspace_roots")
-    start_dir = (
+    start_dir = str(project_root) if project_root is not None else (
         edited_path[:marker] if marker != -1 else None
     ) or payload.get("cwd") or (roots[0] if isinstance(roots, list) and roots else None) or os.getcwd()
 
