@@ -4,7 +4,7 @@
 from each model's own AWS Bedrock model card and OpenAI's own API pricing page, fetched 2026-10-10; see
 `shared/openai-on-bedrock.md` for full citations. Prior refresh, 2026-10-05: re-verified via the AWS Pricing MCP
 server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude
-Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50
+Sonnet 5.5 $2/$10 (Global) / $2.20/$11 (Geo; US East (Ohio) Bedrock table, verified 2026-10-25; cache read $0.10 / $0.11, reduced 50% from Oct 7, 2026), Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50
 (Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo),
 Opus 4.6 $5/$25, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50, Llama 4 Maverick/Scout, Llama 3.3 70B, Nova 2
 Lite/Pro/Lite/Micro, Mistral Large 3, DeepSeek-R1, gpt-oss-20b/120b, GPT-5.6/5.5/5.4 family, and the OpenAI/Azure
@@ -106,6 +106,7 @@ Prices per 1M tokens. Source: [claude.com/pricing](https://claude.com/pricing), 
 | ------------------ | ---------- | ----------- | ------- | -------- |
 | Claude Haiku 4.5   | 1.00       | 5.00        | 200K    | fast     |
 | Claude Sonnet 4.5  | 3.00       | 15.00       | 200K    | flagship |
+| Claude Sonnet 5.5  | 2.00       | 10.00       | —       | flagship |
 | Claude Sonnet 5    | 2.00       | 10.00       | 1M      | flagship |
 
 > These first-party rates match Bedrock's Global/base rate for the same models, and a Bedrock

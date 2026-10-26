@@ -152,11 +152,11 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 
 | Answer   | Model Impact                                        |
 | -------- | --------------------------------------------------- |
-| Quality  | Claude Sonnet 5 primary; Opus 5.5 for hardest tasks |
+| Quality  | Claude Sonnet 5.5 primary; Opus 5.5 for hardest tasks |
 | Speed    | Claude Haiku 4.5; also Nova Micro/Lite              |
 | Cost     | Claude Haiku 4.5 or Nova Micro                      |
 | Special  | Deferred to Q10                                     |
-| Balanced | Claude Sonnet 5                                     |
+| Balanced | Claude Sonnet 5.5                                     |
 
 Interpret → `ai_priority`. Default: 5 → `"balanced"`.
 
@@ -192,19 +192,19 @@ _Skip when:_ `ai_sources[].models` is populated in `ai-workload-profile.json` **
 | Source        | Baseline Recommendation        | Pricing Context                    |
 | ------------- | ------------------------------ | ---------------------------------- |
 | Gemini Flash  | Claude Haiku 4.5 ($1/$5)       | Strong savings                     |
-| Gemini Pro    | Claude Sonnet 5 ($2/$10)       | Comparable tier                    |
+| Gemini Pro    | Claude Sonnet 5.5 ($2/$10)       | Comparable tier                    |
 | GPT-6/6.1 (Astra/Sol/Luna) | **Same model on Bedrock** | ~10% over OpenAI std (DR tier); Astra/6.1 Sol also support Ultrafast |
 | GPT-5.6 (any) | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
 | GPT-5.5       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
 | GPT-5.4       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
 | GPT-3.5 Turbo | GPT-5.6 Luna; or Haiku 4.5     | Luna 36% cheaper, 77% under Haiku  |
-| GPT-4/4 Turbo | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
-| GPT-4o        | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
+| GPT-4/4 Turbo | GPT-5.6 Terra; or Sonnet 5.5     | Not on Bedrock — offer both        |
+| GPT-4o        | GPT-5.6 Terra; or Sonnet 5.5     | Not on Bedrock — offer both        |
 | GPT-5.4 Mini  | GPT-5.6 Luna; or Nova Lite     | Mini not on Bedrock — offer both   |
 | GPT-5.4 Nano  | GPT-5.6 Luna; or Nova Micro    | Nano not on Bedrock — offer both   |
 | GPT-5.x Pro   | GPT-5.6 Sol; or Nova 2 Pro     | Pro not on Bedrock — offer both    |
-| GPT-5/5.1/5.2 | GPT-5.6 Terra; or Sonnet 5     | Not on Bedrock — offer both        |
-| o-series      | GPT-5.6 Sol/Terra; or Sonnet 5 | Not on Bedrock — offer both        |
+| GPT-5/5.1/5.2 | GPT-5.6 Terra; or Sonnet 5.5     | Not on Bedrock — offer both        |
+| o-series      | GPT-5.6 Sol/Terra; or Sonnet 5.5 | Not on Bedrock — offer both        |
 | Claude (any)  | Same model on Bedrock          | Client swap only — no model change |
 
 **Same-model rows first.** GPT-6 Astra / GPT-5.6 / 5.5 / 5.4 sources map to themselves.
@@ -215,7 +215,7 @@ while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separat
 inference/context tier against the source price before claiming savings or parity.
 For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.
 
-Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → Sonnet 5.
+Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → Sonnet 5.5.
 
 Interpret → `ai_model_baseline`. Default: auto-detect, fallback Q2 priority-based.
 
@@ -296,7 +296,7 @@ Present with concrete anchors: Critical = autocomplete/live chat; Important = ch
 | Answer    | Impact                                                       |
 | --------- | ------------------------------------------------------------ |
 | Critical  | Haiku/Nova Micro; streaming required; provisioned throughput |
-| Important | Sonnet 5 with streaming; standard on-demand                  |
+| Important | Sonnet 5.5 with streaming; standard on-demand                  |
 | Flexible  | Any model; batch inference for cost savings                  |
 
 Interpret → `ai_latency`. Default: 2 → `"important"`.
@@ -310,8 +310,8 @@ Present with concrete examples: Simple = classify/extract/summarize; Moderate = 
 | Answer   | Impact                                                                |
 | -------- | --------------------------------------------------------------------- |
 | Simple   | Haiku/Nova Micro sufficient; significant cost savings                 |
-| Moderate | Sonnet 5 recommended; Haiku may suffice with prompt engineering       |
-| Complex  | Sonnet 5 required; extended thinking considered (note: on Sonnet 5.5, turning off up-front thinking requires `thinking: {"type": "between_tools"}` instead of "disabled" at high effort or below); Opus 5.5 for hardest |
+| Moderate | Sonnet 5.5 recommended; Haiku may suffice with prompt engineering       |
+| Complex  | Sonnet 5.5 required; extended thinking considered (note: on Sonnet 5.5, turning off up-front thinking requires `thinking: {"type": "between_tools"}` instead of "disabled" at high effort or below); Opus 5.5 for hardest |
 
 Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 
