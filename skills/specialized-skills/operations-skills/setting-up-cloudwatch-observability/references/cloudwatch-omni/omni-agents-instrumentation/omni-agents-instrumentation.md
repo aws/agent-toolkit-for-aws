@@ -9,7 +9,7 @@ This skill is the single entry point for getting any AI agent project instrument
 
 This is a PROCEDURAL SCRIPT. Execute steps in EXACT order. Do NOT skip ahead, reorder, or optimize.
 
-**Before you start:** confirm a Space exists in the target Region. `list-spaces` is account-global (the `--region` flag only selects the endpoint; the response lists every Space in the account, each with its own `region`), so filter to the Region rather than trusting a non-empty list: `aws cloudwatchomni list-spaces --region <region> --query "items[?region=='<region>']"`. If that filtered list is empty, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering traces nowhere the customer can see. (Output the Step 1 checklist first; this probe is the first tool call after it.)
+**Before you start:** confirm a Space exists in the target Region. `list-spaces` is account-global (the `--region` flag only selects the endpoint; the response lists every Space in the account, each with its own `region`), so filter to the Region rather than trusting a non-empty list: `aws cloudwatchomni list-spaces --region <region> --query "items[?region=='<region>']"`. If the AWS CLI rejects the command (`Found invalid choice 'cloudwatchomni'`), the installed AWS CLI predates CloudWatch Omni — have the user upgrade to the latest AWS CLI v2 and re-run the probe; don't treat it as "no Space". If that filtered list is empty, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering traces nowhere the customer can see. (Output the Step 1 checklist first; this probe is the first tool call after it.)
 
 **A custom metric from the agent** (a latency histogram, a tokens-per-call counter) follows the same rule as any application: it must reach Omni as an OTLP metric carrying the agent's resource attributes — through the OTel Metrics API on the SDK this flow installs, or through a collector — and `PutMetricData`/EMF do not put it on Omni's PromQL surface. Answer from `../instrumentation/instrumentation.md` (§ Custom metrics); do not run the onboarding checklist for that question.
 
@@ -73,7 +73,7 @@ If `agentcore/agentcore.json` is present, set `platform` to `"agentcore"`. Do NO
 
 - **`runtimes[]`** are the agents with code. Each entry's `codeLocation` is the agent directory (e.g. `app/agent`), `entrypoint` the entry file (`main.py`, or `main.js` for TypeScript, which `agentcore dev` runs from `main.ts`), and `build` either `CodeZip` or `Container`. Runtimes can be Python or TypeScript — detect the language per runtime from its entrypoint and dependency file in `codeLocation`, and instrument that directory.
 - **Harness-only project** (`harnesses[]` has entries, `runtimes[]` is empty or missing): a harness is a managed, config-defined agent with no local code or local server, so there is nothing to instrument and Phase 3's local server does not apply. Tell the user, then go to "Production deployment → AgentCore (managed runtime)" Action 1 only; traces for a deployed harness are listed with `agentcore traces harness list`.
-- **No `"version": 2`** — a project from AgentCore CLI v0. CLI v1 still runs `agentcore dev` on it in compatibility mode, but blocks commands that edit the project; recommend the user run `agentcore migrate` (it shows the planned changes and asks before applying). Continue with `platform: "agentcore"` either way.
+- **No `"version": 2`** — a project from AgentCore CLI v0. CLI v1 still runs `agentcore dev` on it in compatibility mode, but blocks commands that edit the project; recommend the user run `agentcore migrate` (it shows the planned changes and asks before applying; it only runs in a git repository with no uncommitted changes, so commit first). Continue with `platform: "agentcore"` either way — local instrumentation works without migrating, but the production step that edits `envVars` and runs `agentcore build` is blocked until the project is migrated.
 
 If NO AgentCore signals are found, set `platform` to `"generic"`. The start command will be the project's natural server command (e.g., `uvicorn app:app --host 0.0.0.0 --reload`). Do NOT use the `opentelemetry-instrument` wrapper — hot-reload servers spawn child subprocesses; the wrapper only instruments the parent process; PYTHONPATH injection reaches all processes.
 
@@ -147,7 +147,7 @@ Record what you found. Move to Step 2.2.
 
 Based on scan results, follow ONE of these cases:
 
-**Case A: ADOT already installed, no conflicts** — verify input/output attributes and agent step spans are configured. If all good, report completion with `approach: "adot"`. No user question needed.
+**Case A: ADOT already installed, no conflicts** — verify input/output attributes and agent step spans are configured. If `input.value`/`output.value` are not set in the request handler (the usual state of a freshly scaffolded agent, including AgentCore CLI templates), apply Step 2.3 "ADOT (Zero-Code) — Python" step 5 (or the TypeScript step 6) before reporting completion. Then report completion with `approach: "adot"`. No user question needed.
 
 > **Critical classification rule:** The ADOT distro alone does NOT mean ADOT is the span source — the distro can be present just to stand up the export pipeline while a third-party instrumentor generates the spans. If an OpenInference or Traceloop instrumentor is ALSO present (even alongside the ADOT distro), that instrumentor is the span source — this is NOT Case A, go to Case B.
 
@@ -191,6 +191,23 @@ Based on scan results, follow ONE of these cases:
    span.set_attribute("input.value", user_prompt)
    span.set_attribute("output.value", agent_response[:4000])
    ```
+
+   If the handler **streams** its response (an `async def` generator that `yield`s chunks, as the AgentCore CLI Python templates do), there is no complete response string to set. Capture the span before the first `yield`, accumulate the text chunks, and set `output.value` once the stream ends:
+
+   ```python
+   span = trace.get_current_span()
+   span.set_attribute("input.value", user_prompt)
+   chunks = []
+   async for event in agent.stream_async(user_prompt):
+       # ...keep the handler's existing filtering here...
+       delta = event.get("event", {}).get("contentBlockDelta", {}).get("delta", {})
+       if "text" in delta:
+           chunks.append(delta["text"])
+       yield event
+   span.set_attribute("output.value", "".join(chunks)[:4000])
+   ```
+
+   Keep yielding exactly what the handler yielded before — only add the accumulation. The `event["event"]["contentBlockDelta"]["delta"]["text"]` path is where the Strands template's raw stream events carry text; match it to your framework's stream events.
 
 6. **Add agent step spans (custom agents only)** — wrap orchestration steps with spans using `openinference.span.kind` attributes (`AGENT`, `LLM`, `RETRIEVER`, `TOOL`)
 
@@ -338,11 +355,11 @@ python <entry-point> > .omni/server.log 2>&1 &
 echo $! > .omni/server.pid
 ```
 
-Wait for the port to open (max 30s):
+Wait for the port to open (max 30s). `nc` is often not installed, so use curl — any HTTP status, even 404, means the server is listening:
 
 ```bash
 for i in $(seq 1 30); do
-  nc -z localhost <port> 2>/dev/null && echo "Server ready" && break
+  curl -s -o /dev/null --max-time 1 http://localhost:<port>/ && echo "Server ready" && break
   sleep 1
 done
 ```
@@ -352,7 +369,28 @@ done
 Before testing the agent, confirm the OTLP collector is listening on the same `<OTLP_PORT>` used above:
 
 ```bash
-nc -z localhost <OTLP_PORT> 2>/dev/null && echo "Collector reachable" || echo "WARNING: No collector on :<OTLP_PORT> — traces will be silently dropped"
+curl -s -o /dev/null --max-time 2 http://localhost:<OTLP_PORT>/ && echo "Collector reachable" || echo "WARNING: No collector on :<OTLP_PORT> — traces will be silently dropped"
+```
+
+(`(echo > /dev/tcp/localhost/<OTLP_PORT>) 2>/dev/null` is a bash-only alternative that needs neither `nc` nor curl.)
+
+This flow does not start a collector. The verification in Step 3.5 reads `.omni/traces.jsonl`, so the collector on `<OTLP_PORT>` must write received spans there as JSON lines. If the user doesn't already run one, an OpenTelemetry Collector (`otelcol-contrib`) with an OTLP/HTTP receiver and the `file` exporter does it:
+
+```yaml
+# .omni/otelcol.yaml — run with: otelcol-contrib --config .omni/otelcol.yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:<OTLP_PORT>
+exporters:
+  file:
+    path: .omni/traces.jsonl
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [file]
 ```
 
 If not reachable, warn the user and wait for them to start their collector before proceeding.
@@ -409,7 +447,7 @@ If ANY check fails → do NOT declare success. Diagnose the root cause (wrong PY
 wc -l .omni/traces.jsonl 2>/dev/null || echo "0"
 ```
 
-If the file exists and has content, parse the last few lines for a fresh trace matching your invocation timestamp. If `.omni/traces.jsonl` does not exist or is empty, the collector may not be running — warn the user but do not block.
+If the file exists and has content, parse the last few lines for a fresh trace matching your invocation timestamp. If `.omni/traces.jsonl` does not exist or is empty, the collector may not be running or may not be writing to that file (see Step 3.3b) — warn the user but do not block.
 
 ### Diagnosing Startup Failures
 
@@ -491,7 +529,7 @@ Use when the user says "deploy to production", "cloud traces", "what env vars fo
 aws xray update-trace-segment-destination --destination CloudWatchLogs --region <region>
 ```
 
-Allow ~10 minutes before traces appear after running this.
+The first time Transaction Search is enabled in an account and Region, allow up to ~10 minutes before spans become searchable. After that, each new trace from a deployed agent takes about 30–60 seconds to appear.
 
 **Action 2:** Read `agentcore/agentcore.json`. If the runtime does not already have `AWS_GENAI_CONTENT_EXTRACTION_OPT_OUT` in `envVars`, add it:
 
@@ -506,7 +544,7 @@ Allow ~10 minutes before traces appear after running this.
 ]
 ```
 
-Then run `agentcore build` from the project root. It validates `agentcore.json` (a schema error is reported as `Failed to deserialize file ...` with the failing path, e.g. `runtimes[0].envVars[0].name`) and builds the deployable artifacts locally without deploying. `agentcore deploy` applies the change.
+Then run `agentcore build` from the project root (for a v0 project — no `"version": 2` — `build` is blocked until the user runs `agentcore migrate`; do that first). It validates `agentcore.json` (a schema error is reported as `Failed to deserialize file ...` with the failing path, e.g. `runtimes[0].envVars[0].name`) and builds the deployable artifacts locally without deploying. `agentcore deploy` applies the change.
 
 `envVars` is a per-runtime list of `{ "name", "value" }` objects inside each `runtimes[]` entry — there is no project-level `envVars`. Harnesses use a separate `environmentVariables` map and are configured by the service, so skip this action for them.
 

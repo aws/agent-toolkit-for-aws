@@ -4,7 +4,7 @@ Runtimes and Harnesses are versioned by AgentCore: each change you deploy create
 
 ## How versioning works
 
-- **Runtime:** each `agentcore deploy` that changes a Runtime's code or configuration creates a new Runtime version.
+- **Runtime:** each `agentcore deploy` that changes a Runtime's code or configuration creates a new Runtime version. A deploy that only adds or moves an endpoint doesn't — the endpoint just points at an existing version.
 - **Harness:** each change to a Harness — a deploy of an edited `harness.yaml` / `system-prompt.md`, or `agentcore harness update` — creates a new Harness version.
 - The `DEFAULT` endpoint always follows the latest version. Callers that don't pass a qualifier use `DEFAULT`.
 - Named endpoints (e.g. `prod`, `staging`) point at a specific version and only move when you move them. Point production callers at a named endpoint so you can roll back with a pointer swap.
@@ -40,6 +40,8 @@ agentcore harness version get --id <HARNESS_ID> --version <VERSION>
 agentcore harness endpoint list --id <HARNESS_ID>
 ```
 
+`agentcore status` doesn't show which version an endpoint serves; `runtime endpoint list` / `harness endpoint list` do — use them to confirm what's live after a deploy or rollback.
+
 Add `--json` for machine-readable output and `--region <region>` if the target isn't in your default region.
 
 ## Pinning a version with a named endpoint
@@ -59,7 +61,7 @@ This writes `"endpoints": { "prod": { "version": 3 } }` on the Runtime in `agent
 agentcore harness endpoint create --id <HARNESS_ID> --name prod --target-version 3
 ```
 
-`--target-version` defaults to the latest version.
+`--target-version` defaults to the latest version. Because this endpoint lives outside the stack, you must delete it yourself before the Harness can be removed — see [Version retention](#version-retention).
 
 ## Invoking a specific version
 
@@ -95,10 +97,15 @@ If a deploy breaks something, either move the endpoint back or redeploy known-go
 
 Runtime — edit the version in `agentcore/agentcore.json` (`runtimes[].endpoints.prod.version`) and deploy:
 
+There's no CLI command to move a Runtime endpoint; edit the JSON by hand or with `jq`:
+
 ```bash
-# after setting "prod": { "version": <OLDER_VERSION> } in agentcore.json
+jq '(.runtimes[] | select(.name=="<RuntimeName>") | .endpoints.prod.version) = <OLDER_VERSION>' \
+  agentcore/agentcore.json > agentcore/agentcore.json.tmp && mv agentcore/agentcore.json.tmp agentcore/agentcore.json
 agentcore deploy
 ```
+
+The same edit with a newer version rolls forward.
 
 Harness:
 
@@ -128,7 +135,16 @@ Monitor `agents-optimize` eval scores, `agentcore logs runtime --name <RuntimeNa
 
 ## Version retention
 
-Versions aren't deleted when you deploy new ones, and the CLI has no command to delete individual versions. Deleting a Runtime or Harness (for example `agentcore remove runtime --name <Name>` followed by `agentcore deploy`) removes it along with its versions and endpoints.
+Versions aren't deleted when you deploy new ones, and the CLI has no command to delete individual versions. Deleting a Runtime (for example `agentcore remove runtime --name <Name>` followed by `agentcore deploy`) removes it along with its versions and endpoints.
+
+A Harness is different: endpoints made with `agentcore harness endpoint create` aren't part of the stack, and the service won't delete a Harness that still has them. Before removing a Harness or tearing down the project, delete them and wait until only `DEFAULT` remains:
+
+```bash
+agentcore harness endpoint delete --id <HARNESS_ID> --qualifier prod
+agentcore harness endpoint list --id <HARNESS_ID>      # repeat until only DEFAULT is listed
+```
+
+If you skip this, the deploy that removes the Harness fails with `DELETE_FAILED` (`Harness ... has endpoints that must be deleted before the harness can be deleted`); delete the endpoints and run `agentcore deploy` again. See `agents-deploy` → Removing resources and tearing down.
 
 ## Staging targets
 

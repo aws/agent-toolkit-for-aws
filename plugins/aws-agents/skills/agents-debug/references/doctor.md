@@ -55,7 +55,7 @@ agentcore update
 
 `agentcore update --check` reports whether an update is available without installing it.
 
-**If the project was created by CLI v0** (`agentcore/agentcore.json` has `"version": 1`): v1 runs it in compatibility mode and blocks `add`/`remove`/`build`. Run `agentcore migrate` to convert it — see the main `agents-debug` skill, Step 1.
+**If the project was created by CLI v0** (`agentcore/agentcore.json` has `"version": 1`): v1 runs it in compatibility mode and blocks `add`/`remove`/`build`. Run `agentcore migrate` to convert it — see the main `agents-debug` skill, Step 1. Commit first — `agentcore migrate` refuses a dirty git working tree, and v0 `create` always leaves uncommitted files.
 
 **If old Starter Toolkit is installed** (Python-based `agentcore` command):
 
@@ -140,13 +140,21 @@ aws sso login --profile your-profile
 ### Check 5: Bedrock model access
 
 ```bash
-aws bedrock list-foundation-models \
-  --region $(aws configure get region) \
+# Same region fallback the CLI uses (aws configure get region is empty when the region comes from AWS_REGION)
+REGION=${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region)}}; REGION=${REGION:-us-east-1}
+
+# The project's model is an inference profile (global./us./eu./apac.), which list-foundation-models doesn't show
+aws bedrock get-inference-profile --region "$REGION" \
+  --inference-profile-identifier global.anthropic.claude-sonnet-5-5 \
+  --query '{id:inferenceProfileId,status:status}'
+
+# Foundation models behind the profiles
+aws bedrock list-foundation-models --region "$REGION" \
   --query 'modelSummaries[?contains(modelId, `claude`) && modelLifecycle.status==`ACTIVE`].modelId' \
   --output table
 ```
 
-If no Claude models appear, or if you see access errors:
+Substitute the model ID the project actually uses (see below). If the profile isn't found, no Claude models appear, or you see access errors:
 
 1. Go to AWS Console → Amazon Bedrock → Model access
 2. Click "Manage model access"
@@ -158,8 +166,17 @@ If no Claude models appear, or if you see access errors:
 ### Check 6: IAM permissions
 
 ```bash
+# simulate-principal-policy needs an IAM ARN, not the STS assumed-role ARN that SSO and
+# assumed-role credentials return. get-role also supplies the path (SSO roles live under
+# /aws-reserved/sso.amazonaws.com/), so don't build the role ARN by hand.
+CALLER_ARN=$(aws sts get-caller-identity --query Arn --output text)
+case "$CALLER_ARN" in
+  *:assumed-role/*) PRINCIPAL_ARN=$(aws iam get-role --role-name "$(echo "$CALLER_ARN" | cut -d/ -f2)" --query Role.Arn --output text) ;;
+  *) PRINCIPAL_ARN="$CALLER_ARN" ;;
+esac
+
 aws iam simulate-principal-policy \
-  --policy-source-arn $(aws sts get-caller-identity --query Arn --output text) \
+  --policy-source-arn "$PRINCIPAL_ARN" \
   --action-names iam:CreateRole bedrock:InvokeModel \
   --resource-arns "*" \
   --query 'EvaluationResults[*].{Action:EvalActionName,Decision:EvalDecision}'
@@ -192,7 +209,7 @@ A runtime is a Container build when its folder has a `Dockerfile` (`"build": "Co
 
 ### Where the CLI logs
 
-The CLI writes a debug log of every command to `~/.agentcore/logs/output-<YYYY-MM-DD>.log`. Check it when a command fails with a terse message.
+The CLI writes a debug log of every command to `~/.agentcore/logs/output-<YYYY-MM-DD>.log`. Check it when a command fails with a terse message. The file is shared by every CLI session that day, so filter to the run you care about by its `cliSessionId` field, e.g. `jq -c 'select(.cliSessionId=="<ID>")' ~/.agentcore/logs/output-$(date +%Y-%m-%d).log` (take the ID from the last lines of the file).
 
 ---
 
