@@ -133,7 +133,7 @@ Gemini Flash → **Nova Micro** (<200ms, text-only, cheapest), **Haiku 4.5** (<4
 
 ### Balanced
 
-- Gemini 3.1 Pro → **Nova 2 Pro** (-14% cost, AWS-native) or **Claude Sonnet 5** (-13% cost, stronger agentic reliability)
+- Gemini 3.1 Pro → **Nova 2 Pro** (-14% cost, AWS-native) or **Claude Sonnet 5.5** (-13% cost at the $2/$10 Global rate; the agentic-reliability evidence is for Sonnet 5)
 - Gemini 2.5 Pro → **Nova 2 Pro** (+10% cost, AWS-native) or **Nova Pro** (-62% cost)
 - Gemini 3 Pro → **Llama 4 Maverick** (-63%), **Nova Pro** (+20%)
 
@@ -159,7 +159,7 @@ Gemini Flash → **Nova Micro** (<200ms, text-only, cheapest), **Haiku 4.5** (<4
 
 - Simple tasks (60% of traffic) → Nova Micro or Llama 4 Scout
 - Moderate tasks (30% of traffic) → Llama 4 Maverick or Nova Pro
-- Complex tasks (10% of traffic) → Claude Sonnet 5
+- Complex tasks (10% of traffic) → Claude Sonnet 5.5 (Sonnet 5 as the alternative)
 
 ---
 

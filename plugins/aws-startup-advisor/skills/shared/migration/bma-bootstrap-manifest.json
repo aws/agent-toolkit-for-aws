@@ -5,7 +5,7 @@
   },
   "closure": {
     "path": "references/runtime/closure.json",
-    "sha256": "517f687dfd0038c022d91cfb7e3ced7c65ed8e0a494c759bd447a9fba01b7008"
+    "sha256": "4ceac96a4fde860d1a363b4f26c5a2df9bb66914b4c2f4c01f4f181219b1662b"
   },
   "compatibility": {
     "classifier_schema": 1,
@@ -19,5 +19,5 @@
   },
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "1aa41ac901b51d73edb11e7ce53511ce3d3f88f3788b533eac4544cfef7505ac"
+  "self_hash": "13fa042f5f0e8372cc0faf61d97871ef90cbf10733f91ad69e59f05cc4e6f2fa"
 }

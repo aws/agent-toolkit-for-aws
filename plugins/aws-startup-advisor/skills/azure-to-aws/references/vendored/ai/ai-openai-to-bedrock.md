@@ -347,7 +347,7 @@ Bedrock-native path remains the most feature-complete.
 ### High-spend tiering
 
 Tier by task complexity: simple (60%) → Nova Micro / GPT-5.6 Luna, moderate (30%) → Nova Pro / GPT-5.6 Terra,
-complex (10%) → Claude Sonnet 5 / GPT-5.6 Sol. Mixing families across tiers is fine, but note that mantle and
+complex (10%) → Claude Sonnet 5.5 / GPT-5.6 Sol. Mixing families across tiers is fine, but note that mantle and
 `bedrock-runtime` are different surfaces — a tiered router spanning both needs two client paths.
 
 ---
