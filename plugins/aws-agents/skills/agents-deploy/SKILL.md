@@ -49,7 +49,7 @@ Deploy your AgentCore agent to AWS, or diagnose why a deploy failed.
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-If `agentcore/agentcore.json` has no `"version": 2`, it's a v0 project. v1 deploys it in compatibility mode (it runs the latest v0 CLI's deploy) but blocks `agentcore build` and most project changes. Point the developer at `agentcore migrate`: it checks the project and prints a plan without changing anything, and `agentcore migrate --yes` applies it while keeping deployed resources (`--target <name>` picks the target when there are several). Commit first — `agentcore migrate` refuses a dirty git working tree, and v0 `create` always leaves uncommitted files.
+If `agentcore/agentcore.json` has no `"version": 2`, it's a v0 project. v1 deploys it in compatibility mode (it runs the latest v0 CLI's deploy) but blocks `agentcore build` and most project changes. Migrating keeps deployed resources. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts.
 
 ### Step 1: Determine the situation
 
@@ -147,13 +147,25 @@ case "$CALLER_ARN" in
   *) PRINCIPAL_ARN="$CALLER_ARN" ;;
 esac
 
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+REGION=<REGION>
+
+# CDK deploys through the bootstrap roles (cdk-<qualifier>-deploy-role-..., cdk-...-file-publishing-role-...)
 aws iam simulate-principal-policy \
   --policy-source-arn "$PRINCIPAL_ARN" \
-  --action-names iam:CreateRole \
-  --resource-arns "arn:aws:iam::*:role/*BedrockAgentCore*"
+  --action-names sts:AssumeRole \
+  --resource-arns "arn:aws:iam::${ACCOUNT}:role/cdk-*" \
+  --query 'EvaluationResults[].[EvalActionName,EvalDecision]' --output table
+
+# The project stack is AgentCore-<project>-<target>
+aws iam simulate-principal-policy \
+  --policy-source-arn "$PRINCIPAL_ARN" \
+  --action-names 'cloudformation:*' \
+  --resource-arns "arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/AgentCore-*" \
+  --query 'EvaluationResults[].[EvalActionName,EvalDecision]' --output table
 ```
 
-The deploying identity also needs CloudFormation, S3, and (for container builds) ECR and CodeBuild access, plus permission to create the CDK bootstrap stack if the account/region isn't bootstrapped yet.
+You don't need to pre-check IAM role names: the execution roles are created by CloudFormation under the stack name (`AgentCore-<project>-<target>-...`), through the CDK deploy role. If the account/region isn't bootstrapped yet, the deploying identity also needs permission to create the `CDKToolkit` bootstrap stack (CloudFormation, IAM, S3, ECR, SSM).
 
 ### Run the deploy
 
@@ -205,7 +217,7 @@ tail -100 ~/.agentcore/logs/output-$(date +%Y-%m-%d).log
 User: arn:aws:iam::123456789012:user/dev is not authorized to perform: iam:CreateRole
 ```
 
-Fix: Attach the required IAM permissions (see Check 4 above). The deploying identity needs IAM write access scoped to `*BedrockAgentCore*` roles.
+Fix: Attach the required IAM permissions (see Check 4 above). The deploying identity needs to assume the CDK bootstrap roles (`arn:aws:iam::<ACCOUNT>:role/cdk-*`) and manage the `AgentCore-*` CloudFormation stack; CloudFormation creates the execution roles itself. If the error names `iam:CreateRole` directly, the account likely isn't bootstrapped yet and the identity is creating the `CDKToolkit` stack.
 
 **Account mismatch:**
 
@@ -368,6 +380,10 @@ agentcore deploy                                               # applies the rem
 
 To delete everything deployed to a target, work through these steps in order. Repeat for each target with `--target <name>` (and `--region` on the `harness` / `aws` commands if the target isn't in your default region).
 
+Before running any command below, show the developer the target name, account and region (from `agentcore/aws-targets.json`) and the resources and log groups that will be deleted, and wait for explicit confirmation. Never run this against a production-looking target without that confirmation.
+
+**0. Save the deployed IDs.** Run `agentcore status --json` and note the Runtime/Harness IDs and ARNs. You need them in step 1 and to match log groups in step 4, and they're gone from `status` once the stack is deleted.
+
 **1. Delete named Harness endpoints first.** Harness endpoints created with `agentcore harness endpoint create` (e.g. a `prod` pin from [versioning](references/versioning.md)) aren't in the stack, and the service refuses to delete a Harness that still has them — the stack ends up `DELETE_FAILED` with `Harness ... has endpoints that must be deleted before the harness can be deleted` (409 `ConflictException`). Runtime endpoints are declared in `agentcore.json` and go away with the stack.
 
 ```bash
@@ -386,6 +402,8 @@ agentcore deploy --yes
 
 The second command deletes the stack `AgentCore-<project>-<target>`. If it fails with `DELETE_FAILED`, fix the cause it names (usually step 1) and run `agentcore deploy --yes` again.
 
+`remove all` empties `agentcore.json` for **every** target, not just this one. If other targets should stay deployed, restore the file once this target's stack is gone (`git checkout agentcore/agentcore.json`), and don't run `deploy --yes` against the others while it's empty.
+
 **3. Confirm the stack is gone** — include `DELETE_FAILED`, or a stuck stack won't show up:
 
 ```bash
@@ -401,29 +419,37 @@ aws cloudformation list-stacks \
 - **Online-eval results** — `/aws/bedrock-agentcore/evaluations/results/<ONLINE_EVAL_CONFIG_ID>` (e.g. `<project>_<target>_<name>-<suffix>`).
 - **Code-evaluator Lambda logs** — `/aws/lambda/<project>-<target>-eval-<EvaluatorName>`.
 
-Note the Runtime/Harness IDs (`agentcore status --json`) before step 2 so you can match them. Then list and delete:
+List the log groups for this target (match them against the IDs you saved in step 0). In these names each `-` in the target name becomes `_` (target `prod-us` gives `<project>_prod_us_...`):
 
 ```bash
-aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/<project>_ \
+aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/<project>_<target>_ \
   --query 'logGroups[].logGroupName' --output text | tr '\t' '\n'
-aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/harness_<project>_ \
+aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/harness_<project>_<target>_ \
   --query 'logGroups[].logGroupName' --output text | tr '\t' '\n'
-aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/evaluations/results/<project>_ \
+aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/evaluations/results/<project>_<target>_ \
   --query 'logGroups[].logGroupName' --output text | tr '\t' '\n'
 aws logs describe-log-groups --log-group-name-prefix /aws/lambda/<project>-<target>-eval- \
   --query 'logGroups[].logGroupName' --output text | tr '\t' '\n'
+```
 
-aws logs delete-log-group --log-group-name <LOG_GROUP_NAME>   # for each one that belongs to this project
+A project converted by `agentcore migrate` keeps its v0 resource names, which have no `<target>` segment — match those log groups against the IDs from step 0 instead of by prefix.
+
+Show the list to the developer and delete only after they confirm:
+
+```bash
+aws logs delete-log-group --log-group-name <LOG_GROUP_NAME>   # for each one that belongs to this target
 ```
 
 - **Eval datasets and recommendations** (from `agents-optimize`) are service-side and not in the stack:
 
   ```bash
-  agentcore eval dataset list
+  agentcore eval dataset list --json
   agentcore eval dataset delete --id <DATASET_ID>
-  agentcore eval recommendation list
+  agentcore eval recommendation list --json
   agentcore eval recommendation delete --id <RECOMMENDATION_ID>
   ```
+
+  Run with no flags, the `eval`, `identity`, `runtime`, `harness`, `memory`, and `gateway` commands open the interactive TUI, which fails without a terminal (`interactive mode requires a TTY`) — pass `--json` (or the command's flags) from an agent shell.
 
 - **Batch evaluations** have no delete command (`eval batch-evaluation` has `evaluate`, `simulate`, `get`, `list`, `stop`); completed jobs stay listed.
 

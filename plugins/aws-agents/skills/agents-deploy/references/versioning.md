@@ -23,7 +23,7 @@ agentcore status --json | jq -r '.resources[] | select(.resourceType=="runtime" 
 agentcore status --json | jq -r '.resources[] | select(.resourceType=="harness" and .name=="<HarnessName>") | .arn | split("/")[1]'
 ```
 
-Add `--target <name>` to `status` for a non-default target. `agentcore runtime list` and `agentcore harness list` also show IDs for the region.
+Add `--target <name>` to `status` for a non-default target. `agentcore runtime list --json` and `agentcore harness list --json` also show IDs for the region. Run with no flags, the `eval`, `identity`, `runtime`, `harness`, `memory`, and `gateway` commands open the interactive TUI, which fails without a terminal (`interactive mode requires a TTY`) — pass `--json` (or the command's flags) from an agent shell.
 
 ## Inspecting versions
 
@@ -113,7 +113,7 @@ Harness:
 agentcore harness endpoint update --id <HARNESS_ID> --qualifier prod --target-version <OLDER_VERSION>
 ```
 
-**Option 2: redeploy the previous code or config.**
+**Option 2: redeploy the previous code or config.** `git checkout <commit> -- ...` overwrites those paths in the working tree, including uncommitted edits — commit or stash them first.
 
 ```bash
 git checkout <PREVIOUS_COMMIT> -- app/ agentcore/agentcore.json

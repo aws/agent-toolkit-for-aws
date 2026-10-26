@@ -111,13 +111,25 @@ ThrottlingException
 
 On `CreateEvent`, `RetrieveMemoryRecords`, `ListEvents`, and similar Memory APIs.
 
-**What it means:** AgentCore Memory has per-operation rate limits. `CreateEvent` (default 10 TPS) is most commonly hit because agent code typically writes more than it reads. Most Memory API limits are adjustable.
+**What it means:** AgentCore Memory has per-operation rate limits. `CreateEvent` is most commonly hit because agent code typically writes more than it reads. It has two kinds of limit:
+
+- **Account-wide** — "Rate of CreateEvent requests" (`L-59AF2B24`): 200 TPS by default, adjustable.
+- **Per actor per session** — 5 TPS for events with conversational payloads (`L-BC0EE484`) and 10 TPS without (`L-A37DB4C7`). Neither is adjustable.
+
+If a single chat session is being throttled, it's the per-session limit: batch or debounce that session's writes instead of requesting a quota increase. Check the current defaults with:
+
+```bash
+for q in L-59AF2B24 L-BC0EE484 L-A37DB4C7; do
+  aws service-quotas get-aws-default-service-quota --service-code bedrock-agentcore --quota-code "$q" \
+    --query 'Quota.[QuotaName,Value,Adjustable]' --output text
+done
+```
 
 **Before requesting an increase:**
 
 - Add client-side retry with exponential backoff
 - Confirm you're not accidentally writing the same content repeatedly (e.g., on every turn instead of once per fact)
-- For long-term memory extraction, watch the `TokenCount` CloudWatch metric in the `Bedrock-AgentCore` namespace — the default is 150,000 tokens per minute per account (adjustable)
+- For long-term memory extraction, watch the `TokenCount` CloudWatch metric in the `AWS/Bedrock-AgentCore` namespace — the default is 150,000 tokens per minute per account (adjustable)
 
 ---
 
