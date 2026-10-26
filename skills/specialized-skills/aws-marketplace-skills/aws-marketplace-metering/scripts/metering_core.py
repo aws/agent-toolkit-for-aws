@@ -71,6 +71,11 @@ METRIC_NAMESPACE = os.environ.get("METRIC_NAMESPACE", "AwsMarketplace/Metering")
 METERING_MODE = os.environ.get("METERING_MODE", "live").strip().lower()
 
 STATUS_REJECTED = "RejectedClientSide"
+# Terminal status for a request-level (SERVER-SIDE) BatchMeterUsage exception isolated to one
+# aggregated_usage record (InvalidUsageDimensionException, InvalidLicenseException, ...). This is
+# NOT a client-side writer-contract violation (those are STATUS_REJECTED on the RAW table), so the
+# aggregated_usage record is stamped "Error" — the exception name is kept in meteringStatusReason.
+STATUS_ERROR = "Error"
 
 # Max recursion depth for request-level-failure bisection. Bisecting isolates a poison record so
 # its co-batched records still meter, but UNBOUNDED bisection can issue up to ~2N BatchMeterUsage
@@ -156,20 +161,34 @@ def with_audit_timestamps(update_expr: str, values: dict, names: Optional[dict] 
     """Augment an UpdateItem expression with createdAt/updatedAt audit stamps.
 
     Sets ``createdAt = if_not_exists(createdAt, :now)`` (written ONCE, preserved on upsert)
-    and ``updatedAt = :now`` (refreshed on EVERY write). Works whether ``update_expr`` already
-    has a ``SET`` clause (the stamps are appended to it) or is REMOVE-only (a ``SET`` clause is
-    added). Returns the augmented (expr, values, names). Idempotent stamping of createdAt makes
-    repeated upserts keep the original creation time.
+    and ``updatedAt = :now`` (refreshed on EVERY write). The stamps are SET assignments, so they
+    are placed INSIDE the ``SET`` clause, BEFORE any ``ADD``/``REMOVE``/``DELETE`` clause:
+    - a pure-``SET`` (or SET-first) expression: the stamps are spliced in before the first
+      ``ADD``/``REMOVE``/``DELETE`` keyword, or appended if there is none;
+    - a ``REMOVE``/``ADD``/``DELETE``-only expression (no ``SET``): a ``SET`` clause carrying the
+      stamps is prepended before it.
+    Appending the stamps at the END would corrupt an expression ending in a non-SET clause
+    (DynamoDB parses ``... ADD s :r, createdAt = ...`` as part of the ADD clause and raises
+    ``ValidationException: Syntax error ... token: "="``). Returns the augmented
+    (expr, values, names). Idempotent stamping of createdAt keeps the original creation time.
     """
+    import re
+
     ts = now_iso()
     values = dict(values)
     values[":now"] = ts
     stamps = "createdAt = if_not_exists(createdAt, :now), updatedAt = :now"
-    if "SET " in update_expr:
-        update_expr = f"{update_expr}, {stamps}"
+    m = re.search(r"\s(ADD|REMOVE|DELETE)\s", update_expr, flags=re.IGNORECASE)
+    has_set = re.search(r"(^|\s)SET\s", update_expr, flags=re.IGNORECASE) is not None
+    if has_set:
+        if m:
+            cut = m.start()
+            update_expr = f"{update_expr[:cut].rstrip()}, {stamps}{update_expr[cut:]}"
+        else:
+            update_expr = f"{update_expr}, {stamps}"
     else:
-        # REMOVE-only (or other clause) with no SET — add one.
-        update_expr = f"{update_expr} SET {stamps}"
+        # No SET clause (e.g. REMOVE-only) — prepend a SET carrying the stamps.
+        update_expr = f"SET {stamps} {update_expr}"
     return update_expr, values, names
 
 
@@ -493,13 +512,15 @@ def _submit(records, keys, outcomes, use_product_code, depth=0) -> bool:
             # A single record isolated by bisection == a REQUEST-level BatchMeterUsage exception
             # for THIS record (InvalidUsageDimensionException, TimestampOutOfBoundsException,
             # InvalidTagException, InvalidProductCodeException, InvalidLicenseException, ...) — NOT
-            # a per-record Results status. Stamp the aggregated record RejectedClientSide with the
-            # exception name as reason, and emit the BatchMeterUsageException metric (by exception)
-            # here, where the real terminal status for this record is decided (after all bisecting).
+            # a per-record Results status, and NOT a client-side writer-contract violation. Stamp
+            # the aggregated record "Error" (STATUS_ERROR, a SERVER-SIDE submit failure — distinct
+            # from the raw table's RejectedClientSide) with the exception name as reason, and emit
+            # the BatchMeterUsageException metric (by exception) here, where the real terminal
+            # status for this record is decided (after all bisecting).
             exception = code or "RequestRejected"
             outcomes[gk] = {
                 "MeteringRecordId": None,
-                "Status": STATUS_REJECTED,
+                "Status": STATUS_ERROR,
                 "Reason": exception,
                 "RequestException": exception,
             }
@@ -560,7 +581,21 @@ def _capture_results(response, key_by_identity, outcomes):
 
 
 def _is_transient(code):
-    return code in ("ThrottlingException", "InternalServiceException", "ServiceUnavailable")
+    # ThrottlingException / InternalServiceException / ServiceUnavailable are genuinely
+    # transient (next run may succeed). DisabledApiException is treated the SAME way on
+    # purpose: it is a WHOLE-REGION availability failure (BatchMeterUsage not offered in
+    # the metering region), NOT a per-record problem — so it must NOT be bisected or
+    # stamped `Error` on records (that would mis-attribute a region misconfiguration to a
+    # well-formed row). Re-raising keeps `meteringPending` set so the rows are retried on
+    # the next scheduled run (and the Lambda `Errors` alarm fires), rather than silently
+    # losing/mis-stamping usage. The operator fix is to meter in a supported region; until
+    # then the rows age out at the 24h window like any other un-meterable usage.
+    return code in (
+        "ThrottlingException",
+        "InternalServiceException",
+        "ServiceUnavailable",
+        "DisabledApiException",
+    )
 
 
 def _identity(record):

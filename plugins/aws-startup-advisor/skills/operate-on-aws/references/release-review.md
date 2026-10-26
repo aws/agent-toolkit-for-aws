@@ -22,24 +22,40 @@ care, and finding out later is far worse than being told.
 You can decline that half: **automated verification testing is a separate toggle** from the review itself.
 Static review without code execution is a legitimate starting point.
 
-## Code egress — off by default, on only when asked
+## Two optional choices, asked in order
 
-**Do not connect a repository with verification testing enabled unless the user has asked for it.** It
-copies their source code out of their AWS account. Founders are more protective of source than of spend,
-and a founder who discovers this after the fact will not give it back.
+Release reviews are an **optional feature**, offered at the end of every normal first-time setup
+(SKILL.md Phase 4.5) — even when no repository or pull request was found. They are a feature choice, not a
+second cost or access approval. Defer the offer during an active incident, and skip it if reviews are
+already configured or the user already asked for them.
 
-AWS enables both capabilities by default on every connected repository. **Invert that.** Connect with
-verification testing off, and say so in one line — do not ask them to choose:
+1. **Release reviews (Yes/No).** Use the offer in SKILL.md Phase 4.5. It says the service reads the source
+   of the repositories they choose and starts an initial analysis on connection. Never say the code is
+   unread or that connecting transfers nothing. No, unclear, or no answer → connect nothing.
+2. **Automated verification testing (Yes/No)** — only after Yes to reviews, and **before** connecting any
+   repository. Use the testing question in Phase 4.5, which explains that the repository is copied into an
+   AWS-managed environment outside their AWS account. If they ask, add that the environment is dedicated
+   compute, its outbound network is limited to a fixed allowlist, and the agent is blocked from changing
+   their AWS infrastructure.
 
-> "Connecting with static review only — automated verification testing is off, so your code stays in your
-> AWS account. Review still covers dependency, permission and cross-repo risk. Say if you want testing on."
+## Code egress — off unless they say Yes
 
-**If they ask to turn it on,** tell them exactly what it does before enabling it:
+**Do not connect a repository with verification testing enabled unless the user said Yes to the testing
+question after hearing what it copies.** It copies their source code out of their AWS account. Founders
+are more protective of source than of spend, and a founder who discovers this after the fact will not give
+it back.
 
-> "Automated verification testing copies your repository into an AWS-managed build environment outside
-> your AWS account, installs your dependencies, and builds and runs your code there. That environment is
-> dedicated compute, its outbound network is limited to a fixed allowlist, and the agent is blocked from
-> changing anything in your AWS infrastructure. But your source does leave your account. Turning it on now."
+AWS enables both capabilities by default on every connected repository. **Invert that.** Set both flags
+explicitly from the user's answers:
+
+| Testing answer | Flags |
+|---|---|
+| Yes | `RELEASE_READINESS_REVIEW={enabled=true}`, `RELEASE_READINESS_REVIEW_AUTOMATED_TESTING={enabled=true}` |
+| No, unclear, or no answer | `RELEASE_READINESS_REVIEW={enabled=true}`, `RELEASE_READINESS_REVIEW_AUTOMATED_TESTING={enabled=false}` |
+
+If the user asked for testing up front, still say what it copies before enabling it; do not ask the same
+feature question twice. Turning testing on later needs the same explanation and its own Yes — a Yes to
+reviews alone is not enough.
 
 **If they ask how long the copy is kept, say you do not know.** AWS's security guide has a section headed
 *"Data storage and retention"* which states only *where* data is stored — the Region of the Agent Space —
@@ -49,17 +65,18 @@ it's kept, so I can't tell you"* is the honest answer, and it is better than imp
 
 Three rules for this default:
 
-- **Default to review only.** Unless they ask for testing, connect with verification testing off. It
-  can be switched on later in thirty seconds; unsaying that their code was copied is impossible. **Say
+- **Default to review only.** Unless they said Yes to testing, connect with verification testing off.
+  It can be switched on later in thirty seconds; unsaying that their code was copied is impossible. **Say
   that static review alone is strong** — this is not a degraded mode. A static-only review of a pull
   request carrying six deliberate production defects returned `BLOCK` in about four minutes and found all
   six, plus an unbounded-scan risk nobody had planted, citing exact line ranges. Their code never left
   their AWS account.
-- **Keep it separate from the cost notice.** Say it in its own line, so it is not lost inside the cost
-  picture.
+- **Keep it separate from the cost notice.** It is its own question, after setup, so it is not lost
+  inside the cost picture.
 - **Offer read-only repository access alongside it.** The GitHub App defaults to Read & Write, which lets
   the agent post comments, propose fixes, and trigger workflows. A founder who is cautious about code
-  egress is usually cautious about write access too — offer both narrower settings together.
+  egress is usually cautious about write access too — prefer read-only access and **only selected
+  repositories**, not organisation-wide access, where supported.
 
 ## Setup, in the order it actually happens
 
@@ -178,6 +195,6 @@ If it is installed, use it. Do not build a parallel path.
 
 The testing choice stays with this skill, though. That plugin's release-readiness flow stops to ask
 whether to run static analysis only or full analysis with automated testing. Do not relay that
-question. Pass `skip_automated_testing=true` (or `metadata.skipAutomatedTesting=true` where the parameter
-is not accepted), and give the one-line static-review notice above. Pass `false` only when the user has
-explicitly asked for automated testing.
+question; use this skill's testing question instead. Pass `skip_automated_testing=true` (or
+`metadata.skipAutomatedTesting=true` where the parameter is not accepted) unless the user said Yes to
+testing after hearing what it copies — then pass `false`, so their Yes is honoured.

@@ -8,10 +8,10 @@
 
 Produced by `discover-app-code.md` when app-code AI confidence ≥ 70%, OR — as a
 minimal infrastructure-inferred profile — by `discover-iac.md` (Terraform) and/or
-`discover-live.md` (live `az` capture) when the inventory is Cognitive-Services /
-Azure-ML strong. All three producers have landed, and any combination may contribute
+`discover-live.md` (live `az` capture), and/or `discover-rdfa.md` (report provenance)
+when the inventory is Cognitive-Services / Azure-ML strong. All four producers may
 to the same run — an infrastructure-only repo (AI in Terraform and/or live tenant
-state, no application code) depends on the IaC/live path; an app-code-only repo
+state, no application code) depends on the IaC/live/RDfA path; an app-code-only repo
 depends on the app-code path; a run with both merges them (see § profile_source and
 sources_analyzed).
 
@@ -25,7 +25,8 @@ sources_analyzed).
     "profile_source": "application_code", // application_code | iac_cognitive | merged — see § profile_source for how "merged" covers a live contribution
     "sources_analyzed": {
       "terraform": true,
-      "live": false, // true iff live `az` capture contributed AT LEAST ONE qualifying AI resource — see § infrastructure[]
+      "live": false, // true iff live `az` capture contributed a qualifying AI resource
+      "rdfa": false, // true iff an RDfA report contributed a qualifying AI resource
       "application_code": false,
       "billing_data": false,
       "openai_usage_api": false,
@@ -149,27 +150,21 @@ presence is the discriminator, matching `discover.md`'s producer-agreement rule:
   unresolved name expression). It is the join key against a live-sourced entry (see
   Reconciliation below) — its presence does NOT make this entry a live-sourced entry,
   since `address` is still present and still the discriminator.
-- **Live-sourced entry:** `{ azure_id, type, role?, config{} }` — NO `address`/`file` (there
-  is no Terraform reference for a live-captured resource). `azure_id` is the full ARM
-  resource id from the live capture (see `discover-live.md` § AI detection); `type` is the
-  canonical `Microsoft.*` ARM type string, e.g. `Microsoft.CognitiveServices/accounts`,
-  `Microsoft.CognitiveServices/accounts/deployments`,
-  `Microsoft.MachineLearningServices/workspaces`.
+- **Live-sourced entry:** `{ azure_id, type, source: "live", role?, config{} }` — NO
+  `address`/`file`; provenance is `live_az`.
+- **RDfA-sourced entry:** `{ azure_id, type, source: "rdfa", role?, config{} }` — NO
+  `address`/`file`. `azure_id` is from the report and detection provenance is
+  `rdfa_report`, never `live_az`. Machine Learning workspaces are valid entries even when
+  no model name is available.
 
-`[]` if neither IaC nor a live capture contributed a qualifying resource. A run with BOTH
-kinds of resource (mixed IaC + live) carries both entry shapes side by side in one array.
+`[]` if no infrastructure producer contributed a qualifying resource. Mixed IaC/live/RDfA
+profiles may carry all shapes side by side.
 
-**Reconciliation.** When an IaC-sourced entry's `azure_id` (if present) exactly matches a
-live-sourced entry's `azure_id`, they describe the SAME deployed resource observed by two
-producers — not two distinct resources. The assembler (see `discover-assemble.md` rule 8)
-merges the pair into ONE `infrastructure[]` entry: keep the IaC-sourced shape (`address`/
-`file` retained for provenance), overlay live's `config` values where they disagree (live
-reflects current state), and keep whichever entry's `role` is present. An IaC-sourced
-entry with no `azure_id`, or whose `azure_id` matches no live entry, stays IaC-only and
-unmerged — that is a genuinely distinct resource (or one IaC could not resolve to a real
-id), not a reconciliation failure. This mirrors `discover-live.md` Step 6's IaC/live merge
-for the main resource inventory. See `discover.md`'s producer-agreement rule for how
-`sources_analyzed`/`inferred_from_iac` behave across merged and unmerged entries.
+**Reconciliation.** Entries with an exact matching `azure_id` describe one deployed
+resource. Merge them into ONE entry, retaining IaC address/file and a `sources[]` set for
+all contributors; state config precedence is live, then RDfA, then IaC. Unresolved IaC
+entries without a real id remain separate. Profile-level `terraform`, `live`, and `rdfa`
+flags remain true for every source represented by the merged entry.
 
 ## current_costs
 
@@ -197,7 +192,7 @@ figures by construction.
 ## detection_signals[]
 
 `{ method, pattern, confidence, evidence }`,
-`method ∈ terraform | code | live_az | openai_usage_api | openrouter_usage_api | anthropic_usage_api`.
+`method ∈ terraform | code | live_az | rdfa_report | openai_usage_api | openrouter_usage_api | anthropic_usage_api`.
 
 ## workloads[]
 

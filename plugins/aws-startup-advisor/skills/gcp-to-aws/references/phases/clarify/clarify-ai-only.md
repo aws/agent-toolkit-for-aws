@@ -146,7 +146,7 @@ Interpret → `design_constraints.compliance` array (same format as the full flo
 
 | Answer   | Model Impact                                        |
 | -------- | --------------------------------------------------- |
-| Quality  | Claude Sonnet 5 primary; Opus 4.8 for hardest tasks |
+| Quality  | Claude Sonnet 5 primary; Opus 5.5 for hardest tasks |
 | Speed    | Claude Haiku 4.5; also Nova Micro/Lite              |
 | Cost     | Claude Haiku 4.5 or Nova Micro                      |
 | Special  | Deferred to Q10                                     |
@@ -201,7 +201,13 @@ _Skip when:_ `models[].model_id` is populated in `ai-workload-profile.json` **wi
 | o-series      | GPT-5.6 Sol/Terra; or Sonnet 5 | Not on Bedrock — offer both        |
 | Claude (any)  | Same model on Bedrock          | Client swap only — no model change |
 
-**Same-model rows first.** GPT-5.6 / 5.5 / 5.4 run on Bedrock, so those sources map to themselves. Cost is ~10% ABOVE OpenAI standard (Bedrock in-region is priced at OpenAI's data-residency tier), so the case is AWS commitments, governance, and residency — not savings, and not parity. They are `bedrock-mantle` / Responses-only and in-region only; see `references/shared/openai-on-bedrock.md`. For sources with no Bedrock equivalent, present both a same-vendor upgrade and a cross-family option rather than pre-picking.
+**Same-model rows first.** GPT-6 Astra / GPT-5.6 / 5.5 / 5.4 sources map to themselves.
+Apply the model-specific API and region gate in `references/shared/openai-on-bedrock.md`.
+Astra Standard mantle supports `us-east-1` and `us-west-2`; runtime uses US Geo / Global CRIS. GPT-5.6 also has runtime CRIS;
+GPT-5.5 / 5.4 remain mantle-only. GPT-5.x in-region costs about 10% above OpenAI standard,
+while GPT-5.6 Global CRIS uses the standard rate. For Astra, compare its separately dated
+inference/context tier against the source price before claiming savings or parity.
+For sources without a Bedrock equivalent, present a same-vendor upgrade and a cross-family option.
 
 Override examples: GPT-4 + Q2=cost → Haiku; Flash + Q10=extended thinking → Sonnet; GPT-4o + Q10=speech → Nova 2 Sonic; GPT-5.5 + Q2=cost → Sonnet 5.
 
@@ -299,7 +305,7 @@ Present with concrete examples: Simple = classify/extract/summarize; Moderate = 
 | -------- | --------------------------------------------------------------------- |
 | Simple   | Haiku/Nova Micro sufficient; significant cost savings                 |
 | Moderate | Sonnet 5 recommended; Haiku may suffice with prompt engineering       |
-| Complex  | Sonnet 5 required; extended thinking considered; Opus 4.8 for hardest |
+| Complex  | Sonnet 5 required; extended thinking considered (note: on Sonnet 5.5, turning off up-front thinking requires `thinking: {"type": "between_tools"}` instead of "disabled" at high effort or below); Opus 5.5 for hardest |
 
 Interpret → `ai_complexity`. Default: 2 → `"moderate"`.
 

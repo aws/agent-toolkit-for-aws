@@ -73,6 +73,14 @@ On each run, compute `days_to_eol = EOL date − today` for every model in the L
 
 ---
 
+## GPT-6 Astra — Active (verified September 9, 2026)
+
+The [Astra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+lists launch **September 8, 2026**, lifecycle **Active**, and no scheduled EOL date. Its EOL is
+**no sooner than September 8, 2027**, with a Legacy period of at least six months. The earliest
+possible EOL is not an announced retirement date. Existing GPT-5.x entries are not superseded.
+See `openai-on-bedrock.md` for access paths, regions, and pricing.
+
 ## Legacy / EOL Models (as of October 5, 2026)
 
 For models launched before 2026-09-07, the [legacy lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative. For models launched on or after that date, the model card and the runtime `modelLifecycle.status` field are authoritative — they will not appear in the table below. The table captures pre-policy-change models referenced elsewhere in this plugin. **Recompute the Status column on each run** using `days_to_eol = EOL date − today`.
@@ -83,7 +91,7 @@ For models launched before 2026-09-07, the [legacy lifecycle table](https://docs
 | Jamba 1.5 Large    | `ai21.jamba-1-5-large-v1:0`               | 2026-11-26 | 52          | **excluded** | —                       |
 | Jamba 1.5 Mini     | `ai21.jamba-1-5-mini-v1:0`                | 2026-11-26 | 52          | **excluded** | —                       |
 | Marengo Embed v2.7 | `twelvelabs.marengo-embed-2-7-v1:0`       | 2026-11-30 | 56          | **excluded** | Marengo Embed 3.0       |
-| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0` | 2027-01-08 | 95          | legacy       | Claude Opus 4.8 / 4.6   |
+| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0` | 2027-01-08 | 95          | legacy       | Claude Opus 5.5; Opus 4.6 for Batch   |
 
 **Notes (as of Oct 5, 2026):** Claude Sonnet 4, Jamba 1.5 Large / Mini, and Marengo Embed v2.7 are inside the 90-day exclusion zone (`excluded`, not `legacy`) — they must not appear in recommendation or comparison tables. Jamba 1.5 Large / Mini are also in public extended access, so provider pricing may increase. Claude Opus 4.1 is the only row still outside the exclusion zone (95 days; it enters the zone on 2026-10-10). Nova Canvas v1 and Nova Reel v1 passed their 2026-09-30 EOL date and moved to Removed.
 
@@ -157,7 +165,7 @@ The multi-provider quick reference table includes a `Status` column:
 
 When refreshing the cache, recompute `days_to_eol` and refresh the `active` / `legacy` / `excluded` values from the [model lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html). **Preserve an existing `restricted (…)` value** — that page publishes only active / legacy / EOL and does not track access gating, so it can never produce `restricted`; change or remove a `restricted` value only when the model card's access requirement itself changed (data-retention mode, gated preview status).
 
-### Mapping Guides (`ai-openai-to-bedrock.md`, `ai-anthropic-to-bedrock.md`, `ai-gemini-to-bedrock.md`, and any source-cloud-specific guide the consuming skill ships)
+### Mapping Guides (`ai-openai-to-bedrock.md`, `ai-anthropic-to-bedrock.md`, `ai-gemini-to-bedrock.md`, the gateway guide `ai-openrouter-to-bedrock.md`, and any source-cloud-specific guide the consuming skill ships)
 
 - "Best Bedrock Match" columns must only contain Active models.
 - Exclusion-zone models must not appear in any recommendation row.

@@ -1,0 +1,69 @@
+{
+  "phase": "discover",
+  "metadata": {
+    "discovery_timestamp": "2026-10-20T00:00:00Z",
+    "discovery_sources": ["rdfa"],
+    "subscriptions_discovered": ["contoso-prod"],
+    "total_resources": 1,
+    "clustering_mode": "full",
+    "confidence": "inferred",
+    "clarify_fast_path": {
+      "eligible": false,
+      "reasons_ineligible": ["has_vm"]
+    }
+  },
+  "resources": [
+    {
+      "azure_id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+      "azure_type": "Microsoft.Compute/virtualMachines",
+      "azure_type_provenance": "table",
+      "name": "vm-web-01",
+      "resource_group": "rg-app",
+      "subscription_id": "00000000-0000-0000-0000-000000000001",
+      "location": "eastus",
+      "source": "rdfa",
+      "config": {
+        "size": "Standard_D4s_v5",
+        "os_disk": {
+          "storage_account_type": "Premium_LRS",
+          "disk_size_gb": 128
+        },
+        "measured_utilization": {
+          "cpu_percent": {
+            "p95": 42.3,
+            "sample_count": 720,
+            "window_days": null,
+            "window_provenance": "unavailable_rdfa_query_bounds",
+            "metric_error": false,
+            "source_metric": "Percentage CPU"
+          }
+        }
+      },
+      "tags": {},
+      "edges": [],
+      "drift": [],
+      "unmanaged_by_iac": true
+    }
+  ],
+  "rdfa_metadata": {
+    "found": true,
+    "report_path": "/reports/AllSubscriptions_ResourcesReport_2026-10-20.zip",
+    "source_type": "zip",
+    "source_fingerprint": "6fddde8ad04bfc5eea4b53cc59a7772bbfef636d10994d83f0b09e09a10f69b7",
+    "obfuscated": false,
+    "lookback_days": 31,
+    "subscriptions": ["contoso-prod"],
+    "collectors_found": ["VirtualMachines"],
+    "unmapped_collectors": [],
+    "other_reports_found": [],
+    "consumption_csv": {
+      "found": false,
+      "parsed": false
+    },
+    "metrics_found": true
+  },
+  "warnings": [],
+  "unclustered": [
+    "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01"
+  ]
+}

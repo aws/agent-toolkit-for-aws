@@ -135,8 +135,8 @@ CloudFront in front.
 One distribution solves four separate problems: a custom domain, HTTP/2 at the edge, compression,
 and L7 protection. If you need any one of them, this is the shape.
 
-1. **Origin.** Use the endpoint's `domainName` as a custom origin, HTTPS only. It is a public
-   hostname, so there is no origin access identity to configure.
+1. **Origin.** Use the endpoint's `domainName` as a custom origin, HTTPS only. To make CloudFront
+   the only caller, use origin access control (OAC) as below.
 2. **Certificate.** Request or import an ACM certificate **in `us-east-1`**, which is where
    CloudFront reads certificates from regardless of where the function runs, and attach it to the
    distribution as an alternate domain name.
@@ -149,8 +149,53 @@ and L7 protection. If you need any one of them, this is the shape.
 6. **L7 protection.** Attach AWS WAF for rate limiting, bot control and IP reputation. The managed
    domain has none of its own, and `throttleConfig.rateLimit` is endpoint-wide rather than
    per-client.
+7. **Logging.** Enable CloudFront standard logging and AWS WAF logging to an encrypted
+   destination, so edge traffic is available for audit and incident response. The function's own
+   logs record only requests that reach it.
 
-The endpoint stays publicly reachable on its generated name after you put CloudFront in front, so
-the distribution is not by itself an access control.
-If only CloudFront should reach the app, enforce that in the app, for example by requiring a shared
-secret header that the distribution adds and the app verifies.
+### Restricting the endpoint to CloudFront with OAC
+
+The endpoint stays reachable on its generated name after you put CloudFront in front, so the
+distribution is not by itself an access control. To let only your distribution invoke it:
+
+1. **Set the endpoint to `IamAuth`.** Lambda does not authenticate `ApplicationManaged` requests
+   or evaluate a resource policy for them, so an `ApplicationManaged` endpoint stays public even
+   behind CloudFront with OAC.
+2. **Create an origin access control** with origin type `lambda` and signing behavior
+   `always-amz-auth` (CloudFront rejects other signing behaviors for Web Function origins), and
+   attach it to the origin. CloudFront then signs every origin request, so viewers never sign.
+3. **Grant CloudFront invoke in the function's resource-based policy**, scoped to the endpoint and
+   to your distribution with `aws:SourceArn` and `aws:SourceAccount`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "AllowCloudFrontOAC",
+    "Effect": "Allow",
+    "Principal": {"Service": "cloudfront.amazonaws.com"},
+    "Action": "lambda:InvokeWebFunctionEndpoint",
+    "Resource": "arn:aws:lambda:{region}:{account}:web-function/{name}/endpoint/{endpoint}",
+    "Condition": {"StringEquals": {
+      "aws:SourceAccount": "{account}",
+      "aws:SourceArn": "arn:aws:cloudfront::{account}:distribution/{distribution-id}"
+    }}
+  }]
+}
+```
+
+```bash
+aws lambda-web put-resource-policy \
+  --resource-arn arn:aws:lambda:{region}:{account}:web-function/{name} \
+  --policy file://policy.json --region {home-region}
+```
+
+The policy attaches to the **function** ARN; each statement scopes `Resource` to an endpoint ARN.
+A function has one policy and `put-resource-policy` replaces it, so to add a statement read the
+current one with `get-resource-policy`, append to `Statement`, and pass its `revisionId` with
+`--revision-id`.
+
+App-level auth still works behind OAC. Lambda strips only an `Authorization` value that is itself an
+AWS signature (`AWS4-...`), so forward the viewer's `Authorization` header in the origin request
+policy and a JWT or bearer token reaches the app. For the stack form, see
+[infrastructure-as-code.md](references/infrastructure-as-code.md).

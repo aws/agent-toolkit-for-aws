@@ -37,7 +37,7 @@ Read from prompt context (forwarded from llm2bedrock-code-analyzer, llm2bedrock-
   - `files_to_modify` — list of `"<file>: <change>"`. §10 iterates over this exact list.
   - `dependencies_to_replace` — list of `"<old-pkg> -> <new-pkg>"`. §12 applies these to the manifest.
   - `behavior_deltas` — list of parameter-surface differences. The user ALREADY confirmed each one at the orchestration checkpoint; §9 applies the confirmed decisions.
-  - `same_model_family` — `true` when the model itself is unchanged: Anthropic 1P → Bedrock Claude, or OpenAI → the same GPT model on Bedrock (`openai.gpt-5*` / `openai.gpt-6*`). Skip prompt adaptation in §10, and leave model parameters (`temperature`, penalties, stop sequences) untouched — they did not change.
+  - `same_model_family` — exact unchanged model identity/version, checked centrally by `validate_result.py --schema analysis` before dispatch or cache reuse. Consume that validated value without deriving it again. Skip model adaptation only when true; always apply the confirmed target API/path changes. Opus 4.8 → 5.5 keeps adaptation and parameter checks.
   - `special_patterns` — `{streaming, function_calling, embeddings, vision}` booleans. Drives §8 examples to apply.
 - **From `llm2bedrock-prompt-evaluator`** (T2-4) — adapted prompts (if any) at `<repo>/.saws-migrate/eval-results/adapted_prompts.jsonl`. §10 step 2 injects these where applicable.
 - **`Confirmed behavior-delta decisions file (Read it):`** — a context line naming `<Phase results directory>/delta-decisions.json`. `Read` that file: a JSON array where each entry carries a behavior delta and the user's chosen resolution/option (`[]` = none). §9 applies these EXACTLY as decided.
@@ -48,7 +48,7 @@ Your context block lists absolute paths to helper references (lines labelled
 `<helper> reference:`). Read the one you need — do NOT try to load a skill by name.
 
 1. **`bedrock-known-fixes` reference** — at session start. Pre-verified templates for Bedrock patterns (model ID format, response parsing). Use these instead of writing from scratch. Read the path from your `bedrock-known-fixes reference:` context line.
-2. **`behavior-delta-detection` reference** — at §9 if `behavior_deltas` is non-empty. Read the sub-reference matching `source_provider` to confirm how each confirmed resolution maps to code. You no longer ASK — you APPLY. Read the path from your `behavior-delta-detection reference:` context line.
+2. **`behavior-delta-detection` reference** — at §9 if `behavior_deltas` is non-empty or the source is Anthropic (including resumed runs). Read the sub-reference matching `source_provider` to confirm how each confirmed resolution maps to code. You no longer ASK — you APPLY. Read the path from your `behavior-delta-detection reference:` context line.
 3. **`dependency-conflict-resolution` reference** — at §14 BEFORE committing. Inspects the staged manifest diff and blocks the commit if any _removed_ dependency was not introduced by this rewrite session. Read the path from your `dependency-conflict-resolution reference:` context line.
 
 # 5. Test portability charter (read before §17)
@@ -146,7 +146,35 @@ Conservative scope — only universally-junk patterns; `.venv/` / `node_modules/
 
 ## Strategy selection (check FIRST)
 
-If your context has a `Rewrite strategy: mantle` line, use the **Mantle express lane** below. Otherwise (the line is absent — the common case, including every run where any target lacks a Mantle equivalent) use the Converse rewrite that follows. Never mix: a run is entirely Mantle or entirely Converse.
+If your context has `Rewrite strategy: runtime_openai`, use the runtime OpenAI lane below.
+For `Rewrite strategy: mantle`, use the Mantle express lane. Otherwise use the Converse
+rewrite. The selected `Target API surface` must match what the evaluator verified.
+
+### Runtime OpenAI lane
+
+Keep the OpenAI SDK and the selected Chat/Responses surface. Use the runtime `/openai/v1`
+endpoint with the exact validated profile ID or ARN, not a bare model ID or a Mantle URL.
+For Python, use:
+
+```python
+from openai import OpenAI
+from aws_bedrock_token_generator import provide_token
+
+region = "<REGION>"
+client = OpenAI(
+    base_url=f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1",
+    api_key=lambda: provide_token(region=region),
+)
+```
+
+Call `chat.completions.create(model="<TARGET_MODEL_ID>", messages=...)` for
+`Target API surface: chat_completions`, or `responses.create(model="<TARGET_MODEL_ID>", input=...)`
+for `responses`, keeping that API's response parsing, images and tool/state mapping.
+Use the equivalent OpenAI client for the application's other languages. Runtime permissions
+remain `bedrock:InvokeModel*` for the selected profile and backing model, not Mantle actions.
+In §12 keep `openai>=2.45.0,<3` and `aws-bedrock-token-generator>=1,<2`; do not apply an
+analyzer's generic OpenAI-to-boto3 dependency replacement to this lane. Apply confirmed deltas
+in §9, then skip the Converse-specific §8 rewrite guidance.
 
 ### Mantle express lane
 
@@ -164,7 +192,7 @@ The source SDK stays. Per client, change only three things:
 - **Credential** → a Bedrock bearer token, NOT the original provider key. For a short CLI or one-shot script, read it from the `AWS_BEARER_TOKEN_BEDROCK` env var; for any long-running process use the auto-refreshing `provide_token` client shown below (the env-var form expires within 12 hours). Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
 - **Model ID** → the Bedrock model id from the `Mantle model map` context line (the `aws_model_id` from the migration plan).
 
-**When your context has `Same model: true`**, the target is the same model the app already used. Do NOT change model parameters (`temperature`, penalties, stop sequences) — they are unchanged, and §9 will not ask about them. Limit edits to base_url, credential, and model id, plus the Chat Completions → Responses reshape below if the source used Chat Completions.
+**When your context has `Same model: true`**, avoid cross-family prompt rewrites. Preserve the selected API from `Mantle surface`; apply only confirmed behavior-delta decisions. Astra parameter acceptance is unprobed: do not claim sampling, penalties, `n`, or state behavior is unchanged. Keep unresolved compatibility checks explicit and test the rewritten application on its actual API before claiming it works.
 
 OpenAI SDK example — proprietary GPT target (note the `openai/v1` path):
 
@@ -197,7 +225,7 @@ client = BedrockOpenAI(
 )
 ```
 
-**Chat Completions → Responses (proprietary GPT targets only).** Chat Completions is unverified for these models; every AWS sample uses Responses. If the source calls `chat.completions.create`, reshape it — this is the one part of the Mantle lane that is not config-only:
+**Chat Completions → Responses (selected Responses path only).** If `Mantle surface: chat_completions`, preserve `chat.completions.create` and its response parsing; Astra supports this API. Do not apply this reshape. If the saved plan instead selects Responses and the source uses Chat, apply the confirmed API change below. Older GPT-5.x targets retain their dated model/API checks:
 
 ```python
 # Before
@@ -227,7 +255,7 @@ client = anthropic.Anthropic(
 )
 ```
 
-Do NOT rewrite request/response parsing — the whole point of Mantle is that the source SDK's call and response shapes are preserved. The single exception is the Chat Completions → Responses reshape above, which applies only to proprietary GPT targets. After applying the changes above, skip the Converse-specific guidance in the rest of §8; the §9 behavior-delta application still applies normally.
+Preserve compatible SDK request/response shapes. A model version change still requires §9 target checks, including typed response parsing for Opus 5.5. Apply the Chat Completions → Responses reshape only when that API change was selected. Preserve the exact validated runtime profile ID or ARN. After applying the changes above, skip the Converse-specific guidance in the rest of §8; the §9 behavior-delta application still applies normally.
 
 **Converse for a proprietary GPT target is family-dependent.** GPT-5.5 / GPT-5.4 (`openai.gpt-5.5`, `openai.gpt-5.4`) have no `bedrock-runtime` surface — a boto3 `converse()` call against them fails at runtime; if your context pairs one with the Converse path, stop and report the contradiction. GPT-5.6 and GPT-6 (Astra, Sol, Luna, 6.1 Sol) DO have a `bedrock-runtime` path via CRIS ids (`us.`/`in.`/`global.` prefixed): when the plan says `migration_path: runtime_openai_cris`, a Converse or Responses rewrite against the CRIS id is valid (base URL `bedrock-runtime.{region}.amazonaws.com/openai/v1` for the OpenAI-compatible APIs; note Guardrails are Converse-only and prompt caching Responses-only on runtime). For a Responses-based source app, the mantle express lane above remains the default and smallest change.
 
@@ -290,7 +318,11 @@ response = bedrock.converse(
     messages=[{"role": "user", "content": [{"text": "Hello"}]}],
     inferenceConfig={"maxTokens": 4096}
 )
-output = response["output"]["message"]["content"][0]["text"]
+assistant_message = response["output"]["message"]
+output = "".join(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
+stop_reason = response.get("stopReason", "unknown")
+if not output or stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
+    raise ValueError(f"No complete text response (stopReason={stop_reason})")
 ```
 
 **OpenAI Streaming → Bedrock Streaming:**
@@ -307,10 +339,29 @@ response = bedrock.converse_stream(
     messages=messages_bedrock_format,
     inferenceConfig={"maxTokens": 4096}
 )
+text_parts = []
+stream_events = []  # Retain typed events, including reasoning signatures, for tool-loop history.
+stop_reason = None
 for event in response["stream"]:
+    stream_events.append(event)
     if "contentBlockDelta" in event:
-        content = event["contentBlockDelta"]["delta"]["text"]
+        delta = event["contentBlockDelta"]["delta"]
+        if "text" in delta:
+            content = delta["text"]
+            text_parts.append(content)
+            # Forward this text delta through the source application's streaming interface.
+    elif "messageStop" in event:
+        stop_reason = event["messageStop"]["stopReason"]
+output = "".join(text_parts)
+if not output or stop_reason not in ("end_turn", "stop_sequence"):
+    raise ValueError(f"No complete text stream (stopReason={stop_reason})")
 ```
+
+For continuing tool loops, append the original `assistant_message`, not the extracted text.
+For streams, use the SDK's typed-event accumulator to reconstruct that complete message
+from `stream_events`; preserve reasoning/signature blocks unchanged. Do not pass raw
+stream events directly as assistant messages. A `tool_use` stop must dispatch tools and
+return their results; it is not a final text answer.
 
 **OpenAI Function Calling → Bedrock Tool Use:**
 
@@ -331,13 +382,13 @@ response = bedrock.converse(
 
 # 9. Apply the pre-confirmed user-visible behavior changes
 
-If `behavior_deltas` is empty or absent (typical for `same_model_family: true` runs and many small migrations), set `behavior_delta_decisions: []` in §27's payload and skip §9 entirely — there are no parameter-surface changes to apply.
+For an Anthropic source, load `references/anthropic-to-bedrock.md` and check the resolved target even when `behavior_deltas` is empty or absent. A stale analysis is not proof of compatibility. Apply backend-only `impl_path` defaults and record them; unconfirmed user-visible changes use the safe-default/TODO rule below. Keep such sites incomplete in the returned notes and tests. For other sources with no deltas, set `behavior_delta_decisions: []` and skip this section.
 
 **The user has ALREADY confirmed each behavior-delta decision at the orchestration checkpoint.** They are provided in the `Confirmed behavior-delta decisions` block of your context (a JSON array; each entry carries the delta and the chosen resolution/option). Apply them EXACTLY as decided — do NOT ask again, do NOT re-open the decision, do NOT silently re-decide or substitute a different resolution. If a confirmed decision is missing for a user-visible delta you encounter, record it in your `notes` and apply the safe default (skip the change, leave original code, add a TODO comment) rather than guessing.
 
 If the orchestrator passed a non-empty `behavior_deltas` list (from llm2bedrock-code-analyzer) together with the confirmed decisions:
 
-1. Read the `behavior-delta-detection` reference at the absolute path in your context block's `behavior-delta-detection reference:` line; call its directory `<BDD_DIR>` (strip the filename). Then Read the sub-reference matching this run's `source_provider` — `<BDD_DIR>/references/openai-to-bedrock.md` or `<BDD_DIR>/references/gemini-to-bedrock.md` (resolve relative to `<BDD_DIR>`, not your cwd). You read it to confirm the code template for each resolution — NOT to re-derive options.
+1. Read the `behavior-delta-detection` reference at the absolute path in your context block's `behavior-delta-detection reference:` line; call its directory `<BDD_DIR>` (strip the filename). Then Read the sub-reference matching this run's `source_provider` — `<BDD_DIR>/references/openai-to-bedrock.md` or `<BDD_DIR>/references/gemini-to-bedrock.md` or `<BDD_DIR>/references/anthropic-to-bedrock.md` (resolve relative to `<BDD_DIR>`, not your cwd). You read it to confirm the code template for each resolution — NOT to re-derive options.
 
 2. For each confirmed decision, find its delta (matched on `delta_type` + `location`) and apply the chosen resolution EXACTLY per the code template in the skill reference. The resolution kinds map to code as follows — apply, do not ask:
 
@@ -836,7 +887,11 @@ grep -rl "from openai\|import openai\|require.*openai\|from anthropic\|import an
 
 If any files still contain source SDK references, fix them before proceeding. Test directories are NOT excluded from this scan on purpose: the source SDK package is being removed from the manifest, so a leftover `import openai` in a customer test means `pytest` ImportErrors on the customer's machine — §18.0 should have migrated those tests; if one appears here, go back and fix it.
 
-**Mantle express lane exception:** when this run used the Mantle express lane (§8, `Rewrite strategy: mantle`), the source-SDK imports are EXPECTED to remain — Mantle keeps the original SDK, so this residual scan does NOT apply. Verify instead that every client init points at Mantle and uses a Bedrock credential in the form §8 prescribes for that client's lifetime — and that model IDs were swapped to their Mantle forms:
+**OpenAI-compatible lane exception:** when this run used `Rewrite strategy: mantle` or
+`Rewrite strategy: runtime_openai`, the source-SDK imports are expected to remain, so this
+residual scan does not apply. Verify the selected endpoint's `base_url`, Bedrock credentials
+and model identifiers instead: bare IDs for Mantle, exact validated profiles for runtime.
+The runtime lane must retain the Chat/Responses API verified by the evaluator.
 
 - **Short CLI / one-shot script:** `base_url` set to the Mantle path and `api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"]`.
 - **Server, worker, scheduled job, ECS service, or Lambda:** `BedrockOpenAI(..., bedrock_token_provider=lambda: provide_token(...))` (or the equivalent auto-refreshing client for the SDK in use), **no** `AWS_BEARER_TOKEN_BEDROCK` read in code, and `.env.example` does **not** set it.
@@ -935,7 +990,7 @@ Genuine hard stops (e.g. can't build, missing critical context) are written to t
 
 (`summary`: "Bedrock migration applied on bedrock-migration branch. 2 files changed (app.py, pyproject.toml); replaced langchain-openai with langchain-aws. 5 tests generated, 5/5 passing in clean checkout. Branch local-only.")
 
-## Example result — no behavior deltas (Anthropic 1P → Bedrock Claude, `same_model_family: true`)
+## Example result — no behavior deltas (`claude-opus-5-5` → `global.anthropic.claude-opus-5-5`, target checks passed)
 
 ```json
 {

@@ -13,7 +13,26 @@
 ---
 ## Bedrock Models (On-Demand)
 
-**Anthropic Claude (Standard on-demand)** figures below match **US East (N. Virginia)** on [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) as of cache refresh. **Recommend defaults (new migrations):** Claude Sonnet 5 (flagship), Claude Opus 4.8 (hardest reasoning), Claude Haiku 4.5 (cost/speed). Do not default to any Claude Fable / Mythos frontier model (Fable 5, Fable 5.1, and successors). **Claude Fable 5** and **Claude Fable 5.1** (GA Sep 1, 2026) are the most expensive Anthropic models (Mythos-class). Fable 5 is $10/$50 per 1M tokens, Global/base. Fable 5.1 is served via CRIS only (no in-region/bare-id form), with two supported profiles: **Global** (`global.anthropic.claude-fable-5-1`) at $10/$50 — supported from commercial `us-east-1` and a real option when there is no residency constraint — and **Geo US** (`us.anthropic.claude-fable-5-1`) at $11/$55 (~10% above Global), for workloads with US-only residency requirements. Quote whichever profile matches the actual deployment target; do not default to Geo pricing for a Global deployment. Fable 5.1's cache read is $0.25 (Global; 0.025x of Global input) or $0.275 (Geo); Fable 5's cache read is $1.00 (Global). Bedrock lists no batch rate for either. Both are Anthropic **Covered Models**: using them requires opting the account into the `aws_review` data-retention mode. In-region (non-CRIS) access for Fable 5.1 exists only in AWS GovCloud (US). Claude Mythos 5.1 is a gated Preview for vetted cyber/bio research organizations and is not a migration target. **Claude Opus 4.8** keeps the same $5/$25 rate as Opus 4.6/4.7. **Claude Sonnet 5** launched June 30 at $2/$10; that launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled), so Sonnet 5 is now both newer and cheaper than Sonnet 4.6 ($3/$15). **Claude Opus 4.7** lists the same headline on-demand input/output as **Opus 4.6** on that page; confirm **batch** availability per model (Opus 4.7 batch was **not** listed on the global cross-region table when this row was added). **Claude Opus 4.1** entered **Legacy** on Jul 8, 2026 (EOL Jan 8, 2027). **Batch**, **prompt cache** (5m / 1h write + cache read), and **geo / in-region cross-region** rows on that page can differ; e.g. **US East (Ohio)** cross-region inference for Claude Sonnet 4.6 is listed at **$3.30 / $16.50** per 1M input/output (≈10% above N. Virginia). Long-context SKUs **do not** all use the same multiplier: **Sonnet 4.6** and **Opus 4.6** long-context modes share the same on-demand rates as the non–long-context rows on the standard table; **Sonnet 4.5** and **Sonnet 4** long-context rows are priced higher on that same table.
+**Opus selection policy:** Recommend Opus 5.5 for new Opus migration targets. Opus 4.8
+rates are retained for existing deployments only; do not recommend it as a new target
+or automatic fallback. The separately documented Opus 4.6 Batch exception remains.
+
+**Opus 5.5 rates verified: 2026-09-24.** Source: AWS Price List API, service
+`AmazonBedrockFoundationModels`, filter `servicename = Claude Opus 5.5 (Amazon Bedrock Edition)`
+and the source `regionCode`; see [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/).
+The Opus 5.5 rows below are Standard on-demand, per 1M tokens: Global **$4/$20**;
+commercial Geo and Mantle in-region **$4.40/$22**; GovCloud **$4.80/$24**.
+For example, us-east-1 input/output SKUs are `KVG5FBPDJPKF5TJY` / `MWH4TD2A4D5CEBAP`
+(Global) and `J9QFZT8WAQABG9ZX` / `FCRGDQ596BG7EQKH` (Geo/Mantle).
+The [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html) lists Active lifecycle, 1M context, 128K output,
+and **no Batch**. Runtime uses `us.`/`eu.`/`au.`/`jp.` Geo or `global.` CRIS,
+or the bare ID in `eu-west-2` (in-region model-card and pricing verification: 2026-10-03);
+Global is not available in GovCloud. Mantle uses the bare ID only in `us-east-1`,
+`ap-southeast-4`, and `us-gov-west-1`. Choose the price row by region and inference
+profile; a generic model name alone is insufficient. Other cache rows retain the
+full-cache date at the top of this file.
+
+**Anthropic Claude (Standard on-demand)** figures below match **US East (N. Virginia)** on [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) as of cache refresh. **Recommend defaults (new migrations):** Claude Sonnet 5 (flagship), Claude Opus 5.5 (demanding reasoning), Claude Haiku 4.5 (cost/speed). Do not default to any Claude Fable / Mythos frontier model (Fable 5, Fable 5.1, and successors). **Claude Fable 5** and **Claude Fable 5.1** (GA Sep 1, 2026) are the most expensive Anthropic models (Mythos-class). Fable 5 is $10/$50 per 1M tokens, Global/base. Fable 5.1 is served via CRIS only (no in-region/bare-id form), with two supported profiles: **Global** (`global.anthropic.claude-fable-5-1`) at $10/$50 — supported from commercial `us-east-1` and a real option when there is no residency constraint — and **Geo US** (`us.anthropic.claude-fable-5-1`) at $11/$55 (~10% above Global), for workloads with US-only residency requirements. Quote whichever profile matches the actual deployment target; do not default to Geo pricing for a Global deployment. Fable 5.1's cache read is $0.25 (Global; 0.025x of Global input) or $0.275 (Geo); Fable 5's cache read is $1.00 (Global). Bedrock lists no batch rate for either. Both are Anthropic **Covered Models**: using them requires opting the account into the `aws_review` data-retention mode. In-region (non-CRIS) access for Fable 5.1 exists only in AWS GovCloud (US). Claude Mythos 5.1 is a gated Preview for vetted cyber/bio research organizations and is not a migration target. **Claude Opus 4.8** keeps the same $5/$25 rate as Opus 4.6/4.7. **Claude Sonnet 5** launched June 30 at $2/$10; that launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled), so Sonnet 5 is now both newer and cheaper than Sonnet 4.6 ($3/$15). **Claude Opus 4.7** lists the same headline on-demand input/output as **Opus 4.6** on that page; confirm **batch** availability per model (Opus 4.7 batch was **not** listed on the global cross-region table when this row was added). **Claude Opus 4.1** entered **Legacy** on Jul 8, 2026 (EOL Jan 8, 2027). **Batch**, **prompt cache** (5m / 1h write + cache read), and **geo / in-region cross-region** rows on that page can differ; e.g. **US East (Ohio)** cross-region inference for Claude Sonnet 4.6 is listed at **$3.30 / $16.50** per 1M input/output (≈10% above N. Virginia). Long-context SKUs **do not** all use the same multiplier: **Sonnet 4.6** and **Opus 4.6** long-context modes share the same on-demand rates as the non–long-context rows on the standard table; **Sonnet 4.5** and **Sonnet 4** long-context rows are priced higher on that same table.
 
 > **Geo vs. Global inference pricing.** Sonnet 5, Opus 4.8, Sonnet 4.6, and Haiku 4.5 cannot be
 > invoked on-demand with their bare model ID in **US regions** on `bedrock-runtime` — they require
@@ -37,6 +56,10 @@
 > `STATIC_FALLBACK` table keys the `us.` id to the Geo rate and the bare id to the Global/base
 > rate — read from that table, not this one, when a migration plan pins a specific inference
 > profile.
+>
+> Opus 5.5 rows already specify Global, Geo, Mantle, London or GovCloud pricing; do not apply another 1.10 multiplier.
+
+**Sonnet 5.5 release (2026-09-28):** Sonnet 5.5 (`anthropic.claude-sonnet-5-5` on Bedrock) is a distinct model and has no row in this cache yet. Keep the current Sonnet 5 default and rate rows until 5.5 has a separately verified entry. For an explicit 5.5 estimate, use the consuming skill's unavailable-pricing handling; do not silently reuse Sonnet 5 rates. Read the [5.5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide) before recommending its request/response handling.
 
 ### Multi-provider quick reference (per 1M tokens)
 
@@ -47,6 +70,15 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | Claude Fable 5                   | anthropic.claude-fable-5                 | Anthropic | 10.00      | 50.00       | 1M      | frontier  | restricted (Covered Model; `aws_review` opt-in)              |
 | Claude Fable 5.1                 | global.anthropic.claude-fable-5-1        | Anthropic | 10.00      | 50.00       | 1M      | frontier  | restricted (Covered Model; `aws_review` opt-in; CRIS only; Global rate shown — see note below for the `us.` Geo alternative at $11/$55) |
 | Claude Sonnet 5                  | anthropic.claude-sonnet-5                | Anthropic | 2.00       | 10.00       | 1M      | flagship  | active ($2/$10 made the standard price Sep 1, 2026)          |
+| Claude Opus 5.5 (Global)          | global.anthropic.claude-opus-5-5         | Anthropic | 4.00       | 20.00       | 1M      | premium   | active (Global CRIS; no Batch; verified 2026-09-24)                      |
+| Claude Opus 5.5 (US Geo)          | us.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (commercial US Geo; no Batch; verified 2026-09-24)                |
+| Claude Opus 5.5 (EU Geo)          | eu.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (EU Geo; no Batch; verified 2026-09-24)                           |
+| Claude Opus 5.5 (AU Geo)          | au.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (AU Geo; no Batch; verified 2026-09-24)                           |
+| Claude Opus 5.5 (JP Geo)          | jp.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (JP Geo; no Batch; verified 2026-09-24)                           |
+| Claude Opus 5.5 (Mantle)          | anthropic.claude-opus-5-5                | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (commercial Mantle Messages; no Batch; verified 2026-09-24)       |
+| Claude Opus 5.5 (London in-region) | anthropic.claude-opus-5-5 | Anthropic | 4.40 | 22.00 | 1M | premium | active (eu-west-2 runtime only; no Batch; verified 2026-10-03) |
+| Claude Opus 5.5 (GovCloud Geo)    | us.anthropic.claude-opus-5-5             | Anthropic | 4.80       | 24.00       | 1M      | premium   | active (us-gov-east-1/us-gov-west-1 only; no Batch; verified 2026-09-24) |
+| Claude Opus 5.5 (GovCloud Mantle) | anthropic.claude-opus-5-5                | Anthropic | 4.80       | 24.00       | 1M      | premium   | active (us-gov-west-1 Mantle only; no Batch; verified 2026-09-24)        |
 | Claude Opus 4.8                  | anthropic.claude-opus-4-8                | Anthropic | 5.00       | 25.00       | 200K    | premium   | active                                                       |
 | Claude Sonnet 4.6                | anthropic.claude-sonnet-4-6              | Anthropic | 3.00       | 15.00       | 200K    | flagship  | active                                                       |
 | Claude Sonnet 4.6 — Long Context | anthropic.claude-sonnet-4-6              | Anthropic | 3.00       | 15.00       | 200K+   | flagship  | active                                                       |
@@ -159,6 +191,9 @@ Per 1M tokens unless noted. See [Bedrock pricing](https://aws.amazon.com/bedrock
 | Claude Fable 5           | N/A      | N/A       | 12.50          | 20.00          | 1.00       |
 | Claude Fable 5.1         | N/A      | N/A       | 12.50          | 20.00          | 0.25       |
 | Claude Sonnet 5          | 1.00 ‡   | 5.00 ‡    | 2.50           | 4.00           | 0.20       |
+| Claude Opus 5.5 (Global)                | N/A      | N/A       | 5.00           | 8.00           | 0.20       |
+| Claude Opus 5.5 (commercial Geo/Mantle/London runtime) | N/A      | N/A       | 5.50           | 8.80           | 0.22       |
+| Claude Opus 5.5 (GovCloud)              | N/A      | N/A       | 6.00           | 9.60           | 0.24       |
 | Claude Opus 4.8          | 2.50 ‡   | 12.50 ‡   | 6.25           | 10.00          | 0.50       |
 | Claude Sonnet 4.6 (+ LC) | 1.50     | 7.50      | 3.75           | 6.00           | 0.30       |
 | Claude Opus 4.6 (+ LC)   | 2.50     | 12.50     | 6.25           | 10.00          | 0.50       |

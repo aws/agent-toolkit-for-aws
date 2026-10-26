@@ -14,7 +14,7 @@ description: >-
   logging or threat detection.
 
 metadata:
-  version: "8"
+  version: "10"
 ---
 
 # AWS Observability
@@ -182,10 +182,14 @@ A large share of real questions are phrased as an operator symptom, not as a too
 `<service>` throttled / slow / erroring / unhealthy," "which of my `<service>`s are
 `<symptom>`," "what's the health of my `<service>`," "what does `<service>` depend on and
 which is broken," "what signals / what should be on a dashboard or view for `<service>`."
-These are **observability-data questions — answer them from the telemetry surface, not
-from the resource's control plane**, and answer with the *methodology* (the correct
-signals, aggregation, scoping, and caveats) even when you also pull live numbers and even
-when no matching resource exists in the account.
+These are **observability-data questions. Start from the telemetry**, and answer with the
+*methodology* (the correct signals, aggregation, scoping, and caveats) even when you also
+pull live numbers and even when no matching resource exists in the account.
+Telemetry shows the symptom. The cause is often a configured value, so when the question is
+why something fails, also read the configuration of the resources involved, for example an
+API Gateway integration timeout, an SQS visibility timeout, or a Lambda timeout or event
+source mapping. A read-only or "logs only" role can usually still call these Get and
+Describe APIs. Make the call and report AccessDenied if it happens.
 
 Route by the symptom, then **open the reference and surface every applicable item in its
 "facts you MUST surface" checklist** — the checklist is the output contract, and it lives
@@ -246,7 +250,7 @@ detail and is the source of truth, so do not restate it here.
 | User need | Action |
 |-----------|--------|
 | Enabling/onboarding a service to Application Signals (auto-instrumentation, the `amazon-cloudwatch-observability` add-on, monitored service), propagating ServiceEvents git/deployment metadata through CI/CD, or the per-platform × per-language enablement steps | **STOP** — this is first-time CloudWatch setup and no reference here covers it. Route to the **`setting-up-cloudwatch-observability`** skill |
-| Writing Log Insights queries (pipe-delimited syntax: fields, filter, stats, sort, parse, display) | Read [log-insights.md](references/cloudwatch/log-insights.md) |
+| Writing Log Insights queries (pipe-delimited syntax: fields, filter, stats, sort, parse, display) | Read [log-insights.md](references/cloudwatch/log-insights.md). If StartQuery rejects the window as before the log group's creation time, read the same window with FilterLogEvents. See Known issues 11 there |
 | Configuring alarms (metric, composite, anomaly) | Read [alarms.md](references/cloudwatch/alarms.md). For an Omni **alert**, see the Omni table |
 | Publishing custom metrics or using EMF | Read [metrics.md](references/cloudwatch/metrics.md) |
 | X-Ray / ADOT tracing **behaviour** — X-Ray-SDK-vs-ADOT choice, trace and segment structure, annotations vs metadata, sampling rules, collector pipeline config, X-Ray→OTel migration traps | Read [tracing.md](references/cloudwatch/tracing.md). Onboarding an un-instrumented service is the setup skill's job (see the first row) |

@@ -202,7 +202,8 @@ def bundle_fixture(tmp_path):
     shared = plugin / "skills/shared/dsl/INTERPRETER.md"
     shared.parent.mkdir(parents=True)
     shared.write_bytes((PLUGIN_ROOT / "skills/shared/dsl/INTERPRETER.md").read_bytes())
-    for name in ("plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json"):
+    for name in ("plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json",
+                 ".devin-plugin/plugin.json"):
         manifest = plugin / name
         manifest.parent.mkdir(parents=True, exist_ok=True)
         manifest.write_text('{"version":"2.0.3"}')
@@ -217,7 +218,8 @@ def test_generated_bundles_are_current_and_checks_detect_missing_or_stale_files(
     target.unlink()
     assert str(target.relative_to(plugin)) in syncer.sync(plugin)
     syncer.sync(plugin, write=True)
-    for name in ("plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json"):
+    for name in ("plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json",
+                 ".devin-plugin/plugin.json"):
         (plugin / name).write_text('{"version":"2.0.4"}')
     assert len(syncer.sync(plugin)) == 4
     syncer.sync(plugin, write=True)
@@ -226,6 +228,7 @@ def test_generated_bundles_are_current_and_checks_detect_missing_or_stale_files(
 
 @pytest.mark.parametrize("manifest", [
     "plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json",
+    ".devin-plugin/plugin.json",
 ])
 @pytest.mark.parametrize("mode", ["--check", "--write"])
 def test_bundle_command_rejects_manifest_version_drift_without_writing(tmp_path, manifest, mode):

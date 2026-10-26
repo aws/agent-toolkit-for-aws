@@ -6,12 +6,13 @@ Prints a JSON verdict to stdout; exit 0 if all models pass, 1 otherwise.
 Always prints JSON — including for missing credentials / bad region — so the
 caller can parse the verdict instead of a traceback. On failure the top level
 carries `reason`/`detail`/`failing_models` lifted from the first failing model.
-Chat models are probed via Converse; embedding models (which don't speak
+Chat models default to Converse; --runtime-api preserves an explicit proprietary
+GPT Chat/Responses selection. Embedding models (which don't speak
 Converse) via InvokeModel with their family's request body. Bare OpenAI
 proprietary GPT ids are mantle-served and probed via the OpenAI Responses API;
-GPT-5.6 CRIS profile ids (us./in./global. prefixed) are bedrock-runtime targets
-and take the normal Converse probe.
-The 1-token probe costs a fraction of a cent (noted in output).
+GPT-6 Astra (us./global.) and GPT-5.6 (us./in./global.) CRIS ids are bedrock-runtime targets
+take the selected runtime API probe.
+Probe output budgets and cost depend on the selected API.
 """
 import argparse, json, sys
 
@@ -69,12 +70,77 @@ def is_mantle_model(model_id: str) -> bool:
     return (mid.startswith("openai.gpt-5") or mid.startswith("openai.gpt-6")) and "oss" not in mid
 
 
+
+def normalize_api_path(plan_path: str | None, model_ids: list[str],
+                       runtime_api: str | None = None) -> str:
+    """Resolve a missing legacy path once for evaluator and rewriter dispatch.
+
+    Explicit plans retain their chosen API. Legacy bare proprietary GPT targets
+    use Mantle Responses; runtime targets retain the existing Converse default.
+    A mixed legacy target set needs an explicit plan rather than an unsafe guess.
+    """
+    if plan_path == "mantle" and model_ids and all(is_mantle_model(mid) for mid in model_ids):
+        return "mantle_openai_responses"
+    if plan_path == "runtime_openai_cris":
+        paths = {"converse": plan_path, "responses": "runtime_openai_responses",
+                 "chat_completions": "runtime_openai_chat"}
+        if runtime_api is not None and runtime_api not in paths:
+            raise ValueError("Unknown runtime API; resolve the saved migration plan")
+        return paths[runtime_api or "converse"]
+    if plan_path:
+        return plan_path
+    if not model_ids:
+        raise ValueError("No validated target model IDs to resolve an API path")
+    mantle = [is_mantle_model(mid) for mid in model_ids]
+    if all(mantle):
+        return "mantle_openai_responses"
+    if any(mantle):
+        raise ValueError("Mixed Mantle and runtime targets require an explicit migration plan")
+    return "converse"
+
+
+def create_openai_client(model_id: str, region: str, max_retries: int = 2):
+    """Build the selected endpoint's client without changing the invocation ID."""
+    from aws_bedrock_token_generator import provide_token
+    if is_mantle_model(model_id):
+        from openai import BedrockOpenAI
+        return BedrockOpenAI(
+            aws_region=region, bedrock_token_provider=lambda: provide_token(region=region),
+            max_retries=max_retries,
+        )
+    from openai import OpenAI
+    return OpenAI(
+        base_url=f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1",
+        api_key=lambda: provide_token(region=region), max_retries=max_retries,
+    )
+
+
+def probe_runtime_openai_model(model_id: str, region: str, api_surface: str) -> dict:
+    """Probe the selected runtime Chat/Responses API, not a Converse substitute."""
+    try:
+        client = create_openai_client(model_id, region, max_retries=0)
+        if api_surface == "chat_completions":
+            client.chat.completions.create(
+                model=model_id, messages=[{"role": "user", "content": "ping"}])
+        else:
+            client.responses.create(model=model_id, input="ping", max_output_tokens=16)
+        return {"ok": True, "reason": "ok", "detail": f"Runtime {api_surface} API authorized."}
+    except ImportError as e:
+        return {"ok": False, "reason": "openai_deps_missing",
+                "detail": f"Cannot verify the runtime OpenAI API: {e}. Re-sync scripts/pyproject.toml."}
+    except Exception as e:
+        code = {401: "UnrecognizedClientException", 403: "AccessDeniedException",
+                 404: "ResourceNotFoundException", 429: "ThrottlingException"}.get(
+                     getattr(e, "status_code", None), "unknown")
+        return classify_invoke_error(code, str(e))
+
+
 def classify_mantle_error(status: int | None, message: str) -> dict:
     """Pure: map an OpenAI-SDK HTTP status from the mantle endpoint to a verdict.
 
     Mirrors classify_invoke_error's contract but for the mantle surface, where the
     remedies differ: IAM needs bedrock-mantle:* actions (not bedrock:InvokeModel),
-    and mantle itself has no cross-region form — though for GPT-5.6 a
+    and mantle itself has no cross-region form — though for Astra / GPT-5.6 a
     bedrock-runtime CRIS id can cover the region instead."""
     if status in (401, 403):
         lowered = message.lower()
@@ -92,7 +158,9 @@ def classify_mantle_error(status: int | None, message: str) -> dict:
         return {"ok": False, "reason": "model_unavailable",
                 "detail": f"Model not available at this mantle endpoint/region — {message}. "
                           f"Mantle is in-region only; for GPT-5.6 try a bedrock-runtime CRIS "
-                          f"id (us./in./global. prefixed) instead, for GPT-5.5/5.4 switch to "
+                          f"id (us./in./global. prefixed); for GPT-6 Astra use us-east-1/us-west-2 "
+                          f"mantle or a supported us./global. runtime CRIS path. "
+                          f"For GPT-5.5/5.4 switch to "
                           f"a supported region or a different model."}
     if status == 429:
         # Reaching a token-per-minute ceiling still proves we are authorized.
@@ -155,6 +223,12 @@ def _embed_request_body(model_id: str) -> dict | None:
 
 def probe_model(client, model_id: str) -> dict:
     """Real minimal probe: Converse for chat models, InvokeModel for embeddings."""
+    region = getattr(getattr(client, "meta", None), "region_name", None)
+    if model_id == "anthropic.claude-opus-5-5" and region != "eu-west-2":
+        return {"ok": False, "reason": "inference_profile_required",
+                "detail": "Opus 5.5 runtime in-region access is documented only in eu-west-2 "
+                          "(verified 2026-10-03). Elsewhere, use a supported Geo/Global "
+                          "profile for Converse, or verify a supported Mantle Messages path separately."}
     from botocore.exceptions import BotoCoreError, ClientError
     try:
         if is_embedding_model(model_id):
@@ -238,6 +312,8 @@ def main(argv=None) -> int:
     ap.add_argument("--region", required=True)
     ap.add_argument("--models", required=True, help="comma-separated model ids")
     ap.add_argument("--dataset-size", type=int, default=0)
+    ap.add_argument("--runtime-api", choices=["converse", "responses", "chat_completions"],
+                    default="converse")
     args = ap.parse_args(argv)
 
     model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
@@ -272,11 +348,25 @@ def main(argv=None) -> int:
                 "Mantle quotas are per-model input/output tokens per minute; there is no RPM "
                 "quota. Pace on token throughput, and note that prompt-cached input tokens are "
                 "exempt from the input-TPM quota.")
+            if model_id.lower() == "openai.gpt-6-astra":
+                verdict["quota_note"] = (
+                    f"Verify Astra's mantle quotas in the target account and {args.region}. "
+                    "Do not assume GPT-5.6's cached-input quota exemption or RPM rules "
+                    "apply; Astra's documented 10x output burndown is runtime-specific.")
         else:
-            verdict = probe_model(client, model_id)
+            if (args.runtime_api != "converse" and ".openai.gpt-" in model_id
+                    and "gpt-oss" not in model_id):
+                verdict = probe_runtime_openai_model(model_id, args.region, args.runtime_api)
+            else:
+                verdict = probe_model(client, model_id)
             rpm = quota_rpm(quotas, model_id)
             verdict["model_id"] = model_id
             verdict["rpm_quota"] = rpm
+            if model_id.rsplit("/", 1)[-1] in ("us.openai.gpt-6-astra", "global.openai.gpt-6-astra"):
+                verdict["quota_note"] = (
+                    "Astra runtime TPM usage = input tokens + 10 * output tokens. "
+                    "Check the selected CRIS profile's token quota; an RPM check alone "
+                    "does not establish throughput capacity.")
             if rpm is not None and args.dataset_size > rpm:
                 verdict["quota_warning"] = (
                     f"Dataset ({args.dataset_size}) exceeds ~{rpm} RPM quota — "
@@ -285,7 +375,7 @@ def main(argv=None) -> int:
         results.append(verdict)
 
     out = {"ok": all_ok, "region": args.region,
-           "probe_cost_note": "1-token InvokeModel probe per model (~$0.00001 each)",
+           "probe_cost_note": "Minimal model/API permission probes; output budgets and cost vary by API.",
            "models": results}
     out.update(aggregate_failure(results))
     print(json.dumps(out, indent=2))

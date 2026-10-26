@@ -28,18 +28,19 @@ ANTHROPIC_PATHS = (
 # exists. The orchestrator sends everything non-OpenAI here, so this set is the real classification.
 ANTHROPIC_POOL = frozenset({"anthropic", "none", "unknown"})
 
+# New migrations use Opus 5.5; older Opus models are not automatic fallback candidates.
 _PRIORITY_ORDER = {
-    "quality": ["claude_opus_4_8", "claude_sonnet_5", "claude_haiku_4_5"],
-    "balanced": ["claude_sonnet_5", "claude_opus_4_8", "claude_haiku_4_5"],
-    "speed": ["claude_haiku_4_5", "claude_sonnet_5", "claude_opus_4_8"],
-    "cost": ["claude_haiku_4_5", "claude_sonnet_5", "claude_opus_4_8"],
-    "unknown": ["claude_sonnet_5", "claude_opus_4_8", "claude_haiku_4_5"],
+    "quality": ["claude_opus_5_5", "claude_sonnet_5", "claude_haiku_4_5"],
+    "balanced": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
+    "speed": ["claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
+    "cost": ["claude_haiku_4_5", "claude_sonnet_5", "claude_opus_5_5"],
+    "unknown": ["claude_sonnet_5", "claude_opus_5_5", "claude_haiku_4_5"],
 }
 
 _FEATURE_ORDER = {
     "agentic": [
         "claude_sonnet_5",
-        "claude_opus_4_8",
+        "claude_opus_5_5",
         "claude_haiku_4_5",
     ],
 }
@@ -182,6 +183,9 @@ def _source_version(source):
             match = re.search(pattern, normalized)
             if match:
                 return f"{int(match.group(1))}.{int(match.group(2))}"
+        major = re.search(r"claude-(?:opus|sonnet|haiku)-(\d+)(?:-latest)?$", normalized)
+        if major:
+            return f"{int(major.group(1))}.0"
     return None
 
 
@@ -295,7 +299,7 @@ def _path_constraints(workload):
     }
 
 
-def _build_candidates(catalog, paths, requirements):
+def _build_candidates(catalog, paths, requirements, region=None):
     model_order, driver = _candidate_order(requirements)
     required_capabilities = _required_capabilities(requirements)
     min_context = requirements.get("min_context_tokens", 0)
@@ -303,9 +307,19 @@ def _build_candidates(catalog, paths, requirements):
     candidates = []
     for path_rank, path in enumerate(paths):
         for model_rank, model_key in enumerate(model_order):
-            model = catalog["models"][model_key]
+            model = catalog["models"].get(model_key)
+            if model is None:
+                continue
             path_config = model["paths"].get(path, {})
             if path_config.get("available") is not True:
+                continue
+            regions = path_config.get("regions")
+            if regions is not None and region not in regions:
+                continue
+            profiles = model.get("inference_profiles")
+            if path_config.get("requires_cris") and profiles and not any(
+                region in regions for regions in profiles.values()
+            ):
                 continue
             if not required_capabilities.issubset(set(model["capabilities"])):
                 continue
@@ -326,40 +340,99 @@ def _build_candidates(catalog, paths, requirements):
     return sorted(candidates, key=lambda item: item["rank"])
 
 
-def _candidate_summary(candidate, requirements, reason):
+def _candidate_summary(candidate, requirements, reason, region=None):
     model = candidate["model"]
     path_config = candidate["path_config"]
     invocation_model_id = _resolve_invocation_model_id(
-        path_config["model_id"], path_config["requires_cris"], requirements
+        path_config["model_id"], path_config["requires_cris"], requirements, model, region
     )
     return {
         "model_key": candidate["model_key"],
         "model": path_config["model_id"],
         "api_path": candidate["path"],
         "invocation_model_id": invocation_model_id,
-        "requires_cris": path_config["requires_cris"],
+        "requires_cris": _invocation_requires_cris(path_config, invocation_model_id),
         "reason": reason,
     }
 
 
-def _resolve_invocation_model_id(model_id, requires_cris, requirements):
+def _allowed_inference_profiles(model_id, model, region, requirements):
+    geography = requirements.get("cris_geography")
+    geo_required = requirements.get("data_residency") == "geo_required"
+    return [
+        f"{prefix}.{model_id}"
+        for prefix, regions in model.get("inference_profiles", {}).items()
+        if region in regions
+        and not (geo_required and (prefix == "global" or (geography and prefix != geography)))
+    ]
+
+
+def _profile_verification(model_id, requires_cris, model, region, requirements):
+    if not requires_cris or not (model or {}).get("inference_profiles"):
+        return {}
+    result = {"allowed_inference_profiles": _allowed_inference_profiles(
+        model_id, model, region, requirements or {}
+    )}
+    if _runtime_in_region_allowed(model_id, model, region, requirements or {}):
+        result["allowed_in_region_model_arns"] = [
+            f"arn:aws:bedrock:{region}::foundation-model/{model_id}"
+        ]
+    return result
+
+
+def _runtime_in_region_allowed(model_id, model, region, requirements):
+    if region not in (model or {}).get("runtime_in_region_regions", []):
+        return False
+    allowed = _allowed_inference_profiles(model_id, model, region, requirements)
+    return requirements.get("data_residency") != "geo_required" or any(
+        not profile.startswith("global.") for profile in allowed
+    )
+
+
+def _invocation_requires_cris(path_config, invocation_model_id):
+    return path_config["requires_cris"] and invocation_model_id != path_config["model_id"]
+
+
+def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=None, region=None):
     if not requires_cris:
         return model_id
     explicit = requirements.get("inference_profile_id")
-    if explicit:
-        return explicit
-    residency = requirements.get("data_residency", "unknown")
-    if residency == "global_allowed":
-        return f"global.{model_id}"
-    if residency == "geo_required" and requirements.get("cris_geography"):
-        return f"{requirements['cris_geography']}.{model_id}"
-    return None
+    if _runtime_in_region_allowed(model_id, model, region, requirements):
+        if not explicit or explicit == model_id:
+            return model_id
+    candidate = explicit
+    if not candidate:
+        residency = requirements.get("data_residency", "unknown")
+        if residency == "global_allowed":
+            candidate = f"global.{model_id}"
+        elif residency == "geo_required" and requirements.get("cris_geography"):
+            candidate = f"{requirements['cris_geography']}.{model_id}"
+    profiles = (model or {}).get("inference_profiles")
+    if not candidate or not profiles:
+        return candidate
+    allowed = _allowed_inference_profiles(model_id, model, region, requirements)
+    profile_id = candidate
+    if candidate.startswith("arn:"):
+        arn = re.fullmatch(
+            r"arn:(aws(?:-[a-z-]+)?):bedrock:([a-z0-9-]+):[0-9]{12}:"
+            r"(inference-profile|application-inference-profile)/([a-zA-Z0-9:.-]+)",
+            candidate,
+        )
+        partition = "aws-us-gov" if region.startswith("us-gov-") else "aws-cn" if region.startswith("cn-") else "aws"
+        if not arn or arn[1] != partition or arn[2] != region:
+            return None
+        if arn[3] == "application-inference-profile":
+            # Preserve the callable ARN. The verifier checks its model destinations
+            # against allowed_inference_profiles before making an inference call.
+            return candidate if allowed else None
+        profile_id = arn[4]
+    return candidate if profile_id in allowed else None
 
 
-def _decision_options(catalog, workload, option_paths):
+def _decision_options(catalog, workload, option_paths, region=None):
     options = []
     for path in dict.fromkeys(option_paths):
-        candidates = _build_candidates(catalog, [path], workload["requirements"])
+        candidates = _build_candidates(catalog, [path], workload["requirements"], region)
         if not candidates:
             continue
         tradeoff = (
@@ -368,7 +441,7 @@ def _decision_options(catalog, workload, option_paths):
             else "Provides runtime governance but requires rewriting the Messages integration."
         )
         options.append(
-            _candidate_summary(candidates[0], workload["requirements"], tradeoff)
+            _candidate_summary(candidates[0], workload["requirements"], tradeoff, region)
         )
     return options
 
@@ -402,7 +475,23 @@ def _source_analysis(source, target_version):
     }
 
 
-def _migration_deltas(source, source_analysis, path, feature_status, requirements):
+def _structured_output_remediation(model=None):
+    if (model or {}).get("forced_tool_choice_supported") is False:
+        return (
+            "Opus 5.5 has no native schema guarantee and rejects forced any/tool choice, "
+            "assistant prefill, and disabled thinking. Move plain-text prefill intent into prompt "
+            "instructions without promising an exact prefix. For structured results, use automatic tool choice or prompted JSON "
+            "with application schema validation and bounded retries; fail closed on invalid output. "
+            "If model-enforced schema output is required, explicitly choose another verified target."
+        )
+    return (
+        "Use a forced tool without strict only after verifying that the selected model and "
+        "thinking mode permit it. Otherwise use automatic tool choice with application schema "
+        "validation and bounded retries; do not claim a native schema guarantee."
+    )
+
+
+def _migration_deltas(source, source_analysis, path, feature_status, requirements, model=None):
     if source["provider"] != "anthropic":
         return []
     deltas = [
@@ -414,7 +503,8 @@ def _migration_deltas(source, source_analysis, path, feature_status, requirement
         _delta(
             "model_id_shape",
             "path",
-            "Mantle uses a clean path ID; runtime requires a verified CRIS profile.",
+            "Use the selected region's verified runtime model or CRIS profile ID; "
+            "Mantle uses its clean path ID.",
         ),
         _delta(
             "iam_action",
@@ -444,13 +534,14 @@ def _migration_deltas(source, source_analysis, path, feature_status, requirement
     detected = {
         feature for feature, status in feature_status.items() if status == "detected"
     }
-    if "structured_output" in detected:
+    if "structured_output" in requirements.get("critical_features", []):
+        detected.add("structured_output")
+    if detected.intersection({"structured_output", "assistant_prefill"}):
         deltas.append(
             _delta(
                 "structured_output",
                 "feature",
-                "Use a forced tool without strict as the portable default; native fields "
-                "are model, path, and region dependent.",
+                _structured_output_remediation(model),
             )
         )
     if path == "runtime_converse" and (
@@ -502,13 +593,17 @@ def _compatibility(feature_status, requirements, path):
     }
 
 
-def _architecture_impacts(feature_status):
+def _architecture_impacts(feature_status, blocks=()):
     detected = {
         feature for feature, status in feature_status.items() if status == "detected"
     }
     impacts = []
     for feature in sorted(detected.intersection(_REARCHITECTURE_FEATURES)):
-        _, message, remediation = _BLOCK_FINDINGS[feature]
+        code, message, remediation = _BLOCK_FINDINGS[feature]
+        for finding in blocks:
+            if finding["code"] == code:
+                remediation = finding["remediation"]
+                break
         impacts.append(
             {
                 "feature": feature,
@@ -542,15 +637,19 @@ def _evaluation_requirements(workload, feature_status):
     return {"mode": "trajectory" if trajectory else "prompt", "gates": gates}
 
 
-def _base_findings(feature_status, source_analysis):
+def _base_findings(feature_status, source_analysis, model=None, requirements=None):
     detected = {
         feature for feature, status in feature_status.items() if status == "detected"
     }
+    if "structured_output" in (requirements or {}).get("critical_features", []):
+        detected.add("structured_output")
     blocks = []
     tuning = []
     for feature in sorted(detected):
         if feature in _BLOCK_FINDINGS:
             code, message, remediation = _BLOCK_FINDINGS[feature]
+            if feature == "assistant_prefill":
+                remediation = _structured_output_remediation(model)
             blocks.append(_finding(code, "[BLOCKS]", message, remediation))
         if feature in _TUNE_FINDINGS:
             code, message, remediation = _TUNE_FINDINGS[feature]
@@ -576,8 +675,7 @@ def _base_findings(feature_status, source_analysis):
                 "structured_output_portable_pattern",
                 "[BLOCKS]",
                 "Native structured-output controls vary by model, path, and region.",
-                "Use a forced tool without strict; validate the schema subset and do not "
-                "combine structured output with citations.",
+                _structured_output_remediation(model),
             )
         )
     if "structured_output" in detected and "citations" in detected:
@@ -592,13 +690,14 @@ def _base_findings(feature_status, source_analysis):
     return blocks, tuning
 
 
-def _verification(candidate, region, catalog, invocation_model_id):
+def _verification(candidate, region, catalog, invocation_model_id, requirements=None):
     path = candidate["path"]
+    requires_cris = _invocation_requires_cris(candidate["path_config"], invocation_model_id)
     checks = [
         "Probe the selected model through the selected API path in the target account and region.",
         "Verify path-specific IAM before code rewrite or POC generation.",
     ]
-    if candidate["path_config"]["requires_cris"]:
+    if requires_cris:
         checks.insert(
             1,
             "Resolve and probe a Global or geography-scoped CRIS inference profile.",
@@ -611,13 +710,18 @@ def _verification(candidate, region, catalog, invocation_model_id):
         "availability_claim": "provisional",
         "invocation_model_id": invocation_model_id,
         "required_checks": checks,
+        **_profile_verification(
+            candidate["path_config"]["model_id"],
+            requires_cris,
+            candidate["model"], region, requirements,
+        ),
     }
 
 
 def _decision_required(workload, region, catalog, constraints):
     feature_status = _feature_assessment(workload, _source_version(workload["source"]), None)
     decision_options = _decision_options(
-        catalog, workload, constraints["option_paths"]
+        catalog, workload, constraints["option_paths"], region
     )
     if len(decision_options) != len(set(constraints["option_paths"])):
         raise ValueError(
@@ -681,7 +785,7 @@ def recommend_anthropic_workload(workload, region, catalog):
         return _decision_required(workload, region, catalog, constraints)
 
     candidates = _build_candidates(
-        catalog, constraints["paths"], workload["requirements"]
+        catalog, constraints["paths"], workload["requirements"], region
     )
     if not candidates:
         raise ValueError(
@@ -698,7 +802,7 @@ def recommend_anthropic_workload(workload, region, catalog):
         source_analysis["detected_version"],
         source_analysis["target_version"],
     )
-    blocks, tuning = _base_findings(feature_status, source_analysis)
+    blocks, tuning = _base_findings(feature_status, source_analysis, model, workload["requirements"])
     provider = workload["source"]["provider"]
     provider_module = "anthropic" if provider in ANTHROPIC_POOL else "generic"
     if provider_module == "generic":
@@ -714,7 +818,34 @@ def recommend_anthropic_workload(workload, region, catalog):
         path_config["model_id"],
         path_config["requires_cris"],
         workload["requirements"],
+        model,
+        region,
     )
+    if model.get("inference_profiles") and path_config["requires_cris"] and not invocation_model_id:
+        blocks.append(_finding(
+            "inference_profile_unresolved", "[BLOCKS]",
+            "The selected model has no verified inference profile matching the region and residency requirements.",
+            "Choose a supported Geo or Global profile and probe it in the target account; "
+            "resolve application-profile ARNs through Bedrock before implementation.",
+        ))
+    if model.get("adaptive_thinking_only"):
+        finding = _finding(
+            "adaptive_thinking_required",
+            "[BLOCKS]" if workload["requirements"].get("thinking_enabled") is False else "[TUNE]",
+            "Opus 5.5 always uses adaptive thinking; disabled thinking, manual budgets, and forced any/tool choice are unsupported.",
+            "Use adaptive thinking with output_config.effort (default medium). "
+            "Budget max_tokens for thinking plus response text and remeasure token usage. "
+            "Use auto/none tool choice; if forced tool selection is a hard requirement, "
+            "select a verified compatible target rather than silently weakening that requirement.",
+        )
+        (blocks if finding["tag"] == "[BLOCKS]" else tuning).append(finding)
+    if model.get("batch_supported") is False:
+        for finding in blocks:
+            if finding["code"] == "message_batches_not_portable":
+                finding["remediation"] = (
+                    "Opus 5.5 does not support Bedrock Batch. Use on-demand inference, "
+                    "or select a verified batch-capable alternative such as Opus 4.6."
+                )
     rationale = list(constraints["rationale"])
     rationale.append(
         f"{model['display_name']} is the highest-ranked {chosen['driver']} model "
@@ -725,6 +856,7 @@ def recommend_anthropic_workload(workload, region, catalog):
             candidate,
             workload["requirements"],
             "Next compatible model/path candidate after hard-constraint filtering.",
+            region,
         )
         for candidate in candidates[1:4]
     ]
@@ -744,7 +876,7 @@ def recommend_anthropic_workload(workload, region, catalog):
             "context_window": model["context_window"],
             "output_token_ceiling": model["output_token_ceiling"],
             "path_model_id": path_config["model_id"],
-            "requires_cris": path_config["requires_cris"],
+            "requires_cris": _invocation_requires_cris(path_config, invocation_model_id),
         },
         "api_path": path,
         "invocation_model_id": invocation_model_id,
@@ -756,13 +888,14 @@ def recommend_anthropic_workload(workload, region, catalog):
         "compatibility": _compatibility(
             feature_status, workload["requirements"], path
         ),
-        "architecture_impacts": _architecture_impacts(feature_status),
+        "architecture_impacts": _architecture_impacts(feature_status, blocks),
         "migration_deltas": _migration_deltas(
             workload["source"],
             source_analysis,
             path,
             feature_status,
             workload["requirements"],
+            model,
         ),
         "evaluation": _evaluation_requirements(workload, feature_status),
         "rollout": {
@@ -770,7 +903,6 @@ def recommend_anthropic_workload(workload, region, catalog):
             "gate": "Compare source and target on the golden set before percentage rollout.",
         },
         "verification": _verification(
-            chosen, region, catalog, invocation_model_id
+            chosen, region, catalog, invocation_model_id, workload["requirements"]
         ),
     }
-

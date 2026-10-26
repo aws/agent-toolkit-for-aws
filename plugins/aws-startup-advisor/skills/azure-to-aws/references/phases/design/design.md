@@ -16,7 +16,7 @@ _knowledge:
   - { file: knowledge/design/flexible-server-rds-sizing.json, _when: "the inventory contains a Microsoft.DBforPostgreSQL/* or Microsoft.DBforMySQL/* resource" }
   - { file: knowledge/design/cosmos-dynamodb-conversion.json, _when: "the inventory contains a Microsoft.DocumentDB/databaseAccounts resource whose kind is GlobalDocumentDB — the Core (SQL) API only" }
   - { file: knowledge/design/disk-ebs-sizing.json, _when: "the inventory contains a Microsoft.Compute/disks resource" }
-  - { file: knowledge/estimate/rightsizing-thresholds.json, _when: "observed utilization exists — an RDfA rollup or az monitor metrics — so a size can be MEASURED rather than looked up" }
+  - { file: knowledge/estimate/rightsizing-thresholds.json, _when: "an eligible utilization row exists: metric_error is false, sample_count > 0, and numeric window_days meets min_window_days; unknown RDfA windows do not qualify" }
   - { file: references/shared/schema-design-aws-ai.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
   - { file: references/design-refs/ai.md, _when: "ai-workload-profile.json exists AND (summary.ai_source is 'other' or absent, OR any workloads[] capability is document_extraction, image_analysis, or speech_transcription)" }
   - { file: references/vendored/ai/ai-openai-to-bedrock.md, _when: "ai-workload-profile.json exists AND summary.ai_source is azure_openai, openai, or both" }
@@ -76,13 +76,13 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design.json exists: AWS App Runner does not appear as a target anywhere in it"
     _on_failure: _halt_and_inform
-  - _assert: "WHEN aws-design.json exists: every entry whose confidence is 'measured' cites the utilization evidence that backed it"
+  - _assert: "WHEN aws-design.json exists: every entry whose confidence is 'measured' cites utilization evidence with metric_error false, sample_count > 0, and a numeric window_days meeting confidence_rules.min_window_days. Null/unknown windows and zero-sample rows remain inferred; p95 zero is eligible when positively sampled"
     _on_failure: _halt_and_inform
   - _assert: "WHEN ai-workload-profile.json exists: aws-design-ai.json exists, validates, and has metadata.ai_source equal to the profile's summary.ai_source. WHEN the profile is absent the AI fragment does not run and this is vacuously satisfied"
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design-ai.json exists: every design_blocks[] row has exactly one of target_bedrock_model / target_aws_service non-null (XOR), and every document_extraction/image_analysis/speech_transcription row has target_bedrock_model null, a non-null target_aws_service, and honest_assessment 'not_applicable' — per references/shared/schema-design-aws-ai.md"
     _on_failure: _halt_and_inform
-  - _assert: "WHEN aws-design-ai.json exists AND summary.ai_source is azure_openai or openai: every source model that is available on Bedrock and carried by the target region maps to itself with model_change false — not to a Claude/Nova substitute; and no proprietary GPT-5.5 or GPT-5.4 model ID is paired with a converse/bedrock-runtime migration path (GPT-5.6 and GPT-6 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation)"
+  - _assert: "WHEN aws-design-ai.json exists AND summary.ai_source is azure_openai or openai: every source model that is available on Bedrock and carried by the target region maps to itself with model_change false — not to a Claude/Nova substitute; and no proprietary GPT-5.5 or GPT-5.4 model ID is paired with a converse/bedrock-runtime migration path (bare proprietary openai.gpt-* IDs use Mantle only; runtime_openai_cris accepts documented Astra us./global. and GPT-5.6/GPT-6 profiles with caller-region checks and the selected API; GPT-5.6 and GPT-6 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation)"
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design-ai.json exists: regional_warnings[] and multi_model_warnings[] are present (empty is fine); agentic_design is present only when agentic_profile.is_agentic is true; and App Runner appears nowhere"
     _on_failure: _halt_and_inform

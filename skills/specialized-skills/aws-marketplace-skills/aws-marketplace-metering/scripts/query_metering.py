@@ -306,7 +306,17 @@ def main():
     parser.add_argument("--end-date", help="End date (YYYY-MM-DD). Defaults to now.")
     parser.add_argument("--customer-id", help="Filter by CustomerAWSAccountId")
     parser.add_argument(
-        "--status", help="Filter by status (Success, CustomerNotSubscribed, DuplicateRecord)"
+        "--status",
+        help=(
+            "Filter by the per-record BatchMeterUsage API result Status as recorded in "
+            "CloudTrail Event History (this script queries CloudTrail, NOT the DynamoDB "
+            "tables). Valid values: Success, CustomerNotSubscribed, DuplicateRecord (and "
+            "'unknown' when the event omits a per-record status). NOTE: the pipeline's "
+            "DynamoDB meteringStatus domain (Error, SubmissionExpired, Aggregated, "
+            "RejectedClientSide, AggregationExpired, DryRunSubmitted) does NOT appear in "
+            "CloudTrail events — those are on-table statuses; filtering on them here matches "
+            "zero records."
+        ),
     )
     parser.add_argument("--dimension", help="Filter by usage dimension")
     parser.add_argument("--metering-record-id", help="Filter by MeteringRecordId")

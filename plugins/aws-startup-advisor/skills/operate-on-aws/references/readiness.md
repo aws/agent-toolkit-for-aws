@@ -96,16 +96,22 @@ doing anything. Worth checking before asking them to authenticate again.
 
 ## Route by intent, not by state
 
+**Optional discovery never blocks.** Billing, credits, historical usage, and trial checks are optional
+discovery. Use current credentials if available; never request added billing permissions or a sign-in
+solely for these checks. Failure does not block the combined approval or provisioning. AWS credentials and
+IAM writes required for the actual approved setup remain mandatory. Do not equate inability to list an
+existing Agent Space with proof that none exists; resolve duplicate risk safely when creation is attempted.
+
 State tells you what is *possible*. Intent tells you what they *want*. Never ask for more access than the
 intent requires.
 
 | They want | R2 no credentials | R3 expired | R4 valid | R5 + billing |
 |---|---|---|---|---|
 | **"What does this cost?"** | Answer fully. List pricing. **Ask for nothing.** | Answer fully | Answer fully | Answer with *their* balance and coverage |
-| **"Is this for me?"** | Scan the codebase, assess, advise | same | same, richer | same, plus affordability arithmetic |
-| **"Review my PR"** | Explain the path; repo connection needs console access | Offer the refresh, then continue | Proceed | Proceed |
-| **"Set it up"** | Walk the credential setup first — it is genuinely the prerequisite | `aws sso login`, then continue | Proceed | Proceed |
-| **"Production is down"** | **Help with the incident directly.** Say the agent needs AWS access and offer it as a follow-up | Offer the ten-second refresh, then proceed | Proceed | Proceed |
+| **"Is this for me?"** | Scan the codebase, assess, advise | same | same, richer | same, plus their balance and coverage |
+| **"Review my PR"** | Explain the path; repo connection needs console access | Offer the refresh, then continue | Connected: review. Not set up: ask first | Connected: review. Not set up: ask first |
+| **"Set it up"** | Show the combined notice and ask first; after a Yes, walk the credential setup — it is genuinely the prerequisite | Ask first; after a Yes, `aws sso login`, then continue | Ask, then proceed on Yes | Ask, then proceed on Yes |
+| **"Production is down"** | **Help with the incident directly.** Say the agent needs AWS access and offer it as a follow-up | Offer the ten-second refresh, then help | Connected: investigate. Not set up: help, and ask before setup | Connected: investigate. Not set up: help, and ask before setup |
 | **"Turn it off"** | Cannot act. Give them the console path | Refresh, then act | Act | Act |
 
 Two rows carry most of the value.
@@ -285,8 +291,10 @@ spaces are called, so a space with any name — even `none` — is found:
 - **`FOUND` in any region** — say where and use it: *"You already have an Agent Space, `<name>`, in
   us-east-1 — I'll use that one."* See the release-review exception below.
 - **Any region `UNKNOWN`** — do not conclude there is no space. The error is the readiness state for that
-  region (expired, denied, throttled, unreachable): name it, fix it or retry, and check again. Creating a
-  space while a region is unknown is how a founder ends up with two.
+  region (expired, denied, throttled, unreachable). This does **not** hold back the approval question:
+  ask it anyway. Before creating anything, retry, check the intended region and any locally configured
+  space, or use a known space ID. Creating a space while a region is unknown is how a founder ends up with
+  two — if it stays unresolved, say what is unknown and offer a targeted next step.
 - **`empty` in every region, with no `UNKNOWN`** — there is no Agent Space. Creating one is a single call
   (`references/connecting.md`).
 

@@ -5,7 +5,11 @@ never-key-in-URL rule are pinned here without mocking urllib.
 """
 import os
 import pathlib
+import base64
+import json
+import sys
 
+import pytest
 import source_baseline as sb
 
 
@@ -62,6 +66,66 @@ def test_all_provider_urls_are_official_hosts():
                "https://generativelanguage.googleapis.com/")
     for u in urls:
         assert u.startswith(allowed), u
+
+
+@pytest.mark.parametrize("provider,key", [
+    ("anthropic", "ANTHROPIC_API_KEY"), ("openai", "OPENAI_API_KEY"),
+    ("google", "GEMINI_API_KEY"),
+])
+@pytest.mark.parametrize("image_kind", ["jpg", "missing", "unsupported"])
+def test_live_baseline_preserves_image_or_records_error(tmp_path, monkeypatch, provider, key, image_kind):
+    image = tmp_path / ("receipt.txt" if image_kind == "unsupported" else "receipt.jpg")
+    raw = b"test-image-bytes"
+    if image_kind != "missing":
+        image.write_bytes(raw)
+    dataset = tmp_path / "prompts.jsonl"
+    dataset.write_text(json.dumps({
+        "id": "image-case", "user_prompt": "Read the total", "system_prompt": "Be precise",
+        "image_path": str(image), "assistant_response": "42.00",
+    }) + "\n")
+    env = tmp_path / "source.env"
+    env.write_text(f"{key}=offline-test-key\n")
+    output = tmp_path / "source_baselines.jsonl"
+    for name, value in {"SOURCE_PROVIDER": provider, "SOURCE_MODEL_ID": "source-model",
+                        "GOLDEN_DATASET_PATH": str(dataset), "OUTPUT_PATH": str(output)}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(sys, "argv", [str(sb.__file__), str(env)])
+    calls = []
+
+    def send(url, headers, body):
+        calls.append(body)
+        return {"content": [{"type": "text", "text": "42.00"}], "stop_reason": "end_turn",
+                "choices": [{"message": {"content": "42.00"}}],
+                "candidates": [{"content": {"parts": [{"text": "42.00"}]}}]}
+
+    monkeypatch.setattr(sb, "_send", send)
+    assert sb.main() == 0
+    row = json.loads(output.read_text())
+    if image_kind != "jpg":
+        assert row["status"].startswith("error:") and row["source_response"] == ""
+        assert not calls
+        return
+    assert row["status"] == "live"
+    body = calls[0]
+    if provider == "anthropic":
+        content = body["messages"][0]["content"]
+        assert body["system"] == "Be precise"
+        assert content[0]["source"]["media_type"] == "image/jpeg"
+        assert base64.b64decode(content[0]["source"]["data"]) == raw
+        assert content[1] == {"type": "text", "text": "Read the total"}
+    elif provider == "openai":
+        content = body["messages"][-1]["content"]
+        assert body["messages"][0] == {"role": "system", "content": "Be precise"}
+        assert content[0] == {"type": "text", "text": "Read the total"}
+        url = content[1]["image_url"]["url"]
+        assert url.startswith("data:image/jpeg;base64,")
+        assert base64.b64decode(url.split(",", 1)[1]) == raw
+    else:
+        parts = body["contents"][0]["parts"]
+        assert body["systemInstruction"] == {"parts": [{"text": "Be precise"}]}
+        assert parts[0] == {"text": "Read the total"}
+        assert parts[1]["inlineData"]["mimeType"] == "image/jpeg"
+        assert base64.b64decode(parts[1]["inlineData"]["data"]) == raw
 
 
 def test_env_file_loader_ignores_blank_and_malformed_lines(tmp_path: pathlib.Path):

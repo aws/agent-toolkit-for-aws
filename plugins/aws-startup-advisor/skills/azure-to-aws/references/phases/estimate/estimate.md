@@ -131,10 +131,11 @@ is written rather than omitted so that its emptiness is visible.
 
 ## Metrics lookback affects confidence
 
-Read the actual metrics window from the report metadata rather than assuming 31
-days. Below `confidence_rules.min_window_days` in
-`knowledge/estimate/rightsizing-thresholds.json`, hold right-sizing confidence at
-`inferred` — a P95 over a short window is not a measurement.
+Read `window_days` from each measurement, never report-level metadata. A metric is
+eligible only when `metric_error` is false, `sample_count > 0`, and `window_days` is a
+number at least `confidence_rules.min_window_days`. Null/unknown windows (including
+current RDfA exports) fall back to `inferred`; never substitute
+`rdfa_metadata.lookback_days`.
 
 ## What this phase can and cannot know today
 

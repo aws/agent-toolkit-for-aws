@@ -4,7 +4,7 @@
   "verified_at": "2026-08-21",
   "verified_region": "us-east-2",
   "source": "AWS Bedrock userguide OpenAI model cards + models-api-compatibility (retrieved 2026-08-21); internal migration reference, OpenAI path (feature-level probes, 2026-06-20)",
-  "disclaimer": "This is the OpenAI-to-Bedrock MIGRATION target catalog, not a list of OpenAI models: it holds the verified landing candidates for the available paths. Verified 2026-08-21 — the GPT-5.6 family changed materially between 2026-07-21 and 2026-08-21: Sol/Terra/Luna now ALSO run on bedrock-runtime via CRIS inference profiles (Geo us./in., Global global.), with Converse/Chat Completions/Invoke listed as supported there (Guardrails Converse-only, prompt caching Responses-only on runtime), and Global CRIS pricing published at OpenAI's standard list price (cost parity; In-Region/Geo remain 1.10x). So runtime_converse now carries BOTH same-vendor GPT-5.6 candidates (same-model governance path) AND the Claude tier mapping (GPT-5.6 Sol -> Claude Opus 4.8, Terra/5.5/5.4 -> Claude Sonnet 5, Luna -> Claude Haiku 4.5) as the cross-family option. GPT-5.5 and GPT-5.4 remain mantle-only and in-region only — no CRIS, no runtime path. The gpt-oss open-weight models still support Converse on bedrock-runtime but sit a capability class below the frontier tier and are not listed. Only models with dated evidence are listed; entries name their evidence. Numeric limits stay 'unknown' unless sourced. Re-probe every selected model and API path in the target account and region before implementation.",
+  "disclaimer": "This is the OpenAI-to-Bedrock MIGRATION target catalog, not a list of OpenAI models: it holds the verified landing candidates for the available paths. Verified 2026-08-21 — the GPT-5.6 family changed materially between 2026-07-21 and 2026-08-21: Sol/Terra/Luna now ALSO run on bedrock-runtime via CRIS inference profiles (Geo us./in., Global global.), with Converse/Chat Completions/Invoke listed as supported there (Guardrails Converse-only, prompt caching Responses-only on runtime), and Global CRIS pricing published at OpenAI's standard list price (cost parity; In-Region/Geo remain 1.10x). So runtime_converse now carries BOTH same-vendor GPT-5.6 candidates (same-model governance path) AND the Claude tier mapping (GPT-5.6 Sol -> Claude Opus 4.8, Terra/5.5/5.4 -> Claude Sonnet 5, Luna -> Claude Haiku 4.5) as the cross-family option. GPT-5.5 and GPT-5.4 remain mantle-only and in-region only — no CRIS, no runtime path. The gpt-oss open-weight models still support Converse on bedrock-runtime but sit a capability class below the frontier tier and are not listed. Only models with dated evidence are listed; entries name their evidence. Numeric limits stay 'unknown' unless sourced. Re-probe every selected model and API path in the target account and region before implementation. This catalog now also covers the GPT-6 family (Astra, Sol, Luna, 6.1 Sol), ported from the already-verified facts in the shared migration-skills references (`shared/ai/ai-openai-to-bedrock.md`, `shared/ai/bedrock-pricing-cache.md`): their in-region mantle footprint is narrower than GPT-5.6's (Astra: us-east-1 + us-west-2; Sol/Luna/6.1 Sol: us-east-1 only), unlike GPT-5.x the GPT-6 model cards list Chat Completions as supported on mantle (not just Responses), GPT-6 Astra's bedrock-runtime CRIS surface lacks Invoke support (Responses/Chat Completions/Converse only, unlike its siblings), and GPT-6 Astra / 6.1 Sol additionally support a 6x-Standard Ultrafast service tier that GPT-6 Sol / Luna do not.",
   "paths": {
     "mantle_openai_responses": {
       "sdk": "openai",
@@ -217,6 +217,182 @@
           "model_id": "openai.gpt-5.4",
           "requires_cris": false,
           "evidence": "internal reference verified gotcha: GPT-5.x on Mantle is Responses-only; Chat Completions rejected"
+        }
+      }
+    },
+    "openai_gpt_6_astra": {
+      "display_name": "OpenAI GPT-6 Astra (on Bedrock)",
+      "family": "openai_gpt_6",
+      "inference_profiles": {
+        "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"],
+        "global": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"]
+      },
+      "generation": "reasoning",
+      "version": "6",
+      "class": "reasoning",
+      "context_window": 1050000,
+      "output_token_ceiling": 128000,
+      "region_availability": {
+        "commercial": ["us-east-1", "us-west-2"],
+        "govcloud": [],
+        "evidence": "openai-on-bedrock.md Regional Availability table (fetched 2026-10-10): GPT-6 Astra's mantle reach is us-east-1 and us-west-2 (Standard in both regions, Ultrafast in us-east-1 only); not named in the GovCloud announcement, so GovCloud is treated as absent, not unknown."
+      },
+      "capabilities": [
+        "reasoning",
+        "tool_or_function_calling",
+        "image_input_vision"
+      ],
+      "capability_source": "AWS model card (fetched 2026-10-10), frontier reasoning/agentic tier parity with GPT-5.6 Sol: image+text input checked, tool calling via the Responses API's built-in tool use. Context window is 1.05M tokens (bedrock-pricing-cache.md lines 241-248); 272K is the short-context pricing tier boundary, not the window size \u2014 above it the long-context tier applies (2x input/cache-write, 1.5x output). Max output tokens is 128,000 (bedrock-pricing-cache.md). Supports a 6x-Standard Ultrafast service tier (service_tier: \"ultrafast\") in us-east-1 only, in addition to Standard \u2014 confirmed on the model card's Service Tiers section (bedrock-pricing-cache.md lines 274-276; GPT-6 Sol/Luna are Standard-only).",
+      "paths": {
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": false,
+          "evidence": "openai-on-bedrock.md (fetched 2026-10-10): bedrock-mantle at /openai/v1, in-region only, available in us-east-1 and us-west-2 (the narrowest-plus-one mantle footprint in the GPT-6 family); Responses supported"
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": false,
+          "evidence": "openai-on-bedrock.md's endpoint-support paragraph: \"mantle supports only Responses and Chat Completions\" across the whole GPT-6/5.6 family \u2014 unlike the GPT-5.x sibling pattern in this catalog (mantle_openai_chat available:false), the GPT-6 model cards list Chat Completions as supported on mantle. This is a deliberate, cited deviation, not an inconsistency."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": true,
+          "evidence": "openai-on-bedrock.md (fetched 2026-10-10): bedrock-runtime reaches broad commercial regions via us./global. CRIS prefixes, same breadth pattern as GPT-5.6. GPT-6 Astra's bedrock-runtime surface is Responses, Chat Completions, and Converse only \u2014 Invoke is NOT supported, unlike Sol/Luna/6.1 Sol, which support Responses/Chat Completions/Converse/Invoke on bedrock-runtime. Do not assume Invoke parity with Astra's siblings; verify per-model, per-endpoint before approving an InvokeModel call path."
+        }
+      }
+    },
+    "openai_gpt_6_sol": {
+      "display_name": "OpenAI GPT-6 Sol (on Bedrock)",
+      "family": "openai_gpt_6",
+      "inference_profiles": {
+        "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"],
+        "global": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"]
+      },
+      "generation": "reasoning",
+      "version": "6",
+      "class": "reasoning",
+      "context_window": 1050000,
+      "output_token_ceiling": 128000,
+      "region_availability": {
+        "commercial": ["us-east-1"],
+        "govcloud": [],
+        "evidence": "openai-on-bedrock.md Regional Availability table (fetched 2026-10-10): GPT-6 Sol's mantle reach is us-east-1 only; not named in the GovCloud announcement, so GovCloud is treated as absent, not unknown."
+      },
+      "capabilities": [
+        "reasoning",
+        "tool_or_function_calling",
+        "image_input_vision"
+      ],
+      "capability_source": "AWS GPT-6 Sol model card (fetched 2026-10-10): accepts text and image input and returns text; tool calling via the Responses API's built-in tool use. Context window is 1.05M tokens (bedrock-pricing-cache.md lines 241-248); 272K is the short-context pricing tier boundary, not the window size \u2014 above it the long-context tier applies (2x input/cache-write, 1.5x output). Max output tokens is 128,000 (bedrock-pricing-cache.md). Standard service tier only \u2014 GPT-6 Sol's model card lists no Ultrafast tier, unlike Astra and 6.1 Sol (bedrock-pricing-cache.md lines 274-276).",
+      "paths": {
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6-sol",
+          "requires_cris": false,
+          "evidence": "openai-on-bedrock.md (fetched 2026-10-10): bedrock-mantle at /openai/v1, in-region only, available in us-east-1 only; Responses supported"
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6-sol",
+          "requires_cris": false,
+          "evidence": "openai-on-bedrock.md's endpoint-support paragraph: \"mantle supports only Responses and Chat Completions\" across the whole GPT-6/5.6 family \u2014 unlike the GPT-5.x sibling pattern in this catalog (mantle_openai_chat available:false), the GPT-6 model cards list Chat Completions as supported on mantle. This is a deliberate, cited deviation, not an inconsistency."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6-sol",
+          "requires_cris": true,
+          "evidence": "openai-on-bedrock.md (fetched 2026-10-10): bedrock-runtime supports Responses, Chat Completions, Converse, and Invoke via us./global. CRIS prefixes, reaching broad commercial regions \u2014 full API parity across endpoints, unlike GPT-6 Astra's Invoke gap"
+        }
+      }
+    },
+    "openai_gpt_6_luna": {
+      "display_name": "OpenAI GPT-6 Luna (on Bedrock)",
+      "family": "openai_gpt_6",
+      "inference_profiles": {
+        "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"],
+        "global": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"]
+      },
+      "generation": "reasoning",
+      "version": "6",
+      "class": "reasoning",
+      "context_window": 1050000,
+      "output_token_ceiling": 128000,
+      "region_availability": {
+        "commercial": ["us-east-1"],
+        "govcloud": [],
+        "evidence": "openai-on-bedrock.md Regional Availability table (fetched 2026-10-10): GPT-6 Luna's mantle reach is us-east-1 only; not named in the GovCloud announcement, so GovCloud is treated as absent, not unknown."
+      },
+      "capabilities": [
+        "reasoning",
+        "tool_or_function_calling",
+        "image_input_vision"
+      ],
+      "capability_source": "AWS GPT-6 Luna model card (fetched 2026-10-10): accepts text and image input and returns text; tool calling via the Responses API's built-in tool use. Context window is 1.05M tokens (bedrock-pricing-cache.md lines 241-248); 272K is the short-context pricing tier boundary, not the window size \u2014 above it the long-context tier applies (2x input/cache-write, 1.5x output). Max output tokens is 128,000 (bedrock-pricing-cache.md). Standard service tier only \u2014 GPT-6 Luna's model card lists no Ultrafast tier, unlike Astra and 6.1 Sol (bedrock-pricing-cache.md lines 274-276).",
+      "paths": {
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6-luna",
+          "requires_cris": false,
+          "evidence": "openai-on-bedrock.md (fetched 2026-10-10): bedrock-mantle at /openai/v1, in-region only, available in us-east-1 only; Responses supported"
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6-luna",
+          "requires_cris": false,
+          "evidence": "openai-on-bedrock.md's endpoint-support paragraph: \"mantle supports only Responses and Chat Completions\" across the whole GPT-6/5.6 family \u2014 unlike the GPT-5.x sibling pattern in this catalog (mantle_openai_chat available:false), the GPT-6 model cards list Chat Completions as supported on mantle. This is a deliberate, cited deviation, not an inconsistency."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6-luna",
+          "requires_cris": true,
+          "evidence": "openai-on-bedrock.md (fetched 2026-10-10): bedrock-runtime supports Responses, Chat Completions, Converse, and Invoke via us./global. CRIS prefixes, reaching broad commercial regions \u2014 full API parity across endpoints, unlike GPT-6 Astra's Invoke gap"
+        }
+      }
+    },
+    "openai_gpt_6_1_sol": {
+      "display_name": "OpenAI GPT-6.1 Sol (on Bedrock)",
+      "family": "openai_gpt_6",
+      "inference_profiles": {
+        "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"],
+        "global": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"]
+      },
+      "generation": "reasoning",
+      "version": "6.1",
+      "class": "reasoning",
+      "context_window": 1050000,
+      "output_token_ceiling": 131072,
+      "region_availability": {
+        "commercial": ["us-east-1"],
+        "govcloud": [],
+        "evidence": "openai-on-bedrock.md Regional Availability table (fetched 2026-10-10): GPT-6.1 Sol's mantle reach is us-east-1 only; not named in the GovCloud announcement, so GovCloud is treated as absent, not unknown."
+      },
+      "capabilities": [
+        "reasoning",
+        "tool_or_function_calling",
+        "image_input_vision"
+      ],
+      "capability_source": "AWS model card (fetched 2026-10-10), flagship reasoning/agentic tier parity with GPT-6 Sol (same price tier, same class): image+text input checked, tool calling via the Responses API's built-in tool use. Context window is 1.05M tokens (bedrock-pricing-cache.md lines 241-248); 272K is the short-context pricing tier boundary, not the window size \u2014 above it the long-context tier applies (2x input/cache-write, 1.5x output). Max output tokens is 131,072 (bedrock-pricing-cache.md). Supports a 6x-Standard Ultrafast service tier (service_tier: \"ultrafast\") in addition to Standard \u2014 confirmed on the model card's Service Tiers section (bedrock-pricing-cache.md lines 274-276; GPT-6 Sol/Luna are Standard-only). Cache-read rate is deeper than GPT-6 Sol's (0.05x vs 0.10x of input) \u2014 the one real pricing differentiator between Sol and 6.1 Sol beyond the base model upgrade; input/output rates are identical between the two.",
+      "paths": {
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-sol",
+          "requires_cris": false,
+          "evidence": "openai-on-bedrock.md (fetched 2026-10-10): bedrock-mantle at /openai/v1, in-region only, available in us-east-1 only; Responses supported"
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-sol",
+          "requires_cris": false,
+          "evidence": "openai-on-bedrock.md's endpoint-support paragraph: \"mantle supports only Responses and Chat Completions\" across the whole GPT-6/5.6 family \u2014 unlike the GPT-5.x sibling pattern in this catalog (mantle_openai_chat available:false), the GPT-6 model cards list Chat Completions as supported on mantle. This is a deliberate, cited deviation, not an inconsistency."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6.1-sol",
+          "requires_cris": true,
+          "evidence": "openai-on-bedrock.md (fetched 2026-10-10): bedrock-runtime supports Responses, Chat Completions, Converse, and Invoke via us./global. CRIS prefixes, reaching broad commercial regions \u2014 full API parity across endpoints, unlike GPT-6 Astra's Invoke gap"
         }
       }
     },

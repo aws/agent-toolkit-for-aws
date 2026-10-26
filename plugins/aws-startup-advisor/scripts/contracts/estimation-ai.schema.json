@@ -1,0 +1,183 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration:estimation-ai",
+  "title": "estimation-ai.json (canonical, target-only estimate contract)",
+  "description": "Provider-neutral, target-only contract for the estimation-ai.json AI cost estimate artifact. Structural validity does NOT imply an implemented pricing lookup, model mapping, or runtime-supported identity, and does NOT imply that either skill's current estimate-ai.md actually emits this shape — this is an estimate-time target. cost_by_source[] carries forward the aws-design-ai.json metadata.ai_sources[]/gateways[] identity pattern so a per-source/per-model estimated cost traces back to the exact Design entry it was computed from.",
+  "type": "object",
+  "required": [
+    "phase",
+    "timestamp",
+    "pricing_source",
+    "accuracy_confidence",
+    "current_costs",
+    "token_volume",
+    "model_comparison",
+    "recommended_model",
+    "backup_model",
+    "cost_comparison",
+    "migration_cost_considerations",
+    "roi_analysis",
+    "optimization_opportunities",
+    "optimized_projection",
+    "recommendation",
+    "cost_by_source",
+    "services_not_estimated"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "phase": {"const": "estimate"},
+    "timestamp": {"type": "string", "minLength": 1},
+    "pricing_source": {"enum": ["cached", "unavailable"]},
+    "accuracy_confidence": {"type": "string", "minLength": 1},
+    "current_costs": {
+      "type": "object",
+      "required": ["source", "monthly_ai_spend", "services"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "monthly_ai_spend": {"oneOf": [{"type": "null"}, {"type": "number"}]},
+        "services": {"type": "array"}
+      }
+    },
+    "token_volume": {"type": "object"},
+    "model_comparison": {"type": "array"},
+    "recommended_model": {"type": "object"},
+    "backup_model": {"type": "object"},
+    "embeddings": {"type": "object"},
+    "cost_comparison": {
+      "type": "object",
+      "required": [
+        "current_source_monthly",
+        "projected_bedrock_monthly",
+        "monthly_difference",
+        "annual_difference",
+        "percent_change"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "current_source_monthly": {"oneOf": [{"type": "null"}, {"type": "number"}]},
+        "projected_bedrock_monthly": {"oneOf": [{"type": "null"}, {"type": "number"}]},
+        "monthly_difference": {"oneOf": [{"type": "null"}, {"type": "number"}]},
+        "annual_difference": {"oneOf": [{"type": "null"}, {"type": "number"}]},
+        "percent_change": {"oneOf": [{"type": "null"}, {"type": "number"}]}
+      }
+    },
+    "migration_cost_considerations": {
+      "type": "object",
+      "required": ["categories", "complexity_factors", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "categories": {"type": "array", "maxItems": 0},
+        "complexity_factors": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "note": {"type": "string", "minLength": 1}
+      }
+    },
+    "roi_analysis": {"type": "object"},
+    "optimization_opportunities": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/optimizationOpportunity"}
+    },
+    "optimized_projection": {"type": "object"},
+    "recommendation": {"$ref": "#/definitions/recommendation"},
+    "cost_by_source": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/sourceCostEntry"}
+    },
+    "services_not_estimated": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/serviceNotEstimated"}
+    }
+  },
+  "definitions": {
+    "extensibleIdentity": {"type": "string", "pattern": "^(?!(?:both|openrouter|unknown)$)[a-z][a-z0-9_]*$"},
+    "normalizedModel": {"type": "string", "pattern": "^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$"},
+    "sourceCostModel": {
+      "type": "object",
+      "required": ["model", "monthly_cost", "vs_source_percent"],
+      "additionalProperties": false,
+      "properties": {
+        "model": {"$ref": "#/definitions/normalizedModel"},
+        "monthly_cost": {"oneOf": [{"type": "null"}, {"type": "number"}]},
+        "vs_source_percent": {"oneOf": [{"type": "null"}, {"type": "number"}]}
+      }
+    },
+    "sourceCostEntry": {
+      "description": "A per-source, per-model estimated cost entry. (provider, source_service) MUST exist in the aws-design-ai.json metadata.ai_sources[]/gateways[].upstreams[] this estimate was built from, and every models[].model MUST be one of that source's models[] — see schema-estimate-ai.md's cost_by_source[] traceability rule.",
+      "type": "object",
+      "required": ["provider", "source_service", "models"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"$ref": "#/definitions/extensibleIdentity"},
+        "source_service": {"$ref": "#/definitions/extensibleIdentity"},
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/sourceCostModel"}
+        }
+      }
+    },
+    "optimizationOpportunity": {
+      "type": "object",
+      "required": [
+        "opportunity",
+        "type",
+        "target_services",
+        "commitment",
+        "potential_savings_monthly",
+        "potential_savings_percent",
+        "available",
+        "implementation_effort",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "opportunity": {"type": "string", "minLength": 1},
+        "type": {
+          "enum": [
+            "model_tiering",
+            "prompt_caching",
+            "batch_api",
+            "intelligent_prompt_routing",
+            "provisioned_throughput",
+            "input_token_reduction",
+            "multi_model_routing"
+          ]
+        },
+        "target_services": {"type": "array", "items": {"const": "Bedrock"}, "minItems": 1},
+        "commitment": {"type": "string", "minLength": 1},
+        "potential_savings_monthly": {"oneOf": [{"type": "null"}, {"type": "number"}]},
+        "potential_savings_percent": {"type": "string", "minLength": 1},
+        "available": {"type": "string", "minLength": 1},
+        "implementation_effort": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1}
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "required": ["path", "path_label", "migrate_if", "stay_if", "confidence", "rationale"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"enum": ["migrate_optimized", "migrate_phased", "stay"]},
+        "path_label": {"type": "string", "minLength": 1},
+        "migrate_if": {"type": "string", "minLength": 1},
+        "stay_if": {"type": "string", "minLength": 1},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "rationale": {"type": "string", "minLength": 1}
+      }
+    },
+    "serviceNotEstimated": {
+      "type": "object",
+      "required": ["workload_id", "target_aws_service", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "workload_id": {"type": "string", "minLength": 1},
+        "target_aws_service": {
+          "enum": ["textract", "rekognition", "transcribe", "comprehend", "translate", "polly", "sagemaker"]
+        },
+        "reason": {"const": "not_token_priced"}
+      }
+    }
+  }
+}
