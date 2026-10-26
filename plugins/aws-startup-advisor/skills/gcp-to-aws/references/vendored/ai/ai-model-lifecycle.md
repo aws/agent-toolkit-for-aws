@@ -13,7 +13,7 @@
 
 <!-- freshness-contract: enforced by plugins/aws-startup-advisor/tools/model-staleness.py -->
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-10-26
 
 **Staleness window:** 45 days
 
@@ -81,22 +81,28 @@ lists launch **September 8, 2026**, lifecycle **Active**, and no scheduled EOL d
 possible EOL is not an announced retirement date. Existing GPT-5.x entries are not superseded.
 See `openai-on-bedrock.md` for access paths, regions, and pricing.
 
-## Legacy / EOL Models (as of October 5, 2026)
+## Legacy / EOL Models (as of October 26, 2026)
 
-For models launched before 2026-09-07, the [legacy lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative. For models launched on or after that date, the model card and the runtime `modelLifecycle.status` field are authoritative — they will not appear in the table below. The table captures pre-policy-change models referenced elsewhere in this plugin. **Recompute the Status column on each run** using `days_to_eol = EOL date − today`.
+For models launched before 2026-09-07, the [legacy lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative. For models launched on or after that date, the model card and the runtime `modelLifecycle.status` field are authoritative — they will not appear in the table below. The table captures pre-policy-change models referenced elsewhere in this plugin (plus Claude Sonnet 4.5, which the legacy page lists with a dated ID). **Recompute the Status column on each run** using `days_to_eol = EOL date − today`.
 
-| Model              | Model ID                                  | EOL Date   | Days to EOL | Status       | Active Replacement      |
-| ------------------ | ----------------------------------------- | ---------- | ----------- | ------------ | ----------------------- |
-| Claude Sonnet 4    | `anthropic.claude-sonnet-4-20250514-v1:0` | 2026-10-14 | 9           | **excluded** | Claude Sonnet 5 / 4.6   |
-| Jamba 1.5 Large    | `ai21.jamba-1-5-large-v1:0`               | 2026-11-26 | 52          | **excluded** | —                       |
-| Jamba 1.5 Mini     | `ai21.jamba-1-5-mini-v1:0`                | 2026-11-26 | 52          | **excluded** | —                       |
-| Marengo Embed v2.7 | `twelvelabs.marengo-embed-2-7-v1:0`       | 2026-11-30 | 56          | **excluded** | Marengo Embed 3.0       |
-| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0` | 2027-01-08 | 95          | legacy       | Claude Opus 5.5; Opus 4.6 for Batch   |
+| Model              | Model ID                                    | EOL Date   | Days to EOL | Status       | Active Replacement                                      |
+| ------------------ | ------------------------------------------- | ---------- | ----------- | ------------ | ------------------------------------------------------- |
+| Jamba 1.5 Large    | `ai21.jamba-1-5-large-v1:0`                 | 2026-11-26 | 31          | **excluded** | —                                                       |
+| Jamba 1.5 Mini     | `ai21.jamba-1-5-mini-v1:0`                  | 2026-11-26 | 31          | **excluded** | —                                                       |
+| Marengo Embed v2.7 | `twelvelabs.marengo-embed-2-7-v1:0`         | 2026-11-30 | 35          | **excluded** | — (Marengo 3.0 is also Legacy; see notes)               |
+| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0`   | 2027-01-08 | 74          | **excluded** | Claude Opus 5.5; Opus 4.6 for Batch                     |
+| Llama 4 Maverick   | `meta.llama4-maverick-17b-instruct-v1:0`    | 2027-03-30 | 155         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
+| Llama 4 Scout      | `meta.llama4-scout-17b-instruct-v1:0`       | 2027-03-30 | 155         | legacy       | Nova Micro / Nova Lite; Claude Haiku 4.5                |
+| Llama 3.3 70B      | `meta.llama3-3-70b-instruct-v1:0`           | 2027-03-30 | 155         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
+| DeepSeek-R1        | `deepseek.r1-v1:0`                          | 2027-03-30 | 155         | legacy       | Claude Opus 5.5 / Nova 2 Pro (reasoning)                |
+| DeepSeek-V3.1      | `deepseek.v3-v1:0` / `deepseek.v3.1`        | 2027-03-30 | 155         | legacy       | gpt-oss-120b / Claude Sonnet 5                          |
+| Claude Sonnet 4.5  | `anthropic.claude-sonnet-4-5-20250929-v1:0` | 2027-04-08 | 164         | legacy       | Claude Sonnet 5 / Sonnet 4.6                            |
 
-**Notes (as of Oct 5, 2026):** Claude Sonnet 4, Jamba 1.5 Large / Mini, and Marengo Embed v2.7 are inside the 90-day exclusion zone (`excluded`, not `legacy`) — they must not appear in recommendation or comparison tables. Jamba 1.5 Large / Mini are also in public extended access, so provider pricing may increase. Claude Opus 4.1 is the only row still outside the exclusion zone (95 days; it enters the zone on 2026-10-10). Nova Canvas v1 and Nova Reel v1 passed their 2026-09-30 EOL date and moved to Removed.
+**Notes (as of Oct 26, 2026):** Verified against the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html). **Exclusion zone:** Jamba 1.5 Large / Mini, Marengo Embed v2.7, and Claude Opus 4.1 — omit from recommendation and comparison tables. Jamba is in public extended access (pricing may rise). **New Legacy rows this refresh** (still >90 days — annotate, never primary when an Active alternative exists): Llama 4 Maverick / Scout, Llama 3.3 70B, DeepSeek-R1 / V3.1, Claude Sonnet 4.5. Mapping guides that still list Llama 4 or DeepSeek-R1 under "Best Bedrock Match" must prefer the Active Replacement column above for new migrations. Marengo Embed 3.0 and TwelveLabs Pegasus are also Legacy on the AWS page (EOL 2027-03-22) but are not recommendation defaults in this plugin, so they stay out of the table. Claude Sonnet 4 reached EOL on 2026-10-14 and moved to Removed.
 
-**Removed (past EOL as of Oct 5, 2026):**
+**Removed (past EOL as of Oct 26, 2026):**
 
+- Claude Sonnet 4 (`anthropic.claude-sonnet-4-20250514-v1:0`) — EOL 2026-10-14 (replacement: Claude Sonnet 5 / 4.6)
 - Nova Canvas v1 (`amazon.nova-canvas-v1:0`) — EOL 2026-09-30 (replacement: Stability AI; see the image-generation note)
 - Nova Reel v1 (`amazon.nova-reel-v1:0` / `amazon.nova-reel-v1:1`) — EOL 2026-09-30 (no Active replacement in this registry)
 - Titan Image Generator v2 (`amazon.titan-image-generator-v2:0`) — EOL 2026-06-30
@@ -110,7 +116,7 @@ For models launched before 2026-09-07, the [legacy lifecycle table](https://docs
 - Nova Premier v1 (`amazon.nova-premier-v1:0`) — EOL 2026-09-14 (replacement: Nova 2 Pro)
 - Nova Sonic v1 (`amazon.nova-sonic-v1:0`) — EOL 2026-09-14 (replacement: Nova 2 Sonic)
 
-> **AWS page lag:** As of Sep 21, 2026, the legacy lifecycle page still lists rows whose published EOL date has already passed (Command R / R+ among them), even though the same page states that past-EOL rows are dropped. This file treats the **EOL date as authoritative** and keeps those models in Removed rather than the live table, so users already on them still see a warning. Never recommend or invoke a model listed in Removed.
+> **AWS page lag:** The legacy lifecycle page may still list region-specific rows whose published EOL date has already passed in other Regions, or retain past-EOL models in the live table briefly. This file treats the **EOL date as authoritative** for the Regions this plugin estimates against and keeps past-EOL models in Removed rather than the live table, so users already on them still see a warning. Never recommend or invoke a model listed in Removed.
 
 **Status key:** `excluded` = ≤90 days to EOL, must not appear in any recommendation. `legacy` = >90 days to EOL, annotate but do not recommend as primary.
 
