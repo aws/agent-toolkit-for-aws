@@ -9,7 +9,7 @@
 
 ## Step 0: Load Inputs
 
-Read `$AI_PROFILE` (#415) and `$AI_SIDECAR` after the input gate passes:
+Read `$AI_PROFILE` (#415) and `$AI_SIDECAR` after the input gate passes. If no sidecar file exists (the gate reported `"sidecar": "absent"`), treat every sidecar field below as absent (not available): per-workload design, agentic design, observed cost, and integration context are then reported as not available, never inferred, and the per-model fallback path applies.
 
 - `ai_sources[]` — provider, `source_service`, `model_families`, `model_evidence`, and `models` for each AI source
 - `gateways[]` — gateway `product`, `type`, `upstream_evidence`, and `upstreams`

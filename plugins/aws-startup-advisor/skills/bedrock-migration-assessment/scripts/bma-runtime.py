@@ -274,6 +274,12 @@ AI_SIDECAR_KEYS = {
     "observed_costs", "integration_context", "infrastructure", "model_context", "profile_origin",
 }
 AI_SIDECAR_KIND = "BMA_GCP_AI_SIDECAR"
+# Sidecar-only fields, in report order. A direct run that starts from a #415 profile alone (no legacy
+# profile, no sidecar file) has none of them: they are reported not_available, never inferred.
+AI_SIDECAR_FIELDS = (
+    "workloads", "agentic_profile", "tool_manifest", "observed_costs",
+    "integration_context", "infrastructure", "model_context", "profile_origin",
+)
 
 
 class BmaLegacyProfileRejected(ValueError):
@@ -389,6 +395,14 @@ def validate_ai_sidecar(value: Any) -> dict[str, Any]:
     if origin is not None and (set(origin) != {"terraform_primary"} or not isinstance(origin["terraform_primary"], bool)):
         raise ValueError("ai_sidecar_invalid")
     return value
+
+
+def sidecar_availability(sidecar: dict[str, Any] | None) -> dict[str, str]:
+    """Which sidecar-only fields a phase may read. Absent sidecar or absent key -> not_available."""
+    return {
+        field: "available" if sidecar is not None and field in sidecar else "not_available"
+        for field in AI_SIDECAR_FIELDS
+    }
 
 
 AI_CAPABILITY_MAP_RELATIVE = "references/vendored/ai/sdk-capability-map.json"
@@ -1188,7 +1202,15 @@ def main() -> int:
                 json.loads(args.profile.read_text(encoding="utf-8")), Path(__file__).resolve().parents[1]
             )
             if args.sidecar is not None:
-                validate_ai_sidecar(json.loads(args.sidecar.read_text(encoding="utf-8")))
+                # A direct run from a #415 profile alone has no sidecar file. The gate passes and every
+                # sidecar-only field is reported not_available; nothing is synthesized in its place.
+                if args.sidecar.exists():
+                    sidecar = validate_ai_sidecar(json.loads(args.sidecar.read_text(encoding="utf-8")))
+                    output["sidecar"] = "validated"
+                else:
+                    sidecar = None
+                    output["sidecar"] = "absent"
+                output["sidecar_fields"] = sidecar_availability(sidecar)
         except ValueError as exc:
             error = "BmaLegacyProfileRejected" if isinstance(exc, BmaLegacyProfileRejected) else "ValueError"
             print(json.dumps({"error": error, "message": str(exc)}, sort_keys=True), file=sys.stderr)
