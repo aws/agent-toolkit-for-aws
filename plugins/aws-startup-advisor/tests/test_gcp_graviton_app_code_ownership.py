@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -90,3 +92,69 @@ def test_direct_bma_has_no_infrastructure_graviton_logic() -> None:
     for entry in closure["entries"]:
         member = (BMA / entry["destination"]).read_text(errors="ignore")
         assert 'tier: "ready"' not in member and "schema-graviton" not in member, entry["destination"]
+
+
+GATE_SCRIPT = GCP.parent / "scripts/gcp-route-gate.py"
+
+
+def _run_graviton_gate(run_dir: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(GATE_SCRIPT), "--run-dir", str(run_dir), "--gate", "graviton"],
+        capture_output=True, text=True, check=False,
+    )
+
+
+def _write_json(run_dir: Path, name: str, payload: dict) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / name).write_text(json.dumps(payload))
+
+
+def test_ai_only_run_passes_graviton_gate_as_not_applicable(tmp_path: Path) -> None:
+    # P2: AI-only route (no GCP inventory, ai-workload-profile.json present) is n/a, not failed.
+    _write_json(tmp_path, "ai-workload-profile.json", {"models": []})
+    result = _run_graviton_gate(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.startswith("GATE_NA | phase=discover | gate=discover-app-graviton | route=ai_only"), result.stdout
+
+
+def test_failed_graviton_gate_stops_run_with_named_error(tmp_path: Path) -> None:
+    # P2: infrastructure run without graviton_profile fails closed with a named error.
+    _write_json(tmp_path, "gcp-resource-inventory.json", {"resources": []})
+    result = _run_graviton_gate(tmp_path)
+    assert result.returncode != 0
+    assert result.stdout.startswith(
+        "ROUTE_GATE_FAIL | phase=discover | gate=discover-app-graviton | field=graviton_profile | reason=missing"
+    ), result.stdout
+
+
+def test_empty_run_dir_fails_closed(tmp_path: Path) -> None:
+    # No inventory and no AI profile is not the AI-only route, so the gate stays fail closed.
+    result = _run_graviton_gate(tmp_path)
+    assert result.returncode != 0
+    assert result.stdout.startswith("ROUTE_GATE_FAIL"), result.stdout
+
+
+def test_infra_run_with_graviton_profile_passes(tmp_path: Path) -> None:
+    _write_json(tmp_path, "gcp-resource-inventory.json", {"graviton_profile": []})
+    result = _run_graviton_gate(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.startswith("GATE_PASS | phase=discover | gate=discover-app-graviton"), result.stdout
+
+
+def test_hybrid_run_accepts_graviton_profile_in_ai_workload_profile(tmp_path: Path) -> None:
+    # Writer/gate agreement: discover-app-graviton.md may write the array next to the AI profile.
+    _write_json(tmp_path, "gcp-resource-inventory.json", {"resources": []})
+    _write_json(tmp_path, "ai-workload-profile.json", {"graviton_profile": []})
+    result = _run_graviton_gate(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_gate_prose_points_at_the_script_and_keeps_fail_closed_stop() -> None:
+    text = CONTROLLER.read_text()
+    start = text.index("   - If `discover-app-graviton.md` ran")
+    gate = text[start:text.index("   - If `discover-app-code.md` ran", start)]
+    assert "scripts/gcp-route-gate.py" in gate and "--gate graviton" in gate, gate
+    assert "GATE_NA" in gate and "ai_only" in gate, gate
+    assert "ROUTE_GATE_FAIL" in gate and "STOP" in gate, gate
+    assert "Recording a failed route gate and continuing is not permitted" in text
+    assert "If any triggered route is missing its required artifact(s): STOP" in text
