@@ -1,6 +1,6 @@
 # Amazon Bedrock Pricing Cache
 
-**Last updated:** 2026-10-26 (lifecycle Status refresh against the Bedrock legacy lifecycle page — Claude Sonnet 4 → past EOL; Opus 4.1 → excluded; Llama 4 Maverick/Scout, Llama 3.3 70B, DeepSeek-R1/V3.1, Claude Sonnet 4.5 → legacy; rates unchanged from the 2026-10-05 pricing re-verify via AWS Pricing MCP / aws.amazon.com/bedrock/pricing / model cards)
+**Last updated:** 2026-10-26 (added Claude Sonnet 5.5 / Haiku 5.5 Global+Geo rows and DeepSeek V3.2 quick-ref from Bedrock pricing US East (Ohio) + model cards; lifecycle Status refresh — Claude Sonnet 4 → past EOL; Opus 4.1 → excluded; Llama 4 Maverick/Scout, Llama 3.3 70B, DeepSeek-R1/V3.1, Claude Sonnet 4.5 → legacy; other rates unchanged from the 2026-10-05 pricing re-verify)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±15-25% for AI/Bedrock models and services (sourced from public pricing pages)
@@ -59,7 +59,7 @@ full-cache date at the top of this file.
 >
 > Opus 5.5 rows already specify Global, Geo, Mantle, London or GovCloud pricing; do not apply another 1.10 multiplier.
 
-**Sonnet 5.5 release (2026-09-28):** Sonnet 5.5 (`anthropic.claude-sonnet-5-5` on Bedrock) is a distinct model and has no row in this cache yet. Keep the current Sonnet 5 default and rate rows until 5.5 has a separately verified entry. For an explicit 5.5 estimate, use the consuming skill's unavailable-pricing handling; do not silently reuse Sonnet 5 rates. Read the [5.5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide) before recommending its request/response handling.
+**Sonnet 5.5 / Haiku 5.5 (`anthropic.claude-sonnet-5-5` / `anthropic.claude-haiku-5-5` on Bedrock), rates verified 2026-10-25.** Source: [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/), Anthropic models table, Global and Geo/In-region Cross-region Inference, US East (Ohio); model cards confirm Active lifecycle and 1M context. Per 1M tokens — **Sonnet 5.5** Global: input $2.00, output $10.00, 5m cache write $2.50, 1h cache write $4.00, cache read $0.10; Geo (US): $2.20 / $11.00, 5m $2.75, 1h $4.40, cache read $0.11. **Haiku 5.5** (not a default — keep Haiku 4.5 as the cost/speed recommendation): Global $0.10 / $0.50, cache read $0.01; Geo $0.11 / $0.55, cache read $0.011. Batch is N/A for both. **Cache-read note:** Sonnet 5.5 cache read is reduced 50% from the prior rate starting October 7, 2026 (prior Global $0.20). Sonnet 5 keeps its own $0.20 Global cache-read row. Do not silently reuse Sonnet 5 or Haiku 4.5 rates for 5.5 estimates. Read the [Sonnet 5.5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide) before recommending Sonnet 5.5 request/response handling.
 
 ### Multi-provider quick reference (per 1M tokens)
 
@@ -70,6 +70,8 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | Claude Fable 5                   | anthropic.claude-fable-5                 | Anthropic | 10.00      | 50.00       | 1M      | frontier  | restricted (Covered Model; `aws_review` opt-in)              |
 | Claude Fable 5.1                 | global.anthropic.claude-fable-5-1        | Anthropic | 10.00      | 50.00       | 1M      | frontier  | restricted (Covered Model; `aws_review` opt-in; CRIS only; Global rate shown — see note below for the `us.` Geo alternative at $11/$55) |
 | Claude Sonnet 5                  | anthropic.claude-sonnet-5                | Anthropic | 2.00       | 10.00       | 1M      | flagship  | active ($2/$10 made the standard price Sep 1, 2026)          |
+| Claude Sonnet 5.5 (Global)       | global.anthropic.claude-sonnet-5-5       | Anthropic | 2.00       | 10.00       | 1M      | flagship  | active (Global CRIS; ACTIVE per model card; source US East (Ohio) pricing table) |
+| Claude Sonnet 5.5 (US Geo)       | us.anthropic.claude-sonnet-5-5           | Anthropic | 2.20       | 11.00       | 1M      | flagship  | active (US Geo; source US East (Ohio) pricing table)         |
 | Claude Opus 5.5 (Global)          | global.anthropic.claude-opus-5-5         | Anthropic | 4.00       | 20.00       | 1M      | premium   | active (Global CRIS; no Batch; verified 2026-09-24)                      |
 | Claude Opus 5.5 (US Geo)          | us.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (commercial US Geo; no Batch; verified 2026-09-24)                |
 | Claude Opus 5.5 (EU Geo)          | eu.anthropic.claude-opus-5-5             | Anthropic | 4.40       | 22.00       | 1M      | premium   | active (EU Geo; no Batch; verified 2026-09-24)                           |
@@ -88,6 +90,8 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | Claude Sonnet 4.5                | anthropic.claude-sonnet-4-5-20250929-v1:0 | Anthropic | 3.00       | 15.00       | 200K    | flagship  | legacy (EOL Apr 8, 2027)                                     |
 | Claude Sonnet 4.5 — Long Context | anthropic.claude-sonnet-4-5-20250929-v1:0 | Anthropic | 6.00       | 22.50       | 200K+   | flagship  | legacy (EOL Apr 8, 2027)                                     |
 | Claude Haiku 4.5                 | anthropic.claude-haiku-4-5-20251001-v1:0 | Anthropic | 1.00       | 5.00        | 200K    | fast      | active                                                       |
+| Claude Haiku 5.5 (Global)        | global.anthropic.claude-haiku-5-5        | Anthropic | 0.10       | 0.50        | 1M      | fast      | active (Global CRIS; not a default — keep Haiku 4.5 for cost/speed) |
+| Claude Haiku 5.5 (US Geo)        | us.anthropic.claude-haiku-5-5            | Anthropic | 0.11       | 0.55        | 1M      | fast      | active (US Geo; not a default — keep Haiku 4.5 for cost/speed) |
 | Claude Opus 4.1                  | anthropic.claude-opus-4-1-20250805-v1:0  | Anthropic | 15.00      | 75.00       | 200K    | premium   | excluded (EOL Jan 8, 2027)                                   |
 | Claude Sonnet 4                  | anthropic.claude-sonnet-4-20250514-v1:0  | Anthropic | 3.00       | 15.00       | 200K    | flagship  | EOL (Oct 14, 2026)                                           |
 | Llama 4 Maverick                 | meta.llama4-maverick-17b-instruct-v1:0   | Meta      | 0.24       | 0.97        | 1M      | mid       | legacy (EOL Mar 30, 2027)                                    |
@@ -104,6 +108,7 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | Mistral Large 3                  | mistral.mistral-large-3-675b-instruct    | Mistral   | 0.50       | 1.50        | 256K    | flagship  | active                                                       |
 | DeepSeek-R1                      | deepseek.r1-v1:0                         | DeepSeek  | 1.35       | 5.40        | 128K    | reasoning | legacy (EOL Mar 30, 2027)                                    |
 | DeepSeek-V3.1                    | deepseek.v3-v1:0                         | DeepSeek  | 0.58       | 1.68        | —       | mid       | legacy (EOL Mar 30, 2027; Sydney only)                       |
+| DeepSeek V3.2                    | deepseek.v3.2                            | DeepSeek  | 0.62       | 1.85        | 164K    | mid       | active (US East N. Virginia/Ohio + Oregon; prefer over V3.1 for US) |
 | gpt-oss-20b                      | openai.gpt-oss-20b-1:0                   | OpenAI    | 0.07       | 0.30        | 128K    | budget    | active                                                       |
 | gpt-oss-120b                     | openai.gpt-oss-120b-1:0                  | OpenAI    | 0.15       | 0.60        | 128K    | efficient | active                                                       |
 | GPT-6 Astra                      | openai.gpt-6-astra                       | OpenAI    | 11.00      | 55.00       | 272K    | frontier  | active (mantle in-region us-east-1/us-west-2 + runtime CRIS; Global CRIS 10.00/50.00; 1M-tier 22.00/82.50; Ultrafast 6x available) |
@@ -191,6 +196,10 @@ Per 1M tokens unless noted. See [Bedrock pricing](https://aws.amazon.com/bedrock
 | Claude Fable 5           | N/A      | N/A       | 12.50          | 20.00          | 1.00       |
 | Claude Fable 5.1         | N/A      | N/A       | 12.50          | 20.00          | 0.25       |
 | Claude Sonnet 5          | 1.00 ‡   | 5.00 ‡    | 2.50           | 4.00           | 0.20       |
+| Claude Sonnet 5.5 (Global) | N/A    | N/A       | 2.50           | 4.00           | 0.10       |
+| Claude Sonnet 5.5 (US Geo) | N/A    | N/A       | 2.75           | 4.40           | 0.11       |
+| Claude Haiku 5.5 (Global)  | N/A    | N/A       | 0.125          | 0.20           | 0.01       |
+| Claude Haiku 5.5 (US Geo)  | N/A    | N/A       | 0.1375         | 0.22           | 0.011      |
 | Claude Opus 5.5 (Global)                | N/A      | N/A       | 5.00           | 8.00           | 0.20       |
 | Claude Opus 5.5 (commercial Geo/Mantle/London runtime) | N/A      | N/A       | 5.50           | 8.80           | 0.22       |
 | Claude Opus 5.5 (GovCloud)              | N/A      | N/A       | 6.00           | 9.60           | 0.24       |
