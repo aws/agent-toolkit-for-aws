@@ -547,8 +547,11 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
         for model in models:
             source_key = (row["provider"], row["source_service"], row["gateway"], model)
             known_source = model in MODEL_TARGETS or (isinstance(model, str) and SOURCE_MODEL_FAMILY.match(model))
-            if not isinstance(model, str) or not known_source or source_key in source_keys:
+            if not isinstance(model, str) or source_key in source_keys:
                 raise ValueError("trace_source_invalid")
+            if not known_source:
+                # Name the unrecognized ID so the rejection is never a silent, unexplained stop.
+                raise ValueError(f"trace_source_invalid: source_model_unrecognized: {model}")
             source_keys.add(source_key)
             associations.append({
                 "source_order": source_order, "provider": row["provider"],

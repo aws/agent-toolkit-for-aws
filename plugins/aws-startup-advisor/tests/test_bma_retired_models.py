@@ -164,3 +164,9 @@ def test_registered_source_with_registered_target_is_priced(monkeypatch: pytest.
 def test_fabricated_model_is_still_rejected() -> None:
     with pytest.raises(ValueError, match="trace_source_invalid"):
         _trace("fabricated-model", "google", "gemini_api")
+
+
+def test_unrecognized_source_model_error_names_the_model_id() -> None:
+    # A made-up or unknown provider name is still rejected, and the error says which ID it could not recognize.
+    with pytest.raises(ValueError, match=r"trace_source_invalid: source_model_unrecognized: mistral-large-2$"):
+        _trace("mistral-large-2", "mistral", "mistral_api")
