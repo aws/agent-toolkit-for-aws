@@ -33,7 +33,7 @@ agentcore --version
 
 Run `which agentcore` to see what's installed:
 
-- Path in `/usr/local/lib/python*/site-packages/` or similar Python location → the old Starter Toolkit is shadowing the new CLI. Uninstall it (see below).
+- A Python-tool path — a `.../bin/agentcore` from pip, pipx, or `uv tool` (e.g. `~/.local/bin/agentcore`, a virtualenv's `bin/`) → the old Starter Toolkit is shadowing the new CLI. Uninstall it (see below).
 - Path in a Node.js-based location but still errors → the Node.js version may be wrong. Continue to Check 2.
 - No path returned → the CLI isn't installed.
 
@@ -55,7 +55,7 @@ agentcore update
 
 `agentcore update --check` reports whether an update is available without installing it.
 
-**If the project was created by CLI v0** (`agentcore/agentcore.json` has `"version": 1`): v1 runs it in compatibility mode and blocks `add`/`remove`/`build`. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts.
+**If the project was created by CLI v0** (`agentcore/agentcore.json` has `"version": 1`): v1 runs it in compatibility mode and blocks `add`/`remove`/`build`/`export`. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 **If old Starter Toolkit is installed** (Python-based `agentcore` command):
 
@@ -184,10 +184,19 @@ aws iam simulate-principal-policy \
   --resource-arns "arn:aws:iam::${ACCOUNT}:role/cdk-*" \
   --query 'EvaluationResults[*].{Action:EvalActionName,Decision:EvalDecision}'
 
+# Concrete actions: simulating a literal 'cloudformation:*' always returns implicitDeny
 aws iam simulate-principal-policy \
   --policy-source-arn "$PRINCIPAL_ARN" \
-  --action-names 'cloudformation:*' \
+  --action-names cloudformation:DescribeStacks cloudformation:CreateChangeSet cloudformation:DescribeChangeSet \
+    cloudformation:ExecuteChangeSet cloudformation:DeleteChangeSet cloudformation:GetTemplate \
+    cloudformation:DeleteStack cloudformation:DescribeStackEvents \
   --resource-arns "arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/AgentCore-*" \
+  --query 'EvaluationResults[*].{Action:EvalActionName,Decision:EvalDecision}'
+
+aws iam simulate-principal-policy \
+  --policy-source-arn "$PRINCIPAL_ARN" \
+  --action-names cloudformation:DescribeStacks \
+  --resource-arns "arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/CDKToolkit/*" \
   --query 'EvaluationResults[*].{Action:EvalActionName,Decision:EvalDecision}'
 
 aws iam simulate-principal-policy \
@@ -200,7 +209,10 @@ aws iam simulate-principal-policy \
 For deploy to work, you need:
 
 - `sts:AssumeRole` on the CDK bootstrap roles (`cdk-*`) — CDK deploys and publishes assets through them
-- `cloudformation:*` on the `AgentCore-*` stacks — the project stack is `AgentCore-<project>-<target>`; CloudFormation creates the execution roles under that stack name, so you don't need `iam:CreateRole` yourself
+- CloudFormation on the `AgentCore-*` stacks (the actions above) — the project stack is `AgentCore-<project>-<target>`; CloudFormation creates the execution roles under that stack name, so you don't need `iam:CreateRole` yourself
+- `cloudformation:DescribeStacks` on `stack/CDKToolkit/*` — every deploy reads the bootstrap stack
+- With credentials in the project: `bedrock-agentcore:{Create,Get,Update}{ApiKey,Oauth2}CredentialProvider` and Secrets Manager — the CLI provisions credential providers itself
+- For Transaction Search (best effort): `xray:UpdateTraceSegmentDestination` and `logs:PutResourcePolicy` — if denied, deploy prints `skipping Transaction Search: ...` and continues
 - Permission to create the `CDKToolkit` bootstrap stack (CloudFormation, IAM, S3, ECR, SSM) the first time an account/region is used, unless an admin has already bootstrapped it
 - `bedrock:InvokeModel` — to call Bedrock models from `agentcore dev`
 
@@ -210,7 +222,7 @@ For deploy to work, you need:
 
 ```bash
 docker --version
-docker info 2>&1 | head -5
+docker info --format '{{.ServerVersion}}'   # prints a version only if the daemon is running
 ```
 
 A runtime is a Container build when its folder has a `Dockerfile` (`"build": "Container"` in `agentcore.json`; the `agent-python-strands-container` template scaffolds one). A local container tool is only needed for `agentcore dev` on such a runtime. CodeZip runtimes (the default) don't need Docker at all.

@@ -47,7 +47,7 @@ No arguments required. The skill reads your project config and produces a checkl
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-If `agentcore/agentcore.json` doesn't have `"version": 2`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Migrate first so the fixes below can be applied. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts.
+If `agentcore/agentcore.json` has `"version": 1`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Migrate first so the fixes below can be applied. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 ### Step 1: Read the project
 
@@ -70,16 +70,19 @@ Work through each category and report findings specific to the project.
 
 ## IAM: Scope down permissions
 
-The auto-created execution role has broad Bedrock access (`arn:aws:bedrock:*::foundation-model/*` and `arn:aws:bedrock:*:<account>:inference-profile/*`). For production, scope it to the specific models your agent uses.
+The auto-created execution role has broad Bedrock access — for a Runtime, `arn:aws:bedrock:*::foundation-model/*` and `arn:aws:bedrock:*:<account>:inference-profile/*`; for a Harness, `arn:aws:bedrock:*::foundation-model/*` and everything in `arn:aws:bedrock:<region>:<account>:*`. For production, scope it to the specific models your agent uses.
 
 **Check the current execution role:**
 
 ```bash
 # Runtime ID = last segment of the runtime ARN in `agentcore status --json`
 agentcore runtime get --id <RuntimeId> --json | jq -r '.roleArn'
+
+# Harness ID = last segment of the harness ARN
+agentcore harness get --id <HarnessId> --json | jq -r '.harness.executionRoleArn'
 ```
 
-To use your own scoped role instead of the generated one, set it on the runtime (`agentcore add runtime ... --role-arn <ARN>` for a new runtime, or `executionRoleArn` on the existing `runtimes[]` entry in `agentcore.json`), and attach extra managed or file-based policies with `--additional-policies`.
+To use your own scoped role instead of the generated one, set it on the runtime (`agentcore add runtime ... --role-arn <ARN>` for a new runtime, or `executionRoleArn` on the existing `runtimes[]` entry in `agentcore.json`) or harness (`--execution-role-arn` on `agentcore add harness`). To attach extra managed or file-based policies to the CDK-managed Runtime role, use `--additional-policies` on `agentcore add runtime`, or the `additionalPolicies` array on an existing `runtimes[]` entry.
 
 **Recommended production Bedrock policy:**
 
@@ -99,14 +102,18 @@ To use your own scoped role instead of the generated one, set it on the runtime 
 
 The templates call a cross-region **inference profile** (`global.` by default; `us.`/`eu.`/`apac.` for geographic ones), so you need two resources: the profile itself, and the underlying foundation model in **every** region the profile can route to — hence the `*` region (global profiles also route through a region-less `arn:aws:bedrock:::foundation-model/...` ARN, which `*` covers). Scoping the foundation model to one region, or listing only the foundation model, breaks the scaffolded agent with `AccessDeniedException`. Replace both IDs with the model your agent uses (`aws bedrock get-inference-profile --inference-profile-identifier <ID>` lists the models behind a profile).
 
-**ECR access (Container builds only):** CodeZip runtimes don't pull from ECR. For a Container build the generated role already grants pull access only to the project's own repository, named `<project>/<target>/<runtimename>` in lowercase; if you bring your own role, scope it the same way (or copy the repository ARN from the generated role):
+**ECR access (Container builds only):** CodeZip runtimes don't pull from ECR. For a Container build the generated role already grants pull access only to the project's own repository, named `<project>/<target>/<runtimename>` in lowercase and encrypted with its own KMS key; if you bring your own role, grant the same (copy the repository and key ARNs from the generated role, or get them from `aws ecr describe-repositories`):
 
 ```json
-{
-  "Effect": "Allow",
-  "Action": ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"],
-  "Resource": "arn:aws:ecr:<REGION>:<YOUR_ACCOUNT_ID>:repository/<project>/<target>/<runtimename>"
-}
+[
+  {"Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*"},
+  {
+    "Effect": "Allow",
+    "Action": ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"],
+    "Resource": "arn:aws:ecr:<REGION>:<YOUR_ACCOUNT_ID>:repository/<project>/<target>/<runtimename>"
+  },
+  {"Effect": "Allow", "Action": "kms:Decrypt", "Resource": "<REPOSITORY_KMS_KEY_ARN>"}
+]
 ```
 
 **Trust policy:** The CLI-generated roles already carry these conditions — verify them (`aws iam get-role --role-name <ROLE_NAME> --query Role.AssumeRolePolicyDocument`), and copy them if you bring your own role:
@@ -117,10 +124,12 @@ The templates call a cross-region **inference profile** (`global.` by default; `
   "Action": "sts:AssumeRole",
   "Condition": {
     "StringEquals": {"aws:SourceAccount": "<YOUR_ACCOUNT_ID>"},
-    "ArnLike": {"aws:SourceArn": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:*"}
+    "ArnLike": {"aws:SourceArn": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/<PROJECT>_<TARGET>_<RUNTIME_NAME>*"}
   }
 }
 ```
+
+That's the Runtime role's condition; a Harness role uses `arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:*`.
 
 **Runtime resource-based policies** (API-only): For fine-grained control over which principals can invoke your runtime — beyond what IAM roles and JWT auth provide — use `PutAgentRuntimeResourcePolicy` via boto3. This is not exposed in the CLI or `agentcore.json`. Use the `awsknowledge` MCP server if available to look up the current API shape.
 
@@ -159,7 +168,7 @@ Alternatively, use the IAM console: **IAM → Policies → Filter by type: Custo
 }
 ```
 
-Deployed Runtime IDs have the form `<project>_<target>_<RuntimeName>-<suffix>` (e.g. `MyProj_default_agent-R3GgWn3lXh`). A project converted by `agentcore migrate` keeps its v0 names, `<project>_<RuntimeName>-<suffix>` with no target segment. Take the exact ARN from `agentcore status --json` either way.
+Deployed Runtime IDs have the form `<project>_<target>_<RuntimeName>-<suffix>` (e.g. `MyProj_default_agent-R3GgWn3lXh`); each `-` in the target name becomes `_`. A project converted by `agentcore migrate` keeps its v0 names, `<project>_<RuntimeName>-<suffix>` with no target segment. Take the exact ARN from `agentcore status --json` either way.
 
 **Enable CloudTrail alerting.** Create an EventBridge rule to notify your security team when `InvokeAgentRuntimeCommand` is called:
 
@@ -400,7 +409,7 @@ async def call_downstream(data: dict, *, access_token: str) -> dict:
     ...
 ```
 
-The decorator fetches the credential from AgentCore Identity at call time and handles caching/refresh. Credentials registered this way are stored encrypted at rest; to rotate one, update the value and redeploy (or manage the provider directly with `agentcore identity api-key-credential-provider update` / `agentcore identity oauth2-credential-provider update`).
+The decorator fetches the credential from AgentCore Identity at call time and handles caching/refresh. Credentials registered this way are stored encrypted at rest; to rotate one, update the value in `agentcore/.env.local` and redeploy. Every deploy pushes the `.env.local` value to the provider, so a rotation done only with `agentcore identity api-key-credential-provider update` / `agentcore identity oauth2-credential-provider update` is overwritten by the next deploy unless `.env.local` has the new value too.
 
 **Local dev:** `agentcore add credentials` keeps the secret value in `agentcore/.env.local` (gitignored, written with owner-only permissions); `agentcore dev` reads it so the decorator resolves locally. On deploy, the CLI pushes the value into the credential provider — the file itself is **not** uploaded to the runtime, and its values are not set as runtime env vars. Production credentials live in the credential provider (or in Secrets Manager, when you used a `--*-secret-reference`).
 
@@ -439,18 +448,19 @@ AgentCore enables X-Ray tracing and CloudWatch logging automatically. Verify:
 jq '.runtimes[] | {name, instrumentation}' agentcore/agentcore.json
 ```
 
-`agentcore deploy` also enables CloudWatch Transaction Search in the account and region (needed for spans in `aws/spans`, which traces and evaluations read). If the deploying principal lacks permission for that, deploy fails with a Transaction Search error — grant the permission rather than working around it.
+`agentcore deploy` also tries to enable CloudWatch Transaction Search in the account and region (best effort; needed for spans in `aws/spans`, which traces and evaluations read). If it can't, it prints `skipping Transaction Search: ...` and continues; traces and evals then return nothing. Grant the permission (`xray:UpdateTraceSegmentDestination`, `logs:PutResourcePolicy`) or enable it manually (see `agents-optimize` → [`references/observability.md`](../agents-optimize/references/observability.md)). Opt out with `agentcore config transactionSearch false`.
 
 **CloudWatch dashboard:** AWS Console → CloudWatch → GenAI Observability → Bedrock AgentCore
 
-**Log retention:** By default, logs are retained indefinitely. Every Runtime endpoint (`DEFAULT`, `prod`, ...) and every Harness gets its own log group under `/aws/bedrock-agentcore/runtimes/`, so set a retention policy on each of them:
+**Log retention:** By default, logs are retained indefinitely. Every Runtime endpoint and every Harness endpoint (`DEFAULT`, `prod`, ...) gets its own log group under `/aws/bedrock-agentcore/runtimes/`, so set a retention policy on each of them:
 
 ```bash
 # Runtimes are <PROJECT>_<TARGET>_<name>-...; a Harness logs through its backing
-# Runtime, harness_<PROJECT>_..., so cover both prefixes. A project converted by
+# Runtime, harness_<PROJECT>_<TARGET>_..., so cover both prefixes. Each '-' in the
+# target name becomes '_', so target prod's prefix also matches prod-us: check the
+# matches against the IDs in `agentcore status --json`. A project converted by
 # `agentcore migrate` uses <PROJECT>_<name>-... (no target segment): use <PROJECT>_
-# instead, and check the IDs in `agentcore status --json`
-for prefix in <PROJECT>_<TARGET>_ harness_<PROJECT>_; do
+for prefix in <PROJECT>_<TARGET>_ harness_<PROJECT>_<TARGET>_; do
   for lg in $(aws logs describe-log-groups \
       --log-group-name-prefix "/aws/bedrock-agentcore/runtimes/$prefix" \
       --query 'logGroups[].logGroupName' --output text); do
@@ -468,9 +478,9 @@ New endpoints create new log groups, so re-run this after adding one.
 Before going to production, establish a quality baseline so you can detect regressions:
 
 ```bash
-# Run a baseline eval over recent sessions (Runtime ID = last segment of its ARN in `agentcore status --json`)
+# Run a baseline eval over recent sessions (Runtime or Harness ID = last segment of its ARN in `agentcore status --json`)
 agentcore eval ondemand evaluate \
-  --agent <RuntimeId> \
+  --agent <RuntimeOrHarnessId> \
   --lookback-days 7 \
   --evaluators Builtin.Helpfulness Builtin.GoalSuccessRate
 
@@ -482,6 +492,8 @@ agentcore add online-eval \
   --sampling-rate 5
 agentcore deploy
 ```
+
+`add online-eval --agent` takes only a Runtime name; to monitor a Harness, create the config service-side with `agentcore eval online-eval create` (see `agents-optimize` → [`references/evals.md`](../agents-optimize/references/evals.md) Path B).
 
 Record the baseline scores. If scores drop significantly after a change, investigate before continuing.
 
@@ -545,7 +557,7 @@ Cross-SDK note: if you're using MCP, pass **one** session identifier, not both `
 
 Every MB of deployment package adds to cold-start time.
 
-- **Target:** under 200 MB. Aim for under 100 MB if you can.
+- **Target:** under 200 MB. Aim for under 100 MB if you can. To measure a CodeZip Runtime, run `agentcore build && ls -lht agentcore/cdk/cdk.out/asset.*.zip` and read the newest file (older ones are stale).
 - **For Container builds:** multi-stage Dockerfiles, slim or distroless base images, remove build tools and test files, add a `.dockerignore`.
 - **For CodeZip builds:** prune dev dependencies from `pyproject.toml` / `requirements.txt`. Don't ship `tests/`, `docs/`, `.git/`, local caches.
 - **Audit regularly:** `pip list` (Python) or `npm ls` (Node) will show you what's actually installed. Remove anything you're not using.

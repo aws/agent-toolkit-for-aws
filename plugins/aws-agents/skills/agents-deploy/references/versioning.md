@@ -4,7 +4,7 @@ Runtimes and Harnesses are versioned by AgentCore: each change you deploy create
 
 ## How versioning works
 
-- **Runtime:** each `agentcore deploy` that changes a Runtime's code or configuration creates a new Runtime version. A deploy that only adds or moves an endpoint doesn't — the endpoint just points at an existing version.
+- **Runtime:** each `agentcore deploy` that changes a Runtime's code or configuration creates a new Runtime version. A deploy that only adds or moves an endpoint usually doesn't — but a CodeZip build re-resolves dependencies on every deploy, so an unpinned dependency that has a new release changes the artifact and creates a version (moving `DEFAULT`) even with no code change. Pin dependency versions, and check `agentcore runtime endpoint list --id <RUNTIME_ID>` after each deploy.
 - **Harness:** each change to a Harness — a deploy of an edited `harness.yaml` / `system-prompt.md`, or `agentcore harness update` — creates a new Harness version.
 - The `DEFAULT` endpoint always follows the latest version. Callers that don't pass a qualifier use `DEFAULT`.
 - Named endpoints (e.g. `prod`, `staging`) point at a specific version and only move when you move them. Point production callers at a named endpoint so you can roll back with a pointer swap.
@@ -95,9 +95,7 @@ If a deploy breaks something, either move the endpoint back or redeploy known-go
 
 **Option 1: point the endpoint at an older version (no rebuild).**
 
-Runtime — edit the version in `agentcore/agentcore.json` (`runtimes[].endpoints.prod.version`) and deploy:
-
-There's no CLI command to move a Runtime endpoint; edit the JSON by hand or with `jq`:
+Runtime — there's no CLI command to move an endpoint; edit `runtimes[].endpoints.prod.version` in `agentcore/agentcore.json` (by hand or with `jq`) and deploy:
 
 ```bash
 jq '(.runtimes[] | select(.name=="<RuntimeName>") | .endpoints.prod.version) = <OLDER_VERSION>' \

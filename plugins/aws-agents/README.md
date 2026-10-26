@@ -56,10 +56,11 @@ Discovered automatically from the marketplace manifest.
 ## Prerequisites
 
 - AgentCore CLI v1.0.0+ (`npm install -g @aws/agentcore@latest`). Projects created with CLI v0 can be upgraded with `agentcore migrate`, which needs the project committed to git with no uncommitted changes.
-- AWS CLI v2 with configured credentials. Keep it current: the CloudWatch Omni flows use `aws cloudwatchomni`, which older releases (for example 2.32.5) don't have.
+- AWS CLI v2 with configured credentials. Keep it current: the CloudWatch Omni flows use `aws cloudwatchomni`, and checking eval resources with `aws bedrock-agentcore-control list-evaluators` / `list-online-evaluation-configs` also needs a recent release; older ones (for example 2.32.5) don't have them.
 - Node.js 20.12+
-- For Python agents and code-based evaluators: Python 3.10+ with [`uv`](https://docs.astral.sh/uv/). TypeScript agents need only Node.js.
+- For Python agents and code-based evaluators: Python 3.10+ with [`uv`](https://docs.astral.sh/uv/) (3.12+ for the `agui-python-strands` and `environment-python-bma` templates). TypeScript agents need only Node.js.
 - `git`, `jq`, and `uuidgen` — the skills' shell snippets use them (migrate's git check, parsing `--json` output, generating session IDs).
+- Optional: [`otelcol-contrib`](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) (or Docker) for the CloudWatch Omni local trace check.
 - Bedrock model access for the model your agent uses. Many models, including recent Anthropic models, must be called through an inference profile ID (for example `global.anthropic.claude-...` or `us.anthropic.claude-...`) rather than the bare model ID; the CLI templates already use one.
 
 ## Examples
