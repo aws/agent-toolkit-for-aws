@@ -76,7 +76,7 @@ Before jumping into template selection, figure out where the developer is:
 
 - **Exploring** → Go to Step 2. Present the options, answer questions, and wait. Do not construct a `create` command until they signal they're ready.
 - **Ready to create** → Skip to Step 3 (create the project). If they already said Harness, or named a template or framework, skip Step 2 entirely.
-- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has no `"version": 2`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Point the developer at `agentcore migrate` (it checks the project and prints the plan without changing anything; `agentcore migrate --yes` applies it, and `--target <name>` picks the target when it's deployed to several).
+- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has no `"version": 2`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Point the developer at `agentcore migrate` (it checks the project and prints the plan without changing anything; `agentcore migrate --yes` applies it, and `--target <name>` picks the target when it's deployed to several). Commit first — `agentcore migrate` refuses a dirty git working tree, and v0 `create` always leaves uncommitted files.
 
 If the developer's intent is clear from `$ARGUMENTS` (e.g., "create a Strands agent called MyBot"), skip straight to Step 3.
 
@@ -187,7 +187,7 @@ Say the count back out loud when close to the limit: "That name is 24 characters
 
 Harness and Runtime names follow a different rule: start with a letter, then letters, digits, or underscores (Harness ≤ 40 characters, Runtime ≤ 48). A deployed Harness name also includes the project and target names (`<project>_<target>_<harness>`), and that combination must fit in 40 characters — keep project and Harness names short.
 
-**Construct the command, then present it for confirmation before the developer runs it.** Show the full commands and explain what each choice means. Wait for the developer to confirm or adjust before proceeding.
+**Construct the command, then present it for confirmation before the developer runs it.** Show the full commands and explain what each choice means. Wait for the developer to confirm or adjust before proceeding. Exception: if the request already names everything the command needs (a valid project name and the template, or "a Harness"), treat it as the confirmation — show the command you're running and run it.
 
 Example presentation:
 
@@ -201,7 +201,7 @@ Example presentation:
 >
 > Want to run this, or change anything?
 
-Do NOT execute the command automatically — present it and wait.
+Otherwise, do NOT execute the command automatically — present it and wait.
 
 **Harness project:**
 
@@ -235,6 +235,7 @@ There are no `--framework`, `--model-provider`, `--build`, `--memory`, `--protoc
 - **Protocol:** stay on HTTP templates unless the developer specifically needs MCP tool serving (`mcp-python-fastmcp`), agent-to-agent (`a2a-python-strands`), or an AG-UI frontend (`agui-python-strands`)
 - **Build:** prefer CodeZip templates; pick `agent-python-strands-container` (or add a `Dockerfile` later) only for custom system dependencies
 - **Model provider:** use Bedrock unless the developer has a specific reason for another provider (Bedrock doesn't require managing API keys)
+- **Bedrock model IDs:** use an inference-profile ID — `global.<model>` (the templates' default, e.g. `global.anthropic.claude-sonnet-5-5`) or a geographic one like `us.<model>` — not a bare foundation-model ID (`anthropic.claude-...`). In us-east-1, for example, every current Claude model supports only `INFERENCE_PROFILE` invocation, so a bare ID deploys fine and then fails at invoke time (check a region with `aws bedrock list-foundation-models --region <REGION> --by-provider anthropic --query 'modelSummaries[].[modelId,inferenceTypesSupported]'`). This applies to the model in a Runtime's `model/load.py` / `load.ts` and to `modelId` in `--model` / `harness.yaml`.
 - **Memory:** the Strands templates already include a memory (`agentMemory`). Other templates and Harnesses can add or change memory later via `agents-build` (loads [`references/memory.md`](../agents-build/references/memory.md))
 
 Run `agentcore create` outside any existing project — project commands find the project by walking up from the current directory.
@@ -254,6 +255,7 @@ The layout below reflects CLI v1.0.0. If the CLI version is different, run `tree
 │   ├── agentcore.json      ← Project spec ("version": 2): runtimes, harnesses, memories, gateways, ...
 │   ├── aws-targets.json    ← Deployment targets (starts as []; filled on first deploy)
 │   ├── .env.local          ← Local-only env vars and API keys for `agentcore dev` (gitignored)
+│   ├── .cli/               ← CLI state (deployed-state.json after deploy, local traces)
 │   └── cdk/                ← Vended CDK app (bin/cdk.ts, lib/cdk-stack.ts) — yours to extend
 └── app/
     └── agent/               ← The template's Runtime is always named `agent`
@@ -262,8 +264,13 @@ The layout below reflects CLI v1.0.0. If the CLI version is different, run `tree
         ├── memory/session.py← AgentCore Memory session manager
         ├── parse.py         ← Payload parsing (prompt / messages / actorId)
         ├── pyproject.toml   ← Python dependencies
+        ├── uv.lock          ← Locked dependency versions (from `uv sync`; commit it)
+        ├── .venv/           ← Local virtualenv (from `uv sync`; gitignored)
+        ├── .gitignore
         └── README.md
 ```
+
+The generated `agentcore.json` entry lists only `name`, `build`, `modelProvider`, `entrypoint`, `codeLocation`, `runtimeVersion`, and `protocol`. Keys it leaves out take their defaults: `networkMode` is `PUBLIC`, inbound auth (`authorizerType`) is `AWS_IAM`, and the lifecycle is 900 s idle / 28800 s max. `agents-harden` covers changing them.
 
 TypeScript templates have `main.ts`, `model/load.ts`, `package.json`, and `tsconfig.json` instead.
 
@@ -320,6 +327,10 @@ Invoke the local server from another terminal:
 agentcore invoke --runtime agent --local --payload '{"prompt": "Hello"}'
 ```
 
+The streaming templates answer with server-sent events, and `invoke` prints them raw — one `data: {"event": {...}}` line per chunk (the reply text is in the `contentBlockDelta` events), followed by a `status=200 ...` summary line. That's expected, not an error.
+
+**Stop the dev server** with Ctrl+C in the terminal running `agentcore dev`; it stops every Runtime it started and the local trace collector.
+
 **Important limitations to mention:**
 
 - Memory and gateway environment variables are only injected into the deployed Runtime — locally, code that guards on them (like the template's memory module) runs without them
@@ -352,11 +363,18 @@ agentcore invoke --runtime agent --payload '{"prompt": "Hello, what can you do?"
 agentcore invoke --harness <HarnessName> --prompt "Hello, what can you do?"
 ```
 
+What the output looks like:
+
+- **Runtime:** the same raw SSE `data:` lines as the local invoke above.
+- **Harness:** a JSON object with `sessionId`, `stopReason`, `usage`, `latencyMs`, and a `transcript` array (your prompt, then the assistant's reply and any tool calls).
+
 Pass `--session-id <id>` to continue a conversation. And how to check status:
 
 ```bash
 agentcore status
 ```
+
+`status` reports `deploymentState` (`deployed` / `local-only`), not health — a Runtime that crashes on startup still shows `deployed`. If an invoke fails, use `agents-debug`.
 
 ### Step 7: What's next
 
