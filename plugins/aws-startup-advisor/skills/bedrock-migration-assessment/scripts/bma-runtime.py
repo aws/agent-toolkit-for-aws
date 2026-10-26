@@ -58,10 +58,12 @@ WRITERS = {
         "migration-preview.json": GCP_OWNER,
         # Public GCP artifact. It keeps the legacy GCP shape; BMA never writes it in a delegated run.
         "ai-workload-profile.json": GCP_OWNER,
-        # Delegated BMA input in a hidden internal directory GCP does not publish. The GCP adapter
-        # converts the legacy profile into this #415 file and writes the temporary sidecar beside it.
-        ".bma-input/ai-workload-profile.json": GCP_OWNER,
-        ".bma-input/ai-workload-sidecar.json": GCP_OWNER,
+        # Delegated BMA input in a hidden internal directory GCP does not publish. BMA discovery
+        # (discover-app-code.md Step 8, usage-API Step 4) writes both through this boundary. The GCP
+        # adapter also merges the converted legacy profile into them, by direct file write outside
+        # this boundary.
+        ".bma-input/ai-workload-profile.json": BMA_OWNER,
+        ".bma-input/ai-workload-sidecar.json": BMA_OWNER,
         "openai-usage-profile.json": BMA_OWNER,
         "anthropic-usage-profile.json": BMA_OWNER,
         "openrouter-usage-profile.json": BMA_OWNER,
@@ -80,7 +82,8 @@ WRITERS = {
 }
 MUTABLE_OUTPUTS = {
     ".phase-status.json", ".gate-failures.json", "migration-preview.json",
-    "ai-workload-profile.json", ".bma-input/ai-workload-sidecar.json", "openai-usage-profile.json",
+    "ai-workload-profile.json", ".bma-input/ai-workload-profile.json", ".bma-input/ai-workload-sidecar.json",
+    "openai-usage-profile.json",
     "anthropic-usage-profile.json", "openrouter-usage-profile.json",
     "preferences-draft.json",
 }

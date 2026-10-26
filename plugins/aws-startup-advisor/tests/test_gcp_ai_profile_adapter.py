@@ -1,6 +1,7 @@
 """GCP boundary adapter: legacy GCP AI profile -> #415, with named fail-closed errors and the GCP sidecar."""
 from __future__ import annotations
 import copy
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -441,6 +442,82 @@ def test_convert_merges_into_bma_discovered_profile_and_sidecar_vagmur_repro(tmp
     assert sidecar["profile_origin"] == {"terraform_primary": True}
     validated = _validate_bma_input(run)
     assert validated.returncode == 0, validated.stderr
+
+
+def _load_runtime(name: str):
+    spec = importlib.util.spec_from_file_location(name, BMA_RUNTIME)
+    runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runtime)
+    return runtime
+
+
+def _bma_delegated_write(runtime, run: Path, writes: list[tuple[str, dict]]) -> None:
+    """One documented BMA boundary write (owner BMA, expected_sha256 of the exact prior bytes when the file exists)."""
+    rows = []
+    for relative, payload in writes:
+        row = {"phase": "discover", "path": relative, "payload": payload, "logical_owner": "bedrock-migration-assessment"}
+        target = run / relative
+        if target.exists():
+            row["expected_sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
+        rows.append(row)
+    runtime.execute_contract({
+        "schema_version": 1, "mode": "delegated", "scenario": "delegated-e2e", "run_dir": str(run),
+        "delegated_route": "combined", "state": {"phases": {}}, "writes": rows,
+    })
+
+
+def test_delegated_flow_end_to_end_keeps_every_provider_model_and_dollar(tmp_path):
+    """Findings A and B together: adapter convert, BMA Step 8, usage-API Step 4, adapter convert again. No data loss."""
+    runtime = _load_runtime("bma_runtime_delegated_e2e")
+    run = tmp_path / "run"
+    (run / ".bma-input").mkdir(parents=True)
+    profile_path = run / ".bma-input" / "ai-workload-profile.json"
+    sidecar_path = run / ".bma-input" / "ai-workload-sidecar.json"
+    (run / "ai-workload-profile.json").write_text(json.dumps(VERTEX_SEED_LEGACY), encoding="utf-8")
+    # 1. GCP IaC/Vertex seed converted into an empty .bma-input/.
+    assert _convert(run).returncode == 0
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert [(source["provider"], source["models"]) for source in profile["ai_sources"]] == [("google", ["gemini-2.5-pro"])]
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["observed_costs"] == VERTEX_SEED_LEGACY["current_costs"]
+    # 2. BMA discover-app-code Step 8 adds the gpt-4o source (union by pair, IaC pair kept) and its workload row.
+    profile["ai_sources"].append(copy.deepcopy(VAGMUR_BMA_PROFILE["ai_sources"][0]))
+    sidecar["workloads"] = copy.deepcopy(VAGMUR_SIDECAR["workloads"])
+    _bma_delegated_write(runtime, run, [(".bma-input/ai-workload-profile.json", profile), (".bma-input/ai-workload-sidecar.json", sidecar)])
+    # 3. Usage-API Step 4 item 1: different provider -> sum, source mixed, per-provider breakdown.
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar["observed_costs"] = copy.deepcopy(VAGMUR_SIDECAR["observed_costs"])
+    _bma_delegated_write(runtime, run, [(".bma-input/ai-workload-sidecar.json", sidecar)])
+    # 4. The documented order is sub-discoveries first, then convert: the real-world final adapter write.
+    assert _convert(run).returncode == 0
+    final_profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    sources = {(source["provider"], source["source_service"]): source for source in final_profile["ai_sources"]}
+    assert set(sources) == {("google", "vertex_ai"), ("openai", "openai_api")}
+    assert sources[("google", "vertex_ai")]["models"] == ["gemini-2.5-pro"]
+    assert sources[("google", "vertex_ai")]["model_observations"][0]["evidence"][0]["provenance"] == "iac"
+    assert sources[("openai", "openai_api")]["models"] == ["gpt-4o"]
+    assert sources[("openai", "openai_api")]["model_observations"][0]["evidence"] == [
+        {"provenance": "code", "confidence": "high", "detail": "src/ai.py:9"},
+    ]
+    final_sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    costs = final_sidecar["observed_costs"]
+    assert costs["monthly_ai_spend"] == 555 and costs["source"] == "mixed"
+    assert costs["breakdown"] == [
+        {"provider": "google", "monthly_spend": 450, "source": "billing_data"},
+        {"provider": "openai", "monthly_spend": 105, "source": "openai_usage_api"},
+    ]
+    assert "conflicting_sources" not in costs
+    assert final_sidecar["workloads"] == VAGMUR_SIDECAR["workloads"]
+    assert final_sidecar["profile_origin"] == {"terraform_primary": True}
+    validated = _validate_bma_input(run)
+    assert validated.returncode == 0, validated.stderr
+    # Idempotent: a third convert leaves both files byte-identical.
+    profile_bytes, sidecar_bytes = profile_path.read_bytes(), sidecar_path.read_bytes()
+    assert _convert(run).returncode == 0
+    assert profile_path.read_bytes() == profile_bytes
+    assert sidecar_path.read_bytes() == sidecar_bytes
+
+
 def test_existing_sidecar_of_another_kind_fails_closed():
     with pytest.raises(adapter.GcpProfileNotRepresentable) as info:
         adapter.convert_legacy_sidecar(_legacy(), {"schema_version": 1, "kind": "OTHER", "workloads": []})

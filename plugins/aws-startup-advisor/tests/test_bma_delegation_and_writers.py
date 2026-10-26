@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import types
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 GCP = ROOT / "skills/gcp-to-aws"
@@ -69,3 +73,81 @@ def test_route_sensitive_consumers() -> None:
     assert "Azure convergence is issue #389 stage 3d" in llm
     assert "Idea-only, declined, and `engine_absent` routes never inspect BMA" in advisor
     assert advisor.index("Step -0.5 — Route-sensitive BMA preflight") < advisor.index("Step 0 — Update agent-advisor state immediately")
+
+
+# Review PR #483, thread PRRT_kwDOSKiaLs6wWifL (vagmur-aws): BMA's documented delegated writes of the
+# .bma-input/ profile (discover-app-code.md Step 8, usage-API Step 4) must pass the writer table.
+BMA_INPUT_PROFILE = {
+    "schema_version": "1.0", "gateways": [],
+    "ai_sources": [{
+        "provider": "openai", "source_service": "openai_api", "model_families": ["gpt"], "model_evidence": "observed",
+        "models": ["gpt-4o"],
+        "model_observations": [{"normalized_model": "gpt-4o", "raw_model": "gpt-4o", "model_family": "gpt",
+                                "evidence": [{"provenance": "code", "confidence": "high", "detail": "src/ai.py:9"}]}],
+    }],
+}
+BMA_INPUT_SIDECAR = {"schema_version": 1, "kind": "BMA_GCP_AI_SIDECAR", "workloads": []}
+
+
+def _delegated_discover_request(run: Path, writes: list[dict]) -> dict:
+    return {
+        "schema_version": 1, "mode": "delegated", "scenario": "delegated-discover", "run_dir": str(run),
+        "delegated_route": "combined", "state": {"phases": {}}, "writes": writes,
+    }
+
+
+def _bma_write(path: str, payload: dict, expected_sha256: str | None = None) -> dict:
+    row = {"phase": "discover", "path": path, "payload": payload, "logical_owner": "bedrock-migration-assessment"}
+    if expected_sha256 is not None:
+        row["expected_sha256"] = expected_sha256
+    return row
+
+
+def test_delegated_bma_discover_write_of_bma_input_profile_and_sidecar_passes(tmp_path: Path) -> None:
+    runtime = load_runtime()
+    run = tmp_path / "run"
+    run.mkdir()
+    profile_path = run / ".bma-input" / "ai-workload-profile.json"
+    sidecar_path = run / ".bma-input" / "ai-workload-sidecar.json"
+    # Step 8: discover-app-code writes both files.
+    result = runtime.execute_contract(_delegated_discover_request(run, [
+        _bma_write(".bma-input/ai-workload-profile.json", BMA_INPUT_PROFILE),
+        _bma_write(".bma-input/ai-workload-sidecar.json", BMA_INPUT_SIDECAR),
+    ]))
+    assert profile_path.exists() and sidecar_path.exists()
+    assert [(op["path"], op["logical_owner"]) for op in result["operations"]] == [
+        (".bma-input/ai-workload-profile.json", "bedrock-migration-assessment"),
+        (".bma-input/ai-workload-sidecar.json", "bedrock-migration-assessment"),
+    ]
+    # Step 4 (usage API): adds a usage-only model and observed_costs, with the SHA-256 of the prior bytes.
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    source = profile["ai_sources"][0]
+    source["models"].append("gpt-4o-mini")
+    source["model_observations"].append({"normalized_model": "gpt-4o-mini", "raw_model": "gpt-4o-mini", "model_family": "gpt",
+                                         "evidence": [{"provenance": "usage_api", "confidence": "high"}]})
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar["observed_costs"] = {"monthly_ai_spend": 105, "source": "openai_usage_api", "services_detected": ["OpenAI chat"]}
+    second = runtime.execute_contract(_delegated_discover_request(run, [
+        _bma_write(".bma-input/ai-workload-profile.json", profile, hashlib.sha256(profile_path.read_bytes()).hexdigest()),
+        _bma_write(".bma-input/ai-workload-sidecar.json", sidecar, hashlib.sha256(sidecar_path.read_bytes()).hexdigest()),
+    ]))
+    assert len(second["operations"]) == 2
+    assert json.loads(profile_path.read_text(encoding="utf-8"))["ai_sources"][0]["models"] == ["gpt-4o", "gpt-4o-mini"]
+    assert json.loads(sidecar_path.read_text(encoding="utf-8"))["observed_costs"]["monthly_ai_spend"] == 105
+    # A rewrite that does not name the prior bytes is still rejected.
+    with pytest.raises(ValueError, match="expected_prior_hash_required"):
+        runtime.execute_contract(_delegated_discover_request(run, [
+            _bma_write(".bma-input/ai-workload-profile.json", profile),
+        ]))
+
+
+def test_delegated_bma_write_to_public_profile_fails_writer_owner_invalid(tmp_path: Path) -> None:
+    runtime = load_runtime()
+    run = tmp_path / "run"
+    run.mkdir()
+    with pytest.raises(ValueError, match="writer_owner_invalid"):
+        runtime.execute_contract(_delegated_discover_request(run, [
+            _bma_write("ai-workload-profile.json", BMA_INPUT_PROFILE),
+        ]))
+    assert not (run / "ai-workload-profile.json").exists()
+    assert list(run.iterdir()) == []
