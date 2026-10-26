@@ -26,6 +26,7 @@ TEXT_SOURCE = FIXTURES / "chat.ts"  # generateContent, plain text, call at line 
 GENERATE = "ai.models.generateContent"
 
 runtime = types.ModuleType("bma_runtime")
+runtime.__dict__["__file__"] = str(RUNTIME)  # the runtime reads the lifecycle registry beside its own path
 exec(compile(RUNTIME.read_text(encoding="utf-8"), str(RUNTIME), "exec"), runtime.__dict__)
 
 

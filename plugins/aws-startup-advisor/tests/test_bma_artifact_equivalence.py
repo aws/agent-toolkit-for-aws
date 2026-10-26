@@ -166,14 +166,17 @@ def test_trace_preserves_openrouter_cardinality_null_zero_and_writer_boundary(tm
     assert len(openrouter["associations"]) == 3
     assert openrouter["associations"][0][2] == "openrouter"
     assert openrouter["associations"][1][2] == "openrouter"
-    assert openrouter["costs"][1:3] == [34.9, -38.1]
+    # claude-3-5-sonnet has no Active target now, so the target and delta are unknown, not zero.
+    assert openrouter["costs"][1:3] == [None, None]
 
     gemini = projection(trace(
         CASE_VALUE["cases"]["gemini-application"],
         tmp_path,
         "gemini-zero",
     ))
-    assert gemini["costs"][:3] == [0, 0, 0]
+    # Observed source cost stays 0. gemini-2.5-pro is not in the registry (source unverified), so its
+    # target keeps the name amazon.nova-pro-v1:0 but gets no price.
+    assert gemini["costs"] == [0, None, None, "unavailable"]
 
     delegated = projection(trace(
         CASE_VALUE["cases"]["gcp-combined-vertex"],

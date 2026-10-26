@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parent.parent
 PATH = ROOT / "skills/bedrock-migration-assessment/scripts/bma-runtime.py"
 runtime = types.ModuleType("bma_runtime")
+runtime.__dict__["__file__"] = str(PATH)  # the runtime reads the lifecycle registry beside its own path
 exec(compile(PATH.read_text(encoding="utf-8"), str(PATH), "exec"), runtime.__dict__)
 SCHEMA = ROOT / "skills/bedrock-migration-assessment/references/runtime/content-contribution.schema.json"
 

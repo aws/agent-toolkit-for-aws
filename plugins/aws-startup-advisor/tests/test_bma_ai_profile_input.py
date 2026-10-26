@@ -18,6 +18,7 @@ FIXTURES = ROOT / "fixtures/ai-workload-profiles"
 FIXTURE_NAMES = sorted(path.parent.name for path in FIXTURES.glob("*/ai-workload-profile.json"))
 
 runtime = types.ModuleType("bma_runtime")
+runtime.__dict__["__file__"] = str(PATH)  # the runtime reads the lifecycle registry beside its own path
 exec(compile(PATH.read_text(encoding="utf-8"), str(PATH), "exec"), runtime.__dict__)
 
 LEGACY_PROFILE = {
@@ -100,14 +101,15 @@ def test_unresolved_gateway_has_no_invented_upstreams() -> None:
     assert runtime.validate_ai_workload_profile(profile, BMA_ROOT)["gateways"] == 1
 
 
-def test_retired_model_is_unpriced_and_not_generated() -> None:
+def test_unmapped_model_is_unpriced_and_not_generated() -> None:
     profile = _profile("ai-only-multi-direct")
     request = _trace_request_from_profile(profile)
     request["user_decisions"]["generate"] = True
     result = runtime.semantic_trace(request)
-    retired = [row for row in result["design_mappings"] if row.get("retired")]
-    assert retired == [{"source_model": "gemini-1.5-pro", "target_model": None,
-                        "migration_path": None, "retired": True}]
+    unmapped = [row for row in result["design_mappings"] if row["source_model"] == "gemini-1.5-pro"]
+    assert unmapped == [{"source_model": "gemini-1.5-pro", "target_model": None, "migration_path": None,
+                         "retirement_status": "unverified",
+                         "note": "retirement status unverified, check provider lifecycle"}]
     assert result["estimate"]["pricing_source"] == "unavailable"
     assert "ai-migration/gemini-adapter.py" not in result["generation"]["files"]
 

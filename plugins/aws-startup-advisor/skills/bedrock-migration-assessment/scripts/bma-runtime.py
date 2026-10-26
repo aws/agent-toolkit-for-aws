@@ -223,50 +223,38 @@ def consent_decision(status: str, requests: int = 0, retry_pending: bool = False
 MODEL_TARGETS = {
     "claude-3-5-sonnet-20240620": ("anthropic.claude-sonnet-4-5-v1:0", "anthropic_sdk", 3.0, 15.0),
     "claude-3-haiku-20240307": ("anthropic.claude-haiku-4-5-v1:0", "anthropic_sdk", 0.25, 1.25),
-    "gpt-4o": ("openai.gpt-5.6-terra", "direct_api", 2.2, 13.2),
+    "gpt-4o": ("openai.gpt-6-luna", "direct_api", 0.11, 0.55),
     "gemini-2.5-pro": ("amazon.nova-pro-v1:0", "google_genai_sdk", 0.8, 3.2),
 }
-# Retired source models have no Bedrock target price. The trace marks them retired and leaves
-# pricing unavailable instead of pricing or generating code for them. IDs are the shutdown rows
-# on the Gemini API deprecations page (https://ai.google.dev/gemini-api/docs/deprecations),
-# checked 2026-10-25. Add an ID only when its shutdown is listed there.
-RETIRED_MODELS = frozenset({
-    "embedding-001",
-    "embedding-2-preview",
-    "embedding-gecko-001",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-001",
-    "gemini-2.0-flash-live-001",
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash-lite-001",
-    "gemini-2.0-flash-lite-preview",
-    "gemini-2.0-flash-lite-preview-02-05",
-    "gemini-2.0-flash-preview-image-generation",
-    "gemini-2.5-computer-use-preview-10-2025",
-    "gemini-2.5-flash-image-preview",
-    "gemini-2.5-flash-lite-preview-09-2025",
-    "gemini-2.5-flash-preview-05-20",
-    "gemini-2.5-flash-preview-09-25",
-    "gemini-2.5-pro-preview-03-25",
-    "gemini-2.5-pro-preview-05-06",
-    "gemini-2.5-pro-preview-06-05",
-    "gemini-3-pro-image-preview",
-    "gemini-3-pro-preview",
-    "gemini-3.1-flash-image-preview",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-embedding-exp",
-    "gemini-embedding-exp-03-07",
-    "gemini-live-2.5-flash-preview",
-    "gemini-omni-flash-preview",
-    "imagen-3.0-generate-002",
-    "imagen-4.0-fast-generate-001",
-    "imagen-4.0-generate-001",
-    "imagen-4.0-generate-preview-06-06",
-    "imagen-4.0-ultra-generate-001",
-    "imagen-4.0-ultra-generate-preview-06-06",
-    "text-embedding-004",
-})
+# Retirement status is read from the lifecycle registry at run time (references/vendored/ai/
+# ai-model-lifecycle.md, its "Verified Active Models" table). Nothing here lists retired models.
+LIFECYCLE_REGISTRY_RELATIVE = "references/vendored/ai/ai-model-lifecycle.md"
+LIFECYCLE_SECTION = "## Verified Active Models"
+# Source model IDs that are real provider model families, so a source with no target mapping can
+# stay visible as lifecycle unverified. Anything else (for example "fabricated-model") is rejected.
+SOURCE_MODEL_FAMILY = re.compile(r"^(gemini|imagen|embedding|text-embedding|gpt|claude|o[1-9])[a-z0-9.\-]{0,80}$")
+LIFECYCLE_UNVERIFIED_LABEL = "lifecycle unverified"
+OBSERVED_UNVERIFIED_BASIS = "observed, not priced from registry"
+RETIREMENT_UNVERIFIED_NOTE = "retirement status unverified, check provider lifecycle"
+
+
+def registered_active_models(bma_root: Path) -> frozenset[str]:
+    """Model IDs the registry lists as Active. Read on every call; fail closed if unreadable."""
+    try:
+        text = (bma_root / LIFECYCLE_REGISTRY_RELATIVE).read_text(encoding="utf-8")
+    except OSError as error:
+        raise ValueError("lifecycle_registry_missing") from error
+    if LIFECYCLE_SECTION not in text:
+        raise ValueError("lifecycle_registry_invalid")
+    section = text.split(LIFECYCLE_SECTION, 1)[1].split("\n## ", 1)[0]
+    ids = set()
+    for line in section.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 2 and cells[1].startswith("`") and cells[1].endswith("`"):
+            ids.add(cells[1].strip("`"))
+    if not ids:
+        raise ValueError("lifecycle_registry_invalid")
+    return frozenset(ids)
 
 # #415 is the only AI profile contract BMA accepts. Its vendored copy sits beside this runtime.
 AI_PROFILE_SCHEMA_RELATIVE = "references/contracts/ai-workload-profile.schema.json"
@@ -519,6 +507,7 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
     evidence = request["source_evidence"]
     if not isinstance(evidence, list):
         raise ValueError("trace_request_invalid")
+    registered = registered_active_models(Path(__file__).resolve().parents[1])
     associations = []
     mappings = []
     source_keys: set[tuple[str, str, str | None, str]] = set()
@@ -557,19 +546,21 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("trace_source_invalid")
         for model in models:
             source_key = (row["provider"], row["source_service"], row["gateway"], model)
-            if (not isinstance(model, str) or model not in MODEL_TARGETS and model not in RETIRED_MODELS
-                    or source_key in source_keys):
+            known_source = model in MODEL_TARGETS or (isinstance(model, str) and SOURCE_MODEL_FAMILY.match(model))
+            if not isinstance(model, str) or not known_source or source_key in source_keys:
                 raise ValueError("trace_source_invalid")
             source_keys.add(source_key)
             associations.append({
                 "source_order": source_order, "provider": row["provider"],
                 "source_service": row["source_service"], "gateway": row["gateway"],
                 "model": model, "call_sites": call_sites,
+                "lifecycle_label": LIFECYCLE_UNVERIFIED_LABEL if model not in registered else "lifecycle registered",
             })
-            if model in RETIRED_MODELS:
+            if model not in MODEL_TARGETS:
+                # A real source model with no target mapping: visible, unpriced, never invented.
                 mappings.append({
-                    "source_model": model, "target_model": None,
-                    "migration_path": None, "retired": True,
+                    "source_model": model, "target_model": None, "migration_path": None,
+                    "retirement_status": "unverified", "note": RETIREMENT_UNVERIFIED_NOTE,
                 })
                 target_costs.append(None)
                 continue
@@ -578,12 +569,19 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
                 migration_path = "openrouter_byok"
             elif row["source_service"] == "vertex_ai":
                 migration_path = "vertex_adapter"
+            # The target name stays visible. Its price is set only when the source and the target are both
+            # listed as Active. An unregistered source is labelled unverified and is never priced or PASS.
+            source_registered = model in registered
+            target_active = source_registered and target in registered
+            source_status = "active" if source_registered else "unverified"
             mappings.append({
                 "source_model": model, "target_model": target,
                 "migration_path": migration_path,
+                "retirement_status": source_status,
+                **({"note": RETIREMENT_UNVERIFIED_NOTE} if source_status == "unverified" else {}),
             })
             migration_paths.append(migration_path)
-            if None in token_values:
+            if None in token_values or not target_active:
                 target_costs.append(None)
             else:
                 target_costs.append(round(
@@ -592,7 +590,17 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
                 ))
     source_monthly = None if not source_costs or any(value is None for value in source_costs) else round(sum(source_costs), 2)
     target_monthly = None if not target_costs or any(value is None for value in target_costs) else round(sum(target_costs), 2)
-    delta = None if source_monthly is None or target_monthly is None else round(target_monthly - source_monthly, 2)
+    source_label = None if not associations else (
+        LIFECYCLE_UNVERIFIED_LABEL if any(row["lifecycle_label"] == LIFECYCLE_UNVERIFIED_LABEL for row in associations)
+        else "lifecycle registered"
+    )
+    # An unverified source baseline is shown as observed only. A delta built on it would read as a verified comparison.
+    source_unverified = source_label == LIFECYCLE_UNVERIFIED_LABEL
+    source_basis = None if source_monthly is None else (
+        OBSERVED_UNVERIFIED_BASIS if source_unverified else "observed"
+    )
+    delta = None if source_monthly is None or target_monthly is None or source_unverified else round(
+        target_monthly - source_monthly, 2)
     if not route_result["ai_route_active"]:
         pricing_source = "not_applicable" if not request["source_containing"] else "unresolved"
     elif target_monthly is None:
@@ -630,6 +638,8 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
         "estimate": {
             "source_monthly": source_monthly, "target_monthly": target_monthly,
             "monthly_delta": delta, "pricing_source": pricing_source,
+            "source_lifecycle_label": source_label, "source_monthly_basis": source_basis,
+            "evidence": {"observed_source_costs": source_costs},
         },
         "generation": {
             "route": generation_route, "files": generated_files,

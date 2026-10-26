@@ -20,6 +20,7 @@ ANCHOR = "<!-- bma-contributions:ai-notes -->"
 DECISION_SUMMARY = '<section id="decision-summary">'
 
 runtime = types.ModuleType("bma_runtime_documents")
+runtime.__dict__["__file__"] = str(PATH)  # the runtime reads the lifecycle registry beside its own path
 exec(compile(PATH.read_text(encoding="utf-8"), str(PATH), "exec"), runtime.__dict__)
 
 

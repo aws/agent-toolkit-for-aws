@@ -18,6 +18,7 @@ PR369_MARKERS = ("gpt-6-astra", "mantle_openai_chat", "10×", "required_client_a
 def load_runtime():
     path = ROOT / "skills/bedrock-migration-assessment/scripts/bma-runtime.py"
     module = types.ModuleType("bma_runtime_delegation")
+    module.__dict__["__file__"] = str(path)  # the runtime reads the lifecycle registry beside its own path
     exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
     return module
 

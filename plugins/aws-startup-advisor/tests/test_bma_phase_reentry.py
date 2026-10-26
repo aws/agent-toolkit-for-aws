@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PATH = ROOT / "skills/bedrock-migration-assessment/scripts/bma-runtime.py"
 
 runtime = types.ModuleType("bma_runtime_reentry")
+runtime.__dict__["__file__"] = str(PATH)  # the runtime reads the lifecycle registry beside its own path
 exec(compile(PATH.read_text(encoding="utf-8"), str(PATH), "exec"), runtime.__dict__)
 
 PHASES_THROUGH_DESIGN = {"discover": "completed", "clarify": "completed", "design": "completed",
