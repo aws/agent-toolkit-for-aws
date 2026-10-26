@@ -168,7 +168,6 @@ NAMED_ERROR_CASES = [
     ("ai_source unknown value", _set("summary.ai_source", "azure"), "LEGACY_AI_SOURCE_UNREPRESENTABLE", "$.summary.ai_source"),
     ("model id has a space", _set("models.0.model_id", "Claude Pro"), "LEGACY_MODEL_ID_INVALID", "$.models[0].model_id"),
     ("model family unknown", _set("models.0.model_id", "mistral-large"), "LEGACY_MODEL_FAMILY_UNKNOWN", "$.models[0].model_id"),
-    ("embedding model has no family rule", _set("models.0.model_id", "text-embedding-004"), "LEGACY_MODEL_FAMILY_UNKNOWN", "$.models[0].model_id"),
     ("detection method unknown", _set("models.0.detected_via", ["slack"]), "LEGACY_PROVENANCE_UNKNOWN", "$.models[0].detected_via"),
     ("no numeric confidence for method", _set("detection_signals", []), "LEGACY_CONFIDENCE_MISSING", "$.models[0].detected_via"),
     ("gateway type not llm_router", lambda doc: (
@@ -335,3 +334,61 @@ def test_cli_writes_valid_document_and_nothing_on_failure(tmp_path):
     assert error["error"] == "GcpProfileNotRepresentable"
     assert error["code"] == "LEGACY_SERVICE_UNMAPPED"
     assert error["field_path"] == "$.models[0].service"
+
+
+# P4 regression: the v2 app's legacy profile (Gemini text, Gemini image, GPT-4o, and text-embedding-3-small).
+V2_SHAPED_LEGACY = {
+    "current_costs": {"monthly_ai_spend": 700, "services_detected": ["Google Gen AI", "OpenAI API"], "source": "code_estimate"},
+    "detection_signals": [
+        {"confidence": 0.98, "evidence": "lib/gemini.ts line 1", "method": "code", "pattern": "@google/genai import"},
+        {"confidence": 0.98, "evidence": "lib/openai.ts line 1", "method": "code", "pattern": "openai SDK import"},
+    ],
+    "infrastructure": [],
+    "integration": {"capabilities_summary": {"text_generation": True, "image_generation": True, "embeddings": True},
+                    "gateway_type": "direct", "pattern": "direct_sdk", "primary_sdk": "@google/genai", "languages": ["typescript"]},
+    "metadata": {"profile_source": "application_code", "report_date": "2026-02-26"},
+    "models": [
+        {"capabilities_used": ["text_generation"], "detected_via": ["code"], "model_id": "gemini-2.5-flash", "service": "vertex_ai_generative",
+         "evidence": [{"file": "lib/gemini.ts", "line": 5, "source": "code"}], "usage_context": "Search intent extraction"},
+        {"capabilities_used": ["image_generation"], "detected_via": ["code"], "model_id": "gemini-3.1-flash-image", "service": "vertex_ai_generative",
+         "evidence": [{"file": "lib/imagen.ts", "line": 5, "source": "code"}], "usage_context": "Beach image generation"},
+        {"capabilities_used": ["text_generation"], "detected_via": ["code"], "model_id": "gpt-4o", "service": "openai_api",
+         "evidence": [{"file": "lib/openai.ts", "line": 4, "source": "code"}], "usage_context": "Review summarization"},
+        {"capabilities_used": ["embeddings"], "detected_via": ["code"], "model_id": "text-embedding-3-small", "service": "openai_api",
+         "evidence": [{"file": "lib/openai.ts", "line": 9, "source": "code"}], "usage_context": "Review embeddings for search"},
+    ],
+    "summary": {"ai_source": "both", "confidence_level": "very_high", "inferred_from_iac": False, "overall_confidence": 0.98},
+}
+
+
+def test_v2_shaped_input_writes_side_file_and_design_names_titan_v2(tmp_path):
+    legacy_path = tmp_path / "legacy.json"
+    out_path = tmp_path / ".bma-input" / "ai-workload-profile.json"
+    sidecar_path = tmp_path / ".bma-input" / "ai-workload-sidecar.json"
+    legacy_path.write_text(json.dumps(V2_SHAPED_LEGACY), encoding="utf-8")
+    converted = subprocess.run(
+        [sys.executable, str(ADAPTER_PATH), "convert", "--legacy", str(legacy_path), "--out", str(out_path), "--sidecar", str(sidecar_path)],
+        capture_output=True, text=True,
+    )
+    assert converted.returncode == 0, converted.stderr
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["integration_context"]["primary_sdk"] == "@google/genai"
+    assert sidecar["integration_context"]["languages"] == ["typescript"]
+    contexts = {item["model_id"]: item for item in sidecar["model_context"]}
+    assert set(contexts) == {"gemini-2.5-flash", "gemini-3.1-flash-image", "gpt-4o", "text-embedding-3-small"}
+    assert contexts["text-embedding-3-small"]["capabilities_used"] == ["embeddings"]
+    document = json.loads(out_path.read_text(encoding="utf-8"))
+    openai = [source for source in document["ai_sources"] if source["provider"] == "openai"][0]
+    assert "text-embedding-3-small" in openai["models"]
+    assert [item["model_family"] for item in openai["model_observations"] if item["normalized_model"] == "text-embedding-3-small"] == ["embedding"]
+    validated = subprocess.run(
+        [sys.executable, str(BMA_RUNTIME), "validate-profile", "--profile", str(out_path), "--sidecar", str(sidecar_path)],
+        capture_output=True, text=True,
+    )
+    assert validated.returncode == 0, validated.stderr
+    design = subprocess.run(
+        [sys.executable, str(BMA_RUNTIME), "design-target", "--capability", "embedding"],
+        capture_output=True, text=True,
+    )
+    assert design.returncode == 0, design.stderr
+    assert json.loads(design.stdout)["target_bedrock_model"] == "amazon.titan-embed-text-v2:0"

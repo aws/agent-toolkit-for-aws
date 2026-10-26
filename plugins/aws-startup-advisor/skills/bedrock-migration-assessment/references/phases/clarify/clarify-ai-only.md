@@ -185,7 +185,7 @@ Interpret → `cross_cloud`. Default: 2 → `"latency-acceptable"`.
 
 Establishes baseline Bedrock recommendation. Override hierarchy: Q10 special features > Q2 priority > Q7/Q8 volume/latency > Q5 baseline.
 
-_Skip when:_ `ai_sources[].models` is populated in `ai-workload-profile.json` **with evidence confidence `high` or `confirmed`** (the same threshold as full-flow Q19) — auto-detect with `chosen_by: "extracted"` and do not present this question. The detected models are already shown in the Step 1 summary. Below 0.8, present the question with the detected model(s) offered as the suggested answer. With 2+ detected models, record `ai_model_baseline` as an array (one entry per model).
+_Skip when:_ `ai_sources[].models` is populated in `ai-workload-profile.json` **with evidence confidence `high`** (the same threshold as full-flow Q19) — auto-detect with `chosen_by: "extracted"` and do not present this question. The detected models are already shown in the Step 1 summary. Below 0.8, present the question with the detected model(s) offered as the suggested answer. With 2+ detected models, record `ai_model_baseline` as an array (one entry per model).
 
 > 1\) Gemini Flash | 2\) Gemini Pro | 3\) GPT-3.5 Turbo | 4\) GPT-4/4 Turbo | 5\) GPT-4o | 6\) GPT-5.4/Mini/Nano | 7\) GPT-5.6 Sol/Terra/Luna | 8\) GPT-5/5.x (older) | 9\) GPT-5.5/Pro | 10\) GPT-6/6.1 (Astra/Sol/Luna) | 11\) o-series | 12\) Claude (Anthropic SDK) | 13\) Other/Multiple | 14\) Don't know
 

@@ -55,7 +55,7 @@
         "references/runtime/bma-input-patterns.json",
         "scripts/bma-route-classifier.py"
       ],
-      "sha256": "a7feecd1f755e3b5fed2629499168beac185211b5495241ba56845c060f1079d",
+      "sha256": "12c4cb6e6f4682154771bc01c9db59053190af09a800f6e9067c966ebd6fe1c7",
       "type": "script"
     },
     {
@@ -107,7 +107,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "feb5af16d69183adcda7d72e1f694bb68615131688873e89d78b1d7b45c0b311",
+      "sha256": "94bea97ec62a6a7493664611127afef87974667472731434dfff40f40d3d2bef",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai-only.md",
       "type": "instruction"
     },
@@ -120,7 +120,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "269fd777d7b341a25ca37523b503f08b418d9962fde7b00d682711b40692b06e",
+      "sha256": "28b44e71ddb79d83f73ba1eff84349322a68b4bfb219bab94421517f35b475ae",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai.md",
       "type": "instruction"
     },
@@ -172,7 +172,7 @@
         "references/shared/schema-discover-ai.md",
         "references/vendored/ai/sdk-capability-map.json"
       ],
-      "sha256": "0229f2cab4efc53c5bcc15d3c40e727be46affccc2c246845a368dbb1615db31",
+      "sha256": "9b629e8f0470f5e8c5a5d72aa7c152c9b1601b04ee574d338c606b8c29b50225",
       "source_path": "skills/gcp-to-aws/references/phases/discover/discover-app-code.md",
       "type": "instruction"
     },
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "5aaf90c93d5bd9074725ff739ff1e4a963db2a56b9e7f8b1eee466bf408ec36f"
+  "self_hash": "525f658ed8c608de820c2ca05ecbaa720652fcf6aa8b82c3b346df6cece77695"
 }

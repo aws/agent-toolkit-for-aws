@@ -233,3 +233,24 @@ def test_delegated_bma_input_is_gcp_adapter_owned_and_public_profile_unchanged()
     # Delegated runs: the adapter writes the #415 input under the hidden .bma-input/; the public root file keeps its label.
     assert runtime.writer("delegated", ".bma-input/ai-workload-profile.json") == "gcp-to-aws"
     assert runtime.writer("delegated", "ai-workload-profile.json") == "gcp-to-aws"
+
+
+def test_confirmed_evidence_confidence_is_rejected_in_415_input() -> None:
+    """P4: the mapping says confidence 'confirmed' is never derived, so BMA input must not carry it."""
+    profile = _profile("ai-only-multi-direct")
+    profile["ai_sources"][0]["model_observations"][0]["evidence"][0]["confidence"] = "confirmed"
+    with pytest.raises(ValueError, match="ai_profile_confidence_unsupported"):
+        runtime.validate_ai_workload_profile(profile, BMA_ROOT)
+
+
+def test_ai_phase_prose_does_not_name_confirmed_as_a_confidence_label() -> None:
+    """P4: the producer and both Clarify skip rules must use only high, medium, or low for evidence confidence."""
+    producer = (BMA_ROOT / "references/phases/discover/discover-app-code.md").read_text(encoding="utf-8")
+    clarify = (BMA_ROOT / "references/phases/clarify/clarify-ai.md").read_text(encoding="utf-8")
+    clarify_only = (BMA_ROOT / "references/phases/clarify/clarify-ai-only.md").read_text(encoding="utf-8")
+    assert "`evidence[].confidence` — one of `high`, `medium`, `low`" in producer
+    assert "`confirmed`" not in producer
+    assert "evidence confidence `high` or `confirmed`" not in clarify
+    assert "evidence confidence `high` or `confirmed`" not in clarify_only
+    assert "evidence confidence `high`" in clarify
+    assert "evidence confidence `high`" in clarify_only

@@ -573,7 +573,7 @@ If no pre-existing IaC profile exists, generate a fresh profile from code.
 - `model_families`, `model_evidence`, `models`, `model_observations` (not `models[].model_id`, `detected_via`)
 - `model_observations[].normalized_model`, `raw_model`, `model_family`, `evidence` (not `model_name`, `capabilities_used`)
 - `evidence[].provenance` — one of `code`, `iac`, `live_api`, `usage_api`, `user_confirmed` (not `source`, `detected_via`)
-- `evidence[].confidence` — one of `confirmed`, `high`, `medium`, `low`
+- `evidence[].confidence` — one of `high`, `medium`, `low`
 - `gateways[].product`, `type`, `upstream_evidence`, `upstreams` (not `gateway_type`, `router_type`)
 
 **Determining `provider`:**

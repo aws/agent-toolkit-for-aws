@@ -33,7 +33,7 @@ UPSTREAM_PREFIX = {
     "openai": ("openai", "openai_api"),
     "google": ("google", "vertex_ai"),
 }
-FAMILY_PREFIXES = (("claude", "claude"), ("gemini", "gemini"), ("gpt", "gpt"), ("o1", "gpt"), ("o3", "gpt"))
+FAMILY_PREFIXES = (("claude", "claude"), ("gemini", "gemini"), ("gpt", "gpt"), ("o1", "gpt"), ("o3", "gpt"), ("text-embedding", "embedding"))
 PROVENANCE = {"code": "code", "terraform": "iac", "live_gcloud": "live_api", "user_confirmed": "user_confirmed", "user": "user_confirmed"}
 NORMALIZED_MODEL = re.compile(r"^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$")
 SIDECAR_KIND = "BMA_GCP_AI_SIDECAR"

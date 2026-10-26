@@ -373,6 +373,10 @@ def validate_ai_workload_profile(value: Any, bma_root: Path) -> dict[str, Any]:
             item["model_family"] not in source["model_families"] for item in source["model_observations"]
         ):
             raise ValueError("ai_profile_observation_mismatch")
+        # The mapping never derives "confirmed". The schema still lists it, so reject it here.
+        for item in source["model_observations"]:
+            if any(entry["confidence"] == "confirmed" for entry in item["evidence"]):
+                raise ValueError("ai_profile_confidence_unsupported")
     return {"ok": True, "ai_sources": len(value["ai_sources"]), "gateways": len(value["gateways"])}
 
 
@@ -401,10 +405,14 @@ AI_CAPABILITY_MAP_RELATIVE = "references/vendored/ai/sdk-capability-map.json"
 _UNCLASSIFIED = {"capability": "unknown", "capability_confidence": "low", "structured_output": False}
 # Design-ai.md Part 1: image_generation -> Stability AI. Core is the cost-first default; Ultra is quality-first.
 IMAGE_GENERATION_TARGETS = {"core": "stability.stable-image-core-v1:0", "ultra": "stability.stable-image-ultra-v1:0"}
+# Design-ai.md Part 1: embedding -> Titan Text Embeddings v2, the default for OpenAI/Azure embedding workloads.
+EMBEDDING_TARGET = "amazon.titan-embed-text-v2:0"
 
 
 def design_target(capability: str, priority: str) -> dict[str, Any]:
-    """Design-ai.md Part 1 target for a capability whose routing is deterministic. Only image_generation is."""
+    """Design-ai.md Part 1 target for a capability whose routing is deterministic: image_generation and embedding."""
+    if capability == "embedding":
+        return {"capability": capability, "target_aws_service": None, "target_bedrock_model": EMBEDDING_TARGET}
     if capability != "image_generation":
         raise ValueError("design_target_not_deterministic")
     model = IMAGE_GENERATION_TARGETS["ultra" if priority == "quality" else "core"]
