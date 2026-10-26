@@ -60,7 +60,7 @@ In Claude Code, install from this repository's marketplace:
 /reload-plugins
 ```
 
-For Codex and Cursor, see [Quick start](../../README.md#quick-start).
+For Codex, Cursor, and Devin, see [Quick start](../../README.md#quick-start).
 
 For standalone skill installs — Kiro, fx, and other hosts that consume skills directly — point the skills CLI at this plugin. The repository's top-level `skills/` tree does not contain these skills, so the command in Quick start will not install them:
 

@@ -35,7 +35,8 @@ def sync(plugin=PLUGIN, write=False):
     telemetry = plugin / "scripts/telemetry"
     version = json.loads((plugin / "plugin.json").read_text(encoding="utf-8"))["version"]
     problems = []
-    for name in (".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json"):
+    for name in (".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json",
+                 ".devin-plugin/plugin.json"):
         manifest = plugin / name
         if manifest.is_file():
             host_version = json.loads(manifest.read_text(encoding="utf-8")).get("version")
