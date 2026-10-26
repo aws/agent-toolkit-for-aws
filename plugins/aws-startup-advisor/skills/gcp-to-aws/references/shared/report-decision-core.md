@@ -92,6 +92,8 @@ Generate-only facts. Add `exec-share` to the TOC only when rendered.
 
 > ⚠️ **Specialist engagement required:** [service name] does not have an automated AWS mapping from this plugin. Engage your AWS account team and/or a data analytics migration partner to evaluate the best AWS analytics path. This does **not** block phased migration of other services; exclude [service name] from the combined estimated AWS monthly run rate until the target architecture is defined.
 
+When the deferred service is BigQuery, end that callout with one next-step sentence: run `bq-assess`, an open-source AWS sample (<https://github.com/aws-samples/sample-bigquery-to-aws-migration>), which adds per-table effort and SQL-rewrite scores, a query-engine recommendation, and a cost comparison for the BigQuery side. If a `bq-assess` report already exists under the working directory (`reports/assessment-landing-*.json` by default), link its landing page (`assessment-landing-*.html`, next to the JSON) instead. Never block or delay the report on it.
+
 **Startup credits callout (decision summary / verdict):**
 
 | `startup_program_status.value` | Verdict / metric copy                                                                                                                                                                                                                                |

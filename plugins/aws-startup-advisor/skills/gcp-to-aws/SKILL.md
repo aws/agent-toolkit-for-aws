@@ -445,6 +445,42 @@ When invoked, the agent **MUST follow this exact sequence**:
 
 9. **Display summary**: Show user what was accomplished, highlight next phase, or confirm migration completion.
 
+10. **BigQuery follow-up (end of run only)**: When the run has just finished (the gate-A
+    closing sequence in `references/phases/estimate/estimate.md`, or the Summary in
+    `references/phases/generate/generate.md`, each including its web-handoff block when shown)
+    and BigQuery was detected (`preferences.json` →
+    `metadata.inventory_clarifications.bigquery_present: true`, or a BigQuery resource marked
+    `Deferred — specialist engagement` in the design artifact), offer the BigQuery assessment
+    once, as the last thing in the run:
+
+    > **BigQuery next step:** BigQuery was deferred to specialists in this plan. `bq-assess`,
+    > an open-source AWS sample, assesses the BigQuery side read-only: per-table data-movement
+    > effort and SQL-rewrite scores, a query-engine recommendation (Amazon Athena or Amazon
+    > Redshift Serverless) from the observed workload, and a BigQuery-vs-AWS cost comparison.
+    > It runs locally, needs `roles/bigquery.metadataViewer` (plus
+    > `roles/bigquery.resourceViewer` for query-log analysis), reads metadata and query history
+    > but never table rows, and needs no AWS account. Set it up now?
+    >
+    > [A] Yes, set up bq-assess
+    > [B] Not now — it stays in your report as the BigQuery next step
+
+    - Make it the only question in its message. If the closing message already asks something
+      (the gate-A feedback short form), ask in the next turn, once that answer is handled.
+    - Skip the offer if a `bq-assess` report already exists under the working directory
+      (`reports/assessment-landing-*.json` by default); the reports already link it.
+    - **A** → If the `bq-assess` skill is available in this session, hand off to it; it runs its
+      own preflight (project ID, credentials, consent). Otherwise, in Claude Code, show
+      `/plugin marketplace add aws-samples/sample-bigquery-to-aws-migration` and
+      `/plugin install bq-assess@sample-bigquery-to-aws-migration`, then have the user ask
+      `assess BigQuery migration for project <PROJECT_ID>` (restart the session if the skill
+      does not appear). In other hosts, show the CLI path instead:
+      `pip3 install "git+https://github.com/aws-samples/sample-bigquery-to-aws-migration.git"`,
+      then `bq-assess --gcp-project <PROJECT_ID> --use-adc --format html,json --output reports/`
+      (the repository README covers authentication and options).
+    - **B**, or no answer → nothing further; do not ask again in this run.
+    - This step writes no artifacts, does not change `.phase-status.json`, and never blocks
+      completion.
+
 **Critical constraint**: Agent must strictly adhere to the reference file's workflow. If unable to complete a step, stop and report the exact step that failed.
 
 User can invoke the skill again to resume from `current_phase` (or deterministic ordered evaluation when `current_phase` is absent).
