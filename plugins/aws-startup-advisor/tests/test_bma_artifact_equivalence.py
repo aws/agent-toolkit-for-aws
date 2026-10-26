@@ -174,9 +174,9 @@ def test_trace_preserves_openrouter_cardinality_null_zero_and_writer_boundary(tm
         tmp_path,
         "gemini-zero",
     ))
-    # Observed source cost stays 0. gemini-2.5-pro is not in the registry (source unverified), so its
-    # target keeps the name amazon.nova-pro-v1:0 but gets no price.
-    assert gemini["costs"] == [0, None, None, "unavailable"]
+    # Observed source cost stays 0. The target amazon.nova-pro-v1:0 is Active, so it is priced (0 tokens -> 0).
+    # gemini-2.5-pro is not in the registry (source lifecycle unverified), so no delta is built on it.
+    assert gemini["costs"] == [0, 0, None, "known_zero"]
 
     delegated = projection(trace(
         CASE_VALUE["cases"]["gcp-combined-vertex"],

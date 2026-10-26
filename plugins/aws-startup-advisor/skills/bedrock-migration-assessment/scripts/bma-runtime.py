@@ -572,16 +572,17 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
                 migration_path = "openrouter_byok"
             elif row["source_service"] == "vertex_ai":
                 migration_path = "vertex_adapter"
-            # The target name stays visible. Its price is set only when the source and the target are both
-            # listed as Active. An unregistered source is labelled unverified and is never priced or PASS.
-            source_registered = model in registered
-            target_active = source_registered and target in registered
-            source_status = "active" if source_registered else "unverified"
+            # The target name stays visible. Its price and retirement_status come from the target's own
+            # registry row: priced only when the target is listed as Active, otherwise unverified and unpriced.
+            # The source's lifecycle is reported separately (associations[].lifecycle_label) and controls
+            # only the baseline label and whether a delta is built.
+            target_active = target in registered
+            target_status = "active" if target_active else "unverified"
             mappings.append({
                 "source_model": model, "target_model": target,
                 "migration_path": migration_path,
-                "retirement_status": source_status,
-                **({"note": RETIREMENT_UNVERIFIED_NOTE} if source_status == "unverified" else {}),
+                "retirement_status": target_status,
+                **({"note": RETIREMENT_UNVERIFIED_NOTE} if not target_active else {}),
             })
             migration_paths.append(migration_path)
             if None in token_values or not target_active:

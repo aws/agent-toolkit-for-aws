@@ -1,9 +1,10 @@
 """Retirement status comes from the lifecycle registry read at run time, never a hand-kept list.
 
-A source model that is not in ai-model-lifecycle.md is `unverified`, is never reported as PASS, and is
-labelled `lifecycle unverified`. Its target name stays visible in the design mapping, but its target price
-is null. A target is priced only when the source and the target are both listed as Active. No retirement
-wording is hardcoded in the runtime. Inline trace requests, so no sample app is needed.
+A source model that is not in ai-model-lifecycle.md is labelled `lifecycle unverified`, its baseline is
+"observed, not priced from registry", and no monthly delta is built on it. A Bedrock target is priced when
+the target itself is listed as Active; its retirement_status comes from its own registry row. An
+unregistered target keeps its name but gets no price and carries the retirement-unverified note. No
+retirement wording is hardcoded in the runtime. Inline trace requests, so no sample app is needed.
 """
 from __future__ import annotations
 
@@ -92,18 +93,20 @@ def test_unmapped_unregistered_source_is_unverified_labelled_and_unpriced(
     _assert_no_hardcoded_retirement_wording(result)
 
 
-def test_gpt4o_source_is_unverified_target_name_visible_and_target_unpriced() -> None:
+def test_gpt4o_unverified_source_with_active_target_is_priced_without_delta() -> None:
+    # The source is not in the registry, so its lifecycle is unverified and no delta is built. The target
+    # openai.gpt-6-luna is Active in the registry, so it is priced at the US Geo rate (0.11 / 0.55).
     result = _trace("gpt-4o", "openai", "openai_api", observed=550.0)
     assert result["associations"][0]["lifecycle_label"] == "lifecycle unverified"
     assert result["design_mappings"] == [
         {"source_model": "gpt-4o", "target_model": "openai.gpt-6-luna", "migration_path": "direct_api",
-         "retirement_status": "unverified", "note": UNVERIFIED_NOTE}
+         "retirement_status": "active"}
     ]
     assert result["estimate"]["source_monthly"] == 550.0
     assert result["estimate"]["source_monthly_basis"] == "observed, not priced from registry"
     assert result["estimate"]["monthly_delta"] is None
-    assert result["estimate"]["target_monthly"] is None
-    assert result["estimate"]["pricing_source"] == "unavailable"
+    assert result["estimate"]["target_monthly"] == 0.66  # 1M x 0.11 + 1M x 0.55
+    assert result["estimate"]["pricing_source"] == "bedrock_cache"
     _assert_no_hardcoded_retirement_wording(result)
 
 
@@ -141,23 +144,30 @@ def test_unregistered_target_is_unverified_unpriced_and_never_pass(monkeypatch: 
     _assert_no_hardcoded_retirement_wording(result)
 
 
-def test_unregistered_source_with_registered_target_is_unpriced() -> None:
-    # gemini-2.5-pro is not in the registry, so its target amazon.nova-pro-v1:0 keeps its name but no price.
-    result = _trace("gemini-2.5-pro", "google", "gemini_api")
+def test_unregistered_source_with_registered_target_is_priced_without_delta() -> None:
+    # gemini-2.5-pro is not in the registry (source lifecycle unverified, no delta); its target
+    # amazon.nova-pro-v1:0 is Active, so the target is priced.
+    result = _trace("gemini-2.5-pro", "google", "gemini_api", observed=200.0)
+    assert result["associations"][0]["lifecycle_label"] == "lifecycle unverified"
     assert result["design_mappings"][0]["target_model"] == "amazon.nova-pro-v1:0"
-    assert result["design_mappings"][0]["retirement_status"] == "unverified"
-    assert result["design_mappings"][0]["note"] == UNVERIFIED_NOTE
-    assert result["estimate"]["target_monthly"] is None
-    assert result["estimate"]["pricing_source"] == "unavailable"
-
-
-def test_registered_source_with_registered_target_is_priced(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Only when the source is registered as Active does its registered target get a price.
-    monkeypatch.setattr(runtime, "registered_active_models", lambda _root: frozenset(REGISTERED_ACTIVE | {"gpt-4o"}))
-    result = _trace("gpt-4o", "openai", "openai_api")
     assert result["design_mappings"][0]["retirement_status"] == "active"
     assert "note" not in result["design_mappings"][0]
+    assert result["estimate"]["source_monthly_basis"] == "observed, not priced from registry"
+    assert result["estimate"]["monthly_delta"] is None
+    assert result["estimate"]["target_monthly"] == 4.0  # 1M x 0.8 + 1M x 3.2
+    assert result["estimate"]["pricing_source"] == "bedrock_cache"
+
+
+def test_registered_source_with_registered_target_is_priced_with_delta(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A registered source has a verified baseline, so the delta against its priced target is computed.
+    monkeypatch.setattr(runtime, "registered_active_models", lambda _root: frozenset(REGISTERED_ACTIVE | {"gpt-4o"}))
+    result = _trace("gpt-4o", "openai", "openai_api", observed=550.0)
+    assert result["associations"][0]["lifecycle_label"] == "lifecycle registered"
+    assert result["design_mappings"][0]["retirement_status"] == "active"
+    assert "note" not in result["design_mappings"][0]
+    assert result["estimate"]["source_monthly_basis"] == "observed"
     assert result["estimate"]["target_monthly"] == 0.66  # 1M x 0.11 + 1M x 0.55
+    assert result["estimate"]["monthly_delta"] == -549.34
     assert result["estimate"]["pricing_source"] == "bedrock_cache"
 
 
