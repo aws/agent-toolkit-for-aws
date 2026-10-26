@@ -65,7 +65,7 @@ If the issue is about agent behavior (wrong answers, errors, timeouts, tool fail
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-Then check the project format: open `agentcore/agentcore.json`. If it has `"version": 1` (or no `"version": 2`), it's a v0 project. The v1 CLI runs it in compatibility mode — `deploy`, `status`, `logs`, `traces`, and `invoke` still work, but `add`, `remove`, `build`, and `export` are blocked. To migrate it fully, run `agentcore migrate`: without `--yes` in a non-interactive shell it only prints the migration plan (also saved under `agentcore/.cli/migrate/`); interactively it shows the plan and asks before applying. Use `--target <name>` if the project is deployed to more than one target. Commit first — `agentcore migrate` refuses a dirty git working tree (`git: Commit or stash your changes`), and v0 `create` always leaves uncommitted files.
+Then check the project format: open `agentcore/agentcore.json`. If it has `"version": 1` (or no `"version": 2`), it's a v0 project. The v1 CLI runs it in compatibility mode — `deploy`, `status`, `logs`, `traces`, and `invoke` still work, but `add`, `remove`, `build`, and `export` are blocked. To migrate it fully, run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts. The plan is also saved under `agentcore/.cli/migrate/`.
 
 There is no `agentcore validate` in v1. Any project command parses `agentcore.json` and reports schema errors; `agentcore build` additionally synthesizes the CDK app locally without deploying, which is the closest offline check.
 
@@ -75,7 +75,7 @@ Ask (or infer from context):
 
 > "What's happening?
 >
-> 1. The agent returns an error message
+> 1. The agent returns an error message (for `Runtime initialization time exceeded`, go to **Symptom: 424 / "Runtime initialization time exceeded" on invoke**)
 > 2. The agent returns a wrong or unhelpful answer
 > 3. A specific tool call is failing
 > 4. Memory isn't working (agent doesn't remember things)
@@ -84,7 +84,7 @@ Ask (or infer from context):
 
 ### Step 3: Read traces and logs automatically
 
-Don't ask the developer to paste logs — read them directly.
+Don't ask the developer to paste logs — read them directly. After a recent deploy, check logs before traces: a startup crash leaves no new trace, and older traces from the previous version can mislead.
 
 ```bash
 # What's deployed, and is it deployed? (resource names, ARNs/IDs, deployed vs local-only)
@@ -100,8 +100,9 @@ agentcore traces runtime list --name <RuntimeName> --since 1h --limit 1
 agentcore traces runtime get <traceId> --name <RuntimeName>
 
 # Search logs for errors. Python tracebacks carry no log level, so --level error
-# misses startup crashes; search for the traceback text instead
-agentcore logs runtime --name <RuntimeName> --since 1h --query "Traceback"
+# misses startup crashes. Each traceback line is a separate log event, so match
+# the exception line too, not just "Traceback"
+agentcore logs runtime --name <RuntimeName> --since 1h --query "?Traceback ?Error ?Exception"
 agentcore logs runtime --name <RuntimeName> --since 1h --level error
 
 # Search logs for a specific pattern (CloudWatch Logs filter pattern)
@@ -129,7 +130,7 @@ agentcore invoke --harness <HarnessName> --prompt "..."
 agentcore invoke --runtime <RuntimeName> --local --payload '{"prompt": "..."}'
 ```
 
-**Important:** CloudWatch put-to-get latency is **~10 seconds end-to-end** — that's the delay from when a span is emitted to when it's readable by `agentcore traces runtime get` or `agentcore eval ondemand evaluate`. There is **no separate "trace ingested but eval not ready yet" window**; the same ingestion step unlocks both paths. Older skills and docs said 30–60s for traces and 2–5 minutes for evals — both are stale. If you just invoked the agent, wait ~15 seconds and both trace reads and evals will work.
+**Important:** Traces take **30–60 seconds** after an invocation to become readable by `agentcore traces runtime list/get` and `agentcore eval ondemand evaluate`; the same ingestion step unlocks both. The session ID can show `-` at first. Poll `traces runtime list` instead of sleeping. Online-eval results also wait until the session has been idle for the config's session timeout (5 min by default).
 
 If `agentcore status` fails with `No deployment targets are configured for project '<name>'`, the project has never been deployed (`agentcore/aws-targets.json` is empty) — there are no logs or traces to read yet; reproduce locally with `agentcore dev` or deploy first (→ `agents-deploy`).
 
@@ -213,7 +214,7 @@ The `AGENTCORE_GATEWAY_*_URL` env var is injected into the deployed runtime. `ag
 agentcore logs runtime --name <RuntimeName> --since 1h --query "auth"
 ```
 
-Check that the credential is deployed: `agentcore status --json` lists each credential with `deploymentState`; `agentcore identity api-key-credential-provider list` and `agentcore identity oauth2-credential-provider list` show what exists in the account.
+Check that the credential is deployed: `agentcore status --json` lists each credential with `deploymentState`; `agentcore identity api-key-credential-provider list --json` and `agentcore identity oauth2-credential-provider list --json` show what exists in the account. Run with no flags, the `eval`, `identity`, `runtime`, `harness`, `memory`, and `gateway` commands open the interactive TUI, which fails without a terminal (`interactive mode requires a TTY`) — pass `--json` (or the command's flags) from an agent shell.
 
 **Lambda function error:**
 The Lambda itself is failing. Check Lambda logs directly:
@@ -265,34 +266,34 @@ If the agent should be using memory context but isn't, see the "Symptom: Memory 
 
 1. Verify LTM strategies are configured (SEMANTIC or USER_PREFERENCE):
 
-```bash
-agentcore memory get --id <MemoryId> --json | jq '.memory.strategies'
-```
+   ```bash
+   agentcore memory get --id <MemoryId> --json | jq '.memory.strategies'
+   ```
 
-1. Wait 5–30 seconds after a session ends — LTM extraction is async. The agent must finish its session before facts are extracted.
+2. Wait 5–30 seconds after a session ends — LTM extraction is async. The agent must finish its session before facts are extracted.
 
-2. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
+3. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
 
-3. Verify the memory resource is ACTIVE:
+4. Verify the memory resource is ACTIVE:
 
-```bash
-agentcore memory get --id <MemoryId> --json | jq -r '.memory.status'
-```
+   ```bash
+   agentcore memory get --id <MemoryId> --json | jq -r '.memory.status'
+   ```
 
 **Memory not loading at session start:**
 
 1. Check the `MEMORY_*_ID` env var is set:
 
-```bash
-# The memory ID the deployed runtime should receive (last ARN segment)
-agentcore status --json | jq -r '.resources[] | select(.resourceType=="memory") | .arn | split("/") | last'
-```
+   ```bash
+   # The memory ID the deployed runtime should receive (last ARN segment)
+   agentcore status --json | jq -r '.resources[] | select(.resourceType=="memory") | .arn | split("/") | last'
+   ```
 
-In `agentcore dev`, these values come from the runtime's `envVars` in `agentcore.json` and from `agentcore/.env.local` — set the `MEMORY_*_ID` there if you need deployed memory locally.
+   In `agentcore dev`, these values come from the runtime's `envVars` in `agentcore.json` and from `agentcore/.env.local` — set the `MEMORY_*_ID` there if you need deployed memory locally.
 
-1. Verify the `actor_id` is consistent across sessions — memory is scoped per actor.
+2. Verify the `actor_id` is consistent across sessions — memory is scoped per actor.
 
-2. Check the namespace paths in your retrieval config match the namespaces used when writing.
+3. Check the namespace paths in your retrieval config match the namespaces used when writing.
 
 ---
 
@@ -349,14 +350,14 @@ See `agents-harden` Session lifecycle management section for the full pattern.
 
 ---
 
-## Symptom: 424 Failed Dependency on invoke
+## Symptom: 424 / "Runtime initialization time exceeded" on invoke
 
-This usually means the agent container failed to start or crashed during initialization.
+The CLI reports this as `Runtime initialization time exceeded` (a `RuntimeClientError`); it never prints "424". It usually means the agent container failed to start or crashed during initialization.
 
 **Step 1:** Check the agent logs for startup errors. Don't filter with `--level error` — a startup traceback is raw stderr with no log level, so it gets filtered out:
 
 ```bash
-agentcore logs runtime --name <RuntimeName> --since 30m --query "Traceback"
+agentcore logs runtime --name <RuntimeName> --since 30m --query "?Traceback ?Error ?Exception"
 agentcore logs runtime --name <RuntimeName> --since 30m      # everything, if the query finds nothing
 ```
 
@@ -441,11 +442,14 @@ For a **harness**, `agentcore dev` deploys the harness (unless `--skip-deploy`) 
 
 | Target type (`targetType` in `agentCoreGateways[].targets[]`) | Valid outbound auth |
 |---|---|
-| `mcpServer` | `none`, `oauth`, or IAM (SigV4) |
-| `lambdaFunctionArn` | IAM only (automatic) |
+| `lambda` / `lambdaFunctionArn` | `none` (gateway IAM role) or `oauth` |
+| `mcpServer` | `none` or `oauth` |
 | `openApiSchema` | `oauth` or `api-key` (required) |
-| `apiGateway` | `none`, `api-key`, or IAM |
-| `smithyModel` | IAM or `oauth` |
+| `apiGateway` | `none` (gateway IAM role) or `api-key` |
+| `smithyModel` | `none` (gateway IAM role) |
+| `httpRuntime` | `none` (gateway IAM role) or `oauth` |
+| `connector` | `none` (gateway IAM role) |
+| `passthrough` | `GATEWAY_IAM_ROLE`, `OAUTH`, or `JWT_PASSTHROUGH` (required) |
 
 Check what's configured in `agentcore/agentcore.json` under `agentCoreGateways[].targets[]`, or on the deployed side with `agentcore gateway target list --gateway-id <GatewayId> --json`.
 
@@ -470,9 +474,9 @@ agentcore identity oauth2-credential-provider list --json
 
 ## Symptom: No traces appearing
 
-**Wait ~15 seconds** — there's a short delay (typically ~10s) between invocation and trace availability.
+**Wait 30–60 seconds** — traces take that long after an invocation to become readable. Poll `agentcore traces runtime list` rather than sleeping.
 
-If still no traces after ~30 seconds:
+If still no traces after ~2 minutes:
 
 1. Verify observability was enabled when the agent was deployed
 2. Check the agent was actually invoked: `agentcore logs runtime --name <RuntimeName> --since 1h`

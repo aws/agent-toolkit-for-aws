@@ -44,16 +44,26 @@ Your runtime execution role needs:
 ```json
 {
   "Effect": "Allow",
+  "Action": ["logs:DescribeLogGroups"],
+  "Resource": "*"
+},
+{
+  "Effect": "Allow",
   "Action": [
     "logs:CreateLogGroup",
     "logs:CreateLogStream",
-    "logs:PutLogEvents",
-    "xray:PutTraceSegments",
-    "xray:PutTelemetryRecords"
+    "logs:PutLogEvents"
   ],
+  "Resource": "arn:aws:logs:<REGION>:<ACCOUNT_ID>:log-group:/aws/bedrock-agentcore/runtimes/*:*"
+},
+{
+  "Effect": "Allow",
+  "Action": ["xray:PutTraceSegments", "xray:PutTelemetryRecords"],
   "Resource": "*"
 }
 ```
+
+The X-Ray actions don't support resource-level scoping, and `logs:DescribeLogGroups` must stay on `"*"` — scoping it breaks log stream creation (see `agents-debug`, "Logs missing for Terraform/CDK/IaC-deployed runtimes").
 
 If you bring your own role with `executionRoleArn` on the runtime in `agentcore.json`, make sure it includes these.
 

@@ -55,7 +55,7 @@ agentcore update
 
 `agentcore update --check` reports whether an update is available without installing it.
 
-**If the project was created by CLI v0** (`agentcore/agentcore.json` has `"version": 1`): v1 runs it in compatibility mode and blocks `add`/`remove`/`build`. Run `agentcore migrate` to convert it — see the main `agents-debug` skill, Step 1. Commit first — `agentcore migrate` refuses a dirty git working tree, and v0 `create` always leaves uncommitted files.
+**If the project was created by CLI v0** (`agentcore/agentcore.json` has `"version": 1`): v1 runs it in compatibility mode and blocks `add`/`remove`/`build`. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts.
 
 **If old Starter Toolkit is installed** (Python-based `agentcore` command):
 
@@ -175,21 +175,36 @@ case "$CALLER_ARN" in
   *) PRINCIPAL_ARN="$CALLER_ARN" ;;
 esac
 
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+REGION=<REGION>
+
 aws iam simulate-principal-policy \
   --policy-source-arn "$PRINCIPAL_ARN" \
-  --action-names iam:CreateRole bedrock:InvokeModel \
+  --action-names sts:AssumeRole \
+  --resource-arns "arn:aws:iam::${ACCOUNT}:role/cdk-*" \
+  --query 'EvaluationResults[*].{Action:EvalActionName,Decision:EvalDecision}'
+
+aws iam simulate-principal-policy \
+  --policy-source-arn "$PRINCIPAL_ARN" \
+  --action-names 'cloudformation:*' \
+  --resource-arns "arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/AgentCore-*" \
+  --query 'EvaluationResults[*].{Action:EvalActionName,Decision:EvalDecision}'
+
+aws iam simulate-principal-policy \
+  --policy-source-arn "$PRINCIPAL_ARN" \
+  --action-names bedrock:InvokeModel \
   --resource-arns "*" \
   --query 'EvaluationResults[*].{Action:EvalActionName,Decision:EvalDecision}'
 ```
 
 For deploy to work, you need:
 
-- `iam:CreateRole` — to create execution roles
-- `bedrock:InvokeModel` — to call Bedrock models
-- `ecr:CreateRepository`, `ecr:PutImage` — for container builds
-- `codebuild:StartBuild` — for remote builds
+- `sts:AssumeRole` on the CDK bootstrap roles (`cdk-*`) — CDK deploys and publishes assets through them
+- `cloudformation:*` on the `AgentCore-*` stacks — the project stack is `AgentCore-<project>-<target>`; CloudFormation creates the execution roles under that stack name, so you don't need `iam:CreateRole` yourself
+- Permission to create the `CDKToolkit` bootstrap stack (CloudFormation, IAM, S3, ECR, SSM) the first time an account/region is used, unless an admin has already bootstrapped it
+- `bedrock:InvokeModel` — to call Bedrock models from `agentcore dev`
 
-If permissions are missing, ask your AWS admin to attach `BedrockAgentCoreFullAccess` and `AmazonBedrockFullAccess` managed policies to your IAM user or role.
+`BedrockAgentCoreFullAccess` and `AmazonBedrockFullAccess` are broad and still don't grant the CDK bootstrap-role or CloudFormation access above. Ask your AWS admin for those specifically, scoped to the ARNs shown.
 
 ### Check 7: Docker (optional — only needed to run Container runtimes locally)
 
@@ -225,11 +240,11 @@ AgentCore Environment Check
 ✅ uv: 0.4.18
 ✅ AWS credentials: configured (account: 123456789012, region: us-east-1)
 ✅ Bedrock model access: Claude models enabled
-⚠️  IAM permissions: missing iam:CreateRole — deploy will fail
+⚠️  IAM permissions: can't assume cdk-* bootstrap roles — deploy will fail
 ❌ Docker: not running — needed only for `agentcore dev` on Container runtimes (optional)
 
 Issues to fix:
-1. IAM: Ask your admin to attach BedrockAgentCoreFullAccess to your user
+1. IAM: Ask your admin for sts:AssumeRole on arn:aws:iam::<ACCOUNT>:role/cdk-* and cloudformation:* on AgentCore-* stacks
 2. Docker: Start Docker Desktop (only needed to run Container runtimes locally)
 
 All clear? Run `agents-get-started` to create your first project.
