@@ -2,10 +2,11 @@
 name: agents-deploy
 description: >
   Use when deploying your agent to AWS, or when a deploy has failed.
-  Handles pre-flight validation, CDK/IAM/quota error diagnosis, version
-  management, rollback, and canary deployments. Triggers on: "deploy my
-  agent", "agentcore deploy", "deploy failed", "CDK error", "rollback",
-  "canary deploy", "pin version", "redeploy", "deploy stuck".
+  Handles pre-flight checks, local builds, CDK/IAM/quota error diagnosis,
+  deployment targets, version management, rollback, and teardown.
+  Triggers on: "deploy my agent", "agentcore deploy", "agentcore build",
+  "deploy failed", "CDK error", "rollback", "canary deploy", "pin
+  version", "redeploy", "deploy stuck", "deployment target".
   Not for production hardening — use agents-harden. Not for adding
   capabilities before deploy — use agents-build or agents-connect.
   Not for VPC configuration errors — use agents-build.
@@ -14,7 +15,7 @@ metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
-  requires-cli: ">=0.9.0"
+  requires-cli: ">=1.0.0"
 ---
 
 # deploy
@@ -23,11 +24,12 @@ Deploy your AgentCore agent to AWS, or diagnose why a deploy failed.
 
 ## When to use
 
-- You're ready to deploy and want to validate config first
+- You're ready to deploy and want to check config first
 - `agentcore deploy` failed with an error
-- You want to preview what deploy will create without actually deploying
+- You want to build the deployable artifacts locally without deploying
 - You want to deploy to a specific target (staging, production)
-- You need to roll back to a previous version, pin to a specific version, or set up canary deployments
+- You need to roll back to a previous version, pin to a specific version, or set up a canary
+- You want to remove resources or tear a deployment down
 
 ## Input
 
@@ -35,9 +37,9 @@ Deploy your AgentCore agent to AWS, or diagnose why a deploy failed.
 
 ```
 /agents-deploy                     # interactive — pre-flight check or diagnose failure
-/agents-deploy preflight           # validate config and IAM before deploying
+/agents-deploy preflight           # check config, account, and region before deploying
 /agents-deploy diagnose            # diagnose a failed deploy (paste error or read logs)
-/agents-deploy preview             # show what deploy will create without deploying
+/agents-deploy preview             # build and synthesize locally without deploying
 /agents-deploy rollback            # roll back to a previous version
 ```
 
@@ -45,7 +47,9 @@ Deploy your AgentCore agent to AWS, or diagnose why a deploy failed.
 
 ### Step 0: Verify CLI version
 
-Run `agentcore --version`. This skill requires v0.9.0 or later. If the version is older, tell the developer to run `agentcore update` before proceeding.
+Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
+
+If `agentcore/agentcore.json` has no `"version": 2`, it's a v0 project. v1 deploys it in compatibility mode (it runs the latest v0 CLI's deploy) but blocks `agentcore build` and most project changes. Point the developer at `agentcore migrate`: it checks the project and prints a plan without changing anything, and `agentcore migrate --yes` applies it while keeping deployed resources (`--target <name>` picks the target when there are several).
 
 ### Step 1: Determine the situation
 
@@ -67,55 +71,53 @@ If the developer needs versioning, rollback, or canary deployment, load [`refere
 
 Run these checks before `agentcore deploy`:
 
-### Check 1: Validate config files
+### Check 1: Build locally
 
 Show the developer this command to run:
 
 ```bash
-agentcore validate
+agentcore build
 ```
 
-This catches malformed `agentcore.json` before CDK even starts.
+`build` brings each Runtime's entry in `agentcore.json` up to date with its code (build type, runtime version, entrypoint — it prints what changed), checks each Runtime's folder has what its build needs (`pyproject.toml` + entrypoint, `package.json` + `main.ts`, or a `Dockerfile`), validates `agentcore.json` and any `harness.yaml`, and synthesizes the CDK app into `agentcore/cdk/cdk.out/` (one `AgentCore-<project>-<target>.template.json` per target, or a single `AgentCore-<project>` template before the first deploy). Nothing is deployed — malformed config fails here. One caveat: a project with credentials (`agentcore add credentials ...`) can't fully build until a first deploy has provisioned them; the CLI says so.
 
-### Check 2: Verify region alignment
+There's no separate `validate` command and no `--dry-run` / `--diff` flag on `deploy` in v1; `agentcore build` is the preview.
 
-The most common deploy failure is a region mismatch. Show the developer these commands to verify:
+### Check 2: Verify account and region
+
+`agentcore deploy` deploys to the target named by `--target` (default `default`) in `agentcore/aws-targets.json`, using **that target's account and region**. The `--region` flag doesn't override a target's region.
+
+- **No `default` target yet** (fresh project, `aws-targets.json` is `[]`): the first `agentcore deploy` creates it from the active credentials' account (STS) and the CLI's region — `--region`, then `AWS_REGION` / `AWS_DEFAULT_REGION`, then the active profile, then `us-east-1`. Check that's the account and region the developer intends *before* the first deploy.
+- **Target exists:** the active credentials must belong to the target's `account`, or deploy stops with "Deployment target '…' expects AWS account …, but the active credentials belong to …".
+
+Show the developer these commands to verify:
 
 ```bash
-# Your configured AWS region
-aws configure get region
-
-# The region in your deployment target
-cat agentcore/aws-targets.json
-
 # The account you're actually authenticated as
 aws sts get-caller-identity
-```
 
-The `region` in `aws-targets.json` must match your `aws configure` default region. The `account` must match the account ID from `sts get-caller-identity`.
+# The region the CLI would use for a new default target
+echo "${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region)}}"
+
+# Existing deployment targets
+cat agentcore/aws-targets.json
+```
 
 ### Check 3: Verify Bedrock model access
 
-Show the developer this command to check enabled models in their region:
+Show the developer this command to check enabled models in the target region:
 
 ```bash
-aws bedrock list-foundation-models --region $(aws configure get region) \
+aws bedrock list-foundation-models --region <TARGET_REGION> \
   --query 'modelSummaries[?modelLifecycle.status==`ACTIVE`].modelId' \
   --output table
 ```
 
-Cross-region inference profile IDs use a geographic prefix (`us.`, `eu.`, `apac.`) or `global.` to control where inference runs. The CLI scaffolds `global.` by default (e.g., `global.anthropic.claude-sonnet-4-5-20250929-v1:0`), which routes to any commercial region. Geographic prefixes keep inference within that geography (e.g., `eu.` stays in EU regions). All prefixes require model access enabled in every destination region the profile covers. Check the Bedrock docs for which regions are included in each profile prefix.
+Cross-region inference profile IDs use a geographic prefix (`us.`, `eu.`, `apac.`) or `global.` to control where inference runs. The CLI scaffolds `global.` by default (e.g., `global.anthropic.claude-sonnet-5-5`), which routes to any commercial region. Geographic prefixes keep inference within that geography (e.g., `eu.` stays in EU regions). All prefixes require model access enabled in every destination region the profile covers. Check the Bedrock docs for which regions are included in each profile prefix.
 
-### Check 4: Preview what will be deployed
+For Runtimes the model ID is in code (`app/<name>/model/load.py` or `load.ts`); for a Harness it's `model.*.modelId` in `app/<name>/harness.yaml`.
 
-```bash
-agentcore deploy --dry-run
-agentcore deploy --diff
-```
-
-`--dry-run` shows what resources will be created. `--diff` shows the CDK diff against what's currently deployed.
-
-### Check 5: Verify IAM permissions
+### Check 4: Verify IAM permissions
 
 Show the developer the permissions needed and this verification command:
 
@@ -126,19 +128,36 @@ aws iam simulate-principal-policy \
   --resource-arns "arn:aws:iam::*:role/*BedrockAgentCore*"
 ```
 
+The deploying identity also needs CloudFormation, S3, and (for container builds) ECR and CodeBuild access, plus permission to create the CDK bootstrap stack if the account/region isn't bootstrapped yet.
+
 ### Run the deploy
 
 ```bash
-agentcore deploy -y          # auto-confirm (alias: agentcore dp -y)
-agentcore deploy -y -v       # verbose — shows resource-level events
-agentcore deploy --target staging -y   # deploy to a specific target
+agentcore deploy                          # deploy to the default target
+agentcore deploy --target staging         # deploy to a named target
+agentcore deploy --json                   # machine-readable result; progress stays on stderr
+agentcore deploy --debug                  # debug logging
 ```
 
-**Memory provisioning note:** If your project includes memory, deploy takes 2–5 minutes longer while the memory resource becomes ACTIVE. This is normal — not an error. Check status:
+A deploy:
+
+1. Verifies the AWS account against the target (creating the `default` target on first deploy)
+2. Syncs Runtime builds from code, provisions credential providers (`agentcore add credentials ...`), and synthesizes the CDK app
+3. Enables CloudWatch Transaction Search (best effort; turn off with `agentcore config transactionSearch false`)
+4. Bootstraps CDK in the target account/region if needed
+5. Deploys the stack `AgentCore-<project>-<target>` (container images are built in AWS CodeBuild — no local Docker needed)
+
+There's no confirmation prompt on a normal deploy. `--yes` is only needed when the project declares no resources and the deploy would delete the target's stack (see [Removing resources and tearing down](#removing-resources-and-tearing-down)).
+
+After a successful deploy the CLI suggests `agentcore invoke`. The stack ARN for each target is recorded in `agentcore/.cli/deployed-state.json`; commit that file (the generated `.gitignore` keeps it) so teammates' `status`, `invoke`, and `logs` find the deployment.
+
+**Memory provisioning note:** If your project includes memory, deploy takes a few minutes longer while the memory resource becomes ACTIVE. This is normal — not an error. Check status:
 
 ```bash
-agentcore status --type memory
+agentcore status --json
 ```
+
+Each resource is listed with `deploymentState` (`deployed` with its ARN, or `local-only` if the stack hasn't published it yet). For memory details, `agentcore memory get --id <MEMORY_ID>` (the ID is the last segment of the memory ARN).
 
 ---
 
@@ -146,12 +165,11 @@ agentcore status --type memory
 
 ### Step B1: Read the error
 
-If the developer pasted an error, diagnose it directly. If not, read the deploy logs:
+If the developer pasted an error, diagnose it directly. If not, re-run with `--debug` or read the CLI's log file (JSON lines, one file per day; subprocess output such as CDK synth goes here):
 
 ```bash
-# View recent deploy logs
-ls -lt agentcore/.cli/logs/
-cat agentcore/.cli/logs/deploy-*.log 2>/dev/null | tail -100
+ls -lt ~/.agentcore/logs/
+tail -100 ~/.agentcore/logs/output-$(date +%Y-%m-%d).log
 ```
 
 ### Step B2: Match to known failure patterns
@@ -162,63 +180,88 @@ cat agentcore/.cli/logs/deploy-*.log 2>/dev/null | tail -100
 User: arn:aws:iam::123456789012:user/dev is not authorized to perform: iam:CreateRole
 ```
 
-Fix: Attach the required IAM permissions (see Check 5 above). The deploying identity needs IAM write access scoped to `*BedrockAgentCore*` roles.
+Fix: Attach the required IAM permissions (see Check 4 above). The deploying identity needs IAM write access scoped to `*BedrockAgentCore*` roles.
 
-**CDK bootstrap not run:**
+**Account mismatch:**
 
 ```
-This stack uses assets, so the toolkit stack must be deployed to the environment
+Deployment target 'default' expects AWS account 111122223333, but the active credentials belong to 444455556666.
 ```
 
-Fix:
+Fix: switch to credentials for the target's account (`AWS_PROFILE=...`), or deploy to a target that matches (`--target <name>`). Don't edit the account in `aws-targets.json` for a target that's already deployed unless you mean to deploy a fresh copy to the other account.
+
+**No such target / no targets:**
+
+```
+Project 'MyProject' has no deployment target named 'staging'. .../agentcore/aws-targets.json defines: default.
+```
+
+Fix: only `default` is created automatically. Add named targets to `agentcore/aws-targets.json` (see [Deploying to multiple targets](#deploying-to-multiple-targets)).
+
+**Unsupported region for the default target:**
+
+```
+Cannot create the default deployment target for project '…': '<region>' is not an AgentCore-supported region.
+```
+
+Fix: re-run with `--region <region>` or set `AWS_REGION` to an AgentCore region.
+
+**CDK dependencies missing:**
+
+```
+CDK dependencies are missing for project '…'. Run 'npm install' in …/agentcore/cdk.
+```
+
+Fix: run `npm install` in `agentcore/cdk/` (common after creating a project with `--skip-install`, or a fresh clone).
+
+**CDK library too old:**
+
+```
+This project uses @aws/agentcore-cdk <version>, but this CLI requires 1.0.0 or newer for full compatibility.
+```
+
+Fix: set `"@aws/agentcore-cdk": "1.0.0"` (or newer) in `agentcore/cdk/package.json`, run `npm install` in `agentcore/cdk/`, then build or deploy again.
+
+**CDK bootstrap failure:**
+
+The CLI bootstraps the target account/region automatically (`bootstrapping aws://<account>/<region>`). If that step fails, it's almost always permissions on the `CDKToolkit` stack (CloudFormation, S3, ECR, IAM). Fix the permissions and re-run; as a fallback an admin can run:
 
 ```bash
 npx cdk bootstrap aws://<YOUR_ACCOUNT_ID>/<REGION>
 ```
 
-**ECR authorization error:**
+**Runtime build precheck failed:**
 
 ```
-no basic auth credentials
-Error response from daemon: Head "https://<YOUR_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/..."
+runtime "agent": no pyproject.toml in app/agent/.
+runtime "agent": no Dockerfile in app/agent/, and agentcore.json says this is a Container build.
 ```
 
-Fix:
+Fix: add the missing file, or follow the CLI's message to switch the build type in `agentcore.json`. A `Dockerfile` in the Runtime folder switches it to a container build; it never switches back automatically.
 
-```bash
-aws ecr get-login-password --region <REGION> | \
-  docker login --username AWS --password-stdin <YOUR_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com
-```
+**Container image build failed:**
 
-**Model access denied during deploy:**
+Images are built natively on ARM64 in AWS CodeBuild. Check the base image supports `linux/arm64`, the app listens on `0.0.0.0:8080`, and `uv.lock` is committed if the Dockerfile runs `uv sync --frozen`. In VPC mode, `networkConfig.vpcId` is required for container builds.
+
+**Model access denied during invoke after deploy:**
 
 ```
 ValidationException: The provided model identifier is invalid
 ```
 
-Fix: Enable the model in the Bedrock console → Model access. Ensure the model ID in `agentcore.json` matches an enabled model in your target region.
+Fix: Enable the model in the Bedrock console → Model access in the target region, and make sure the model ID in code (Runtime) or `harness.yaml` (Harness) matches an enabled model or inference profile.
 
-**Region mismatch:**
+**Empty project:**
 
 ```
-Stack ... is in region us-east-1 but the target is us-west-2
+Project '…' declares no resources to deploy, so deploying to target '…' would delete stack '…' and every resource in it. Re-run with --yes to confirm, or restore the resources the project should have.
 ```
 
-Fix: Update `agentcore/aws-targets.json` to match your `aws configure` default region, or run `aws configure set region <REGION>`.
+Fix: if the teardown is intended, re-run with `--yes`. Otherwise restore the resources (e.g. `git checkout agentcore/agentcore.json`).
 
 **Memory stuck in CREATING:**
 
-```
-Memory resource is in CREATING state after 10 minutes
-```
-
-This is unusual — normal provisioning takes 2–5 minutes. Check:
-
-```bash
-agentcore status --type memory --json
-```
-
-If stuck, try removing and re-adding the memory resource.
+This is unusual — normal provisioning takes a few minutes. Check `agentcore status` and `agentcore memory get --id <MEMORY_ID>`. If stuck, try removing and re-adding the memory resource (`agentcore remove memory --name <Name>`, deploy, then `agentcore add memory --name <Name>` and deploy again).
 
 **Service quota exceeded:**
 
@@ -231,24 +274,29 @@ Fix: Request a quota increase in the AWS console → Service Quotas → Amazon B
 ### Step B3: After fixing, re-run
 
 ```bash
-agentcore deploy -y
+agentcore deploy
 ```
 
-If the same error recurs, check `agentcore status` to see the current state of all resources:
+If the same error recurs, check `agentcore status` to see the current state of every resource the project declares:
 
 ```bash
 agentcore status
-agentcore status --state pending-removal  # resources marked for deletion
+agentcore status --target staging
 ```
 
 ---
 
 ## Deploying to multiple targets
 
-Define targets in `agentcore/aws-targets.json`:
+Define targets in `agentcore/aws-targets.json` (`name` starts with a letter and contains letters, digits, and hyphens; `region` must be an AgentCore region):
 
 ```json
 [
+  {
+    "name": "default",
+    "account": "123456789012",
+    "region": "us-east-1"
+  },
   {
     "name": "staging",
     "description": "Staging environment",
@@ -264,12 +312,54 @@ Define targets in `agentcore/aws-targets.json`:
 ]
 ```
 
-Deploy to a specific target:
+Deploy to a specific target (with credentials for that target's account):
 
 ```bash
-agentcore deploy --target staging -y
-agentcore deploy --target production -y
+agentcore deploy --target staging
+agentcore deploy --target production
 ```
+
+Each target gets its own stack (`AgentCore-<project>-<target>`) and its own copies of every resource. `status`, `invoke`, `logs`, and `traces` take the same `--target` flag.
+
+## Extending the CDK app
+
+`agentcore/cdk/` is a vended CDK app you own:
+
+- `bin/cdk.ts` reads the project and creates one stack per target using `@aws/agentcore-cdk` (pinned at `1.0.0` in `agentcore/cdk/package.json`; the CLI warns below 1.0.0). Leave it alone — logic changes come through library updates.
+- `lib/cdk-stack.ts` instantiates `AgentCoreApplication`. Add your own resources there and grant access with `this.application.runtime("<name>")` or `this.application.harness("<name>")` (both are `iam.IGrantable` and have `addEnvironmentVariable`).
+
+Run `agentcore deploy` to apply changes. `agentcore status` reports only resources declared in `agentcore.json`, not ones you add in the stack. If a Runtime or Harness uses an existing execution role, CDK can't change its permissions — add them to that role yourself.
+
+## Removing resources and tearing down
+
+```bash
+agentcore remove runtime --name <Name>                         # also: harness, memory, gateway, credential, evaluator, ...
+agentcore remove gateway-target --name <Name> --gateway <Gateway>
+agentcore remove runtime-endpoint --name <Name> --runtime <Runtime>
+agentcore deploy                                               # applies the removal to AWS
+```
+
+`remove` only edits the project; the next `agentcore deploy` deletes the resource from the target. Code under `app/` is left in place.
+
+To delete everything deployed to a target:
+
+```bash
+agentcore remove all --yes
+agentcore deploy --yes
+```
+
+The second command deletes the stack `AgentCore-<project>-<target>`. Repeat with `--target <name>` for each target. For a fuller teardown walkthrough, see [`agents-build/references/teardown.md`](../agents-build/references/teardown.md).
+
+## Exporting a Harness to code
+
+When a Harness needs logic its config can't express, convert it to a Runtime you own:
+
+```bash
+agentcore export harness --name <HarnessName>                       # in-project harness
+agentcore export harness --arn <HARNESS_ARN> --project-name <Name>  # a deployed harness, outside a project
+```
+
+This generates a Runtime (named `<HarnessName>Agent` unless you pass `--target-agent-name`) using the Strands Harness SDK. Deploy it like any other Runtime.
 
 ## Output
 

@@ -20,7 +20,7 @@ metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
-  requires-cli: ">=0.9.0"
+  requires-cli: ">=1.0.0"
 ---
 
 # harden
@@ -45,15 +45,20 @@ No arguments required. The skill reads your project config and produces a checkl
 
 ### Step 0: Verify CLI version
 
-Run `agentcore --version`. This skill requires v0.9.0 or later. If the version is older, tell the developer to run `agentcore update` before proceeding.
+Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
+
+If `agentcore/agentcore.json` doesn't have `"version": 2`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Have the developer run `agentcore migrate` first (it prints the plan and asks before changing anything) so the fixes below can be applied.
 
 ### Step 1: Read the project
 
 Read `agentcore/agentcore.json` to understand:
 
-- What resources are configured (memory, gateway, credentials, evaluators)
-- What framework is being used
-- What network mode is configured (PUBLIC or VPC)
+- What resources are configured (`runtimes`, `harnesses`, `memories`, `agentCoreGateways`, `credentials`, `policyEngines`, `evaluators`, `onlineEvalConfigs`)
+- What framework is being used (Runtime code under `app/<name>/`; harnesses are configured in `app/<name>/harness.yaml`)
+- What network mode is configured (`networkMode`: `PUBLIC` or `VPC`, with `networkConfig` for VPC)
+- What inbound auth is configured (`authorizerType` / `authorizerConfiguration` on each runtime and gateway)
+
+Then run `agentcore status --json` to see which of those resources are actually deployed to the target (`deploymentState`), and their ARNs.
 
 ### Step 2: Run through the checklist
 
@@ -68,8 +73,11 @@ The auto-created execution role has broad Bedrock access (`arn:aws:bedrock:*::fo
 **Check the current execution role:**
 
 ```bash
-agentcore status --json | jq -r '.runtimes[0].executionRoleArn'
+# Runtime ID = last segment of the runtime ARN in `agentcore status --json`
+agentcore runtime get --id <RuntimeId> --json | jq -r '.roleArn'
 ```
+
+To use your own scoped role instead of the generated one, set it on the runtime (`agentcore add runtime ... --role-arn <ARN>` for a new runtime, or `executionRoleArn` on the existing `runtimes[]` entry in `agentcore.json`), and attach extra managed or file-based policies with `--additional-policies`.
 
 **Recommended production Bedrock policy:**
 
@@ -117,7 +125,7 @@ Replace the resource ARN with the specific model(s) your agent uses.
 
 ## Shell Access: Scope `InvokeAgentRuntimeCommand` separately
 
-If your project uses `InvokeAgentRuntimeCommand` (see [`agents-build/references/integrate.md`](../agents-build/references/integrate.md)), audit its IAM permissions separately from `InvokeAgentRuntime`. The two actions have different blast radii: `InvokeAgentRuntimeCommand` is arbitrary shell execution inside a live microVM with the runtime's full execution role — callers can read/write the filesystem, reach any network resource the agent can reach, and access the execution role's credentials.
+If your project uses `InvokeAgentRuntimeCommand` (see [`agents-build/references/integrate.md`](../agents-build/references/integrate.md)) — including through the CLI's `agentcore runtime exec` / `agentcore harness exec` — audit its IAM permissions separately from `InvokeAgentRuntime`. The two actions have different blast radii: `InvokeAgentRuntimeCommand` is arbitrary shell execution inside a live microVM with the runtime's full execution role — callers can read/write the filesystem, reach any network resource the agent can reach, and access the execution role's credentials.
 
 **Check which principals have the permission:**
 
@@ -163,12 +171,18 @@ aws events put-rule \
 
 ## Inbound auth: Control who can call your agent
 
-By default, agents use AWS IAM (SigV4) for inbound auth. For production, verify this is configured correctly.
+By default, runtimes and harnesses use AWS IAM (SigV4) for inbound auth. **Gateways are different: a gateway with no `authorizerType` in `agentcore.json` defaults to `NONE`.** For production, verify each one is configured correctly.
 
 **Check current auth config:**
 
 ```bash
-agentcore status --runtime <AgentName> --json | jq '.runtimes[0].authorizerConfig'
+# What the project declares
+jq '.runtimes[] | {name, authorizerType, authorizerConfiguration}' agentcore/agentcore.json
+jq '.agentCoreGateways[] | {name, authorizerType, authorizerConfiguration}' agentcore/agentcore.json
+
+# What is deployed (IDs are the last ARN segment in `agentcore status --json`)
+agentcore runtime get --id <RuntimeId> --json | jq '.authorizerConfiguration'
+agentcore gateway get --id <GatewayId> --json | jq '{authorizerType, authorizerConfiguration}'
 ```
 
 **Options:**
@@ -177,19 +191,36 @@ agentcore status --runtime <AgentName> --json | jq '.runtimes[0].authorizerConfi
 
 `CUSTOM_JWT` — callers present a JWT from your identity provider. Good for web/mobile apps and external clients.
 
-```bash
-agentcore add agent \
-  --name MyAgent \
-  --authorizer-type CUSTOM_JWT \
-  --discovery-url https://your-idp.example.com/.well-known/openid-configuration \
-  --allowed-audience my-api \
-  --allowed-clients my-client-id
+For an existing runtime, set these fields on its entry in `agentcore/agentcore.json`, then `agentcore deploy`:
+
+```json
+{
+  "runtimes": [
+    {
+      "name": "MyAgent",
+      "authorizerType": "CUSTOM_JWT",
+      "authorizerConfiguration": {
+        "customJwtAuthorizer": {
+          "discoveryUrl": "https://your-idp.example.com/.well-known/openid-configuration",
+          "allowedAudience": ["my-api"],
+          "allowedClients": ["my-client-id"]
+        }
+      }
+    }
+  ]
+}
 ```
 
+`discoveryUrl` must be HTTPS and end in `/.well-known/openid-configuration`. `customJwtAuthorizer` also accepts `allowedScopes` and `customClaims`. The same `--authorizer-type` / `--authorizer-configuration` pair (the JSON is the `authorizerConfiguration` object above) is available on `agentcore add runtime`, `agentcore add harness`, and `agentcore add gateway` when you create the resource.
+
+To test a JWT-protected runtime from the CLI: `agentcore invoke --runtime MyAgent --bearer-token <JWT> --payload '{"prompt": "hi"}'`.
+
 > [!WARNING]
-> Never use `--authorizer-type NONE` in production. It allows unauthenticated access
-> to your agent — anyone with the endpoint URL can invoke it. Always use AWS_IAM or
-> CUSTOM_JWT. If you see NONE in production, change it immediately.
+> Never leave a gateway on `authorizerType: "NONE"` in production — it's the gateway
+> default when the field is omitted. It allows unauthenticated access: anyone with the
+> gateway URL can list and call its tools. Use `AWS_IAM` or `CUSTOM_JWT`. (Runtimes and
+> harnesses only accept `AWS_IAM` or `CUSTOM_JWT`.) If you see `NONE` on a production
+> gateway, change it immediately.
 
 ### Choosing `allowedClients` vs `allowedAudience`
 
@@ -313,7 +344,7 @@ grep -r "password\s*=\s*['\"]" app/ --include="*.py"
 
 ### 2. Secrets pulled from runtime environment variables
 
-AgentCore Runtime environment variables are **not** vault-backed. Anything a developer stuffs into the runtime's env (via CDK, boto3 `UpdateAgentRuntime`, or similar) is a plaintext config value, not a secret. Audit for the pattern:
+AgentCore Runtime environment variables are **not** vault-backed. Anything a developer stuffs into the runtime's env (`envVars` in `agentcore.json`, `--environment-variables` on `agentcore add runtime`, `addEnvironmentVariable` in the CDK app, boto3 `UpdateAgentRuntime`, or similar) is a plaintext config value, not a secret. Audit for the pattern:
 
 ```bash
 # Flag any os.getenv / os.environ call whose name implies a secret
@@ -322,7 +353,24 @@ grep -rE "os\.(getenv|environ).*(TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL)" app/ --i
 
 Non-secret identifiers injected by the platform are fine and should not match an allowlist (e.g., `MEMORY_*_ID`, `AGENTCORE_GATEWAY_*_URL`, `AWS_REGION`, downstream agent ARNs). Review hits and confirm none are secrets.
 
-**Correct pattern:** Register each outbound credential with `agentcore add credential`, then fetch it in code via the integrated credential providers:
+**Correct pattern:** Register each outbound credential as an AgentCore Identity credential provider, then fetch it in code via the integrated credential providers:
+
+```bash
+# API key — read from a file or stdin; inline values are rejected
+agentcore add credentials api-key --name MyAPI --api-key file://./my-api.key
+# ...or reference an existing Secrets Manager secret
+agentcore add credentials api-key --name MyAPI \
+  --api-key-secret-reference '{"secretId":"<secret-arn>","jsonKey":"apiKey"}'
+
+# OAuth2 client (custom IdP)
+agentcore add credentials oauth --name MyOAuthProvider \
+  --client-id <client-id> \
+  --discovery-url https://idp.example.com/.well-known/openid-configuration \
+  --scopes read \
+  --client-secret file://./client-secret.txt
+
+agentcore deploy
+```
 
 ```python
 from bedrock_agentcore.identity.auth import requires_api_key, requires_access_token
@@ -336,9 +384,9 @@ async def call_downstream(data: dict, *, access_token: str) -> dict:
     ...
 ```
 
-The decorator fetches from Secrets Manager at call time and handles caching/refresh. Credentials registered this way are encrypted at rest and rotated without a redeploy.
+The decorator fetches the credential from AgentCore Identity at call time and handles caching/refresh. Credentials registered this way are stored encrypted at rest; to rotate one, update the value and redeploy (or manage the provider directly with `agentcore identity api-key-credential-provider update` / `agentcore identity oauth2-credential-provider update`).
 
-**Local dev:** `agentcore/.env.local` (gitignored) is read by `agentcore dev` so the decorator resolves locally. This file is **not** uploaded to runtime on deploy — production credentials live in the credential provider.
+**Local dev:** `agentcore add credentials` keeps the secret value in `agentcore/.env.local` (gitignored, written with owner-only permissions); `agentcore dev` reads it so the decorator resolves locally. On deploy, the CLI pushes the value into the credential provider — the file itself is **not** uploaded to the runtime, and its values are not set as runtime env vars. Production credentials live in the credential provider (or in Secrets Manager, when you used a `--*-secret-reference`).
 
 ---
 
@@ -355,8 +403,8 @@ For each hit, decide:
 
 | Hit looks like | Action |
 |---|---|
-| Calls an external REST API the agent treats as a tool | Front as a Gateway target (`agentcore add gateway-target --type open-api-schema` or `api-gateway`). Load [`agents-connect/SKILL.md`](../agents-connect/SKILL.md) Path C. |
-| Calls an MCP server directly | Front as a Gateway target (`--type mcp-server`). Load [`agents-connect/SKILL.md`](../agents-connect/SKILL.md) Path A. |
+| Calls an external REST API the agent treats as a tool | Front as a Gateway target (`agentcore add gateway-target --gateway <GatewayName> --target-configuration file://target.json` with `targetType` `openApiSchema` or `apiGateway`). Load [`agents-connect/SKILL.md`](../agents-connect/SKILL.md) Path C. |
+| Calls an MCP server directly | Front as a Gateway target (`agentcore add gateway-target --gateway <GatewayName> --name <TargetName> --endpoint https://...`). Load [`agents-connect/SKILL.md`](../agents-connect/SKILL.md) Path A. |
 | Calls an AWS service (S3, DynamoDB, etc.) — not appropriate to match this row, should be `boto3` | Migrate from `requests`/`httpx` to the `boto3` client, using the runtime's execution role for IAM. No credential needed. |
 | Calls a streaming service (SSE-with-live-output, WebSocket, WebRTC) | OK to keep direct — Gateway doesn't front these yet. Confirm any auth uses `@requires_*`, not `os.getenv`. |
 | Calls another agent via A2A | OK to keep direct — A2A is HTTP-by-design. Confirm it uses `@requires_access_token` for the bearer token. |
@@ -371,8 +419,11 @@ If the hit fits none of the "OK to keep direct" rows, open a ticket to convert i
 AgentCore enables X-Ray tracing and CloudWatch logging automatically. Verify:
 
 ```bash
-agentcore status --runtime <AgentName> --json | jq '.runtimes[0].observabilityConfig'
+# instrumentation.enableOtel defaults to true; false disables OTEL instrumentation for that runtime
+jq '.runtimes[] | {name, instrumentation}' agentcore/agentcore.json
 ```
+
+`agentcore deploy` also enables CloudWatch Transaction Search in the account and region (needed for spans in `aws/spans`, which traces and evaluations read). If the deploying principal lacks permission for that, deploy fails with a Transaction Search error — grant the permission rather than working around it.
 
 **CloudWatch dashboard:** AWS Console → CloudWatch → GenAI Observability → Bedrock AgentCore
 
@@ -391,18 +442,19 @@ aws logs put-retention-policy \
 Before going to production, establish a quality baseline so you can detect regressions:
 
 ```bash
-# Run a baseline eval
-agentcore run eval \
-  --evaluator "Builtin.Helpfulness" \
-  --evaluator "Builtin.GoalSuccessRate"
+# Run a baseline eval over recent sessions (Runtime ID = last segment of its ARN in `agentcore status --json`)
+agentcore eval ondemand evaluate \
+  --agent <RuntimeId> \
+  --lookback-days 7 \
+  --evaluators Builtin.Helpfulness Builtin.GoalSuccessRate
 
 # Set up continuous monitoring
 agentcore add online-eval \
   --name production_monitor \
-  --runtime <AgentName> \
-  --evaluator "Builtin.Helpfulness" \
+  --agent <RuntimeName> \
+  --evaluators Builtin.Helpfulness \
   --sampling-rate 5
-agentcore deploy -y
+agentcore deploy
 ```
 
 Record the baseline scores. If scores drop significantly after a change, investigate before continuing.
@@ -413,13 +465,25 @@ Record the baseline scores. If scores drop significantly after a change, investi
 
 If your agent accesses private AWS resources (RDS, internal APIs), configure VPC:
 
-```bash
-agentcore add agent \
-  --name MyAgent \
-  --network-mode VPC \
-  --subnets subnet-abc,subnet-def \
-  --security-groups sg-123
+Set `networkMode` and `networkConfig` on the runtime in `agentcore/agentcore.json`, then `agentcore deploy`:
+
+```json
+{
+  "runtimes": [
+    {
+      "name": "MyAgent",
+      "networkMode": "VPC",
+      "networkConfig": {
+        "subnets": ["subnet-0abc1234", "subnet-0def5678"],
+        "securityGroups": ["sg-0123abcd"],
+        "vpcId": "vpc-0a1b2c3d"
+      }
+    }
+  ]
+}
 ```
+
+`vpcId` is required for Container builds in VPC mode (CodeBuild can't infer the VPC from subnets) and optional for CodeZip. For a new runtime, `agentcore add runtime ... --network-mode VPC --network-config '<same networkConfig JSON>'` writes the same fields; harnesses take the same pair on `agentcore add harness`.
 
 See `agents-build` (loads [`references/vpc.md`](../agents-build/references/vpc.md)) for full VPC configuration guidance.
 
@@ -560,7 +624,7 @@ Edit the runtime's entry in `agentcore/agentcore.json`:
 
 Then `agentcore deploy` to apply. The CLI and CDK handle the underlying `UpdateAgentRuntime` call for you.
 
-If you prefer the CLI, `agentcore add agent ... --idle-timeout 120 --max-lifetime 3600` writes the same fields into `agentcore.json`. The file is the source of truth — every field in it has IDE autocomplete via the `$schema` URL at the top of the file (`https://schema.agentcore.aws.dev/v1/agentcore.json`).
+When creating a new runtime, `agentcore add runtime ... --lifecycle-configuration '{"idleRuntimeSessionTimeout":120,"maxLifetime":3600}'` writes the same fields into `agentcore.json`. Both values must be between 60 and 28800 seconds, and `idleRuntimeSessionTimeout` must be ≤ `maxLifetime` — the CLI rejects the file otherwise. The file is the source of truth. For a harness, the equivalent is `--lifecycle-config` on `agentcore add harness`.
 
 Lower timeout = faster VM reclamation = more headroom under `maxVms`. Too low = environments get reclaimed mid-conversation, causing the next turn to cold-start.
 
@@ -656,7 +720,7 @@ IAM
 [ ] Trust policy scoped to your account ID
 
 Authentication
-[ ] Inbound auth is AWS_IAM or CUSTOM_JWT (not NONE)
+[ ] Inbound auth is AWS_IAM or CUSTOM_JWT on every runtime, harness, and gateway (gateways default to NONE)
 [ ] If CUSTOM_JWT: discovery URL, audience, and client IDs configured
 
 Shell Access (if using InvokeAgentRuntimeCommand)
@@ -669,7 +733,7 @@ Code quality
 [ ] Error handling wraps all agent logic
 [ ] Input validation on payload fields (type, length, format)
 [ ] No secrets hardcoded in agent code
-[ ] Credentials registered via agentcore add credential
+[ ] Credentials registered via agentcore add credentials (api-key / oauth)
 
 Observability
 [ ] X-Ray tracing enabled (auto-configured)
@@ -688,6 +752,7 @@ Performance
 
 Resources
 [ ] Memory strategies appropriate for use case (if using memory)
+[ ] Memory `encryptionKeyArn` set to a customer-managed KMS key (if your data policy requires it)
 [ ] Gateway auth configured (if using gateway)
 [ ] Policy engine attached (if restricting tool access)
 
