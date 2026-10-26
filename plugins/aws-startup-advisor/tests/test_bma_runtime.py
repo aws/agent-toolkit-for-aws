@@ -64,7 +64,7 @@ def test_state_and_writer_selection() -> None:
     assert runtime.next_phase(state, execute_requested=True) == "generate"
     assert runtime.writer("direct", "preferences.json") == "bedrock-migration-assessment"
     assert runtime.writer("delegated", "preferences.json") == "gcp-to-aws"
-    assert runtime.writer("delegated", "ai-workload-profile.json") == "bedrock-migration-assessment"
+    assert runtime.writer("delegated", "ai-workload-profile.json") == "gcp-to-aws"
     assert runtime.writer("delegated", "openai-capture/manifest.json") == "bedrock-migration-assessment"
     assert runtime.writer("delegated", "estimation-ai.json") == "bedrock-migration-assessment"
     with pytest.raises(ValueError, match="writer_not_registered"):
@@ -269,7 +269,7 @@ def test_publish_failure_rolls_back_new_and_replaced_outputs(tmp_path: Path, mon
 
     monkeypatch.setattr(runtime.os, "replace", fail_third_replace)
     request = {
-        "schema_version": 1, "mode": "delegated", "scenario": "publish-rollback",
+        "schema_version": 1, "mode": "direct", "scenario": "publish-rollback",
         "run_dir": str(run), "state": {}, "consent": [],
         "writes": [
             {"phase": "design", "path": "aws-design-ai.json", "payload": {}, "logical_owner": "bedrock-migration-assessment"},
@@ -290,7 +290,7 @@ def test_discovery_enrichment_requires_owner_and_prior_hash(tmp_path: Path) -> N
     profile.write_text('{"metadata":{"profile_source":"iac_vertex"}}\n')
     prior = hashlib.sha256(profile.read_bytes()).hexdigest()
     base = {
-        "schema_version": 1, "mode": "delegated", "scenario": "vertex-enrichment",
+        "schema_version": 1, "mode": "direct", "scenario": "vertex-enrichment",
         "run_dir": str(run), "state": {}, "consent": [], "assemblies": [],
     }
     with pytest.raises(ValueError, match="writer_owner_invalid"):

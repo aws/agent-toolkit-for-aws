@@ -55,7 +55,7 @@
         "references/runtime/bma-input-patterns.json",
         "scripts/bma-route-classifier.py"
       ],
-      "sha256": "8f183626b77673f967815f38bd89f2a948c3f756ef85f7efb503dcfa4a12b4df",
+      "sha256": "a7feecd1f755e3b5fed2629499168beac185211b5495241ba56845c060f1079d",
       "type": "script"
     },
     {
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "415d39b2f57cdf1cb61419264d4ca06f3eaf57c0cfdff201f64ae33e5f469ea5"
+  "self_hash": "5aaf90c93d5bd9074725ff739ff1e4a963db2a56b9e7f8b1eee466bf408ec36f"
 }

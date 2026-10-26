@@ -56,7 +56,8 @@ WRITERS = {
         ".phase-status.json": GCP_OWNER,
         ".gate-failures.json": GCP_OWNER,
         "migration-preview.json": GCP_OWNER,
-        "ai-workload-profile.json": BMA_OWNER,
+        # Public GCP artifact. It keeps the legacy GCP shape; BMA never writes it in a delegated run.
+        "ai-workload-profile.json": GCP_OWNER,
         # Delegated BMA input in a hidden internal directory GCP does not publish. The GCP adapter
         # converts the legacy profile into this #415 file and writes the temporary sidecar beside it.
         ".bma-input/ai-workload-profile.json": GCP_OWNER,

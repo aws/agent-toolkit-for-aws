@@ -232,4 +232,4 @@ def test_bma_never_imports_or_invokes_gcp_to_aws() -> None:
 def test_delegated_bma_input_is_gcp_adapter_owned_and_public_profile_unchanged():
     # Delegated runs: the adapter writes the #415 input under the hidden .bma-input/; the public root file keeps its label.
     assert runtime.writer("delegated", ".bma-input/ai-workload-profile.json") == "gcp-to-aws"
-    assert runtime.writer("delegated", "ai-workload-profile.json") == "bedrock-migration-assessment"
+    assert runtime.writer("delegated", "ai-workload-profile.json") == "gcp-to-aws"

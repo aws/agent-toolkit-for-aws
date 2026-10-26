@@ -282,6 +282,32 @@ ADAPTER_SUBSET_KEYWORDS = {
 }
 def test_adapter_schema_subset_covers_every_keyword_in_the_vendored_schema():
     assert _schema_keywords(json.loads(VENDORED_SCHEMA.read_text(encoding="utf-8"))) <= ADAPTER_SUBSET_KEYWORDS
+def test_gcp_public_profile_stays_legacy_shape_after_delegated_run(tmp_path):
+    run = tmp_path / "run"
+    (run / ".bma-input").mkdir(parents=True)
+    public = run / "ai-workload-profile.json"
+    public.write_text(json.dumps(_legacy()), encoding="utf-8")
+    before = public.read_bytes()
+    converted = subprocess.run(
+        [sys.executable, str(ADAPTER_PATH), "convert", "--legacy", str(public),
+         "--out", str(run / ".bma-input" / "ai-workload-profile.json"),
+         "--sidecar", str(run / ".bma-input" / "ai-workload-sidecar.json")],
+        capture_output=True, text=True,
+    )
+    assert converted.returncode == 0, converted.stderr
+    # The public GCP file is byte-identical and keeps the legacy top-level keys, not the #415 shape.
+    assert public.read_bytes() == before
+    public_doc = json.loads(public.read_text(encoding="utf-8"))
+    assert set(public_doc) == set(LEGACY_SAMPLE)
+    assert "schema_version" not in public_doc and "ai_sources" not in public_doc
+    assert json.loads((run / ".bma-input" / "ai-workload-profile.json").read_text(encoding="utf-8")) == EXPECTED_SAMPLE_415
+    # The delegated writer registry must agree: BMA may not write the public path in a GCP run.
+    runtime_spec = importlib.util.spec_from_file_location("bma_runtime_public_profile", BMA_RUNTIME)
+    runtime = importlib.util.module_from_spec(runtime_spec)
+    runtime_spec.loader.exec_module(runtime)
+    assert runtime.writer("delegated", "ai-workload-profile.json") == "gcp-to-aws"
+
+
 def test_cli_writes_valid_document_and_nothing_on_failure(tmp_path):
     legacy_path = tmp_path / "legacy.json"
     out_path = tmp_path / ".bma-input" / "ai-workload-profile.json"
