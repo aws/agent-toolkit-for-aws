@@ -62,7 +62,7 @@ If `agentcore/agentcore.json` is not found:
 
 The `agentcore eval ...` commands work without a project (they take deployed resource IDs), so a developer with only a deployed runtime ID can still use the on-demand and batch evaluation paths in `references/evals.md`.
 
-If `agentcore.json` has no `"version": 2`, it is a v0 project. CLI v1 runs it in compatibility mode and blocks `add`/`remove`, so `agentcore add evaluator` and `agentcore add online-eval` will fail. Tell the developer to run `agentcore migrate` from the project root first (it shows the planned changes and asks before applying; `--yes` skips the prompt, `--target <name>` picks a target when the project is deployed to several).
+If `agentcore.json` has no `"version": 2`, it is a v0 project. CLI v1 runs it in compatibility mode and blocks `add`/`remove`, so `agentcore add evaluator` and `agentcore add online-eval` will fail. Tell the developer to run `agentcore migrate` from the project root first (it shows the planned changes and asks before applying; `--yes` skips the prompt, `--target <name>` picks a target when the project is deployed to several). Migrate only runs in a git repository with `agentcore/agentcore.json` committed and no uncommitted changes under the project directory — commit (or stash) first, or it stops with `Commit or stash your changes before migrating`.
 
 ### Step 2: Determine the workflow
 
@@ -94,5 +94,5 @@ Depends on the workflow — see the loaded reference for specific outputs.
 - Online eval sampling rate is appropriate (not 100% in production without discussion)
 - CI/CD quality gate has a clear pass/fail threshold
 - Observability setup includes both tracing and logging
-- The developer understands the eval data delay: **~10 seconds put-to-get, end-to-end** for deployed agents — one ingestion step covers both trace reads and eval queries; there is no separate indexing wait
+- The developer understands the eval data delay for deployed agents: traces take **30–60 seconds** to become readable (the session ID can show as `-` at first), so scripts poll rather than sleep a fixed time; online-eval results only arrive after a session has been idle for its session timeout (5 minutes by default for `agentcore add online-eval`)
 - The developer understands that `agentcore dev` traces stay local (Agent Inspector / `agentcore/.cli/traces/`) and are not visible to `agentcore eval` commands, which read CloudWatch

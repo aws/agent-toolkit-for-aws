@@ -65,7 +65,7 @@ If the issue is about agent behavior (wrong answers, errors, timeouts, tool fail
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-Then check the project format: open `agentcore/agentcore.json`. If it has `"version": 1` (or no `"version": 2`), it's a v0 project. The v1 CLI runs it in compatibility mode — `deploy`, `status`, `logs`, `traces`, and `invoke` still work, but `add`, `remove`, `build`, and `export` are blocked. To migrate it fully, run `agentcore migrate`: without `--yes` in a non-interactive shell it only prints the migration plan (also saved under `agentcore/.cli/migrate/`); interactively it shows the plan and asks before applying. Use `--target <name>` if the project is deployed to more than one target.
+Then check the project format: open `agentcore/agentcore.json`. If it has `"version": 1` (or no `"version": 2`), it's a v0 project. The v1 CLI runs it in compatibility mode — `deploy`, `status`, `logs`, `traces`, and `invoke` still work, but `add`, `remove`, `build`, and `export` are blocked. To migrate it fully, run `agentcore migrate`: without `--yes` in a non-interactive shell it only prints the migration plan (also saved under `agentcore/.cli/migrate/`); interactively it shows the plan and asks before applying. Use `--target <name>` if the project is deployed to more than one target. Commit first — `agentcore migrate` refuses a dirty git working tree (`git: Commit or stash your changes`), and v0 `create` always leaves uncommitted files.
 
 There is no `agentcore validate` in v1. Any project command parses `agentcore.json` and reports schema errors; `agentcore build` additionally synthesizes the CDK app locally without deploying, which is the closest offline check.
 
@@ -99,7 +99,9 @@ agentcore traces runtime list --name <RuntimeName> --since 1h --limit 1
 # Download the trace (writes <traceId>.json in the current directory)
 agentcore traces runtime get <traceId> --name <RuntimeName>
 
-# Search logs for errors
+# Search logs for errors. Python tracebacks carry no log level, so --level error
+# misses startup crashes; search for the traceback text instead
+agentcore logs runtime --name <RuntimeName> --since 1h --query "Traceback"
 agentcore logs runtime --name <RuntimeName> --since 1h --level error
 
 # Search logs for a specific pattern (CloudWatch Logs filter pattern)
@@ -111,6 +113,8 @@ agentcore logs runtime --name <RuntimeName> --tail
 ```
 
 For a **harness** (config-defined agent), use the same commands with `harness` in place of `runtime`: `agentcore traces harness list --name <HarnessName>`, `agentcore logs harness --name <HarnessName> --since 1h --level error`.
+
+Two gaps to know about. An invoke that fails because the agent never started (an import crash, for example) leaves **no trace** — go straight to logs. And `traces` and `logs` read one endpoint's log group — `DEFAULT` unless you pass `--qualifier <endpoint>` — so a call made against a named endpoint (e.g. `prod`) won't show up under `DEFAULT`.
 
 **Reproduce the failure** with a direct invocation, then read its trace:
 
@@ -349,10 +353,11 @@ See `agents-harden` Session lifecycle management section for the full pattern.
 
 This usually means the agent container failed to start or crashed during initialization.
 
-**Step 1:** Check the agent logs for startup errors:
+**Step 1:** Check the agent logs for startup errors. Don't filter with `--level error` — a startup traceback is raw stderr with no log level, so it gets filtered out:
 
 ```bash
-agentcore logs runtime --name <RuntimeName> --since 30m --level error
+agentcore logs runtime --name <RuntimeName> --since 30m --query "Traceback"
+agentcore logs runtime --name <RuntimeName> --since 30m      # everything, if the query finds nothing
 ```
 
 **Step 2:** Common causes:
@@ -372,6 +377,8 @@ agentcore runtime get --id <RuntimeId> --json
 ```bash
 agentcore memory get --id <MemoryId> --json | jq -r '.memory.status'
 ```
+
+**`Runtime initialization time exceeded. Please make sure that initialization completes in 30s.`** (`RuntimeClientError` on invoke): despite the wording, this usually means the agent **crashed at import** — a `ModuleNotFoundError`, a syntax error, a bad env var read at module level — not that it was slow. The deploy succeeds, `agentcore status` still says `deployed`, and the failed call leaves no trace. Search the logs for `Traceback` (above); fix the import or add the missing dependency to `pyproject.toml`, test with `agentcore dev`, and redeploy. Only if the logs show no traceback is it a genuinely slow start (next bullet).
 
 **Initialization timeout:** The agent takes too long to be ready for its first request — heavy imports at module level, synchronous database connections, or MCP client initialization during startup can exceed the service's health-check window. The symptom looks like a 424 on the first invoke but healthy on subsequent ones. Fix: move expensive setup out of module level, use lazy initialization, or warm the agent before production traffic. See `agents-harden` Initialization time section for patterns.
 

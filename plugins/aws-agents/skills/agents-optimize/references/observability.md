@@ -90,7 +90,26 @@ agentcore traces harness get <traceId> --name <HarnessName>
 
 Add `--target <name>` for a non-default deployment target and `--qualifier <endpoint>` for a non-default endpoint.
 
-**Trace delay:** Traces appear **~10 seconds** after invocation (previously 30–60s). Don't panic if they're not immediate, and don't bake longer waits into scripts — older skills and docs that say "30–60 seconds" or "2–5 minutes" are stale.
+**Trace delay:** Traces take **30–60 seconds** after an invocation to show up in `traces ... list`, and the `SESSION ID` column can show `-` for a little while after the trace itself appears. In scripts, poll `list` until the trace you expect is there instead of sleeping a fixed time.
+
+### Finding the slowest requests
+
+`traces ... list` has no duration column. Download the recent traces and rank them by their longest span (`durationNano` — the root span covers the whole request):
+
+```bash
+mkdir -p traces
+agentcore traces runtime list --name <RuntimeName> --since 1h --limit 50 --json \
+  | jq -r '.traces[].traceId' \
+  | while read -r t; do
+      agentcore traces runtime get "$t" --name <RuntimeName> --since 1h --output "traces/$t.json" > /dev/null
+    done
+
+for f in traces/*.json; do
+  jq -r --arg f "$f" '[.[]."@message".durationNano // empty] | max // empty | "\(. / 1e9)s  \($f)"' "$f"
+done | sort -rn | head
+```
+
+Open the slowest file and compare the `durationNano` of its `chat` (model call) and tool spans to see where the time went. For latency trends rather than single requests, use the `Latency` metric (see the dashboard section below).
 
 ## Viewing logs
 
@@ -117,12 +136,14 @@ Online-eval results have their own log stream — see `agentcore eval online-eva
 
 For production agents, set up a CloudWatch dashboard with:
 
-- Invocation count and error rate
-- P50/P90/P99 latency
-- Memory and CPU utilization
+- Invocation count and error rate (`Invocations`, `Errors`, `SystemErrors`, `UserErrors`, `Throttles`)
+- P50/P90/P99 latency (`Latency`, `Duration`)
+- Session volume (`Sessions`, `ActiveSessionCount`)
+- Token usage (`TokenCount`, `InputTokenUsage`, `OutputTokenUsage`)
+- Resource consumption (`CPUUsed-vCPUHours`, `MemoryUsed-GBHours`) — these are the billed usage totals, not utilization percentages; there is no CPU % or memory % metric
 - Error log count by type
 
-These metrics are available in the `AWS/BedrockAgentCore` namespace after deploy.
+These metrics are in the `AWS/Bedrock-AgentCore` namespace (note the hyphen) after deploy. Run `aws cloudwatch list-metrics --namespace AWS/Bedrock-AgentCore` to see the exact metric names and dimensions (for example `Resource`, `Name`, `Operation`) available in your account.
 
 ## Multi-account observability
 

@@ -8,19 +8,19 @@ AgentCore charges for several things independently:
 
 | Component | What you pay for | Published rate (verify for current) | Biggest cost drivers |
 |---|---|---|---|
-| **Runtime compute** | vCPU-hours + GB-hours while session is active | $0.0895/vCPU-hr, $0.00945/GB-hr | Session length, idle timeout, cold starts |
-| **Memory events** | Creating events (writes) | $0.25 per 1,000 new events | Session volume, number of strategies |
-| **Memory storage** | Long-term memory records stored | $0.75 per 1,000 records/month (built-in); $0.25 (override/self-managed) | Number of strategies, expiry duration |
-| **Memory retrieval** | Retrieving memory records | $0.50 per 1,000 retrievals | Retrieval frequency, top_k value |
-| **Gateway tool calls** | Per tool invocation routed through gateway | $0.005 per 1,000 (ListTools/InvokeTool/Ping); $0.025 per 1,000 (Search) | Tool call volume |
-| **Evaluator model calls** | Bedrock model usage for LLM-as-judge evaluators | Built-in: $0.0024/10K input tokens, $0.012/10K output tokens; Custom: $1.50/10K evals | Online eval sampling rate × session volume |
+| **Runtime compute** | vCPU-hours + GB-hours while the session is active | v1 microVMs: $0.0895/vCPU-hr, $0.00945/GB-hr. v2 microVMs (consumption): $0.1276/vCPU-hr, $0.0169/GB-hr, billed per second on actual use, idle memory reclaimed after 120s | Session length, idle timeout, cold starts |
+| **Short-term memory** | Events ingested, retrieved, and stored | From 2026-10-06: $1.00/GB ingested, $0.20/GB retrieved, $0.10/GB-month stored (through 2026-10-05 it was $0.25 per 1,000 new events) | Session volume, event payload size |
+| **Long-term memory storage** | Long-term memory records stored | $0.75 per 1,000 records/month (built-in strategies); $0.25 (override/self-managed) | Number of strategies, expiry duration |
+| **Long-term memory retrieval** | Retrieving memory records | $0.50 per 1,000 retrievals | Retrieval frequency, top_k value |
+| **Gateway** | Per API call routed through gateway, plus search indexing | $0.005 per 1,000 (ListTools/InvokeTool/Ping); $0.025 per 1,000 (Search); tool indexing $0.02 per 100 tools/month | Tool call volume, number of indexed tools |
+| **Evaluations** | Evaluator model usage | Built-in: $0.0024 per 1,000 input tokens, $0.012 per 1,000 output tokens. Custom: $1.50 per 1,000 evaluations (model usage billed separately). Batch evaluations: $0.0018 per 1,000 input tokens, $0.009 per 1,000 output tokens | Online eval sampling rate × session volume |
 | **Bedrock model usage** | Input/output tokens for every model call | Varies by model — check Bedrock pricing | Model choice (Sonnet vs Haiku), conversation length |
-| **Policy authorization** | Per authorization request + input tokens | $0.000025/request, $0.13/10K input tokens | Tool call volume with policy engine attached |
-| **Identity** | Token/API key requests for non-AWS resources | $0.010 per 1,000 requests | Credential fetch frequency |
+| **Policy authorization** | Per authorization request + input tokens | $0.000025/request, $0.13 per 1,000 input tokens | Tool call volume with policy engine attached |
+| **Identity** | Token/API key requests for non-AWS resources | $0.010 per 1,000 requests (no charge when used through Runtime or Gateway) | Credential fetch frequency |
 | **CloudWatch logs/traces** | Ingestion and storage | Standard CloudWatch pricing | Log verbosity, retention policy |
 | **ECR storage** (Container builds only) | Image storage | Standard ECR pricing | Image size, build frequency |
 
-Rates above are published as of the time of writing. Always verify against the [AgentCore pricing page](https://aws.amazon.com/bedrock/agentcore/pricing/) — pricing changes between releases.
+Rates above were read from the pricing page on 2026-10-26. Always verify against the [AgentCore pricing page](https://aws.amazon.com/bedrock/agentcore/pricing/) — pricing changes between releases.
 
 ## First-day cost questions
 
@@ -31,10 +31,10 @@ There's no single number — it depends on:
 - Which model (Haiku is ~10x cheaper than Sonnet per token)
 - How long the session stays active (Runtime bills by vCPU-hour and GB-hour, not per request — idle sessions cost money)
 - Whether it uses tools (gateway calls are $0.005 per 1,000 + any Lambda/API costs)
-- Whether memory extraction is running (async, billed separately at $0.25 per 1,000 events)
+- Whether it uses memory (short-term memory is billed per GB ingested and retrieved; long-term strategies add record storage and retrieval charges)
 - How long conversations run (more tokens = more model cost, and longer active sessions = more compute cost)
 
-A simple Haiku-based agent with no memory and no tools costs very little per request — Runtime compute is billed by vCPU-hour ($0.0895) and GB-hour ($0.00945), so a sub-second request on a small environment costs fractions of a cent. A Sonnet agent with semantic memory, 5 gateway tools, and online evals at 10% sampling costs significantly more per request — the model token costs alone can be 10–30x higher, plus memory extraction ($0.25 per 1,000 events), gateway tool calls ($0.005 per 1,000 invocations), and eval model usage. These are published rates as of the time of writing — verify against the [AgentCore pricing page](https://aws.amazon.com/bedrock/agentcore/pricing/) for current numbers. If the `awsknowledge` MCP server is available, use the `aws___search_documentation` tool to look up current AgentCore pricing.
+A simple Haiku-based agent with no memory and no tools costs very little per request — Runtime compute is billed by vCPU-hour and GB-hour (see the table), so a sub-second request on a small environment costs fractions of a cent. A Sonnet agent with semantic memory, 5 gateway tools, and online evals at 10% sampling costs significantly more per request — the model token costs alone can be 10–30x higher, plus memory ingestion and retrieval, gateway tool calls ($0.005 per 1,000 invocations), and evaluator usage. These are published rates as of the time of writing — verify against the [AgentCore pricing page](https://aws.amazon.com/bedrock/agentcore/pricing/) for current numbers. If the `awsknowledge` MCP server is available, use the `aws___search_documentation` tool to look up current AgentCore pricing.
 
 ### "How much will this demo/prototype cost me?"
 

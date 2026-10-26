@@ -94,7 +94,11 @@ agentcore deploy
 SESSION_ID=$(uuidgen)   # Runtime session IDs must be at least 33 characters
 agentcore invoke --runtime MyAgent --session-id "$SESSION_ID" --payload '{"prompt": "What is the weather in Seattle?"}'
 
-# Wait ~10 seconds for CloudWatch ingestion, then evaluate
+# Traces take 30–60s to land in CloudWatch: poll until the session shows up, then evaluate
+until agentcore traces runtime list --name MyAgent --since 10m --json \
+    | jq -e --arg s "$SESSION_ID" 'any(.traces[]; .sessionId == $s)' > /dev/null; do
+  sleep 10
+done
 agentcore eval ondemand evaluate \
   --agent "$RUNTIME_ID" \
   --session-ids "$SESSION_ID" \
@@ -114,25 +118,25 @@ aws xray update-trace-segment-destination --destination CloudWatchLogs
 For the tightest unit-test loop — or when you want to evaluate a saved snapshot without running the agent — call the `Evaluate` API directly with spans you construct:
 
 ```python
+import json
 import boto3
 
 client = boto3.client("bedrock-agentcore", region_name="<REGION>")
 
+# Download one real trace after a single deploy+invoke:
+#   agentcore traces runtime get <traceId> --output trace.json
+# Each record's "@message" is a raw ADOT span or log record. Pass them as-is (or edit
+# the text in them to build variants) — don't hand-write spans from scratch.
+spans = [r["@message"] for r in json.load(open("trace.json"))]
+
 response = client.evaluate(
     evaluatorId="Builtin.Helpfulness",
-    evaluationInput={
-        "sessionSpans": [
-            # Minimum shape matches the OTEL span schema for AgentCore traces.
-            # Easiest way to produce a fixture: download one real trace via
-            # `agentcore traces runtime get <traceId> --output trace.json`, then mutate it.
-            {"name": "agent.invoke", "attributes": {"gen_ai.prompt": "What's the weather?", "gen_ai.response.content": "Sunny, 72°F."}},
-        ],
-    },
+    evaluationInput={"sessionSpans": spans},
 )
 print(response["evaluationResults"])
 ```
 
-The full span schema and field list is in the [`Understanding input spans`](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/understanding-input-spans.html) doc. This path is overkill for a one-time eval but invaluable when a custom code evaluator needs regression-test fixtures that don't depend on CloudWatch at all.
+Minimal hand-written spans are rejected: every span needs at least `traceId`, `spanId`, and `startTimeUnixNano` (plus the `session.id` attribute and the `gen_ai.*` content the evaluator reads), which is why copying a real trace is the practical route. The full span schema and field list is in the [`Understanding input spans`](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/understanding-input-spans.html) doc. This path is overkill for a one-time eval but invaluable when a custom code evaluator needs regression-test fixtures that don't depend on CloudWatch at all.
 
 ---
 
@@ -202,10 +206,10 @@ agentcore eval batch-evaluation evaluate \
   --evaluators Builtin.Helpfulness Builtin.GoalSuccessRate
 
 agentcore eval batch-evaluation get --id <batch-evaluation-id>
-agentcore eval batch-evaluation list
+agentcore eval batch-evaluation list --json
 ```
 
-Batch evaluation names must be unique in the account. Instead of `--agent`, `--online-eval <id>` re-scores the sessions an online-eval config already sampled.
+`batch-evaluation list` opens an interactive view by default and fails without a terminal (`interactive mode requires a TTY`), so pass `--json` in scripts and agent sessions. Batch evaluation names must be unique in the account. Instead of `--agent`, `--online-eval <id>` re-scores the sessions an online-eval config already sampled.
 
 #### Step A3: Interpret the results
 
@@ -217,7 +221,7 @@ On-demand output is JSON: `sessionsRequested`, `sessionsEvaluated`, and a `resul
 
 `sessionsEvaluated` lower than `sessionsRequested` means some sessions produced no result (for example, a TRACE-level evaluator on a session with no traces).
 
-There's no local eval history in v1 — save the JSON yourself (`... > eval-$(date +%F).json`) or use batch evaluations, which you can list and re-read with `agentcore eval batch-evaluation list` / `get`.
+There's no local eval history in v1 — save the JSON yourself (`... > eval-$(date +%F).json`) or use batch evaluations, which you can list and re-read with `agentcore eval batch-evaluation list --json` / `get`.
 
 ---
 
@@ -249,7 +253,7 @@ agentcore eval online-eval create \
   --sampling-rate 5
 ```
 
-**Important naming rule:** Config names must start with a letter and use only letters, digits, and underscores (max 48) — no hyphens. `my-monitor` fails validation; `my_monitor` works. Project resources are deployed with the project name prefixed, so the CLI also rejects names whose deployed form would exceed 48 characters.
+**Important naming rule:** Config names must start with a letter and use only letters, digits, and underscores (max 48) — no hyphens. `my-monitor` fails validation; `my_monitor` works. Project resources are deployed as `<project>_<target>_<name>` (e.g. `MyProj_default_my_monitor`) — that's the name you'll see in `agentcore status`, the console, and log group names — so the CLI also rejects names whose deployed form would exceed 48 characters.
 
 **Sampling rate guidance** (`--sampling-rate` accepts 0.01–100):
 
@@ -266,6 +270,8 @@ agentcore deploy
 The online eval config starts in `CREATING` state and becomes `ACTIVE` shortly after deploy.
 
 #### Step B4: View results
+
+Results are not immediate. A session is scored only after it has been idle for the config's session timeout — 5 minutes by default for `agentcore add online-eval` (set `sessionTimeoutMinutes`, 1–1440, on the entry in `agentcore.json`), 15 minutes by default for `agentcore eval online-eval create` (`--session-timeout-minutes`). Expect the first results roughly that long after the last invocation, plus the 30–60s trace delay. Sessions that already existed in the trace source when the config became active can be sampled and scored too, so the first results may be for traffic sent before the deploy.
 
 Results stream to CloudWatch Logs:
 
@@ -328,7 +334,7 @@ score=$(echo "$result" | jq -r '[.results[] | select(.value != null) | .value] |
 
 if [ -z "$score" ]; then
   echo "⚠️  No eval results. Has the agent been invoked recently?"
-  echo "   Invoke the agent at least once, wait ~10 seconds, then re-run."
+  echo "   Invoke the agent at least once, wait 30–60 seconds, then re-run."
   exit 1
 fi
 
@@ -342,7 +348,7 @@ fi
 echo "✅ Quality gate PASSED"
 ```
 
-**Note:** CloudWatch put-to-get latency is **~10 seconds end-to-end** — the same ingestion step unlocks both trace reads and eval queries; there's no extra indexing wait. For the recent-traffic gate, invoke the agent as part of your integration tests, then add a short `sleep 10` (or `sleep 15` for headroom) before running the gate. The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000; set it lower once you've confirmed traces land faster in your account).
+**Note:** Traces take **30–60 seconds** after an invocation to become readable, and the same ingestion step unlocks both trace reads and eval queries. For the recent-traffic gate, invoke the agent as part of your integration tests, then poll `agentcore traces runtime list --json` until the test sessions appear (as in Step 2's example) before running the gate — don't rely on a short fixed `sleep`. The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000).
 
 The gate needs no project checkout — every command above takes the deployed Runtime ID, so pass it to CI as a variable.
 
@@ -423,57 +429,105 @@ agentcore add evaluator code-based \
   --lambda-arn arn:aws:lambda:<REGION>:<YOUR_ACCOUNT_ID>:function:check-response-format
 ```
 
-The Lambda receives the trace context and returns a score. The SDK's `@custom_code_based_evaluator()` decorator handles the Lambda event parsing and response contract for you:
+The Lambda receives the trace context and returns a score. The SDK's `@custom_code_based_evaluator()` decorator handles the Lambda event parsing and response contract for you.
+
+`input.session_spans` holds the raw ADOT span and log records — the same shape as the `@message` objects in a `agentcore traces runtime get` file. There is no response-text attribute on them: Strands/ADOT put the assistant's reply in `gen_ai.choice`, both as an event on the `invoke_agent` span (`attributes.message`) and as a log record (`eventName: "gen_ai.choice"`, text under `body.message.content[].text`). Read it from there:
 
 ```python
 # app/FormatChecker/lambda_function.py
+import json
+
 from bedrock_agentcore.evaluation.custom_code_based_evaluators import (
     custom_code_based_evaluator,
     EvaluatorInput,
     EvaluatorOutput,
 )
 
+
+def _extract_response(spans, trace_id=None) -> str:
+    """Return the agent's final reply for a trace from its `gen_ai.choice` event or log record."""
+    for s in spans:
+        if trace_id and s.get("traceId") != trace_id:
+            continue
+        if (s.get("attributes") or {}).get("gen_ai.operation.name") == "invoke_agent":
+            for ev in s.get("events") or []:
+                if ev.get("name") == "gen_ai.choice":
+                    return ev.get("attributes", {}).get("message", "")
+    for s in spans:
+        if trace_id and s.get("traceId") != trace_id:
+            continue
+        if s.get("eventName") == "gen_ai.choice":
+            content = (s.get("body") or {}).get("message", {}).get("content", [])
+            return "".join(c.get("text", "") for c in content)
+    return ""
+
+
+def _matches_required_format(text: str) -> bool:
+    # Your deterministic check (regex, schema validation, rule engine, etc.)
+    try:
+        json.loads(text)
+        return True
+    except ValueError:
+        return False
+
+
 @custom_code_based_evaluator()
 def handler(input: EvaluatorInput, context) -> EvaluatorOutput:
-    # input.session_spans contains the trace data; input.target_trace_id /
-    # input.target_span_id identify what to grade at TRACE / TOOL_CALL level.
-    # Implement your deterministic check (regex, schema validation, rule engine, etc.)
-    response_text = _extract_response(input.session_spans)
+    # input.target_trace_id / input.target_span_id identify what to grade at TRACE / TOOL_CALL level.
+    response_text = _extract_response(input.session_spans, input.target_trace_id)
 
     if _matches_required_format(response_text):
         return EvaluatorOutput(value=1.0, label="Pass")
     return EvaluatorOutput(value=0.0, label="Fail", explanation="Response did not match expected format")
 ```
 
+Other frameworks may name things differently — open one downloaded trace and check where your agent's reply text lives before writing the extractor.
+
 The decorator handles parsing the raw Lambda event, extracting trace/span IDs, and serializing the response — write your check against typed `EvaluatorInput` and return a typed `EvaluatorOutput`.
 
 #### Step D3.5: Unit-test the evaluator locally before deploying
 
-The `@custom_code_based_evaluator` function is a plain Python function. Import it directly and exercise the logic with fixtures — no deploy, no AWS credentials needed:
+The decorated `handler` is the Lambda entry point: it expects the raw Lambda event dict and returns a plain dict. Your undecorated function is available as `handler.__wrapped__` — call that with a typed `EvaluatorInput` to test the logic directly. No deploy, no AWS credentials needed:
 
 ```python
 # test_evaluator.py
+import json
+
 from bedrock_agentcore.evaluation.custom_code_based_evaluators import EvaluatorInput
 from lambda_function import handler  # the decorated function above
 
+
 def _fake_input(response_text: str) -> EvaluatorInput:
-    # Construct the minimum EvaluatorInput shape the handler reads.
-    # Use a saved real trace for higher-fidelity fixtures — download one via
-    # `agentcore traces runtime get <traceId> --output trace.json` after a single deploy+invoke.
-    return EvaluatorInput(
-        session_spans=[{"attributes": {"gen_ai.response.content": response_text}}],
-        # ...fill remaining fields the SDK expects for your level
-    )
+    # A minimal agent span carrying the reply as a `gen_ai.choice` event, the shape real
+    # Strands/ADOT spans use. evaluation_level is required.
+    span = {
+        "traceId": "t1",
+        "spanId": "s1",
+        "name": "invoke_agent Strands Agents",
+        "attributes": {"gen_ai.operation.name": "invoke_agent"},
+        "events": [{"name": "gen_ai.choice", "attributes": {"message": response_text}}],
+    }
+    return EvaluatorInput(evaluation_level="TRACE", session_spans=[span], target_trace_id="t1")
+
 
 def test_matches_format():
-    out = handler(_fake_input('{"status": "ok"}'), context=None)
+    out = handler.__wrapped__(_fake_input('{"status": "ok"}'), None)
     assert out.value == 1.0
 
+
 def test_rejects_free_text():
-    out = handler(_fake_input("Here's your answer: ok"), context=None)
+    out = handler.__wrapped__(_fake_input("Here's your answer: ok"), None)
     assert out.value == 0.0
     assert "did not match" in (out.explanation or "").lower()
+
+
+def test_raw_lambda_event():
+    # The decorated handler takes the event the eval service sends and returns a dict.
+    event = {"evaluationLevel": "TRACE", "evaluationInput": {"sessionSpans": _fake_input("{}").session_spans}}
+    assert handler(event, None)["value"] == 1.0
 ```
+
+For higher-fidelity fixtures, use a real trace: after a single deploy+invoke, `agentcore traces runtime get <traceId> --output trace.json`, then pass `[r["@message"] for r in json.load(open("trace.json"))]` as `session_spans`.
 
 Run with `uv run --with pytest pytest test_evaluator.py` from the evaluator directory. Iterate the logic until the fixtures pass. Only **then** deploy — the deploy step is about wiring the Lambda into AgentCore, not about debugging the check.
 
@@ -487,7 +541,7 @@ agentcore deploy
 agentcore eval ondemand evaluate --agent "$RUNTIME_ID" --evaluators <evaluator-id> --lookback-days 7
 ```
 
-**Evaluator name rules:** start with a letter; letters, digits, and underscores only; max 48 chars (including the project-name prefix added on deploy). No hyphens.
+**Evaluator name rules:** start with a letter; letters, digits, and underscores only; max 48 chars including the `<project>_<target>_` prefix added on deploy (`FormatChecker` in project `MyProj` deploys as `MyProj_default_FormatChecker`). No hyphens.
 
 ---
 
@@ -497,14 +551,14 @@ Use this when you have a set of scenarios with expected answers and want to repl
 
 #### Step E1: Write the dataset
 
-A dataset is JSONL — one example per line. For the `predefined` schema, each example has an ID, one or more turns (sent in order in one session), and optional expectations:
+A dataset is JSONL — one example per line. For the `predefined` schema, each example has a `scenario_id`, one or more turns (sent in order in one session), and optional expectations:
 
 ```jsonl
-{"example_id": "order_status", "turns": [{"input": "Where is my order 1234?", "expected_response": "Order 1234 shipped on Tuesday."}], "assertions": ["mentions the ship date"], "expected_trajectory": ["lookup_order"]}
-{"example_id": "refund_policy", "turns": [{"input": "Can I return shoes after 40 days?"}], "assertions": ["states the 30-day return window"]}
+{"scenario_id": "order_status", "turns": [{"input": "Where is my order 1234?", "expected_response": "Order 1234 shipped on Tuesday."}], "assertions": ["mentions the ship date"], "expected_trajectory": ["lookup_order"]}
+{"scenario_id": "refund_policy", "turns": [{"input": "Can I return shoes after 40 days?"}], "assertions": ["states the 30-day return window"]}
 ```
 
-`expected_response` feeds trace-level evaluators like `Builtin.Correctness`; `assertions` and `expected_trajectory` (tool names) feed session-level evaluators. `simulated` datasets carry scenarios used to generate full conversations instead — the schema type can't be changed after creation.
+Use `scenario_id`: `agentcore eval dataset create` rejects examples without it (`Required field 'scenario_id' is missing`). The local `--dataset ./file.jsonl` path also accepts `example_id`, but the same file then can't be uploaded. `expected_response` feeds trace-level evaluators like `Builtin.Correctness`; `assertions` and `expected_trajectory` (tool names) feed session-level evaluators. `simulated` datasets carry scenarios used to generate full conversations instead — the schema type can't be changed after creation.
 
 #### Step E2: Run it
 
@@ -542,14 +596,50 @@ Edit a dataset with `agentcore eval dataset update --id <dataset-id> --file-path
 
 ### Path F: A/B tests and recommendations
 
-- **Recommendations** — `agentcore eval recommendation start --name <name> --type SYSTEM_PROMPT_RECOMMENDATION|TOOL_DESCRIPTION_RECOMMENDATION --recommendation-config file://config.json` starts an asynchronous job that proposes an improved system prompt or tool descriptions; read it with `agentcore eval recommendation get --id <id>`. Run `agentcore eval recommendation start --help` and the AgentCore docs for the config shape.
+- **Recommendations** — `agentcore eval recommendation start` starts an asynchronous job that analyzes the agent's traces against an evaluator and proposes an improved system prompt (`SYSTEM_PROMPT_RECOMMENDATION`) or tool descriptions (`TOOL_DESCRIPTION_RECOMMENDATION`). `--help` doesn't show the config shape; a minimal system-prompt config that reads a deployed Runtime's traces from CloudWatch:
+
+  ```json
+  {
+    "systemPromptRecommendationConfig": {
+      "systemPrompt": { "text": "<the agent's current system prompt>" },
+      "agentTraces": {
+        "cloudwatchLogs": {
+          "logGroupArns": ["arn:aws:logs:<region>:<account>:log-group:/aws/bedrock-agentcore/runtimes/<runtimeId>-DEFAULT"],
+          "serviceNames": ["<project>_<target>_<RuntimeName>.DEFAULT"],
+          "startTime": "2026-10-26T00:00:00Z",
+          "endTime": "2026-10-26T12:00:00Z"
+        }
+      },
+      "evaluationConfig": {
+        "evaluators": [{ "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.GoalSuccessRate" }]
+      }
+    }
+  }
+  ```
+
+  The service name is the `service.name` on the agent's spans (visible in any downloaded trace). Then:
+
+  ```bash
+  agentcore eval recommendation start --name prompt_rec_1 --type SYSTEM_PROMPT_RECOMMENDATION \
+    --recommendation-config file://recommendation-config.json
+  agentcore eval recommendation get --id <recommendation-id> --json   # poll until status is COMPLETED
+  ```
+
+  The time window must contain sessions from the deployed agent. For tool-description recommendations, a config-bundle source for the prompt, or inline spans, see [Start a system prompt recommendation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/recommendations-system-prompt.html) and its sibling pages. Recommendations are LLM-generated — review and test them before applying.
 - **Configuration bundles** — versioned bundles of component configuration (e.g. a system prompt). Declare one in the project with `agentcore add config-bundle --name <name> --components file://components.json`, or manage them service-side with `agentcore eval config-bundle ...`.
 - **A/B tests** — split live Gateway traffic between a control and a treatment and compare per-evaluator metrics from online evals:
   - `agentcore eval ab-test config-based run --name <name> --gateway <gateway-id> --control '{"config-bundle":"<id>","bundle-version":"<v>"}' --treatment '{...}' --online-eval <online-eval-id>` — two config-bundle versions on one Gateway
   - `agentcore eval ab-test target-based run --name <name> --gateway <gateway-id> --control '{"gateway-target":"<name>","online-eval":"<id>"}' --treatment '{...}'` — two Gateway Targets, each with its own online eval
   - `--treatment-weight` (1–99, default 50) sets the split. Inspect with `agentcore eval ab-test get --id <id>`; `pause`, `resume`, `stop` (terminal), and `delete` (after stop) manage it.
 
-A/B tests run on a deployed Gateway — see `agents-connect` if the agent isn't behind one yet.
+**A/B tests need more setup than the commands above show.** Before `ab-test ... run` will work you need:
+
+- A deployed **Gateway with an HTTP target pointing at the agent Runtime**, and clients sending traffic through the Gateway (traffic that calls the Runtime directly isn't split). See `agents-connect` if the agent isn't behind a Gateway yet.
+- **Config-based tests:** one Runtime and two configuration-bundle versions (or two bundles), plus agent code that reads its configuration from the bundle the Gateway passes it, and one online-eval config on that Runtime.
+- **Target-based tests:** two Gateway targets backed by separate Runtime endpoints or Runtimes, each with its own online-eval config.
+- The `bedrock-agentcore` SDK 1.8+ in the agent (it tags spans with the experiment and variant), Transaction Search enabled, and evaluators that return a numeric value (a custom LLM-as-a-Judge evaluator needs a `numerical` rating scale).
+
+The `components.json` shape for a bundle and how the agent reads the active bundle aren't covered by `--help`; follow [Run an A/B test with configuration bundles](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/ab-testing-config-bundle.html) and the [A/B testing prerequisites](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/ab-testing-prereqs.html) for the end-to-end walkthrough.
 
 ---
 
@@ -557,7 +647,8 @@ A/B tests run on a deployed Gateway — see `agents-connect` if the agent isn't 
 
 ### "No telemetry found for agent" / no results
 
-- Wait ~10 seconds after invoking the agent — CloudWatch put-to-get is ~10s end-to-end (there's no separate eval-indexing step beyond that)
+- Wait 30–60 seconds after invoking the agent — that's how long traces take to reach CloudWatch (there's no separate eval-indexing step beyond that). Poll `agentcore traces runtime list` until the session appears; its session ID can show as `-` at first
+- For online-eval results, also wait for the session timeout: a session is only scored after it has been idle for `sessionTimeoutMinutes` (see Path B, Step B4)
 - Confirm you passed the deployed Runtime or harness **ID**, not the project name
 - Confirm the sessions came from the deployed agent — `agentcore dev` runs never reach CloudWatch
 - Check that the runtime wasn't deployed with `"instrumentation": { "enableOtel": false }` and that Transaction Search is enabled (see Step 2)

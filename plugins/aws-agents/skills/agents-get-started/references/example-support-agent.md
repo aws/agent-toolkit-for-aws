@@ -84,6 +84,8 @@ In another terminal:
 agentcore invoke --runtime agent --local --payload '{"prompt": "What is your return policy?"}'
 ```
 
+The reply streams back as raw server-sent events (`data: {"event": {"contentBlockDelta": ...}}` lines, then a `status=200 ...` line). Stop the dev server with Ctrl+C.
+
 Or with `curl` (the HTTP dev server defaults to port 8080 — check the CLI output in case it moved):
 
 ```bash
