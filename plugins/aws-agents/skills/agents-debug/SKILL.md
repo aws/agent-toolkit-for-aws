@@ -65,7 +65,7 @@ If the issue is about agent behavior (wrong answers, errors, timeouts, tool fail
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-Then check the project format: open `agentcore/agentcore.json`. If it has `"version": 1` (or no `"version": 2`), it's a v0 project. The v1 CLI runs it in compatibility mode — `deploy`, `status`, `logs`, `traces`, and `invoke` still work, but `add`, `remove`, `build`, and `export` are blocked. To migrate it fully, run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts. The plan is also saved under `agentcore/.cli/migrate/`.
+Then check the project format with `jq .version agentcore/agentcore.json`. If it's `1`, it's a v0 project. The v1 CLI runs it in compatibility mode — `deploy`, `status`, `logs`, `traces`, and `invoke` still work, but `add`, `remove`, `build`, and `export` are blocked. To migrate it fully, commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts. The plan is also saved under `agentcore/.cli/migrate/`.
 
 There is no `agentcore validate` in v1. Any project command parses `agentcore.json` and reports schema errors; `agentcore build` additionally synthesizes the CDK app locally without deploying, which is the closest offline check.
 
@@ -84,7 +84,7 @@ Ask (or infer from context):
 
 ### Step 3: Read traces and logs automatically
 
-Don't ask the developer to paste logs — read them directly. After a recent deploy, check logs before traces: a startup crash leaves no new trace, and older traces from the previous version can mislead.
+Don't ask the developer to paste logs — read them directly. After a recent deploy, check logs before traces: a startup crash leaves no new trace, and older traces from the previous version can mislead. If the failure hasn't happened in the last hour, reproduce it first (see **Reproduce the failure** below), then search.
 
 ```bash
 # What's deployed, and is it deployed? (resource names, ARNs/IDs, deployed vs local-only)
@@ -130,7 +130,7 @@ agentcore invoke --harness <HarnessName> --prompt "..."
 agentcore invoke --runtime <RuntimeName> --local --payload '{"prompt": "..."}'
 ```
 
-**Important:** Traces take **30–60 seconds** after an invocation to become readable by `agentcore traces runtime list/get` and `agentcore eval ondemand evaluate`; the same ingestion step unlocks both. The session ID can show `-` at first. Poll `traces runtime list` instead of sleeping. Online-eval results also wait until the session has been idle for the config's session timeout (5 min by default).
+**Important:** Traces take **30–90 seconds** after an invocation to become readable by `agentcore traces runtime list/get` and `agentcore eval ondemand evaluate`; the same ingestion step unlocks both. The session ID can show `-` at first. Poll `traces runtime list` instead of sleeping. Online-eval results also wait until the session has been idle for the config's session timeout (default 5 min with `add online-eval`, 15 min with `eval online-eval create`), so first results can take 10–15+ minutes.
 
 If `agentcore status` fails with `No deployment targets are configured for project '<name>'`, the project has never been deployed (`agentcore/aws-targets.json` is empty) — there are no logs or traces to read yet; reproduce locally with `agentcore dev` or deploy first (→ `agents-deploy`).
 
@@ -363,7 +363,7 @@ agentcore logs runtime --name <RuntimeName> --since 30m      # everything, if th
 
 **Step 2:** Common causes:
 
-**Missing Python dependency:** The agent code imports a package not in `pyproject.toml`. The container starts but crashes on first request. Fix: add the dependency and redeploy.
+**Missing Python dependency:** The agent code imports a package not in `pyproject.toml`. It crashes at import, before serving anything, so invoke fails with `Runtime initialization time exceeded` and the log shows a `ModuleNotFoundError`. Fix: add the dependency and redeploy.
 
 **Entrypoint crash:** The `main.py` throws an exception during import or `app.run()`. Check logs for the traceback.
 
@@ -440,16 +440,18 @@ For a **harness**, `agentcore dev` deploys the harness (unless `--skip-deploy`) 
 
 **Step 1:** Verify the auth type matches the target type. This is the most common gateway error — using the wrong outbound auth for the target:
 
-| Target type (`targetType` in `agentCoreGateways[].targets[]`) | Valid outbound auth |
+| Target type (`targetType` in `agentCoreGateways[].targets[]`) | Valid `outboundAuth.type` |
 |---|---|
-| `lambda` / `lambdaFunctionArn` | `none` (gateway IAM role) or `oauth` |
-| `mcpServer` | `none` or `oauth` |
-| `openApiSchema` | `oauth` or `api-key` (required) |
-| `apiGateway` | `none` (gateway IAM role) or `api-key` |
-| `smithyModel` | `none` (gateway IAM role) |
-| `httpRuntime` | `none` (gateway IAM role) or `oauth` |
-| `connector` | `none` (gateway IAM role) |
+| `lambda` / `lambdaFunctionArn` | `NONE` or `OAUTH`; omitted → gateway IAM role |
+| `mcpServer` | `NONE` or `OAUTH` |
+| `openApiSchema` | `OAUTH` or `API_KEY` (required) |
+| `apiGateway` | `NONE` or `API_KEY`; omitted → gateway IAM role |
+| `smithyModel` | omit it (gateway IAM role) |
+| `httpRuntime` | `NONE` or `OAUTH`; omitted → gateway IAM role |
+| `connector` | omit it (gateway IAM role) |
 | `passthrough` | `GATEWAY_IAM_ROLE`, `OAUTH`, or `JWT_PASSTHROUGH` (required) |
+
+On `agentcore add gateway-target`, `--outbound-auth none` writes `NONE`, `oauth` writes `OAUTH`, and `api-key` writes `API_KEY` (both need `--credential-name`); leaving the flag off omits `outboundAuth`.
 
 Check what's configured in `agentcore/agentcore.json` under `agentCoreGateways[].targets[]`, or on the deployed side with `agentcore gateway target list --gateway-id <GatewayId> --json`.
 
@@ -474,7 +476,7 @@ agentcore identity oauth2-credential-provider list --json
 
 ## Symptom: No traces appearing
 
-**Wait 30–60 seconds** — traces take that long after an invocation to become readable. Poll `agentcore traces runtime list` rather than sleeping.
+**Wait 30–90 seconds** — traces take that long after an invocation to become readable. Poll `agentcore traces runtime list` rather than sleeping.
 
 If still no traces after ~2 minutes:
 
@@ -514,7 +516,7 @@ xray:PutTelemetryRecords
 xray:PutTraceSegments → scoped to *
 ```
 
-If using the AgentCore CLI with CodeZip, the CDK scaffold adds these automatically. If using a custom role or Container build, verify they're present.
+The CDK grants these to the execution role it creates, for CodeZip and Container builds alike. Only an imported role (`executionRoleArn`) needs them added by hand.
 
 **3. Use Python's `logging` module, not `print()`.**
 

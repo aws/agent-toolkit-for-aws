@@ -9,7 +9,7 @@ This skill is the single entry point for getting any AI agent project instrument
 
 This is a PROCEDURAL SCRIPT. Execute steps in EXACT order. Do NOT skip ahead, reorder, or optimize.
 
-**Before you start:** confirm a Space exists in the target Region. `list-spaces` is account-global (the `--region` flag only selects the endpoint; the response lists every Space in the account, each with its own `region`), so filter to the Region rather than trusting a non-empty list: `aws cloudwatchomni list-spaces --region <region> --query "items[?region=='<region>']"`. If the AWS CLI rejects the command (`Found invalid choice 'cloudwatchomni'`), the installed AWS CLI predates CloudWatch Omni — have the user upgrade to the latest AWS CLI v2 and re-run the probe; don't treat it as "no Space". If that filtered list is empty, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering traces nowhere the customer can see. (Output the Step 1 checklist first; this probe is the first tool call after it.)
+**Before you start:** confirm a Space exists in the target Region. `list-spaces` is account-global (the `--region` flag only selects the endpoint; the response lists every Space in the account, each with its own `region`), so filter to the Region rather than trusting a non-empty list: `aws cloudwatchomni list-spaces --region <region> --query "items[?region=='<region>']"`. If the AWS CLI rejects the command (`Found invalid choice 'cloudwatchomni'`), the installed AWS CLI predates CloudWatch Omni — have the user upgrade to the latest AWS CLI v2 and re-run the probe; don't treat it as "no Space". If that filtered list is empty, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering traces nowhere the customer can see. The gate is about real Omni delivery only: if the user just wants the local check (Phase 3 reads `.omni/traces.jsonl` from a local collector), it can run without a Space — say plainly that nothing reaches Omni until one exists. (Output the Step 1 checklist first; this probe is the first tool call after it.)
 
 **A custom metric from the agent** (a latency histogram, a tokens-per-call counter) follows the same rule as any application: it must reach Omni as an OTLP metric carrying the agent's resource attributes — through the OTel Metrics API on the SDK this flow installs, or through a collector — and `PutMetricData`/EMF do not put it on Omni's PromQL surface. Answer from `../instrumentation/instrumentation.md` (§ Custom metrics); do not run the onboarding checklist for that question.
 
@@ -73,7 +73,7 @@ If `agentcore/agentcore.json` is present, set `platform` to `"agentcore"`. Do NO
 
 - **`runtimes[]`** are the agents with code. Each entry's `codeLocation` is the agent directory (e.g. `app/agent`), `entrypoint` the entry file (`main.py`, or `main.js` for TypeScript, which `agentcore dev` runs from `main.ts`), and `build` either `CodeZip` or `Container`. Runtimes can be Python or TypeScript — detect the language per runtime from its entrypoint and dependency file in `codeLocation`, and instrument that directory.
 - **Harness-only project** (`harnesses[]` has entries, `runtimes[]` is empty or missing): a harness is a managed, config-defined agent with no local code or local server, so there is nothing to instrument and Phase 3's local server does not apply. Tell the user, then go to "Production deployment → AgentCore (managed runtime)" Action 1 only; traces for a deployed harness are listed with `agentcore traces harness list`.
-- **No `"version": 2`** — a project from AgentCore CLI v0. CLI v1 still runs `agentcore dev` on it in compatibility mode, but blocks commands that edit the project; recommend migrating. Run `agentcore migrate` to print the plan (nothing changes), show it to the user, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts. Continue with `platform: "agentcore"` either way — local instrumentation works without migrating, but the production step that edits `envVars` and runs `agentcore build` is blocked until the project is migrated.
+- **`"version": 1`** — a project from AgentCore CLI v0. CLI v1 still runs `agentcore dev` on it in compatibility mode, but blocks commands that edit the project; recommend migrating. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the user, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts. Continue with `platform: "agentcore"` either way — local instrumentation works without migrating, but the production step that edits `envVars` and runs `agentcore build` is blocked until the project is migrated.
 
 If NO AgentCore signals are found, set `platform` to `"generic"`. The start command will be the project's natural server command (e.g., `uvicorn app:app --host 0.0.0.0 --reload`). Do NOT use the `opentelemetry-instrument` wrapper — hot-reload servers spawn child subprocesses; the wrapper only instruments the parent process; PYTHONPATH injection reaches all processes.
 
@@ -89,7 +89,7 @@ Then STOP. Do NOT proceed with further phases if no framework was found.
 
 Report the detection (including platform) and persist it to `.omni/server-config.json`:
 
-- Create `.omni/` directory if it doesn't exist
+- Create `.omni/` directory if it doesn't exist, and suggest adding `.omni/` to `.gitignore` — it ends up holding test prompts, server logs, and traces
 - Preserve any existing keys already in the file
 - Set `framework`, `language`, and `platform`
 - If the file does not exist yet, initialize it with:
@@ -329,7 +329,7 @@ Persist the start command to `.omni/server-config.json`:
 
 ### Step 3.3: Start Server
 
-Start the server in background with shell commands:
+Start the collector from Step 3.3b first if the user doesn't already run one, so the agent's first spans aren't dropped. Then start the server in background with shell commands:
 
 **AgentCore CLI platform (Python runtime):** add the OTEL settings to `agentcore/.env.local` — `agentcore dev` loads this file into the agent process. They must be in this file, not just exported in the shell: the CLI only injects the ADOT PYTHONPATH when `OTEL_EXPORTER_OTLP_ENDPOINT` is in the dev environment it builds from `.env.local` and the runtime's `envVars`. Don't put the local endpoint in `envVars` — those are deployed with the runtime. For a `Container` build runtime, use `http://host.docker.internal:<OTLP_PORT>` as the endpoint so the container can reach the host.
 
@@ -391,6 +391,14 @@ service:
     traces:
       receivers: [otlp]
       exporters: [file]
+```
+
+To get `otelcol-contrib`, download the `otelcol-contrib_<VERSION>_<OS>_<ARCH>.tar.gz` asset from the [collector releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases), extract it, and run the binary in the background (`otelcol-contrib --config .omni/otelcol.yaml > .omni/otelcol.log 2>&1 &`). Or run it in Docker — inside the container the receiver must listen on `0.0.0.0:<OTLP_PORT>` and the exporter path must be `/omni/traces.jsonl`, with `.omni/` mounted:
+
+```bash
+docker run -d --name omni-otelcol --user "$(id -u):$(id -g)" \
+  -p 127.0.0.1:<OTLP_PORT>:<OTLP_PORT> -v "$PWD/.omni:/omni" \
+  otel/opentelemetry-collector-contrib --config /omni/otelcol.yaml
 ```
 
 If not reachable, warn the user and wait for them to start their collector before proceeding.
@@ -544,7 +552,7 @@ The first time Transaction Search is enabled in an account and Region, allow up 
 ]
 ```
 
-Then run `agentcore build` from the project root (for a v0 project — no `"version": 2` — `build` is blocked until the user runs `agentcore migrate`; do that first). It validates `agentcore.json` (a schema error is reported as `Failed to deserialize file ...` with the failing path, e.g. `runtimes[0].envVars[0].name`) and builds the deployable artifacts locally without deploying. `agentcore deploy` applies the change.
+Then run `agentcore build` from the project root (for a v0 project — `"version": 1` — `build` is blocked until the user runs `agentcore migrate`; do that first, as in Phase 1). It validates `agentcore.json` (a schema error is reported as `Failed to deserialize file ...` with the failing path, e.g. `runtimes[0].envVars[0].name`) and builds the deployable artifacts locally without deploying. `agentcore deploy` applies the change.
 
 `envVars` is a per-runtime list of `{ "name", "value" }` objects inside each `runtimes[]` entry — there is no project-level `envVars`. Harnesses use a separate `environmentVariables` map and are configured by the service, so skip this action for them.
 

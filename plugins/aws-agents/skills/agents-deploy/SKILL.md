@@ -49,7 +49,7 @@ Deploy your AgentCore agent to AWS, or diagnose why a deploy failed.
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-If `agentcore/agentcore.json` has no `"version": 2`, it's a v0 project. v1 deploys it in compatibility mode (it runs the latest v0 CLI's deploy) but blocks `agentcore build` and most project changes. Migrating keeps deployed resources. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts.
+If `agentcore/agentcore.json` has `"version": 1`, it's a v0 project. v1 deploys it in compatibility mode (it runs the latest v0 CLI's deploy) but blocks `agentcore build` and most project changes. Migrating keeps deployed resources. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 ### Step 1: Determine the situation
 
@@ -157,15 +157,30 @@ aws iam simulate-principal-policy \
   --resource-arns "arn:aws:iam::${ACCOUNT}:role/cdk-*" \
   --query 'EvaluationResults[].[EvalActionName,EvalDecision]' --output table
 
-# The project stack is AgentCore-<project>-<target>
+# The project stack is AgentCore-<project>-<target>. Simulate concrete actions:
+# a literal 'cloudformation:*' always comes back implicitDeny.
 aws iam simulate-principal-policy \
   --policy-source-arn "$PRINCIPAL_ARN" \
-  --action-names 'cloudformation:*' \
+  --action-names cloudformation:DescribeStacks cloudformation:CreateChangeSet cloudformation:DescribeChangeSet \
+    cloudformation:ExecuteChangeSet cloudformation:DeleteChangeSet cloudformation:GetTemplate \
+    cloudformation:DeleteStack cloudformation:DescribeStackEvents \
   --resource-arns "arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/AgentCore-*" \
+  --query 'EvaluationResults[].[EvalActionName,EvalDecision]' --output table
+
+# Every deploy reads the bootstrap stack
+aws iam simulate-principal-policy \
+  --policy-source-arn "$PRINCIPAL_ARN" \
+  --action-names cloudformation:DescribeStacks \
+  --resource-arns "arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/CDKToolkit/*" \
   --query 'EvaluationResults[].[EvalActionName,EvalDecision]' --output table
 ```
 
 You don't need to pre-check IAM role names: the execution roles are created by CloudFormation under the stack name (`AgentCore-<project>-<target>-...`), through the CDK deploy role. If the account/region isn't bootstrapped yet, the deploying identity also needs permission to create the `CDKToolkit` bootstrap stack (CloudFormation, IAM, S3, ECR, SSM).
+
+The CLI itself (not CloudFormation) also calls:
+
+- **Projects with credentials:** `bedrock-agentcore:{Create,Get,Update}{ApiKey,Oauth2}CredentialProvider` and Secrets Manager, to provision credential providers.
+- **Transaction Search:** `xray:UpdateTraceSegmentDestination` and `logs:PutResourcePolicy`. If they're denied, deploy prints `skipping Transaction Search: ...` and continues.
 
 ### Run the deploy
 
@@ -186,7 +201,7 @@ A deploy:
 
 There's no confirmation prompt on a normal deploy. `--yes` is only needed when the project declares no resources and the deploy would delete the target's stack (see [Removing resources and tearing down](#removing-resources-and-tearing-down)).
 
-After a successful deploy the CLI suggests `agentcore invoke`. The stack ARN for each target is recorded in `agentcore/.cli/deployed-state.json`; commit that file (the generated `.gitignore` keeps it) so teammates' `status`, `invoke`, and `logs` find the deployment.
+After a successful deploy the CLI suggests `agentcore invoke`. The stack ARN for each target is recorded in `agentcore/.cli/deployed-state.json`; commit that file (the generated `.gitignore` keeps it) so teammates' `status`, `invoke`, and `logs` find the deployment. Don't commit `agentcore/.cache/` (CodeZip dependency staging, often 100+ MB) — if `.gitignore` doesn't list it, add it.
 
 **Memory provisioning note:** If your project includes memory, deploy takes a few minutes longer while the memory resource becomes ACTIVE. This is normal — not an error. Check status:
 
@@ -194,7 +209,7 @@ After a successful deploy the CLI suggests `agentcore invoke`. The stack ARN for
 agentcore status --json
 ```
 
-Each resource is listed with `deploymentState` (`deployed` with its ARN, or `local-only` if the stack hasn't published it yet). For memory details, `agentcore memory get --id <MEMORY_ID>` (the ID is the last segment of the memory ARN).
+Each resource is listed with `deploymentState` (`deployed` with its ARN or ID, or `local-only` if the stack hasn't published it yet). For memory details, `agentcore memory get --id <MEMORY_ID>` (the ID is the last segment of the memory ARN).
 
 ---
 
@@ -217,7 +232,7 @@ tail -100 ~/.agentcore/logs/output-$(date +%Y-%m-%d).log
 User: arn:aws:iam::123456789012:user/dev is not authorized to perform: iam:CreateRole
 ```
 
-Fix: Attach the required IAM permissions (see Check 4 above). The deploying identity needs to assume the CDK bootstrap roles (`arn:aws:iam::<ACCOUNT>:role/cdk-*`) and manage the `AgentCore-*` CloudFormation stack; CloudFormation creates the execution roles itself. If the error names `iam:CreateRole` directly, the account likely isn't bootstrapped yet and the identity is creating the `CDKToolkit` stack.
+Fix: Attach the required IAM permissions (see Check 4 above). The deploying identity needs to assume the CDK bootstrap roles (`arn:aws:iam::<ACCOUNT>:role/cdk-*`), read the `CDKToolkit` stack, manage the `AgentCore-*` CloudFormation stack, and (with credentials) manage credential providers; CloudFormation creates the execution roles itself. If the error names `iam:CreateRole` directly, the account likely isn't bootstrapped yet and the identity is creating the `CDKToolkit` stack.
 
 **Account mismatch:**
 
@@ -278,7 +293,7 @@ Fix: add the missing file, or follow the CLI's message to switch the build type 
 
 **Container image build failed:**
 
-Images are built natively on ARM64 in AWS CodeBuild. Check the base image supports `linux/arm64`, the app listens on `0.0.0.0:8080`, and `uv.lock` is committed if the Dockerfile runs `uv sync --frozen`. In VPC mode, `networkConfig.vpcId` is required for container builds.
+Images are built natively on ARM64 in AWS CodeBuild. Check the base image supports `linux/arm64`, the app listens on `0.0.0.0` on its protocol's port (8080 HTTP/AG-UI, 8000 MCP, 9000 A2A), and `uv.lock` is committed if the Dockerfile runs `uv sync --frozen`. In VPC mode, `networkConfig.vpcId` is required for container builds.
 
 **Model access denied during invoke after deploy:**
 
@@ -380,7 +395,7 @@ agentcore deploy                                               # applies the rem
 
 To delete everything deployed to a target, work through these steps in order. Repeat for each target with `--target <name>` (and `--region` on the `harness` / `aws` commands if the target isn't in your default region).
 
-Before running any command below, show the developer the target name, account and region (from `agentcore/aws-targets.json`) and the resources and log groups that will be deleted, and wait for explicit confirmation. Never run this against a production-looking target without that confirmation.
+Steps 0 and 4a only read. Run them first, then show the developer the target name, account and region (from `agentcore/aws-targets.json`) and the resources and log groups that will be deleted, and wait for explicit confirmation before running anything that deletes. Never run this against a production-looking target without that confirmation.
 
 **0. Save the deployed IDs.** Run `agentcore status --json` and note the Runtime/Harness IDs and ARNs. You need them in step 1 and to match log groups in step 4, and they're gone from `status` once the stack is deleted.
 
@@ -396,30 +411,32 @@ Wait until `harness endpoint list` shows only `DEFAULT` (endpoint deletion takes
 **2. Delete the stack.**
 
 ```bash
+cp agentcore/agentcore.json /tmp/agentcore.json.bak
+cp agentcore/.env.local /tmp/env.local.bak 2>/dev/null
 agentcore remove all --yes
 agentcore deploy --yes
 ```
 
-The second command deletes the stack `AgentCore-<project>-<target>`. If it fails with `DELETE_FAILED`, fix the cause it names (usually step 1) and run `agentcore deploy --yes` again.
+The last command deletes the stack `AgentCore-<project>-<target>`. If it fails with `DELETE_FAILED`, fix the cause it names (usually step 1) and run `agentcore deploy --yes` again.
 
-`remove all` empties `agentcore.json` for **every** target, not just this one. If other targets should stay deployed, restore the file once this target's stack is gone (`git checkout agentcore/agentcore.json`), and don't run `deploy --yes` against the others while it's empty.
+`remove all` empties `agentcore.json` for **every** target, not just this one, and also deletes the credential keys in `agentcore/.env.local` (gitignored, so `git checkout` can't bring them back). If other targets should stay deployed, restore both files from the backups once this target's stack is gone, and don't run `deploy --yes` against the others while the project is empty.
 
 **3. Confirm the stack is gone** — include `DELETE_FAILED`, or a stuck stack won't show up:
 
 ```bash
 aws cloudformation list-stacks \
   --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE ROLLBACK_COMPLETE DELETE_IN_PROGRESS DELETE_FAILED \
-  --query "StackSummaries[?starts_with(StackName, 'AgentCore-<project>-')].[StackName,StackStatus]" --output table
+  --query "StackSummaries[?StackName=='AgentCore-<project>-<target>'].[StackName,StackStatus]" --output table
 ```
 
 **4. Clean up what survives the stack.** These aren't CloudFormation resources, so deleting the stack leaves them behind:
 
 - **Runtime log groups** — one per endpoint: `/aws/bedrock-agentcore/runtimes/<RUNTIME_ID>-<ENDPOINT>` (e.g. `...-DEFAULT`, `...-prod`).
-- **Harness log groups** — a Harness logs through the service Runtime that backs it: `/aws/bedrock-agentcore/runtimes/harness_<HARNESS_NAME>-<suffix>-<ENDPOINT>` (the backing ID is `.harness.environment.agentCoreRuntimeEnvironment.agentRuntimeId` in `agentcore harness get --id <HARNESS_ID> --json`).
+- **Harness log groups** — one per Harness endpoint; a Harness logs through the service Runtime that backs it: `/aws/bedrock-agentcore/runtimes/harness_<HARNESS_NAME>-<suffix>-<ENDPOINT>` (the backing ID is `.harness.environment.agentCoreRuntimeEnvironment.agentRuntimeId` in `agentcore harness get --id <HARNESS_ID> --json`).
 - **Online-eval results** — `/aws/bedrock-agentcore/evaluations/results/<ONLINE_EVAL_CONFIG_ID>` (e.g. `<project>_<target>_<name>-<suffix>`).
 - **Code-evaluator Lambda logs** — `/aws/lambda/<project>-<target>-eval-<EvaluatorName>`.
 
-List the log groups for this target (match them against the IDs you saved in step 0). In these names each `-` in the target name becomes `_` (target `prod-us` gives `<project>_prod_us_...`):
+**4a. List the log groups for this target.** In these names each `-` in the target name becomes `_` (target `prod-us` gives `<project>_prod_us_...`), so the prefix for target `prod` also matches `prod-us`. Keep only the groups whose ID matches one you saved in step 0:
 
 ```bash
 aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/<project>_<target>_ \
@@ -434,15 +451,19 @@ aws logs describe-log-groups --log-group-name-prefix /aws/lambda/<project>-<targ
 
 A project converted by `agentcore migrate` keeps its v0 resource names, which have no `<target>` segment — match those log groups against the IDs from step 0 instead of by prefix.
 
-Show the list to the developer and delete only after they confirm:
+**4b. Delete them** (after the confirmation above):
 
 ```bash
 aws logs delete-log-group --log-group-name <LOG_GROUP_NAME>   # for each one that belongs to this target
 ```
 
-- **Eval datasets and recommendations** (from `agents-optimize`) are service-side and not in the stack:
+- **Service-side eval resources** (from `agents-optimize`) aren't in the stack: evaluators and online evals created with `agentcore eval evaluator ... create` / `agentcore eval online-eval create` (not `add`), eval datasets, and recommendations. These lists cover the whole region, so delete only the ones this project created:
 
   ```bash
+  agentcore eval evaluator list --json
+  agentcore eval evaluator delete --id <EVALUATOR_ID>
+  agentcore eval online-eval list --json
+  agentcore eval online-eval delete --id <ONLINE_EVAL_CONFIG_ID>
   agentcore eval dataset list --json
   agentcore eval dataset delete --id <DATASET_ID>
   agentcore eval recommendation list --json
