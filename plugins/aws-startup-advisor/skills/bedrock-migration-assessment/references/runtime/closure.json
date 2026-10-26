@@ -107,7 +107,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "94bea97ec62a6a7493664611127afef87974667472731434dfff40f40d3d2bef",
+      "sha256": "6941231a4a801f158da08445277481a14328c550ce514fa00f04b2c66f1a11a0",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai-only.md",
       "type": "instruction"
     },
@@ -120,7 +120,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "28b44e71ddb79d83f73ba1eff84349322a68b4bfb219bab94421517f35b475ae",
+      "sha256": "5055e3ae80dfef376510df819958b9ce82fd8861364cee1331d5c138105e7197",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai.md",
       "type": "instruction"
     },
@@ -466,7 +466,7 @@
         "references/vendored/ai/ai-openai-to-bedrock.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "7baa3e66e19d0faca4fd56bb14456f56ff254062a6feacd0d1abe7566ac62752",
+      "sha256": "ab98e67f92fa1199fb8c64287ad1841d12c96f8d69abfad117dbd17b0302c4bf",
       "source_path": "skills/shared/ai/ai-openai-to-bedrock.md",
       "type": "instruction"
     },
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "375dabe141bd3dd581704c8dff55c1206501ca5b81fd831903b6ad3d2e727815"
+  "self_hash": "2e70c22d9f34387bb0bf64c03e5b70f8f3815b3984ab8ce0bea8a3f261a5ba0d"
 }

@@ -120,7 +120,7 @@ running). → `ai_constraints.cross_cloud`. Default `"latency-acceptable"`.
 | GPT-5.6 (Sol/Terra/Luna)                  | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier) |
 | GPT-5.5                                   | **Same model on Bedrock**              | ~10% over std                              |
 | GPT-5.4                                   | **Same model on Bedrock**              | ~10% over std                              |
-| GPT-4o                                    | GPT-5.6 Terra; or Claude Sonnet 5.5      | not on Bedrock — offer both                |
+| GPT-4o                                    | GPT-6 Luna ($0.11/$0.55 US Geo); or Claude Sonnet 5.5 cross-family | OpenAI's recommended replacement (GPT-4o shuts down 2027-01-14) |
 | GPT-4 / 4 Turbo                           | GPT-5.6 Terra; or Sonnet 5.5             | not on Bedrock — offer both                |
 | GPT-4.1 / mini / nano                     | GPT-5.6 Terra/Luna; or Nova Lite/Micro | not on Bedrock — offer both                |
 | GPT-3.5 Turbo                             | GPT-5.6 Luna; or Haiku 4.5             | Luna cheaper                               |

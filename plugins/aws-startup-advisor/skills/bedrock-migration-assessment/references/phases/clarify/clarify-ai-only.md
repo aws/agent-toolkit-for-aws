@@ -199,7 +199,7 @@ _Skip when:_ `ai_sources[].models` is populated in `ai-workload-profile.json` **
 | GPT-5.4       | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
 | GPT-3.5 Turbo | GPT-5.6 Luna; or Haiku 4.5     | Luna 36% cheaper, 77% under Haiku  |
 | GPT-4/4 Turbo | GPT-5.6 Terra; or Sonnet 5.5     | Not on Bedrock — offer both        |
-| GPT-4o        | GPT-5.6 Terra; or Sonnet 5.5     | Not on Bedrock — offer both        |
+| GPT-4o        | GPT-6 Luna ($0.11/$0.55 US Geo); or Sonnet 5.5 cross-family | OpenAI's recommended replacement (GPT-4o shuts down 2027-01-14) |
 | GPT-5.4 Mini  | GPT-5.6 Luna; or Nova Lite     | Mini not on Bedrock — offer both   |
 | GPT-5.4 Nano  | GPT-5.6 Luna; or Nova Micro    | Nano not on Bedrock — offer both   |
 | GPT-5.x Pro   | GPT-5.6 Sol; or Nova 2 Pro     | Pro not on Bedrock — offer both    |
