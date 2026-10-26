@@ -194,7 +194,7 @@ Then write `app/support/main.py` (using `BedrockAgentCoreApp` from `bedrock-agen
 
 ### Model provider options
 
-`agentcore create --template` always uses the template's default provider (Bedrock). To choose another provider for a Strands template, run `agentcore create` with no flags — the wizard asks for the provider, model ID, and an API-key file. The key is kept in `agentcore/.env.local` for local dev and provisioned as an AgentCore Identity credential on deploy.
+`agentcore create --template` always uses the template's default provider (Bedrock). To choose another provider for a Strands template, run `agentcore create` with no flags — the wizard asks for the provider, model ID, and an API-key file. The wizard needs a TTY, so ask the developer to run it in their own terminal. The key is kept in `agentcore/.env.local` for local dev and provisioned as an AgentCore Identity credential on deploy.
 
 | Provider | Best for | Notes |
 |---|---|---|
@@ -207,6 +207,6 @@ Then write `app/support/main.py` (using `BedrockAgentCoreApp` from `bedrock-agen
 
 For a Harness, set the model with `agentcore add harness --name <HarnessName> --model '<JSON>'` or under `model:` in `harness.yaml` (Bedrock, OpenAI, Gemini, or a LiteLLM gateway).
 
-For cost-sensitive use cases, consider Bedrock Nova models (e.g., `amazon.nova-micro-v1:0`, `amazon.nova-lite-v1:0`) — significantly cheaper than Claude for simpler extractive tasks. See [`agents-optimize/references/cost.md`](../../agents-optimize/references/cost.md) for model selection guidance.
+For cost-sensitive use cases, consider Bedrock Nova models (e.g., the inference profiles `us.amazon.nova-micro-v1:0`, `us.amazon.nova-lite-v1:0`; the prefix and availability vary by region) — significantly cheaper than Claude for simpler extractive tasks. See [`agents-optimize/references/cost.md`](../../agents-optimize/references/cost.md) for model selection guidance.
 
 For a chatbot that remembers conversations, the Strands templates and Harnesses already include memory. For other templates, add it later — see [`agents-build/references/memory.md`](../../agents-build/references/memory.md).

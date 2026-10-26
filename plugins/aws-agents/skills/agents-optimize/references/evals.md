@@ -95,10 +95,15 @@ SESSION_ID=$(uuidgen)   # Runtime session IDs must be at least 33 characters
 agentcore invoke --runtime MyAgent --session-id "$SESSION_ID" --payload '{"prompt": "What is the weather in Seattle?"}'
 
 # Traces take 30–60s to land in CloudWatch: poll until the session shows up, then evaluate
-until agentcore traces runtime list --name MyAgent --since 10m --json \
-    | jq -e --arg s "$SESSION_ID" 'any(.traces[]; .sessionId == $s)' > /dev/null; do
+found=
+for i in $(seq 1 18); do   # up to 3 minutes
+  if agentcore traces runtime list --name MyAgent --since 10m --json \
+      | jq -e --arg s "$SESSION_ID" 'any(.traces[]; .sessionId == $s)' > /dev/null; then
+    found=1; break
+  fi
   sleep 10
 done
+[ -n "$found" ] || { echo "No trace for session $SESSION_ID after 3 minutes; check logs and Transaction Search" >&2; exit 1; }
 agentcore eval ondemand evaluate \
   --agent "$RUNTIME_ID" \
   --session-ids "$SESSION_ID" \
@@ -271,7 +276,7 @@ The online eval config starts in `CREATING` state and becomes `ACTIVE` shortly a
 
 #### Step B4: View results
 
-Results are not immediate. A session is scored only after it has been idle for the config's session timeout — 5 minutes by default for `agentcore add online-eval` (set `sessionTimeoutMinutes`, 1–1440, on the entry in `agentcore.json`), 15 minutes by default for `agentcore eval online-eval create` (`--session-timeout-minutes`). Expect the first results roughly that long after the last invocation, plus the 30–60s trace delay. Sessions that already existed in the trace source when the config became active can be sampled and scored too, so the first results may be for traffic sent before the deploy.
+Results are not immediate. A session is scored only after it has been idle for the config's session timeout — 5 minutes by default for `agentcore add online-eval`, 15 minutes by default for `agentcore eval online-eval create` (`--session-timeout-minutes`). Expect the first results roughly that long after the last invocation, plus the 30–60s trace delay. The deploy honors `sessionTimeoutMinutes` (1–1440) on the `onlineEvalConfigs` entry in `agentcore.json`, but the CLI's own schema doesn't declare it, so the next `agentcore add` or `agentcore remove` silently rewrites the file without it. If you set it, re-check the entry after every CLI edit before deploying — or leave the 5-minute default. Sessions that already existed in the trace source when the config became active can be sampled and scored too, so the first results may be for traffic sent before the deploy.
 
 Results stream to CloudWatch Logs:
 
@@ -375,7 +380,7 @@ Choose the right level first:
 agentcore add evaluator llm-as-a-judge \
   --name ResponseQuality \
   --level TRACE \
-  --model "global.anthropic.claude-sonnet-4-5-20250929-v1:0" \
+  --model "global.anthropic.claude-sonnet-5-5" \
   --instructions "Evaluate the assistant's response for helpfulness and accuracy. Context: {context}. Response to evaluate: {assistant_turn}" \
   --rating-scale 1-5-quality
 ```

@@ -47,7 +47,7 @@ No arguments required. The skill reads your project config and produces a checkl
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-If `agentcore/agentcore.json` doesn't have `"version": 2`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Have the developer run `agentcore migrate` first (it prints the plan and asks before changing anything) so the fixes below can be applied. Commit first — `agentcore migrate` refuses a dirty git working tree, and v0 `create` always leaves uncommitted files.
+If `agentcore/agentcore.json` doesn't have `"version": 2`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Migrate first so the fixes below can be applied. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts.
 
 ### Step 1: Read the project
 
@@ -99,13 +99,13 @@ To use your own scoped role instead of the generated one, set it on the runtime 
 
 The templates call a cross-region **inference profile** (`global.` by default; `us.`/`eu.`/`apac.` for geographic ones), so you need two resources: the profile itself, and the underlying foundation model in **every** region the profile can route to — hence the `*` region (global profiles also route through a region-less `arn:aws:bedrock:::foundation-model/...` ARN, which `*` covers). Scoping the foundation model to one region, or listing only the foundation model, breaks the scaffolded agent with `AccessDeniedException`. Replace both IDs with the model your agent uses (`aws bedrock get-inference-profile --inference-profile-identifier <ID>` lists the models behind a profile).
 
-**ECR access (Container builds only):** CodeZip runtimes don't pull from ECR. For a Container build the generated role already grants pull access only to the project's own repository; if you bring your own role, scope it the same way:
+**ECR access (Container builds only):** CodeZip runtimes don't pull from ECR. For a Container build the generated role already grants pull access only to the project's own repository, named `<project>/<target>/<runtimename>` in lowercase; if you bring your own role, scope it the same way (or copy the repository ARN from the generated role):
 
 ```json
 {
   "Effect": "Allow",
   "Action": ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"],
-  "Resource": "arn:aws:ecr:<REGION>:<YOUR_ACCOUNT_ID>:repository/bedrock-agentcore-<AGENT_NAME>-*"
+  "Resource": "arn:aws:ecr:<REGION>:<YOUR_ACCOUNT_ID>:repository/<project>/<target>/<runtimename>"
 }
 ```
 
@@ -159,7 +159,7 @@ Alternatively, use the IAM console: **IAM → Policies → Filter by type: Custo
 }
 ```
 
-Deployed Runtime IDs have the form `<project>_<target>_<RuntimeName>-<suffix>` (e.g. `MyProj_default_agent-R3GgWn3lXh`); use the exact ARN from `agentcore status --json` when you can.
+Deployed Runtime IDs have the form `<project>_<target>_<RuntimeName>-<suffix>` (e.g. `MyProj_default_agent-R3GgWn3lXh`). A project converted by `agentcore migrate` keeps its v0 names, `<project>_<RuntimeName>-<suffix>` with no target segment. Take the exact ARN from `agentcore status --json` either way.
 
 **Enable CloudTrail alerting.** Create an EventBridge rule to notify your security team when `InvokeAgentRuntimeCommand` is called:
 
@@ -447,7 +447,9 @@ jq '.runtimes[] | {name, instrumentation}' agentcore/agentcore.json
 
 ```bash
 # Runtimes are <PROJECT>_<TARGET>_<name>-...; a Harness logs through its backing
-# Runtime, harness_<PROJECT>_..., so cover both prefixes
+# Runtime, harness_<PROJECT>_..., so cover both prefixes. A project converted by
+# `agentcore migrate` uses <PROJECT>_<name>-... (no target segment): use <PROJECT>_
+# instead, and check the IDs in `agentcore status --json`
 for prefix in <PROJECT>_<TARGET>_ harness_<PROJECT>_; do
   for lg in $(aws logs describe-log-groups \
       --log-group-name-prefix "/aws/bedrock-agentcore/runtimes/$prefix" \
