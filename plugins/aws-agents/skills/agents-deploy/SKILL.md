@@ -49,7 +49,7 @@ Deploy your AgentCore agent to AWS, or diagnose why a deploy failed.
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-If `agentcore/agentcore.json` has no `"version": 2`, it's a v0 project. v1 deploys it in compatibility mode (it runs the latest v0 CLI's deploy) but blocks `agentcore build` and most project changes. Point the developer at `agentcore migrate`: it checks the project and prints a plan without changing anything, and `agentcore migrate --yes` applies it while keeping deployed resources (`--target <name>` picks the target when there are several).
+If `agentcore/agentcore.json` has no `"version": 2`, it's a v0 project. v1 deploys it in compatibility mode (it runs the latest v0 CLI's deploy) but blocks `agentcore build` and most project changes. Point the developer at `agentcore migrate`: it checks the project and prints a plan without changing anything, and `agentcore migrate --yes` applies it while keeping deployed resources (`--target <name>` picks the target when there are several). Commit first — `agentcore migrate` refuses a dirty git working tree, and v0 `create` always leaves uncommitted files.
 
 ### Step 1: Determine the situation
 
@@ -81,7 +81,14 @@ agentcore build
 
 `build` brings each Runtime's entry in `agentcore.json` up to date with its code (build type, runtime version, entrypoint — it prints what changed), checks each Runtime's folder has what its build needs (`pyproject.toml` + entrypoint, `package.json` + `main.ts`, or a `Dockerfile`), validates `agentcore.json` and any `harness.yaml`, and synthesizes the CDK app into `agentcore/cdk/cdk.out/` (one `AgentCore-<project>-<target>.template.json` per target, or a single `AgentCore-<project>` template before the first deploy). Nothing is deployed — malformed config fails here. One caveat: a project with credentials (`agentcore add credentials ...`) can't fully build until a first deploy has provisioned them; the CLI says so.
 
-There's no separate `validate` command and no `--dry-run` / `--diff` flag on `deploy` in v1; `agentcore build` is the preview.
+There's no separate `validate` command and no `--dry-run` / `--diff` flag on `deploy` in v1. `agentcore build` checks and synthesizes but shows no diff. To see what a deploy would change in an already-deployed target, diff the synthesized template against the live stack with the CDK app's own CDK CLI:
+
+```bash
+agentcore build
+cd agentcore/cdk && node node_modules/aws-cdk/bin/cdk diff --app cdk.out AgentCore-<project>-<target>
+```
+
+Don't use `npx cdk` inside `agentcore/cdk/`: the vended `package.json` declares its own `"bin": {"cdk": ...}`, so `npx cdk` runs the project's CDK app instead of the CDK CLI. `cdk.out/` isn't cleaned between builds, so ignore stale template files for targets you no longer have.
 
 ### Check 2: Verify account and region
 
@@ -108,7 +115,16 @@ cat agentcore/aws-targets.json
 Show the developer this command to check enabled models in the target region:
 
 ```bash
-aws bedrock list-foundation-models --region <TARGET_REGION> \
+# The target's region, or the CLI's fallback chain for a first deploy
+REGION=${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region)}}; REGION=${REGION:-us-east-1}
+
+# The scaffolded model is an inference profile, which list-foundation-models doesn't list
+aws bedrock get-inference-profile --region "$REGION" \
+  --inference-profile-identifier <MODEL_ID> \
+  --query '{id:inferenceProfileId,status:status}'
+
+# Foundation models behind it
+aws bedrock list-foundation-models --region "$REGION" \
   --query 'modelSummaries[?modelLifecycle.status==`ACTIVE`].modelId' \
   --output table
 ```
@@ -122,8 +138,17 @@ For Runtimes the model ID is in code (`app/<name>/model/load.py` or `load.ts`); 
 Show the developer the permissions needed and this verification command:
 
 ```bash
+# SSO and assumed-role credentials return an STS ARN, which simulate-principal-policy rejects
+# ("Invalid ARN"). Resolve the IAM role ARN, including its path (SSO roles live under
+# /aws-reserved/sso.amazonaws.com/), with get-role.
+CALLER_ARN=$(aws sts get-caller-identity --query Arn --output text)
+case "$CALLER_ARN" in
+  *:assumed-role/*) PRINCIPAL_ARN=$(aws iam get-role --role-name "$(echo "$CALLER_ARN" | cut -d/ -f2)" --query Role.Arn --output text) ;;
+  *) PRINCIPAL_ARN="$CALLER_ARN" ;;
+esac
+
 aws iam simulate-principal-policy \
-  --policy-source-arn $(aws sts get-caller-identity --query Arn --output text) \
+  --policy-source-arn "$PRINCIPAL_ARN" \
   --action-names iam:CreateRole \
   --resource-arns "arn:aws:iam::*:role/*BedrockAgentCore*"
 ```
@@ -224,10 +249,10 @@ Fix: set `"@aws/agentcore-cdk": "1.0.0"` (or newer) in `agentcore/cdk/package.js
 
 **CDK bootstrap failure:**
 
-The CLI bootstraps the target account/region automatically (`bootstrapping aws://<account>/<region>`). If that step fails, it's almost always permissions on the `CDKToolkit` stack (CloudFormation, S3, ECR, IAM). Fix the permissions and re-run; as a fallback an admin can run:
+The CLI bootstraps the target account/region automatically (`bootstrapping aws://<account>/<region>`). If that step fails, it's almost always permissions on the `CDKToolkit` stack (CloudFormation, S3, ECR, IAM). Fix the permissions and re-run; as a fallback an admin can bootstrap with the CDK CLI the project already installed (not `npx cdk`, which runs the project's own app — see Check 1):
 
 ```bash
-npx cdk bootstrap aws://<YOUR_ACCOUNT_ID>/<REGION>
+cd agentcore/cdk && node node_modules/aws-cdk/bin/cdk bootstrap aws://<YOUR_ACCOUNT_ID>/<REGION>
 ```
 
 **Runtime build precheck failed:**
@@ -341,14 +366,68 @@ agentcore deploy                                               # applies the rem
 
 `remove` only edits the project; the next `agentcore deploy` deletes the resource from the target. Code under `app/` is left in place.
 
-To delete everything deployed to a target:
+To delete everything deployed to a target, work through these steps in order. Repeat for each target with `--target <name>` (and `--region` on the `harness` / `aws` commands if the target isn't in your default region).
+
+**1. Delete named Harness endpoints first.** Harness endpoints created with `agentcore harness endpoint create` (e.g. a `prod` pin from [versioning](references/versioning.md)) aren't in the stack, and the service refuses to delete a Harness that still has them — the stack ends up `DELETE_FAILED` with `Harness ... has endpoints that must be deleted before the harness can be deleted` (409 `ConflictException`). Runtime endpoints are declared in `agentcore.json` and go away with the stack.
+
+```bash
+agentcore harness endpoint list --id <HARNESS_ID>
+agentcore harness endpoint delete --id <HARNESS_ID> --qualifier <ENDPOINT_NAME>   # every endpoint except DEFAULT
+```
+
+Wait until `harness endpoint list` shows only `DEFAULT` (endpoint deletion takes a few minutes) before the next step.
+
+**2. Delete the stack.**
 
 ```bash
 agentcore remove all --yes
 agentcore deploy --yes
 ```
 
-The second command deletes the stack `AgentCore-<project>-<target>`. Repeat with `--target <name>` for each target. For a fuller teardown walkthrough, see [`agents-build/references/teardown.md`](../agents-build/references/teardown.md).
+The second command deletes the stack `AgentCore-<project>-<target>`. If it fails with `DELETE_FAILED`, fix the cause it names (usually step 1) and run `agentcore deploy --yes` again.
+
+**3. Confirm the stack is gone** — include `DELETE_FAILED`, or a stuck stack won't show up:
+
+```bash
+aws cloudformation list-stacks \
+  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE ROLLBACK_COMPLETE DELETE_IN_PROGRESS DELETE_FAILED \
+  --query "StackSummaries[?starts_with(StackName, 'AgentCore-<project>-')].[StackName,StackStatus]" --output table
+```
+
+**4. Clean up what survives the stack.** These aren't CloudFormation resources, so deleting the stack leaves them behind:
+
+- **Runtime log groups** — one per endpoint: `/aws/bedrock-agentcore/runtimes/<RUNTIME_ID>-<ENDPOINT>` (e.g. `...-DEFAULT`, `...-prod`).
+- **Harness log groups** — a Harness logs through the service Runtime that backs it: `/aws/bedrock-agentcore/runtimes/harness_<HARNESS_NAME>-<suffix>-<ENDPOINT>` (the backing ID is `.harness.environment.agentCoreRuntimeEnvironment.agentRuntimeId` in `agentcore harness get --id <HARNESS_ID> --json`).
+- **Online-eval results** — `/aws/bedrock-agentcore/evaluations/results/<ONLINE_EVAL_CONFIG_ID>` (e.g. `<project>_<target>_<name>-<suffix>`).
+- **Code-evaluator Lambda logs** — `/aws/lambda/<project>-<target>-eval-<EvaluatorName>`.
+
+Note the Runtime/Harness IDs (`agentcore status --json`) before step 2 so you can match them. Then list and delete:
+
+```bash
+aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/<project>_ \
+  --query 'logGroups[].logGroupName' --output text | tr '\t' '\n'
+aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/harness_<project>_ \
+  --query 'logGroups[].logGroupName' --output text | tr '\t' '\n'
+aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/evaluations/results/<project>_ \
+  --query 'logGroups[].logGroupName' --output text | tr '\t' '\n'
+aws logs describe-log-groups --log-group-name-prefix /aws/lambda/<project>-<target>-eval- \
+  --query 'logGroups[].logGroupName' --output text | tr '\t' '\n'
+
+aws logs delete-log-group --log-group-name <LOG_GROUP_NAME>   # for each one that belongs to this project
+```
+
+- **Eval datasets and recommendations** (from `agents-optimize`) are service-side and not in the stack:
+
+  ```bash
+  agentcore eval dataset list
+  agentcore eval dataset delete --id <DATASET_ID>
+  agentcore eval recommendation list
+  agentcore eval recommendation delete --id <RECOMMENDATION_ID>
+  ```
+
+- **Batch evaluations** have no delete command (`eval batch-evaluation` has `evaluate`, `simulate`, `get`, `list`, `stop`); completed jobs stay listed.
+
+Leave account-wide settings alone unless you mean to change them for every project: the `CDKToolkit` bootstrap stack, CloudWatch Transaction Search, and the shared batch-evaluation results log group.
 
 ## Exporting a Harness to code
 

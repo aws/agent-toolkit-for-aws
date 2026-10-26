@@ -31,7 +31,14 @@ HTTP 429 Too Many Requests
 
 On `InvokeAgentRuntime` or `InvokeAgentRuntimeWithWebSocketStream`.
 
-**What it means:** Too many invocations per second for a single agent endpoint in your account. Default 25 TPS per agent, per account, per region. Adjustable.
+**What it means:** Too many invocations per second. Service Quotas has no per-agent `InvokeAgentRuntime` TPS quota; the account-level one is **"Rate of Runtime data plane APIs"** (quota code `L-46ED137C`) — the combined requests per second for `InvokeAgentRuntime`, `InvokeAgentRuntimeWithWebSocketStream`, `InvokeAgentRuntimeCommand`, `StopRuntimeSession`, and the other Runtime data-plane APIs, per account, per region. Default 1,000 in us-east-1. Adjustable. Check the default for your region:
+
+```bash
+aws service-quotas get-aws-default-service-quota --service-code bedrock-agentcore \
+  --quota-code L-46ED137C --region <REGION> --query 'Quota.[QuotaName,Value]'
+```
+
+A 429 well below that rate can also be the new-session rate (below).
 
 **Before requesting an increase:**
 
@@ -49,7 +56,15 @@ On `InvokeAgentRuntime` or `InvokeAgentRuntimeWithWebSocketStream`.
 ServiceQuotaExceededException: maxVms limit exceeded
 ```
 
-**What it means:** Your account has too many concurrent microVMs active for AgentCore Runtime. In the AgentCore docs this quota is called **"Active session workloads per account."** Default 1,000 in us-east-1 and us-west-2, 500 in other regions. Adjustable.
+**What it means:** Your account has too many concurrent microVMs active for AgentCore Runtime. In Service Quotas this is **"Active Session Workloads per Account"** (quota code `L-3E5722B2`). Default 5,000 in us-east-1 and us-west-2; lower in some other regions (e.g. 2,500 in eu-west-1). Adjustable. Check your region rather than relying on these numbers:
+
+```bash
+aws service-quotas get-aws-default-service-quota --service-code bedrock-agentcore \
+  --quota-code L-3E5722B2 --region <REGION> --query 'Quota.[QuotaName,Value]'
+# your account's applied value (differs from the default after an increase):
+aws service-quotas get-service-quota --service-code bedrock-agentcore \
+  --quota-code L-3E5722B2 --region <REGION> --query 'Quota.[QuotaName,Value]'
+```
 
 **Critical — read before requesting an increase:**
 
@@ -221,7 +236,7 @@ Whether you're using the Service Quotas console justification field or the Suppo
 
 - **AWS Account ID** (the account that needs the increase)
 - **Region(s)** — limits are per-region; list every region you need if this is a Support case covering multiple
-- **Quota name** — match the exact name from the AgentCore limits documentation (e.g., "Active session workloads per account," "InvokeAgentRuntime API rate, per agent, per account")
+- **Quota name** — match the exact name from the AgentCore limits documentation (e.g., "Active Session Workloads per Account," "Rate of Runtime data plane APIs")
 - **Current value → requested value** — be specific (e.g., "25 → 100")
 - **Agent Runtime ID(s)** or ARN(s) — what this request is for
 - **Use case** — 1–3 sentences on what the agent does and the traffic pattern (sustained vs. bursty matters for some quotas)

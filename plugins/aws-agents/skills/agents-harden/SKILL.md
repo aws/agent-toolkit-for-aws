@@ -47,7 +47,7 @@ No arguments required. The skill reads your project config and produces a checkl
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-If `agentcore/agentcore.json` doesn't have `"version": 2`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Have the developer run `agentcore migrate` first (it prints the plan and asks before changing anything) so the fixes below can be applied.
+If `agentcore/agentcore.json` doesn't have `"version": 2`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Have the developer run `agentcore migrate` first (it prints the plan and asks before changing anything) so the fixes below can be applied. Commit first — `agentcore migrate` refuses a dirty git working tree, and v0 `create` always leaves uncommitted files.
 
 ### Step 1: Read the project
 
@@ -56,7 +56,9 @@ Read `agentcore/agentcore.json` to understand:
 - What resources are configured (`runtimes`, `harnesses`, `memories`, `agentCoreGateways`, `credentials`, `policyEngines`, `evaluators`, `onlineEvalConfigs`)
 - What framework is being used (Runtime code under `app/<name>/`; harnesses are configured in `app/<name>/harness.yaml`)
 - What network mode is configured (`networkMode`: `PUBLIC` or `VPC`, with `networkConfig` for VPC)
-- What inbound auth is configured (`authorizerType` / `authorizerConfiguration` on each runtime and gateway)
+- What inbound auth is configured (`authorizerType` / `authorizerConfiguration` on each runtime and gateway in `agentcore.json`; for a harness, `authorizerConfiguration` in `app/<name>/harness.yaml`)
+
+Templates leave many keys out (e.g. `networkMode`, `authorizerType`), so a `jq` check that prints `null` means "not set — the default applies", not "broken". The defaults are called out in each section below.
 
 Then run `agentcore status --json` to see which of those resources are actually deployed to the target (`deploymentState`), and their ARNs.
 
@@ -68,7 +70,7 @@ Work through each category and report findings specific to the project.
 
 ## IAM: Scope down permissions
 
-The auto-created execution role has broad Bedrock access (`arn:aws:bedrock:*::foundation-model/*`). For production, scope it to the specific models your agent uses.
+The auto-created execution role has broad Bedrock access (`arn:aws:bedrock:*::foundation-model/*` and `arn:aws:bedrock:*:<account>:inference-profile/*`). For production, scope it to the specific models your agent uses.
 
 **Check the current execution role:**
 
@@ -89,14 +91,15 @@ To use your own scoped role instead of the generated one, set it on the runtime 
     "bedrock:InvokeModelWithResponseStream"
   ],
   "Resource": [
-    "arn:aws:bedrock:<REGION>::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0"
+    "arn:aws:bedrock:*:<YOUR_ACCOUNT_ID>:inference-profile/global.anthropic.claude-sonnet-5-5",
+    "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5-5"
   ]
 }
 ```
 
-Replace the resource ARN with the specific model(s) your agent uses.
+The templates call a cross-region **inference profile** (`global.` by default; `us.`/`eu.`/`apac.` for geographic ones), so you need two resources: the profile itself, and the underlying foundation model in **every** region the profile can route to — hence the `*` region (global profiles also route through a region-less `arn:aws:bedrock:::foundation-model/...` ARN, which `*` covers). Scoping the foundation model to one region, or listing only the foundation model, breaks the scaffolded agent with `AccessDeniedException`. Replace both IDs with the model your agent uses (`aws bedrock get-inference-profile --inference-profile-identifier <ID>` lists the models behind a profile).
 
-**ECR access:** Scope to your specific repository:
+**ECR access (Container builds only):** CodeZip runtimes don't pull from ECR. For a Container build the generated role already grants pull access only to the project's own repository; if you bring your own role, scope it the same way:
 
 ```json
 {
@@ -106,7 +109,7 @@ Replace the resource ARN with the specific model(s) your agent uses.
 }
 ```
 
-**Trust policy:** Verify the execution role's trust policy is scoped to your account:
+**Trust policy:** The CLI-generated roles already carry these conditions — verify them (`aws iam get-role --role-name <ROLE_NAME> --query Role.AssumeRolePolicyDocument`), and copy them if you bring your own role:
 
 ```json
 {
@@ -151,10 +154,12 @@ Alternatively, use the IAM console: **IAM → Policies → Filter by type: Custo
   "Statement": [{
     "Effect": "Allow",
     "Action": "bedrock-agentcore:InvokeAgentRuntimeCommand",
-    "Resource": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/<RUNTIME_NAME>-*"
+    "Resource": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/<PROJECT>_<TARGET>_<RUNTIME_NAME>-*"
   }]
 }
 ```
+
+Deployed Runtime IDs have the form `<project>_<target>_<RuntimeName>-<suffix>` (e.g. `MyProj_default_agent-R3GgWn3lXh`); use the exact ARN from `agentcore status --json` when you can.
 
 **Enable CloudTrail alerting.** Create an EventBridge rule to notify your security team when `InvokeAgentRuntimeCommand` is called:
 
@@ -171,7 +176,7 @@ aws events put-rule \
 
 ## Inbound auth: Control who can call your agent
 
-By default, runtimes and harnesses use AWS IAM (SigV4) for inbound auth. **Gateways are different: a gateway with no `authorizerType` in `agentcore.json` defaults to `NONE`.** For production, verify each one is configured correctly.
+By default, runtimes and harnesses use AWS IAM (SigV4) for inbound auth — a `null` `authorizerType` on a runtime, or no `authorizerConfiguration` in `harness.yaml`, means `AWS_IAM`. **Gateways are different: a gateway with no `authorizerType` in `agentcore.json` defaults to `NONE`** (the CLI writes it explicitly when it creates one). For production, verify each one is configured correctly.
 
 **Check current auth config:**
 
@@ -179,6 +184,7 @@ By default, runtimes and harnesses use AWS IAM (SigV4) for inbound auth. **Gatew
 # What the project declares
 jq '.runtimes[] | {name, authorizerType, authorizerConfiguration}' agentcore/agentcore.json
 jq '.agentCoreGateways[] | {name, authorizerType, authorizerConfiguration}' agentcore/agentcore.json
+grep -n -A4 '^authorizerConfiguration' app/*/harness.yaml   # harnesses; no match = AWS_IAM
 
 # What is deployed (IDs are the last ARN segment in `agentcore status --json`)
 agentcore runtime get --id <RuntimeId> --json | jq '.authorizerConfiguration'
@@ -209,6 +215,15 @@ For an existing runtime, set these fields on its entry in `agentcore/agentcore.j
     }
   ]
 }
+```
+
+For a **harness**, put the authorizer in `app/<name>/harness.yaml` instead (note the capitalized `JWT` in the YAML key), then `agentcore deploy`:
+
+```yaml
+authorizerConfiguration:
+  customJWTAuthorizer:
+    discoveryUrl: https://your-idp.example.com/.well-known/openid-configuration
+    allowedAudience: [my-api]
 ```
 
 `discoveryUrl` must be HTTPS and end in `/.well-known/openid-configuration`. `customJwtAuthorizer` also accepts `allowedScopes` and `customClaims`. The same `--authorizer-type` / `--authorizer-configuration` pair (the JSON is the `authorizerConfiguration` object above) is available on `agentcore add runtime`, `agentcore add harness`, and `agentcore add gateway` when you create the resource.
@@ -326,7 +341,7 @@ def invoke(payload, context):
 - Numeric inputs are within expected ranges
 - User-provided IDs (actor_id, session_id) match expected formats
 
-**Rate limiting:** AgentCore Runtime has built-in invocation rate limits (default 25 TPS per agent — see [`references/limits.md`](references/limits.md)). For application-level rate limiting (per-user, per-tenant), implement it in your calling application or API Gateway layer, not in the agent code itself. The agent should assume it's already been rate-limited by the time a request reaches it.
+**Rate limiting:** AgentCore Runtime has built-in invocation rate limits (an account-wide data-plane request rate and a per-endpoint new-session rate — see [`references/limits.md`](references/limits.md)). For application-level rate limiting (per-user, per-tenant), implement it in your calling application or API Gateway layer, not in the agent code itself. The agent should assume it's already been rate-limited by the time a request reaches it.
 
 ---
 
@@ -338,8 +353,9 @@ Two failure modes to check for:
 
 ```bash
 # Search for common secret patterns in agent code
-grep -r "sk-\|api_key\s*=\s*['\"]" app/ --include="*.py"
-grep -r "password\s*=\s*['\"]" app/ --include="*.py"
+# (skip vendored dependencies, or you'll get hundreds of hits from .venv)
+grep -r "sk-\|api_key\s*=\s*['\"]" app/ --include="*.py" --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=__pycache__
+grep -r "password\s*=\s*['\"]" app/ --include="*.py" --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=__pycache__
 ```
 
 ### 2. Secrets pulled from runtime environment variables
@@ -348,7 +364,7 @@ AgentCore Runtime environment variables are **not** vault-backed. Anything a dev
 
 ```bash
 # Flag any os.getenv / os.environ call whose name implies a secret
-grep -rE "os\.(getenv|environ).*(TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL)" app/ --include="*.py"
+grep -rE "os\.(getenv|environ).*(TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL)" app/ --include="*.py" --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=__pycache__
 ```
 
 Non-secret identifiers injected by the platform are fine and should not match an allowlist (e.g., `MEMORY_*_ID`, `AGENTCORE_GATEWAY_*_URL`, `AWS_REGION`, downstream agent ARNs). Review hits and confirm none are secrets.
@@ -396,7 +412,7 @@ A related audit — for every external service the agent calls, ask whether it s
 
 ```bash
 # Find direct outbound HTTP calls in agent code
-grep -rEn 'httpx\.|requests\.|aiohttp\.' app/ --include="*.py"
+grep -rEn 'httpx\.|requests\.|aiohttp\.' app/ --include="*.py" --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=__pycache__
 ```
 
 For each hit, decide:
@@ -427,13 +443,21 @@ jq '.runtimes[] | {name, instrumentation}' agentcore/agentcore.json
 
 **CloudWatch dashboard:** AWS Console → CloudWatch → GenAI Observability → Bedrock AgentCore
 
-**Log retention:** By default, logs are retained indefinitely. Set a retention policy for cost control:
+**Log retention:** By default, logs are retained indefinitely. Every Runtime endpoint (`DEFAULT`, `prod`, ...) and every Harness gets its own log group under `/aws/bedrock-agentcore/runtimes/`, so set a retention policy on each of them:
 
 ```bash
-aws logs put-retention-policy \
-  --log-group-name /aws/bedrock-agentcore/runtimes/<AGENT_ID>-DEFAULT \
-  --retention-in-days 30
+# Runtimes are <PROJECT>_<TARGET>_<name>-...; a Harness logs through its backing
+# Runtime, harness_<PROJECT>_..., so cover both prefixes
+for prefix in <PROJECT>_<TARGET>_ harness_<PROJECT>_; do
+  for lg in $(aws logs describe-log-groups \
+      --log-group-name-prefix "/aws/bedrock-agentcore/runtimes/$prefix" \
+      --query 'logGroups[].logGroupName' --output text); do
+    aws logs put-retention-policy --log-group-name "$lg" --retention-in-days 30
+  done
+done
 ```
+
+New endpoints create new log groups, so re-run this after adding one.
 
 ---
 
