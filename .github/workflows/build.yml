@@ -48,5 +48,8 @@ jobs:
       - name: Validate manifests, skills, and plugin parity
         run: mise run validate
 
+      - name: Test Startup Advisor telemetry
+        run: uv run --no-project --with pytest python -m pytest plugins/aws-startup-advisor/scripts/telemetry/test -q
+
       - name: Security scan (gitleaks)
         run: mise run security
