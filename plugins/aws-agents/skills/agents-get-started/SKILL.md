@@ -76,7 +76,7 @@ Before jumping into template selection, figure out where the developer is:
 
 - **Exploring** → Go to Step 2. Present the options, answer questions, and wait. Do not construct a `create` command until they signal they're ready.
 - **Ready to create** → Skip to Step 3 (create the project). If they already said Harness, or named a template or framework, skip Step 2 entirely.
-- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has no `"version": 2`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Point the developer at `agentcore migrate` (it checks the project and prints the plan without changing anything; `agentcore migrate --yes` applies it, and `--target <name>` picks the target when it's deployed to several). Commit first — `agentcore migrate` refuses a dirty git working tree, and v0 `create` always leaves uncommitted files.
+- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has no `"version": 2`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts.
 
 If the developer's intent is clear from `$ARGUMENTS` (e.g., "create a Strands agent called MyBot"), skip straight to Step 3.
 
@@ -167,7 +167,7 @@ If the developer asks about a framework that has no template, handle it:
 The framework is how your agent orchestrates (Strands, LangChain, etc.). The model provider is which LLM it calls (Bedrock, Anthropic, OpenAI, Gemini, ...). These are independent choices.
 
 - `agentcore create --name <ProjectName> --template <name>` always scaffolds the template's default provider (Amazon Bedrock for the model-backed templates).
-- To pick another provider for a Strands template (`agent-python-strands` and `-container`, `a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`), run `agentcore create` with no flags: the wizard asks for the provider (Bedrock, Anthropic, OpenAI, an OpenAI-compatible endpoint, Gemini, or LiteLLM — Python only), the model ID, and an API-key file.
+- To pick another provider for a Strands template (`agent-python-strands` and `-container`, `a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`), run `agentcore create` with no flags: the wizard asks for the provider (Bedrock, Anthropic, OpenAI, an OpenAI-compatible endpoint, Gemini, or LiteLLM — Python only), the model ID, and an API-key file. The wizard needs a TTY, so ask the developer to run `agentcore create` in their own terminal rather than running it from your shell.
 - A Harness picks its model with `agentcore add harness --name <HarnessName> --model '<JSON>'` or in `harness.yaml` (Bedrock, OpenAI, Gemini, or a LiteLLM gateway).
 
 If the developer says "I want to use Claude" they mean the model provider (Bedrock or Anthropic), not the framework. If they say "I want to use LangGraph" they mean the framework.
@@ -306,7 +306,7 @@ agentcore dev
 What it does depends on the agent type:
 
 - **Runtime:** runs every Runtime in the project locally (CodeZip with `uv run` / Node, container builds with Docker, Podman, or Finch), streams their output, and collects traces locally. Default mode is `headless`; `--mode browser` opens the Agent Inspector web UI.
-- **Harness:** a Harness can't run locally. `agentcore dev` **deploys** the project (same as `agentcore deploy`, honoring `--target` and `--yes`) and then prints invoke guidance; with `--mode browser` it opens the Agent Inspector against the deployed Harness. `--skip-deploy` reuses what's already deployed.
+- **Harness:** a Harness can't run locally. `agentcore dev` **deploys** the project to AWS (same as `agentcore deploy`, honoring `--target` and `--yes`) and then prints invoke guidance; with `--mode browser` it opens the Agent Inspector against the deployed Harness. `--skip-deploy` reuses what's already deployed. Before running `agentcore dev` on a Harness project, tell the developer it will deploy to their AWS account and wait for them to confirm — or skip to Step 6.
 - A project with both Runtimes and Harnesses needs `--agent <name>` to choose.
 
 **Ports** (important if you're scripting `curl` calls or testing from another process):

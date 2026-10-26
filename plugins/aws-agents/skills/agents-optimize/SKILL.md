@@ -62,7 +62,7 @@ If `agentcore/agentcore.json` is not found:
 
 The `agentcore eval ...` commands work without a project (they take deployed resource IDs), so a developer with only a deployed runtime ID can still use the on-demand and batch evaluation paths in `references/evals.md`.
 
-If `agentcore.json` has no `"version": 2`, it is a v0 project. CLI v1 runs it in compatibility mode and blocks `add`/`remove`, so `agentcore add evaluator` and `agentcore add online-eval` will fail. Tell the developer to run `agentcore migrate` from the project root first (it shows the planned changes and asks before applying; `--yes` skips the prompt, `--target <name>` picks a target when the project is deployed to several). Migrate only runs in a git repository with `agentcore/agentcore.json` committed and no uncommitted changes under the project directory — commit (or stash) first, or it stops with `Commit or stash your changes before migrating`.
+If `agentcore.json` has no `"version": 2`, it is a v0 project. CLI v1 runs it in compatibility mode and blocks `add`/`remove`, so `agentcore add evaluator` and `agentcore add online-eval` will fail. Migrate first, from the project root. Run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). Commit first: migrate refuses a dirty git tree. In an agent's non-TTY shell it never prompts. A dirty tree stops it with `Commit or stash your changes before migrating`.
 
 ### Step 2: Determine the workflow
 

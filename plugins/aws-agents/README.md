@@ -11,7 +11,7 @@ This plugin provides 8 skills covering the full agent lifecycle — from scaffol
 | Skill | When to use | References |
 |---|---|---|
 | `agents-get-started` | "build an agent", "create an agent", "get started", "which framework" | example-support-agent |
-| `agents-build` | "add memory", "remember across sessions", "call agent from app", "VPC", "multi-agent", "migrate from Bedrock" | memory, integrate, vpc, multi-agent, migrate, local-vs-deployed, browser, code-interpreter, payments, request-headers, teardown |
+| `agents-build` | "add memory", "remember across sessions", "call agent from app", "VPC", "multi-agent", "migrate from Bedrock" | memory, integrate, vpc, multi-agent, migrate, local-vs-deployed, browser, code-interpreter, payments, request-headers |
 | `agents-connect` | "connect to API", "add gateway", "give my agent tools", "Cedar policy", "restrict tools" | policy |
 | `agents-deploy` | "deploy my agent", "deploy failed", "CDK error", "rollback", "canary" | versioning |
 | `agents-debug` | "agent not working", "check logs", "command not found", "check my setup" | doctor |
