@@ -14,6 +14,7 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 - **Workflow Orchestration (Amazon MWAA)** — Author, test, and debug Apache Airflow DAGs on Amazon Managed Workflows for Apache Airflow (MWAA) provisioned environments and YAML workflows on MWAA Serverless, and upgrade provisioned environments to newer Airflow versions, including 2.x to 3.x.
 - **Streaming (Amazon MSK)** — Operate Amazon MSK Provisioned clusters with Standard and Express brokers: size and cost a cluster, troubleshoot performance and consumer lag, manage topics, replicate across clusters with MSK Replicator for disaster recovery and active-active topologies, and deliver topic data to Apache Iceberg tables on S3 Tables with Streaming Tables. Plan and execute a migration from self-managed Apache Kafka to MSK Express.
 - **Stream Processing (Amazon Managed Service for Apache Flink)** — Develop, deploy, and tune Apache Flink applications on Amazon Managed Service for Apache Flink, including checkpointing, state, connectors, dependency management, and Flink 1.x to 2.x migration.
+- **Spark Troubleshooting (AWS Glue and Amazon EMR)** — Diagnose failed or slow Apache Spark workloads on AWS Glue, Amazon EMR on EC2, EMR Serverless, and EMR on EKS with the SageMaker Unified Studio Spark troubleshooting MCP server, and generate code fix recommendations when the root cause is in the job's code.
 
 ## Agent Skills
 
@@ -37,12 +38,15 @@ This plugin brings AWS data engineering expertise directly into your coding assi
 | 16 | `developing-applications-on-managed-service-for-apache-flink` | Develop, deploy, and tune Apache Flink applications on Amazon Managed Service for Apache Flink, including checkpointing, connectors, and Flink 2.x migration | [SKILL.md](skills/developing-applications-on-managed-service-for-apache-flink/SKILL.md) |
 | 17 | `managing-data-catalog` | Write and curate business metadata in Amazon SageMaker Catalog or the AWS Glue Data Catalog: descriptions, READMEs, glossaries, metadata forms, publishing, and safe asset retirement | [SKILL.md](skills/managing-data-catalog/SKILL.md) |
 | 18 | `managing-data-asset-access` | Request, approve, share, audit, and revoke access to Amazon SageMaker Catalog assets through subscriptions, and confirm grants have settled | [SKILL.md](skills/managing-data-asset-access/SKILL.md) |
+| 19 | `troubleshoot-spark-job` | Diagnose failed or slow Apache Spark workloads on AWS Glue, Amazon EMR on EC2, EMR Serverless, and EMR on EKS, and generate code fix recommendations when the root cause is code-level | [SKILL.md](skills/troubleshoot-spark-job/SKILL.md) |
 
 ## MCP Servers
 
 | # | Server | Description |
 | - | --------- | ----------------------------------------------------------- |
 | 1 | `aws-mcp` | AWS API access, documentation search, and SOP retrieval via [AWS MCP Server](https://docs.aws.amazon.com/aws-mcp/latest/userguide/what-is-mcp-server.html) |
+| 2 | `spark-troubleshooting` | Spark job troubleshooting for AWS Glue, Amazon EMR on EC2, EMR Serverless, and EMR on EKS via the SageMaker Unified Studio MCP server (`analyze_spark_workload`) |
+| 3 | `spark-code-recommendation` | Spark code fix recommendations via the SageMaker Unified Studio MCP server (`spark_code_recommendation`) |
 
 ## Installation
 
