@@ -36,7 +36,8 @@ APPROVED_NOTICE = (
     "is used. What we collect: which skill you invoked, the plugin version, the "
     "host tool you're using, a randomly generated install identifier, and, for "
     "migration skills, the source cloud provider and which migration phase you "
-    "start and complete. The usage data above is not linked to your identity. "
+    "start and complete, and, for operate-on-aws, the ID of the AWS DevOps Agent "
+    "Space it creates. The usage data above is not linked to your identity. "
     "You can opt-out by [insert command/config setting]. Opting out does not "
     "change any plugin functionality.\n"
     "\n"
@@ -206,10 +207,26 @@ class TestReadState:
 
 
 class TestWriteState:
-    def test_schema_has_exactly_two_keys(self, home):
+    def test_schema_has_exactly_three_keys(self, home):
         record.write_state(record.ACCEPTED)
         written = json.loads(record.state_path().read_text())
-        assert set(written) == {"installId", "consentStatus"}
+        assert set(written) == {"installId", "consentStatus", "noticeVersion"}
+        assert written["noticeVersion"] == notice.NOTICE_VERSION
+
+    @pytest.mark.parametrize("stored, covers", [(None, 1), (1, 1), (2, 2), ("2", 1), (True, 1), (0, 1)])
+    def test_an_accepted_record_covers_the_notice_it_answered(self, home, stored, covers):
+        written = record.write_state(record.ACCEPTED)
+        if stored is None:
+            del written["noticeVersion"]
+        else:
+            written["noticeVersion"] = stored
+        record.state_path().write_text(json.dumps(written))
+        assert record.accepted_notice_version() == covers
+
+    def test_nothing_accepted_covers_no_notice(self, home):
+        assert record.accepted_notice_version() == 0
+        record.write_state(record.OPT_OUT)
+        assert record.accepted_notice_version() == 0
 
     def test_install_id_is_a_uuid(self, home):
         written = record.write_state(record.OPT_OUT)

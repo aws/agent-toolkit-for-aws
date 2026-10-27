@@ -292,7 +292,7 @@ def bundle_fixture(tmp_path):
     assert syncer.sync() == []
     plugin = tmp_path / "plugin"
     (plugin / "scripts/telemetry").mkdir(parents=True)
-    for name in syncer.RUNTIME_FILES:
+    for name in {name for names in syncer.BUNDLES.values() for name in names}:
         target = plugin / "scripts/telemetry" / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((TELEMETRY / name).read_bytes())
@@ -318,7 +318,8 @@ def test_generated_bundles_are_current_and_checks_detect_missing_or_stale_files(
     for name in ("plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codex-plugin/plugin.json",
                  ".devin-plugin/plugin.json"):
         (plugin / name).write_text('{"version":"2.0.4"}')
-    assert len(syncer.sync(plugin)) == 4
+    # One stale version.json per bundled skill.
+    assert len(syncer.sync(plugin)) == len(syncer.SKILLS)
     syncer.sync(plugin, write=True)
     assert syncer.sync(plugin) == []
 
