@@ -5,7 +5,7 @@
   },
   "closure": {
     "path": "references/runtime/closure.json",
-    "sha256": "236bf961d1decd4c35d909e3826b3ee248416cd56390bcefd6dc4ab882c77210"
+    "sha256": "ee52e734ae3c58af5b136292c42b599494c8e09dac52beff5785bf3cb63dc0b7"
   },
   "compatibility": {
     "classifier_schema": 1,
@@ -15,9 +15,9 @@
   "destination_identity": "gcp-to-aws",
   "patterns": {
     "path": "references/runtime/bma-input-patterns.json",
-    "sha256": "6c3c9894173d3f58ee13057ea34fae1a601cdd17ab52f056bd7ebe1e58f82b28"
+    "sha256": "cad4b7e67ae19e97d31d9b3760e3502c401e7decfac0bbf4868e6e3e115fd4f5"
   },
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "42cf0a382385da3dbbb86e4504f3304d065a15e2976c4e5bcb1eb2f396f50798"
+  "self_hash": "4ebe51a88cb6f6b08005f4bcfd0f648a69ff20e462d97c53968197311559805b"
 }

@@ -32,7 +32,7 @@
       "origin": "bma-native",
       "parity": "native",
       "runtime_references": [],
-      "sha256": "6c3c9894173d3f58ee13057ea34fae1a601cdd17ab52f056bd7ebe1e58f82b28",
+      "sha256": "cad4b7e67ae19e97d31d9b3760e3502c401e7decfac0bbf4868e6e3e115fd4f5",
       "type": "data"
     },
     {
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "70b8883b8da22048c4dfcebf8ff681bb19f9f300a1e51dcb5c0b0dd65111697a"
+  "self_hash": "82a9f7df825860be82a98b7c2c1af3f5d85bc30e7e59e6d86bf8ab8ffd97f36b"
 }

@@ -204,9 +204,16 @@ def test_reviewer_repro_plus_openai_import_is_candidate(tmp_path: Path) -> None:
     ("vertex_alias.py", "from google.cloud import storage, aiplatform as aip\n"),
     ("ocr.py", "from google.cloud import vision\n"),
     ("multi.py", "from google.cloud import (\n    storage,\n    aiplatform,\n)\n"),
+    # Review 5661016215 (comment 4384076088): current Google GenAI SDK, one case per form.
+    ("genai.py", "from google import genai\nclient = genai.Client()\n"),
+    ("genai_dotted.py", "import google.genai\n"),
+    ("chat.ts", 'import { GoogleGenAI } from "@google/genai";\n'),
+    ("requirements.txt", "google-genai==1.2.0\n"),
+    ("package.json", '{"dependencies": {"@google/genai": "^1.0.0"}}\n'),
 ], ids=["endpoint", "env-var", "model-prefix", "dependency-requirements", "dependency-package-json", "go-import", "java-import",
         "python-from-package-import", "python-from-package-import-alias", "python-from-package-import-vision",
-        "python-from-package-import-parenthesised"])
+        "python-from-package-import-parenthesised", "python-from-google-import-genai", "python-import-google-genai",
+        "ts-google-genai-import", "dependency-google-genai-pip", "dependency-google-genai-npm"])
 def test_each_ai_signal_family_is_candidate(tmp_path: Path, name: str, content: str) -> None:
     project = tmp_path / "project"; project.mkdir(); (project / name).write_text(content)
     first, _ = paired(project)
@@ -220,7 +227,9 @@ def test_each_ai_signal_family_is_candidate(tmp_path: Path, name: str, content: 
     ("requirements.txt", "requests==2.32.0\nnumpy\n"),
     ("tags.ts", 'const gpt = "gpt"; const o3 = "o3";\n'),
     ("blob.py", "from google.cloud import storage\nfrom google import cloud\n"),
-], ids=["reviewer-script", "prose-mentions", "identifier-substring", "plain-manifest", "bare-words", "non-ai-google-cloud-import"])
+    ("auth.py", "from google import auth\n"),
+], ids=["reviewer-script", "prose-mentions", "identifier-substring", "plain-manifest", "bare-words", "non-ai-google-cloud-import",
+        "non-ai-google-import"])
 def test_non_ai_source_content_is_not_a_signal(tmp_path: Path, name: str, content: str) -> None:
     project = tmp_path / "project"; project.mkdir(); (project / name).write_text(content)
     completed, value, _, _ = invoke(project)
