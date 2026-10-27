@@ -158,7 +158,7 @@ flat rates from `references/vendored/ai/bedrock-pricing-cache.md` throughout the
 do not apply the GPT multiplier. Verify other models' tiers individually.
 
 **Quota risk** (per `references/vendored/ai/bedrock-quotas.md`): high/very_high volume →
-`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× output burndown) or Astra runtime (10× output burndown) →
+`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude on bedrock-runtime or Astra runtime (10× output burndown) →
 `"medium"`; else `"low"`. Record on each `bedrock_models[]` entry.
 
 Also apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md` before writing `ai_architecture.quota_risk`. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. Batch rows are excluded. Profiles without peak fields keep the monthly result. Generate reads the value written here.

@@ -18,13 +18,19 @@ OpenAI and Gemini APIs have high default rate limits for paying customers (OpenA
 
 ## Output-Token Burndown Depends on the Model and Endpoint
 
-Claude models (3.7+) on Bedrock consume quota at **5× the rate for output tokens**. This is the single most common surprise for teams migrating from OpenAI (which has no output multiplier).
+Resolve the selected model and endpoint before applying a multiplier. These rates are from [How tokens are counted](https://docs.aws.amazon.com/bedrock/latest/userguide/quotas-token-burndown.html), read 2026-10-27. They apply only on `bedrock-runtime`. `bedrock-mantle` has separate input and output quotas, so burndown does not apply there and the two pools are not added into one TPM number.
 
-**GPT-6 Astra on `bedrock-runtime` uses 10× output-token burndown**: one output token consumes ten quota
-tokens. This is runtime-specific; do not apply it to mantle or infer Astra mantle quotas from GPT-5.6.
-Source: [Astra model card, verified 2026-09-16](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html).
+On `bedrock-runtime`, one output token consumes:
 
-**Effective TPM by workload type** (at 200K TPM quota on Claude):
+- **15** quota tokens for Claude 4.8
+- **10** for Claude Opus 5.5, Claude Sonnet 5, Claude Opus 5, Claude Fable 5.1, and for GPT-5.6 Sol, GPT-5.6 Terra, and GPT-5.6 Luna
+- **10** for GPT-6 Astra. This is runtime-specific; do not apply it to mantle or infer Astra mantle quotas from GPT-5.6. Source: [Astra model card, verified 2026-09-16](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+- **5** for other Anthropic Claude models, including 4.7 and below
+- **1** for every other model unless its model card says otherwise. Nova, Llama, DeepSeek, and Mistral are 1×
+
+GPT-5.6 Terra at 1,000 input tokens per minute and 25,000 output tokens per minute is `1000 + 25000 × 10 = 251,000` weighted TPM, not 26,000.
+
+**Effective TPM by workload type** (at 200K TPM quota on a 5× Claude model):
 
 | Workload Type      | Input:Output Ratio | Effective TPM | vs OpenAI 2M TPM           |
 | ------------------ | ------------------ | ------------- | -------------------------- |
@@ -48,7 +54,7 @@ Apply during Design phase after model selection. Uses `ai_token_volume` from `pr
 | `ai_token_volume`         | Model Family                           | `quota_risk` | Surface to User                                                                 |
 | ------------------------- | -------------------------------------- | ------------ | ------------------------------------------------------------------------------- |
 | `"high"` or `"very_high"` | Any                                    | `"high"`     | "Request Bedrock quota increase before migration (allow 1–5 business days)"     |
-| `"medium"`                | Claude (5× burndown)                   | `"medium"`   | "Monitor TPM usage during parallel run; quota increase may be needed at peak"   |
+| `"medium"`                | Claude on bedrock-runtime              | `"medium"`   | "Monitor TPM usage during parallel run; quota increase may be needed at peak"   |
 | `"medium"`                | Astra runtime (10× output burndown)    | `"medium"`   | "Calculate weighted peak TPM and verify the selected CRIS quota before cutover" |
 | `"medium"`                | Verified 1× models (e.g. Nova / Llama) | `"low"`      | No action                                                                       |
 | `"medium"`                | Unverified model/endpoint quota        | `"medium"`   | "Verify quota dimensions before estimating throughput"                          |
@@ -56,7 +62,7 @@ Apply during Design phase after model selection. Uses `ai_token_volume` from `pr
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture`.
 
-**Observed on-demand peak.** The monthly table is the rule when no usage profile has usable peaks. When a profile has `peak.peak_input_tokens_per_minute` or `peak.peak_output_tokens_per_minute` on rows whose `batch` is not true and whose `service_tier` is not `batch`, compute weighted peak TPM = peak input + (peak output × burndown). Burndown is 5 for Claude, 10 for Astra on `bedrock-runtime`, and 1 otherwise. Compare that number with 200,000 TPM, the default this file uses in the Claude example above. If the weighted peak is above 200,000, set `quota_risk` to `"high"` even when `ai_token_volume` is `"low"` or `"medium"`. If it is above 50,000 and the monthly table said `"low"`, set `"medium"`. A low monthly volume with a large measured on-demand burst therefore does not keep `"low"`. Batch and spillover rows are excluded. Profiles with no usable peak fields keep the monthly table. Record `quota_risk_basis` as `"observed_on_demand_peak"` when the peak raised the monthly result, otherwise `"monthly_volume"`. Generate reads the value Design wrote. Do not leave the earlier monthly decision in place after this comparison.
+**Observed on-demand peak.** The monthly table is the rule when no usage profile has usable peaks. When a profile has `peak.peak_input_tokens_per_minute` or `peak.peak_output_tokens_per_minute` on rows whose `batch` is not true and whose `service_tier` is not `batch`, apply the model and endpoint rates above before comparing with 200,000 TPM. On `bedrock-runtime`, weighted peak TPM = peak input + (peak output × that model's output burndown). On `bedrock-mantle`, compare the input peak with the input quota and the output peak with the output quota separately. Do not use the 200,000 combined threshold for a mantle target. If the runtime weighted peak is above 200,000, set `quota_risk` to `"high"` even when `ai_token_volume` is `"low"` or `"medium"`. If it is above 50,000 and the monthly table said `"low"`, set `"medium"`. A low monthly volume with a large measured on-demand burst therefore does not keep `"low"`. Batch and spillover rows are excluded. Profiles with no usable peak fields keep the monthly table. Record `quota_risk_basis` as `"observed_on_demand_peak"` when the peak raised the monthly result, otherwise `"monthly_volume"`. Generate reads the value Design wrote. Do not leave the earlier monthly decision in place after this comparison.
 
 ---
 
@@ -113,9 +119,7 @@ Include this guidance in migration artifacts when `quota_risk` ≥ `"medium"`. U
 Target TPM = peak_input_tokens_per_minute + peak_output_tokens_per_minute × output_burndown_multiplier
 ```
 
-Use `output_burndown_multiplier` = 10 for Astra runtime, 5 for the Claude runtime models above,
-and 1 only where verified for the selected model/endpoint. The multiplier applies to output tokens,
-not the total source TPM. For separate mantle input/output quotas, size each quota independently.
+Use the output burndown for the selected runtime model from the section above: 15, 10, 5, or 1. The multiplier applies to output tokens, not the total source TPM. For separate mantle input/output quotas, size each quota independently.
 If the user doesn't know their peak TPM, estimate total volume below and split it using the measured
 input:output ratio:
 

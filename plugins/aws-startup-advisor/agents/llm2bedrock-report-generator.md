@@ -159,18 +159,22 @@ written, extrapolating from the golden-dataset sample.** If the line is present,
   populate its `BASELINE_TOKENS_BY_SOURCE` dict from `usage_by_model[]`, summing
   `input_tokens + output_tokens` per model id (normalizing OpenRouter's
   `prompt_tokens`/`completion_tokens`, and including Anthropic's
-  `cache_read_tokens` in the input sum. Do **not** put `cache_creation_tokens` or its
-  5-minute and 1-hour split into that input sum. Copy `cache_creation_5m_tokens` to
-  `cache_write_5m` and `cache_creation_1h_tokens` to `cache_write_1h` when both are
-  present. When an older profile has only the aggregate, copy it to
-  `cache_write_unsplit` and leave the split keys off. Fill
-  `CACHE_WRITE_RATES_BY_TARGET` from the Bedrock cache-write table for the target
-  (Sonnet 5 is 2.50 for 5-minute writes and 4.00 for 1-hour writes, per 1M tokens).
-  One million 5-minute write tokens then cost $2.50, and one million 1-hour write
-  tokens cost $4.00. Pricing both at the ordinary input rate ($2 for that Sonnet 5
-  row) is the bug this avoids. A missing rate, or an aggregate with no duration,
-  does not fall back to the input rate: the basis says the cache-write portion is
-  unpriced. A model pair whose source model is absent from `usage_by_model[]`
+  `cache_read_tokens` in the input sum. Do **not** put cache-write tokens into
+  that input sum. `usage-baseline.json` already stores `cache_write_5m`,
+  `cache_write_1h`, and `cache_write_unsplit`. Copy those keys straight into
+  `BASELINE_TOKENS_BY_SOURCE`. Do not read `cache_creation_*` from the baseline.
+  Fill `CACHE_WRITE_RATES_BY_TARGET` from the Bedrock cache-write table for the
+  target (Sonnet 5 is 2.50 for 5-minute writes and 4.00 for 1-hour writes, per
+  1M tokens). Fill `SOURCE_CACHE_WRITE_RATES` only from a verified source price
+  for that same duration. One million 5-minute write tokens then cost $2.50 on
+  Bedrock, and one million 1-hour write tokens cost $4.00. Pricing either at
+  the ordinary input rate ($2 for that Sonnet 5 row) is the bug this avoids.
+  A missing Bedrock rate, an aggregate with no duration, or a source write
+  price that is not verified does not fall back to zero or to the input rate.
+  The script then prints the known input/output subtotal and
+  `Estimated savings: unavailable — a cache-write component is unpriced`.
+  A `source_cost_usd` value on the baseline row is a measured source bill that
+  already includes writes; use it as that pair's source cost. A model pair whose source model is absent from `usage_by_model[]`
   still falls back to the golden-dataset-sample aggregation (unchanged, current behavior) —
   §6.1 (Bedrock pricing lookup) is unchanged either way; only the TOKEN VOLUME each pair is
   priced over changes source, per pair.
@@ -272,6 +276,11 @@ CACHE_WRITE_RATES_BY_TARGET = {
     # "anthropic.claude-sonnet-5": {"5m": 2.50, "1h": 4.00},
 }
 
+# Verified source cache-write rates per 1M tokens, keyed by source model id.
+# Leave empty when the source price is unknown. Do not copy the input rate here.
+SOURCE_CACHE_WRITE_RATES = {
+}
+
 # Populate ONLY for a source model with a documented 272K-token breakpoint
 # (GPT-6/5.6/5.5/5.4) whose TYPICAL single-request token size is known (from
 # ai_workload_profile.json -> workloads[].typical_request_tokens, or measured
@@ -345,6 +354,7 @@ if unattributed and MODEL_PAIRS and MODEL_PAIRS[0][0] not in BASELINE_TOKENS_BY_
 
 total_source_cost = 0.0
 total_bedrock_cost = 0.0
+any_cache_write_unpriced = False
 rows = []
 for pair in MODEL_PAIRS:
     # The breakpoint elements are optional — a 6-tuple pair has no long-context rate.
@@ -417,16 +427,36 @@ for pair in MODEL_PAIRS:
         cache_1h = bucket.get("cache_write_1h", 0)
         cache_unsplit = bucket.get("cache_write_unsplit", 0)
         cache_rates = CACHE_WRITE_RATES_BY_TARGET.get(tgt)
-        if cache_5m or cache_1h:
-            if cache_rates:
-                bedrock_cost += (cache_5m * cache_rates["5m"] + cache_1h * cache_rates["1h"]) / 1_000_000
+        source_cache_rates = SOURCE_CACHE_WRITE_RATES.get(src)
+        measured_source = bucket.get("source_cost_usd")
+        split_known = bool(cache_rates) and not cache_unsplit and (cache_5m or cache_1h)
+        if cache_5m or cache_1h or cache_unsplit:
+            bedrock_write = 0.0
+            if split_known:
+                bedrock_write = (cache_5m * cache_rates["5m"] + cache_1h * cache_rates["1h"]) / 1_000_000
+            if measured_source is not None and split_known:
+                source_cost = measured_source
+                bedrock_cost += bedrock_write
+                basis = f"{basis}-cache-write-split"
+            elif source_cache_rates and split_known:
+                source_cost += (cache_5m * source_cache_rates["5m"] + cache_1h * source_cache_rates["1h"]) / 1_000_000
+                bedrock_cost += bedrock_write
                 basis = f"{basis}-cache-write-split"
             else:
-                cache_write_unpriced = True
-                basis = f"{basis}-cache-write-rates-missing"
-        elif cache_unsplit:
-            cache_write_unpriced = True
-            basis = f"{basis}-cache-write-duration-unknown"
+                any_cache_write_unpriced = True
+                if cache_unsplit:
+                    basis = f"{basis}-cache-write-duration-unknown"
+                elif not cache_rates:
+                    basis = f"{basis}-cache-write-rates-missing"
+                else:
+                    basis = f"{basis}-cache-write-source-unknown"
+                if split_known:
+                    print(
+                        f"cache-write {src}: bedrock=${bedrock_write:.4f} "
+                        "source unavailable — excluded from the comparison"
+                    )
+                else:
+                    print(f"cache-write {src}: unpriced — excluded from the comparison")
 
         if source_is_long and tgt in BEDROCK_LONG_CONTEXT:
             basis = f"{basis}-long-context"
@@ -467,7 +497,9 @@ for src, tgt, basis, in_tok, out_tok, sc, bc in rows:
         continue
     print(f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} source=${sc:.4f} bedrock=${bc:.4f}")
 print(f"TOTAL source=${total_source_cost:.4f} bedrock=${total_bedrock_cost:.4f}")
-if total_source_cost > 0:
+if any_cache_write_unpriced:
+    print("Estimated savings: unavailable — a cache-write component is unpriced")
+elif total_source_cost > 0:
     savings_pct = (total_source_cost - total_bedrock_cost) / total_source_cost * 100
     print(f"Estimated savings: {savings_pct:+.1f}%")
 ```
