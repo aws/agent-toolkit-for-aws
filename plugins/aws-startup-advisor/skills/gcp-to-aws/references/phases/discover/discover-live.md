@@ -23,6 +23,9 @@
 2. **Never capture secret values.** Every capture command uses an explicit
    `--format="json(...)"` field projection. Projections include env var **names**
    but never env var **values**, and never GCE instance `metadata.items` values.
+   Rows 16a–16c project Cloud Monitoring points (token totals, invocation
+   counts, and first-token latency). The redaction pass below does not apply
+   to those files. `token_count` is a metric name, not a credential.
    Additionally, apply `discover-iac.md`'s sensitive-key redaction patterns
    (`password`, `secret`, `api_key`, `access_key`, `private_key`, `client_secret`,
    `token`, `credential`, `auth` — case-insensitive) to any config field before it
@@ -73,11 +76,13 @@ authenticated gcloud CLI. This runs LIST/DESCRIBE commands only:
 
   ✓ Captured: resource names, types, regions, machine/instance
     sizing, container images, network topology, env var NAMES,
-    secret NAMES, and labels.
+    secret NAMES, labels, and — for Vertex publisher models —
+    hourly totals of input and output tokens, invocation
+    counts, and first-token latency.
   ✗ Never captured: env var values, secret values, database
-    contents, instance metadata values, access tokens, or source
-    code. No command that creates, changes, or deletes anything
-    will run.
+    contents, instance metadata values, access tokens, source
+    code, prompts, or completions. No command that creates,
+    changes, or deletes anything will run.
 
 Output is written to .migration/<run>/live-capture/ (gitignored).
 
@@ -117,7 +122,12 @@ the project; the Step 2 scale guard handles large outputs.)
   > "values never captured" contract. Thin search + the projected enrichment
   > rows below keep values out of the captures entirely. The same applies to
   > `search-all-resources --read-mask` with resource data. Do NOT "optimize"
-  > this into a full-metadata dump.
+  > this into a full-metadata dump. On this path, also run rows 16a, 16b, and
+  > 16c even when no `aiplatform.googleapis.com` asset was found. They read
+  > Cloud Monitoring aggregates for publisher models, including serverless
+  > Gemini, which has no endpoint. Do not join those files onto inventory
+  > entries. An empty series is a normal result. Do not enable the Monitoring
+  > API yourself.
 - Failure → classify the error, then branch:
 
   **API not enabled** (stderr matches `SERVICE_DISABLED`, "has not been used",
@@ -185,7 +195,7 @@ the project; the Step 2 scale guard handles large outputs.)
   Fall through to per-service immediately; record `cai_enable_offered: false`.
 
   **Per-service fallthrough:** record `method: "per_service"` and run every
-  applicable table row below. Always keep the failed asset-search entry in
+  applicable table row below, including rows 16a, 16b, and 16c. Always keep the failed asset-search entry in
   `captures[]` with `status: "failed"` and the stderr summary in `note`.
 
 **2b. Capture Command Table.** Each row redirects to the named file. On
@@ -213,6 +223,10 @@ from list errors alone.)
 | 14 | `gcloud spanner instances list --format="json(name, config, nodeCount, processingUnits)"`                                                                                                                                                                                                                                                                                                                | `spanner.json`          |      |
 | 15 | `gcloud firestore databases list --format="json(name, type, locationId)"`                                                                                                                                                                                                                                                                                                                                | `firestore.json`        |      |
 | 16 | `gcloud ai endpoints list --region=<each walk region — see the region-walk note below> --format="json(name, displayName, deployedModels[].model)"` — only if asset search found `aiplatform.googleapis.com/*` assets or per-service mode                                                                                                                                                                 | `vertex-<region>.json`  | E    |
+| 16a | `gcloud monitoring time-series list --project="$GCP_PROJECT" --filter='metric.type="aiplatform.googleapis.com/publisher/online_serving/token_count" AND resource.type="aiplatform.googleapis.com/PublisherModel"' --interval-start-time="<UTC now minus 30 days, RFC3339>" --interval-end-time="<UTC now, RFC3339>" --aggregation-alignment-period=3600s --aggregation-per-series-aligner=ALIGN_SUM --aggregation-cross-series-reducer=REDUCE_SUM --aggregation-group-by-fields=resource.label.model_user_id,resource.label.location,metric.label.type,metric.label.request_type --format="json(metric.type, metric.labels, resource.labels, points)"` — always, both modes, even with no Vertex endpoint. See the publisher-metrics note. | `vertex-publisher-tokens.json` | always |
+| 16b | `gcloud monitoring time-series list --project="$GCP_PROJECT" --filter='metric.type="aiplatform.googleapis.com/publisher/online_serving/model_invocation_count" AND resource.type="aiplatform.googleapis.com/PublisherModel"' --interval-start-time="<UTC now minus 30 days, RFC3339>" --interval-end-time="<UTC now, RFC3339>" --aggregation-alignment-period=3600s --aggregation-per-series-aligner=ALIGN_SUM --aggregation-cross-series-reducer=REDUCE_SUM --aggregation-group-by-fields=resource.label.model_user_id,resource.label.location,metric.label.request_type,metric.label.response_code --format="json(metric.type, metric.labels, resource.labels, points)"` — same window as 16a. | `vertex-publisher-invocations.json` | always |
+| 16c | `gcloud monitoring time-series list --project="$GCP_PROJECT" --filter='metric.type="aiplatform.googleapis.com/publisher/online_serving/first_token_latencies" AND resource.type="aiplatform.googleapis.com/PublisherModel"' --interval-start-time="<UTC now minus 30 days, RFC3339>" --interval-end-time="<UTC now, RFC3339>" --aggregation-alignment-period=3600s --aggregation-per-series-aligner=ALIGN_PERCENTILE_95 --aggregation-cross-series-reducer=REDUCE_MAX --aggregation-group-by-fields=resource.label.model_user_id,resource.label.location,metric.label.request_type --format="json(metric.type, metric.labels, resource.labels, points)"` — same window as 16a. | `vertex-publisher-latency.json` | always |
+| 16d | `gcloud ai models list --region=<region> --project="$GCP_PROJECT" --format="json(name,displayName)"` — only for a region whose `vertex-<region>.json` is non-empty. Display names only. Do not download model artifacts. | `vertex-models-<region>.json` | when 16 is non-empty |
 | 17 | `bq ls --project_id="$GCP_PROJECT" --format=json` — dataset names/locations only (the `bq` CLI ships with the Cloud SDK; if unavailable, record `skipped` — BigQuery presence then requires the asset-search path)                                                                                                                                                                                       | `bq.json`               | E    |
 | 18 | `gcloud compute firewall-rules list --format="json(name, network, direction, priority)"` — deliberately minimal projection (no source ranges or target tags; the IaC path carries full rule config when Terraform exists)                                                                                                                                                                                | `firewalls.json`        | E    |
 | 19 | `gcloud compute networks vpc-access connectors describe <connector-id> --region=<from the connector id> --format="json(name, network)"` — ONLY for each distinct `run.googleapis.com/vpc-access-connector` annotation value seen in row 1 output; resolves connector → VPC for edge inference                                                                                                            | `connector-<name>.json` | E    |
@@ -239,6 +253,36 @@ by mode:
   append to the manifest (→ `live_metadata.capture_warnings`):
   `"regions list unavailable — redis/vertex walk limited to regions observed in
   other captures; instances in other regions are not covered"`.
+
+**Publisher-metrics note (rows 16a–16d).** Rows 16a–16c are project-wide. They
+are not gated on a Vertex endpoint. Serverless Gemini has no endpoint, and
+these series are what show its traffic. These commands were not
+live-validated in this change. A failure is `skipped` and does not fail the
+inventory. Do not enable the Monitoring API yourself. If a group-by field is
+rejected, retry that same row once without `resource.label.model_user_id`
+(and, for 16b, without `metric.label.response_code`) and record the warning.
+Do not group by `max_token_size` or other bucket labels. Do not read
+`resource.data` from Cloud Asset Inventory for this.
+
+`metric.labels.type` on token_count is `input` or `output`. Sum those into
+`input_tokens` and `output_tokens` separately. `resource.labels.model_user_id`
+is the model id. `metric.labels.request_type` (`dedicated` or `shared`) stays
+on the row. Shared traffic is not provisioned quota. For invocations, add
+`response_code` 200 and `OK` into `num_model_requests`. Any other present
+code goes to `failed_requests` and is not added to the request count. When
+the code label is absent, use the whole sum as `num_model_requests`.
+`observed_p95_first_token_ms` is the maximum hourly `ALIGN_PERCENTILE_95`
+point (`REDUCE_MAX` already collapsed token-size buckets to the worst bucket).
+That is the worst hour's p95, not the 30-day percentile, and not a latency SLO.
+`peak.peak_source` is `"hour"`: busiest UTC day by input tokens, and each
+`peak_*_per_minute` is that day's busiest hour divided by 60.
+
+Step 3 writes `$MIGRATION_DIR/gcp-publisher-metrics-profile.json` only when
+16a has at least one point. `metadata.source` is `"gcp_monitoring"`,
+`window_days` is 30, and `partial_window` is true only when the points span
+fewer than 21 days. Do not map 16a–16d files to inventory resources. Row 16d's
+`displayName` only labels a tuned model whose endpoint `deployedModels[].model`
+is a resource name. Do not write zeros for models with no series.
 
 **Sizing caveat:** SQL `settings.dataDiskSizeGb` is PROVISIONED disk, not actual
 data volume. Downstream database-migration tool selection must treat it as an
@@ -284,6 +328,8 @@ Synthesize Terraform-style identity so downstream design-refs (keyed on
 - `config` = the projected fields from the capture (redaction rules from the
   Security Contract apply)
 - `source` = `"live"` on every entry
+- Rows 16a–16d are not inventory resources. Do not synthesize a `google_*`
+  entry from `vertex-publisher-*.json` or `vertex-models-*.json`.
 
 **Asset/CLI type → Terraform type mapping:**
 
@@ -316,10 +362,16 @@ types list, everything else SECONDARY with role inferred from type
 (`google_service_account` → identity; networks/subnets/DNS → network_path;
 secrets → encryption; else configuration). `confidence: 0.99`.
 
-**AI detection:** if any `aiplatform.googleapis.com/*` asset or Vertex endpoint was
-captured, populate `ai_detection` exactly as `discover-iac.md` Step 2 would
-(signal method `"live_gcloud"`, confidence 95, `ai_services: ["vertex_ai"]`,
-`has_ai_workload: true`). Otherwise `has_ai_workload: false`, `confidence: 0`.
+**AI detection:** if any `aiplatform.googleapis.com/*` asset, Vertex endpoint, or
+non-empty publisher token series (row 16a) was captured, populate `ai_detection`
+exactly as `discover-iac.md` Step 2 would (signal method `"live_gcloud"`,
+confidence 95, `ai_services: ["vertex_ai"]`, `has_ai_workload: true`). A
+non-empty 16a series is enough on its own: serverless Gemini has no endpoint.
+If 16a succeeded and returned no series, and no asset or endpoint was captured,
+`has_ai_workload: false`, `confidence: 0`, and record that a quiet window looks
+the same as no publisher traffic. If 16a was skipped or failed and no asset or
+endpoint was captured, `has_ai_workload: false` and record that serverless
+Gemini was not checked. Empty series are not proof the project has no AI.
 
 ## Step 4: Infer Edges from Resolved Config
 
@@ -479,4 +531,5 @@ FORBIDDEN — Do NOT include ANY of:
 - Any mutating gcloud command, `auth login`, or token printing
 - Env var values, secret values, or unredacted sensitive config anywhere
 
-**Your ONLY job: inventory what exists in GCP. Nothing else.**
+**Your ONLY job: inventory what exists in GCP, and write
+`gcp-publisher-metrics-profile.json` when row 16a returned points. Nothing else.**

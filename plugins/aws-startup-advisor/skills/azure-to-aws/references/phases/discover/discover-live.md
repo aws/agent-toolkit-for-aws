@@ -22,7 +22,9 @@ _contributes:
 >    missing or the user declines, Part A writes nothing and records the decline.
 > 2. **Part B — dispatched parse fragment (Steps 3–7, this file's `_fragment`).**
 >    File-only, non-interactive: reads the `live-capture/` directory Part A wrote and
->    maps it into `azure-resource-inventory.json` / `azure-resource-clusters.json`.
+>    maps it into `azure-resource-inventory.json` / `azure-resource-clusters.json`,
+>    and writes `azure-openai-metrics-profile.json` when rows 16a and 16b captured
+>    timeseries.
 >    Runs no `az` command and never prompts. If `live-capture/` is absent or empty
 >    (Part A skipped/declined), it contributes nothing and exits cleanly.
 
@@ -82,6 +84,10 @@ is what "offers" it.
    `... show`/`list` variant that returns secret material (see rule 2).
 2. **Never capture secret values.** Every capture command uses an explicit
    `--query` (JMESPath) projection that selects NAMES/metadata, never values.
+   Rows 16a and 16b are the exception: their `--query` keeps Azure Monitor
+   timeseries (hourly token totals, request counts, cache-write tokens, and
+   average time-to-response). The redaction pass below does not apply to those
+   files. A metric name containing the word token is not a credential.
    Specifically FORBIDDEN commands (they return secret material):
    - `az webapp config appsettings list` / `az functionapp config appsettings list`
      return app-setting **values** — use the projection in the table (names only) or
@@ -138,11 +144,14 @@ authenticated az CLI. This runs LIST/SHOW commands only:
 
   ✓ Captured: resource names, ARM types, regions, SKU/tier/
     capacity, container images, network topology, app-setting
-    NAMES, Key Vault NAMES, and tags.
+    NAMES, Key Vault NAMES, tags, and — for Cognitive Services
+    accounts only — hourly totals of prompt tokens, generated
+    tokens, request counts, cache-write tokens, and average
+    time-to-response.
   ✗ Never captured: app-setting values, connection strings,
     Key Vault secret values, database contents, VM customData,
-    or access tokens. No command that creates, changes, or
-    deletes anything will run.
+    access tokens, prompts, or completions. No command that
+    creates, changes, or deletes anything will run.
 
 Output is written to .migration/<run>/live-capture/ (gitignored).
 
@@ -202,6 +211,9 @@ real subscription: it returned `Microsoft.*` types directly (e.g.
   config, so then run only the **enrichment rows** (marked E) of the table below for
   the ARM types that were found — those add the config fields (app-setting names,
   container images, network wiring, versions) that edge inference and sizing need.
+  When a `Microsoft.CognitiveServices/accounts` resource was found, row 16 runs,
+  and rows 16a and 16b run after it. Those two files are usage aggregates. Do not
+  join them onto inventory entries.
   If an enrichment row's captured `id` does not match any fast-path entry (a resource
   visible to one call but not the other — e.g. a permissions or propagation gap),
   keep that enrichment entry as its own inventory entry rather than dropping it or
@@ -218,21 +230,26 @@ real subscription: it returned `Microsoft.*` types directly (e.g.
   - **Other errors** → per-service fallthrough immediately.
 
   **Per-service fallthrough:** record `method: "per_service"` and run every applicable
-  table row. Keep the failed `az resource list` entry in `captures[]` with
+  table row. Run rows 16a and 16b after row 16, and skip them when `cognitive.json`
+  is empty. Keep the failed `az resource list` entry in `captures[]` with
   `status: "failed"` and the stderr summary in `note`.
 
 **`id:id` and `resourceGroup:resourceGroup` on every per-service row (REQUIRED).** In the
 `per_service` fallthrough there is no fast-path inventory to supply them, so every table
 row's top-level `--query` projects both `id:id` (→ the required `azure_id`) and
 `resourceGroup:resourceGroup` (→ the required `resource_group`) — a captured resource
-missing either cannot satisfy the inventory postcondition. When both the fast path and an
+missing either cannot satisfy the inventory postcondition. Rows 16a and 16b are the
+exception: they are not inventory resources, so their `--query` projects metric
+timeseries instead of `id`. When both the fast path and an
 enrichment row cover the same resource, the fast-path values are authoritative.
 
 **2b. Capture Command Table.** Each row redirects to the named file, always with
 `--subscription "$AZURE_SUBSCRIPTION"`. On permission/"not found" errors: record the
 row as `failed`/`skipped` in the manifest and continue — a missing service is normal,
 never a halt. Every row uses `--query` to project NAMES/metadata only (Security
-Contract rule 2). Rows marked **E** are enrichment rows run after the `az resource list`
+Contract rule 2), except rows 16a and 16b, which project Azure Monitor aggregate
+timeseries (token totals, request counts, cache-write tokens, and average
+time-to-response) and never prompts, completions, or keys. Rows marked **E** are enrichment rows run after the `az resource list`
 fast path for the ARM types it found; unmarked rows run in the per-service fallthrough.
 
 | #   | Command (always `--subscription "$AZURE_SUBSCRIPTION" --output json`)                                                                                                                                                                                                                                                                                                                                                    | Output file            | Mode | Canonical ARM type                                          |
@@ -257,6 +274,8 @@ fast path for the ARM types it found; unmarked rows run in the per-service fallt
 | 14  | `az network vnet list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location, addressSpace:addressSpace.addressPrefixes, subnets:subnets[].{name:name, prefix:addressPrefix}}"`                                                                                                                                                                                                                                                         | `vnet.json`            | E    | `Microsoft.Network/virtualNetworks`                         |
 | 15  | `az keyvault list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location}"` — vault NAMES only, never `secret show`/`secret list --query "[].value"`                                                                                                                                                                                                                                                                                   | `keyvault.json`        | E    | `Microsoft.KeyVault/vaults`                                 |
 | 16  | `az cognitiveservices account list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location, kind:kind, sku:sku.name}"` then per account `az cognitiveservices account deployment list -n <name> -g <rg> --query "[].{id:id, resourceGroup:resourceGroup, name:name, model:properties.model.name, version:properties.model.version}"`                                                                                                                                         | `cognitive.json`       | E    | `Microsoft.CognitiveServices/accounts`, `.../deployments`   |
+| 16a | `az monitor metrics list --subscription "$AZURE_SUBSCRIPTION" --resource "<account id from cognitive.json>" --metrics ProcessedPromptTokens GeneratedTokens AzureOpenAIRequests AzureOpenAIContextTokensCachedWrite --aggregation Total --interval PT1H --start-time "<UTC now minus 30 days, ISO-8601>" --end-time "<UTC now, ISO-8601>" --filter "ModelDeploymentName eq '*'" --query "value[].{metric:name.value, timeseries:timeseries}"` — after row 16, once per account; skip when `cognitive.json` is empty. See the row 16 metrics note. | `cognitive-metrics-<name>.json` |  | — (usage aggregate, not an inventory resource) |
+| 16b | `az monitor metrics list --subscription "$AZURE_SUBSCRIPTION" --resource "<account id from cognitive.json>" --metrics AzureOpenAITimeToResponse --aggregation Average --interval PT1H --start-time "<UTC now minus 30 days, ISO-8601>" --end-time "<UTC now, ISO-8601>" --filter "ModelDeploymentName eq '*'" --query "value[].{metric:name.value, timeseries:timeseries}"` — same accounts as 16a. Do NOT query the metric named `Latency`. | `cognitive-latency-<name>.json` |  | — (usage aggregate, not an inventory resource) |
 | 17  | `az ml workspace list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location}"` — only if the `ml` extension is present (see the row-17 note below); else record `skipped`                                                                                                                                                                                                                                                             | `mlworkspace.json`     | E    | `Microsoft.MachineLearningServices/workspaces`              |
 | 18  | `az network private-dns zone list --query "[].{id:id, resourceGroup:resourceGroup, name:name}"` and `az network dns zone list --query "[].{id:id, resourceGroup:resourceGroup, name:name, records:numberOfRecordSets}"`                                                                                                                                                                                                                                                                           | `dns.json`             |      | `Microsoft.Network/dnszones`, `privateDnsZones`             |
 
@@ -270,6 +289,41 @@ projects `properties.model.name` into the flat string key `model` — see the
 "Deployment row field note" below Step 3; it is a string, not `model.name` on an
 object) are the AI signal Design's lifecycle check consumes. Never capture keys
 (`az cognitiveservices account keys list` is FORBIDDEN).
+
+**Row 16 metrics note (16a and 16b).** These commands were not live-validated
+in this change. A failure, an empty timeseries, or a metric name the account
+does not emit is `skipped` for that account and does not fail the inventory.
+Do not call `az cognitiveservices account keys list`. Do NOT query the legacy
+Cognitive Services metric named `Latency`. `AzureOpenAITimeToResponse` is
+gateway time-to-response for streaming and is an approximation. Token and
+request points use the `total` field. The latency points use the `average`
+field. `AzureOpenAIContextTokensCachedWrite` is cache-write tokens. Record
+it separately. Do not add it to `ProcessedPromptTokens`, and do not query
+`AzureOpenAIContextTokensCacheMatchRate` — that metric is a percent, not a
+token pool. These rows do not change inventory `metadata.confidence`. That
+field stays `inferred` unless a utilization rollup backs the sized resource.
+Token volume lives only in the metrics profile below.
+
+Part B writes `$MIGRATION_DIR/azure-openai-metrics-profile.json` only when at
+least one 16a file has a timeseries. Do not map 16a or 16b files to inventory
+resources. One `usage_by_model[]` row per deployment (and per
+`ServiceTierRequest` or `ServiceTierResponse` value when that metadata is
+present). `model` is the `ModelName` metadata value, else the row 16 `model`
+string for that deployment name. `deployment` is `ModelDeploymentName`.
+`region` is the account location. Sum `ProcessedPromptTokens` into
+`input_tokens`, `GeneratedTokens` into `output_tokens`, `AzureOpenAIRequests`
+into `num_model_requests`, and `AzureOpenAIContextTokensCachedWrite` into
+`cache_write_tokens`. `observed_time_to_response_ms` is the mean of the hourly
+`average` points. `peak.peak_source` is `"hour"`: the busiest UTC day is the
+day with the largest `ProcessedPromptTokens` sum, and each
+`peak_*_per_minute` is that day's busiest hour divided by 60.
+`day_to_average_ratio` is the busiest day's tokens divided by the mean daily
+tokens. A row whose service tier is batch or spillover stays in the file and
+is not the on-demand quota peak. `metadata.source` is `"azure_monitor"`,
+`window_days` is 30, and `partial_window` is true only when the returned
+points span fewer than 21 days. Accounts that failed go in
+`metadata.capture_warnings`. A missing profile means metrics were not
+captured. Do not write zeros for models that returned no series.
 
 **Row 17 note (extension check, non-interactive — live-validated).** Never run
 `az ml workspace list` before checking for the `ml` extension: on an `az` install
@@ -322,6 +376,8 @@ Every attempted or deliberately skipped row gets an entry.
 ## Part B — Dispatched parse fragment (`_fragment: live`)
 
 > File-only, non-interactive. Runs `az` NEVER; only reads `$MIGRATION_DIR/live-capture/`.
+> When rows 16a and 16b left timeseries, also write `azure-openai-metrics-profile.json`
+> as the row 16 metrics note describes. Do not map those files to inventory resources.
 > **Entry guard:** if `$MIGRATION_DIR/live-capture/manifest.json` is absent (Part A
 > was skipped or the user declined), contribute nothing and exit cleanly — this is a
 > normal outcome, not a failure.
@@ -397,10 +453,11 @@ Never silently drop a resource.
 **Classification & clustering:** apply `discover-iac.md`'s PRIMARY/SECONDARY rules and
 `{category}_{type}_{region}_{sequence}` cluster naming (see Step 5). Set
 `metadata.confidence: "inferred"` — the confidence enum is
-`deterministic | measured | inferred | billing_inferred`, and live `az` without metrics
-is `inferred` (declared/observed config, no utilization rollup — see
+`deterministic | measured | inferred | billing_inferred`, and live `az` without a
+utilization rollup is `inferred` (declared/observed config — see
 `discover-assemble.md`). It becomes `measured` only when `az monitor metrics list`
-utilization backs the sizing.
+backs the sizing of that resource. Rows 16a and 16b do not do that. Their token
+totals do not set inventory `metadata.confidence` to `measured`.
 
 **Deployment row field note (row 16, second call).** The `--query` projection
 `model:properties.model.name` flattens `properties.model.name` into a plain STRING
@@ -603,4 +660,6 @@ FORBIDDEN — Do NOT include ANY of:
 - App-setting values, connection strings, Key Vault secret values, VM customData, or
   unredacted sensitive config anywhere
 
-**Your ONLY job: inventory what exists in Azure. Nothing else.**
+**Your ONLY job: inventory what exists in Azure, and write
+`azure-openai-metrics-profile.json` when rows 16a and 16b returned timeseries.
+Nothing else.**
