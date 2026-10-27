@@ -137,7 +137,7 @@ def test_registry_reads_pricing_cache_status_not_a_hand_list() -> None:
         if not any(char in pattern for char in "*?["):
             assert registry[pattern]["status"] == "inactive", pattern
     source = PATH.read_text(encoding="utf-8")
-    assert "Verified Active Models" not in source
+    assert "Verified Active" not in source  # the branch-only lifecycle table the runtime used to read
     assert not hasattr(runtime, "IMAGE_GENERATION_TARGETS")
     assert not hasattr(runtime, "EMBEDDING_TARGET")
     assert not hasattr(runtime, "LIFECYCLE_SECTION")
