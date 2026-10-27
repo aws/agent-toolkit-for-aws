@@ -1,6 +1,6 @@
 # OpenAI Models on Amazon Bedrock
 
-**Last verified:** 2026-10-10
+**Last verified:** 2026-10-10; GPT-6.1 Terra added and verified 2026-10-27 (other models not reverified).
 **Sources:** [OpenAI model cards](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html) (per-model
 cards linked below), [GPT-5.6 launch post](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/),
 [GPT-5.6 GA announcement](https://aws.amazon.com/about-aws/whats-new/2026/07/openai-gpt-sol-terra/),
@@ -25,10 +25,11 @@ risk) all defer to it. Do not restate model IDs, regions, or endpoint paths else
 | ------------------- | ---------------------------------------- | ------------ | ------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GPT-6 Astra         | `openai.gpt-6-astra`                     | Sep 8, 2026  | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)                                                      |
 | GPT-6.1 Sol         | `openai.gpt-6.1-sol`                     | Sep 29, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html)                                                      |
+| GPT-6.1 Terra | `openai.gpt-6.1-terra` | Oct 26, 2026 | 1.05M | Active | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html) |
 | GPT-6 Sol           | `openai.gpt-6-sol`                       | Sep 22, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html)                                                        |
 | GPT-6 Luna          | `openai.gpt-6-luna`                      | Sep 22, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html)                                                       |
 | GPT-5.6 Sol         | `openai.gpt-5.6-sol`                     | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html)                                                       |
-Add new row: | GPT-6.1 Terra | `openai.gpt-6.1-terra` | <GA date> | 1M | Active | [card](...) |
+| GPT-5.6 Terra       | `openai.gpt-5.6-terra`                   | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html)                                                     |
 | GPT-5.6 Luna        | `openai.gpt-5.6-luna`                    | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html)                                                      |
 | GPT-5.5             | `openai.gpt-5.5`                         | Jun 1, 2026  | 272K    | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)                                                           |
 | GPT-5.4             | `openai.gpt-5.4`                         | Jun 1, 2026  | 272K    | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html)                                                           |
@@ -40,7 +41,7 @@ Add new row: | GPT-6.1 Terra | `openai.gpt-6.1-terra` | <GA date> | 1M | Active 
 **Naming:** GPT-5.6 uses generation number + capability tier. `Sol` = flagship reasoning, `Terra` = balanced
 production, `Luna` = high-volume / low-latency. Tiers advance on independent cadences, so a future `Terra` may not
 share a generation with a future `Sol`. **GPT-6** carries forward `Sol` and `Luna`, and adds a new top-of-stack
-`Astra` tier above Sol; no GPT-6 `Terra` tier has been confirmed on Bedrock as of this refresh.
+`Astra` tier above Sol. **GPT-6.1 Terra** adds the balanced Terra tier to this family on Bedrock.
 **GPT-6.1 Sol** is a point-release upgrade to GPT-6 Sol (same tier, improved capability, a deeper cache-read
 discount) — not a new tier name (cite [openai.com/index/introducing-gpt-6-1-sol/](https://openai.com/index/introducing-gpt-6-1-sol/)).
 
@@ -55,6 +56,36 @@ is on this list have no same-model landing target — see `ai-openai-to-bedrock.
 ---
 
 ## Access Paths — Split by Family
+
+### GPT-6.1 Terra (verified 2026-10-27)
+
+The [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)
+confirms a **1,050,000-token context window**, **128,000 maximum output tokens**, text/image input, and text
+output. The model launched on **October 26, 2026**. Use its own API and region support rather than inheriting
+GPT-5.6 Terra's capabilities.
+
+| Endpoint | Model ID | Reach | Supported APIs |
+| -------- | -------- | ----- | -------------- |
+| `bedrock-mantle` | `openai.gpt-6.1-terra` | In-region, **us-east-1 only** | Responses, Chat Completions |
+| `bedrock-runtime` | `us.openai.gpt-6.1-terra` / `global.openai.gpt-6.1-terra` | US Geo / Global CRIS; no in-region form | Responses, Chat Completions, Converse, Invoke |
+
+Both endpoints use `/openai/v1` for OpenAI-compatible APIs. Verify the selected runtime source region and
+inference profile against the model card; mantle availability does not describe runtime CRIS reach.
+AWS GovCloud is not listed as supported for this model. Only the **Standard** service tier is supported.
+Runtime Guardrails and application inference profiles are **Converse-only**. Converse accepts text/image user
+content, but rejects document blocks and images inside tool results; use Responses `input_file` for documents.
+API support does not establish parity with an application's hosted tools; validate the required tool flow.
+
+Bedrock Standard prices in USD per 1M tokens, read from this model's card:
+
+| Context | In-Region / US Geo (input · cache-write · cache-read · output) | Global CRIS (input · cache-write · cache-read · output) |
+| ------- | ----------------------------------------------------------- | ----------------------------------------------------- |
+| ≤272K input tokens | 1.10 · 1.375 · 0.055 · 5.50 | 1.00 · 1.25 · 0.05 · 5.00 |
+| >272K input tokens | 2.20 · 2.75 · 0.11 · 8.25 | 2.00 · 2.50 · 0.10 · 7.50 |
+
+Cache-write prices use a 30-minute retention window. Above 272K input tokens, the full request uses the
+long-context rates. These are Bedrock rates, not verified OpenAI/Azure source-provider prices; follow the
+pricing fallback when the estimator's canonical cache lacks this model.
 
 **GPT-6 Astra has two endpoints; regions reverified 2026-09-30:**
 
@@ -177,13 +208,14 @@ request for multi-turn and tool-calling flows.
 | GPT-6 Sol     | yes       | —         | —         | —             | —             |
 | GPT-6 Luna    | yes       | —         | —         | —             | —             |
 | GPT-6.1 Sol   | yes       | —         | —         | —             | —             |
+| GPT-6.1 Terra | yes | — | — | — | — |
 | GPT-5.6 Sol   | yes       | yes       | —         | —             | —             |
-Add new row: | GPT-6.1 Terra | yes | yes | yes | yes | yes |
+| GPT-5.6 Terra | yes       | yes       | yes       | yes           | yes           |
 | GPT-5.6 Luna  | yes       | yes       | yes       | yes           | yes           |
 | GPT-5.5       | yes       | yes       | —         | —             | —             |
 | GPT-5.4       | yes       | yes       | yes       | yes           | —             |
 
-Terra and Luna reached AWS GovCloud (US-West, US-East) in August 2026 — newer than the rest of this matrix.
+GPT-5.6 Terra and Luna reached AWS GovCloud (US-West, US-East) in August 2026 — newer than the rest of this matrix.
 
 **Astra runtime availability:** US Geo CRIS can be called from `us-east-1`, `us-east-2`, `us-west-1`,
 `us-west-2`, and `ca-central-1`. Global CRIS additionally supports `eu-central-1`, `eu-north-1`,

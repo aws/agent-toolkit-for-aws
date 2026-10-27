@@ -93,6 +93,7 @@ See `references/shared/openai-on-bedrock.md` for the model-specific pricing rule
 | -------------------------------------- | ------------------ | ---------------------- |
 | `gpt-6-astra`                           | GPT-6 Astra         | `openai.gpt-6-astra`   |
 | `gpt-6.1-sol`, `gpt-6-1-sol`            | GPT-6.1 Sol         | `openai.gpt-6.1-sol`   |
+| `gpt-6.1-terra` | GPT-6.1 Terra | `openai.gpt-6.1-terra` |
 | `gpt-6-sol`                             | GPT-6 Sol           | `openai.gpt-6-sol`     |
 | `gpt-6-luna`                            | GPT-6 Luna          | `openai.gpt-6-luna`    |
 | `gpt-5.6-sol`, `gpt-5.6` flagship      | GPT-5.6 Sol        | `openai.gpt-5.6-sol`   |
@@ -106,7 +107,7 @@ Terra, Luna, and GPT-5.4; AWS GovCloud us-gov-west-1 / us-gov-east-1 for Terra a
 GPT-5.4). GPT-5.6 additionally reaches most commercial regions via `bedrock-runtime` CRIS ids; GPT-5.5 / GPT-5.4
 have no CRIS.
 
-For the GPT-6 rows, mantle is us-east-1 only, except GPT-6 Astra which is also available in us-west-2. All four
+For the GPT-6 rows, mantle is us-east-1 only, except GPT-6 Astra which is also available in us-west-2. All five
 GPT-6 models additionally reach a broad set of commercial regions via `bedrock-runtime` CRIS (`us.` / `global.`
 prefixes).
 
@@ -125,7 +126,7 @@ record the choice in `key_decisions_ahead` instead of silently selecting Nova. A
 | `gpt-4o`, `gpt-4.1`, `gpt-5`/`5.1`/`5.2`                | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.*-mini`           | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
 | `gpt-3.5-turbo`, `gpt-4.1-nano`, `gpt-5.*-nano`         | Amazon Nova Micro                              | `amazon.nova-micro-v1:0`                                               |
-| `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Terra or Sol for lower cost; or Nova 2 Pro | `openai.gpt-6-astra` / `openai.gpt-6.1-terra` / `openai.gpt-5.6-sol` / `amazon.nova-2-pro-v1:0` |
+| `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Sol for lower cost; or Nova 2 Pro | `openai.gpt-6-astra` / `openai.gpt-5.6-sol` / `amazon.nova-2-pro-v1:0` |
 | `o3`, `o4-mini`, reasoning models                       | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gemini-2.5-pro`, `gemini-3.*-pro`                      | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gemini-2.5-flash`, `gemini-2.0-flash`                  | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
