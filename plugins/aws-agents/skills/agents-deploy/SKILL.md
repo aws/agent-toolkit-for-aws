@@ -6,7 +6,9 @@ description: >
   deployment targets, version management, rollback, and teardown.
   Triggers on: "deploy my agent", "agentcore deploy", "agentcore build",
   "deploy failed", "CDK error", "rollback", "canary deploy", "pin
-  version", "redeploy", "deploy stuck", "deployment target".
+  version", "redeploy", "deploy stuck", "deployment target", "tear
+  down", "teardown", "delete my stack", "remove everything", "clean up
+  AWS resources".
   Not for production hardening — use agents-harden. Not for adding
   capabilities before deploy — use agents-build or agents-connect.
   Not for VPC configuration errors — use agents-build.
@@ -397,7 +399,7 @@ To delete everything deployed to a target, work through these steps in order. Re
 
 Steps 0 and 4a only read. Run them first, then show the developer the target name, account and region (from `agentcore/aws-targets.json`) and the resources and log groups that will be deleted, and wait for explicit confirmation before running anything that deletes. Never run this against a production-looking target without that confirmation.
 
-**0. Save the deployed IDs.** Run `agentcore status --json` and note the Runtime/Harness IDs and ARNs. You need them in step 1 and to match log groups in step 4, and they're gone from `status` once the stack is deleted.
+**0. Save the deployed IDs.** Run `agentcore status --json --target <target>` and note the Runtime/Harness IDs and ARNs. You need them in step 1 and to match log groups in step 4, and they're gone from `status` once the stack is deleted.
 
 **1. Delete named Harness endpoints first.** Harness endpoints created with `agentcore harness endpoint create` (e.g. a `prod` pin from [versioning](references/versioning.md)) aren't in the stack, and the service refuses to delete a Harness that still has them — the stack ends up `DELETE_FAILED` with `Harness ... has endpoints that must be deleted before the harness can be deleted` (409 `ConflictException`). Runtime endpoints are declared in `agentcore.json` and go away with the stack.
 
@@ -414,10 +416,10 @@ Wait until `harness endpoint list` shows only `DEFAULT` (endpoint deletion takes
 cp agentcore/agentcore.json /tmp/agentcore.json.bak
 cp agentcore/.env.local /tmp/env.local.bak 2>/dev/null
 agentcore remove all --yes
-agentcore deploy --yes
+agentcore deploy --yes --target <target>   # always name the target you're tearing down
 ```
 
-The last command deletes the stack `AgentCore-<project>-<target>`. If it fails with `DELETE_FAILED`, fix the cause it names (usually step 1) and run `agentcore deploy --yes` again.
+The last command deletes the stack `AgentCore-<project>-<target>`. If it fails with `DELETE_FAILED`, fix the cause it names (usually step 1) and run `agentcore deploy --yes --target <target>` again. Without `--target`, deploy picks the default target, which may be a different stack.
 
 `remove all` empties `agentcore.json` for **every** target, not just this one, and also deletes the credential keys in `agentcore/.env.local` (gitignored, so `git checkout` can't bring them back). If other targets should stay deployed, restore both files from the backups once this target's stack is gone, and don't run `deploy --yes` against the others while the project is empty.
 
