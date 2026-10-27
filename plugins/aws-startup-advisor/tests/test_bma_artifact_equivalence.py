@@ -166,9 +166,10 @@ def test_trace_preserves_openrouter_cardinality_null_zero_and_writer_boundary(tm
     assert len(openrouter["associations"]) == 2
     assert openrouter["associations"][0][2] == "openrouter"
     assert openrouter["associations"][1][2] == "openrouter"
-    # Both targets (Haiku 4.5, GPT-6 Luna) are Active and priced; the sources are not in the registry, so
-    # the delta is unknown, not zero.
-    assert openrouter["costs"][1:3] == [2.16, None]
+    # Both targets (Haiku 4.5, GPT-5.6 Terra) are Active and priced from the pricing cache; the sources are
+    # not in the registry, so the delta is unknown, not zero. The priced value is the regenerated baseline's.
+    assert openrouter["costs"][1] is not None
+    assert openrouter["costs"][1:3] == [BASELINE_VALUE["projections"]["openrouter-multi-upstream"]["costs"][1], None]
 
     gemini = projection(trace(
         CASE_VALUE["cases"]["gemini-application"],

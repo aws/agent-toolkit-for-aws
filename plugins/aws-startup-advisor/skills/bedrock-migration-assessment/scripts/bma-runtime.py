@@ -8,6 +8,7 @@ validator used here, by delegated preflight, packaging, and reference lint.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import os
@@ -223,15 +224,22 @@ def consent_decision(status: str, requests: int = 0, retry_pending: bool = False
             "retry_pending": False, "next": "continue", "cost": cost}
 
 
+# Source -> (target, migration_path). The target's Status, Tier and rates are never listed here: they
+# are read from the vendored pricing cache at run time (pricing_registry). A source model's target is a
+# mapping-guide judgement, so these three pairs stay literal until the capability table lands (#500).
 MODEL_TARGETS = {
-    "claude-3-haiku-20240307": ("anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic_sdk", 0.25, 1.25),
-    "gpt-4o": ("openai.gpt-6-luna", "direct_api", 0.11, 0.55),
-    "gemini-2.5-pro": ("amazon.nova-pro-v1:0", "google_genai_sdk", 0.8, 3.2),
+    "claude-3-haiku-20240307": ("anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic_sdk"),
+    "gpt-4o": ("openai.gpt-5.6-terra", "direct_api"),
+    "gemini-2.5-pro": ("amazon.nova-pro-v1:0", "google_genai_sdk"),
 }
-# Retirement status is read from the lifecycle registry at run time (references/vendored/ai/
-# ai-model-lifecycle.md, its "Verified Active Models" table). Nothing here lists retired models.
+# Target status and rates come from the pricing cache tables that carry a Status column
+# (Model ID / Tier / Status / price). The lifecycle registry's Legacy / EOL table and Removed list
+# are applied on top as a fail-closed exclusion. Nothing here lists active or retired models.
+PRICING_CACHE_RELATIVE = "references/vendored/ai/bedrock-pricing-cache.md"
 LIFECYCLE_REGISTRY_RELATIVE = "references/vendored/ai/ai-model-lifecycle.md"
-LIFECYCLE_SECTION = "## Verified Active Models"
+LIFECYCLE_LEGACY_SECTION = "## Legacy / EOL Models"
+# Cross-region inference profile prefixes, longest first, so "us-gov." is stripped before "us.".
+INFERENCE_PROFILE_PREFIXES = ("us-gov.", "global.", "apac.", "us.", "eu.", "au.", "jp.")
 # Source model IDs that are real provider model families, so a source with no target mapping can
 # stay visible as lifecycle unverified. Anything else (for example "fabricated-model") is rejected.
 SOURCE_MODEL_FAMILY = re.compile(r"^(gemini|imagen|embedding|text-embedding|gpt|claude|o[1-9])[a-z0-9.\-]{0,80}$")
@@ -240,23 +248,145 @@ OBSERVED_UNVERIFIED_BASIS = "observed, not priced from registry"
 RETIREMENT_UNVERIFIED_NOTE = "retirement status unverified, check provider lifecycle"
 
 
-def registered_active_models(bma_root: Path) -> frozenset[str]:
-    """Model IDs the registry lists as Active. Read on every call; fail closed if unreadable."""
+def normalize_model_id(model_id: str) -> str:
+    """Strip one inference-profile prefix so Geo/Global rows collapse onto the base model ID."""
+    for prefix in INFERENCE_PROFILE_PREFIXES:
+        if model_id.startswith(prefix):
+            return model_id[len(prefix):]
+    return model_id
+
+
+def _markdown_tables(text: str) -> list[tuple[str, list[str], list[list[str]]]]:
+    """(nearest preceding heading, header cells, data rows) for every pipe table; cells stripped."""
+    tables: list[tuple[str, list[str], list[list[str]]]] = []
+    heading = ""
+    rows: list[list[str]] = []
+
+    def flush() -> None:
+        if len(rows) >= 2:
+            body = rows[1:]
+            if body and all(set(cell) <= set("-: ") for cell in body[0]):
+                body = body[1:]
+            tables.append((heading, rows[0], body))
+        rows.clear()
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            rows.append([cell.strip() for cell in stripped.strip("|").split("|")])
+            continue
+        flush()
+        if stripped.startswith("#"):
+            heading = stripped.lstrip("#").strip()
+    flush()
+    return tables
+
+
+def _rate(cell: str | None) -> float | None:
+    if cell is None:
+        return None
     try:
-        text = (bma_root / LIFECYCLE_REGISTRY_RELATIVE).read_text(encoding="utf-8")
+        return float(cell.replace("$", "").replace(",", "").strip())
+    except ValueError:
+        return None
+
+
+def pricing_registry(bma_root: Path) -> dict[str, dict[str, Any]]:
+    """Target registry keyed by base model ID, read from the vendored pricing cache on every call.
+
+    Every table whose header has both a Model ID and a Status cell contributes rows; a model is active
+    when any of its rows has a Status starting with "active". The lifecycle Legacy / EOL table and
+    Removed list then force non-active status. Fails closed when either file is unreadable or empty.
+    """
+    try:
+        cache_text = (bma_root / PRICING_CACHE_RELATIVE).read_text(encoding="utf-8")
+        lifecycle_text = (bma_root / LIFECYCLE_REGISTRY_RELATIVE).read_text(encoding="utf-8")
     except OSError as error:
         raise ValueError("lifecycle_registry_missing") from error
-    if LIFECYCLE_SECTION not in text:
+    registry: dict[str, dict[str, Any]] = {}
+    rated: set[str] = set()
+    bare_rated: set[str] = set()
+    for heading, header, body in _markdown_tables(cache_text):
+        if "Model ID" not in header or "Status" not in header:
+            continue
+        index = {name: (header.index(name) if name in header else None)
+                 for name in ("Model ID", "Status", "Tier", "Input $/1M", "Output $/1M", "Price/image")}
+
+        def cell(row: list[str], name: str) -> str | None:
+            position = index[name]
+            return row[position] if position is not None and position < len(row) else None
+
+        for row in body:
+            raw = (cell(row, "Model ID") or "").strip("`")
+            if raw in {"", "—", "-"}:
+                continue
+            base = normalize_model_id(raw)
+            entry = registry.setdefault(base, {
+                "status": "inactive", "tier": None, "input": None, "output": None,
+                "per_image": None, "table": heading, "ids": [],
+            })
+            entry["ids"].append(raw)
+            if (cell(row, "Status") or "").lower().startswith("active"):
+                entry["status"] = "active"
+            # Tier and rates come from the first bare-ID row, else from the first row seen.
+            if base in bare_rated or (base in rated and raw != base):
+                continue
+            entry["tier"] = cell(row, "Tier")
+            entry["input"] = _rate(cell(row, "Input $/1M"))
+            entry["output"] = _rate(cell(row, "Output $/1M"))
+            entry["per_image"] = _rate(cell(row, "Price/image"))
+            entry["table"] = heading
+            rated.add(base)
+            if raw == base:
+                bare_rated.add(base)
+    if not registry or LIFECYCLE_LEGACY_SECTION not in lifecycle_text:
         raise ValueError("lifecycle_registry_invalid")
-    section = text.split(LIFECYCLE_SECTION, 1)[1].split("\n## ", 1)[0]
-    ids = set()
+    section = lifecycle_text.split(LIFECYCLE_LEGACY_SECTION, 1)[1].split("\n## ", 1)[0]
+
+    def exclude(pattern: str) -> None:
+        if any(char in pattern for char in "*?["):
+            for base in registry:
+                if fnmatch.fnmatchcase(base, pattern):
+                    registry[base]["status"] = "inactive"
+            return
+        registry.setdefault(pattern, {
+            "status": "inactive", "tier": None, "input": None, "output": None,
+            "per_image": None, "table": LIFECYCLE_LEGACY_SECTION, "ids": [pattern],
+        })["status"] = "inactive"
+
+    for _heading, header, body in _markdown_tables(section):
+        if "Model ID" not in header or "Status" not in header:
+            continue
+        for row in body:
+            raw = row[header.index("Model ID")].strip("`")
+            status = row[header.index("Status")].strip("*").lower()
+            if raw and not status.startswith("active"):
+                exclude(normalize_model_id(raw))
+    removed_seen = False
     for line in section.splitlines():
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) >= 2 and cells[1].startswith("`") and cells[1].endswith("`"):
-            ids.add(cells[1].strip("`"))
-    if not ids:
-        raise ValueError("lifecycle_registry_invalid")
-    return frozenset(ids)
+        if line.startswith("**Removed"):
+            removed_seen = True
+            continue
+        if not removed_seen or not line.strip():
+            continue
+        if not line.startswith("- "):
+            break
+        for raw in re.findall(r"`([^`]+)`", line):
+            exclude(normalize_model_id(raw))
+    return registry
+
+
+def registered_active_models(bma_root: Path) -> frozenset[str]:
+    """Base model IDs whose pricing-cache Status is active. Read on every call; fail closed if unreadable."""
+    return frozenset(base for base, row in pricing_registry(bma_root).items() if row["status"] == "active")
+
+
+def target_rates(registry: dict[str, dict[str, Any]], target_id: str) -> tuple[float, float] | None:
+    """(input, output) $/1M for a target, or None when the cache has no token rates for it."""
+    row = registry.get(normalize_model_id(target_id))
+    if row is None or row["input"] is None or row["output"] is None:
+        return None
+    return (row["input"], row["output"])
 
 # #415 is the only AI profile contract BMA accepts. Its vendored copy sits beside this runtime.
 AI_PROFILE_SCHEMA_RELATIVE = "references/contracts/ai-workload-profile.schema.json"
@@ -407,20 +537,28 @@ def sidecar_availability(sidecar: dict[str, Any] | None) -> dict[str, str]:
 
 AI_CAPABILITY_MAP_RELATIVE = "references/vendored/ai/sdk-capability-map.json"
 _UNCLASSIFIED = {"capability": "unknown", "capability_confidence": "low", "structured_output": False}
-# Design-ai.md Part 1: image_generation -> Stability AI. Core is the cost-first default; Ultra is quality-first.
-IMAGE_GENERATION_TARGETS = {"core": "stability.stable-image-core-v1:0", "ultra": "stability.stable-image-ultra-v1:0"}
-# Design-ai.md Part 1: embedding -> Titan Text Embeddings v2, the default for OpenAI/Azure embedding workloads.
-EMBEDDING_TARGET = "amazon.titan-embed-text-v2:0"
+# Design-ai.md Part 1 deterministic targets, resolved from the pricing cache by table and Tier:
+# embedding -> the Embeddings table's "default" row; image_generation -> the Image Generation table's
+# "fast" row (cost/balanced) or "premium" row (quality). No model ID is named here.
+DESIGN_TARGET_TABLES = {"embedding": "Embeddings", "image_generation": "Image Generation"}
 
 
-def design_target(capability: str, priority: str) -> dict[str, Any]:
+def design_target(capability: str, priority: str, bma_root: Path | None = None) -> dict[str, Any]:
     """Design-ai.md Part 1 target for a capability whose routing is deterministic: image_generation and embedding."""
     if capability == "embedding":
-        return {"capability": capability, "target_aws_service": None, "target_bedrock_model": EMBEDDING_TARGET}
-    if capability != "image_generation":
+        tier = "default"
+    elif capability == "image_generation":
+        tier = "premium" if priority == "quality" else "fast"
+    else:
         raise ValueError("design_target_not_deterministic")
-    model = IMAGE_GENERATION_TARGETS["ultra" if priority == "quality" else "core"]
-    return {"capability": capability, "target_aws_service": None, "target_bedrock_model": model}
+    registry = pricing_registry(bma_root or Path(__file__).resolve().parents[1])
+    matches = sorted(
+        base for base, row in registry.items()
+        if DESIGN_TARGET_TABLES[capability] in row["table"] and row["tier"] == tier and row["status"] == "active"
+    )
+    if len(matches) != 1:
+        raise ValueError("design_target_unresolved")
+    return {"capability": capability, "target_aws_service": None, "target_bedrock_model": matches[0]}
 
 
 def _call_block(lines: list[str], index: int) -> str:
@@ -523,7 +661,9 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
     evidence = request["source_evidence"]
     if not isinstance(evidence, list):
         raise ValueError("trace_request_invalid")
-    registered = registered_active_models(Path(__file__).resolve().parents[1])
+    bma_root = Path(__file__).resolve().parents[1]
+    registry = pricing_registry(bma_root)
+    registered = registered_active_models(bma_root)
     associations = []
     mappings = []
     source_keys: set[tuple[str, str, str | None, str]] = set()
@@ -583,16 +723,17 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
                 })
                 target_costs.append(None)
                 continue
-            target, migration_path, input_rate, output_rate = MODEL_TARGETS[model]
+            target, migration_path = MODEL_TARGETS[model]
             if row["gateway"] == "openrouter":
                 migration_path = "openrouter_byok"
             elif row["source_service"] == "vertex_ai":
                 migration_path = "vertex_adapter"
             # The target name stays visible. Its price and retirement_status come from the target's own
-            # registry row: priced only when the target is listed as Active, otherwise unverified and unpriced.
-            # The source's lifecycle is reported separately (associations[].lifecycle_label) and controls
-            # only the baseline label and whether a delta is built.
-            target_active = target in registered
+            # pricing-cache row: priced only when the target is listed as Active and has token rates,
+            # otherwise unverified and unpriced. The source's lifecycle is reported separately
+            # (associations[].lifecycle_label) and controls only the baseline label and whether a delta is built.
+            target_active = normalize_model_id(target) in registered
+            rates = target_rates(registry, target)
             target_status = "active" if target_active else "unverified"
             mappings.append({
                 "source_model": model, "target_model": target,
@@ -601,12 +742,12 @@ def semantic_trace(request: dict[str, Any]) -> dict[str, Any]:
                 **({"note": RETIREMENT_UNVERIFIED_NOTE} if not target_active else {}),
             })
             migration_paths.append(migration_path)
-            if None in token_values or not target_active:
+            if None in token_values or not target_active or rates is None:
                 target_costs.append(None)
             else:
                 target_costs.append(round(
-                    token_values[0] / 1_000_000 * input_rate
-                    + token_values[1] / 1_000_000 * output_rate, 2
+                    token_values[0] / 1_000_000 * rates[0]
+                    + token_values[1] / 1_000_000 * rates[1], 2
                 ))
     source_monthly = None if not source_costs or any(value is None for value in source_costs) else round(sum(source_costs), 2)
     target_monthly = None if not target_costs or any(value is None for value in target_costs) else round(sum(target_costs), 2)
@@ -1195,7 +1336,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "design-target":
         try:
-            output = design_target(args.capability, args.priority)
+            output = design_target(args.capability, args.priority, Path(__file__).resolve().parents[1])
         except ValueError as exc:
             print(json.dumps({"error": "ValueError", "message": str(exc)}, sort_keys=True), file=sys.stderr)
             return 1

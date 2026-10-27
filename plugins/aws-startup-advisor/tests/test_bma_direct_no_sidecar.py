@@ -1,7 +1,7 @@
 """Direct mode on a #415 profile with no sidecar file (Render option 1: no legacy profile, no sidecar).
 
 The engine must not error on the missing sidecar, must route by provider and price registered targets from
-the lifecycle registry, and must report every sidecar-only field as not available rather than inferring it.
+the pricing-cache registry, and must report every sidecar-only field as not available rather than inferring it.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BMA_ROOT = ROOT / "skills/bedrock-migration-assessment"
 RUNTIME_PATH = BMA_ROOT / "scripts/bma-runtime.py"
 runtime = types.ModuleType("bma_runtime_direct_no_sidecar")
-runtime.__dict__["__file__"] = str(RUNTIME_PATH)  # the runtime reads the lifecycle registry beside its own path
+runtime.__dict__["__file__"] = str(RUNTIME_PATH)  # the runtime reads the pricing-cache registry beside its own path
 exec(compile(RUNTIME_PATH.read_text(encoding="utf-8"), str(RUNTIME_PATH), "exec"), runtime.__dict__)
 
 BMA = "bedrock-migration-assessment"
@@ -39,7 +39,7 @@ def _source(provider: str, source_service: str, family: str, model: str, detail:
     }
 
 
-# Three sources whose targets are all Active in references/vendored/ai/ai-model-lifecycle.md.
+# Three sources whose targets are all Active in references/vendored/ai/bedrock-pricing-cache.md.
 PROFILE_415 = {
     "schema_version": "1.0",
     "ai_sources": [
@@ -115,21 +115,21 @@ def test_direct_415_only_input_without_sidecar_runs_discover_to_estimate(tmp_pat
     mappings = {row["source_model"]: row for row in trace["design_mappings"]}
     assert mappings["gemini-2.5-pro"]["target_model"] == "amazon.nova-pro-v1:0"
     assert mappings["gemini-2.5-pro"]["migration_path"] == "vertex_adapter"
-    assert mappings["gpt-4o"]["target_model"] == "openai.gpt-6-luna"
+    assert mappings["gpt-4o"]["target_model"] == "openai.gpt-5.6-terra"
     assert mappings["gpt-4o"]["migration_path"] == "direct_api"
     assert mappings["claude-3-haiku-20240307"]["target_model"] == "anthropic.claude-haiku-4-5-20251001-v1:0"
     assert mappings["claude-3-haiku-20240307"]["migration_path"] == "anthropic_sdk"
     assert all(row["retirement_status"] == "active" for row in trace["design_mappings"])
     assert len(trace["associations"]) == 3 and all(row["lifecycle_label"] for row in trace["associations"])
     assert runtime.design_target("embedding", "balanced")["target_bedrock_model"] == "amazon.titan-embed-text-v2:0"
-    # Estimate: targets are priced from the registry; observed source cost is not available, not fabricated.
-    expected_target = round(sum(
-        round(INPUT_TOKENS / 1_000_000 * runtime.MODEL_TARGETS[model][2]
-              + OUTPUT_TOKENS / 1_000_000 * runtime.MODEL_TARGETS[model][3], 2)
-        for model in ("gemini-2.5-pro", "gpt-4o", "claude-3-haiku-20240307")
-    ), 2)
+    # Estimate: targets are priced from the pricing-cache registry; observed source cost is not available, not fabricated.
+    registry = runtime.pricing_registry(BMA_ROOT)
+    expected_target = 0.0
+    for model in ("gemini-2.5-pro", "gpt-4o", "claude-3-haiku-20240307"):
+        input_rate, output_rate = runtime.target_rates(registry, runtime.MODEL_TARGETS[model][0])
+        expected_target += round(INPUT_TOKENS / 1_000_000 * input_rate + OUTPUT_TOKENS / 1_000_000 * output_rate, 2)
     estimate = trace["estimate"]
-    assert estimate["target_monthly"] == expected_target == 3.67
+    assert estimate["target_monthly"] == round(expected_target, 2)
     assert estimate["pricing_source"] == "bedrock_cache"
     assert estimate["source_monthly"] is None
     assert estimate["source_monthly_basis"] is None
