@@ -55,7 +55,7 @@
         "references/runtime/bma-input-patterns.json",
         "scripts/bma-route-classifier.py"
       ],
-      "sha256": "08c75b958a9cf236dfdf65856b6acc638b73f910efae08c80b2f54ec9d6552c2",
+      "sha256": "1b63100aa3b1d3ed8e4cc96bdfd394537edfb8c325d66fd94567a8392ccdbe50",
       "type": "script"
     },
     {
@@ -663,7 +663,7 @@
         "references/runtime/content-contribution.schema.json",
         "scripts/emit-plan-json.py"
       ],
-      "sha256": "abe0d6b62bde9a395426bbd89b9b9df936823a070da9b66883f10157e041121f",
+      "sha256": "98af3317a60750290e674ed0a8b7e333f15f85801a8b4dd31c12f07ac245a810",
       "type": "instruction"
     },
     {
@@ -676,7 +676,7 @@
         "references/report-sections/ai-guide.md",
         "references/report-sections/ai-readme.md"
       ],
-      "sha256": "0b198bfdbb65ab14443d449e77c874e4913ec3ccc31d438d4b6ede66bf6a8b85",
+      "sha256": "4b1c68d7bc3baa7a570870510f8fc99caa083a00734782ee5636750d673ddcb7",
       "type": "instruction"
     },
     {
@@ -689,7 +689,7 @@
         "references/report-sections/ai-migration-report.md",
         "scripts/validate-migration-report.py"
       ],
-      "sha256": "093eb76693097803bdc721a5a0a716ac390fa0c6d71a034c61960231b9aeebf4",
+      "sha256": "6f9a7772d4e378222c105e808c9d38a7ecd39ffe20bb07b4a61d49c25fdb3025",
       "type": "instruction"
     },
     {
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "82a9f7df825860be82a98b7c2c1af3f5d85bc30e7e59e6d86bf8ab8ffd97f36b"
+  "self_hash": "39cf3981ded625a5187a5f0676bae26487d7041bd1feacd4ddc2eb129bc1025b"
 }

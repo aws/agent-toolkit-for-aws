@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -128,3 +129,102 @@ def test_document_contract_rejects_before_any_write(tmp_path: Path, case: str, e
         runtime.execute_contract(request(run, "direct", assembly))
     assert tree_bytes(run) == before
     assert not (run / "migration-report.html").exists()
+
+
+# Review 5661016215 (comment 4384076096): GCP regenerates migration-report.html and DECISION.md
+# through the assembly path, so an assembly may carry the prior file's sha256 like writes[] do.
+PHASES_THROUGH_ESTIMATE = {"discover": "completed", "clarify": "completed", "design": "completed",
+                           "estimate": "completed", "generate": "in_progress"}
+PHASES_THROUGH_DESIGN = {"discover": "completed", "clarify": "completed", "design": "completed",
+                         "estimate": "in_progress"}
+
+
+def sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def report_assembly(text: str, expected: str | None = None) -> dict:
+    value = contribution()
+    value["content"]["text"] = text
+    assembly = {
+        "phase": "generate", "target": "migration-report.html", "report_mode": "ai_only",
+        "document": with_anchor(AI_ONLY_BODY.read_text(encoding="utf-8")), "contributions": [value],
+    }
+    if expected is not None:
+        assembly["expected_sha256"] = expected
+    return assembly
+
+
+def rerun_request(run: Path, mode: str, assembly: dict, state: dict, **extra) -> dict:
+    return {**request(run, mode, assembly), "state": state, "execute_requested": True, **extra}
+
+
+@pytest.fixture
+def written_report(tmp_path: Path) -> tuple[Path, str]:
+    run = tmp_path / "rerun"
+    run.mkdir()
+    runtime.execute_contract(request(run, "direct", report_assembly("first callout")))
+    return run, sha(run / "migration-report.html")
+
+
+def test_assembly_rerun_with_prior_hash_replaces_migration_report(written_report: tuple[Path, str]) -> None:
+    run, prior = written_report
+    result = runtime.execute_contract(
+        rerun_request(run, "direct", report_assembly("second callout", prior), {"phases": PHASES_THROUGH_ESTIMATE}))
+    text = (run / "migration-report.html").read_text(encoding="utf-8")
+    assert "second callout" in text and "first callout" not in text
+    assert result["operations"][0]["path"] == "migration-report.html"
+    assert sha(run / "migration-report.html") != prior
+
+
+def test_assembly_rerun_without_hash_is_duplicate_final_write(written_report: tuple[Path, str]) -> None:
+    run, prior = written_report
+    before = tree_bytes(run)
+    with pytest.raises(ValueError, match="duplicate_final_write"):
+        runtime.execute_contract(
+            rerun_request(run, "direct", report_assembly("second callout"), {"phases": PHASES_THROUGH_ESTIMATE}))
+    assert tree_bytes(run) == before and sha(run / "migration-report.html") == prior
+
+
+def test_assembly_rerun_with_wrong_hash_is_mismatch(written_report: tuple[Path, str]) -> None:
+    run, prior = written_report
+    before = tree_bytes(run)
+    with pytest.raises(ValueError, match="expected_prior_hash_mismatch"):
+        runtime.execute_contract(
+            rerun_request(run, "direct", report_assembly("second callout", "0" * 64), {"phases": PHASES_THROUGH_ESTIMATE}))
+    assert tree_bytes(run) == before and sha(run / "migration-report.html") == prior
+
+
+def test_assembly_hash_on_missing_target_is_unexpected(tmp_path: Path) -> None:
+    run = tmp_path / "fresh"
+    run.mkdir()
+    with pytest.raises(ValueError, match="expected_prior_hash_unexpected"):
+        runtime.execute_contract(rerun_request(run, "direct", report_assembly("first", "0" * 64), {}))
+    assert not (run / "migration-report.html").exists()
+
+
+def decision_assembly(text: str, expected: str | None = None, phase: str = "estimate") -> dict:
+    value = contribution("DECISION.md")
+    value["content"]["text"] = text
+    assembly = {"phase": phase, "target": "DECISION.md",
+                "document": f"# Decision\n\n## AI notes\n\n{ANCHOR}\n", "contributions": [value]}
+    if expected is not None:
+        assembly["expected_sha256"] = expected
+    return assembly
+
+
+def test_decision_assembly_rerun_with_prior_hash_in_delegated_mode(tmp_path: Path) -> None:
+    # The GCP combined writer re-enters Estimate and regenerates DECISION.md through the assembly path.
+    run = tmp_path / "delegated"
+    run.mkdir()
+    runtime.execute_contract({**request(run, "delegated", decision_assembly("first")), "scenario": "combined"})
+    prior = sha(run / "DECISION.md")
+    runtime.execute_contract(rerun_request(run, "delegated", decision_assembly("second", prior),
+                                           {"phases": PHASES_THROUGH_DESIGN}, scenario="combined"))
+    text = (run / "DECISION.md").read_text(encoding="utf-8")
+    assert "second" in text and "first" not in text
+    # The owning-phase guard still applies: DECISION.md belongs to Estimate, not Generate.
+    with pytest.raises(ValueError, match="write_phase_invalid"):
+        runtime.execute_contract(rerun_request(run, "delegated", decision_assembly("third", sha(run / "DECISION.md"), phase="generate"),
+                                               {"phases": PHASES_THROUGH_DESIGN}, scenario="combined"))
+    assert "second" in (run / "DECISION.md").read_text(encoding="utf-8")

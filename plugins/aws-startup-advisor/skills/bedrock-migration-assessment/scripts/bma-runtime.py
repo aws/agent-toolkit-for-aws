@@ -701,7 +701,9 @@ CONTRIBUTION_KINDS = {
 }
 CONTRIBUTION_FIELDS = {"id", "bucket", "source_order", "target", "kind", "content", "section"}
 SECTION_ID = re.compile(r"^[a-z][a-z0-9-]*$")
-ASSEMBLY_FIELDS = {"phase", "target", "contributions", "document", "report_mode"}
+# Reruns of a final report pass the prior file's sha256 as expected_sha256; the same owner,
+# owning-phase, prior-hash, same-request-duplicate and rollback rules as writes[] apply.
+ASSEMBLY_FIELDS = {"phase", "target", "contributions", "document", "report_mode", "expected_sha256"}
 HTML_TARGETS = {"decision-report.html": {"decision"}, "migration-report.html": {"full", "ai_only"}}
 # Section IDs the validator requires per report mode. Keep in sync with validate-migration-report.py.
 DOCUMENT_SECTIONS = {
@@ -1048,8 +1050,10 @@ def _assembly_payload(target: str, contributions: list[dict[str, Any]], document
 
 def assemble_contributions(audit: WriteAudit, phase: str, target: str,
                            contributions: list[dict[str, Any]], document: Any,
-                           report_mode: str | None = None) -> None:
-    audit.write(phase, target, _assembly_payload(target, contributions, document, report_mode))
+                           report_mode: str | None = None,
+                           expected_sha256: str | None = None) -> None:
+    audit.write(phase, target, _assembly_payload(target, contributions, document, report_mode),
+                expected_sha256=expected_sha256)
 
 
 def _generate_owned(value: Any) -> bool:
@@ -1139,7 +1143,8 @@ def execute_contract(request: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("assembly_request_invalid")
             audit.prepare(value["phase"], value["target"],
                           _assembly_payload(value["target"], value["contributions"],
-                                            value["document"], value.get("report_mode")))
+                                            value["document"], value.get("report_mode")),
+                          expected_sha256=value.get("expected_sha256"))
         audit.publish()
         result["operations"] = audit.operations
     return result

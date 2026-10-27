@@ -192,7 +192,9 @@ commit." Suggest at most one.
      and render it in **decision** mode — write
      `$MIGRATION_DIR/decision-report.html` and `$MIGRATION_DIR/DECISION.md`
      per that file's decision-mode rules (no appendices, no Terraform, CTA
-     footer). Validate with
+     footer). When `decision-report.html`/`DECISION.md` already exist
+     (re-entry), include each file's current SHA-256 as `expected_sha256` on
+     its assembly so the BMA runtime replaces it. Validate with
      `python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" "$MIGRATION_DIR/decision-report.html" --mode decision --migration-dir "$MIGRATION_DIR"`
      and pass `--estimation-infra` / `--estimation-ai` / `--aws-design` when
      those files exist so the Cost Optimization gate can fire

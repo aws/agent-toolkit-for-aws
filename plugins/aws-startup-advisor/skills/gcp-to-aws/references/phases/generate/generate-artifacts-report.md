@@ -6,7 +6,7 @@
 
 ## Contribution boundary
 
-For an active AI track, consume exactly one validated set of BMA `ai.*` report contributions, sorted by numeric bucket, numeric source order, then UTF-8 ID. Invoke `$BMA_BASE/scripts/bma-runtime.py execute --request -` in delegated mode with the final report contribution set; write `migration-report.html` only through that production entrypoint and retain its audit row. Reject duplicate IDs/order keys, inactive targets, invalid markup, traceability mismatches, or an existing final target before writing. This GCP assembler remains the sole combined `migration-report.html` writer. The outer renderer supplies each final target's complete `document` with section anchors, and the BMA runtime performs the only final write.
+For an active AI track, consume exactly one validated set of BMA `ai.*` report contributions, sorted by numeric bucket, numeric source order, then UTF-8 ID. Invoke `$BMA_BASE/scripts/bma-runtime.py execute --request -` in delegated mode with the final report contribution set; write `migration-report.html` only through that production entrypoint and retain its audit row. Reject duplicate IDs/order keys, inactive targets, invalid markup, traceability mismatches, or an existing final target without its current SHA-256 before writing. When `migration-report.html` already exists (re-entering Generate), pass its current SHA-256 as `expected_sha256` on the assembly; a missing hash fails `duplicate_final_write` and a stale one fails `expected_prior_hash_mismatch`. This GCP assembler remains the sole combined `migration-report.html` writer. The outer renderer supplies each final target's complete `document` with section anchors, and the BMA runtime performs the only final write.
 
 ## Overview
 
