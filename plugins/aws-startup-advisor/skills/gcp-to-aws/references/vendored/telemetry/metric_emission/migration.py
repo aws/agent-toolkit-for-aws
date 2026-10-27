@@ -5,6 +5,7 @@
     python3 scripts/telemetry/metric_emission/migration.py --reconcile     # Stop
     python3 scripts/telemetry/metric_emission/migration.py --session-end   # SessionEnd
     python3 scripts/telemetry/metric_emission/migration.py --reconcile --via cli  # other hosts
+    python3 scripts/telemetry/metric_emission/migration.py --reconcile --via cli --project-root /project
 
 Nothing is inferred from the conversation and no skill instruction has to be
 followed. The migration skills maintain `.migration/<id>/.phase-status.json` (and
@@ -143,10 +144,11 @@ def via_mode(argv):
 # ------------------------------------------------------------ run discovery
 
 
-def find_run_dirs(start_dir):
+def find_run_dirs(start_dir, search_parents=True):
     """Run directories (.migration/<id>/ with a state file) for the nearest
     .migration tree, walking up a bounded number of levels so runs from parent or
-    sibling projects are not mixed in."""
+    sibling projects are not mixed in. Explicit targets disable upward search,
+    including when their .migration directory cannot be listed."""
     runs = []
     directory = Path(start_dir or os.getcwd()).resolve()
     for _ in range(4):
@@ -154,6 +156,8 @@ def find_run_dirs(start_dir):
         try:
             entries = list(os.scandir(root))
         except OSError:
+            if not search_parents:
+                break
             parent = directory.parent
             if parent == directory:
                 break
@@ -507,11 +511,12 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
 # ---------------------------------------------------------------------- main
 
 
-def reconcile(start_dir, session_id=None, session_end=False, edited_path=None, url=None, via="hook"):
+def reconcile(start_dir, session_id=None, session_end=False, edited_path=None, url=None, via="hook",
+              search_parents=True):
     """Report every run reachable from `start_dir`. Returns nothing; never raises."""
     url = url or client.endpoint()
     deadline = time.time() + SESSION_END_BUDGET_SECONDS - SESSION_END_RESERVE_SECONDS if session_end else float("inf")
-    for run_dir in find_run_dirs(start_dir):
+    for run_dir in find_run_dirs(start_dir, search_parents=search_parents):
         try:
             process_run(run_dir, session_id, session_end, url, deadline, edited_path, via)
         except BaseException:
@@ -520,13 +525,22 @@ def reconcile(start_dir, session_id=None, session_end=False, edited_path=None, u
 
 def main(argv, stdin=None):
     cli = via_mode(argv) == "cli"
-    if cli and client.migration_reporting_mode() == "hook":
+    project_root = None
+    if cli and "--project-root" in argv:
+        try:
+            project_root = Path(argv[argv.index("--project-root") + 1])
+            # An explicit target never falls back to a parent or sibling tree.
+            if not project_root.is_absolute() or not (project_root / ".migration").is_dir():
+                return 0
+        except (IndexError, OSError, ValueError):
+            return 0
+    if cli and project_root is None and client.migration_reporting_mode() == "hook":
         return 0  # Claude Code and Cursor retain their existing hook path.
     if cli and client.plugin_version() is None:
         return 0  # do not advance a snapshot when a standalone bundle is incomplete
     session_end = "--session-end" in argv
-    # Explicit CLI calls use cwd; they have no hook payload and must not wait
-    # for stdin or accept a caller-supplied hook session/project identity.
+    # CLI calls use an explicit project root or cwd, without reading hook stdin.
+    # Targeted reconciliation shares the hook's run lock and snapshot.
     payload = {} if cli else read_hook_payload(stdin)
     # Claude Code sends session_id on every hook; Cursor sends conversation_id.
     session_id = payload.get("session_id") or payload.get("conversation_id")
@@ -547,11 +561,12 @@ def main(argv, stdin=None):
     # deep inside a run's artifacts still resolves to its run.
     marker = edited_path.find("%s.migration%s" % (os.sep, os.sep)) if edited_path else -1
     roots = payload.get("workspace_roots")
-    start_dir = (
+    start_dir = str(project_root) if project_root is not None else (
         edited_path[:marker] if marker != -1 else None
     ) or payload.get("cwd") or (roots[0] if isinstance(roots, list) and roots else None) or os.getcwd()
 
-    reconcile(start_dir, session_id=session_id, session_end=session_end, edited_path=edited_path, via=via_mode(argv))
+    reconcile(start_dir, session_id=session_id, session_end=session_end, edited_path=edited_path,
+              via=via_mode(argv), search_parents=project_root is None)
     return 0
 
 

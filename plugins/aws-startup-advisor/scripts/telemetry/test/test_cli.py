@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -9,14 +10,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from conftest import PLUGIN_ROOT, TELEMETRY
-from test_migration import Project, activity, all_completed, phase_status
+from test_migration import Project, accept, activity, all_completed, phase_status
 
 CLI = TELEMETRY / "cli.py"
 ENDPOINT_ENV = "AWS_STARTUP_ADVISOR_PLUGIN_TELEMETRY_ENDPOINT"
 SKILLS = ("azure-to-aws", "gcp-to-aws", "heroku-to-aws", "llm-to-bedrock")
 
 
-def invoke(p, *args, script=CLI, markers=None, keep_stdin_open=False):
+def invoke(p, *args, script=CLI, markers=None, keep_stdin_open=False, cwd=None):
     env = {
         "HOME": str(p.home), "USERPROFILE": str(p.home), "PATH": "/usr/bin:/bin",
         ENDPOINT_ENV: p.collector.url,
@@ -24,7 +25,7 @@ def invoke(p, *args, script=CLI, markers=None, keep_stdin_open=False):
     env.update(markers or {})
     before = len(p.collector.received)
     proc = subprocess.Popen(  # nosec B603 — local script and fixture argv
-        [sys.executable, str(script), *args], cwd=str(p.root), env=env,
+        [sys.executable, str(script), *args], cwd=str(cwd or p.root), env=env,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     if keep_stdin_open:
@@ -165,6 +166,102 @@ def test_cli_and_existing_codex_hook_share_the_current_snapshot_and_lock(tmp_pat
     assert len(events) == 2
     assert {e["eventName"] for e in events} == {"RUN_STARTED", "PHASE_COMPLETED"}
     assert invoke(p, "reconcile", markers=markers)[1] == []
+
+
+@pytest.mark.parametrize("markers,source", [
+    ({"CLAUDECODE": "1"}, "CLAUDE_CODE"),
+    ({"CURSOR_AGENT": "1"}, "CURSOR"),
+])
+def test_explicit_project_recovers_child_run_without_scanning_siblings(
+    tmp_path, home, collector, markers, source
+):
+    p = Project(tmp_path, home, collector, phase_status())
+    sibling = Project(
+        tmp_path, home, collector,
+        phase_status(owning_skill="HEROKU_TO_AWS"), run_name="0226-1500",
+    )
+    assert p.hook(payload={"cwd": str(tmp_path), "tool_input": {"command": "write child state"}}) == []
+    assert not (p.run_dir / ".telemetry-snapshot.json").exists()
+    bodies = invoke(
+        p, "reconcile", "--project-root", str(p.root),
+        markers=markers, cwd=tmp_path, keep_stdin_open=True,
+    )[1]
+    assert {activity(body)["eventName"] for body in bodies} == {"RUN_STARTED", "PHASE_COMPLETED"}
+    assert {body["source"] for body in bodies} == {source}
+    assert {activity(body)["skill"] for body in bodies} == {"GCP_TO_AWS"}
+    assert not (sibling.run_dir / ".telemetry-snapshot.json").exists()
+    assert p.hook("--reconcile", env=markers) == []
+    assert invoke(p, "reconcile", "--project-root", str(p.root), markers=markers)[1] == []
+
+
+def test_explicit_project_and_claude_hook_deduplicate_concurrent_reporting(tmp_path, home, collector):
+    p = Project(tmp_path, home, collector, phase_status())
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        calls = [
+            pool.submit(invoke, p, "reconcile", "--project-root", str(p.root), markers={"CLAUDECODE": "1"}),
+            pool.submit(p.hook, "--reconcile"),
+        ]
+        for call in calls:
+            call.result()
+    events = [activity(json.loads(row["body"])) for row in collector.received]
+    assert len(events) == 2
+    assert {event["eventName"] for event in events} == {"RUN_STARTED", "PHASE_COMPLETED"}
+
+
+@pytest.mark.parametrize("target", ["", ".", "missing", "empty-child"])
+def test_invalid_explicit_target_never_falls_back_to_parent(tmp_path, home, collector, target):
+    p = Project(tmp_path, home, collector, phase_status())
+    (p.root / "empty-child").mkdir()
+    target = str(p.root / target) if target in ("missing", "empty-child") else target
+    assert invoke(p, "reconcile", "--project-root", target, markers={"CLAUDECODE": "1"})[1] == []
+    assert not (p.run_dir / ".telemetry-snapshot.json").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory permissions")
+@pytest.mark.parametrize("markers", [{}, {"CLAUDECODE": "1"}])
+def test_unreadable_explicit_target_does_not_report_readable_ancestor(
+    tmp_path, home, collector, markers
+):
+    parent = Project(tmp_path, home, collector, phase_status())
+    child = parent.root / "child"
+    tree = child / ".migration"
+    tree.mkdir(parents=True)
+    tree.chmod(0o111)  # stat/traversal works, but listing the directory must fail.
+    try:
+        assert tree.is_dir()
+        try:
+            list(tree.iterdir())
+        except PermissionError:
+            pass
+        else:
+            pytest.skip("filesystem permits listing despite chmod 0111")
+        assert invoke(
+            parent, "reconcile", "--project-root", str(child), markers=markers,
+        )[1] == []
+        assert not parent.has_snapshot()
+
+        # Untargeted hooks must retain their existing upward discovery.
+        events = parent.hook("--reconcile", payload={"cwd": str(child)})
+        assert {activity(event)["eventName"] for event in events} == {
+            "RUN_STARTED", "PHASE_COMPLETED",
+        }
+    finally:
+        tree.chmod(0o700)
+
+
+@pytest.mark.parametrize("consent", [None, "OPT_OUT"])
+def test_explicit_project_preserves_consent_and_retry_semantics(tmp_path, home, collector, consent):
+    p = Project(tmp_path, home, collector, phase_status(), consent=consent)
+    args = ("reconcile", "--project-root", str(p.root))
+    assert invoke(p, *args, markers={"CLAUDECODE": "1"})[1] == []
+    assert not (p.run_dir / ".telemetry-snapshot.json").exists()
+    accept(home)
+    collector.status = 500
+    assert len(invoke(p, *args, markers={"CLAUDECODE": "1"})[1]) == 2
+    assert not (p.run_dir / ".telemetry-snapshot.json").exists()
+    collector.status = 200
+    assert len(invoke(p, *args, markers={"CLAUDECODE": "1"})[1]) == 2
+    assert invoke(p, *args, markers={"CLAUDECODE": "1"})[1] == []
 
 
 @pytest.mark.parametrize("skill", SKILLS)

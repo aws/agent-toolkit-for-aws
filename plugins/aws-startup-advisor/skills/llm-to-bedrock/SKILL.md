@@ -655,9 +655,9 @@ work to the telemetry hooks.
    write entirely — `usage-baseline.json`'s absence is itself the "no baseline" signal
    `llm2bedrock-report-generator.md` §6.3 checks for.
 
-3. After creating or validating the resumed Bedrock run, reconcile in `cli`
-   reporting mode per `references/vendored/telemetry/PROTOCOL.md`.
-   In `hook` mode, leave reporting to the host hooks.
+3. After creating or validating the resumed Bedrock run, reconcile with the
+   explicit project root per `references/vendored/telemetry/PROTOCOL.md` in both
+   reporting modes.
 
 ---
 
@@ -1138,8 +1138,8 @@ user's own pre-existing branch and deleting it would destroy their work):
 **Close this skill's run state** (read-merge-write on `$BEDROCK_RUN_DIR/.phase-status.json`):
 set `phases.execute` to `"completed"`, `current_phase` to `"complete"`, and update
 `last_updated`. This is what marks the AI migration finished in the usage funnel.
-After writing this state, reconcile in `cli` reporting mode per
-`references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
+After writing this state, reconcile with the explicit project root per
+`references/vendored/telemetry/PROTOCOL.md` in both reporting modes.
 
 ---
 
