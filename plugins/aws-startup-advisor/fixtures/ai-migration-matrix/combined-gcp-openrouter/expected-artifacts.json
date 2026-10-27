@@ -1,0 +1,17 @@
+{
+  "id": "combined-gcp-openrouter",
+  "mode": "combined",
+  "migration_id": "combined-gcp-openrouter",
+  "run_id": "00000000-0000-4000-8000-000000000010",
+  "state": ".phase-status.json",
+  "dimensions": {
+    "infrastructure_source": "gcp",
+    "ai_sources": [{"provider": "openai", "source_service": "openai_api", "model_families": ["gpt"], "model_evidence": "observed", "models": ["gpt-4o"]}],
+    "gateways": [{"product": "openrouter", "type": "llm_router", "upstream_evidence": "observed", "upstreams": [{"provider": "openai", "source_service": "openai_api", "model_families": [{"family": "gpt", "model_evidence": "observed", "models": ["gpt-4o"]}]}]}]
+  },
+  "outcomes": {
+    "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},
+    "ai": {"verdict": "passed", "artifacts": ["ai-workload-profile.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json"]},
+    "integration_validation": {"verdict": "passed", "artifact": "integration-validation.json"}
+  }
+}

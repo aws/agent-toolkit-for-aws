@@ -16,6 +16,12 @@ _produces:
 
 ## Assembly rules
 
+0. **AI-only run (the infra fragment did not run because
+   `azure-resource-inventory.json` is absent): do not write `aws-design.json` at
+   all.** There is no infra to design, so an empty or placeholder file would
+   misrepresent a route that was never run. Write only `aws-design-ai.json` (when
+   the AI fragment ran) and proceed to the postconditions, which no longer require
+   `aws-design.json` on this route (see `design.md`'s AI-only postcondition).
 1. Merge fragment contributions into one `aws-design.json`.
 2. **Cluster-level fields come first in the artifact and first in the report**:
    `pattern_id`, `target_architecture`, the cluster `rationale`, and the constraint

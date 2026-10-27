@@ -1,0 +1,44 @@
+{
+  "_what_this_is": "HAND-AUTHORED clusters artifact for the eligible fast-path estate (see azure-resource-inventory.json in this directory). One cluster, the App Service Plan as primary, so cluster_count is 1 and the eligibility rule's `cluster_count <= 2` clause holds.",
+  "phase": "discover",
+  "clusters": [
+    {
+      "cluster_id": "rg-shop-asp-shop-web",
+      "seed_resource_group": "rg-shop",
+      "tier": "compute",
+      "members": [
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop",
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web",
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/sites/app-shop-storefront",
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/sites/app-shop-admin",
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.DBforPostgreSQL/flexibleServers/pg-shop-store"
+      ],
+      "member_roles": {
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop": "idle",
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/sites/app-shop-storefront": "deployment",
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/sites/app-shop-admin": "deployment",
+        "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.DBforPostgreSQL/flexibleServers/pg-shop-store": "data"
+      },
+      "primary": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web",
+      "justification": "seed:resource_group",
+      "edges": [
+        {
+          "type": "data_ref",
+          "from": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/sites/app-shop-storefront",
+          "to": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.DBforPostgreSQL/flexibleServers/pg-shop-store",
+          "via": "app_settings.DATABASE_HOST"
+        },
+        {
+          "type": "data_ref",
+          "from": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/sites/app-shop-admin",
+          "to": "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.DBforPostgreSQL/flexibleServers/pg-shop-store",
+          "via": "app_settings.DATABASE_HOST"
+        }
+      ],
+      "pattern_id": "unclassified",
+      "pattern_confidence": "inferred",
+      "pattern_status": "catalog_absent"
+    }
+  ],
+  "unclustered": []
+}

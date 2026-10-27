@@ -4,6 +4,8 @@
 
 Produces structured summaries of Amazon Detective investigations and finding groups. Aggregates investigation status, severity distributions, and indicator types to give operators a rapid understanding of their investigation landscape.
 
+**Method:** `list-graphs` first — if it returns none, the caller administers no behavior graph in this Region (a member account of an active graph also gets an empty list), so report Detective enablement as UNKNOWN from this account, not as not configured, and stop — unless the caller is verified as the Detective delegated administrator, in which case an empty result is NOT_CONFIGURED (matching `detective-configuration.md`). Otherwise `list-investigations` per graph and **group results by Status (RUNNING/SUCCESSFUL/FAILED) and Severity (CRITICAL/HIGH/MEDIUM/LOW/INFORMATIONAL) with total counts per status**, then `get-investigation` for detail. Read-only summary — no triage, investigation actions, or remediation.
+
 Detective builds behavior graphs from CloudTrail management events, VPC Flow Logs, EKS Audit Logs, and Security Hub findings. Detective does NOT support S3 data events.
 
 Works from both standalone and delegated administrator accounts.
@@ -23,7 +25,7 @@ Works from both standalone and delegated administrator accounts.
    aws detective list-graphs
    ```
 
-   If no graphs, report Detective not configured and stop.
+   If it returns no graphs, the caller administers no behavior graph in this Region (a member account of an active graph also gets an empty list), so report Detective enablement as UNKNOWN from this account, not as not configured, and stop — unless the caller is verified as the Detective delegated administrator, in which case an empty result is NOT_CONFIGURED (matching `detective-configuration.md`).
 
 2. List investigations:
 
@@ -31,7 +33,7 @@ Works from both standalone and delegated administrator accounts.
    aws detective list-investigations --graph-arn <graph-arn> --filter-criteria '{}'
    ```
 
-3. Group results by `Status` (RUNNING, SUCCESSFUL, FAILED) and `Severity` (CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL).
+3. Group results by `Status` (RUNNING, SUCCESSFUL, FAILED) and `Severity` (CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL). Report every Status and Severity value with its count, including zeros, so an empty result shows as zero counts rather than an omitted breakdown.
 
 4. Present results:
 

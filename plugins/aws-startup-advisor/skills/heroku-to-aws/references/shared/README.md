@@ -6,7 +6,7 @@ self-contained.
 
 | File                                      | Purpose                                                         |
 | ----------------------------------------- | --------------------------------------------------------------- |
-| `application-source-contract.schema.json` | Future application-source request and findings definitions      |
+| `application-source-contract.schema.json` | Application-source request and findings definitions             |
 | `application-source-contract.md`          | Contract semantics and retained-field purpose review            |
 | `heroku-pricing-cache.md`                 | Heroku plan pricing (source-side baseline for the estimate)     |
 | `schema-discover-heroku.md`               | `heroku-resource-inventory.json` schema                         |

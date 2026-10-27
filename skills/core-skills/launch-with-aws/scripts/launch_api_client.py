@@ -166,16 +166,14 @@ def _client_error_to_api_error(err: ClientError, method: str, path: str) -> ApiE
     return ApiError(status, method, path, raw_message, error_code=error_code)
 
 
-def _get_base_url() -> str:
-    return load_config().base_url
-
-
-def _get_boto3_client() -> Any:
-    """Create a boto3 client with the current Bearer token."""
+def _get_boto3_client(region: Optional[str] = None) -> Any:
+    """Create a boto3 client for a region, with the current Bearer token."""
+    config = load_config(region)
     token = get_access_token()
     return create_client(
-        endpoint_url=_get_base_url(),
+        endpoint_url=config.base_url,
         bearer_token=token,
+        region_name=config.region,
         config=BotoConfig(
             retries={"max_attempts": 3, "mode": "adaptive"},
             connect_timeout=REQUEST_TIMEOUT_SECS,
@@ -187,9 +185,9 @@ def _get_boto3_client() -> Any:
 # ── Public API functions ─────────────────────────────────────────────────
 
 
-def create_upload_url() -> Any:
+def create_upload_url(region: Optional[str] = None) -> Any:
     """POST /api/uploads -> presigned S3 PUT location."""
-    client = _get_boto3_client()
+    client = _get_boto3_client(region)
     try:
         return client.create_upload_url()
     except ClientError as err:
@@ -218,9 +216,10 @@ def create_launch(
     name: str,
     source: Dict[str, Any],
     client_token: Optional[str] = None,
+    region: Optional[str] = None,
 ) -> Any:
     """POST /api/launches — create a new launch from an upload or GitHub repo."""
-    client = _get_boto3_client()
+    client = _get_boto3_client(region)
     kwargs: Dict[str, Any] = {"name": name, "source": source}
     if client_token:
         kwargs["clientToken"] = client_token
@@ -230,9 +229,9 @@ def create_launch(
         raise _client_error_to_api_error(err, "POST", "/api/launches") from err
 
 
-def get_launch(launch_id: str, include: Optional[str] = None) -> Any:
+def get_launch(launch_id: str, include: Optional[str] = None, region: Optional[str] = None) -> Any:
     """GET /api/launches/:launchId — get launch details with optional sections."""
-    client = _get_boto3_client()
+    client = _get_boto3_client(region)
     kwargs: Dict[str, Any] = {"launchIdentifier": launch_id}
     if include:
         # The API accepts a list of section enum values.
@@ -243,9 +242,9 @@ def get_launch(launch_id: str, include: Optional[str] = None) -> Any:
         raise _client_error_to_api_error(err, "GET", f"/api/launches/{launch_id}") from err
 
 
-def list_launches(max_results: Optional[int] = None) -> Any:
-    """GET /api/launches — list all launches for the current user."""
-    client = _get_boto3_client()
+def list_launches(max_results: Optional[int] = None, region: Optional[str] = None) -> Any:
+    """GET /api/launches — list all launches for the current user in one region."""
+    client = _get_boto3_client(region)
     kwargs: Dict[str, Any] = {}
     if max_results is not None:
         kwargs["maxResults"] = max_results
@@ -255,39 +254,20 @@ def list_launches(max_results: Optional[int] = None) -> Any:
         raise _client_error_to_api_error(err, "GET", "/api/launches") from err
 
 
-def delete_launch(launch_id: str) -> None:
+def delete_launch(launch_id: str, region: Optional[str] = None) -> None:
     """DELETE /api/launches/:launchId — delete a launch (returns 204 No Content)."""
-    client = _get_boto3_client()
+    client = _get_boto3_client(region)
     try:
         client.delete_launch(launchIdentifier=launch_id)
     except ClientError as err:
         raise _client_error_to_api_error(err, "DELETE", f"/api/launches/{launch_id}") from err
 
 
-def refine_plan(
-    launch_id: str,
-    context_answers: Optional[Dict[str, str]] = None,
-    prompt: Optional[str] = None,
-    client_token: Optional[str] = None,
+def start_launch_execution(
+    launch_id: str, client_token: Optional[str] = None, region: Optional[str] = None
 ) -> Any:
-    """POST /api/launches/:launchId/refine — provide context answers to refine the plan."""
-    client = _get_boto3_client()
-    kwargs: Dict[str, Any] = {"launchIdentifier": launch_id}
-    if context_answers:
-        kwargs["contextAnswers"] = context_answers
-    if prompt:
-        kwargs["prompt"] = prompt
-    if client_token:
-        kwargs["clientToken"] = client_token
-    try:
-        return client.refine_plan(**kwargs)
-    except ClientError as err:
-        raise _client_error_to_api_error(err, "POST", f"/api/launches/{launch_id}/refine") from err
-
-
-def start_launch_execution(launch_id: str, client_token: Optional[str] = None) -> Any:
     """POST /api/launches/:launchId/start — start execution of the deployment plan."""
-    client = _get_boto3_client()
+    client = _get_boto3_client(region)
     kwargs: Dict[str, Any] = {"launchIdentifier": launch_id}
     if client_token:
         kwargs["clientToken"] = client_token

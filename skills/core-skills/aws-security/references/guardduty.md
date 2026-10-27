@@ -3,20 +3,21 @@
 - **Docs**: https://docs.aws.amazon.com/guardduty/latest/ug/
 - **Docs (llms.txt)**: https://docs.aws.amazon.com/guardduty/latest/ug/llms.txt
 
-Amazon GuardDuty is a threat detection service that continuously monitors AWS accounts and workloads for malicious activity. It analyzes CloudTrail management events, VPC Flow Logs, DNS logs, S3 data events, EKS audit logs, RDS login events, and runtime activity (EC2, EKS, ECS containers) to identify threats ranging from reconnaissance to active compromise. Findings are in GuardDuty's proprietary JSON format and are also sent to Security Hub in OCSF format.
+Amazon GuardDuty is a threat detection service that continuously monitors AWS accounts and workloads for malicious activity. On enablement it analyzes three foundational sources with nothing further to turn on: CloudTrail management events, VPC Flow Logs and Route 53 Resolver DNS query logs. Every other source reaches GuardDuty only through a protection plan, enabled separately and toggled individually: S3 data events, EKS audit logs, Lambda network activity, RDS login events and runtime activity (EC2, EKS, ECS containers). Confirm the current data sources and protection plans in the GuardDuty documentation. Lambda Protection and RDS Protection may auto-enable during a free trial on first enablement in a Region and can be disabled afterwards, so a plan being on now is not evidence it was always on; confirm current trial terms and duration from AWS documentation rather than assuming a fixed window. Together these identify threats ranging from reconnaissance to active compromise. Findings are in GuardDuty's proprietary JSON format and are also sent to Security Hub in OCSF format.
 
 ## Data Sources
 
 ```mermaid
 graph LR
     CT[CloudTrail Mgmt Events] --> GD[GuardDuty]
-    DNS[DNS Logs] --> GD
+    DNS[Route 53 Resolver<br/>DNS Query Logs] --> GD
     VPC[VPC Flow Logs] --> GD
-    LAMBDA[Lambda Network Logs] --> GD
-    S3[S3 Data Events] --> GD
-    EKS[EKS Audit Logs] --> GD
-    RDS[RDS Login Events] --> GD
-    RT[Runtime Monitoring<br/>EC2, EKS, ECS] --> GD
+    LAMBDA[Lambda Network Activity] --> PP
+    S3[S3 Data Events] --> PP
+    EKS[EKS Audit Logs] --> PP
+    RDS[RDS Login Events] --> PP
+    RT[Runtime Monitoring<br/>EC2, EKS, ECS] --> PP
+    PP[Protection plan<br/>must be enabled] --> GD
     GD -->|generates| FIND[Threat Findings<br/>incl. Attack Sequences]
 ```
 
@@ -63,7 +64,8 @@ GuardDuty uses a numeric 0–10 scale mapped to severity levels:
 ## Service Notes
 
 - **EKS_RUNTIME_MONITORING**: Legacy feature flag — only relevant for customers who enabled it before unified RUNTIME_MONITORING. Treat as edge case.
-- **GuardDuty Malware Protection for S3**: On-demand scanning (not continuous like EC2 malware scanning). Checked via `list-malware-protection-plans`.
+- **Runtime Monitoring support changes over time.** Before assessing or recommending it, read the current GuardDuty Runtime Monitoring documentation for supported compute services, launch types, node/platform prerequisites, agent-management options and Region eligibility. Compare that current support matrix with the observed workload inventory and `list-coverage` results. If documentation cannot be read or workload eligibility cannot be verified, report applicability as UNKNOWN rather than relying on a remembered compute list.
+- **GuardDuty Malware Protection for S3**: Automatically scans newly uploaded objects in the selected buckets, and also supports on-demand scans of existing objects. It is separate from Malware Protection for EC2, which runs GuardDuty-initiated and on-demand scans of EBS volumes. Checked via `list-malware-protection-plans`. See [Malware Protection for S3](https://docs.aws.amazon.com/guardduty/latest/ug/gdu-malware-protection-s3.html).
 
 ## Output Sensitivity
 

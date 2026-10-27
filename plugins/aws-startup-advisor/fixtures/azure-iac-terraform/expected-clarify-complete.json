@@ -72,9 +72,17 @@
       "why": "THE most consequential row in the phase. The source is ZoneRedundant, so it must be ESSENTIAL \u2014 silently downgrading resilience someone pays for today is the expensive mistake. It must NOT be DETECTED either: the source says what they bought, not what they need."
     },
     "data.db_cutover": {
-      "disposition": "ESSENTIAL",
-      "value": "dms",
-      "why": "DMS versus dump-and-restore is a different runbook, so no default."
+      "disposition": "PROPOSED",
+      "value": "dump_restore",
+      "must_not_be_disposition": [
+        "ESSENTIAL",
+        "DETECTED"
+      ],
+      "requires_keys": [
+        "default_basis",
+        "size_coverage"
+      ],
+      "why": "DMS versus dump-and-restore is a different RUNBOOK, which is exactly why the question is asked where the runbook is written: Clarify records a size-derived default (64 GiB <= 100 GiB -> dump_restore) marked deferred_to_generate, and the Decision gate's [C] asks it for real (estimate-assemble.md Step 3b) before Generate loads. ESSENTIAL here would make a user who stops at the decision answer a question they will never use; DETECTED would claim the estate said something it did not."
     },
     "data.cosmos_rw_split": {
       "disposition": "N/A",
@@ -124,6 +132,18 @@
     "_why": "The inverse of the blocked branch's assertion, and just as important. Every ESSENTIAL row is answered here, so the phase MUST complete - a run that gates anyway is refusing a decision the user made, which is the mirror of inventing consent.",
     "expected_unanswered": [],
     "expected_status": "COMPLETE"
+  },
+  "clarify_mode": {
+    "_why": "This corpus is ineligible for the clarify.md Step 0.5 fast path (VMs, ZoneRedundant Postgres, five clusters). A run reporting fast_path here either ignored Discover's metadata.clarify_fast_path verdict or re-derived eligibility itself; both are forbidden and neither produces a malformed artifact.",
+    "expected": "wizard",
+    "expected_fast_path_eligible": false,
+    "expected_deferred_to_generate": [
+      "data.db_cutover"
+    ],
+    "_deferred_why": "The corpus has a relational database, so db_cutover must be defaulted-and-deferred, and metadata.deferred_to_generate must name it so generate.md's precondition can refuse to run until Step 3b confirms it."
+  },
+  "db_cutover_default_rule": {
+    "_why": "The default is not a fixed pin but Q-D2's RULE evaluated against the inventory's relational storage_mb: dump_restore at <= 100 GiB (inclusive), dms above, and dump_restore + size_coverage unknown when no server carries a measured size. Pinning the rule rather than the value catches the two plausible improvisations the missing-size case invites \u2014 inventing a size so the two-branch rule fires, or escalating to ESSENTIAL and adding a question the fast-path offer promised not to ask."
   },
   "defaults_not_promoted": {
     "_why": "A value taken from its default must still read PROPOSED. DETECTED means READ FROM THE ESTATE. Design's rationale prints 'you chose Elastic Beanstalk' differently from 'we assumed Elastic Beanstalk', and the report prints the difference \u2014 but only if this file recorded which happened. A row that is DETECTED with value == default and no stated source is a promoted default.",

@@ -5,6 +5,13 @@ description: "Migrate workloads from Google Cloud Platform to AWS — plus AI an
 
 # GCP-to-AWS Migration Skill
 
+## Optional usage telemetry
+
+Before starting or resuming, load `references/vendored/telemetry/PROTOCOL.md` and
+run its read-only status check. Use the returned reporting mode rather than the
+model's identity. Complete the existing notice exchange only when that protocol
+requires it; unavailable or declined telemetry never blocks this skill.
+
 ## Philosophy
 
 - **Re-platform by default**: Select AWS services that match GCP workload types (e.g., Cloud Run → Fargate, Cloud SQL → RDS).
@@ -142,7 +149,7 @@ Load `references/shared/handoff-gates.md` when executing any phase completion st
 1. **Single `$MIGRATION_DIR`**: Use one run directory for the entire migration. Do not mix artifacts across `.migration/*/` sessions.
 2. **Re-read from disk**: Before each phase (and before each handoff gate), Read required artifacts from `$MIGRATION_DIR/`. Do not rely on chat memory.
 3. **Advance only on `HANDOFF_OK`**: A phase is complete only when its orchestrator emits `HANDOFF_OK | phase=<name> | artifacts=...`. Do not load the next phase without it.
-4. **On `GATE_FAIL`**: Output the failure line(s) to the user in plain language. **Do NOT modify artifacts** to pass the gate. **Do NOT continue** to the next phase. Tell the user which phase to re-run.
+4. **On `GATE_FAIL`**: Output the failure line(s) to the user in plain language. **Do NOT modify artifacts** to pass the gate. **Do NOT continue** to the next phase. Record the failure per `handoff-gates.md`. Tell the user which phase to re-run.
 5. **Re-entry**: Re-running an earlier phase after downstream phases completed requires explicit user confirmation; downstream phases must be reset to `"pending"`. See `handoff-gates.md` re-entry table.
 
 Generate phase additionally loads `references/shared/validate-artifacts.md` before writing `migration-report.html`, then `references/shared/validate-migration-report.md` after the HTML is written.
@@ -209,6 +216,10 @@ Use **read-merge-write** updates for `.phase-status.json`:
 3. Keep prior completed phases unchanged.
 4. Set `current_phase` to the next deterministic phase — or `complete` after Generate, **or** after Estimate when the user chose Decision-gate **A** (`run_mode: "decide"`; Generate stays pending).
 5. Write the full file in the same turn as your final phase work message.
+6. Reconcile the saved state in `cli` reporting mode per
+   `references/vendored/telemetry/PROTOCOL.md` before advancing or returning,
+   including sidebar updates and decision-only or executed completion. In `hook`
+   mode, leave reporting to the host hooks.
 
 Example — after completing the Clarify phase, write `$MIGRATION_DIR/.phase-status.json` with:
 
@@ -239,7 +250,7 @@ Replace `MMDD-HHMM` with the actual migration ID, generate the `last_updated` IS
 
 | Phase        | Inputs                                                                                                                                                                   | Outputs                                                                                                                                                                                                                                       | Reference                                |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| **Discover** | `.tf` files, app source code, and/or billing exports (at least one required); optional OpenAI Admin API access or OpenRouter provisioning-key access supplements with real AI spend                            | `gcp-resource-inventory.json`, `gcp-resource-clusters.json`, `ai-workload-profile.json`, `billing-profile.json`, `openai-usage-profile.json`, `openrouter-usage-profile.json`, `.phase-status.json` updated (outputs vary by input)                                            | `references/phases/discover/discover.md` |
+| **Discover** | `.tf` files, app source code, and/or billing exports (at least one required); optional OpenAI Admin API access, OpenRouter provisioning-key access, or Anthropic Admin API access supplements with real AI spend | `gcp-resource-inventory.json`, `gcp-resource-clusters.json`, `ai-workload-profile.json`, `billing-profile.json`, `openai-usage-profile.json`, `openrouter-usage-profile.json`, `anthropic-usage-profile.json`, `.phase-status.json` updated (outputs vary by input)                                            | `references/phases/discover/discover.md` |
 | **Clarify**  | Discovery artifacts (`gcp-resource-inventory.json`, `gcp-resource-clusters.json`, `ai-workload-profile.json`, `billing-profile.json` — whichever exist)                  | `preferences.json`, `.phase-status.json` updated                                                                                                                                                                                              | `references/phases/clarify/clarify.md`   |
 | **Design**   | `preferences.json` + discovery artifacts                                                                                                                                 | `aws-design.json` (infra), `aws-design-ai.json` (AI), `aws-design-billing.json` (billing-only)                                                                                                                                                | `references/phases/design/design.md`     |
 | **Estimate** | `aws-design.json` or `aws-design-billing.json` or `aws-design-ai.json`, `preferences.json`                                                                               | `estimation-infra.json` or `estimation-ai.json` or `estimation-billing.json`, `.phase-status.json` updated                                                                                                                                    | `references/phases/estimate/estimate.md` |
@@ -255,7 +266,7 @@ Replace `MMDD-HHMM` with the actual migration ID, generate the `last_updated` IS
 
 - Provides `aws___search_documentation`, `aws___read_documentation`, `aws___list_regions`, `aws___get_regional_availability`, `aws___retrieve_skill` tools
 - Used during Design for regional availability checks and documentation lookups.
-- Primary pricing source: `references/shared/pricing-cache.md` (cached 2026 rates, ±5-10% for infrastructure, ±15-25% for AI models). Pricing is cache-only — no live pricing MCP.
+- Primary pricing sources: `references/shared/pricing-cache.md` (cached 2026 infrastructure and source-provider rates, ±5-10%) and `references/vendored/ai/bedrock-pricing-cache.md` (provider-neutral Bedrock rates, ±15-25%). Pricing is cache-only — no live pricing MCP.
 
 ---
 
@@ -340,13 +351,15 @@ gcp-to-aws/
 │       ├── validate-artifacts.md               # Pre-report validation (Generate Step 0; read-only)
 │       ├── validate-migration-report.md          # Post-write HTML completeness (Generate Step 4; also decision-report.html via --mode decision)
 │       ├── migration-complexity.md             # Complexity tier definitions (small/medium/large) for timeline scaling
-│       ├── pricing-cache.md                    # Cached AWS + source provider pricing (±5-25%, primary source)
+│       ├── pricing-cache.md                    # Cached AWS infrastructure + source provider pricing
+│       ├── gcp-infra-pricing-cache.md          # Cached source-side GCP infrastructure pricing
 │       ├── graviton.md                         # Graviton/ARM64 tiers, mapping, per-phase rules (conditional load)
 │       └── schema-graviton.md                  # graviton_profile + cpu_architecture + architecture_comparison schemas
 │
 └── references/vendored/                        # byte-synced copies of skills/shared/ — DO NOT EDIT
     ├── workshop/workshop-invariants.md         # cross-skill what-if workshop contract
     └── ai/                                     # plugin-neutral, source-cloud-agnostic AI content
+        ├── bedrock-pricing-cache.md            # Canonical provider-neutral Bedrock model + service rates
         ├── ai-model-lifecycle.md               # Bedrock Active/Legacy/EOL registry + 90-day exclusion rule
         ├── ai-migration-guardrails.md          # shared constraints for every agentic migration path
         ├── bedrock-quotas.md                   # Bedrock TPM/RPM quota awareness, burndown rates, capacity planning
@@ -361,7 +374,7 @@ gcp-to-aws/
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No GCP sources found (no `.tf`, no app code, no billing data) | Offer live gcloud discovery per `discover.md` Step 1d. Only if declined or unavailable: Stop. Output: "No GCP sources detected. Provide at least one source type (Terraform files, application code, or billing exports), or re-run and accept live discovery." |
 | `.phase-status.json` missing phase gate                       | Stop. Output: "Cannot enter Phase X: Phase Y-1 not completed. Start from Phase Y or resume Phase Y-1."                                                                                                                                                          |
-| Service not in pricing cache                                  | Display user warning about ±5-25% accuracy. Use `pricing-cache.md`. Set `pricing_source: "unavailable"` for that service in the applicable `estimation-*.json` file.                                                                                            |
+| Service not in applicable pricing cache                       | Display the applicable accuracy warning: ±5-10% for infrastructure/source-provider rates or ±15-25% for Bedrock rates. Use the corresponding cache and set `pricing_source: "unavailable"` for that service in the applicable `estimation-*.json` file.                                      |
 | User skips questions or says "use defaults for the rest"      | Apply documented defaults for all remaining questions (essential questions and any unconfirmed sheet rows in wizard mode; current and subsequent batches in full mode). Q2/Q3 defaults add a report caveat. Phase 2 completes either way.                       |
 | `aws-design.json` missing required clusters                   | Stop Phase 4. Output: "Re-run Phase 3 to generate missing cluster designs."                                                                                                                                                                                     |
 
@@ -381,7 +394,9 @@ When invoked, the agent **MUST follow this exact sequence**:
 
 1. **Load phase status**: Read `.phase-status.json` from `.migration/*/`.
    - If missing: Initialize for Phase 1 (Discover)
-   - If exists: Determine current phase using deterministic rules in **State Machine**
+   - If exists: Determine current phase using deterministic rules in **State Machine**.
+     After selecting and validating the run, reconcile in `cli` reporting mode
+     per `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
 
 2. **Determine phase to execute**:
    - If `current_phase` exists: execute that phase.
@@ -394,7 +409,7 @@ When invoked, the agent **MUST follow this exact sequence**:
 
 5. **Validate outputs**: Confirm all required output files exist with correct schema before proceeding. Phase orchestrators run **Completion Handoff Gate** checks per `shared/handoff-gates.md`.
 
-6. **Handoff gate**: Emit `HANDOFF_OK` or `GATE_FAIL` per `shared/handoff-gates.md`. On `GATE_FAIL`, stop — do not update phase status or load the next phase.
+6. **Handoff gate**: Emit `HANDOFF_OK` or `GATE_FAIL` per `shared/handoff-gates.md`. On `GATE_FAIL`, stop — record the failure, do not update phase status or load the next phase.
 
 7. **Update phase status**: Only after `HANDOFF_OK`. Use the Phase Status Update Protocol (read-merge-write) in the same turn as the phase's final output message.
 

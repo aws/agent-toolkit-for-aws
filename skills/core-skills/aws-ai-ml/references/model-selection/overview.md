@@ -21,7 +21,7 @@ None — this skill can be entered directly.
 
 2. **Recommend use-case-spec first:** If no `*_use_case_spec.md` file exists for this use case, recommend creating one via `references/use-case-specification/overview.md` before filtering. This produces better results because the spec captures constraints that map to concrete filter values. If the user declines or provides a specific model name/ID, proceed without it. **After making this recommendation, stop and wait for the user's response. Do not continue with model selection in the same turn.**
 
-3. **Base model filtering MUST use select-for-deployment:** When making a final model selection or recommendation for deployment, you MUST follow `references/select-for-deployment.md` and use its scripts (`get_deployable_models.py`, `filter_deployable_models.py`). Do not make a final model selection or recommendation for deployment ad-hoc from your own knowledge.
+3. **Base model filtering MUST use select-for-deployment:** When making a final model selection or recommendation for deployment, you MUST follow `references/select-for-deployment.md` and use its scripts. `SageMakerPublicHub` uses `get_deployable_models.py` for a selection-session catalog snapshot and `search_deployable_models.py` for confirmed candidates; private Hubs keep `get_deployable_models.py` plus `filter_deployable_models.py`. Do not make a final model selection or recommendation for deployment ad hoc from your own knowledge.
 
 4. **Offer to create a use-case spec after filtering:** If filtering was done without a spec, and no `*_use_case_spec.md` file exists for this use case, offer to create one to refine the criteria for future iterations.
 
@@ -37,19 +37,23 @@ NEVER present a model list without stating whether it came from the Hub scripts 
 
 ### Step 1: Check Region
 
-Run:
+Run the same boto3 region check used by planning and SDK setup:
 
-```
+```bash
 python -c "import boto3; print(boto3.session.Session().region_name)"
-
 ```
 
-- `None` → STOP. Tell user: "Set your region via `export AWS_DEFAULT_REGION=us-west-2` or `aws configure`."
-- Set → store REGION in context, continue.
+- Result is `None` → STOP. Tell user: "Set your region via `export AWS_DEFAULT_REGION=us-west-2` or `aws configure`."
+- Region set → store REGION in context, continue.
 
 ### Step 2: Discover Hub
 
-1. List all available SageMaker Hubs in the user's region by calling the SageMaker `ListHubs` API using the `aws___call_aws` tool.
+1. List all available SageMaker Hubs in the user's region:
+
+   ```bash
+   aws sagemaker list-hubs --region <region>
+   ```
+
 2. From the results, filter out any hub whose `HubDescription` contains "AI Registry" — these do not contain JumpStart models.
 3. The remaining hubs are eligible (e.g., `SageMakerPublicHub` and any private hubs).
 4. If exactly one eligible hub exists, use it automatically — do not ask the user.

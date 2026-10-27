@@ -531,6 +531,7 @@ Continue with the next resource after the Fargate entry is appended. This guard 
   "addon_name": "<config.addon_service>",
   "addon_plan": "<config.plan>",
   "provider": "<config.provider>",
+  "resource_id": "<the deferred resource's resource_id from heroku-resource-inventory.json>",
   "reason": "Not found in Fast_Path_Table" | "Unrecognized plan tier: {plan}",
   "recommendation": "Engage AWS account team for replacement selection"
 }
@@ -541,6 +542,11 @@ Continue with the next resource after the Fargate entry is appended. This guard 
 - `addon_name`: The add-on service name
 - `addon_plan`: The specific plan tier
 - `provider`: The add-on provider
+- `resource_id`: The original Heroku resource's `resource_id` (from
+  `heroku-resource-inventory.json`), so a later phase can correlate this
+  deferral back to any Heroku-side cost already attributed to this resource.
+  This is a pure addition — the call site already has `{resource_id}` in
+  scope (used above when it builds the warning), so no new data is introduced.
 - `reason`: Why the mapping was deferred
 - `recommendation`: Actionable next step
 

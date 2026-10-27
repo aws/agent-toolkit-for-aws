@@ -65,8 +65,8 @@ Pre-initializes execution environments that stay warm permanently.
 | Java/Python/.NET with heavy init | SnapStart |
 | Strict <50ms cold start, or need EFS / >512MB ephemeral | Provisioned Concurrency |
 | Tolerant of occasional cold starts | On-demand + minimize package |
-| Predictable traffic | Provisioned Concurrency + auto-scaling |
-| General optimization | arm64 (Graviton) |
+| Steady, predictable traffic | Managed Instances (see [compute-decision-edge-cases.md](compute-decision-edge-cases.md)) |
+| General price-performance (not a cold-start fix) | arm64 (Graviton) |
 
 ---
 
@@ -148,7 +148,7 @@ Objects initialized outside the handler persist across invocations (SDK clients,
 
 ## Function URLs
 
-A Function URL is a dedicated HTTPS endpoint on a single function — no API Gateway. Use for internal service-to-service (IAM auth), Lambdalith + CloudFront, response streaming, or webhook receivers. There's **no built-in rate limiting, WAF, or request validation** (front with CloudFront/API Gateway if you need those). Choose **API Gateway** instead for public APIs needing rate limiting, JWT/Cognito auth, multi-function routing, request validation, or WAF without CloudFront.
+A Function URL is a dedicated HTTPS endpoint on a single function — no API Gateway. Use for internal service-to-service (IAM auth), Lambdalith + CloudFront, response streaming, or webhook receivers. There's **no built-in rate limiting, WAF, or request validation** (front with CloudFront/API Gateway if you need those). Choose **API Gateway** instead for public APIs needing rate limiting, JWT/Cognito auth, multi-function routing, request validation, or WAF without CloudFront. For a Node.js app that already speaks HTTP (Express, Fastify, Hono), Lambda Web Functions serves it without an adapter or API Gateway — route to the **aws-lambda-web-functions** skill.
 
 Invoking a Function URL **always requires `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction`** — granting only `InvokeFunctionUrl` returns **HTTP 403** even with `AuthType=NONE`. The two `AuthType` options differ in *how* those permissions are supplied:
 

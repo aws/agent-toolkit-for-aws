@@ -104,7 +104,7 @@ resource and scope **attributes/labels** rather than a CloudWatch namespace.
 | Family | What it is | Identity labels | Example |
 |---|---|---|---|
 | **OTLP-ingested metrics** | Custom application metrics your services emit through an OTel SDK or collector, including Kubernetes workload metrics | `"@resource.service.name"`, `"@resource.k8s.*"` | `http_server_request_duration`, `k8s.pod.phase` |
-| **Span-derived RED metrics** | Platform-generated from ingested traces — the rate/error/duration signals the service map and service dashboards use | `"@resource.service.name"`, `"@status.code"` | `traces.span.metrics.calls` (counter), `traces.span.metrics.duration` (native histogram) |
+| **Span-derived RED metrics** | Platform-generated from ingested traces — the rate/error/duration signals the service map and service dashboards use | `"@resource.service.name"`, `"status.code"` (no `@` scope, but still double-quoted — it is dotted) | `traces.span.metrics.calls` (**delta Sum** — read it with `sum_over_time`, never `rate()`), `traces.span.metrics.duration` (native histogram) |
 | **OTel-enriched vended AWS metrics** | Metrics AWS services publish natively (EC2, Lambda, RDS, ...) **after** OTel enrichment has projected them onto this surface | `"@instrumentation.@name"="cloudwatch.aws/<service>"` + the original dimension as a bare label (`InstanceId`, `FunctionName`) | `{__name__="CPUUtilization", "@instrumentation.@name"="cloudwatch.aws/ec2"}` |
 
 ### Not queryable: CloudWatch vended metrics that are not enriched
@@ -153,7 +153,10 @@ the PromQL surface:
 - **Names are preserved.** The metric keeps its CloudWatch name (`CPUUtilization`,
   `4xxErrors`), its dimensions become PromQL labels, and it gains an instrumentation
   scope label `"@instrumentation.@name"="cloudwatch.aws/<service>"` (service segment
-  lowercase).
+  lowercase). The segment is **not** always the CloudWatch namespace: ALB is
+  `cloudwatch.aws/elasticloadbalancing` (not `applicationelb`) and Bedrock is
+  `cloudwatch.aws/bedrock-mantle`. Take the literal from the section 5 catalog or from
+  discovery — a wrong scope returns 0 series with no error.
 
 So "why isn't my EC2 / Lambda metric in PromQL?" almost always means one of: enrichment
 is not enabled for that account/region, resource-tags-on-telemetry was never enabled
@@ -317,9 +320,10 @@ Labels on Omni's metrics surface follow an `@`-prefixed convention:
 | Label form | Meaning | Examples |
 |---|---|---|
 | `"@resource.*"` | Resource attributes — the identity of an OTLP-native workload | `"@resource.service.name"`, `"@resource.k8s.namespace.name"`, `"@resource.k8s.deployment.name"`, `"@resource.k8s.pod.name"`, `"@resource.cloud.resource_id"` |
-| `"@instrumentation.@name"` | Instrumentation scope — how an **enriched vended AWS metric** is scoped to its service (lowercase service segment). Replaces the CloudWatch `AWS/<Service>` namespace | `"cloudwatch.aws/ec2"`, `"cloudwatch.aws/lambda"`, `"cloudwatch.aws/rds"` |
+| `"@instrumentation.@name"` | Instrumentation scope — how an **enriched vended AWS metric** is scoped to its service (lowercase service segment). Replaces the CloudWatch `AWS/<Service>` namespace, but is not derived from it mechanically (ALB is `cloudwatch.aws/elasticloadbalancing`) | `"cloudwatch.aws/ec2"`, `"cloudwatch.aws/lambda"`, `"cloudwatch.aws/rds"`, `"cloudwatch.aws/elasticloadbalancing"` |
 | `"@aws.tag.*"` | Resource tags surfaced by enrichment | `"@aws.tag.Environment"` |
 | `"@aws.*"` (without `tag`) | Reserved system labels | `"@aws.account"`, `"@aws.region"` |
+| `"status.code"` | Span-derived RED error label — no `@` scope, but **dotted, so double-quote it** like every other dotted label (see the quoting rule below): unquoted it fails with `Failed to parse query: unexpected character after '.': 'c'` in `by (...)` and `unexpected character inside braces: '.'` in a matcher. Adding a scope instead is also wrong: `"@status.code"` is rejected with `Invalid scoped label '@status.code': unknown or invalid scope prefix` | `sum by ("status.code") (sum_over_time({__name__="traces.span.metrics.calls"}[5m]))` → `OK`, `ERROR`, `UNSET` series |
 | bare names | Datapoint attributes — the original CloudWatch dimensions of a vended metric | `InstanceId`, `FunctionName`, `TableName`, `QueueName` |
 
 **Quoting rule:** any label name that is dotted or `@`-prefixed must be **double-quoted
@@ -426,8 +430,10 @@ sum by (FunctionName) (sum_over_time({__name__="Errors", "@instrumentation.@name
   /
 sum by (FunctionName) (sum_over_time({__name__="Invocations", "@instrumentation.@name"="cloudwatch.aws/lambda"}[5m]))
 
-# Request rate per service from span RED metrics
-sum by ("@resource.service.name") (rate({__name__="traces.span.metrics.calls"}[5m]))
+# Request rate per service from span RED metrics.
+# calls is a delta Sum, so sum_over_time the window and divide by its seconds —
+# rate() silently under-reads it (see the instrument table above).
+sum by ("@resource.service.name") (sum_over_time({__name__="traces.span.metrics.calls"}[5m])) / 300
 
 # p99 latency per service from the native histogram
 histogram_quantile(0.99, sum by ("@resource.service.name") (rate({__name__="traces.span.metrics.duration"}[5m])))
@@ -447,7 +453,9 @@ Each section names the CloudWatch namespace (for recognition only — the CloudW
 not queryable here) and the **identity label** to filter and group by. On the PromQL
 surface an enriched vended metric is reached via
 `"@instrumentation.@name"="cloudwatch.aws/<service>"` (lowercase) plus the identity
-label. Confirm the exact scope and label spelling against discovery.
+label. Each section below states the literal scope where it differs from the lowercased
+namespace (ALB: `cloudwatch.aws/elasticloadbalancing`); confirm the exact scope and label
+spelling against discovery.
 
 Two universal rules:
 
@@ -650,7 +658,7 @@ Signal taxonomies:
   general / postgresql); the error log is free-form.
 - Correlate with: EBS (storage layer), EC2 (app tier).
 
-### Application Load Balancer — `AWS/ApplicationELB`, identity `LoadBalancer`
+### Application Load Balancer — `AWS/ApplicationELB`, scope `cloudwatch.aws/elasticloadbalancing`, identity `LoadBalancer`
 
 | Metric | Type | Unit | Read as |
 |---|---|---|---|
@@ -662,6 +670,9 @@ Signal taxonomies:
 | `RejectedConnectionCount` / `TargetConnectionErrorCount` / `TargetTLSNegotiationErrorCount` | counter | Count | `rate()` (saturation / connection errors) |
 | `LambdaUserError` / `LambdaInternalError` | counter | Count | `rate()` (Lambda targets) |
 
+- **Scope is `"@instrumentation.@name"="cloudwatch.aws/elasticloadbalancing"`** — not
+  `cloudwatch.aws/applicationelb`, which the namespace rule would suggest and which returns
+  0 series with HTTP 200 (no error, just an empty chart).
 - The names carry a **`_Count` suffix** — `HTTPCode_Target_5XX` alone returns nothing.
 - An ELB-5xx spike with flat target-5xx points at the LB / health-check path (e.g. no
   healthy target), not the app.
@@ -783,7 +794,7 @@ instrumentation scope. Group and filter by the double-quoted `"@resource.*"` lab
 
 | Signal | Metric | Type | Read as |
 |---|---|---|---|
-| Request / error rate | `traces.span.metrics.calls` | counter | `sum by ("@resource.service.name") (rate(...[5m]))`; split errors by `"@status.code"` |
+| Request / error rate | `traces.span.metrics.calls` | **delta Sum** | `sum by ("@resource.service.name") (sum_over_time(...[5m])) / 300` — **not** `rate()`, which under-reads a delta Sum; split errors by `"status.code"` (no `@` scope, but double-quoted — values `OK` / `ERROR` / `UNSET`) |
 | Latency p50/p90/p99 | `traces.span.metrics.duration` | native histogram | `histogram_quantile(0.99, rate(...[5m]))` on the base name |
 | Container / pod CPU and memory vs requests/limits | OTLP `k8s.*` / `container.*` resource metrics | gauge | `avg` / `max`, grouped by `"@resource.k8s.namespace.name"` → `"@resource.k8s.deployment.name"` → `"@resource.k8s.pod.name"` (broadest to narrowest) |
 | Restarts, pod phase | `k8s.container.restarts`, `k8s.pod.phase` | counter / gauge | `increase()` / `count by (...)` |

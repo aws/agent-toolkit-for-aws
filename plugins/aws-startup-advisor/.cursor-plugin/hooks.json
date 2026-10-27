@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "sh -c 'python3 \"$0\" \"$@\" 2>/dev/null || python \"$0\" \"$@\" 2>/dev/null || true' \"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py\" --reconcile",
+        "timeout": 30
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": "sh -c 'python3 \"$0\" \"$@\" 2>/dev/null || python \"$0\" \"$@\" 2>/dev/null || true' \"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py\" --reconcile",
+        "timeout": 30
+      }
+    ],
+    "stop": [
+      {
+        "command": "sh -c 'python3 \"$0\" \"$@\" 2>/dev/null || python \"$0\" \"$@\" 2>/dev/null || true' \"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py\" --reconcile",
+        "timeout": 30
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "sh -c 'python3 \"$0\" \"$@\" 2>/dev/null || python \"$0\" \"$@\" 2>/dev/null || true' \"${CURSOR_PLUGIN_ROOT}/scripts/telemetry/metric_emission/migration.py\" --session-end",
+        "timeout": 10
+      }
+    ]
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "_comment": "Pinned facts for an ELIGIBLE azure-to-aws fast-path Clarify (clarify.md Step 0.5) over the hand-authored estate in after-clarify-fast-path/. The committed Terraform corpus is ineligible by design, so this is the only golden where the fast-path provenance contract (clarify-assemble.md Fast-path mode; schema-preferences.md metadata) is exercised. Same selection rule as the sibling specs: only facts where a plausible improvisation and the correct answer DIVERGE.",
+  "_limitation": "This tests BRANCHING and the metadata contract, not conversation. The estate is hand-authored, not algorithm-traced: its inventory and clusters were written to satisfy the eligibility rule, not produced by a Discover run.",
+  "preferences_file": "preferences.json",
+  "inventory_file": "azure-resource-inventory.json",
+  "row_dispositions": {
+    "global.target_region": {
+      "disposition": "DETECTED",
+      "value": "eu-west-1",
+      "must_not_be_disposition": [
+        "PROPOSED"
+      ],
+      "why": "every resource is westeurope, so the region is MAPPED from the estate, not proposed."
+    },
+    "design_constraints.compliance": {
+      "disposition": "ESSENTIAL",
+      "value": [],
+      "must_not_be_disposition": [
+        "PROPOSED",
+        "DETECTED"
+      ],
+      "why": "Compliance is never inferable, so it is the one question every fast-path estate is asked. It is ANSWERED here ([] = explicit none) because the fast path asks ESSENTIAL rows first; a null here would mean the short path skipped a question it promised to ask."
+    },
+    "design_constraints.cpu_architecture": {
+      "disposition": "PROPOSED",
+      "value": "x86_64",
+      "must_not_be_disposition": [
+        "DETECTED",
+        "ESSENTIAL"
+      ],
+      "why": "no Windows anywhere, so x86_64 is a CHOICE this time (the Terraform corpus forces it). PROPOSED with the x86_64 default, and the default must be listed in questions_defaulted because nobody was asked."
+    },
+    "design_constraints.compute_target": {
+      "disposition": "PROPOSED",
+      "value": "elastic_beanstalk",
+      "must_not_be_disposition": [
+        "DETECTED",
+        "ESSENTIAL"
+      ],
+      "why": "the fast path applied the documented default without a sheet. It must still read PROPOSED and must be listed in questions_defaulted — the Estimate block is where the user first sees it."
+    },
+    "design_constraints.vm_cutover": {
+      "disposition": "N/A",
+      "requires_keys": [
+        "reason"
+      ],
+      "must_not_be_disposition": [
+        "ESSENTIAL",
+        "PROPOSED"
+      ],
+      "why": "no VM, so the one ESSENTIAL row with no defensible default does not fire. If it did, the estate would be ineligible (has_vm) and the fast path could not have been offered."
+    },
+    "data.availability": {
+      "disposition": "PROPOSED",
+      "value": "single-az",
+      "must_not_be_disposition": [
+        "ESSENTIAL",
+        "DETECTED"
+      ],
+      "why": "no HA signal on the source (enrichment skipped; the eligibility rule's has_ha_database is false), so Q-D1 is PROPOSED at single-az. ESSENTIAL would make the estate ineligible; DETECTED would read a posture the capture never saw."
+    },
+    "data.db_cutover": {
+      "disposition": "PROPOSED",
+      "value": "dump_restore",
+      "must_not_be_disposition": [
+        "ESSENTIAL",
+        "DETECTED",
+        "N/A"
+      ],
+      "requires_keys": [
+        "default_basis",
+        "size_coverage"
+      ],
+      "why": "a relational database with NO measured size. Q-D2's unknown-size branch applies: dump_restore (the runbook with no AWS charge), size_coverage unknown, largest_relational_db_gib null, a basis that says the size was not measured. The plausible wrong answers are an invented size, an escalation to ESSENTIAL (which would add a question the fast-path offer promised not to ask), or dms (which would invent DMS instance hours)."
+    },
+    "data.cosmos_rw_split": {
+      "disposition": "N/A",
+      "requires_keys": [
+        "reason"
+      ],
+      "why": "no Cosmos account; written as N/A with a reason, not omitted."
+    },
+    "baseline.azure_monthly_spend": {
+      "disposition": "ESSENTIAL",
+      "value": 410,
+      "why": "no billing source was discovered, so Q-A5 is the second and last fast-path question; it is answered here. This is what makes [N] = 2 in the Step 0.5 offer."
+    },
+    "identity": {
+      "disposition": "PROPOSED",
+      "value": "identity_center_reinvite",
+      "must_not_be_disposition": [
+        "N/A"
+      ],
+      "why": "Category J ALWAYS fires; on the fast path its default is applied and listed in questions_defaulted."
+    },
+    "app_service_plans[0].isolation_split": {
+      "disposition": "PROPOSED",
+      "value": false,
+      "must_not_be_disposition": [
+        "ESSENTIAL",
+        "DETECTED",
+        "N/A"
+      ],
+      "why": "THE row this golden exists for. One Linux plan hosts two apps, so Q-C2 fires as PROPOSED with the no-split default and is NOT asked on the fast path. clarify.md's isolation postcondition and clarify-assemble.md's checklist must accept this — the row carries its default, is listed under its index key in questions_defaulted, and is disclosed at estimate-assemble.md Step 2. A GATE_FAIL here is the finding this spec reproduces."
+    },
+    "_requires_keys_why": "requires_keys follows the DISPOSITION, per schema-preferences.md: DETECTED needs `source`, N/A needs `reason`, ESSENTIAL needs `context`. db_cutover additionally needs default_basis and size_coverage on both Clarify paths."
+  },
+  "essential_gate": {
+    "_why": "Both ESSENTIAL rows the fast path can fire (compliance, spend) were asked first and answered, so the phase COMPLETES. An unanswered ESSENTIAL here would mean the fast path defaulted a row it has no default for.",
+    "expected_unanswered": [],
+    "expected_status": "COMPLETE"
+  },
+  "clarify_mode": {
+    "_why": "Discover marked this estate eligible (no VM, no licensing signal, no Cosmos Core, no HA database, one region, 1 cluster, 5 resources) and the user took the offer, so clarify_mode is fast_path and fast_path_eligible is copied from the inventory as true.",
+    "expected": "fast_path",
+    "expected_fast_path_eligible": true,
+    "expected_deferred_to_generate": [
+      "data.db_cutover"
+    ],
+    "_deferred_why": "A relational database is present, so db_cutover is defaulted-and-deferred and metadata.deferred_to_generate names it — and ONLY that list does; see fast_path_provenance."
+  },
+  "fast_path_provenance": {
+    "_why": "On the fast path every PROPOSED row that took its default without being asked must be listed in metadata.questions_defaulted (array rows under index keys) so estimate-assemble.md Step 2 can render the 'Assumptions behind this number' block and clarify.md's mode-aware gates can pass. ESSENTIAL rows were ASKED and the deferred row is asked at Step 3b, so neither may appear there — a deferred row in both lists renders twice and leaves Step 3b two entries to clear.",
+    "expected_defaulted_keys": [
+      "app_service_plans[0].isolation_split",
+      "design_constraints.compute_target",
+      "design_constraints.cpu_architecture",
+      "data.availability",
+      "identity"
+    ],
+    "must_not_be_defaulted": [
+      "design_constraints.compliance",
+      "baseline.azure_monthly_spend",
+      "data.db_cutover"
+    ]
+  },
+  "db_cutover_default_rule": {
+    "_why": "The default is not a fixed pin but Q-D2's RULE evaluated against the inventory's relational storage_mb. Here NO relational server carries storage_mb (enrichment row 7 skipped), so the rule must yield dump_restore with size_coverage unknown and largest_relational_db_gib null. Inventing a size so the two-branch rule fires, or escalating to ESSENTIAL, are the improvisations this pins against."
+  },
+  "defaults_not_promoted": {
+    "_why": "A value taken from its default must still read PROPOSED. On the fast path EVERY PROPOSED row took its default, so this is the path where a promotion to DETECTED is most tempting and most wrong.",
+    "accepted_keys": [
+      "source",
+      "forced_by"
+    ]
+  },
+  "isolation_rows": {
+    "_why": "One plan, two apps. Keyed by azure_id because a live-sourced inventory has no tf_address. The disposition must be PROPOSED (a real question with a default), never N/A (that is the 0- and 1-app answer) and never ESSENTIAL (it has a documented default).",
+    "expected": {
+      "/subscriptions/<subscription-fixture>/resourceGroups/rg-shop/providers/Microsoft.Web/serverfarms/asp-shop-web": {
+        "hosted_app_count": 2,
+        "disposition": "PROPOSED",
+        "why": "two apps share the plan; the default is no split and it is disclosed with its cost consequence next to the estimate."
+      }
+    }
+  },
+  "licensing_firing": {
+    "_why": "No Windows VM, no Microsoft.Sql/*, no SQL-on-VM signature, so the licensing fragment does not load. It must be written as an EXPLICIT N/A with a reason (clarify-assemble.md Assembly rule 3), never omitted — and if it HAD fired the estate would be ineligible (has_licensing_signal).",
+    "expected_fired": false
+  },
+  "cluster_rows": {
+    "clusters_file": "azure-resource-clusters.json",
+    "_why": "preferences.clusters[] must key exactly to the clusters artifact (one cluster here)."
+  },
+  "forbidden_substrings": {
+    "values": [
+      "FIXTURE_SENTINEL_MUST_NOT_APPEAR",
+      "SecretUri",
+      "primary_access_key"
+    ],
+    "_why": "preferences has no reason to hold even app-setting NAMES, let alone values."
+  }
+}

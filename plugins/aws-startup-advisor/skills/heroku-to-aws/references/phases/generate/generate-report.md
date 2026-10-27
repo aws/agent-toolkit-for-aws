@@ -47,6 +47,15 @@ From `estimation-infra.json`:
 - `projected_costs.aws_monthly_premium` / `_balanced` / `_optimized`
 - `complexity_tier`
 - `pricing_source.status` (for a one-line pricing confidence note)
+- `current_costs.accuracy` and `current_costs.baseline_note` — required
+  whenever `current_costs.source != "unavailable"`; `baseline_note` carries a
+  derived baseline's approximation caveat (e.g. the full-month assumption on a
+  Postgres Advanced per-pool estimate) and MUST be rendered, not just gathered
+  — see `exec-costs` below.
+- `cost_comparison.comparison_status` / `unmatched_deferred_cost` /
+  `unmatched_deferred_services` — when `comparison_status ==
+  "incomplete_unmatched_services"`, these MUST be rendered as a caveat beside
+  the savings/difference figure, not just gathered — see `exec-costs` below.
 
 From design + preferences: region, primary compute (EB / Fargate / EKS),
 service count.
@@ -61,7 +70,7 @@ Write a **self-contained** HTML file to `$MIGRATION_DIR/migration-report.html`
 | Section ID          | Content                                                                                                                                                                                                                                                                                      |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `decision-summary`  | Typography-first verdict (see below), cost one-liner, next action                                                                                                                                                                                                                            |
-| `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary                                                       |
+| `exec-costs`        | Heroku-vs-AWS side-by-side when a Heroku baseline exists (`current_costs.source != "unavailable"`); otherwise the AWS three-tier table with a one-line note that no Heroku baseline was available. Estimated monthly; Balanced primary. **When `current_costs.baseline_note` is present (any derived — not invoiced — source, including the Postgres Advanced per-pool formula), render it as a visible caveat line directly beside the Heroku current-monthly figure — never only in the accuracy band.** This is mandatory, not conditional on which derived source produced the note. **When `cost_comparison.comparison_status == "incomplete_unmatched_services"`, render the same mandatory caveat-beside-the-figure treatment, naming `cost_comparison.unmatched_deferred_services` and `unmatched_deferred_cost` directly beside the savings/difference figure — never present that dollar delta as decision-grade savings without it.** This file is the single source of truth for `exec-costs` content rules, so `report-decision-core.md`'s reuse of these rules picks this up automatically. |
 | `cost-optimization` | Reserved Instance / Savings Plan opportunities table, or the explicit no-eligible-commitment statement — see below. Always present, never omitted                                                                                                                                            |
 | `next-steps`        | Ordered list pointing to `MIGRATION_GUIDE.md` phases (not a procedure dump). Include one bullet noting the Terraform ships with `baseline.tf` (account security baseline — GuardDuty, CloudTrail, budget alerts) and that three contact emails must be set in tfvars before `terraform plan` |
 
@@ -253,6 +262,9 @@ the report is edited — a stub is never acceptable):
    figure in `<span data-cost-key="aws_monthly_balanced">$NNN/mo</span>` (the
    validator FAILs on a missing anchor — it is how the rendered figure is confirmed
    against the estimate). The attribute is not reader-visible text.
+10. If `cost_comparison.comparison_status == 'incomplete_unmatched_services'`,
+    confirm the unmatched-service caveat is visible text next to the
+    Heroku-vs-AWS figure, not only inside `baseline_note`.
 
 A report failure must not delete the Terraform/docs — repair the HTML in this fragment. Fixing
 the report is **only** done here, before control returns; the completion gate never edits it.
@@ -269,6 +281,15 @@ python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
   "$MIGRATION_DIR/migration-report.html" --mode full --migration-dir "$MIGRATION_DIR"
 ```
 
+`REPORT_OK` means the validator's decision-core checks passed. It is not a substitute for the content
+rules in this file: when `recommendation.would_flip_if` is non-empty the
+summary must include a "What would flip this" list whose items render every
+entry (the heading over an empty or partial list fails; content inside
+`<template>` or comments does not count; the label may be a heading over the
+list or lead its first item, `<li>What would flip this: …</li>`), and when two or more scenarios
+exist the what-if table must include Region, HA, Compute, Arch, and Complexity.
+A report written only to satisfy the section-ID list will fail.
+
 `REPORT_OK` → the report gate passes. `REPORT_FAIL` → the main-window step emits `GATE_FAIL` **and
 pastes the validator's `errors[]` verbatim**; the gate does not edit the HTML itself. The pasted
 errors are what make recovery actionable — a bare "re-run Generate" is not a fix, since re-dispatch
@@ -277,8 +298,9 @@ re-authors the report under this shell-less worker. On `REPORT_OK` the finish st
 hand-edit of the report from those errors + a direct validator re-run and re-stamp (or a maintainer
 re-running Generate for a clean rebuild).
 The validator enforces the required sections, the `draft for review` footer, the typography-first
-verdict rules, non-empty `cost-optimization`, and the a11y subset the report emits (`<th scope>`,
-`<figure>` labels).
+verdict rules, the populated "What would flip this" list when `would_flip_if` is present, the what-if
+column set when two or more scenarios exist, non-empty `cost-optimization`, and the
+a11y subset the report emits (`<th scope>`, `<figure>` labels).
 
 ---
 

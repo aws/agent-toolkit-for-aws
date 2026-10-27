@@ -49,6 +49,7 @@ The following are supported by SageMaker and AWS but do not have a validated wor
 - 📋 Copy the code structure precisely - no improvisation
 - 🎯 Follow the minimal code principle strictly
 - ✅ When writing code, make sure the indentation and f strings are correct
+- ✅ ALWAYS call `list_hyperparameters()` to validate HP names before using them in generated code. This is MANDATORY -- never use hyperparameter names from the template without first confirming they exist for the selected model via the discovery API.
 
 ### User Communication Rules
 
@@ -83,6 +84,30 @@ Read `references/code_output_guide.md` for output format rules, then read the co
 - RLAIF with custom prompt → `code_templates/rlaif_custom_prompt.py`
 
 The template is a Python file where each `# Cell N: Label` comment marks the start of a new section. Split on these markers — everything between one marker and the next becomes one unit of output.
+
+#### 1.2.1 Validate Hyperparameter Names
+
+Before generating code, call `list_hyperparameters()` (requires `sagemaker>=3.22.0`, enforced by the `sdk-getting-started` prerequisite) to validate that the hyperparameter names in the template are correct for this model:
+
+```python
+from sagemaker.train import list_hyperparameters
+# list_hyperparameters(model_name, technique, training_type)
+# technique: "SFT", "DPO", "RLVR", "RLAIF"
+# training_type: "LORA"
+hp_options = list_hyperparameters("meta-textgeneration-llama-3-2-1b-instruct", "SFT", "LORA")
+```
+
+This is an agent-side validation step -- the agent calls this internally before writing code. The generated user-facing code uses `trainer.hyperparameters.get_info()` instead (available on any constructed trainer object, no extra import needed).
+
+Use the model name, technique, and training_type from the user's request. The returned object has attribute access for each valid parameter name.
+
+When generating the hyperparameters display and override sections:
+
+- Only include `trainer.hyperparameters.<name>` references for parameter names that exist in `hp_options`
+- If a template references a parameter name that does NOT appear in `hp_options`, omit that line from the generated code
+- The template's HP names are guidelines for which params to highlight, not a fixed contract
+
+This prevents breakage when recipe schemas rename parameters upstream.
 
 #### 1.3 Generate Code
 
@@ -165,7 +190,7 @@ After generating the code, offer to run it. Training can take hours depending on
 **Showing results after completion:**
 
 - Use `scripts/mlflow_reference.py` as the pattern to query MLflow metrics
-- Present loss by epoch as a text table (total_loss, val_eval_total_loss for SFT; rewards/margins for DPO; critic/rewards/mean for RLVR)
+- Present loss by epoch as a text table. Metric names depend on the trainer, so list `run.data.metrics.keys()` first and use what was logged (SFT: total_loss/val_eval_total_loss or train/loss/val/loss; DPO: rewards/margins or dpo/reward_margin; RLVR: critic/rewards/mean)
 
 **CRITICAL:**
 

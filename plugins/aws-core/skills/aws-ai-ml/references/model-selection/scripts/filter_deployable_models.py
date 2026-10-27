@@ -32,6 +32,7 @@ Constraints (all optional, repeatable):
     model_type:<value>     - Match against 'model_type' field (exact match)
     provider:<value>       - Match against 'provider' field (substring match)
     bedrock:<true|false>   - Filter by Bedrock eligibility
+    customization:<true|false> - Filter by fine-tuning (customization) eligibility
     name:<value>           - Match against model 'name' (substring, case-insensitive)
 
 Example:
@@ -50,6 +51,7 @@ VALID_KEYS = {
     "model_type",
     "provider",
     "bedrock",
+    "customization",
     "name",
 }
 
@@ -149,6 +151,16 @@ def matches(model, constraints):
             elif value == "false" and bedrock_val:
                 return False
 
+        elif key == "customization":
+            customization_val = model.get("customization_eligible", None)
+            if customization_val is None:
+                return False
+            value = values[-1]
+            if value == "true" and not customization_val:
+                return False
+            elif value == "false" and customization_val:
+                return False
+
         elif key == "name":
             model_name = model.get("name", "").lower()
             if not any(v in model_name for v in values):
@@ -208,6 +220,18 @@ def sort_models_newest_first(models):
     return dated + undated
 
 
+def filter_models(models, constraints):
+    """Apply every constraint and return the existing deterministic order.
+
+    The public-Hub Search adapter reuses this complete List-and-filter behavior
+    only when Search fails. Keeping one function for the CLI, private Hubs, and
+    public fallback prevents their matching semantics from drifting.
+    """
+    return sort_models_newest_first(
+        [model for model in models if matches(model, constraints)]
+    )
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python filter_deployable_models.py <models_json_file> [constraint:value ...]")
@@ -244,8 +268,7 @@ if __name__ == "__main__":
         print(f"Error: Invalid JSON in {models_file}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    filtered = [m for m in models if matches(m, constraints)]
-    filtered = sort_models_newest_first(filtered)
+    filtered = filter_models(models, constraints)
 
     # Output summary + results
     result = {

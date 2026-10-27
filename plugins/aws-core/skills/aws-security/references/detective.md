@@ -25,7 +25,7 @@ graph LR
 | `detective:ListDatasourcePackages` | Check enabled data source packages |
 | `detective:ListMembers` | List graph members |
 | `detective:ListInvitations` | Check pending invitations |
-| `detective:ListOrganizationAdminAccounts` | Identify delegated admin |
+| `detective:ListOrganizationAdminAccount` (operation `ListOrganizationAdminAccounts`) | Identify delegated admin |
 | `detective:DescribeOrganizationConfiguration` | Get org auto-enable settings |
 | `detective:ListInvestigations` | List investigations with filters |
 | `detective:GetInvestigation` | Get investigation details |
@@ -46,6 +46,7 @@ Detective investigations use a severity score:
 **Key notes:**
 
 - Investigation severity is based on the combination and weight of indicators found
+- A Detective investigation carries its own severity score, distinct from the severity of the producing service (for example, a GuardDuty finding's own severity). Report Detective's investigation severity separately; do not equate it with the originating service's severity.
 - Indicator types: TTP_OBSERVED, IMPOSSIBLE_TRAVEL, FLAGGED_IP_ADDRESS, NEW_GEOLOCATION, NEW_ASO, NEW_USER_AGENT, RELATED_FINDING, RELATED_FINDING_GROUP
 - Detective does not generate findings — it produces investigations and finding groups from ingested data
 
@@ -54,6 +55,16 @@ Detective investigations use a severity score:
 ## Service Notes
 
 - **Detective**: Ingests Security Hub CSPM findings in ASFF format but produces investigations in its own proprietary format. Does NOT support S3 data events. Focuses on investigations and finding groups, not findings.
+- **GuardDuty is not a prerequisite.** Detective's documented prerequisites are IAM
+  permissions for Detective and, for CLI use, a recent AWS CLI version (confirm the current minimum from the Detective prerequisites documentation).
+  Enabling GuardDuty first is not required.
+- **The live relationship is administrator-account alignment.** When both services run, align the
+  administrator account across GuardDuty, Security Hub CSPM and Detective so the finding pivot and
+  the archive-from-Detective integration work. State this whenever answering whether GuardDuty is
+  needed before Detective: it is the substantive relationship that replaces the superseded
+  prerequisite claim. Do not recommend enabling GuardDuty solely to satisfy a prerequisite gate.
+  Fit and package detail is in
+  [investigation fit](references/service-recommendations/posture-and-investigation.md#investigation-fit).
 
 ## Output Sensitivity
 

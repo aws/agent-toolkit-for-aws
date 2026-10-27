@@ -4,7 +4,7 @@
 
 # Cell 1: Install Dependencies
 
-# %pip install --upgrade 'sagemaker>=3.7.1,<4.0' boto3 -q  # NOTEBOOK_ONLY
+# %pip install --upgrade 'sagemaker>=3.22.0,<4.0' boto3 -q  # NOTEBOOK_ONLY
 
 # Cell 2: Setup & Credentials
 
@@ -99,6 +99,8 @@ print(f"Batch size: {trainer.hyperparameters.global_batch_size}")
 print(f"Learning rate: {trainer.hyperparameters.learning_rate}")
 # Delete the following print statement for Nova models (Nova models don't use max_epochs)
 print(f"Number of epochs: {trainer.hyperparameters.max_epochs}")
+
+# To see all available hyperparameters and their valid ranges: trainer.hyperparameters.get_info()
 
 # Cell 6: Hyperparameter Overrides
 

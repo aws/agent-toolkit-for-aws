@@ -65,7 +65,7 @@ Write a numbered `.py` file in `<project-dir>/scripts/`.
 
 **Dependencies:**
 
-- Install any required pip packages directly (e.g., `pip install 'sagemaker>=3.7.1,<4.0'`) before writing or running the script. Do not embed install commands in the script itself.
+- Install any required pip packages directly (e.g., `pip install 'sagemaker>=3.22.0,<4.0'`) before writing or running the script. Do not embed install commands in the script itself.
 
 **Execution:**
 

@@ -64,8 +64,17 @@ Ask ALL five questions before generating any code:
 - Product listed in AWS Marketplace (product code assigned)
 - At least one usage dimension configured on the product
 - Product must be **SaaS with ExternallyMetered dimensions** (verified via Catalog API)
+- **One-time IAM prerequisite (first-time sellers):** the **`awsmp-metering-boundary`** permissions boundary and the **`MarketplaceMeteringDeployer`** role must be created in the account BEFORE the first deploy — the skill does not create them for itself and the deploy fails closed without them. See the one-time bootstrap in `references/iam-credentials.md` → "Prerequisite setup (do this FIRST…)".
 
 ## AWS Credentials (ephemeral-first — configure before deploying)
+
+> **First time in this account? Do the one-time IAM prerequisite first.** Before configuring
+> credentials, make sure the **`awsmp-metering-boundary`** permissions boundary (created FIRST)
+> and the **`MarketplaceMeteringDeployer`** role (conditioned trust policy) exist — the copy-paste
+> bootstrap is in `references/iam-credentials.md` → "Prerequisite setup (do this FIRST…)". The
+> boundary MUST exist before the role/first deploy (the deployer's `iam:CreateRole` is gated on
+> it), and its name MUST match the `PermissionsBoundaryName` parameter. Verify with
+> `aws iam get-policy …/awsmp-metering-boundary` and `aws iam get-role MarketplaceMeteringDeployer`.
 
 Have the seller configure **ephemeral** credentials in their own environment before you
 deploy or run tests — do NOT ask them to hand over long-lived IAM user access keys, and do

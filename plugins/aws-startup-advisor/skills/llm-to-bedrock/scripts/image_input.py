@@ -1,4 +1,4 @@
-"""Build image-bearing request payloads for Converse and the Responses API.
+"""Build image-bearing request payloads for Converse, Responses and Chat Completions.
 
 Two mistakes are easy to make by hand and both produce a confusing failure mode
 where the vision smoke test passes (it hardcodes a known-good jpeg) while every
@@ -13,7 +13,7 @@ golden case fails:
    declares `ResponseInputImageParam.detail` as `Required`, so omitting it is a
    contract violation even though a TypedDict will not catch it at runtime.
 
-Callers should use `converse_message` / `responses_message` rather than assembling
+Callers should use `converse_message` / `responses_message` / `chat_message` rather than assembling
 these dicts inline, so the shape is decided in one tested place.
 """
 from pathlib import Path
@@ -87,4 +87,16 @@ def responses_message(prompt: str, image_path: str | None = None,
         content.append({"type": "input_image",
                         "image_url": data_url(image_path, raw),
                         "detail": detail})
+    return {"role": "user", "content": content}
+
+
+def chat_message(prompt: str, image_path: str | None = None,
+                 raw: bytes | None = None) -> dict:
+    """One Chat Completions message; retain the same image MIME normalization."""
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    if image_path is not None:
+        if raw is None:
+            raise ValueError("raw image bytes are required when image_path is given")
+        content.append({"type": "image_url", "image_url": {
+            "url": data_url(image_path, raw)}})
     return {"role": "user", "content": content}

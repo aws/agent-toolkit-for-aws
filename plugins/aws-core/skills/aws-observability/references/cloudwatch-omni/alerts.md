@@ -42,7 +42,7 @@ Two rules hold across every operation:
 | Watches | One **query** — Omni SQL over logs/traces, or PromQL over metrics — evaluated on a schedule | A metric, metric-math expression, or anomaly band; composites combine alarms |
 | Scope | A **Space** (`spaceId` on every call); runs under an **access profile** (`profileId`) | The account and Region |
 | States | `OK`, `WARNING`, `CRITICAL`, `NODATA` | `OK`, `ALARM`, `INSUFFICIENT_DATA` |
-| Notifies | `sns` and `slack` targets on `notificationRules` | Alarm actions (SNS, Auto Scaling, EC2, Lambda, …) |
+| Notifies | `sns` and `slack` targets on `notificationRules` (`pagerduty` only with an `ACTIVE` PagerDuty integration) | Alarm actions (SNS, Auto Scaling, EC2, Lambda, …) |
 
 The Omni alert API is a **real, first-class API surface**. For an **informational**
 question (what a field is, whether an operation exists, what the API supports),
@@ -331,14 +331,28 @@ Each rule pairs a **trigger** with a **target**:
   only when the alert fires, set it explicitly to `["WARNING", "CRITICAL"]`; add
   `OK` for a recovery notification, or `NODATA` to be told when the query goes
   silent.
-- **`target`** — where the notification goes. **The supported target types for GA
-  are exactly `sns` and `slack`** — the validator rejects any other type.
-  A `NotificationTarget` carries a **`type`** (`NotificationTargetType`), a
-  **required `arn`** (1–1024 chars), and an optional **`metadata`** string map (up to
-  20 keys; keys ≤128 chars, values ≤1024). Any type outside `{sns, slack}` — email,
-  a generic webhook, and PagerDuty (which is present in the `NotificationTargetType`
-  enum but is **not** a supported target for GA) — is unsupported; say so plainly and
-  **do not invent an unsupported provider or fabricate a config for one**.
+- **`target`** — where the notification goes: `sns`, `slack`, or `pagerduty`
+  (the last only with a connected PagerDuty integration, below). A
+  `NotificationTarget` carries a **`type`**
+  (`NotificationTargetType`), a **required `arn`** (1–1024 chars), and an optional
+  **`metadata`** string map (up to 20 keys; keys ≤128 chars, values ≤1024). The
+  `NotificationTargetType` enum is `sns`, `slack`, `pagerduty`; any other value
+  (email, a generic webhook) is rejected as not in that enum.
+  **Treat `pagerduty` as unavailable unless
+  `aws cloudwatchomni list-integrations --region <alert-region>` returns an
+  `ACTIVE` integration of type `PAGERDUTY`.** If the call returns none, answer
+  that PagerDuty cannot be set up as a target because no connected PagerDuty
+  integration was found. If you cannot run the call, say you could not verify a
+  connected PagerDuty integration, so you cannot set it up. Either way, add that
+  connecting one is not covered by these skills, and offer an `sns` or `slack`
+  target instead. Give **no**
+  `pagerduty` rule, JSON template, ARN, or metadata in that answer, not even as a
+  "once it is connected" example. The alert API itself accepts the `pagerduty`
+  type, so never tell the user the validator rejects it. It checks only that the
+  `arn` has the integration form: a rule built on any other integration (Slack
+  included) saves successfully and never pages anyone.
+  A 200 from `CreateAlert` on a `pagerduty` rule is therefore no evidence that a
+  PagerDuty integration exists; only `ListIntegrations` answers that.
   - **`sns`** — `arn` is an SNS topic ARN
     (`arn:aws:sns:<region>:<account>:<topic>`; same Region and partition as the
     alert, cross-account allowed, FIFO topics not allowed). `metadata` **must be
@@ -355,6 +369,14 @@ to configure and is not validated when the alert is created, so it is the first
 thing to check when an alert fires but no message arrives. Slack must be connected
 as an integration before its ARN exists — see
 `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/slack-integration.md`.
+
+A notification carries the alert's details (its name, state, and the values that
+breached), which can reveal what the underlying query watches. When you set up a
+target, tell the user so and recommend: an SNS topic encrypted with a KMS key
+(SSE-KMS), whose key policy then must also let `cloudwatch.amazonaws.com` use the
+key or delivery fails; topic subscriptions and Slack channel members limited to
+people allowed to see that data. These are the customer's settings on their own
+topic and channel; recommend them, do not change them unasked.
 
 ### Tags
 
@@ -747,13 +769,14 @@ Infer intent; the word "notification" is often absent. "Send a slack message to
 `#oncall when this fires`", "ping the team on Slack", and "publish to my SNS topic"
 are all notification requests.
 
-Two target types are supported for GA — `sns` and `slack` — and they can be
-combined on one alert, up to **5 rules** in total. Anything else (email, a generic
-webhook, PagerDuty) is not a supported target type; PagerDuty is present in the
-`NotificationTargetType` enum but is **not** supported for GA, so a request to
-"page the on-call" cannot be configured — say so plainly and continue with whatever
-supported target they did name, otherwise with no notification. **Do not invent an
-unsupported notification provider or fabricate a config for one.**
+`sns` and `slack` targets can be combined on one alert, up to **5 rules** in
+total. Email and generic webhooks are not target types. For a PagerDuty request
+("page the on-call"), apply the `pagerduty` rule under Notification rules above:
+without an `ACTIVE` `PAGERDUTY` integration, say PagerDuty cannot be configured
+(the reason is the missing integration, not a validator rejection), give no
+PagerDuty config, and continue with whatever other target they named, otherwise
+offer SNS or Slack. **Do not invent an unsupported notification provider or
+fabricate a config for one.**
 
 #### 5a. SNS topic
 
@@ -830,9 +853,13 @@ below are for when they did not make one.
 
 **Otherwise, find one that qualifies — do NOT guess and do NOT ask first.** List the
 Space's profiles (`aws cloudwatchomni list-access-profiles --space-id <space-id>`),
-read each candidate (`get-access-profile`, which reports both the permissions it
-confers and the trust grants naming who may assume it), and keep only profiles where
-**all** of the following hold — these mirror what the service itself enforces:
+read each candidate. `get-access-profile` reports the profile's `assumeStatus` and
+metadata only, **not** its grants, so read what a profile confers and who may assume it
+from the grants instead: `list-access-grants --space-id <space-id> --principal-type
+ACCESS_PROFILE --principal-id <profile-id>` for the permissions it confers, and the
+Space's `ALERT`-principal grants for the trust grants naming who may assume it. Keep only
+profiles where **all** of the following hold — these mirror what the service itself
+enforces:
 
 1. **An `ALERT`-principal trust grant scoped to `principalId=ALL` lets a new alert
    assume it** — a grant with `principalType` `ALERT` conferring
@@ -1003,7 +1030,7 @@ Judge that on what each alert **watches**, never on what it is **called**:
   alert. Create it once, hold the other ask off, and ask whether to add its target to
   the alert that now exists — on a yes, `UpdateAlert` with the **full**
   `notificationRules` list (it replaces, it does not merge). A **single** ask naming
-  both at once — "Slack me and page the on-call when checkout 5xx spikes" — is ONE
+  both at once — "Slack me and publish to my SNS topic when checkout 5xx spikes" — is ONE
   alert carrying both rules, built in a single call, no question needed.
 - **A different threshold, interval, or comparator IS a different alert.** Warning
   at 100 and critical at 500 on one alert are two tiers of one alert; a 5-minute and

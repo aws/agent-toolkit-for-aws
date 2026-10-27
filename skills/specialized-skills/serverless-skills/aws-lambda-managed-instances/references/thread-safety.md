@@ -12,7 +12,7 @@ When reviewing a function for LMI readiness, check each item:
 - [ ] Logging includes request ID (for tracing concurrent requests)
 - [ ] **Node.js/Java/.NET only:** No global/static mutable variables (use immutable or request-local state)
 - [ ] **Node.js/Java/.NET only:** Thread-safe libraries only (check DB drivers, HTTP clients, caching libs)
-- [ ] **Node.js/Java/.NET only:** No request state in global scope (use AsyncLocalStorage, ThreadLocal, `AsyncLocal<T>`)
+- [ ] **Node.js/Java/.NET only:** No request state in global scope (use `AsyncLocalStorage`, `ThreadLocal`, `AsyncLocal<T>`)
 - [ ] **Node.js/Java/.NET only:** No environment variable mutation during requests
 - [ ] **Python only:** Memory budget accounts for per-process multiplication (memory × concurrency)
 
@@ -20,7 +20,7 @@ When reviewing a function for LMI readiness, check each item:
 
 ### Python (Process-Based Isolation)
 
-Python uses **multiple independent processes**, each with its own interpreter and memory space. Global variables, module-level caches, and singleton objects are duplicated per process, not shared. If a function works on standard Lambda today, it works on LMI without code changes related to shared state.
+Python uses **multiple independent processes**, each with its own interpreter and memory space. Global variables, module-level caches, and singleton objects are duplicated per process, not shared. If a function works as a Lambda Event Function today, it works on LMI without code changes related to shared state.
 
 **Key concerns:**
 

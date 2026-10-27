@@ -1,0 +1,136 @@
+{
+  "VirtualMachines": [
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-app",
+      "Name": "vm-web-01",
+      "Location": "eastus",
+      "Size": "Standard_D4s_v5",
+      "OSDisk": "Premium_LRS",
+      "OSDiskSizeGB": 128,
+      "PowerState": "VM running",
+      "Zones": 1,
+      "HybridBenefit": false
+    }
+  ],
+  "AKS": [
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.ContainerService/managedClusters/aks-core",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-app",
+      "Name": "aks-core",
+      "Location": "eastus",
+      "Sku": "Base",
+      "SkuTier": "Standard",
+      "KubernetesVersion": "1.29",
+      "LoadBalancerSku": "Standard",
+      "NodePoolName": "systempool",
+      "PoolMode": "System",
+      "PoolOS": "Linux",
+      "NodeSize": "Standard_D2s_v5",
+      "Nodes": 3,
+      "Autoscale": "true",
+      "AutoscaleMin": "0",
+      "AutoscaleMax": "0",
+      "MaxPodsPerNode": 30
+    },
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.ContainerService/managedClusters/aks-core",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-app",
+      "Name": "aks-core",
+      "Location": "eastus",
+      "Sku": "Base",
+      "SkuTier": "Standard",
+      "KubernetesVersion": "1.29",
+      "LoadBalancerSku": "Standard",
+      "NodePoolName": "apppool",
+      "PoolMode": "User",
+      "PoolOS": "Linux",
+      "NodeSize": "Standard_D4s_v5",
+      "Nodes": 4,
+      "Autoscale": "true",
+      "AutoscaleMin": 2,
+      "AutoscaleMax": 8,
+      "MaxPodsPerNode": 30
+    },
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-app/providers/Microsoft.ContainerService/managedClusters/aks-core",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-app",
+      "Name": "aks-core",
+      "Location": "eastus",
+      "Sku": "Base",
+      "SkuTier": "Standard",
+      "KubernetesVersion": "1.29",
+      "LoadBalancerSku": "Standard",
+      "NodePoolName": "gpupool",
+      "PoolMode": "User",
+      "PoolOS": "Linux",
+      "NodeSize": "Standard_NC4as_T4_v3",
+      "Nodes": 1,
+      "Autoscale": "true",
+      "AutoscaleMin": 0,
+      "AutoscaleMax": 2,
+      "MaxPodsPerNode": 30
+    }
+  ],
+  "RedisCache": [
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-data/providers/Microsoft.Cache/Redis/redis-basic",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-data",
+      "Name": "redis-basic",
+      "Location": "eastus",
+      "Family": "C1"
+    },
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-data/providers/Microsoft.Cache/redisEnterprise/redis-ent",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-data",
+      "Name": "redis-ent",
+      "Location": "eastus",
+      "Family": "enterprise"
+    }
+  ],
+  "SQLMIDB": [
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-data/providers/Microsoft.Sql/managedInstances/mi1/databases/db1",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-data",
+      "Name": "db1"
+    }
+  ],
+  "ARO": [
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-platform/providers/Microsoft.RedHatOpenShift/openShiftClusters/aro-cluster",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-platform",
+      "Name": "aro-cluster"
+    }
+  ],
+  "MachineLearning": [
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-ai/providers/Microsoft.MachineLearningServices/workspaces/ml-platform",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-ai",
+      "Name": "ml-platform",
+      "Location": "eastus",
+      "Sku": "Basic"
+    }
+  ],
+  "SQLDB": [
+    {
+      "ID": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-data/providers/Microsoft.Sql/servers/sql-core/databases/orders",
+      "Subscription": "contoso-prod",
+      "ResourceGroup": "rg-data",
+      "Name": "orders",
+      "Location": "eastus",
+      "Sku": "GP_Gen5_2",
+      "Tier": "GeneralPurpose",
+      "Capacity": 2,
+      "MaxSizeBytes": 268435456000
+    }
+  ]
+}

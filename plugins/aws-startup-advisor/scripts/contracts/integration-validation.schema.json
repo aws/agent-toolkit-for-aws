@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration:integration-validation",
+  "title": "integration-validation.json",
+  "description": "Target snapshot contract for cross-track validation in a combined migration. Under Option A, track_results.infrastructure is the single zero-or-one infrastructure-source track; polycloud runs are deferred.",
+  "type": "object",
+  "required": ["schema_version", "run_id", "verdict", "track_results", "checks"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},
+    "verdict": {"enum": ["passed", "failed"]},
+    "track_results": {
+      "type": "object",
+      "required": ["infrastructure", "ai"],
+      "additionalProperties": false,
+      "properties": {
+        "infrastructure": {"$ref": "#/definitions/result"},
+        "ai": {"$ref": "#/definitions/result"}
+      }
+    },
+    "checks": {
+      "type": "object",
+      "required": ["networking", "iam_and_secrets", "data_flow", "observability", "deployment_order", "cutover", "rollback", "cost_estimate", "validation_dependencies"],
+      "additionalProperties": false,
+      "properties": {
+        "networking": {"$ref": "#/definitions/result"},
+        "iam_and_secrets": {"$ref": "#/definitions/result"},
+        "data_flow": {"$ref": "#/definitions/result"},
+        "observability": {"$ref": "#/definitions/result"},
+        "deployment_order": {"$ref": "#/definitions/result"},
+        "cutover": {"$ref": "#/definitions/result"},
+        "rollback": {"$ref": "#/definitions/result"},
+        "cost_estimate": {"$ref": "#/definitions/result"},
+        "validation_dependencies": {"$ref": "#/definitions/result"}
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "verdict": {"const": "passed"},
+        "track_results": {
+          "properties": {
+            "infrastructure": {"properties": {"verdict": {"const": "passed"}}},
+            "ai": {"properties": {"verdict": {"const": "passed"}}}
+          }
+        },
+        "checks": {
+          "properties": {
+            "networking": {"properties": {"verdict": {"const": "passed"}}},
+            "iam_and_secrets": {"properties": {"verdict": {"const": "passed"}}},
+            "data_flow": {"properties": {"verdict": {"const": "passed"}}},
+            "observability": {"properties": {"verdict": {"const": "passed"}}},
+            "deployment_order": {"properties": {"verdict": {"const": "passed"}}},
+            "cutover": {"properties": {"verdict": {"const": "passed"}}},
+            "rollback": {"properties": {"verdict": {"const": "passed"}}},
+            "cost_estimate": {"properties": {"verdict": {"const": "passed"}}},
+            "validation_dependencies": {"properties": {"verdict": {"const": "passed"}}}
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "verdict": {"const": "failed"}
+      }
+    }
+  ],
+  "definitions": {
+    "result": {
+      "type": "object",
+      "required": ["verdict", "references"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {"enum": ["passed", "failed"]},
+        "references": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -39,7 +39,9 @@ After all sub-discoveries complete, assemble `heroku-resource-inventory.json` in
 
 Resource identity is `resource_id` (both fragments use the same deterministic ID
 formats). Merge into ONE entry per `resource_id`. Never resolve a disagreement
-silently — every conflict is recorded as drift.
+silently — every conflict is recorded as drift. For `addon` resources, pairing
+across sources additionally requires Rule 1a/1b because `addon_name` is sourced
+differently per discovery method (see `schema-discover-heroku.md`).
 
 1. **Same `resource_id` from both:** keep one entry. Live values win field-by-field
    in `config` (live reflects current account state; Terraform may be stale). Keep
@@ -47,14 +49,38 @@ silently — every conflict is recorded as drift.
    `source: "live+terraform"`. If any config field disagreed, record it in
    `live_metadata.drift.config_conflicts[]` as
    `{ "resource_id", "field", "terraform_value", "live_value" }`.
-   1a. **Add-on plan changes are conflicts, not add/remove pairs.** Add-on
-   `resource_id`s embed the plan, so before applying rules 2–3, pair any live-only
-   and terraform-only addon entries that share the same `heroku_app` +
-   `addon_service`. Treat such a pair as ONE resource with a `plan` config conflict
-   (rule 1): keep the live entry, record
-   `{ "resource_id": <live id>, "field": "plan", "terraform_value", "live_value" }`
-   in `config_conflicts[]`, and do not count the pair in `resources_live_only` /
-   `resources_terraform_only`.
+
+   1a. **Add-on plan changes are conflicts, not add/remove pairs — but only
+   when the pairing is unambiguous.** Add-on `resource_id`s embed the plan
+   and the discriminator `addon_name`, which is sourced differently per
+   discovery method (live: Heroku-assigned add-on name; Terraform: HCL `name`
+   or `tf_resource_name` fallback) and will almost never match textually for
+   the same real add-on. So before applying rules 2–3, pair any live-only and
+   terraform-only addon entries that share the same `heroku_app` +
+   `addon_service` + `plan` **only when exactly one live-sourced and one
+   terraform-sourced entry share that triple** (ignoring `addon_name` for the
+   match). This covers the normal case — one database, discovered twice —
+   exactly as before. Treat such a pair as ONE resource with a `plan` config
+   conflict (rule 1) if the plans actually differ, else a plain merge: keep
+   the live entry (its `resource_id`, which carries live's `addon_name`),
+   record `{ "resource_id": <live id>, "field": "plan", "terraform_value",
+   "live_value" }` in `config_conflicts[]` only when the plans disagree, and
+   do not count the pair in `resources_live_only` / `resources_terraform_only`.
+
+   1b. **Ambiguous same-plan groups are reported, never guessed.** When more
+   than one live-sourced **or** more than one terraform-sourced entry share
+   the same `heroku_app` + `addon_service` + `plan` (the same-plan-collision
+   case Rule 1a cannot disambiguate without a shared discriminator
+   namespace), do **not** pair heuristically. Keep every entry separate, each
+   retaining its own source's `resource_id` (now unique per `addon_name` —
+   see `schema-discover-heroku.md`). Mark every live-sourced entry in the
+   group `unmanaged_by_terraform: true` and every terraform-sourced entry
+   `not_found_live: true` (even though a real pairing may exist), and add one
+   entry per ambiguous group to
+   `live_metadata.drift.ambiguous_addon_groups[]`:
+   `{ "heroku_app", "addon_service", "plan", "live_resource_ids": [...], "terraform_resource_ids": [...] }`.
+   This honestly reports an unresolvable identity gap rather than silently
+   collapsing the group into one entry.
 2. **Live only:** keep the entry (`source: "live"`) and set
    `unmanaged_by_terraform: true` — this is click-ops drift the migration plan must
    include.
@@ -69,7 +95,9 @@ silently — every conflict is recorded as drift.
 5. **Apps section:** live `apps[]` entries win (they carry the real `app_id` UUID);
    merge in Terraform-only apps with `not_found_live: true`.
 6. **Drift summary:** set `live_metadata.drift` to
-   `{ "resources_live_only": N, "resources_terraform_only": M, "config_conflicts": [...] }`.
+   `{ "resources_live_only": N, "resources_terraform_only": M, "config_conflicts": [...] }`,
+   plus `"ambiguous_addon_groups": [...]` (per Rule 1b) whenever any group was
+   ambiguous; omit that key when no ambiguous group was found.
 
 When only ONE of the two fragments contributed, no merge occurs and no `drift` key
 is written.

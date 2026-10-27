@@ -37,7 +37,7 @@ Read from prompt context (forwarded from llm2bedrock-code-analyzer, llm2bedrock-
   - `files_to_modify` — list of `"<file>: <change>"`. §10 iterates over this exact list.
   - `dependencies_to_replace` — list of `"<old-pkg> -> <new-pkg>"`. §12 applies these to the manifest.
   - `behavior_deltas` — list of parameter-surface differences. The user ALREADY confirmed each one at the orchestration checkpoint; §9 applies the confirmed decisions.
-  - `same_model_family` — `true` when the model itself is unchanged: Anthropic 1P → Bedrock Claude, or OpenAI → the same GPT model on Bedrock (`openai.gpt-5*`). Skip prompt adaptation in §10, and leave model parameters (`temperature`, penalties, stop sequences) untouched — they did not change.
+  - `same_model_family` — exact unchanged model identity/version, checked centrally by `validate_result.py --schema analysis` before dispatch or cache reuse. Consume that validated value without deriving it again. Skip model adaptation only when true; always apply the confirmed target API/path changes. Opus 4.8 → 5.5 keeps adaptation and parameter checks.
   - `special_patterns` — `{streaming, function_calling, embeddings, vision}` booleans. Drives §8 examples to apply.
 - **From `llm2bedrock-prompt-evaluator`** (T2-4) — adapted prompts (if any) at `<repo>/.saws-migrate/eval-results/adapted_prompts.jsonl`. §10 step 2 injects these where applicable.
 - **`Confirmed behavior-delta decisions file (Read it):`** — a context line naming `<Phase results directory>/delta-decisions.json`. `Read` that file: a JSON array where each entry carries a behavior delta and the user's chosen resolution/option (`[]` = none). §9 applies these EXACTLY as decided.
@@ -48,7 +48,7 @@ Your context block lists absolute paths to helper references (lines labelled
 `<helper> reference:`). Read the one you need — do NOT try to load a skill by name.
 
 1. **`bedrock-known-fixes` reference** — at session start. Pre-verified templates for Bedrock patterns (model ID format, response parsing). Use these instead of writing from scratch. Read the path from your `bedrock-known-fixes reference:` context line.
-2. **`behavior-delta-detection` reference** — at §9 if `behavior_deltas` is non-empty. Read the sub-reference matching `source_provider` to confirm how each confirmed resolution maps to code. You no longer ASK — you APPLY. Read the path from your `behavior-delta-detection reference:` context line.
+2. **`behavior-delta-detection` reference** — at §9 if `behavior_deltas` is non-empty or the source is Anthropic (including resumed runs). Read the sub-reference matching `source_provider` to confirm how each confirmed resolution maps to code. You no longer ASK — you APPLY. Read the path from your `behavior-delta-detection reference:` context line.
 3. **`dependency-conflict-resolution` reference** — at §14 BEFORE committing. Inspects the staged manifest diff and blocks the commit if any _removed_ dependency was not introduced by this rewrite session. Read the path from your `dependency-conflict-resolution reference:` context line.
 
 # 5. Test portability charter (read before §17)
@@ -146,7 +146,35 @@ Conservative scope — only universally-junk patterns; `.venv/` / `node_modules/
 
 ## Strategy selection (check FIRST)
 
-If your context has a `Rewrite strategy: mantle` line, use the **Mantle express lane** below. Otherwise (the line is absent — the common case, including every run where any target lacks a Mantle equivalent) use the Converse rewrite that follows. Never mix: a run is entirely Mantle or entirely Converse.
+If your context has `Rewrite strategy: runtime_openai`, use the runtime OpenAI lane below.
+For `Rewrite strategy: mantle`, use the Mantle express lane. Otherwise use the Converse
+rewrite. The selected `Target API surface` must match what the evaluator verified.
+
+### Runtime OpenAI lane
+
+Keep the OpenAI SDK and the selected Chat/Responses surface. Use the runtime `/openai/v1`
+endpoint with the exact validated profile ID or ARN, not a bare model ID or a Mantle URL.
+For Python, use:
+
+```python
+from openai import OpenAI
+from aws_bedrock_token_generator import provide_token
+
+region = "<REGION>"
+client = OpenAI(
+    base_url=f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1",
+    api_key=lambda: provide_token(region=region),
+)
+```
+
+Call `chat.completions.create(model="<TARGET_MODEL_ID>", messages=...)` for
+`Target API surface: chat_completions`, or `responses.create(model="<TARGET_MODEL_ID>", input=...)`
+for `responses`, keeping that API's response parsing, images and tool/state mapping.
+Use the equivalent OpenAI client for the application's other languages. Runtime permissions
+remain `bedrock:InvokeModel*` for the selected profile and backing model, not Mantle actions.
+In §12 keep `openai>=2.45.0,<3` and `aws-bedrock-token-generator>=1,<2`; do not apply an
+analyzer's generic OpenAI-to-boto3 dependency replacement to this lane. Apply confirmed deltas
+in §9, then skip the Converse-specific §8 rewrite guidance.
 
 ### Mantle express lane
 
@@ -156,15 +184,15 @@ The source SDK stays. Per client, change only three things:
 
   | Target model                             | base_url                                               |
   | ---------------------------------------- | ------------------------------------------------------ |
-  | Proprietary OpenAI GPT (`openai.gpt-5*`) | `https://bedrock-mantle.<REGION>.api.aws/openai/v1`    |
+  | Proprietary OpenAI GPT (`openai.gpt-5*` / `openai.gpt-6*`) | `https://bedrock-mantle.<REGION>.api.aws/openai/v1`    |
   | Other OpenAI-compatible targets          | `https://bedrock-mantle.<REGION>.api.aws/v1`           |
   | Anthropic SDK                            | `https://bedrock-mantle.<REGION>.api.aws/anthropic/v1` |
 
   If your context has a `Mantle base path` line, use it verbatim — it is authoritative over this table.
-- **Credential** → a Bedrock bearer token, NOT the original provider key, read from the `AWS_BEARER_TOKEN_BEDROCK` env var. Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
+- **Credential** → a Bedrock bearer token, NOT the original provider key. For a short CLI or one-shot script, read it from the `AWS_BEARER_TOKEN_BEDROCK` env var; for any long-running process use the auto-refreshing `provide_token` client shown below (the env-var form expires within 12 hours). Do not leave the old `api_key=os.environ["OPENAI_API_KEY"]` line in place.
 - **Model ID** → the Bedrock model id from the `Mantle model map` context line (the `aws_model_id` from the migration plan).
 
-**When your context has `Same model: true`**, the target is the same model the app already used. Do NOT change model parameters (`temperature`, penalties, stop sequences) — they are unchanged, and §9 will not ask about them. Limit edits to base_url, credential, and model id, plus the Chat Completions → Responses reshape below if the source used Chat Completions.
+**When your context has `Same model: true`**, avoid cross-family prompt rewrites. Preserve the selected API from `Mantle surface`; apply only confirmed behavior-delta decisions. Astra parameter acceptance is unprobed: do not claim sampling, penalties, `n`, or state behavior is unchanged. Keep unresolved compatibility checks explicit and test the rewritten application on its actual API before claiming it works.
 
 OpenAI SDK example — proprietary GPT target (note the `openai/v1` path):
 
@@ -183,7 +211,7 @@ client = OpenAI(
 # model="gpt-5.5" -> model="openai.gpt-5.5"
 ```
 
-A bearer token read from the environment expires within 12 hours. When the target repo has a long-running process (a server, worker, or scheduled job rather than a short CLI run), prefer the auto-refreshing client and note the added dependency in `dependency_changes`:
+A bearer token read from the environment expires within 12 hours. That form is for a short CLI or one-shot script. A server, worker, scheduled job, ECS service, or Lambda function uses the auto-refreshing client below, and `.env.example` does not set `AWS_BEARER_TOKEN_BEDROCK` for those. Note the added dependency in `dependency_changes`:
 
 ```python
 from aws_bedrock_token_generator import provide_token   # aws-bedrock-token-generator
@@ -197,7 +225,7 @@ client = BedrockOpenAI(
 )
 ```
 
-**Chat Completions → Responses (proprietary GPT targets only).** Chat Completions is unverified for these models; every AWS sample uses Responses. If the source calls `chat.completions.create`, reshape it — this is the one part of the Mantle lane that is not config-only:
+**Chat Completions → Responses (selected Responses path only).** If `Mantle surface: chat_completions`, preserve `chat.completions.create` and its response parsing; Astra supports this API. Do not apply this reshape. If the saved plan instead selects Responses and the source uses Chat, apply the confirmed API change below. Older GPT-5.x targets retain their dated model/API checks:
 
 ```python
 # Before
@@ -227,9 +255,9 @@ client = anthropic.Anthropic(
 )
 ```
 
-Do NOT rewrite request/response parsing — the whole point of Mantle is that the source SDK's call and response shapes are preserved. The single exception is the Chat Completions → Responses reshape above, which applies only to proprietary GPT targets. After applying the changes above, skip the Converse-specific guidance in the rest of §8; the §9 behavior-delta application still applies normally.
+Preserve compatible SDK request/response shapes. A model version change still requires §9 target checks, including typed response parsing for Opus 5.5. Apply the Chat Completions → Responses reshape only when that API change was selected. Preserve the exact validated runtime profile ID or ARN. After applying the changes above, skip the Converse-specific guidance in the rest of §8; the §9 behavior-delta application still applies normally.
 
-**Converse for a proprietary GPT target is family-dependent.** GPT-5.5 / GPT-5.4 (`openai.gpt-5.5`, `openai.gpt-5.4`) have no `bedrock-runtime` surface — a boto3 `converse()` call against them fails at runtime; if your context pairs one with the Converse path, stop and report the contradiction. GPT-5.6 DOES have a `bedrock-runtime` path via CRIS ids (`us.`/`in.`/`global.` prefixed): when the plan says `migration_path: runtime_openai_cris`, a Converse or Responses rewrite against the CRIS id is valid (base URL `bedrock-runtime.{region}.amazonaws.com/openai/v1` for the OpenAI-compatible APIs; note Guardrails are Converse-only and prompt caching Responses-only on runtime). For a Responses-based source app, the mantle express lane above remains the default and smallest change.
+**Converse for a proprietary GPT target is family-dependent.** GPT-5.5 / GPT-5.4 (`openai.gpt-5.5`, `openai.gpt-5.4`) have no `bedrock-runtime` surface — a boto3 `converse()` call against them fails at runtime; if your context pairs one with the Converse path, stop and report the contradiction. GPT-5.6 and GPT-6 (Astra, Sol, Luna, 6.1 Sol) DO have a `bedrock-runtime` path via CRIS ids (`us.`/`in.`/`global.` prefixed): when the plan says `migration_path: runtime_openai_cris`, a Converse or Responses rewrite against the CRIS id is valid (base URL `bedrock-runtime.{region}.amazonaws.com/openai/v1` for the OpenAI-compatible APIs; note Guardrails are Converse-only and prompt caching Responses-only on runtime). For a Responses-based source app, the mantle express lane above remains the default and smallest change.
 
 ### Converse rewrite (default)
 
@@ -290,7 +318,11 @@ response = bedrock.converse(
     messages=[{"role": "user", "content": [{"text": "Hello"}]}],
     inferenceConfig={"maxTokens": 4096}
 )
-output = response["output"]["message"]["content"][0]["text"]
+assistant_message = response["output"]["message"]
+output = "".join(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
+stop_reason = response.get("stopReason", "unknown")
+if not output or stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
+    raise ValueError(f"No complete text response (stopReason={stop_reason})")
 ```
 
 **OpenAI Streaming → Bedrock Streaming:**
@@ -307,10 +339,29 @@ response = bedrock.converse_stream(
     messages=messages_bedrock_format,
     inferenceConfig={"maxTokens": 4096}
 )
+text_parts = []
+stream_events = []  # Retain typed events, including reasoning signatures, for tool-loop history.
+stop_reason = None
 for event in response["stream"]:
+    stream_events.append(event)
     if "contentBlockDelta" in event:
-        content = event["contentBlockDelta"]["delta"]["text"]
+        delta = event["contentBlockDelta"]["delta"]
+        if "text" in delta:
+            content = delta["text"]
+            text_parts.append(content)
+            # Forward this text delta through the source application's streaming interface.
+    elif "messageStop" in event:
+        stop_reason = event["messageStop"]["stopReason"]
+output = "".join(text_parts)
+if not output or stop_reason not in ("end_turn", "stop_sequence"):
+    raise ValueError(f"No complete text stream (stopReason={stop_reason})")
 ```
+
+For continuing tool loops, append the original `assistant_message`, not the extracted text.
+For streams, use the SDK's typed-event accumulator to reconstruct that complete message
+from `stream_events`; preserve reasoning/signature blocks unchanged. Do not pass raw
+stream events directly as assistant messages. A `tool_use` stop must dispatch tools and
+return their results; it is not a final text answer.
 
 **OpenAI Function Calling → Bedrock Tool Use:**
 
@@ -331,13 +382,13 @@ response = bedrock.converse(
 
 # 9. Apply the pre-confirmed user-visible behavior changes
 
-If `behavior_deltas` is empty or absent (typical for `same_model_family: true` runs and many small migrations), set `behavior_delta_decisions: []` in §27's payload and skip §9 entirely — there are no parameter-surface changes to apply.
+For an Anthropic source, load `references/anthropic-to-bedrock.md` and check the resolved target even when `behavior_deltas` is empty or absent. A stale analysis is not proof of compatibility. Apply backend-only `impl_path` defaults and record them; unconfirmed user-visible changes use the safe-default/TODO rule below. Keep such sites incomplete in the returned notes and tests. For other sources with no deltas, set `behavior_delta_decisions: []` and skip this section.
 
 **The user has ALREADY confirmed each behavior-delta decision at the orchestration checkpoint.** They are provided in the `Confirmed behavior-delta decisions` block of your context (a JSON array; each entry carries the delta and the chosen resolution/option). Apply them EXACTLY as decided — do NOT ask again, do NOT re-open the decision, do NOT silently re-decide or substitute a different resolution. If a confirmed decision is missing for a user-visible delta you encounter, record it in your `notes` and apply the safe default (skip the change, leave original code, add a TODO comment) rather than guessing.
 
 If the orchestrator passed a non-empty `behavior_deltas` list (from llm2bedrock-code-analyzer) together with the confirmed decisions:
 
-1. Read the `behavior-delta-detection` reference at the absolute path in your context block's `behavior-delta-detection reference:` line; call its directory `<BDD_DIR>` (strip the filename). Then Read the sub-reference matching this run's `source_provider` — `<BDD_DIR>/references/openai-to-bedrock.md` or `<BDD_DIR>/references/gemini-to-bedrock.md` (resolve relative to `<BDD_DIR>`, not your cwd). You read it to confirm the code template for each resolution — NOT to re-derive options.
+1. Read the `behavior-delta-detection` reference at the absolute path in your context block's `behavior-delta-detection reference:` line; call its directory `<BDD_DIR>` (strip the filename). Then Read the sub-reference matching this run's `source_provider` — `<BDD_DIR>/references/openai-to-bedrock.md` or `<BDD_DIR>/references/gemini-to-bedrock.md` or `<BDD_DIR>/references/anthropic-to-bedrock.md` (resolve relative to `<BDD_DIR>`, not your cwd). You read it to confirm the code template for each resolution — NOT to re-derive options.
 
 2. For each confirmed decision, find its delta (matched on `delta_type` + `location`) and apply the chosen resolution EXACTLY per the code template in the skill reference. The resolution kinds map to code as follows — apply, do not ask:
 
@@ -377,18 +428,41 @@ For EACH file in the `files_to_modify` list from llm2bedrock-code-analyzer:
 
 # 11. Update auth patterns
 
-Replace source provider API key auth with AWS credentials:
+Replace source provider API key auth with the AWS credential chain. Do not call OpenAI, Anthropic, or Google to revoke a key. The source-model eval already used that key. Revocation is the customer's cutover step, recorded below, not an API call from this agent.
 
 ```bash
-# Find API key references
-grep -rn "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GOOGLE_API_KEY\|GEMINI_API_KEY" . --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" --include="*.yaml" --include="*.json" | grep -v node_modules
+# Find API key references in code and committed templates
+grep -rn "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|GOOGLE_API_KEY\|GEMINI_API_KEY" . --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" --include="*.yaml" --include="*.yml" --include="*.json" | grep -v node_modules | grep -v '.saws-migrate/' | grep -v '.migration/'
 ```
 
-Replace with AWS credential configuration:
+Also search CI and deploy config that the include-filter above misses. Use `rg --glob` (ripgrep expands these patterns itself) rather than bare shell globs — under default zsh, an unquoted glob with no matching file (e.g. no `Dockerfile.*` variant exists) aborts the command with `no matches found` before `rg` ever runs, and a trailing `|| true` would hide that failure as a clean, empty scan. The quoted `--glob` form below runs correctly under both bash and zsh whether or not each optional file/variant exists:
 
-- Remove `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` env var usage
-- Use boto3 default credential chain (env vars, IAM role, etc.)
-- Add `AWS_REGION` and `AWS_DEFAULT_REGION` to config
+```bash
+rg -n "OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|GEMINI_API_KEY" \
+  --glob ".github/**" --glob ".gitlab-ci.yml" --glob "bitbucket-pipelines.yml" \
+  --glob "azure-pipelines.yml" --glob ".circleci/**" \
+  --glob "Dockerfile*" --glob "docker-compose.y*ml" \
+  --glob "task-definition.json" --glob "template.y*ml" --glob "serverless.y*ml" \
+  .
+```
+
+This command exits 1 (ripgrep's "no matches" convention) when the repo has none of these files/references at all — that is expected and not an execution failure; only a nonzero exit from a _shell_ error (e.g. `command not found`) indicates the scan itself broke.
+
+In application code and committed templates:
+
+- Remove `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, and `GEMINI_API_KEY` usage.
+- Do not delete a secret from GitHub Actions, GitLab, or any remote secret store. Record each remaining hit in `notes`.
+- Converse path: the boto3 default credential chain. ECS uses the task role. Lambda uses the execution role. Do not write `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` into application code or into an uncommented `.env.example` line.
+- Add `AWS_REGION` as config. Add `AWS_DEFAULT_REGION` only where the SDK reads it. Neither is a credential.
+
+**Retire-the-key checklist (required in `notes` and in the §26 summary).** Name the provider keys this repo actually referenced. The customer does this after the Bedrock build is deployed and verified in production — not when they accept the branch. Accepting the branch is a local checkout; the original deployment still runs on the source provider and still reads the key until the cutover is done. If the customer declines the migration, the key stays: the original application needs it.
+
+1. Confirm the cutover: the Bedrock build serves production traffic, the original deployment is retired, and no rollback target, canary, cron job, other service, or CI job still reads the key.
+2. Revoke the key in the provider console (OpenAI, Anthropic, or Google).
+3. Delete that secret from CI and deploy stores: GitHub Actions secrets, GitLab CI variables, and any ECS task definition or Lambda environment that still sets it.
+4. Re-run the searches above and confirm they are clean outside `.saws-migrate/` and `.migration/`.
+
+A separate evaluation-only key (one the customer created for the eval, with no other consumer) can be revoked as soon as the branch is accepted. Do not mark this checklist done. This agent cannot see the provider console, the CI secret store, or production.
 
 # 12. Update dependencies (manifest + lockfile)
 
@@ -517,28 +591,44 @@ Example: `notes: "poetry lock failed: SolverProblemError on package langchain-co
 
 # 13. Update environment variable template
 
-Create or update `.env.example` (use the `Write` tool):
+Create or update `.env.example` (use the `Write` tool). Uncommented lines are the region and the model id from this run's migration plan (`aws_model_id`). Do not copy an illustrative model id into the file. Long-lived access keys are a commented local fallback, never the deploy credential.
+
+Detect the deploy shape from deployment evidence, not from the application's packaging. This migration swaps the SDK; it does not move the app, so the role you name must already exist on the platform the app runs on today:
+
+- **ECS task role** only when the repo carries ECS deployment evidence: an ECS task definition (`task-definition.json`, `taskDefinition` in a workflow or CDK/CloudFormation stack), an ECS service definition, a Copilot manifest whose `type` is an ECS service (Load Balanced Web Service, Backend Service, Worker Service — not Request-Driven Web Service, which deploys to App Runner), or a CI step that calls `aws ecs`. A Dockerfile alone is a container image, not ECS — App Runner, Cloud Run, Kubernetes, Fly, and Lambda container images all have one.
+- **Lambda execution role** only when the repo carries Lambda deployment evidence: a SAM `template.yaml`, `serverless.yml`, a CDK/CloudFormation `AWS::Lambda::Function` or `AWS::Serverless::Function`, or a handler the deploy config wires to Lambda. A handler-shaped function on its own is not enough.
+- **Otherwise** name the boto3 default chain: a server or container reads credentials from its host (instance profile or the platform's equivalent); a local run uses SSO or a named profile. App Runner lands here, not in the ECS case — it has no task role; with an `apprunner.yaml` or Copilot Request-Driven Web Service manifest, name the App Runner service's instance role as the host identity. When no deployment evidence turned up, say that you did not identify the platform and that the customer picks the identity.
+
+Say which case applies, and what evidence picked it, in a comment. Do not invent a role ARN. Do not name an ECS or Lambda role for an app whose deployment platform you did not find.
 
 ```
-# AWS Configuration (required for Bedrock)
+# AWS configuration (required for Bedrock)
+# ECS: attach Bedrock permission to the task role.
+# Lambda: attach Bedrock permission to the execution role.
+# Other server or container: boto3 reads the default chain from the host (instance profile, App Runner instance role, or equivalent).
+# Local: `aws sso login` or a named profile. boto3 reads the default chain.
+# Do not commit access keys. Uncomment only for a short local session, then discard them.
+# AWS_ACCESS_KEY_ID=
+# AWS_SECRET_ACCESS_KEY=
 AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-# Or use IAM role / SSO — boto3 will auto-detect
 
-# Bedrock Model Configuration
-BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6
+# Bedrock model — the plan's aws_model_id for this run
+BEDROCK_MODEL_ID=<aws_model_id>
 ```
 
-**Mantle express lane exception:** when this run used the Mantle express lane (§8), Mantle authenticates with a bearer token, not SigV4. Write `.env.example` with the token instead of the access-key pair:
+**Mantle, short CLI or one-shot script only.** A static bearer token expires within 12 hours. When this run used the Mantle express lane (§8) AND the process is not a server, worker, scheduled job, ECS service, or Lambda, write the token commented, with that expiry:
 
 ```
-# Bedrock (Mantle endpoint — bearer-token auth)
+# Mantle local/CLI only. Expires within 12 hours. Do not put this on ECS or Lambda.
+# Obtain via aws-bedrock-token-generator, or `aws bedrock get-bearer-token`.
+# AWS_BEARER_TOKEN_BEDROCK=
 AWS_REGION=us-east-1
-# Obtain a bearer token via the aws-bedrock-token-generator package, or
-# `aws bedrock get-bearer-token` — export it as:
-AWS_BEARER_TOKEN_BEDROCK=your-bedrock-bearer-token
+
+# Bedrock model — the plan's aws_model_id for this run
+BEDROCK_MODEL_ID=<aws_model_id>
 ```
+
+**Mantle, long-running process** (ECS, Lambda, server, worker, scheduled job). Do not put `AWS_BEARER_TOKEN_BEDROCK` in `.env.example`. The code uses the auto-refreshing client from §8 (`provide_token`), which signs with whatever the default chain resolves. The deploy identity follows the same evidence rule as above: the task role with ECS evidence, the execution role with Lambda evidence, otherwise the default chain on the host (App Runner's instance role, an instance profile, or the platform's equivalent) with the platform left unresolved when no evidence names it. `.env.example` matches the default template above.
 
 # 14. Commit code-only changes; verify clean working tree
 
@@ -797,7 +887,16 @@ grep -rl "from openai\|import openai\|require.*openai\|from anthropic\|import an
 
 If any files still contain source SDK references, fix them before proceeding. Test directories are NOT excluded from this scan on purpose: the source SDK package is being removed from the manifest, so a leftover `import openai` in a customer test means `pytest` ImportErrors on the customer's machine — §18.0 should have migrated those tests; if one appears here, go back and fix it.
 
-**Mantle express lane exception:** when this run used the Mantle express lane (§8, `Rewrite strategy: mantle`), the source-SDK imports are EXPECTED to remain — Mantle keeps the original SDK, so this residual scan does NOT apply. Verify instead that every client init sets the Mantle `base_url` and the `AWS_BEARER_TOKEN_BEDROCK` credential, and that model IDs were swapped to their Mantle forms.
+**OpenAI-compatible lane exception:** when this run used `Rewrite strategy: mantle` or
+`Rewrite strategy: runtime_openai`, the source-SDK imports are expected to remain, so this
+residual scan does not apply. Verify the selected endpoint's `base_url`, Bedrock credentials
+and model identifiers instead: bare IDs for Mantle, exact validated profiles for runtime.
+The runtime lane must retain the Chat/Responses API verified by the evaluator.
+
+- **Short CLI / one-shot script:** `base_url` set to the Mantle path and `api_key=os.environ["AWS_BEARER_TOKEN_BEDROCK"]`.
+- **Server, worker, scheduled job, ECS service, or Lambda:** `BedrockOpenAI(..., bedrock_token_provider=lambda: provide_token(...))` (or the equivalent auto-refreshing client for the SDK in use), **no** `AWS_BEARER_TOKEN_BEDROCK` read in code, and `.env.example` does **not** set it.
+
+Either form passes. What fails is the original provider key still being read anywhere, or a long-running client reading `AWS_BEARER_TOKEN_BEDROCK` from the environment — do not "fix" a `provide_token` client back to the env token.
 
 # 23. Verify all files were written
 
@@ -838,6 +937,7 @@ The branch is the deliverable. In your `summary` and `notes`, capture for the us
 - Dependencies changed
 - Tests generated and pass status
 - How to apply: "Push this branch and open a PR in your repo"
+- The retire-the-key checklist from §11, naming the provider keys this repo referenced. State that this agent did not revoke them.
 
 The workflow surfaces this summary to the user; you do not push to remote.
 
@@ -861,7 +961,7 @@ If you hit a hard wall, write `{ "blocked": { "reason": "<model_access|source_ke
 
   Do NOT include a `diffs` field — the report-generator reads diffs from git directly. A clean working tree on the migration branch is required (§25 satisfies this: baseline + rewrite + tests commits, `git status` clean).
 - **`summary`** — short prose for the user / sidebar. ~1–3 sentences. Mention branch name, file count, dependency swaps, test pass/fail count.
-- **`notes`** — string log of structured signals: test counts (`5 tests generated, 5/5 passing`), lint status, env-var changes, any partial-failure detail from §19's retry cap, branch-collision detail from §7, manual-review items.
+- **`notes`** — string log of structured signals: test counts (`5 tests generated, 5/5 passing`), lint status, env-var changes, the §11 retire-the-key checklist with the provider keys this repo referenced (never marked done), any partial-failure detail from §19's retry cap, branch-collision detail from §7, manual-review items.
 
 ## Hard-block routing
 
@@ -890,7 +990,7 @@ Genuine hard stops (e.g. can't build, missing critical context) are written to t
 
 (`summary`: "Bedrock migration applied on bedrock-migration branch. 2 files changed (app.py, pyproject.toml); replaced langchain-openai with langchain-aws. 5 tests generated, 5/5 passing in clean checkout. Branch local-only.")
 
-## Example result — no behavior deltas (Anthropic 1P → Bedrock Claude, `same_model_family: true`)
+## Example result — no behavior deltas (`claude-opus-5-5` → `global.anthropic.claude-opus-5-5`, target checks passed)
 
 ```json
 {

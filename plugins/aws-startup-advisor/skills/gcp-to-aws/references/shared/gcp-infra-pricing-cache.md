@@ -1,6 +1,6 @@
 # GCP Infrastructure Pricing Cache (source-side rates)
 
-**Last updated:** 2026-07-19
+**Last updated:** 2026-10-05 (re-verified against cloud.google.com/sql/pricing and cloud.google.com/compute/all-pricing — Cloud SQL Enterprise $0.0413/vCPU-hr + $0.0070/GB-hr and Compute Engine e2-standard-4 $0.134/hr both unchanged; no rate changes this refresh)
 **Region basis:** us-central1 (GCP list prices vary by region — note the region when the inventory is elsewhere)
 **Sources:** cloud.google.com/sql/pricing, cloud.google.com/memorystore/docs/redis/pricing, cloud.google.com/compute/vm-instance-pricing, cloud.google.com/kubernetes-engine/pricing
 **Currency:** USD · **Accuracy:** ±15% per rate; a baseline derived from these rates carries the Part 1 rung-2 label (±20–30%)

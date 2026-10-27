@@ -136,6 +136,25 @@ GRANT USAGE ON SCHEMA <schema, identifier, no quotes> TO <user, identifier, no q
 - "permission denied for relation" → check `svv_relation_privileges` + `GRANT USAGE` on schema + `GRANT SELECT` on tables.
 - `SVV_DEFAULT_PRIVILEGES` shows what new objects will inherit.
 
+### `permission denied for database awsdatacatalog`
+
+Queries against the auto-mounted AWS Glue Data Catalog fail with `ERROR: permission denied for
+database awsdatacatalog`. Root cause: the connecting role/user lacks **database-level `USAGE`**
+on **`awsdatacatalog`** (the Redshift database that exposes the Glue Data Catalog) — the same
+database-level `USAGE` grant that datashare-created databases require on the consumer side. Fix:
+
+```sql
+GRANT USAGE ON DATABASE awsdatacatalog TO ROLE "<database_role, identifier, double-quoted>";
+-- e.g. GRANT USAGE ON DATABASE awsdatacatalog TO ROLE "AWSIDC:hr";
+```
+
+where the role is the one mapped to the connecting identity — e.g. an IAM Identity Center role
+(`awsidc:<permission-set-or-group>`) or an IAM-mapped identity (`IAMR:<role-name>` /
+`IAM:<user-name>`). Double-quote the identity — these names contain a colon (e.g. `"IAMR:Admin"`),
+so they must be quoted. Grant to the user instead (`GRANT USAGE ON DATABASE awsdatacatalog TO
+"<database_user, identifier, double-quoted>";`) if roles aren't in use. Verify with
+`svv_database_privileges`.
+
 ## "Relation does not exist" — diagnostic flow
 
 1. **Confirm the object exists and find its schema** — the error often means "not found *where I looked*", not "gone":

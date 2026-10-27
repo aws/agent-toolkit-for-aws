@@ -4,7 +4,7 @@
 
 # Cell 1: Install Dependencies
 
-# %pip install --upgrade 'sagemaker>=3.7.1,<4.0' boto3 -q  # NOTEBOOK_ONLY
+# %pip install --upgrade 'sagemaker>=3.22.0,<4.0' boto3 -q  # NOTEBOOK_ONLY
 
 # Cell 2: Setup & Credentials
 
@@ -85,6 +85,8 @@ print(f"Learning rate: {trainer.hyperparameters.learning_rate}")
 print(f"Number of epochs: {trainer.hyperparameters.max_epochs}")
 print(f"Learning rate warmup steps ratio: {trainer.hyperparameters.lr_warmup_steps_ratio}")
 
+# To see all available hyperparameters and their valid ranges: trainer.hyperparameters.get_info()
+
 # Cell 5: Hyperparameter Overrides
 
 # To change a hyperparameter, uncomment its corresponding line, and set the value you want.
@@ -136,17 +138,23 @@ run_id = training_job.mlflow_details.mlflow_run_id
 mlflow.set_tracking_uri(training_job.mlflow_config.mlflow_resource_arn)
 client = MlflowClient()
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 3))
-for idx, metric in enumerate(["total_loss", "val_eval_total_loss"]):
-    history = client.get_metric_history(run_id, metric)
-    axes[idx].plot(
-        [h.step for h in history], [h.value for h in history], linewidth=2, marker="o", markersize=4
-    )
-    axes[idx].set_xlabel("Step")
-    axes[idx].set_ylabel("Loss")
-    axes[idx].set_title(metric, fontweight="bold")
-    axes[idx].grid(True, alpha=0.3)
+available = set(client.get_run(run_id).data.metrics)
+# LLMFT and Verl trainers log the same curves under different names; which one runs depends on the model.
+candidates = [("total_loss", "train/loss"), ("val_eval_total_loss", "val/loss")]
+metrics = [next(n for n in names if n in available) for names in candidates if available & set(names)]
 
-plt.suptitle(f"Training Metrics: {training_job.training_job_name}", fontweight="bold")
-plt.tight_layout()
-plt.show()
+if not metrics:
+    print(f"None of the expected loss metrics were logged. Logged metrics: {sorted(available)}")
+else:
+    fig, axes = plt.subplots(1, len(metrics), figsize=(6 * len(metrics), 3), squeeze=False)
+    for ax, metric in zip(axes[0], metrics):
+        history = client.get_metric_history(run_id, metric)
+        ax.plot([h.step for h in history], [h.value for h in history], linewidth=2, marker="o", markersize=4)
+        ax.set_xlabel("Step")
+        ax.set_ylabel("Loss")
+        ax.set_title(metric, fontweight="bold")
+        ax.grid(True, alpha=0.3)
+
+    plt.suptitle(f"Training Metrics: {training_job.training_job_name}", fontweight="bold")
+    plt.tight_layout()
+    plt.show()

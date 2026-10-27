@@ -11,7 +11,10 @@ Surface these as awareness with tradeoffs when the user is committed to a single
 
 ## Bedrock Managed Agents (OpenAI-committed)
 
-- Available in us-east-1 and expanding.
+- Now officially announced in preview (Sep 2026) in `us-east-1`, `us-west-2`, and `us-east-2` ([AWS announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/bedrock-managed-agents-preview/)).
+- Built on a customized OpenAI Agents API, AWS-native, with IAM roles per agent, durable sessions, MCP tool support, and CloudTrail logging of supported API activity ([AWS announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/bedrock-managed-agents-preview/)).
+- The announcement describes human approval before consequential actions; enforce authorization and any required human review in the application or tool implementation ([security guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-managed-agents-openai-security.html)).
+- During preview, there is no additional charge for BMA beyond underlying AWS resources; pricing may change at general availability. Model inference and example-stack resources, including NAT gateways, still incur charges ([AWS announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/bedrock-managed-agents-preview/), [user guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-managed-agents-openai.html)).
 - If the customer needs model flexibility, governance, or code export → AgentCore wins.
 
 ## Rule

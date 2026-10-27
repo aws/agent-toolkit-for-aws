@@ -72,8 +72,38 @@ Explicit "None" → `["none"]` `chosen_by: user`. Skip/default → `["unknown"]`
 **Q2 — What matters most?** Quality (Sonnet/Opus) / Speed (Haiku, Nova) / Cost (Haiku, Nova
 Micro) / Special (→Q10) / Balanced (Sonnet). → `ai_priority`. Default `"balanced"`.
 
-**Q3 — Monthly AI spend on Azure OpenAI / OpenAI?** `<$500` / `$500-$2K` / `$2K-$10K` / `>$10K` /
-don't know. → `ai_monthly_spend`. Default `"$500-$2K"`.
+**Q3 — Monthly AI spend on Azure OpenAI / OpenAI?** **Auto-resolve (skip the question), same
+mechanism as Q7's existing auto-resolve below:** read `current_costs.monthly_ai_spend` from
+`ai-workload-profile.json` first when present — but do NOT trust it blindly. Discover's Step 4
+merge stamps `partial_window` (and `cost_status`, per the cost-completeness work) onto each
+`current_costs.breakdown[]` entry at merge time, so follow `current_costs.source` back to its
+contributor(s) before auto-resolving:
+
+- **`source` is a single provider** (not `"mixed"`) — check that provider's contributing
+  profile via `breakdown[]` if present, or re-derive from the single-source case (no
+  `breakdown[]` is written when there is only one contributor — treat it as that profile's own
+  `metadata.partial_window`/`cost_status`, which Discover's merge already read when it set
+  `monthly_ai_spend` unconditionally from `summary.monthly_cost_usd`). If that profile is
+  `partial_window: true` or `cost_status: "cost_unavailable"`, do NOT auto-resolve from this
+  figure — fall through to the `else sum` branch below (which independently re-checks every
+  profile) or, if that also finds nothing usable, ask normally.
+- **`source` is `"mixed"`** — check every `breakdown[].partial_window` /
+  `breakdown[].cost_status` entry. If ALL contributors are partial/cost-unavailable, do NOT
+  auto-resolve — fall through to asking normally. If SOME contributors are full/complete and
+  others are not, exclude the partial/unavailable contributors' dollar amounts from the
+  auto-resolved figure (same discipline as the estimate-side `cost_status` exception) and note
+  the exclusion to the user ("Resolved from your usage data, excluding `<provider>` whose cost
+  data is partial/unavailable").
+
+Else (no usable `current_costs`) sum `summary.monthly_cost_usd` across whichever of
+`openai-usage-profile.json`, `openrouter-usage-profile.json`, and `anthropic-usage-profile.json`
+exist (skip a profile whose `metadata.partial_window` is `true` in the sum — a partial window is
+not a monthly spend figure; also skip a profile whose `metadata.cost_status` is
+`"cost_unavailable"` — its dollar figure is `null`, never add `null` or substitute `0`; if EVERY
+existing profile is partial or cost-unavailable, fall through and ask normally); record the
+extraction (`chosen_by: "extracted"`, `source` naming whichever of `current_costs` / the usage
+profiles contributed). Ask normally only when none of these sources exist. `<$500` / `$500-$2K`
+/ `$2K-$10K` / `>$10K` / don't know. → `ai_monthly_spend`. Default `"$500-$2K"`.
 
 **Q4 — Cross-cloud API call concerns** (unique to AI-only — infra stays on Azure while AI calls
 route to AWS): Latency critical (VPC endpoint, closest region) / Acceptable (standard endpoint,
@@ -86,6 +116,7 @@ running). → `ai_constraints.cross_cloud`. Default `"latency-acceptable"`.
 
 | Source (Azure OpenAI / OpenAI deployment) | Baseline recommendation                | Pricing context                            |
 | ----------------------------------------- | -------------------------------------- | ------------------------------------------ |
+| GPT-6 (Astra/Sol/Luna) / GPT-6.1 Sol       | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier); Astra/6.1 Sol also support Ultrafast (6x) |
 | GPT-5.6 (Sol/Terra/Luna)                  | **Same model on Bedrock**              | ~10% over OpenAI std (data-residency tier) |
 | GPT-5.5                                   | **Same model on Bedrock**              | ~10% over std                              |
 | GPT-5.4                                   | **Same model on Bedrock**              | ~10% over std                              |
@@ -109,9 +140,22 @@ defaults for the rest" during Batch 1, skip the draft save (assembly happens sam
 ### Batch 2 — Technical requirements (Q6–Q11)
 
 **Q6 — Input types** (text / vision / audio-video). Skip when `capabilities_summary` is
-definitive. → `ai_vision`. **Q7 — Monthly usage volume.** Auto-resolve from
-`openai-usage-profile.json` when present (tiers `<1M`→low, `1–10M`→medium, `10–100M`→high,
-`>100M`→very_high). → `ai_token_volume`. Default `"medium"`. **Q8 — Response speed** (critical /
+definitive. → `ai_vision`. **Q7 — Monthly usage volume.** Auto-resolve when
+`openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or
+`anthropic-usage-profile.json` exist with non-zero usage: compute total monthly tokens = the
+SUM across every full-window profile of Σ `usage_by_model[].input_tokens + output_tokens` — for
+`openrouter-usage-profile.json` that means `prompt_tokens + completion_tokens` (normalize before
+summing, do not treat a missing `input_tokens` key as zero) — Anthropic's `usage_by_model[]`
+already uses `input_tokens`/`output_tokens` (no normalization needed), but ALSO carries
+`cache_read_tokens`/`cache_creation_tokens`, which MUST be added into this sum (these are
+additional token pools the Admin API reports separately — `input_tokens` is populated from
+`uncached_input_tokens`, which excludes cached tokens by definition — omitting them understates
+volume rather than avoiding a double-count). Skip a profile whose
+`metadata.partial_window` is `true` from the sum; ask Q7 normally only if EVERY existing profile
+is partial. Map the combined total to tiers (`<1M`→low, `1–10M`→medium, `10–100M`→high,
+`>100M`→very_high), record the extraction (`chosen_by: "extracted"`, `source` naming whichever
+profile(s) contributed), and tell the user: "Resolved from your usage data: [N tokens/month →
+tier]." → `ai_token_volume`. Default `"medium"`. **Q8 — Response speed** (critical /
 important / flexible). → `ai_latency`. Default `"important"`. **Q9 — Task complexity** (simple /
 moderate / complex). → `ai_complexity`. Default `"moderate"`. **Q10 — Specialized features**
 (function calling / ultra-long-context / extended-thinking / prompt-caching / RAG / agentic /
@@ -146,8 +190,101 @@ Write `$MIGRATION_DIR/preferences.json`:
   the downstream source of truth (design-ai reads it, not the profile).
 
 Each constraint carries the full clarify field shape (`value`, `chosen_by` ∈
-`user|extracted|default|derived`, `prompt`, `design_consequence`, `source`/`question_id`). No
-nulls. Delete `preferences-draft.json` after writing.
+`user|extracted|default|derived`, `prompt`, `design_consequence`, `question_id`), plus
+`source` on every `chosen_by: "extracted"` row — per `schema-preferences.md`'s rule that the
+`DETECTED`-equivalent disposition must say what in the estate was read, so a value taken from
+discovery is never indistinguishable from a promoted default. No nulls. Delete
+`preferences-draft.json` after writing.
+
+## preferences.json (AI-only)
+
+```jsonc
+{
+  "metadata": { // REQUIRED
+    "migration_type": "ai-only", // REQUIRED — downstream skips infra phases
+    "discovery_artifacts": ["ai-workload-profile.json"],
+    "clarify_mode": "full", // fast_path | full
+    "questions_asked": [],
+    "questions_defaulted": [],
+    "questions_extracted": [],
+    "report_caveats": [] // REQUIRED — [] when none; Q1.5 skip/default appends a caveat here
+  },
+  "design_constraints": { // REQUIRED — region and compliance only; no infra constraints
+    "target_region": { // REQUIRED
+      "value": "us-east-1",
+      "chosen_by": "user|extracted|default|derived",
+      "prompt": "<question>",
+      "design_consequence": "<what the choice changes>",
+      "question_id": "Q4"
+    },
+    "compliance": { // REQUIRED
+      "value": [],
+      "chosen_by": "user|extracted|default|derived",
+      "prompt": "<question>",
+      "design_consequence": "<what the choice changes>",
+      "question_id": "Q1.5"
+    }
+  },
+  "startup_constraints": { // REQUIRED
+    "startup_program_status": { // REQUIRED
+      "value": "<value>",
+      "chosen_by": "user|extracted|default|derived",
+      "prompt": "<question>",
+      "design_consequence": "<what the choice changes>",
+      "question_id": "Q11"
+    }
+  },
+  "ai_constraints": { // REQUIRED
+    "ai_framework": { // REQUIRED
+      "value": ["direct"], "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q16", "source": "integration.pattern + integration.gateway_type"
+    },
+    "ai_priority": { // REQUIRED
+      "value": "balanced", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q17"
+    },
+    "ai_monthly_spend": { // REQUIRED
+      "value": "$500-$2K", "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q18", "source": "current_costs.monthly_ai_spend"
+    },
+    "cross_cloud": { // REQUIRED
+      "value": "latency-acceptable", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q4"
+    },
+    "ai_model_baseline": { // REQUIRED
+      "value": "gpt-4o", "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q19", "source": "models[] confidence >= 0.8"
+    },
+    "ai_vision": { // REQUIRED
+      "value": false, "chosen_by": "extracted", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q20", "source": "integration.capabilities_summary.vision"
+    },
+    "ai_token_volume": { // REQUIRED
+      "value": "low", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q21"
+    },
+    "ai_latency": { // REQUIRED
+      "value": "standard", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q22"
+    },
+    "ai_complexity": { // REQUIRED
+      "value": "moderate", "chosen_by": "default", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q23"
+    },
+    "ai_critical_feature": { // REQUIRED
+      "value": "<value>", "chosen_by": "user", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q24"
+    },
+    "ai_capabilities_required": { // REQUIRED
+      "value": [], "chosen_by": "derived", "prompt": "<question>", "design_consequence": "<what the choice changes>", "question_id": "Q25"
+    }
+  },
+  "workloads": [ // REQUIRED — [] when none; design-ai reads this array, not the profile
+    {
+      "workload_id": "wl-1", // REQUIRED
+      "model_id": "gpt-4o", // REQUIRED
+      "sdk_method": "chat.completions", // REQUIRED
+      "capability": "text_generation", // REQUIRED — the schema-discover-ai.md / design-ai.md capability enum (text_generation, structured_output, image_generation, embedding, …), not an ad hoc "chat" value
+      "capability_confidence": "high", // REQUIRED
+      "structured_output": false, // REQUIRED
+      "call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED
+      "target_bedrock_model": "anthropic.claude", // REQUIRED
+      "priority": "balanced", // REQUIRED
+      "latency_tier": "standard" // REQUIRED
+    }
+  ]
+}
+```
 
 ## Step 4: Output gate
 

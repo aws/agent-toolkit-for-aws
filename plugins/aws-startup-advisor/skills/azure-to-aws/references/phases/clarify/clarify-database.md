@@ -87,9 +87,37 @@ gets said out loud rather than buried in a sizing table.
 **post-rubric override**: it beats whatever the six criteria would have chosen, because
 availability is never inferable from configuration.
 
-### Q-D2 — Database cutover — **ESSENTIAL**
+### Q-D2 — Database cutover — **PROPOSED, deferred to Generate**
 
-**Disposition:** ESSENTIAL when any relational database is present. **No default.**
+**Disposition:** PROPOSED when any relational database is present; **N/A** otherwise.
+**Default:** size-derived from the extracted storage, in three branches — the boundary is
+100 GiB **inclusive** on the `dump_restore` side:
+
+| Measured sizes                                 | `default`                                 | `size_coverage` | `largest_relational_db_gib`                |
+| ---------------------------------------------- | ----------------------------------------- | --------------- | ------------------------------------------ |
+| every relational server carries `storage_mb`   | `dump_restore` at ≤ 100 GiB, `dms` above  | `"complete"`    | the measured maximum                       |
+| some servers carry `storage_mb`, some do not   | the rule applied to the **measured** max  | `"partial"`     | the measured maximum                       |
+| no relational server carries `storage_mb`      | `dump_restore`                            | `"unknown"`     | `null`                                     |
+
+Record the rule and what it was applied to on the row (`default_basis`), plus the two
+keys above. **Mark the row `deferred_to_generate: true`** and add `"data.db_cutover"` to
+`metadata.deferred_to_generate[]` — and **only** there, never to `questions_defaulted[]`.
+
+The unmeasured case is real, not hypothetical: `discover-live.md` lets `az resource list`
+succeed and then records enrichment rows 7/8 as `failed`/`skipped` on a permission error, so
+a Flexible Server arrives with no `storage_mb`; Terraform extraction omits the attribute
+when the module leaves it unset. **Never invent a size** to make the rule fire. The fallback
+is `dump_restore` because it is the runbook with no AWS charge — Part 4's Migration-service
+line stays `$0` — so an unknown size never adds dollars nobody asked for; `dms` would.
+Making the row ESSENTIAL instead would add a question the fast-path offer promises not to
+ask and would break Discover's eligibility rule. The uncertainty travels on the row and
+Step 3b asks for the size before recommending.
+
+`default_basis` examples, one per branch:
+
+- `"largest relational DB 64 GiB <= 100 GiB"`
+- `"largest measured relational DB 64 GiB <= 100 GiB; mysql-contoso-reports unmeasured — rule may flip"`
+- `"relational DB size unmeasured (no storage_mb on pg-contoso-store); dump_restore assumed — size is confirmed at Step 3b"`
 
 ```
 How should the data move?
@@ -100,12 +128,26 @@ How should the data move?
     downtime proportional to database size
 ```
 
-No default, for the same reason as the VM cutover question: the two produce **different
-runbooks**, not different numbers. DMS is a replication project with a validation phase; a
-dump/restore is a scheduled outage. Guessing makes every Generate artifact wrong.
+**Why this is PROPOSED-and-deferred rather than ESSENTIAL.** The two answers produce
+**different runbooks**, not different numbers — DMS is a replication project with a
+validation phase; a dump/restore is a scheduled outage — and that is exactly why the
+question belongs where the runbook is written. Nothing before Generate consumes it except
+one line of Estimate (DMS instance hours), which the default covers with a labelled
+assumption. So Clarify records the size-derived default, and the question is **asked for
+real at the Decision gate when the user chooses [C] Generate**
+(`estimate-assemble.md` § Step 3b), before any artifact is written. The user who stops at
+the decision never answers a question whose answer they would never use; the user who
+generates always does.
 
-Pair the row with the extracted size so the choice is informed — a 60 GiB database and a
-6 TiB database make [B] a very different proposition.
+Pair the row with the extracted size so the eventual choice is informed — a 60 GiB database
+and a 6 TiB database make [B] a very different proposition — and carry that size through to
+the Step 3b prompt. When `size_coverage` is not `"complete"`, Step 3b says which server(s)
+went unmeasured and **asks for the size** before recommending; the row's
+`largest_relational_db_gib` and `size_coverage` are not rewritten by that answer (they
+record what Discover measured) — the user's figure lands in `user_stated_size_gib`.
+
+The VM cutover question (Q-C6) stays ESSENTIAL: there is no size-derived default for MGN
+versus rebuild, so it has nothing defensible to defer with.
 
 ### Q-D3 — Traffic pattern
 
@@ -182,7 +224,10 @@ that is a feature gap rather than a sizing difference._
 "data": {
   "availability":      { "disposition": "ESSENTIAL", "value": null, "default": null,
                          "source_ha_context": "pg-contoso-store: ZoneRedundant, standby zone 2" },
-  "db_cutover":        { "disposition": "ESSENTIAL", "value": null, "default": null },
+  "db_cutover":        { "disposition": "PROPOSED",  "value": null, "default": "dump_restore",
+                         "deferred_to_generate": true,
+                         "default_basis": "largest relational DB 64 GiB <= 100 GiB",
+                         "largest_relational_db_gib": 64, "size_coverage": "complete" },
   "traffic_pattern":   { "disposition": "PROPOSED",  "value": null, "default": "steady" },
   "storage_io":        { "disposition": "PROPOSED",  "value": null, "default": "medium" },
   "cosmos_rw_split":   { "disposition": "N/A",       "value": null, "default": null },

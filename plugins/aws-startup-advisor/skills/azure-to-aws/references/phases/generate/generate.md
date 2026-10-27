@@ -30,6 +30,7 @@ _produces:
   - validation-report.json
   - README.md
   - { file: terraform/main.tf, _when: "run has an infra track" }
+  - { file: terraform/baseline.tf, _when: "run has an infra track" }
   - { file: terraform/variables.tf, _when: "run has an infra track" }
   - { file: terraform/outputs.tf, _when: "run has an infra track" }
   - { file: terraform/.gitignore, _when: "run has an infra track" }
@@ -47,20 +48,22 @@ _preconditions:
     _on_failure: _halt_and_inform
   - _check_single_active_phase: true
     _on_failure: _halt_and_inform
-  - _assert: "preferences.json exists and validates. WHEN the run has an infra track (azure-resource-inventory.json was produced at Discover): aws-design.json, estimation-infra.json, and azure-resource-inventory.json also exist and validate as JSON. WHEN the run is AI-only / app-code-only (no azure-resource-inventory.json — the app-code-only Discover/Clarify-ai-only/Design-ai/Estimate-ai track): those infra artifacts are ABSENT and instead ai-workload-profile.json, aws-design-ai.json, and estimation-ai.json exist and validate. A run with NEITHER an infra design nor an AI design is unrecoverable."
+  - _assert: "preferences.json exists and validates. WHEN the run has an infra track (azure-resource-inventory.json was produced at Discover): aws-design.json, estimation-infra.json, and azure-resource-inventory.json also exist and validate as JSON — an aws-design.json whose services[] is empty because every resource was deferred or skipped is still an infra track and takes the baseline-only path (core files + baseline.tf). WHEN the run is AI-only / app-code-only (no azure-resource-inventory.json — the app-code-only Discover/Clarify-ai-only/Design-ai/Estimate-ai track): those infra artifacts are ABSENT and instead ai-workload-profile.json, aws-design-ai.json, and estimation-ai.json exist and validate. A run with NEITHER an infra design nor an AI design is unrecoverable."
     _on_failure: _unrecoverable
   - _assert: "run_mode in .phase-status.json is 'decide_and_execute' — the user chose Execute at the post-Estimate decision gate, accepted the decide-complete resume offer, or explicitly asked for Terraform/migration scripts this turn. An absent run_mode is NOT consent."
     _on_failure: _halt_and_inform
+  - _assert: "preferences.json metadata.deferred_to_generate is absent or an empty array, and no preferences.json row carries deferred_to_generate: true — every execution-only row Clarify defaulted (data.db_cutover) was confirmed at the Decision gate's Step 3b (estimate-assemble.md), which sets the row flag to false and removes the key from both metadata lists. A non-empty array or a row still flagged true means a runbook is about to be written against an answer the user never gave; return to Step 3b."
+    _on_failure: _halt_and_inform
 _postconditions:
-  - _assert: "the always-produced artifacts exist and (where JSON) validate: migration-report.html, generation-warnings.json, validation-report.json, README.md. WHEN the run has an infra track: terraform/main.tf, terraform/variables.tf, terraform/outputs.tf, terraform/.gitignore, terraform/terraform.tfvars.example, and MIGRATION_GUIDE.md also exist. WHEN the run is AI-only (no aws-design.json / estimation-infra.json): there is no terraform/ directory and no MIGRATION_GUIDE.md; instead generation-ai.json exists and validates and an ai-migration/ directory was produced. migration-report.html is required on BOTH paths — a completed Generate with no report is a gate failure."
+  - _assert: "the always-produced artifacts exist and (where JSON) validate: migration-report.html, generation-warnings.json, validation-report.json, README.md. WHEN the run has an infra track: terraform/main.tf, terraform/baseline.tf, terraform/variables.tf, terraform/outputs.tf, terraform/.gitignore, terraform/terraform.tfvars.example, and MIGRATION_GUIDE.md also exist. baseline.tf is required even when aws-design.json has no infrastructure clusters. WHEN the run is AI-only (no aws-design.json / estimation-infra.json): there is no terraform/ directory and no MIGRATION_GUIDE.md; instead generation-ai.json exists and validates and an ai-migration/ directory was produced. migration-report.html is required on BOTH paths — a completed Generate with no report is a gate failure."
     _on_failure: _halt_and_inform
   - _validate_json: [generation-warnings.json, validation-report.json]
     _on_failure: _halt_and_inform
   - _assert: "validation-report.json (written by the MAIN-WINDOW validation step, not the rw worker) has status in {passed, passed_degraded_offline, skipped_user_continue} AND policy_status == POLICY_OK. On an AI-only run its terraform_dir is ai-migration (the Bedrock monitoring stack is the only generated Terraform) and the tf-best-practices policy gate still runs against it — unless the user chose skip/abort on a policy failure, in which case status may be policy_failed / policy_status POLICY_FAIL and the phase completes only by that explicit user choice. The tf-best-practices policy gate runs regardless of the offline path, so policy_status is never masked by passed_degraded_offline."
     _on_failure: _halt_and_inform
-  - _assert: "WHEN the run has an infra track: terraform/main.tf has a valid provider configuration; terraform/variables.tf declares at least an aws_region variable; at least one domain .tf file exists beyond the core files; and MIGRATION_GUIDE.md has Prerequisites and Verification sections. WHEN AI-only: vacuously satisfied (no terraform/ or MIGRATION_GUIDE.md on this path). README.md lists the generated artifacts on every path."
+  - _assert: "WHEN the run has an infra track: terraform/main.tf has a valid provider configuration; terraform/variables.tf declares aws_region plus operations_email, billing_email, and security_email with no defaults; terraform/baseline.tf exists and contains aws_cloudtrail, aws_guardduty_detector, and aws_budgets_budget (and aws_config / aws_securityhub only when design_constraints.compliance names soc2, pci, hipaa, or fedramp). A domain .tf file beyond the core files is required only when a service was generated; a design with no infrastructure clusters still passes on the core files plus baseline.tf. MIGRATION_GUIDE.md has Prerequisites and Verification sections. WHEN AI-only: vacuously satisfied (no terraform/ or MIGRATION_GUIDE.md on this path). README.md lists the generated artifacts on every path."
     _on_failure: _halt_and_inform
-  - _assert: "migration-report.html ALWAYS exists (it is a required _produces artifact on every path — an infra/mixed run and an AI-only app-code run alike; a completed Generate with no report is a gate failure, never a silent skip). It was rendered from references/shared/report-decision-core.md and PASSES $PLUGIN_ROOT/scripts/validate-migration-report.py (REPORT_OK, exit 0), which is the authority for required section IDs, TOC integrity, the CSS readability contract, and accessibility. Infra/mixed runs render full mode (validated default mode); an AI-only run (no aws-design.json / estimation-infra.json) renders AI-only mode and is validated with --mode ai_only --estimation-ai estimation-ai.json. A REPORT_FAIL leaves migration-report.incomplete.html and blocks completion. Additionally, for a run with an infra track: the report leads with cluster-level architecture rationale, the per-resource mapping table appears only in an appendix, and a draft-for-review footer is present"
+  - _assert: "migration-report.html ALWAYS exists (it is a required _produces artifact on every path — an infra/mixed run and an AI-only app-code run alike; a completed Generate with no report is a gate failure, never a silent skip). It was rendered from references/shared/report-decision-core.md and PASSES $PLUGIN_ROOT/scripts/validate-migration-report.py (REPORT_OK, exit 0), which enforces required section IDs, TOC integrity, the CSS readability contract, accessibility, and the decision-core content checks (verdict headline, hero metrics, flip conditions, specialist callout, architecture section, what-if columns) when the artifacts contain that data. REPORT_OK does not replace rendering references/shared/report-decision-core.md. Infra/mixed runs render full mode (validated default mode); an AI-only run (no aws-design.json / estimation-infra.json) renders AI-only mode and is validated with --mode ai_only --estimation-ai estimation-ai.json. A REPORT_FAIL leaves migration-report.incomplete.html and blocks completion. Additionally, for a run with an infra track: the report leads with cluster-level architecture rationale, the per-resource mapping table appears only in an appendix, and a draft-for-review footer is present"
     _on_failure: _halt_and_inform
   - _assert: "if scenarios/index.json has at least 2 scenarios, migration-report.html includes the what-if comparison"
     _on_failure: _halt_and_inform
@@ -70,7 +73,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "no secret VALUE from the inventory appears in any generated artifact; secrets are emitted as Secrets Manager references"
     _on_failure: _halt_and_inform
-  - _assert: "WHEN aws-design-ai.json exists AND run_mode is decide_and_execute: generation-ai.json exists and validates, its rollback_plan.mechanism is 'feature_flag' with flag_name 'AI_PROVIDER' and default_value 'azure_openai'; an ai-migration/ directory was produced (setup_bedrock.sh, test_comparison.py, bedrock_monitoring.tf on every path; migrate_to_mantle.sh for the mantle path OR provider_adapter.* for the direct/gpt-oss path, not both); and no proprietary openai.gpt-* model ID is paired with a converse/bedrock-runtime path. When aws-design-ai.json is absent this is vacuously satisfied"
+  - _assert: "WHEN aws-design-ai.json exists AND run_mode is decide_and_execute: generation-ai.json exists and validates, its rollback_plan.mechanism is 'feature_flag' with flag_name 'AI_PROVIDER' and default_value 'azure_openai'; an ai-migration/ directory was produced (setup_bedrock.sh, test_comparison.py, bedrock_monitoring.tf on every path; migrate_to_mantle.sh for the mantle path OR provider_adapter.* for the direct/gpt-oss path, not both); and no proprietary GPT-5.5 or GPT-5.4 model ID is paired with a converse/bedrock-runtime path (bare proprietary openai.gpt-* IDs use Mantle only; runtime_openai_cris accepts documented Astra us./global. and GPT-5.6/GPT-6 profiles with caller-region checks and the selected API; GPT-5.6 and GPT-6 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation). When aws-design-ai.json is absent this is vacuously satisfied"
     _on_failure: _halt_and_inform
 _forbids_files:
   - azure-resource-inventory.json
@@ -164,3 +167,73 @@ and step 5 run in the MAIN window — the worker cannot invoke skills or run
      and blocks completion (the `_postconditions` `_assert`).
 5. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK` and advance to
    `complete`; on any failure emit `GATE_FAIL` and stop.
+
+**Write the web-handoff summary (fail-open), only after `HANDOFF_OK`:** run
+`python3 "$PLUGIN_ROOT/scripts/emit-plan-json.py" --migration-dir "$MIGRATION_DIR" --plugin-json "$PLUGIN_ROOT/.claude-plugin/plugin.json"`
+(absolute paths — cwd must not be load-bearing). It reads the estimate artifacts and
+writes `$MIGRATION_DIR/plan.json`, the uploadable handoff file, printing `PLAN_OK | …`
+or `PLAN_SKIP | reason=…`. This is an optional enhancement, never a gate: on any skip
+or error the migration is still complete — continue without it and do not surface the
+script output to the user.
+
+**Web-handoff — only when the writer above printed `PLAN_OK`** (if it printed `PLAN_SKIP`, omit this whole block; there is no file to upload). Do three things, in order:
+
+- **(a)** In the completion summary, add exactly one plain-text entry (no link — the clickable link is the What's next call-to-action below): `plan.json — upload to AWS Startups Migrate to see if you qualify for AWS credits`.
+- **(b)** Then show the user their `plan.json`. The `.migration` folder is hidden by default
+  on macOS and Linux, so open the file's location for them instead of leaving them to
+  find it. Run the command for the user's OS once, as an ordinary command — the agent's
+  own permission prompt is the user's choice, so do not ask separately first:
+
+  - macOS: `open -R "$MIGRATION_DIR/plan.json"` — opens Finder with the file selected,
+    even inside the hidden folder.
+  - Windows: `MSYS_NO_PATHCONV=1 explorer.exe /select,"<absolute Windows path to plan.json>"`
+    — the prefix stops Git Bash from rewriting `/select,` as a path (drop it in
+    PowerShell or cmd). In Git Bash, get the Windows path with
+    `cygpath -w "$MIGRATION_DIR/plan.json"`. `explorer.exe` exits non-zero even when it
+    succeeds, so treat it as opened unless it prints an error.
+  - Linux: `xdg-open "$MIGRATION_DIR"` — opens the folder (it cannot select the file).
+
+  Then show exactly ONE of the two messages below, as plain text (not in a code block).
+  Do not reword them — this copy is owned by the web experience.
+
+  If the folder opened:
+
+  > **The folder is open with your plan.json selected.**
+
+  On Linux, where the file cannot be selected, show **The folder with your plan.json
+  is open.** instead.
+
+  If the command failed, was not available, or the user declined it, show this as its
+  own message, separate from the phase summary, and do not add any other explanation
+  of why it did not open. Replace `<absolute path to plan.json>` with the real absolute
+  path:
+
+  > The folder did not open. The open command is blocked in your permissions.
+  >
+  > Your plan.json is saved at:
+  > `<absolute path to plan.json>`
+  >
+  > The .migration folder is hidden by default on macOS. In Finder, press Command + Shift + Period (.) to show it.
+
+  On Linux, use this last line instead: "The .migration folder is hidden by default on
+  Linux. In your file manager, press Ctrl + H to show it." On Windows, the folder is
+  not hidden, so omit the last line. Keep "The open command is blocked in your
+  permissions." only when a permission rule blocked it, and drop that sentence when the
+  user declined or the command failed for another reason.
+
+- **(c)** Then append the What's next block below, verbatim, replacing `<run_id>` in the link with the run's `run_id` (from `.phase-status.json`), lowercased if it is a UUID so the `run=` value matches the plan's `runId`. It MUST begin with the "💬 What's next" heading. The call-to-action must be a Markdown link so it renders as clickable text with no bare URL. Do not reword it — this copy is owned by the web experience:
+
+> **💬 What's next**
+>
+> - **Refine your plan**
+>   Tell me what to change. For example: "use Fargate instead," "make it multi-region," or "reduce the cost."
+> - **See your AWS credits**
+>   Sign in or create an account on AWS Startups Migrate, then upload plan.json to see the AWS migration credits you qualify for.
+>
+> [Go to AWS Startups Migrate →](https://startups.aws.com/startups/en-US/migrate/credits?source=plugin&run=<run_id>)
+>
+> After you upload, you also get:
+>
+> - Interactive plan dashboard
+> - Monthly cost estimate
+> - Migration paths: AI agent, AWS expert, or AWS Partner

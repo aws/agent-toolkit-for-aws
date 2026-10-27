@@ -38,7 +38,10 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
       "resource_id": "formation:my-web-app:web",
       "resource_type": "formation",
       "heroku_app": "my-web-app",
-      "config": {}
+      "config": {},
+      "source": "terraform|live|live+terraform",
+      "unmanaged_by_terraform": false,
+      "not_found_live": false
     }
   ],
   "billing_profile": {},
@@ -132,7 +135,7 @@ Flat array of all discovered resources. **No nesting, no clustering.**
 | `capture_warnings`               | string[] | ✅       | Failed/skipped capture notes carried from `live-capture/manifest.json`                                                                                                                   |
 | `limitations`                    | string[] | ✅       | Known live-discovery blind spots (e.g., formations scaled to zero)                                                                                                                       |
 | `default_heroku_domains_skipped` | integer  | ❌       | Count of default `*.herokuapp.com` hostnames skipped (not recorded as domain resources)                                                                                                  |
-| `drift`                          | object   | ❌       | Present only when Terraform AND live both ran: `resources_live_only` (int), `resources_terraform_only` (int), `config_conflicts[]` (`{resource_id, field, terraform_value, live_value}`) |
+| `drift`                          | object   | ❌       | Present only when Terraform AND live both ran: `resources_live_only` (int), `resources_terraform_only` (int), `config_conflicts[]` (`{resource_id, field, terraform_value, live_value}`), `ambiguous_addon_groups[]` (optional — `{heroku_app, addon_service, plan, live_resource_ids[], terraform_resource_ids[]}`, present when two or more same-plan add-ons on one app could not be unambiguously paired across sources) |
 
 ---
 
@@ -140,14 +143,24 @@ Flat array of all discovered resources. **No nesting, no clustering.**
 
 Deterministic ID format per resource type:
 
-| Resource Type | ID Format                                 | Example                                         |
-| ------------- | ----------------------------------------- | ----------------------------------------------- |
-| `formation`   | `formation:{app_name}:{process_type}`     | `formation:my-web-app:web`                      |
-| `addon`       | `addon:{app_name}:{addon_service}:{plan}` | `addon:my-web-app:heroku-postgresql:standard-0` |
-| `space`       | `space:{space_name}`                      | `space:my-private-space`                        |
-| `pipeline`    | `pipeline:{pipeline_name}`                | `pipeline:my-pipeline`                          |
-| `domain`      | `domain:{app_name}:{hostname}`            | `domain:my-web-app:www.example.com`             |
-| `config`      | `config:{app_name}`                       | `config:my-web-app`                             |
+| Resource Type | ID Format                                              | Example                                                                |
+| ------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `formation`   | `formation:{app_name}:{process_type}`                  | `formation:my-web-app:web`                                             |
+| `addon`       | `addon:{app_name}:{addon_service}:{plan}:{addon_name}` | `addon:my-web-app:heroku-postgresql:standard-0:postgresql-cubed-12345` |
+| `space`       | `space:{space_name}`                                   | `space:my-private-space`                                               |
+| `pipeline`    | `pipeline:{pipeline_name}`                             | `pipeline:my-pipeline`                                                 |
+| `domain`      | `domain:{app_name}:{hostname}`                         | `domain:my-web-app:www.example.com`                                   |
+| `config`      | `config:{app_name}`                                    | `config:my-web-app`                                                    |
+
+**Why `addon_name` is embedded:** two add-ons on the same app can share the
+same `addon_service` + `plan` (e.g. `postgresql-alpha` and `postgresql-beta`,
+both `heroku-postgresql:standard-0`). Without a per-instance discriminator,
+both would collide on the identical `resource_id` and the assembler's
+"one entry per `resource_id`" merge rule would silently combine them, losing
+one database's config/pools/cost entirely. `addon_name` is not a new capture
+— it is the add-on's existing name, already used to build the
+`pg-advanced-<app>-<addon_name>.out` capture filename (live) or available as
+the HCL `name` attribute / `tf_resource_name` fallback (Terraform).
 
 ---
 
@@ -178,7 +191,19 @@ Deterministic ID format per resource type:
   "addon_service": "heroku-postgresql",
   "plan": "standard-0",
   "provider": "heroku",
-  "connection_pooling": true
+  "addon_name": "postgresql-cubed-12345",
+  "connection_pooling": true,
+  "ha_enabled": false,
+  "encryption_in_transit": true,
+  "redis_version": "7.0",
+  "topic_count": 4,
+  "partitions_per_topic": 8,
+  "replication_factor": 3,
+  "monthly_price_usd": 50,
+  "pg_version": "16",
+  "data_size_gb": 2.1,
+  "table_count": 42,
+  "maxmemory_policy": "noeviction"
 }
 ```
 
@@ -187,6 +212,7 @@ Deterministic ID format per resource type:
 | `addon_service` | string | ✅       | Add-on service name |
 | `plan`          | string | ✅       | Plan tier name      |
 | `provider`      | string | ✅       | Add-on provider     |
+| `addon_name`    | string | ✅       | Stable per-instance discriminator. Live discovery: the add-on's actual Heroku name (`addons.json` → `name`, the same identifier used in `pg-advanced-<app>-<addon_name>.out` filenames). Terraform discovery: the add-on's `name` HCL attribute when the resource sets one, else the Terraform local resource name (`tf_resource_name`) as a documented fallback — this fallback case is a local alias, not a guaranteed-unique server-assigned name. |
 
 **Additional fields by addon type:**
 
@@ -200,6 +226,39 @@ Deterministic ID format per resource type:
 - Any addon: `monthly_price_usd` (number — from the add-on's plan price)
 - **heroku-postgresql**: `pg_version` (string), `data_size_gb` (number — feeds database migration tool selection), `table_count` (integer)
 - **heroku-redis**: `maxmemory_policy` (string)
+- **heroku-postgresql, Advanced tier only**: `tier` (string, optional, only ever
+  `"advanced"` — present only when live discovery captured `data:pg:info` output
+  for this addon and confirmed `Plan: Advanced`; absent for every Classic/Essential
+  addon and absent for an Advanced addon discovered only via Terraform),
+  `advanced_pools` (array, optional, present iff `tier == "advanced"` — one entry
+  per instance pool captured from `data:pg:info`'s pool sections)
+
+**heroku-postgresql Advanced tier example** (leader pool plus one named follower pool):
+
+```json
+{
+  "addon_service": "heroku-postgresql",
+  "plan": "standard-0",
+  "provider": "heroku",
+  "addon_name": "postgresql-cubed-12345",
+  "connection_pooling": true,
+  "tier": "advanced",
+  "advanced_pools": [
+    { "role": "leader", "name": null, "level": "4G-Performance", "instance_count": 2, "ha": true },
+    { "role": "follower", "name": "analytics", "level": "4G-Performance", "instance_count": 2, "ha": true }
+  ]
+}
+```
+
+**`advanced_pools[]` fields** (present only when `tier == "advanced"`):
+
+| Field                             | Type           | Required | Description                                                                                           |
+| ---------------------------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `advanced_pools[].role`            | string         | ✅       | `"leader"` or `"follower"`                                                                             |
+| `advanced_pools[].name`            | string \| null | ✅       | Follower pool name (e.g. `"analytics"`), or `null` for the leader pool                                 |
+| `advanced_pools[].level`           | string         | ✅       | The pool's `*-Performance` level string (e.g. `"4G-Performance"`)                                      |
+| `advanced_pools[].instance_count`  | integer        | ✅       | Billable instance count for that pool. Already includes the HA standby when `ha` is `true`             |
+| `advanced_pools[].ha`              | boolean        | ✅       | Whether that pool runs HA (standby instance). Informational only — not a separate pricing multiplier   |
 
 ### `space` config
 
@@ -343,37 +402,40 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
       }
     },
     {
-      "resource_id": "addon:my-web-app:heroku-postgresql:standard-0",
+      "resource_id": "addon:my-web-app:heroku-postgresql:standard-0:postgresql-cubed-12345",
       "resource_type": "addon",
       "heroku_app": "my-web-app",
       "config": {
         "addon_service": "heroku-postgresql",
         "plan": "standard-0",
         "provider": "heroku",
+        "addon_name": "postgresql-cubed-12345",
         "connection_pooling": true
       }
     },
     {
-      "resource_id": "addon:my-web-app:heroku-redis:premium-0",
+      "resource_id": "addon:my-web-app:heroku-redis:premium-0:redis-round-67890",
       "resource_type": "addon",
       "heroku_app": "my-web-app",
       "config": {
         "addon_service": "heroku-redis",
         "plan": "premium-0",
         "provider": "heroku",
+        "addon_name": "redis-round-67890",
         "ha_enabled": true,
         "encryption_in_transit": true,
         "redis_version": "7.0"
       }
     },
     {
-      "resource_id": "addon:my-web-app:papertrail:choklad",
+      "resource_id": "addon:my-web-app:papertrail:choklad:papertrail-square-11223",
       "resource_type": "addon",
       "heroku_app": "my-web-app",
       "config": {
         "addon_service": "papertrail",
         "plan": "choklad",
-        "provider": "papertrail"
+        "provider": "papertrail",
+        "addon_name": "papertrail-square-11223"
       }
     },
     {
@@ -446,3 +508,4 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
 11. ✅ If billing discovery ran → `billing_profile` section present with `available: true`
 12. ✅ If live discovery ran → resources include live-sourced entries, `live_metadata` present, and `"live"` in `metadata.discovery_sources`
 13. ✅ No config var VALUES anywhere in the document — `config` entries carry key names only
+14. ✅ Every `addon` `resource_id` embeds a non-empty `addon_name` discriminator; two add-ons sharing `heroku_app`+`addon_service`+`plan` never collide on `resource_id`

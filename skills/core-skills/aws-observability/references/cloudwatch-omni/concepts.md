@@ -124,13 +124,13 @@ do not improvise an equivalent on the other.
 | Notify on a condition | **Alarm** — metric, composite, anomaly detection — [../cloudwatch/alarms.md](../cloudwatch/alarms.md) | **Alert** — SQL or PromQL rule, `profileId`, contributors — [alerts.md](alerts.md) | "CloudWatch alarm", "metric alarm", "composite alarm", "anomaly alarm", "PromQL alarm", `ALARM`/`INSUFFICIENT_DATA`, an SNS alarm action → CloudWatch. `WARNING`/`CRITICAL`/`NODATA`, `profileId`, an alert ARN, `ListAlerts` → Omni. A bare "alarm" or "alert" with no other product signal is ambiguous — probe for a Space (step 3 below). Do not redirect an Omni alert question to alarms. |
 | Reusable saved queries | Logs Insights saved queries — [../cloudwatch/log-insights.md](../cloudwatch/log-insights.md) | **Views** (`FROM view.<name>`) — [query/views.md](query/views.md) | "View" as a table you query from → Omni. |
 | Dashboards | `widgets[]` body, `PutDashboard`, cross-account/Region — [../cloudwatch/dashboards.md](../cloudwatch/dashboards.md) | `panels[]` body on a 60-column grid — [dashboards.md](dashboards.md) | Widgets, metric-widget JSON, sharing → CloudWatch. Panels, a Space, SQL/PromQL panel queries → Omni. |
-| Instrument / onboard a service | Application Signals via ADOT + ServiceEvents — [../cloudwatch/application-signals-onboarding.md](../cloudwatch/application-signals-onboarding.md), per-platform guides under [../cloudwatch/appsignals-guides/](../cloudwatch/appsignals-guides/) | Plain ADOT SDK + a collector, exporting toward a Space — `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/instrumentation/instrumentation.md`, `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/instrumentation/collector.md`, per-platform `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/instrumentation/<platform>-<language>.md` | Names Application Signals, ServiceEvents, the `amazon-cloudwatch-observability` add-on, or the service map → CloudWatch. Names a Space, Omni, or "Application Observability" → Omni. Names neither → probe `list-spaces` in the target Region: a Space → the Omni path; no Space → the CloudWatch path. |
+| Instrument / onboard a service | Application Signals via ADOT + ServiceEvents — `setting-up-cloudwatch-observability` → `references/cloudwatch/application-signals-onboarding.md`, per-platform guides under `setting-up-cloudwatch-observability` → `references/cloudwatch/appsignals-guides/` | Plain ADOT SDK + a collector, exporting toward a Space — `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/instrumentation/instrumentation.md`, `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/instrumentation/collector.md`, per-platform `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/instrumentation/<platform>-<language>.md` | **Both columns are setup, so both live in `setting-up-cloudwatch-observability` — route the whole request there and let that skill pick the path.** Do NOT probe `list-spaces` yourself to choose a column: this skill has no onboarding procedure on either side, so the probe cannot change what you do. The columns are here to say which product's answer exists, not to be executed from this skill. |
 | Instrument an AI agent | — (X-Ray sees generic spans only) | ADOT or OpenInference for LangChain, LangGraph, Strands, CrewAI, OpenAI Agents, Vercel AI — `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/omni-agents-instrumentation/omni-agents-instrumentation.md` | Any agent-framework instrumentation request is Omni. |
 | Access control | IAM policies on log groups, metric namespaces, X-Ray — no dedicated reference | Access grants and Access Profiles on a Space — `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-grants.md`, `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-profiles.md` | "Who can see the Space", a permission level, a `profileId` → Omni. An IAM policy on `logs:*`/`cloudwatch:*` actions → CloudWatch. A grant does not restrict the source log groups. |
 | Debug a live service with breakpoints / snapshots | **Dynamic Instrumentation** — [../cloudwatch/dynamic-instrumentation.md](../cloudwatch/dynamic-instrumentation.md) | — | CloudWatch only. Route there even if the customer is otherwise an Omni user. |
 | Synthetic monitoring / canaries | **Synthetics** — [../cloudwatch/synthetics.md](../cloudwatch/synthetics.md) | — | CloudWatch only. |
 | Who changed what, when (API auditing) | **CloudTrail** — [../cloudwatch/cloudtrail.md](../cloudwatch/cloudtrail.md) | — | CloudWatch only. |
-| Service topology / dependencies | Application Signals **service map** — [../cloudwatch/application-signals-onboarding.md](../cloudwatch/application-signals-onboarding.md) | **Context graph** — [context-graph.md](context-graph.md) | "Service map", SLOs, Application Signals → CloudWatch. "Context graph", entity relationships inside a Space → Omni. |
+| Service topology / dependencies | Application Signals **service map** — enabling it is `setting-up-cloudwatch-observability` → `references/cloudwatch/application-signals-onboarding.md` | **Context graph** — [context-graph.md](context-graph.md) | "Service map", SLOs, Application Signals → CloudWatch. "Context graph", entity relationships inside a Space → Omni. |
 | Evaluate an AI agent's quality | — | Evaluators, on-demand and online evaluation, datasets — [agent-evaluation.md](agent-evaluation.md) | Omni only. |
 | Telemetry from Azure | CloudWatch agent on an Azure VM / AKS lands it in CloudWatch — `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/azure-ingestion/azure-ingestion.md` | …then forwarded into the Dataset — `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/data-forwarding-and-centralization.md` | The same path serves both; Omni adds the forwarding step. Azure *resource* logs (the VPC-flow-log analogue) are not available either way. |
 | Chat notifications | SNS-driven; no dedicated reference | **Slack integration** — `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/slack-integration.md` | "Connect Slack to the Space", an alert notifying `slack` → Omni. |
@@ -163,12 +163,13 @@ logs" — does not say which product the customer has in mind. Decide in this or
 
    ```bash
    aws cloudwatchomni list-domains
-   aws cloudwatchomni list-spaces --region <target-region>
+   # list-spaces is account-global; filter to the target Region:
+   aws cloudwatchomni list-spaces --region <target-region> --query "items[?region=='<target-region>']"
    ```
 
-   - **A Domain and a Space exist in the target Region** → Omni is enabled; use the
-     Omni column of the table above.
-   - **No Space in that Region** → serve the same need from the CloudWatch column
+   - **A Domain and a Space in the target Region** (a non-empty filtered list) → Omni is
+     enabled; use the Omni column of the table above.
+   - **No Space in that Region** (an empty filtered list) → serve the same need from the CloudWatch column
      instead (alert → [../cloudwatch/alarms.md](../cloudwatch/alarms.md), dashboard →
      [../cloudwatch/dashboards.md](../cloudwatch/dashboards.md), query →
      [../cloudwatch/log-insights.md](../cloudwatch/log-insights.md), metrics →
@@ -192,8 +193,10 @@ logs" — does not say which product the customer has in mind. Decide in this or
 
 **Constraints:**
 
-- A Space is **one per account per Region**. You MUST probe the Region the request
-  targets, not the default one. An Omni query against the wrong Region returns an
+- A Space is **one per account per Region**, and `list-spaces` is **account-global** (the
+  `--region` flag only selects the endpoint; the response lists every account Space with its
+  own `region`), so filter the list to the Region the request targets rather than reading a
+  non-empty list as proof of a Space there. An Omni query against the wrong Region returns an
   empty result that is easily misread as "no data".
 - If the customer already has a working Space and is asking about queries,
   dashboards, or alerts, you MUST NOT restart setup — go to the reference for that task.

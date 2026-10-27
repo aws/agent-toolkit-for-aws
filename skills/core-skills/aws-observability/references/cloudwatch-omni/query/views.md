@@ -4,6 +4,11 @@ Views in CloudWatch Omni are named SQL queries that can be referenced as tables.
 
 ## 1. Using Views in Queries
 
+A view is queried with the same three operations as any other Omni SQL statement —
+`StartTelemetryQuerySession`, `StartTelemetryQuery`, `GetTelemetryQueryResults`; see
+[Running a Query](sql-logs-traces.md#0-running-a-query). Creating and managing the views
+themselves uses the `CreateView` / `ListViews` / `DeleteView` operations described below.
+
 Reference a view by its name with the `view.` prefix in the FROM clause:
 
 ```sql
@@ -17,6 +22,22 @@ Views behave like inline subqueries:
 
 - They **inherit the outer query's `@timestamp` bounds** — no need to specify a time range inside the view definition
 - They can be used anywhere a table is used: JOINs, subqueries, UNION, etc.
+- **In a plain query against a view, the `WHERE` can only bound `` `@timestamp` ``.** A
+  filter on a column the view projects fails to bind, even though `SELECT` and `ORDER BY`
+  on that same column work and the error lists the column as valid: `AND name = '…'` →
+  `Schema error: No field named name Valid fields are "@timestamp", name, duration_ms.`,
+  and `AND duration_ms > 5000` → `No field named duration_ms Did you mean 'duration_ms'?`.
+  So keep an ad hoc query to the time bound, a projection and `ORDER BY` / `LIMIT`, and
+  put every selective predicate where it does bind:
+  - **inside the view's own definition**, or
+  - **inside a composed view's definition** — `SELECT * FROM view.<base> WHERE <predicate>`
+    narrowing on a bare top-level column the base projects **does** work (see
+    [Composing Views](#composing-views-nested)); it is a definition, not an outer query.
+
+  The distinction is where the predicate sits, not what it filters. The same predicate on
+  the same projected column binds in a composed view's definition and is rejected in an ad
+  hoc query against that view. If a caller needs to vary a filter at query time, they need
+  a view (or composed view) per variant, or a direct query against the base table.
 - They can reference other views (up to 32 levels of nesting)
 - Cyclic references (a view referencing itself, directly or transitively) are detected and rejected
 - The view's SQL is re-evaluated fresh on every query execution (not cached results)
@@ -41,7 +62,9 @@ A view can reference other views in its definition:
 -- as a bare top-level column the composed view can narrow on):
 --   SELECT `@timestamp`, `@record`, severityNumber FROM logs.default WHERE TRY_CAST(severityNumber AS BIGINT) >= 17
 -- Then another view can build on it (a composed view may only narrow on bare
--- top-level columns — see "Views expose only bare top-level columns" in section 4):
+-- top-level columns — see "Views expose only bare top-level columns" in section 4).
+-- Narrowing here is the sanctioned place for a predicate an ad hoc query cannot bind
+-- (section 1); this is a definition, so it is allowed:
 --   SELECT * FROM view.base_errors WHERE TRY_CAST(severityNumber AS BIGINT) >= 21
 -- And queries can reference the composed view:
 SELECT COUNT(*) FROM view.fatal_errors
@@ -221,3 +244,9 @@ WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
 ORDER BY duration_ms DESC
 LIMIT 50
 ```
+
+Note what the outer query does **not** do: it adds no predicate beyond the time bound.
+To get the slow spans of one operation, put that filter in the definition —
+`… WHERE name = 'POST /invocations' AND durationNano IS NOT NULL AND …` — and query the
+narrower view. Appending `AND name = 'POST /invocations'` to the outer `WHERE` above
+fails to bind (see the rule at the top of this file).

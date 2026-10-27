@@ -342,12 +342,21 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     service.beta.kubernetes.io/aws-load-balancer-target-type: "ip"
     alb.ingress.kubernetes.io/target-type: "ip"
+    # TLS is terminated on 443 only. The certificate annotation does not add a listener;
+    # the Service must declare port 443. Fill the ARN before DNS cutover (generate-docs.md Phase 5).
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    # service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "<acm certificate ARN>"
 spec:
   type: LoadBalancer
   selector:
     app: web
   ports:
-  - port: 80
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  - name: https
+    port: 443
     targetPort: 8080
     protocol: TCP
 ```
@@ -405,6 +414,13 @@ Add these sections after Prerequisites, before Data Migration:
    ```bash
    kubectl get svc -n <namespace>
    # EXTERNAL-IP should be provisioned within 2–5 minutes
+   ```
+
+5. Turn on TLS before any DNS cutover. The Service already has port 443 targeting 8080 and `aws-load-balancer-ssl-ports: "443"`. Set `service.beta.kubernetes.io/aws-load-balancer-ssl-cert` to the validated ACM certificate ARN, apply the Service, and confirm a listener on 443 exists. The certificate annotation does not add that listener by itself.
+   ```bash
+   kubectl apply -f kubernetes/<app>-web-service.yaml
+   aws elbv2 describe-listeners --load-balancer-arn <arn> --query 'Listeners[?Port==`443`].Port'
+   # must print 443 before MIGRATION_GUIDE.md Phase 5 changes any DNS record
    ```
 
 ## Configure Pod-to-Service Access

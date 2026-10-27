@@ -62,6 +62,14 @@ _forbids_files:
 
 # Phase 2: Clarify Requirements
 
+## Telemetry boundary
+
+Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
+when this phase is executed inline by another skill. In `cli` mode, reconcile
+after each persisted `.phase-status.json` update and before waiting, returning,
+or advancing. This also applies to state writes in a loaded sub-flow. In `hook`
+mode, leave reporting to the configured hooks.
+
 ## Orientation
 
 Turn discovery into an explicit, user-confirmed set of migration preferences via an
@@ -247,8 +255,9 @@ instead:
 
 ## Step 1.5: Fast-Path Gate (Simple Stacks)
 
-**GCP-specific — `azure-to-aws` has no equivalent fast-path.** After presenting the
-Discovery Summary, check `$MIGRATION_DIR/migration-preview.json` for fast-path eligibility:
+**The reference fast path — `azure-to-aws` (`clarify.md` § Step 0.5) and `heroku-to-aws`
+mirror it with their own eligibility inputs.** After presenting the Discovery Summary,
+check `$MIGRATION_DIR/migration-preview.json` for fast-path eligibility:
 
 ```
 IF migration-preview.json exists

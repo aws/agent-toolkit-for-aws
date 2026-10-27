@@ -28,18 +28,16 @@ Check `preferences.json` → `ai_constraints.ai_framework` to determine the migr
 | Voice Platform (Vapi, Bland.ai)   | Check native Bedrock support, update dashboard                | Dashboard config  |
 | Framework (LangChain, LlamaIndex) | Swap provider import (e.g., `ChatBedrock` for `ChatVertexAI`) | 1-5 lines of code |
 
-**OpenAI SDK users via Mantle (config path for a Responses source; small reshape for a Chat Completions source)** — `ai_framework` = `direct` AND `ai_source` = `openai` AND `migration_path` **starts with** `mantle` (`mantle`, `mantle_openai_responses`):
+**OpenAI SDK users via Mantle (config path for a Responses source; small reshape for a Chat Completions source)** — `ai_framework` = `direct` AND `ai_source` = `openai` AND (`migration_path` **starts with** `mantle` (`mantle`, `mantle_openai_responses`, `mantle_openai_chat`) OR `migration_path` == `"runtime_openai_cris"`):
 
-- Point the client at `https://bedrock-mantle.{region}.api.aws/openai/v1` — note the `openai/v1` segment for proprietary GPT models; a bare `/v1` 404s
-- Swap the credential for a Bedrock API key or the auto-refreshing token provider — **not** the existing OpenAI key
-- Update the model string to the Bedrock model ID (`openai.gpt-*` for a same-model move)
-- Grant the `bedrock-mantle:*` actions; `bedrock:InvokeModel` does not authorize these models
-- **Config-only ONLY if the source already calls `responses.create`.** A Chat Completions source must reshape to Responses — small and mechanical, but it is a code change, so do not present this path as "no code changes" without checking the detected surface
+- `mantle` / `mantle_openai_responses`: point the client at `https://bedrock-mantle.{region}.api.aws/openai/v1` — note the `openai/v1` segment for proprietary GPT models; a bare `/v1` 404s. Swap the credential for a Bedrock API key or the auto-refreshing token provider — **not** the existing OpenAI key. Update the model string to the bare Bedrock model ID (`openai.gpt-*` for a same-model move). Grant the `bedrock-mantle:*` actions; `bedrock:InvokeModel` does not authorize these models.
+- `runtime_openai_cris` (GPT-5.6/GPT-6 via `bedrock-runtime` CRIS): point the client at `https://bedrock-runtime.{region}.amazonaws.com/openai/v1` instead — **not** the mantle URL. Update the model string to the `us.`/`in.`/`global.`-prefixed CRIS inference-profile ID, not the bare ID. Grant standard `bedrock:InvokeModel*` actions against the CRIS inference-profile ARN — **not** `bedrock-mantle:*`. For a GPT-6 CRIS id, also grant `bedrock:InvokeModel` on `arn:aws:bedrock:{region}:{account}:project/default` alongside the inference-profile ARN (per the GPT-6 model cards). Check `aws-design-ai.json` → `ai_architecture.bedrock_models[].required_client_api`: if non-Responses, emit that surface (e.g. Converse) instead of defaulting to `responses.create` — absent/`responses` keeps the Responses surface for a region-only move.
+- **Config-only if the source already calls `responses.create`.** A Chat Completions source for GPT-6 or GPT-5.6 may keep `chat.completions.create`/`choices[0].message` parsing unchanged — Chat Completions is supported on both mantle and runtime CRIS for these models, so reshape to Responses is optional (only for a Responses-only feature or demonstrated constraint). For GPT-5.5/GPT-5.4, Chat Completions support is unconfirmed, so still plan a reshape to Responses and probe the target account before committing.
 - Test in staging, validate responses
 
-Match the `migration_path` prefix, not the exact string: Design writes the more specific `mantle_openai_responses` for a same-model OpenAI migration, and an equality test against `mantle` would misroute those runs into the adapter path below.
+Match the `migration_path` prefix, not the exact string: Design writes the more specific `mantle_openai_responses` for a same-model OpenAI migration, and an equality test against `mantle` would misroute those runs into the adapter path below. `runtime_openai_cris` (GPT-5.6/GPT-6 served via `bedrock-runtime` CRIS instead of `bedrock-mantle`) is matched explicitly alongside the `mantle*` prefix — it does not start with `mantle`, so it needs its own check to avoid falling through to the adapter path below.
 
-**Direct SDK users (adapter path — the long pole)** — `ai_framework` = `direct` AND (`ai_source` != `openai` OR `migration_path` = `converse`):
+**Direct SDK users (adapter path — the long pole)** — `ai_framework` = `direct` AND (`ai_source` != `openai` OR `migration_path` = `converse`) AND `migration_path` != `"runtime_openai_cris"`:
 
 - **Phase 1:** Enable Bedrock access, create IAM role, develop provider adapter with feature flag, unit test
 - **Phase 2:** Deploy to staging, run A/B comparison, measure latency/quality/cost, tune prompts
@@ -57,7 +55,7 @@ Based on `ai-workload-profile.json` → `integration.pattern` and `integration.l
 
 | Source SDK              | Target                            | Key Change                                                                                                                                                                                             |
 | ----------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| OpenAI SDK (same model) | Mantle Responses API              | Base URL → `.../openai/v1`, Bedrock token/API key (not an OpenAI key), `openai.gpt-*` model ID. Config-only **if** already on `responses.create`; a Chat Completions source must reshape to Responses. |
+| OpenAI SDK (same model) | Mantle Responses API              | Base URL → `.../openai/v1`, Bedrock token/API key (not an OpenAI key), `openai.gpt-*` model ID. Config-only **if** already on `responses.create`; a Chat Completions source may keep Chat Completions for GPT-6/GPT-5.6 (reshape to Responses optional); GPT-5.5/GPT-5.4 still need a reshape. |
 | Vertex AI (Python)      | boto3 Bedrock Converse API        | `GenerativeModel.generate_content()` → `bedrock.converse()`                                                                                                                                            |
 | Vertex AI (JS)          | @aws-sdk/client-bedrock-runtime   | `model.generateContent()` → `client.send(new ConverseCommand())`                                                                                                                                       |
 | Vertex AI (Go)          | aws-sdk-go-v2 bedrockruntime      | `aiplatform` → `bedrockruntime.Converse()`                                                                                                                                                             |
@@ -69,7 +67,7 @@ Based on `ai-workload-profile.json` → `integration.pattern` and `integration.l
 
 For each detected language and pattern, generate before/after code examples using actual model IDs from `aws-design-ai.json`.
 
-Include streaming migration (`converse_stream`) if `capabilities_summary.streaming = true`.
+If `capabilities_summary.streaming = true`, use the selected API's streaming surface: OpenAI Chat/Responses streaming on Mantle, or `converse_stream` for Converse. Do not switch the recorded endpoint to obtain streaming.
 
 Include embeddings migration (Titan Embeddings v2 via `invoke_model`) if `capabilities_summary.embeddings = true`.
 
@@ -108,7 +106,7 @@ Include embeddings migration (Titan Embeddings v2 via `invoke_model`) if `capabi
 ## Part 5: Production Readiness Checklist
 
 - [ ] Bedrock model access enabled
-- [ ] IAM role with `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`
+- [ ] IAM matches the selected endpoint: Mantle project/bearer actions for bare proprietary GPT ids, or runtime InvokeModel actions with foundation-model/profile resources for CRIS
 - [ ] Provider adapter deployed and tested in staging
 - [ ] A/B test with >= 100 representative prompts
 - [ ] Response quality >= 90% of source baseline

@@ -28,16 +28,27 @@ Check `$MIGRATION_DIR/` for existing state:
 > 1. Re-use these preferences and skip questions
 > 2. Start fresh and re-answer all questions
 
-- If 1: Skip to Validation Checklist with the existing `preferences.json`.
+- If 1: **Normalize legacy metadata, then** skip to the Validation Checklist (`clarify-assemble.md`) with the existing `preferences.json`. The file's answers are the user's — never re-default, re-ask, or reclassify any of them. The only field that may need rebuilding is `metadata.questions_deferred_to_generate`:
+  - **Absent** (written before the field existed): add it. For each Generate-time question that fires on this inventory — Q4; Q6c when Postgres is present; Q12d when the resolved compute plan includes EB — decide from its provenance:
+    - `sources.<QID>` is `"user"` → already answered: keep the value and provenance, do not list it.
+    - `sources.<QID>` is `"default"` → never answered: list it (asked at the Decision gate's **[C] Generate**).
+    - `sources.<QID>` is **missing and the field is absent** (the question did not fire on the run that wrote the file — e.g. Postgres has been added since) → write the field's documented default (§ Defaults Table) and `sources.<QID>: "default"`, then list it. Every listed ID must satisfy the checklist's "field at the documented default, `sources.<QID>` = `"default"`" line, so an ID is never listed with its entry still missing.
+    - **Q12d** carries its own provenance in `design_constraints.eb_deploy_method.chosen_by`; it wins over a missing `sources.Q12d`. `chosen_by: "user"` → keep the value, write `sources.Q12d: "user"` if missing, do not list. `chosen_by: "default"` → write `sources.Q12d: "default"` if missing, list it.
+    - A field holding a value with **no** `sources` entry and no `chosen_by` has no provenance. Do not guess — stop, report which field, and offer option 2 (start fresh). This is the state the Validation Checklist would have rejected anyway; failing here names the field.
+  - **Present and empty**: the Decision gate's "Confirm execution choices" already ran and rewrote those `sources` entries to `"user"`. Accept as-is — do not re-list the IDs.
+  - **Present and non-empty**: accept as-is.
+  This normalization rebuilds a missing index over existing answers; it writes nothing to `questions_asked` or `questions_defaulted`, and the only values it writes are the documented default and `"default"` provenance for a question that never fired.
 - If 2: Delete `preferences.json`, continue to Step 1.
 
 **Case 2 — No prior state**: Continue to Step 1.
 
 ---
 
-## Step 1: Read Inventory and Determine Fast-Path Eligibility
+## Step 1: Read Inventory, Extract Known Answers, Determine Fast-Path Eligibility
 
 Read `$MIGRATION_DIR/heroku-resource-inventory.json`. This artifact must exist (produced by Phase 1: Discover).
+
+**Run the Extraction Rules (Step 2 § Extraction Rules) now, before anything is shown to the user.** Extraction is a property of the inventory, not of the question flow — a question the inventory already answers must never be asked on _either_ path. On the fast path, **Detected** values are applied directly (recorded in `metadata.questions_skipped_extracted`, `sources.<QID>: "extracted"`), while **Proposed default** values (Q1 Common Runtime region, Q7 `mini`/hobby tier) are applied and recorded in `metadata.questions_defaulted` so the Decision gate shows them; on the full flow both surface as rows on the Assumption Sheet. Either way an extracted value is written in the catalog's field type and enum (see § Extraction Rules), and a tier-derived `database_ha` is reconciled with the Q3 answer before it is kept — on the fast path Q3 is asked after the offer, so the offer presents database HA as a signal to check, never as a resolved answer.
 
 ### Discovery Summary
 
@@ -61,39 +72,56 @@ After the Discovery Summary, evaluate fast-path eligibility:
 IF total_apps_discovered < 5
    AND no resource with resource_type == "space" exists
    AND no resource with config.addon_service == "heroku-kafka" exists
-THEN eligible for fast-path (3–5 questions)
-ELSE full question flow (12–15 questions)
+THEN eligible for fast-path
+ELSE full question flow (Assumption Sheet + progressive batches)
 ```
+
+**Fast-path question set.** The fast path asks exactly these, minus any already resolved by extraction:
+
+| Fast-path question | Asked when |
+| --- | --- |
+| **Q1** — region | Only when extraction yields nothing: apps span mixed regions, or no `us`/`eu` Common Runtime signal. (Private Space regions never apply here — a Space fails the eligibility gate.) A Common Runtime `us`/`eu` **proposed default** counts as resolved on the fast path: apply it, record `Q1` in `metadata.questions_defaulted`, and show it in the Estimate-side assumptions block |
+| **Q2** — compliance | Always |
+| **Q3** — availability posture | Always |
+| **Q12c** — compute target recommendation | Always |
+| **Q11** — Fir intent | Only if a Fir-generation app was detected |
+
+These are the questions that change the **number** (availability, compute target) or the **safety posture** (compliance, region). Execution-only questions — **Q4** maintenance window, **Q6c** DB migration method, **Q12d** EB deploy method — are not on either path; they take their documented default here, are listed in `metadata.questions_deferred_to_generate`, and are asked for real at the Decision gate when the user chooses **[C] Generate** (see § Generate-time questions below).
+
+Compute `fast_path_question_count` from this table against the inventory and use that number in the offer — do not quote a fixed range. Worked examples, all on estates the gate admits (no Private Space): a Common Runtime `us` or `eu` app asks **3** (Q2, Q3, Q12c — region resolved from the runtime signal); apps spanning mixed regions or with no runtime signal ask **4** (+Q1); a Fir-generation app adds **Q11**.
 
 **If fast-path eligible**, present:
 
-> "Your stack looks straightforward — [N] app(s), no Private Spaces, no Kafka.
+> "Your stack looks straightforward — [N] app(s), no Private Spaces, no Kafka. [If region or containerization was extracted: "I already have [region / containerization] from your inventory."] [If a Postgres plan tier was read: "Your Postgres plan tells me about database HA today — I'll check it against the availability you want."]
 >
-> Want to use smart defaults and answer just 4–6 questions? I'll apply sensible defaults for the rest.
+> Want to use smart defaults and answer just [fast_path_question_count] questions? I'll apply documented defaults for the rest and show you what I assumed.
 >
 > **[Yes — short path]** / **[No — ask me everything]**"
 
 **If user chooses Yes:**
 
-1. Ask only: **Q1** (region), **Q2** (compliance), **Q3** (availability), **Q4** (maintenance window), **Q12c** (compute target recommendation), **Q12d** (EB deploy method, only if the resolved compute plan includes EB) — and optionally **Q11** (Fir intent, only if Fir detected).
+1. Ask only the fast-path question set above, skipping any question already resolved by extraction.
 2. Apply documented defaults for ALL other questions. Record each in `metadata.questions_defaulted`.
 3. Write `preferences.json` with `metadata.clarify_mode: "fast_path"`. Skip Steps 2–3 batch loop.
 4. Proceed to Step 4 (Validation Checklist).
 
 **Fast-path default values applied when skipping questions:**
 
-- `migration_urgency`: `routine`
 - `migration_approach`: `full_cutover`
 - `migration_method`: `pg_dump_restore`
 - `containerization_status`: `buildpack_only`
 - `database_ha`: matches Q3 availability
-- `redis_ha`: `true`
+- `redis_ha`: `true` (unless § Extraction Rules read a `mini`/hobby Redis tier — then the proposed `false` is the applied default, still recorded under `Q7` in `metadata.questions_defaulted`)
 - `dns_strategy`: `route53`
 - `log_retention_days`: `30`
 - `cost_optimization`: `balanced`
 - `container_registry`: `ecr`
 
-Users are informed: "Smart defaults applied: full cutover approach, pg_dump for database migration, routine urgency, buildpack-only containerization status. Say 'I want to change something' to override any of these."
+Users are told in one sentence, **without** the list — the defaults are shown next to the estimate, where a correction can be judged against the dollars it moves:
+
+> "Thanks — I've applied [N] documented defaults (migration approach, DB migration method, DNS, log retention, cost posture, registry). You'll see each one, with what it decides and what it costs, right next to the estimate, and you can change any of them there."
+
+`estimate-assemble.md` § Post-Estimate: Decision Gate renders them as the **"Assumptions behind this number"** block from `metadata.questions_defaulted` and `metadata.questions_deferred_to_generate`.
 
 **If user chooses No, or stack is not eligible:** Continue to Step 2.
 
@@ -110,12 +138,11 @@ Before generating questions, scan the inventory to determine which questions app
 | Q1 — Target AWS region               | Always                                                           | Never                                     |
 | Q2 — Compliance                      | Always                                                           | Never                                     |
 | Q3 — Availability posture            | Always                                                           | Never                                     |
-| Q4 — Maintenance window              | Always                                                           | Never                                     |
+| Q4 — Maintenance window              | **Deferred to Generate** — defaulted here, asked at [C] Generate | Never asked in Clarify                    |
 | Q5 — Environment naming              | Always                                                           | Never                                     |
-| Q5b — Migration urgency              | Always                                                           | Never                                     |
 | Q6 — Database HA                     | Postgres add-on present                                          | No Postgres in inventory                  |
 | Q6b — Migration approach             | Postgres add-on present                                          | No Postgres in inventory                  |
-| Q6c — DB migration method            | Postgres add-on present                                          | No Postgres in inventory                  |
+| Q6c — DB migration method            | **Deferred to Generate** — defaulted here when Postgres present, asked at [C] Generate | No Postgres, or never asked in Clarify |
 | Q7 — Redis HA                        | Redis add-on present                                             | No Redis in inventory                     |
 | Q8 — Kafka retention                 | Kafka add-on present                                             | No Kafka in inventory                     |
 | Q9 — VPC subnet IDs                  | Private Space with peering detected BUT subnet IDs not available | No Private Space or subnets already known |
@@ -124,7 +151,7 @@ Before generating questions, scan the inventory to determine which questions app
 | Q11 — Fir intent                     | At least one app has `heroku_generation == "fir"`                | No Fir-generation apps                    |
 | Q12b — Containerization status       | Always                                                           | Never                                     |
 | Q12c — Compute target recommendation | Always                                                           | Never                                     |
-| Q12d — EB deploy method              | Resolved Q12c compute plan includes Elastic Beanstalk            | All-Fargate or all-EKS compute plan       |
+| Q12d — EB deploy method              | **Deferred to Generate** — defaulted here when the Q12c plan includes EB, asked at [C] Generate | All-Fargate/EKS plan, or never asked in Clarify |
 | Q12 — Container registry             | Always                                                           | Never                                     |
 | Q13 — Log retention                  | Always                                                           | Never                                     |
 | Q14 — Alerting preference            | Always                                                           | Never                                     |
@@ -132,16 +159,26 @@ Before generating questions, scan the inventory to determine which questions app
 
 ### Extraction Rules (answer from the inventory before asking)
 
-Before planning batches, resolve what `heroku-resource-inventory.json` already answers. Extracted questions are NOT asked — they appear as **Detected** rows on the Assumption Sheet (Step 2.5) and are recorded in `metadata.questions_skipped_extracted`, with the raw signal in `metadata.inventory_clarifications`.
+**These rules run in Step 1, before the fast-path offer** — they are referenced from here because they also feed the Assumption Sheet. Resolve what `heroku-resource-inventory.json` already answers. Extracted questions are NOT asked on any path, but the table's **Resolves to** column names two kinds of extraction with two provenance buckets:
+
+- **Detected** — an explicit fact (Private Space region, `premium-*` HA tier, app stack). On the full flow it is a **Detected** row on the Assumption Sheet (Step 2.5); on the fast path it is applied directly. Recorded in `metadata.questions_skipped_extracted` with `sources.<QID>: "extracted"`.
+- **Proposed default** — a suggestion read from the inventory (Common Runtime `us`/`eu` region, `mini`/hobby Redis tier). On the full flow it is an **Assumed** row the user confirms, not a Detected row; on the fast path it is applied as the documented default. Recorded in `metadata.questions_defaulted` with `sources.<QID>: "default"` — never in `questions_skipped_extracted`, never as `"extracted"`, so the Decision gate's assumptions block shows it.
+
+Both kinds keep the raw signal in `metadata.inventory_clarifications`.
 
 | Q                       | Extraction signal                                                                                                                                                                                                 | Resolves to                                                                                                                                    | When NOT to extract                                                             |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Q1 — Region             | Private Space `region` (e.g. `virginia` → `us-east-1`, `oregon` → `us-west-2`, `dublin` → `eu-west-1`, `frankfurt` → `eu-central-1`); Common Runtime apps: `us` → suggest `us-east-1`, `eu` → suggest `eu-west-1` | `global.target_region` — **Detected** for Private Spaces (explicit region); **Proposed default** for Common Runtime (a suggestion, not a fact) | Mixed regions across apps/spaces — ask Q1                                       |
-| Q6 — Database HA        | Heroku Postgres plan tier: `standard-*` → no HA follower (`database_ha: false` proposed); `premium-*` / `private-*` / `shield-*` → HA included (`database_ha: true` detected)                                     | `data.database_ha`                                                                                                                             | Multiple Postgres add-ons with mixed tiers — ask Q6 with a per-add-on breakdown |
-| Q7 — Redis HA           | Redis plan tier: `premium-*` and above → HA (`redis_ha: true` detected); `mini`/hobby tiers → no HA (proposed `false`)                                                                                            | `data.redis_ha`                                                                                                                                | Mixed tiers — ask Q7                                                            |
-| Q12b — Containerization | App stack field: `container` stack → `containerization_status: "dockerfile"` detected; buildpack stacks (`heroku-22`, `heroku-24`) → `buildpack_only` detected                                                    | `compute.containerization_status`                                                                                                              | Mixed stacks across apps — ask Q12b                                             |
+| Q1 — Region             | Private Space `region` (e.g. `virginia` → `us-east-1`, `oregon` → `us-west-2`, `dublin` → `eu-west-1`, `frankfurt` → `eu-central-1`); Common Runtime apps: `us` → suggest `us-east-1`, `eu` → suggest `eu-west-1` | `global.target_region` — **Detected** for Private Spaces (explicit region); **Proposed default** for Common Runtime (a suggestion, not a fact — on the full flow it is a sheet row the user confirms; on the fast path it is applied and recorded in `metadata.questions_defaulted`, so Q1 is not asked) | Mixed regions across apps/spaces — ask Q1                                       |
+| Q6 — Database HA        | Heroku Postgres plan tier: `standard-*` → no HA follower (`database_ha: "single-az"` proposed); `premium-*` / `private-*` / `shield-*` → HA follower included (`database_ha: "multi-az"` detected — a follower is a standby, never Aurora, so never `"multi-az-ha"`) | `data.database_ha` — always one of the Q6 catalog strings (`"single-az"`, `"multi-az"`, `"multi-az-ha"`), never a Boolean; `design-mapping.md` treats anything else as unrecognized and silently falls back to `multi-az`. Reconcile with Q3 — see below | Multiple Postgres add-ons with mixed tiers — ask Q6 with a per-add-on breakdown |
+| Q7 — Redis HA           | Redis plan tier: `premium-*` and above → HA (`redis_ha: true` detected); `mini`/hobby tiers → no HA (proposed `false`)                                                                                            | `data.redis_ha` (Boolean — matches the Q7 catalog) — **Detected** `true` for a `premium-*` tier (`sources.Q7: "extracted"`); **Proposed default** `false` for `mini`/hobby, handled like Q1's proposed region: on the full flow it is a sheet row the user confirms; on the fast path it is applied and recorded in `metadata.questions_defaulted` with the tier signal in `metadata.inventory_clarifications` (e.g. `{"redis_ha": "plan:mini"}`), so the Decision gate's assumptions block shows the row ("single-node — your `mini` plan has no HA today; 'yes' adds Multi-AZ failover, ~2x the Redis line") and Q7 is not asked. Never record a proposed value as `"extracted"` — that hides a cost-moving knob from the block | Mixed tiers — ask Q7                                                            |
+| Q12b — Containerization | App stack field: `container` stack → `containerization_status: "containerized"` detected; buildpack stacks (`heroku-22`, `heroku-24`) → `"buildpack_only"` detected                                              | `operational.containerization_status` — always one of the Q12b catalog strings (`"containerized"`, `"buildpack_only"`, `"partial"`)             | Mixed stacks across apps — ask Q12b                                             |
 
-**Tier-derived HA is a strong signal, not a requirement statement:** the plan tier says what the customer HAS, not what they NEED. Present tier-derived rows on the sheet with the source shown ("your `standard-0` plan has no HA follower") so the user can correct if their target posture differs from their current one — this mirrors Q3 (availability posture), which is always asked and never extracted.
+**Extracted values use the catalog's field type and enum.** Every extraction writes exactly what the question's **Interpret** block would have written for the matching option — the same string enum (or Boolean for Q7). Design, the workshop sheet, and Generate read these fields with no knowledge of how they were answered; a value outside the catalog enum is not "more precise", it is unrecognized downstream.
+
+**Tier-derived HA is a strong signal, not a requirement statement:** the plan tier says what the customer HAS, not what they NEED. Q3 (availability posture) is always asked and never extracted, and the Q6 documented default is "match Q3". Reconcile the two:
+
+- **Full flow:** present the tier-derived row on the Assumption Sheet with the source shown ("your `standard-0` plan has no HA follower") so the user can correct it if their target posture differs from their current one. A confirmed row stays extracted (`sources.Q6: "extracted"`).
+- **Fast path** (no sheet before the number): compare the tier-derived value with the Q3 answer after Q3 is asked. If they **agree**, apply it as extracted (`metadata.questions_skipped_extracted`, `sources.Q6: "extracted"`). If they **differ**, the user's stated target wins over the current plan: write the Q6 documented default (`database_ha` = Q3 value), record `Q6` in `metadata.questions_defaulted` with the tier signal in `metadata.inventory_clarifications` (e.g. `{"database_ha": "plan:standard-0"}`), so the Decision gate's "Assumptions behind this number" block shows the row with both facts ("multi-AZ — matches your availability answer; your `standard-0` plan has no follower today") and the user can change it against the dollars it moves.
 
 ### Step 2.5: Assumption Sheet (Mandatory Gate)
 
@@ -185,8 +222,10 @@ After determining active questions, organize them into **three progressive batch
 
 | Batch | Name                      | Questions              | Content                                                                                                                                               |
 | ----- | ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | Global / Strategic        | Q1–Q5, Q5b, Q12c, Q12d | Region, compliance, availability, maintenance, environment naming, migration urgency, compute target recommendation, EB deploy method when applicable |
-| **2** | Data / Network            | Q6, Q6b, Q6c, Q7–Q10   | Database HA, migration approach, DB migration method, Redis HA, Kafka retention, VPC subnets, DNS strategy                                            |
+| **1** | Global / Strategic        | Q1–Q3, Q5, Q12c        | Region, compliance, availability, environment naming, compute target recommendation                                                                   |
+| **2** | Data / Network            | Q6, Q6b, Q7–Q10        | Database HA, migration approach, Redis HA, Kafka retention, VPC subnets, DNS strategy                                                                 |
+
+**Not in any batch — Generate-time questions:** Q4 (maintenance window), Q6c (DB migration method), Q12d (EB deploy method). Nothing before Generate reads their fields; asking them in Clarify makes a user who stops at the decision answer questions they will never use. Clarify writes their documented defaults and lists them in `metadata.questions_deferred_to_generate`; `estimate-assemble.md` § Confirm execution choices asks them when the user chooses **[C] Generate**.
 | **3** | Operational / Conditional | Q11, Q12b, Q12–Q15     | Fir intent, containerization status, container registry, log retention, alerting, cost optimization                                                   |
 
 **Batch 2 is active** if ANY of: Postgres present, Redis present, Kafka present, Private Space detected, or DNS question is needed (always true → Batch 2 always fires with at least Q10).
@@ -218,7 +257,7 @@ Let's start with your strategic requirements.
 
 --- Global / Strategic ---
 
-[Present active questions Q1–Q5]
+[Present active questions Q1–Q3, Q5, Q12c — never Q4]
 ```
 
 **Batch 2 — Data / Network (if active):**
@@ -231,7 +270,7 @@ You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Data / Network ---
 
-[Present active questions Q6–Q10]
+[Present active questions Q6, Q6b, Q7–Q10 — never Q6c]
 ```
 
 **Batch 3 — Operational / Conditional:**
@@ -370,6 +409,8 @@ Re-prompt Q9b until valid input is provided.
 
 #### Q4 — Maintenance Window
 
+> _**Generate-time question.** Not asked in Clarify on either path — the default below is written and `Q4` is listed in `metadata.questions_deferred_to_generate`. Asked for real at the Decision gate's **[C] Generate** (`estimate-assemble.md` § Confirm execution choices). Only `generate-terraform.md` reads `maintenance_window`._
+>
 > When should AWS perform maintenance operations (patches, minor upgrades)?
 >
 > 1. Weekday off-hours (Tue–Thu, 02:00–06:00 UTC)
@@ -405,36 +446,6 @@ Re-prompt Q9b until valid input is provided.
 - 4 → `environment_naming: "<user value>"`
 
 **Default:** 1 → `environment_naming: "production"`
-
----
-
-#### Q5b — Migration Approach
-
-> _Fires only when Heroku Postgres add-on is present in inventory._
->
-> How would you like to sequence the migration?
->
-> 1. Full cutover — migrate database and application together in one maintenance window (simpler, single downtime event)
-> 2. Database first — migrate the database to AWS now, keep the app on Heroku temporarily while you prepare the compute migration (requires a target exit date)
->
-> ⚠️ Option 2 requires network access from Heroku to your AWS database during the transition period, granted to a bounded allowlist of addresses (never the open internet) with TLS enforced first. If your app runs in a Private Space, that means VPC peering or the space's stable outbound IPs; on the Common Runtime it means a static-egress proxy add-on. Access is revoked once the app migrates off Heroku.
-
-**Interpret:**
-
-- 1 → `migration_approach: "full_cutover"`
-- 2 → `migration_approach: "interim_cutover_data_first"`
-
-**Default:** 1 → `migration_approach: "full_cutover"`
-
-**If user selects 2:**
-
-1. Ask follow-up: "What's your target date to complete the app migration off Heroku? (YYYY-MM-DD format)"
-2. Validate ISO 8601 date format. If invalid, re-prompt.
-3. Set `target_exit_date: "<validated date>"`
-4. Set `interim_cutover: true`
-5. Set `ktlo_warning: "Heroku is in sustaining engineering. Hybrid operation should be bounded to weeks, not quarters."`
-
-**Design impact:** Option 2 → MIGRATION_GUIDE.md includes the "Interim Database Exposure" section (TLS prerequisite gate, then a scoped CIDR allowlist applied via Terraform) and a "Platform Risk" callout.
 
 ---
 
@@ -492,7 +503,7 @@ Re-prompt Q9b until valid input is provided.
 
 #### Q12d — Elastic Beanstalk Deployment Mechanism
 
-> _Fires only when the resolved compute target plan includes Elastic Beanstalk: `design_constraints.compute_target.default` is `"elastic_beanstalk"`, the field is absent, or any per-formation override resolves to `"elastic_beanstalk"`._
+> _**Generate-time question.** Fires only when the resolved compute target plan includes Elastic Beanstalk: `design_constraints.compute_target.default` is `"elastic_beanstalk"`, the field is absent, or any per-formation override resolves to `"elastic_beanstalk"`. When it fires it is **not asked in Clarify** — the default below is written with `chosen_by: "default"` and `Q12d` is listed in `metadata.questions_deferred_to_generate`; it is asked for real at the Decision gate's **[C] Generate** (`estimate-assemble.md` § Confirm execution choices). Only Generate reads `eb_deploy_method`._
 >
 > How do you want to deploy code changes to Elastic Beanstalk?
 >
@@ -574,11 +585,11 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 #### Q6c — Database Migration Method
 
-> _Fires only when Heroku Postgres add-on is present in inventory._
+> _**Generate-time question.** Fires only when a Heroku Postgres add-on is present in inventory. When it fires it is **not asked in Clarify** — the size-derived default below is written and `Q6c` is listed in `metadata.questions_deferred_to_generate`; it is asked for real at the Decision gate's **[C] Generate** (`estimate-assemble.md` § Confirm execution choices), with the size estimate on the prompt. Only `generate-docs.md` reads `migration_method`._
 >
 > How would you like to migrate your PostgreSQL data to AWS?
 >
-> Estimated database size from your plan: ~[derive from postgres plan table max storage]
+> Estimated database size: ~[`data_size_gb` from live `pg:info` when captured; otherwise the postgres plan table's max storage, labelled "plan maximum — your actual data may be much smaller"]
 > (If you know your actual database size, tell me and I'll adjust the recommendation.)
 >
 > 1. pg_dump / pg_restore — simplest method, requires application downtime during migration (recommended for databases under ~10GB)
@@ -602,7 +613,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 - If estimated DB size ≥ 10GB and user accepts brief downtime → recommend 2 (dms)
 - If user requires near-zero downtime regardless of size → recommend 3 or 4
 
-**Estimating size:** Use the postgres plan table's maximum storage capacity for the detected plan tier as the estimated size. **Note: This is an upper-bound estimate — your actual database may be much smaller than the plan allows.** If your actual data is well below the plan maximum (e.g., 2 GB actual on a 64 GB plan), override downward to get a more appropriate method recommendation. If user provides actual size, use that instead and record `source: "user_override"` for the size estimate.
+**Estimating size:** Prefer the live-captured `data_size_gb` from `heroku pg:info` when the inventory carries it (`db_size_source: "live_capture"`). Otherwise use the postgres plan table's maximum storage capacity for the detected plan tier (`db_size_source: "plan_derived"`). **Note: the plan-derived figure is an upper-bound estimate — your actual database may be much smaller than the plan allows.** If your actual data is well below the plan maximum (e.g., 2 GB actual on a 64 GB plan), override downward to get a more appropriate method recommendation. If user provides actual size, use that instead and record `source: "user_override"` for the size estimate.
 
 **Design impact:** Determines which data migration procedure section appears in MIGRATION_GUIDE.md. DMS selection triggers the CDC limitation warning.
 
@@ -726,7 +737,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 
 **Default:** 1 → `fir_intent: "exit_heroku"`
 
-**Note:** Cutover timing (full vs data-first) is handled by the migration_approach question (Q5b), not this question. This question only determines the compute destination for Fir workloads.
+**Note:** Cutover timing (full vs data-first) is handled by the migration_approach question (Q6b), not this question. This question only determines the compute destination for Fir workloads.
 
 **Design impact:** Both options result in full Fir workload migration to AWS. Option 2 indicates the user wants to manage their own Kubernetes/ECS orchestration rather than using the skill's standard Fargate mapping.
 
@@ -842,7 +853,7 @@ Validate: must be valid ISO 8601 date, must be in the future.
 | Q6 — Database HA          | 4 (match Q3)                            | `database_ha: <Q3 value>`                                                                                   |
 | Q6b — Migration approach  | 1 (full cutover)                        | `migration_approach: "full_cutover"`                                                                        |
 | Q6c — DB migration method | 1 (pg_dump)                             | `migration_method: "pg_dump_restore"`                                                                       |
-| Q7 — Redis HA             | 1 (yes)                                 | `redis_ha: true`                                                                                            |
+| Q7 — Redis HA             | 1 (yes) if source plan has HA, else 2 (no) | `redis_ha: true` for a `premium-*` source tier; `false` for `mini`/hobby (Q7 § Default)                     |
 | Q8 — Kafka retention      | 3 (7 days)                              | `kafka_retention_days: 7`                                                                                   |
 | Q9 — Subnet IDs           | _(no default — must ask if applicable)_ | —                                                                                                           |
 | Q9b — VPC ID              | _(no default — must ask if applicable)_ | —                                                                                                           |

@@ -1,0 +1,17 @@
+{
+  "id": "ai-only-openai",
+  "mode": "ai_only",
+  "migration_id": "ai-only-openai",
+  "run_id": "00000000-0000-4000-8000-000000000004",
+  "state": ".phase-status.json",
+  "dimensions": {
+    "infrastructure_source": null,
+    "ai_sources": [{"provider": "openai", "source_service": "openai_api", "model_families": ["gpt"], "model_evidence": "observed", "models": ["gpt-4o"]}],
+    "gateways": []
+  },
+  "outcomes": {
+    "infrastructure": null,
+    "ai": {"verdict": "passed", "artifacts": ["ai-workload-profile.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json"]},
+    "integration_validation": null
+  }
+}

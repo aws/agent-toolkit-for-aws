@@ -52,7 +52,7 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "all Validation Checklist items in clarify-assemble.md pass"
     _on_failure: _halt_and_inform
-  - _assert: "every assumption-sheet row the user was shown appears in preferences.json with a disposition of DETECTED, PROPOSED, ESSENTIAL, or N/A, and a value that is either the user's answer or the documented default"
+  - _assert: "every row a fragment returned appears in preferences.json with a disposition of DETECTED, PROPOSED, ESSENTIAL, or N/A, and a value that is either the user's answer or the documented default. On the wizard path every such DETECTED/PROPOSED row was shown on the assumption sheet; on the fast path (metadata.clarify_mode == fast_path) no DETECTED/PROPOSED row was shown and every PROPOSED row that took its default — other than rows carrying deferred_to_generate: true, which are listed only in metadata.deferred_to_generate[] — is listed in metadata.questions_defaulted[]"
     _on_failure: _halt_and_inform
   - _assert: "global.target_region is set, and design_constraints.cpu_architecture is set with x86_64 as the recorded default unless the user chose otherwise"
     _on_failure: _halt_and_inform
@@ -60,9 +60,9 @@ _postconditions:
     _on_failure: _halt_and_inform
   - _assert: "if the inventory contains Windows VM images, any Microsoft.Sql/* resource, or a SQL-on-VM signature, then licensing is set (License Included vs BYOL via Dedicated Hosts); otherwise licensing is N/A and no licensing question was asked"
     _on_failure: _halt_and_inform
-  - _assert: "if azure-resource-clusters.json assigns any cluster a pattern_id, the user confirmed or corrected that pattern on the assumption sheet and the confirmed value is recorded in preferences.json"
+  - _assert: "if azure-resource-clusters.json assigns any cluster a pattern_id, its clusters[n].pattern_id row is recorded in preferences.json — on the wizard path the user confirmed or corrected that pattern on the assumption sheet; on the fast path (metadata.clarify_mode == fast_path) the row carries the detected pattern as its documented default, a PROPOSED row is listed in metadata.questions_defaulted[] under its index key clusters[n].pattern_id, and it is disclosed at estimate-assemble.md § Step 2"
     _on_failure: _halt_and_inform
-  - _assert: "if any Microsoft.Web/serverfarms plan hosts more than one Microsoft.Web/sites app, the isolation question was asked and its answer recorded; an absent answer means no split"
+  - _assert: "if any Microsoft.Web/serverfarms plan hosts more than one Microsoft.Web/sites app, its app_service_plans[n].isolation_split row is recorded in preferences.json — on the wizard path the isolation row was shown and the user's answer or the default of no split recorded; on the fast path (metadata.clarify_mode == fast_path) the row carries its documented default of no split, is listed in metadata.questions_defaulted[] under its index key app_service_plans[n].isolation_split, and is disclosed at estimate-assemble.md § Step 2. A fast-path run whose row lacks the list entry fails this gate"
     _on_failure: _halt_and_inform
   - _assert: "if ai-workload-profile.json exists, preferences.json carries workloads[] and (when agentic_profile.is_agentic) ai_constraints.agentic; every persisted workload row carries workload_id, capability, and target_bedrock_model; and startup_program_status is present (ESSENTIAL, value null until answered) — the workloads[] in preferences.json, not ai-workload-profile.json, is the downstream source of truth"
     _on_failure: _halt_and_inform
@@ -87,6 +87,13 @@ Four dispositions per row: **DETECTED** (read from the estate), **PROPOSED** (th
 skill's recommendation, changeable), **ESSENTIAL** (cannot be defaulted; must be
 answered), **N/A** (does not apply to this estate — shown so the user can see it was
 considered).
+
+Two ways to run the sheet. The **wizard** (default) presents every DETECTED/PROPOSED row
+as a gate, then asks the ESSENTIALs, then recaps. The **fast path** (Step 0.5, only when
+Discover marked the estate eligible) asks the ESSENTIALs first and applies the rest as
+documented defaults with a visible consequence line, so a simple estate reaches an
+estimate in one or two answers (compliance, plus baseline spend when no billing source
+exists; see Step 0.5) — the same shape as gcp-to-aws's fast path.
 
 Two Azure-specific categories that no sibling skill has:
 
@@ -137,6 +144,60 @@ Before running any fragment, detect the migration type from which discovery arti
 > `metadata.migration_type: "ai-only"`. Do not run the infra fragments (there is no inventory for
 > their triggers to read) and do not fabricate an assumption sheet from the summaries here.
 
+## Step 0.5: Fast-path gate (simple estates)
+
+**Mirrors gcp-to-aws's `clarify.md` § Step 1.5.** Discover has already decided whether this
+estate qualifies — read `azure-resource-inventory.json` → `metadata.clarify_fast_path`
+(written by `discover-assemble.md` § Assembly rule 9). Do **not** re-derive eligibility here;
+if the key is absent, treat the estate as ineligible and run the full flow.
+
+```
+IF metadata.clarify_fast_path.eligible == true
+THEN offer the fast path (below)
+ELSE proceed to "Step: Run the phase" — and if reasons_ineligible is non-empty,
+     say which one(s) in the Discovery Summary so the user knows why the full
+     sheet is running (e.g. "Windows VMs detected — licensing posture has no
+     safe default, so I'll walk through the full sheet").
+```
+
+**If eligible**, present the offer **after** the Discovery Summary and **before** any
+fragment row is shown:
+
+> "Your estate looks straightforward — [total_resources] resources in [cluster_count]
+> workload(s), one region, no VMs, no Windows or SQL Server licensing, no AI.
+>
+> Want to use documented defaults and answer just [N] question(s)? I'll show you every
+> default I applied, with what it decides, and you can change any of them.
+>
+> **[Yes — short path]** / **[No — ask me everything]**"
+
+Compute `[N]` from the ESSENTIAL rows that will actually fire on this estate — see
+`clarify-assemble.md` § Fast-path mode. It is 1 or 2 for an eligible estate (compliance,
+plus baseline spend when no billing source exists).
+
+**If the user chooses Yes:**
+
+1. Run every fragment whose `_trigger` holds, exactly as in the full flow — fragments compute
+   rows and defaults and ask nothing, so the short path needs them just as much.
+2. Run `clarify-assemble.md` in **fast-path mode** (its § Fast-path mode section): ESSENTIAL
+   rows are asked immediately, every DETECTED/PROPOSED row takes its documented value
+   without a sheet gate, and the defaults are shown **next to the estimate**
+   (`estimate-assemble.md` § Step 2 "Assumptions behind this number") where a correction
+   has a dollar consequence to be judged against.
+3. `preferences.json` carries `metadata.clarify_mode: "fast_path"` and lists every defaulted
+   row in `metadata.questions_defaulted[]`.
+
+**If the user chooses No, or the estate is ineligible:** continue to "Step: Run the phase".
+Write `metadata.clarify_mode: "wizard"`.
+
+Why this does not weaken "Clarify is mandatory" (`SKILL.md`): the fast path **is** a
+Clarify run — every fragment fires, every row is recorded with its disposition, every
+ESSENTIAL row is still asked, and Design reads the same `preferences.json`. What changes is
+that rows with a documented default are not presented as a gate before the user has seen a
+number. Eligibility is what keeps that honest: the estates where a default is _not_
+defensible (licensing, VM cutover, HA downgrade, Cosmos RW split, multi-region) are exactly
+the ones Discover marks ineligible.
+
 ## Step: Run the phase
 
 **Fragments do not talk to the user. The assembler does.** This is the one phase where
@@ -146,7 +207,9 @@ that split matters, so it is stated here rather than left to each unit:
    what it can, assigns a disposition per row, and returns rows** — it asks nothing.
 2. Run `clarify-assemble.md`, which owns the whole conversation: **one** consolidated
    assumption sheet (DETECTED and PROPOSED rows, batched at five at a time), then the
-   ESSENTIAL questions, then the answer recap, then it writes `preferences.json`.
+   ESSENTIAL questions, then the answer recap, then it writes `preferences.json`. (On the
+   fast path from Step 0.5 the assembler runs its § Fast-path mode instead — same rows,
+   ESSENTIALs first, defaults applied, one summary.)
 3. Evaluate `_postconditions`. On all-pass emit `HANDOFF_OK`; on any failure emit
    `GATE_FAIL` and stop.
 

@@ -4,6 +4,14 @@
 
 Reviews Security Hub CSPM configuration — standards, controls, and compliance posture management using ASFF format. Covers enabled standards (FSBP, CIS, PCI-DSS, NIST 800-53, NIST 800-171, AI Best Practices, Resource Tagging), control status, automation rules, and organization-wide policy enforcement.
 
+**A complete CSPM configuration review MUST cover all of these (use the V1 APIs — no `-v2` suffix); do not stop early, mark UNKNOWN rather than omit:**
+
+1. Enabled standards — `get-enabled-standards` (and flag standards available but not enabled)
+2. Control status per standard — `describe-standards-controls` (identify DISABLED controls)
+3. Control definitions / detail — `list-security-control-definitions`, `batch-get-security-controls`
+4. Automation / custom actions — `describe-action-targets`
+5. Organization-wide configuration policies where applicable
+
 Security Hub CSPM provides two categories of functionality:
 
 - **Compliance management** — standards, controls, compliance findings

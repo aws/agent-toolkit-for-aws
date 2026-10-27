@@ -1,0 +1,253 @@
+"""Tests for check-skill-refs.py — the reference-path lint.
+
+A throwaway plugin tree exercises each resolution rule and each skip rule; the last test
+runs the real aws-startup-advisor plugin and requires PASS with no stale baseline entries.
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = PLUGIN_ROOT / "tools" / "check-skill-refs.py"
+
+
+def _load():
+    spec = importlib.util.spec_from_file_location("check_skill_refs", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["check_skill_refs"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+csr = _load()
+
+
+def _plugin(tmp_path: Path) -> Path:
+    plugin = tmp_path / "plugins" / "p"
+    sk = plugin / "skills"
+    (sk / "alpha" / "references" / "phases").mkdir(parents=True)
+    (sk / "alpha" / "scripts").mkdir()
+    (sk / "alpha" / "references" / "vendored" / "dsl").mkdir(parents=True)
+    (sk / "shared" / "dsl").mkdir(parents=True)
+    (sk / "shared" / "ai").mkdir()
+    (sk / "gcp-to-aws" / "references" / "design-refs").mkdir(parents=True)
+    (sk / "agent-advisor").mkdir()
+    (sk / "beta" / "references").mkdir(parents=True)
+    (plugin / "agents").mkdir()
+    # targets
+    (sk / "alpha" / "references" / "phases" / "design.md").write_text("x")
+    (sk / "alpha" / "scripts" / "tool.py").write_text("x")
+    (sk / "shared" / "dsl" / "INTERPRETER.md").write_text("x")
+    (sk / "alpha" / "references" / "vendored" / "dsl" / "INTERPRETER.md").write_text(
+        "see `references/vendored/state/phase-status.schema.json` and `shared/ai-guardrails.md`")
+    (sk / "shared" / "ai" / "ai-guardrails.md").write_text("x")
+    (sk / "shared" / "state.md").write_text("vendored at `references/vendored/state.md`")
+    (sk / "gcp-to-aws" / "references" / "design-refs" / "ai.md").write_text("x")
+    (sk / "beta" / "references" / "offers.md").write_text("x")
+    (plugin / "agents" / "worker.md").write_text("validate with `scripts/tool.py`")
+    return plugin
+
+
+def _refs(plugin: Path, skill: str, text: str, name: str = "SKILL.md"):
+    f = plugin / "skills" / skill / name
+    f.write_text(text)
+    return {r.raw: (r.resolved is not None) for r in csr.scan_file(f, plugin)}
+
+
+def test_skill_relative_and_variable_prefixes_resolve(tmp_path: Path):
+    plugin = _plugin(tmp_path)
+    got = _refs(plugin, "alpha",
+                "Load `references/phases/design.md`. Run `python3 \"<SKILL_BASE>/scripts/tool.py\"`. "
+                "Also `$SKILL_BASE/scripts/tool.py`, `./scripts/tool.py`, `$PLUGIN_ROOT/skills/shared/dsl/INTERPRETER.md`, "
+                "`${CLAUDE_PLUGIN_ROOT}/skills/alpha/scripts/tool.py`, and `../beta/references/offers.md`.")
+    assert got == {
+        "references/phases/design.md": True, "<SKILL_BASE>/scripts/tool.py": True,
+        "$SKILL_BASE/scripts/tool.py": True, "./scripts/tool.py": True,
+        "$PLUGIN_ROOT/skills/shared/dsl/INTERPRETER.md": True,
+        "${CLAUDE_PLUGIN_ROOT}/skills/alpha/scripts/tool.py": True,
+        "../beta/references/offers.md": True,
+    }
+
+
+def test_missing_reference_is_reported(tmp_path: Path):
+    plugin = _plugin(tmp_path)
+    got = _refs(plugin, "alpha", "Load `references/phases/nope.md` then `scripts/gone.py`.")
+    assert got == {"references/phases/nope.md": False, "scripts/gone.py": False}
+
+
+def test_run_artifacts_templates_urls_and_relative_outputs_are_not_references(tmp_path: Path):
+    plugin = _plugin(tmp_path)
+    got = _refs(plugin, "alpha",
+                "Write `$MIGRATION_DIR/scripts/02-migrate-data.sh`; read `$BEDROCK_RUN_DIR/.phase-status.json`; "
+                "read `.migration/<run>/references/x.md`; "
+                "see https://example.com/references/phases/design.md ; open `references/offers/<slug>.md`; "
+                "then `./deploy.sh` and `../plan.md` and `scenarios/scenario-NNN.json`.")
+    assert got == {}
+
+
+def test_library_origin_files_resolve_against_shared(tmp_path: Path):
+    """shared/ and vendored copies speak from the consuming skill's point of view."""
+    plugin = _plugin(tmp_path)
+    vend = plugin / "skills" / "alpha" / "references" / "vendored" / "dsl" / "INTERPRETER.md"
+    got = {r.raw: r.resolved for r in csr.scan_file(vend, plugin)}
+    # `shared/ai-guardrails.md` → skills/shared/ai/ai-guardrails.md (flattened dir); the
+    # state schema is genuinely absent everywhere → MISSING
+    assert got["shared/ai-guardrails.md"] is not None
+    assert got["references/vendored/state/phase-status.schema.json"] is None
+    shared_doc = plugin / "skills" / "shared" / "state.md"
+    got2 = {r.raw: r.resolved for r in csr.scan_file(shared_doc, plugin)}
+    assert got2["references/vendored/state.md"] is not None
+
+
+def test_gcp_dependents_may_name_gcp_tree_and_agents_search_skills(tmp_path: Path):
+    plugin = _plugin(tmp_path)
+    got = _refs(plugin, "agent-advisor", "remap `design-refs/ai.md` → `$GCP_BASE/references/design-refs/ai.md`")
+    assert got == {"design-refs/ai.md": True, "$GCP_BASE/references/design-refs/ai.md": True}
+    agent = plugin / "agents" / "worker.md"
+    got2 = {r.raw: (r.resolved is not None) for r in csr.scan_file(agent, plugin)}
+    # the fixture's agents/worker.md names scripts/tool.py, which exists only under alpha —
+    # agents resolve against llm-to-bedrock ONLY, so this is MISSING
+    assert got2 == {"scripts/tool.py": False}
+
+
+def test_agents_resolve_only_against_llm_to_bedrock(tmp_path: Path):
+    """Review finding on #387: the agent loop searched every skill and kept the first hit, so
+    `scripts/pyproject.toml` present only under agent-advisor made a dead llm-to-bedrock
+    path look alive."""
+    plugin = _plugin(tmp_path)
+    (plugin / "skills" / "agent-advisor" / "scripts").mkdir(parents=True)
+    (plugin / "skills" / "agent-advisor" / "scripts" / "pyproject.toml").write_text("x")
+    agent = plugin / "agents" / "evaluator.md"
+    agent.write_text("run with `scripts/pyproject.toml` and `<BDD_DIR>/references/openai-to-bedrock.md`")
+    got = {r.raw: r.resolved for r in csr.scan_file(agent, plugin)}
+    assert got["scripts/pyproject.toml"] is None            # only agent-advisor has it -> MISSING
+    assert got["<BDD_DIR>/references/openai-to-bedrock.md"] is None
+    l2b = plugin / "skills" / "llm-to-bedrock"
+    (l2b / "scripts").mkdir(parents=True)
+    (l2b / "scripts" / "pyproject.toml").write_text("x")
+    (l2b / "references" / "helpers" / "bdd" / "references").mkdir(parents=True)
+    (l2b / "references" / "helpers" / "bdd" / "references" / "openai-to-bedrock.md").write_text("x")
+    got = {r.raw: r.resolved for r in csr.scan_file(agent, plugin)}
+    assert got["scripts/pyproject.toml"] == (l2b / "scripts" / "pyproject.toml").resolve()
+    assert got["<BDD_DIR>/references/openai-to-bedrock.md"] is not None
+    assert "llm-to-bedrock" in str(got["<BDD_DIR>/references/openai-to-bedrock.md"])
+
+
+def test_run_artifact_skip_is_limited_to_the_current_token(tmp_path: Path):
+    """Review finding on #387: a 40-character lookbehind let an earlier `$MIGRATION_DIR/`
+    token swallow the separate schema reference that followed it (azure design-ai.md:197),
+    so a renamed schema file was never reported."""
+    plugin = _plugin(tmp_path)
+    missing = "references/shared/schema-design-aws-ai.md"   # not in the fixture tree
+    got = _refs(plugin, "alpha",
+                f"Alone: `{missing}`.\n"
+                f"Write `aws-design-ai.json` to `$MIGRATION_DIR/` per `{missing}`.\n"
+                f"Emit `$MIGRATION_DIR/scripts/02-migrate-data.sh`\n`{missing}`\n"
+                f"`<run_dir>/{missing}` and `.migration/<run>/{missing}` and `$MIGRATION_DIR/{missing}`",
+                name="design-ai.md")
+    # the schema reference is seen (and MISSING) alone, after an output path, and after a
+    # newline; the genuinely run-artifact-prefixed forms are still skipped
+    assert got == {missing: False}
+    f = plugin / "skills" / "alpha" / "design-ai.md"
+    assert sorted(r.line for r in csr.scan_file(f, plugin)) == [1, 2, 4]
+
+
+def test_explicit_base_prefixes_do_not_fall_back_to_other_skills(tmp_path: Path):
+    """Review finding on #387: library-origin and gcp-dependent fallbacks were appended even
+    after an explicit base named the target, so `<SKILL_BASE>/scripts/validate.py` with no
+    helper under alpha resolved to beta's copy. The command as written would still fail."""
+    plugin = _plugin(tmp_path)
+    (plugin / "skills" / "beta" / "scripts").mkdir()
+    (plugin / "skills" / "beta" / "scripts" / "validate.py").write_text("x")
+    (plugin / "skills" / "alpha" / "references" / "shared").mkdir()
+    contract = plugin / "skills" / "alpha" / "references" / "shared" / "contract.md"   # library origin
+    contract.write_text("run `<SKILL_BASE>/scripts/validate.py`, `$PLUGIN_ROOT/scripts/validate.py`, "
+                        "`$GCP_BASE/scripts/validate.py`, `./scripts/validate.py`; bare `scripts/validate.py`; "
+                        "see `<SKILL_BASE>/../gcp-to-aws/SKILL.md` and `<SKILL_BASE>/scripts/tool.py`")
+    (plugin / "skills" / "gcp-to-aws" / "SKILL.md").write_text("x")
+    got = {r.raw: r.resolved for r in csr.scan_file(contract, plugin)}
+    assert got["<SKILL_BASE>/scripts/validate.py"] is None
+    assert got["$PLUGIN_ROOT/scripts/validate.py"] is None
+    assert got["$GCP_BASE/scripts/validate.py"] is None
+    assert got["./scripts/validate.py"] is None
+    # an unqualified reference from a library-origin file may still mean any vendoring skill
+    assert got["scripts/validate.py"] == (plugin / "skills" / "beta" / "scripts" / "validate.py").resolve()
+    # explicit bases that DO name an existing file keep resolving, including `../` traversal
+    assert got["<SKILL_BASE>/../gcp-to-aws/SKILL.md"] == (plugin / "skills" / "gcp-to-aws" / "SKILL.md").resolve()
+    assert got["<SKILL_BASE>/scripts/tool.py"] == (plugin / "skills" / "alpha" / "scripts" / "tool.py").resolve()
+    # a gcp dependent naming `$GCP_BASE/…` resolves there and only there
+    (plugin / "skills" / "agent-advisor" / "references").mkdir()
+    (plugin / "skills" / "agent-advisor" / "references" / "ai.md").write_text("x")
+    got2 = _refs(plugin, "agent-advisor", "`$GCP_BASE/references/design-refs/ai.md` `$GCP_BASE/references/ai.md`")
+    assert got2 == {"$GCP_BASE/references/design-refs/ai.md": True, "$GCP_BASE/references/ai.md": False}
+
+
+def test_relative_prefixes_do_not_fall_back_to_the_unprefixed_skill_path(tmp_path: Path):
+    """Review finding on #387: `./` and `../` still tried `skill / path` after the literal
+    target missed. Azure estimate-infra.md:370's link is
+    `../../../knowledge/estimate/estimate-defaults.json`; dropping one `../` leaves a
+    nonexistent literal, but the unprefixed tail exists under the skill root."""
+    plugin = _plugin(tmp_path)
+    dest = plugin / "skills" / "alpha" / "knowledge" / "estimate"
+    dest.mkdir(parents=True)
+    (dest / "estimate-defaults.json").write_text("{}")
+    nested = plugin / "skills" / "alpha" / "references" / "phases" / "estimate"
+    nested.mkdir(parents=True)
+    f = nested / "estimate-infra.md"
+    f.write_text(
+        "see [`knowledge/estimate/estimate-defaults.json`](../../../knowledge/estimate/estimate-defaults.json).\n"
+        "short [`knowledge/estimate/estimate-defaults.json`](../../knowledge/estimate/estimate-defaults.json).\n"
+        "dot [`knowledge/estimate/estimate-defaults.json`](./knowledge/estimate/estimate-defaults.json).\n"
+    )
+    got = {r.raw: r.resolved for r in csr.scan_file(f, plugin)}
+    assert got["../../../knowledge/estimate/estimate-defaults.json"] == (dest / "estimate-defaults.json").resolve()
+    assert got["../../knowledge/estimate/estimate-defaults.json"] is None
+    assert got["./knowledge/estimate/estimate-defaults.json"] is None
+
+
+def test_baseline_ignore_vs_entries_and_stale(tmp_path: Path):
+    plugin = _plugin(tmp_path)
+    f = plugin / "skills" / "alpha" / "SKILL.md"
+    f.write_text("`references/phases/nope.md` and `scripts/gone.py`")
+    missing = [r for r in csr.scan_file(f, plugin) if r.resolved is None]
+    un, bl, stale = csr.apply_baseline(missing, {
+        "ignore": [{"source": "*", "ref": "scripts/gone.py", "reason": "generated"}],
+        "entries": [{"source": "*alpha/SKILL.md", "ref": "references/phases/nope.md", "reason": "todo"},
+                    {"source": "*", "ref": "never.md", "reason": "stale"}],
+    })
+    assert [r.raw for r in un] == []
+    assert [r.raw for r in bl] == ["references/phases/nope.md"]
+    assert len(stale) == 1 and stale[0]["ref"] == "never.md"
+
+
+def _run(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, cwd=PLUGIN_ROOT)
+
+
+def test_cli_exit_codes(tmp_path: Path):
+    plugin = _plugin(tmp_path)
+    (plugin / "skills" / "alpha" / "SKILL.md").write_text("`references/phases/nope.md`")
+    r = _run("--check", "--plugin", str(plugin), "--no-baseline", "--json")
+    assert r.returncode == 1
+    assert "references/phases/nope.md" in {m["ref"] for m in json.loads(r.stdout)["missing"]}
+    (plugin / "skills" / "alpha" / "SKILL.md").write_text("`references/phases/design.md`")
+    # the fixture tree carries two deliberately dead references: the vendored INTERPRETER.md's
+    # state schema, and agents/worker.md's scripts/tool.py (agents resolve only against
+    # llm-to-bedrock, which the fixture does not have)
+    (plugin / "skills" / "alpha" / "references" / "vendored" / "dsl" / "INTERPRETER.md").unlink()
+    (plugin / "agents" / "worker.md").unlink()
+    r = _run("--check", "--plugin", str(plugin), "--no-baseline")
+    assert r.returncode == 0 and r.stdout.strip().endswith("0 stale baseline entries")
+
+
+def test_real_repository_passes_with_no_stale_entries():
+    r = _run("--check", "--json")
+    assert r.returncode == 0, r.stdout
+    report = json.loads(r.stdout)
+    assert report["missing"] == []
+    assert report["stale_baseline_entries"] == []
+    assert report["references"] > 500

@@ -18,8 +18,10 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 # Every skill exit that must emit plan.json and present the web CTA.
 HANDOFF_FILES = [
     PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "estimate" / "estimate.md",
+    PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "estimate" / "estimate.md",
     PLUGIN_ROOT / "skills" / "heroku-to-aws" / "references" / "phases" / "estimate" / "estimate-assemble.md",
     PLUGIN_ROOT / "skills" / "gcp-to-aws" / "references" / "phases" / "generate" / "generate.md",
+    PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "generate" / "generate.md",
     PLUGIN_ROOT / "skills" / "heroku-to-aws" / "references" / "phases" / "generate" / "generate-assemble.md",
 ]
 
@@ -41,6 +43,32 @@ def test_handoff_exits_present_import_cta() -> None:
         assert "migrate/credits" in text, (
             f"{f.name}: handoff exit no longer presents the web-import CTA"
         )
+
+
+def test_estimate_exports_only_after_postconditions() -> None:
+    """Estimate's plan.json export + CTA must run after _postconditions/HANDOFF_OK,
+    matching Generate's ordering (PR #435 review, databaseId 4240400327)."""
+    text = (
+        PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "estimate" / "estimate.md"
+    ).read_text(encoding="utf-8")
+    postconditions_idx = text.find("Evaluate `_postconditions`")
+    writer_idx = text.find("emit-plan-json.py")
+    assert postconditions_idx != -1 and writer_idx != -1
+    assert writer_idx > postconditions_idx, (
+        "emit-plan-json.py is invoked before _postconditions is evaluated in estimate.md's "
+        "Run the phase step"
+    )
+    assert re.search(r"only after[^\n]{0,40}HANDOFF_OK", text), (
+        "estimate.md's writer invocation is not explicitly gated on HANDOFF_OK, matching generate.md"
+    )
+    # Step 3a in estimate-assemble.md must no longer invoke the writer directly.
+    assemble_text = (
+        PLUGIN_ROOT / "skills" / "azure-to-aws" / "references" / "phases" / "estimate" / "estimate-assemble.md"
+    ).read_text(encoding="utf-8")
+    assert "emit-plan-json.py" not in assemble_text, (
+        "estimate-assemble.md still invokes the writer directly; it must move to estimate.md, "
+        "after _postconditions"
+    )
 
 
 def test_handoff_exits_are_fail_open_gated() -> None:

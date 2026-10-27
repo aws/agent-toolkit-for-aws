@@ -84,10 +84,32 @@ If `workshop-refresh.md` is ever invoked without having passed through
 Apply sheet edits to `$MIGRATION_DIR/preferences.json`:
 
 - Update knob paths from the sheet.
+- **Record provenance for every knob whose value changed.** A changed knob is
+  the user's explicit answer to the Clarify question that owns the field — the
+  Decision gate routes corrections to these rows here instead of writing them
+  itself (`estimate-assemble.md` § "Handling a correction from this block") —
+  so record it as one now, before the inner Design/Estimate below and before
+  § 6 snapshots this tree into a scenario: set `sources.<QID>` to `"user"` and
+  move the ID into `metadata.questions_asked` from whichever index lists it
+  (`metadata.questions_defaulted` or `metadata.questions_skipped_extracted`).
+  Knob → question: `global.target_region` → Q1; `global.availability` → Q3;
+  `data.database_ha` → Q6; `data.redis_ha` → Q7;
+  `design_constraints.compute_target.default` → Q12c (also set
+  `compute_target.chosen_by: "user"`); `operational.cost_optimization` → Q15.
+  `workshop.cpu_architecture` has no Clarify question and gets no `sources`
+  entry. Leave `metadata.inventory_clarifications` as the record of what the
+  inventory said. A knob confirmed unchanged keeps its provenance (Clarify's
+  sheet-confirmed-default rule). Without this step the next Decision gate
+  rebuilds its "Assumptions behind this number" block from
+  `questions_defaulted` and relabels the answer as assumed, and the saved
+  active scenario carries the same stale index into a resumed session. This
+  touches only the working tree that § 6 snapshots into the **new** scenario;
+  no other scenario's saved copies or provenance are rewritten, and § 6.4's
+  `preferences_subset` still diffs knob paths only.
 - Set `metadata.timestamp` to now.
 - Set `workshop.active: true`, `workshop.last_sheet_at` to now,
   `workshop.cpu_architecture` from the sheet.
-- Leave non-knob fields untouched.
+- Leave every other non-knob field untouched.
 
 ### 4. Re-run Design (inner)
 

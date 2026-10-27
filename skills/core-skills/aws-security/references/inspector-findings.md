@@ -84,7 +84,7 @@ Works from both standalone accounts and delegated administrator accounts.
 
    | Account ID | Critical | High | Medium | Low | Total |
    |---|---|---|---|---|---|
-   | 111111111111 | N | N | N | N | N |
+   | `<account-id>` | N | N | N | N | N |
 
    MUST identify the top 5 accounts by critical+high findings count.
 

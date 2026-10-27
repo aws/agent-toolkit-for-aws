@@ -29,7 +29,7 @@ This skill works from both standalone accounts and delegated administrator accou
    aws securityhub describe-security-hub-v2
    ```
 
-2. List third-party product integrations (internal services flow automatically when enabled):
+2. Read the product catalogue; availability does not establish account enablement or finding delivery:
 
    ```bash
    aws securityhub describe-products-v2
@@ -81,9 +81,9 @@ This skill works from both standalone accounts and delegated administrator accou
 
    | Check | Status |
    |---|---|
-   | Hub enabled | Enabled / Not Enabled |
+   | Hub status | Returned state, or UNKNOWN if not established |
    | Cross-region aggregator | Configured / Not Configured |
-   | Third-party integrations | List enabled |
+   | Third-party products | Catalogue availability; account enablement/delivery only if independently evidenced |
    | Connectors | Configured / Not Configured |
    | Automation rules | Configured / Not Configured |
    | Organization policies | Configured / Not Configured |
@@ -142,7 +142,7 @@ This skill works from both standalone accounts and delegated administrator accou
 - SHOULD verify aggregator regions cover all active regions where the customer operates
 - MUST NOT paginate through all member accounts by default
 - MUST only enumerate individual member account status if user explicitly requests it
-- SHOULD note integrations available but not enabled
+- SHOULD separate catalogue availability from observed account configuration. Do not label a product enabled/disabled or delivering findings from catalogue presence or absence alone.
 
 ## Troubleshooting
 

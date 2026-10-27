@@ -64,10 +64,31 @@ sentinel makes the assertion unambiguous.
 | `after-clarify/`                  | GOLDEN Clarify output — a **BLOCKED** clarify. The scripted user declines to state Azure spend, so an ESSENTIAL row is null and the phase gates                                                    |
 | `clarify-answers.json`            | the scripted user for that branch                                                                                                                                                                  |
 | `clarify-answers-complete.json`   | the scripted user for the COMPLETING branch. **No golden yet** — see the note in that file                                                                                                         |
+| `after-clarify-fast-path/`        | **HAND-AUTHORED** eligible estate (inventory + clusters + preferences) pinning the Step 0.5 **fast path** — see "Why a hand-authored estate" below                                                 |
+| `expected-clarify-fast-path.json` | pinned fast-path Clarify facts: the provenance lists, the unknown-size `db_cutover` fallback, the isolation default recorded-not-asked                                                             |
+| `check_expected_clarify_fast_path.py` | the fast-path Clarify oracle (wrapper over `check_expected_clarify.py`)                                                                                                                        |
 | `after-design/`                   | GOLDEN Design output — a **completing** design, 16 mapped + 1 deferred. From capability run 4                                                                                                      |
 
 Both asserters are **golden**: each is expected to exit 0 against its committed tree,
 so running them is how you confirm a change has not moved the pinned facts.
+
+### Why a hand-authored estate
+
+The committed Terraform corpus is **ineligible** for `clarify.md` § Step 0.5's fast path by
+design — it has a Windows VM, a ZoneRedundant Postgres server, and five clusters, each of
+which is a reason the full sheet must run. That makes it the right corpus for the wizard
+branches and the wrong one for the fast path: nothing in it can reach the state where a
+PROPOSED row takes its default without being asked and the handoff gate has to accept that.
+`after-clarify-fast-path/` is a small estate written by hand to sit inside the eligibility
+rule (one Linux plan hosting two apps, one Postgres server, one region, no VM, no licensing
+signal). It is **not** algorithm-traced Discover output; its `_what_this_is` says so. Its
+Postgres entry deliberately lacks `storage_mb` (the live enrichment row was skipped, per
+`live_metadata.capture_warnings`) so the golden also pins Q-D2's unknown-size fallback. Run
+it directly — the directory holds all three artifacts:
+
+```sh
+python3 check_expected_clarify_fast_path.py after-clarify-fast-path
+```
 
 ## Running it
 

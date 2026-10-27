@@ -7,6 +7,16 @@ redeploying. Work in **correlation hypotheses** — each breakpoint tests one ob
 predicted relationship to the symptom. Speak in correlation hypotheses until snapshot data confirms
 one; never claim a root cause from code inspection alone.
 
+**Prerequisite, not covered here:** the service must already be onboarded to Application
+Signals with Dynamic Instrumentation switched on at instrumentation time
+(`OTEL_AWS_DYNAMIC_INSTRUMENTATION_ENABLED=true`, plus the
+`application-signals:ListInstrumentationConfigurations` /
+`ReportInstrumentationConfigurationStatus` permissions on the CloudWatch Agent's role). That
+is first-time setup and belongs to the `setting-up-cloudwatch-observability` skill's
+`references/cloudwatch/application-signals-onboarding.md` (its optional step 5d). If
+breakpoints on a service never leave a pending state, check that onboarding step before
+debugging further here.
+
 ## Operating Contract
 
 This is the operating contract for this route. Before every significant action, narrate

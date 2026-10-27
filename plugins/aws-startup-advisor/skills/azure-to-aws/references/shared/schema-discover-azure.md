@@ -14,7 +14,12 @@ their single creator and owns the validation checklist at the bottom.
     "subscriptions_discovered": ["<subscription id>"],
     "total_resources": 0,
     "clustering_mode": "full", // "full" | "simplified_live" (live-only runs cluster in simplified mode)
-    "confidence": "inferred" // deterministic | measured | inferred | billing_inferred
+    "confidence": "inferred", // deterministic | measured | inferred | billing_inferred
+    "clarify_fast_path": {
+      // REQUIRED. Written by discover-assemble.md § Assembly rule 9; read by clarify.md § Step 0.5.
+      "eligible": false,
+      "reasons_ineligible": ["has_vm", "has_licensing_signal"] // [] when eligible; closed vocabulary = the input names in rule 9's table plus "cluster_count" and "total_resources"
+    }
   },
   "resources": [
     {
@@ -36,6 +41,7 @@ their single creator and owns the validation checklist at the bottom.
   ],
   "iac_metadata": {}, // present only when an IaC dialect (terraform/bicep/arm) actually contributed
   "live_metadata": {}, // present only when live `az` capture contributed — see § live_metadata
+  "rdfa_metadata": {}, // present only when a prepared RDfA report contributed — see § rdfa_metadata
   "warnings": [], // see § Warnings — ALWAYS present, `[]` when clean
   "unclustered": [] // azure_ids no cluster claimed
 }
@@ -141,6 +147,37 @@ no home on the per-resource entries:
   conflicted_resources }` for reporting. The per-field disagreements themselves live on each
   resource as `resources[].drift` (see § Drift records), NOT here.
 
+## rdfa_metadata
+
+Present only when a prepared RDfA report contributed at least one resource. It records
+source identity and report-level provenance; generated cache paths are never reported as
+the source.
+
+```jsonc
+{
+  "found": true,
+  "report_path": "<selected customer ZIP or external extracted directory>",
+  "source_type": "zip", // zip | directory
+  "source_fingerprint": "<SHA-256>",
+  "obfuscated": false,
+  "lookback_days": 31, // display-only; never used as a measured metric window
+  "subscriptions": ["<subscription name or token>"],
+  "collectors_found": ["VirtualMachines"],
+  "unmapped_collectors": [],
+  "other_reports_found": [],
+  "consumption_csv": {
+    "found": false,
+    "parsed": false,
+    "reason": "<present when found is true>"
+  },
+  "metrics_found": true
+}
+```
+
+`report_path`, `source_type`, and `source_fingerprint` must match the preparation
+manifest. `lookback_days` is optional display provenance and cannot replace unavailable
+per-row query bounds. `other_reports_found[]` lists non-selected candidates.
+
 ## Warnings
 
 `warnings[]` is a **top-level array on the inventory**, always present, `[]` when
@@ -174,6 +211,7 @@ unstable and makes a fixture assertion on any code unreliable. Add a row here fi
 | `subscription_id_unresolved`  | the subscription id came from a variable or the environment, so `azure_id` carries the `<subscription-unknown>` placeholder. One entry per run, not per resource                                                                                                                                                                                                                                                                                        |
 | `multiplicity_unresolved`     | a `count` / `for_each` expression was not evaluated; the entry represents an unknown number of real resources                                                                                                                                                                                                                                                                                                                                           |
 | `enrichment_id_unmatched`     | (live `az` discovery only) an enrichment row's captured `id` did not match any `az resource list` fast-path entry — a resource visible to one call but not the other (e.g. a permissions or propagation gap). The resource is retained as its own inventory entry rather than dropped or fuzzy-matched by name+type. `detail` names which capture row and which fast-path list disagreed                                                            |
+| `rdfa_report_unreadable`      | (RDfA discovery only) an RDfA ZIP or JSON/CSV file was found but could not be extracted or parsed (corrupt archive, truncated/malformed JSON, or a name-matched ZIP missing the expected files inside); the file is skipped, all other RDfA processing continues                                                                                                                                                                                     |
 
 Secret discarding is **not** warned about. A count of discarded fields still discloses
 that they existed and roughly how many — the whole point of discarding rather than
@@ -198,7 +236,8 @@ Design writes its own `warnings[]` with a separate vocabulary; see
       "justification": "seed:resource_group", // REQUIRED — see below
       "edges": [], // the edge set that JUSTIFIED this grouping
       "pattern_id": "unclassified",
-      "pattern_confidence": "inferred"
+      "pattern_confidence": "inferred",
+      "pattern_status": "catalog_absent" // catalog_absent until patterns.md exists — a defined state, not a gap (discover-assemble.md § Status)
     }
   ],
   "unclustered": []
@@ -241,8 +280,11 @@ discovery in a way a depth calculation is not.
 - [ ] No `azure_type` value matches `azurerm_*` — translation happened during extraction.
 - [ ] `azure_id` is unique across `resources[]`.
 - [ ] `metadata.discovery_sources` lists only sources that contributed at least one resource.
+- [ ] `metadata.clarify_fast_path` is present with a boolean `eligible` and a `reasons_ineligible[]` that is empty iff `eligible` is `true`, and every reason is one of the rule-9 input names.
 - [ ] For each dialect whose files were found in the workspace, at least one resource carries that dialect as its `source`.
 - [ ] No app-setting value, connection-string value, storage key, or Key Vault secret value appears anywhere.
+- [ ] `rdfa_metadata`, when present, carries the selected source path/type/fingerprint and
+      never names a generated cache directory; `lookback_days` is display-only.
 - [ ] `warnings[]` is present (possibly empty), and every entry has a `code` from the closed vocabulary, a `detail`, and an `azure_id` or an `identifier`.
 - [ ] Every `edges[]` entry's `type` appears in the § Typed edges table.
 - [ ] Every inventory resource is either a cluster member or listed in `unclustered[]`.

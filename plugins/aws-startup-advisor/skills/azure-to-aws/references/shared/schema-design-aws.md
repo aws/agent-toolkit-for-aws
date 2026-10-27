@@ -46,6 +46,11 @@ A resource with an AWS target.
   "confidence": "deterministic", // deterministic | measured | inferred | billing_inferred
   "fast_path_row": "Microsoft.Cache/Redis", // REQUIRED when confidence is deterministic
   "rubric_applied": "compute.md", // REQUIRED when pass 2 ran
+  "routing_provenance": "table", // REQUIRED — table | index_md | child_type_rule | namespace_rule | model_category — see § routing_provenance
+  "is_compute_unit": false, // true on the entry that carries a cluster's compute sizing
+  "sizing_source": {}, // REQUIRED when is_compute_unit — see § sizing_provenance
+  "sizing_provenance": "table", // REQUIRED whenever aws_config carries a size — see § sizing_provenance
+  "hosted_app_azure_ids": [], // REQUIRED on a Microsoft.Web/serverfarms entry — the apps folded into this plan
   "rationale": "<one or two sentences a customer can read>"
 }
 ```
@@ -55,8 +60,10 @@ A resource with an AWS target.
   label auditable: without it, "this came from a table" is an unverifiable claim, and an
   improvised target labelled `deterministic` is indistinguishable from a real one.
 - **`rationale` is customer-facing.** State why this target, not what the table says.
-- A `measured` entry must cite the utilization evidence inside `rationale` or
-  `aws_config`.
+- A `measured` entry must cite utilization evidence inside `rationale` or `aws_config`,
+  including `metric_error: false`, `sample_count > 0`, and a numeric `window_days` meeting
+  `confidence_rules.min_window_days`. Unknown windows and zero-sample rows cannot support
+  measured confidence; a sampled P95 of zero can.
 
 ## `clusters[]`
 
@@ -104,7 +111,8 @@ A specialist gate fired. See `design-refs/specialist-gates.md`.
   "azure_type": "Microsoft.Sql/managedInstances",
   "aws_service": "Deferred — specialist engagement",
   "reason": "<the gate row's reason, verbatim — it is the customer-facing explanation>",
-  "recommendation": "Engage your AWS account team; this workload needs a migration assessment."
+  "recommendation": "Engage your AWS account team; this workload needs a migration assessment.",
+  "routing_provenance": "index_md" // how the entry was routed to the gate — same vocabulary as services[]
 }
 ```
 
@@ -201,7 +209,7 @@ type, instance class, node count, shard count, capacity unit, or volume type. On
 | Value         | Means                                                                                                                                                             |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `table`       | Looked up in a `knowledge/design/*.json` or `knowledge/estimate/*.json` table. The row exists and its two sides justify each other                                |
-| `measured`    | Derived from observed utilization via `knowledge/estimate/rightsizing-thresholds.json`. Requires the evidence cited on the entry, per `design.md`'s postcondition |
+| `measured`    | Derived from an eligible observed metric via `rightsizing-thresholds.json`: no error, positive samples, known sufficient window, and evidence cited |
 | `user_stated` | The customer gave the size in Clarify or a workshop                                                                                                               |
 | `model_prior` | **No table row covered it.** The number came from the model's own knowledge                                                                                       |
 

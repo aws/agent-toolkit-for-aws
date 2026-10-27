@@ -300,10 +300,11 @@ Include whichever condition keys are supported by the service and relevant to th
 
 **Condition operator safety rules (CRITICAL):**
 
-- When using `ForAnyValue` in a **Deny** statement, you MUST add a separate Deny statement with a `Null` condition (`"Null": {"<key>": "true"}`) to handle the case where the context key is absent. Without this, requests missing the key bypass the deny entirely.
+- When using `ForAnyValue` with a negated operator (`StringNotEquals`, `StringNotLike`) in a **Deny** statement, you MUST add a separate Deny statement with a `Null` condition (`"Null": {"<key>": "true"}`) to handle the case where the context key is absent. Without this, requests missing the key bypass the deny entirely. (A Deny that positively matches specific tag keys to block them does NOT need this — it is meant to fire only when the key is present.)
 - When using `ForAllValues` in an **Allow** statement, you MUST add a `Null` condition (`"Null": {"<key>": "false"}`) in the same statement to require the key to exist. Without this, requests missing the key are silently allowed.
 - `ForAnyValue` and `ForAllValues` MUST only be used with array-typed condition keys (`ArrayOfString`, `ArrayOfARN`, etc.) — never with scalar types.
 - Multi-valued condition keys (e.g., `aws:TagKeys`, `aws:VpceOrgPaths`) MUST use a set operator (`ForAnyValue:` or `ForAllValues:`) — plain `StringNotLike` or `StringEquals` without a set operator is INCORRECT for these keys.
+- When a **Deny** statement protects specific tag keys via `aws:TagKeys`, you MUST use `ForAnyValue:StringEqualsIgnoreCase` — never `ForAnyValue:StringEquals` or `ForAnyValue:StringLike`. `aws:TagKeys` values are case-sensitive but the tag key in `aws:PrincipalTag/`, `aws:ResourceTag/`, and `aws:RequestTag/` is not, so a case-sensitive Deny is bypassed by a re-cased key. See [common pitfalls](common-pitfalls.md#case-sensitive-matching-on-awstagkeys-in-tag-protection-deny-statements).
 
 **Worked example — ForAnyValue:StringNotLike in Deny (MANDATORY pattern):**
 

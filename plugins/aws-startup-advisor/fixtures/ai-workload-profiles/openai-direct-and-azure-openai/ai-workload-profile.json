@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "model_families": ["gpt"],
+      "model_evidence": "observed",
+      "models": ["gpt-4o"],
+      "model_observations": [
+        {
+          "normalized_model": "gpt-4o",
+          "raw_model": "gpt-4o",
+          "model_family": "gpt",
+          "evidence": [{"provenance": "code", "confidence": "high", "detail": "src/ai/openai_client.py:9"}]
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "source_service": "azure_openai",
+      "model_families": ["gpt"],
+      "model_evidence": "observed",
+      "models": ["gpt-4o"],
+      "model_observations": [
+        {
+          "normalized_model": "gpt-4o",
+          "raw_model": "gpt-4o-2024-08-06",
+          "model_family": "gpt",
+          "evidence": [{"provenance": "iac", "confidence": "high", "detail": "azure.tf:azurerm_cognitive_deployment.gpt4o"}]
+        }
+      ]
+    }
+  ],
+  "gateways": []
+}

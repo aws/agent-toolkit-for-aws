@@ -11,17 +11,17 @@ python -c "from importlib.metadata import version; print(version('sagemaker'))"
 
 ```
 
-- If version ≥ 3.17.0 → the SDK is ready. Report the version and move on. Only upgrade if the user explicitly asks for it.
-- If missing or < 3.17.0 → install:
+- If version ≥ 3.22.0 → the SDK is ready. Report the version and move on. Only upgrade if the user explicitly asks for it.
+- If missing or < 3.22.0 → install:
 
 ```
-pip install 'sagemaker>=3.17.0,<4.0' boto3 -q
+pip install 'sagemaker>=3.22.0,<4.0' boto3 -q
 
 ```
 
 Then re-run the version check to confirm.
 
-> Baseline is `'sagemaker>=3.17.0,<4.0'` (not 3.7.x) — the release that adds fine-tuned support to the deployment-config API (`list_deployment_configs` / `set_deployment_config`) the OSS deploy pathway uses. Earlier v3 releases run finetuning/evaluation fine but not that deploy pathway.
+> Baseline is `'sagemaker>=3.22.0,<4.0'` (not 3.7.x) — the release that adds fine-tuned support to the deployment-config API (`list_deployment_configs` / `set_deployment_config`) the OSS deploy pathway uses. Earlier v3 releases run finetuning/evaluation fine but not that deploy pathway.
 
 ### If install fails
 
@@ -59,7 +59,7 @@ Print:
 
 ```
 Environment ready:
-  SDK:    sagemaker X.Y.Z ✅
+  SDK:    sagemaker <installed version> ✅
   Region: <region> ✅
   Role:   <arn> ✅
           sagemaker trust ✅ | bedrock trust ⚠️ | lambda trust ✅

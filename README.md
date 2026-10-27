@@ -6,7 +6,7 @@
 
 Help AI coding agents build, deploy, and manage applications on AWS.
 
-The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, Cursor, Kiro, and fx.
+The Agent Toolkit for AWS gives AI coding agents the tools, knowledge, and guardrails they need to work with AWS services. It works with the coding agents developers already use — including Claude Code, Codex, Cursor, Devin, Kiro, and fx.
 
 ## Quick start
 
@@ -87,6 +87,18 @@ Then launch Codex and run `/plugins` to browse and install the **aws-core** plug
 Add this repository as a team marketplace from **Settings → Plugins → Team Marketplaces → Add Marketplace → Import from Repo**, pointing it at `aws/agent-toolkit-for-aws`. Cursor indexes the plugins listed in [`.cursor-plugin/marketplace.json`](.cursor-plugin/marketplace.json) on import.
 
 Then open the **Plugins** panel and install the **aws-core** plugin (start here), or **aws-agents** and **aws-data-analytics** as needed. Each plugin bundles the AWS MCP Server configuration and agent skills.
+
+### Devin
+
+In your terminal:
+
+```
+devin plugins install aws/agent-toolkit-for-aws#plugins/aws-core
+```
+
+This requires `devin auth login` and adds the plugin to your personal plugins, so it also loads in Devin cloud sessions and Devin Desktop. Add `--local` to install on this machine only. To install a different plugin, replace `aws-core` with its name from [Plugins](#plugins), such as `aws-agents` or `aws-data-analytics`.
+
+In the Devin web app, choose **Customize → Plugins → Add plugin → From repository**, enter `aws/agent-toolkit-for-aws`, and set the subdirectory to `plugins/aws-core` (or another plugin's directory). Personal plugins added there are also available in the Devin CLI and Devin Desktop.
 
 ### Kiro
 
@@ -187,9 +199,9 @@ Plugins bundle the AWS MCP Server configuration and agent skills into a single i
 | [aws-agents](plugins/aws-agents/)                             | Skills for building AI agents on AWS with Amazon Bedrock and AgentCore.                                                                                                                                                                                                                                                                                                            |
 | [aws-data-analytics](plugins/aws-data-analytics/)             | Skills for data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena.                                                                                                                                                                                                                                                                                           |
 | [aws-agents-for-devsecops](plugins/aws-agents-for-devsecops/) | Investigate incidents, review code and execute UAT for release readiness, scan code for vulnerabilities, and run penetration tests with [AWS DevOps Agent](https://aws.amazon.com/devops-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr) and [AWS Security Agent](https://aws.amazon.com/security-agent/?trk=7b4b0d25-1409-441c-b914-c5d08677c376&sc_channel=ghr). |
-| [aws-startup-advisor](plugins/aws-startup-advisor/)           | Personalized AWS guidance for startups, built on patterns from 350,000+ startups. Covers architecture, cost, security, day-one account setup, AWS Activate credits eligibility and startup offers, and migration to AWS from Azure, GCP, Heroku, and AI stacks (Azure OpenAI/OpenAI/Gemini SDK rewrites to Amazon Bedrock, agentic systems to AWS-native runtimes).                                    |
+| [aws-startup-advisor](plugins/aws-startup-advisor/)           | Puts an AWS Startups Solutions Architect in your coding assistant. Recommends the smallest architecture for your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move model calls to Amazon Bedrock, investigate production incidents, answer AWS Activate credits eligibility questions, and find startup offers you can use.                                                                                                                                              |
 
-Plugins are currently available for Claude Code, Codex, and Cursor. For other agents, configure the AWS MCP Server directly and install skills from this repository.
+Plugins are currently available for Claude Code, Codex, Cursor, and Devin. For other agents, configure the AWS MCP Server directly and install skills from this repository.
 
 ### Skills
 

@@ -18,6 +18,10 @@ Works from both standalone accounts and delegated administrator accounts.
 
 ## Workflow A: Review Single Account
 
+`list-detectors` returns only the current Region's detector, so run this workflow for each Region in
+scope and record a Region you did not query as NOT ASSESSED. One Region's result is not the account's
+state.
+
 1. Get the detector ID:
 
    ```bash
@@ -56,7 +60,11 @@ Works from both standalone accounts and delegated administrator accounts.
    aws guardduty describe-publishing-destination --detector-id <DETECTOR_ID> --destination-id <DEST_ID>
    ```
 
-   **Security check:** Verify publishing destination has SSE-KMS encryption configured — check for `KmsKeyArn` in the destination properties.
+   **Security check:** Verify the publishing destination has SSE-KMS encryption configured —
+   check for `KmsKeyArn` in the destination properties — and separately verify TLS in transit
+   for delivery and consumer access. Apply the parent S3 destination-policy requirements.
+   Destination configuration does not prove retention or successful delivery; report those
+   separately.
 
 5. Check IP sets and threat intel sets:
 
@@ -77,11 +85,11 @@ Works from both standalone accounts and delegated administrator accounts.
 
    | Check | Status |
    |---|---|
-   | Detector enabled | Enabled / Not Enabled |
+   | Detector status | `get-detector.Status`; detector ID alone proves presence only |
    | Each feature from API response | Enabled / Disabled |
    | Runtime Monitoring agent management (per resource type) | Enabled / Disabled |
    | Malware Protection for S3 plans | Configured / Not Configured |
-   | Publishing destination | Configured / Not Configured |
+   | Publishing destination | Observed configuration/status; delivery NOT ASSESSED unless evidenced |
    | Trusted IP list | Configured / Not Configured |
 
 ## Workflow B: Review Organization Coverage
@@ -115,7 +123,7 @@ Works from both standalone accounts and delegated administrator accounts.
 5. (ONLY if user explicitly requests per-account detail) Enumerate members:
 
    ```bash
-   aws guardduty list-members --detector-id <DETECTOR_ID>
+   aws guardduty list-members --detector-id <DETECTOR_ID> --only-associated false
    aws guardduty get-member-detectors --detector-id <DETECTOR_ID> --account-ids <ACCOUNT_IDS>
    ```
 
@@ -142,7 +150,7 @@ Works from both standalone accounts and delegated administrator accounts.
 
 | Symptom | Resolution |
 |---|---|
-| list-detectors returns empty | GuardDuty not enabled — report as not configured |
+| list-detectors returns empty | GuardDuty not enabled **in that Region** — report it as not configured for that Region only, and leave Regions you did not query as NOT ASSESSED |
 | Access denied on describe-organization-configuration | Not a delegated admin — run Workflow A instead |
 | get-member-detectors fails | Account not a member — verify with list-members |
 | list-organization-admin-accounts returns BadRequestException | Requires org management account — use describe-organization-configuration from DA |

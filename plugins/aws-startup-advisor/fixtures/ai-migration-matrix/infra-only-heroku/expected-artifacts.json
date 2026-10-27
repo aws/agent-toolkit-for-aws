@@ -1,0 +1,13 @@
+{
+  "id": "infra-only-heroku",
+  "mode": "infrastructure_only",
+  "migration_id": "infra-only-heroku",
+  "run_id": "00000000-0000-4000-8000-000000000012",
+  "state": ".phase-status.json",
+  "dimensions": {"infrastructure_source": "heroku", "ai_sources": [], "gateways": []},
+  "outcomes": {
+    "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},
+    "ai": null,
+    "integration_validation": null
+  }
+}

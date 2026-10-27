@@ -29,11 +29,32 @@ From `$MIGRATION_DIR/preferences.json`:
 | Cost optimization | `design_constraints.cost_optimization.value` | `conservative`, `balanced`, `aggressive`                           |
 | CPU architecture  | `design_constraints.cpu_architecture.value`  | `x86_64`, `graviton` — omit row if key absent                      |
 
+**Provenance column.** Each row says where its current value came from, read from
+`preferences.json`, in this order of precedence:
+
+- `source: "user_corrected"` — "your correction (decision gate / earlier workshop
+  pass)". That source is written only after Clarify, by the Decision gate's direct
+  route or by `workshop-refresh.md` § 3, so it is never a Clarify answer.
+- Dotted key in `metadata.questions_defaulted[]` — a skill default, labelled by
+  `metadata.clarify_mode`: `fast_path` → "skill default (not asked — fast path)";
+  `wizard` → "skill default (confirmed on the Clarify sheet)". On the wizard path that
+  list holds the rows the user confirmed or waved through with "use the defaults for
+  the rest" (`clarify-assemble.md` § Assembly rule 0), so "not asked" would be wrong.
+- Otherwise an ESSENTIAL row, or a PROPOSED row whose `value` differs from its `default`
+  with no `source` — "Clarify answer" (answered or changed on the sheet).
+- A DETECTED row — "detected".
+
+The user can then see whether they are overriding their own earlier answer, their own
+earlier correction, or an assumption nobody asked them about.
+
 When patching wrapper objects, preserve `chosen_by`, `prompt`, and
-`design_consequence` (set `chosen_by` to `"user"` on edit). Prefer the catalog
-prompts from `schema-preferences.md` / the canonical question files under
-`references/vendored/clarify/` when present on the wrappers — do not invent
-placeholder prompts.
+`design_consequence` (set `chosen_by` to `"user"` on edit). An edited knob also
+takes the correction provenance `workshop-refresh.md` § 3 writes — `"source":
+"user_corrected"` on the row and its key removed from
+`metadata.questions_defaulted[]` — so the default index stops listing a value the
+user chose. Prefer the catalog prompts from `schema-preferences.md` / the canonical
+question files under `references/vendored/clarify/` when present on the wrappers —
+do not invent placeholder prompts.
 
 ### Graviton default note (CPU architecture row)
 

@@ -144,11 +144,18 @@ resource "heroku_config_association" "config" {
 | --------- | ------------------------------------- | -------- |
 | `app_id`  | resolve to `heroku_app` via reference | Yes      |
 | `plan`    | `plan` (format: `service:plan-tier`)  | Yes      |
+| `name`    | `addon_name` (optional HCL attribute) | No       |
 
 Parse the `plan` attribute to split into `addon_service` and `plan_tier`:
 
 - `"heroku-postgresql:standard-0"` → `addon_service: "heroku-postgresql"`, `plan: "standard-0"`
 - `"papertrail:choklad"` → `addon_service: "papertrail"`, `plan: "choklad"`
+
+**`addon_name` resolution:** if the `heroku_addon` block sets a `name`
+attribute, use it directly as `addon_name`. If absent, fall back to
+`tf_resource_name` (the Terraform local resource name) and set
+`addon_name_source: "tf_resource_name_fallback"` in `config` so a later live
+merge knows this wasn't a confirmed server-assigned name.
 
 #### `heroku_formation`
 
@@ -225,7 +232,7 @@ Transform each extracted Terraform resource into the standard inventory resource
 | Terraform Type              | Inventory `resource_id` Format            | Inventory `resource_type` |
 | --------------------------- | ----------------------------------------- | ------------------------- |
 | `heroku_app`                | `app:{app_name}`                          | `app`                     |
-| `heroku_addon`              | `addon:{app_name}:{addon_service}:{plan}` | `addon`                   |
+| `heroku_addon`              | `addon:{app_name}:{addon_service}:{plan}:{addon_name}` | `addon`      |
 | `heroku_formation`          | `formation:{app_name}:{process_type}`     | `formation`               |
 | `heroku_domain`             | `domain:{app_name}:{hostname}`            | `domain`                  |
 | `heroku_config_association` | `config:{app_name}`                       | `config`                  |
@@ -286,6 +293,7 @@ Note: Terraform `heroku_formation` does not include the `command` field — this
 resource "heroku_addon" "postgres" {
   app_id = heroku_app.my_app.id
   plan   = "heroku-postgresql:standard-0"
+  name   = "postgres-primary"
 }
 ```
 
@@ -293,13 +301,14 @@ resource "heroku_addon" "postgres" {
 
 ```json
 {
-  "resource_id": "addon:my-web-app:heroku-postgresql:standard-0",
+  "resource_id": "addon:my-web-app:heroku-postgresql:standard-0:postgres-primary",
   "resource_type": "addon",
   "heroku_app": "my-web-app",
   "config": {
     "addon_service": "heroku-postgresql",
     "plan": "standard-0",
-    "provider": "heroku"
+    "provider": "heroku",
+    "addon_name": "postgres-primary"
   },
   "source": "terraform",
   "tf_file": "heroku.tf",

@@ -7,7 +7,6 @@
     "design_constraints.vm_cutover": "mgn",
     "design_constraints.compliance": [],
     "data.availability": "single-az",
-    "data.db_cutover": "dms",
     "licensing.windows_model": "license_included",
     "baseline.azure_monthly_spend": 4200
   },
@@ -20,5 +19,6 @@
     "sql_licensing": "N/A \u2014 no Microsoft.Sql/* resource and no SQL-on-VM image signature.",
     "plan_isolation": "N/A for the 1-app and 0-app plans \u2014 a plan hosting 0 or 1 app gets no isolation row."
   },
-  "_no_golden_yet": "There is deliberately NO after-clarify-complete/ golden yet. Capability run 4 produced one, but it predates two rules the run itself exposed as unstated: clarify-compute.md now requires ONE app_service_plans row PER PLAN (run 4 wrote only the plan it questioned), and clarify-licensing.md now requires _fired and _firing_reason (run 4 wrote neither, because nothing asked it to). Both were the oracle asserting what no skill file taught. Hand-editing run 4's output to satisfy the new rules would be authoring a golden by intuition, which is the failure mode 13.4e and section 15.4 both warn about and which has already bitten three times. The next capability run against the corrected files produces this golden properly."
+  "_no_golden_yet": "There is deliberately NO after-clarify-complete/ golden yet. Capability run 4 produced one, but it predates two rules the run itself exposed as unstated: clarify-compute.md now requires ONE app_service_plans row PER PLAN (run 4 wrote only the plan it questioned), and clarify-licensing.md now requires _fired and _firing_reason (run 4 wrote neither, because nothing asked it to). Both were the oracle asserting what no skill file taught. Hand-editing run 4's output to satisfy the new rules would be authoring a golden by intuition, which is the failure mode 13.4e and section 15.4 both warn about and which has already bitten three times. The next capability run against the corrected files produces this golden properly.",
+  "_db_cutover_why": "Not in essential_answers any more: db_cutover is PROPOSED-and-deferred (clarify-database.md Q-D2). The scripted sheet_response 'looks right' accepts its size-derived default; the real answer is given at the Decision gate's Step 3b, which this scripted Clarify does not reach."
 }

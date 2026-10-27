@@ -32,8 +32,8 @@ to produce the recommended instance type, broker count, and monthly cost.
 3. **Derive the workload inputs** from `cluster-config.json` per "Deriving the
    sizing inputs" below. Two of the conversions are not one-to-one; getting them
    wrong produces a silently incorrect broker count.
-4. **Run sizing with `--broker-classes express`** to understand the options, sizing constraints, and cost explanations. `--broker-classes express` keeps Standard instance types out of the output entirely. Verify the script's "Sizing inputs" block matches the values you intended to pass before reading any broker count. Add `standard` to the flag only in the comparison cases listed below. Add `--discount-pct` and `--no-rack-affined-consumers` per the answers from step 2.
-5. **Read the recommendations.** Create an `msk_sizing_pricing.md` summary explaining the recommendation, inputs, sizing scenario, constraints, and cost-optimization tradeoffs for the workload. Record which pricing basis and rack-affinity assumption produced the figures.
+4. **Run sizing with `--broker-classes express`** to understand the options, sizing constraints, and cost explanations. `--broker-classes express` keeps Standard instance types out of the output entirely. Verify the script's "Sizing inputs" block matches the values you intended to pass before reading any broker count. Add `standard` to the flag only in the comparison cases listed below. Add `--discount-pct` and `--no-rack-affined-consumers` per the answers from step 2. Pass `--region` when the target is not `us-east-1` — see "Region and pricing source" below.
+5. **Read the recommendations.** Create an `msk_sizing_pricing.md` summary explaining the recommendation, inputs, sizing scenario, constraints, and cost-optimization tradeoffs for the workload. Record the rack-affinity assumption, any discount applied, and the `pricing source` value from the script's "Sizing inputs" block that produced the figures.
 
 ## Deriving the sizing inputs
 
@@ -55,6 +55,8 @@ unchanged.
 | `--broker-classes` | `express` (see "Present Express only"). |
 | `--discount-pct` | `target.pricing_discount_pct` (see "Negotiated pricing"). |
 | `--no-rack-affined-consumers` | Pass when `target.rack_affined_consumers` is `false` (see "Consumer rack affinity"). |
+| `--region` | The Region the customer is migrating into. Omit only when that is `us-east-1` (the script default). |
+| `--pricing-source` | Omit — the default handles both the credentialed and credential-free cases. See "Region and pricing source". |
 
 Record the derived values — not the raw contract values — in
 `msk-sizing-inputs.<cluster_name>.json`, so the sizing run is reproducible.
@@ -87,6 +89,16 @@ in `msk_sizing_pricing.md`:
 When a discount was applied, state the percentage in `msk_sizing_pricing.md` and tell
 the customer to confirm it with their AWS account team before using the figures for
 budgeting.
+
+## Region and pricing source
+
+Pass `--region` for the Region the customer is migrating into; the script defaults to `us-east-1` and rates differ per Region.
+
+With AWS credentials the script fetches live rates. Without them it falls back to an embedded `us-east-1` snapshot — expected here, since Assessment often has no credentials for the target account. Read the `pricing source` row in the "Sizing inputs" block and record it in `msk_sizing_pricing.md`; when it reads `static`, add this note:
+
+> **Note on pricing source:** These figures use `us-east-1` rates embedded in the sizing script and captured on *&lt;date from the script banner&gt;*, not a live pricing lookup. Re-run with AWS credentials available to confirm against current published rates.
+
+Pricing a non-`us-east-1` Region needs credentials. Without them the script exits non-zero and prints nothing at all — not even a broker count, since pricing resolves before any broker math. Report that sizing could not be produced and ask the customer for credentials or a confirmed Region. Never re-run against `us-east-1` and present the result as the target Region's cost.
 
 ## Consumer rack affinity
 
@@ -160,10 +172,11 @@ Do not inflate the recommendation to match the source footprint. If the customer
    per GB-hour on retained data, so right-sizing per-topic retention is the
    storage cost lever — not a change of broker class.
 
-3. **Pricing is us-east-1 and public on-demand by default.** Cost figures do not
-   reflect other AWS Regions. Apply a customer-stated Private Pricing Agreement
-   (PPA) or Enterprise Discount Program (EDP) discount with `--discount-pct` — see
-   "Negotiated pricing" above.
+3. **Pricing is public on-demand, and `us-east-1` unless you pass `--region`.**
+   Apply a customer-stated Private Pricing Agreement (PPA) or Enterprise Discount
+   Program (EDP) discount with `--discount-pct` — see "Negotiated pricing" above.
+   Rates may also come from an embedded snapshot rather than a live lookup — see
+   "Region and pricing source" below.
 
 ## Key recommendations
 

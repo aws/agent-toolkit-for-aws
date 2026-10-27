@@ -37,9 +37,9 @@ Two of its steps fire on nearly every Azure run, so expect them:
 
 ## Step 1: Prerequisites
 
-The entry gate (design completed, inputs present and valid, non-empty
-`services[]`) is enforced by this phase's `_preconditions` per `INTERPRETER.md`
-§ Gate protocol; it has already passed. Then read:
+The entry gate (design completed, inputs present and valid, `services[]` present
+and every entry well-formed) is enforced by this phase's `_preconditions` per
+`INTERPRETER.md` § Gate protocol; it has already passed. Then read:
 
 1. `$MIGRATION_DIR/aws-design.json` — `services[]`, `deferred[]`, `warnings[]`,
    `target_region`, `clusters[]`.
@@ -47,6 +47,59 @@ The entry gate (design completed, inputs present and valid, non-empty
    and `licensing` (whose `_fired` flag decides Part 3's delta line).
 3. `$MIGRATION_DIR/azure-resource-inventory.json` — the source SKUs the 1:1 lift
    is priced from, plus `iac_metadata`.
+
+### The all-deferred design
+
+`design.md` allows `services[]` to be **empty** when every discovered resource was
+deferred to a specialist or skipped — a Synapse-and-Managed-Instance-only estate
+is the typical shape. That design is valid and it reaches this phase, so this
+phase must carry it through rather than stopping: Generate requires a completed
+Estimate, and its baseline-only path (core files plus `baseline.tf`) is the right
+output for exactly this estate.
+
+Confirm the case first, then run every part below with an empty service set:
+
+- **Confirm it is accounted for.** Every `azure-resource-inventory.json` resource
+  must appear in `deferred[]` or in a `warnings[]` skip entry. One that appears in
+  neither is a dropped resource, not a deferral — `GATE_FAIL` with the
+  `_preconditions` wording; never price around it. A skip is not a deferral. A
+  resource group recorded as a skip, for example, is not a specialist engagement.
+- **Count them apart.** `deferred_count` is `len(deferred[])`. Skipped resources
+  are not added to it, and they do not raise the complexity tier. A mixed estate
+  (some deferred, some skipped, `services[]` empty) reports only the deferred
+  entries as specialist work.
+- **Part 2 prices no workload.** `projected_costs.breakdown` carries no service
+  lines. The estate-wide lines still appear so a reader sees they were considered:
+  the Part 2C observability line and both Part 2C-2 standing lines are emitted at
+  `$0` with a `basis` of "no generated service". Both workload totals are `0`,
+  every scenario key is `0`, and `rightsizing_delta.explanation` says why the
+  delta is `0`. That sentence names deferred resources only when `deferred[]` is
+  non-empty ("the deferred resources have no AWS-side line to right-size"). When
+  every resource was skipped, it says "nothing was mapped to an AWS service;
+  skipped resources are not a specialist engagement."
+- **Say what the `$0` is, and what it is not.** The `$0` is the priced workload.
+  It is not the price of `baseline.tf`. Those controls are unpriced on every
+  path, including this one (see "Account baseline controls are not in these
+  totals" below). Emit `all_services_deferred` only when `deferred[]` is
+  non-empty, and `baseline_controls_unpriced` on every path. Carry the matching
+  sentence into `recommendation.conditions` and `would_flip_if[]`. When
+  `deferred[]` is non-empty, the condition is that those named workloads' AWS
+  cost is unestimated until a specialist designs them. When `deferred[]` is
+  empty, do not tell the reader a specialist is required.
+  `deferred_bears_azure_cost` still fires per `deferred[]` entry when the Azure
+  baseline includes that entry, so the comparison is not read as a saving.
+- **`is_floor` stays `false` here** unless a priced line was excluded. The
+  unpriced baseline is called out by `baseline_controls_unpriced`, not by
+  pretending the workload total is a floor of those controls.
+- **Parts 7 and 8 run normally.** `service_count` is `0`. The recommendation is
+  never `go` here — Part 8 soft trigger 9 fires on the empty `services[]`, so
+  the derivation yields `conditional_go` with the condition from the bullet
+  above, or `defer_for_evidence` if a hard trigger fires.
+- **The decision gate is still presented** (`estimate-assemble.md` Step 2), with
+  the pack's `$0` clause replaced by the sentence from the bullet above. The
+  "Deferred to specialists" line lists `deferred[]` only, and is omitted when
+  that array is empty. Option C is offered: Generate's baseline-only output is
+  a real deliverable for this estate.
 
 ---
 
@@ -58,15 +111,20 @@ as much as its value. Use the best available source; first match wins.
 | Rung | Source                                                                    | `current_costs.source`     | Reachable today?                             |
 | ---- | ------------------------------------------------------------------------- | -------------------------- | -------------------------------------------- |
 | 1    | An Azure Cost Management export the customer supplied                     | `"cost_management_export"` | **No** — needs the billing source (deferred) |
-| 2    | Consumption data from an RDfA report                                      | `"consumption_data"`       | **No** — needs RDfA (deferred)               |
+| 2    | Consumption data from an RDfA report                                      | `"consumption_data"`       | **Partial** — RDfA's own CSV is usage-quantity-only (`discover-rdfa.md` § Step 4), never cost; this rung stays unreachable for a dollar baseline until a future PR lands consumption parsing AND this skill ships an Azure rate card. |
 | 3    | `preferences.baseline.azure_monthly_spend`, when the user stated a figure | `"user_stated"`            | **Yes**                                      |
 | 4    | Derived from discovered SKUs against an Azure rate card                   | `"derived_from_skus"`      | **No** — this skill ships no Azure rate card |
 | 5    | No baseline                                                               | `"unavailable"`            | —                                            |
 
+`config.measured_utilization` (`discover-rdfa.md` § Step 3, this PR) feeds
+right-sizing confidence in Part 2B below, not the Part 1 baseline above — the two
+are different consumers of RDfA, and this PR lands only the right-sizing one.
+
 **Say plainly which rungs are reachable.** On a Terraform-only estate — every
-estate today — rungs 1, 2 and 4 cannot fire: the first two need a discovery
-source that is not built, and rung 4 needs Azure rates this skill does not ship.
-So the baseline is the user's stated figure, or nothing. Do not report rung 4 as
+estate today — rungs 1, 2 and 4 cannot fire for a dollar baseline: rung 1 needs a
+discovery source that is not built, rung 2's own CSV carries no dollar signal at
+all (see above), and rung 4 needs Azure rates this skill does not ship. So the
+baseline is the user's stated figure, or nothing. Do not report rung 4 as
 attempted; there is nothing to attempt it against.
 
 Record the rung on the artifact, and never present a derived figure as an
@@ -118,12 +176,12 @@ rather than omitting the key, so its emptiness is visible to a reader.
 
 ### Metrics lookback affects confidence, not just precision
 
-When a metrics window does exist, read its actual length from the report metadata
-rather than assuming 31 days. Below `confidence_rules.min_window_days` in
-`knowledge/estimate/rightsizing-thresholds.json`, hold right-sizing confidence at
-`inferred` and say why: a P95 over a short window can sit entirely inside a quiet
-period, and a workload sized for a trough it will leave is worse than one sized
-from its SKU.
+When metrics exist, evaluate each row: `metric_error` must be false, `sample_count` must
+be positive, and `window_days` must be numeric and meet
+`confidence_rules.min_window_days`. Error/empty rows and null/unknown windows are
+traceability, not measured sizing evidence; fall back to `inferred` and say why. Current
+RDfA exports omit query bounds, so never replace null with
+`rdfa_metadata.lookback_days`. A P95 of zero remains eligible when positively sampled.
 
 ---
 
@@ -206,6 +264,29 @@ Rates come from the named keys in
 | **Lambda**                                                      | `lambda.per_request` × requests + `lambda.per_gb_second_<arch>_first_6b` × GB-seconds                                                                                                                                                                                                                                                                                                                            | `memory_mb`, `architecture`, invocation volume                                        |
 | **CloudWatch**                                                  | Part 2C                                                                                                                                                                                                                                                                                                                                                                                                          | —                                                                                     |
 | **VPC, subnets, route tables, Systems Manager Session Manager** | `$0`. Emit the line at zero with a `basis` note rather than omitting it, so the reader can see it was considered rather than forgotten                                                                                                                                                                                                                                                                           | —                                                                                     |
+
+### Account baseline controls are not in these totals
+
+Generate always emits `baseline.tf`: CloudTrail and its log bucket, GuardDuty,
+and the budget, plus Config and Security Hub when a named framework is declared.
+This cost engine has no rate row for those controls. Do not price them from
+memory, and do not add them into `aws_monthly_balanced` or either total.
+
+Record the omission on every run, including a nonempty estate and the
+all-deferred path:
+
+- Emit `baseline_controls_unpriced` (vocabulary below).
+- Set `projected_costs.baseline_controls` to
+  `{ "priced": false, "omitted_from_totals": ["cloudtrail_logs", "guardduty", "budget"] }`
+  and append `"config"` and `"security_hub"` to `omitted_from_totals` when the
+  declared compliance set includes `soc2`, `pci`, `hipaa`, or `fedramp`.
+- The note on that object says the totals exclude those controls, and that the
+  budget limit `max(50, ceil(aws_monthly_balanced * 1.2))` is a floor on the
+  priced workload, not a price of GuardDuty or Config.
+
+`is_floor` does not flip to `true` for this omission. A floor means a workload
+line was excluded. This omission has its own warning so a deferred-workload
+caveat is not asked to cover it.
 
 ### The breakdown line shape
 
@@ -658,7 +739,7 @@ data volume:
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Azure egress during transfer**       | Per-GB outbound from Azure. Needs a data volume: database size, blob storage size, VM disk footprint. Name the sources from the inventory and state the volume as unknown rather than assuming one |
 | **Parallel operation**                 | Both clouds run during cutover: `~<Azure baseline>/month` for the cutover window, when a baseline exists                                                                                           |
-| **Migration service cost**             | DMS instance hours when `data.db_cutover` is `dms`; MGN replication-server hours when `design_constraints.vm_cutover` is `mgn`. Both are real AWS charges and both are duration-driven             |
+| **Migration service cost**             | DMS instance hours when `data.db_cutover` is `dms`; MGN replication-server hours when `design_constraints.vm_cutover` is `mgn`. Both are real AWS charges and both are duration-driven. When `db_cutover` carries `deferred_to_generate: true` the value is Clarify's size-derived default, not a user answer — label the line "assumed; confirmed before Generate" (and, when the row's `size_coverage` is `unknown` or `partial`, add "database size not measured") and let `estimate-assemble.md` § Step 3b re-run this row. When the row carries `deferred_to_generate: false` and `"source": "user_confirmed_at_generate"`, label the line "confirmed at the Decision gate" — Step 3b re-runs this row after every confirmation, changed or not, so the label never says "assumed" about an answer the user gave |
 | **Unexpired Azure commitments**        | A reservation or savings plan that outlives cutover keeps costing after the workload has left. A genuine migration cost, and invisible unless named                                                |
 | **Dual-write or replication overhead** | Only when the chosen cutover approach implies it                                                                                                                                                   |
 
@@ -799,6 +880,7 @@ services, and the AWS-side estimate can almost always be produced. Prefer
 | 6 | The pricing cache is past its own staleness window                     | "Refresh pricing before treating the delta as decision-grade"                                             |
 | 7 | `licensing._fired` and the Windows licence cost is not in the estimate | "Confirm the Windows licensing basis — it is the line most likely to move the total"                      |
 | 8 | The right-sizing delta is `$0` for want of utilization data            | "Supply utilization data to see what right-sizing is worth; today the delta reflects declared waste only" |
+| 9 | `services[]` is empty (Step 1 § The all-deferred design) | When `deferred[]` is non-empty: "The priced workload total is $0. These deferred resources have no AWS cost until a specialist designs them: `<names>`. `baseline.tf` controls are unpriced and are not in that total." When `deferred[]` is empty: "The priced workload total is $0 because every discovered resource was skipped, not deferred. No specialist engagement is implied. `baseline.tf` controls are unpriced and are not in that total." |
 
 **Derivation:**
 
@@ -869,6 +951,8 @@ terms: add a row here first, then use it.**
 | `declared_waste_found`              | The IaC declares waste (an idle plan, an unattached disk)                                                                           |
 | `licensing_cost_absent`             | `licensing._fired` and the Windows rate is unavailable                                                                              |
 | `deferred_bears_azure_cost`         | A `deferred[]` entry is cost-bearing on Azure, so the baseline includes it and the AWS side does not                                |
+| `all_services_deferred`             | `services[]` is empty and `deferred[]` is non-empty. The priced workload total is `0`. Do not emit this when every resource was only skipped |
+| `baseline_controls_unpriced`        | Every run. CloudTrail log storage, GuardDuty, and (when a named framework is declared) Config and Security Hub are emitted by `baseline.tf` and are not in the totals |
 | `compliance_unconfirmed`            | Clarify asked compliance and the recorded value is `["unknown"]` (or still null); catalog treated like none, report caveat required |
 | `compliance_never_asked`            | **Legacy.** Pre-Q-A1c frozen artifacts only. Do not emit on a live run after Clarify records a compliance row                       |
 

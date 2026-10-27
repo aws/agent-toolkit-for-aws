@@ -4,7 +4,7 @@
 
 # Cell 1: Install Dependencies
 
-# %pip install --upgrade 'sagemaker>=3.7.1,<4.0' boto3 -q  # NOTEBOOK_ONLY
+# %pip install --upgrade 'sagemaker>=3.22.0,<4.0' boto3 -q  # NOTEBOOK_ONLY
 
 # Cell 2: Setup & Credentials
 
@@ -86,6 +86,7 @@ print(f"Adam Beta: {trainer.hyperparameters.adam_beta}")
 print(f"Number of epochs: {trainer.hyperparameters.max_epochs}")
 print(f"Learning rate warmup steps ratio: {trainer.hyperparameters.lr_warmup_steps_ratio}")
 
+# To see all available hyperparameters and their valid ranges: trainer.hyperparameters.get_info()
 
 # Cell 5: Hyperparameter Overrides
 
@@ -141,24 +142,29 @@ run_id = training_job.mlflow_details.mlflow_run_id
 mlflow.set_tracking_uri(training_job.mlflow_config.mlflow_resource_arn)
 client = MlflowClient()
 
-metrics = [
-    "loss_per_batch",
-    "rewards/chosen",
-    "rewards/rejected",
-    "rewards/margins",
-    "acc_per_batch",
+available = set(client.get_run(run_id).data.metrics)
+# LLMFT and Verl trainers log the same curves under different names; which one runs depends on the model.
+candidates = [
+    ("loss_per_batch", "train/loss"),
+    ("rewards/chosen", "dpo/chosen_reward"),
+    ("rewards/rejected", "dpo/rejected_reward"),
+    ("rewards/margins", "dpo/reward_margin"),
+    ("acc_per_batch", "dpo/accuracy"),
 ]
-fig, axes = plt.subplots(1, len(metrics), figsize=(4 * len(metrics), 3))
-for idx, metric in enumerate(metrics):
-    history = client.get_metric_history(run_id, metric)
-    axes[idx].plot(
-        [h.step for h in history], [h.value for h in history], linewidth=2, marker="o", markersize=4
-    )
-    axes[idx].set_xlabel("Step")
-    axes[idx].set_ylabel(metric.split("/")[-1])
-    axes[idx].set_title(metric, fontweight="bold")
-    axes[idx].grid(True, alpha=0.3)
+metrics = [next(n for n in names if n in available) for names in candidates if available & set(names)]
 
-plt.suptitle(f"Training Metrics: {training_job.training_job_name}", fontweight="bold")
-plt.tight_layout()
-plt.show()
+if not metrics:
+    print(f"None of the expected DPO metrics were logged. Logged metrics: {sorted(available)}")
+else:
+    fig, axes = plt.subplots(1, len(metrics), figsize=(4 * len(metrics), 3), squeeze=False)
+    for ax, metric in zip(axes[0], metrics):
+        history = client.get_metric_history(run_id, metric)
+        ax.plot([h.step for h in history], [h.value for h in history], linewidth=2, marker="o", markersize=4)
+        ax.set_xlabel("Step")
+        ax.set_ylabel(metric.split("/")[-1])
+        ax.set_title(metric, fontweight="bold")
+        ax.grid(True, alpha=0.3)
+
+    plt.suptitle(f"Training Metrics: {training_job.training_job_name}", fontweight="bold")
+    plt.tight_layout()
+    plt.show()

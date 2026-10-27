@@ -172,7 +172,7 @@ def assess_topology(cfg: dict) -> tuple[str, list[dict]]:
 # following Apache Kafka versions: 3.6, 3.8, and 3.9."
 # ---------------------------------------------------------------------------
 
-EXPRESS_SUPPORTED_VERSIONS: set[tuple[int, int]] = {(3, 6), (3, 8), (3, 9)}
+EXPRESS_SUPPORTED_VERSIONS: set[tuple[int, int]] = {(3, 6), (3, 8), (3, 9), (4, 2)}
 
 # Minimum source Apache Kafka version that MSK Replicator can replicate from
 # when migrating a self-managed source to Express. Sources older than this can
@@ -189,6 +189,7 @@ def assess_kafka_version(cfg: dict) -> tuple[str, list[dict]]:
     raw = cfg["kafka"]["version"]
     supported_sorted = sorted(EXPRESS_SUPPORTED_VERSIONS)
     supported_str = [f"{m}.{n}" for m, n in supported_sorted]
+    supported_version_str = ", ".join(supported_str)
 
     parsed = parse_version(raw)
     if parsed is None:
@@ -197,9 +198,8 @@ def assess_kafka_version(cfg: dict) -> tuple[str, list[dict]]:
                 "VERSION_UNKNOWN",
                 ADVISORY,
                 "We couldn't determine your cluster's Apache Kafka version, so "
-                "we can't confirm it's in the set MSK Express supports (3.6, "
-                "3.8, and 3.9). Provide `kafka.version` for a complete "
-                "assessment.",
+                f"we can't confirm it's in the set MSK Express supports ({supported_version_str}). "
+                "Provide `kafka.version` for a complete assessment.",
                 supported=supported_str,
             )
         )
@@ -212,13 +212,13 @@ def assess_kafka_version(cfg: dict) -> tuple[str, list[dict]]:
                 "VERSION_SUPPORTED",
                 INFO,
                 f"Your cluster runs Apache Kafka {raw}, which MSK Express "
-                "supports (3.6, 3.8, and 3.9). Your workload will run on the "
+                f"supports ({supported_version_str}). Your workload will run on the "
                 "same Kafka version after migrating.",
             )
         )
     else:
         msg = (
-            f"MSK Express supports Apache Kafka 3.6, 3.8, and 3.9. Your cluster "
+            f"MSK Express supports Apache Kafka {supported_version_str}. Your cluster "
             f"runs {raw}, so after migrating your workload will run on a new "
             "Kafka version. Confirm your client libraries and applications are "
             "compatible with the version you choose for Express — Kafka clients "

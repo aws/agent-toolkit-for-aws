@@ -3,7 +3,9 @@
 - **Docs**: https://docs.aws.amazon.com/inspector/latest/user/
 - **Docs (llms.txt)**: https://docs.aws.amazon.com/inspector/latest/user/llms.txt
 
-Amazon Inspector is a vulnerability management service that automatically scans EC2 instances, ECR container images, and Lambda functions for software vulnerabilities, code weaknesses, and network exposure. It uses CVSS scoring and incorporates exploitability context. Findings are in Inspector's proprietary JSON format and are also sent to Security Hub in OCSF format.
+Amazon Inspector is a vulnerability management service that automatically scans EC2 instances, ECR container images, and Lambda functions for software vulnerabilities, code weaknesses, and network exposure. It uses CVSS scoring and incorporates exploitability context.
+
+**Findings output:** Inspector findings are in Inspector's proprietary JSON format, and are **also sent to Security Hub in OCSF format**.
 
 ## Data Sources
 
@@ -24,7 +26,8 @@ Inspector automatically discovers and scans:
 | `inspector2:ListCisScanConfigurations` | List CIS benchmark scan configs |
 | `inspector2:GetEc2DeepInspectionConfiguration` | Get EC2 deep inspection settings |
 | `inspector2:ListDelegatedAdminAccounts` | Identify delegated admin |
-| `inspector2:GetConfiguration` | Get org auto-enable settings |
+| `inspector2:GetConfiguration` | Get EC2 scan mode and ECR rescan duration |
+| `inspector2:DescribeOrganizationConfiguration` | Get org auto-enable settings |
 | `inspector2:ListMembers` | List member accounts |
 | `inspector2:ListFindings` | List finding IDs with filters |
 | `inspector2:BatchGetFindingDetails` | Get finding details for one or more findings by ARN |
@@ -33,6 +36,8 @@ Inspector automatically discovers and scans:
 ## Severity Scoring
 
 Inspector uses CVSS (Common Vulnerability Scoring System) for package vulnerabilities and a severity mapping for other finding types:
+
+**Amazon Inspector score versus the NVD score:** for EC2 package-vulnerability findings, Inspector correlates the CVSS base score (vendor-provided for Amazon, Debian and RHEL packages; NVD otherwise) with information from the compute environment, such as network reachability and exploitability data. The Inspector score can therefore differ from the NVD CVSS score for the same CVE; the finding's score details explain the difference. See [Amazon Inspector score](https://docs.aws.amazon.com/inspector/latest/user/findings-understanding-score.html).
 
 ### Package Vulnerabilities (CVSS-based)
 

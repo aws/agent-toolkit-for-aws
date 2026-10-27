@@ -28,7 +28,7 @@ So when a correctly signed call is denied, check both layers: the IAM policy on 
 | Alerts | [alerts.md](alerts.md) |
 | Views | [views.md](query/views.md) |
 | Dashboards | [dashboards.md](dashboards.md) |
-| Log and trace queries | [sql-logs-traces.md](query/sql-logs-traces.md) |
+| Log and trace queries | [sql-logs-traces.md](query/sql-logs-traces.md) — the three operations that execute a statement are in its [Running a Query](query/sql-logs-traces.md#0-running-a-query) section |
 
 ## 2. AWS CLI and AWS SDKs
 

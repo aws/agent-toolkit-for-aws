@@ -47,7 +47,16 @@ models detected, capabilities, integration pattern + SDK, gateway/router, framew
   (`low|medium|high|very_high`). Drives the estimate token tiers.
 - **Q19 — Which model do you use today.** DETECTED from `models[]` when confidence is high, else
   PROPOSED. → `ai_model_baseline`. **Azure catalog:** Azure OpenAI deployments — GPT-4o, GPT-4.1,
-  GPT-4.1 mini/nano, o3, o4-mini, GPT-5.x. (No Gemini — azure has no `gemini` source.)
+  GPT-4.1 mini/nano, o3, o4-mini, GPT-5.x. (No Gemini — azure has no `gemini` source.) If
+  `openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or
+  `anthropic-usage-profile.json` exists, prefer the top model by token volume across ALL
+  profiles combined (normalizing OpenRouter's `prompt_tokens`/`completion_tokens` before ranking,
+  and including Anthropic's `cache_read_tokens`/`cache_creation_tokens` in the volume sum (these
+  are additional token pools, not a sub-accounting of `input_tokens`) —
+  do not rank by `usage_by_model[0]` from just one profile when more than one exists, since that
+  profile's own #1 may not be the combined #1) as the baseline — billed usage is stronger
+  evidence than code detection — and mention the runner-up models to the user rather than
+  re-asking.
 - **Q20 — Input modalities.** DETECTED from `capabilities_summary.vision`, else PROPOSED
   text-only. → `ai_vision`.
 - **Q21 — Response speed.** PROPOSED, default `"important"`. → `ai_latency`.
@@ -101,31 +110,88 @@ Q16–Q22, and write `"workloads": []` when none.
 
 ## Step 3: Rows returned
 
+Every row is merged into the final `preferences.json` by `clarify-assemble.md`'s Step
+"Assemble the artifact" rules 1–2: it carries `disposition`, `value`, and `default`, exactly
+like every other fragment's rows (see `clarify-global.md`'s `## Rows returned` for the same
+convention). A value taken from its default stays **PROPOSED** — never promoted to DETECTED
+(DETECTED means read from the estate; Design's rationale and the report distinguish "you
+chose" from "we assumed"). A `DETECTED` row additionally carries `source` naming where the
+value was read from — `schema-preferences.md`'s rule that the justification key is `source`
+and is REQUIRED on `DETECTED` applies here the same as the infra flow.
+
 ```jsonc
 {
-  "ai_framework": ["direct"], // DETECTED | PROPOSED
-  "ai_monthly_spend": "$500-$2K", // DETECTED | PROPOSED
-  "ai_priority": "balanced", // PROPOSED
-  "ai_critical_feature": null, // PROPOSED
-  "ai_token_volume": "low", // PROPOSED
-  "ai_model_baseline": "gpt-4o", // DETECTED | PROPOSED
-  "ai_vision": false, // DETECTED | PROPOSED
-  "ai_complexity": "moderate", // PROPOSED
-  "startup_program_status": null, // ESSENTIAL — value null until answered (the Gate-2 completion gate)
-  "ai_constraints": { // agentic block present ONLY when agentic_profile.is_agentic
+  "ai_framework": { "disposition": "DETECTED", "value": ["direct"], "default": ["direct"], "source": "integration.pattern + integration.gateway_type" },
+  "ai_monthly_spend": {
+    "disposition": "DETECTED",
+    "value": "$500-$2K",
+    "default": "$500-$2K",
+    "source": "current_costs.monthly_ai_spend"
+  },
+  "ai_priority": { "disposition": "PROPOSED", "value": "balanced", "default": "balanced" },
+  "ai_critical_feature": { "disposition": "PROPOSED", "value": null, "default": null },
+  "ai_token_volume": { "disposition": "PROPOSED", "value": "low", "default": "low" },
+  "ai_model_baseline": {
+    "disposition": "DETECTED",
+    "value": "gpt-4o",
+    "default": "gpt-4o",
+    "source": "models[] confidence >= 0.8"
+  },
+  "ai_vision": {
+    "disposition": "DETECTED",
+    "value": false,
+    "default": false,
+    "source": "capabilities_summary.vision"
+  },
+  "ai_latency": { "disposition": "PROPOSED", "value": "important", "default": "important" },
+  "ai_complexity": { "disposition": "PROPOSED", "value": "moderate", "default": "moderate" },
+  "startup_program_status": {
+    "disposition": "ESSENTIAL",
+    "value": null, // null until answered (the Gate-2 completion gate)
+    "default": null
+  },
+  "ai_constraints": { // agentic block present ONLY when agentic_profile.is_agentic — rows, not raw values, same disposition/value/default wrapping
     "agentic": {
-      "migration_approach": "undecided",
-      "memory_requirement": "session",
-      "task_duration": "medium",
-      "incremental_migration": false
+      "migration_approach": {
+        "disposition": "PROPOSED",
+        "value": "undecided",
+        "default": "undecided"
+      },
+      "memory_requirement": {
+        "disposition": "PROPOSED",
+        "value": "session",
+        "default": "session"
+      },
+      "task_duration": { "disposition": "PROPOSED", "value": "medium", "default": "medium" },
+      "incremental_migration": {
+        "disposition": "PROPOSED",
+        "value": false,
+        "default": false
+      }
     }
   },
-  "workloads": [] // the confirmed array (persist rule above)
+  "workloads": [] // NOT a row — the confirmed array itself (persist rule above), same as clarify-ai-only.md's workloads[]
 }
 ```
 
-A value taken from its default stays **PROPOSED** — never promoted to DETECTED (DETECTED means
-read from the estate; Design's rationale and the report distinguish "you chose" from "we assumed").
+### `workloads[]`
+
+```jsonc
+[
+  {
+    "workload_id": "wl-1", // REQUIRED
+    "model_id": "gpt-4o", // REQUIRED
+    "sdk_method": "chat.completions", // REQUIRED
+    "capability": "text_generation", // REQUIRED — the schema-discover-ai.md / design-ai.md capability enum (text_generation, structured_output, image_generation, embedding, …), not an ad hoc "chat" value
+    "capability_confidence": "high", // REQUIRED
+    "structured_output": false, // REQUIRED
+    "call_sites": [{ "file": "app.py", "line": 1 }], // REQUIRED
+    "target_bedrock_model": "anthropic.claude", // REQUIRED
+    "priority": "balanced", // REQUIRED
+    "latency_tier": "standard" // REQUIRED
+  }
+]
+```
 
 ## Who consumes these
 

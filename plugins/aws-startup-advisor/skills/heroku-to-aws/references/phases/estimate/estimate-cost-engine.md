@@ -62,15 +62,45 @@ Use the best available source for Heroku monthly baseline (first match wins):
    baseline honestly.
    - **Add-ons:** sum `config.monthly_price_usd` across add-on resources — these
      are exact, and they price plans the cache has never heard of (no
-     `"unpriced_heroku"` holes for priced add-ons)
+     `"unpriced_heroku"` holes for priced add-ons). **Exception — check the
+     Advanced-family identity BEFORE this flat sum, for every add-on, even
+     when `monthly_price_usd` is present:**
+     `config.addon_service == "heroku-postgresql"` AND `config.plan`
+     (case-insensitive) `== "advanced"`.
+     This identity check survives a failed, skipped, or malformed
+     `data:pg:info` capture — it does NOT require `config.tier` to be
+     present, because `tier` is only ever set by a successful capture (see
+     `discover-live.md`), and the no-`tier` failure shape
+     (`{"addon_service":"heroku-postgresql","plan":"advanced","provider":"heroku","monthly_price_usd":0}`)
+     must still be caught here. The same `"advanced"` plan string already
+     covers Advanced databases in Private and Shield Spaces — Advanced has no
+     separate `private-advanced`/`shield-advanced` SKU (see
+     `heroku-pricing-cache.md`'s Advanced Tier section), so this identity
+     check alone is sufficient; do not add network-variant plan strings here.
+     Heroku Postgres Advanced's Platform API `plan.price` reports a flat
+     `cents` figure (frequently `0`) that does NOT reflect compute-month
+     billing — never sum it, regardless of its value, once the identity
+     matches. Instead route that resource to the same pool-pricing formula
+     rung 3 uses: if `config.tier == "advanced"` AND
+     `config.advanced_pools[]` is non-empty with no `unverified` level, sum
+     `rate[pool.level] × pool.instance_count` over every entry in
+     `config.advanced_pools[]` (using the Advanced Tier cache rates) plus
+     `max(0, data_size_gb - 100) × 0.20` once per addon. For every other case
+     matching the identity — no `tier` at all (failed/skipped capture), `tier`
+     present but `advanced_pools[]` missing/empty (malformed capture), or any
+     pool level an `unverified` cache row — mark that resource
+     `"unpriced_heroku"` and add a warning naming the reason — do NOT
+     contribute $0. When any Advanced-tier resource was priced this way,
+     append its full-month assumption (cache rule 9) to `baseline_note`.
    - **Dynos:** the API does not price formations; look up each formation's
      `dyno_type` in `references/shared/heroku-pricing-cache.md` (±5% published
      flat rates) × `quantity`
    - Set `current_costs.source: "live_prices_plus_cache"`
    - Set `current_costs.accuracy: "exact for add-ons, ±5% for dynos"`
-   - An add-on WITHOUT `monthly_price_usd` (e.g. a Terraform-only entry) falls
-     through to the rung-3 cache lookup for that resource only; if neither
-     prices it, mark `"unpriced_heroku"` and add to warnings
+   - An add-on WITHOUT `monthly_price_usd` and not matching the Advanced-family
+     identity above (e.g. a Terraform-only entry) falls through to the rung-3
+     cache lookup for that resource only; if neither prices it, mark
+     `"unpriced_heroku"` and add to warnings
    - `baseline_note` (mandatory): "Derived from your account's actual add-on
      prices plus published dyno rates — not an invoice. Excludes usage-based
      charges (bandwidth, build minutes), team seats, credits, and discounts;
@@ -83,6 +113,33 @@ Use the best available source for Heroku monthly baseline (first match wins):
    - Set `current_costs.source: "pricing_cache"`
    - Set `current_costs.accuracy: "±5%"`
    - If any resource plan is not found in cache, mark as `"unpriced_heroku"` and exclude from total; add to warnings
+   - **Heroku Postgres Advanced** (identity check:
+     `config.addon_service == "heroku-postgresql"` AND `config.plan`
+     (case-insensitive) `== "advanced"` — independent of whether `tier` is
+     present, so a failed, skipped, or malformed live capture still matches;
+     `tier`/`advanced_pools` are only consulted below, inside the branch, once
+     the identity matches): apply the compute-month + storage-overage formula
+     from the cache's Advanced Tier Usage Rules (rule 9) instead of the
+     flat-lookup rule above. When `config.tier == "advanced"` AND
+     `config.advanced_pools[]` is non-empty with no `unverified` level, price
+     this resource as the sum of `rate[pool.level] × pool.instance_count`
+     over every entry in `config.advanced_pools[]` (leader plus every captured
+     follower pool; `instance_count` already includes the HA standby) plus
+     `max(0, data_size_gb - 100) × 0.20` once per addon, not a single
+     cache-row lookup. If **any** pool's level is one of the cache's
+     `unverified` rows, treat the entire resource as a cache miss
+     (`"unpriced_heroku"`, falls to rung 4) per the normal rule. An
+     Advanced-tier addon with no `advanced_pools` at all is also a cache miss
+     (`"unpriced_heroku"`) — whether because it was discovered only via
+     Terraform (no equivalent to `data:pg:info`'s pool breakdown), or because
+     live discovery ran but the capture failed, was skipped, or produced
+     malformed pool data (in which case `tier` is absent too, matching the
+     reviewer's exact failure-shape record). The same `"advanced"` plan
+     string already covers Advanced databases in Private and Shield Spaces —
+     there is no separate `private-advanced`/`shield-advanced` SKU, so this
+     identity check needs no network-variant additions. When any
+     Advanced-tier resource was priced this way, append its full-month
+     assumption (cache rule 9) to `baseline_note`.
 
 4. **User-provided** — If neither live prices nor the pricing cache match any resource (unlikely with Terraform or live discovery), ask: "I need your current Heroku monthly spend to produce a meaningful cost comparison. What is your approximate Heroku monthly cost?" Use the answer.
    - Set `current_costs.source: "user_provided"`
@@ -96,6 +153,36 @@ Whenever a baseline was determined (any source except `"unavailable"`), present 
 - Total monthly cost, with its source and accuracy stated plainly (invoice data vs actual plan prices vs rate card vs user estimate)
 - Per-app breakdown (dyno, add-on, platform charges)
 - Billing period (billing-data source only) or `baseline_note` (derived sources)
+
+---
+
+## Part 1b: Flag Deferred-Resource Cost (apples-to-apples check)
+
+Design defers any resource it cannot map to an AWS service (`aws-design.json
+→ deferred[]`) — most commonly a Heroku Postgres Advanced add-on, whose
+`plan: "advanced"` has no row in `postgres-rds-sizing.json`. Part 1 above
+still prices that resource's Heroku-side cost (via the pool-sum formula, e.g.
+4× `4G-Performance` = $600/mo) and includes it in the Heroku baseline total
+— correctly, since it is a real Heroku charge. But Part 2 below only prices
+services Design actually produced, which is nothing for a deferred resource.
+Left unflagged, that Heroku-side cost reads as pure AWS savings with no
+corresponding AWS line.
+
+After the Heroku baseline total is computed (any rung except
+`"unavailable"`), read `aws-design.json → deferred[]`. For every deferred
+entry carrying a `resource_id`, check whether that `resource_id` was included
+in the baseline sum (i.e. it was priced, not marked `"unpriced_heroku"`).
+
+- Sum those contributions into `current_costs.deferred_resource_cost` (number,
+  default `0`).
+- List the matching add-on names into
+  `current_costs.deferred_resource_services[]` (array of strings, default
+  `[]`), each formatted like
+  `"heroku-postgresql (postgresql-cubed-12345, Advanced tier)"`.
+- When `deferred_resource_cost > 0`, append to `baseline_note`: "Includes
+  $`{N}`/mo for `{service}` which has no AWS-side equivalent in this estimate
+  (deferred — see Design phase warnings); the AWS comparison below is not a
+  full apples-to-apples total until that is resolved."
 
 ---
 
@@ -291,9 +378,27 @@ Include in `estimation-infra.json`:
     "monthly_difference": "<optimized - heroku>",
     "annual_difference": "<(optimized - heroku) × 12>",
     "percent_change": "<+/-X%>"
-  }
+  },
+  "comparison_status": "complete" | "incomplete_unmatched_services",
+  "unmatched_deferred_cost": "<current_costs.deferred_resource_cost>",
+  "unmatched_deferred_services": "<current_costs.deferred_resource_services[]>"
 }
 ```
+
+Set `comparison_status` to `"incomplete_unmatched_services"` whenever
+`current_costs.deferred_resource_cost > 0` (from Part 1b); else `"complete"`.
+This mirrors the existing `found`/`available`-style status flag convention
+already used in `billing_profile` / `terraform_metadata` / `live_metadata`.
+
+**Keep the full baseline — do not subtract or hide the deferred resource's
+cost.** When `comparison_status == "incomplete_unmatched_services"`, every
+presentation of the savings/difference figures (chat summary,
+`financial_summary`, `migration-report.html`/`decision-report.html`
+`exec-costs`) MUST render a caveat naming the unmatched service and its
+monthly cost next to the figure — the same mandatory-caveat-beside-the-figure
+rule already required for `baseline_note` in `generate-report.md`. Never
+present the dollar delta as decision-grade savings without that caveat
+alongside it.
 
 ### When NO Baseline Was Determined (`current_costs.source == "unavailable"`)
 
@@ -608,6 +713,7 @@ Include migrate/stay decision factors:
 | 3 | `database_ha` or availability posture resolved by default/plan-tier, never user-confirmed        | "Confirm the availability requirement — Multi-AZ roughly doubles the database line" |
 | 4 | `migration_approach` defaulted while the stack has Postgres over ~100GB or zero-downtime signals | "Confirm cutover approach — pg_dump default may not fit this database"              |
 | 5 | Pricing staleness beyond the vendored rate card's accuracy band                                  | "Refresh pricing before treating the dollar delta as decision-grade"                |
+| 6 | `cost_comparison.comparison_status == "incomplete_unmatched_services"`                           | "Account for $[unmatched_deferred_cost]/mo in [unmatched_deferred_services] before treating this AWS estimate as a full replacement of your current Heroku spend." |
 
 **Outcome derivation:**
 

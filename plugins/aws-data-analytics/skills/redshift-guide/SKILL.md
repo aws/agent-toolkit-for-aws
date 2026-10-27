@@ -1,8 +1,8 @@
 ---
 name: redshift-guide
-description: "Amazon Redshift is NOT PostgreSQL — corrects PostgreSQL-derived LLM mistakes; covers Redshift-specific SQL, DDL, COPY/UNLOAD, system views, metadata discovery, and operational patterns. Applies ONLY when the task is about Redshift itself (cluster, Serverless workgroup, or Redshift SQL). Pushes back on: CREATE INDEX, string_agg, pg_catalog, text type, SERIAL, stl_query, LATERAL, RETURNING. Triggers on: Redshift SQL, Redshift CREATE TABLE, Redshift COPY/UNLOAD, slow Redshift query, Redshift permission denied, Redshift disk full, Redshift system views, QUALIFY, PIVOT, MERGE, Redshift Data API, Redshift WLM, concurrency scaling, Redshift resize, Redshift Spectrum external tables. Does NOT apply to (defer to that service's own skill): Amazon S3 storage/bucket policies, Athena or Glue queries/catalogs, data-lake or Iceberg work outside Redshift, Aurora, RDS, or DynamoDB — but S3/Glue ARE in scope for Redshift COPY, UNLOAD, or data-lake queries (external schemas/tables on S3)."
+description: "Amazon Redshift is NOT PostgreSQL; corrects LLM mistakes; covers SQL, metadata, connectivity/auth, storage, query performance, and operations. Applies ONLY to Redshift (provisioned or Serverless). Pushes back on: CREATE INDEX, string_agg, pg_catalog, text type, SERIAL, stl_query. Triggers on: Redshift SQL, Redshift CREATE TABLE, Redshift COPY/UNLOAD, slow or suddenly slow Redshift query, EXPLAIN plan, queue wait, stale statistics/ANALYZE, result cache, Redshift permission denied, Redshift disk full, storage growth, snapshot/backup cost, ghost rows/bloat, VACUUM, spill to disk, distribution skew, Redshift system views, QUALIFY, PIVOT, MERGE, materialized views, Redshift Data API (Python/boto3), Redshift workload management (WLM), concurrency scaling, Redshift resize, Spectrum, awsdatacatalog, connection failures (SSL/TLS, ODBC/JDBC, connection limit), IAM/SAML federation, IAM Identity Center, datashares. Does NOT apply to: S3 policies, Athena, Glue/Iceberg outside Redshift, Aurora, RDS, DynamoDB."
 metadata:
-  version: "1"
+  version: "2"
 ---
 
 # Amazon Redshift Guide
@@ -17,7 +17,7 @@ becomes VARCHAR(256)), and comparison semantics (trailing blanks, unenforced con
 divergence and verify against the reference below — do not answer from PostgreSQL habit.**
 Common PostgreSQL→Redshift divergences are in `references/redshift-sql-syntax.md`.
 
-**Works best with** the [AWS MCP server](https://docs.aws.amazon.com/aws-mcp/) — it runs the
+**Works best with** the [AWS MCP server](https://docs.aws.amazon.com/agent-toolkit/) — it runs the
 AWS CLI and Redshift Data API calls below in a sandboxed, audit-logged environment. All
 guidance here is plain AWS CLI and SQL and works without it.
 
@@ -34,8 +34,8 @@ does not identify it.
 
 | Target | System Views | Credentials API |
 |---|---|---|
-| **Provisioned** | `SYS_`, all `SVV_` + `STL_`, `STV_`, `SVL_`, `SVCS_` (single-AZ only — disabled on Multi-AZ) | `redshift:GetClusterCredentials` |
-| **Serverless** | `SYS_` + a subset of `SVV_` ONLY (no `STL`/`STV`/`SVL`/`SVCS`) | `redshift-serverless:GetCredentials` |
+| **Provisioned** | SYS_, all SVV_ + STL_, STV_, SVL_, SVCS_ (single-AZ only — disabled on Multi-AZ) | `redshift:GetClusterCredentials` |
+| **Serverless** | `SYS_` + a subset of `SVV_` ONLY (no STL/STV/SVL/SVCS) | `redshift-serverless:GetCredentials` |
 
 ## Critical Facts
 
@@ -49,14 +49,16 @@ does not identify it.
 - **`SUBSTR()` is leader-node-only** — works on literals but errors on table columns (`SUBSTR() function is not supported (Hint: use SUBSTRING instead)`). Use `SUBSTRING()` on columns.
 - **UNIQUE / PRIMARY KEY / FOREIGN KEY are informational only** — NOT enforced (duplicate rows are accepted with no error). Optimizer hints; enforce integrity in the application or via MERGE. `NOT NULL` IS enforced.
 - **`SHOW VIEW <schema.name>`** returns the definition of a regular view, materialized view, or late-binding view. MV freshness: `SVV_MV_INFO` (`is_stale`).
+- **No `FILTER (WHERE ...)` on aggregates** — PostgreSQL-only, Redshift rejects it. Write `COUNT(CASE WHEN cond THEN 1 END)` / `SUM(CASE WHEN cond THEN x END)` instead. This applies to every query you emit, including ones you derive from a reference example.
 - **`TOP N` and `LIMIT N` both work** (`TOP N PERCENT` does not). A `text` column becomes `VARCHAR(256)` — use `VARCHAR(max)` or explicit length.
 - **Iceberg tables use `CREATE TABLE ... USING ICEBERG`** (not `STORED AS ICEBERG`, not `TABLE_FORMAT=ICEBERG`).
 - **Datashares support read and write operations** — consumers can write once the producer grants write privileges. Treat "permission denied" on a datashare write as a **missing grant**, not an unsupported operation. → **Load `references/redshift-sql-metadata.md` for requirements and limits.**
+- **Storage: attribute before you remediate, and never reflex-VACUUM.** Disk-full is usually NOT data growth — rule out transient query **spill** (temp blocks) and per-node/slice **skew** first, because the cluster average hides a single full node. On RA3/Serverless a high local reading is **cache**, not out-of-space, and free managed storage does not prevent a node-local Disk Full. `SVV_TABLE_INFO.unsorted` alone is misleading — gate sorting on `vacuum_sort_benefit`. **"Storage is growing / what is driving it" is a different question from "storage is high"**: it needs a trend over months (CloudWatch, not a point-in-time view), per-table attribution is always partial, and the per-table sum is never the cluster total. → **Load `references/redshift-storage-utilization.md` to attribute space, then `references/redshift-storage-remediation.md` to act.**
 
 ## Safety Guardrails
 
 **BLOCK:** DROP DATABASE, DELETE without WHERE, publicly-accessible=true, GRANT ALL ON ALL
-**WARN then confirm:** RESIZE, RESTORE, VACUUM on large tables, ALTER PASSWORD, WLM config change
+**WARN then confirm:** RESIZE, RESTORE, VACUUM on large tables, ALTER PASSWORD, WLM config change, TRUNCATE / DROP TABLE — **`TRUNCATE` forces an implicit COMMIT and cannot be rolled back** (it also commits other pending work in the same transaction), so name the target table and say the rows are unrecoverable before proceeding; treat it as routine only on temp/staging tables the user has already called disposable
 **Confirm:** CREATE, GRANT specific, COPY, UNLOAD
 
 ## Security Considerations
@@ -91,7 +93,7 @@ are in the reference files noted.
   echo fragments of rejected rows, so treat statement IDs and load-error output as
   sensitive.
 - **Further reading:**
-  [Security in Amazon Redshift](https://docs.aws.amazon.com/redshift/latest/dg/db-security.html)
+  [Security in Amazon Redshift](https://docs.aws.amazon.com/redshift/latest/dg/c_security-overview.html)
   for the full guidance behind these defaults.
 
 ## Routing Table
@@ -110,6 +112,11 @@ unless the question already says which one, in which case use that and do not re
 | "how do I write SQL", "PostgreSQL vs Redshift", "which SQL reference", general dialect question | `references/redshift-sql-syntax.md` (index of the 6 SQL references + PostgreSQL-vs-Redshift failure table) |
 | "COPY failed", "load error", "Data API poll", "async query", "Data API throttle" | `references/redshift-sql-recipes-load-api.md` |
 | "materialized view", "MV refresh", "AUTO REFRESH", "stale view" | `references/redshift-sql-materialized-views.md` |
+| "disk full" / error 1016 / 34507, "PercentageDiskSpaceUsed", "storage grew", "what's consuming space", "ghost rows", "tombstone", "spill to disk", "managed storage vs local SSD", "datashare cache", "one node full / storage skew", "Serverless storage inflation", "what is driving the storage increase" / "storage keeps climbing" / "grew N% per month" / "which tables are growing" / "is vacuum missing" — a growth-over-time question, answered by the *"Is it growing, and what is driving it?"* section: split it into four (is it really that full, is it vacuum debt, how much would VACUUM return, what is driving the trend), trend from CloudWatch over months, per-table attribution from `SYS_VACUUM_HISTORY`, and state plainly what cannot be attributed from customer-side views, any snapshot / backup / recovery-point billing or cost question — including "AWS Backup", "cross-region snapshot copy", "backup billed at full size", "why is snapshot storage this expensive", "incremental so it should be cheaper" (answer from the per-type × per-platform matrix in S16, never from AWS Backup's own incremental-copy documentation, which describes AWS Backup's behavior and not Redshift's manual-snapshot metering), "cluster unavailable / stuck after hitting 100% storage" (confirm the fill first — `PercentageDiskSpaceUsed` in CloudWatch, since the SQL views are unreachable while the cluster is down, and rule out the non-storage causes before assuming disk) — attribute the space first | `references/redshift-storage-utilization.md` |
+| "VACUUM won't finish / times out", "which VACUUM mode — DELETE ONLY / SORT ONLY / FULL / RECLUSTER", "vacuum_sort_benefit", "unsorted", "reclaim space", "deep copy", "auto-vacuum CPU", "distribution key skew", "recovering a cluster stuck or unavailable at ~100% storage — headroom plus escalation", "resize failed and stuck in canceling-resize" — take action | `references/redshift-storage-remediation.md` |
+| "slow Redshift query", "query was fast now slow", "why is my query slow", "query performance", "time decomposition", "queue vs execution time", "planning/compile time", "result cache hit / false fast", "EXPLAIN plan", "DS_BCAST_INNER / broadcast / nested loop / merge join", "stale statistics / ANALYZE / bad row estimate", "function on join key / plan flip", "distribution skew / skew_rows / one slice", "did the query change / query hash", "row multiplication / join fan-out / DISTINCT slow", "sys_query_history / sys_query_detail" | `references/redshift-sql-query-performance.md` |
+| "ready-to-run performance query", "which SQL to run", "diagnostic queries", "execution step / skew / spill", "plan diff between runs", "svv_table_info table health", "auto-analyze / auto-vacuum history", "lock wait / transaction history" | `references/redshift-sql-query-performance-queries.md` |
+| "connection timed out/refused", "SSO/federated login fails", "Response signature invalid", "assumeRoleWithSAML", "RedshiftDbUser principal tag", "sts:TagSession AccessDenied", "IAM Identity Center region", "connection limit exceeded", "ODBC/JDBC driver", "ODBC 1.x EOL/CVE", "SSL error/certificate verify failed", "permission denied to query database created from datashare", "SYSLOG ACCESS/system-table row visibility", "GetClusterCredentials AccessDenied" | `references/redshift-auth-authorization.md` |
 | General Redshift question not matching above | Answer directly from general knowledge |
 | Aurora, RDS, DynamoDB, Athena (non-Redshift) | **REFUSE.** State this skill is for Amazon Redshift only. Do not provide guidance for other database services. |
 

@@ -16,7 +16,7 @@ which runs independently and can accompany infra or billing). The route(s) prese
 decide scope and basis: infra/billing alone -> INFRA_ONLY; a base route + AI -> FULL
 (the two figures summed). A standalone AI-only run is deferred — the contract only
 accepts AI_ONLY with sourcePlatform OPENAI, and the LLM-to-Bedrock path persists no
-cost file, so a GCP AI-only run has no valid mapping yet.
+cost file, so a GCP or Azure AI-only run has no valid mapping yet.
 
 Usage:
   python3 scripts/emit-plan-json.py --migration-dir <dir>
@@ -66,6 +66,12 @@ _UUID_RE = re.compile(
 # sourcePlatform. Not generated data: each skill records its own id at _init and
 # never changes it. LLM_TO_BEDROCK (OpenAI) is intentionally absent — it has no
 # persisted cost artifact to copy, so it is a follow-up.
+# AZURE_TO_AWS is intentionally absent: the import contract's accepted sourcePlatform
+# values are not confirmed to include AZURE (see PR #435 review, databaseId
+# 4240400316). Re-add once the web consumer confirms AZURE support; the AZURE
+# mapping stays elsewhere in this file (PLATFORM_SOURCE_FIELD,
+# VALID_SCOPES_BY_PLATFORM) so turning it back on is a one-line change, not a
+# rewrite.
 SKILL_TO_PLATFORM = {
     "GCP_TO_AWS": "GCP",
     "HEROKU_TO_AWS": "HEROKU",
@@ -88,12 +94,14 @@ _ORPHAN_TEMP_AGE_S = 3600
 
 # Where each platform's source-monthly baseline lives in its infra estimate, as
 # (container, field). The location differs by skill: GCP writes current_costs.gcp_monthly;
-# Heroku writes its baseline under cost_comparison.heroku_monthly_baseline (its
-# current_costs holds only source/accuracy metadata, not a number). Reading only the
-# platform's own field keeps an unrelated number from being copied by accident.
+# Azure writes current_costs.azure_monthly; Heroku writes its baseline under
+# cost_comparison.heroku_monthly_baseline (its current_costs holds only source/accuracy
+# metadata, not a number). Reading only the platform's own field keeps an unrelated
+# number from being copied by accident.
 PLATFORM_SOURCE_FIELD = {
     "GCP": ("current_costs", "gcp_monthly"),
     "HEROKU": ("cost_comparison", "heroku_monthly_baseline"),
+    "AZURE": ("current_costs", "azure_monthly"),
 }
 
 # The plugin's pricing_source.status values -> the web contract's pricingSource enum.
@@ -114,6 +122,7 @@ PRICING_SOURCE_MAP = {
 VALID_SCOPES_BY_PLATFORM = {
     "GCP": {"INFRA_ONLY", "FULL"},
     "HEROKU": {"INFRA_ONLY"},
+    "AZURE": {"INFRA_ONLY", "FULL"},
     "OPENAI": {"AI_ONLY"},
 }
 
@@ -174,16 +183,30 @@ def _pricing_source(raw: object) -> str | None:
     return PRICING_SOURCE_MAP.get(status)
 
 
+# Anchors on a SIGN-PREFIXED percentage band ("±5-10%", "+/-30%") so a bare composition
+# share elsewhere in the string ("the RDS line — 59% of the priced total") can never be
+# mistaken for an overall accuracy band — only a declared +/-/± figure is one. A
+# sign-prefixed match immediately followed by a scoping preposition ("on the ...",
+# "of the ...", "for the ...") is a per-line/component figure, not the run's overall
+# band (e.g. "+/-35% on the observability heuristic" scopes to one line), so it is
+# excluded by the negative lookahead rather than accepted as the overall accuracy.
+_ACCURACY_RE = re.compile(
+    r"(?:±|\+/-)\s*(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?))?\s*%(?!\s*(?:on|of|for)\s+the\b)"
+)
+
+
 def _accuracy(data: dict) -> dict | None:
     """The cost.accuracy object for a route, or None if not derivable. Parses the
-    `accuracy_confidence` band string (e.g. "±5-10%", "±30%") into integer
-    minPercent/maxPercent and maps the route's pricing_source to pricingSource."""
+    `accuracy_confidence` band string for an EXPLICITLY DECLARED overall accuracy band
+    (sign-prefixed, e.g. "±5-10%", "+/-30%", and not scoped to a sub-component) into
+    integer minPercent/maxPercent and maps the route's pricing_source to pricingSource.
+    A string with no such band (e.g. one that states only a per-line composition share
+    or a component-scoped figure, never an overall band) yields None — accuracy is
+    omitted rather than misreporting an unrelated number as the overall accuracy."""
     text = data.get("accuracy_confidence")
     if not isinstance(text, str):
         return None
-    # Anchor on the "%" band ("±5-10%", "±30%") so a stray number elsewhere in the
-    # string can't be mistaken for a percentage.
-    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?))?\s*%", text)
+    match = next(_ACCURACY_RE.finditer(text), None)
     if match is None:
         return None
     low = round(float(match.group(1)))
@@ -222,12 +245,23 @@ def _source_monthly(data: dict, source_platform: str) -> float | None:
     """The infra estimate's monthly source-platform baseline, or None. Reads ONLY the
     platform's own field (see PLATFORM_SOURCE_FIELD) — the baseline may be absent (no
     billing access), in which case sourceMonthly is omitted, and honoring one field
-    keeps an unrelated number from being copied by accident."""
+    keeps an unrelated number from being copied by accident.
+
+    sourceMonthly is a USD-only field in the web contract (GCP's gcp_monthly and
+    Heroku's heroku_monthly_baseline carry no currency concept at all). Azure's
+    current_costs is the first producer that can carry an explicit non-USD currency
+    (defaulting to USD only when the user never stated one), so when it is
+    explicitly non-USD the figure is omitted rather than copied as if it were USD —
+    unless a validated USD-converted amount is separately available (none exists
+    today). GCP/Heroku are unaffected: their container never has a `currency` key."""
     location = PLATFORM_SOURCE_FIELD.get(source_platform)
     if location is None:
         return None
     container = data.get(location[0])
     if not isinstance(container, dict):
+        return None
+    currency = container.get("currency")
+    if isinstance(currency, str) and currency.strip().upper() not in ("", "USD"):
         return None
     value = container.get(location[1])
     return value if _is_usable_amount(value) else None
@@ -238,11 +272,14 @@ def _service_items(projected: object) -> list[dict]:
 
     The breakdown is keyed by service, and its shape varies across skills and rows.
     An entry is either a bare monthly number, or an object carrying the figure under
-    `monthly` (GCP core services) or `mid` (observability / Heroku scenarios) plus an
-    optional `service` display label; the key is the fallback display name. Nested
+    `monthly` (GCP core services), `mid` (observability / Heroku scenarios), or
+    `right_sized_monthly` (Azure) plus an optional `service` (GCP/Heroku) or
+    `aws_service` (Azure) display label; the key is the fallback display name. Nested
     `alternative`/`components`/sub-cost objects are ignored — only the entry's own
-    figure is read. The "total" rollup row, any entry with no usable amount, and any
-    name over the contract length are skipped; GCP runs may carry an empty breakdown.
+    figure is read. The "total" rollup row, any entry marked `excluded_from_total` or
+    carrying an `exclusion_reason` (Azure's no-rate/no-quantity/partial-rate lines),
+    any entry with no usable amount, and any name over the contract length are
+    skipped; GCP runs may carry an empty breakdown.
 
     classification is INFRASTRUCTURE — every row in an infra/billing breakdown is an
     infrastructure service; the single AI line for a combined run is added by the
@@ -264,15 +301,25 @@ def _service_items(projected: object) -> list[dict]:
             # Bare-number form: {"compute": 75}.
             name, monthly = key, entry
         elif isinstance(entry, dict):
-            # Object form: the figure is under `monthly` (GCP) or `mid`
-            # (observability/Heroku) — one key per row. Take the first PRESENT key and
-            # validate that one; don't substitute the other when the primary figure is
-            # present but out of range, which would misreport a different number.
-            raw = next((entry[k] for k in ("monthly", "mid") if k in entry), None)
+            # Azure marks a row excluded with `excluded_from_total` and/or
+            # `exclusion_reason` (no_rate / no_quantity / partial_rate) — skip it
+            # before reading any figure, so a null `right_sized_monthly` (the
+            # no-rate/no-quantity rows) never reaches the amount check, and an
+            # excluded-but-priced floor (a Windows-licensing row carrying a real
+            # number) is dropped too.
+            if entry.get("excluded_from_total") is True or entry.get("exclusion_reason"):
+                continue
+            # Object form: the figure is under `monthly` (GCP), `mid`
+            # (observability/Heroku), or `right_sized_monthly` (Azure) — one key per
+            # row. Take the first PRESENT key and validate that one; don't substitute
+            # another when the primary figure is present but out of range, which would
+            # misreport a different number. `right_sized_monthly` is last so GCP/Heroku
+            # behavior is unaffected when `monthly`/`mid` are present.
+            raw = next((entry[k] for k in ("monthly", "mid", "right_sized_monthly") if k in entry), None)
             if not _is_usable_amount(raw):
                 continue
             monthly = raw
-            label = entry.get("service")
+            label = entry.get("service") or entry.get("aws_service")
             name = label if isinstance(label, str) and label.strip() else key
         else:
             continue
@@ -441,10 +488,10 @@ def build_plan(migration_dir: Path, plugin_json_path: Path) -> tuple[dict, str, 
             base_items,
         )
     else:
-        # AI-only. sourcePlatform here is GCP/HEROKU, but the contract only accepts
-        # AI_ONLY with sourcePlatform OPENAI (and the LLM-to-Bedrock path persists no
-        # cost file), so a GCP AI-only run has no valid mapping yet — defer rather than
-        # emit a plan the import would reject.
+        # AI-only. sourcePlatform here is GCP/HEROKU/AZURE, but the contract only
+        # accepts AI_ONLY with sourcePlatform OPENAI (and the LLM-to-Bedrock path
+        # persists no cost file), so a GCP or Azure AI-only run has no valid mapping
+        # yet — defer rather than emit a plan the import would reject.
         raise SkipEmit("AI-only run has no valid web mapping yet (deferred)")
 
     # Never emit a (platform, scope) the import handler rejects (e.g. HEROKU must be

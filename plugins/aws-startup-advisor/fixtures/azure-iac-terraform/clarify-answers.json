@@ -7,10 +7,10 @@
     "design_constraints.vm_cutover": "mgn",
     "design_constraints.compliance": null,
     "data.availability": "single-az",
-    "data.db_cutover": "dms",
     "licensing.windows_model": "license_included",
     "baseline.azure_monthly_spend": null
   },
   "_availability_answer_why": "single-az is answered DELIBERATELY against a ZoneRedundant source, so the golden must carry the availability_downgrade_from_source finding. Answering multi-az would hide the one case where the skill has to say something uncomfortable out loud.",
-  "_spend_answer_why": "null models a user who declines to say. The row stays ESSENTIAL and unanswered, which must BLOCK the phase \u2014 an ESSENTIAL row with a null value IS the completion gate, and a run that completes anyway has invented consent."
+  "_spend_answer_why": "null models a user who declines to say. The row stays ESSENTIAL and unanswered, which must BLOCK the phase \u2014 an ESSENTIAL row with a null value IS the completion gate, and a run that completes anyway has invented consent.",
+  "_db_cutover_why": "Not in essential_answers any more: db_cutover is PROPOSED-and-deferred (clarify-database.md Q-D2). The scripted sheet_response 'looks right' accepts its size-derived default; the real answer is given at the Decision gate's Step 3b, which this scripted Clarify does not reach."
 }

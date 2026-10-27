@@ -1,7 +1,7 @@
 # Heroku Pricing Cache
 
-**Last updated:** 2026-07-19 (dyno rates re-verified against devcenter.heroku.com/articles/dyno-types — Eco $5 flat, Basic $7, Standard-1X $25, Standard-2X $50, Performance-M $250, Performance-L/L-RAM $500 all unchanged; no rate changes this refresh)
-**Source:** https://elements.heroku.com/addons/heroku-postgresql, https://elements.heroku.com/addons/heroku-redis, https://elements.heroku.com/addons/heroku-kafka, https://devcenter.heroku.com/articles/dyno-sizes
+**Last updated:** 2026-10-05 (dyno rates re-verified against devcenter.heroku.com/articles/dyno-sizes and heroku.com/pricing — Eco $5 flat, Basic $7, Standard-1X $25, Standard-2X $50, Performance-M $250, Performance-L/L-RAM $500 all unchanged; no rate changes this refresh); 2026-10-11 added Heroku Postgres Advanced Tier compute-month rates and storage-overage rate (4G/8G/16G/32G-Performance confirmed; 64G-1536G-Performance marked `unverified` — see Advanced Tier section); 2026-10-11 extended live discovery to capture `data:pg:info` pool breakdown so this cache can price every pool/instance of a live-discovered Advanced addon (see Usage Rule 9)
+**Source:** https://elements.heroku.com/addons/heroku-postgresql, https://elements.heroku.com/addons/heroku-redis, https://elements.heroku.com/addons/heroku-kafka, https://devcenter.heroku.com/articles/dyno-sizes, https://devcenter.heroku.com/articles/postgres-advanced-usage-billing, https://devcenter.heroku.com/articles/heroku-postgres-plans, https://devcenter.heroku.com/articles/provisioning-postgres-advanced, https://www.heroku.com/blog/new-era-managed-databases-announcing-heroku-postgres-advanced/
 **Currency:** USD
 **Accuracy:** ±5% for dynos (published flat rates); ±10% for data services (Elements "Max of" pricing, actual may vary by usage pattern)
 
@@ -114,6 +114,63 @@ Shield-tier pricing matches Premium-tier pricing. The Shield Space base fee is c
 | shield-5 | 2500    | 61 GB  | 1 TB    | 500         |
 | shield-6 | 3500    | 122 GB | 1.5 TB  | 500         |
 | shield-7 | 6000    | 244 GB | 2 TB    | 500         |
+
+### Advanced Tier
+
+**NOT a flat monthly plan fee.** Heroku Postgres Advanced bills compute by the
+**compute-month**, prorated to the second (`compute_cost = rate_per_compute_month
+× (seconds_instance_existed / seconds_in_30_day_month)`). On Heroku's own
+platform, each instance pool (leader, plus up to 5 follower pools, 1-13
+instances per pool) is priced independently at its own level, and a
+high-availability leader's standby is a second full-rate instance of the same
+level (effectively doubles that pool's compute cost). See Usage Rules below
+for the full-month assumption this cache uses when deriving an estimate
+(Discover does not capture partial-month usage).
+
+**Known limitation (narrowed to Terraform-only discovery):** live discovery now
+captures `heroku data:pg:info` output and parses it into
+`schema-discover-heroku.md`'s `addon.config.advanced_pools[]` — one entry per
+instance pool (leader, plus every follower pool) carrying that pool's `level`,
+`instance_count` (already includes the HA standby when present), and `ha` flag.
+This cache's formula therefore prices **every pool and every instance** for a
+live-discovered Advanced addon, not just one instance at the discovered level.
+The remaining gap is narrower: an Advanced-tier database discovered **only via
+Terraform** (no live capture ran, or `data:pg:info` for that app wasn't `ok`) has
+no `advanced_pools` to price from at all — Terraform's `heroku_addon` resource
+has no equivalent to `data:pg:info`'s pool breakdown — and that case falls
+through to `"unpriced_heroku"`, exactly like an unmatched Classic plan.
+
+Source: https://devcenter.heroku.com/articles/postgres-advanced-usage-billing, https://devcenter.heroku.com/articles/heroku-postgres-plans, https://devcenter.heroku.com/articles/provisioning-postgres-advanced, accessed 2026-10-11 (pages last updated October 06, 2026)
+
+| Plan Level (`--level`) | vCPU | RAM     | $/compute-month |
+| ----------------------- | ---- | ------- | ---------------- |
+| 4G-Performance           | 2    | 4 GB    | 150               |
+| 8G-Performance           | 2    | 8 GB    | 300               |
+| 16G-Performance          | 2    | 16 GB   | 500               |
+| 32G-Performance          | 4    | 32 GB   | 900               |
+| 64G-Performance          | 8    | 64 GB   | unverified        |
+| 128G-Performance         | 16   | 128 GB  | unverified        |
+| 256G-Performance         | 32   | 256 GB  | unverified        |
+| 384G-Performance         | 48   | 384 GB  | unverified        |
+| 512G-Performance         | 64   | 512 GB  | unverified        |
+| 768G-Performance         | 96   | 768 GB  | unverified        |
+| 1536G-Performance        | 192  | 1536 GB | unverified        |
+
+> Rates marked "unverified" could not be confirmed from Heroku's public
+> documentation as of 2026-10-11 (the Elements Marketplace calculator renders
+> them via JavaScript, not in the static page). Do not price these levels from
+> this cache — mark the resource `"unpriced_heroku"` and fall through to rung 4
+> (ask the user) exactly as the existing fallback rule does for any other cache
+> miss.
+
+**Storage overage:** 100 GB-month included per cluster (not per pool), prorated
+for partial months the database existed. Overage beyond the included amount is
+billed at **$0.20 per GB-month**:
+`storage_cost = max(0, data_size_gb - 100) × 0.20`, using the addon's
+live-enrichment `data_size_gb` field (`schema-discover-heroku.md`) as the
+point-in-time stand-in for Heroku's own month-averaged storage figure (Discover
+does not capture a month-averaged value, so this cache uses the latest captured
+snapshot instead).
 
 ### Deprecated Plans (Aliases)
 
@@ -249,3 +306,4 @@ These are estimates for popular fast-path add-ons. When billing data is availabl
 6. **Accuracy band:** ±5% for dynos, ±10% for data services
 7. **Not found:** If a plan is not in this cache, mark as `"unpriced_heroku"` and exclude from Heroku total. Add to warnings.
 8. **Deprecated plans:** Map `hobby-dev` → essential-0, `hobby-basic` → essential-1 for pricing lookup.
+9. **Heroku Postgres Advanced (compute-month formula, not a flat lookup):** Gate this rule on identity, not capture success: `config.addon_service == "heroku-postgresql"` AND `config.plan` (case-insensitive) `== "advanced"` — this matches regardless of whether `tier` is present, so a failed, skipped, or malformed `data:pg:info` capture (no `tier` key at all) still routes here instead of falling through to the flat plan-lookup rules above. The same `"advanced"` plan string covers Advanced databases in Private and Shield Spaces too — there is no separate `private-advanced`/`shield-advanced` SKU, so no network-variant additions are needed to this gate. Once the identity matches, `tier == "advanced"` and a non-empty `config.advanced_pools[]` (with no `unverified` level) are required to apply the compute-month math below — see `schema-discover-heroku.md`; compute cost as the sum of `rate[pool.level] × pool.instance_count` over every entry in `config.advanced_pools[]` (the leader pool plus every captured follower pool; `instance_count` already includes the HA standby when `pool.ha` is `true`, so do not multiply by `ha` on top of `instance_count` — that would double-count), assuming each pool runs a full compute-month (Discover does not capture partial-month usage, so this cache does not attempt to prorate). Add storage overage once per addon (not per pool): `max(0, data_size_gb - 100) × 0.20` using the addon's live-enrichment `data_size_gb` field (`schema-discover-heroku.md`); if `data_size_gb` is absent, price compute only and add a warning that storage overage was not estimated. If **any** pool's `level` matches an `unverified` row, treat the **entire resource** as a cache miss (`"unpriced_heroku"`, rung 4 fallback) per rule 7 — partially pricing only the confirmed pools would misrepresent the total. An Advanced-tier addon with no `advanced_pools` at all is also a cache miss (`"unpriced_heroku"`) — whether because it was discovered only via Terraform (which has no equivalent to `data:pg:info`'s pool breakdown), or because live discovery ran but the capture failed, was skipped, or produced malformed pool data (in which case `tier` is absent too). Attach this caveat to `baseline_note`: "Heroku Postgres Advanced is billed by the compute-month and prorated to the second; this estimate assumes every captured pool runs the full month. Actual billing will also differ if an instance pool is created, resized, or destroyed partway through a billing period."

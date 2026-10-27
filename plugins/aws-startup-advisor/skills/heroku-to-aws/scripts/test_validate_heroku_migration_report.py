@@ -119,6 +119,252 @@ def test_verdict_headline_not_required_without_recommendation() -> None:
     assert "REPORT_OK" in out
 
 
+def test_would_flip_required_when_artifact_has_it() -> None:
+    html = GOOD.replace(
+        '<p class="verdict-headline">Go, with conditions</p>',
+        '<p class="verdict-headline">Go, with conditions</p>'
+        "<h3>What would flip this</h3><ul><li>A published rate above the Heroku bill.</li></ul>",
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "estimation-infra.json").write_text(
+            json.dumps(
+                {
+                    "recommendation": {
+                        "outcome": "go_conditional",
+                        "would_flip_if": ["A published rate above the Heroku bill."],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        missing, out = run(GOOD, migration_dir=d)
+        present, ok = run(html, migration_dir=d)
+    assert missing == 1, out
+    assert "would_flip" in out
+    assert present == 0, ok
+
+
+VERDICT = '<p class="verdict-headline">Go, with conditions</p>'
+FLIPS = ["A published rate above the Heroku bill.", "Dyno count doubles before cutover."]
+FLIP_ITEMS = "".join(f"<li>{flip}</li>" for flip in FLIPS)
+
+
+def _run_with_flips(html: str) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "estimation-infra.json").write_text(
+            json.dumps(
+                {"recommendation": {"outcome": "go_conditional", "would_flip_if": FLIPS}}
+            ),
+            encoding="utf-8",
+        )
+        return run(html, migration_dir=d)
+
+
+def test_would_flip_heading_accepts_equivalent_visible_spellings() -> None:
+    # Line breaks, &nbsp; entities and inline markup inside the heading all read
+    # as "What would flip this" to the reader and must match.
+    for heading in (
+        "<h3>What would flip this</h3>",
+        "<h3>What\nwould\nflip this</h3>",
+        "<h3>What&nbsp;would&nbsp;flip this</h3>",
+        "<h3>What <em>would</em> flip this</h3>",
+    ):
+        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + heading + f"<ul>{FLIP_ITEMS}</ul>"))
+        assert code == 0, (heading, out)
+
+
+def test_would_flip_heading_in_comment_or_template_fails() -> None:
+    for inert in (
+        "<!-- What would flip this -->",
+        "<template><h3>What would flip this</h3></template>",
+    ):
+        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + inert + f"<ul>{FLIP_ITEMS}</ul>"))
+        assert code == 1, (inert, out)
+        assert "would_flip" in out
+
+
+def test_would_flip_empty_list_fails() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(VERDICT, VERDICT + "<h3>What would flip this</h3><ul></ul>")
+    )
+    assert code == 1, out
+    assert "0 of 2" in out, out
+
+
+def test_would_flip_partial_list_fails() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(VERDICT, VERDICT + f"<h3>What would flip this</h3><ul><li>{FLIPS[0]}</li></ul>")
+    )
+    assert code == 1, out
+    assert "1 of 2" in out and "Dyno count" in out, out
+
+
+def _run_with_custom_flips(html: str, flips: list[str]) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "estimation-infra.json").write_text(
+            json.dumps(
+                {"recommendation": {"outcome": "go_conditional", "would_flip_if": flips}}
+            ),
+            encoding="utf-8",
+        )
+        return run(html, migration_dir=d)
+
+
+def test_would_flip_shared_suffix_cannot_cross_satisfy_items() -> None:
+    flips = [
+        "Database changes require specialist evidence",
+        "Compute changes require specialist evidence",
+    ]
+    html = GOOD.replace(
+        VERDICT,
+        VERDICT
+        + "<h3>What would flip this</h3>"
+        + "<ul><li>Database changes require specialist evidence</li></ul>",
+    )
+    code, out = _run_with_custom_flips(html, flips)
+    assert code == 1, out
+    assert "1 of 2" in out and "Compute" in out, out
+
+
+def test_would_flip_shared_suffix_complete_items_pass() -> None:
+    flips = [
+        "Database changes require specialist evidence",
+        "Compute changes require specialist evidence",
+    ]
+    html = GOOD.replace(
+        VERDICT,
+        VERDICT
+        + "<h3>What would flip this</h3>"
+        + "<ul>"
+        "<li>Database changes require specialist evidence</li>"
+        "<li>Compute changes require specialist evidence</li>"
+        "</ul>",
+    )
+    code, out = _run_with_custom_flips(html, flips)
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_would_flip_complete_list_passes() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(VERDICT, VERDICT + f"<h3>What would flip this</h3><ul>{FLIP_ITEMS}</ul>")
+    )
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_would_flip_lead_in_paragraph_before_list_passes() -> None:
+    # A one-sentence lead-in between the heading and the <ul> is legitimate
+    # output; the items below it are rendered and must be found (regression for
+    # the matcher stopping at the first non-item run and reporting "0 of N").
+    code, out = _run_with_flips(
+        GOOD.replace(
+            VERDICT,
+            VERDICT
+            + "<h3>What would flip this</h3>"
+            + '<p class="muted">Any of these would change the verdict:</p>'
+            + f"<ul>{FLIP_ITEMS}</ul>",
+        )
+    )
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_would_flip_lead_in_paragraph_with_empty_list_fails() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(
+            VERDICT,
+            VERDICT
+            + "<h3>What would flip this</h3>"
+            + '<p class="muted">Any of these would change the verdict:</p><ul></ul>',
+        )
+    )
+    assert code == 1, out
+    assert "0 of 2" in out, out
+
+
+def test_would_flip_inline_label_item_passes() -> None:
+    # generate-report.md only asks for a "short unordered list"; the
+    # heroku-decision-gate fixtures render the label inside the first item
+    # (`<li>What would flip this: …</li>`) with no separate heading. That item's
+    # remainder plus its siblings are the list.
+    code, out = _run_with_flips(
+        GOOD.replace(
+            VERDICT,
+            VERDICT + f"<ul><li>What would flip this: {FLIPS[0]}</li><li>{FLIPS[1]}</li></ul>",
+        )
+    )
+    assert code == 0, out
+    assert "REPORT_OK" in out
+
+
+def test_would_flip_inline_label_partial_list_fails() -> None:
+    code, out = _run_with_flips(
+        GOOD.replace(VERDICT, VERDICT + f"<ul><li>What would flip this: {FLIPS[0]}</li></ul>")
+    )
+    assert code == 1, out
+    assert "1 of 2" in out and "Dyno count" in out, out
+
+
+def test_decision_gate_fixtures_render_their_flip_condition() -> None:
+    # The checked-in decision fixtures declare would_flip_if and render it in the
+    # inline-label shape; they must keep passing --mode decision so the fixture
+    # asserters (check_expected_decide*.py) exercise the flip check for real.
+    fixtures = SCRIPT.parents[3] / "fixtures" / "heroku-decision-gate"
+    for name in ("after-decide-complete", "retained-execution-pack"):
+        run_dir = fixtures / name
+        estimate = json.loads((run_dir / "estimation-infra.json").read_text(encoding="utf-8"))
+        assert estimate["recommendation"]["would_flip_if"], name
+        result = subprocess.run(  # nosec B603
+            [
+                sys.executable,
+                str(SCRIPT),
+                str(run_dir / "decision-report.html"),
+                "--mode",
+                "decision",
+                "--migration-dir",
+                str(run_dir),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (name, result.stdout + result.stderr)
+
+
+def test_what_if_columns_required_when_section_present() -> None:
+    thin = GOOD.replace(
+        '<section id="next-steps">',
+        '<section id="what-if-scenarios"><table><thead><tr>'
+        '<th scope="col">Scenario</th><th scope="col">Monthly</th>'
+        "</tr></thead><tbody><tr><td>Baseline</td><td>$1</td></tr></tbody></table></section>"
+        '<section id="next-steps">',
+    )
+    full = GOOD.replace(
+        '<section id="next-steps">',
+        '<section id="what-if-scenarios"><table><thead><tr>'
+        '<th scope="col">Scenario</th><th scope="col">Region</th><th scope="col">HA</th>'
+        '<th scope="col">Compute</th><th scope="col">Arch</th>'
+        '<th scope="col">Complexity</th></tr></thead>'
+        "<tbody><tr><td>Baseline</td><td>us-east-1</td><td>Multi-AZ</td>"
+        "<td>Fargate</td><td>mixed</td><td>Large</td></tr></tbody></table></section>"
+        '<section id="next-steps">',
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "scenarios").mkdir()
+        (d / "scenarios" / "index.json").write_text(
+            json.dumps({"scenarios": [{"id": "a"}, {"id": "b"}]}), encoding="utf-8"
+        )
+        bad, bad_out = run(thin, migration_dir=d)
+        good, good_out = run(full, migration_dir=d)
+    assert bad == 1, bad_out
+    assert "Region" in bad_out
+    assert good == 0, good_out
+
+
 def test_what_if_required_when_two_scenarios() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp)
@@ -560,6 +806,31 @@ def test_th_inside_template_not_audited_for_scope() -> None:
     code, out = run(html)
     assert code == 0, out
     assert "REPORT_OK" in out
+
+
+def test_verdict_headline_only_in_hidden_element_or_ancestor_fails() -> None:
+    for replacement in (
+        '<p hidden class="verdict-headline">Go, with conditions</p>',
+        '<div hidden><p class="verdict-headline">Go, with conditions</p></div>',
+    ):
+        html = GOOD.replace(
+            '<p class="verdict-headline">Go, with conditions</p>', replacement
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = run(html, migration_dir=_rec_dir(tmp))
+        assert code == 1, (replacement, out)
+        assert "verdict-headline" in out.lower()
+
+
+def test_would_flip_populated_list_only_in_hidden_element_or_ancestor_fails() -> None:
+    for replacement in (
+        '<h3>What would flip this</h3><ul hidden>'
+        f'{FLIP_ITEMS}</ul>',
+        f'<div hidden><h3>What would flip this</h3><ul>{FLIP_ITEMS}</ul></div>',
+    ):
+        code, out = _run_with_flips(GOOD.replace(VERDICT, VERDICT + replacement))
+        assert code == 1, (replacement, out)
+        assert "would_flip" in out
 
 
 # --- Section-parser regressions (09-22 P2): section identity/counts come from the

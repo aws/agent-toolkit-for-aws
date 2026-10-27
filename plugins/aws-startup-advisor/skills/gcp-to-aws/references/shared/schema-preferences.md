@@ -39,7 +39,16 @@ Use the **Recommendation Impact** row for the selected answer from the category 
 ```json
 {
   "metadata": { "...": "..." },
-  "design_constraints": { "<key>": { "value", "chosen_by", "prompt", "design_consequence", "question_id?", "source?" } },
+  "design_constraints": {
+    "<key>": {
+      "value": "<answer or default>",
+      "chosen_by": "user|default|extracted|derived",
+      "prompt": "<question text shown>",
+      "design_consequence": "<one line: what this decides>",
+      "question_id": "<Qn — optional>",
+      "source": "<provenance — optional>"
+    }
+  },
   "ai_constraints": { "...": "..." },
   "startup_constraints": { "...": "..." }
 }

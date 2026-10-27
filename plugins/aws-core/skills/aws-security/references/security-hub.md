@@ -20,24 +20,24 @@ All findings are normalized to OCSF format.
 
 ## API Convention
 
-Security Hub V2 APIs share the `aws securityhub` CLI namespace with CSPM but are distinguished by the `-v2` suffix. All Security Hub APIs in this file use the `-v2` suffix. CSPM APIs (without suffix) are in `references/security-hub-cspm.md`. Organization management APIs listed below use the `aws organizations` namespace.
+Security Hub V2 APIs share the `aws securityhub` CLI namespace with CSPM but are distinguished by the `-v2` suffix. All Security Hub APIs in this file use the `-v2` suffix. The suffix is not only a naming difference, so state this when asked what distinguishes the two: `-v2` calls return OCSF-normalized findings correlated into exposure analysis and attack paths, while unsuffixed calls are the CSPM surface returning ASFF findings, apart from the shared APIs both products use. CSPM APIs (without suffix) are in `references/security-hub-cspm.md`, which lists the shared set separately. Organization management APIs listed below use the `aws organizations` namespace.
 
 ## Operator prerequisites
 
-**Prerequisite:** Operator must assume an IAM role with least-privilege read-only permissions. Scope permissions to the V2 and Organizations actions listed in the Common Read-Only APIs table; avoid FullAccess managed policies and `securityhub:*` or `organizations:*` wildcards. Do not use long-lived IAM user access keys.
+**Prerequisite:** Operator must assume an IAM role with least-privilege read-only permissions. Resolve each required API operation to its documented IAM action; operation names are not necessarily IAM action names. Avoid FullAccess managed policies and `securityhub:*` or `organizations:*` wildcards. Do not use long-lived IAM user access keys.
 
 ## Common Read-Only APIs
 
 | API | Purpose |
 |-----|---------|
 | `securityhub:DescribeSecurityHubV2` | Check hub status and configuration |
-| `securityhub:DescribeProductsV2` | List third-party product integrations |
+| `securityhub:DescribeProductsV2` | Describe available product-integration metadata |
 | `securityhub:ListAggregatorsV2` | Check cross-region aggregation |
 | `securityhub:GetAggregatorV2` | Get aggregator details |
 | `securityhub:ListConnectorsV2` | List ITSM and external connectors |
 | `securityhub:ListAutomationRulesV2` | List V2 automation rules |
-| `securityhub:GetFindingStatisticsV2` | Get aggregated finding statistics |
-| `securityhub:GetFindingsV2` | Get OCSF findings |
+| `securityhub:GetAdhocInsightResults` (operation `GetFindingStatisticsV2`) | Get aggregated finding statistics |
+| `securityhub:GetFindings` (operation `GetFindingsV2`) | Get OCSF findings |
 | `securityhub:GetFindingsTrendsV2` | Get finding trends over time |
 | `securityhub:GetResourcesV2` | Get resource-centric view |
 | `securityhub:GetResourcesStatisticsV2` | Get resource statistics |
@@ -45,6 +45,12 @@ Security Hub V2 APIs share the `aws securityhub` CLI namespace with CSPM but are
 | `organizations:ListPolicies` | List organization-level policies (org management) |
 | `organizations:DescribePolicy` | Get organization policy details (org management) |
 | `organizations:ListTargetsForPolicy` | List targets for a policy (org management) |
+
+The table lists IAM actions. Most V2 operations use the action of the same name; two do not:
+`GetFindingsV2` requires `securityhub:GetFindings` and `GetFindingStatisticsV2` requires
+`securityhub:GetAdhocInsightResults` ([Service Authorization Reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_securityhub.html)).
+Check the [API permission notes](https://docs.aws.amazon.com/cli/latest/reference/securityhub/get-findings-v2.html)
+when preparing the scoped role.
 
 ## Severity Scoring
 
@@ -76,7 +82,11 @@ See SKILL.md Security considerations for CloudTrail audit logging, CloudWatch an
 
 ## Service Notes
 
-- **Security Hub V2 internal findings**: Flow automatically when source services (GuardDuty, Inspector, Macie) are enabled. `describe-products-v2` is only relevant for third-party integration status, NOT for verifying internal service findings flow.
+- **Product metadata versus delivery**: `describe-products-v2` describes available
+  integrations; it does not prove account-level enablement or findings delivery.
+  Source-service enablement alone also does not establish observed delivery into
+  the hub. Report the configured integration and scoped returned findings
+  separately, retaining missing delivery evidence as UNKNOWN.
 
 ## Output Sensitivity
 

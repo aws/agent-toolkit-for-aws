@@ -1,0 +1,25 @@
+name: Startup advisor
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "plugins/aws-startup-advisor/**"
+      - "mise.toml"
+      - ".github/workflows/startup-advisor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  startup-advisor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          working_directory: plugins/aws-startup-advisor
+      - name: Run startup advisor checks
+        run: mise -C plugins/aws-startup-advisor run ci

@@ -6,6 +6,15 @@ Audits Amazon Macie configuration across single accounts and organizations. Chec
 
 Works from both standalone accounts and delegated administrator accounts.
 
+**A complete Macie configuration review MUST cover all of these; do not stop early, mark UNKNOWN rather than omit:**
+
+1. Enablement status — `get-macie-session`
+2. Automated sensitive-data discovery — `get-automated-discovery-configuration`
+3. Classification jobs — `list-classification-jobs`
+4. Publication / export settings — `get-findings-publication-configuration`, `get-classification-export-configuration`
+5. Allow lists — `list-allow-lists`
+6. Organization / member coverage — `describe-organization-configuration`, `list-members`
+
 ## Classify the Request
 
 | User intent | Workflow |
@@ -22,7 +31,14 @@ Works from both standalone accounts and delegated administrator accounts.
    aws macie2 get-macie-session
    ```
 
-   Configured: status is ENABLED. Not Configured: AccessDeniedException or not enabled.
+   Configured: status is ENABLED. Not Configured: an `AccessDeniedException` whose message states
+   that Macie is not enabled, or that the account has not been onboarded. Match on the substring,
+   because the wording varies by operation: `get-macie-session` and `get-administrator-account`
+   return `Macie is not enabled`, `list-findings` returns it with a trailing period, and
+   `get-automated-discovery-configuration` returns `Account Id: [<id>] has not been onboarded`.
+   An `AccessDeniedException` carrying none of those is UNKNOWN, not Not Configured: no AWS source
+   fixes what a permissions denial says, so only presence of a not-enabled message resolves
+   anything and absence resolves nothing.
 
 2. Check automated discovery:
 
@@ -59,7 +75,7 @@ Works from both standalone accounts and delegated administrator accounts.
    aws macie2 get-classification-export-configuration
    ```
 
-   **Security check:** Verify the export destination S3 bucket uses SSE-KMS encryption (`kmsKeyArn` is present in the `s3Destination` response). Flag if encryption is not configured or uses default S3 encryption.
+   **Security check:** Verify the export destination S3 bucket uses SSE-KMS encryption (`kmsKeyArn` is present in the `s3Destination` response) and TLS in transit for delivery and consumer access. Flag missing KMS or transport protection. Verify retention and successful delivery separately; destination configuration alone proves neither.
 
 6. Review allow lists:
 
@@ -87,7 +103,7 @@ Works from both standalone accounts and delegated administrator accounts.
    |---|---|
    | Macie Enabled | Enabled / Not Enabled |
    | Automated Discovery | Configured / Not Configured |
-   | Classification Jobs | Active / Paused / Not Configured |
+   | Classification Jobs | Observed job states and counts; result production not established |
    | Findings Publication (classification) | Enabled / Not Enabled |
    | Findings Publication (policy) | Enabled / Not Enabled |
    | Export Destination Encryption | SSE-KMS / Not Configured |
@@ -119,7 +135,7 @@ Works from both standalone accounts and delegated administrator accounts.
 4. (ONLY if user explicitly requests per-account detail):
 
    ```bash
-   aws macie2 list-members
+   aws macie2 list-members --only-associated false
    ```
 
    Check `relationshipStatus` for each: Enabled, Paused, Removed, EmailVerificationFailed.
@@ -133,10 +149,12 @@ Works from both standalone accounts and delegated administrator accounts.
    | Delegated Admin Configured | Enabled / Not Enabled |
    | Auto-Enable New Accounts | Enabled / Not Enabled |
    | Auto-Enable Automated Discovery | Enabled / Not Enabled |
-   | Member Coverage | Members enrolled: N (full member details available on request) |
+   | Member relationships | Observed enrollment/status counts, or UNKNOWN; discovery coverage separate |
    | Automated Discovery (admin) | Configured / Not Configured |
    | Findings Publication (classification) | Enabled / Not Enabled |
    | Findings Publication (policy) | Enabled / Not Enabled |
+
+Running jobs do not establish result production; publication settings do not establish delivery; membership does not establish effective discovery coverage. Preserve these as separate observations, with absent outcome evidence NOT ASSESSED or UNKNOWN as appropriate.
 
 ## Constraints
 
@@ -149,7 +167,7 @@ Works from both standalone accounts and delegated administrator accounts.
 
 | Symptom | Resolution |
 |---|---|
-| AccessDeniedException on get-macie-session | Macie not enabled — report as NOT_CONFIGURED |
+| AccessDeniedException on any macie2 call | Message states Macie is not enabled, or the account has not been onboarded: report NOT_CONFIGURED. Any other message: report the denied read, enablement stays UNKNOWN |
 | AccessDeniedException on list-members | Not a Macie admin — switch to Workflow A |
 | ValidationException on describe-organization-configuration | Not an org admin |
 

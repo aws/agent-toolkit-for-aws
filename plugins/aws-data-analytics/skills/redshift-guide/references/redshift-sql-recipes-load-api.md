@@ -7,6 +7,7 @@ Procedural patterns agents must SHOW as working code, not describe as rules.
 ```bash
 #!/bin/bash
 # Load CSV from S3. Tolerates bad rows, diagnoses failures via Data API.
+export AWS_SDK_UA_APP_ID="aws#skill#redshift-guide#1.0"
 WORKGROUP="<workgroup_name, string, no quotes>"
 DB="<database, string, no quotes>"
 TABLE="<schema.table, identifier, no quotes>"
@@ -58,6 +59,7 @@ echo "COPY succeeded: $STMT_ID"
 
 ```python
 import time, boto3
+from botocore.config import Config
 
 # WaitTimeSeconds (1-30) = long polling: the call returns as soon as the statement
 # finishes instead of returning immediately and forcing you to poll. Prefer it —
@@ -72,7 +74,7 @@ def execute_and_wait(sql, workgroup, database="dev", timeout_s=300):
     # taken from user input is a SQL-injection vector. Allowlist identifiers.
     # Region comes from the environment (AWS_REGION / AWS_DEFAULT_REGION) or your
     # profile — set it there rather than pinning one here.
-    client = boto3.client("redshift-data")
+    client = boto3.client("redshift-data", config=Config(user_agent_appid="aws#skill#redshift-guide#1.0"))
     # One call submits AND waits up to WAIT seconds for completion.
     desc = client.execute_statement(
         WorkgroupName=workgroup, Database=database, Sql=sql, WaitTimeSeconds=WAIT

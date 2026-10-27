@@ -183,21 +183,32 @@ migration plan, and that figures are estimates to validate before decisions.
 
 ## Step 5: Validate the rendered report (REQUIRED — mandatory gate)
 
-The prose above is not self-enforcing. Run the plugin's report validator, which is
-source-cloud-agnostic and already present at plugin root — resolve it the same way the
-`tf-best-practices` policy checker is resolved:
+The prose above is not self-enforcing. Render the report from
+`references/shared/report-decision-core.md` in **full** mode (or AI-only mode
+when there is no infra track) before you write HTML. `REPORT_OK` is not a
+substitute for that file: the shared validator rejects a report that has the
+right section IDs but omits decision-core content the artifacts require
+(verdict headline, hero metrics, per-track line, conditions, "What would flip
+this", the specialist-engagement callout, the architecture section when the
+design has clusters, assumptions after risks, a risk table, and the what-if
+columns Region / HA / Compute / Arch when two or more scenarios exist).
+
+Run the plugin's report validator, which is source-cloud-agnostic and already
+present at plugin root — resolve it the same way the `tf-best-practices` policy
+checker is resolved:
 
 ```bash
 python3 "$PLUGIN_ROOT/scripts/validate-migration-report.py" \
   "$MIGRATION_DIR/migration-report.html" \
   --estimation-infra "$MIGRATION_DIR/estimation-infra.json" \
   --estimation-ai "$MIGRATION_DIR/estimation-ai.json" \
+  --aws-design "$MIGRATION_DIR/aws-design.json" \
   --migration-dir "$MIGRATION_DIR"
 ```
 
-Pass `--estimation-infra` / `--estimation-ai` only when those files exist in `$MIGRATION_DIR`.
+Pass `--estimation-infra` / `--estimation-ai` / `--aws-design` only when those files exist in `$MIGRATION_DIR` (absolute paths — cwd must not be load-bearing). The validator does not read `aws-design.json` from `--migration-dir`; the architecture-section and specialist-callout checks fire only when `--aws-design` is passed, so omitting it on an infra run leaves those omissions undetected.
 
-**AI-only path:** when there is no infra track (no `estimation-infra.json`), add `--mode ai_only` so the validator requires the AI-only section set (`decision-summary`, `exec-assumptions`, `exec-risks`, `appendix-ai`, `appendix-artifacts`, `appendix-config`, `appendix-glossary`) instead of the infra sections. Pass `--estimation-ai "$MIGRATION_DIR/estimation-ai.json"`.
+**AI-only path:** when there is no infra track (no `estimation-infra.json`), add `--mode ai_only` so the validator requires the AI-only section set (`decision-summary`, `exec-assumptions`, `exec-risks`, `appendix-ai`, `appendix-artifacts`, `appendix-config`, `appendix-glossary`) instead of the infra sections. Pass `--estimation-ai "$MIGRATION_DIR/estimation-ai.json"`; there is no `aws-design.json` on this path, so `--aws-design` is omitted.
 
 Branch on the exit code, exactly as gcp-to-aws's `generate.md` does:
 

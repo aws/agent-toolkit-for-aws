@@ -27,8 +27,11 @@ import sys
 
 import jsonschema
 
+from model_identity import same_model
+
 SCHEMA_NAMES = ("analysis", "ingestion", "eval", "rewrite", "delta-decisions")
 SCHEMAS_DIR = pathlib.Path(__file__).parent / "schemas"
+EVALUATION_CONTRACT_VERSION = 3
 
 # Run metadata, not run identity — excluded from the mismatch comparison
 # (design §5.1: a resume on a later calendar day must not invalidate anything).
@@ -94,6 +97,15 @@ def validate_phase(schema_name: str, file_path: str) -> int:
     validator = jsonschema.Draft202012Validator(schema)
     if validator.is_valid(data):
         control, extra = control_state(data)
+        if schema_name == "analysis" and control == "ok" and data["same_model_family"]:
+            pairs = [pair.partition("->") for pair in data["target_models"]]
+            if not pairs or not all(
+                separator and same_model(data["source_provider"], source.strip(), target.strip())
+                for source, separator, target in pairs
+            ):
+                print("RESULT=invalid")
+                print("$.same_model_family: true requires every source/target identity to match")
+                return 1
         if control == "blocked":
             print(f"RESULT=valid CONTROL=blocked REASON={extra['reason']}")
         elif control == "partial":
@@ -141,7 +153,9 @@ def top_key(path: str) -> str:
 
 def compare_run_contexts(saved, current) -> list:
     """Pure: list of MISMATCH lines (empty = match). Strict deep equality over
-    all fields minus COMPARE_EXCLUDED_FIELDS; unknown extra keys mismatch."""
+    all fields minus COMPARE_EXCLUDED_FIELDS; enforce the current evaluation
+    contract even if a caller omitted its version from current-context."""
+    current = {**current, "evaluation_contract_version": EVALUATION_CONTRACT_VERSION}
     flat_saved = {p: v for p, v in flatten(saved).items()
                   if top_key(p) not in COMPARE_EXCLUDED_FIELDS}
     flat_current = {p: v for p, v in flatten(current).items()

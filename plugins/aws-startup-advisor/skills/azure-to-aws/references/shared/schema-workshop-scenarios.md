@@ -11,6 +11,9 @@ with this file.
 {
   "phase": "workshop",
   "baseline_scenario_id": "baseline",
+  "active_scenario_id": "baseline", // workshop-refresh.md sets this to the snapshot Apply/resume is on; equals baseline at capture
+  "max_scenarios": 5, // the five-scenario cap from the shared workshop invariants
+  "inventory_fingerprint": "<sha256 hex of azure-resource-inventory.json>", // frozen at baseline capture; refresh aborts when the inventory bytes change
   "scenarios": [
     {
       "scenario_id": "baseline",
@@ -40,6 +43,25 @@ with this file.
   than precise.
 - Comparison is capped at five scenarios. Beyond that the table stops informing a
   decision.
+
+## Manifest fields written outside the sidebar
+
+Three per-scenario manifest fields are owned by `estimate-assemble.md` § Scenario
+reconciliation, not by the workshop. They exist because a decision-gate correction or
+a Step 3b cutover answer can re-price the working tree **after** scenarios were saved,
+and `workshop-invariants.md` § 4 requires the working artifacts to match the active
+scenario.
+
+| Field               | Type             | Written when                                                                                                          |
+| ------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `stale`             | boolean          | `true` on every non-active scenario after a gate-side write **changed the estimate**; `false` (or absent) otherwise — a provenance-only write (an unchanged Step 3b answer) leaves it alone |
+| `stale_reason`      | string or `null` | with `stale: true` — which row changed at the decision gate and that this scenario was priced before it                                                                                     |
+| `corrected_at_gate` | string or `null` | on the active scenario, the dotted key of the row the gate corrected or confirmed (Step 3b, changed or not); its snapshot copies were overwritten in place                                   |
+
+The sidebar never sets these. A new snapshot starts with `stale: false` and the other
+two `null`. `workshop-compare.md` suffixes `(stale)` to a stale row and the report's
+what-if table labels it; neither re-prices it — the next sidebar Apply snapshots a
+fresh scenario against the corrected working tree.
 
 ## Status — implemented
 

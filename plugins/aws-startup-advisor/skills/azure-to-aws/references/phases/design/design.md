@@ -16,7 +16,7 @@ _knowledge:
   - { file: knowledge/design/flexible-server-rds-sizing.json, _when: "the inventory contains a Microsoft.DBforPostgreSQL/* or Microsoft.DBforMySQL/* resource" }
   - { file: knowledge/design/cosmos-dynamodb-conversion.json, _when: "the inventory contains a Microsoft.DocumentDB/databaseAccounts resource whose kind is GlobalDocumentDB — the Core (SQL) API only" }
   - { file: knowledge/design/disk-ebs-sizing.json, _when: "the inventory contains a Microsoft.Compute/disks resource" }
-  - { file: knowledge/estimate/rightsizing-thresholds.json, _when: "observed utilization exists — an RDfA rollup or az monitor metrics — so a size can be MEASURED rather than looked up" }
+  - { file: knowledge/estimate/rightsizing-thresholds.json, _when: "an eligible utilization row exists: metric_error is false, sample_count > 0, and numeric window_days meets min_window_days; unknown RDfA windows do not qualify" }
   - { file: references/shared/schema-design-aws-ai.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
   - { file: references/design-refs/ai.md, _when: "ai-workload-profile.json exists AND (summary.ai_source is 'other' or absent, OR any workloads[] capability is document_extraction, image_analysis, or speech_transcription)" }
   - { file: references/vendored/ai/ai-openai-to-bedrock.md, _when: "ai-workload-profile.json exists AND summary.ai_source is azure_openai, openai, or both" }
@@ -28,7 +28,7 @@ _knowledge:
   - { file: references/vendored/ai/ai-model-lifecycle.md, _when: "ai-workload-profile.json exists" }
 _fragments:
   - _id: infra
-    _trigger: { _always: true }
+    _trigger: { _when: "azure-resource-inventory.json exists in $MIGRATION_DIR" }
     _file: phases/design/design-infra.md
   - _id: ai
     _trigger: { _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
@@ -49,40 +49,40 @@ _preconditions:
     _on_failure: _halt_and_inform
   - _check_single_active_phase: true
     _on_failure: _halt_and_inform
-  - _check_file_exists: [azure-resource-inventory.json, azure-resource-clusters.json, preferences.json]
+  - _check_file_exists: preferences.json
     _on_failure: _unrecoverable
-  - _validate_json: [azure-resource-inventory.json, azure-resource-clusters.json, preferences.json]
+  - _validate_json: preferences.json
+    _on_failure: _unrecoverable
+  - _assert: "WHEN azure-resource-inventory.json exists (a full or mixed migration): azure-resource-clusters.json also exists, and both validate as JSON. WHEN the run is AI-only (azure-resource-inventory.json absent): ai-workload-profile.json exists and validates against schema-discover-ai.md instead — this mirrors Clarify's own precondition for the identical fork"
     _on_failure: _unrecoverable
 _postconditions:
-  - _check_file_exists: aws-design.json
+  - _assert: "WHEN an infra route is active (azure-resource-inventory.json exists): aws-design.json exists, validates, and satisfies every services[]/cluster assert below. WHEN the run is AI-only (azure-resource-inventory.json absent): aws-design.json is NOT required to exist — there is no infra to design — and aws-design-ai.json alone satisfies this phase's completion in combination with the AI-only postconditions already present below"
     _on_failure: _halt_and_inform
-  - _validate_json: aws-design.json
+  - _assert: "WHEN aws-design.json exists: it has phase == 'design' and a valid timestamp; services[] is present (empty only if every resource was deferred or skipped)"
     _on_failure: _halt_and_inform
-  - _assert: "aws-design.json has phase == 'design' and a valid timestamp; services[] is present (empty only if every resource was deferred or skipped)"
+  - _assert: "WHEN aws-design.json exists: every services[] entry has service_id, azure_id, azure_type, aws_service, aws_config, confidence, and rationale; confidence is one of deterministic, measured, inferred, billing_inferred"
     _on_failure: _halt_and_inform
-  - _assert: "every services[] entry has service_id, azure_id, azure_type, aws_service, aws_config, confidence, and rationale; confidence is one of deterministic, measured, inferred, billing_inferred"
+  - _assert: "WHEN aws-design.json exists: every entry whose confidence is 'deterministic' matches a row in the Direct Mappings table, and no pattern constraint changed its aws_service — a pattern may narrow rubric candidates and may never override a deterministic mapping"
     _on_failure: _halt_and_inform
-  - _assert: "every entry whose confidence is 'deterministic' matches a row in the Direct Mappings table, and no pattern constraint changed its aws_service — a pattern may narrow rubric candidates and may never override a deterministic mapping"
+  - _assert: "WHEN aws-design.json exists: every cluster in azure-resource-clusters.json appears in clusters[] with pattern_id, pattern_status, a cluster-level rationale, and constraints_imposed; target_architecture is a real string when pattern_status is 'recognized' and is null otherwise — a plausible architecture string written while design-refs/patterns.md is absent is the failure this checks for"
     _on_failure: _halt_and_inform
-  - _assert: "every cluster in azure-resource-clusters.json appears in clusters[] with pattern_id, pattern_status, a cluster-level rationale, and constraints_imposed; target_architecture is a real string when pattern_status is 'recognized' and is null otherwise — a plausible architecture string written while design-refs/patterns.md is absent is the failure this checks for"
+  - _assert: "WHEN aws-design.json exists: no Microsoft.Web/sites resource has an entry in services[], deferred[], or pending_rubric[] unless preferences.json records an explicit isolation split for its plan — function apps included; the compute line belongs to the Microsoft.Web/serverfarms plan, and every serverfarms entry carries hosted_app_azure_ids and sizing_source"
     _on_failure: _halt_and_inform
-  - _assert: "no Microsoft.Web/sites resource has an entry in services[], deferred[], or pending_rubric[] unless preferences.json records an explicit isolation split for its plan — function apps included; the compute line belongs to the Microsoft.Web/serverfarms plan, and every serverfarms entry carries hosted_app_azure_ids and sizing_source"
+  - _assert: "WHEN aws-design.json exists: every resource in the inventory is accounted for EXACTLY ONCE: mapped in services[], deferred in deferred[], held in pending_rubric[] because its rubric file is absent, or recorded in warnings[] as a skip or as an edge-bearing config source that was consumed"
     _on_failure: _halt_and_inform
-  - _assert: "every resource in the inventory is accounted for EXACTLY ONCE: mapped in services[], deferred in deferred[], held in pending_rubric[] because its rubric file is absent, or recorded in warnings[] as a skip or as an edge-bearing config source that was consumed"
+  - _assert: "WHEN aws-design.json exists: iac_metadata.untranslated_types is empty; a type Discover could not name is treated as cost-bearing and STOPs the design, because the skill cannot demonstrate that a resource it could not identify is free"
     _on_failure: _halt_and_inform
-  - _assert: "iac_metadata.untranslated_types is empty; a type Discover could not name is treated as cost-bearing and STOPs the design, because the skill cannot demonstrate that a resource it could not identify is free"
+  - _assert: "WHEN aws-design.json exists: every deferred[] entry carries aws_service 'Deferred — specialist engagement' and a reason, and carries NO confidence field — a deferral did not come from a rubric"
     _on_failure: _halt_and_inform
-  - _assert: "every deferred[] entry carries aws_service 'Deferred — specialist engagement' and a reason, and carries NO confidence field — a deferral did not come from a rubric"
+  - _assert: "WHEN aws-design.json exists: AWS App Runner does not appear as a target anywhere in it"
     _on_failure: _halt_and_inform
-  - _assert: "AWS App Runner does not appear as a target anywhere in aws-design.json"
-    _on_failure: _halt_and_inform
-  - _assert: "every entry whose confidence is 'measured' cites the utilization evidence that backed it"
+  - _assert: "WHEN aws-design.json exists: every entry whose confidence is 'measured' cites utilization evidence with metric_error false, sample_count > 0, and a numeric window_days meeting confidence_rules.min_window_days. Null/unknown windows and zero-sample rows remain inferred; p95 zero is eligible when positively sampled"
     _on_failure: _halt_and_inform
   - _assert: "WHEN ai-workload-profile.json exists: aws-design-ai.json exists, validates, and has metadata.ai_source equal to the profile's summary.ai_source. WHEN the profile is absent the AI fragment does not run and this is vacuously satisfied"
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design-ai.json exists: every design_blocks[] row has exactly one of target_bedrock_model / target_aws_service non-null (XOR), and every document_extraction/image_analysis/speech_transcription row has target_bedrock_model null, a non-null target_aws_service, and honest_assessment 'not_applicable' — per references/shared/schema-design-aws-ai.md"
     _on_failure: _halt_and_inform
-  - _assert: "WHEN aws-design-ai.json exists AND summary.ai_source is azure_openai or openai: every source model that is available on Bedrock and carried by the target region maps to itself with model_change false — not to a Claude/Nova substitute; and no proprietary openai.gpt-* model ID is paired with a converse/bedrock-runtime migration path"
+  - _assert: "WHEN aws-design-ai.json exists AND summary.ai_source is azure_openai or openai: every source model that is available on Bedrock and carried by the target region maps to itself with model_change false — not to a Claude/Nova substitute; and no proprietary GPT-5.5 or GPT-5.4 model ID is paired with a converse/bedrock-runtime migration path (bare proprietary openai.gpt-* IDs use Mantle only; runtime_openai_cris accepts documented Astra us./global. and GPT-5.6/GPT-6 profiles with caller-region checks and the selected API; GPT-5.6 and GPT-6 models MAY use migration_path: runtime_openai_cris on bedrock-runtime — this is not a violation)"
     _on_failure: _halt_and_inform
   - _assert: "WHEN aws-design-ai.json exists: regional_warnings[] and multi_model_warnings[] are present (empty is fine); agentic_design is present only when agentic_profile.is_agentic is true; and App Runner appears nowhere"
     _on_failure: _halt_and_inform

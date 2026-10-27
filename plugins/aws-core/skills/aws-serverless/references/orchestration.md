@@ -7,6 +7,7 @@ Step Functions and EventBridge decision matrices, error semantics, and limits. A
 - [Standard vs Express](#standard-vs-express)
 - [State machine limits and patterns](#state-machine-limits-and-patterns)
 - [Error handling](#error-handling)
+- [Which EventBridge capability](#which-eventbridge-capability)
 - [EventBridge rules, pipes, and patterns](#eventbridge-rules-pipes-and-patterns)
 - [Step Functions vs Lambda durable functions](#step-functions-vs-lambda-durable-functions)
 
@@ -90,6 +91,23 @@ Rules and best practices:
 
 ---
 
+## Which EventBridge capability
+
+Decided in `SKILL.md` Step 4; this is the full table.
+
+| Need | Use | Continue with |
+|---|---|---|
+| Time-based triggers (cron, rate, one-time), replacing VM cron or always-on workers for infrequent jobs, millions of tenant schedules, retries + maximum event age + DLQ, auditable scheduled runs | **EventBridge Scheduler** | Scheduler invokes AWS APIs directly (Lambda, Step Functions, SQS, ECS RunTask, …); surface failures with the DLQ plus CloudWatch alarms on `TargetErrorCount` and on DLQ depth |
+| AWS service state-change events on the default bus, or an existing classic single-account integration that routes events to up to 5 targets per rule by pattern matching | **EventBridge rules** on the default bus | [Event patterns](#eventbridge-rules-pipes-and-patterns) below |
+| Any new workload that publishes its own application events, including a single-account workload; many independent consumers; cross-team or cross-account sharing; central governance; ordered delivery per event group; schema integration; per-subscriber transformation; deduplication; retention and replay | **New EventBridge custom event bus** (`eventsv2`) | **amazon-eventbridge-event-bus** skill. Classic EventBridge operations still use the `events` API; migration from classic to the new bus is covered by that skill's migration reference |
+| One poll-based source (SQS, Kinesis, DynamoDB Streams, Kafka/MSK, Amazon MQ) feeding one target with optional filtering, enrichment, or transformation | **EventBridge Pipes** | [Source-to-target choices](#source-to-target-choices) below. If the only target is one Lambda function and no Pipe-only enrichment is needed, use the Event Function's native event source mapping directly |
+
+"Decouple these steps" for a single application with fan-out → new custom event bus for newly published application events, or existing classic rules when preserving an established integration. When steps must run in order with checkpointed progress, retries, or compensation, that is orchestration rather than eventing: decide Durable Functions vs Step Functions below.
+
+For an existing classic custom bus that needs retention, replay, ordering, or subscribers, plan an incremental migration through **amazon-eventbridge-event-bus**. Bridge classic and new buses so publishers and consumers can move independently; do not require a big-bang rewrite. Stay on classic for a feature the new bus does not support, such as Global Endpoints.
+
+---
+
 ## EventBridge rules, pipes, and patterns
 
 ### Event patterns
@@ -98,34 +116,42 @@ All specified fields must match (AND); values within an array are OR'd. Operator
 
 ### Best practices
 
-1. **Dedicated event bus per application domain** — default bus for AWS service events only.
+1. Use the default bus for AWS service state-change events. For a new workload publishing its own events, evaluate the new custom event bus first.
 2. **Be precise with patterns** — broad patterns risk infinite loops.
-3. **One target per rule** — simplifies debugging and IAM.
-4. **DLQs on all targets.**
-5. Use the EventBridge Sandbox to test patterns before deploying.
-6. For a **new** event-driven workload, evaluate the enhanced custom event bus first — see the **amazon-eventbridge-event-bus** skill (see SKILL.md routing). The practices above apply to the classic bus, whose rules and targets do not exist on the enhanced bus.
+3. With classic rules, prefer one target per rule to simplify debugging and IAM.
+4. Configure DLQs on deliveries that support them.
+5. Use the EventBridge Sandbox to test classic event patterns before deploying.
+6. The new custom bus uses subscribers rather than rules and targets; continue with **amazon-eventbridge-event-bus** for its payload shapes, filtering, transformations, retention, replay, ordering, migration, and delivery contract.
 
-### Pipes vs Rules
+### Source-to-target choices
 
-| Dimension | Pipes | Rules |
+| Mechanism | Topology | Choose it when |
 |---|---|---|
-| Topology | Point-to-point (1→1) | Fan-out (1→N) |
-| Flow | Source → Filter → Enrichment → Transform → Target | Event routing on a bus |
-| Sources | SQS, Kinesis, DynamoDB Streams, MSK, MQ | Any event on a bus |
-| Enrichment | Built-in (Lambda, API GW, API Destinations, Sync Express SFN) | Not built-in |
-| Use case | **Replace Lambda glue** for source→target | Event routing and distribution |
+| Native Lambda event source mapping | Poll-based source → one Lambda function | The source is SQS, Kinesis, DynamoDB Streams, Kafka/MSK, or Amazon MQ; Lambda is the only target; native batching/filtering/retry controls are sufficient |
+| EventBridge Pipes | Poll-based source → one target | Filtering, enrichment, or input transformation is needed in transit; the target is not Lambda; or a managed connector should replace glue code |
+| Pipe → new custom event bus | Poll-based source → many independent consumers | One Pipe performs source-side filtering/enrichment and publishes to the bus; each consumer owns a subscriber. Do not create one Pipe per consumer merely to simulate fan-out |
+| New custom event bus (`eventsv2`) | Application publishers → independent subscribers | The application publishes its own events and needs fan-out, retention/replay, ordering, deduplication, schemas, or independent consumer operations—even within one account |
+| Classic rules | Event on a classic/default bus → up to 5 targets per rule | Routing AWS service state-change events or preserving an existing classic EventBridge integration |
 
-Pipes filtering happens **at the source** — you pay only for matched events — with built-in retry + DLQ.
+Pipes filtering happens **at the source**—you pay only for matched events—with built-in retry and DLQ. A Pipe has one target; fan-out occurs after the Pipe through a bus and its subscribers.
 
 ---
 
 ## Step Functions vs Lambda durable functions
 
-Lambda durable functions let you write reliable multi-step workflows as **plain code** (TS/Python/Java) with automatic checkpointing — the SDK persists each step and replays from the checkpoint on interruption, enabling executions up to 1 year with zero compute during waits. **For full guidance use the aws-lambda-durable-functions skill** (see SKILL.md routing).
+The choice is made in `SKILL.md` (Step 3 — orchestration). Treat compute and orchestration as separate dimensions:
 
-| Question | Lambda durable functions | Step Functions |
-|---|---|---|
-| Programming model | Standard code (TS/Python/Java) | Amazon States Language / visual designer |
-| AWS service integrations | Primarily Lambda | 200+ native integrations |
-| Who reads the workflow | Developers | Non-technical stakeholders too |
-| Best for | Distributed transactions, stateful logic, AI agent loops | Business process automation, multi-service orchestration |
+- **Durable Functions** fits code-first orchestration written with the application, including all-Lambda workflows and replacement of hand-built checkpoint state.
+- **Step Functions** fits an explicitly visual or ASL-authored workflow, a shared cross-team state-machine contract, Distributed Map, or broad coordination of AWS services and non-Lambda compute through native integrations.
+- When the implementation model is not stated and either fits, name both with the one-line tradeoff rather than inferring that an external API/database call makes a workflow heterogeneous.
+
+| Use this skill | When the workload involves |
+|---|---|
+| **aws-step-functions** | Orchestration whose primary work is coordinating AWS services directly; coordinating ECS/Fargate, Glue, SageMaker, or Batch through native managed integrations; a visual, auditable workflow definition required for compliance or operations; a shared contract between teams that do not share a codebase; a runtime Durable Functions does not support; Distributed Map fan-out to thousands of parallel executions; authoring or editing Amazon States Language (ASL), JSONata, Retry/Catch, `.sync`/`waitForTaskToken`, TestState, or JSONPath-to-JSONata migration |
+| **aws-lambda-durable-functions** | Code-first orchestration when building on Lambda (`context.step`/`context.wait`/`context.invoke`, `withDurableExecution`); workflows written as plain sequential code in a supported runtime; waits on timers, callbacks, or conditions; checkpointed retries and execution history; replacing hand-rolled checkpointing in DynamoDB/Redis; saga and compensation logic; many fine-grained steps where Step Functions Standard transition cost may be significant |
+
+Limits that decide ties: a Durable Functions step is bounded by the Lambda timeout of the capacity provider it runs on (15 min on On-Demand and for synchronous invocations on Managed Instances; 90 min on Managed Instances for async or ESM invocations), and a durable execution can run up to 1 year on async invocations. Step Functions Standard executions run up to 1 year and Express up to 5 minutes (see [Standard vs Express](#standard-vs-express)).
+
+A Durable Function is an orchestration layer implemented by an Event Function. Few steps and a short wait may only need an idempotent handler plus a DLQ rather than either orchestrator.
+
+**For implementation guidance use the aws-lambda-durable-functions or aws-step-functions skill** — this file covers only the choice, Step Functions execution semantics, and EventBridge details above.

@@ -100,7 +100,8 @@ account's pipelines/spaces from rows 9 and 11.
 | 4  | `heroku addons --all --json`                 | `addons.json`                 | account                                                                                                                                                       |
 | 5  | `heroku config -a <app> --json \| jq 'keys'` | `config-keys-<app>.json`      | per app — KEYS ONLY (see fallback below)                                                                                                                      |
 | 6  | `heroku domains -a <app> --json`             | `domains-<app>.json`          | per app                                                                                                                                                       |
-| 7  | `heroku pg:info -a <app>`                    | `pg-<app>.out`                | apps with a heroku-postgresql add-on (from row 4)                                                                                                             |
+| 7  | `heroku pg:info -a <app>`                    | `pg-<app>.out`                | apps with a heroku-postgresql add-on (from row 4) — Classic/Essential-tier probe, run unconditionally alongside row 7b                                        |
+| 7b | `heroku data:pg:info <addon_name> -a <app>`  | `pg-advanced-<app>-<addon_name>.out` | once per heroku-postgresql add-on attached to `<app>` (from row 4's `addons.json`) — Advanced-tier probe, run unconditionally alongside row 7 for every add-on, not once per app |
 | 8  | `heroku redis:info -a <app>`                 | `redis-<app>.out`             | apps with a heroku-redis add-on (from row 4)                                                                                                                  |
 | 8b | `heroku kafka:info -a <app>`                 | `kafka-<app>.out`             | apps with a heroku-kafka add-on; needs the kafka CLI plugin — if the command is unavailable, record `skipped` (plan data from row 4 is sufficient for sizing) |
 | 9  | `heroku pipelines --json`                    | `pipelines.json`              | account                                                                                                                                                       |
@@ -113,6 +114,16 @@ Text captures use the `.out` extension (not `.txt`) so they can never collide wi
 the phase's `_forbids_files: "*.txt"` scope boundary, regardless of how a host
 scopes that glob.
 
+**Row 7b note:** `data:pg:info` declares its `database` argument REQUIRED and
+resolves exactly one add-on via `AddonResolver` (confirmed against the Heroku CLI
+source, `src/commands/data/pg/info.ts`) — there is no app-wide/account-wide mode.
+Run it once per heroku-postgresql add-on attached to `<app>` (every `addon_name`
+from row 4's `addons.json` for that app), passing that add-on's name as the
+positional `database` argument alongside `-a <app>`. An app with multiple Postgres
+add-ons therefore produces multiple `pg-advanced-<app>-<addon_name>.out` files, one
+per add-on — the filename must encode the add-on identity, not just the app, so
+`discover-live.md` can associate each capture with its own resource entry.
+
 **Row 5 fallback:** if `jq` is unavailable, use
 `heroku config -a <app> --json | python3 -c "import json,sys; print(json.dumps(sorted(json.load(sys.stdin))))"`.
 If neither filter runtime exists, skip row 5 for all apps and record `skipped` in the
@@ -124,6 +135,7 @@ manifest — never capture unfiltered config output.
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 403 / forbidden on a team app                  | Record the capture as `failed` with the reason; continue with remaining apps                        |
 | Command not found (missing CLI plugin, row 8b) | Record `skipped`; continue                                                                          |
+| Tier-mismatched info command (row 7 or a row 7b per-add-on probe errors because that database isn't that tier) | Record that single capture as `skipped` (not `failed`) with a note; continue — for row 7b this is one `skipped`/`failed` entry per add-on probe (not per app), and the sibling probe (if `ok`) is what `discover-live.md` uses to determine that database's actual tier |
 | Timeout / transient network error              | Retry once; on second failure record `failed`; continue                                             |
 | 401 / token expired mid-run                    | STOP capturing. Hand off as in Step 2.2. On resume, re-run Step 3 from the top (captures overwrite) |
 | Rate limited (429)                             | Unexpected at this call volume — wait 60s, retry once, then record `failed`                         |
@@ -145,6 +157,13 @@ Write `$MIGRATION_DIR/live-capture/manifest.json`:
       "file": "config-keys-my-web-app.json",
       "status": "ok",
       "note": null
+    },
+    {
+      "command": "heroku data:pg:info my-web-app-db -a my-web-app",
+      "file": "pg-advanced-my-web-app-my-web-app-db.out",
+      "status": "ok",
+      "note": null,
+      "addon": "my-web-app-db"
     }
   ]
 }

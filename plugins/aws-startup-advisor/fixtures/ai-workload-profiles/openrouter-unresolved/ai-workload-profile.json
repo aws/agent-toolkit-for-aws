@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "ai_sources": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "model_families": ["claude"],
+      "model_evidence": "observed",
+      "models": ["claude-3-5-sonnet-20240620"],
+      "model_observations": [
+        {"normalized_model": "claude-3-5-sonnet-20240620", "raw_model": "claude-3-5-sonnet-20240620", "model_family": "claude", "evidence": [{"provenance": "code", "confidence": "high"}]}
+      ]
+    }
+  ],
+  "gateways": [
+    {"product": "openrouter", "type": "llm_router", "upstream_evidence": "unresolved", "upstreams": []}
+  ]
+}

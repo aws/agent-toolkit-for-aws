@@ -19,10 +19,8 @@ import json
 import os
 import secrets
 import signal
-import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from dataclasses import asdict
@@ -45,6 +43,7 @@ from launch_config import (
     ClientCredentials,
     StoredSession,
     resolve_issuer_url,
+    write_private_file,
 )
 
 __version__ = "0.1.0"
@@ -95,19 +94,7 @@ def load_session() -> Optional[StoredSession]:
 
 
 def save_session(session: StoredSession) -> None:
-    directory = _session_dir()
-    os.makedirs(directory, exist_ok=True)
-    os.chmod(directory, stat.S_IRWXU)
-
-    old_umask = os.umask(0o077)
-    try:
-        fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
-        with os.fdopen(fd, "w") as f:
-            f.write(session.to_json(indent=2))
-        os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)
-        os.replace(tmp_path, _session_file())
-    finally:
-        os.umask(old_umask)
+    write_private_file(_session_file(), session.to_json(indent=2))
 
 
 def has_valid_session() -> bool:

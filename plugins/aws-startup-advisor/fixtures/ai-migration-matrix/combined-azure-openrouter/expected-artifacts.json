@@ -1,0 +1,17 @@
+{
+  "id": "combined-azure-openrouter",
+  "mode": "combined",
+  "migration_id": "combined-azure-openrouter",
+  "run_id": "00000000-0000-4000-8000-000000000011",
+  "state": ".phase-status.json",
+  "dimensions": {
+    "infrastructure_source": "azure",
+    "ai_sources": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": ["claude"], "model_evidence": "observed", "models": ["claude-3-5-sonnet-20240620"]}],
+    "gateways": [{"product": "openrouter", "type": "llm_router", "upstream_evidence": "observed", "upstreams": [{"provider": "anthropic", "source_service": "anthropic_api", "model_families": [{"family": "claude", "model_evidence": "observed", "models": ["claude-3-5-sonnet-20240620"]}]}]}]
+  },
+  "outcomes": {
+    "infrastructure": {"verdict": "passed", "artifacts": ["aws-design.json", "estimation-infra.json", "generation-infra.json", "validation-report.json"]},
+    "ai": {"verdict": "passed", "artifacts": ["ai-workload-profile.json", "aws-design-ai.json", "estimation-ai.json", "generation-ai.json"]},
+    "integration_validation": {"verdict": "passed", "artifact": "integration-validation.json"}
+  }
+}

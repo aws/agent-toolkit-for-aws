@@ -4,6 +4,7 @@
   "entries": {
     "ai.models.generateContent": "text_generation",
     "ai.models.generateImages": "image_generation",
+    "imagen.predict": "image_generation",
     "ai.models.embedContent": "embedding",
     "openai.chat.completions.create": "text_generation",
     "openai.completions.create": "text_generation",
