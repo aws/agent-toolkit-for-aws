@@ -230,7 +230,7 @@ from list errors alone.)
 | 14 | `gcloud spanner instances list --format="json(name, config, nodeCount, processingUnits)"`                                                                                                                                                                                                                                                                                                                | `spanner.json`          |      |
 | 15 | `gcloud firestore databases list --format="json(name, type, locationId)"`                                                                                                                                                                                                                                                                                                                                | `firestore.json`        |      |
 | 16 | `gcloud ai endpoints list --region=<each walk region — see the region-walk note below> --format="json(name, displayName, deployedModels[].model)"` — only if asset search found `aiplatform.googleapis.com/*` assets or per-service mode                                                                                                                                                                 | `vertex-<region>.json`  | E    |
-| 16a | Before the first page, `gcloud auth print-access-token` is redirected to a temp file outside `live-capture` and deleted after 16c (publisher-metrics note). Then `curl --silent --show-error --header @"$MONITORING_AUTH_HEADER" --get "https://monitoring.googleapis.com/v3/projects/$GCP_PROJECT/timeSeries" --data-urlencode 'filter=metric.type="aiplatform.googleapis.com/publisher/online_serving/token_count" AND resource.type="aiplatform.googleapis.com/PublisherModel"' --data-urlencode "interval.startTime=<UTC now minus 30 days, RFC3339>" --data-urlencode "interval.endTime=<UTC now, RFC3339>" --data-urlencode "aggregation.alignmentPeriod=3600s" --data-urlencode "aggregation.perSeriesAligner=ALIGN_SUM" --data-urlencode "aggregation.crossSeriesReducer=REDUCE_SUM" --data-urlencode "aggregation.groupByFields=resource.label.model_user_id" --data-urlencode "aggregation.groupByFields=resource.label.location" --data-urlencode "aggregation.groupByFields=metric.label.type" --data-urlencode "aggregation.groupByFields=metric.label.request_type" --data-urlencode "pageSize=1000"` — follow `nextPageToken` until absent. See the publisher-metrics note. | `vertex-publisher-tokens.json` | always |
+| 16a | Before the first page, `gcloud auth print-access-token` is redirected to a temp file outside `live-capture` and deleted after 16c (publisher-metrics note). Then `curl --silent --show-error --header @"$MONITORING_AUTH_HEADER" --get "https://monitoring.googleapis.com/v3/projects/$GCP_PROJECT/timeSeries" --data-urlencode 'filter=metric.type="aiplatform.googleapis.com/publisher/online_serving/token_count" AND resource.type="aiplatform.googleapis.com/PublisherModel"' --data-urlencode "interval.startTime=<UTC now minus 30 days, RFC3339>" --data-urlencode "interval.endTime=<UTC now, RFC3339>" --data-urlencode "aggregation.alignmentPeriod=3600s" --data-urlencode "aggregation.perSeriesAligner=ALIGN_SUM" --data-urlencode "aggregation.crossSeriesReducer=REDUCE_SUM" --data-urlencode "aggregation.groupByFields=resource.label.model_user_id" --data-urlencode "aggregation.groupByFields=resource.label.location" --data-urlencode "aggregation.groupByFields=metric.label.type" --data-urlencode "aggregation.groupByFields=metric.label.source" --data-urlencode "aggregation.groupByFields=metric.label.request_type" --data-urlencode "pageSize=1000"` — follow `nextPageToken` until absent. See the publisher-metrics note. | `vertex-publisher-tokens.json` | always |
 | 16b | same `projects.timeSeries.list` curl as 16a with `filter=metric.type="aiplatform.googleapis.com/publisher/online_serving/model_invocation_count" AND resource.type="aiplatform.googleapis.com/PublisherModel"`, `aggregation.perSeriesAligner=ALIGN_SUM`, `aggregation.crossSeriesReducer=REDUCE_SUM`, and `aggregation.groupByFields` `resource.label.model_user_id`, `resource.label.location`, `metric.label.request_type`, `metric.label.response_code`. Follow `nextPageToken`. | `vertex-publisher-invocations.json` | always |
 | 16c | same `projects.timeSeries.list` curl as 16a with `filter=metric.type="aiplatform.googleapis.com/publisher/online_serving/first_token_latencies" AND resource.type="aiplatform.googleapis.com/PublisherModel"`, `aggregation.perSeriesAligner=ALIGN_PERCENTILE_95`, `aggregation.crossSeriesReducer=REDUCE_MAX`, and `aggregation.groupByFields` `resource.label.model_user_id`, `resource.label.location`, `metric.label.request_type`. Follow `nextPageToken`. | `vertex-publisher-latency.json` | always |
 | 16d | `gcloud ai models list --region=<region> --project="$GCP_PROJECT" --format="json(name,displayName)"` — only for a region whose `vertex-<region>.json` is non-empty. Display names only. Do not download model artifacts. | `vertex-models-<region>.json` | when 16 is non-empty |
@@ -282,7 +282,14 @@ by `max_token_size` or other bucket labels. Do not read `resource.data` from
 Cloud Asset Inventory for this.
 
 `metric.labels.type` on token_count is `input` or `output`. Sum those into
-`input_tokens` and `output_tokens` separately. `resource.labels.model_user_id`
+`input_tokens` and `output_tokens` separately. Keep `metric.labels.source`.
+A value whose prefix is `batch_` is batch traffic. It stays in the monthly
+volume and is not the on-demand peak. One hour with 6,000 online output
+tokens and 2,500,000 `batch_` output tokens that share model, location,
+type, and request type keeps an on-demand output peak of 100 tokens/minute.
+Do not add the batch tokens into that peak. If `metric.label.source` is
+rejected, retry row 16a once without it and set `source` to `"unknown"`.
+An unknown source is not the on-demand peak. `resource.labels.model_user_id`
 is the model id. `metric.labels.request_type` (`dedicated` or `shared`) stays
 on the row. Shared traffic is not provisioned quota. For invocations, add
 `response_code` 200 and `OK` into `num_model_requests`. Any other present
@@ -408,7 +415,14 @@ with `source` `"monitoring"`. `detection_signals[]` uses `method`
 `metadata.sources_analyzed.live_monitoring` true and the code/terraform flags
 false. If a profile already exists, merge these models and set
 `profile_source` to `"merged"` when it was not already `live_monitoring`.
-Do not drop models the other producer wrote.
+Do not drop models or `workloads[]` evidence the other producer wrote. Add
+the usage-only Gemini workloads beside them. Recompute `summary.ai_source`
+from the providers present after the merge: Gemini or `vertex_ai_generative`
+counts as `gemini`, `openai_api` as `openai`, and `anthropic_api` as
+`anthropic`. One provider keeps that name. Two or more set `ai_source` to
+`"both"`. An OpenAI code profile plus these Gemini models is `"both"`, so
+Design loads both the OpenAI guide and `ai-gemini-to-bedrock.md`. Do not
+leave the pre-merge `ai_source` in place.
 
 ## Step 4: Infer Edges from Resolved Config
 

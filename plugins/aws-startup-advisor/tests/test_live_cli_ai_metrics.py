@@ -35,6 +35,8 @@ def test_azure_monitor_commands_and_consent():
         "--interval PT1H",
         "ModelDeploymentName eq '<deployment name>'",
         "ServiceTierRequest eq '*'",
+        "ServiceTierResponse eq '*'",
+        "service_tier_response",
         "IsSpillover eq '*'",
         "--top 50",
         "coverage_incomplete",
@@ -63,6 +65,8 @@ def test_gcloud_publisher_metrics_and_consent():
         "ALIGN_SUM",
         "ALIGN_PERCENTILE_95",
         "metric.label.type",
+        "metric.label.source",
+        "batch_",
         "gcp-publisher-metrics-profile.json",
         "gcloud ai models list",
         "serverless Gemini",
@@ -108,3 +112,5 @@ def test_decline_and_clarify_consume_live_profiles():
     quotas = _read("skills/shared/ai/bedrock-quotas.md")
     assert "observed_on_demand_peak" in quotas
     assert "200,000" in quotas
+    assert 'ai_source` to\n`"both"`' in GCP_LIVE or 'set `ai_source` to\n`"both"`' in GCP_LIVE
+    assert "OpenAI code profile plus these Gemini models" in GCP_LIVE
