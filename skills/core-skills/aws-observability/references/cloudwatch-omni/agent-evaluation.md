@@ -29,7 +29,7 @@ Every **online** and **batch** score, and every **numeric on-demand** score, lan
 
 **Evaluators** come from `list-evaluators` (Section 3): `Builtin.<Name>` (AWS), `ThirdParty.<Provider>.<Name>`, and any `Custom`/`CustomCode` evaluators created in the account. Each has a **level** — `TRACE` (whole request/response), `TOOL_CALL` (individual tool invocations; needs tool spans), `SESSION` (whole conversation) — and every evaluator in one scoring call shares one level.
 
-**Prerequisites (every path):** the agent must be emitting telemetry with **CloudWatch Transaction Search enabled**, and there is a 2–5 min ingestion lag before a fresh session is evaluable. **Custom** evaluators that invoke Bedrock need `bedrock:InvokeModel` on the caller (on-demand) or on the execution role (online); built-in evaluators do not — the service invokes the judge model itself. All of these resources are Region-scoped — they appear only in the Region they were created in.
+**Prerequisites (every path):** the agent must be emitting telemetry with **CloudWatch Transaction Search enabled**, and there is a 2–5 min ingestion lag before a fresh session is evaluable. **Custom** evaluators that invoke Bedrock need `bedrock:InvokeModel` on the caller (on-demand) or on the execution role (online); built-in evaluators do not — the service invokes the judge model itself. When Omni itself runs the model (Agent Playground, or an evaluation started from Omni), the call goes through the Space's space access role, which needs the optional `CloudWatchOmniModelInferencePolicy`; a Bedrock `AccessDeniedException` there is that policy missing. Attaching it is setup: route to the **setting-up-cloudwatch-observability** skill. All of these resources are Region-scoped — they appear only in the Region they were created in.
 
 ### Operating contract
 
@@ -51,6 +51,8 @@ Before any action that **scores, creates, edits, or deletes**, confirm the speci
 | Reuse traces as a re-runnable regression / golden set | **Dataset** (Section 6) | Build the examples **from the traces** (no server-side "trace → example" op — use `capture_dataset_from_traces.py`), then **publish an immutable version** — a repeatable target evaluates against the version, not the mutable DRAFT. |
 | Score a dimension no built-in covers (e.g. brand voice, tone) | **Custom evaluator** — `create-evaluator` (Section 5) | An LLM-as-judge at **`TRACE` level** for response quality; `instructions` must embed a **single-brace** placeholder (`{context}`/`{assistant_turn}`, not `{{context}}`), the judge model must be **discovered** (`list-inference-profiles --type-equals SYSTEM_DEFINED`, prefer `us.`/`global.` ids), and you present the draft for confirmation before creating. |
 | See what evaluation already found | **Read back stored scores** (Section 7) | Query `logs.default` (not `traces.default`) with the `gen_ai.evaluation.*` field names verbatim, gate on `error.type IS NULL`, roll up **per evaluator first**, read by polarity, then drill into the WHY. |
+| Monitor an agent's quality, without naming the evaluators | **Profile, then propose** (Section 8) | Profile the agent's traffic first (token and latency extremes, prompts, tool calls), then propose an online config whose evaluators fit it, a custom evaluator for anything the built-ins do not judge, and an alert on the scores. |
+| Change the agent and prove it helped (prompt or tool edits, a CR), compare prompt versions, or A/B two prompts | **Change, re-run, compare** (Section 8) | Measure the baseline and the changed agent on **one published dataset version**, give every evaluator's result for both, and make no improvement claim and open no review until that second run exists. Stored scores split by prompt version only through a version attribute on the spans. |
 
 ---
 
@@ -95,7 +97,7 @@ A live trace carries **no ground truth**, so an evaluator that needs an expected
 
 When a user's question maps only to a ground-truth-required evaluator, say the raw-trace path can't supply the expected values and offer the dataset path (Section 6) instead of substituting an evaluator that doesn't answer their question.
 
-> **When you redirect an evaluator, tell the user ALL of this:** which evaluator actually answers their question (for "does it pick the right tools?" that is `Builtin.ToolSelectionAccuracy`); that the trajectory matchers (exact-order, in-order, any-order) are ground-truth-required — they compare the actual tool sequence against an EXPECTED trajectory; that a live trace carries no ground truth, so a matcher cannot score raw traces on-demand and only works against a dataset whose examples carry an expected trajectory; that the dataset path (Section 6) is the alternative if they want the matcher; and that there is no machine-readable input-requirement flag on the detail API — an evaluator's ground-truth need is judged from its identity and description.
+> **When you redirect an evaluator, tell the user ALL of this:** which evaluator actually answers their question (for "does it pick the right tools?" that is `Builtin.ToolSelectionAccuracy`, run at `TOOL_CALL` level); that the trajectory matchers (exact-order, in-order, any-order) are ground-truth-required — they compare the actual tool sequence against an EXPECTED trajectory; that a live trace carries no ground truth, so a matcher cannot score raw traces on-demand and only works against a dataset whose examples carry an expected trajectory; that the dataset path (Section 6) is the alternative if they want the matcher; and that there is no machine-readable input-requirement flag on the detail API — an evaluator's ground-truth need is judged from its identity and description.
 
 ### Level → target rules
 
@@ -117,6 +119,8 @@ All evaluators in a single scoring call must share that one level. The level is 
 ### Recommend
 
 Recommend the evaluator whose `level` and `description` match the trace and the user's question. Ask the user to confirm when the intent is genuinely ambiguous (e.g. "helpfulness" vs. "correctness" for the same trace) rather than guessing — and per the operating contract, never start scoring until the user has chosen.
+
+A question that only asks which evaluators to use still starts from this account's `list-evaluators` output: it is a read, not scoring, so run it and recommend from what it returns rather than from the examples in this doc. For retrieval, `Builtin.Faithfulness` judges grounding in the retrieved context, alongside a response-quality judge and, when retrieval is a tool call, `Builtin.ToolSelectionAccuracy`; say which candidates would need a dataset.
 
 ---
 
@@ -180,6 +184,7 @@ Each run is a full matrix: every evaluator is applied to every trace, at one lev
 
 - "Score traces A, B, C for helpfulness and correctness" → ONE run (three traces, two evaluators, `TRACE`).
 - "Score A and B for helpfulness, but C for tool selection accuracy" → TWO runs (one per homogeneous grouping), because the trace subsets and evaluators differ. Decide the groupings yourself and make the separate runs.
+- **A trace is not an agent boundary.** When one agent calls another (an orchestrator and a sub-agent, possibly on different frameworks), a single trace holds both agents' spans, and scoring the whole trace judges the pair together: the sub-agent's tool calls and outputs enter the payload. To score one agent, pass `--service-name <that agent's service.name>` so the helper fetches only its spans, and say which service was scored.
 
 ### Volume — the helper batches in one run; don't loop it or hand-roll a scorer
 
@@ -255,7 +260,7 @@ For many sessions or continuous coverage, use online evaluation (Section 5).
 
 ### Online evaluation — score live traffic over time
 
-Best for **continuously monitoring** a deployed agent — it samples live sessions and scores them, accruing results in `logs.default`. All ops on `bedrock-agentcore-control`:
+Best for **continuously monitoring** a deployed agent — it samples live sessions and scores them, accruing results in `logs.default`. When the user wants an agent's quality monitored and has not named the evaluators, start with the traffic profile in Section 8 ("Set up quality monitoring") and choose the evaluators from it before the steps below. All ops on `bedrock-agentcore-control`:
 
 | Intent | operation |
 |---|---|
@@ -265,7 +270,7 @@ Best for **continuously monitoring** a deployed agent — it samples live sessio
 | Change evaluators, sampling, or data source | `update-online-evaluation-config` (a data-source change re-runs the `@logGroupName` verification below) |
 | Delete | `delete-online-evaluation-config --online-evaluation-config-id <id>` — destructive; name the config and confirm first |
 
-`status` (ACTIVE / CREATING / …) is the provisioning state only; `executionStatus` (ENABLED / DISABLED) is the separate field that switches scoring on or off — ACTIVE says nothing about whether scoring is enabled. And neither field proves scores are being produced: a config with a misresolved data source goes ACTIVE/ENABLED and scores nothing (see the `@logGroupName` rule below). Online evaluation only scores sessions arriving **after** it is enabled. This sets up and manages scoring; to **report** what it found, query the evaluation-result telemetry (Section 7), not the config.
+`status` (ACTIVE / CREATING / …) is the provisioning state only; `executionStatus` (ENABLED / DISABLED) is the separate field that switches scoring on or off — ACTIVE says nothing about whether scoring is enabled. And neither field proves scores are being produced: a config with a misresolved data source goes ACTIVE/ENABLED and scores nothing (see the `@logGroupName` rule below). To check that a config is actually scoring, count the recent `gen_ai.evaluation.result` records in `logs.default` whose `attributes['aws.bedrock_agentcore.online_evaluation_config.name']` is that config (Section 7). None, once enough sampled sessions should have arrived (allow the 2 to 5 min ingestion lag), points first at a misresolved data source. Online evaluation only scores sessions arriving **after** it is enabled; it never back-fills. For earlier sessions, offer on-demand scoring (Section 4, within its volume limits) or a dataset built from those traces (Section 6). This sets up and manages scoring; to **report** what it found, query the evaluation-result telemetry (Section 7), not the config.
 
 > **When the user asks to set up online / continuous evaluation — whether or not they name a
 > log group — tell them ALL of this before any create:** you will run the `@logGroupName` query
@@ -280,6 +285,7 @@ Best for **continuously monitoring** a deployed agent — it samples live sessio
 
 Gather before creating:
 
+- **Instrumentation the service can read.** AgentCore Evaluations picks how to read each span from its `scope.name`. Group a recent window of the agent's spans by `scope['name']` (Section 2, step 2) and compare against the [supported agent frameworks](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/supported-frameworks.html) page. A framework without its own page is still read under generic framework support when its scope starts with `openinference.instrumentation.` or `opentelemetry.instrumentation.` and its spans carry the convention's span-kind attribute (`openinference.span.kind`, or `gen_ai.operation.name`). If the agent's scopes match neither, warn that the config can go ACTIVE/ENABLED yet score nothing, link that page, and create only if the user confirms. This is a warning, not a block.
 - **One agent per config.** `dataSourceConfig.cloudWatchLogs.serviceNames` is **exactly one** service (`logGroupNames` up to 10, or `logGroupNamePrefixes` 1–5 as the alternative). To watch N agents, create N configs — never fold several agents into one.
 - **Log group(s) — read them off the agent's own spans; never derive, construct, or guess a name.** The `@logGroupName` column records the log group each span actually landed in:
 
@@ -304,13 +310,13 @@ Gather before creating:
   - **If the user answers that report by telling you to create anyway** ("I don't care", "go ahead"), create it and state in the result that the log group is unverified. That override requires an instruction given **after** you reported the problem — never infer it from the original request.
 
   **HARD STOP — run the `@logGroupName` query before every create, and never create against an unconfirmed group until the user has been told it is unconfirmed and has answered that you should proceed.** An empty first result is **not** an unconfirmed group: the stop applies only once the query has also been re-run without the `aws.service.type` filter and still returns nothing. Stopping on the first empty result blocks every agent that does not declare that attribute, which is most of them. The same applies to an `update` that changes the data source. A misresolved group produces a config that goes ACTIVE/ENABLED and scores nothing, with no error to signal it — the user must hear it from you before the write, not from empty dashboards afterwards.
-- **Evaluators (1–25) — or `insights` (up to 10) instead; exactly one of the two lists is required** — evaluator ids from `list-evaluators`. Omitting both (or sending an empty `evaluators`) is rejected with "Exactly one of evaluators or insights must be provided"; 26 evaluators is rejected with "Member must have length less than or equal to 25".
-- **Sampling percentage (required, 0.01–100)** — there is no server default; 10 is a reasonable start.
-- **Execution role ARN (required)** — online eval runs under an IAM role AgentCore assumes to read traces, write results, and (for custom evaluators) invoke the judge model. You cannot create IAM roles from this skill, so resolve one in this order:
+- **Evaluators (1–25) — or `insights` (up to 10) instead; exactly one of the two lists is required** — evaluator ids from `list-evaluators`. A request over the cap is the user's trim to make, like any evaluator choice (operating contract): name the cap and let them decide what is dropped or moved to an additional config. Omitting both (or sending an empty `evaluators`) is rejected with "Exactly one of evaluators or insights must be provided"; 26 evaluators is rejected with "Member must have length less than or equal to 25". When the user asks to monitor quality without naming evaluators, profile the agent's traffic first and propose evaluators from it, including a custom evaluator for anything the built-ins do not judge (Section 8, "Set up quality monitoring").
+- **Sampling percentage (required, 0.01–100)** — there is no server default; 10 is a reasonable start. Every sampled session is scored by every evaluator in the config, so cost grows with sampling × evaluators × traffic; 100 scores every session.
+- **Execution role ARN (required)** — online eval runs under an IAM role AgentCore assumes to read traces, write results, and (for custom evaluators) invoke the judge model. You cannot create IAM roles from this skill, even when the user asks you to and the credentials would allow it, and you do not draft a role policy for them to apply; resolve one in this order:
   1. **Reuse an existing role.** Discover candidates with `aws iam list-roles` and offer any whose NAME starts with `AgentCoreEvaluationRole` / `AgentCoreEvalRole`, OR whose TRUST POLICY PRINCIPAL is `bedrock-agentcore.amazonaws.com`. An account that already runs evaluations usually has one — show the matches and let the user pick.
   2. **Else have the user create one** — the AgentCore Evaluations console ("Create and use a new service role"), or the AgentCore CLI/SDK (`auto_create_execution_role=True`) — then use the returned ARN.
 
-  Do NOT hardcode the role's IAM policy here — it drifts; the console/CLI build the authoritative policy on creation. At a glance the role trusts `bedrock-agentcore.amazonaws.com` and needs CloudWatch Logs read/write + log-index and (for custom evaluators) Bedrock invoke, but confirm the exact current trust + permission policy against the AWS documentation rather than reciting a possibly-stale one.
+  Do NOT hardcode the role's IAM policy here — it drifts; the console/CLI build the authoritative policy on creation. At a glance the role trusts `bedrock-agentcore.amazonaws.com` and needs CloudWatch Logs read/write + log-index and (for custom evaluators) Bedrock invoke, but confirm the exact current trust + permission policy against the AWS documentation rather than reciting a possibly-stale one. A custom evaluator encrypted with a customer-managed KMS key also needs that key's policy to grant `bedrock-agentcore.amazonaws.com` `kms:Decrypt` (scoped by `aws:SourceAccount` / `aws:SourceArn`), because online scoring decrypts its instructions as the service; the config itself takes no key.
 - `enableOnCreate` (required) — `true` scores immediately, `false` creates it paused.
 
 ```
@@ -327,7 +333,7 @@ The config name uses **underscores, not hyphens**. Report the returned `onlineEv
 
 ### Author a custom evaluator (only when no built-in fits)
 
-Built-ins are referenced, never created. Author a **custom** evaluator only when the user wants something the built-in set does not score — either an **LLM-as-judge** (a judge model plus scoring instructions and a rating scale) or a **code-based** one (`CustomCode`). All three operations are `bedrock-agentcore-control` calls: `create-evaluator`, `update-evaluator`, `delete-evaluator`.
+Built-ins are referenced, never created or edited, and no evaluator carries a pass mark. Asked to change how a built-in scores, say both and offer both paths: apply the cut-off when reading the scores (Section 7) or in an alert on them, or draft a custom evaluator with its own rubric. Author a **custom** evaluator only when the user wants something the built-in set does not score — either an **LLM-as-judge** (a judge model plus scoring instructions and a rating scale) or a **code-based** one (`CustomCode`). All three operations are `bedrock-agentcore-control` calls: `create-evaluator`, `update-evaluator`, `delete-evaluator`.
 
 **These are writes — draft with the user, then confirm.** Gather what it should score, the `level` (`TRACE` / `TOOL_CALL` / `SESSION` — a **response-quality** dimension such as brand voice, tone, or conciseness is judged at `TRACE` level), and, for an LLM judge, the judge model, the scoring instructions, and the scale. **Present the draft back before creating** — its name, what it judges, the level, the judge model, and the rubric — and create only after the user confirms *that specific draft*. Never invent the rubric, and never treat a "yes" from an earlier turn as approval of a rubric the user has not seen. A delete is destructive and a change alters what every future run is judged on, so confirm those too.
 
@@ -336,6 +342,7 @@ Built-ins are referenced, never created. Author a **custom** evaluator only when
 - The name must match `[a-zA-Z][a-zA-Z0-9_]{0,47}` (start with a letter; letters, digits, underscores; no hyphens; ≤48 chars) and must not collide with a built-in name.
 - `description` is a short **label** for the listing (≤200 chars) and is **not** read by the judge — only `instructions` is. Keep it to one crisp sentence; put the rubric in `instructions`.
 - Creation is asynchronous (`CREATING → ACTIVE`, terminal `CREATE_FAILED`) and Region-scoped — wait for `ACTIVE` before scoring with it, and keep the judge model in the same Region.
+- **Customer-managed key (`--kms-key-arn`). When the user names a key, tell them all four points in the draft:** only a symmetric KMS key in the evaluator's Region is accepted; it encrypts the evaluator's instructions and rating scale (without one, an AWS owned key does); `update-evaluator --kms-key-arn` can later rotate to a new key; and there is no way to remove it and go back to the AWS owned key. Online scoring also needs the key policy grant described under the execution role above.
 - **A custom evaluator named by any online-evaluation config is locked, and only detaching it unlocks.** `get-evaluator` reports `lockedForModification: true`, and `update-evaluator` / `delete-evaluator` fail with `Cannot update locked evaluator: <id>` / `Cannot delete a locked evaluator…`. The release comes from removing it from the config's `evaluators` list — `update-online-evaluation-config --evaluators '[…]'` listing the ones that stay — **not** from switching the config off: an evaluator stays locked indefinitely while `executionStatus` is `DISABLED`, so disabling only stops the scoring you were paying for and leaves the edit just as blocked. Detach it from **every** config that names it, not only the one you are working on. The unlock is eventual and can take many minutes after the detach — if the next `update-evaluator` still reports the lock, that is the lag, not a second problem, so re-poll `get-evaluator` until `lockedForModification` is `false` instead of changing tack.
 
 **Judge model (LLM-as-judge).** `evaluatorConfig.llmAsAJudge.modelConfig.bedrockEvaluatorModelConfig.modelId` must be a foundation model available in the Region — don't guess it. Discover it and fold a recommended model into the draft you present rather than asking as a separate step:
@@ -375,8 +382,8 @@ A dataset is a versioned collection of schema-typed **examples** — the target 
 
 - `schemaType` is chosen at creation and is **immutable**:
   - `AGENTCORE_EVALUATION_PREDEFINED_V1` — author-fixed conversation turns (what trace-derived examples use).
-  - `AGENTCORE_EVALUATION_SIMULATED_V1` — an LLM actor drives the conversation from a goal; needs `actor_profile.goal`, so it cannot be derived from a trace.
-  - `THIRD_PARTY_EVALUATION_V1` — the shape for datasets carrying third-party / external evaluation-framework examples. You will mostly **encounter** it on a dataset created elsewhere rather than create it here. Read the target dataset's `schemaType` with `get-dataset` before adding examples and build examples in the shape that dataset actually declares — a PREDEFINED-shaped example rejected against a third-party dataset fails the whole batch.
+  - `AGENTCORE_EVALUATION_SIMULATED_V1` — an LLM actor drives the conversation from a goal; needs `actor_profile.goal`, so it cannot be derived from a trace. Asked for a simulated dataset "from traces", offer the two real options, a PREDEFINED dataset captured from the traces or a SIMULATED one whose goals the user writes, and say `schemaType` cannot be changed once the dataset exists.
+  - `THIRD_PARTY_EVALUATION_V1` — a **flat** shape (`input`/`expected_output` at the top level, no `turns`), and what the **console** writes for a dataset built from traces, so an existing dataset is routinely this type. Read the target's `schemaType` with `get-dataset` before adding examples by hand: a PREDEFINED-shaped example is rejected with `Required field 'input' is missing from example content`, which fails the whole batch. The capture helper does this read for you.
   - This type was renamed from `GENERIC_EVALUATION_PREDEFINED_V1`, and the old name was **removed rather than kept as an alias**: passing it to `create-dataset` now fails, and a dataset created with it earlier cannot be read back until its type is migrated. If `get-dataset` fails on a dataset that predates the rename, that is the cause — the dataset has to be recreated (or its type migrated by the service team), not worked around from here.
 - A dataset **cannot be created empty** — `create-dataset` needs a `source`, either `inlineExamples.examples` (1–1000) or an `s3Source.s3Uri` pointing at a JSONL file.
 - Writes edit the mutable **DRAFT**; `create-dataset-version` snapshots an immutable numbered version. Evaluations that need a stable target run against a published version.
@@ -444,7 +451,7 @@ Returns a `datasetId`; the dataset may be `CREATING` briefly — re-check `get-d
 
 There is no server-side "trace → example" operation, so this skill **bundles a tested helper**, [`scripts/cloudwatch-omni/capture_dataset_from_traces.py`](../../scripts/cloudwatch-omni/capture_dataset_from_traces.py), that does the whole fetch → reshape → validate → write. **Do not hand-reshape spans in the conversation** — the one-shot flow is error-prone and bloats context.
 
-1. **Retrieve and run the helper** (this skill's supplementary file — fetch it, then run it with your shell). It queries each trace's spans from CloudWatch Omni (`traces.default`), converts each into a PREDEFINED example (root-span input/output, ordered tool trajectory), validates every example, and writes the batch:
+1. **Retrieve and run the helper** (this skill's supplementary file — fetch it, then run it with your shell). It queries each trace's spans from CloudWatch Omni (`traces.default`), converts each into an example (root-span input, last-finishing `AGENT`-span answer, ordered tool trajectory) in the shape the target dataset's `schemaType` declares, validates every example, and writes the batch:
 
    ```
    python capture_dataset_from_traces.py --mode create \
@@ -453,7 +460,7 @@ There is no server-side "trace → example" operation, so this skill **bundles a
    ```
 
    Pass `--i-have-confirmed` only **after** the user has confirmed the write; without it the helper exits non-zero before touching any AWS API.
-   Append to an existing dataset with `--mode add --dataset-id <id>` (an id or a name; a name is resolved via `list-datasets`). It looks back 30 days (`--window-days`) and prints a compact JSON **receipt** (`datasetId`, `examplesWritten`, any per-trace `conversionErrors`) — raw spans never enter the conversation, and a partial/invalid batch never lands.
+   Append to an existing dataset with `--mode add --dataset-id <id>` (an id or a name; a name is resolved via `list-datasets`) — it reads that dataset's `schemaType` and builds the examples in whichever shape it declares, so a console-created one needs nothing extra from you. It looks back 30 days (`--window-days`) and prints a compact JSON **receipt** (`datasetId`, `schemaType`, `examplesWritten`, any per-trace `conversionErrors`) — raw spans never enter the conversation, and a partial/invalid batch never lands.
 2. **Report the receipt** — the returned `datasetId` and counts. You are **not done** until the helper prints a `datasetId`. Relay it honestly: if the receipt lists per-trace `conversionErrors`, say which traces did not become examples rather than reporting only the successes; and when an example is stamped `metadata.partial = true` (its trace's span set was truncated, so the turns/trajectory may be incomplete), tell the user which ones are partial instead of presenting the set as complete.
 
 (First resolve the trace ids with a telemetry query if the user named traces by symptom rather than id — Section 4's "Query → evaluate chaining" applies; the bad-end `traceId`s from Section 7 are also a ready-made input.)
@@ -462,7 +469,7 @@ There is no server-side "trace → example" operation, so this skill **bundles a
 
 - **Root span** = the span with no `parentSpanId` (fall back to the first span).
 - **`turns[0].input`** — first non-empty string, preferring the **root span**, else the **first** span in start-time order; COALESCE these **string-valued** keys: `input.value` → `gen_ai.input_value`.
-- **`turns[0].expected_response`** — same COALESCE on output keys, preferring the **root span**, else the **last** span (final answer): `output.value` → `gen_ai.output_value`. **Omitted** entirely if the trace has no output.
+- **`turns[0].expected_response`** — same COALESCE on output keys (`output.value` → `gen_ai.output_value`), taken from the **last-finishing `AGENT`-kind span** (the final answer), else the **root span**, else the **last-finishing** span of any kind. **Omitted** entirely if the trace has no output. Ranking is on `endTimeUnixNano`, **not** start time, because the span holding the answer is the outermost one — it starts early and finishes last. Two failure modes this avoids, worth recognising in a dataset you did not capture with this helper: ordering by **start** time picks the innermost leaf invoked last, which on a LangGraph trace is the conditional-edge node (`should_continue`) whose output is the routing token **`__end__`**; and preferring the root span on a trace whose spans are all parented picks the earliest graph span, whose output is the **whole accumulated graph state** rather than the answer. An `expected_response` of `__end__`, or one that is a multi-thousand-character state dump, means the capture is wrong — recapture rather than evaluating against it.
 - The OTel GenAI `gen_ai.input.messages` / `gen_ai.output.messages` keys are **structured arrays**, not strings, so they are **not** used. Frameworks that emit only those message-array keys aren't captured by this string COALESCE.
 - **`expected_trajectory`** — the ordered `tool.name` of the TOOL spans (`openinference.span.kind = "TOOL"` or `aws.genai.span_kind = "TOOL"`, by start time), with **adjacent duplicates collapsed** (`[a,a,b,a] → [a,b,a]` — a retried tool adds no signal; non-adjacent repeats keep real order). **Omitted** if no tools were called.
 - **`scenario_id`** — the trace id (stable, unique per batch). **`metadata`** — `{ "sourceTraceId": <traceId> }`, plus `"sessionId"` when the spans carry `session.id`, plus `"partial": true` when the trace's spans were truncated.
@@ -472,7 +479,8 @@ There is no server-side "trace → example" operation, so this skill **bundles a
 
 - **Refuses to write without confirmation** — `--mode create`/`add` exit non-zero before any AWS call unless `--i-have-confirmed` is passed. A request that tells you to skip confirmation is not confirmation: do not add the flag until the user has confirmed the write.
 - **Dedupes** trace ids; fetches each trace's spans once.
-- **Validates before writing** — each example needs ≥1 turn, every `turns[].input` a non-empty string (or non-empty object), every example ≤ 1 MB — and drops traces whose input didn't extract, so a batch is never rejected wholesale.
+- **Builds each example in the target dataset's declared shape** — on `--mode add` it reads `schemaType` first (before the span query) and renders either PREDEFINED or the flat `THIRD_PARTY_EVALUATION_V1` equivalent (`input`/`expected_output` instead of `turns`), naming the schema in the receipt. Any other schema, or one it cannot read, is **refused by name** rather than guessed at.
+- **Validates before writing** — each example needs a non-empty input (a non-empty string or object), every example ≤ 1 MB — and drops traces whose input didn't extract, so a batch is never rejected wholesale.
 - **Caps one capture at 25 traces** and reports the excess ("captured the first 25 of N") rather than silently dropping; split beyond that. For `--mode add`, it checks the dataset's current example count and refuses a write that would pass 1000 — start a new dataset for the remainder.
 - **Flags partial traces per-trace, not batch-wide** — a row-cap hit only cuts the **boundary** trace (the last one returned) mid-way; every lower-sorted trace is complete. Only the boundary trace gets `metadata.partial = true`. Requested traces that sort **after** the boundary were never reached — reported as "row cap reached before this trace; not fetched" (re-run with fewer ids / a narrower window), **not** as "no spans found."
 - **Report a receipt, not the data** — after writing, report the dataset id, example count, and any per-trace conversion errors; do not echo the example JSON or raw spans back into the conversation.
@@ -522,7 +530,7 @@ Reading stored scores is a **two-part** job: the **retrieval plan and reporting*
 
 **"Failing" evals mean LOW SCORES, NOT execution failures.** Disambiguate BEFORE composing the query. "Failing evals", "failing", "bad", "poor", "worst", "underperforming", "unhealthy", "what's wrong" — with NO execution-failure wording — mean evals **performing badly: a low/bad SCORE judged by polarity, or a bad-end label** (SCORED records, `error.type IS NULL`). That is the DEFAULT, and it does not change the ORDER — the FIRST query is still the rollup. This holds for the word "evaluation(s)" too: "which online evaluations are failing?" means low-scoring RESULTS scoped to online-produced records, `error.type IS NULL` — NOT the online-eval configs/jobs failing to run; the `online` / `on-demand` / `batch` word is ONLY the eval-TYPE scope. "Which tool/span are the failures concentrated in?" means: after the rollup, take the bad-END SCORED results, follow their `traceId`s into `traces.default`, and group the spans/tool-calls there. Treat it as **execution failures** (`error.type IS NOT NULL`) ONLY when the user EXPLICITLY says "failed to run", "failed to execute", "execution failure(s)", "errored", "did not run". An `error.type` record is NOT a "failing" score; there is no pass/fail and no "pass rate". When errored jobs fall in the window, say so ("N scored, **Y failed to run** (`<error.type>`)") rather than silently omitting them.
 
-**"Unhealthy / underperforming online evaluators" is this same RESULTS question.** Answer it by filtering the scored results by `attributes['aws.bedrock_agentcore.online_evaluation_config.name']` and rolling up per (config × evaluator) by polarity (`error.type IS NULL`) — NOT by reading `list-online-evaluation-configs` / `get-online-evaluation-config`. A config's `status` / `executionStatus` describe provisioning and on/off, not evaluation quality; an ACTIVE / ENABLED config exposes no health field. Use `error.type` only on the explicit "failed to run / errored" ask.
+**"Unhealthy / underperforming online evaluators" is this same RESULTS question.** Answer it by filtering the scored results by `attributes['aws.bedrock_agentcore.online_evaluation_config.name']` and rolling up per (config × evaluator) by polarity (`error.type IS NULL`) — NOT by reading `list-online-evaluation-configs` / `get-online-evaluation-config`. A config's `status` / `executionStatus` describe provisioning and on/off, not evaluation quality; an ACTIVE / ENABLED config exposes no health field. Use `error.type` only on the explicit "failed to run / errored" ask, and report it as its own short line after the scores, never folded into them. When the user also asks which configs exist, list them as a separate first part (`list-online-evaluation-configs`: name, `status`, `executionStatus`, evaluators, sampling) and still answer the health part from the results.
 
 ### Query surface — dataset and schema
 
@@ -757,6 +765,143 @@ ORDER BY `@timestamp` DESC
 
 - Results are Region-scoped and appear after the normal ingestion lag (a score shows up a couple of minutes after the evaluation runs). If a just-run evaluation is not visible, widen the window or wait for ingestion.
 - On-demand scores are written back best-effort (Section 4) — a score that failed to write (e.g. missing `logs:PutLogEvents` on the caller) will not appear; online evaluation is the source with guaranteed persistence.
+
+---
+
+## 8. From scores to changes
+
+Workflows that start from what evaluation found and end in a change to the agent. They reuse
+the sections above: scores come from Section 7, scoring from Sections 4 and 5, datasets from
+Section 6, and the per-trace and per-session span reads from
+[`query/trace-exploration.md`](query/trace-exploration.md). Every write along the way (a
+config, an evaluator, a dataset, a version, a code change) is confirmed first, per the
+operating contract.
+
+**What these workflows expose.** They read and repeat the agent's real conversations:
+prompts, responses, retrieved context, tool arguments, and evaluator explanations that quote
+them. In a report, a dataset, an alert notification or a CR description, show only the
+excerpt the finding needs and mask anything that looks like a secret or personal data
+(payload rules in [`query/trace-exploration.md`](query/trace-exploration.md) section 2).
+Evaluation results, from online configs as well as on-demand runs, are stored in CloudWatch
+log groups readable by anyone with access to them; recommend a customer-managed KMS key and
+access limited to the people allowed to see that data, as for the on-demand results group
+(Section 4, "Writeback creates a log group").
+
+### Set up quality monitoring for an agent
+
+1. **Profile the traffic first.** Over a bounded window of the agent's spans, look at the
+   traces with the highest and lowest token totals and latency, and at what the prompts ask
+   and which tools get called. This is what the evaluators have to judge.
+2. **Propose an online evaluation** (Section 5) whose evaluators fit that traffic, for
+   example a tool-selection evaluator when tool calls dominate and a faithfulness one when
+   answers rest on retrieved content. Then say whether the built-ins cover what the traffic
+   needs judged; for anything they do not (a domain policy, a tone, a format), propose a
+   custom evaluator (Section 5). The user picks the final set.
+3. **Propose an alert on the scores** so a sustained drop notifies someone: a SQL alert on
+   `logs.default` whose query is the per-evaluator average of scored results (Section 7) for
+   this agent over a window long enough to ride out single bad sessions, with the threshold on
+   each evaluator's bad side by polarity. Authoring rules are in [alerts.md](alerts.md).
+
+### Root-cause a quality regression
+
+1. Confirm scored results exist for the agent in the window (`error.type IS NULL`, both
+   `service.name` forms) and trend each evaluator over time (by hour or day) to find which one
+   degraded and when.
+2. Compare traces scored well and badly by that evaluator, before and after the drop, for
+   what differs: the model id or its parameters, the system prompt, the tool set or tool
+   outputs, retrieval results ("What changed" in `query/trace-exploration.md`).
+3. If the spans carry a version or deployment attribute, split the scores by it; that is the
+   most direct way to name the change that introduced the drop. Without one, ask for the
+   change times and compare before and after each.
+
+### Drill one evaluator into a fix
+
+For a dimension that is dropping (tool selection, faithfulness, or any other), read that
+evaluator's bad-end results by polarity with their explanations (Section 7), follow their
+`traceId`s into `traces.default`, and compare what the explanation complains about with what
+the spans show:
+
+- **Tool selection:** the tool chosen against the tools available on that call. Typical
+  causes are tools whose descriptions overlap, several near-identical tools, or a system
+  prompt that never says when to use which.
+- **Faithfulness:** the claims in the answer against the retrieved context the trace shows.
+  Typical causes are answers that go beyond the retrieved text, or a retrieval tool that
+  returns content without the source fields the answer should cite.
+
+Recommend specific edits (tool descriptions, system-prompt instructions, the tool's output
+shape) and offer to verify them by scoring a dataset before and after. The verdict comes from
+the evaluator, never from you re-reading the traces.
+
+### Is the agent tuned to the evaluators rather than the task?
+
+The signal is high scores on the evaluated dimensions while independent signals stay poor.
+Compare the scores with evidence the rubric does not reward: a different evaluator on the
+same traces, user-visible errors or abandoned sessions, a held-out dataset the agent was not
+tuned on, and answers that echo the rubric's own wording. Report it as a hypothesis with the
+evidence for and against it, not as a verdict.
+
+### Golden datasets from production
+
+Start from the bad-end results (Section 7) for the window and evaluator in question, take
+their `traceId`s, and capture them with the helper (Section 6), which records each trace's
+input and its tool trajectory. The captured expected response is what the agent actually
+answered, so for traces chosen because they scored badly it is the wrong answer: say so, and
+leave the expected responses for the user to write (or drop them before any correctness
+scoring) rather than proposing ones yourself.
+
+### Change, re-run, compare
+
+> **Any plan or report for a change, a prompt comparison, or an A/B states all of this:** the
+> baseline and the new run use the **same published dataset version**; each evaluator's result is
+> given **before and after, separately**, never combined; the review (CR) is opened only after the
+> second run exists; and if the change does not beat the baseline, that is said plainly, with no
+> claimed gain that was not measured. A run of a new prompt version is reported against the
+> previous version's run, and if nothing here can execute the prompt, say so and point to the
+> Agent Playground. Splitting stored scores by prompt version needs a version attribute on the
+> spans; without one, say the split cannot be made and offer to record one going forward or to
+> score both prompts on one published version.
+
+To show a change improves the agent, measure it against a fixed target:
+
+1. Baseline: evaluate a **published dataset version** (Section 6) and record each evaluator's
+   result.
+2. Make the change (a prompt or tool-description edit grounded in the evidence above), then
+   re-run the same evaluators against the **same version**.
+3. Report each evaluator's before and after separately, and say plainly when the change does
+   not beat the baseline. Never claim an improvement without the re-run.
+
+When the request chains the whole loop (worst traces to dataset to baseline to change to
+re-score) and the user has not said what "worst" means, take the bad end of the per-evaluator
+rollup of stored scores (Section 7), read by polarity; if the agent has no stored scores yet,
+say so and offer to score first. A definition the user gives (slowest, failed) wins. The
+capture helper takes at most 25 traces per run, so a larger set needs several runs. Confirm
+each write as it comes, report each id the service returns (`datasetId`, the version), and stop
+at the first step that fails, reporting what completed, rather than continuing on partial data.
+For a code change, open the review only after the re-run, with the before and after in it.
+
+**Comparing prompts.** The same rules apply, plus:
+
+- **Stored scores split by prompt version only if the traces record one.** Check with schema
+  discovery (`EXPLAIN (ANALYZE_FIELDS)` on the agent's spans in `traces.default`,
+  `query/sql-logs-traces.md`) for a prompt-version attribute; never assume a name. The score
+  records in `logs.default` do not carry it, so grouping them by it returns NULL for every
+  row. Map each version to its `traceId`s from the spans, then group the score records by
+  those `traceId`s (the trace-first pattern in Section 7), and give each evaluator's scores
+  per version beside the prompt diff. Without such an attribute, say the scores cannot be
+  split that way, and offer to record a version attribute going forward or to score both
+  prompts against one published dataset version.
+- **Running a prompt over a dataset needs something that executes it.** Confirm the
+  published version and the evaluators, and resolve the model id from the Region's
+  inference profiles (as for a judge model above) rather than writing one from memory. If
+  nothing in reach can run the agent or model with the new prompt, say so and point to the
+  Agent Playground; never write the outputs yourself. Report each evaluator against the
+  previous prompt's run on the same dataset version, not on its own.
+- **Picking a winner.** Run both prompts on the same version with the same model and one
+  evaluator for the dimension asked. If no built-in fits, draft a custom `TRACE` judge and show
+  it for confirmation; a draft is not a create, so offer it even when the user said not to
+  change anything.
+  Report each prompt's average, spread and count with a few contrasting examples, and name a
+  winner only when the gap is clear against the spread.
 
 ---
 
