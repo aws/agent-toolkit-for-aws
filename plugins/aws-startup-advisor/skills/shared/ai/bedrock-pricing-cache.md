@@ -1,6 +1,6 @@
 # Amazon Bedrock Pricing Cache
 
-**Last updated:** 2026-10-26 (added Claude Sonnet 5.5 / Haiku 5.5 Global+Geo rows and DeepSeek V3.2 quick-ref from Bedrock pricing US East (Ohio) + model cards; Haiku 5.5 ≤100K / >100K long-context tiers + cache; lifecycle Status refresh — Claude Sonnet 4 → past EOL; Opus 4.1 → excluded; Llama 4 Maverick/Scout, Llama 3.3 70B, DeepSeek-R1/V3.1, Claude Sonnet 4.5 → legacy; Marengo 3.0 replacement scoped to non-Seoul; other rates unchanged from the 2026-10-05 pricing re-verify)
+**Last updated:** 2026-10-26 (fact re-verify 2026-10-26: Stable Image Core N. Virginia source note, Titan Text Embeddings v2 lifecycle check, GPT-6 Luna card re-verify incl. the 272K short/long boundary, Sonnet 5.5 Geo note; added Claude Sonnet 5.5 / Haiku 5.5 Global+Geo rows and DeepSeek V3.2 quick-ref from Bedrock pricing US East (Ohio) + model cards; Haiku 5.5 ≤100K / >100K long-context tiers + cache; lifecycle Status refresh — Claude Sonnet 4 → past EOL; Opus 4.1 → excluded; Llama 4 Maverick/Scout, Llama 3.3 70B, DeepSeek-R1/V3.1, Claude Sonnet 4.5 → legacy; Marengo 3.0 replacement scoped to non-Seoul; other rates unchanged from the 2026-10-05 pricing re-verify)
 **Region:** us-east-1
 **Currency:** USD
 **Accuracy:** ±15-25% for AI/Bedrock models and services (sourced from public pricing pages)
@@ -51,7 +51,7 @@ full-cache date at the top of this file.
 > ($3.30/$16.50) is this same Geo premium. AWS documents Global cross-Region inference as saving
 > "approximately 10%... compared to geographic cross-Region inference." The table below's bare-id
 > rows are the **Global/base** rate; for a **Geo** (`us.`-prefixed) deployment, multiply
-> input/output by 1.10 — Sonnet 5 Geo is $2.20/$11.00, Opus 4.8 Geo is $5.50/$27.50, Sonnet 4.6
+> input/output by 1.10 — Sonnet 5 and Sonnet 5.5 Geo are $2.20/$11.00 (Sonnet 5.5 Geo is listed directly on the pricing table, not derived), Opus 4.8 Geo is $5.50/$27.50, Sonnet 4.6
 > Geo is $3.30/$16.50, Haiku 4.5 Geo is $1.10/$5.50. `llm-to-bedrock/scripts/bedrock_pricing.py`'s
 > `STATIC_FALLBACK` table keys the `us.` id to the Geo rate and the bare id to the Global/base
 > rate — read from that table, not this one, when a migration plan pins a specific inference
@@ -116,7 +116,7 @@ See `vendored/ai/ai-model-lifecycle.md` for lifecycle details. **Do not recommen
 | GPT-6 Astra                      | openai.gpt-6-astra                       | OpenAI    | 11.00      | 55.00       | 272K    | frontier  | active (mantle in-region us-east-1/us-west-2 + runtime CRIS; Global CRIS 10.00/50.00; 1M-tier 22.00/82.50; Ultrafast 6x available) |
 | GPT-6.1 Sol                      | openai.gpt-6.1-sol                       | OpenAI    | 2.20       | 11.00       | 272K    | flagship  | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 2.00/10.00; 1M-tier 4.40/16.50; Ultrafast 6x available) |
 | GPT-6 Sol                        | openai.gpt-6-sol                         | OpenAI    | 2.20       | 11.00       | 272K    | flagship  | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 2.00/10.00; 1M-tier 4.40/16.50) |
-| GPT-6 Luna                       | openai.gpt-6-luna                        | OpenAI    | 0.11       | 0.55        | 272K    | fast      | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 0.10/0.50; 1M-tier 0.22/0.825) |
+| GPT-6 Luna                       | openai.gpt-6-luna                        | OpenAI    | 0.11       | 0.55        | 272K    | fast      | active (mantle in-region us-east-1 + runtime CRIS; Global CRIS 0.10/0.50; 1M-tier 0.22/0.825; rates and the 272K short/long boundary re-verified against the [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html) 2026-10-26) |
 | GPT-5.6 Sol                      | openai.gpt-5.6-sol                       | OpenAI    | 4.40       | 22.00       | 272K    | frontier  | active (mantle in-region + runtime CRIS; 1M tier 8.80/33.00) |
 | GPT-5.6 Terra                    | openai.gpt-5.6-terra                     | OpenAI    | 2.20       | 13.20       | 272K    | flagship  | active (mantle in-region + runtime CRIS; 1M tier 4.40/19.80) |
 | GPT-5.6 Luna                     | openai.gpt-5.6-luna                      | OpenAI    | 0.22       | 1.32        | 272K    | fast      | active (mantle in-region + runtime CRIS; 1M tier 0.44/1.98)  |
@@ -146,7 +146,7 @@ the corpus must be re-embedded and any similarity threshold recalibrated).
 
 | Model                        | Model ID                     | Provider | Input $/1M | Dimensions        | Tier     | Status |
 | ---------------------------- | ----------------------------- | -------- | ---------- | ----------------- | -------- | ------ |
-| Titan Text Embeddings v2     | amazon.titan-embed-text-v2:0 | Amazon   | 0.02       | 1024/512/256      | default  | active |
+| Titan Text Embeddings v2     | amazon.titan-embed-text-v2:0 | Amazon   | 0.02       | 1024/512/256      | default  | active (Active per [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-text-embeddings-v2.html); not on the pre-2026-09-07 lifecycle page as of 2026-10-26) |
 | Titan Text Embeddings v1     | amazon.titan-embed-text-v1   | Amazon   | 0.10       | 1536              | legacy   | active |
 | Cohere Embed v4              | cohere.embed-v4:0            | Cohere   | 0.12       | 1536/1024/512/256 | flagship | active |
 | Cohere Embed English v3      | cohere.embed-english-v3      | Cohere   | 0.10       | 1024              | mid      | active |
@@ -159,7 +159,7 @@ compatibility or multilingual quality matters. Titan v2 output dimension is conf
 `text-embedding-3-large` (3072-dim) or `-small` (1536-dim) to Titan 1024 and **re-embed** — there
 is no dimension-preserving swap. See `references/vendored/ai/ai-openai-to-bedrock.md`.
 
-### Stability AI — Image Generation (per image, US East)
+### Stability AI — Image Generation (per image, US East (N. Virginia))
 
 Active image generation models on Bedrock. Priced **per image** (not per token). Use for `image_generation` capability workloads.
 
@@ -168,6 +168,8 @@ Active image generation models on Bedrock. Priced **per image** (not per token).
 | Stable Image Ultra         | stability.stable-image-ultra-v1:0 | $0.08       | up to 4MP  | premium  | active |
 | Stable Diffusion 3.5 Large | stability.sd3-5-large-v1:0        | $0.065      | up to 1MP  | flagship | active |
 | Stable Image Core          | stability.stable-image-core-v1:0  | $0.04       | up to 1MP  | fast     | active |
+
+**Stable Image Core source:** $0.04 per generated image, on-demand, from the AWS Stability AI price table on [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/), which lists Stable Image Core for **US East (N. Virginia)** (verified 2026-10-25); the [Stable Image Core 1.0 model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-core-1-0.html) reads Active, Model EOL date N/A (verified 2026-10-26). Gemini's image-generation price for comparison: Gemini 3.1 Flash Image (Nano Banana 2) output is $30 per 1M image tokens — $0.0336 per 1K (1024×1024) image standard, $15 per 1M ($0.0168 per 1K image) batch — per [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing) (verified 2026-10-26); token-to-image equivalence with a 1MP Stable Image Core render is _unverified_.
 
 Image editing services (inpaint, erase, upscale, etc.) are priced at $0.03–$0.60/operation. See [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) for full list.
 
