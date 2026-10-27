@@ -66,6 +66,8 @@ _forbids_files:
 
 The outer Discover preflight must already have validated the exact BMA sibling. AI-only Clarify delegates to BMA as the sole neutral writer. Combined Clarify consumes exactly one validated, non-writing `BMA_AI_CLARIFY_RESULT`; `clarify-assemble.md` remains the sole combined `preferences.json` writer and the sole checkpoint owner. Pass the existing `$MIGRATION_DIR`; never create a second run or advance the phase twice.
 
+When `$MIGRATION_DIR/ai-track.json` has `ai_track: deferred` (`bedrock-migration-assessment` is not installed; see `references/shared/schema-ai-track.md`), do not load `clarify-ai.md` or `clarify-ai-only.md` even if an `iac_vertex` `ai-workload-profile.json` exists, do not request a `BMA_AI_CLARIFY_RESULT`, and do not invoke `$BMA_BASE`. The Assumption Sheet carries the row "AI track: deferred (bedrock-migration-assessment not installed)" so the user sees the `deferred_shared_ai_engine` deferral, and `preferences.json` is written without `ai_constraints`. Clarify otherwise runs the infrastructure categories unchanged.
+
 ## Telemetry boundary
 
 Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
@@ -110,7 +112,7 @@ Two GCP-specific mechanisms that no sibling skill has:
 | `clarify-global.md`   | A — Global/Strategic                      | Q1–Q7                      | Always                                          |
 | `clarify-compute.md`  | B — Config Gaps, C — Compute              | Q7b–Q11b                   | Compute or billing-source resources present     |
 | `clarify-database.md` | D — Database                              | Q12–Q13b                   | Database resources present                      |
-| `clarify-ai.md`       | F — AI/Bedrock, G — Agentic, H — Programs | Q14–Q27                    | `ai-workload-profile.json` exists               |
+| `clarify-ai.md`       | F — AI/Bedrock, G — Agentic, H — Programs | Q14–Q27                    | `ai-workload-profile.json` exists AND `ai-track.json` is not `deferred` |
 | `clarify-ai-only.md`  | _(standalone)_                            | Q1–Q11 (+ Q1.5 compliance) | AI-only migration (no infrastructure artifacts) |
 
 ## Status — build step 5 (restructure)

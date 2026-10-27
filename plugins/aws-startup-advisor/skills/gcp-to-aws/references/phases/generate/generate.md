@@ -4,6 +4,8 @@
 
 When the AI route is active after explicit Generate consent, pass the existing `$MIGRATION_DIR` through the restricted AI shims to the exact preflighted BMA sibling. BMA alone writes `generation-ai.json` and `ai-migration/**`. GCP remains the sole outer dirty-state, combined documentation/report, phase-state, telemetry, and handoff owner.
 
+When `$MIGRATION_DIR/ai-track.json` has `ai_track: deferred` (`bedrock-migration-assessment` not installed; `references/shared/schema-ai-track.md`), do not load `generate-ai.md` or `generate-artifacts-ai.md`, do not invoke `$BMA_BASE`, and do not emit `generation-ai.json` or `ai-migration/**`. Record the deferral in the documents GCP owns: `generate-artifacts-docs.md` writes a "Deferred: AI workloads" subsection in `MIGRATION_GUIDE.md` and `README.md`, and `generate-artifacts-report.md` renders exactly one `<section id="deferred-surfaces">` carrying the `deferred_shared_ai_engine` warning (the report validator enforces it from `ai-track.json`). No `appendix-ai`, no `exec-tco`, and no artifact-catalog row may describe AI output as generated.
+
 ## Telemetry boundary
 
 Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including

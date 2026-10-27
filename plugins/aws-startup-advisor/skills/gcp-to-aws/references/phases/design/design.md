@@ -4,6 +4,8 @@
 
 When the AI route is active, pass the existing `$MIGRATION_DIR` through the restricted `design-ai.md` shim to the exact preflighted BMA sibling. BMA is the sole `aws-design-ai.json` writer; GCP retains infrastructure/billing routing, outer state, and handoff emission.
 
+When `$MIGRATION_DIR/ai-track.json` has `ai_track: deferred` (`bedrock-migration-assessment` not installed; `references/shared/schema-ai-track.md`), do not load the `design-ai.md` shim, do not invoke `$BMA_BASE`, and do not emit `aws-design-ai.json` — even when an `iac_vertex` `ai-workload-profile.json` exists. Design the infrastructure route only; the deferral is carried forward by the `deferred_shared_ai_engine` warning and is recorded downstream (decision report → one callout inside `exec-assumptions`; `MIGRATION_GUIDE.md`/`README.md` → a "Deferred: AI workloads" subsection).
+
 ## Telemetry boundary
 
 Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including

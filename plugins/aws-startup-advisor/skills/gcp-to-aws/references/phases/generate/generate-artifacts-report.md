@@ -8,6 +8,8 @@
 
 For an active AI track, consume exactly one validated set of BMA `ai.*` report contributions, sorted by numeric bucket, numeric source order, then UTF-8 ID. Invoke `$BMA_BASE/scripts/bma-runtime.py execute --request -` in delegated mode with the final report contribution set; write `migration-report.html` only through that production entrypoint and retain its audit row. Reject duplicate IDs/order keys, inactive targets, invalid markup, traceability mismatches, or an existing final target without its current SHA-256 before writing. When `migration-report.html` already exists (re-entering Generate), pass its current SHA-256 as `expected_sha256` on the assembly; a missing hash fails `duplicate_final_write` and a stale one fails `expected_prior_hash_mismatch`. This GCP assembler remains the sole combined `migration-report.html` writer. The outer renderer supplies each final target's complete `document` with section anchors, and the BMA runtime performs the only final write.
 
+When `$MIGRATION_DIR/ai-track.json` has `ai_track: deferred` (`bedrock-migration-assessment` not installed; `references/shared/schema-ai-track.md`), there is no BMA contribution set and `$BMA_BASE` is never invoked: GCP writes `migration-report.html` directly as for a GCP-only run, omits Appendix Section D (`appendix-ai`) and `exec-tco`, and renders exactly one `deferred-surfaces` section (spec below) so the `deferred_shared_ai_engine` deferral is visible in the report and never represented as generated AI output. The validator enforces this from `--migration-dir`.
+
 ## Overview
 
 Generate a single self-contained HTML report (`migration-report.html`) combining an executive summary with detailed appendix. The HTML file uses inline CSS — no external dependencies required. Users can open it in any browser and use "Print to PDF" if a PDF is needed.
@@ -225,6 +227,21 @@ Not all of these require waiting until migration is validated and stable — fig
 
 Source: `ai-workload-profile.json`, `aws-design-ai.json`, `estimation-ai.json`
 
+### Deferred surfaces (`deferred-surfaces`, REQUIRED when ai-track.json is deferred, forbidden otherwise)
+
+**Include exactly once when `$MIGRATION_DIR/ai-track.json` has `ai_track: deferred`; never include it otherwise** (the validator reads the record from `--migration-dir`: `AI_DEFERRED_STATE_MISSING` when absent, `AI_DEFERRED_WARNING_UNEXPECTED` when present without the record, `AI_DEFERRED_BUT_AI_SECTIONS_PRESENT` when `appendix-ai` or `exec-tco` accompanies a deferred track). Render it in the appendix block, after Appendix Section C and in the slot Appendix Section D would have taken, with this exact structure (substitute the detected files from `ai_signal_files` and the `install_hint` command):
+
+```html
+<section id="deferred-surfaces">
+  <h2>Deferred surfaces</h2>
+  <p class="callout-warning"><strong>deferred_shared_ai_engine:</strong> AI workloads were detected in <code>app/llm.py</code>, <code>requirements.txt</code> but the bedrock-migration-assessment skill is not installed beside gcp-to-aws, so Bedrock model design, estimate and generation are deferred and were not produced. Install it (<code>npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill bedrock-migration-assessment</code>) and rerun to add the AI track.</p>
+</section>
+```
+
+Add a TOC link `<a href="#deferred-surfaces">Deferred surfaces</a>` in the appendix list. The section id is not an exec section, so the reader-vocabulary rule (no `*.json` names inside `decision-summary`/`exec-*`) is unaffected; still do not name `ai-track.json` in the rendered prose — the reader needs the skill name and the install command, not the record file. Appendix Section E must not list any AI artifact as generated for a deferred track.
+
+Source: `ai-track.json`
+
 ### Appendix Section E — Generated Artifacts Catalog
 
 List all files and directories generated during the Generate phase:
@@ -405,7 +422,7 @@ The output MUST include these `id` attributes (content from Steps 1–2; gates c
 | `appendix-steps`        | Appendix C                                                                                       |
 | `appendix-artifacts`    | Appendix E                                                                                       |
 
-Conditional IDs (include when their trigger applies): `exec-share`, `exec-tco`, `exec-architecture`, `exec-security-teaser`, `exec-optimization`, `what-if-scenarios`, `appendix-ai`, `appendix-config`, `appendix-security`, `appendix-security-gap`, `appendix-assumptions`, `appendix-optimization`, `appendix-glossary`.
+Conditional IDs (include when their trigger applies): `exec-share`, `exec-tco`, `exec-architecture`, `exec-security-teaser`, `exec-optimization`, `what-if-scenarios`, `appendix-ai`, `appendix-config`, `appendix-security`, `appendix-security-gap`, `appendix-assumptions`, `appendix-optimization`, `appendix-glossary`, `deferred-surfaces` (only when `ai-track.json` is `deferred`).
 
 ```html
 <!DOCTYPE html>
@@ -439,6 +456,7 @@ Conditional IDs (include when their trigger applies): `exec-share`, `exec-tco`, 
       <!-- <section id="appendix-optimization"> when optimization_opportunities[] is non-empty -->
       <section id="appendix-steps"><!-- Appendix C --></section>
       <!-- <section id="appendix-ai"> when AI artifacts exist -->
+      <!-- <section id="deferred-surfaces"> only when ai-track.json is deferred (never together with appendix-ai) -->
       <section id="appendix-artifacts"><!-- Appendix E --></section>
       <!-- <section id="appendix-config"> when preferences.json exists -->
       <!-- <section id="appendix-security"> Appendix G -->
@@ -699,7 +717,12 @@ After generating the HTML file, verify:
 20. **Cost Optimization section**: When `optimization_opportunities[]` is
     non-empty, `exec-optimization` and `appendix-optimization` are present
     and TOC-linked. Do not bury the opportunity table only in Appendix B.
-21. **Cost-figure anchors (machine-checkable).** Wrap the recommended AWS monthly
+21. **Deferred AI track**: When `ai-track.json` has `ai_track: deferred`, exactly one
+    `<section id="deferred-surfaces">` names `deferred_shared_ai_engine` and
+    `bedrock-migration-assessment` with the install command, is TOC-linked, and
+    neither `appendix-ai` nor `exec-tco` is rendered; when the track is not deferred,
+    the section and the code are absent (validator check 27 via `--migration-dir`).
+22. **Cost-figure anchors (machine-checkable).** Wrap the recommended AWS monthly
     figure and the current-spend comparator in `exec-costs` with a `data-cost-key`
     attribute so the validator can confirm the rendered dollars match the estimate:
     - Projected AWS monthly (Balanced): `data-cost-key="aws_monthly_balanced"` on the
@@ -718,7 +741,7 @@ After generating the HTML file, verify:
     mandatory whenever their JSON value exists and `exec-costs` is rendered — a missing
     required anchor is a validator FAIL, not a skip.** Only _untagged illustrative_
     numbers (and the optional per-tier figures when absent) are skipped.
-22. **Whole-dollar monthly figures**: No monthly-scale dollar figure
+23. **Whole-dollar monthly figures**: No monthly-scale dollar figure
     (`$2.00` or higher) renders with cents unless it is a per-unit/hourly
     rate — see rule 19 above.
 

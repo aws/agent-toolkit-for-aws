@@ -18,7 +18,7 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
 
 ## AI profile boundary (delegated BMA input)
 
-`ai-workload-profile.json` in `$MIGRATION_DIR` stays the public GCP artifact in the legacy GCP shape. BMA never reads it. After the sub-discoveries finish and before any BMA AI phase runs, convert it when it exists:
+`ai-workload-profile.json` in `$MIGRATION_DIR` stays the public GCP artifact in the legacy GCP shape. BMA never reads it. This boundary runs only when `$MIGRATION_DIR/ai-track.json` says `ai_track: active`; when the AI track is `deferred` (no `bedrock-migration-assessment` sibling) skip this section entirely — do not convert, do not write `.bma-input/`, do not invoke BMA. After the sub-discoveries finish and before any BMA AI phase runs, convert it when it exists:
 
 ```
 python3 <GCP skill root>/scripts/gcp-ai-profile-adapter.py convert --legacy $MIGRATION_DIR/ai-workload-profile.json --out $MIGRATION_DIR/.bma-input/ai-workload-profile.json --sidecar $MIGRATION_DIR/.bma-input/ai-workload-sidecar.json
@@ -30,7 +30,13 @@ Exit 0 means `.bma-input/ai-workload-profile.json` holds a #415 document. The sa
 
 Before classification or Step 0 mutation, inspect `.migration/` read-only. If existing runs are present, list them with phase status and ask the Step 0 Resume/Fresh/Cancel question now. Hold the answer only in invocation memory: for Resume, set `$SELECTED_RESUME_DIR` to the exact selected existing run; for Fresh, leave it empty; for Cancel, stop. Do not create a directory, persist consent, reconstruct or rewrite state, retire stale artifacts, reconcile telemetry, checkpoint, or write any artifact during this selection.
 
-Invoke `scripts/bma-route-classifier.py classify` with the GCP-local `references/runtime/bma-input-patterns.json`, `references/runtime/bma-bootstrap-manifest.json`, pinned manifest SHA `0d1efe607331df755e6c19e13dc6e002b2931efd44e3cc88c830180aa8acdbb7`, explicit provider intent, project root, and `--resume-dir "$SELECTED_RESUME_DIR"` when Resume was selected. Do not pass or resolve a BMA path on this first pass. `AI_CANDIDATE` is true only with AI evidence: an `ai_signals` match in source or manifest files (provider SDK import or dependency, AI endpoint host, provider env var name, or model identifier), explicit provider intent, Vertex-strong IaC, or a durable AI route; `SOURCE_CONTAINING` alone is informational. If `AI_CANDIDATE` is false, continue without any BMA operation. If true, resolve exactly `<GCP_BASE>/../bedrock-migration-assessment`, rerun the exact same command and resume argument with that `--bma-base`, and require the complete 66-entry closure audit, exact sibling, unchanged before/after trees, and `mutation_count: 0` before Step 0. This preflight is read-only and precedes migration-directory creation, consent persistence, state reconstruction, stale retirement, telemetry reconciliation, checkpoint, or artifact write. A source-free durable AI resume therefore cannot continue unless its selected run was classified and the exact BMA sibling closure passed.
+Invoke `scripts/bma-route-classifier.py classify` with the GCP-local `references/runtime/bma-input-patterns.json`, `references/runtime/bma-bootstrap-manifest.json`, pinned manifest SHA `127d190a7c80c6bd39189064c6d4226a2f872d7b6dc66adef71b398c62065361`, explicit provider intent, project root, and `--resume-dir "$SELECTED_RESUME_DIR"` when Resume was selected. Do not pass or resolve a BMA path on this first pass. `AI_CANDIDATE` is true only with AI evidence: an `ai_signals` match in source or manifest files (provider SDK import or dependency, AI endpoint host, provider env var name, or model identifier), explicit provider intent, Vertex-strong IaC, or a durable AI route; `SOURCE_CONTAINING` alone is informational. If `AI_CANDIDATE` is false, continue without any BMA operation. If true, run the read-only resolver on the first-pass output: `python3 "$GCP_BASE/scripts/resolve-ai-track.py" --skill-base "$GCP_BASE" --classification <first-pass JSON file, or - for stdin> [--resume-dir "$SELECTED_RESUME_DIR"]` (contract: `references/shared/schema-ai-track.md`). Act on its single result:
+
+- `ai_track: active` (the exact sibling `<GCP_BASE>/../bedrock-migration-assessment` is present) → rerun the exact same classifier command and resume argument with that `--bma-base`, and require the complete 66-entry closure audit, exact sibling, unchanged before/after trees, and `mutation_count: 0` before Step 0. A present-but-tampered sibling still stops with `BMA_STANDALONE_CLOSURE_INVALID`; it is never deferred.
+- `ai_track: deferred` (sibling missing; `infrastructure_evidence` lists `terraform`, `billing`, or `resume_artifacts`) → continue to Step 0 with the AI track **deferred**: the infrastructure migration proceeds, no BMA operation ever runs, and every later phase surfaces the `deferred_shared_ai_engine` warning from `$MIGRATION_DIR/ai-track.json` (written in Step 0). Tell the user now: "AI workloads were detected in <ai_signal_files> but the `bedrock-migration-assessment` skill is not installed beside gcp-to-aws — continuing with the infrastructure migration; Bedrock model design, estimate, and generation are deferred. Install it with `<install_hint>` and rerun to add the AI track."
+- `AI_TRACK_FAIL | code=bedrock_migration_assessment_missing_ai_only` (exit 1; sibling missing and no infrastructure input) → STOP before any write and show the `detail` text verbatim: it names `bedrock-migration-assessment` and the install command. Do not fall back to another route.
+
+This preflight is read-only and precedes migration-directory creation, consent persistence, state reconstruction, stale retirement, telemetry reconciliation, checkpoint, or artifact write. A source-free durable AI resume therefore cannot continue unless its selected run was classified and either the exact BMA sibling closure passed or the resolver deferred the AI track on resume artifacts.
 
 If the bootstrap check returns `ok: false`, stop before any state, telemetry, or artifact write. Report the exact `reason` value returned by the classifier, and do not fall back to a different route. The likely cause is line-ending normalization (for example, Git `core.autocrlf=true` on Windows) or a stale checkout. Fix it with a fresh checkout that uses LF line endings, or by reinstalling the plugin.
 
@@ -84,6 +90,7 @@ Keep the selected-base Discover order after successful preflight: GCP IaC/Vertex
 5. Confirm both `.migration/.gitignore` and `.phase-status.json` exist before proceeding to Step 1.
 6. Reconcile the initial state in `cli` reporting mode per
    `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
+7. **Record the AI track** (candidate runs only — the preflight resolver returned `active` or `deferred`): rerun the resolver with the same arguments plus `--write-run-dir "$MIGRATION_DIR"` so it writes `$MIGRATION_DIR/ai-track.json` (contract: `references/shared/schema-ai-track.md`). Every later step, phase, and the report validator read `ai_track` from this file instead of re-deriving the sibling state. On a noncandidate run write nothing (a missing record means the AI track is not applicable).
 
 ## Step 1: Scan for Input Sources and Run Sub-Discoveries
 
@@ -99,7 +106,8 @@ Glob for: `**/*.tf`, `**/*.tfvars`, `**/*.tfstate`, `**/.terraform.lock.hcl`
 Glob for: `**/*.py`, `**/*.js`, `**/*.ts`, `**/*.jsx`, `**/*.tsx`, `**/*.go`, `**/*.java`, `**/*.scala`, `**/*.kt`, `**/*.rs`, `**/requirements.txt`, `**/setup.py`, `**/pyproject.toml`, `**/Pipfile`, `**/package.json`, `**/go.mod`, `**/pom.xml`, `**/build.gradle`
 
 - If found → Load `references/phases/discover/discover-app-graviton.md` first (GCP-owned Graviton `graviton_profile` with `source: "app_code"`; runs for every source-containing run regardless of `AI_CANDIDATE`).
-- If found AND preflight returned `AI_CANDIDATE: true` → then load `references/phases/discover/discover-app-code.md` (the BMA delegation shim).
+- If found AND preflight returned `AI_CANDIDATE: true` AND `$MIGRATION_DIR/ai-track.json` says `ai_track: active` → then load `references/phases/discover/discover-app-code.md` (the BMA delegation shim).
+- If found AND `AI_CANDIDATE: true` but `ai-track.json` says `ai_track: deferred` → Do not load the shim and do not invoke BMA. Log: "AI evidence found but `bedrock-migration-assessment` is not installed — AI track deferred (`deferred_shared_ai_engine`); Graviton profile still recorded."
 - If found AND `AI_CANDIDATE: false` → Do not load the shim. Log: "No AI evidence — skipping BMA app-code discovery (Graviton profile still recorded)."
 - If not found → Skip both. Log: "No source code found — skipping app code discovery."
 
@@ -293,6 +301,7 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
      - `GATE_PASS ... file=... location=top_level|metadata` (exit 0) -> `graviton_profile` (possibly empty) is present in `gcp-resource-inventory.json` or, on hybrid runs, `ai-workload-profile.json` (top level is canonical; `metadata.graviton_profile` is accepted). Continue. This holds whether or not the BMA shim ran.
      - `GATE_PASS ... reason=not_yet_known` (exit 0) -> no file carries a `graviton_profile` yet (for example billing export + source code, where billing writes no inventory). Not a failure: continue, and `clarify-compute.md` Q11b asks for the architecture.
      - `ROUTE_GATE_FAIL ... reason=unreadable|malformed` (non-zero exit) -> malformed input (a file that is not a JSON object, or a `graviton_profile` that is not an array). STOP. Do not proceed to Clarify or Design.
+   - If `ai-track.json` says `ai_track: deferred` -> no AI artifact is expected or allowed: `ai-workload-profile.json` must not have been written by the shim (an `iac_vertex` profile from `discover-iac.md` Step 7d may exist but activates no downstream AI phase), and `.bma-input/` must not exist. The deferral itself is a recorded surface, not a route failure.
    - If `discover-app-code.md` ran (`AI_CANDIDATE: true` only):
      - If its Step 4 exit gate applied (overall AI confidence **below** 70%) **and** no `ai-workload-profile.json` exists -> **allow completion** (app-code route may produce no AI profile).
      - If Step 4 exit applied with confidence below 70% **but** `ai-workload-profile.json` exists with `metadata.profile_source` = `"iac_vertex"` -> **allow completion** (IaC-inferred profile retained).
@@ -308,6 +317,8 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
 ## Step 3: Migration Preview
 
 Load and execute `references/phases/discover/discover-preview.md` to compute the migration preview. This produces `migration-preview.json` and the preview chat block. Skip only if Step 2 found no artifacts (already STOPped).
+
+When `$MIGRATION_DIR/ai-track.json` says `ai_track: deferred`, append one warning line to the preview chat block, after the route line: "⚠ `deferred_shared_ai_engine` — AI workloads detected in <ai_signal_files> but `bedrock-migration-assessment` is not installed beside gcp-to-aws; Bedrock model design, estimate, and generation are deferred and will not appear in this run. Install: `<install_hint>`." The preview route stays infrastructure-only; never show an AI estimate or a Bedrock target for a deferred track.
 
 ## Completion Handoff Gate (Fail Closed)
 
@@ -334,6 +345,7 @@ to be silently re-selected.
 1. At least one discovery artifact exists (`gcp-resource-inventory.json`, `ai-workload-profile.json`, or `billing-profile.json`). None of `openai-usage-profile.json`, `openrouter-usage-profile.json`, or `anthropic-usage-profile.json` satisfies this check on its own — each is a supplement (spend and volumes, no integration or capability detail; see SKILL.md Prerequisites) and cannot anchor a run by itself. A **skip-record** `billing-profile.json` (empty `services[]` **and** non-empty `warnings[]` — every billing file was an unrecognized non-GCP export, per `discover-billing.md`) ALSO does not satisfy this check on its own: it records that billing input was skipped, not parsed. The run must anchor on IaC, code scan, or AI discovery instead.
 2. Route output gates from Step 2 all pass.
 3. If any discovery artifact exists → `migration-preview.json` exists with `complexity_signal` set.
+4. If the preflight resolver returned `active` or `deferred` → `ai-track.json` exists with that `ai_track` value (Step 0 item 7). A deferred AI track is a recorded surface, not a failure: it passes this gate and is carried into Clarify's Assumption Sheet, the decision report, and the migration report by the `deferred_shared_ai_engine` warning. A deferred run that nevertheless holds `.bma-input/` or an AI artifact the shim would have written FAILS (`reason=invalid`).
 
 **On any FAIL:** Emit `GATE_FAIL | phase=discover | field=<path> | reason=<missing|invalid|stale_downstream>`. **Do NOT modify artifacts to pass the gate.** **Do NOT update `.phase-status.json`.** Tell the user which sub-discovery to re-run.
 
@@ -352,6 +364,7 @@ Output to user — build message from whichever artifacts exist:
 - If `gcp-resource-inventory.json` exists: "Discovered X total resources across Y clusters."
 - If live discovery ran: "Live discovery captured N resources from project [id]." Plus, when IaC also ran: "Drift check: A resources live but not in Terraform, B in Terraform but not live, C config conflicts (live values used)." Plus, when `live_metadata.unmapped_asset_types` is non-empty: "Skipped M unmapped asset types (top: X, Y, Z) — full list in live_metadata."
 - If `ai-workload-profile.json` exists: "Detected AI workloads (source: [ai_source])."
+- If `ai-track.json` says `ai_track: deferred`: "AI track deferred (`deferred_shared_ai_engine`): `bedrock-migration-assessment` is not installed — infrastructure migration continues without Bedrock design or estimate."
 - If `billing-profile.json` exists with non-empty `services[]`: "Parsed billing data ($Z/month across N services)." If it is a skip record (empty `services[]`, non-empty `warnings[]`): "Skipped N billing files (not GCP/BigQuery exports) — see billing-profile.json warnings." (never report "$0/month across 0 services" as parsed spend).
 - If `openai-usage-profile.json` exists: "Captured OpenAI usage via Admin API ($X/month across M models)." Plus, when `metadata.capture_warnings` is non-empty: "W usage endpoints failed — affected categories are unknown, not zero (see profile metadata)."
 - If `openrouter-usage-profile.json` exists: "Captured OpenRouter usage via API ($X/month across M models)." Plus, when `metadata.capture_warnings` is non-empty: "W usage endpoints failed — affected categories are unknown, not zero (see profile metadata)."
@@ -377,6 +390,7 @@ _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FA
 6. `openrouter-usage-profile.json` — from discover-openrouter-api.md (plus `openrouter-capture/` raw captures inside the gitignored run directory; the transient `.openrouter-key-env` key file is deleted by that sub-file's Step 4 and is never a phase output)
 7. `anthropic-usage-profile.json` — from discover-anthropic-api.md (plus `anthropic-capture/` raw captures inside the gitignored run directory; the transient `.anthropic-admin-env` key file is deleted by that sub-file's Step 4 and is never a phase output)
 8. `migration-preview.json` — from discover-preview.md (always written when any artifact exists)
+9. `ai-track.json` — from `scripts/resolve-ai-track.py --write-run-dir` in Step 0 item 7 (candidate runs only; `active` or `deferred`; contract `references/shared/schema-ai-track.md`)
 
 **No other files must be created:**
 

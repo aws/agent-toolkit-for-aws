@@ -4,6 +4,8 @@
 
 When the AI route is active, pass the existing `$MIGRATION_DIR` through the restricted `estimate-ai.md` shim to the exact preflighted BMA sibling. BMA is the sole `estimation-ai.json` writer; GCP retains infrastructure/billing routing, the Decision gate, workshop, outer state, and handoff emission.
 
+When `$MIGRATION_DIR/ai-track.json` has `ai_track: deferred` (`bedrock-migration-assessment` not installed; `references/shared/schema-ai-track.md`), do not load the `estimate-ai.md` shim, do not invoke `$BMA_BASE`, and do not emit `estimation-ai.json`: no AI estimate line, no combined `exec-tco` section, no Bedrock cost in the Decision gate numbers. Record the deferral instead — the decision report (`shared/report-decision-core.md`, decision mode) carries one `deferred_shared_ai_engine` callout inside `exec-assumptions` naming `bedrock-migration-assessment` and its install command, and the migration guide/README carry a "Deferred: AI workloads" subsection. Never present the infrastructure-only estimate as covering the AI workloads.
+
 ## Telemetry boundary
 
 Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including

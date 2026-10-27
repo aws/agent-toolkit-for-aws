@@ -11,6 +11,15 @@ Usage:
       --estimation-infra estimation-infra.json \\
       --estimation-ai estimation-ai.json
 
+--migration-dir enables the run-bound checks: fixture-bleed detection,
+scenarios/index.json (what-if table), and the deferred AI track. When
+<migration_dir>/ai-track.json says ai_track "deferred" (the selected-base skill ran
+without its bedrock-migration-assessment sibling), the full report must carry exactly
+one <section id="deferred-surfaces"> naming deferred_shared_ai_engine and
+bedrock-migration-assessment, the decision report must carry the code inside
+exec-assumptions, and no AI section may pretend the AI track was generated
+(AI_DEFERRED_* error codes). Without a deferred track the code must not appear.
+
 Script location: this file lives at
   plugins/aws-startup-advisor/scripts/validate-migration-report.py
 Agents should invoke it via Path(__file__) resolution or:
@@ -88,7 +97,19 @@ OPTIONAL_SECTION_IDS = [
     "appendix-assumptions",
     "appendix-optimization",
     "appendix-glossary",
+    "deferred-surfaces",
 ]
+
+# Deferred AI track (the selected-base skill ran without its
+# bedrock-migration-assessment sibling; contract: the selected base's
+# references/shared/schema-ai-track.md). The record is $MIGRATION_DIR/ai-track.json;
+# the warning code below must surface in the report exactly when the record says
+# the track is deferred.
+AI_TRACK_RECORD = "ai-track.json"
+AI_DEFERRED_WARNING_CODE = "deferred_shared_ai_engine"
+AI_DEFERRED_MISSING_SKILL = "bedrock-migration-assessment"
+AI_DEFERRED_SECTION_ID = "deferred-surfaces"
+AI_DEFERRED_FORBIDDEN_SECTION_IDS = ("appendix-ai", "exec-tco")
 
 FORBIDDEN_PATTERNS = [
     (r"\[placeholder\]", "placeholder text"),
@@ -1524,7 +1545,7 @@ def _validate_cost_figures(
 
     # Required figures must be anchored INSIDE <section id="exec-costs"> when their
     # JSON value exists and that section is rendered — per generate-artifacts-report.md
-    # rule 21 ("Wrap ... in exec-costs with a data-cost-key attribute"). A redundant
+    # rule 22 ("Wrap ... in exec-costs with a data-cost-key attribute"). A redundant
     # anchor elsewhere (e.g. a decision-summary hero metric) is still cross-checked by
     # the mismatch loop above, but does not satisfy this requirement: exec-costs is the
     # section customers read as the authoritative cost comparison, and its own dollar
@@ -1671,6 +1692,77 @@ def _validate_fixture_bleed(html: str, migration_dir: Path | None) -> list[str]:
         errors.append(
             f'migration ID mismatch: report references {sorted(ids_in_report)} but '
             f"--migration-dir is {dir_name} — verify the report belongs to this run"
+        )
+    return errors
+
+
+def _ai_track(migration_dir: Path | None) -> dict | None:
+    """The run's ai-track.json object, or None when absent or unreadable."""
+    if migration_dir is None:
+        return None
+    path = migration_dir / AI_TRACK_RECORD
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _validate_deferred_ai_track(html: str, migration_dir: Path | None, mode: str) -> list[str]:
+    """Enforce the deferred AI track surface from $MIGRATION_DIR/ai-track.json.
+
+    deferred  → full mode: exactly one <section id="deferred-surfaces"> naming the
+                warning code and the missing skill, and no appendix-ai / exec-tco
+                (the AI track was not produced, so it must not read as generated);
+                decision mode: the warning code inside exec-assumptions;
+                ai_only mode: contradiction (an AI-only run cannot defer its only track).
+    otherwise → the warning code must not appear anywhere in the body.
+    Only active with --migration-dir (a fixture has no run directory).
+    """
+    if migration_dir is None:
+        return []
+    errors: list[str] = []
+    track = _ai_track(migration_dir)
+    deferred = track is not None and track.get("ai_track") == "deferred"
+    body = _readability_scope(html)
+    if not deferred:
+        if AI_DEFERRED_WARNING_CODE in body:
+            errors.append(
+                f"AI_DEFERRED_WARNING_UNEXPECTED: report mentions {AI_DEFERRED_WARNING_CODE} but "
+                f"{AI_TRACK_RECORD} does not record a deferred AI track"
+            )
+        return errors
+    if mode == "ai_only":
+        errors.append(
+            f"AI_DEFERRED_IN_AI_ONLY_MODE: {AI_TRACK_RECORD} records a deferred AI track but the "
+            "report is validated as ai_only — an AI-only run has no infrastructure track to proceed with"
+        )
+        return errors
+    if mode == "decision":
+        assumptions = _section_html(html, "exec-assumptions") or ""
+        if AI_DEFERRED_WARNING_CODE not in assumptions:
+            errors.append(
+                f"AI_DEFERRED_STATE_MISSING: {AI_TRACK_RECORD} records a deferred AI track but "
+                f'<section id="exec-assumptions"> carries no {AI_DEFERRED_WARNING_CODE} callout'
+            )
+        return errors
+    counts = _section_id_counts(html)
+    section = _section_html(html, AI_DEFERRED_SECTION_ID) or ""
+    if counts.get(AI_DEFERRED_SECTION_ID, 0) != 1 or not (
+        AI_DEFERRED_WARNING_CODE in section and AI_DEFERRED_MISSING_SKILL in section
+    ):
+        errors.append(
+            f"AI_DEFERRED_STATE_MISSING: {AI_TRACK_RECORD} records a deferred AI track but the report "
+            f'has no single <section id="{AI_DEFERRED_SECTION_ID}"> naming {AI_DEFERRED_WARNING_CODE} '
+            f"and {AI_DEFERRED_MISSING_SKILL}"
+        )
+    present = [sid for sid in AI_DEFERRED_FORBIDDEN_SECTION_IDS if counts.get(sid, 0)]
+    if present:
+        errors.append(
+            "AI_DEFERRED_BUT_AI_SECTIONS_PRESENT: the AI track is deferred, so the report must not "
+            f"render {', '.join(present)} as if AI artifacts had been generated"
         )
     return errors
 
@@ -2315,6 +2407,9 @@ def validate_report(
 
     # Catch verbatim copies of the reference fixture into a real run.
     errors.extend(_validate_fixture_bleed(html, migration_dir))
+
+    # Deferred AI track (ai-track.json): the warning must surface exactly when recorded.
+    errors.extend(_validate_deferred_ai_track(html, migration_dir, mode))
 
     # What-if workshop scenario table — required when ≥2 scenarios were snapshotted.
     if migration_dir is not None:

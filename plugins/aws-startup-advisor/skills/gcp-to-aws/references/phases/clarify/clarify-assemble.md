@@ -24,6 +24,8 @@ _knowledge:
 
 When the AI fragment is active, accept exactly one `BMA_AI_CLARIFY_RESULT` validated by BMA's production runtime and schema. Before the final write, invoke `$BMA_BASE/scripts/bma-runtime.py execute --request -` in delegated mode with `delegated_route: combined`, the current state, typed result, and exactly one planned `preferences.json` write owned by `gcp-to-aws`; perform the write only through that command and retain its audit row. Reject duplicate workload IDs, duplicate `{file,line}` call sites, invalid question metadata, or a result that performed a write. Merge its rows once into the selected-base conversation order. This assembler remains the sole combined draft/final `preferences.json` writer and outer `GATE_FAIL`/`HANDOFF_OK` emitter.
 
+When `$MIGRATION_DIR/ai-track.json` has `ai_track: deferred`, the AI fragment is not active: do not request a `BMA_AI_CLARIFY_RESULT`, do not invoke `$BMA_BASE`, and write `preferences.json` directly as for a GCP-only run, **without** an `ai_constraints` section and without `workloads[]`. Add one DETECTED row to the Gate 1 Assumption Sheet — `| AI track | deferred (bedrock-migration-assessment not installed) | ai-track.json | No Bedrock design/estimate this run; install the skill and rerun to add it |` — so the `deferred_shared_ai_engine` deferral is confirmed by the user, never silently dropped. Q27 is still asked only when AI workloads are detected by an active track.
+
 ## This unit owns the conversation
 
 Fragments compute rows. **The assembler is the only thing that talks to the user**, and it

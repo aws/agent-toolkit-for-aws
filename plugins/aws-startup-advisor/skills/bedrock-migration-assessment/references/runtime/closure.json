@@ -390,7 +390,7 @@
       "origin": "selected-base-source",
       "parity": "adapted",
       "runtime_references": [],
-      "sha256": "a91bf6063b6e72c0da26a805670f83b6dc9f9e43f1671e95abdf5843ff9e7f3f",
+      "sha256": "6a40606e50a9fb6fd668b98e1f3eafd97477c2e6be73ce03e1480f7faaa61e61",
       "source_path": "skills/gcp-to-aws/references/shared/validate-migration-report.md",
       "type": "instruction"
     },
@@ -637,7 +637,7 @@
       "origin": "canonical-plugin",
       "parity": "byte-identical",
       "runtime_references": [],
-      "sha256": "0d378e2a95ff91d580800145ceeb009737e2a398165c4bc3068d227cf03fee92",
+      "sha256": "55e6b0eafe41bef2ae50e9700c394f45ffd74c3f5370b24ed92fcd9eb0ec1a2a",
       "source_path": "scripts/validate-migration-report.py",
       "type": "script"
     },
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "88b9a01a5588e6d2ecb8b5507d03d11adc85a693fd89e25986a339941b66b876"
+  "self_hash": "08bada8b83a5b9f150838fb7597a44b86c31524fd2a7c2de5496982c59a00d95"
 }

@@ -68,6 +68,15 @@
         "shape": "skills/gcp-to-aws/references/shared/schema-discover-ai.md",
         "root_heading": "ai-workload-profile.json"
       },
+      "ai-track.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-ai-track.md",
+        "root_heading": "ai-track.json",
+        "sections": {
+          "Active outcome": "",
+          "Not applicable outcome": ""
+        },
+        "_sections_why": "The root example is the deferred record; the active and not_applicable examples document alternative root shapes of the same file (bma_base only exists on active), so they merge into the root."
+      },
       "aws-design-ai.json": {
         "shape": "skills/gcp-to-aws/references/shared/schema-design-aws-ai.md",
         "root_heading": "Shape"
