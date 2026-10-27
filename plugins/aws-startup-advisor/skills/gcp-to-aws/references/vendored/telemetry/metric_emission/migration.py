@@ -144,10 +144,11 @@ def via_mode(argv):
 # ------------------------------------------------------------ run discovery
 
 
-def find_run_dirs(start_dir):
+def find_run_dirs(start_dir, search_parents=True):
     """Run directories (.migration/<id>/ with a state file) for the nearest
     .migration tree, walking up a bounded number of levels so runs from parent or
-    sibling projects are not mixed in."""
+    sibling projects are not mixed in. Explicit targets disable upward search,
+    including when their .migration directory cannot be listed."""
     runs = []
     directory = Path(start_dir or os.getcwd()).resolve()
     for _ in range(4):
@@ -155,6 +156,8 @@ def find_run_dirs(start_dir):
         try:
             entries = list(os.scandir(root))
         except OSError:
+            if not search_parents:
+                break
             parent = directory.parent
             if parent == directory:
                 break
@@ -508,11 +511,12 @@ def process_run(run_dir, session_id, session_end, url, deadline, edited_path, vi
 # ---------------------------------------------------------------------- main
 
 
-def reconcile(start_dir, session_id=None, session_end=False, edited_path=None, url=None, via="hook"):
+def reconcile(start_dir, session_id=None, session_end=False, edited_path=None, url=None, via="hook",
+              search_parents=True):
     """Report every run reachable from `start_dir`. Returns nothing; never raises."""
     url = url or client.endpoint()
     deadline = time.time() + SESSION_END_BUDGET_SECONDS - SESSION_END_RESERVE_SECONDS if session_end else float("inf")
-    for run_dir in find_run_dirs(start_dir):
+    for run_dir in find_run_dirs(start_dir, search_parents=search_parents):
         try:
             process_run(run_dir, session_id, session_end, url, deadline, edited_path, via)
         except BaseException:
@@ -561,7 +565,8 @@ def main(argv, stdin=None):
         edited_path[:marker] if marker != -1 else None
     ) or payload.get("cwd") or (roots[0] if isinstance(roots, list) and roots else None) or os.getcwd()
 
-    reconcile(start_dir, session_id=session_id, session_end=session_end, edited_path=edited_path, via=via_mode(argv))
+    reconcile(start_dir, session_id=session_id, session_end=session_end, edited_path=edited_path,
+              via=via_mode(argv), search_parents=project_root is None)
     return 0
 
 

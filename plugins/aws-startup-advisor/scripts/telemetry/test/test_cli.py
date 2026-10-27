@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -214,6 +215,38 @@ def test_invalid_explicit_target_never_falls_back_to_parent(tmp_path, home, coll
     target = str(p.root / target) if target in ("missing", "empty-child") else target
     assert invoke(p, "reconcile", "--project-root", target, markers={"CLAUDECODE": "1"})[1] == []
     assert not (p.run_dir / ".telemetry-snapshot.json").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory permissions")
+@pytest.mark.parametrize("markers", [{}, {"CLAUDECODE": "1"}])
+def test_unreadable_explicit_target_does_not_report_readable_ancestor(
+    tmp_path, home, collector, markers
+):
+    parent = Project(tmp_path, home, collector, phase_status())
+    child = parent.root / "child"
+    tree = child / ".migration"
+    tree.mkdir(parents=True)
+    tree.chmod(0o111)  # stat/traversal works, but listing the directory must fail.
+    try:
+        assert tree.is_dir()
+        try:
+            list(tree.iterdir())
+        except PermissionError:
+            pass
+        else:
+            pytest.skip("filesystem permits listing despite chmod 0111")
+        assert invoke(
+            parent, "reconcile", "--project-root", str(child), markers=markers,
+        )[1] == []
+        assert not parent.has_snapshot()
+
+        # Untargeted hooks must retain their existing upward discovery.
+        events = parent.hook("--reconcile", payload={"cwd": str(child)})
+        assert {activity(event)["eventName"] for event in events} == {
+            "RUN_STARTED", "PHASE_COMPLETED",
+        }
+    finally:
+        tree.chmod(0o700)
 
 
 @pytest.mark.parametrize("consent", [None, "OPT_OUT"])
