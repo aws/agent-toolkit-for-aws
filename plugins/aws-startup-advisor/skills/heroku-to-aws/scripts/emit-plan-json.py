@@ -67,6 +67,7 @@ _UUID_RE = re.compile(
 # never changes it. LLM_TO_BEDROCK (OpenAI) is intentionally absent — it has no
 # persisted cost artifact to copy, so it is a follow-up.
 SKILL_TO_PLATFORM = {
+    "AZURE_TO_AWS": "AZURE",
     "GCP_TO_AWS": "GCP",
     "HEROKU_TO_AWS": "HEROKU",
 }

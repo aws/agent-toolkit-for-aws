@@ -62,8 +62,8 @@ def test_lowercase_uuid_run_id_is_unchanged(tmp_path: Path) -> None:
     assert data["runId"] == lower, f"runId altered: {data.get('runId')!r}"
 
 
-def test_azure_infra_run_skips_plan_until_importer_supports_azure(tmp_path: Path) -> None:
-    """A valid Azure estimate fails open while the downstream importer lacks AZURE."""
+def test_azure_infra_run_emits_plan(tmp_path: Path) -> None:
+    """A representative Azure infrastructure estimate produces the active handoff."""
     golden = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-estimate"
     run = tmp_path / "run"
     shutil.copytree(golden, run)
@@ -73,15 +73,39 @@ def test_azure_infra_run_skips_plan_until_importer_supports_azure(tmp_path: Path
     status["run_id"] = "8c1e4f2a-3b6d-4a7e-9f10-5d2c8b7a6e41"
     status_path.write_text(json.dumps(status, indent=2))
 
-    result = subprocess.run(
-        [sys.executable, str(WRITER), "--migration-dir", str(run)],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0
-    assert result.stdout.startswith("PLAN_SKIP"), result.stdout
-    assert "AZURE_TO_AWS" in result.stdout
-    assert not (run / "plan.json").exists()
+    data = _emit(run)
+    assert data["sourcePlatform"] == "AZURE"
+    assert data["scope"] == "INFRA_ONLY"
+    assert data["cost"]["awsMonthlyBasis"] == "BALANCED"
+    assert data["cost"]["awsMonthly"] == 465.09
+    assert data["cost"]["sourceMonthly"] == 4200
+    assert len(data["cost"]["awsServiceItems"]) == 12
+    assert round(sum(item["monthlyCost"] for item in data["cost"]["awsServiceItems"]), 2) == 465.09
+
+
+def test_invalid_or_missing_azure_estimates_still_fail_open(tmp_path: Path) -> None:
+    golden = PLUGIN_ROOT / "fixtures" / "azure-iac-terraform" / "after-estimate"
+    for case in ("missing", "malformed"):
+        run = tmp_path / case
+        shutil.copytree(golden, run)
+        status_path = run / ".phase-status.json"
+        status = json.loads(status_path.read_text())
+        status.update({"owning_skill": "AZURE_TO_AWS", "run_id": f"azure-{case}"})
+        status_path.write_text(json.dumps(status, indent=2))
+        estimate = run / "estimation-infra.json"
+        if case == "missing":
+            estimate.unlink()
+        else:
+            estimate.write_text("{not-json")
+
+        result = subprocess.run(
+            [sys.executable, str(WRITER), "--migration-dir", str(run)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.startswith("PLAN_SKIP"), result.stdout
+        assert not (run / "plan.json").exists()
 
 
 def test_azure_composition_share_is_not_exported_as_accuracy() -> None:
