@@ -111,6 +111,15 @@ excluded rather than assumed free.
 
 ---
 
+## Observed capacity
+
+When a usage profile carries the fields below, use them. When a field is absent, the profile is a 30-day sum only — say that, and do not divide the month by the number of minutes and call the result a peak.
+
+- **On-demand quota** uses `peak.peak_input_tokens_per_minute` and `peak.peak_output_tokens_per_minute` on rows whose `batch` is not true and whose `service_tier` is not `batch`. Batch and other tiers stay visible and are not added into that peak. `day_to_average_ratio` is the burst hint.
+- **OpenAI cache fields are already inside `input_tokens`.** Do not add `input_cached_tokens` or `input_cache_write_tokens` on top. Text, image, and audio splits describe modality. They are not extra volume.
+- **Anthropic cache fields stay additional volume**, as in the prerequisites. `cache_creation_5m_tokens` and `cache_creation_1h_tokens` are the split of `cache_creation_tokens`. Price them separately when both are present, and do not add them on top of the sum. `context_window` `200k-1M` is long-context pricing. `inference_geo` is where the provider ran the call, not the AWS region the customer requires. `web_search_requests` means the workload uses server-side web search.
+- **OpenRouter** `p95_latency_ms` and `p95_throughput_tokens_per_sec` are observed speed, not a latency SLO. `byok_fees_usd` is the router fee, not inference. `cached_tokens` is a subset of prompt tokens. `web_search_cost_usd` and `guardrail_invoked_count` are feature flags. Do not split a mixed model's tokens with `byok_request_count`.
+
 ## Part 1: Establish Current AI Costs
 
 Determine current AI spending from the best available source. **Four-level precedence, first

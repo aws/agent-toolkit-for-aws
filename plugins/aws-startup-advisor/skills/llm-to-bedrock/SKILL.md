@@ -284,11 +284,14 @@ short-circuit it.
        excluded, already-duplicated) token figures; this fee is a real charge NOT reflected in
        the figure above."` When `monthly_cost_usd` is zero (or negligible, same $0.005
        threshold `discover-openrouter-api.md`'s classification already uses), no disclosure is
-       needed — there is no fee to lose, matching today's behavior exactly. Do NOT add this
-       fee back INTO the baseline sum (option (a) from the task brief) — `monthly_cost_usd` for
-       this row is captured as one combined inference+fee figure, not split into a separate
-       fee sub-amount, so adding "just the fee" back in is not representable from this schema
-       without re-deriving it; disclosure (option (b)) is the simpler, schema-accurate fix.
+       needed — there is no fee to lose, matching today's behavior exactly. When the row
+       has `byok_fees_usd` greater than the same $0.005 threshold, ADD `byok_fees_usd` to
+       the dollar sum and do not emit the exclusion warning for that amount: tokens stay
+       excluded (they are already on the direct profile) and `byok_fees_usd` is the router
+       fee alone, which `monthly_cost_usd` is not. When `byok_fees_usd` is absent — a
+       profile written before that field — Do NOT add this fee back INTO the baseline sum.
+       That older `monthly_cost_usd` is one combined figure, so disclosure is the accurate
+       fix and adding it would double-count inference.
      - row's `cost_provenance` is `"mixed"` → EXCLUDE this row's dollar AND token figures from
        this SUM entirely, for the same double-counting reason as `byok_passthrough` above.
        **UNLIKE `byok_passthrough`, do NOT silently drop the independent portion:** a `"mixed"`
@@ -300,9 +303,12 @@ short-circuit it.
        `capture_warnings` — see below) and the user-facing summary: `"<model> classified mixed
        (BYOK + independent OpenRouter usage) — excluded entirely to avoid double-counting the
        BYOK portion, but this also drops its independent OpenRouter-funded usage from the
-       baseline, which is NOT reflected in the figure above."` Do NOT attempt to estimate or
+       baseline, which is NOT reflected in the figure above."`        Do NOT attempt to estimate or
        back out the independent portion's dollar/token split from the enum alone — the enum has
-       no signal for how much of the row's usage is which; only disclose that it is missing. Do
+       no signal for how much of the row's usage is which; only disclose that it is missing.
+       If `byok_request_count` and `analytics_request_count` are both present, you may state
+       the request share in that same disclosure. Do not apply that ratio to tokens or to
+       inference dollars. Do
        NOT make any unsupported "complete cost" or "savings" claim when this warning fires —
        match the honest-disclosure pattern already used for `cost_unavailable`/
        `partial_window` above.
