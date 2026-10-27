@@ -2,6 +2,7 @@
 name: aws-sdk-js-v3-usage
 description: |
   AWS SDK for JavaScript v3 development patterns. Use when writing JavaScript or TypeScript code that uses AWS services via @aws-sdk/* packages (aws-sdk-js-v3), or when asked about schemas, runtime validation, serialization, or code generation in the context of the JS/TS AWS SDK.
+version: 2
 ---
 
 > Do not use emojis in any code, comments, or output when this skill is active.
