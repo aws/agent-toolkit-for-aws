@@ -159,8 +159,18 @@ written, extrapolating from the golden-dataset sample.** If the line is present,
   populate its `BASELINE_TOKENS_BY_SOURCE` dict from `usage_by_model[]`, summing
   `input_tokens + output_tokens` per model id (normalizing OpenRouter's
   `prompt_tokens`/`completion_tokens`, and including Anthropic's
-  `cache_read_tokens`/`cache_creation_tokens` in the sum — same rule as `estimate-ai.md`'s
-  Prerequisites section). A model pair whose source model is absent from `usage_by_model[]`
+  `cache_read_tokens` in the input sum. Do **not** put `cache_creation_tokens` or its
+  5-minute and 1-hour split into that input sum. Copy `cache_creation_5m_tokens` to
+  `cache_write_5m` and `cache_creation_1h_tokens` to `cache_write_1h` when both are
+  present. When an older profile has only the aggregate, copy it to
+  `cache_write_unsplit` and leave the split keys off. Fill
+  `CACHE_WRITE_RATES_BY_TARGET` from the Bedrock cache-write table for the target
+  (Sonnet 5 is 2.50 for 5-minute writes and 4.00 for 1-hour writes, per 1M tokens).
+  One million 5-minute write tokens then cost $2.50, and one million 1-hour write
+  tokens cost $4.00. Pricing both at the ordinary input rate ($2 for that Sonnet 5
+  row) is the bug this avoids. A missing rate, or an aggregate with no duration,
+  does not fall back to the input rate: the basis says the cache-write portion is
+  unpriced. A model pair whose source model is absent from `usage_by_model[]`
   still falls back to the golden-dataset-sample aggregation (unchanged, current behavior) —
   §6.1 (Bedrock pricing lookup) is unchanged either way; only the TOKEN VOLUME each pair is
   priced over changes source, per pair.
@@ -192,7 +202,11 @@ written, extrapolating from the golden-dataset sample.** If the line is present,
   model whose cost_provenance resolved `"uncertain"`) — this can be true even when the window
   is full (`monthly_cost_usd_is_blended_estimate: false`) and every provider's `cost_status` is
   `"complete"`, since those two checks are about window length and dollar availability, not
-  about completeness of WHICH usage was included. When `capture_warnings` is non-empty:
+  about completeness of WHICH usage was included. A warning that only names
+  `usage-completions-hourly.json`, `usage-completions-minute.json`,
+  `usage-messages-hourly.json`, `usage-messages-minute.json`, or
+  `analytics-hourly.json` is peak uncertainty. Keep the daily dollar comparison
+  and say the peak is uncertain. Any other non-empty `capture_warnings`:
   surface every entry verbatim in the report's cost-comparison section (e.g. under a "Data
   completeness note:" heading), and do NOT print an unqualified savings/premium percentage —
   either omit the percentage line entirely and state why, or prefix it with "approximate,
@@ -243,11 +257,19 @@ MODEL_PAIRS = [
 # (matching MODEL_PAIRS[i][0]); value = that model's real monthly {"input": N, "output": N}
 # token totals (sum of usage_by_model[] rows for that model id across all contributing
 # providers — normalize OpenRouter's prompt_tokens/completion_tokens and include Anthropic's
-# cache_read_tokens/cache_creation_tokens, per estimate-ai.md's Prerequisites rule). A model
-# pair whose source model is NOT a key here falls back to the golden-dataset sample below —
+# cache_read_tokens in "input". Do NOT put cache-write tokens in "input". Optional keys
+# cache_write_5m, cache_write_1h, and cache_write_unsplit carry that volume instead.
+# A model pair whose source model is NOT a key here falls back to the golden-dataset sample below —
 # both sides of a pair always share the SAME volume source, never mixed.
 BASELINE_TOKENS_BY_SOURCE = {
-    # "gpt-4o": {"input": 42_000_000, "output": 9_000_000},
+    # "claude-sonnet-5": {"input": 0, "output": 0, "cache_write_5m": 1_000_000, "cache_write_1h": 0},
+}
+
+# Bedrock cache-write rates per 1M tokens, from the committed cache table.
+# Absent target, or a baseline that only has cache_write_unsplit: do not price those
+# tokens at the ordinary input rate.
+CACHE_WRITE_RATES_BY_TARGET = {
+    # "anthropic.claude-sonnet-5": {"5m": 2.50, "1h": 4.00},
 }
 
 # Populate ONLY for a source model with a documented 272K-token breakpoint
@@ -390,6 +412,21 @@ for pair in MODEL_PAIRS:
             bedrock_cost = (in_tok * long_rates["input"] + out_tok * long_rates["output"]) / 1_000_000
         else:
             bedrock_cost = (in_tok * b_in + out_tok * b_out) / 1_000_000
+
+        cache_5m = bucket.get("cache_write_5m", 0)
+        cache_1h = bucket.get("cache_write_1h", 0)
+        cache_unsplit = bucket.get("cache_write_unsplit", 0)
+        cache_rates = CACHE_WRITE_RATES_BY_TARGET.get(tgt)
+        if cache_5m or cache_1h:
+            if cache_rates:
+                bedrock_cost += (cache_5m * cache_rates["5m"] + cache_1h * cache_rates["1h"]) / 1_000_000
+                basis = f"{basis}-cache-write-split"
+            else:
+                cache_write_unpriced = True
+                basis = f"{basis}-cache-write-rates-missing"
+        elif cache_unsplit:
+            cache_write_unpriced = True
+            basis = f"{basis}-cache-write-duration-unknown"
 
         if source_is_long and tgt in BEDROCK_LONG_CONTEXT:
             basis = f"{basis}-long-context"

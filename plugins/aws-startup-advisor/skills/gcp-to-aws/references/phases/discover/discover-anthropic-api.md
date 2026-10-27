@@ -327,9 +327,11 @@ Sum across the window (a throwaway extraction script if captures are large):
   grouped row. Write `web_search_requests` from
   `server_tool_use.web_search_requests` (0 when absent).
   **Peaks** use the same rules as the OpenAI profile, keyed by that tuple.
-  Row 3 sets `peak_source` `"hour"` (busiest hour divided by 60). Row 4,
-  when it succeeded, replaces the per-minute rates with the busiest minute
-  and sets `peak_source` `"minute"`. If row 3 failed, omit `peak` and say
+  The hourly rates are the maximum hour anywhere in the window, divided by 60,
+  not the busiest hour of the busiest day. Row 4 samples one day. It raises a
+  key's rate only when that key appears in the minute file and the minute count
+  is higher than the full-window hourly rate. A key absent from the minute file
+  keeps its hourly rate. Never replace a known hourly peak with a lower minute sample from a different day. If row 3 failed, omit `peak` and say
   so in `capture_warnings` — do not invent a peak from the daily total.
   `service_tier` `"batch"` still gets a peak, and downstream must not use
   it as the on-demand quota.
@@ -451,7 +453,7 @@ portion — a prompt-cached model can rank far higher on total volume than its
 usage. `metadata.capture_warnings` carries every `failed`/`skipped` manifest
 entry (empty array when all rows succeeded) — the
 same convention as the other usage profiles — so downstream phases can tell a
-failed usage category (UNKNOWN volume) from a genuinely unused one (zero).
+failed usage category (UNKNOWN volume) from a genuinely unused one (zero). Name the output file in every warning. A warning for `usage-completions-hourly.json`, `usage-completions-minute.json`, `usage-messages-hourly.json`, `usage-messages-minute.json`, or `analytics-hourly.json` means the peak is uncertain. It does not make the daily volume or the daily cost UNKNOWN.
 Validate: valid JSON, `summary.monthly_cost_usd` approximately equals the sum
 of `costs_by_description[].monthly_cost_usd` (± rounding).
 

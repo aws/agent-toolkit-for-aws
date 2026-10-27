@@ -222,17 +222,26 @@ short-circuit it.
    have multiple providers' profiles simultaneously — including a mix of gcp-produced and
    azure-produced profiles — B1 does not need to distinguish which skill wrote which file,
    since the profile schema itself is identical regardless of producer).
-5. For each profile: check `metadata.capture_warnings` first — non-empty means some endpoint
-   failed and that category's volume is UNKNOWN, not zero; propagate the caveat forward.
+5. For each profile: check `metadata.capture_warnings` first. A warning that names
+   `usage-completions-hourly.json`, `usage-completions-minute.json`,
+   `usage-messages-hourly.json`, `usage-messages-minute.json`, or
+   `analytics-hourly.json` means the peak is uncertain. Keep that profile's daily
+   volume and cost. Any other non-empty warning means some endpoint failed and
+   that category's volume is UNKNOWN, not zero; propagate the caveat forward.
 6. Compute `summary.monthly_cost_usd` SUMMED across every profile in the winning run (never
    max/pick-one, reusing `estimate-ai.md`'s documented SUM discipline from both skills —
    gcp's and azure's `estimate-ai.md` apply the identical rule), combining `usage_by_model[]`
    with the same normalization rules (OpenRouter `prompt_tokens`/`completion_tokens` →
-   `input_tokens`/`output_tokens`; Anthropic `cache_read_tokens`/`cache_creation_tokens`
-   INCLUDED in volume sums — these are additional token pools the Admin API reports
-   separately from `input_tokens`, not a sub-accounting of it; see `estimate-ai.md`'s
-   Prerequisites section in either sibling skill for the full `uncached_input_tokens +
-   cache_read_input_tokens + cache_creation_input_tokens` contract). Apply the
+   `input_tokens`/`output_tokens`; Anthropic `cache_read_tokens` stay in the volume
+   sum. `cache_creation_tokens` is NOT folded into `input_tokens`. When the row has
+   `cache_creation_5m_tokens` and `cache_creation_1h_tokens`, copy both onto the
+   baseline row as `cache_write_5m` and `cache_write_1h`. They are the split of
+   `cache_creation_tokens`; do not add them on top of that sum. When only the
+   aggregate `cache_creation_tokens` is present (an older profile), copy it as
+   `cache_write_unsplit` and do not price it at the ordinary input rate. See
+   `estimate-ai.md`'s Prerequisites section in either sibling skill for the
+   `uncached_input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
+   contract). Apply the
    `metadata.partial_window` exception: a
    partial-window profile's figures are a reference figure labeled with `active_days`, never
    blended into the monthly baseline (schema consequence specified below). **Second, parallel
@@ -403,6 +412,8 @@ representable):**
       "partial_window": true,
       "input_tokens": 0,
       "output_tokens": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0,
       "num_model_requests": 0
     }
   ]

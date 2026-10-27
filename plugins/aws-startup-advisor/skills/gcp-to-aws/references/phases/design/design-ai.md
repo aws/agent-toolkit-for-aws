@@ -266,6 +266,8 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture` alongside `honest_assessment`.
 
+Also apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md` before writing that field. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. Batch rows are excluded. Profiles without peak fields keep this table.
+
 ---
 
 ## Part 1B: Volume-Based Strategy

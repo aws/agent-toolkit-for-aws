@@ -56,6 +56,8 @@ Apply during Design phase after model selection. Uses `ai_token_volume` from `pr
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture`.
 
+**Observed on-demand peak.** The monthly table is the rule when no usage profile has usable peaks. When a profile has `peak.peak_input_tokens_per_minute` or `peak.peak_output_tokens_per_minute` on rows whose `batch` is not true and whose `service_tier` is not `batch`, compute weighted peak TPM = peak input + (peak output × burndown). Burndown is 5 for Claude, 10 for Astra on `bedrock-runtime`, and 1 otherwise. Compare that number with 200,000 TPM, the default this file uses in the Claude example above. If the weighted peak is above 200,000, set `quota_risk` to `"high"` even when `ai_token_volume` is `"low"` or `"medium"`. If it is above 50,000 and the monthly table said `"low"`, set `"medium"`. A low monthly volume with a large measured on-demand burst therefore does not keep `"low"`. Batch and spillover rows are excluded. Profiles with no usable peak fields keep the monthly table. Record `quota_risk_basis` as `"observed_on_demand_peak"` when the peak raised the monthly result, otherwise `"monthly_volume"`. Generate reads the value Design wrote. Do not leave the earlier monthly decision in place after this comparison.
+
 ---
 
 ## `max_tokens` Reservation Trap

@@ -161,6 +161,8 @@ do not apply the GPT multiplier. Verify other models' tiers individually.
 `quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× output burndown) or Astra runtime (10× output burndown) →
 `"medium"`; else `"low"`. Record on each `bedrock_models[]` entry.
 
+Also apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md` before writing `ai_architecture.quota_risk`. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. Batch rows are excluded. Profiles without peak fields keep the monthly result. Generate reads the value written here.
+
 ## Part 1B: Volume-based strategy
 
 If `ai_token_volume == "high"`, emit `tiered_strategy` (Tier1 60% cheap, Tier2 30% mid, Tier3

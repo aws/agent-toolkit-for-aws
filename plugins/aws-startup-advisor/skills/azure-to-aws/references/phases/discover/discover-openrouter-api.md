@@ -444,19 +444,29 @@ not just manifest presence:** read the existing manifest first.
 - `/activity` entry's `status` is `ok` → proceed to Step 3 as normal (the only
   status where a real capture exists to parse).
 
-**`/analytics/query`'s resume handling is INDEPENDENT of `/activity`'s** — a
-resumed run can have `/activity: ok` and `analytics: failed` simultaneously,
-and must retry only the failed row, never both:
+**Analytics resume is selected by output file, not by the shared endpoint.**
+Three captures POST `/analytics/query`. The classification row is the
+`captures[]` item whose `file` is `analytics.json`. `analytics-volume.json`
+and `analytics-hourly.json` are optional. An older manifest with one
+`/analytics/query` item and no `file` field is the classification row; do not
+invent volume or hourly retries for it. A resumed run can have `/activity: ok`,
+classification `ok`, volume `failed`, and hourly `ok` at once. Retry only the
+failed file. Never treat a later `/analytics/query` row as the classification
+row.
 
-- `/analytics/query` entry's `status` is `failed` → retry ONLY that row on the
+- `/analytics/query` entry's `status` is `failed` → retry ONLY that row when
+  its `file` is `analytics.json` (classification). On the
   next invocation, reusing the manifest's recorded `window_start_utc`/`window_end_utc`
   for the retry's `time_range` (per Step 2c row 4's retry rule above), not a fresh
-  `now`-based timestamp and not a freshly re-derived UTC midnight.
-- `/analytics/query` entry's `status` is `skipped` → leave
-  `cost_provenance: "unknown"` permanently for this run; do not re-ask, do not
-  retry.
-- `/analytics/query` entry's `status` is `ok` → proceed with classification as
-  normal.
+  `now`-based timestamp and not a freshly re-derived UTC midnight. Keep the key
+  file while this retry is pending.
+- Classification `skipped` → leave `cost_provenance: "unknown"` permanently for
+  this run; do not re-ask, do not retry.
+- Classification `ok` → proceed with classification as normal.
+- Optional `analytics-volume.json` or `analytics-hourly.json` `failed` → retry
+  only that file, same saved window. Do not block Step 3, classification, or
+  key deletion on an optional file. A failed hourly file leaves the daily
+  Activity totals in place and records a peak-only warning.
 
 Delete the key file once `/activity` reaches a terminal `ok`/`skipped` state
 (per Step 4's cleanup) — never while a retry is still live (a `failed` status
@@ -622,7 +632,7 @@ inference dollars using `byok_request_count` / `request_count`.** That ratio
 may be disclosed; it is not a volume split.
 From row 6, sum hourly tokens across permaslugs of one short id, then write
 `peak` the same way as the OpenAI profile with `peak_source` `"hour"`
-(busiest hour divided by 60). If row 6 is missing or truncated, use the
+(the maximum hour anywhere in the window, divided by 60). If row 6 is missing or truncated, use the
 busiest day in `activity.json`, null the per-minute fields, and set
 `peak_source` `"day"`.
 
@@ -710,7 +720,7 @@ its BYOK-vs-credits split is only partially verified.
 Include only models with non-zero usage. `metadata.capture_warnings` carries every
 `failed`/`skipped` manifest entry (empty array when all rows succeeded) — the same
 convention as the OpenAI usage path — so downstream phases can tell a failed
-capture (UNKNOWN volume) from a genuinely unused one (zero). Validate: valid JSON,
+capture (UNKNOWN volume) from a genuinely unused one (zero). Name the output file in every warning. A warning for `analytics-hourly.json` means the peak is uncertain. It does not make the daily volume or the daily cost UNKNOWN. A failed `analytics.json` still makes classification unknown. A failed `analytics-volume.json` leaves Activity token totals in place and marks the Analytics volume fields unknown. Validate: valid JSON,
 `summary.monthly_cost_usd` equals the sum of `usage_by_model[].monthly_cost_usd`
 (± rounding).
 
@@ -797,13 +807,13 @@ Discover handoff gate.
 
 **Clean up (default, not optional, but gated on BOTH rows being terminal):** before
 deleting anything, confirm the manifest's `/activity` entry is `ok` or `skipped` AND
-the `/analytics/query` entry is `ok` or `skipped` (per Step 2d's resume rules above —
-restated here because this is the one place that actually performs the deletion). If
-`/analytics/query` is still `failed` (a retry is pending), do **NOT** delete the key
-file here — leave it in place, do not proceed with the rest of this Step 4 merge
-either (there is nothing wrong with the merge waiting; `/activity`'s data does not
-go stale), and tell the user: "OpenRouter Analytics classification is still pending a
-retry — keeping the key file until that resolves." Only once both rows are terminal:
+the classification `/analytics/query` entry is `ok` or `skipped` (`file` is
+`analytics.json`, or the sole `/analytics/query` entry when `file` is absent).
+Optional `analytics-volume.json` and `analytics-hourly.json` failures do not keep the key.
+If classification is still `failed`, do **NOT** delete the key file here — tell the user:
+"OpenRouter Analytics classification is still pending a retry — keeping the key file until that resolves."
+Do not proceed with the rest of this Step 4 merge while that retry is pending.
+Only once `/activity` and classification are terminal:
 delete `$MIGRATION_DIR/.openrouter-key-env` now — the key is no longer needed. (This is
 the happy-path cleanup point; a 401/403 on the probe deletes it immediately at
 that point instead, per Step 2b, since a rejected key has nothing left to

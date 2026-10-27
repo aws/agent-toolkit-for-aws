@@ -89,6 +89,30 @@ def test_estimate_uses_peaks_without_double_counting_cache() -> None:
         assert "not a latency SLO" in text
 
 
+def test_minute_sample_cannot_lower_a_different_days_hourly_peak() -> None:
+    for path in OPENAI + ANTHROPIC:
+        text = path.read_text(encoding="utf-8")
+        assert "maximum hour anywhere in the window" in text or "full-window hourly rate" in text
+        assert "Never replace a known hourly peak with a lower minute sample" in text
+    openai = OPENAI[0].read_text(encoding="utf-8")
+    assert "stays at 100 tokens/minute" in openai
+
+
+def test_peak_warnings_do_not_blank_daily_volume() -> None:
+    for path in ESTIMATE:
+        text = path.read_text(encoding="utf-8")
+        assert "means the peak is uncertain" in text
+        assert "does not make the daily volume" in text or "Do not treat that warning as a failed daily usage endpoint" in text
+
+
+def test_openrouter_analytics_rows_are_addressed_by_file() -> None:
+    for path in OPENROUTER:
+        text = path.read_text(encoding="utf-8")
+        assert "file` is `analytics.json`" in text or "whose `file` is `analytics.json`" in text
+        assert "analytics-volume.json" in text
+        assert "do not block Step 3" in text or "Do not block Step 3" in text
+
+
 def test_skill_adds_byok_fee_when_the_field_is_present() -> None:
     text = SKILL.read_text(encoding="utf-8")
     step = text[text.index("## Step 1.5") : text.index("## Phase A")]
