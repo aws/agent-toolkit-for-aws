@@ -117,21 +117,49 @@ def test_ai_only_run_passes_graviton_gate_as_not_applicable(tmp_path: Path) -> N
     assert result.stdout.startswith("GATE_NA | phase=discover | gate=discover-app-graviton | route=ai_only"), result.stdout
 
 
-def test_failed_graviton_gate_stops_run_with_named_error(tmp_path: Path) -> None:
-    # P2: infrastructure run without graviton_profile fails closed with a named error.
+def test_missing_graviton_profile_passes_with_not_yet_known_reason(tmp_path: Path) -> None:
+    # Review 5661016215 (comment 4384076083): a missing profile is "not yet known", not a failure.
+    # On main a missing profile only meant Clarify asked Q11b; the gate must not stop the run.
     _write_json(tmp_path, "gcp-resource-inventory.json", {"resources": []})
     result = _run_graviton_gate(tmp_path)
-    assert result.returncode != 0
+    assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.startswith(
-        "ROUTE_GATE_FAIL | phase=discover | gate=discover-app-graviton | field=graviton_profile | reason=missing"
+        "GATE_PASS | phase=discover | gate=discover-app-graviton | field=graviton_profile | reason=not_yet_known"
     ), result.stdout
+    assert "clarify_q11b" in result.stdout
 
 
-def test_empty_run_dir_fails_closed(tmp_path: Path) -> None:
-    # No inventory and no AI profile is not the AI-only route, so the gate stays fail closed.
+def test_billing_only_plus_source_code_passes_gate(tmp_path: Path) -> None:
+    # Billing export + source code: billing writes no inventory and no AI profile exists,
+    # so this is the infrastructure route with no profile yet. Must pass, not fail closed.
+    _write_json(tmp_path, "billing-profile.json", {"services": []})
     result = _run_graviton_gate(tmp_path)
-    assert result.returncode != 0
-    assert result.stdout.startswith("ROUTE_GATE_FAIL"), result.stdout
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.startswith("GATE_PASS") and "reason=not_yet_known" in result.stdout, result.stdout
+
+
+def test_inventory_with_metadata_graviton_profile_passes(tmp_path: Path) -> None:
+    # Writer/gate agreement: a run that placed the array under `metadata` still passes.
+    _write_json(tmp_path, "gcp-resource-inventory.json", {"resources": [], "metadata": {"graviton_profile": []}})
+    result = _run_graviton_gate(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.startswith("GATE_PASS") and "location=metadata" in result.stdout, result.stdout
+
+
+def test_malformed_graviton_profile_fails_closed(tmp_path: Path) -> None:
+    # ROUTE_GATE_FAIL is reserved for genuinely malformed input.
+    _write_json(tmp_path, "gcp-resource-inventory.json", {"graviton_profile": "x"})
+    result = _run_graviton_gate(tmp_path)
+    assert result.returncode == 1
+    assert result.stdout.startswith("ROUTE_GATE_FAIL") and "reason=malformed" in result.stdout, result.stdout
+
+
+def test_unreadable_inventory_fails_closed(tmp_path: Path) -> None:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "gcp-resource-inventory.json").write_text("not json")
+    result = _run_graviton_gate(tmp_path)
+    assert result.returncode == 1
+    assert result.stdout.startswith("ROUTE_GATE_FAIL") and "reason=unreadable" in result.stdout, result.stdout
 
 
 def test_infra_run_with_graviton_profile_passes(tmp_path: Path) -> None:
@@ -139,6 +167,7 @@ def test_infra_run_with_graviton_profile_passes(tmp_path: Path) -> None:
     result = _run_graviton_gate(tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.startswith("GATE_PASS | phase=discover | gate=discover-app-graviton"), result.stdout
+    assert "location=top_level" in result.stdout, result.stdout
 
 
 def test_hybrid_run_accepts_graviton_profile_in_ai_workload_profile(tmp_path: Path) -> None:

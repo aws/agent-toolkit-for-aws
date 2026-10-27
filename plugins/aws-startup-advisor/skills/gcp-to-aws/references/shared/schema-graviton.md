@@ -26,7 +26,7 @@
 | `caveats`             | string[] | Human-readable risk notes; non-empty for `conditional`/`incompatible` |
 | `source`              | enum     | `app_code` \| `iac` \| `billing`                                      |
 
-Write `graviton_profile` entries into an array under the discovery output. `graviton_profile` is an empty array when no compute services are detected.
+Write `graviton_profile` entries into an array at the top level of the discovery output file. `graviton_profile` is an empty array when no compute services are detected.
 
 ---
 
