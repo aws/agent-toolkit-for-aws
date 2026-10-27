@@ -51,6 +51,11 @@
   creation date or a stored-bytes count, or from one query that failed or
   came back empty. Read the records another way, across the full time
   range, before reporting them absent.
+- A tool's own error is evidence. If a call the answer depends on fails
+  with expired or missing credentials or AccessDenied, report that error
+  and what it blocks, and don't overrule it with another check. Searching
+  other Regions is for finding resources, not for retrying an auth error.
+  Retry throttling with backoff before you report it.
 
 ## Secret Safety
 
