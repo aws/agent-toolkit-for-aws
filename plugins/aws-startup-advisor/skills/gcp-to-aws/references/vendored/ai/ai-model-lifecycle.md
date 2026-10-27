@@ -47,6 +47,10 @@ The notice period a model gets depends on when it launched:
 
 ## Selection Rules
 
+### Rule 0: Capability constraints first
+
+Before applying tier or priority selection, check the Capability Constraints table below: a candidate that lacks a capability the workload requires (forced tool choice, image or audio input, image output, structured outputs, or a sufficient context window) is not eligible regardless of price or tier.
+
 ### Rule 1: Active models only for new migrations
 
 **New migrations must target Active models only.** Do not recommend a Legacy or EOL model as the primary selection for any new migration, even if it is cheaper.
@@ -80,6 +84,34 @@ lists launch **September 8, 2026**, lifecycle **Active**, and no scheduled EOL d
 **no sooner than September 8, 2027**, with a Legacy period of at least six months. The earliest
 possible EOL is not an announced retirement date. Existing GPT-5.x entries are not superseded.
 See `openai-on-bedrock.md` for access paths, regions, and pricing.
+
+## Capability Constraints (verified October 26, 2026)
+
+Per-model facts read from each Bedrock model card on 2026-10-26 (Model Details, Input/Output Modalities, and the `bedrock-runtime` Features table). `yes` / `no` reflect what the card states; `_unverified_` means the card does not state it (same convention as the `_unverified_` batch cells in `bedrock-pricing-cache.md`). Values are facts only — they say nothing about which model a skill should pick; that is decided by the consuming skill's Clarify answers and design rules.
+
+| Model             | Model ID                                   | Lifecycle                                                                     | Context window | Max output | Forced `tool_choice` (`any` / named tool) | Image input | Image output | Audio input | Structured outputs | Source                                                                                                                                 |
+| ----------------- | ------------------------------------------ | ----------------------------------------------------------------------------- | -------------- | ---------- | ----------------------------------------- | ----------- | ------------ | ----------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Sonnet 5.5 | `anthropic.claude-sonnet-5-5` ¹            | Active (launched 2026-09-28; EOL no sooner than 2027-09-28)                   | 1M             | 128K       | no (`auto` / `none` only)                 | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html), verified 2026-10-26   |
+| Claude Sonnet 5   | `anthropic.claude-sonnet-5` ²              | Active (launched 2026-06-30; EOL no sooner than 2027-06-30)                   | 1M             | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html), verified 2026-10-26     |
+| Claude Haiku 4.5  | `anthropic.claude-haiku-4-5-20251001-v1:0` ³ | Active (launched 2025-10-16; card: EOL no sooner than 2026-10-16, Model EOL date N/A) ⁷ | 200K           | 64K        | _unverified_ ⁶                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html), verified 2026-10-26    |
+| Claude Haiku 5.5  | `anthropic.claude-haiku-5-5`               | Active (launched 2026-10-07; EOL no sooner than 2027-10-07)                   | 1M             | 128K       | _unverified_ ⁶                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html), verified 2026-10-26    |
+| Claude Opus 5.5   | `anthropic.claude-opus-5-5`                | Active (launched 2026-09-22; EOL no sooner than 2027-09-22)                   | 1M             | 128K       | no (`auto` / `none` only)                 | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html), verified 2026-10-26     |
+| Nova Pro          | `amazon.nova-pro-v1:0`                     | Active (launched 2024-12-05) ⁷                                                | 300K           | 10K        | _unverified_ ⁵                            | yes         | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-pro.html), verified 2026-10-26               |
+| Nova Lite         | `amazon.nova-lite-v1:0`                    | Active (launched 2024-12-05) ⁷                                                | 300K           | 10K        | yes ⁸                                     | yes         | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-lite.html), verified 2026-10-26              |
+| Nova Micro        | `amazon.nova-micro-v1:0`                   | Active (launched 2024-12-05) ⁷                                                | 128K           | 10K        | yes ⁸                                     | no          | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html), verified 2026-10-26             |
+| GPT-6 Luna        | `openai.gpt-6-luna` ⁴                      | Active (launched 2026-09-22; EOL no sooner than 2027-09-22)                   | 1.05M ⁹        | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html), verified 2026-10-26             |
+
+Table notes (all from the cited cards unless stated):
+
+1. Sonnet 5.5 inference profiles on `bedrock-runtime`: Geo `us.` / `eu.` / `au.`, Global `global.`; the bare ID is also the `bedrock-mantle` ID.
+2. Sonnet 5 inference profiles: Geo `us.` / `eu.` / `au.` / `in.`, Global `global.`.
+3. Haiku 4.5 on `bedrock-runtime` requires a Geo (`us.` / `eu.` / `au.` / `jp.` / `in.`) or Global (`global.`) inference-profile prefix on this dated ID — the card states the bare ID is not supported for on-demand throughput there; `bedrock-mantle` uses `anthropic.claude-haiku-4-5`.
+4. GPT-6 Luna on `bedrock-runtime` requires `us.openai.gpt-6-luna` or `global.openai.gpt-6-luna`; the bare ID is the `bedrock-mantle` ID. Converse accepts `text` and `image` user content blocks only (no `document`).
+5. The card's `bedrock-runtime` Features table has no client-side tool calling entry, so forced `tool_choice` is not stated either way.
+6. The card lists client-side tool calling without the `auto` / `none`-only restriction that the Sonnet 5.5 and Opus 5.5 cards carry, but does not state `any` / named-tool support explicitly.
+7. Launched before 2026-09-07, so the pre-policy-change [lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative; none of these models appears in its table as of 2026-10-26 (the Haiku 4.5 card's "EOL no sooner than" date has passed, but the card still reads Active with no EOL date set).
+8. Card lists client-side tool calling, and the Converse [`ToolChoice`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolChoice.html) reference states the `tool` (named-tool) member is supported by Amazon Nova models.
+9. 1,050,000-token window; the card prices requests above 272K input tokens at long-context rates (see `bedrock-pricing-cache.md`).
 
 ## Legacy / EOL Models (as of October 26, 2026)
 
