@@ -33,22 +33,30 @@ def test_azure_monitor_commands_and_consent():
         "AzureOpenAIContextTokensCachedWrite",
         "AzureOpenAITimeToResponse",
         "--interval PT1H",
-        'ModelDeploymentName eq \'*\'',
+        "ModelDeploymentName eq '<deployment name>'",
+        "ServiceTierRequest eq '*'",
+        "IsSpillover eq '*'",
+        "--top 50",
+        "coverage_incomplete",
+        "service_tier` to `\"unknown\"`",
         "azure-openai-metrics-profile.json",
         "cache_write_tokens",
         'peak_source` is `"hour"`',
-        "busiest hour divided by 60",
+        "maximum hour anywhere in the window",
         "Do NOT query the metric named `Latency`",
         "AzureOpenAIContextTokensCacheMatchRate",
         "prompts, or completions",
         "az cognitiveservices account keys list` is FORBIDDEN",
     ):
         assert needle in AZURE_LIVE, needle
+    assert "ModelDeploymentName eq '*'" not in AZURE_LIVE
     assert "do not set inventory `metadata.confidence` to `measured`" in AZURE_LIVE
 
 
 def test_gcloud_publisher_metrics_and_consent():
     for needle in (
+        "https://monitoring.googleapis.com/v3/projects/$GCP_PROJECT/timeSeries",
+        "nextPageToken",
         "aiplatform.googleapis.com/publisher/online_serving/token_count",
         "publisher/online_serving/model_invocation_count",
         "publisher/online_serving/first_token_latencies",
@@ -60,19 +68,43 @@ def test_gcloud_publisher_metrics_and_consent():
         "serverless Gemini",
         "prompts, or completions",
         "worst hour's p95",
-        "busiest hour divided by 60",
+        "maximum hour anywhere in the window",
+        "live_monitoring",
         "Do not read",
         "resource.data",
     ):
         assert needle in GCP_LIVE, needle
+    assert "gcloud monitoring time-series list` is not a command" in GCP_LIVE
+    assert "gcloud monitoring time-series list --project" not in GCP_LIVE
 
 
 def test_estimate_reads_live_metric_profiles():
     assert "azure-openai-metrics-profile.json" in AZURE_ESTIMATE
     assert "not a customer-measured p95" in AZURE_ESTIMATE
     assert "Do not add it to `input_tokens`" in AZURE_ESTIMATE
-    assert "busiest hour divided by 60" in AZURE_ESTIMATE
+    assert "maximum hour anywhere in the window" in AZURE_ESTIMATE
     assert "gcp-publisher-metrics-profile.json" in GCP_ESTIMATE
     assert "not a latency SLO" in GCP_ESTIMATE
     assert "serverless Gemini" in GCP_ESTIMATE
-    assert "busiest hour divided by 60" in GCP_ESTIMATE
+    assert "maximum hour anywhere in the window" in GCP_ESTIMATE
+
+
+def test_decline_and_clarify_consume_live_profiles():
+    azure_discover = _read(
+        "skills/azure-to-aws/references/phases/discover/discover.md"
+    )
+    assert "azure-openai-metrics-profile.json" in azure_discover
+    gcp_discover = _read("skills/gcp-to-aws/references/phases/discover/discover.md")
+    assert "live_monitoring" in gcp_discover
+    for relative in (
+        "skills/azure-to-aws/references/phases/clarify/clarify-ai.md",
+        "skills/azure-to-aws/references/phases/clarify/clarify-ai-only.md",
+        "skills/gcp-to-aws/references/phases/clarify/clarify-ai.md",
+        "skills/gcp-to-aws/references/phases/clarify/clarify-ai-only.md",
+    ):
+        text = _read(relative)
+        assert "partial_window" in text
+        assert "input_tokens + output_tokens" in text
+    quotas = _read("skills/shared/ai/bedrock-quotas.md")
+    assert "observed_on_demand_peak" in quotas
+    assert "200,000" in quotas

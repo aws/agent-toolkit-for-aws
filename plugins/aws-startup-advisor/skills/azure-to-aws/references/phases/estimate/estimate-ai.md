@@ -170,11 +170,11 @@ replace `openai-usage-profile.json`. Direct OpenAI and Azure OpenAI are differen
 bills. The profile has no dollar field. Do not invent a dollar figure from these
 tokens and add it on top of an Azure Cost Management export. When that export
 exists, it stays the dollar source and these tokens stay the volume.
-`cache_write_tokens` stays separate. Do not add it to `input_tokens`. It is not
+`peak.peak_source` `"hour"` means the maximum hour anywhere in the window, divided by 60. Design already applied the observed-peak rule in `bedrock-quotas.md`. Unknown `service_tier` is not that on-demand peak. `cache_write_tokens` stays separate. Do not add it to `input_tokens`. It is not
 a cache-read pool. `observed_time_to_response_ms` is the mean of hourly gateway
 averages. It is not a customer-measured p95 and not a latency SLO.
-`peak.peak_source` `"hour"` means the busiest hour divided by 60. Say that when
-you use it as a quota starting point. A row whose service tier is batch or
+Say the hourly peak is an hourly average, not a measured minute, when you use
+it as a quota starting point. A row whose service tier is batch or
 spillover is not the on-demand quota peak. A missing profile means metrics were
 not captured. Deployment names alone stay inferred. Do not divide the month by
 the number of minutes and call the result a peak.

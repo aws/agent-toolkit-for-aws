@@ -274,8 +274,8 @@ fast path for the ARM types it found; unmarked rows run in the per-service fallt
 | 14  | `az network vnet list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location, addressSpace:addressSpace.addressPrefixes, subnets:subnets[].{name:name, prefix:addressPrefix}}"`                                                                                                                                                                                                                                                         | `vnet.json`            | E    | `Microsoft.Network/virtualNetworks`                         |
 | 15  | `az keyvault list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location}"` — vault NAMES only, never `secret show`/`secret list --query "[].value"`                                                                                                                                                                                                                                                                                   | `keyvault.json`        | E    | `Microsoft.KeyVault/vaults`                                 |
 | 16  | `az cognitiveservices account list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location, kind:kind, sku:sku.name}"` then per account `az cognitiveservices account deployment list -n <name> -g <rg> --query "[].{id:id, resourceGroup:resourceGroup, name:name, model:properties.model.name, version:properties.model.version}"`                                                                                                                                         | `cognitive.json`       | E    | `Microsoft.CognitiveServices/accounts`, `.../deployments`   |
-| 16a | `az monitor metrics list --subscription "$AZURE_SUBSCRIPTION" --resource "<account id from cognitive.json>" --metrics ProcessedPromptTokens GeneratedTokens AzureOpenAIRequests AzureOpenAIContextTokensCachedWrite --aggregation Total --interval PT1H --start-time "<UTC now minus 30 days, ISO-8601>" --end-time "<UTC now, ISO-8601>" --filter "ModelDeploymentName eq '*'" --query "value[].{metric:name.value, timeseries:timeseries}"` — after row 16, once per account; skip when `cognitive.json` is empty. See the row 16 metrics note. | `cognitive-metrics-<name>.json` |  | — (usage aggregate, not an inventory resource) |
-| 16b | `az monitor metrics list --subscription "$AZURE_SUBSCRIPTION" --resource "<account id from cognitive.json>" --metrics AzureOpenAITimeToResponse --aggregation Average --interval PT1H --start-time "<UTC now minus 30 days, ISO-8601>" --end-time "<UTC now, ISO-8601>" --filter "ModelDeploymentName eq '*'" --query "value[].{metric:name.value, timeseries:timeseries}"` — same accounts as 16a. Do NOT query the metric named `Latency`. | `cognitive-latency-<name>.json` |  | — (usage aggregate, not an inventory resource) |
+| 16a | `az monitor metrics list --subscription "$AZURE_SUBSCRIPTION" --resource "<account id>" --metrics ProcessedPromptTokens GeneratedTokens --aggregation Total --interval PT1H --start-time "<UTC now minus 30 days, ISO-8601>" --end-time "<UTC now, ISO-8601>" --filter "ModelDeploymentName eq '<deployment name>' and ServiceTierRequest eq '*'" --top 50 --query "value[].{metric:name.value, timeseries:timeseries}"` once per deployment in `cognitive.json`, then the same command for `AzureOpenAIRequests` with `--filter "ModelDeploymentName eq '<deployment name>' and ServiceTierRequest eq '*' and IsSpillover eq '*'"`, then `AzureOpenAIContextTokensCachedWrite` with `--filter "ModelDeploymentName eq '<deployment name>'"` only. See the row 16 metrics note. | `cognitive-metrics-<name>.json` |  | — (usage aggregate, not an inventory resource) |
+| 16b | `az monitor metrics list --subscription "$AZURE_SUBSCRIPTION" --resource "<account id>" --metrics AzureOpenAITimeToResponse --aggregation Average --interval PT1H --start-time "<UTC now minus 30 days, ISO-8601>" --end-time "<UTC now, ISO-8601>" --filter "ModelDeploymentName eq '<deployment name>' and ServiceTierRequest eq '*'" --top 50 --query "value[].{metric:name.value, timeseries:timeseries}"` — same deployments as 16a. Do NOT query the metric named `Latency`. | `cognitive-latency-<name>.json` |  | — (usage aggregate, not an inventory resource) |
 | 17  | `az ml workspace list --query "[].{id:id, resourceGroup:resourceGroup, name:name, location:location}"` — only if the `ml` extension is present (see the row-17 note below); else record `skipped`                                                                                                                                                                                                                                                             | `mlworkspace.json`     | E    | `Microsoft.MachineLearningServices/workspaces`              |
 | 18  | `az network private-dns zone list --query "[].{id:id, resourceGroup:resourceGroup, name:name}"` and `az network dns zone list --query "[].{id:id, resourceGroup:resourceGroup, name:name, records:numberOfRecordSets}"`                                                                                                                                                                                                                                                                           | `dns.json`             |      | `Microsoft.Network/dnszones`, `privateDnsZones`             |
 
@@ -290,9 +290,20 @@ projects `properties.model.name` into the flat string key `model` — see the
 object) are the AI signal Design's lifecycle check consumes. Never capture keys
 (`az cognitiveservices account keys list` is FORBIDDEN).
 
-**Row 16 metrics note (16a and 16b).** These commands were not live-validated
-in this change. A failure, an empty timeseries, or a metric name the account
-does not emit is `skipped` for that account and does not fail the inventory.
+**Row 16 metrics note (16a and 16b).** `--top` defaults to 10 whenever
+`--filter` is set, so one wildcard deployment filter can drop
+deployments after the tenth and still look successful. Query each deployment
+name from `cognitive.json` instead. `--top 50` is the ceiling for that one
+deployment's tier split. If a response's timeseries count equals `--top`,
+record `coverage_incomplete` for that account and do not treat the missing
+series as zero. `ServiceTierRequest` stays on the token, request, and latency
+queries so batch and spillover are not folded into the on-demand total.
+`IsSpillover` is requested only on `AzureOpenAIRequests`, which lists that
+dimension. Cache-write does not use a tier filter; if a tier filter is
+rejected for any metric, retry that metric without it and set `service_tier` to `"unknown"`. An unknown-tier token row is not the on-demand peak. These
+commands were not live-validated in this change. A failure, an empty
+timeseries, or a metric name the account does not emit is `skipped` for that
+account and does not fail the inventory.
 Do not call `az cognitiveservices account keys list`. Do NOT query the legacy
 Cognitive Services metric named `Latency`. `AzureOpenAITimeToResponse` is
 gateway time-to-response for streaming and is an approximation. Token and
@@ -314,12 +325,17 @@ string for that deployment name. `deployment` is `ModelDeploymentName`.
 `input_tokens`, `GeneratedTokens` into `output_tokens`, `AzureOpenAIRequests`
 into `num_model_requests`, and `AzureOpenAIContextTokensCachedWrite` into
 `cache_write_tokens`. `observed_time_to_response_ms` is the mean of the hourly
-`average` points. `peak.peak_source` is `"hour"`: the busiest UTC day is the
-day with the largest `ProcessedPromptTokens` sum, and each
-`peak_*_per_minute` is that day's busiest hour divided by 60.
-`day_to_average_ratio` is the busiest day's tokens divided by the mean daily
-tokens. A row whose service tier is batch or spillover stays in the file and
-is not the on-demand quota peak. `metadata.source` is `"azure_monitor"`,
+`average` points. `peak.peak_source` is `"hour"`. `busiest_day` and
+`day_to_average_ratio` use the day with the largest `ProcessedPromptTokens`
+sum, and they are not the peak. Each `peak_*_per_minute` is the maximum hour anywhere in the window, divided by 60. A day of twenty-four 60k-token hours
+is 1,000 tokens/minute. One 600k-token hour on another day is 10,000
+tokens/minute. Input, output, and request peaks are independent hours. Say
+the figure is an hourly average, not a measured minute. A row whose service
+tier is batch or spillover, or whose `service_tier` is `"unknown"`, stays in
+the file and is not the on-demand quota peak. If this attempt's manifest has
+no successful 16a timeseries, delete any existing
+`azure-openai-metrics-profile.json` instead of leaving the previous run's
+file. `metadata.source` is `"azure_monitor"`,
 `window_days` is 30, and `partial_window` is true only when the returned
 points span fewer than 21 days. Accounts that failed go in
 `metadata.capture_warnings`. A missing profile means metrics were not
