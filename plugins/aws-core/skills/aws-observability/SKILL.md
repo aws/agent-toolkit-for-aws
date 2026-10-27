@@ -14,7 +14,7 @@ description: >-
   logging or threat detection.
 
 metadata:
-  version: "10"
+  version: "11"
 ---
 
 # AWS Observability
@@ -232,9 +232,9 @@ in the reference file, not here:
   must-state callouts — a request about a service's latency or error *rate* (an aggregate
   signal) is the PromQL bullet above instead.
 - **A failure being investigated from logs** ("is this only failing for X?", "how many
-  errors?", "what is the root cause?") → [investigation.md](references/cloudwatch/investigation.md).
-  Read every page and every scope before counting, and check the root cause against every
-  fact before reporting it.
+  errors?", "what is the root cause?") → load the `aws-investigation` skill and read its
+  `references/completeness-and-root-cause.md`. Read every page and every scope before
+  counting, and check the root cause against every fact before reporting it.
 
 ### Must-state checklists — the output contract
 
@@ -260,7 +260,7 @@ detail and is the source of truth, so do not restate it here.
 | X-Ray / ADOT tracing **behaviour** — X-Ray-SDK-vs-ADOT choice, trace and segment structure, annotations vs metadata, sampling rules, collector pipeline config, X-Ray→OTel migration traps | Read [tracing.md](references/cloudwatch/tracing.md). Onboarding an un-instrumented service is the setup skill's job (see the first row) |
 | Building CloudWatch dashboards (widget mechanics; which signals a given AWS service needs is Step 0.5) | Read [dashboards.md](references/cloudwatch/dashboards.md) |
 | Debugging observability issues | Read [troubleshooting.md](references/cloudwatch/troubleshooting.md) — starts with the 5 most common fixes |
-| Investigating a failure from logs: whether it affects one entity or the whole fleet, counts/totals/"no evidence of X", or deciding and reporting the root cause | Read [investigation.md](references/cloudwatch/investigation.md) — completeness and scope first, then root-cause analysis and the closing checklist |
+| Investigating a failure from logs: whether it affects one entity or the whole fleet, counts/totals/"no evidence of X", or deciding and reporting the root cause | Load the `aws-investigation` skill — completeness and scope first (`references/completeness-and-root-cause.md`), then root-cause analysis and the closing checklist |
 | Debugging canary failures | Read [synthetics.md](references/cloudwatch/synthetics.md) — see Common failures table |
 | CloudTrail operational auditing | Read [cloudtrail.md](references/cloudwatch/cloudtrail.md) |
 | Setting up Lambda monitoring with CDK | Use [alarm-template.ts](assets/cloudwatch/alarm-template.ts) as a starting point |
@@ -304,7 +304,6 @@ answered from the file directly.
 | [tracing.md](references/cloudwatch/tracing.md) | X-Ray → ADOT migration, sampling rules, annotations vs metadata, collector config |
 | [dashboards.md](references/cloudwatch/dashboards.md) | Widget types, cross-account/region, dynamic labels, sharing |
 | [troubleshooting.md](references/cloudwatch/troubleshooting.md) | Error → cause → fix for all observability services |
-| [investigation.md](references/cloudwatch/investigation.md) | Investigating failures from CloudWatch data — completeness, scope vs fleet, root-cause analysis, closing checklist |
 | [cloudtrail.md](references/cloudwatch/cloudtrail.md) | Operational auditing, event types, S3+Athena queries |
 | [synthetics.md](references/cloudwatch/synthetics.md) | Canary runtime/blueprint constraints, VPC networking, common failures |
 | [dynamic-instrumentation.md](references/cloudwatch/dynamic-instrumentation.md) | Dynamic Instrumentation debugging loop — breakpoints/probes on live code, snapshot capture + correlation analysis, create/delete gating, snapshot PII handling. Runs via `scripts/cloudwatch/di_instrumentation.py` + `scripts/cloudwatch/di_snapshots.py`; details in `dynamic-instrumentation/` |
