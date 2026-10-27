@@ -310,7 +310,7 @@ These change the deployed config directly; they don't edit `agentcore.json`.
 
 Two kinds of gate — pick based on what you're protecting:
 
-- **Recent-traffic gate** — score the sessions your integration tests just produced (`agentcore eval ondemand evaluate`). Cheap; reflects whatever the tests sent.
+- **Recent-traffic gate** — score only the sessions your integration tests just produced (`agentcore eval ondemand evaluate --session-ids`). Cheap; reflects whatever the tests sent.
 - **Dataset regression gate** — replay a fixed dataset against the new version and score it (`agentcore eval ondemand simulate`). Same scenarios every run, so scores are comparable across versions. Preferred for promotion gates — see Path E for building the dataset.
 
 Generate a script that runs evals and fails the build if quality drops below a threshold:
@@ -324,12 +324,17 @@ RUNTIME_ID="${RUNTIME_ID:?set RUNTIME_ID to the deployed Runtime ID}"
 EVALUATOR="Builtin.Helpfulness"
 THRESHOLD="0.7"
 
+# Recent-traffic gate: the integration tests must invoke with these session IDs,
+# e.g. agentcore invoke --runtime <RuntimeName> --session-id "$SESSION_ID" --payload '...'
+# (session IDs are 33-100 characters; a UUID plus a prefix works).
+SESSION_IDS="${SESSION_IDS:?set SESSION_IDS to the space-separated session IDs your tests used}"
+
 echo "Running quality gate eval..."
-# Recent-traffic gate:
-result=$(agentcore eval ondemand evaluate \
+# shellcheck disable=SC2086  # split SESSION_IDS into separate arguments
+result=$(agentcore eval ondemand evaluate --json \
   --agent "$RUNTIME_ID" \
   --evaluators "$EVALUATOR" \
-  --lookback-days 1) || { echo "⚠️  Eval failed or found no sessions. Has the agent been invoked recently?" >&2; exit 1; }
+  --session-ids $SESSION_IDS) || { echo "⚠️  Eval failed or found none of the test sessions. Did the tests use these session IDs, and have their traces landed?" >&2; exit 1; }
 # Dataset regression gate (instead of the above):
 # result=$(agentcore eval ondemand simulate \
 #   --runtime-id "$RUNTIME_ID" \
@@ -337,8 +342,16 @@ result=$(agentcore eval ondemand evaluate \
 #   --payload-template '{"prompt":"{input}"}' \
 #   --evaluators "$EVALUATOR") || { echo "⚠️  Dataset replay failed" >&2; exit 1; }
 
-score=$(echo "$result" | jq -r '[.results[] | select(.value != null) | .value] | if length == 0 then empty else add / length end')
+# A result that failed to evaluate carries errorCode/errorMessage and no value.
+# Fail on those instead of dropping them, or errors would look like a pass.
+errors=$(echo "$result" | jq '[.results[] | select(.errorCode != null or .value == null)] | length')
+if [ "$errors" -gt 0 ]; then
+  echo "❌ $errors evaluation(s) errored:" >&2
+  echo "$result" | jq -r '.results[] | select(.errorCode != null or .value == null) | "  \(.evaluatorId): \(.errorCode // "no value") \(.errorMessage // "")"' >&2
+  exit 1
+fi
 
+score=$(echo "$result" | jq -r '[.results[].value] | if length == 0 then empty else add / length end')
 if [ -z "$score" ]; then
   echo "⚠️  No eval results. Invoke the agent, wait for its traces (up to ~90s), then re-run." >&2
   exit 1
@@ -354,7 +367,7 @@ fi
 echo "✅ Quality gate PASSED"
 ```
 
-**Note:** Traces take **30–90 seconds** after an invocation to become readable, and the same ingestion step unlocks both trace reads and eval queries. For the recent-traffic gate, invoke the agent as part of your integration tests, then poll `agentcore traces runtime list --json` until the test sessions appear (as in Step 2's example) before running the gate — don't rely on a short fixed `sleep`. The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000).
+**Note:** Traces take **30–90 seconds** after an invocation to become readable, and the same ingestion step unlocks both trace reads and eval queries. For the recent-traffic gate, invoke the agent as part of your integration tests with known `--session-id` values (pass the same IDs to the gate as `SESSION_IDS`), then poll `agentcore traces runtime list --json` until the test sessions appear (as in Step 2's example) before running the gate — don't rely on a short fixed `sleep`. The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000).
 
 The gate needs no project checkout — every command above takes the deployed Runtime ID, so pass it to CI as a variable.
 
