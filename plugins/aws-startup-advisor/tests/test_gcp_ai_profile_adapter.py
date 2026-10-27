@@ -674,3 +674,49 @@ def test_v2_shaped_input_writes_side_file_and_design_names_titan_v2(tmp_path):
     )
     assert design.returncode == 0, design.stderr
     assert json.loads(design.stdout)["target_bedrock_model"] == "amazon.titan-embed-text-v2:0"
+
+
+# Review 5661016215 (comment 4384076090): imagen-* and the OpenAI o-series worked on main and
+# Imagen is in this PR's own Gemini+Imagen fixture; the adapter must recognize both families.
+@pytest.mark.parametrize(("model", "family"), [
+    ("imagen-3.0-generate-001", "imagen"),
+    ("imagen-4.0-fast-generate-001", "imagen"),
+    ("o4-mini", "gpt"),
+    ("o1", "gpt"),
+    ("o3-pro", "gpt"),
+    ("o1-mini", "gpt"),
+])
+def test_imagen_and_o_series_model_ids_resolve_to_a_family(model, family):
+    assert adapter._model_identity(model, "$") == (model, family)
+
+
+def test_imagen_legacy_profile_converts_end_to_end(tmp_path):
+    legacy = copy.deepcopy(V2_SHAPED_LEGACY)
+    image = next(model for model in legacy["models"] if model["capabilities_used"] == ["image_generation"])
+    image["model_id"] = "imagen-3.0-generate-001"
+    legacy_path = tmp_path / "legacy.json"
+    out_path = tmp_path / ".bma-input" / "ai-workload-profile.json"
+    sidecar_path = tmp_path / ".bma-input" / "ai-workload-sidecar.json"
+    legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+    converted = subprocess.run(
+        [sys.executable, str(ADAPTER_PATH), "convert", "--legacy", str(legacy_path), "--out", str(out_path), "--sidecar", str(sidecar_path)],
+        capture_output=True, text=True,
+    )
+    assert converted.returncode == 0, converted.stderr
+    document = json.loads(out_path.read_text(encoding="utf-8"))
+    google = [source for source in document["ai_sources"] if source["provider"] == "google"][0]
+    assert "imagen-3.0-generate-001" in google["models"]
+    assert "imagen" in google["model_families"]
+    assert [item["model_family"] for item in google["model_observations"] if item["normalized_model"] == "imagen-3.0-generate-001"] == ["imagen"]
+    assert _validate_jsonschema(document) == []
+    validated = subprocess.run(
+        [sys.executable, str(BMA_RUNTIME), "validate-profile", "--profile", str(out_path), "--sidecar", str(sidecar_path)],
+        capture_output=True, text=True,
+    )
+    assert validated.returncode == 0, validated.stderr
+
+
+def test_unknown_family_is_still_rejected_by_name():
+    # Standing decision: unrecognized model ids fail by name; no generic unknown-family downgrade.
+    with pytest.raises(adapter.GcpProfileNotRepresentable, match="LEGACY_MODEL_FAMILY_UNKNOWN"):
+        adapter._model_identity("mistral-large", "$")

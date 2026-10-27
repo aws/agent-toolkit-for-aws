@@ -35,7 +35,14 @@ UPSTREAM_PREFIX = {
     "openai": ("openai", "openai_api"),
     "google": ("google", "vertex_ai"),
 }
-FAMILY_PREFIXES = (("claude", "claude"), ("gemini", "gemini"), ("gpt", "gpt"), ("o1", "gpt"), ("o3", "gpt"), ("text-embedding", "embedding"))
+# Family set mirrors SOURCE_MODEL_FAMILY in bma-runtime.py: imagen is its own (image-output)
+# family; the OpenAI o-series (o1/o3/o4, incl. -mini/-pro/-preview) rides the gpt track.
+# Any id outside these prefixes is still rejected by name (LEGACY_MODEL_FAMILY_UNKNOWN).
+FAMILY_PREFIXES = (
+    ("claude", "claude"), ("gemini", "gemini"), ("imagen", "imagen"),
+    ("gpt", "gpt"), ("o1", "gpt"), ("o3", "gpt"), ("o4", "gpt"),
+    ("text-embedding", "embedding"),
+)
 PROVENANCE = {"code": "code", "terraform": "iac", "live_gcloud": "live_api", "user_confirmed": "user_confirmed", "user": "user_confirmed"}
 NORMALIZED_MODEL = re.compile(r"^(?!(?:both|unknown)$)[a-z0-9][a-z0-9._:/-]*$")
 SIDECAR_KIND = "BMA_GCP_AI_SIDECAR"
