@@ -222,7 +222,7 @@ Used for Tier 1 Option B. Source prices are OpenAI's own; Bedrock prices are the
 | GPT-4.1                     | 2.00 / 8.00     | Claude Sonnet 5      | 2.00 / 10.00  | Source 14% cheaper                       |
 | GPT-4.1 Mini                | 0.40 / 1.60     | Nova Lite            | 0.06 / 0.24   | Bedrock 85% cheaper                      |
 | GPT-4.1 Nano                | 0.10 / 0.40     | Nova Micro           | 0.035 / 0.14  | Bedrock 65% cheaper                      |
-| GPT-4o                      | 2.50 / 10.00    | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 7% cheaper                       |
+| GPT-4o                      | 2.50 / 10.00    | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 7% cheaper; OpenAI deprecated GPT-4o on 2026-10-14 (shutdown 2027-01-14) and names `gpt-6-luna` as the replacement ([OpenAI deprecations](https://developers.openai.com/api/docs/deprecations), verified 2026-10-26); GPT-6 Luna is Active on Bedrock as `openai.gpt-6-luna` ([model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html)) |
 | GPT-4o Mini                 | 0.15 / 0.60     | Nova Lite            | 0.06 / 0.24   | Bedrock 60% cheaper                      |
 | GPT-4 Turbo                 | 10.00 / 30.00   | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 72% cheaper                      |
 | GPT-4                       | 30.00 / 60.00   | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 88% cheaper                      |

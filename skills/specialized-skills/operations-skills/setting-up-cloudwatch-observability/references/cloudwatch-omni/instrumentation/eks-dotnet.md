@@ -2,7 +2,7 @@
 
 Wire the ADOT .NET auto-instrumentation SDK into a Deployment on Amazon EKS. An init container copies the SDK into the pod at startup, so the application image is not rebuilt and the application source is not touched.
 
-Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Deploying a collector is a separate, optional step — [collector-eks.md](collector-eks.md).
+Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Whether to also deploy a collector is decided by the Scope table in [instrumentation.md](instrumentation.md) — [collector-eks.md](collector-eks.md).
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Read [instrumentation.md](instrumentation.md) first — it defines what is out o
 
 - Install the `amazon-cloudwatch-observability` add-on, or any OpenTelemetry operator — **unless you are also deploying a collector** ([collector-eks.md](collector-eks.md)). Deploying the CloudWatch Agent by Helm necessarily installs its operator, because the agent ships as a custom resource that only the operator reconciles; that is expected there, and is not the add-on
 - Add the `instrumentation.opentelemetry.io/inject-dotnet` annotation (it requires an operator)
-- Set `OTEL_EXPORTER_OTLP_*` — leave the SDK's default endpoint in place — **unless you are also deploying a collector** ([collector-eks.md](collector-eks.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately
+- Set `OTEL_EXPORTER_OTLP_*` — leave the SDK's default endpoint in place — **unless you are also deploying a collector** ([collector-eks.md](collector-eks.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately, or to reach an existing destination the files show elsewhere ([instrumentation.md](instrumentation.md), Scope)
 - Add `CloudWatchAgentServerPolicy` or `AWSXRayDaemonWriteAccess` to the workload, or add Application Signals / ServiceEvents / Dynamic Instrumentation configuration. The IAM half is lifted **when you are also deploying a collector** ([collector-eks.md](collector-eks.md)), which grants `CloudWatchAgentServerPolicy` to the collector's own service account — never to the workload. The Application Signals half always stands
 - Run `kubectl apply`, `terraform apply`, `cdk deploy`, `helm install`/`helm upgrade`, `kubectl annotate`, or `kubectl delete` automatically — including the out-of-band IRSA commands in [collector-eks.md](collector-eks.md). Present every mutating command for the user to run; they act on a live cluster
 - Modify the application's `.cs` files or its `.csproj`
@@ -82,8 +82,8 @@ spec:
 
 - **Architecture**, from the node: `linux-x64` on x86-64, `linux-arm64` on ARM64/Graviton.
 - **libc, from the application's base image** — not the node. `linux-<arch>` for glibc bases
-
-  (`mcr.microsoft.com/dotnet/aspnet:*`, Debian, Ubuntu); **`linux-musl-<arch>` for Alpine bases.**
+  (the default `mcr.microsoft.com/dotnet/aspnet:<version>` tags, Debian, Ubuntu); **`linux-musl-<arch>` for Alpine
+  bases, including any `-alpine` tag of those images.**
 
 Do not infer it. List what the image actually shipped and read the app's libc:
 
@@ -171,6 +171,8 @@ container's log stream is empty because `cp -a` is silent.
 The `printenv` check matters more for .NET than for other languages: if any CoreCLR variable is missing or its path is wrong, the profiler does not attach and the application starts normally with no instrumentation and no error. Until a receiver exists at the default OTLP endpoint, exporter connection errors are expected.
 
 ## Completion
+
+This summary is for an instrumentation-only change with no destination. When the Scope table in [instrumentation.md](instrumentation.md) calls for a collector, include the collector changes from [collector-eks.md](collector-eks.md) in the same answer; when the SDK was pointed at an existing destination, say which one. Either way, rewrite every destination part of the summary to match what was done: the **Not changed** clause about the add-on, operator, and IAM, and the next step about telemetry having nowhere to go.
 
 **Tell the user:**
 

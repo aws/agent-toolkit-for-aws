@@ -2,7 +2,7 @@
 
 Wire the ADOT Java auto-instrumentation agent into a Deployment on Amazon EKS. An init container copies the agent jar into the pod at startup, so the application image is not rebuilt and the application source is not touched.
 
-Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Deploying a collector is a separate, optional step — [collector-eks.md](collector-eks.md).
+Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Whether to also deploy a collector is decided by the Scope table in [instrumentation.md](instrumentation.md) — [collector-eks.md](collector-eks.md).
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Read [instrumentation.md](instrumentation.md) first — it defines what is out o
 
 - Install the `amazon-cloudwatch-observability` add-on, or any OpenTelemetry operator — **unless you are also deploying a collector** ([collector-eks.md](collector-eks.md)). Deploying the CloudWatch Agent by Helm necessarily installs its operator, because the agent ships as a custom resource that only the operator reconciles; that is expected there, and is not the add-on
 - Add the `instrumentation.opentelemetry.io/inject-java` annotation (it requires an operator)
-- Set `OTEL_EXPORTER_OTLP_*` — leave the SDK's default endpoint in place — **unless you are also deploying a collector** ([collector-eks.md](collector-eks.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately
+- Set `OTEL_EXPORTER_OTLP_*` — leave the SDK's default endpoint in place — **unless you are also deploying a collector** ([collector-eks.md](collector-eks.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately, or to reach an existing destination the files show elsewhere ([instrumentation.md](instrumentation.md), Scope)
 - Add `CloudWatchAgentServerPolicy` or `AWSXRayDaemonWriteAccess` to the workload, or add Application Signals / ServiceEvents / Dynamic Instrumentation configuration. The IAM half is lifted **when you are also deploying a collector** ([collector-eks.md](collector-eks.md)), which grants `CloudWatchAgentServerPolicy` to the collector's own service account — never to the workload. The Application Signals half always stands
 - Run `kubectl apply`, `terraform apply`, `cdk deploy`, `helm install`/`helm upgrade`, `kubectl annotate`, or `kubectl delete` automatically — including the out-of-band IRSA commands in [collector-eks.md](collector-eks.md). Present every mutating command for the user to run; they act on a live cluster
 - Modify the application's `.java` files or its build configuration
@@ -116,6 +116,8 @@ kubectl logs -l app=<my-app> -c <my-app> | grep -iE "javaagent|opentelemetry"
 The JVM prints a `Picked up JAVA_TOOL_OPTIONS:` line on startup listing the `-javaagent` flag — that confirms the agent attached. Until a receiver exists at the default OTLP endpoint, exporter connection errors are expected.
 
 ## Completion
+
+This summary is for an instrumentation-only change with no destination. When the Scope table in [instrumentation.md](instrumentation.md) calls for a collector, include the collector changes from [collector-eks.md](collector-eks.md) in the same answer; when the SDK was pointed at an existing destination, say which one. Either way, rewrite every destination part of the summary to match what was done: the **Not changed** clause about the add-on, operator, and IAM, and the next step about telemetry having nowhere to go.
 
 **Tell the user:**
 
