@@ -26,10 +26,10 @@ Claude Code and Cursor. Other sources also select `cli`; unknown sources remain
 `OTHER`. Explicit Codex/Kiro markers take precedence over an inherited
 `CURSOR_AGENT` marker. Do not set or clear host markers to change this result.
 
-- `hook`: do not invoke CLI reconciliation or duplicate the host's consent
-  exchange. Existing hooks own reporting. Missing or delayed hook activity does
-  not change this policy: finding the configured files does not prove that the
-  host enabled or successfully ran its hooks.
+- `hook`: keep the host's consent exchange; do not duplicate prompts. Hooks report
+  normal file updates. Also run the explicit project reconciliation below at
+  state boundaries: a Bash write into a child project may leave the hook's cwd
+  in its parent, where the hook cannot discover that run.
 - `cli`: follow the consent exchange below, then reconcile at the state
   boundaries. A missing `pluginVersion`, invalid output, or command failure means
   telemetry is unavailable; continue the skill without reporting.
@@ -82,11 +82,18 @@ do not block migration, and an ignored notice is not asked again in that session
 
 ## Reconcile persisted state
 
-In `cli` mode, from the project root containing `.migration/`, run:
+In both `hook` and `cli` mode, after a state boundary run:
 
 ```sh
-python3 "<absolute-skill-root>/references/vendored/telemetry/cli.py" reconcile
+python3 "<absolute-skill-root>/references/vendored/telemetry/cli.py" reconcile --project-root "<absolute-project-root>"
 ```
+
+Use the exact project directory containing this run's `.migration/`, even when
+the shell or editor started in its parent. The explicit target must be absolute
+and contain a `.migration/` directory; an invalid target reports nothing and
+never falls back to another project's tree. Hooks and this command share the
+same lock and snapshot, so an already reported transition is not sent again.
+Plain `reconcile` without an explicit target still leaves hook hosts to hooks.
 
 Run this in the main workflow after initialization writes `.phase-status.json`,
 after each phase-status update, after a gate failure is recorded and before
