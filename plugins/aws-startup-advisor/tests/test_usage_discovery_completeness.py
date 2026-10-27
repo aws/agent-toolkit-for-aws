@@ -105,6 +105,21 @@ def test_peak_warnings_do_not_blank_daily_volume() -> None:
         assert "does not make the daily volume" in text or "Do not treat that warning as a failed daily usage endpoint" in text
 
 
+def test_anthropic_quota_peak_includes_cache_writes_not_reads() -> None:
+    for path in ANTHROPIC:
+        text = path.read_text(encoding="utf-8")
+        assert "Do not add" in text and "`cache_read_input_tokens` into that peak" in text
+        assert "250,000 cache-write tokens" in text
+        assert "`input_tokens` stays uncached input" in text
+
+
+def test_optional_analytics_failure_is_a_terminal_omission() -> None:
+    for path in OPENROUTER:
+        text = path.read_text(encoding="utf-8")
+        assert "terminal omission for this run" in text
+        assert "Do not retry it" in text
+
+
 def test_openrouter_analytics_rows_are_addressed_by_file() -> None:
     for path in OPENROUTER:
         text = path.read_text(encoding="utf-8")

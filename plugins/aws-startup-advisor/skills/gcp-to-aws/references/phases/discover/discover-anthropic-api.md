@@ -327,6 +327,16 @@ Sum across the window (a throwaway extraction script if captures are large):
   grouped row. Write `web_search_requests` from
   `server_tool_use.web_search_requests` (0 when absent).
   **Peaks** use the same rules as the OpenAI profile, keyed by that tuple.
+  The quota input for a bucket is `uncached_input_tokens` plus cache-creation
+  tokens (`cache_creation_5m_tokens` + `cache_creation_1h_tokens`, or
+  `cache_creation_tokens` when the split is absent). Do not add
+  `cache_read_input_tokens` into that peak. `peak_input_tokens_per_minute` is
+  the maximum of that quota-input pool in any hour, divided by 60, not the
+  maximum of uncached input alone. A minute with 1,000 uncached input tokens,
+  250,000 cache-write tokens, and 1,000 output tokens is 251,000 input-side
+  tokens before output burndown, not 1,000. Keep the billing pools separate:
+  `input_tokens` stays uncached input, and `cache_read_tokens` /
+  `cache_creation_*` stay their own fields.
   The hourly rates are the maximum hour anywhere in the window, divided by 60,
   not the busiest hour of the busiest day. Row 4 samples one day. It raises a
   key's rate only when that key appears in the minute file and the minute count

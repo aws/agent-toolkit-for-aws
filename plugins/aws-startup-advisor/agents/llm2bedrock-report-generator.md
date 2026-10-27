@@ -429,17 +429,35 @@ for pair in MODEL_PAIRS:
         cache_rates = CACHE_WRITE_RATES_BY_TARGET.get(tgt)
         source_cache_rates = SOURCE_CACHE_WRITE_RATES.get(src)
         measured_source = bucket.get("source_cost_usd")
-        split_known = bool(cache_rates) and not cache_unsplit and (cache_5m or cache_1h)
+        used_durations = (("5m", cache_5m), ("1h", cache_1h))
+
+        def _duration_charge(rate_map, durations):
+            # Price only durations that have tokens. A missing rate for an
+            # unused duration is not a price, and must not raise KeyError.
+            if not rate_map:
+                return None
+            total = 0.0
+            for duration, tokens in durations:
+                if not tokens:
+                    continue
+                rate = rate_map.get(duration)
+                if rate is None:
+                    return None
+                total += tokens * rate
+            return total
+
+        has_split = not cache_unsplit and (cache_5m or cache_1h)
+        bedrock_write_tokens = _duration_charge(cache_rates, used_durations) if has_split else None
+        source_write_tokens = _duration_charge(source_cache_rates, used_durations) if has_split else None
+        split_known = bedrock_write_tokens is not None
         if cache_5m or cache_1h or cache_unsplit:
-            bedrock_write = 0.0
-            if split_known:
-                bedrock_write = (cache_5m * cache_rates["5m"] + cache_1h * cache_rates["1h"]) / 1_000_000
+            bedrock_write = (bedrock_write_tokens or 0.0) / 1_000_000
             if measured_source is not None and split_known:
                 source_cost = measured_source
                 bedrock_cost += bedrock_write
                 basis = f"{basis}-cache-write-split"
-            elif source_cache_rates and split_known:
-                source_cost += (cache_5m * source_cache_rates["5m"] + cache_1h * source_cache_rates["1h"]) / 1_000_000
+            elif source_write_tokens is not None and split_known:
+                source_cost += source_write_tokens / 1_000_000
                 bedrock_cost += bedrock_write
                 basis = f"{basis}-cache-write-split"
             else:

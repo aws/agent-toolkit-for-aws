@@ -463,10 +463,13 @@ row.
 - Classification `skipped` → leave `cost_provenance: "unknown"` permanently for
   this run; do not re-ask, do not retry.
 - Classification `ok` → proceed with classification as normal.
-- Optional `analytics-volume.json` or `analytics-hourly.json` `failed` → retry
-  only that file, same saved window. Do not block Step 3, classification, or
-  key deletion on an optional file. A failed hourly file leaves the daily
-  Activity totals in place and records a peak-only warning.
+- Optional `analytics-volume.json` or `analytics-hourly.json` `failed` → that
+  file is a terminal omission for this run. Do not retry it. The key is deleted
+  once `/activity` and classification are terminal, so a later resume has no
+  key to repeat the call. Do not block Step 3, classification, or key deletion
+  on an optional file. A failed hourly file leaves the daily Activity totals
+  in place and records a peak-only warning. A failed volume file leaves
+  Activity token totals in place and marks the Analytics volume fields unknown.
 
 Delete the key file once `/activity` reaches a terminal `ok`/`skipped` state
 (per Step 4's cleanup) — never while a retry is still live (a `failed` status
