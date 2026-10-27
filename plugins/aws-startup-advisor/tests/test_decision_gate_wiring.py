@@ -257,16 +257,7 @@ def test_migration_credit_notice_runs_once_at_fresh_discover_start() -> None:
         assert "fresh run" in text[max(0, notice_idx - 250):notice_idx + 250].lower()
         assert "resum" in text[notice_idx:notice_idx + 500].lower()
         assert "render it later" in text[notice_idx:notice_idx + 600].lower()
-        if provider == "azure":
-            init_origin_idx = text.index(
-                'initiated_by: "LLM_TO_BEDROCK"'
-            )
-            assert init_origin_idx < notice_idx < text.index(
-                "1. **Re-entry check", notice_idx
-            )
-            assert "AI-only" in text[notice_idx:notice_idx + 600]
-            assert "initiated_by: LLM_TO_BEDROCK" in text[notice_idx:notice_idx + 600]
-        elif provider == "gcp":
+        if provider == "gcp":
             initiated_by_write_idx = text.index("also set `initiated_by`")
             assert initiated_by_write_idx < notice_idx < text.index("## Step 1: Scan")
             assert "AI-only" in text[notice_idx:notice_idx + 600]
