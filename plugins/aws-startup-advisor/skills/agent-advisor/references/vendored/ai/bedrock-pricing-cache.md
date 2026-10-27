@@ -165,11 +165,13 @@ Active image generation models on Bedrock. Priced **per image** (not per token).
 
 | Model                      | Model ID                          | Price/image | Resolution | Tier     | Status |
 | -------------------------- | --------------------------------- | ----------- | ---------- | -------- | ------ |
-| Stable Image Ultra         | stability.stable-image-ultra-v1:0 | $0.08       | up to 4MP  | premium  | active |
+| Stable Image Ultra         | stability.stable-image-ultra-v1:1 | $0.08       | up to 4MP  | premium  | active |
 | Stable Diffusion 3.5 Large | stability.sd3-5-large-v1:0        | $0.065      | up to 1MP  | flagship | active |
-| Stable Image Core          | stability.stable-image-core-v1:0  | $0.04       | up to 1MP  | fast     | active |
+| Stable Image Core          | stability.stable-image-core-v1:1  | $0.04       | up to 1MP  | fast     | active |
 
 **Stable Image Core source:** $0.04 per generated image, on-demand, from the AWS Stability AI price table on [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/), which lists Stable Image Core for **US East (N. Virginia)** (verified 2026-10-25); the [Stable Image Core 1.0 model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-core-1-0.html) reads Active, Model EOL date N/A (verified 2026-10-26). Gemini's image-generation price for comparison: Gemini 3.1 Flash Image (Nano Banana 2) output is $30 per 1M image tokens — $0.0336 per 1K (1024×1024) image standard, $15 per 1M ($0.0168 per 1K image) batch — per [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing) (verified 2026-10-26); token-to-image equivalence with a 1MP Stable Image Core render is _unverified_.
+
+**Model ID source:** `stability.stable-image-core-v1:1` and `stability.stable-image-ultra-v1:1` are the `bedrock-runtime` Model IDs in the Programmatic Access tables of the [Stable Image Core 1.0](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-core-1-0.html) and [Stable Image Ultra 1.0](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-stability-ai-stable-image-ultra-1-0.html) model cards (verified 2026-10-27); both are in-Region `us-west-2` only, no Geo/Global inference profile, Active, Model EOL date N/A. The earlier `v1:0` suffix is not listed on any Bedrock model card or lifecycle table — do not emit it.
 
 Image editing services (inpaint, erase, upscale, etc.) are priced at $0.03–$0.60/operation. See [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) for full list.
 
