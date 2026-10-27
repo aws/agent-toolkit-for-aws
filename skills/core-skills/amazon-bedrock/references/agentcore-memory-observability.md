@@ -54,11 +54,11 @@ This is the key non-obvious requirement. AgentCore Evaluations service reads spe
 
 **Instrumentation:**
 
-- Use AWS Distro for OpenTelemetry (ADOT) collector
-- You MUST use an IAM role (not access keys) for ADOT collector authentication — attach to the ECS task, EC2 instance profile, or pod service account
-- You MUST NOT hardcode AWS credentials in ADOT collector configuration files
+- Use AWS Distro for OpenTelemetry (ADOT) SDK (or the AWS Lambda Layer for OpenTelemetry) — the ADOT Collector is not supported for AgentCore agent observability
+- You MUST use an IAM role (not access keys) for the ADOT SDK / execution environment authentication — attach to the ECS task role, EC2 instance profile, or pod service account
+- You MUST NOT hardcode AWS credentials in ADOT SDK configuration files
 - Configure sampling rate for evaluation (not every invocation needs evaluation)
-- Refer to the latest AWS documentation on AgentCore observability OTEL instrumentation for current attribute names and collector configuration
+- Refer to the latest AWS documentation on AgentCore observability OTEL instrumentation for current attribute names and SDK configuration
 
 ### AgentCore-Specific CloudWatch Metrics
 
@@ -66,10 +66,13 @@ AgentCore publishes these metrics automatically (you don't need to instrument):
 
 | Metric | What It Measures |
 |--------|-----------------|
-| Invocation count | Number of agent invocations |
-| Invocation latency | End-to-end response time (p50/p90/p99) |
-| Error rate | Percentage of failed invocations |
-| Token usage | Input/output tokens consumed |
+| Invocations | Number of agent invocations |
+| Latency | End-to-end response time (p50/p90/p99) |
+| System/User Errors | Failed invocations |
+| Throttles | Throttled invocations |
+| Session Count | Number of sessions |
+
+> Note: Token / GenAI usage metrics are NOT published automatically. To capture token usage (input/output tokens consumed), you must instrument your agent code with the ADOT SDK.
 
 **Recommended alarms:**
 
@@ -79,7 +82,7 @@ AgentCore publishes these metrics automatically (you don't need to instrument):
 
 Create alarms — first discover the exact namespace (CloudWatch namespaces are case-sensitive):
 
-1. `aws cloudwatch list-metrics --namespace "Bedrock-AgentCore"` — if no results, try `--namespace "Bedrock-Agentcore"`
+1. `aws cloudwatch list-metrics --namespace "Bedrock-AgentCore"` — if no results, try `--namespace "bedrock-agentcore"`
 2. Use the namespace that returns metrics in subsequent commands:
 
 `aws cloudwatch put-metric-alarm --alarm-name <name> --metric-name <metric> --namespace "<discovered-namespace>" --statistic Average --period 300 --threshold <value> --comparison-operator GreaterThanThreshold --evaluation-periods 3 --dimensions "Name=Resource,Value=<resource-arn>" --alarm-actions "<sns-topic-arn>"`
@@ -87,7 +90,7 @@ Create alarms — first discover the exact namespace (CloudWatch namespaces are 
 ### Common Failures
 
 **Traces not appearing:**
-OTEL collector not configured for AgentCore Runtime. Verify ADOT configuration in Runtime settings.
+ADOT SDK not configured for AgentCore Runtime. Verify ADOT SDK instrumentation in Runtime settings.
 
 **Evaluations can't score:**
 Missing required trace attributes. Verify instrumentation includes input, output, and tool call attributes.

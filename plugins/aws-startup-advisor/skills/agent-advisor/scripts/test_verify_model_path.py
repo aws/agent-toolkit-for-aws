@@ -217,6 +217,62 @@ class FakeOpenAIClient:
         self.chat = chat or FakeChat()
 
 
+@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
+@pytest.mark.parametrize("surface", ["chat_completions", "responses"])
+def test_astra_recommendation_probes_selected_api_in_supported_regions(region, surface):
+    data = _openai_input()
+    data["region"] = region
+    data["workloads"][0]["source"].update(
+        model_ids=["gpt-6-astra"], api_surface=surface
+    )
+    recommendation = model_recommendation.recommend(data)
+    completions = FakeResponses(response={"model": "openai.gpt-6-astra"})
+    client = type("ChatClient", (), {
+        "chat": type("Chat", (), {"completions": completions})(),
+        "responses": completions,
+    })()
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW,
+        openai_responses_client_factory=lambda region: client,
+        openai_chat_client_factory=lambda region: client,
+    )
+    verification = result["workloads"]["openai-svc"]
+    assert verification["status"] == "passed"
+    assert verification["api_path"] == (
+        "mantle_openai_chat" if surface == "chat_completions" else "mantle_openai_responses"
+    )
+    assert verification["region"] == region
+    assert completions.calls[0]["model"] == "openai.gpt-6-astra"
+    if surface == "chat_completions":
+        assert completions.calls[0]["messages"][0]["role"] == "user"
+    else:
+        assert completions.calls[0]["input"] == verify_model_path.PROMPT
+
+
+@pytest.mark.parametrize("prefix", ["us", "global"])
+@pytest.mark.parametrize("as_arn", [False, True])
+def test_astra_system_profile_representation_reaches_verifier_unchanged(prefix, as_arn):
+    model_id = f"{prefix}.openai.gpt-6-astra"
+    if as_arn:
+        model_id = f"arn:aws:bedrock:us-west-2:111122223333:inference-profile/{model_id}"
+    data = _openai_input({"governance": ["guardrails"], "inference_profile_id": model_id})
+    data["region"] = "us-west-2"
+    data["workloads"][0]["source"]["model_ids"] = ["gpt-6-astra"]
+    schemas = pathlib.Path(model_recommendation.__file__).parent / "schemas"
+    jsonschema.validate(data, json.loads((schemas / "model-recommendation-input.json").read_text()))
+    recommendation = model_recommendation.recommend(data)
+    jsonschema.validate(recommendation, json.loads((schemas / "model-recommendation.json").read_text()))
+    selected = recommendation["workloads"]["openai-svc"]
+    assert selected["decision_status"] == "recommended"
+    assert selected["invocation_model_id"] == model_id
+    client = FakeRuntimeClient()
+    result = verify_model_path.verify_recommendation(
+        recommendation, now=NOW, runtime_client_factory=lambda region: client,
+    )
+    assert result["workloads"]["openai-svc"]["status"] == "passed"
+    assert client.converse_calls[0]["modelId"] == model_id
+
+
 def _openai_input(requirements=None, source=None, region="us-east-2"):
     source_data = {
         "provider": "openai",
@@ -536,6 +592,7 @@ def test_mantle_responses_probe_calls_responses_create_with_exact_id():
     result = _verify_openai(
         {"api_continuity": "required"},
         openai_responses_client_factory=lambda region: client,
+        openai_chat_client_factory=lambda region: client,
     )
     verification = result["workloads"]["openai-svc"]
 
@@ -551,6 +608,7 @@ def test_mantle_responses_failure_does_not_substitute_model():
     result = _verify_openai(
         {"api_continuity": "required"},
         openai_responses_client_factory=lambda region: client,
+        openai_chat_client_factory=lambda region: client,
     )
     verification = result["workloads"]["openai-svc"]
 

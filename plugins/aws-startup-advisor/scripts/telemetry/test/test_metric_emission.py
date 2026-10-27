@@ -93,15 +93,18 @@ class TestSkillId:
             "aws-startup-advisor:gcp-to-aws",
             "GCP-TO-AWS",
             "  gcp-to-aws  ",
-            "some-other-qualifier:gcp-to-aws",
+            "AWS-STARTUP-ADVISOR:GCP-TO-AWS",
         ],
     )
     def test_tolerates_qualifiers_and_casing(self, name):
-        # Hosts qualify skill names differently and undocumentedly, so an
-        # unrecognized qualifier is not a reason to lose the event.
         assert skill_invoked.skill_id(name) == "GCP_TO_AWS"
 
-    @pytest.mark.parametrize("name", ["shared", "some-other-plugin-skill", "", None, 7])
+    @pytest.mark.parametrize(
+        "name",
+        ["shared", "some-other-plugin-skill", "", None, 7,
+         "other-plugin:gcp-to-aws", "migration-to-aws:gcp-to-aws",
+         "aws-startup-advisor:other:gcp-to-aws", ":gcp-to-aws"],
+    )
     def test_anything_not_ours_is_none(self, name):
         # Upper-casing whatever the host passed would put another plugin's skill
         # names in our request body.
@@ -494,7 +497,8 @@ class TestSkillInvokedHookEndToEnd:
         assert collector.received == []
 
     @pytest.mark.parametrize(
-        "skill", ["shared", "some-other-plugins-skill", "Bash", ""]
+        "skill", ["shared", "some-other-plugins-skill", "Bash", "",
+                  "other-plugin:gcp-to-aws", "migration-to-aws:gcp-to-aws"]
     )
     def test_a_skill_that_is_not_ours_sends_nothing(self, home, collector, skill):
         accept(home)

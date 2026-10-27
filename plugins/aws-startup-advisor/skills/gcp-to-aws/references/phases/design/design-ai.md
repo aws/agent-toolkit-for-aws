@@ -221,6 +221,9 @@ otherwise use the cost-comparison cases below with `model_change` reflecting the
   `"strong_migrate"`. Set `model_change: false`. The rationale is risk (no behavior delta) plus AWS commitments,
   governance, and residency — **not** an assumed cost saving. Price the actual model and inference option using
   the model-specific rules below; same identity does not imply cost parity or a universal premium.
+
+  If source pricing is unavailable, retain that unavailable comparison. Derive the
+  difference from verified source and selected target inference/context-tier rates.
 - Source model on Bedrock but the target region does not carry it → treat as no-same-model below, and record the
   region as the cause in `regional_warnings[]`. Do not report this as a model-quality judgment.
 - Bedrock cheaper → `"strong_migrate"`
@@ -256,7 +259,9 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 | ------------------------- | ---------------------------------- | ------------ | --------------------------------------------------------------------------------- |
 | `"high"` or `"very_high"` | Any                                | `"high"`     | Flag: "Request Bedrock quota increase before migration (allow 1–5 business days)" |
 | `"medium"`                | Claude (5× burndown)               | `"medium"`   | Flag: "Monitor TPM usage; quota increase may be needed at peak"                   |
-| `"medium"`                | Nova / Llama / other (1× burndown) | `"low"`      | No action                                                                         |
+| `"medium"`                | Astra runtime (10× output burndown) | `"medium"` | Flag: "Verify input TPM + 10 × output TPM against the selected CRIS quota" |
+| `"medium"`                | Verified 1× models (e.g. Nova / Llama) | `"low"` | No action |
+| `"medium"`                | Unverified model/endpoint quota | `"medium"` | Flag: "Verify quota dimensions before estimating throughput" |
 | `"low"`                   | Any                                | `"low"`      | No action                                                                         |
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture` alongside `honest_assessment`.
@@ -378,19 +383,25 @@ For each detected `integration.pattern` and `ai_source`, generate before/after m
 
 **Patterns to include (matched to detected language and source):**
 
-| Pattern                         | Source                    | Target               | Key Change                                                                                           |
-| ------------------------------- | ------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------- |
-| Direct SDK (OpenAI), same model | OpenAI                    | Mantle Responses API | Base URL → `.../openai/v1`, Bedrock credential, `openai.gpt-*` model ID, `bedrock-mantle:*` IAM      |
-| Direct SDK                      | Vertex AI                 | boto3 Converse API   | `generate_content()` → `converse()`                                                                  |
-| Direct SDK                      | OpenAI                    | boto3 Converse API   | `completions.create()` → `converse()` (use if Mantle region unavailable or Converse features needed) |
-| Direct SDK                      | Anthropic                 | boto3 Converse API   | `messages.create()` → `converse()` with Claude model ID on Bedrock                                   |
-| LangChain                       | ChatVertexAI / ChatOpenAI | ChatBedrock          | Swap import and model_id                                                                             |
-| LlamaIndex                      | Vertex / OpenAI LLM       | BedrockConverse      | Swap import                                                                                          |
-| LLM Router (LiteLLM)            | Any                       | Config change        | `model="bedrock/<model_id>"` (1 line)                                                                |
-| Embeddings                      | TextEmbeddingModel        | Titan Embeddings v2  | `invoke_model` with JSON body                                                                        |
-| Streaming                       | `stream=True`             | `converse_stream`    | Event loop over `contentBlockDelta`                                                                  |
+| Pattern                         | Source                    | Target              | Key Change                                                                                           |
+| ------------------------------- | ------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Direct SDK (OpenAI), same model | OpenAI                    | Selected Mantle API | Base URL → `.../openai/v1`, Bedrock credential, `openai.gpt-*` model ID, `bedrock-mantle:*` IAM      |
+| Direct SDK                      | Vertex AI                 | boto3 Converse API  | `generate_content()` → `converse()`                                                                  |
+| Direct SDK                      | OpenAI                    | boto3 Converse API  | `completions.create()` → `converse()` (use if Mantle region unavailable or Converse features needed) |
+| Direct SDK                      | Anthropic                 | boto3 Converse API  | `messages.create()` → `converse()` with Claude model ID on Bedrock                                   |
+| LangChain                       | ChatVertexAI / ChatOpenAI | ChatBedrock         | Swap import and model_id                                                                             |
+| LlamaIndex                      | Vertex / OpenAI LLM       | BedrockConverse     | Swap import                                                                                          |
+| LLM Router (LiteLLM)            | Any                       | Config change       | `model="bedrock/<model_id>"` (1 line)                                                                |
+| Embeddings                      | TextEmbeddingModel        | Titan Embeddings v2 | `invoke_model` with JSON body                                                                        |
+| Streaming                       | `stream=True`             | `converse_stream`   | Event loop over `contentBlockDelta`                                                                  |
 
-**Mantle Responses API (primary path for OpenAI sources):** If `ai_source = "openai"` and the source model is on Bedrock, this is the primary option. The application keeps the OpenAI SDK and the same model; only the base URL, credential, model ID, and IAM actions change. Read `references/shared/openai-on-bedrock.md` for the exact values — three details break naive implementations: the path is `/openai/v1/responses` (not `/v1/responses`), the credential must be a Bedrock API key or token provider (not an OpenAI key), and IAM needs `bedrock-mantle:*` actions (not `bedrock:InvokeModel`). Record `migration_path: "mantle_openai_responses"` and `model_change: false`.
+**OpenAI model/API selection:** preserve the model and the supported API chosen in the
+mapping guide. For Astra on Standard Mantle in `us-east-1` or `us-west-2`, a Chat source selects
+`migration_path: "mantle_openai_chat"`; a Responses source selects `"mantle_openai_responses"`.
+Keep the OpenAI SDK, use `/openai/v1`, Bedrock credentials and Mantle IAM. Do not reshape
+Astra Chat solely because it is proprietary GPT. Record `model_change: false` only when
+the exact source model is retained; a Pro-to-Astra upgrade is a model change requiring eval.
+GPT-5.x retains its separately dated API evidence and any selected Chat-to-Responses reshape.
 
 **A Chat Completions source is a supported near-drop-in for GPT-6 and GPT-5.6 — not a mandatory reshape.** All four GPT-6 models and the GPT-5.6 family list Chat Completions as a supported API on both mantle and runtime CRIS (per `openai-on-bedrock.md` § Access Paths); if `integration` evidence shows `chat.completions.create` for one of these models, the design may keep `chat.completions.create`/`choices[0].message` parsing — reshape to `responses.create` is optional, only for a Responses-only feature (runtime prompt caching, reasoning-item round-trips) or a demonstrated constraint. **GPT-5.5 and GPT-5.4 are the exception**: Chat Completions support is unconfirmed on their model cards (Responses on mantle is the only verified surface), so a Chat Completions source on either model still needs a planned reshape, probed against the target account before committing.
 
@@ -415,7 +426,18 @@ generated client uses a Guardrails-capable surface — `converse` for Astra; `co
 CRIS models. Do not leave the client on `responses` when Guardrails is required.** `Responses`
 stays the default for a region-only CRIS move with no Guardrails need.
 
-**Mantle throughput (medium/high volume):** quotas on `bedrock-mantle` are **per-model, per-region input TPM and output TPM — there is no RPM quota**. For `ai_token_volume = "medium"` or `"high"`, note: "Mantle enforces per-model input/output TPM quotas per region; 429s indicate a TPM ceiling, not a request-rate cap. Mitigate with exponential backoff, spreading load across minutes, and prompt caching (cached input is exempt from the input-TPM quota). There is no `bedrock-runtime` fallback for these models, so sustained growth needs a quota increase." See `references/vendored/ai/ai-migration-guardrails.md`.
+When the advisor supplied a
+per-unit model contract, retain its exact `invocation_model_id` in that unit's `aws_model_id`
+(including a system-profile ARN when supplied), and translate `runtime_converse` to
+`runtime_openai_cris` plus `required_client_api: "converse"`. A missing invocation ID requires resolution;
+do not manufacture a profile from the region. Keep each unit's model/API/profile together.
+For multiple advisor units, write `migration_path` and `required_client_api` on each corresponding
+`bedrock_models[]` row with its `aws_model_id`; `code_migration` remains the primary-unit default.
+
+**Throughput:** load `references/vendored/ai/ai-migration-guardrails.md` and apply the selected
+model/endpoint's quota rules. Astra runtime uses input TPM plus 10 times output TPM.
+Astra Mantle quotas and cache exemptions must be verified independently; do not copy GPT-5.6's
+rules or promise runtime fallback for a model that has none.
 
 **gpt-oss migration path:** If `ai_source = "openai"` and the user wants OpenAI-architecture models on the Bedrock-native runtime surface, offer `gpt-oss` as an additional path. Unlike the proprietary GPT models, gpt-oss **does** support `bedrock-runtime` (Converse / InvokeModel), so it is the option when Guardrails or invocation logging are required and an OpenAI-lineage model is preferred. It sits a capability class below the GPT-5.x frontier tier. Record `migration_path: "gpt-oss"`.
 
@@ -456,7 +478,7 @@ Write `aws-design-ai.json` to `$MIGRATION_DIR/`.
 | `ai_architecture.tiered_strategy`          | object/null | Tiered model routing (null for low/medium volume)                                                                                                                                                                                                |
 | `ai_architecture.bedrock_models`           | array       | Per-model: `gcp_model_id`, `aws_model_id`, `capabilities_matched[]`, `capability_gaps[]`, `honest_assessment`, `source_provider_price`, `bedrock_price`, `price_comparison`, `migration_complexity`                                              |
 | `ai_architecture.capability_mapping`       | object      | Per-capability: `parity` (full/partial/none), `notes`                                                                                                                                                                                            |
-| `ai_architecture.code_migration`           | object      | `primary_pattern`, `framework`, `files_to_modify[]`, `dependency_changes`                                                                                                                                                                        |
+| `ai_architecture.code_migration`           | object      | `primary_pattern`, `framework`, `files_to_modify[]`, `dependency_changes`, `migration_path`; per-model `required_client_api` selects the runtime API |
 | `ai_architecture.infrastructure`           | array       | GCP resource → AWS equivalent mappings with confidence                                                                                                                                                                                           |
 | `ai_architecture.services_to_migrate`      | array       | GCP service → AWS service with effort and notes                                                                                                                                                                                                  |
 | `regional_warnings`                        | array       | Per-service: `service`, `target_region`, `nearest_available`, `impact` (empty array if all services available)                                                                                                                                   |

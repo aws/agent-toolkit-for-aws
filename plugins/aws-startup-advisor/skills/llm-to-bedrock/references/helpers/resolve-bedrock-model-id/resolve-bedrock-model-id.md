@@ -47,8 +47,8 @@ aws bedrock list-foundation-models \
 
 **OpenAI proprietary GPT IDs.**
 
-**Check this before Step 1.** The proprietary GPT models split into two cases (verified 2026-08-21; see
-`$ASSESS_BASE/references/shared/openai-on-bedrock.md`):
+**Check this before Step 1.** Route by family and endpoint (GPT-5 verified 2026-08-21; Astra regions verified 2026-09-30; see
+`gcp-to-aws/references/shared/openai-on-bedrock.md`):
 
 **Case A — GPT-5.5 / GPT-5.4 (`openai.gpt-5.5`, `openai.gpt-5.4`): mantle-only, no inference profile.** The
 inference-profile path below cannot resolve them — `list-inference-profiles` never returns them, and Step 3's token
@@ -108,7 +108,26 @@ follow Case A's catalog-lookup procedure when the plan targets the bare/mantle e
 `bedrock-runtime` (`migration_path: runtime_openai_cris` or an already-CRIS-prefixed id), they follow this Case's
 inference-profile procedure instead — same routing rule as GPT-5.6, just a different id family.
 
-Non-`openai.gpt-5*` / non-`openai.gpt-6*` ids continue to Step 1 unchanged after checking the London exception above.
+**Case C — GPT-6 Astra: `openai.gpt-6-astra` on mantle, or `us.openai.gpt-6-astra` /
+`global.openai.gpt-6-astra` on runtime.** Preserve the plan's endpoint and residency choice:
+
+- A supplied system-profile ARN uses runtime. Validate its `arn:aws:bedrock:<caller-region>:<account>:inference-profile/<profile-id>`
+  form and apply the checks below to its profile ID. In Step 2 require the full ARN to match
+  `inferenceProfileArn` in the live listing, then return the original ARN unchanged.
+  Do not reduce it to a short ID, manufacture another ARN or accept an unverified application profile.
+- Bare id → Standard mantle in `us-east-1` or `us-west-2`. Validate the exact id with the Case A catalog query.
+  A different region returns `blocked` with `reason: model_unresolvable`; offer Virginia, Oregon, or a supported
+  runtime CRIS path through the orchestrator. Do not silently add a prefix or change endpoints.
+- `us.` / `global.` id → Step 1, then require an exact live profile match in the caller region.
+  Check the Astra runtime matrix in `gcp-to-aws/references/shared/openai-on-bedrock.md`;
+  a Global-only caller region does not satisfy US Geo residency.
+- An `in.` / `eu.` prefix, version suffix, partial id, or conflicting endpoint/id pair → `blocked`.
+  Do not substitute GPT-5.6 or manufacture an Astra profile.
+
+Astra's bare id needs mantle project permissions; its CRIS ids need runtime foundation-model and
+inference-profile permissions. Resolution does not verify account access or API behavior; run preflight.
+
+Other model ids continue to Step 1 unchanged.
 
 ### Step 1: List live inference profiles
 
@@ -116,15 +135,15 @@ Non-`openai.gpt-5*` / non-`openai.gpt-6*` ids continue to Step 1 unchanged after
 aws bedrock list-inference-profiles \
   --region <region> \
   <add --profile <profile> when your context has an `AWS profile` line> \
-  --query 'inferenceProfileSummaries[].[inferenceProfileId,inferenceProfileName]' \
+  --query 'inferenceProfileSummaries[].[inferenceProfileId,inferenceProfileName,inferenceProfileArn]' \
   --output json
 ```
 
-Parse the JSON. Each entry is a `[id, name]` pair.
+Parse the JSON. Each entry is an `[id, name, arn]` triple; ranking still uses the ID and name.
 
 ### Step 2: Try exact match
 
-If `plan_model_id` appears verbatim in the list, return it. No user prompt
+If `plan_model_id` exactly matches a listed ID or ARN, return that original value. No user prompt
 needed.
 
 ### Step 3: Token-based ranking when no exact match
@@ -199,7 +218,7 @@ stops on abort.
   ID will hit Step 0 (documented bare-ID route) or Step 2 (inference profile) and return immediately.
 - Steps 1–5 assume the target is a `bedrock-runtime` model reachable through an
   inference profile. Mantle-only ids (GPT-5.5/5.4, and GPT-5.6 when the plan
-  targets the mantle endpoint), and London in-region Opus 5.5, are handled entirely in Step 0; GPT-5.6 CRIS ids
+  targets the mantle endpoint), and London in-region Opus 5.5, are handled entirely in Step 0; GPT-5.6/GPT-6 CRIS ids
   flow through Steps 1–5 like any other inference profile. See
   `$ASSESS_BASE/references/shared/openai-on-bedrock.md` for the authoritative
   family split.
