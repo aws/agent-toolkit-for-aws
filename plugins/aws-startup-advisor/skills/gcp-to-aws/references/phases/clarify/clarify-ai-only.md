@@ -185,7 +185,7 @@ _Skip when:_ `models[].model_id` is populated in `ai-workload-profile.json` **wi
 
 | Source        | Baseline Recommendation        | Pricing Context                    |
 | ------------- | ------------------------------ | ---------------------------------- |
-| Gemini Flash  | Claude Haiku 5.5 (price unverified)       | Even stronger savings                     |
+| Gemini Flash | Claude Haiku 5.5 (US Geo: $0.11/$0.55 up to 100K prompt tokens; $0.55/$2.75 above 100K) | Compare the exact Flash model and target token counts; savings are tier-dependent |
 | Gemini Pro    | Claude Sonnet 5 ($2/$10)       | Comparable tier                    |
 | GPT-6/6.1 (Astra/Sol/Luna) | **Same model on Bedrock** | ~10% over OpenAI std (DR tier); Astra/6.1 Sol also support Ultrafast |
 | GPT-5.6 (any) | **Same model on Bedrock**      | ~10% over OpenAI std (DR tier)     |
@@ -289,7 +289,7 @@ Present with concrete anchors: Critical = autocomplete/live chat; Important = ch
 
 | Answer    | Impact                                                       |
 | --------- | ------------------------------------------------------------ |
-| Critical  | Haiku/Nova Micro; streaming required; provisioned throughput |
+| Critical  | Haiku/Nova Micro candidates; stream, verify model-specific quotas/capacity, and measure latency at the chosen effort level |
 | Important | Sonnet 5 with streaming; standard on-demand                  |
 | Flexible  | Any model; batch inference for cost savings                  |
 

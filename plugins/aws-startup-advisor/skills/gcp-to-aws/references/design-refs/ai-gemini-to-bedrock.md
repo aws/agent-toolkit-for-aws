@@ -47,7 +47,7 @@ Gemini 3.5 Flash is now GA (May 2026) — the current flagship Flash model. Gemi
 | ---------------- | ------------------------------------------------------------------- | ---------- | ------- | ------- |
 | Claude Sonnet 5  | Agentic tasks, tool use                                             | High       | High    | 1M      |
 | Claude Opus 5.5  | Demanding reasoning; no Batch                                       | High       | Measure | 1M      |
-| Claude Haiku 5.5 | Simple + fast                                                       | Unverified | High    | 200K    |
+| Claude Haiku 5.5 | Simple + fast                                                       | Medium     | High    | 1M      |
 | Llama 4 Maverick | Cost-effective + multimodal                                         | Medium     | High    | 1M      |
 | Llama 4 Scout    | Ultra-long context, cheapest                                        | Medium     | Medium  | 10M     |
 | Nova 2 Pro       | AWS flagship, multimodal                                            | High       | High    | 1M      |
@@ -119,7 +119,9 @@ Gemini 3.1 Pro Preview matches or beats Opus 4.6 on most reasoning benchmarks at
 
 ### Speed-First
 
-Gemini Flash → **Nova Micro** (<200ms, text-only, cheapest), **Haiku 5.5** (<400ms, vision, now ~75% cheaper than Haiku 4.5), or **Llama 4 Scout** (<300ms, cheapest capable)
+Gemini Flash → **Nova Micro** (<200ms, text-only, cheapest), **Haiku 5.5** (vision; tune effort and measure latency on the target workload), or **Llama 4 Scout** (<300ms, cheapest capable)
+
+Haiku 5.5 has a 1M context window, but its price changes above 100K input tokens per request. Standard Global input/output rates per 1M tokens are $0.10/$0.50 up to 100K and $0.50/$2.50 above 100K; US Geo rates are $0.11/$0.55 and $0.55/$2.75. These are token prices, not a guaranteed workload saving. Recount target tokens and read the Haiku 5.5 target contract in `references/vendored/ai/ai-anthropic-to-bedrock.md` before migration. The portfolio's Medium complexity rating is a conservative guide classification, not an official model limit.
 
 ### Cost-First
 

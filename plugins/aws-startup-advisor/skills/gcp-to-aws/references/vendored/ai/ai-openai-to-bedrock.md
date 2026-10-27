@@ -154,6 +154,8 @@ See "Cost-optimized cross-family alternatives" below for the numbers.
 
 ---
 
+For a Haiku 5.5 target, apply the request, inference-profile, and tokenizer requirements in `references/vendored/ai/ai-anthropic-to-bedrock.md` (Haiku 5.5 target contract).
+
 ## Cost-Optimized Cross-Family Alternatives
 
 All figures per 1M tokens. Percentages are blended savings at a 2:1 input-to-output ratio. **Both sides of these
@@ -179,7 +181,8 @@ reported as unavailable rather than priced (see `shared/openai-on-bedrock.md`).
 | GPT-5.5              | 5.50 / 33.00 | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 68% cheaper     |
 | GPT-5.5              | 5.50 / 33.00 | Claude Opus 5.5 (Geo)    | 4.40 / 22.00 | Opus 30% cheaper       |
 | GPT-5.4              | 2.75 / 16.50 | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 36% cheaper     |
-| GPT-5.6 Luna         | 0.22 / 1.32  | Claude Haiku 5.5         | TBD pricing  | **comparison needs re-evaluation**   |
+| GPT-5.6 Luna         | 0.22 / 1.32  | Claude Haiku 5.5 (US Geo; prompt ≤100K) | 0.11 / 0.55 | **Haiku 56.25% cheaper** |
+| GPT-5.6 Luna         | 0.22 / 1.32  | Claude Haiku 5.5 (US Geo; prompt >100K) | 0.55 / 2.75 | **Luna 54.29% cheaper** |
 | GPT-5.6 Luna         | 0.22 / 1.32  | Nova Lite                | 0.06 / 0.24  | Nova Lite 80% cheaper  |
 | GPT-5.6 Luna         | 0.22 / 1.32  | Nova Micro               | 0.035 / 0.14 | Nova Micro 88% cheaper |
 
@@ -189,15 +192,13 @@ Findings worth surfacing to users:
   Opus 5.5 Geo pricing with the GPT in-region baseline. Opus 5.5 Global is $4/$20 only when worldwide
   routing is permitted. Compare actual token usage, capabilities, and the selected inference option;
   do not infer a cost advantage from the model name alone.
-- **GPT-5.6 Luna vs. Claude Haiku 5.5 pricing comparison needs re-evaluation.** For the fast/cheap tier, verify both models' current prices before comparing Bedrock options. Do not reflexively map a cheap OpenAI model to Haiku on cost grounds.
+- **Haiku 5.5 vs. Luna depends on prompt size and inference option.** The rows compare Luna in-region with Haiku US Geo at equal billed token volumes and a 2:1 input/output ratio. Luna prompts stay within its 272K short-context tier; Haiku has its own 100K boundary. Haiku Global is $0.10/$0.50 up to 100K and $0.50/$2.50 above 100K, only when worldwide routing is allowed. A >100K Haiku prompt reprices the whole request, including output and cache tokens. Recount each model's tokens and include thinking/cache usage before claiming workload savings. If request sizes are unknown, present both Haiku tiers rather than choosing one.
 - **Sonnet 5's now-permanent $2/$10 undercuts every same-family GPT tier except Luna.** It is ~20% cheaper than
   GPT-5.6 Terra and ~36% cheaper than GPT-5.4 blended; earlier revisions of this guide called Terra 19% cheaper and
   GPT-5.4 near parity on the cancelled $3/$15 rate. Cost now favors the cross-family move for Terra/GPT-5.4-class
   workloads — but it is still a model change; keep the same-model path as the default and present this as the
   cost alternative.
-- **Every row above is short-context (272K).** For a >272K workload, re-run the comparison at the GPT-5.6 long-context
-  tier (2.0x input, 1.5x output); Claude and Nova do not have an equivalent step, so the cross-family option becomes
-  markedly cheaper.
+- **Context thresholds are model-specific.** Above 272K GPT input tokens, re-run the comparison at the GPT-5.6 long-context tier (2.0x input, 1.5x output). Haiku 5.5 already enters its higher tier above 100K input tokens. Apply both boundaries independently; do not assume a cross-family saving.
 
 ### Sources with no Bedrock equivalent (cross-family reference)
 
@@ -249,7 +250,7 @@ This is the common case and needs no cost justification.
 
 - The source model is not on Bedrock (see the region and catalog lists in `shared/openai-on-bedrock.md`)
 - The user's priority is cost and they accept a model change — note that the cheapest option is often Nova, and that
-  GPT-5.6 Luna's price advantage over Claude Haiku 5.5 needs re-evaluation
+  Haiku 5.5 can be cheaper below its 100K prompt boundary while Luna can be cheaper above it; compare the selected profiles and each model's billed token counts
 - Required features cannot be served by a supported same-model path. Astra / GPT-5.6 have runtime CRIS
   options for applicable governance features; check their capability matrix before proposing a model change
 
