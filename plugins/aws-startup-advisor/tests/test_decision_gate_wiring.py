@@ -49,12 +49,14 @@ AGENT_ADVISOR_LLM_HANDOFF = (
     PLUGIN_ROOT / "skills" / "agent-advisor" / "references" / "handoff"
     / "handoff-migration.md"
 )
-QUALIFICATION_COPY = (
-    "Complete your migration assessment to see whether you qualify for AWS "
-    "migration credits. Final eligibility is determined by AWS."
+APPROVED_CREDIT_COPY = (
+    "Get $1,500 in AWS Promotional Credits for your migration when you create "
+    "an assessment. Migrating a larger workload? You may be eligible for more. "
+    "Talk to your AWS representative. Final eligibility determined by AWS."
 )
-UNSUPPORTED_CREDIT_COPY = (
-    "$1,500",
+SUPERSEDED_CREDIT_COPY = (
+    "Complete your migration assessment to see whether you qualify for AWS "
+    "migration credits.",
     "up to $1,500",
     "Credits are not guaranteed",
     "Qualification and credits are not guaranteed",
@@ -64,8 +66,8 @@ UNSUPPORTED_CREDIT_COPY = (
 def test_migration_credit_notice_is_vendored_and_qualified() -> None:
     canonical = UPFRONT_NOTICE.read_bytes()
     text = canonical.decode()
-    assert QUALIFICATION_COPY in text
-    assert all(unsupported not in text for unsupported in UNSUPPORTED_CREDIT_COPY)
+    assert APPROVED_CREDIT_COPY in text
+    assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
     assert "plan.json" in text and "migrate/credits" in text
     assert "GCP or Heroku" in text
     assert "upload below" not in text.lower()
@@ -93,8 +95,8 @@ def test_llm_migration_credit_notice_is_vendored_and_qualified() -> None:
     text = canonical.decode()
 
     assert LLM_VENDORED_NOTICE.read_bytes() == canonical
-    assert QUALIFICATION_COPY in text
-    assert all(unsupported not in text for unsupported in UNSUPPORTED_CREDIT_COPY)
+    assert APPROVED_CREDIT_COPY in text
+    assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
     assert (
         "[AWS Startups Migrate](https://startups.aws.com/startups/en-US/"
         "migrate/credits?source=plugin)" in text
@@ -107,8 +109,8 @@ def test_llm_migration_credit_notice_is_vendored_and_qualified() -> None:
 def test_readme_uses_qualification_based_migration_credit_copy() -> None:
     text = PLUGIN_README.read_text(encoding="utf-8")
 
-    assert text.count(QUALIFICATION_COPY) == 3
-    assert all(unsupported not in text for unsupported in UNSUPPORTED_CREDIT_COPY)
+    assert text.count(APPROVED_CREDIT_COPY) == 3
+    assert all(unsupported not in text for unsupported in SUPERSEDED_CREDIT_COPY)
     assert "GCP and Heroku currently write importable plans" in text
     assert "returns `PLAN_SKIP` until the downstream importer accepts Azure plans" in text
 
