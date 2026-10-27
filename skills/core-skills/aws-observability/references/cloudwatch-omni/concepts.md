@@ -45,10 +45,10 @@ reference, linked from each section and indexed at the end.
 signing name is the only thing the two have in common at the wire level — a CloudWatch
 or X-Ray client cannot reach a Space, an Omni alert, a view, or an Omni
 dashboard at any version, and `aws cloudwatch <omni-operation>` always fails. The
-wire protocol is Smithy RPC v2 CBOR (`rpcv2Cbor`) — calls POST to
-`/service/CloudWatchOmniFrontend/operation/<Op>` with CBOR bodies — so a caller needs
-an AWS SDK or CLI that carries the `cloudwatchomni` model; a hand-rolled
-JSON-over-SigV4 client cannot call it. The
+service model declares Smithy RPC v2 CBOR (`rpcv2Cbor`) — calls POST to
+`/service/CloudWatchOmniFrontend/operation/<Op>` with CBOR bodies — so a caller wants an
+AWS SDK or CLI that carries the `cloudwatchomni` model rather than a hand-rolled client,
+which would have to reproduce the model's encoding and its unpublished request members. The
 API, CLI/SDK, CloudFormation, and coding-agent paths are covered once, in
 [programmatic-access.md](programmatic-access.md); do not restate them here.
 
@@ -104,7 +104,7 @@ topic — read it before acting; do not act from this table alone.
 | **Alert** (vs. **alarm**) | Omni's rule-based notification: a SQL or PromQL rule evaluated on a schedule, with `OK`/`WARNING`/`CRITICAL`/`NODATA` states, contributors, and notification rules. A completely separate resource from a CloudWatch **alarm** (metric + threshold, `OK`/`ALARM`/`INSUFFICIENT_DATA`, SNS actions). The word the customer uses is the first clue. | [alerts.md](alerts.md); CloudWatch: [../cloudwatch/alarms.md](../cloudwatch/alarms.md) |
 | **Dashboard (Omni)** | A JSON `panels[]` body on a fixed 60-column grid, most panels charting Omni SQL or PromQL. Distinct from a CloudWatch dashboard (a `widgets[]` body managed by `PutDashboard`). | [dashboards.md](dashboards.md); CloudWatch: [../cloudwatch/dashboards.md](../cloudwatch/dashboards.md) |
 | **Context graph** | The graph Omni builds from a Space's telemetry relating services, resources, deployments, and the signals about them, used to correlate across logs, traces, and metrics during an investigation. The CloudWatch counterpart in spirit is the Application Signals service map. | [context-graph.md](context-graph.md) |
-| **Insight / anomaly** | An automatically detected deviation in a Space's telemetry, surfaced with the signals that contribute to it, for the customer to investigate conversationally. Distinct from a CloudWatch **anomaly-detection alarm**, which fits a band to one metric and alarms when it leaves the band. | [context-graph.md](context-graph.md) (investigating from an insight or anomaly); CloudWatch: [../cloudwatch/alarms.md](../cloudwatch/alarms.md) |
+| **Insight / anomaly** | An automatically detected deviation in a Space's telemetry, surfaced with the signals that contribute to it, for the customer to investigate conversationally. Distinct from a CloudWatch **anomaly-detection alarm**, which fits a band to one metric and alarms when it leaves the band. | [intelligence.md](intelligence.md) (reading and triaging insights, observations, and anomalies, and which operations are callable); [context-graph.md](context-graph.md) (walking the topology from an insight or anomaly); CloudWatch: [../cloudwatch/alarms.md](../cloudwatch/alarms.md) |
 | **Evaluator / evaluation** | Agent Observability's quality mechanism: an **evaluator** (built-in, third-party, or custom) scores an agent's traces or sessions; an **evaluation** runs one or more evaluators either on demand or continuously (online). Scores are stored as telemetry and read back with SQL. Evaluation **datasets** hold versioned examples built from traces. | [agent-evaluation.md](agent-evaluation.md) |
 | **Agent Observability** | The Omni experience for LLM/AI-agent workloads — GenAI spans from ADOT or OpenInference instrumentation, sessions, tool calls, and evaluation — on the same Space and query surface as Application Observability. | `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/omni-agents-instrumentation/omni-agents-instrumentation.md`, [query/sql-logs-traces.md](query/sql-logs-traces.md) |
 | **Integration** | An account-level connection to an external system (today: Slack) that Spaces are separately granted permission to use, and that alerts can notify through. | `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/slack-integration.md` |
@@ -270,6 +270,10 @@ Two things are **conditional** rather than sequential:
   `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/access-profiles.md`.
 - **Slack** — only if the customer wants alerts or investigations to reach a Slack
   workspace. `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/slack-integration.md`.
+- **AWS DevOps Agent** — only if the customer wants Omni to hand root-cause
+  investigations to it. The Omni-side connection is
+  `setting-up-cloudwatch-observability` → `references/cloudwatch-omni/devops-agent-integration.md`;
+  the agent itself is covered by its dedicated `aws-agents-for-devsecops` plugin.
 
 **Constraints:**
 

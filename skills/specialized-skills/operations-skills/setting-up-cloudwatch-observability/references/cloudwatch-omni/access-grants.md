@@ -214,11 +214,23 @@ Three mechanisms sit near each other and are routinely confused. Keep them apart
   the call regardless of IAM. An IAM principal calling the API directly with its own
   credentials (no Omni session context) is treated as a machine identity, for which a
   grant is optional: grants that match it are enforced (their row and column scopes
-  apply, and an explicit deny wins), but when none match the Space does not deny — the
-  request falls through to the caller's IAM policy, which alone decides, with no row
-  restriction applied. Direct IAM callers reach only Spaces owned by their own account.
+  apply, and an explicit deny wins), but when none match **the Space raises no denial of
+  its own** — the request falls through to the caller's IAM policy, which alone decides,
+  with no row restriction applied. That is the reverse of the human/profile case, where a
+  missing grant *is* the denial. Separately, and regardless of that fallthrough, a direct
+  IAM caller reaches only Spaces owned by its own account; another account's Space is out
+  of reach whatever its IAM policy says.
   So "who has access to this Space" is the grants for people and profiles, plus IAM
   policy for direct IAM callers that hold no grant — check both.
+- **Diagnosing an `AccessDenied`: find the layer that denied before changing either.**
+  Both layers emit the same symptom, so read the IAM policy on the calling principal
+  *and* look for a grant naming it before editing one on a guess. The same principal can
+  be denied by different layers in different situations, and two denials observed
+  together usually do not share a root cause: calling the API directly against another
+  account's Space is the direct-caller account-scope limit (no IAM policy widens it),
+  while the identical principal running under an Access Profile is denied because no
+  grant matches the profile (no IAM policy substitutes for that grant). Broadening IAM
+  fixes neither. Report the two causes separately rather than collapsing them into one.
 - **Grants are not Access Profiles.** A profile bounds what a workload may do; it is
   itself the *principal* of the grants that describe its permissions, and the *target*
   of trust grants that say which workloads may assume it. Give a person or a team
