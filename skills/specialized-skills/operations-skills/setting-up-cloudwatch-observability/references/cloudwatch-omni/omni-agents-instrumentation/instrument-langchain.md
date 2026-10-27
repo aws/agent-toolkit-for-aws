@@ -58,6 +58,8 @@ These are NOT sufficient on their own:
 
 ## TypeScript
 
+This section applies only when the customer chose OpenInference. On the ADOT zero-code path the distro's own LangChain instrumentation (`aws_langchain`) produces the spans with nothing to register; if that path yields only HTTP spans and zero tokens with no error, the installed LangChain version is outside the distro's supported range (see the TypeScript version check in the main procedure), not a missing registration.
+
 Node's ADOT loader does not auto-discover third-party instrumentors the way Python's entry-point mechanism does, so the JS `LangChainInstrumentation` must be registered explicitly — but attach it to ADOT's **already-global** provider (bring-your-own-provider), do NOT stand up your own `NodeSDK` provider + `OTLPTraceExporter` (it is orphaned under ADOT — ADOT's provider wins the singleton). Declaring the packages is all that's needed here; the instrumentation flow installs them and sets up the ADOT export pipeline.
 
 ### Required Packages
