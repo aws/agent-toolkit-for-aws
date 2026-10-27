@@ -112,5 +112,9 @@ def test_decline_and_clarify_consume_live_profiles():
     quotas = _read("skills/shared/ai/bedrock-quotas.md")
     assert "observed_on_demand_peak" in quotas
     assert "200,000" in quotas
-    assert 'ai_source` to\n`"both"`' in GCP_LIVE or 'set `ai_source` to\n`"both"`' in GCP_LIVE
+    assert 'set `ai_source` to `"both"`' in GCP_LIVE or 'ai_source` to\n`"both"`' in GCP_LIVE
     assert "OpenAI code profile plus these Gemini models" in GCP_LIVE
+    assert "resource.label.publisher" in GCP_LIVE
+    assert "vertex_partner_model" in GCP_LIVE
+    assert "partner-only" in GCP_LIVE
+    assert "A partner-only profile stays `\"other\"`" in GCP_LIVE
