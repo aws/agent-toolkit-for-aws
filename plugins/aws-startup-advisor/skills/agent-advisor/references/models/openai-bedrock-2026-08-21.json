@@ -397,7 +397,7 @@
       }
     },
     "anthropic_claude_sonnet_5": {
-      "display_name": "Claude Sonnet 5 (Converse tier match for GPT-5.6 Terra / 5.5 / 5.4)",
+      "display_name": "Claude Sonnet 5 (Converse tier match for GPT-5.6 Terra / 5.5 / 5.4 / GPT-6.1 Terra)",
       "family": "anthropic_claude",
       "generation": "bedrock_native",
       "version": "5",
@@ -409,7 +409,7 @@
         "reasoning",
         "image_input_vision"
       ],
-      "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): Converse checked, 1M context / 128K output, adaptive thinking always on, image input checked (tool_use/thinking/vision mapped to this provider's feature vocabulary). Balanced Claude tier — the Converse target for GPT-5.6 Terra, GPT-5.5, GPT-5.4, and unmatched/legacy sources.",
+      "capability_source": "AWS model card model-card-anthropic-claude-sonnet-5 (2026-07-21): Converse checked, 1M context / 128K output, adaptive thinking always on, image input checked (tool_use/thinking/vision mapped to this provider's feature vocabulary). Balanced Claude tier — the Converse target for GPT-5.6 Terra, GPT-5.5, GPT-5.4, GPT-6.1 Terra, and unmatched/legacy sources.",
       "paths": {
         "runtime_converse": {
           "available": true,

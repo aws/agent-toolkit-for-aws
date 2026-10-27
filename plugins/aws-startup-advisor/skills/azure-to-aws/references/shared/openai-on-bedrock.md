@@ -28,7 +28,7 @@ risk) all defer to it. Do not restate model IDs, regions, or endpoint paths else
 | GPT-6 Sol           | `openai.gpt-6-sol`                       | Sep 22, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html)                                                        |
 | GPT-6 Luna          | `openai.gpt-6-luna`                      | Sep 22, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html)                                                       |
 | GPT-5.6 Sol         | `openai.gpt-5.6-sol`                     | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html)                                                       |
-| GPT-5.6 Terra       | `openai.gpt-5.6-terra`                   | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html)                                                     |
+Add new row: | GPT-6.1 Terra | `openai.gpt-6.1-terra` | <GA date> | 1M | Active | [card](...) |
 | GPT-5.6 Luna        | `openai.gpt-5.6-luna`                    | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.html)                                                      |
 | GPT-5.5             | `openai.gpt-5.5`                         | Jun 1, 2026  | 272K    | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-55.html)                                                           |
 | GPT-5.4             | `openai.gpt-5.4`                         | Jun 1, 2026  | 272K    | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-54.html)                                                           |
@@ -178,7 +178,7 @@ request for multi-turn and tool-calling flows.
 | GPT-6 Luna    | yes       | —         | —         | —             | —             |
 | GPT-6.1 Sol   | yes       | —         | —         | —             | —             |
 | GPT-5.6 Sol   | yes       | yes       | —         | —             | —             |
-| GPT-5.6 Terra | yes       | yes       | yes       | yes           | yes           |
+Add new row: | GPT-6.1 Terra | yes | yes | yes | yes | yes |
 | GPT-5.6 Luna  | yes       | yes       | yes       | yes           | yes           |
 | GPT-5.5       | yes       | yes       | —         | —             | —             |
 | GPT-5.4       | yes       | yes       | yes       | yes           | —             |

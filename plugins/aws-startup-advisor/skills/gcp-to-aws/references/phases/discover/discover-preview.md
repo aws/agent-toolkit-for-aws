@@ -125,7 +125,7 @@ record the choice in `key_decisions_ahead` instead of silently selecting Nova. A
 | `gpt-4o`, `gpt-4.1`, `gpt-5`/`5.1`/`5.2`                | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.*-mini`           | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
 | `gpt-3.5-turbo`, `gpt-4.1-nano`, `gpt-5.*-nano`         | Amazon Nova Micro                              | `amazon.nova-micro-v1:0`                                               |
-| `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Sol for lower cost; or Nova 2 Pro | `openai.gpt-6-astra` / `openai.gpt-5.6-sol` / `amazon.nova-2-pro-v1:0` |
+| `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Terra or Sol for lower cost; or Nova 2 Pro | `openai.gpt-6-astra` / `openai.gpt-6.1-terra` / `openai.gpt-5.6-sol` / `amazon.nova-2-pro-v1:0` |
 | `o3`, `o4-mini`, reasoning models                       | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gemini-2.5-pro`, `gemini-3.*-pro`                      | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gemini-2.5-flash`, `gemini-2.0-flash`                  | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |

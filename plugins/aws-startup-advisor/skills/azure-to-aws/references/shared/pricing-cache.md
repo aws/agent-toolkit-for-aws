@@ -71,7 +71,7 @@ the resulting rates).
 | GPT-6 Sol     | 2.00         | 10.00        | ≤272K*  | flagship  |
 | GPT-6 Luna    | 0.10         | 0.50         | ≤272K*  | fast      |
 | GPT-5.6 Sol   | _unverified_ | _unverified_ | 1M      | frontier  |
-| GPT-5.6 Terra | _unverified_ | _unverified_ | 1M      | flagship  |
+Add new row: | GPT-6.1 Terra | _unverified_ | _unverified_ | 1M | balanced |; existing GPT-5.6 Terra row's relative price positioning should note GPT-6.1 Terra undercuts it by 50%+
 | GPT-5.6 Luna  | 0.20         | 1.20         | 1M      | fast      |
 | GPT-5.5       | 5.00         | 30.00        | 1M      | flagship  |
 | GPT-5.5 Pro   | 30.00        | 180.00       | 1M      | premium   |
