@@ -1,11 +1,11 @@
 ---
 name: operate-on-aws
-description: "Operate a live AWS workload with AWS DevOps Agent — incident investigation, root-cause analysis, and release-readiness review — for startups with no dedicated DevOps or SRE engineer. Use when a live AWS workload is misbehaving (production is down, 5xx errors, latency spike, timeouts, it broke after the last deploy, an alarm fired, a pasted CloudWatch alarm or stack trace, find the root cause, write a postmortem, no one on call), for pre-merge review (is this PR safe to ship, blast radius), or to set up, pause, stop, or check the cost of AWS DevOps Agent. Detects existing setup first and never re-onboards. Cost, account access, and code egress are each disclosed in one line with safe defaults: cost and access proceed, code egress stays off unless asked. Do not use for: new architecture (architect-for-startups), scaffolding (start-building-for-startups), migrations (gcp-to-aws, azure-to-aws, heroku-to-aws, llm-to-bedrock), or general Activate and credits questions (knowledge-base-for-startups)."
+description: "Operate a live AWS workload with AWS DevOps Agent — incident investigation, root-cause analysis, and release-readiness review — for startups with no dedicated DevOps or SRE engineer. Use when a live AWS workload is misbehaving (production is down, 5xx errors, latency spike, timeouts, it broke after the last deploy, an alarm fired, a pasted CloudWatch alarm or stack trace, find the root cause, write a postmortem, no one on call), for pre-merge review (is this PR safe to ship, blast radius), or to set up, pause, stop, or check the cost of AWS DevOps Agent. Detects existing setup first and never re-onboards. Asks one explicit Yes/No covering cost (two-month trial, Activate credits) and account access before any setup; code egress stays off unless asked. Do not use for: new architecture (architect-for-startups), scaffolding (start-building-for-startups), migrations (gcp-to-aws, azure-to-aws, heroku-to-aws, llm-to-bedrock), or general Activate and credits questions (knowledge-base-for-startups)."
 ---
 
 # Operate on AWS — AWS DevOps Agent for startups
 
-**Last updated:** 2026-10-08
+**Last updated:** 2026-10-19
 
 ## Philosophy
 
@@ -16,14 +16,20 @@ for with AWS Activate credits the founder budgeted against runway.
 
 So this skill has three non-negotiable rules:
 
-> **1. Never connect or enable AWS DevOps Agent without first telling the user what it costs.** One line,
-> then proceed — the default is to continue. If they object, stop.
+> **1. Never create or connect AWS DevOps Agent resources without explicit user approval.** Explain the
+> potential charges, the two-month new-customer trial, eligible AWS Activate credit coverage, and the AWS
+> account access setup needs. Ask ONE Yes/No question that covers both cost and permissions, and WAIT for
+> an affirmative answer.
 >
-> **2. Never enable anything that copies their source code out of their AWS account unless they ask for
-> it.** The default is off. Say that it is off and how to turn it on; do not ask them to choose.
+> **2. Never enable code egress without a specific, informed opt-in.** Automated verification testing
+> stays OFF by default. When a user chooses release-readiness reviews, explain that testing copies the
+> repository to an AWS-managed build and test environment outside their AWS account, and ask Yes/No
+> whether to enable it. Only an explicit Yes enables it; declining still leaves static reviews on.
 >
-> **3. Never grant the agent access to their AWS account without saying what that access is.** One line
-> on what the role allows and how to revoke it, then create it — see Phase 2.5.
+> **3. Never grant AWS account permissions without informed consent.** Describe the account-wide read
+> access for investigations and the added permissions to start CloudTrail queries and create AWS Support
+> cases, in the SAME approval request as pricing. **Never enable Directed Actions or provision elevated
+> remediation permissions in this skill.**
 
 A startup running on credits is spending money it has budgeted against runway. Nobody should learn what
 something costs from a bill. Tell them first, every time, including when they are in a hurry.
@@ -102,42 +108,46 @@ down.
 
 ## State machine
 
-Phases run in order. **DISCLOSE always comes before CONNECT.** There is no path from ASSESS to CONNECT that
-skips telling the user the cost.
+Phases run in order. **CONFIRM always comes before SET UP.** There is no path from ASSESS to SET UP that
+skips the user's explicit Yes.
 
 ```
 DETECT ──▶ already connected? ──▶ OPERATE
    │
-   └──▶ ASSESS ──▶ DISCLOSE ──▶ ACCESS ──▶ SET UP ──▶ CONNECT ──▶ OPERATE
-                      │           │
-                      └───────────┴──▶ (user objects) ──▶ STOP. Roll back what this setup created.
+   └──▶ ASSESS ──▶ DISCLOSE + ACCESS ──▶ CONFIRM ──▶ SET UP ──▶ CONNECT ──▶ OPERATE ──▶ RELEASE REVIEW OFFER
+                    (one message)       (one Yes/No)
+                                           │
+                                           └──▶ No, unclear, or no answer ──▶ STOP. No setup writes.
 ```
 
 | Phase | Goal | Exit condition |
 |---|---|---|
-| DETECT | Find out what already exists | Connection state known |
+| DETECT | Find out what already exists (read-only, best effort) | Connection state known, or known to be uncertain |
 | ASSESS | Work out which half of the product fits, if either | User's stage and workload state are known |
-| DISCLOSE | Show cost, credit impact, and how to stop | Cost notice given (default: proceed) |
-| ACCESS | Show what the agent will be able to see, and how to revoke it | Access notice given (default: create the role) |
-| SET UP | Create the Agent Space | A workspace exists in the right region |
+| DISCLOSE | Prepare the cost part of the notice: trial, Activate credits, rate, extra charges, how to stop | Cost part prepared |
+| ACCESS | Prepare the access part: what the role can do, and how to revoke it | Access part prepared |
+| CONFIRM | Show both parts as one message and ask one Yes/No | **The user said Yes** |
+| SET UP | Create the Agent Space and monitoring role | A workspace exists in the right region |
 | CONNECT | Create the connection | MCP server reachable, a test call succeeds |
-| OPERATE | Investigate, review, report | — |
+| OPERATE | Investigate, review, report — only what the user asked for | — |
+| RELEASE REVIEW OFFER | Optional feature choice after a normal first-time setup | Yes or No |
 
-SET UP comes **after** DISCLOSE deliberately. Creating an Agent Space is a write to the user's account, so
-the user hears what it costs and what it can see before anything is written.
-
-The notices do not wait for an answer. Give them, then carry on with the defaults: **cost — proceed;
-access — create the role; code egress — off.**
+DISCLOSE and ACCESS prepare one combined notice. At CONFIRM, present that notice and ask ONE explicit
+Yes/No question covering both the potential charges and the AWS account permissions. **WAIT for a Yes
+before** creating an Agent Space, creating or associating IAM roles, associating AWS services, or
+configuring a new DevOps Agent MCP connection. No answer, an unclear answer, an earlier unrelated "yes",
+or No means no setup writes. Do not ask separate cost and access questions.
 
 What "stop" means depends on where they are:
 
-- **During onboarding** (before CONNECT succeeds), an objection cancels setup. Stop and roll back what this
-  setup created. Never touch anything that existed before it.
+- **During onboarding** (after Yes, before CONNECT succeeds), an objection cancels setup. Stop and roll
+  back what this setup created. Never touch anything that existed before it.
 - **After setup**, "stop" means stop the work, not remove the setup. Cancel the running task or pause the
   agent as described in [`references/stopping.md`](references/stopping.md). Keep the Agent Space, role, and
   investigation records. Delete resources only when the user explicitly asks to remove them.
 
-If the user asks to skip ahead — *"just set it up"* — you still give the notices. Keep them to a line each.
+If the user asks to skip ahead — *"just set it up"* — you still show the combined notice and wait for the
+Yes. A request to set up is not approval of charges and permissions they have not seen yet.
 
 ## Phase 0 — DETECT (always first)
 
@@ -149,13 +159,15 @@ been paying attention.
    [`references/readiness.md`](references/readiness.md) — three read-only commands that tell you whether
    there is a CLI, whether there are credentials, whether they are *expired* rather than absent, and which
    region. Expired is a ten-second fix and must not be treated as "not set up".
-2. **Is there an Agent Space in any region?** Check every region DevOps Agent runs in, not only theirs —
-   see "Detecting whether an Agent Space exists" in [`references/readiness.md`](references/readiness.md).
-   A region whose lookup fails is unknown, not empty: do not conclude there is no space until every
-   region has answered.
+2. **Is there an Agent Space in any region?** If credentials already work, check every region DevOps
+   Agent runs in, not only theirs — see "Detecting whether an Agent Space exists" in
+   [`references/readiness.md`](references/readiness.md). A region whose lookup fails is unknown, not
+   empty: never conclude there is no space from a failed lookup. But an incomplete lookup does **not**
+   hold back the approval question; resolve it before creating anything (Phase 3).
 3. **Is an AWS DevOps Agent MCP server already registered?** Look in the agent's MCP configuration for a
    server pointing at `connect.aidevops.*`.
-4. **Does it actually work?** One cheap call, not just the presence of a config file.
+4. **Does it actually work?** One call that starts no agent work — `tools/list` or `list_agent_spaces`,
+   never `chat` or `investigate` — not just the presence of a config file.
 
 | What you find | What to do |
 |---|---|
@@ -177,11 +189,11 @@ investigation costs. Whichever skill's flow ends up running, these still hold:
 - **Before the first investigation in a session** on a connection this skill did not set up, give the cost
   in one line — about $2.50–$4.00 per investigation, billed per second, and how to cancel — then proceed.
   Once per session; do not repeat it before every investigation.
-- **Before first-time setup**, give the DISCLOSE and ACCESS notices, even if that plugin's setup flow is the
-  one writing the MCP configuration.
-- **Before a release review**, keep automated testing off unless the user asks for it. This also applies
-  when that plugin runs the review: pass `skip_automated_testing=true` and do not relay its testing
-  question. See [`references/release-review.md`](references/release-review.md).
+- **Before first-time setup**, show the combined notice and wait for the Yes, even if that plugin's setup
+  flow is the one writing the MCP configuration. Never hand setup to it to skip the approval.
+- **Before a release review**, keep automated testing off unless the user said Yes to it after hearing
+  what it copies. When that plugin runs the review, pass `skip_automated_testing=true` unless they did.
+  See [`references/release-review.md`](references/release-review.md).
 - **One connection only.** Never register a second DevOps Agent MCP server alongside `aws-devops-agent`.
 
 ## Phase 1 — ASSESS
@@ -285,109 +297,129 @@ Three rules for this moment:
 
 - **Default to helping immediately** if they do not pick. Never leave someone waiting on a decision while
   their site is down.
-- **You can do the whole setup yourself while they keep working.** Creating the Agent Space is one CLI
-  call, and the region, MCP config, auth and verification are all yours too. Nothing here needs the
-  console or needs them. Say so — an offer to set it up in the background costs them nothing, which is a
-  much better offer than "go click through a console while your site is down".
-- **Keep the disclosure short here.** The cost notice still comes first, but a founder mid-outage needs
-  only the rate, whether credits cover it, and how to stop — one or two lines, then carry on.
+- **Once they say Yes, you can do the whole setup yourself while they keep working.** Creating the Agent
+  Space is one CLI call, and the region, MCP config, auth and verification are all yours too. Nothing
+  here needs the console or needs them. Say so — that is a much better offer than "go click through a
+  console while your site is down".
+- **Keep the notice short here, but complete.** Shorten the prose; never drop the trial, Activate
+  credits, the rate, the access, or the one Yes/No question.
+- **Do not offer release reviews mid-incident.** Offer them after the urgent work.
 
 If they choose to wait, come back to it once the incident is resolved. That is when the value is most
 obvious, and it makes a better first impression than an interrupted wizard.
 
-## Phase 2 — DISCLOSE (cost notice)
+## Phase 2 — DISCLOSE (cost part of the notice)
 
-Cover four things. Be specific; do not round the numbers away.
+Prepare four things for the combined notice. Be specific; do not round the numbers away. Nothing is
+shown or created yet — the notice goes out at CONFIRM, together with the access part.
 
 **1. What it costs.**
 
 - $0.0083 per agent-second — about **$29.88 per agent-hour**
 - One investigation runs 5–8 minutes, so roughly **$2.50–$4.00**
 - Billed per second, only while the agent is actively working
-- New customers get a 2-month trial: up to 10 agent spaces, 20 h investigations, 15 h evaluations,
-  20 h on-demand SRE tasks
+- New DevOps Agent customers get a 2-month free trial, starting with their first operational task. Each
+  trial month includes up to 10 agent spaces, 20 h investigations, 15 h evaluations, and 20 h on-demand
+  SRE tasks. Standard rates apply beyond those limits and after the trial
+- Available AWS Activate credits that apply to DevOps Agent are used automatically until they run out or
+  expire
 - Connected services (CloudWatch Logs Insights queries, trace retrievals) bill separately
 
-**2. What it draws on.** Read the account rather than guessing — see
-[`references/checking-credits.md`](references/checking-credits.md). Report one of three states:
+Say "new customers are eligible" for the trial. No check reliably says whether a given account is still
+in it, so never claim it is, and never promise $0.
 
-- Credits found, and they cover DevOps Agent → give the remaining balance and expiry
+**2. What it draws on.** If credentials already work, read the account — see
+[`references/checking-credits.md`](references/checking-credits.md). This lookup is optional: never ask
+for a sign-in or extra billing permissions just to run it, and never let it hold up the question.
+
+- Credits found, and they cover DevOps Agent → add the remaining balance and expiry
 - Credits found, but they do not cover it → say so; usage bills to their payment method
-- **Cannot read credits** → say that plainly and why. Never present unknown as zero, and never
-  present unknown as covered.
+- **Cannot read credits** → keep the general Activate line and move on. Do not turn it into a
+  permissions tutorial. Never present unknown as zero, and never present unknown as covered.
 
-**Then decide whether it is a good use of their money**, not just whether they can be told the price.
-Relevance is not the bar — the startups that need this most can least afford it. Run the arithmetic in
-[`references/affordability.md`](references/affordability.md):
-
-```
-runway_weeks = remaining_balance / (investigations_per_week × $4)
-```
-
-Under three weeks, **recommend against it and offer the alternatives** — chief among them
-release-readiness review, which is free during preview and prevents a share of the incidents they cannot
-afford to investigate. Saying "you'd get more from spending this on compute" to someone you could sell to
-is what makes every other recommendation credible.
-
-Still their call. Recommend against, then wait for their answer before setting up — this is the one case
-where the cost notice ends on a question. Do not refuse.
-
-The stance does not need the data. If credits are unreadable, give the qualitative version rather than
-skipping the conversation.
+**Whether to spend it is their decision.** The notice gives them the trial, the credits, and the rate;
+do not add a runway estimate or recommend against setup on cost. If they ask how long their credits would
+last, or whether they can afford it, use [`references/affordability.md`](references/affordability.md).
 
 **3. What it will not do.** DevOps Agent proposes fixes; the user approves them. Nothing is applied to
 their account without an explicit decision. Say this — it is the reassurance that makes the rest land.
 
-**4. How to stop it.** In the same notice, before anything is created. See
+**4. How to stop it.** Know it before asking, and say it if they ask. See
 [`references/stopping.md`](references/stopping.md).
 
-**If they are heading for release review, automated verification testing stays off.** It copies their
-repository out of their AWS account, so it is enabled only when they ask for it — see
-[`references/release-review.md`](references/release-review.md). Mention it in one line; do not ask.
+Release reviews and automated verification testing are not part of this notice. They are offered
+separately, after setup — see Phase 4.5.
 
-**Then carry on — do not wait for a yes.** Keep it to a line or two, something like:
+## Phase 2.5 — ACCESS (access part of the notice)
 
-> "Heads up on cost: about $29.88 per agent-hour, roughly $2.50–$4.00 per investigation, billed per second.
-> No Activate credits found on this account, so it would bill to your payment method. Say stop at any time
-> and I'll pause it. Continuing with setup."
+Prepare the access part of the combined notice; **do not create the role yet.** It is created in SET UP,
+only after the Yes.
 
-If they object before setup finishes, stop cleanly and roll back what this setup created. Do not raise it
-again in the same session. A "stop" once setup is done means pause or cancel, not remove. See the state
-machine above.
-
-## Phase 2.5 — ACCESS (access notice)
-
-Runs after DISCLOSE and **before the role is created**. The default is to create it; the notice exists so
-the founder knows what was granted and how to take it back.
-
-This is where AWS DevOps Agent gets read access across their AWS account. It is the largest permission in
-the whole flow, so it is never granted silently.
+This is where AWS DevOps Agent gets access across their AWS account. It is the largest permission in the
+whole flow, so it is never granted without the Yes.
 
 **Assume they do not know what an IAM role is.** Lead with what it does, give the real name second — the
 same pattern as Agent Space, and for the same reason: they will see the term in the console, and they may
 need to forward it to whoever holds IAM rights.
 
-Say roughly this, adjusted to what you already know about them, then go on to create it:
+What the role allows (AWS's `AIDevOpsAgentAccessPolicy`): read access across the AWS account for
+investigations, plus starting CloudTrail queries and creating AWS Support cases. It is **not** strictly
+read-only, and it is not an administrator role. Setup also needs a narrowly scoped
+`iam:CreateServiceLinkedRole` for Resource Explorer — see `references/connecting.md`. Only the user's
+Agent Space can use the role; deleting the role or the workspace revokes it.
 
-> "DevOps Agent needs permission to look at this AWS account so it can work out what you're running. I'm
-> creating a read-only **IAM role** for that (AWS's `AIDevOpsAgentAccessPolicy`) — account-wide on
-> purpose, and only your Agent Space can use it. To revoke it, delete the role or the workspace."
+Rules for the access part:
 
-Rules for this notice:
-
-- **Check the identity can create the role first** — the permission check in
-  [`references/readiness.md`](references/readiness.md). If it can, create the role. If it cannot, this is
-  not a question for the founder but a blocker: say which action was denied and give them the forwardable
-  version for whoever holds IAM rights — role name, the trust policy from `references/connecting.md`, and
-  the managed policy ARN.
 - **Do not oversell the guardrail.** "Only your workspace can use it" is true and specific. Do not stretch
-  it into "it's completely safe" — they are granting account-wide read and should know that plainly.
-- **If they object before setup finishes**, delete the role and anything else this setup created. Say what
-  they can still do:
-  release-readiness review needs a repository, not account access, so that path stays open.
-- **If they want someone else to look first**, hold off and give them the forwardable version.
+  it into "it's completely safe" — they are granting account-wide access and should know that plainly.
+- **Do not call it read-only.** Use the wording in the notice below.
+- **If they want someone else to look first**, hold off and give them the forwardable version: role
+  name, the trust policy from `references/connecting.md`, and the managed policy ARN.
+
+## CONFIRM — one notice, one question
+
+Show the cost and access parts together, then ask once and **wait**. Adjust to what you know (a verified
+credit balance, whose money it is), but keep every part:
+
+> **Set up AWS DevOps Agent?**
+>
+> AWS DevOps Agent can investigate incidents, identify root causes, and recommend fixes.
+>
+> **Free trial and costs:** New DevOps Agent customers are eligible for a two-month free trial, starting
+> with their first operational task. Each trial month includes up to 20 hours of investigations. Usage
+> beyond that, or after the trial, is billed at $0.0083 per agent-second (about $2.50–$4.00 for a typical
+> investigation). Connected AWS services may have additional charges.
+>
+> **AWS Activate credits:** If you have available AWS Activate credits that apply to DevOps Agent, AWS
+> will automatically use them to cover your DevOps Agent charges until the credits are exhausted or
+> expire. *(Only if verified: add the usable balance, coverage, and expiry.)*
+>
+> **AWS account access:** Setup creates an Agent Space and an IAM role that allows DevOps Agent to read
+> resources across your AWS account, run diagnostic queries, and create AWS Support cases. Changes to your
+> application infrastructure are not enabled by default and require separate permissions and explicit
+> approval.
+>
+> **Would you like me to set up AWS DevOps Agent? (Yes/No)**
+
+- **Yes** → standard monitoring and investigation setup only, for the AWS account identified. Do not ask a
+  second cost or access question. A Yes does not authorize Directed Actions or an elevated role.
+- **No** → stop. Create no Agent Space, IAM role, association, or MCP connection. Offer to help with the
+  issue directly instead.
+- **Anything else, or no answer** → no setup writes. Clarify only if needed.
+
+If the account that signs in after Yes is not the one the user approved, confirm the target before
+writing anything.
 
 ## Phase 3 — SET UP
+
+**Mandatory prerequisite:** the user has explicitly answered Yes to the single combined cost-and-access
+question for this AWS account. A cost notice alone, an earlier unrelated request, or a lack of objection
+does not count. Without that Yes, make no setup writes.
+
+**Check the identity can create the role first** — the permission check in
+[`references/readiness.md`](references/readiness.md). If it cannot, that is a real blocker, unlike a
+billing lookup: say which action was denied and give the forwardable version for whoever holds IAM
+rights.
 
 Nearly every user arriving here has **no Agent Space and has never heard of one**. Plan for that.
 
@@ -403,7 +435,12 @@ Nearly every user arriving here has **no Agent Space and has never heard of one*
   `name` is required. The CLI service is `devops-agent`; the endpoint and IAM signing name are `aidevops`
 - Check `aws devops-agent list-agent-spaces` in **every** supported region first — they may already have
   one, and it may not be in their default region. A failed lookup is unknown, not empty
-  (`references/readiness.md`)
+  (`references/readiness.md`). If regions stay unknown, check the intended region and any locally
+  configured space; never silently create a likely duplicate. If that cannot be settled, say what is
+  unresolved and offer a targeted next step — not a second cost or access question
+- **Never enable Directed Actions.** Do not set `elevatedActionsEnabled`, register an
+  `agentElevatedRoleArn`, create an elevated role, or attach `AIDevOpsAgentActionsPolicy`. Leave new
+  spaces at the AWS default (disabled), and do not change an existing space's setting
 - `AccessDeniedException` means an IAM gap on `aidevops:*`, not a missing feature. Name the denied action.
   The console is the fallback for someone who cannot widen their permissions, not the default
 
@@ -415,12 +452,54 @@ Full procedure in [`references/connecting.md`](references/connecting.md).
 - Two auth paths: a bearer access token, or SigV4 through `mcp-proxy-for-aws`. Prefer SigV4 when the user
   already has working AWS credentials — it avoids minting a long-lived token
 - Client timeout must be **≥120 seconds**; investigations take 5–8 minutes
-- Verify with one cheap call before declaring success
+- Verify with `tools/list` or `list_agent_spaces` before declaring success. Never use `chat` or
+  `investigate` to verify: they are billed agent work the user has not asked for
 
 This plugin does **not** declare the DevOps Agent MCP server — the endpoint is region-specific and the auth
 is per-user, so no static entry would be right. And `npx skills add` copies skills only, so no MCP server
 declared anywhere is registered by that path. Register it yourself as the last step of this phase. Do not
 assume it is present.
+
+## Phase 4.5 — Optional: release-readiness reviews
+
+At the end of **every normal first-time setup**, offer release reviews as an optional feature — even if
+you found no repository or pull requests. This is a feature choice, not another cost or access approval.
+
+- **Skip it** if reviews are already configured or the user already asked for them (then go straight to
+  the testing question below).
+- **Defer it** during an active incident; offer it once the urgent work is done.
+
+> **Optional: Review changes before release**
+>
+> AWS DevOps Agent can review pull requests before they are merged, flag potential release risks — such
+> as dependency impacts, permission issues, and changes that could affect other services — and recommend
+> fixes. This helps your team catch issues before they reach production.
+>
+> To enable reviews, we'll connect only the GitHub or GitLab repositories you choose. DevOps Agent will
+> read their source code and begin an initial analysis when connected. Automated verification testing is
+> a separate, optional capability; I'll explain how it copies code and ask before enabling it.
+>
+> **Would you also like to enable release-readiness reviews? (Yes/No)**
+
+- **No, unclear, or no answer** → connect no repositories. The DevOps Agent setup stays as it is.
+- **Yes** → before connecting any repository, ask the testing question:
+
+> **Optional: Enable automated verification testing?**
+>
+> In addition to reviewing pull requests, DevOps Agent can build and run your code to check changes. To do
+> this, it copies your selected repository into an AWS-managed verification environment outside your AWS
+> account, installs dependencies, and runs builds and tests. This copying of source code is required for
+> automated verification testing, but not for the static release-readiness review.
+>
+> **Would you like to enable automated verification testing? (Yes/No)**
+
+Then connect only the repositories they choose, and set **both** capability flags explicitly — never
+rely on the console default, which can enable both:
+
+- Testing Yes → `RELEASE_READINESS_REVIEW={enabled=true}`, `RELEASE_READINESS_REVIEW_AUTOMATED_TESTING={enabled=true}`
+- Testing No, unclear, or no answer → `RELEASE_READINESS_REVIEW={enabled=true}`, `RELEASE_READINESS_REVIEW_AUTOMATED_TESTING={enabled=false}`
+
+Procedure and repository authorization: [`references/release-review.md`](references/release-review.md).
 
 ## Phase 5 — OPERATE
 
@@ -440,6 +519,9 @@ Also available: `list_recommendations` / `get_recommendation` for proposed mitig
 against `list_goals`, and `create_release_testing_job` for UI/API test runs.
 
 - Always surface the proposed fix for approval. Never apply one.
+- **Do only what the user asked.** A Yes to setup is not a request to run an investigation, chat, or
+  evaluation. If the same request asked for an investigation, run it once connected; if they only asked
+  to set up, stop there.
 
 For a startup-shaped incident walkthrough, see
 [`references/incident-runbook-serverless.md`](references/incident-runbook-serverless.md).
@@ -457,11 +539,11 @@ and remind them how to pause.
 | File | Use |
 |---|---|
 | `references/readiness.md` | Preflight: where the user stands with AWS, and how to route on it |
-| `references/affordability.md` | Whether it is a good use of their money, and what to offer instead |
+| `references/affordability.md` | When they ask: how long credits would last, and lower-cost options |
 | `references/checking-credits.md` | Reading credit balance and coverage; the failure modes |
 | `references/connecting.md` | MCP setup, both auth paths, verification |
 | `references/stopping.md` | Pause, stop, cancel a running investigation |
-| `references/release-review.md` | Release review: repo connection, defaults to change, code handling |
+| `references/release-review.md` | Release review: the optional offer, repo connection, testing flags, code handling |
 | `references/incident-runbook-serverless.md` | Lambda/ECS + Bedrock incident walkthrough |
 
 ## Scope notes

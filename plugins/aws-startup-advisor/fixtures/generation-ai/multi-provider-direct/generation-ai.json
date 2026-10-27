@@ -1,0 +1,74 @@
+{
+  "phase": "generate",
+  "generation_source": "ai",
+  "timestamp": "2026-09-08T04:00:00Z",
+  "migration_plan": {
+    "duration_drivers": ["multiple models (adapter + evaluation per model)", "framework integration"],
+    "approach": "direct_sdk_adapter",
+    "phases": [
+      {"name": "Phase 1", "sequence": 1, "activities": ["Enable Bedrock access", "create IAM role", "develop provider adapter with feature flag", "unit test"]},
+      {"name": "Phase 2", "sequence": 2, "activities": ["Deploy to staging", "run A/B comparison", "measure latency/quality/cost", "tune prompts"]},
+      {"name": "Phase 3", "sequence": 3, "activities": ["Gradual rollout (10% -> 50% -> 100%)", "monitor", "disable source provider after 48h stable"]}
+    ],
+    "models_to_migrate": ["claude-3-5-sonnet-20240620", "gpt-4o"]
+  },
+  "step_by_step_guide": {
+    "languages": ["python"],
+    "primary_pattern": "direct_sdk",
+    "files_to_modify": ["src/ai/anthropic_client.py", "src/ai/openai_client.py"],
+    "dependency_changes": "boto3 for the Anthropic client; openai>=2.45.0 with aws_bedrock_token_generator for the OpenAI client."
+  },
+  "rollback_plan": {
+    "mechanism": "feature_flag",
+    "flag_name": "AI_PROVIDER",
+    "default_value": "anthropic_api",
+    "rollback_time": "instant",
+    "triggers": ["quality below threshold", "P95 latency > 2x baseline", "error rate > 1% for 5 min", "cost per request > 3x source"]
+  },
+  "monitoring": {
+    "dashboards": ["Request volume by provider", "latency comparison (P50/P95/P99)", "error rates", "token usage", "cost tracking", "quality scores"],
+    "alerting_rules": [
+      {"severity": "Critical", "condition": "Error rate > 5% for 2 min", "action": "auto-rollback"},
+      {"severity": "High", "condition": "Latency P95 > 3x baseline for 5 min", "action": "page on-call"}
+    ]
+  },
+  "production_readiness_checklist": [
+    "Bedrock model access enabled",
+    "IAM role with bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream",
+    "Provider adapter deployed and tested in staging",
+    "A/B test with >= 100 representative prompts",
+    "Rollback procedure documented and tested"
+  ],
+  "success_criteria": {
+    "quality": {"category": "Quality", "criteria": "Response quality", "target": ">= 90% of source baseline"},
+    "latency": {"category": "Latency", "criteria": "P95", "target": "Within 2x of source"},
+    "cost": {"category": "Cost", "criteria": "Monthly", "target": "Within 20% of estimation-ai.json"}
+  },
+  "recommendation": {
+    "approach": "Direct SDK adapter per source, rolled out gradually with a shared feature flag.",
+    "confidence": "high",
+    "key_risks": ["multi-model coordination across two simultaneous sources"]
+  },
+  "artifacts_by_source": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "models": [
+        {
+          "model": "claude-3-5-sonnet-20240620",
+          "generated_files": ["src/ai/anthropic_client.py"]
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "generated_files": ["src/ai/openai_client.py"]
+        }
+      ]
+    }
+  ]
+}

@@ -16,7 +16,7 @@ or the run directory in an outbound request — the answer never depends on it.
   (`registry_regions` in `references/runtimes/agentcore.json`; see the procedure below)
 - Lambda MicroVMs launch TPS (5, not adjustable)
 - FedRAMP certification status for AgentCore and Lambda MicroVMs
-- Any Bedrock model price (defer to the `gcp-to-aws` pricing cache; never hardcode here)
+- Any Bedrock model price (defer to `references/vendored/ai/bedrock-pricing-cache.md`; never hardcode here)
 
 ## Temporal (design.md — Freshness, temporal units only)
 

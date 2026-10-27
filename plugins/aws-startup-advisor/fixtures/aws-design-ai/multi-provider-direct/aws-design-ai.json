@@ -1,0 +1,114 @@
+{
+  "phase": "design",
+  "focus": "ai",
+  "timestamp": "2026-09-08T02:20:00Z",
+  "source_profile": "ai-workload-profile.json",
+  "metadata": {
+    "ai_sources": [
+      {
+        "provider": "anthropic",
+        "source_service": "anthropic_api",
+        "model_families": ["claude"],
+        "model_evidence": "observed",
+        "models": ["claude-3-5-sonnet-20240620"],
+        "model_observations": [
+          {
+            "normalized_model": "claude-3-5-sonnet-20240620",
+            "raw_model": "claude-3-5-sonnet-20240620",
+            "model_family": "claude",
+            "evidence": [{"provenance": "code", "confidence": "high", "detail": "src/ai/anthropic_client.py:18"}]
+          }
+        ]
+      },
+      {
+        "provider": "openai",
+        "source_service": "openai_api",
+        "model_families": ["gpt"],
+        "model_evidence": "observed",
+        "models": ["gpt-4o"],
+        "model_observations": [
+          {
+            "normalized_model": "gpt-4o",
+            "raw_model": "gpt-4o",
+            "model_family": "gpt",
+            "evidence": [{"provenance": "code", "confidence": "high", "detail": "src/ai/openai_client.py:9"}]
+          }
+        ]
+      }
+    ],
+    "gateways": [],
+    "bedrock_models_selected": ["anthropic.claude-sonnet-4-5-v1:0", "openai.gpt-5.6-terra"],
+    "regional_validation": "checked"
+  },
+  "design_blocks": [
+    {
+      "workload_id": "wl_anthropic_chat",
+      "model_id": "claude-3-5-sonnet-20240620",
+      "target_bedrock_model": "anthropic.claude-sonnet-4-5-v1:0",
+      "target_aws_service": null,
+      "capability": "text_generation",
+      "capability_confidence": "high",
+      "rationale": "Anthropic-sourced chat workload maps to the current Claude Sonnet generation on Bedrock.",
+      "confidence_warning": null
+    },
+    {
+      "workload_id": "wl_openai_support_bot",
+      "model_id": "gpt-4o",
+      "target_bedrock_model": "openai.gpt-5.6-terra",
+      "target_aws_service": null,
+      "capability": "text_generation",
+      "capability_confidence": "high",
+      "rationale": "OpenAI-sourced support bot moves to GPT-5.6 Terra on Bedrock Mantle, same provider lineage.",
+      "confidence_warning": null
+    }
+  ],
+  "ai_architecture": {
+    "honest_assessment": "strong_migrate",
+    "honest_assessment_reason": null,
+    "tiered_strategy": null,
+    "bedrock_models": [
+      {
+        "source_model_id": "claude-3-5-sonnet-20240620",
+        "aws_model_id": "anthropic.claude-sonnet-4-5-v1:0",
+        "capabilities_matched": ["text_generation"],
+        "capability_gaps": [],
+        "honest_assessment": "strong_migrate",
+        "source_provider_price": "3.00/15.00 per 1M tokens",
+        "bedrock_price": "3.00/15.00 per 1M tokens",
+        "price_comparison": "parity",
+        "migration_complexity": "low",
+        "model_change": true,
+        "migration_path": "direct",
+        "quota_risk": "low"
+      },
+      {
+        "source_model_id": "gpt-4o",
+        "aws_model_id": "openai.gpt-5.6-terra",
+        "capabilities_matched": ["text_generation"],
+        "capability_gaps": [],
+        "honest_assessment": "strong_migrate",
+        "source_provider_price": "2.50/10.00 per 1M tokens",
+        "bedrock_price": "2.20/13.20 per 1M tokens",
+        "price_comparison": "mixed",
+        "migration_complexity": "low",
+        "model_change": true,
+        "migration_path": "mantle_openai_responses",
+        "quota_risk": "low"
+      }
+    ],
+    "capability_mapping": {
+      "text_generation": {"parity": "full", "notes": "Converse and Mantle Responses both cover the detected usage."}
+    },
+    "code_migration": {
+      "primary_pattern": "direct_sdk",
+      "framework": "none",
+      "files_to_modify": ["src/ai/anthropic_client.py", "src/ai/openai_client.py"],
+      "dependency_changes": "boto3 for the Anthropic client; openai>=2.45.0 with aws_bedrock_token_generator for the OpenAI client."
+    },
+    "infrastructure": [],
+    "services_to_migrate": []
+  },
+  "regional_warnings": [],
+  "multi_model_warnings": [],
+  "agentic_design": null
+}

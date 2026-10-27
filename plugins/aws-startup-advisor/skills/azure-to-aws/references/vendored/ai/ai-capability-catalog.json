@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "catalog_version": 2,
+  "verified_at": "2026-10-19",
+  "providers": [
+    {
+      "identity": "anthropic",
+      "aliases": ["claude"],
+      "source_services": ["anthropic_api"],
+      "model_families": ["claude"],
+      "status": "supported",
+      "implemented_adapter": null
+    },
+    {
+      "identity": "openai",
+      "aliases": ["chatgpt", "gpt"],
+      "source_services": ["openai_api", "azure_openai"],
+      "model_families": ["gpt"],
+      "status": "supported",
+      "implemented_adapter": null
+    },
+    {
+      "identity": "google",
+      "aliases": ["gemini"],
+      "source_services": ["vertex_ai"],
+      "model_families": ["gemini"],
+      "status": "supported",
+      "implemented_adapter": null,
+      "note": "Gemini now has a shared, cross-skill Bedrock-mapping guide at skills/shared/ai/ai-gemini-to-bedrock.md (vendored into gcp-to-aws and azure-to-aws), the same bar anthropic's and openai's guides meet, so this provider clears status: supported. The source-cloud-scoped copy under skills/gcp-to-aws/references/design-refs/ai-gemini-to-bedrock.md is retained as that skill's adapter-local guide; moving its runtime routing onto the shared guide is deferred to the extraction stages (issue #389 stages 3a-3e). supported reflects documentation coverage only, not an implemented adapter: implemented_adapter stays null."
+    }
+  ],
+  "gateways": [
+    {
+      "identity": "openrouter",
+      "aliases": ["openrouter"],
+      "product": "openrouter",
+      "upstream_providers": ["anthropic", "openai", "google"],
+      "status": "supported",
+      "route": null,
+      "note": "OpenRouter now has a shared, cross-skill gateway-routing guide at skills/shared/ai/ai-openrouter-to-bedrock.md (vendored into gcp-to-aws and azure-to-aws) that documents how an OpenRouter-fronted upstream model maps onto a Bedrock target and defers per-model selection to the per-provider guides. That is the mapping-guide bar this catalog uses for supported, so this entry moves from unknown to supported. This is still documentation coverage only, not code: discover-openrouter-api.md already detects OpenRouter usage and BYOK-vs-credits attribution per upstream model at runtime, but route stays null because an implemented routing adapter is a separate, stricter bar tracked by route and no such adapter is wired up yet."
+    }
+  ]
+}

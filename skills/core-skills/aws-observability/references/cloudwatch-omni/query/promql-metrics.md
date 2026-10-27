@@ -42,16 +42,18 @@ Rules that follow from this:
   PromQL expression, not `SELECT ... FROM metrics.default` — that table does not exist.
   The one place PromQL text legally appears *inside* SQL is the `promql('<data set>',
   '<expression>', <step-seconds>)` table function (section 4, "Time range binding";
-  section 7) — never as a bare expression. That embedding is moot for metrics anyway:
-  metric reads through the ad hoc `StartTelemetryQuery` path are disabled per account, so a
-  metric read there fails either way: a bare PromQL expression is rejected by the
-  SQL parser with `ValidationException: Invalid SQL`, while `SELECT ... FROM metrics.default`
-  or a `promql()` wrapper parses but is rejected with `ValidationException: Metrics queries
-  are not supported.` For an ad hoc metric read use a dashboard panel or an alert rule instead
-  (section 4, section 7), where the language is set explicitly and the service runs the
-  query. The raw PromQL construction pattern is still the answer to a "how do I query X"
-  metric question (see the rule below) — you just deliver it as panel/alert PromQL, not as
-  a string for the ad hoc query API.
+  section 7) — never as a bare expression. Omni's `StartTelemetryQuery` does not serve
+  metric reads, so a metric read there fails either way: a bare PromQL expression is
+  rejected by the SQL parser with `ValidationException: Invalid SQL`, while `SELECT ...
+  FROM metrics.default` or a `promql()` wrapper parses but is rejected with
+  `ValidationException: Metrics queries are not supported.`
+- **Metrics are queried directly through CloudWatch's Prometheus-compatible HTTP API.**
+  An ad hoc or programmatic metric read (a script, the CLI, an AI agent, Grafana) sends
+  the PromQL expression to `https://monitoring.<region>.amazonaws.com/api/v1/query` or
+  `/api/v1/query_range`, SigV4-signed with the service name `monitoring`; the CloudWatch
+  MCP server wraps the same API as tools (section 4, "Running a PromQL query"). Run a
+  metric query this way whenever the user wants the numbers; a dashboard panel or an
+  alert rule is where a query *lives*, not a prerequisite for running one.
 - **Nothing SQL-specific applies to metrics.** `` `@record` ``, `` `@message` ``,
   `TABLESAMPLE`, `EXPLAIN (ANALYZE_FIELDS)`, and fine-grained access control (FGAC)
   are logs/traces features. Metrics do not apply FGAC.
@@ -258,7 +260,7 @@ returns an empty series. Discover before you write.
 **Method 1 (not available for metrics): `ListTelemetryFields`.** The
 `ListTelemetryFields` API enumerates the known fields of a data set for `LOGS` and
 `TRACES` only — `METRICS` is not an accepted `telemetryType` in the current service
-model (the value was removed), so there is no API call that lists metric names. Its
+model (the value was removed), so it lists no metric names — use Method 2. Its
 `fields` entries carry only `name` and `children`, so even for the telemetry types it
 does cover it returns no instrument type (Sum / Gauge / Histogram) and no temporality
 (delta / cumulative). For metrics, take names from the catalog below or from Method 2,
@@ -276,16 +278,23 @@ Once you know the instrument type, read the aggregation off it:
 | **ExponentialHistogram, delta** (enriched vended statistic-set metrics — `CPUUtilization`, `StatusCheckFailed*`, `CPUCreditBalance`, Lambda `Duration` — arrive this way, carrying CloudWatch's SampleCount/Sum/Min/Max) | max → `histogram_quantile(1, <m>)`, min → `histogram_quantile(0, <m>)`, avg → `histogram_avg(<m>)` (or `histogram_sum(<m>) / histogram_count(<m>)`), a true percentile → `histogram_quantile(0.99, <m>)`. A plain `max()` / `min()` yields **no series**; a plain `avg()` merges the buckets into one histogram, not a number. `histogram_quantile(1, …)` / `(0, …)` approximate the Max / Min via the top / bottom bucket bound (close to CloudWatch's Maximum / Minimum); `histogram_quantile(0.99, …)` is a real bucket-estimated percentile |
 | Histogram (OTLP / span-derived, e.g. `traces.span.metrics.duration`) | `histogram_quantile(0.99, rate(<base>[5m]))` on the **base** name — no `_bucket` suffix, no `by (le)` |
 
-**Method 2: probe with a selector.** This is a *confirmatory* check, not a prerequisite —
-per sections 1 and 2 you answer most metric questions from the catalog without any live
-probe, and reach for this only when you already have a Space open and want to confirm a
-name or its labels before committing it to a dashboard or alert. **There is no ad hoc
-PromQL probe surface:** `StartTelemetryQuery` always parses its `queryString` as SQL and
-metric reads through it are disabled per account (section 1; section 4, "Time range binding"),
-so a selector cannot be run through the CLI/API ad hoc path. Run it as a scratch dashboard
-panel query (`queryLanguage: "promql"`) or an alert-rule condition (`language: PROMQL`)
-instead (section 7), then inspect the label set that comes back for a candidate name over
-a short window:
+**Method 2: the Prometheus discovery endpoints.** CloudWatch's Prometheus-compatible HTTP
+API (section 4, "Running a PromQL query") enumerates metric names and labels directly;
+the CloudWatch MCP server exposes the same calls as tools. Every call needs
+`cloudwatch:ListMetrics`, and `start` / `end` (Unix seconds or RFC 3339) bound the window
+searched:
+
+| Need | Endpoint on `https://monitoring.<region>.amazonaws.com` | MCP tool |
+|---|---|---|
+| Every metric name in the account and Region | `GET /api/v1/label/__name__/values` | `get_promql_label_values` (label `__name__`) |
+| The values of any label (`FunctionName`, `"@resource.service.name"`) | `GET /api/v1/label/<label>/values` | `get_promql_label_values` |
+| Every series matching a selector, with its full label set | `/api/v1/series` with `match[]=<selector>` (GET or POST) | `get_promql_series` |
+| The label names present (optionally under a `match[]`) | `/api/v1/labels` (GET or POST) | `get_promql_labels` |
+
+This is a *confirmatory* check, not a prerequisite — per sections 1 and 2 you answer most
+metric questions from the catalog without any live probe. Reach for it to confirm a name
+or its labels before committing them to a query, dashboard, or alert. For example,
+`/api/v1/series` with:
 
 ```promql
 {__name__="Invocations", "@instrumentation.@name"="cloudwatch.aws/lambda"}
@@ -399,15 +408,49 @@ Applying `rate()` to a gauge, or averaging a per-period counter, is the most com
 to produce a confident-but-meaningless number. When unsure, check the instrument type
 via discovery (section 3).
 
+### Running a PromQL query
+
+CloudWatch serves PromQL through a Prometheus-compatible HTTP API, the same API the Omni
+console's metric views use. It is a different endpoint and signing name from the Omni
+`cloudwatch-omni` API: never send PromQL to `cloudwatch-omni` or to `StartTelemetryQuery`.
+
+| | |
+|---|---|
+| Endpoint | `https://monitoring.<region>.amazonaws.com/api/v1/<operation>` |
+| Data operations | `/api/v1/query` (instant: `query`, optional `time`), `/api/v1/query_range` (`query`, `start`, `end`, `step`); GET, or POST with a form-encoded body |
+| Discovery operations | `/api/v1/series`, `/api/v1/labels`, `/api/v1/label/<name>/values` (section 3, Method 2) |
+| Signing | SigV4, service name **`monitoring`** |
+| IAM | `cloudwatch:GetMetricData` + `cloudwatch:ListMetrics` for query operations; `cloudwatch:ListMetrics` for discovery |
+| Response | The standard Prometheus JSON envelope (`status`, `data.resultType`, `data.result`) |
+| Limits | 500 series per response (truncation is reported in `warnings`, still HTTP 200), 7-day maximum range including lookback, 20 s execution timeout |
+
+```bash
+awscurl --service monitoring --region us-east-1 \
+  -X POST 'https://monitoring.us-east-1.amazonaws.com/api/v1/query_range' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d "query=histogram_avg({__name__=\"Duration\", \"@instrumentation.@name\"=\"cloudwatch.aws/lambda\"})&start=$(date -d '-1 hour' +%s)&end=$(date +%s)&step=60"
+```
+
+From code, sign the same request with the SDK's SigV4 signer (for example botocore
+`SigV4Auth(credentials, "monitoring", region)`); there is no dedicated SDK method or
+`aws cloudwatch` CLI subcommand for these paths.
+
+**From an AI agent:** the CloudWatch MCP server's PromQL tools call this API and handle
+signing — `execute_promql_query` (instant), `execute_promql_range_query` (time series over a
+window), and the discovery tools `get_promql_label_values`, `get_promql_series`, and
+`get_promql_labels`. An agent with those tools, or with shell access to a SigV4 client, runs
+the query itself; it does not need a dashboard panel or an alert rule first.
+
 ### Time range binding
 
 Where the query runs decides how time is expressed:
 
 | Context | Time handling |
 |---|---|
-| **Interactive / ad hoc query** | `StartTelemetryQuery` takes only `queryString` and a `sessionId` (from `StartTelemetryQuerySession`); results come back through `GetTelemetryQueryResults`. There is no language or time-range parameter because the query string is always parsed as SQL — a bare PromQL expression fails with `ValidationException`. PromQL reaches this path only embedded as the table function `promql('<data set>', '<expression>', <step-seconds>)` inside a SQL statement, and the evaluation window is that relation's mandatory `WHERE \`@timestamp\` BETWEEN ... AND ...` predicate. Metrics through `StartTelemetryQuery`are disabled per account at GA (`ValidationException: Metrics queries are not supported.`, section 1), so for an ad hoc metric read use a dashboard panel or an alert rule, where the language is explicit and the service does the wrapping. |
-| **Dashboard panel** ([../dashboards.md](../dashboards.md)) | Keep the expression **windowless** — the panel/dashboard `scope` drives the range. Set `queryLanguage: "promql"` explicitly and match `promqlQueryOptions.step` (seconds) to the range vector — a `[5m]` window at the default 60 s step over-samples 5x; set `step: 300`. |
-| **Alert rule** ([../alerts.md](../alerts.md)) | The alert has no window of its own — the expression **must** carry its own range selector (`[5m]`). Do **not** bake the threshold comparison into the expression; the threshold is a separate field on the condition. Set `language: PROMQL`. |
+| **Ad hoc / programmatic query** (Prometheus HTTP API, MCP tools) | `/api/v1/query` evaluates at one instant (`time`, default now); `/api/v1/query_range` takes `start`, `end`, and `step` and returns a series per step. Range selectors inside the expression (`[5m]`) are the per-point lookback, as in Prometheus. |
+| **Omni `StartTelemetryQuery`** (SQL) | Takes only `queryString` and a `sessionId`; the string is always SQL, with the window in its ``WHERE `@timestamp` BETWEEN ... AND ...`` predicate. PromQL appears only embedded as `promql('<data set>', '<expression>', <step-seconds>)`, and metric reads are not served on this path (section 1) — send metric queries to the Prometheus HTTP API instead. |
+| **Dashboard panel** ([../dashboards.md](../dashboards.md)) | Keep the expression **windowless** — the panel/dashboard `scope` drives the range. A range selector such as `[5m]` inside `sum_over_time` / `rate` is per-point lookback, not a window, and stays. Set `queryLanguage: "promql"` explicitly and match `promqlQueryOptions.step` (seconds) to the range vector — a `[5m]` window at the default 60 s step over-samples 5x; set `step: 300`. |
+| **Alert rule** ([../alerts.md](../alerts.md)) | The alert has no window of its own — the expression **must** carry its own range selector (`[5m]`). Put the window where the instrument type takes a range vector: inside `sum_over_time` for a delta histogram (`histogram_avg(sum_over_time(<sel>[5m]))`, never `histogram_avg(<sel>[5m])`, which fails to parse); see the alerts reference's "Windowing a metric alert". Do **not** bake the threshold comparison into the expression; the threshold is a separate field on the condition. Set `language: PROMQL`. |
 
 ### Common functions
 
@@ -419,7 +462,8 @@ Where the query runs decides how time is expressed:
 | Group by an identity | `sum by (FunctionName) (rate(...))`, `avg by ("@resource.service.name") (...)` |
 | Top N | `topk(10, sum by (...) (rate(...)))` |
 | Ratio / derived metric | `rate(<errors>[5m]) / rate(<total>[5m])` for cumulative counters; for enriched vended delta Sums (e.g. Lambda / S3 error rates) use `sum_over_time(<errors>[5m]) / sum_over_time(<total>[5m])` — a same-window `rate()/rate()` on delta Sums can read an impossible ratio. Labels must match on both sides; add `on (...)` / `ignoring (...)` when they do not |
-| Percentile from a native histogram | `histogram_quantile(0.99, rate(<base>[5m]))` |
+| Percentile from a cumulative histogram (OTLP) | `histogram_quantile(0.99, rate(<base>[5m]))` |
+| Percentile from an enriched vended (delta) histogram | `histogram_quantile(0.99, sum_over_time(<sel>[5m]))`, or windowless `histogram_quantile(0.99, <sel>)` on a dashboard panel |
 | Smooth a gauge | `avg_over_time(<gauge>[15m])`, `max_over_time(<gauge>[15m])` |
 
 Worked examples:
@@ -869,13 +913,11 @@ PromQL is the metric language everywhere in Omni, not only for ad hoc queries:
   threshold comparison. Metric alerts on a gauge, a counter rate, or a
   `histogram_quantile` percentile all go through this path; SQL alerts reach logs and
   traces only.
-- **Ad hoc queries** — `StartTelemetryQuery` (`queryString` + `sessionId`) and
-  `GetTelemetryQueryResults` carry no language or time-range parameter: the query
-  string is always SQL, PromQL is accepted only embedded as
-  `promql('<data set>', '<expression>', <step-seconds>)` with the window bound by that
-  relation's `@timestamp` predicate, and metrics through this path are disabled per
-  account at GA (section 1; section 4, "Time range binding"). Prefer a dashboard panel
-  or an alert rule.
+- **Ad hoc and programmatic queries** — CloudWatch's Prometheus-compatible HTTP API
+  (`monitoring.<region>.amazonaws.com/api/v1/query` and `/query_range`, SigV4 service
+  `monitoring`) or the CloudWatch MCP server's PromQL tools (section 4, "Running a PromQL
+  query"). Omni's own `StartTelemetryQuery` is SQL-only and does not serve metric reads
+  (section 1).
 - **Views** — [views.md](views.md) are SQL over logs and traces; they do not wrap PromQL.
 
 For the concepts behind Spaces, data sets, and access — which govern what an account's

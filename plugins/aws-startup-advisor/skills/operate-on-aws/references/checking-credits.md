@@ -4,6 +4,12 @@ Everything here is **observed against a live AWS account**, not inferred from do
 observed value differs from the API reference, the observed value is what your code has to handle — those
 cases are marked below.
 
+**Optional discovery never blocks.** Billing, credits, historical usage, and trial checks are optional
+discovery. Use current credentials if available; never request added billing permissions or a sign-in
+solely for these checks. Failure does not block the combined approval or provisioning. AWS credentials and
+IAM writes required for the actual approved setup remain mandatory. Do not equate inability to list an
+existing Agent Space with proof that none exists; resolve duplicate risk safely when creation is attempted.
+
 ## The command
 
 ```bash
@@ -15,8 +21,9 @@ Compute `<EPOCH_ONE_YEAR_AGO>` yourself — Unix seconds for one year before tod
 Get the account id from `aws sts get-caller-identity --query Account --output text`.
 
 Requires **AWS CLI 2.35.23 or newer**. Older CLIs do not have the `billing` command group at all — check
-with `aws --version` first and say so rather than letting the command fail confusingly. On macOS with
-Homebrew: `brew upgrade awscli`.
+with `aws --version` first. On an older CLI, skip the lookup and use the general credits line; do not ask
+them to upgrade just for this. Mention the upgrade (`brew upgrade awscli` on macOS) only if they ask why
+their balance isn't shown.
 
 ## No AWS credentials at all
 
@@ -54,14 +61,15 @@ setting that **only the root user can turn on**:
 
 > AWS Console → Account → *IAM User and Role Access to Billing Information* → Edit → activate
 
-When you hit this, tell the user exactly that. Do not report it as "no credits found," do not report it as
-a permissions error they can fix with a policy, and do not silently skip the credit disclosure. Say:
+When you hit this, do not report it as "no credits found" and do not turn it into a permissions task. Keep
+the general Activate line in the approval notice ("if you have available AWS Activate credits that apply,
+AWS uses them automatically") and continue — billing access is not needed to approve or set up DevOps
+Agent. If they ask why their balance isn't shown, explain:
 
 > I can't read your credit balance — your AWS account's root user needs to turn on IAM access to billing
-> information first. No IAM permission grants this. Here's what it costs regardless: …
+> information first. No IAM permission grants this.
 
-Then continue with the cost disclosure using list pricing. **Unknown is not zero and unknown is not
-covered.**
+**Unknown is not zero and unknown is not covered.**
 
 ## Reading the response
 
@@ -126,7 +134,10 @@ Aggregate across credits where `remainingAmount > 0` and `creditStatus == "ENABL
   your payment method at about $29.88 per agent-hour."*
 - **No usable credits** — *"You have no credits with a remaining balance. Usage bills at about $29.88 per
   agent-hour."*
-- **Cannot read** — the root-user message above.
+- **Cannot read** — the general Activate line only; the root-user explanation if they ask.
+
+Show a specific balance or coverage only when the response supports it. Label a credit as Activate only if
+its description says so.
 
 If a credit with a balance expires within 30 days, mention it. Unused credits expiring is worth a founder's
 attention on its own, independent of anything to do with DevOps Agent.

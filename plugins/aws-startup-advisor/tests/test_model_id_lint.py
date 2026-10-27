@@ -135,7 +135,7 @@ def test_retired_id_allowed_in_both_pricing_caches(tmp_path: Path) -> None:
     model_id = _banned(PLUGIN_ROOT)[0]
     root = _seed(tmp_path)
     for rel in (
-        "skills/gcp-to-aws/references/shared/pricing-cache.md",
+        "skills/shared/ai/bedrock-pricing-cache.md",
         "skills/azure-to-aws/references/shared/pricing-cache.md",
     ):
         _write(root, rel, f"existing users may still see `{model_id}`\n")

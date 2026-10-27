@@ -129,6 +129,13 @@ Resources:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
         SSEEnabled: true
+      # Expose a change stream so a SELLER can consume subscriptionStatus transitions
+      # (-> deprovisioning / inactive) for their OWN tenant-teardown workflow.
+      # NEW_AND_OLD_IMAGES lets the consumer see the transition itself.
+      # This is for the seller's SaaS-side teardown only; the metering flush/finalization
+      # is already handled by the deployed pipeline.
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       Tags:
         - Key: ManagedBy
           Value: marketplace-metering-skill
@@ -633,6 +640,13 @@ Outputs:
   SubscribersTableArn:
     Description: ARN of the unified subscribers table
     Value: !GetAtt SubscribersTable.Arn
+  SubscribersTableStreamArn:
+    Description: >-
+      DynamoDB Stream ARN of the subscribers table. A SELLER MAY attach their OWN
+      consumer (Lambda event source mapping, Kinesis adapter, etc.) to drive their
+      SaaS-side tenant teardown on the subscriptionStatus -> deprovisioning/inactive
+      transition. Independent of the metering pipeline.
+    Value: !GetAtt SubscribersTable.StreamArn
   SubscriptionQueueArn:
     Value: !GetAtt SubscriptionQueue.Arn
   DLQUrl:

@@ -38,7 +38,7 @@ Complete query syntax reference, performance tips, and reusable query library.
 | `filterIndex` | Force field-index scan optimization | No |
 | `SOURCE` | Programmatic log group selection (CLI/API only) | Yes |
 
-Auto-discovered fields: `@timestamp`, `@message`, `@logStream`, `@log` (account-id:log-group-name), `@ingestionTime`, `@entity`. JSON fields auto-flattened with dot notation.
+Auto-discovered fields: `@timestamp`, `@message`, `@logStream`, `@log` (account-id:log-group-name), `@ingestionTime`, `@entity`. JSON fields are auto-flattened with dot notation when the log event is a JSON object. Lambda logs are the exception: Insights discovers the first JSON fragment embedded in each event. In other log groups, a line with a text prefix before the JSON is not parsed into fields.
 
 ---
 
@@ -186,6 +186,21 @@ Recurring queries with results delivered to S3 and EventBridge. Configure via co
 9. **No nested subqueries or correlated subqueries** — only simple subqueries.
 
 10. **Subquery inner execution is limited to 30 seconds**. The overall query timeout is 60 minutes.
+
+11. **StartQuery rejects a window that ends before the log group was created**
+    (`MalformedQueryException: Query's end date and time is either before the log groups creation
+    time or exceeds ... retention`). Recreated, imported or backfilled log groups can hold events
+    older than their `creationTime`, so this error does not mean the events are missing, and
+    `storedBytes: 0` is not proof either. Read the same window with `FilterLogEvents`, following
+    `nextToken` until it is absent, before reporting that no logs exist. A window that only starts
+    before `creationTime` runs without an error but skips the older events, so read that part with
+    `FilterLogEvents` too.
+
+12. **A narrower query can silently drop matches.** Lines in one log group can differ in prefix, key
+    order or spacing. When you narrow a broad `@message like` search with exact regexes, `parse` or
+    field filters, compare the narrowed count with the broad count and
+    account for every dropped line. JSON filter patterns such as `{ $.level = "ERROR" }` match only events that are entirely
+    JSON, so use a term pattern when lines may carry a prefix.
 
 ---
 

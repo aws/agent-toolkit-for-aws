@@ -72,10 +72,17 @@ def _write_fixture(tmp_path: Path, *, golden_rows: list[dict], baseline_source: 
     return tmp_path
 
 
-def _run_script(script_body: str, *, repo: Path, model_pairs_src: str, baseline_src: str) -> str:
+def _run_script(
+    script_body: str,
+    *,
+    repo: Path,
+    model_pairs_src: str,
+    baseline_src: str,
+    service_tier_src: str | None = None,
+) -> str:
     """Substitute the markdown placeholders and MODEL_PAIRS/BASELINE_TOKENS_BY_SOURCE
-    literals, write the script to a temp file, and run it with the plugin's own
-    interpreter. Returns combined stdout."""
+    (and optionally SERVICE_TIER_BY_SOURCE) literals, write the script to a temp file,
+    and run it with the plugin's own interpreter. Returns combined stdout."""
     body = script_body.replace("<repo>", str(repo))
     body = re.sub(
         r"MODEL_PAIRS = \[\n(?:.*?\n)*?\]",
@@ -89,6 +96,13 @@ def _run_script(script_body: str, *, repo: Path, model_pairs_src: str, baseline_
         body,
         count=1,
     )
+    if service_tier_src is not None:
+        body = re.sub(
+            r"SERVICE_TIER_BY_SOURCE = \{\n(?:.*?\n)*?\}",
+            service_tier_src,
+            body,
+            count=1,
+        )
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
         f.write(body)
         script_path = f.name
@@ -215,3 +229,113 @@ def test_no_baseline_at_all_matches_pre_fix_golden_dataset_behavior(tmp_path: Pa
     )
 
     assert "gpt-4o -> anthropic.claude-sonnet-4-6 (sample): input=2000 output=800" in stdout, stdout
+
+
+def test_gpt6_1_sol_ultrafast_applies_6x_multiplier(tmp_path: Path) -> None:
+    """PR #433 Finding 4: GPT-6.1 Sol supports the Ultrafast tier (6x Standard,
+    per openai-on-bedrock.md). A regional same-model pair at 1,000,000 input /
+    100,000 output tokens, Standard-priced, yields source=$3.00 / bedrock=$3.30
+    (the $3.30 the finding cites is the regional-CRIS-premium Bedrock side).
+    With service_tier=ultrafast both sides must be 6x those Standard figures --
+    source=$18.00, bedrock=$19.80 -- and the row's basis tagged "-ultrafast"."""
+    script_body = _extract_cost_compare_script()
+
+    repo = _write_fixture(tmp_path, golden_rows=[], baseline_source="us.openai.gpt-6.1-sol")
+
+    model_pairs_src = (
+        'MODEL_PAIRS = [\n'
+        '    ("us.openai.gpt-6.1-sol", "us.openai.gpt-6.1-sol", 2.00, 10.00, 2.20, 11.00),\n'
+        ']'
+    )
+    baseline_src = (
+        'BASELINE_TOKENS_BY_SOURCE = {\n'
+        '    "us.openai.gpt-6.1-sol": {"input": 1_000_000, "output": 100_000},\n'
+        '}'
+    )
+    service_tier_src = (
+        'SERVICE_TIER_BY_SOURCE = {\n'
+        '    "us.openai.gpt-6.1-sol": "ultrafast",\n'
+        '}'
+    )
+
+    stdout = _run_script(
+        script_body,
+        repo=repo,
+        model_pairs_src=model_pairs_src,
+        baseline_src=baseline_src,
+        service_tier_src=service_tier_src,
+    )
+
+    assert "-ultrafast" in stdout, stdout
+    assert "source=$18.0000" in stdout, stdout
+    assert "bedrock=$19.8000" in stdout, stdout
+    assert "TOTAL source=$18.0000 bedrock=$19.8000" in stdout, stdout
+
+
+def test_gpt6_sol_ultrafast_request_reports_cost_unavailable(tmp_path: Path) -> None:
+    """GPT-6 Sol's model card lists only Standard -- an ultrafast request for it
+    must NOT be silently priced at Standard. The pair's cost is reported
+    unavailable and excluded from TOTAL/savings."""
+    script_body = _extract_cost_compare_script()
+
+    repo = _write_fixture(tmp_path, golden_rows=[], baseline_source="us.openai.gpt-6-sol")
+
+    model_pairs_src = (
+        'MODEL_PAIRS = [\n'
+        '    ("us.openai.gpt-6-sol", "us.openai.gpt-6-sol", 2.00, 10.00, 2.20, 11.00),\n'
+        ']'
+    )
+    baseline_src = (
+        'BASELINE_TOKENS_BY_SOURCE = {\n'
+        '    "us.openai.gpt-6-sol": {"input": 1_000_000, "output": 100_000},\n'
+        '}'
+    )
+    service_tier_src = (
+        'SERVICE_TIER_BY_SOURCE = {\n'
+        '    "us.openai.gpt-6-sol": "ultrafast",\n'
+        '}'
+    )
+
+    stdout = _run_script(
+        script_body,
+        repo=repo,
+        model_pairs_src=model_pairs_src,
+        baseline_src=baseline_src,
+        service_tier_src=service_tier_src,
+    )
+
+    assert "ultrafast not supported for this model — cost unavailable" in stdout, stdout
+    row_line = next(line for line in stdout.splitlines() if line.startswith("us.openai.gpt-6-sol ->"))
+    assert "source=$" not in row_line, "Sol must not be silently priced at Standard for an ultrafast request"
+    assert "TOTAL source=$0.0000 bedrock=$0.0000" in stdout, stdout
+
+
+def test_pair_with_no_service_tier_entry_prices_as_standard_unchanged(tmp_path: Path) -> None:
+    """A pair absent from SERVICE_TIER_BY_SOURCE (or explicitly "standard") must
+    price exactly as it did before this change -- regression guard."""
+    script_body = _extract_cost_compare_script()
+
+    repo = _write_fixture(
+        tmp_path,
+        golden_rows=[
+            {"source_model": "us.openai.gpt-6.1-sol", "tokens": {"prompt": 1000, "completion": 400}},
+        ],
+        baseline_source="us.openai.gpt-6.1-sol",
+    )
+
+    model_pairs_src = (
+        'MODEL_PAIRS = [\n'
+        '    ("us.openai.gpt-6.1-sol", "us.openai.gpt-6.1-sol", 2.00, 10.00, 2.20, 11.00),\n'
+        ']'
+    )
+    baseline_src = "BASELINE_TOKENS_BY_SOURCE = {}"
+
+    stdout = _run_script(
+        script_body, repo=repo, model_pairs_src=model_pairs_src, baseline_src=baseline_src
+    )
+
+    assert "-ultrafast" not in stdout, stdout
+    expected_source_cost = (1000 * 2.00 + 400 * 10.00) / 1_000_000
+    expected_bedrock_cost = (1000 * 2.20 + 400 * 11.00) / 1_000_000
+    assert f"source=${expected_source_cost:.4f}" in stdout, stdout
+    assert f"bedrock=${expected_bedrock_cost:.4f}" in stdout, stdout

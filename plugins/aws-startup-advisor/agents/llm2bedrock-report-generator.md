@@ -113,6 +113,10 @@ The pricing script only covers Bedrock models. For the source provider (OpenAI, 
 
 | Model                      | Input (USD/1M) | Output (USD/1M) |
 | -------------------------- | -------------- | --------------- |
+| gpt-6-astra                | 10.00          | 50.00           |
+| gpt-6.1-sol                | 2.00           | 10.00           |
+| gpt-6-sol                  | 2.00           | 10.00           |
+| gpt-6-luna                 | 0.10           | 0.50            |
 | gpt-5.6-luna               | 0.20           | 1.20            |
 | gpt-5.6-terra              | 2.00           | 12.00           |
 | gpt-5.6-sol                | 5.00           | 30.00           |
@@ -129,7 +133,9 @@ The pricing script only covers Bedrock models. For the source provider (OpenAI, 
 | claude-3-5-sonnet (1P API) | 3.00           | 15.00           |
 | claude-3-haiku (1P API)    | 0.25           | 1.25            |
 
-**Same-model pair cost depends on the inference option — state it conditionally, never as a flat figure.** In-Region and Geo CRIS are priced at OpenAI's _data residency_ tier (1.10x standard), so those moves cost ~10% more — quote the increase plainly and carry the non-cost justification (commitments, governance, residency, prompt caching, no behaviour delta). **GPT-5.6 on Global CRIS is priced at the standard rate — cost parity** — applicable only when the workload has no data-residency constraint; when the plan's `migration_path` is `runtime_openai_cris` with a `global.` id, report parity, not a premium. GPT-5.5/5.4 have no CRIS, so the ~10% figure always applies to them. **If a pair's workload exceeds 272K context**, price the Bedrock side at the GPT-5.6 long-context tier — 2.0x input, 1.5x output per option — and show that line separately; GPT-5.5/5.4 have no long-context tier so their usable window is 272K.
+**Astra:** use its separately dated Bedrock rates and context/inference tier. Its source price is absent from the table below; verify that price or mark the source comparison unavailable. Do not estimate Astra from a lower GPT tier or assume GPT-5.x parity/premium.
+
+**GPT-5.x same-model pair cost depends on the inference option — state it conditionally, never as a flat figure.** In-Region and Geo CRIS are priced at OpenAI's _data residency_ tier (1.10x standard), so those moves cost ~10% more — quote the increase plainly and carry the non-cost justification (commitments, governance, residency, prompt caching, no behaviour delta). **GPT-5.6 on Global CRIS is priced at the standard rate — cost parity** — applicable only when the workload has no data-residency constraint; when the plan's `migration_path` is `runtime_openai_cris` with a `global.` id, report parity, not a premium. GPT-5.5/5.4 have no CRIS, so the ~10% figure always applies to them. **If a pair's workload exceeds 272K context**, price the Bedrock side at the GPT-5.6 long-context tier — 2.0x input, 1.5x output per option — and show that line separately; GPT-5.5/5.4 have no long-context tier so their usable window is 272K.
 
 If the source model is not in this table (likely for any model released after the table's last update — check the provider's public pricing page if you know current rates), note it as a gap in the Risk Assessment section, label the figure "(estimated from `<similar model>`)", and estimate using the closest listed model's pricing.
 
@@ -198,6 +204,14 @@ The migration plan may map multiple source models to multiple Bedrock models (e.
 
 If the golden dataset records which source model each prompt used (e.g., a `source_model` field), aggregate tokens per source model. If it does not, fall back to attributing all tokens to the primary pair and flag the approximation in the Risk Assessment section.
 
+**Breakpoint pairs (GPT-6/5.6/5.5/5.4 source models) — do not compare a flat short-context source rate against a long-context Bedrock rate, or vice versa.** When a pair's source model has a documented 272K-token breakpoint (see `pricing-cache.md`'s GPT-6/5.6/5.5/5.4 breakpoint notes) AND you know (from `ai_workload_profile.json` → `workloads[].typical_request_tokens` or measured per-request usage-profile stats) that its typical single request exceeds 272,000 input tokens, populate `cost_compare.py`'s `PER_REQUEST_TOKENS` entry for that source model, add the pair's 7th/8th `MODEL_PAIRS` elements (`source_input_long`, `source_output_long`, from the source's long-context rate), and add a `BEDROCK_LONG_CONTEXT` entry (from the target's long-context rate). The script then prices that pair's ENTIRE volume at the long-context rate on BOTH sides, matching `estimate-ai.md`'s long-context-parity rule. Leave a pair's `PER_REQUEST_TOKENS` entry out entirely when the per-request size is unknown or ≤272K — it then keeps the flat short-context rate on both sides, unchanged.
+
+**Per-request tier distribution, when known, takes precedence over the single-breakpoint-decision above.** `PER_REQUEST_TOKENS` records only ONE "typical" request size per source model, so when the pair's actual traffic mixes short and long requests, applying that single breakpoint decision to the whole aggregated volume either overstates or understates the true cost. When a per-request tier BREAKDOWN is known (not just one typical size) — e.g. `ai_workload_profile.json`'s per-request token distribution, or a usage-baseline that buckets requests by tier — populate `cost_compare.py`'s `TIER_DISTRIBUTION_BY_SOURCE` entry for that source model instead of (not in addition to) `PER_REQUEST_TOKENS`/`BASELINE_TOKENS_BY_SOURCE`; the script partitions that pair's requests into their true tiers and prices each tier independently before summing, rather than blending all requests into one average and applying one all-or-nothing breakpoint decision to the blended total. **When only an aggregate total is known** (no `TIER_DISTRIBUTION_BY_SOURCE` entry) for a source model whose requests plausibly span the 272,000-token breakpoint (e.g. `ai_workload_profile.json` shows high variance in `typical_request_tokens`, or the workload type suggests mixed short/long usage), disclose this in the report as an unresolved context-tier distribution rather than presenting the single-breakpoint-decision total as exact — render a note in the Cost Comparison section: "Context-tier distribution unknown for `<model>` — this estimate applies a single breakpoint decision to the full aggregate volume and may overstate or understate cost versus the workload's actual mix of short/long requests."
+
+**Source-side and target-side long-context decisions are independent of each other.** A flat-priced Bedrock target with no long-context tier (absent from `BEDROCK_LONG_CONTEXT`) must stay flat on its own side regardless of the source-side decision — it must never suppress a known, independently-applicable source-side breakpoint. Likewise a target that DOES have a long-context tier only applies it when the SOURCE side's own breakpoint fired; the two sides are never coupled through a single combined condition.
+
+**GPT-6 Ultrafast service tier.** When the plan/profile records `service_tier: "ultrafast"` for a same-model GPT-6 rewrite, populate `cost_compare.py`'s `SERVICE_TIER_BY_SOURCE[src] = "ultrafast"` for that source model id. The script applies the documented 6x-Standard multiplier for GPT-6 Astra and GPT-6.1 Sol — the only two model cards that support Ultrafast — and reports that pair's cost as **UNAVAILABLE** (excluded from `TOTAL`/savings, never silently priced at Standard) for GPT-6 Sol and GPT-6 Luna, which are Standard-only. An omitted entry, or a tier of `"standard"`, leaves pricing unchanged. See `openai-on-bedrock.md`'s "GPT-6 family: Ultrafast tier" section for the ground truth (Ultrafast = 6x Standard, Astra and 6.1 Sol only).
+
 Bedrock per-1M rates are `input_per_1k_usd * 1000` and `output_per_1k_usd * 1000` from §6.1; source per-1M rates come from §6.2. Run the cost computation through the pinned toolchain (Write the script with the `Write` tool, then run it):
 
 ```bash
@@ -212,10 +226,16 @@ from collections import defaultdict
 
 # One tuple per source → bedrock mapping from the migration plan.
 # Fill in pricing from §6.1 (Bedrock, per-1M = per-1k * 1000) and §6.2 (source).
+# The 7th/8th elements (source_input_long, source_output_long) are OPTIONAL and only
+# needed for a pair whose source model has a 272K-token breakpoint (GPT-6/5.6/5.5/5.4)
+# AND whose per-request size is known to exceed it (see PER_REQUEST_TOKENS below) —
+# omit them (5-tuple... err, 6-tuple) for every other pair; they are never consulted
+# unless the pair also has a PER_REQUEST_TOKENS entry.
 MODEL_PAIRS = [
-    # (source_model_id, bedrock_model_id, source_input, source_output, bedrock_input, bedrock_output)
+    # (source_model_id, bedrock_model_id, source_input, source_output, bedrock_input, bedrock_output, source_input_long, source_output_long)
     # ("gpt-4o",      "anthropic.claude-sonnet-4-6", 2.50, 10.00, 3.00, 15.00),
     # ("gpt-4o-mini", "amazon.nova-lite-v1:0",                    0.15,  0.60, 0.06,  0.24),
+    # ("openai.gpt-6-sol", "openai.gpt-6-sol", 2.00, 10.00, 2.20, 11.00, 4.00, 15.00),
 ]
 
 # Populate ONLY when the §6.3 precedence check found a `Usage baseline path:` AND the pair's
@@ -229,6 +249,56 @@ MODEL_PAIRS = [
 BASELINE_TOKENS_BY_SOURCE = {
     # "gpt-4o": {"input": 42_000_000, "output": 9_000_000},
 }
+
+# Populate ONLY for a source model with a documented 272K-token breakpoint
+# (GPT-6/5.6/5.5/5.4) whose TYPICAL single-request token size is known (from
+# ai_workload_profile.json -> workloads[].typical_request_tokens, or measured
+# per-request usage-profile stats) to exceed 272,000 input tokens. Key = source_model_id
+# (matching MODEL_PAIRS[i][0]); value = {"input": N, "output": N} for ONE typical request.
+# A source model absent here is treated as short-context (or unknown) and keeps the flat
+# rate — this is the deliberate "unknown request-size distribution" fallback estimate-ai.md
+# calls out; never guess a tier silently.
+PER_REQUEST_TOKENS = {
+    # "openai.gpt-6-sol": {"input": 300_000, "output": 10_000},
+}
+
+# Populate ONLY when a per-request tier BREAKDOWN is known (not just one "typical"
+# size) -- e.g. from ai_workload_profile.json's per-request token distribution, or a
+# usage-baseline that buckets requests by tier. Key = source_model_id; value = a list
+# of {"count": N, "input": per_request_input, "output": per_request_output} dicts, one
+# per observed tier. When present for a source model, this takes precedence over BOTH
+# BASELINE_TOKENS_BY_SOURCE and PER_REQUEST_TOKENS for that model -- each tier bucket is
+# priced independently (short rate below 272,001 input tokens, long rate at/above it)
+# and the per-tier costs are summed, instead of blending all requests into one average
+# and applying a single all-or-nothing breakpoint decision to the blended total.
+TIER_DISTRIBUTION_BY_SOURCE = {
+    # "openai.gpt-6-sol": [
+    #     {"count": 51, "input": 300_000, "output": 10_000},
+    #     {"count": 49, "input": 200_000, "output": 10_000},
+    # ],
+}
+
+# Parallel to BASELINE_TOKENS_BY_SOURCE in structure, but keyed by BEDROCK model id and
+# carrying that model's long-context {"input": $/1M, "output": $/1M} rate. Populate only
+# for a Bedrock model that actually has a long-context tier (see pricing-cache.md's
+# "GPT-6 family -- long context" / GPT-5.6/5.5/5.4 long-context tables).
+BEDROCK_LONG_CONTEXT = {
+    # "openai.gpt-6-sol": {"input": 4.40, "output": 16.50},
+}
+
+# Populate ONLY when the plan/profile records service_tier "ultrafast" for a same-model
+# GPT-6 rewrite. Key = source_model_id (matching MODEL_PAIRS[i][0]); value = the tier
+# string, e.g. "ultrafast" (anything else, or an absent key, is treated as "standard"
+# and leaves pricing untouched).
+SERVICE_TIER_BY_SOURCE = {
+    # "us.openai.gpt-6.1-sol": "ultrafast",
+}
+
+# GPT-6 Astra and GPT-6.1 Sol are the only two model cards with a documented Ultrafast
+# tier (6x Standard) -- GPT-6 Sol and GPT-6 Luna are Standard-only (see
+# openai-on-bedrock.md "GPT-6 family: Ultrafast tier"). Matched by substring so a bare,
+# geo-prefixed, or bedrock-runtime-CRIS form of either id all match.
+ULTRAFAST_SUPPORTED = ("gpt-6-astra", "gpt-6.1-sol")
 
 # Aggregate golden-dataset tokens per source model (used ONLY for pairs absent from
 # BASELINE_TOKENS_BY_SOURCE). Falls back to a single bucket when source_model is absent.
@@ -254,24 +324,110 @@ if unattributed and MODEL_PAIRS and MODEL_PAIRS[0][0] not in BASELINE_TOKENS_BY_
 total_source_cost = 0.0
 total_bedrock_cost = 0.0
 rows = []
-for src, tgt, s_in, s_out, b_in, b_out in MODEL_PAIRS:
-    if src in BASELINE_TOKENS_BY_SOURCE:
-        bucket = BASELINE_TOKENS_BY_SOURCE[src]
-        basis = "baseline"
+for pair in MODEL_PAIRS:
+    # The breakpoint elements are optional — a 6-tuple pair has no long-context rate.
+    src, tgt, s_in, s_out, b_in, b_out = pair[:6]
+    s_in_long, s_out_long = (pair[6], pair[7]) if len(pair) > 6 else (None, None)
+
+    if src in TIER_DISTRIBUTION_BY_SOURCE:
+        # A known per-request tier BREAKDOWN takes precedence over both the baseline
+        # scalar and the golden-dataset sample -- partition requests into their true
+        # tiers BEFORE aggregating, instead of blending them into one average and
+        # applying a single breakpoint decision to the blended total.
+        buckets = TIER_DISTRIBUTION_BY_SOURCE[src]
+        basis = "tier-distribution"
+        in_tok = sum(b["count"] * b["input"] for b in buckets)
+        out_tok = sum(b["count"] * b["output"] for b in buckets)
+        source_cost = 0.0
+        bedrock_cost = 0.0
+        for b in buckets:
+            count, b_in_tok, b_out_tok = b["count"], b["input"], b["output"]
+            # Source-side breakpoint: independent per bucket.
+            if b_in_tok > 272_000 and s_in_long is not None:
+                bucket_source_cost = (b_in_tok * s_in_long + b_out_tok * s_out_long) / 1_000_000
+                bucket_source_is_long = True
+            else:
+                bucket_source_cost = (b_in_tok * s_in + b_out_tok * s_out) / 1_000_000
+                bucket_source_is_long = False
+            # Target-side breakpoint: independent decision. A flat-priced target with
+            # no long-context tier ALWAYS stays flat, regardless of the source side.
+            if bucket_source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+                long_rates = BEDROCK_LONG_CONTEXT[tgt]
+                bucket_bedrock_cost = (b_in_tok * long_rates["input"] + b_out_tok * long_rates["output"]) / 1_000_000
+            else:
+                bucket_bedrock_cost = (b_in_tok * b_in + b_out_tok * b_out) / 1_000_000
+            source_cost += count * bucket_source_cost
+            bedrock_cost += count * bucket_bedrock_cost
     else:
-        bucket = tokens_by_source.get(src, {"input": 0, "output": 0})
-        basis = "sample"
-    in_tok, out_tok = bucket["input"], bucket["output"]
-    # Both costs below are computed from `in_tok`/`out_tok` — the SAME volume for this pair,
-    # whichever source it came from. Never price one side from the baseline and the other
-    # from the golden-dataset sample for the same pair.
-    source_cost = (in_tok * s_in + out_tok * s_out) / 1_000_000
-    bedrock_cost = (in_tok * b_in + out_tok * b_out) / 1_000_000
-    total_source_cost += source_cost
-    total_bedrock_cost += bedrock_cost
-    rows.append((src, tgt, basis, in_tok, out_tok, source_cost, bedrock_cost))
+        if src in BASELINE_TOKENS_BY_SOURCE:
+            bucket = BASELINE_TOKENS_BY_SOURCE[src]
+            basis = "baseline"
+        else:
+            bucket = tokens_by_source.get(src, {"input": 0, "output": 0})
+            basis = "sample"
+        in_tok, out_tok = bucket["input"], bucket["output"]
+
+        # Breakpoint check: a pair's source side is priced at the long-context rate only
+        # when its source model has a known typical per-request size (PER_REQUEST_TOKENS)
+        # that exceeds 272,000 input tokens — matching estimate-ai.md's
+        # long-context-parity rule. The ENTIRE volume (whichever basis won above)
+        # reprices, not just the excess, per OpenAI's own breakpoint contract. A pair
+        # absent from PER_REQUEST_TOKENS, or whose typical request is <=272,000 input
+        # tokens, is UNCHANGED by this check and keeps the flat short-context rate.
+        per_request = PER_REQUEST_TOKENS.get(src)
+        source_is_long = bool(per_request and per_request["input"] > 272_000 and s_in_long is not None)
+        if source_is_long:
+            source_cost = (in_tok * s_in_long + out_tok * s_out_long) / 1_000_000
+        else:
+            source_cost = (in_tok * s_in + out_tok * s_out) / 1_000_000
+
+        # Target-side breakpoint: independent decision. A flat-priced target with no
+        # long-context tier (tgt not in BEDROCK_LONG_CONTEXT) ALWAYS stays flat,
+        # regardless of the source-side decision above -- it must never be suppressed
+        # by, nor suppress, the source-side breakpoint.
+        if source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+            long_rates = BEDROCK_LONG_CONTEXT[tgt]
+            bedrock_cost = (in_tok * long_rates["input"] + out_tok * long_rates["output"]) / 1_000_000
+        else:
+            bedrock_cost = (in_tok * b_in + out_tok * b_out) / 1_000_000
+
+        if source_is_long and tgt in BEDROCK_LONG_CONTEXT:
+            basis = f"{basis}-long-context"
+        elif source_is_long:
+            # Source-side breakpoint fired but the target has no long-context tier
+            # (stays flat) -- distinguish this from the both-sides case above.
+            basis = f"{basis}-source-long-context"
+
+    # Ultrafast service-tier check -- runs AFTER the Standard source_cost/bedrock_cost
+    # above are computed (compatibly with the breakpoint/long-context/baseline/tier
+    # logic), applying on top of whichever basis won. Default/absent/"standard" tier is
+    # unchanged. A model that does NOT support Ultrafast (GPT-6 Sol, GPT-6 Luna) must
+    # never silently price an ultrafast request at Standard -- its cost is UNAVAILABLE
+    # and excluded from TOTAL/savings below, rather than contributing a wrong number.
+    cost_unavailable = False
+    if SERVICE_TIER_BY_SOURCE.get(src) == "ultrafast":
+        if any(name in src for name in ULTRAFAST_SUPPORTED):
+            source_cost *= 6
+            bedrock_cost *= 6
+            basis = f"{basis}-ultrafast"
+        else:
+            cost_unavailable = True
+            basis = f"{basis}-ultrafast-unavailable"
+
+    if cost_unavailable:
+        rows.append((src, tgt, basis, in_tok, out_tok, None, None))
+    else:
+        total_source_cost += source_cost
+        total_bedrock_cost += bedrock_cost
+        rows.append((src, tgt, basis, in_tok, out_tok, source_cost, bedrock_cost))
 
 for src, tgt, basis, in_tok, out_tok, sc, bc in rows:
+    if sc is None or bc is None:
+        print(
+            f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} "
+            "ultrafast not supported for this model — cost unavailable"
+        )
+        continue
     print(f"{src} -> {tgt} ({basis}): input={in_tok} output={out_tok} source=${sc:.4f} bedrock=${bc:.4f}")
 print(f"TOTAL source=${total_source_cost:.4f} bedrock=${total_bedrock_cost:.4f}")
 if total_source_cost > 0:
@@ -302,7 +458,7 @@ uv run --project <scriptsDir> python <scriptsDir>/iam_policy.py \
 
 The script handles the dual-ARN pattern: foundation-model ARNs for plain model IDs and inference-profile ARNs for geo-prefixed IDs (e.g. `us.anthropic.claude-sonnet-4-6`). The output is a ready-to-use IAM policy JSON file.
 
-**Mantle targets get different actions.** When any target is a proprietary OpenAI GPT model (`openai.gpt-5*`), the script also emits `bedrock-mantle:CreateInference` / `Get*` / `List*` scoped to `arn:aws:bedrock-mantle:<region>:<account>:project/*`, plus `bedrock-mantle:CallWithBearerToken` on `*` (AWS does not permit narrowing that one). `bedrock:InvokeModel` alone does **not** authorize these models. Two consequences to carry into the report:
+**Mantle targets get different actions.** When any target is a bare proprietary OpenAI GPT model (GPT-5.x or `openai.gpt-6-astra`), the script also emits `bedrock-mantle:CreateInference` / `Get*` / `List*` scoped to `arn:aws:bedrock-mantle:<region>:<account>:project/*`, plus `bedrock-mantle:CallWithBearerToken` on `*` (AWS does not permit narrowing that one). `bedrock:InvokeModel` alone does **not** authorize these models. Two consequences to carry into the report:
 
 - For an all-mantle run there is no `BedrockInvokeModelScoped` statement, because those models have no foundation-model or inference-profile ARN to scope to. That absence is correct, not a generation failure.
 - Mantle authorizes at project granularity, so the policy cannot be scoped to specific model IDs. If the reader needs to restrict the model set, say so explicitly and point them at a service control policy.
@@ -349,6 +505,10 @@ Case 1 — `no_golden_cases: true` is in the evaluator's `notes`:
 
 Case 2 — `same_model_family: true — connectivity-only verification`
 is in the evaluator's `notes`:
+
+Consume the centrally validated analysis and evaluation supplied by the orchestrator.
+C0 invalidates older evaluation contracts before dispatch; `validate_result.py --schema analysis`
+checks the identity claim. This agent does not re-derive identity or dispatch earlier phases.
 
 > ℹ️ **Connectivity-only verification (same-model migration).** This run
 > keeps the same model on Bedrock — either Anthropic 1P → Bedrock Claude,

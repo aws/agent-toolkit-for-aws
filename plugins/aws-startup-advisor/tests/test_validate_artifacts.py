@@ -124,6 +124,16 @@ def test_enum_from_pipe_string_and_from_comment():
     assert prose.keys["note"].enum is None
 
 
+def test_quoted_comment_enum_members_are_recognized():
+    """Review finding on #386: `"fast_path" | "wizard"` was invisible to the bare-token regex."""
+    n = _node('{"clarify_mode": "wizard", // "fast_path" | "wizard" — which flow\n'
+              ' "size_coverage": "complete", // "complete" | "partial" | "unknown"\n'
+              ' "note": "x", // "not a token" | "also free"\n}')
+    assert n.keys["clarify_mode"].enum == {"fast_path", "wizard"}
+    assert n.keys["size_coverage"].enum == {"complete", "partial", "unknown"}
+    assert n.keys["note"].enum is None  # quoted phrases with spaces stay free text
+
+
 def test_required_from_comment_and_placeholder_is_any_type():
     n = _node('{"id": "<uuid>", // REQUIRED\n "n": "<Q13 value>"}')
     assert "id" in n.required
@@ -383,6 +393,12 @@ def test_fixtures_pass_with_baseline_and_no_stale_entries():
 
 
 def test_neutral_matrix_shared_artifacts_extend_the_mapped_fixture_count():
+    """Every fixture directory with no skill prefix (`ai-migration-matrix`,
+    `ai-workload-profiles`, ...) is "neutral": its artifacts are checked against
+    the manifest's `shared` contracts only, with no `--skill` passed. `--fixtures`
+    walks and counts all of them, so the accounting below must sum across every
+    neutral directory, not just the matrix — a second neutral directory (as
+    `ai-workload-profiles` is) is not a special case, it is the general one."""
     manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
     fixtures_root = PLUGIN_ROOT / "fixtures"
     matrix = fixtures_root / "ai-migration-matrix"
@@ -396,17 +412,31 @@ def test_neutral_matrix_shared_artifacts_extend_the_mapped_fixture_count():
     assert matrix_checked == len(shared_artifacts)
     assert matrix_findings == []
 
+    # Several fixture families besides ai-migration-matrix are unmapped (no
+    # fixture_prefix entry) and so validate only against artifact-contracts.json's
+    # "shared" section too -- e.g. ai-workload-profiles/ (#415) and aws-design-ai/
+    # (#416). Count every unmapped family's shared artifacts, not only the matrix's,
+    # so this assertion does not silently drift whenever a future PR adds another one.
     mapped_checked = 0
+    neutral_checked = 0
+    neutral_shared_count = 0
     mapped_findings = []
+    neutral_findings = []
     for fixture_dir in sorted(p for p in fixtures_root.iterdir() if p.is_dir()):
         skill = va.skill_for_fixture(fixture_dir.name, manifest)
         if skill is not None:
             mapped_checked += va.validate_run_dir(fixture_dir, skill, manifest, mapped_findings)
+        else:
+            neutral_checked += va.validate_run_dir(fixture_dir, None, manifest, neutral_findings)
+            neutral_shared_count += sum(
+                1 for p in va.find_artifacts(fixture_dir) if p.name in manifest["shared"])
+    assert neutral_findings == []
+    assert neutral_checked == neutral_shared_count
 
     r = _run("--fixtures", "--json")
     assert r.returncode == 0, r.stdout + r.stderr
     report = json.loads(r.stdout)
-    assert report["checked_artifacts"] - mapped_checked == len(shared_artifacts)
+    assert report["checked_artifacts"] - mapped_checked == neutral_shared_count
 
 
 def test_invalid_neutral_shared_artifacts_fail_their_schemas(tmp_path: Path):
@@ -436,6 +466,53 @@ def test_neutral_fixture_skips_provider_artifacts_and_expected_snapshots(tmp_pat
     assert va.validate_run_dir(tmp_path, None, manifest, findings) == 0
     assert findings == []
     assert [p.name for p in va.find_artifacts(tmp_path)] == ["gcp-resource-inventory.json"]
+
+
+@pytest.mark.parametrize("skill", ["gcp-to-aws", "azure-to-aws"])
+@pytest.mark.parametrize("artifact", ["estimation-ai.json", "generation-ai.json"])
+def test_target_only_ai_contracts_do_not_validate_current_skill_outputs(
+    tmp_path: Path, skill: str, artifact: str
+):
+    """The canonical AI estimate/generate schemas are fixture-only until the producer
+    documents adopt their neutral fields and per-source traceability arrays."""
+    source_prefix = "gcp" if skill == "gcp-to-aws" else "azure"
+    if artifact == "estimation-ai.json":
+        current = {
+            "phase": "estimate",
+            "timestamp": "2026-09-08T03:10:00Z",
+            "pricing_source": "cached",
+            "current_costs": {
+                "source": "billing",
+                f"{source_prefix}_monthly_ai_spend": 100.0,
+                "services": [],
+            },
+            "cost_comparison": {
+                f"current_{source_prefix}_monthly": 100.0,
+                "projected_bedrock_monthly": 110.0,
+                "monthly_difference": 10.0,
+                "annual_difference": 120.0,
+                "percent_change": 10.0,
+            },
+        }
+    else:
+        current = {
+            "phase": "generate",
+            "generation_source": "ai",
+            "timestamp": "2026-09-08T04:00:00Z",
+            "migration_plan": {"approach": "provider_adapter", "phases": [], "models_to_migrate": []},
+            "step_by_step_guide": {},
+            "rollback_plan": {"mechanism": "feature_flag", "flag_name": "AI_PROVIDER"},
+            "monitoring": {},
+            "production_readiness_checklist": [],
+            "success_criteria": {},
+            "recommendation": {},
+        }
+
+    run = _write_run(tmp_path, f"{skill}-{artifact}", artifact, current)
+    findings = []
+    manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
+    assert va.validate_run_dir(run, skill, manifest, findings) == 0
+    assert [(finding.code, finding.path) for finding in findings] == [("NO_CONTRACT", "")]
 
 
 def test_injected_off_contract_key_fails(tmp_path: Path):
@@ -823,6 +900,25 @@ def test_azure_design_arrays_reject_a_scalar_after_the_empty_seed(tmp_path: Path
     assert ("TYPE_MISMATCH", "workloads[0]") in errs - ok
 
 
+def test_gcp_cluster_edges_reject_a_scalar_member(tmp_path: Path):
+    """The clusters example seeds `edges: []` on one cluster and a typed edge on the next.
+    Merging those must keep the edge object shape."""
+    doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-discover-iac.md"
+    clusters = _doc_example(doc, "gcp-resource-clusters.json")
+    r = _run("--run-dir", str(_write_run(tmp_path, "ok", "gcp-resource-clusters.json", clusters)),
+             "--skill", "gcp-to-aws", "--no-baseline", "--json")
+    assert r.returncode == 0, r.stdout
+    bad = json.loads(json.dumps(clusters))
+    bad["clusters"][1]["edges"] = [42]
+    r = _run("--run-dir", str(_write_run(tmp_path, "scalar", "gcp-resource-clusters.json", bad)),
+             "--skill", "gcp-to-aws", "--no-baseline", "--json")
+    assert ("TYPE_MISMATCH", "clusters[1].edges[0]") in _errors(r), r.stdout
+    bad["clusters"][1]["edges"] = []
+    r = _run("--run-dir", str(_write_run(tmp_path, "empty", "gcp-resource-clusters.json", bad)),
+             "--skill", "gcp-to-aws", "--no-baseline", "--json")
+    assert r.returncode == 0, r.stdout
+
+
 def test_heroku_inventory_clarifications_is_a_signal_map(tmp_path: Path):
     """Review finding on #385: inventory_clarifications was closed to database_ha, so a
     redis or region signal failed even though sources.Q1 extracted was already allowed."""
@@ -1192,6 +1288,38 @@ def test_heroku_scenario_accepts_recommendation_outcome(tmp_path: Path):
     assert ("UNKNOWN_KEY", "estimation_summary.invented") in run("bad", bad)
 
 
+def test_azure_quoted_preference_enums_reject_unknown_values(tmp_path: Path):
+    """`metadata.clarify_mode` and `data.db_cutover.size_coverage` are quoted comment enums."""
+    src = PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-clarify-fast-path/preferences.json"
+    pref = json.loads(src.read_text())
+    control = _errors(_run("--run-dir", str(src.parent), "--skill", "azure-to-aws", "--no-baseline", "--json"))
+    assert control == set(), control
+
+    def run(name, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, "preferences.json", data)),
+                            "--skill", "azure-to-aws", "--no-baseline", "--json"))
+
+    for mode in ("fast_path", "wizard"):
+        ok = json.loads(json.dumps(pref))
+        ok["metadata"]["clarify_mode"] = mode
+        assert run("mode-" + mode, ok) == set()
+    bad = json.loads(json.dumps(pref))
+    bad["metadata"]["clarify_mode"] = "invented-mode"
+    assert run("mode-bad", bad) == {("ENUM_VIOLATION", "metadata.clarify_mode")}
+    for coverage in ("complete", "partial", "unknown"):
+        ok = json.loads(json.dumps(pref))
+        ok["data"]["db_cutover"]["size_coverage"] = coverage
+        assert run("cov-" + coverage, ok) == set(), coverage
+    bad = json.loads(json.dumps(pref))
+    bad["data"]["db_cutover"]["size_coverage"] = "invented-coverage"
+    assert run("cov-bad", bad) == {("ENUM_VIOLATION", "data.db_cutover.size_coverage")}
+    # the unquoted clarify_status control still rejects an unknown value
+    bad = json.loads(json.dumps(pref))
+    bad["clarify_status"] = "invented-status"
+    assert ("ENUM_VIOLATION", "clarify_status") in run("status-bad", bad)
+
+
+
 def test_azure_discovery_verdict_is_required(tmp_path: Path):
     """Review finding on #385: the REQUIRED marker inside clarify_fast_path was dropped."""
     src = PLUGIN_ROOT / "fixtures/azure-iac-terraform/after-discover/azure-resource-inventory.json"
@@ -1205,3 +1333,31 @@ def test_azure_discovery_verdict_is_required(tmp_path: Path):
     fresh = json.loads(json.dumps(inv))
     del fresh["metadata"]["clarify_fast_path"]
     assert ("MISSING_REQUIRED", "metadata.clarify_fast_path") in run("omitted", fresh)
+
+
+def test_gcp_estimate_snapshots_use_the_active_estimate_shape(tmp_path: Path):
+    """Review finding on #386: scenario snapshots used only the JSON Schema, so an unknown
+    pricing bucket failed on estimation-infra.json and passed on the snapshot copy."""
+    est = json.loads((PLUGIN_ROOT / "fixtures/gcp-decision-gate/after-decide-complete/estimation-infra.json").read_text())
+    doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-estimate-infra.md"
+    sec_blocks = [b for b in va.extract_blocks(doc) if va._heading_matches(b.heading, "Security Baseline Entries in")]
+    est["projected_costs"]["scenario_deltas"] = _doc_example(doc, "Cost tiers")["scenario_deltas"]
+    est["projected_costs"]["breakdown"] = {
+        "compute": {"service": "Fargate", "monthly": 71},
+        "observability": _doc_example(doc, "Observability Entry in"),
+        "security_baseline": json.loads(va.strip_jsonc(sec_blocks[0].text)[0]),
+        "security_baseline_compliance": json.loads(va.strip_jsonc(sec_blocks[1].text)[0]),
+    }
+
+    def run(name, artifact, data):
+        return _errors(_run("--run-dir", str(_write_run(tmp_path, name, artifact, data)),
+                            "--skill", "gcp-to-aws", "--no-baseline", "--json"))
+
+    est["pricing_source"]["services_by_source"] = {
+        "cached": ["Fargate"], "fallback": ["NAT Gateway"], "estimated": [],
+    }
+    for artifact in ("estimation-infra.json", "scenarios/scenario-017.estimation-infra.json"):
+        assert run("ok-" + artifact, artifact, est) == set(), artifact
+        bad = json.loads(json.dumps(est))
+        bad["pricing_source"]["services_by_source"]["live"] = ["Fargate"]
+        assert ("UNKNOWN_KEY", "pricing_source.services_by_source.live") in run("bad-" + artifact, artifact, bad)
