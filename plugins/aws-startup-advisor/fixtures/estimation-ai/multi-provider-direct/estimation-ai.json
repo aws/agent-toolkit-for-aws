@@ -16,7 +16,7 @@
   },
   "model_comparison": [
     {
-      "model": "anthropic.claude-sonnet-5-5",
+      "model": "anthropic.claude-sonnet-4-5-v1:0",
       "monthly_cost": 1320.0,
       "vs_current": "+10%",
       "quality": "high",
@@ -33,13 +33,13 @@
     }
   ],
   "recommended_model": {
-    "model": "anthropic.claude-sonnet-5-5",
+    "model": "anthropic.claude-sonnet-4-5-v1:0",
     "monthly_cost": 1320.0,
     "breakdown": {"input": 900.0, "output": 420.0, "embeddings": 0.0},
     "rationale": "Same-model migration for the Anthropic-sourced workload; current recommended model and provider priority favor Claude."
   },
   "backup_model": {
-    "model": "anthropic.claude-haiku-4-5-20251001-v1:0",
+    "model": "anthropic.claude-haiku-4-5-v1:0",
     "monthly_cost": 480.0,
     "rationale": "Lower-cost fallback within the same model family."
   },

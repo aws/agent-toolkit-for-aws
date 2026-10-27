@@ -37,14 +37,14 @@
       }
     ],
     "gateways": [],
-    "bedrock_models_selected": ["anthropic.claude-sonnet-5-5", "openai.gpt-5.6-terra"],
+    "bedrock_models_selected": ["anthropic.claude-sonnet-4-5-v1:0", "openai.gpt-5.6-terra"],
     "regional_validation": "checked"
   },
   "design_blocks": [
     {
       "workload_id": "wl_anthropic_chat",
       "model_id": "claude-3-5-sonnet-20240620",
-      "target_bedrock_model": "anthropic.claude-sonnet-5-5",
+      "target_bedrock_model": "anthropic.claude-sonnet-4-5-v1:0",
       "target_aws_service": null,
       "capability": "text_generation",
       "capability_confidence": "high",
@@ -69,7 +69,7 @@
     "bedrock_models": [
       {
         "source_model_id": "claude-3-5-sonnet-20240620",
-        "aws_model_id": "anthropic.claude-sonnet-5-5",
+        "aws_model_id": "anthropic.claude-sonnet-4-5-v1:0",
         "capabilities_matched": ["text_generation"],
         "capability_gaps": [],
         "honest_assessment": "strong_migrate",

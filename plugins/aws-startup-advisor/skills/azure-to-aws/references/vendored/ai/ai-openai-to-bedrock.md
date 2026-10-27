@@ -19,11 +19,11 @@ caching rules, and pricing provenance. Read it before applying this file. Do not
 **Model lifecycle:** before recommending any Bedrock model, check `references/vendored/ai/ai-model-lifecycle.md`. Do not
 recommend Legacy models as primary selections for new migrations.
 
-**Recommend defaults (Oct 2026):** Claude Sonnet 5.5 (`anthropic.claude-sonnet-5-5`) for balanced/flagship (Sonnet 5, `anthropic.claude-sonnet-5`, remains an explicit alternative); Claude Opus 5.5 for demanding reasoning (20% lower standard input/output token prices than Opus 5; [Anthropic reports improved token efficiency](https://claude.com/blog/what-a-task-costs-on-opus-5-5), with actual usage varying by task and effort setting); Claude Haiku 4.5 for cost/speed. Sonnet 5 is **$2/$10** — the launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled); comparison tables below use $2/$10. Do not default to any Claude Fable / Mythos frontier model.
+**Recommend defaults (Sep 2026):** Claude Sonnet 5 (`anthropic.claude-sonnet-5`) for balanced/flagship; Claude Opus 5.5 for demanding reasoning (20% lower standard input/output token prices than Opus 5; [Anthropic reports improved token efficiency](https://claude.com/blog/what-a-task-costs-on-opus-5-5), with actual usage varying by task and effort setting); Claude Haiku 4.5 for cost/speed. Sonnet 5 is **$2/$10** — the launch rate became the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled); comparison tables below use $2/$10. Do not default to any Claude Fable / Mythos frontier model.
 
-**Sonnet 5.5 IDs:** [Claude Sonnet 5.5](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) (released 2026-09-28) is a separate model from Sonnet 5. Its Amazon Bedrock ID is `anthropic.claude-sonnet-5-5`; `claude-sonnet-5-5` is the Claude API / Claude Platform on AWS ID.
+**Sonnet 5.5 release (2026-09-28):** [Claude Sonnet 5.5](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) is a separate model. Its Amazon Bedrock ID is `anthropic.claude-sonnet-5-5`; `claude-sonnet-5-5` is the Claude API / Claude Platform on AWS ID. The defaults, mapping tables, and cached prices in this guide still describe Sonnet 5. Do not relabel those records or promote 5.5 from the release announcement alone; a 5.5 recommendation needs its own model/path, lifecycle, pricing, and compatibility evidence.
 
-Before recommending 5.5, read its [Bedrock model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html) and [migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide). Turning off up-front thinking uses `thinking: {"type": "between_tools"}` at `high` effort or below; forced `tool_choice` values `any` and `tool` are rejected, and thinking-history reuse has model/conversation constraints. These are model-specific requirements, not a client-only ID swap. The `computer_20251124` removal applies to the Claude API and Google Cloud; Bedrock still accepts that tool.
+For an explicitly requested 5.5 assessment, read its [Bedrock model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html) and [migration guide](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide). Turning off up-front thinking uses `thinking: {"type": "between_tools"}` at `high` effort or below; forced `tool_choice` values `any` and `tool` are rejected, and thinking-history reuse has model/conversation constraints. These are model-specific requirements, not a client-only ID swap. The `computer_20251124` removal applies to the Claude API and Google Cloud; Bedrock still accepts that tool.
 
 ---
 
@@ -133,17 +133,9 @@ Option A tier mapping:
 | Source tier                                              | Bedrock GPT target                                     |
 | -------------------------------------------------------- | ------------------------------------------------------ |
 | Flagship reasoning (o1-pro, o3-pro, GPT-5 Pro, `*-Pro`)  | GPT-6 Astra; GPT-5.6 Sol as the lower-cost alternative |
-| GPT-4o                                                   | GPT-6 Luna (`openai.gpt-6-luna`), OpenAI's recommended replacement |
-| Flagship general (GPT-4.1, GPT-5/5.1/5.2, GPT-4)         | GPT-5.6 Terra                                          |
+| Flagship general (GPT-4o, GPT-4.1, GPT-5/5.1/5.2, GPT-4) | GPT-5.6 Terra                                          |
 | Mid / reasoning (o1, o3, o4-mini)                        | GPT-5.6 Terra                                          |
 | Fast / cheap (`*-mini`, `*-nano`, GPT-3.5 Turbo)         | GPT-5.6 Luna                                           |
-
-**GPT-4o → GPT-6 Luna.** OpenAI's 2026-10-14 deprecation notice shuts GPT-4o down on 2027-01-14 and names
-`gpt-6-luna` as the recommended replacement, so GPT-4o maps to GPT-6 Luna rather than to the Terra tier. Per the
-[GPT-6 Luna model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html),
-Luna is **$0.11 / $0.55** per 1M input / output tokens at the US Geo rate (the default for US deployments) and
-**$0.10 / $0.50** on Global CRIS, short context. This is the same mapping BMA's runtime applies (`gpt-4o` →
-`openai.gpt-6-luna`).
 
 Option A is subject to the same region gate as Tier 0.
 
@@ -183,10 +175,10 @@ reported as unavailable rather than priced (see `shared/openai-on-bedrock.md`).
 | Bedrock GPT baseline | Price        | Cross-family alternative | Price        | Delta                  |
 | -------------------- | ------------ | ------------------------ | ------------ | ---------------------- |
 | GPT-5.6 Sol          | 4.40 / 22.00 | Claude Opus 5.5 (Geo)    | 4.40 / 22.00 | Same token price       |
-| GPT-5.6 Terra        | 2.20 / 13.20 | Claude Sonnet 5.5          | 2.00 / 10.00 | Sonnet 20% cheaper     |
-| GPT-5.5              | 5.50 / 33.00 | Claude Sonnet 5.5          | 2.00 / 10.00 | Sonnet 68% cheaper     |
+| GPT-5.6 Terra        | 2.20 / 13.20 | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 20% cheaper     |
+| GPT-5.5              | 5.50 / 33.00 | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 68% cheaper     |
 | GPT-5.5              | 5.50 / 33.00 | Claude Opus 5.5 (Geo)    | 4.40 / 22.00 | Opus 30% cheaper       |
-| GPT-5.4              | 2.75 / 16.50 | Claude Sonnet 5.5          | 2.00 / 10.00 | Sonnet 36% cheaper     |
+| GPT-5.4              | 2.75 / 16.50 | Claude Sonnet 5          | 2.00 / 10.00 | Sonnet 36% cheaper     |
 | GPT-5.6 Luna         | 0.22 / 1.32  | Claude Haiku 4.5         | 1.00 / 5.00  | **Luna 75% cheaper**   |
 | GPT-5.6 Luna         | 0.22 / 1.32  | Nova Lite                | 0.06 / 0.24  | Nova Lite 80% cheaper  |
 | GPT-5.6 Luna         | 0.22 / 1.32  | Nova Micro               | 0.035 / 0.14 | Nova Micro 88% cheaper |
@@ -223,17 +215,17 @@ Used for Tier 1 Option B. Source prices are OpenAI's own; Bedrock prices are the
 | o1                          | 15.00 / 60.00   | Nova 2 Pro (Preview) | 1.375 / 11.00 | Bedrock 85% cheaper                      |
 | o3                          | 2.00 / 8.00     | DeepSeek-R1          | 1.35 / 5.40   | Bedrock 32% cheaper                      |
 | o4-mini / o3-mini / o1-mini | 1.10 / 4.40     | GPT-5.6 Luna         | 0.22 / 1.32   | Bedrock 73% cheaper                      |
-| GPT-5.2                     | 1.75 / 14.00    | Claude Sonnet 5.5      | 2.00 / 10.00  | Bedrock 20% cheaper                      |
-| GPT-5.1 / GPT-5             | 1.25 / 10.00    | Claude Sonnet 5.5      | 2.00 / 10.00  | Source 11% cheaper                       |
+| GPT-5.2                     | 1.75 / 14.00    | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 20% cheaper                      |
+| GPT-5.1 / GPT-5             | 1.25 / 10.00    | Claude Sonnet 5      | 2.00 / 10.00  | Source 11% cheaper                       |
 | GPT-5 Mini                  | 0.25 / 2.00     | Nova Lite            | 0.06 / 0.24   | Bedrock 86% cheaper                      |
 | GPT-5 Nano                  | 0.05 / 0.40     | Nova Micro           | 0.035 / 0.14  | Bedrock 58% cheaper                      |
-| GPT-4.1                     | 2.00 / 8.00     | Claude Sonnet 5.5      | 2.00 / 10.00  | Source 14% cheaper                       |
+| GPT-4.1                     | 2.00 / 8.00     | Claude Sonnet 5      | 2.00 / 10.00  | Source 14% cheaper                       |
 | GPT-4.1 Mini                | 0.40 / 1.60     | Nova Lite            | 0.06 / 0.24   | Bedrock 85% cheaper                      |
 | GPT-4.1 Nano                | 0.10 / 0.40     | Nova Micro           | 0.035 / 0.14  | Bedrock 65% cheaper                      |
-| GPT-4o                      | 2.50 / 10.00    | Claude Sonnet 5.5      | 2.00 / 10.00  | Bedrock 7% cheaper; recommended target is GPT-6 Luna (0.11 / 0.55, Tier 1) |
+| GPT-4o                      | 2.50 / 10.00    | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 7% cheaper                       |
 | GPT-4o Mini                 | 0.15 / 0.60     | Nova Lite            | 0.06 / 0.24   | Bedrock 60% cheaper                      |
-| GPT-4 Turbo                 | 10.00 / 30.00   | Claude Sonnet 5.5      | 2.00 / 10.00  | Bedrock 72% cheaper                      |
-| GPT-4                       | 30.00 / 60.00   | Claude Sonnet 5.5      | 2.00 / 10.00  | Bedrock 88% cheaper                      |
+| GPT-4 Turbo                 | 10.00 / 30.00   | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 72% cheaper                      |
+| GPT-4                       | 30.00 / 60.00   | Claude Sonnet 5      | 2.00 / 10.00  | Bedrock 88% cheaper                      |
 | GPT-3.5 Turbo               | 0.50 / 1.50     | GPT-5.6 Luna         | 0.22 / 1.32   | Bedrock 30% cheaper + far better quality |
 
 For the rows where the source is still cheaper (GPT-5.1/5, GPT-4.1), note that these models are on a
@@ -355,7 +347,7 @@ Bedrock-native path remains the most feature-complete.
 ### High-spend tiering
 
 Tier by task complexity: simple (60%) → Nova Micro / GPT-5.6 Luna, moderate (30%) → Nova Pro / GPT-5.6 Terra,
-complex (10%) → Claude Sonnet 5.5 / GPT-5.6 Sol. Mixing families across tiers is fine, but note that mantle and
+complex (10%) → Claude Sonnet 5 / GPT-5.6 Sol. Mixing families across tiers is fine, but note that mantle and
 `bedrock-runtime` are different surfaces — a tiered router spanning both needs two client paths.
 
 ---

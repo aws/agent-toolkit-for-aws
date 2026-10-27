@@ -149,7 +149,7 @@ match wins:**
    Provider Pricing"), matched to the workload's source: **OpenAI / Azure OpenAI** → the
    "OpenAI / Azure OpenAI" table (Azure OpenAI serves the same GPT models and reads those same
    OpenAI rows — there is no separate Azure-OpenAI table); **Anthropic-direct** → the "Anthropic
-   (Standard Tier, 1P API)" table (Claude Haiku 4.5 / Sonnet 4.5 / Sonnet 5.5). Apply the 60/40
+   (Standard Tier, 1P API)" table (Claude Haiku 4.5 / Sonnet 4.5 / Sonnet 5). Apply the 60/40
    input/output ratio if the actual ratio is unknown. **`shared/pricing-cache.md` still has no
    source-side listed-price row for OpenRouter** — level 3 does not apply to an OpenRouter
    workload with no usage profile and no `current_costs`; fall straight through to level 4

@@ -13,7 +13,7 @@
 
 <!-- freshness-contract: enforced by plugins/aws-startup-advisor/tools/model-staleness.py -->
 
-**Last updated:** 2026-10-25
+**Last updated:** 2026-09-21
 
 **Staleness window:** 45 days
 
@@ -80,19 +80,6 @@ lists launch **September 8, 2026**, lifecycle **Active**, and no scheduled EOL d
 **no sooner than September 8, 2027**, with a Legacy period of at least six months. The earliest
 possible EOL is not an announced retirement date. Existing GPT-5.x entries are not superseded.
 See `openai-on-bedrock.md` for access paths, regions, and pricing.
-
-## Verified Active Models (checked October 25, 2026)
-
-BMA reads this table at run time. A Bedrock model ID that is not listed here has an **unverified** retirement status: it must not be priced and must not be reported as PASS. Add a row only after checking the model card or the lifecycle page, and cite the source.
-
-| Model                     | Model ID                                    | Lifecycle | Source                                                                                                                                                 | Checked    |
-| ------------------------- | ------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| Claude Sonnet 5.5         | `anthropic.claude-sonnet-5-5`               | Active    | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html)                                         | 2026-10-25 |
-| GPT-5.6 Terra             | `openai.gpt-5.6-terra`                      | Active    | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.html)                                                 | 2026-10-25 |
-| GPT-6 Luna                | `openai.gpt-6-luna`                         | Active    | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html)                                                   | 2026-10-25 |
-| Nova Pro                  | `amazon.nova-pro-v1:0`                      | Active    | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-pro.html)                                                    | 2026-10-25 |
-| Claude Haiku 4.5          | `anthropic.claude-haiku-4-5-20251001-v1:0`  | Active    | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html)                                         | 2026-10-25 |
-| Claude Haiku 4.5 (mantle) | `anthropic.claude-haiku-4-5`                | Active    | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html)                                         | 2026-10-25 |
 
 ## Legacy / EOL Models (as of October 5, 2026)
 

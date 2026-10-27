@@ -4,7 +4,7 @@
 from each model's own AWS Bedrock model card and OpenAI's own API pricing page, fetched 2026-10-10; see
 `shared/openai-on-bedrock.md` for full citations. Prior refresh, 2026-10-05: re-verified via the AWS Pricing MCP
 server, aws.amazon.com/bedrock/pricing, and the Bedrock model cards' Geo/Global inference ID tables — Claude
-Sonnet 5.5 $2/$10 (Global) / $2.20/$11 (Geo; US East (Ohio) Bedrock table, verified 2026-10-25; cache read $0.10 / $0.11, reduced 50% from Oct 7, 2026), Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50
+Sonnet 5 $2/$10 (Global/base) / $2.20/$11 (Geo, `us.`-prefixed), Opus 4.8 $5/$25 (Global/base) / $5.50/$27.50
 (Geo), Sonnet 4.6 $3/$15 (Global/base) / $3.30/$16.50 (Geo), Haiku 4.5 $1/$5 (Global/base) / $1.10/$5.50 (Geo),
 Opus 4.6 $5/$25, Opus 4.1 legacy $15/$75, Claude Fable 5 $10/$50 (Global/base), Fable 5.1 $10/$50 (Global — a
 real, commercially supported option from us-east-1) / $11/$55 (Geo, `us.`-prefixed, for US-only residency), Llama
@@ -423,16 +423,6 @@ Prices per 1M tokens. Source: [ai.google.dev/gemini-api/docs/pricing](https://ai
 > **Gemini 3.1 Pro breakpoint pricing:** $4.00/$18.00 per 1M for prompts >200k tokens (vs $2.00/$12.00 for ≤200k). Table above uses ≤200k rates.
 > **Gemini 3.5 Flash** is now GA and the current flagship Flash model, replacing Gemini 2.5 Flash as the primary Flash-tier recommendation. At $1.50/$9.00 it is 5x more expensive than Gemini 2.5 Flash — the Bedrock cost savings case is significantly stronger against 3.5 Flash.
 
-#### Gemini 3.1 Flash Image (Nano Banana 2, `gemini-3.1-flash-image`)
-
-Source: [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing), standard and batch rows for the image model; figures supplied for verification 2026-10-25. Google's pricing page lists image output per 1M tokens and per image.
-
-| Model                       | Image output $/1M tokens | $/1K image (standard) | $/1K image (batch) |
-| --------------------------- | ------------------------ | --------------------- | ------------------ |
-| Gemini 3.1 Flash Image      | 30.00                    | 0.0336                | 0.0168             |
-
-> **Mapping caveat:** the association of `gemini-3.1-flash-image` with the first image block on Google's pricing page is inferred, not labeled on the page. Re-check it against Google's pricing page before quoting this row.
-
 ### OpenAI (Standard Tier)
 
 Prices per 1M tokens. GPT-5.5 and GPT-5.5 Pro use the same breakpoint pricing structure as GPT-5.4 at 272K input tokens. GPT-5.4 and GPT-5.4 Pro use **breakpoint pricing** at 272K input tokens: rates below are for <272K context; above 272K, input is 2x and output is 1.5x.
@@ -489,7 +479,6 @@ Prices per 1M tokens. Source: [claude.com/pricing](https://claude.com/pricing), 
 | ------------------ | ---------- | ----------- | ------- | -------- |
 | Claude Haiku 4.5   | 1.00       | 5.00        | 200K    | fast     |
 | Claude Sonnet 4.5  | 3.00       | 15.00       | 200K    | flagship |
-| Claude Sonnet 5.5  | 2.00       | 10.00       | —       | flagship |
 | Claude Sonnet 5    | 2.00       | 10.00       | 1M      | flagship |
 
 > These first-party rates match Bedrock's Global/base rate for the same models, and a Bedrock

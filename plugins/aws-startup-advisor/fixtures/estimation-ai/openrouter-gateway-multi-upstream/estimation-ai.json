@@ -16,7 +16,7 @@
   },
   "model_comparison": [
     {
-      "model": "anthropic.claude-sonnet-5-5",
+      "model": "anthropic.claude-sonnet-4-5-v1:0",
       "monthly_cost": 13200.0,
       "vs_current": "favorable",
       "quality": "high",
@@ -24,7 +24,7 @@
       "missing_capabilities": []
     },
     {
-      "model": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "model": "anthropic.claude-haiku-4-5-v1:0",
       "monthly_cost": 1100.0,
       "vs_current": "favorable",
       "quality": "high",
@@ -41,13 +41,13 @@
     }
   ],
   "recommended_model": {
-    "model": "anthropic.claude-sonnet-5-5",
+    "model": "anthropic.claude-sonnet-4-5-v1:0",
     "monthly_cost": 13200.0,
     "breakdown": {"input": 9000.0, "output": 4200.0, "embeddings": 0.0},
     "rationale": "Primary chat tier routed through OpenRouter to Claude Sonnet; same-family Bedrock target is favorable vs. router pricing."
   },
   "backup_model": {
-    "model": "anthropic.claude-haiku-4-5-20251001-v1:0",
+    "model": "anthropic.claude-haiku-4-5-v1:0",
     "monthly_cost": 1100.0,
     "rationale": "Low-cost tier backup within the same model family."
   },

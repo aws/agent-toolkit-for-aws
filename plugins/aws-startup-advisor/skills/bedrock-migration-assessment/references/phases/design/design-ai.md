@@ -272,7 +272,7 @@ If `ai_token_volume` is `"high"`, generate a `tiered_strategy`:
 | ---- | ------- | ---------------------------- | ---------------------------------------------------- |
 | 1    | 60%     | Nova Micro or Llama 4 Scout  | Classification, extraction, short answers, routing   |
 | 2    | 30%     | Llama 4 Maverick or Nova Pro | Summarization, moderate generation, Q&A with context |
-| 3    | 10%     | Claude Sonnet 5.5              | Reasoning, long-form, agentic tasks, tool use        |
+| 3    | 10%     | Claude Sonnet 5              | Reasoning, long-form, agentic tasks, tool use        |
 
 Set `tiered_strategy: null` for low/medium volume.
 

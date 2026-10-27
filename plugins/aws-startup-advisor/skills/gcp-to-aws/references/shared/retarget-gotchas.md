@@ -65,7 +65,7 @@ These are real issues startups hit when keeping their existing framework and swa
 
 **Problem:** CrewAI's `Process.hierarchical` requires the manager model to reliably delegate tasks. Some Bedrock models (especially smaller ones like Nova Lite, Llama variants) are less reliable at hierarchical delegation than GPT-4o or Claude Sonnet.
 
-**Fix:** For hierarchical processes, use Claude Sonnet 5.5 as the manager model (best tool-use reliability on Bedrock). Specialist agents can use cheaper models. Don't use Nova Micro or Llama Scout as the manager in hierarchical crews.
+**Fix:** For hierarchical processes, use Claude Sonnet 5 as the manager model (best tool-use reliability on Bedrock). Specialist agents can use cheaper models. Don't use Nova Micro or Llama Scout as the manager in hierarchical crews.
 
 ### Memory and context window
 
@@ -87,7 +87,7 @@ These are real issues startups hit when keeping their existing framework and swa
 
 **Problem:** AutoGen's `GroupChat` uses the model to select the next speaker. This is a meta-task that requires the model to understand the conversation flow and pick the right agent. Claude handles this well; smaller Bedrock models may select speakers inconsistently.
 
-**Fix:** Use Claude Sonnet 5.5 for the GroupChat manager. If using a cheaper model, consider switching to `round_robin` or custom `speaker_selection_method` instead of model-based selection.
+**Fix:** Use Claude Sonnet 5 for the GroupChat manager. If using a cheaper model, consider switching to `round_robin` or custom `speaker_selection_method` instead of model-based selection.
 
 ### Code execution sandbox
 

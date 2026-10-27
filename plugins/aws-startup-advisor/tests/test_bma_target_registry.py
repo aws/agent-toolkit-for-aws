@@ -119,6 +119,7 @@ def test_prefixed_target_is_active_and_priced_through_the_base_row() -> None:
 def test_registry_reads_pricing_cache_status_not_a_hand_list() -> None:
     active = runtime.registered_active_models(BMA)
     assert EXPECTED_ACTIVE <= active
+    assert "anthropic.claude-sonnet-5-5" not in active  # no row in the cache: unverified, never priced
     registry = runtime.pricing_registry(BMA)
     # Every cache row whose Status is not active (excluded / legacy / EOL) is inactive, prefix-normalized.
     cache_inactive = {base for base, row in registry.items() if row["status"] == "inactive"}

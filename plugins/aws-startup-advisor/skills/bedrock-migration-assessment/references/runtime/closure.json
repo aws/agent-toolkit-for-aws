@@ -80,7 +80,7 @@
         "references/vendored/ai/ai-model-lifecycle.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "1a5afdd9e46e1eedcf2274974595cf313995b71b610504c45085460bb75e5b91",
+      "sha256": "be23137c374c487d3c711dcdc4996835d0c11837158281e4ba1ce69d8e6042ae",
       "source_path": "skills/gcp-to-aws/references/design-refs/ai-gemini-to-bedrock.md",
       "type": "instruction"
     },
@@ -107,7 +107,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "6941231a4a801f158da08445277481a14328c550ce514fa00f04b2c66f1a11a0",
+      "sha256": "8e8afba262a11340dcbf959599b152aacdd0997628614f3b0e0c9f8880d430df",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai-only.md",
       "type": "instruction"
     },
@@ -120,7 +120,7 @@
       "runtime_references": [
         "references/shared/openai-on-bedrock.md"
       ],
-      "sha256": "5055e3ae80dfef376510df819958b9ce82fd8861364cee1331d5c138105e7197",
+      "sha256": "0974b6c610bf7f29861d74df8c6db9541d54ade4ce59125cc0a28ab6cfd306c2",
       "source_path": "skills/gcp-to-aws/references/phases/clarify/clarify-ai.md",
       "type": "instruction"
     },
@@ -146,7 +146,7 @@
         "references/vendored/ai/design-ref-agentic-to-agentcore.md",
         "references/vendored/ai/design-ref-harness.md"
       ],
-      "sha256": "6c961a30351b466cb093ac03436e93c09c62f657d0eeaae18c4e218cc8a595e4",
+      "sha256": "119c9ed6a09b907defea2346f3a5651eed86caaefd85f704abd5cedf9c24b5a8",
       "source_path": "skills/gcp-to-aws/references/phases/design/design-ai.md",
       "type": "instruction"
     },
@@ -209,7 +209,7 @@
         "references/shared/pricing-cache.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "5cc5ba1a470976cb9c6014a4e5b3856e9ac0ee5f01ae2a8edb7af999833ca033",
+      "sha256": "856c36f515776f7bc57b9ad9f42c4276195645f30d86f6b8853cec43a44cf4cf",
       "source_path": "skills/gcp-to-aws/references/phases/discover/discover-preview.md",
       "type": "instruction"
     },
@@ -224,7 +224,7 @@
         "references/vendored/ai/bedrock-pricing-cache.md",
         "scripts/bma-runtime.py"
       ],
-      "sha256": "990f0fc9c318ff2a44a4654df6017b294fcebc989cc3c81452e9df649aae3c64",
+      "sha256": "1656d9bb296db45684a7c6daf27ce4a046a788a78047e6f894ed190a9664738c",
       "source_path": "skills/gcp-to-aws/references/phases/estimate/estimate-ai.md",
       "type": "instruction"
     },
@@ -296,7 +296,7 @@
       "runtime_references": [
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "55c41fa086d494b86ea512a725fd71faa8033abb4816d23171d603209a279e1f",
+      "sha256": "e7d79cd26fe8a3a9132215b0235f37ef3b8803d2b8b0785c77d7aef6f16368d4",
       "source_path": "skills/gcp-to-aws/references/shared/pricing-cache.md",
       "type": "instruction"
     },
@@ -321,7 +321,7 @@
       "origin": "selected-base-source",
       "parity": "adapted",
       "runtime_references": [],
-      "sha256": "616e3fa89c543f9298e6361fe4f3590ee36d095c96b2bdbed554025fac0d4c7a",
+      "sha256": "9f2c5505608796e8c06f71f208191778aeb1cc865096a1c3000bd456e8618e9b",
       "source_path": "skills/gcp-to-aws/references/shared/retarget-gotchas.md",
       "type": "instruction"
     },
@@ -405,7 +405,7 @@
         "references/vendored/ai/ai-model-lifecycle.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "8811f08cab0c723c2c09341e07a63080457ae89814f028eb16d1a76f3c5d5878",
+      "sha256": "e869d7b0eea23b7b920482e36124c86ec1d13c2fb85d430b025b42da0f063257",
       "source_path": "skills/shared/ai/ai-anthropic-to-bedrock.md",
       "type": "instruction"
     },
@@ -420,7 +420,7 @@
         "references/vendored/ai/ai-model-lifecycle.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "bd9c989633c06dd79d72ebbccc0a21a47e587ee3a4cf8c4eb908928b38934e83",
+      "sha256": "a04968fdf85846647cf1cae2de33ec7f4ded4c70710f9570158c967722e05e6c",
       "source_path": "skills/shared/ai/ai-gemini-to-bedrock.md",
       "type": "instruction"
     },
@@ -450,7 +450,7 @@
       "runtime_references": [
         "references/vendored/ai/ai-model-lifecycle.md"
       ],
-      "sha256": "5be1456ae7c5e8bf1dcfcad88094a5ae2ebff4edc4e6fd3a658bce355ebe4d24",
+      "sha256": "2e13231c6c61004493a540f0bfc9e058cf0deb1a03fc64d17d09dec060060bfc",
       "source_path": "skills/shared/ai/ai-model-lifecycle.md",
       "type": "instruction"
     },
@@ -466,7 +466,7 @@
         "references/vendored/ai/ai-openai-to-bedrock.md",
         "references/vendored/ai/bedrock-pricing-cache.md"
       ],
-      "sha256": "ab98e67f92fa1199fb8c64287ad1841d12c96f8d69abfad117dbd17b0302c4bf",
+      "sha256": "938613fe83768efb84c6b2b383f8e238655aa2cf72e7cd9adc6478ddd010c4b7",
       "source_path": "skills/shared/ai/ai-openai-to-bedrock.md",
       "type": "instruction"
     },
@@ -498,7 +498,7 @@
       "runtime_references": [
         "references/vendored/ai/ai-openai-to-bedrock.md"
       ],
-      "sha256": "50c4df160f9caa5714cacfa625e6a34d7cfdf62965403a0830d9d33744b5a380",
+      "sha256": "9698ef50feaa1ebce158af6bf9b52bc5aacf7c9e03e15fb751a209ae23001957",
       "source_path": "skills/shared/ai/bedrock-pricing-cache.md",
       "type": "instruction"
     },
@@ -892,5 +892,5 @@
   ],
   "schema_version": 1,
   "selected_base": "9ab50636d12510dc351ff02fd7966efa4dba4341",
-  "self_hash": "5c15ab677b43c4b9e1ed7b818f77e57923cd18bf0a4f5601d5425bdd470d514d"
+  "self_hash": "88b9a01a5588e6d2ecb8b5507d03d11adc85a693fd89e25986a339941b66b876"
 }
