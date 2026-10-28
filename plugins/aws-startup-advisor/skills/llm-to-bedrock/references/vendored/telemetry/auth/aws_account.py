@@ -286,7 +286,14 @@ class AwsAccountReporter:
             identity = AccountIdentity(account_id)
         except AccountReportingError:
             raise
-        except Exception:
+        except Exception as error:
+            response = getattr(error, "response", None)
+            details = response.get("Error") if isinstance(response, dict) else None
+            code = details.get("Code") if isinstance(details, dict) else None
+            if code in ("ExpiredToken", "ExpiredTokenException"):
+                # Environment/file credentials may omit expiry metadata, so
+                # their expired session is discovered only by the STS call.
+                raise AccountReportingError("SIGN_IN_REQUIRED") from None
             raise AccountReportingError("IDENTITY_UNAVAILABLE") from None
         finally:
             if client is not None:

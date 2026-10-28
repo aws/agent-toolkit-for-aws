@@ -127,6 +127,9 @@ Every error result contains only `status` and `reasonCode`. Unknown error
 details are normalized to `INTERNAL_ERROR`. These are local helper outcomes;
 they are not HTTP results from the reporting API. The adapter continues
 migration work on all of them and does not change the event to anonymous mode.
+An STS expired-token response returns `SIGN_IN_REQUIRED` even when the local
+credential source did not provide expiry metadata. STS service and network
+failures remain `ERROR`.
 
 ## Proof contract
 

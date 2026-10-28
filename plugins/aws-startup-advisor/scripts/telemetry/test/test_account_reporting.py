@@ -247,23 +247,57 @@ def test_setup_rejects_an_arn_from_another_account(sdk_session, monkeypatch):
     assert reporter._setup_identity is None
 
 
-def test_setup_failure_exposes_only_bounded_error_code(sdk_session, monkeypatch):
+@pytest.mark.parametrize(
+    "service_code,expected_code,expected_status",
+    [
+        ("ExpiredToken", "SIGN_IN_REQUIRED", "SIGN_IN_REQUIRED"),
+        ("ExpiredTokenException", "SIGN_IN_REQUIRED", "SIGN_IN_REQUIRED"),
+        ("AccessDenied", "IDENTITY_UNAVAILABLE", "ERROR"),
+        ("InternalFailure", "IDENTITY_UNAVAILABLE", "ERROR"),
+    ],
+)
+def test_setup_failure_exposes_only_bounded_error_code(
+    sdk_session, monkeypatch, service_code, expected_code, expected_status
+):
     client = synthetic_sts_client(sdk_session)
     monkeypatch.setattr(sdk_session, "create_client", Mock(return_value=client))
 
     with Stubber(client) as stubber:
         stubber.add_client_error(
             "get_caller_identity",
-            service_error_code="ExpiredToken",
+            service_error_code=service_code,
             service_message=SECRET_KEY + SESSION_TOKEN,
         )
         with pytest.raises(reporting.AccountReportingError) as error:
             reporter_for(sdk_session).setup()
 
-    assert str(error.value) == "IDENTITY_UNAVAILABLE"
+    assert str(error.value) == expected_code
+    assert error.value.as_result() == {
+        "status": expected_status, "reasonCode": expected_code
+    }
     assert SECRET_KEY not in repr(error.value)
     assert SESSION_TOKEN not in repr(error.value)
     assert error.value.__suppress_context__
+
+
+def test_setup_network_failure_is_not_misreported_as_expired_login(
+    sdk_session, monkeypatch
+):
+    client = synthetic_sts_client(sdk_session)
+    monkeypatch.setattr(sdk_session, "create_client", Mock(return_value=client))
+    monkeypatch.setattr(
+        client, "get_caller_identity", Mock(side_effect=TimeoutError(SESSION_TOKEN))
+    )
+    reporter = reporter_for(sdk_session)
+
+    with pytest.raises(reporting.AccountReportingError) as error:
+        reporter.setup()
+
+    assert error.value.as_result() == {
+        "status": "ERROR", "reasonCode": "IDENTITY_UNAVAILABLE"
+    }
+    assert SESSION_TOKEN not in repr(error.value)
+    assert reporter._setup_identity is None
 
 
 def test_debug_sdk_request_and_response_logs_do_not_expose_secrets(
