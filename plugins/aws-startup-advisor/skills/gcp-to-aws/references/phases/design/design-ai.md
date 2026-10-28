@@ -266,7 +266,7 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture` alongside `honest_assessment`.
 
-Also apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md` before writing that field. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. Batch rows are excluded. Profiles without peak fields keep this table.
+Also apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md` before writing that field. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Batch rows, and any row whose `service_tier` is `unknown`, are excluded. A publisher or usage-API profile supplies that peak when it has one. Profiles without peak fields keep this table. Generate must not keep the earlier monthly decision.
 
 ---
 

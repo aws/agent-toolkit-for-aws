@@ -65,8 +65,8 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
    `run_id` is minted once here: run `uuidgen` (or an equivalent random UUID source) and write its output verbatim; never copy a value from an example or a previous run. It is never changed or reused across runs; unlike `migration_id` it carries no timestamp, so it uniquely identifies this run for telemetry and for the plugin-to-web handoff. `owning_skill` is always `GCP_TO_AWS`. If another skill invoked this run (llm-to-bedrock does, for Assess), also set `initiated_by` to that skill's identifier, e.g. `"initiated_by": "LLM_TO_BEDROCK"`.
 
 5. Confirm both `.migration/.gitignore` and `.phase-status.json` exist before proceeding to Step 1.
-6. Reconcile the initial state in `cli` reporting mode per
-   `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
+6. Reconcile the initial state with the explicit project root per
+   `references/vendored/telemetry/PROTOCOL.md` in both reporting modes.
 
 ## Step 1: Scan for Input Sources and Run Sub-Discoveries
 
@@ -276,7 +276,7 @@ After all loaded sub-discoveries complete, check what artifacts were produced in
      - If its Step 4 exit gate applied (overall AI confidence **below** 70%) **and** no `ai-workload-profile.json` exists -> **allow completion** (app-code route may produce no AI profile).
      - If Step 4 exit applied with confidence below 70% **but** `ai-workload-profile.json` exists with `metadata.profile_source` = `"iac_vertex"` -> **allow completion** (IaC-inferred profile retained).
      - If execution continued to Steps 5–8 (confidence **≥** 70%) -> **require** `ai-workload-profile.json`.
-   - If `discover-live.md` ran AND capture happened (`$MIGRATION_DIR/live-capture/manifest.json` exists) -> require `gcp-resource-inventory.json` and `gcp-resource-clusters.json`, with `live_metadata` present in the inventory. (If the user declined consent or gcloud was unavailable, the sub-file exited cleanly — no artifact required.)
+   - If `discover-live.md` ran AND capture happened (`$MIGRATION_DIR/live-capture/manifest.json` exists) -> require `gcp-resource-inventory.json` and `gcp-resource-clusters.json`, with `live_metadata` present in the inventory. When `vertex-publisher-tokens.json` has at least one point, also require `ai-workload-profile.json` with `metadata.profile_source` of `"live_monitoring"` or `"merged"` and `metadata.sources_analyzed.live_monitoring` = `true`. (If the user declined consent or gcloud was unavailable, the sub-file exited cleanly — no artifact required.)
    - If full `discover-billing.md` ran OR lightweight billing extraction ran -> require `billing-profile.json`
    - If `discover-openai-api.md` ran AND capture happened (`$MIGRATION_DIR/openai-capture/manifest.json` exists) -> require `openai-usage-profile.json`; when `ai-workload-profile.json` also exists, require `metadata.sources_analyzed.openai_usage_api` = `true` in it. (If the user declined consent or had no Admin key, the sub-file exited cleanly — no artifact required.)
    - If `discover-openrouter-api.md` ran AND capture happened (`$MIGRATION_DIR/openrouter-capture/manifest.json` exists) -> check the manifest's `/activity` entry: `status: "ok"` requires `openrouter-usage-profile.json` (and, when `ai-workload-profile.json` also exists, requires `metadata.sources_analyzed.openrouter_usage_api` = `true` in it); `status: "skipped"` requires NO artifact — the user deliberately abandoned this source with no per-model signal to build a profile from, which is a valid terminal outcome, not a failure; `status: "failed"` means the run did not reach a terminal state for this source and must not have completed Discover at all (the sub-file's own resume rule routes back to its retry path before Discover can finish). (If the user declined consent or had no provisioning key at Step 0/1, the sub-file exited cleanly before ever writing a manifest — no artifact required.)
