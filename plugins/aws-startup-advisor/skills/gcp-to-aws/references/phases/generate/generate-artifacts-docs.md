@@ -113,7 +113,7 @@ If `cpu_architecture` is `x86` (user opted out) or no compute targets arm64, ski
 
 > **Specialist engagement required (BigQuery):** This plugin **does not** choose an AWS analytics or warehouse target (no Athena/Redshift/Glue recommendation). Engage your **AWS account team** and/or a **data analytics migration partner** before data warehouse, lake, or SQL analytics design. BigQuery work involves query patterns, data movement, ETL/ELT, and BI integration that must be assessed by specialists.
 
-End that callout with one next-step sentence: run `bq-assess`, an open-source AWS sample (<https://github.com/aws-samples/sample-bigquery-to-aws-migration>), which adds per-table effort and SQL-rewrite scores, a query-engine recommendation, and a cost comparison for the BigQuery side. If a `bq-assess` report already exists under the working directory (`reports/assessment-landing-*.json` by default), link its landing page (`assessment-landing-*.html`, next to the JSON) instead. Never block or delay this document on it.
+Then add the bq-assess block per `references/shared/bq-assess-next-step.md` → Migration guide block. Never block or delay this document on it.
 
 #### IF AI track ran (generation-ai.json exists)
 
