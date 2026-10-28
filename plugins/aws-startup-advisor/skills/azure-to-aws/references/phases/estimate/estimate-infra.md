@@ -385,9 +385,9 @@ that in the report rather than leaving the reader to work it out.
 A distinct failure from a missing rate, and worse, because the arithmetic looks
 complete. **`rds_postgresql.instances` rates are Multi-AZ** — that section's
 `multi_az_handling` is `baked_in` and its `_note` says the rate already includes
-it. There is no single-AZ RDS table anywhere. So a **single-AZ** design priced from
-that table is roughly **2× too high**, on what is usually the largest line in the
-estate.
+it. This skill does not yet read the shared file's `instances_single_az` rows. So a
+**single-AZ** design priced from that table is roughly **2× too high**, on what is
+usually the largest line in the estate.
 
 Do not silently halve it: a halved Multi-AZ rate is a fabricated rate wearing
 arithmetic. Do not exclude the line either — it is the biggest number the customer
@@ -400,7 +400,7 @@ needs. Price it from the table that exists, and label the direction of the error
     "rate_describes": "Multi-AZ (rds_postgresql.multi_az_handling is baked_in)",
     "direction": "overstates",
     "magnitude": "roughly 2x on this line",
-    "why_not_corrected": "No single-AZ RDS rates exist here or in the gcp-to-aws cache, and halving a Multi-AZ rate would invent one."
+    "why_not_corrected": "azure-to-aws prices RDS from the Multi-AZ instances table only, and halving a Multi-AZ rate would invent one."
   },
   "is_ceiling": true
 }

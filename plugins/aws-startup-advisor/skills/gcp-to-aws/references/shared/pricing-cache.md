@@ -172,6 +172,23 @@ Min ACU = 0.5, scales to 256 ACU.
 | ------------ | ----- |
 | Per GB-month | $0.23 |
 
+### RDS PostgreSQL (On-Demand, Single-AZ)
+
+Use this table when the design's `multi_az` is false, and the Multi-AZ table above when it is true. Never halve or double either table.
+
+| Instance       | $/hour |
+| -------------- | ------ |
+| db.t4g.micro   | 0.016  |
+| db.t4g.small   | 0.032  |
+| db.t4g.medium  | 0.065  |
+| db.t4g.large   | 0.129  |
+| db.t4g.xlarge  | 0.258  |
+| db.t4g.2xlarge | 0.517  |
+
+| Storage      | Rate   |
+| ------------ | ------ |
+| Per GB-month | $0.115 |
+
 ### RDS MySQL (On-Demand, Single-AZ)
 
 For Multi-AZ, approximately double these rates.
