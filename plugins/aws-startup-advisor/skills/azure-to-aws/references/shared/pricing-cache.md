@@ -93,9 +93,9 @@ the resulting rates).
 
 *GPT-6 rows: 1.05M is the model's max window, not this rate's valid range. Requests >272,000 input tokens reprice input/cache 2x and output 1.5x — see the breakpoint note above and pricing-cache.md's long-context tables.
 
-> **GPT-6.1 Terra:** source-provider rates and limits remain unverified. Its Bedrock launch and rates
-> do not establish Azure OpenAI availability or source pricing. Use measured/stated source spend or
-> `pricing-fallback.md`; see `shared/openai-on-bedrock.md` for verified Bedrock facts.
+> **GPT-6.1 Terra:** confirm availability, token limits, and pricing with the source provider.
+> Use measured/stated source spend or `pricing-fallback.md` when verified source rates are unavailable.
+> See `shared/openai-on-bedrock.md` for Bedrock availability and prices.
 >
 > **Azure OpenAI note.** Azure lists the same models under Azure-specific deployment names
 > (e.g. `gpt-4o`, `gpt-4.1`) and bills per 1M tokens at rates that track the table above. Azure

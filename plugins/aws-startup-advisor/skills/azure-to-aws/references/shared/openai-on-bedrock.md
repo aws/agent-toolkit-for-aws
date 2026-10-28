@@ -1,6 +1,7 @@
 # OpenAI Models on Amazon Bedrock
 
-**Last verified:** 2026-10-10; GPT-6.1 Terra added and verified 2026-10-27 (other models not reverified).
+**Last verified:** 2026-10-10
+**GPT-6.1 Terra verified:** 2026-10-27
 **Sources:** [OpenAI model cards](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-openai.html) (per-model
 cards linked below), [GPT-5.6 launch post](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/),
 [GPT-5.6 GA announcement](https://aws.amazon.com/about-aws/whats-new/2026/07/openai-gpt-sol-terra/),
@@ -57,26 +58,25 @@ is on this list have no same-model landing target — see `ai-openai-to-bedrock.
 
 ## Access Paths — Split by Family
 
-### GPT-6.1 Terra (verified 2026-10-27)
+**GPT-6.1 Terra:**
 
-The [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)
-confirms a **1,050,000-token context window**, **128,000 maximum output tokens**, text/image input, and text
-output. The model launched on **October 26, 2026**. Use its own API and region support rather than inheriting
-GPT-5.6 Terra's capabilities.
+GPT-6.1 Terra supports a **1,050,000-token context window**, **128,000 maximum output tokens**, text/image
+input, and text output. It launched on **October 26, 2026**.
+Source: [AWS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html).
 
 | Endpoint | Model ID | Reach | Supported APIs |
 | -------- | -------- | ----- | -------------- |
 | `bedrock-mantle` | `openai.gpt-6.1-terra` | In-region, **us-east-1 only** | Responses, Chat Completions |
 | `bedrock-runtime` | `us.openai.gpt-6.1-terra` / `global.openai.gpt-6.1-terra` | US Geo / Global CRIS; no in-region form | Responses, Chat Completions, Converse, Invoke |
 
-Both endpoints use `/openai/v1` for OpenAI-compatible APIs. Verify the selected runtime source region and
-inference profile against the model card; mantle availability does not describe runtime CRIS reach.
+Both endpoints use `/openai/v1` for OpenAI-compatible APIs. For runtime, select a supported source region
+and inference profile from the model card's regional availability tables.
 AWS GovCloud is not listed as supported for this model. Only the **Standard** service tier is supported.
 Runtime Guardrails and application inference profiles are **Converse-only**. Converse accepts text/image user
 content, but rejects document blocks and images inside tool results; use Responses `input_file` for documents.
-API support does not establish parity with an application's hosted tools; validate the required tool flow.
+Test the application's tool calls on the selected API before migration.
 
-Bedrock Standard prices in USD per 1M tokens, read from this model's card:
+Bedrock Standard prices (USD per 1M tokens):
 
 | Context | In-Region / US Geo (input · cache-write · cache-read · output) | Global CRIS (input · cache-write · cache-read · output) |
 | ------- | ----------------------------------------------------------- | ----------------------------------------------------- |
@@ -84,8 +84,8 @@ Bedrock Standard prices in USD per 1M tokens, read from this model's card:
 | >272K input tokens | 2.20 · 2.75 · 0.11 · 8.25 | 2.00 · 2.50 · 0.10 · 7.50 |
 
 Cache-write prices use a 30-minute retention window. Above 272K input tokens, the full request uses the
-long-context rates. These are Bedrock rates, not verified OpenAI/Azure source-provider prices; follow the
-pricing fallback when the estimator's canonical cache lacks this model.
+long-context rates. For OpenAI/Azure source costs, use measured spend or verified source-provider rates.
+If the estimator's canonical cache lacks this model, follow its pricing fallback.
 
 **GPT-6 Astra has two endpoints; regions reverified 2026-09-30:**
 
