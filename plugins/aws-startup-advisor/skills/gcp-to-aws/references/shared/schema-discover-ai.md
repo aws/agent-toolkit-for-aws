@@ -18,14 +18,15 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
   "metadata": {
     "report_date": "2026-02-26",
     "project_directory": "/path/to/project",
-    "profile_source": "application_code|iac_vertex|merged",
+    "profile_source": "application_code|iac_vertex|live_monitoring|merged",
     "sources_analyzed": {
       "terraform": true,
       "application_code": true,
       "billing_data": false,
       "openai_usage_api": false,
       "openrouter_usage_api": false,
-      "anthropic_usage_api": false
+      "anthropic_usage_api": false,
+      "live_monitoring": false
     }
   },
 
@@ -147,7 +148,7 @@ Focused profile of AI/ML workloads including models, capabilities, integration p
 
 **Profile source and IaC inference:**
 
-- `metadata.profile_source` — `"application_code"` (full profile from code path), `"iac_vertex"` (minimal profile from Terraform Vertex-strong discovery only), or `"merged"` (code + pre-existing IaC profile combined in `discover-app-code.md`).
+- `metadata.profile_source` — `"application_code"` (full profile from code path), `"iac_vertex"` (minimal profile from Terraform Vertex-strong discovery only), `"live_monitoring"` (publisher time series only, from `discover-live.md` rows 16a–16c — not an endpoint and not Terraform), or `"merged"` (code, IaC, or monitoring combined). Do not label a monitoring-only profile `iac_vertex`.
 - `summary.inferred_from_iac` — `true` when the profile was produced or substantially completed without application code analysis (IaC-only or unknown integration until Clarify). `false` when code analysis drove model/SDK detection.
 
 **CRITICAL Field Names** (use EXACTLY these keys):

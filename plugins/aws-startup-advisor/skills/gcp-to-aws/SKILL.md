@@ -216,10 +216,9 @@ Use **read-merge-write** updates for `.phase-status.json`:
 3. Keep prior completed phases unchanged.
 4. Set `current_phase` to the next deterministic phase — or `complete` after Generate, **or** after Estimate when the user chose Decision-gate **A** (`run_mode: "decide"`; Generate stays pending).
 5. Write the full file in the same turn as your final phase work message.
-6. Reconcile the saved state in `cli` reporting mode per
-   `references/vendored/telemetry/PROTOCOL.md` before advancing or returning,
-   including sidebar updates and decision-only or executed completion. In `hook`
-   mode, leave reporting to the host hooks.
+6. Reconcile the saved state with the explicit project root per
+   `references/vendored/telemetry/PROTOCOL.md` in both reporting modes before
+   advancing or returning, including sidebar updates and each completion.
 
 Example — after completing the Clarify phase, write `$MIGRATION_DIR/.phase-status.json` with:
 
@@ -395,8 +394,8 @@ When invoked, the agent **MUST follow this exact sequence**:
 1. **Load phase status**: Read `.phase-status.json` from `.migration/*/`.
    - If missing: Initialize for Phase 1 (Discover)
    - If exists: Determine current phase using deterministic rules in **State Machine**.
-     After selecting and validating the run, reconcile in `cli` reporting mode
-     per `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
+     After selecting and validating the run, reconcile with the explicit project
+     root per `references/vendored/telemetry/PROTOCOL.md` in both reporting modes.
 
 2. **Determine phase to execute**:
    - If `current_phase` exists: execute that phase.

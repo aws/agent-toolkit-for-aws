@@ -3,6 +3,7 @@
 
     python3 cli.py status
     python3 cli.py reconcile
+    python3 cli.py reconcile --project-root /absolute/project
 
 Status chooses the migration reporting policy from the shared client's host
 markers. It does not send events, create consent, or inspect migration artifacts.
@@ -32,9 +33,11 @@ def main(argv):
             "pluginVersion": client.plugin_version(),
         }))
         return 0
-    if argv == ["reconcile"]:
-        return migration.main(["--reconcile", "--via", "cli"])
-    print("usage: cli.py {status|reconcile}", file=sys.stderr)
+    if argv == ["reconcile"] or (
+        len(argv) == 3 and argv[:2] == ["reconcile", "--project-root"]
+    ):
+        return migration.main(["--reconcile", "--via", "cli", *argv[1:]])
+    print("usage: cli.py {status|reconcile [--project-root /absolute/project]}", file=sys.stderr)
     return 2
 
 

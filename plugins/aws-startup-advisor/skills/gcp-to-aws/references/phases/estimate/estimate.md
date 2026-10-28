@@ -3,10 +3,9 @@
 ## Telemetry boundary
 
 Load `references/vendored/telemetry/PROTOCOL.md` from the GCP skill root, including
-when this phase is executed inline by another skill. In `cli` mode, reconcile
+when this phase is executed inline by another skill. In both reporting modes, reconcile with the explicit project root
 after each persisted `.phase-status.json` update and before waiting, returning,
 or advancing. This includes the post-Estimate decision and workshop state writes.
-In `hook` mode, leave reporting to the configured hooks.
 
 **Execute ALL steps in order. Do not skip or optimize.**
 

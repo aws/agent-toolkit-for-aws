@@ -132,7 +132,7 @@ def load_banned_ids(plugin: Path) -> tuple[list[tuple[str, re.Pattern]], list[st
     # 1) Legacy/EOL table rows whose Status cell is **excluded**.
     #    Read IDs from the Model ID column (2nd cell) ONLY — not the whole row.
     #    The Active Replacement column also holds a model ID; scanning the whole
-    #    row would ban the replacement (e.g. `stability.stable-image-core-v1:0`
+    #    row would ban the replacement (e.g. `stability.stable-image-core-v1:1`
     #    in the Nova Canvas row), which is an Active model that legitimately
     #    appears as a target elsewhere.
     for line in text.splitlines():
