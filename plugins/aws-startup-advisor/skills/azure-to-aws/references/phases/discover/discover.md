@@ -94,8 +94,8 @@ live-`az` consent/capture accesses `$MIGRATION_DIR`. Resolve resume-vs-fresh, se
 `.phase-status.json` exactly as that section specifies. When LLM A1 entered this phase,
 the same fresh-state write MUST include `initiated_by: "LLM_TO_BEDROCK"` beside
 `owning_skill`. Resume, fresh-run selection, or cancellation therefore completes before
-either pre-dispatch action runs; cancellation terminates the phase without running either
-action.
+either pre-dispatch action runs; cancellation terminates the phase
+without running either action.
 
 This phase's normal `_init` call in "Step: Run the phase" remains an idempotent
 confirmation. A resumed run reuses its selected `$MIGRATION_DIR` and existing
