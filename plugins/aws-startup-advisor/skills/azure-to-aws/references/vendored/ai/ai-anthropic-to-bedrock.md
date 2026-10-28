@@ -10,7 +10,7 @@
 > For a non-Anthropic source, only the Haiku 5.5 target contract below applies;
 > use the source provider guide for SDK and request translation. Steps 1–7 and
 > the Anthropic client-swap checklist apply only to Anthropic-source migrations.
-> The user is already on Claude via the Anthropic SDK. Migration is a client swap only.
+> For an Anthropic source, the user is already on Claude via the Anthropic SDK. Migration is a client swap only.
 > Mapping an older Claude version to a newer target is a model change. Validate
 > request controls and output behavior before cutover.
 
