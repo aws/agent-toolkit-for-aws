@@ -156,9 +156,9 @@ For models launched before 2026-09-07, the [legacy lifecycle table](https://docs
 
 | Model                      | Model ID                            | Pricing       | Tier     | Use case                              |
 | -------------------------- | ----------------------------------- | ------------- | -------- | ------------------------------------- |
-| Stable Image Ultra         | `stability.stable-image-ultra-v1:0` | ~$0.08/image  | premium  | Photorealistic, high-end visuals      |
+| Stable Image Ultra         | `stability.stable-image-ultra-v1:1` | ~$0.08/image  | premium  | Photorealistic, high-end visuals      |
 | Stable Diffusion 3.5 Large | `stability.sd3-5-large-v1:0`        | ~$0.065/image | flagship | High volume creative assets           |
-| Stable Image Core          | `stability.stable-image-core-v1:0`  | ~$0.04/image  | fast     | Rapid, affordable generation at scale |
+| Stable Image Core          | `stability.stable-image-core-v1:1`  | ~$0.04/image  | fast     | Rapid, affordable generation at scale |
 
 When `image_generation` capability is detected:
 
