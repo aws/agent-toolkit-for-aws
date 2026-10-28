@@ -1,0 +1,95 @@
+{
+  "format": "startup-advisor-signed-request-v1",
+  "warning": "Synthetic credentials and fixed historical signing time. These requests cannot authenticate to AWS.",
+  "vectors": [
+    {
+      "name": "long-lived",
+      "signingTime": "2026-10-28T12:00:00+00:00",
+      "credentials": {
+        "accessKeyId": "EXAMPLEACCESSKEY00001",
+        "secretAccessKey": "example-secret-key-not-valid-in-aws",
+        "sessionToken": null
+      },
+      "audience": "startup-advisor:fixture:report:v1",
+      "stsMethod": "POST",
+      "stsUrl": "https://sts.us-east-1.amazonaws.com/",
+      "stsBody": "Action=GetCallerIdentity&Version=2011-06-15",
+      "request": {
+        "expectedAwsAccountId": "123456789012",
+        "installId": "00000000-0000-4000-8000-000000000001",
+        "noticeVersion": 3,
+        "occurredAt": 1793188800000,
+        "pluginTelemetryEvent": {
+          "skillInvoked": {
+            "eventName": "SKILL_INVOKED",
+            "skill": "GCP_TO_AWS"
+          }
+        },
+        "pluginVersion": "2.0.3",
+        "reportingMode": "AWS_ACCOUNT",
+        "source": "CODEX",
+        "awsIdentityProof": {
+          "version": 1,
+          "headers": {
+            "host": "sts.us-east-1.amazonaws.com",
+            "content-type": "application/x-www-form-urlencoded; charset=utf-8",
+            "x-startup-advisor-audience": "startup-advisor:fixture:report:v1",
+            "x-startup-advisor-event-sha256": "36a416ba54c3bf41ec1468ed435db96b57be40cf0bda25fdf037989ca8fc5a5d",
+            "x-amz-date": "20261028T120000Z",
+            "authorization": "AWS4-HMAC-SHA256 Credential=EXAMPLEACCESSKEY00001/20261028/us-east-1/sts/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-startup-advisor-audience;x-startup-advisor-event-sha256, Signature=b197d541339b6de07266151531e64ddd7c6121a7b467a22219941626d4236db4"
+          }
+        }
+      },
+      "canonicalWithoutProof": "{\"expectedAwsAccountId\":\"123456789012\",\"installId\":\"00000000-0000-4000-8000-000000000001\",\"noticeVersion\":3,\"occurredAt\":1793188800000,\"pluginTelemetryEvent\":{\"skillInvoked\":{\"eventName\":\"SKILL_INVOKED\",\"skill\":\"GCP_TO_AWS\"}},\"pluginVersion\":\"2.0.3\",\"reportingMode\":\"AWS_ACCOUNT\",\"source\":\"CODEX\"}",
+      "payloadSha256": "36a416ba54c3bf41ec1468ed435db96b57be40cf0bda25fdf037989ca8fc5a5d",
+      "canonicalStsRequest": "POST\n/\n\ncontent-type:application/x-www-form-urlencoded; charset=utf-8\nhost:sts.us-east-1.amazonaws.com\nx-amz-date:20261028T120000Z\nx-startup-advisor-audience:startup-advisor:fixture:report:v1\nx-startup-advisor-event-sha256:36a416ba54c3bf41ec1468ed435db96b57be40cf0bda25fdf037989ca8fc5a5d\n\ncontent-type;host;x-amz-date;x-startup-advisor-audience;x-startup-advisor-event-sha256\nab821ae955788b0e33ebd34c208442ccfc2d406e2edc5e7a39bd6458fbb4f843",
+      "stringToSign": "AWS4-HMAC-SHA256\n20261028T120000Z\n20261028/us-east-1/sts/aws4_request\nf723d955990f977c66be04cb5928e9831fd7358ebdf769860c32e462b58e5027",
+      "signature": "b197d541339b6de07266151531e64ddd7c6121a7b467a22219941626d4236db4"
+    },
+    {
+      "name": "temporary",
+      "signingTime": "2026-10-28T12:00:00+00:00",
+      "credentials": {
+        "accessKeyId": "EXAMPLEACCESSKEY00001",
+        "secretAccessKey": "example-secret-key-not-valid-in-aws",
+        "sessionToken": "example-session-token-not-valid-in-aws"
+      },
+      "audience": "startup-advisor:fixture:report:v1",
+      "stsMethod": "POST",
+      "stsUrl": "https://sts.us-east-1.amazonaws.com/",
+      "stsBody": "Action=GetCallerIdentity&Version=2011-06-15",
+      "request": {
+        "expectedAwsAccountId": "123456789012",
+        "installId": "00000000-0000-4000-8000-000000000001",
+        "noticeVersion": 3,
+        "occurredAt": 1793188800000,
+        "pluginTelemetryEvent": {
+          "skillInvoked": {
+            "eventName": "SKILL_INVOKED",
+            "skill": "GCP_TO_AWS"
+          }
+        },
+        "pluginVersion": "2.0.3",
+        "reportingMode": "AWS_ACCOUNT",
+        "source": "CODEX",
+        "awsIdentityProof": {
+          "version": 1,
+          "headers": {
+            "host": "sts.us-east-1.amazonaws.com",
+            "content-type": "application/x-www-form-urlencoded; charset=utf-8",
+            "x-startup-advisor-audience": "startup-advisor:fixture:report:v1",
+            "x-startup-advisor-event-sha256": "36a416ba54c3bf41ec1468ed435db96b57be40cf0bda25fdf037989ca8fc5a5d",
+            "x-amz-date": "20261028T120000Z",
+            "x-amz-security-token": "example-session-token-not-valid-in-aws",
+            "authorization": "AWS4-HMAC-SHA256 Credential=EXAMPLEACCESSKEY00001/20261028/us-east-1/sts/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token;x-startup-advisor-audience;x-startup-advisor-event-sha256, Signature=421b9ca903eda8a4419748efc7ff1963ba98ff4cd53d5f64275bb6e60b406d26"
+          }
+        }
+      },
+      "canonicalWithoutProof": "{\"expectedAwsAccountId\":\"123456789012\",\"installId\":\"00000000-0000-4000-8000-000000000001\",\"noticeVersion\":3,\"occurredAt\":1793188800000,\"pluginTelemetryEvent\":{\"skillInvoked\":{\"eventName\":\"SKILL_INVOKED\",\"skill\":\"GCP_TO_AWS\"}},\"pluginVersion\":\"2.0.3\",\"reportingMode\":\"AWS_ACCOUNT\",\"source\":\"CODEX\"}",
+      "payloadSha256": "36a416ba54c3bf41ec1468ed435db96b57be40cf0bda25fdf037989ca8fc5a5d",
+      "canonicalStsRequest": "POST\n/\n\ncontent-type:application/x-www-form-urlencoded; charset=utf-8\nhost:sts.us-east-1.amazonaws.com\nx-amz-date:20261028T120000Z\nx-amz-security-token:example-session-token-not-valid-in-aws\nx-startup-advisor-audience:startup-advisor:fixture:report:v1\nx-startup-advisor-event-sha256:36a416ba54c3bf41ec1468ed435db96b57be40cf0bda25fdf037989ca8fc5a5d\n\ncontent-type;host;x-amz-date;x-amz-security-token;x-startup-advisor-audience;x-startup-advisor-event-sha256\nab821ae955788b0e33ebd34c208442ccfc2d406e2edc5e7a39bd6458fbb4f843",
+      "stringToSign": "AWS4-HMAC-SHA256\n20261028T120000Z\n20261028/us-east-1/sts/aws4_request\n0037ca77a8b3f85b1220d6aaa5b86dc105bb051d6d7c4d8177c770324c9eeecf",
+      "signature": "421b9ca903eda8a4419748efc7ff1963ba98ff4cd53d5f64275bb6e60b406d26"
+    }
+  ]
+}

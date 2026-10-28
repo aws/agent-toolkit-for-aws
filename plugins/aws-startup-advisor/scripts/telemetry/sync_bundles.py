@@ -19,6 +19,12 @@ MIGRATION_SKILLS = ("azure-to-aws", "gcp-to-aws", "heroku-to-aws", "llm-to-bedro
 RUNTIME_FILES = (
     "cli.py",
     "PROTOCOL.md",
+    "auth/__init__.py",
+    "auth/aws_account.py",
+    "auth/identity.py",
+    "auth/pyproject.toml",
+    "auth/uv.lock",
+    "auth/README.md",
     "consent/record.py",
     "consent/notice.py",
     "consent/cli.py",
