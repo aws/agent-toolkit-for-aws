@@ -6,7 +6,10 @@
 > `references/vendored/ai/ai-anthropic-to-bedrock.md` and kept byte-identical by
 > `shared:check`; edit HERE, then run `shared:sync`.
 >
-> Loaded by `design-ai.md` when `ai_source == "anthropic"`.
+> Loaded by `design-ai.md` for an Anthropic source, or when Claude Haiku 5.5 is a candidate or selected target.
+> For a non-Anthropic source, only the Haiku 5.5 target contract below applies;
+> use the source provider guide for SDK and request translation. Steps 1–7 and
+> the Anthropic client-swap checklist apply only to Anthropic-source migrations.
 > The user is already on Claude via the Anthropic SDK. Migration is a client swap only.
 > Mapping an older Claude version to a newer target is a model change. Validate
 > request controls and output behavior before cutover.

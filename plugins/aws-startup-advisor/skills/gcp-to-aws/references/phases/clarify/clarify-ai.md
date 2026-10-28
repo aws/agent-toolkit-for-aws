@@ -291,7 +291,7 @@ Interpret → `ai_critical_feature`. Default: 10 → no override.
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Low volume + quality priority | On-demand Claude Sonnet; no provisioned throughput needed                                                     |
 | Medium volume + balanced      | On-demand Claude Sonnet or Haiku depending on Q16; Savings Plans analysis                                     |
-| High volume + cost critical   | **Provisioned throughput strongly recommended**; Claude Haiku or Nova Micro; prompt caching analysis included |
+| High volume + cost critical   | Verify model-specific on-demand quotas and measured throughput for Claude Haiku or Nova Micro; recommend provisioned capacity only when supported by the selected model; prompt caching analysis included |
 
 Interpret → `ai_token_volume`: 1 → `"low"`, 2 → `"medium"`, 3 → `"high"`. Default: 1 → `"low"`.
 
@@ -365,7 +365,7 @@ Establishes baseline Bedrock recommendation. **Override hierarchy:** Q17 special
 
 **Override examples:** GPT-4 + Q16=cost → Haiku; Flash + Q17=extended thinking → Sonnet; GPT-4o + Q17=speech → Nova 2 Sonic; GPT-3.5 + Q22=complex → Sonnet; GPT-5 + Q16=balanced → Sonnet; Gemini 2.5 Flash Thinking + Q16=cost → evaluate Nova Lite only if it meets the required capabilities and quality bar; do not select Sonnet 5 for expected savings solely because the source uses full thinking mode.
 
-**Same-model examples (Q16 does not displace these):** GPT-5.5 + Q16=balanced → **GPT-5.5 on Bedrock**; GPT-5.5 + Q16=cost → **GPT-5.5 on Bedrock**, with Sonnet 5 offered as a 68%-cheaper alternative the user can accept or decline; GPT-5.6 Luna + Q16=cost → **Luna on Bedrock** (already cheaper than Haiku 4.5; only Nova undercuts it); GPT-5.4 + Q17=speech → Nova 2 Sonic (Q17 hard override wins — the source model cannot serve speech-to-speech).
+**Same-model examples (Q16 does not displace these):** GPT-5.5 + Q16=balanced → **GPT-5.5 on Bedrock**; GPT-5.5 + Q16=cost → **GPT-5.5 on Bedrock**, with Sonnet 5 offered as a 68%-cheaper alternative the user can accept or decline; GPT-5.6 Luna + Q16=cost → **Luna on Bedrock** as the same-model default, with Haiku 5.5 offered as a cost alternative the user can accept or decline (at equal billed volumes and 2:1 input/output, US Geo Haiku is 56.25% cheaper up to 100K prompt tokens; Luna is 54.29% cheaper above 100K while Luna remains within 272K; recount each model's tokens, and present both Haiku tiers if request size is unknown); GPT-5.4 + Q17=speech → Nova 2 Sonic (Q17 hard override wins — the source model cannot serve speech-to-speech).
 
 > Claude Sonnet 5 figures use $2/$10 — the launch rate, made the standard price on Sep 1, 2026 (the scheduled increase to $3/$15 was cancelled). Earlier revisions priced Sonnet 5 at $3/$15; any cached estimate built on that rate overstates Sonnet 5 by a third.
 
