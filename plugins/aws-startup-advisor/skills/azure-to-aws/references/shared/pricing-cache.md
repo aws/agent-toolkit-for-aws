@@ -72,7 +72,7 @@ the resulting rates).
 | GPT-6 Luna    | 0.10         | 0.50         | ≤272K*  | fast      |
 | GPT-5.6 Sol   | _unverified_ | _unverified_ | 1M      | frontier  |
 | GPT-5.6 Terra | _unverified_ | _unverified_ | 1M      | flagship  |
-| GPT-6.1 Terra | _unverified_ | _unverified_ | — | balanced |
+| GPT-6.1 Terra | _unverified_ | _unverified_ | 1.05M   | balanced  |
 | GPT-5.6 Luna  | 0.20         | 1.20         | 1M      | fast      |
 | GPT-5.5       | 5.00         | 30.00        | 1M      | flagship  |
 | GPT-5.5 Pro   | 30.00        | 180.00       | 1M      | premium   |

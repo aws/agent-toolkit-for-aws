@@ -26,7 +26,7 @@ risk) all defer to it. Do not restate model IDs, regions, or endpoint paths else
 | ------------------- | ---------------------------------------- | ------------ | ------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GPT-6 Astra         | `openai.gpt-6-astra`                     | Sep 8, 2026  | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)                                                      |
 | GPT-6.1 Sol         | `openai.gpt-6.1-sol`                     | Sep 29, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html)                                                      |
-| GPT-6.1 Terra | `openai.gpt-6.1-terra` | Oct 26, 2026 | 1.05M | Active | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html) |
+| GPT-6.1 Terra       | `openai.gpt-6.1-terra`                   | Oct 26, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)                                                    |
 | GPT-6 Sol           | `openai.gpt-6-sol`                       | Sep 22, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html)                                                        |
 | GPT-6 Luna          | `openai.gpt-6-luna`                      | Sep 22, 2026 | 1.05M   | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html)                                                       |
 | GPT-5.6 Sol         | `openai.gpt-5.6-sol`                     | Jul 13, 2026 | 1M      | Active    | [card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html)                                                       |
@@ -64,9 +64,9 @@ GPT-6.1 Terra supports a **1,050,000-token context window**, **128,000 maximum o
 input, and text output. It launched on **October 26, 2026**.
 Source: [AWS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html).
 
-| Endpoint | Model ID | Reach | Supported APIs |
-| -------- | -------- | ----- | -------------- |
-| `bedrock-mantle` | `openai.gpt-6.1-terra` | In-region, **us-east-1 only** | Responses, Chat Completions |
+| Endpoint          | Model ID                                                  | Reach                                   | Supported APIs                                |
+| ----------------- | --------------------------------------------------------- | --------------------------------------- | --------------------------------------------- |
+| `bedrock-mantle`  | `openai.gpt-6.1-terra`                                    | In-region, **us-east-1 only**           | Responses, Chat Completions                   |
 | `bedrock-runtime` | `us.openai.gpt-6.1-terra` / `global.openai.gpt-6.1-terra` | US Geo / Global CRIS; no in-region form | Responses, Chat Completions, Converse, Invoke |
 
 Both endpoints use `/openai/v1` for OpenAI-compatible APIs. For runtime, select a supported source region
@@ -78,10 +78,10 @@ Test the application's tool calls on the selected API before migration.
 
 Bedrock Standard prices (USD per 1M tokens):
 
-| Context | In-Region / US Geo (input · cache-write · cache-read · output) | Global CRIS (input · cache-write · cache-read · output) |
-| ------- | ----------------------------------------------------------- | ----------------------------------------------------- |
-| ≤272K input tokens | 1.10 · 1.375 · 0.055 · 5.50 | 1.00 · 1.25 · 0.05 · 5.00 |
-| >272K input tokens | 2.20 · 2.75 · 0.11 · 8.25 | 2.00 · 2.50 · 0.10 · 7.50 |
+| Context            | In-Region / US Geo (input · cache-write · cache-read · output) | Global CRIS (input · cache-write · cache-read · output) |
+| ------------------ | -------------------------------------------------------------- | ------------------------------------------------------- |
+| ≤272K input tokens | 1.10 · 1.375 · 0.055 · 5.50                                    | 1.00 · 1.25 · 0.05 · 5.00                               |
+| >272K input tokens | 2.20 · 2.75 · 0.11 · 8.25                                      | 2.00 · 2.50 · 0.10 · 7.50                               |
 
 Cache-write prices use a 30-minute retention window. Above 272K input tokens, the full request uses the
 long-context rates. For OpenAI/Azure source costs, use measured spend or verified source-provider rates.
@@ -208,7 +208,7 @@ request for multi-turn and tool-calling flows.
 | GPT-6 Sol     | yes       | —         | —         | —             | —             |
 | GPT-6 Luna    | yes       | —         | —         | —             | —             |
 | GPT-6.1 Sol   | yes       | —         | —         | —             | —             |
-| GPT-6.1 Terra | yes | — | — | — | — |
+| GPT-6.1 Terra | yes       | —         | —         | —             | —             |
 | GPT-5.6 Sol   | yes       | yes       | —         | —             | —             |
 | GPT-5.6 Terra | yes       | yes       | yes       | yes           | yes           |
 | GPT-5.6 Luna  | yes       | yes       | yes       | yes           | yes           |
