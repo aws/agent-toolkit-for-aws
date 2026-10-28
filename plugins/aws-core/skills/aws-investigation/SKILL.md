@@ -1,16 +1,17 @@
 ---
 name: aws-investigation
 description: >-
-  Procedures for investigating what is happening in an AWS account and reporting it from evidence:
-  reading the artifact that governs runtime instead of inferring it (live AppConfig deployment,
-  Lambda version behind an alias, running CloudFormation template, implementing code), following a
-  request through every service's own logs (exact per-layer fields, unique failed requests within an
-  alarm's dimensions and breach window, failure boundary per event), and answering questions from the
-  account's data (finding the data source, exact aggregate counts and breakdowns, coverage of the
-  requested range, exact filters and joins, the rule behind failed or unmatched records, runbook
-  options, verbatim values). Use when asked to triage an alarm, error spike or failed request, trace a
-  request across services, report what a deployed system currently does or serves, or count, break
-  down, extract or join records. Not for building or changing infrastructure.
+  Investigates what is happening in an AWS account from evidence already recorded there. Not for
+  capturing new data from running code (snapshots of function arguments on a live service,
+  Dynamic Instrumentation), questions answered from the CloudWatch Omni context graph or
+  Application Signals service map, or building or changing infrastructure. Covers reading
+  deployment records instead of the newest stored version (completed AppConfig deployments, the
+  version an alias points to, a stack's current template), following a request through every
+  service's own logs (exact per-layer fields, unique failed requests in an alarm's breach window,
+  failure boundary per event), and answering questions from the account's data (exact counts and
+  breakdowns, coverage of the requested range, exact filters and joins, the rule behind failed or
+  unmatched records, verbatim values). Use to triage an alarm, error spike or failed request, trace
+  a request across services, or count, break down, extract or join records.
 metadata:
   version: "1"
 ---
