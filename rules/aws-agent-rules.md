@@ -5,9 +5,13 @@
 - Prefer the AWS MCP Server for AWS interactions — it provides sandboxed
   execution, observability, and audit logging. If unavailable, use the
   AWS CLI directly.
-- Before starting a task, check whether a relevant AWS skill is available.
-  Load the skill with `retrieve_skill` and prefer its guidance over
-  general knowledge.
+- For any AWS task or question — building, configuring, migrating, debugging,
+  or operating a service, writing SDK code, authoring CDK/CloudFormation, or
+  answering how a service works — first call `aws___search_documentation` with
+  topic `agent_skills` and load the matching skill with `aws___retrieve_skill`.
+  Do this even when you believe you know the answer: skills carry current
+  service behavior that your training may not. Prefer the skill's guidance over
+  general knowledge. Skip it only for work that does not involve AWS.
 - When uncertain about specific AWS details (API parameters, permissions,
   limits, error codes), verify against documentation rather than guessing.
   State uncertainty explicitly if you cannot confirm.

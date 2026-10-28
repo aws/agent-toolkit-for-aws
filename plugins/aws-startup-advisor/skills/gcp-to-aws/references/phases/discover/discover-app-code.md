@@ -614,13 +614,13 @@ After generating the output file, the parent `discover.md` handles the phase sta
 
 ## Output Validation Checklist — ai-workload-profile.json
 
-- `metadata.profile_source` is one of: `"application_code"`, `"iac_vertex"`, `"merged"`
+- `metadata.profile_source` is one of: `"application_code"`, `"iac_vertex"`, `"live_monitoring"`, `"merged"`
 - `metadata.sources_analyzed` reflects which data sources were actually provided
 - `summary.overall_confidence` matches the detection confidence from Step 4
 - `summary.total_models_detected` matches the length of `models` array
 - `summary.ai_source` is set correctly: `"gemini"`, `"openai"`, `"anthropic"`, `"both"`, or `"other"` based on detected LLM SDKs
 - Every entry in `models` has `model_id`, `service`, `detected_via`, `evidence`, `capabilities_used`, and `usage_context`
-- `models[].detected_via` only contains sources that were actually analyzed (`"code"`, `"terraform"`, `"billing"`)
+- `models[].detected_via` only contains sources that were actually analyzed (`"code"`, `"terraform"`, `"billing"`, or `"monitoring"` when evidence `source` is `monitoring`)
 - `models[].evidence` array has at least one entry per source listed in `detected_via`
 - `models[].capabilities_used` only lists capabilities with evidence from code analysis
 - `integration.capabilities_summary` is consistent with the union of all `models[].capabilities_used`

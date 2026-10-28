@@ -164,10 +164,12 @@ The shared Step 0 above has already established the selected run and
    the Step 1 consent gate in `discover-live.md` for THIS attempt. If the user
    chooses **[A]** (proceed), overwrite the manifest via Part A Steps 0-2 as
    normal. If the user chooses **[B]** (skip), **delete or rename
-   `live-capture/manifest.json`** (e.g. to `manifest.json.declined`) before
-   continuing — a manifest from an earlier attempt must never survive a fresh
-   decline, since the `live` fragment's `_trigger` is existence-based and would
-   otherwise fire on stale data the user just said not to use.
+   `live-capture/manifest.json`** (e.g. to `manifest.json.declined`) and do the
+   same to `$MIGRATION_DIR/azure-openai-metrics-profile.json` before
+   continuing — a manifest or metrics profile from an earlier attempt must never
+   survive a fresh decline. The `live` fragment's `_trigger` is existence-based
+   and would otherwise fire on stale data the user just said not to use, and
+   Estimate would still add the old tokens when an app-code or IaC AI anchor remains.
 2. **No existing manifest.** Run `discover-live.md` Part A (Steps 0-2): preflight
    `az`, gate consent, and on consent capture the read-only inventory into
    `$MIGRATION_DIR/live-capture/` + `manifest.json`. OFFER it when there is no
