@@ -202,8 +202,8 @@ Per 1M tokens unless noted. See [Bedrock pricing](https://aws.amazon.com/bedrock
 | Claude Fable 5           | N/A      | N/A       | 12.50          | 20.00          | 1.00       |
 | Claude Fable 5.1         | N/A      | N/A       | 12.50          | 20.00          | 0.25       |
 | Claude Sonnet 5          | 1.00 ‡   | 5.00 ‡    | 2.50           | 4.00           | 0.20       |
-| Claude Sonnet 5.5 (Global) | N/A    | N/A       | 2.50           | 4.00           | 0.10       |
-| Claude Sonnet 5.5 (US Geo) | N/A    | N/A       | 2.75           | 4.40           | 0.11       |
+| Claude Sonnet 5.5 (Global) | N/A    | N/A       | 2.50           | 4.00           | 0.05       |
+| Claude Sonnet 5.5 (US Geo) | N/A    | N/A       | 2.75           | 4.40           | 0.055      |
 | Claude Haiku 5.5 (Global)  | N/A    | N/A       | 0.125          | 0.20           | 0.01       |
 | Claude Haiku 5.5 (Global) — LC | N/A | N/A       | 0.625          | 1.00           | 0.05       |
 | Claude Haiku 5.5 (US Geo)  | N/A    | N/A       | 0.1375         | 0.22           | 0.011      |
