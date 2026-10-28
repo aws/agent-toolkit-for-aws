@@ -134,7 +134,7 @@ record the choice in `key_decisions_ahead` instead of silently selecting Nova. A
 | `claude-3-5-haiku`, `claude-haiku-*`                    | Claude Haiku 5.5                               | `anthropic.claude-haiku-5-5`                             |
 | `claude-3-opus`, `claude-opus-*`                        | Claude Opus 4.6                                | `anthropic.claude-opus-4-6-v1`                                         |
 | `text-embedding-*`, `*-embedding-*`                     | Amazon Titan Embeddings v2                     | `amazon.titan-embed-text-v2:0`                                         |
-| `dall-e-*`, `gpt-image-*`, `imagen-*`, image generation | Stability AI — Stable Image Core               | `stability.stable-image-core-v1:0`                                     |
+| `dall-e-*`, `gpt-image-*`, `imagen-*`, image generation | Stability AI — Stable Image Core               | `stability.stable-image-core-v1:1`                                     |
 | `whisper-*`, speech-to-text                             | Amazon Transcribe                              | (non-token service — note separately)                                  |
 | `tts-*`, text-to-speech                                 | Amazon Polly                                   | (non-token service — note separately)                                  |
 | Unknown / other                                         | Amazon Nova Pro                                | `amazon.nova-pro-v1:0`                                                 |

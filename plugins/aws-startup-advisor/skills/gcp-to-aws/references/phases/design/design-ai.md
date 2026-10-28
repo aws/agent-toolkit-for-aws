@@ -268,6 +268,8 @@ After selecting models, assess quota risk based on `ai_token_volume` from `prefe
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture` alongside `honest_assessment`.
 
+Before writing `quota_risk`, also apply the observed on-demand peak rule in `references/vendored/ai/bedrock-quotas.md`. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. A publisher or usage-API profile supplies that peak when it has one. Generate must not keep the earlier monthly decision.
+
 ---
 
 ## Part 1B: Volume-Based Strategy
