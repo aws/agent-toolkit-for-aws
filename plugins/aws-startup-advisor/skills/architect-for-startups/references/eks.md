@@ -70,7 +70,7 @@
 | ----------------------------------------------------- | --------------------------------------- |
 | >15 engineers, multiple teams deploying independently | Namespace isolation, RBAC per team      |
 | Monthly compute > $20K, need optimization             | Karpenter's bin-packing saves 30-40%    |
-| Need GPU sharing across workloads                     | K8s device plugin + time-slicing        |
+| Need GPU sharing across workloads                     | K8s device plugin + time-slicing, OR Amazon ECS with NVIDIA MPS GPU sharing        |
 | Hiring pipeline is primarily K8s-experienced          | Developer experience matters            |
 | Need advanced traffic management                      | K8s ecosystem (Istio, Cilium) is richer |
 
