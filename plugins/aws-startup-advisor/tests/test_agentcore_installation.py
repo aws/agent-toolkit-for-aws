@@ -115,9 +115,23 @@ def generated(tmp_path):
     for name, target in {"python3": sys.executable, "dirname": "/usr/bin/dirname", "cp": "/bin/cp"}.items():
         (binaries / name).symlink_to(target)
     log = tmp_path / "commands.jsonl"
+    npm_root = tmp_path / "npm global modules"
+    entry = npm_root / "@aws/agentcore/dist/index.js"
+    entry.parent.mkdir(parents=True)
+    entry.write_text(CLI_STUB)
     for name, body in {
         "agentcore": CLI_STUB,
-        "npm": 'import os,sys\nassert sys.argv[1:] == ["install", "-g", "@aws/agentcore"]\nopen(os.environ["INSTALL_LOG"], "a").write("npm\\n")\n',
+        "node": 'import os,sys\nos.execv(sys.executable, [sys.executable, *sys.argv[1:]])\n',
+        "npm": '''import os,sys
+args = sys.argv[1:]
+if args == ["root", "-g"]:
+    print(os.environ["NPM_ROOT"])
+elif args == ["ls", "-g", "--depth=0", "@aws/agentcore"]:
+    sys.exit(1 if os.environ.get("MISSING_NPM_CLI") else 0)
+else:
+    assert args == ["install", "-g", "@aws/agentcore"]
+    open(os.environ["INSTALL_LOG"], "a").write("npm\\n")
+''',
     }.items():
         executable = binaries / name
         executable.write_text(f"#!{sys.executable}\n{body}")
@@ -125,6 +139,7 @@ def generated(tmp_path):
     return source, config, {
         "PATH": str(binaries), "COMMAND_LOG": str(log),
         "INSTALL_LOG": str(tmp_path / "installs"),
+        "NPM_ROOT": str(npm_root),
     }
 
 
@@ -267,7 +282,41 @@ def test_command_failure_stops_before_invocation(generated, name, command):
 @pytest.mark.parametrize("execute", [False, True])
 def test_missing_harness_cli_keeps_recommendation_and_failure(generated, execute):
     (Path(generated[2]["PATH"]) / "agentcore").unlink()
+    generated[2]["MISSING_NPM_CLI"] = "1"
     result = _run(generated, "harness", execute)
     assert result.returncode == (1 if execute else 0), result.stderr
     assert "npm install -g @aws/agentcore" in result.stdout
     assert not re.search(r"bedrock[-_.]agentcore[-_.]cli", result.stdout, re.I)
+
+
+@pytest.mark.parametrize("name", ["harness", "strands"])
+@pytest.mark.parametrize("official_present", [False, True])
+def test_python_cli_on_path_cannot_shadow_npm_entrypoint(generated, name, official_present):
+    source, _, env = generated
+    shadow = Path(env["PATH"]) / "agentcore"
+    shadow.write_text("#!/bin/sh\nexit 91\n")
+    if not official_present:
+        env["MISSING_NPM_CLI"] = "1"
+    result = _run(generated, name)
+    assert result.returncode == (0 if official_present else 1), result.stderr
+    if official_present:
+        calls = Path(env["COMMAND_LOG"]).read_text()
+        assert '"invoke"' in calls
+    else:
+        assert "npm install -g @aws/agentcore" in result.stdout
+        assert "pip uninstall bedrock-agentcore-starter-toolkit" in result.stdout
+        assert not Path(env["COMMAND_LOG"]).exists()
+        assert not list(source.glob("*/agentcore"))
+
+
+def test_incremental_guidance_uses_npm_entrypoint_outside_script_shell():
+    section = REFERENCE.read_text().split(
+        "**Artifact 3: `ai-migration/incremental_migration.sh`**", 1
+    )[1].split("## Step 3D:", 1)[0]
+    commands = re.findall(r"`([^`]+)`", section)
+    assert not any(command.startswith("agentcore ") for command in commands)
+    for verb in ("deploy", "invoke"):
+        assert any(
+            command.startswith(f'node "$(npm root -g)/@aws/agentcore/dist/index.js" {verb}')
+            for command in commands
+        )

@@ -43,7 +43,7 @@ If any required file is missing: **STOP**. Output: "Missing required artifact: [
 
 **Sparse / IaC-only profile:** If `ai-workload-profile.json` has empty `models[]` or `metadata.profile_source` is `iac_vertex`, use `aws-design-ai.json` for Bedrock targets and example prompts; do **not** fail solely because discovery did not list model IDs.
 
-**AgentCore deployment scripts (Steps 3C and 3E):** Use the official [`@aws/agentcore` CLI](https://github.com/aws/agentcore-cli), which requires Node.js 20.12 or later and npm. The deprecated Python starter toolkit also provides an `agentcore` executable; ensure it does not shadow the npm CLI. Verify each generated command against the installed CLI's `--help` before deployment.
+**AgentCore deployment scripts (Steps 3C and 3E):** Use the official [`@aws/agentcore` CLI](https://github.com/aws/agentcore-cli), which requires Node.js 20.12 or later and npm. The deprecated Python starter toolkit also provides an `agentcore` executable. Resolve the global npm package and call its entrypoint through Node; a binary name on PATH does not identify the package. Verify each generated command against the installed CLI's `--help` before deployment.
 
 ---
 
@@ -316,10 +316,22 @@ run_cmd() {
 }
 
 # Step 1: Verify prerequisites
-if ! command -v agentcore >/dev/null 2>&1; then
-    echo "AgentCore CLI not found. Install with: npm install -g @aws/agentcore"
+# Resolve the npm package entrypoint instead of trusting an agentcore on PATH.
+AGENTCORE_ENTRY=""
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 \
+  && NPM_ROOT=$(npm root -g) \
+  && npm ls -g --depth=0 @aws/agentcore >/dev/null 2>&1; then
+    AGENTCORE_ENTRY="$NPM_ROOT/@aws/agentcore/dist/index.js"
+fi
+if [ ! -f "$AGENTCORE_ENTRY" ]; then
+    echo "Official AgentCore CLI not found. Requires Node.js 20.12+ and npm."
+    echo "If the Python starter toolkit is installed: pip uninstall bedrock-agentcore-starter-toolkit"
+    echo "Then install: npm install -g @aws/agentcore"
     if [ "$EXECUTE" = "--execute" ]; then exit 1; fi
 fi
+agentcore() {
+    node "$AGENTCORE_ENTRY" "$@"
+}
 CONFIG="$RUN_DIR/harness.json"
 PROJECT_NAME="migration"
 HARNESS_NAME=$(python3 -c '
@@ -358,8 +370,9 @@ else
     echo "Dry run only; no project was created or deployed."
 fi
 echo "For later updates, enter $RUN_DIR/$PROJECT_NAME."
-echo "Edit app/$HARNESS_NAME/harness.yaml, then run agentcore deploy --region $REGION."
-echo "View logs: agentcore logs harness --name $HARNESS_NAME --region $REGION"
+echo "Edit app/$HARNESS_NAME/harness.yaml before deploying updates."
+printf 'Deploy: '; printf '%q ' node "$AGENTCORE_ENTRY" deploy --region "$REGION"; printf '\n'
+printf 'View logs: '; printf '%q ' node "$AGENTCORE_ENTRY" logs harness --name "$HARNESS_NAME" --region "$REGION"; printf '\n'
 ```
 
 **Artifact 3: `ai-migration/incremental_migration.sh`** (only if `harness_config.incremental_migration == true`)
@@ -368,8 +381,8 @@ Generate a **manual plan**, not commands claiming per-invocation model overrides
 
 1. Enter the project created by `deploy_harness.sh`.
 2. Configure the source provider's credential through AgentCore Identity using the current official CLI documentation. Do not embed API keys in the script or command output.
-3. Update `app/<harness_name>/harness.yaml` to the source provider's model configuration and credential reference; run `agentcore deploy --region <region>`.
-4. Test with `agentcore invoke --harness <harness_name> --prompt "Your test prompt" --region <region>`.
+3. Update `app/<harness_name>/harness.yaml` to the source provider's model configuration and credential reference; run `node "$(npm root -g)/@aws/agentcore/dist/index.js" deploy --region <region>`.
+4. Test with `node "$(npm root -g)/@aws/agentcore/dist/index.js" invoke --harness <harness_name> --prompt "Your test prompt" --region <region>`. Keep using the npm entrypoint for manual commands; the deployment script's shell function does not persist in the caller's shell.
 5. Replace the model configuration with `bedrockModelConfig: {modelId: <target_model_id>}`, deploy again, and repeat the same test prompts. Do not promise session/context preservation across model changes without verifying it.
 6. Remove the source credential only after the user validates the Bedrock cutover and its rollback plan.
 
@@ -545,6 +558,23 @@ run_cmd() {
 # Step 1: Install the CLI; runtime dependencies come from pyproject.toml
 run_cmd npm install -g @aws/agentcore
 
+# Resolve the npm package entrypoint instead of trusting an agentcore on PATH.
+AGENTCORE_ENTRY=""
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 \
+  && NPM_ROOT=$(npm root -g) \
+  && npm ls -g --depth=0 @aws/agentcore >/dev/null 2>&1; then
+    AGENTCORE_ENTRY="$NPM_ROOT/@aws/agentcore/dist/index.js"
+fi
+if [ ! -f "$AGENTCORE_ENTRY" ]; then
+    echo "Official AgentCore CLI not found. Requires Node.js 20.12+ and npm."
+    echo "If the Python starter toolkit is installed: pip uninstall bedrock-agentcore-starter-toolkit"
+    echo "Then install: npm install -g @aws/agentcore"
+    if [ "$EXECUTE" = "--execute" ]; then exit 1; fi
+fi
+agentcore() {
+    node "$AGENTCORE_ENTRY" "$@"
+}
+
 # Step 2: Create and enter the child project
 cd -- "$RUN_DIR"
 run_cmd agentcore create --name "$PROJECT_NAME" --skip-git
@@ -568,8 +598,8 @@ else
     echo "Dry run only; no project was created or deployed."
 fi
 echo "For later updates, enter $RUN_DIR/$PROJECT_NAME and update app/$RUNTIME_NAME/."
-echo "Deploy: agentcore deploy --region $REGION"
-echo "Monitor: agentcore logs runtime --name $RUNTIME_NAME --region $REGION"
+printf 'Deploy: '; printf '%q ' node "$AGENTCORE_ENTRY" deploy --region "$REGION"; printf '\n'
+printf 'Monitor: '; printf '%q ' node "$AGENTCORE_ENTRY" logs runtime --name "$RUNTIME_NAME" --region "$REGION"; printf '\n'
 ```
 
 **Artifact 3: `ai-migration/bridge_retarget.py`** (only if `strands_config.bridge_phase == true`)
