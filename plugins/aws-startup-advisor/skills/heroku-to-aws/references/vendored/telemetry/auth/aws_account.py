@@ -217,8 +217,8 @@ class AwsAccountReporter:
             self._sdk = _load_sdk()
         if self._session is None:
             try:
-                self._session = self._sdk[4](profile=self._profile_name)
-                assume_role = self._session.get_component(
+                session = self._sdk[4](profile=self._profile_name)
+                assume_role = session.get_component(
                     "credential_provider"
                 ).get_provider("assume-role")
                 if assume_role is not None:
@@ -228,6 +228,9 @@ class AwsAccountReporter:
                     assume_role._prompter = _sign_in_required
             except Exception:
                 raise AccountReportingError("CREDENTIALS_UNAVAILABLE") from None
+            # Retrying a failed configuration must create/configure the
+            # provider again, never reuse a session without its MFA guard.
+            self._session = session
         return self._sdk
 
     def _credentials(self):
@@ -238,6 +241,11 @@ class AwsAccountReporter:
                 raise AccountReportingError("CREDENTIALS_UNAVAILABLE")
             # Resolve access key, secret and token together after any refresh.
             credentials = provider_credentials.get_frozen_credentials()
+            if credentials.token == "":
+                # SDK profile loaders preserve a blank optional token. Match
+                # the SDK signer, which treats it as absent, without mutating
+                # the provider's cached credential snapshot.
+                credentials = credentials._replace(token=None)
             if not _valid_secret(credentials.access_key) or not _valid_secret(credentials.secret_key):
                 raise AccountReportingError("CREDENTIALS_UNAVAILABLE")
             if credentials.token is not None and not _valid_secret(credentials.token):

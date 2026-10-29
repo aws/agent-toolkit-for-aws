@@ -189,6 +189,53 @@ def test_explicit_profile_uses_shared_credentials_instead_of_environment(
     assert credentials_file.read_text() == original
 
 
+def test_profile_with_blank_session_token_can_sign_and_resolve_identity(
+    home, monkeypatch, sdk_session, selected_account
+):
+    (home / "aws-config").write_text("[profile selected]\nregion = eu-west-1\n")
+    credentials_file = home / "aws-credentials"
+    original = (
+        "[selected]\n"
+        "aws_access_key_id = %s\n"
+        "aws_secret_access_key = %s\n"
+        "aws_session_token = \n" % (ACCESS_KEY, SECRET_KEY)
+    )
+    credentials_file.write_text(original)
+    reporter = reporting.AwsAccountReporter(AUDIENCE, profile_name="selected")
+
+    prepared = reporter.prepare_report(
+        report_payload({"event": "test"}), selected_account
+    )
+
+    assert reporter._session.get_credentials().method == "shared-credentials-file"
+    assert reporter._session.get_credentials().get_frozen_credentials().token == ""
+    assert "x-amz-security-token" not in prepared.headers
+    signed_headers = prepared.headers["authorization"].split(
+        "SignedHeaders=", 1
+    )[1].split(",", 1)[0].split(";")
+    assert "x-amz-security-token" not in signed_headers
+    assert independent_signature(prepared.headers) == signature_from(prepared.headers)
+
+    client = synthetic_sts_client(sdk_session)
+    create_client = Mock(return_value=client)
+    monkeypatch.setattr(reporter._session, "create_client", create_client)
+    with Stubber(client) as stubber:
+        stubber.add_response("get_caller_identity", identity_response(), {})
+        assert reporter.setup() == selected_account
+        stubber.assert_no_pending_responses()
+
+    create_client.assert_called_once()
+    args, kwargs = create_client.call_args
+    assert args == ("sts",)
+    assert kwargs["endpoint_url"] == "https://sts.us-east-1.amazonaws.com/"
+    assert kwargs["region_name"] == "us-east-1"
+    assert kwargs["verify"] is True
+    assert kwargs["aws_access_key_id"] == ACCESS_KEY
+    assert kwargs["aws_secret_access_key"] == SECRET_KEY
+    assert kwargs["aws_session_token"] is None
+    assert credentials_file.read_text() == original
+
+
 def test_missing_credentials_fail_without_creating_state(home, selected_account):
     reporter = reporting.AwsAccountReporter(AUDIENCE)
 
@@ -410,6 +457,56 @@ def test_mfa_profile_requires_explicit_sign_in_without_prompt_or_network(
     assert error.value.code == "SIGN_IN_REQUIRED"
     prompt.assert_not_called()
     assert not (home / ".aws-startup-advisor").exists()
+
+
+def test_repaired_config_retry_still_blocks_mfa_prompt(
+    home, monkeypatch, selected_account
+):
+    from botocore.credentials import AssumeRoleProvider
+
+    config_file = home / "aws-config"
+    config_file.write_text("[profile requires-mfa\n")
+    (home / "aws-credentials").write_text(
+        "[source]\n"
+        "aws_access_key_id = %s\n"
+        "aws_secret_access_key = %s\n"
+        "aws_session_token = %s\n" % (ACCESS_KEY, SECRET_KEY, SESSION_TOKEN)
+    )
+    prompt = Mock(side_effect=AssertionError("MFA attempted to consume stdin"))
+    monkeypatch.setattr(getpass, "getpass", prompt)
+    original_provider_init = AssumeRoleProvider.__init__
+
+    def tracked_provider_init(self, *args, **kwargs):
+        # Botocore captures getpass in its constructor's default arguments at
+        # import time. Replace that callback as well so a regression cannot
+        # actually read stdin, and the test can observe an attempted prompt.
+        kwargs["prompter"] = prompt
+        original_provider_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(AssumeRoleProvider, "__init__", tracked_provider_init)
+    reporter = reporting.AwsAccountReporter(AUDIENCE, profile_name="requires-mfa")
+
+    with pytest.raises(reporting.AccountReportingError) as error:
+        reporter.prepare_report(report_payload({"event": "test"}), selected_account)
+
+    assert error.value.code == "CREDENTIALS_UNAVAILABLE"
+    failed_session = reporter._session
+    prompt.assert_not_called()
+    config_file.write_text(
+        "[profile requires-mfa]\n"
+        "role_arn = arn:aws:iam::123456789012:role/test-role\n"
+        "source_profile = source\n"
+        "mfa_serial = arn:aws:iam::123456789012:mfa/test-user\n"
+        "region = us-east-1\n"
+    )
+
+    with pytest.raises(reporting.AccountReportingError) as error:
+        reporter.prepare_report(report_payload({"event": "test"}), selected_account)
+
+    prompt.assert_not_called()
+    assert error.value.code == "SIGN_IN_REQUIRED"
+    assert failed_session is None
+    assert reporter._session is not None
 
 
 def test_failed_repeat_setup_clears_previous_identity(sdk_session, monkeypatch):
