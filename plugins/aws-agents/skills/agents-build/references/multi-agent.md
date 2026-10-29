@@ -27,15 +27,16 @@ Build AgentCore systems where agents delegate work to other agents.
 The specialist is a standard AgentCore agent. Deploy it normally:
 
 ```bash
-agentcore create --name SpecialistAgent --defaults
-# ... add your specialist logic to app/SpecialistAgent/main.py ...
-agentcore deploy -y
+agentcore create --name SpecialistProject --template agent-python-strands
+cd SpecialistProject
+# ... add your specialist logic to app/agent/main.py ...
+agentcore deploy
 ```
 
 Get the specialist's runtime ARN after deploy:
 
 ```bash
-agentcore status --runtime SpecialistAgent --json | jq -r '.runtimes[0].arn'
+agentcore status --json | jq -r '.resources[] | select(.resourceType == "runtime" and .name == "agent") | .arn'
 ```
 
 ### Step 2: Add the specialist as a tool in the orchestrator
@@ -204,38 +205,9 @@ The orchestrator's execution role needs permission to invoke the specialist:
 
 Add this to `agentcore/agentcore.json` under the orchestrator agent's IAM config, or add it manually to the auto-created execution role after deploy.
 
-### Step 4: Pass the specialist ARN at deploy time
+### Step 4: Pass the specialist ARN to the orchestrator
 
-Add the specialist ARN as an environment variable in the orchestrator's deployment:
-
-```bash
-# After deploying the specialist, get its ARN:
-SPECIALIST_ARN=$(agentcore status --runtime SpecialistAgent --json | jq -r '.runtimes[0].arn')
-
-# For local dev, write to .env.local:
-echo "SPECIALIST_AGENT_ARN=$SPECIALIST_ARN" >> agentcore/.env.local
-```
-
-**For the deployed orchestrator**, the specialist ARN needs to be available as an environment variable. The recommended pattern is:
-
-1. **Edit `agentcore/agentcore.json`** — find the orchestrator agent's entry and add the env var to its configuration (the exact field name depends on your CLI version; run `agentcore validate` after editing). In current CLI versions, agent environment variables are typically managed through the deployment config.
-
-2. **Or use CDK overrides** — for teams using the CDK constructs directly, set the env var in the Runtime construct's environment property.
-
-3. **Or write the env var at deploy time** — some teams use a pre-deploy script that generates `agentcore/.env.local` and `agentcore/agentcore.json` updates together:
-
-```bash
-# pre-deploy.sh — run before every orchestrator deploy
-SPECIALIST_ARN=$(agentcore status --runtime SpecialistAgent --json | jq -r '.runtimes[0].arn')
-echo "SPECIALIST_AGENT_ARN=$SPECIALIST_ARN" >> agentcore/.env.local
-
-# Then deploy
-agentcore deploy -y
-```
-
-The CLI does not currently provide a dedicated `--env` flag on `agentcore add agent`. Check `agentcore add agent --help` for the current options in your CLI version.
-
----
+Run `agentcore status --json` in the specialist project and select the deployed Runtime ARN from the `resources` array. For a different deployment target, pass `--target <name>`. In the orchestrator project, set that ARN as the `SPECIALIST_AGENT_ARN` value in its Runtime entry's `environmentVariables` object in `agentcore/agentcore.json`. For local development, set the same variable in `agentcore/.env.local`. These are separate files: `.env.local` does not configure the deployed Runtime. Run `agentcore build`, then `agentcore deploy` in the orchestrator project. Do not grant its execution role `bedrock-agentcore:InvokeAgentRuntime` on `*`; scope the permission to the specialist Runtime ARN.
 
 ## Pattern 2: A2A protocol
 
@@ -243,10 +215,10 @@ The specialist exposes the A2A standard — discoverable via an agent card, call
 
 ### Step 1: Build the A2A specialist
 
-Use the `serve_a2a` helper from `bedrock-agentcore` — this matches what the CLI scaffolds via `agentcore create --protocol A2A`.
+Use the `serve_a2a` helper from `bedrock-agentcore` — this matches what the CLI scaffolds via `agentcore create --template a2a-python-strands`.
 
 ```python
-# app/SpecialistA2A/main.py
+# app/agent/main.py
 from strands import Agent, tool
 from strands.multiagent.a2a.executor import StrandsA2AExecutor
 from bedrock_agentcore.runtime import serve_a2a
@@ -281,15 +253,16 @@ bedrock-agentcore
 ### Step 2: Deploy the A2A specialist
 
 ```bash
-agentcore create --name SpecialistA2A --protocol A2A
-# The CLI scaffolds app/SpecialistA2A/main.py with the serve_a2a pattern shown above — customize it with your specialist logic
-agentcore deploy -y
+agentcore create --name SpecialistA2A --template a2a-python-strands
+cd SpecialistA2A
+# The CLI scaffolds app/agent/main.py with the serve_a2a pattern shown above — customize it with your specialist logic
+agentcore deploy
 ```
 
 After deploy, get the runtime URL:
 
 ```bash
-agentcore fetch access --name SpecialistA2A --type agent
+agentcore status --json
 ```
 
 ### Step 3: Test locally
@@ -324,12 +297,12 @@ The specialist URL is a non-secret identifier, so pass it via an env var in the 
 
 ```bash
 # One-time: register the OAuth provider that issues tokens for the specialist.
-# Omit --client-secret to get an interactive prompt (value goes straight into the credential provider).
-agentcore add credential \
+# The v1 CLI accepts client secrets from file or stdin, never inline values.
+agentcore add credentials oauth \
   --name SpecialistA2A \
-  --type oauth \
   --discovery-url https://<YOUR_IDP>/.well-known/openid-configuration \
   --client-id <CLIENT_ID> \
+  --client-secret file://<LOCAL_SECRET_FILE> \
   --scopes a2a.invoke
 ```
 
@@ -448,12 +421,12 @@ turns = memory_client.get_last_k_turns(
 **Specialist not found:**
 
 - Verify `SPECIALIST_AGENT_ARN` env var is set correctly
-- Check `agentcore status --runtime SpecialistAgent` shows `deployed` state
+- Check `agentcore status --json` shows `deployed` state
 
 **A2A auth errors:**
 
 - A2A supports SigV4 and OAuth 2.0 — make sure you're using the right auth method
-- Get the correct bearer token: `agentcore fetch access --name SpecialistA2A --type agent`
+- Obtain a bearer token from the configured identity provider; `agentcore status --json` does not issue JWTs
 
 ## Output
 

@@ -57,9 +57,9 @@ If the header names are fixed by a protocol or external system (A2A requires `A2
 }
 ```
 
-Then `agentcore deploy`. The `$schema` URL at the top of the file (`https://schema.agentcore.aws.dev/v1/agentcore.json`) gives IDE autocomplete and validation for every field.
+Then `agentcore deploy`. Run `agentcore build` to validate the edited v1 project before deployment.
 
-**CLI shortcut** — `agentcore add agent --request-header-allowlist "X-Tenant-Id,A2A-Version"` writes the same array. **Important:** the CLI auto-prefixes entries with `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` as they land in `agentcore.json`. If you're editing the JSON by hand, write the prefixed form directly. If you're using the CLI, pass the short name and let the CLI add the prefix.
+**When creating a new Runtime**, `agentcore add runtime --name <name> --language python --request-header-allowlist X-Tenant-Id A2A-Version` writes the allowlist. Edit the existing Runtime entry instead of adding a duplicate. **Important:** the CLI auto-prefixes entries with `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` as they land in `agentcore.json`. If you're editing the JSON by hand, write the prefixed form directly. If you're using the CLI, pass the short name and let the CLI add the prefix.
 
 `Authorization` passes through by default and doesn't need to be in the allowlist.
 

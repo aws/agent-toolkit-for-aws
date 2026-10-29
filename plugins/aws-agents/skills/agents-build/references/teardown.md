@@ -1,166 +1,35 @@
-# teardown
+# Remove a project resource
 
-Remove individual resources from your project or tear down the entire deployment.
+Use this reference for removing one resource from an AgentCore CLI v1 project. For tearing down an entire deployed target, use the `agents-deploy` teardown workflow, which previews and scopes deletion to a named target.
 
-## When to use
+## Before removing
 
-- You want to remove a gateway, memory, credential, evaluator, or other resource from your project
-- You want to delete a deployed agent and clean up all AWS resources
-- You're iterating in a sandbox account and want to start fresh
-- You need to remove a resource that's stuck or no longer needed
+Read `agentcore/agentcore.json` and `agentcore/aws-targets.json`. Require CLI v1.0.0 or later and project config `"version": 2`. For a v0 project, commit, review `agentcore migrate`, and apply the reviewed plan with `agentcore migrate --yes` first. Identify the resource name, its parent if any, and each target where it is deployed. Confirm the intended deletion with the user when it will remove durable data such as Memory.
 
-## Process
+`agentcore remove` changes the local project declaration. `agentcore deploy --target <target>` applies the change in AWS for that target. `agentcore status --target <target> --json` reports deployed project resources; it has no `--state` or `--type` filter in v1.
 
-### Removing individual resources from your project
-
-Use `agentcore remove` to remove a resource from `agentcore.json`. This marks the resource for deletion — the actual AWS resource is removed on the next `agentcore deploy`.
+## Remove a resource
 
 ```bash
-# Remove a memory resource
 agentcore remove memory --name MyMemory
-
-# Remove a gateway target
-agentcore remove gateway-target --name WeatherTools --gateway MyGateway
-
-# Remove a gateway (remove all its targets first)
+agentcore remove gateway-target --gateway MyGateway --name WeatherTools
 agentcore remove gateway --name MyGateway
-
-# Remove a credential
 agentcore remove credential --name MyAPIKey
-
-# Remove an evaluator
-agentcore remove evaluator --name ResponseQuality
-
-# Remove an online eval config
-agentcore remove online-eval --name production_monitor
-
-# Remove a policy
-agentcore remove policy --name SpendingLimit --engine MyPolicyEngine
-
-# Remove a policy engine (remove all its policies first)
+agentcore remove runtime --name MyRuntime
+agentcore remove harness --name MyHarness
+agentcore remove policy --engine MyPolicyEngine --name SpendingLimit
 agentcore remove policy-engine --name MyPolicyEngine
+agentcore remove payment-connector --manager MyPayments --name Coinbase
+agentcore remove payment-manager --name MyPayments
 ```
 
-After removing, deploy to apply the changes:
+These are examples; use only the command for the resource the user selected. Remove child targets before their Gateway, policies before their engine, and connectors before their manager if project validation requires it. For an API key or OAuth provider, the resource type passed to `agentcore remove` is `credential`. Check `agentcore remove --help` for the resource types supported by the installed v1 CLI.
+
+Before deploying, inspect the changed `agentcore/agentcore.json` and preview the target stack with `agentcore build` followed by `cd agentcore/cdk && npx cdk diff` using the project's target context. See the `agents-deploy` diff procedure for the exact target setup. Then deploy each intended target explicitly:
 
 ```bash
-agentcore deploy -y
+agentcore deploy --target <target>
+agentcore status --target <target> --json
 ```
 
-Check what's pending removal before deploying:
-
-```bash
-agentcore status --state pending-removal
-```
-
-### Removing an agent from a multi-agent project
-
-If your project has multiple agents (runtimes), you can remove one:
-
-```bash
-agentcore remove agent --name SecondAgent
-agentcore deploy -y
-```
-
-This deletes the agent's runtime, endpoint, and associated resources from AWS. The agent's code in `app/<AgentName>/` is not deleted — remove it manually if you no longer need it.
-
-### Tearing down the entire deployment
-
-To remove all deployed AWS resources for a project:
-
-```bash
-# Preview what will be destroyed
-agentcore deploy --diff
-
-# Destroy all resources
-npx cdk destroy --app "npx ts-node agentcore/cdk/bin/cdk.ts" --force
-```
-
-Alternatively, delete the CloudFormation stack directly:
-
-```bash
-# Find the stack name
-aws cloudformation list-stacks \
-  --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
-  --query "StackSummaries[?contains(StackName, '<ProjectName>')].StackName"
-
-# Delete it
-aws cloudformation delete-stack --stack-name <StackName>
-
-# Wait for deletion to complete
-aws cloudformation wait stack-delete-complete --stack-name <StackName>
-```
-
-### What gets deleted and what doesn't
-
-| Resource | Deleted by `cdk destroy` | Notes |
-|---|---|---|
-| AgentCore Runtime(s) | ✅ | Includes all endpoints and versions |
-| Memory resource(s) | ✅ | Memory data is deleted permanently |
-| Gateway(s) and targets | ✅ | |
-| Credentials | ✅ | Secrets Manager entries are removed |
-| Policy engine(s) and policies | ✅ | |
-| Evaluator definitions | ✅ | |
-| Online eval configs | ✅ | |
-| IAM roles | ✅ | Created by CDK |
-| CloudWatch log groups | ❌ | Persist after deletion — delete manually if needed |
-| ECR images (Container builds) | ❌ | Persist — delete the repository manually |
-| CDK bootstrap stack | ❌ | Shared across projects — don't delete unless you're done with CDK entirely |
-| Local project files | ❌ | `agentcore/`, `app/` — delete manually |
-
-### Cleaning up CloudWatch log groups
-
-Log groups persist after stack deletion. To clean them up:
-
-```bash
-# List AgentCore log groups
-aws logs describe-log-groups \
-  --log-group-name-prefix /aws/bedrock-agentcore/ \
-  --query "logGroups[].logGroupName"
-
-# Delete a specific log group
-aws logs delete-log-group --log-group-name /aws/bedrock-agentcore/runtimes/<AGENT_ID>-DEFAULT
-```
-
-### Cleaning up ECR repositories (Container builds)
-
-```bash
-# List AgentCore ECR repositories
-aws ecr describe-repositories \
-  --query "repositories[?contains(repositoryName, 'bedrock-agentcore')].repositoryName"
-
-# Delete a repository and all its images
-aws ecr delete-repository --repository-name <repo-name> --force
-```
-
-### Handling stuck resources
-
-If a runtime is stuck in DELETING state for more than 30 minutes, see the "Runtime stuck in DELETING" section in `agents-debug`. The short version: don't keep retrying — open an AWS Support case with the runtime ARN and the original delete request ID from CloudTrail.
-
-## Common issues
-
-**"Can't remove gateway — targets still attached"**
-Remove all gateway targets first, then remove the gateway:
-
-```bash
-agentcore remove gateway-target --name Target1 --gateway MyGateway
-agentcore remove gateway-target --name Target2 --gateway MyGateway
-agentcore remove gateway --name MyGateway
-```
-
-**"Can't remove policy engine — policies still attached"**
-Remove all policies first, then remove the engine:
-
-```bash
-agentcore remove policy --name Policy1 --engine MyEngine
-agentcore remove policy-engine --name MyEngine
-```
-
-**"Resource shows pending-removal but deploy doesn't delete it"**
-Check `agentcore status --state pending-removal` and verify the resource is listed. If deploy completes without removing it, check the CDK output for errors — the deletion may have failed silently due to a dependency.
-
-## Output
-
-- CLI commands to remove the specific resource(s)
-- Guidance on what persists after deletion and how to clean it up
-- Warnings about irreversible data loss (memory data, credentials)
+`--yes` on `agentcore deploy` is only the confirmation for deleting a target stack when the project declares nothing to deploy. It is not a general noninteractive deploy flag. Do not delete a CloudFormation stack by searching for a project name; a project can have several targets and other resources can survive stack deletion.

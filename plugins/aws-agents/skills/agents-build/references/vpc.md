@@ -33,7 +33,7 @@ When you configure VPC mode, AgentCore creates **Elastic Network Interfaces (ENI
 
 ## Step 0: Verify CLI version
 
-Run `agentcore --version`. This skill requires v0.9.0 or later. If the version is older, tell the developer to run `agentcore update` before proceeding.
+Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `agentcore update` before proceeding.
 
 ---
 
@@ -118,22 +118,22 @@ Type: HTTP, Port: 80, Destination: API security group or CIDR (if needed)
 ### New project
 
 ```bash
-agentcore create \
-  --name MyAgent \
-  --defaults \
-  --network-mode VPC \
-  --subnets subnet-abc123,subnet-def456 \
-  --security-groups sg-agent123
+agentcore create --name MyProject --template agent-python-strands
+cd MyProject
 ```
+
+The template already creates the `agent` Runtime. Set `networkMode` and `networkConfig` on that entry as shown below before deploying.
 
 ### Existing project
 
+For an existing Runtime, edit its entry in `agentcore/agentcore.json` as shown below. `agentcore add runtime` creates another Runtime; it does not update the existing one. If the project has no Runtime yet, create it:
+
 ```bash
-agentcore add agent \
-  --name MyAgent \
+agentcore add runtime \
+  --name PrivateAgent \
+  --language python \
   --network-mode VPC \
-  --subnets subnet-abc123,subnet-def456 \
-  --security-groups sg-agent123
+  --network-config '{"subnets":["subnet-abc123","subnet-def456"],"securityGroups":["sg-agent123"]}'
 ```
 
 Or edit `agentcore/agentcore.json` directly — add the `networkMode` and `networkConfig` fields to the runtime's entry:
@@ -153,12 +153,12 @@ Or edit `agentcore/agentcore.json` directly — add the `networkMode` and `netwo
 }
 ```
 
-The `$schema` URL at the top of `agentcore.json` (`https://schema.agentcore.aws.dev/v1/agentcore.json`) gives IDE autocomplete and validation for every field — including the subnet/security-group ID patterns.
+For a container Runtime, also set `networkConfig.vpcId` so the build can use the VPC. Run `agentcore build` to validate the project before deployment.
 
 ### Deploy
 
 ```bash
-agentcore deploy -y
+agentcore deploy
 ```
 
 ---

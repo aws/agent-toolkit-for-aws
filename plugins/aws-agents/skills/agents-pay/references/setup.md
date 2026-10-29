@@ -1,107 +1,73 @@
 # agents-pay setup
 
-Full provisioning walkthrough. **A human runs every step here** except the final
-wiring. See the tool inventory in SKILL.md for what the agent can call.
+A human provisions resources and authorizes payment sessions outside the agent Runtime. The agent can only spend an already approved session. Require AgentCore CLI v1.0.0 or later and a Python environment with `bedrock_agentcore.payments`.
 
-## 0. Install
+## 0. Install and locate the project
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-npm install -g @aws/agentcore
+npm install -g @aws/agentcore@latest
 agentcore --version
 python -c "from bedrock_agentcore.payments import PaymentManager; print('payments OK')"
 ```
 
-If that import fails, install a `bedrock-agentcore` release with payments
-support before continuing. Keep the virtual environment active for the Python
-commands below.
-
-`requirements.txt` pins the complete Python runtime graph used by this skill. For
-integrity pinning in your own release process, generate platform-specific hashes
-from that exact graph:
+Work from the root of an AgentCore CLI v1 project (`agentcore/agentcore.json` has `"version": 2`). If the project is v0, commit it, review `agentcore migrate`, and apply the reviewed plan using `agentcore migrate --yes`. For a project dedicated to payment resources:
 
 ```bash
-python -m pip download -r requirements.txt -d wheels/
-python -m pip hash wheels/*
+agentcore create --name PaymentsProject --template empty
+cd PaymentsProject
 ```
 
-## 1. Obtain provider credentials
+## 1. Choose the connector
 
-Do this before running the connector command. **Never paste these into a chat,
-an agent prompt, or a command flag.**
+For Coinbase, Quick Create lets the service provision provider credentials. Complete any required AWS Marketplace subscription and Coinbase authorization outside the agent conversation. For manually managed Coinbase or Stripe Privy credentials, obtain them from the provider and store each secret in a local file kept outside git. The v1 CLI accepts secret flags only as `file://<path>` or `-` for stdin; it rejects inline secrets.
 
-**Coinbase CDP** — <https://portal.cdp.coinbase.com/>
-
-1. Create or open a CDP project
-2. Create an API key — note the **API Key ID** and **API Key Secret**
-3. Generate a **Wallet Secret** (used for signing operations)
-4. Project → Wallet → Embedded Wallets → Policies → **enable Delegated signing** (required)
-
-**Stripe Privy** — <https://dashboard.privy.io/>
-
-1. Create a **dedicated** Privy app for AgentCore (do not reuse an existing app)
-2. Copy the **App ID** and **App Secret**
-3. Wallet Infrastructure → Authorization → New Key → generate a P-256 key pair
-4. Strip the `wallet-auth:` prefix from the private key; keep the raw base64 (starts `MIGHAgEA...`)
-5. Note the **Authorization ID**
-
-## 2. Create the payment manager
-
-Leave the LLM conversation and run this in a separate terminal. Do not paste
-credentials, command output, deployed state, or generated IDs back into chat.
-Use the bare command so the whole setup stays in the interactive terminal:
+## 2. Add the payment manager
 
 ```bash
-agentcore add payment-manager
+agentcore add payment-manager \
+  --name MyPayments \
+  --network-preferences eip155:84532 \
+  --no-auto-payment
 ```
 
-Names: start with a letter, alphanumeric plus underscores, ≤48 characters.
+Names start with a letter and contain only alphanumeric characters, at most 48 characters. The v1 CLI requires `--name`; the v0 bare-command wizard is gone. If the project uses skill onboarding tags, put `"agentcore:onboarding-source": "agent-toolkit-skill"` in the project's top-level `tags` object and retain existing tags.
+The CLI enables auto-payment by default. This skill uses `--no-auto-payment` so spending remains behind its operator-approved session and policy checks.
 
-Optionally tag the project so the service can distinguish skill-onboarded
-resources — add to the top-level `tags` object in `agentcore/agentcore.json`,
-keeping existing entries:
+## 3. Add the payment connector
 
-```json
-"tags": { "agentcore:onboarding-source": "agent-toolkit-skill" }
-```
-
-## 3. Create the payment connector
-
-Run it with **no flags**. The wizard prompts for each secret, so nothing lands in
-shell history or the process list:
+For Coinbase Quick Create:
 
 ```bash
-agentcore add payment-connector
+agentcore add payment-connector \
+  --manager MyPayments --name Coinbase --quick-create
 ```
 
-Passing `--manager`, `--name`, or `--provider` switches the CLI to
-non-interactive mode and then *requires every secret as a flag* — it will not
-fall back to prompting. Use the bare command.
-
-The CLI writes provider secrets in **plaintext** to `agentcore/.env.local` and
-uploads them to AgentCore Identity on deploy. Before deploying:
+For manual Coinbase or Stripe, first add a v1 payment credential provider. Examples use file inputs for secrets:
 
 ```bash
-grep -q '^\.env\.local$\|^\.env\.\*$' .gitignore || echo '.env.local' >> .gitignore
-chmod 600 agentcore/.env.local
+agentcore add credentials payment \
+  --name CoinbaseCredentials --provider CoinbaseCDP \
+  --api-key-id <CDP_API_KEY_ID> \
+  --api-key-secret file://<api-key-secret-file> \
+  --wallet-secret file://<wallet-secret-file>
+agentcore add payment-connector \
+  --manager MyPayments --name Coinbase --credential CoinbaseCredentials
 ```
 
-The Python scaffold's default `.gitignore` lists only `.env`, so `.env.local`
-must be added. **The agent must never read this file.**
+For Stripe Privy, the credential command uses `--provider StripePrivy`, `--app-id`, `--app-secret file://<file>`, `--authorization-private-key file://<file>`, and `--authorization-id`. Then add the connector with `--credential <name>`. The provider secrets are stored in `agentcore/.env.local` until deploy sends them to AgentCore Identity. Check that `.env.local` is ignored by git and readable only by the human operator. Do not paste secret values or file contents into an agent conversation.
 
-## 4. Deploy
+## 4. Build, deploy, and discover
 
 ```bash
-agentcore deploy
+agentcore build
+agentcore deploy --region <region>
+agentcore status --json
 ```
 
-Provisions the manager and connector, plus a
-`Payment<Name>ProcessPaymentRole`. IDs land in
-`agentcore/.cli/deployed-state.json` under
-`targets.<target>.resources.payments[]` (`managerArn`,
-`connectors[].connectorId`, `processPaymentRoleArn`).
+The first deploy creates a `default` target in `agentcore/aws-targets.json` from the effective account and region. Check that it uses the intended account and region. For Quick Create, complete the Coinbase authorization URL reported at deploy and confirm the connector is ready. The v1 `agentcore/.cli/deployed-state.json` records the stack binding but does not store payment manager and connector IDs. Read them from `agentcore status --json`; `scripts/agents_pay_admin.py` now uses that output for automatic discovery. If discovery is unavailable, pass `--manager-arn` and `--connector-id` explicitly.
 
 ## 5. IAM: the four-role model
 
@@ -266,7 +232,7 @@ invent or keep in sync:
 python3 scripts/agents_pay_admin.py create-instrument --email you@example.com
 ```
 
-The manager ARN and connector ID are read from `agentcore/.cli/deployed-state.json`
+The manager ARN and connector ID are read from `agentcore status --json`
 automatically, so run this from your AgentCore project directory. Otherwise pass
 `--manager-arn` and `--connector-id` explicitly.
 

@@ -16,7 +16,7 @@ AgentCore has a local dev server (`agentcore dev`) and a deployed runtime. They 
 | Traces (X-Ray) | ✅ `agentcore dev` emits OTEL to CloudWatch by default; disable with `--no-traces` | ✅ auto-enabled |
 | CloudWatch logs | ✅ via ADOT / OTEL wiring (same path as traces) | ✅ if using `logging` module + OTEL |
 | **Evaluator *definition*** (`agentcore add evaluator`, writing the instructions/code) | ✅ — writes to `agentcore.json`; custom code is unit-testable locally | ✅ |
-| **`agentcore run eval`** (on-demand eval over traces) | ✅ — operates on CloudWatch spans; local-dev spans land there if OTEL is on (default) | ✅ |
+| **`agentcore eval ondemand`** (on-demand eval over traces) | ✅ — operates on CloudWatch spans; local-dev spans land there if OTEL is on (default) | ✅ |
 | **`Evaluate` API with hand-constructed spans** (boto3) | ✅ — no runtime needed at all; submit `SessionSpans` directly | ✅ |
 | **Dataset runner** (`OnDemandEvaluationDatasetRunner`) | ❌ invokes an AgentCore Runtime agent in its pipeline | ✅ |
 | **Online eval monitoring** (`agentcore add online-eval`) | ❌ ingests traces continuously from deployed runtime | ✅ |

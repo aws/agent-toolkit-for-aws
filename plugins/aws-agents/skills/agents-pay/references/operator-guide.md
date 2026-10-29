@@ -89,9 +89,10 @@ python -m pip install -r requirements.txt
 npm install -g @aws/agentcore
 
 # 1. Provision (ControlPlaneRole; only step that touches provider secrets)
-agentcore add payment-manager                     # NO FLAGS — interactive wizard
-agentcore add payment-connector                   # NO FLAGS — interactive wizard
-agentcore deploy
+agentcore add payment-manager --name MyPayments --no-auto-payment
+agentcore add payment-connector --manager MyPayments --name Coinbase --quick-create
+agentcore build
+agentcore deploy --region <region>
 
 # 2. Write the config with at least one approved payee
 python scripts/agents_pay_admin.py init-config \
@@ -161,7 +162,7 @@ runtime path; enabling both would make policy enforcement path-dependent.
 Two things to confirm before you trust the OpenClaw runtime:
 
 1. **No tool takes a wallet secret or provider key as a parameter.** Credentials
-   belong in the environment or the `agentcore` wizard, never in a model-visible
+   belong in the environment or the `agentcore` credential flow, never in a model-visible
    schema — otherwise they land in transcripts, traces, and logs.
 2. **No model-callable tool creates a payment session.** If the model can mint
    budget, the per-session cap bounds nothing.

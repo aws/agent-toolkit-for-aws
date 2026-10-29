@@ -1,36 +1,22 @@
-# AgentCore CLI
+# AgentCore CLI v1 for the Harness migration
 
-The migration tool is the AgentCore CLI, package **`@aws/agentcore`** — use the **latest** version. Its command/flag surface shifts between releases, so **verify it live** rather than trusting a hardcoded flag table.
-
-The AgentCore CLI (`@aws/agentcore`) is **not** the same as the `bedrock-agentcore-starter-toolkit`. The starter toolkit is deprecated and not recommended — do not use it or its commands for this migration. Everything here uses `@aws/agentcore`.
-
-## Authoritative, always-current sources
-
-- Installed surface: `agentcore --help`, then `agentcore <command> --help` for each command about to be used.
-- Per-project schema the CLI ships: `https://schema.agentcore.aws.dev/v1/agentcore.json` inside any scaffolded project (authoritative shape for `agentcore.json`, harness, gateway, target, tool-schema). Read before hand-editing config.
-- Published / latest version: `npm view @aws/agentcore version`.
-- Package page: https://www.npmjs.com/package/@aws/agentcore
-
-## Phase 0 checks
+Use `@aws/agentcore` v1.0.0 or later. This is separate from the Bedrock AgentCore Starter Toolkit and from the AWS CLI. Check the installed commands before acting:
 
 ```bash
 agentcore --version
-npm view @aws/agentcore version      # newer release available?
-python3 -c "import boto3; print(boto3.__version__)"   # discovery path probe (see discovery.md)
-```
-
-Then probe the commands the migration actually calls and confirm the flags/values each needs are present:
-
-```bash
 agentcore create --help
+agentcore add harness --help
 agentcore add gateway --help
 agentcore add gateway-target --help
-agentcore add harness --help
-agentcore add tool --help
+agentcore add gateway-connector --help
+agentcore build --help
 agentcore deploy --help
+agentcore status --help
+agentcore invoke --help
 ```
 
-If a required flag is **absent**, stop — don't generate commands against a surface that no longer exists. Update the CLI (`npm install -g @aws/agentcore@latest`) and re-probe, or update this skill if the references assume a flag the CLI renamed.
+A v1 project has `"version": 2` in `agentcore/agentcore.json`. `agentcore/aws-targets.json` is empty until the first deploy creates the default target from the effective AWS account and region. The Harness's own editable config is `app/<name>/harness.yaml`, with its prompt in `system-prompt.md`. `agentcore add harness --model` takes a JSON object such as `{"provider":"bedrock","modelId":"<source-model>"}`; the written YAML uses `model.bedrockModelConfig.modelId`. For direct YAML edits, follow the scaffolded field names. `agentcore build` validates and packages the project.
 
-## Never reverse-engineer the CLI bundle
-Do **not** read the CLI's minified source (`node_modules/@aws/agentcore/dist/**`) — internal names and wizard-only code paths produce confident-but-wrong conclusions. If `--help`, `.llm-context`, the hosted schema, and these references don't answer it, stop and ask the user.
+`agentcore add runtime --agent-id ... --agent-alias-id ...` translates a classic Bedrock Agent into a code Runtime. It is a separate route from this Harness migration. `agentcore migrate` converts an AgentCore CLI v0 project to v1; it does not import a classic Bedrock Agent.
+
+Do not infer flags from v0 guides. The v1 CLI has no `add tool`, `validate`, `fetch access`, or `project` command group. Check command help and the v1 source for any option this migration needs before issuing the command.

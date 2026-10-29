@@ -94,7 +94,7 @@ Which strategy (or combination) do you want?
 Run the CLI command to add memory to the project config:
 
 ```bash
-agentcore add memory --name <MemoryName> --strategies <STRATEGY1,STRATEGY2> --expiry 30
+agentcore add memory --name MyMemory --strategies SEMANTIC,USER_PREFERENCE --event-expiry-duration 30
 ```
 
 This updates `agentcore/agentcore.json`. The memory resource is provisioned when you next run `agentcore deploy` — it takes 2–5 minutes to become active.
@@ -104,12 +104,11 @@ The resulting config entry looks like:
 ```json
 {
   "memories": [{
-    "type": "AgentCoreMemory",
     "name": "MyMemory",
     "eventExpiryDuration": 30,
     "strategies": [
-      {"type": "SEMANTIC"},
-      {"type": "USER_PREFERENCE"}
+      {"type": "SEMANTIC", "namespaceTemplates": ["/users/{actorId}/facts"]},
+      {"type": "USER_PREFERENCE", "namespaceTemplates": ["/users/{actorId}/preferences"]}
     ]
   }]
 }
@@ -458,7 +457,7 @@ Before shipping a memory integration for ADK or Claude SDK, validate the end-to-
 2. Invoke the agent with facts to remember
 3. Start a new session
 4. Invoke again and verify the agent recalls those facts
-5. Check `agentcore logs --runtime <AgentName> --query "memory" --since 1h --level error` for any memory errors
+5. Check `agentcore logs runtime --name <AgentName> --query "memory" --since 1h --level error` for any memory errors
 
 If you build a working pattern, consider contributing it to [`awslabs/agentcore-samples`](https://github.com/awslabs/agentcore-samples) so the next developer doesn't have to figure it out.
 
@@ -473,9 +472,9 @@ The MEMORY_<NAME>_ID env var is only injected after deploy. The code above
 handles this gracefully — it runs without memory when the env var isn't set.
 
 To test memory:
-  agentcore deploy -y
-  agentcore invoke "My name is Alex and I prefer concise answers"
-  agentcore invoke "What do you know about me?"
+  agentcore deploy
+  agentcore invoke --runtime <RuntimeName> --payload '{"prompt":"My name is Alex and I prefer concise answers"}' --session-id 550e8400-e29b-41d4-a716-446655440000
+  agentcore invoke --runtime <RuntimeName> --payload '{"prompt":"What do you know about me?"}' --session-id 550e8400-e29b-41d4-a716-446655440000
 
 If using long-term memory (SEMANTIC or USER_PREFERENCE), wait 5–30 seconds
 between the first and second invoke — extraction runs asynchronously after
@@ -529,12 +528,12 @@ Most common cause: the memory resource is configured but the code isn't reading 
 
 1. Check that LTM strategies (SEMANTIC, USER_PREFERENCE) are configured — not just SUMMARIZATION
 2. Wait 5–30 seconds after a session ends before starting a new one — extraction is async
-3. Verify the memory resource is ACTIVE: `agentcore status --type memory`
+3. Find the Memory ID in `agentcore status --json`, then verify its service status is ACTIVE with `agentcore memory get --id <memory-id> --json`
 4. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" or "test" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
 
 **Memory not loading at session start:**
 
-1. Verify `MEMORY_<NAME>_ID` env var is set: `agentcore status --type memory --json`
+1. Find the Memory ID in `agentcore status --json`, then verify `MEMORY_<NAME>_ID` is set in the deployed Runtime environment
 2. Check the actor_id is consistent across sessions — memory is scoped per actor
 3. Confirm the namespace paths in retrieval_config match the namespaces used when writing — the retrieval namespace must exactly match the namespace the strategy extracts into
 4. CLI defaults use paths without trailing slashes (e.g., `/users/{actorId}/facts`). If you customized namespace templates when creating the memory resource, use whatever pattern you chose — consistency between writer and reader is what matters.
@@ -543,7 +542,7 @@ Most common cause: the memory resource is configured but the code isn't reading 
 Memory takes 2–5 minutes to become ACTIVE after `agentcore deploy`. Check status:
 
 ```bash
-agentcore status --type memory
+agentcore memory get --id <memory-id> --json
 ```
 
 ## S3 delivery / export buckets must be in the same account
@@ -580,7 +579,7 @@ The supported geographies and inference-region mappings change as AgentCore expa
 
 ## Beyond the CLI: memory features that require the API
 
-The CLI's `agentcore add memory` and `agentcore.json` cover strategy selection, expiry, and basic configuration. Some memory capabilities are API/SDK-only — the CLI doesn't expose them. When the developer needs one of these, the graduation path is: create the memory via CLI as usual, deploy, then apply the additional config via boto3 or AWS CLI.
+The v1 `agentcore add memory` command covers strategy selection, event expiry, indexed keys, stream delivery resources, and a KMS key ARN. Use its help before reaching for a direct API call. Resource policies and specialized strategy overrides may still need the API or SDK.
 
 **Resource-based policies** (cross-account access, principal-level restrictions):
 
@@ -588,7 +587,7 @@ The CLI's `agentcore add memory` and `agentcore.json` cover strategy selection, 
 import boto3, json
 
 client = boto3.client("bedrock-agentcore-control")
-memory_id = "<MEMORY_ID>"  # from: agentcore status --type memory --json
+memory_id = "<MEMORY_ID>"  # from: agentcore status --json
 
 client.put_memory_resource_policy(
     memoryId=memory_id,

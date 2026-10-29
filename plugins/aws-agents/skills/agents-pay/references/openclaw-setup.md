@@ -37,17 +37,17 @@ Create an AgentCore project before adding and deploying the payment resources:
 
 ```bash
 npm install -g @aws/agentcore
-PROJECT_NAME=openclaw-payments
-agentcore create --project-name "$PROJECT_NAME" --no-agent
+PROJECT_NAME=OpenclawPayments
+agentcore create --name "$PROJECT_NAME" --template empty
 cd "$PROJECT_NAME"
-agentcore add payment-manager
-agentcore add payment-connector
-agentcore deploy
+agentcore add payment-manager --name MyPayments --no-auto-payment
+agentcore add payment-connector --manager MyPayments --name Coinbase --quick-create
+agentcore build
+agentcore deploy --region <region>
 export AGENTCORE_PROJECT_DIR="$PWD"
 ```
 
-Run both `agentcore add` commands without flags so credentials remain in the
-interactive terminal. Keep `AGENTCORE_PROJECT_DIR` set while running the setup
+Quick Create needs no provider secrets. Complete the Coinbase authorization outside the OpenClaw conversation. For manual provider credentials, follow [setup.md](setup.md). Keep `AGENTCORE_PROJECT_DIR` set while running the setup
 wizard from the plugin directory.
 
 ## Quick Setup (Recommended)
@@ -91,8 +91,7 @@ python scripts/agents_pay_admin.py new-session \
   --expiry-minutes 60
 ```
 
-The two `agentcore add` commands must run without flags so credentials remain in
-the interactive terminal. Do not paste credentials, command output, deployed
+The provisioning commands above use v1 flags. Keep any manual provider credentials in the human terminal and out of the OpenClaw conversation. Do not paste credentials, command output, deployed
 state, or generated identifiers into an LLM conversation.
 
 Complete delegation and testnet funding before creating the session. Then edit

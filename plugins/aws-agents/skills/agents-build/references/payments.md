@@ -1,223 +1,46 @@
 # payments
 
-Add AgentCore Payments to your agent — the managed service that lets your agent pay for x402- and MPP-protected APIs, MCP tools, and web content via microtransactions (Coinbase CDP, Stripe Privy).
-
-AgentCore Payments is **protocol-agnostic**: it supports both **x402** (Coinbase/Cloudflare's HTTP-native stablecoin micropayment protocol) and **MPP** (the Machine Payments Protocol from Stripe and Tempo). Both are exercised through the same `ProcessPayment` API and the same manager/connector/instrument/session resources — the service detects which protocol a merchant speaks from its `402 Payment Required` response and mints the matching payment proof. You do not pick a protocol up front; you provision payments once and the agent can pay either kind of merchant. See **How x402 Payment Works** and **MPP (Machine Payments Protocol)** below for the two wire flows.
-
-The control-plane resources (payment manager, connector, credential provider) are provisioned with the AgentCore **CLI**. The per-user data-plane resources (instrument, session) are created with the AgentCore **SDK** (a provided script). Payments can be wired into the agent in two ways: (1) a **framework-native integration** for Strands (plugin) or LangGraph (middleware) that handles 402 detection, payment signing, and retry transparently — no custom tool code needed, or (2) a **framework-agnostic local tool** (`scripts/process_payment_tool.py`) for any other Python framework (OpenAI Agents SDK, CrewAI, etc.) or when you need full manual control.
+Add AgentCore Payments to an existing agent. This reference covers the v1 CLI provisioning path and Runtime wiring. For the detailed human operated setup and IAM role split, use the bundled `agents-pay` [setup](../../agents-pay/references/setup.md) and [operator guide](../../agents-pay/references/operator-guide.md). The SDK based payment code below remains applicable after the resources are deployed.
 
 ## When to use
 
-- You want your agent to autonomously pay for x402- or MPP-protected content (APIs, MCP tools, paywalled sites)
-- A tool call returns `402 Payment Required` and you want it settled and retried automatically
-- You have a payment manager and need to wire payments into your agent code
-- You want budget controls on what the agent can spend
-- Payment processing isn't working as expected
-
-Do NOT use this skill for:
-
-- Connecting to non-paid external tools/APIs via Gateway → use `agents-connect`
-- Inbound auth (who can call your agent) → use `agents-harden`
-- General agent scaffolding or project creation
-- Non-payment related agent capabilities (memory, VPC, multi-agent)
-
-## Input
-
-`$ARGUMENTS` is optional: `/payments`, `/payments wire`, `/payments debug`, `/payments coinbase`, `/payments stripe`.
+- Wire a Strands or LangGraph Runtime to x402 or MPP payments.
+- Add an AgentCore payment manager and connector to a v1 project.
+- Debug a 402 challenge after the payment resources exist.
 
 ## Process
 
-**Execution model — minimize human stops.** Run the steps yourself, in order, without pausing between them. There are only **two** points that require the developer; pause at these and resume automatically once the developer confirms:
+### Step 0: Check the CLI and project
 
-- **Step 3b (connector credentials)** — for **Coinbase QuickCreate** (recommended) the developer authorizes through Coinbase in the browser — no secrets; for **Manual** (Coinbase or Stripe) the developer runs the connector command with their secrets. Present the path, then wait for them to confirm the connector is `READY`.
-- **Step 7 (delegation + funding)** — the developer authorizes the wallet and funds it (browser + faucet). Surface the instructions, then wait.
+Require `agentcore --version` at v1.0.0 or later. Read `agentcore/agentcore.json`; a v1 project has `"version": 2` and payment managers in `payments`. A v0 project must be committed and migrated first: review `agentcore migrate`, then apply the reviewed plan with `agentcore migrate --yes`. If there is no project and one is needed, use `agentcore create --name PaymentsProject --template empty`. A Strands Runtime project can instead start with `--template agent-python-strands`.
 
-Everything else — Steps 0–3a, **4 (deploy), 5 (wire), 6 (instrument/session), 8 (set env + test)** — you run automatically. After the developer confirms 3b, ask them for the **user id** and **email** for the first wallet (Step 6 needs them), then immediately continue through 4 → 5 → 6 (and present Step 7) without asking permission for each. After they confirm 7, run Step 8. Do not stop after every step.
+Choose the Runtime framework by reading its code and `runtimes[]` entry. The CLI does not wire the payment plugin into the Runtime source; Step 5 is still required.
 
-### Step 0: Install / verify the AgentCore CLI
+### Step 1: Select provider and authenticate the operator
 
-The CLI is the **npm** package `@aws/agentcore` (Node.js 20+). It is NOT a pip package — do not `pip install` it.
+For Coinbase, Quick Create is the smallest v1 path. The human completes any required Marketplace subscription and Coinbase authorization. For manual Coinbase or Stripe Privy, the human uses `agentcore add credentials payment` with secret values read from files or stdin. The v1 CLI rejects inline secrets and the v0 bare-command wizard no longer applies. Keep provider credentials outside the agent conversation. See the `agents-pay` setup reference for the manual provider flags and IAM role separation.
 
-```bash
-agentcore --version        # need >= 0.20.0 (payment commands are preview, added in 0.20.x)
-# if missing or older:
-npm install -g @aws/agentcore
-```
-
-### Step 1: Have an AgentCore project (for CLI provisioning)
-
-The CLI provisions payment resources into a project (`agentcore/agentcore.json`).
-
-- **Project exists**: read `agentcore/agentcore.json` — check the `payments` array and the `runtimes` array (framework).
-- **No project**: scaffold one (don't call `--help`; run it directly). Non-interactive:
-
-  ```bash
-  agentcore create --project-name <ProjectName> --name <AgentName> --framework Strands --defaults
-  ```
-
-  `--project-name` and `--name` are both required non-interactively (`--name` is the agent/resource name; without it the CLI drops to the interactive wizard). Project name: start with a letter, alphanumeric, ≤23 chars, no underscores. `--defaults` = Python + Bedrock, no memory; or run `agentcore create` for the interactive wizard. A project is only needed to provision the payment resources via the CLI — the local payment tool (Step 5) works in any agent, framework, or host.
-
-### Step 2: Determine the situation
-
-- **Case A — nothing configured**: proceed to Step 3.
-- **Case B — manager/connector exist, needs wiring**: skip to Step 5.
-- **Case C — wired, debugging**: ask what's failing, then use the Debugging section.
-- **Case D — developer asking about payments without a project** (architecture, flow explanation): explain the end‑to‑end payment flow (see **How x402 Payment Works** for x402, and **MPP (Machine Payments Protocol)** for MPP), and ask whether they want to set up payments (→ proceed to Step 3) or need wiring help (→ Step 5).
-
-**Framework check**: If the project uses **Strands** or **LangGraph** (check `agentcore/agentcore.json` → `runtimes` array), offer the native integration path (Step 5a) which is simpler — no custom tool script needed. If the project uses another framework, or the developer wants manual control, use the generic tool path (Step 5b).
-
-**Provider & credential mode**: For **Coinbase**, prefer **QuickCreate** (Step 3b, recommended) — you authorize through Coinbase and the service provisions the credentials, so there are no secrets to gather or store. Choose **Manual** only if you already manage your own Coinbase keys. **Stripe (Privy) is manual-only.**
-
-### Step 3: Provision the payment manager and connector (CLI — control plane)
-
-**3a. Payment manager — no secrets, run it directly (non-interactive).** The agent can run this for the developer:
+### Step 2: Add resources
 
 ```bash
 agentcore add payment-manager \
---name <ManagerName> \
---network-preferences eip155:84532
-```
-
-`eip155:84532` is Base Sepolia (testnet). Names: alphanumeric only, ≤48 chars, start with a letter.
-
-**Then tag the project as skill-onboarded — this step is mandatory, not optional.** The agent MUST edit `agentcore/agentcore.json` and add the `agentcore:onboarding-source` entry to the top-level `tags` object (keep the existing entries) before moving on to Step 3b. If the `tags` object does not exist yet, create it with the entries shown:
-
-```json
-"tags": {
-  "agentcore:created-by": "agentcore-cli",
-  "agentcore:project-name": "<existing value>",
-  "agentcore:onboarding-source": "agent-toolkit-skill"
-}
-```
-
-Project tags are applied to the provisioned AWS resources at deploy. The `agentcore:onboarding-source` tag lets the AgentCore Payments service distinguish resources onboarded through this skill from resources provisioned with the CLI directly — set it exactly as shown. **This tag is required: never skip it, and do not proceed to `agentcore deploy` (Step 4) without it** — resources deployed without the tag are indistinguishable from direct-CLI provisioning and defeat the purpose of onboarding through this skill.
-
-**3b. Payment connector — choose a credential mode.** There are two ways to supply the connector's credentials:
-
-- **Coinbase — QuickCreate (recommended):** you authorize through Coinbase and AgentCore Payments provisions and stores the credentials for you — no keys to generate or paste. **Coinbase only.**
-- **Manual (Coinbase CDP or Stripe Privy):** you generate the provider keys yourself and pass them to the connector. **This is the only path for Stripe (Privy).**
-
-**Coinbase prerequisite — AWS Marketplace subscription (required for BOTH QuickCreate and Manual).** Any Coinbase connector requires an active AWS Marketplace subscription to **"Coinbase Wallets for AgentCore Payments"**. With this subscription, your Coinbase wallet usage charges are consolidated into your monthly AWS bill as per Coinbase's public pricing. Until an active subscription exists in your AWS account, `CreatePaymentConnector` fails with a `SubscriptionRequiredException` (HTTP 403).
-
-Subscribe once per AWS account, before creating a Coinbase connector — [Coinbase Wallets for AgentCore Payments](https://aws.amazon.com/marketplace/pp/prodview-ia2zd5puqyi7g):
-
-1. **Prerequisite:** be logged in to your AWS Console.
-2. Open the link above — it takes you to the **"Coinbase Wallets for AgentCore Payments"** product listing page.
-3. Click **View purchase options**.
-4. Review the listing details (terms and conditions, etc.), then click **Subscribe**.
-5. You are now subscribed to Coinbase — proceed with Coinbase connector creation (QuickCreate or Manual, below).
-
-> A missing subscription 403s at `agentcore deploy` (when the connector is actually created). Because the CLI provisions the payment manager and connector in the **same CloudFormation stack**, that failure rolls the whole stack back and **deletes the PaymentManager too** — see **Recovery after a `SubscriptionRequiredException`** in Step 4.
-
-**Coinbase — QuickCreate (recommended). No secrets, so the agent can run this directly.** Prerequisite: the Coinbase AWS Marketplace subscription above. Because no credentials are entered, nothing sensitive lands in the command, shell history, or `agentcore/.env.local`, and you skip the "get your provider credentials" step below.
-
-```bash
+  --name MyPayments \
+  --network-preferences eip155:84532
 agentcore add payment-connector \
---manager <ManagerName> \
---name <ConnectorName> \
---provider CoinbaseCDP \
---provision-mode QUICK_CREATE
+  --manager MyPayments --name Coinbase --quick-create
 ```
 
-This records a QuickCreate Coinbase connector locally with **no secrets**. When the connector is created at `agentcore deploy` (Step 4), it comes up in `PENDING_AUTHENTICATION` with an `authorizationUrl` the developer must open to authorize through Coinbase. **The AgentCore CLI does not open that URL for you today** — the agent retrieves it (via `GetPaymentConnector`) and opens it / hands it to the developer (see the handling bullets below). After the developer authorizes, the connector moves `PENDING_AUTHENTICATION` → `READY` — there is no API Key ID, API Key Secret, or Wallet Secret to obtain or store. Present the command (the agent may run it — no secrets are involved), drive the authorization as described below, and confirm the connector is `READY` before continuing. (Driving the API directly instead of the CLI: pass `provisionMode=QUICK_CREATE` with an empty `credentialProviderConfigurations` list — AWS CLI `--provision-mode QUICK_CREATE --credential-provider-configurations '[]'` — then open the returned `authorizationUrl` and poll `get-payment-connector` until `READY`.)
+For a manual connector, replace `--quick-create` with `--credential <PaymentCredentialName>` after adding that credential. Manager names are alphanumeric, start with a letter, and have at most 48 characters; connector names can also contain underscores. Add any intended onboarding tag to the project's top-level `tags` before deploying.
 
-**Handling the `authorizationUrl` (short-lived + single-use).** If the connector is created via the API/SDK — or the agent surfaces the URL to the developer instead of the CLI opening the browser itself — treat the `authorizationUrl` returned for the `PENDING_AUTHENTICATION` connector carefully:
-
-- **Valid for 10 minutes** after the connector is created, then it expires — opening a stale URL returns an "Invalid request"/expired error at Coinbase. Open it promptly.
-- **Open it exactly once, as a real browser navigation — never *fetch* or *preview* it.** It carries a one-time OAuth consent session, so no `curl`/`HEAD`/`WebFetch` of the URL, and don't paste it anywhere that auto-previews or "unfurls" links (Slack, Teams, other chat tools). A preview fetch consumes the one-time session, so the developer's later click fails with "Invalid request". (Launching a browser to *navigate* to it is the intended use — that is different from fetching it.)
-- **Opening it — the AgentCore CLI does NOT open it for you today, so the agent must drive this.** If you (the agent) are running on the developer's machine with a desktop browser, open it for them with the OS opener — `open "<url>"` (macOS), `xdg-open "<url>"` (Linux), `start "" "<url>"` (Windows); these navigate, they do not pre-fetch. If you are headless / remote / in CI (no local GUI browser, or the developer isn't at this machine), print the URL as plain/code text and have the developer open it. Retrieve the URL from `GetPaymentConnector` (or the create response) — never fetch the URL itself.
-- **Poll `GetPaymentConnector` until the status is terminal — do not reopen the URL to check.** After the developer authorizes, poll the connector's `status` until it reaches one of `READY`, `AUTHENTICATION_EXPIRED`, `AUTHENTICATION_FAILED`, or `AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED` (space the calls out, e.g. every few seconds). `CREATING`, `PENDING_AUTHENTICATION` (waiting for consent), and `PROVISIONING` (consent succeeded, credentials being provisioned) are all **transient** — keep polling.
-- **`READY`** — done. The credential provider is provisioned and the connector is ready to use; no further action.
-- **`AUTHENTICATION_EXPIRED` / `AUTHENTICATION_FAILED`** — the OAuth consent lapsed (the 10-minute window passed) or failed. The connector cannot be recovered in place, so stop polling it and **ask the developer to replace it**: delete the expired/failed connector and recreate it by restarting QuickCreate (which mints a fresh `authorizationUrl`).
-- **`AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED`** — the AWS account is not subscribed to **"Coinbase Wallets for AgentCore Payments"** (see the Coinbase prerequisite above). Have the developer subscribe, then replace the connector. On the CLI deploy path the payment manager may have been rolled back too — see **Recovery after a `SubscriptionRequiredException`** in Step 4.
+### Step 3: Build and deploy
 
 ```bash
-# Poll status until terminal: READY / AUTHENTICATION_EXPIRED / AUTHENTICATION_FAILED / AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED
-# (CREATING / PENDING_AUTHENTICATION / PROVISIONING = keep polling; a still-valid authorizationUrl is returned while PENDING_AUTHENTICATION):
-aws bedrock-agentcore-control get-payment-connector \
-  --payment-manager-id "<PAYMENT_MANAGER_ID>" \
-  --payment-connector-id "<PAYMENT_CONNECTOR_ID>" \
-  --region <AWS_REGION>
+agentcore build
+agentcore deploy --region <region>
+agentcore status --json
 ```
 
-If the status is `AUTHENTICATION_EXPIRED` or `AUTHENTICATION_FAILED`, replace the connector — delete it, then restart QuickCreate:
-
-```bash
-# Delete the expired/failed connector, then re-run the QuickCreate command above to mint a fresh authorizationUrl.
-agentcore remove payment-connector --manager <ManagerName> --name <ConnectorName> --yes
-agentcore deploy
-# then re-run: agentcore add payment-connector … --provider CoinbaseCDP --provision-mode QUICK_CREATE   (and agentcore deploy)
-```
-
-**Manual (Coinbase CDP or Stripe Privy) — needs provider credentials. The DEVELOPER runs this, not the agent.** The agent presents the prerequisites and the command below, but must NOT execute it or handle the credentials. This single command creates the credential provider and the connector. The CLI writes the provider secrets in **plaintext to `agentcore/.env.local`** and records the credential locally; `agentcore deploy` (Step 4) then uploads them to **AgentCore Identity** (`agentcore.json` keeps only a reference). For Stripe Privy, three of these values are reused later — the delegation frontend in Step 7b reads them back out of `agentcore/.env.local`, so the developer is never asked for them twice. Note the CLI namespaces each key as `AGENTCORE_CREDENTIAL_<MANAGER>_<CONNECTOR>_STRIPE_PRIVY_<FIELD>`, using the manager and connector names chosen below; Step 7b matches on the `_STRIPE_PRIVY_<FIELD>` suffix for that reason.
-
-**Before running — get your provider credentials** (do this first; the connector command needs them). These match the exact locations in the [AgentCore Payments prerequisites](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-prerequisites.html).
-
-- **Coinbase CDP** (<https://portal.cdp.coinbase.com/>):
-    1. Create or log in to a Coinbase Developer Platform account and project.
-    2. Generate an **API key** (or reuse one) at <https://portal.cdp.coinbase.com/api-keys/secret> and note two values:
-        - **API Key ID** — the public identifier for your CDP project.
-        - **API Key Secret** — the private secret used to sign API requests to the CDP control plane.
-    3. Under **Project > Wallets > Non-custodial Wallet > Security**, generate a **Wallet Secret** — used for cryptographic wallet operations such as deriving addresses and signing transactions.
-    4. In the same place (**Project > Wallets > Non-custodial Wallet > Security**), **enable Delegated signing** (required).
-- **Stripe Privy** (<https://dashboard.privy.io/>):
-    1. Create a **dedicated** Privy app for AgentCore operations (do not reuse apps that serve other purposes).
-    2. In **App settings > Basics > API Keys**, copy the **App ID** and **App Secret**.
-    3. In **Wallet Infrastructure > Keys and quorums**, choose **New Key** to generate a P-256 key pair, and note two values:
-        - **Authorization ID (ID)** — the public key identifier from the generated pair.
-        - **Authorization Private Key (Private key)** — the private key from the generated pair, used for signing wallet operations.
-
-Recommended — interactive wizard. Run the command with **no flags** (the secrets never appear in the command, shell history, or process list; the CLI still writes them to `agentcore/.env.local` either way — see the security note below). Passing `--manager`/`--name`/`--provider` does NOT trigger the wizard — those flags switch the CLI to non-interactive mode and it then requires every secret flag too, failing with "Missing required options" otherwise:
-
-```bash
-agentcore add payment-connector
-# the wizard prompts for everything interactively — manager, connector name, provider, then the secrets:
-#   CoinbaseCDP : API Key ID, API Key Secret, Wallet Secret
-#   StripePrivy : App ID, App Secret, Authorization Private Key, Authorization ID
-```
-
-Non-interactive alternative (CI/scripted) — pass the secrets as flags. These land in shell history and the process list, so prefer the wizard for local setup:
-
-```bash
-# Coinbase CDP (dummy values — replace with your own)
-agentcore add payment-connector --manager <ManagerName> --name <ConnectorName> --provider CoinbaseCDP \
---api-key-id 11111111-2222-3333-4444-555555555555 \
---api-key-secret cdp_sk_EXAMPLEexampleEXAMPLEexampleEXAMPLE0000 \
---wallet-secret  cdp_wallet_EXAMPLEexampleEXAMPLEexample1111
-# Stripe Privy (dummy values — replace with your own)
-agentcore add payment-connector --manager <ManagerName> --name <ConnectorName> --provider StripePrivy \
---app-id clxxxxxxxxxxxxxxxxxxxxxxxx \
---app-secret privy_sk_EXAMPLEexampleEXAMPLEexample2222 \
---authorization-private-key MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwEXAMPLE... \
---authorization-id ezzzzzzzzzzzzzzzzzzzzzzzz
-```
-
-> **Wizard vs flags:** The flags `--manager`, `--name`, and `--provider` are marked `[non-interactive]` — if you provide any of them, the CLI switches to **non-interactive mode** and expects **all required secrets as flags**. Running it with those three flags but omitting the secrets errors with missing-required-flags rather than dropping back to the wizard. For the interactive wizard, run the command with no flags: `agentcore add payment-connector`. Then wait for the developer to confirm it's done.
-
-Security:
-
-- **QuickCreate stores no secrets locally.** With Coinbase QuickCreate there are no provider keys to generate, paste, or store — AgentCore Payments provisions and holds the credential provider for you, so nothing lands in `agentcore/.env.local`. The bullets below apply to the **Manual** path.
-- **`agentcore/.env.local` holds the provider secrets in plaintext.** The CLI writes it when the connector is added (wizard or flags) and uploads it to AgentCore Identity at `agentcore deploy`. Ensure it is gitignored — the Python scaffold's default `.gitignore` only lists `.env`, so add `.env.local` (or `.env.*`). The agent must not read `agentcore/.env.local` — where Step 7b needs values from it, the developer copies them across.
-- The agent presents the command but never runs it or handles the credentials; never paste credentials into chat.
-
-### Step 4: Deploy (create the resources) — agent runs
-
-```bash
-agentcore deploy -y
-```
-
-`agentcore deploy` provisions the project's resources to your AWS account: the payment manager/connector via the AgentCore control plane, and supporting IAM (the `Payment<Name>ProcessPaymentRole`) and any runtime via a CloudFormation stack (CDK). **Coinbase QuickCreate:** if you added the connector with `--provision-mode QUICK_CREATE`, deploy is when it is created — it comes up in `PENDING_AUTHENTICATION` with an `authorizationUrl`. **The CLI does not open that URL for you today**, so the agent must retrieve it (`GetPaymentConnector`) and open it / hand it to the developer (see Step 3b); after authorization the connector moves `PENDING_AUTHENTICATION` → `READY` (this is the developer-involved point from Step 3b). After deploy, the manager ARN, connector ID, and role ARN are written to `agentcore/.cli/deployed-state.json`. On CLI 0.20.x these live under `targets.<target>.resources.payments[]` (`managerArn`, `connectors[].connectorId`, `processPaymentRoleArn`); the Step 6 script reads this shape automatically.
-
-**Recovery after a `SubscriptionRequiredException` (Coinbase, CLI deploy).** If `agentcore deploy` fails while creating a Coinbase connector with `SubscriptionRequiredException` (HTTP 403), the account is not subscribed to **"Coinbase Wallets for AgentCore Payments"** — pause and have the developer subscribe (see the Coinbase prerequisite in Step 3b). **Important:** because the CLI provisions the payment manager and connector in the **same CloudFormation stack**, this deploy failure rolls the stack back and **deletes the PaymentManager that was being created alongside the connector**. So when the developer returns and confirms the subscription is active, do NOT just retry the connector — first recheck whether the manager still exists:
-
-```bash
-aws bedrock-agentcore-control get-payment-manager \
-  --payment-manager-id "<PAYMENT_MANAGER_ID>" \
-  --region <AWS_REGION>
-```
-
-- **Manager returned (still exists):** resume — create/deploy the connector (Step 3b → Step 4).
-- **Not found (`ResourceNotFoundException`):** the rollback removed it — **restart the flow from Step 3a**: recreate the payment manager (and re-apply the mandatory `agentcore:onboarding-source` tag), then create the connector (Step 3b), then `agentcore deploy` again.
+The first deploy creates the default target with the effective AWS account and region. Check the account and region. Coinbase Quick Create reports an authorization URL; the human completes that flow and waits for the connector to become ready. v1 payment identifiers are surfaced by `agentcore status --json`, not the `payments[]` branch of `agentcore/.cli/deployed-state.json`. If an admin script cannot discover them, supply its `--manager-arn` and `--connector-id` flags.
 
 ### Step 5: Wire the agent
 
@@ -332,7 +155,7 @@ The agent calls `x402_fetch` instead of a generic HTTP tool; payment is handled 
 
 ### Step 6: Provision the per-user instrument and session (SDK script — data plane) — agent runs
 
-The instrument (per-user wallet) and session (budget-bounded spend window) are data-plane resources — there is no CLI command for them. First ask the developer for the **user id** and **email** to provision the wallet for (if not already collected after Step 3b). Then run the provided script [`scripts/setup_payment_user.py`](../scripts/setup_payment_user.py) once per user. It auto-reads the manager ARN/connector ID from `deployed-state.json` (or accepts `--manager-arn`/`--connector-id`):
+The instrument (per-user wallet) and session (budget-bounded spend window) are data-plane resources — the v1 CLI can inspect them with `agentcore payment instrument` and `agentcore payment session`, while creation remains an SDK workflow. First ask the developer for the **user id** and **email** to provision the wallet for (if not already collected after Step 3b). Then run the provided script [`scripts/setup_payment_user.py`](../scripts/setup_payment_user.py) once per user. It reads the manager ARN/connector ID from `agentcore status --json` (or accepts `--manager-arn`/`--connector-id`):
 
 ```bash
 python scripts/setup_payment_user.py --user-id alice --email alice@example.com --budget 5
@@ -841,7 +664,7 @@ MPP is method-agnostic, but the one crypto network AgentCore adds *beyond* the x
 | Tempo Mainnet | `eip155:4217` | Mainnet |
 | Tempo Moderato | `eip155:42431` | Testnet |
 
-- **Provider — StripePrivy only.** Tempo is not supported on Coinbase-managed instruments (`ValidationException("Tempo payments are not supported for Coinbase-managed payment instruments.")`). To pay Tempo/MPP endpoints, provision the connector with `--provider StripePrivy` (Step 3b) and create the instrument on it.
+- **Provider — StripePrivy only.** Tempo is not supported on Coinbase-managed instruments (`ValidationException("Tempo payments are not supported for Coinbase-managed payment instruments.")`). To pay Tempo/MPP endpoints, add a Stripe Privy payment credential and use `--credential <name>` on the connector and create the instrument on it.
 - **No up-front network choice.** As with x402, you do not "target" Tempo when provisioning — AgentCore maps the MPP challenge to Tempo automatically (a `method="evm"` challenge carrying `chainId=42431` maps to Moderato). Provision once with a StripePrivy connector; the agent then pays x402 *and* Tempo/MPP merchants through the same manager/instrument/session.
 - **Asset — the network's canonical stablecoin.** AgentCore validates the charge against the network's canonical USD stablecoin (`MPP_EVM_NON_CANONICAL_USDC` otherwise). On **Moderato** that canonical token is **pathUSD**; fund the wallet with pathUSD from the Tempo faucet (<https://tempo.xyz/developers/docs/quickstart/faucet>) — see Step 7.
 - **Access gate.** MPP (including Tempo) is behind a fail-closed account allowlist — a first call may return `AccessDeniedException(MPP_ACCESS_NOT_ALLOWLISTED)`. Request access via AWS Support (see Debugging).
@@ -874,7 +697,7 @@ For testing, start with **Base Sepolia** (network: `ETHEREUM`, chain: `BASE_SEPO
 ## Quality criteria
 
 - CLI is installed via `npm install -g @aws/agentcore`, not pip
-- Control plane (credential provider, manager, connector) is provisioned via the CLI; the manager non-interactively. For a Coinbase connector, **QuickCreate (`--provision-mode QUICK_CREATE`, no secrets) is offered first**; manual secret entry is the alternative and the only path for Stripe (Privy). Only the connector step involves the developer — QuickCreate: browser authorization; Manual: entering secrets
+- Control plane (credential provider, manager, connector) is provisioned via the CLI; the manager non-interactively. For a Coinbase connector, **Quick Create (`--quick-create`, no secrets) is offered first**; manual secret entry is the alternative and the only path for Stripe (Privy). Only the connector step involves the developer — QuickCreate: browser authorization; Manual: entering secrets
 - The `agentcore:onboarding-source: agent-toolkit-skill` tag is added to `agentcore/agentcore.json` (Step 3a) before deploy — this is mandatory, so the provisioned resources are attributable to this skill
 - Data plane (instrument, session) is created via the SDK script, not hand-written code
 - If the project is Strands or LangGraph, the native integration (Step 5a) is offered first as the simpler path

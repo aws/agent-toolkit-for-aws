@@ -33,40 +33,24 @@ Do NOT use for:
 Read `agentcore/agentcore.json` to get the agent name. Then check if it's deployed:
 
 ```bash
-agentcore status --type agent
+agentcore status --json
 ```
 
 **If not deployed:** "Your agent needs to be deployed before you can call it from an app. Run `agentcore deploy` first, or use the `agents-deploy` skill for guidance."
 
 Do not proceed until the agent is deployed.
 
-### Step 2: Get the agent endpoint
+### Step 2: Get the Runtime ARN and target
 
 ```bash
-agentcore fetch access --name <AgentName> --type agent
+agentcore status --json
 ```
 
-This returns:
-
-- **Agent Runtime ARN** — needed for SDK invocation
-- **Endpoint URL** — for direct HTTPS calls
-- **Auth configuration** — what auth method is configured
-
-Note the auth type from the output. It determines how the client app authenticates.
+Select the deployed `runtime` entry by name in the `resources` array. Its `arn` is the identifier for SDK invocation. If the project has multiple deployment targets, pass `--target <name>` and use that target's region. The old `agentcore fetch access` command is absent in v1. `agentcore runtime get --id <runtime-id> --json` reads further service details when needed.
 
 ### Step 3: Determine auth method
 
-Read the agent's `authorizerType` field from `agentcore/agentcore.json` (it's a top-level field on the runtime entry; JWT details live in the separate `authorizerConfiguration` object on the same runtime).
-
-| Auth type | How the client authenticates | Best for |
-|---|---|---|
-| **None** (default) | IAM SigV4 signing on the request | Backend services with AWS credentials |
-| **AWS_IAM** | IAM SigV4 signing on the request | Backend services, Lambda-to-agent calls |
-| **CUSTOM_JWT** | Bearer token in Authorization header | Web/mobile apps with an identity provider |
-
-**If no authorizer is configured:** The agent uses IAM auth by default. The calling identity needs `bedrock-agentcore:InvokeAgentRuntime` permission.
-
-**If CUSTOM_JWT:** The client sends a JWT from the configured identity provider. The agent validates it against the discovery URL, allowed audience, and allowed clients configured during setup.
+Read the Runtime entry's `authorizerType` and `authorizerConfiguration` in `agentcore/agentcore.json`. An unset authorizer uses IAM. AWS_IAM callers sign requests with SigV4 and need `bedrock-agentcore:InvokeAgentRuntime`; CUSTOM_JWT callers present a JWT from the configured issuer. Keep bearer tokens out of source code and logs. For a quick CLI verification, use `agentcore invoke --runtime <name> --payload '{"prompt":"Hello"}' --target <target>` and add `--bearer-token` only for a JWT Runtime.
 
 ### Step 4: Generate client code
 
@@ -88,7 +72,7 @@ try:
         payload=json.dumps({
             "prompt": "Hello, what can you do?"
         }).encode(),
-        runtimeSessionId="session-123",  # reuse for multi-turn conversations
+        runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",  # reuse for multi-turn conversations
     )
 
     # Handle streaming response — response["response"] is a StreamingBody
@@ -156,7 +140,7 @@ const response = await client.send(
     payload: new TextEncoder().encode(
       JSON.stringify({ prompt: "Hello, what can you do?" })
     ),
-    runtimeSessionId: "session-123",
+    runtimeSessionId: "550e8400-e29b-41d4-a716-446655440000",
   })
 );
 
@@ -305,7 +289,7 @@ response = agentcore.invoke_agent_runtime(
     agentRuntimeArn="arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<RUNTIME_NAME>",
     qualifier="DEFAULT",
     payload=json.dumps({"prompt": "hello"}).encode(),
-    runtimeSessionId="session-123",
+    runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",
 )
 ```
 
@@ -342,7 +326,7 @@ client = boto3.client("bedrock-agentcore", region_name="<REGION>")
 response = client.invoke_agent_runtime_command(
     agentRuntimeArn="<AGENT_RUNTIME_ARN>",
     qualifier="DEFAULT",
-    runtimeSessionId="session-123",   # must be an existing session
+    runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",   # must be an existing session
     command="ls -la /tmp && cat /tmp/status.json",
 )
 
