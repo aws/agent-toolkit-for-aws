@@ -153,12 +153,12 @@ Or edit `agentcore/agentcore.json` directly — add the `networkMode` and `netwo
 }
 ```
 
-For a container Runtime, also set `networkConfig.vpcId` so the build can use the VPC. Run `agentcore build` to validate the project before deployment.
+For a container Runtime, also set `networkConfig.vpcId` so the build can use the VPC. Run `agentcore build` to validate the project before deployment. Read `agentcore/aws-targets.json` and select the target whose account and region contain the configured VPC resources.
 
 ### Deploy
 
 ```bash
-agentcore deploy
+agentcore deploy --target <target>
 ```
 
 ---

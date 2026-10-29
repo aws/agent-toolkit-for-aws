@@ -57,7 +57,7 @@ else:
 Because memory, gateway, and policies don't work locally, the realistic test loop is:
 
 1. **Local:** `agentcore dev` to verify the agent's code structure, framework wiring, system prompt, and any in-code logic
-2. **Deploy to a staging target:** `agentcore deploy --target staging` to test with real memory, gateway, and policies
+2. **Deploy to a staging target:** define `staging` with its account and region in `agentcore/aws-targets.json` first, then run `agentcore deploy --target staging` to test with real memory, gateway, and policies. Named targets are not created automatically.
 3. **Production:** only after staging validation
 
 Don't expect `agentcore dev` to reproduce a production failure involving memory recall, gateway tool calls, or policy denials — those require a deployed environment.

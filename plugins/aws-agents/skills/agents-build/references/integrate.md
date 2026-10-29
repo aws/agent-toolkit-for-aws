@@ -30,23 +30,23 @@ Do NOT use for:
 
 ### Step 1: Check deployment status
 
-Read `agentcore/agentcore.json` to get the agent name. Then check if it's deployed:
+Read `agentcore/agentcore.json` for the Runtime name and `agentcore/aws-targets.json` for the intended deployment target. Keep that target and its region for the SDK example below. Then check whether that Runtime is deployed there:
 
 ```bash
-agentcore status --json
+agentcore status --target <target> --json
 ```
 
-**If not deployed:** "Your agent needs to be deployed before you can call it from an app. Run `agentcore deploy` first, or use the `agents-deploy` skill for guidance."
+**If not deployed:** "Your agent needs to be deployed to `<target>` before you can call it from an app. Run `agentcore deploy --target <target>` first, or use the `agents-deploy` skill for guidance."
 
 Do not proceed until the agent is deployed.
 
 ### Step 2: Get the Runtime ARN and target
 
 ```bash
-agentcore status --json
+agentcore status --target <target> --json
 ```
 
-Select the deployed `runtime` entry by name in the `resources` array. Its `arn` is the identifier for SDK invocation. If the project has multiple deployment targets, pass `--target <name>` and use that target's region. The old `agentcore fetch access` command is absent in v1. `agentcore runtime get --id <runtime-id> --json` reads further service details when needed.
+Select the deployed `runtime` entry by name in the `resources` array. Its `arn` is the identifier for SDK invocation. Use the selected target's region, including for `agentcore runtime get --id <runtime-id> --region <target-region> --json` when further service details are needed. The old `agentcore fetch access` command is absent in v1.
 
 ### Step 3: Determine auth method
 

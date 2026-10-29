@@ -25,7 +25,13 @@ agentcore remove payment-manager --name MyPayments
 
 These are examples; use only the command for the resource the user selected. Remove child targets before their Gateway, policies before their engine, and connectors before their manager if project validation requires it. For an API key or OAuth provider, the resource type passed to `agentcore remove` is `credential`. Check `agentcore remove --help` for the resource types supported by the installed v1 CLI.
 
-Before deploying, inspect the changed `agentcore/agentcore.json` and preview the target stack with `agentcore build` followed by `cd agentcore/cdk && npx cdk diff` using the project's target context. See the `agents-deploy` diff procedure for the exact target setup. Then deploy each intended target explicitly:
+Before deploying, inspect the changed `agentcore/agentcore.json` and preview the target stack with `agentcore build` followed by the vended CDK CLI, using the selected target's stack name. `npx cdk` in this directory resolves to the project's CDK app, not the CDK CLI. See the `agents-deploy` diff procedure for the exact target setup.
+
+```bash
+(cd agentcore/cdk && node node_modules/aws-cdk/bin/cdk diff --app cdk.out AgentCore-<project>-<target>)
+```
+
+Then deploy each intended target explicitly:
 
 ```bash
 agentcore deploy --target <target>

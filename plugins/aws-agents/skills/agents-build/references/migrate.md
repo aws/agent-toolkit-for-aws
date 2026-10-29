@@ -38,10 +38,10 @@ agentcore add runtime \
 agentcore build
 agentcore dev
 agentcore deploy --region <TARGET_REGION>
-agentcore status --json
-agentcore invoke --runtime ImportedAgent --payload '{"prompt":"Hello, what can you do?"}'
+agentcore status --target default --json
+agentcore invoke --target default --runtime ImportedAgent --payload '{"prompt":"Hello, what can you do?"}'
 ```
 
-Set the first deployment region deliberately. `agentcore/aws-targets.json` starts empty and the first deploy creates the default target using the CLI's effective region. Use `--target` to select another target on later commands.
+These commands cover a new project with no deployment targets. Set its first deployment region deliberately: the first deploy creates `default` using the CLI's effective region. For an existing project, choose a target from `agentcore/aws-targets.json` and pass `--target <target>` to deploy, status, and invoke; `--region` does not change an existing target's region.
 
 Keep the source Bedrock Agent running until application calls have been tested against the new Runtime. Its history and sessions are separate. For application invocation, load [integrate.md](integrate.md).
