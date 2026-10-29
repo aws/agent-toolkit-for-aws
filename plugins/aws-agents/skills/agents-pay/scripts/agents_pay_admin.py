@@ -82,6 +82,11 @@ AGENT_NAME = "aws-agents-pay"
 USDC_DECIMALS = 6
 
 
+def project_target() -> str:
+    """The CLI target whose payment resources the operator selected."""
+    return os.environ.get("AGENTCORE_TARGET") or "default"
+
+
 def admin_config_path(explicit: str | None) -> Path:
     """Resolve an operator-selected path for administrative commands only."""
     return Path(explicit or os.environ.get("AGENTS_PAY_CONFIG") or DEFAULT_CONFIG)
@@ -132,7 +137,7 @@ def discover_deployed(project_dir: str | Path | None = None) -> dict[str, str | 
         data = json.loads(state_path.read_text())
         payments = None
         targets = data.get("targets") or {}
-        target = targets.get("default") or (next(iter(targets.values()), {}) if targets else {})
+        target = targets.get(project_target()) or {}
         if isinstance(target, dict):
             payments = (target.get("resources") or {}).get("payments")
         if not payments:
@@ -179,7 +184,7 @@ def _discover_v1_status(
         return out
     try:
         result = subprocess.run(
-            ["agentcore", "status", "--json"],
+            ["agentcore", "status", "--target", project_target(), "--json"],
             cwd=root,
             capture_output=True,
             text=True,
@@ -354,6 +359,15 @@ def cmd_init_config(args: argparse.Namespace) -> int:
 
 
     config = load_raw_config(path) if args.force else {"resources": {}, "policy": {}}
+    prior_target = (config.get("resources") or {}).get("target")
+    if prior_target and prior_target != project_target():
+        print(
+            f"Config at {path} belongs to target {prior_target!r}, not {project_target()!r}. "
+            "Use a separate --path for each deployment target.",
+            file=sys.stderr,
+        )
+        return 1
+    config["resources"]["target"] = project_target()
     config["policy"] = {
         "max_per_payment_usd": args.max_per_payment_usd,
         "allowed_networks": [network],

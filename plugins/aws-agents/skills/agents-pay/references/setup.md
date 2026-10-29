@@ -13,7 +13,7 @@ agentcore --version
 python -c "from bedrock_agentcore.payments import PaymentManager; print('payments OK')"
 ```
 
-Work from the root of an AgentCore CLI v1 project (`agentcore/agentcore.json` has `"version": 2`). If the project is v0, commit it, review `agentcore migrate`, and apply the reviewed plan using `agentcore migrate --yes`. For a project dedicated to payment resources:
+Work from the root of an AgentCore CLI v1 project (`agentcore/agentcore.json` has `"version": 2`). Read `agentcore/aws-targets.json` and select the intended deployment target before provisioning. If the project is v0, commit it, review `agentcore migrate`, and apply the reviewed plan using `agentcore migrate --yes`. For a project dedicated to payment resources:
 
 ```bash
 agentcore create --name PaymentsProject --template empty
@@ -62,12 +62,24 @@ For Stripe Privy, the credential command uses `--provider StripePrivy`, `--app-i
 ## 4. Build, deploy, and discover
 
 ```bash
-agentcore build
-agentcore deploy --region <region>
-agentcore status --json
+agentcore deploy --target <target>
+agentcore status --target <target> --json
 ```
 
-The first deploy creates a `default` target in `agentcore/aws-targets.json` from the effective account and region. Check that it uses the intended account and region. For Quick Create, complete the Coinbase authorization URL reported at deploy and confirm the connector is ready. The v1 `agentcore/.cli/deployed-state.json` records the stack binding but does not store payment manager and connector IDs. Read them from `agentcore status --json`; `scripts/agents_pay_admin.py` now uses that output for automatic discovery. If discovery is unavailable, pass `--manager-arn` and `--connector-id` explicitly.
+Run `agentcore build` before deploying a Quick Create connector. For a manual connector referencing a new payment credential, the first build can fail because that credential has no deployed ARN; deploy provisions it before building the stack, then `agentcore build` can run successfully.
+
+For a new project with no targets, run `agentcore deploy --region <region>` to create `default`, then use `--target default`. For an existing target, use its account and region; `--region` does not change them. For Quick Create, complete the Coinbase authorization URL reported at deploy and confirm the connector is ready. The v1 `agentcore/.cli/deployed-state.json` records the stack binding but does not store payment manager and connector IDs. Read them from `agentcore status --target <target> --json`.
+
+Before running the human admin script below, record the project root and selected target, then switch to the installed `agents-pay` skill directory, where `scripts/agents_pay_admin.py` lives:
+
+```bash
+export AGENTCORE_PROJECT_DIR="$PWD"
+export AGENTCORE_TARGET=<target>
+export AWS_REGION=<target-region>
+cd /absolute/path/to/agents-pay
+```
+
+Use a separate admin config path for each deployment target. The script uses `AGENTCORE_PROJECT_DIR` and `AGENTCORE_TARGET` for status discovery; if discovery is unavailable, pass `--manager-arn` and `--connector-id` explicitly.
 
 ## 5. IAM: the four-role model
 
@@ -232,8 +244,8 @@ invent or keep in sync:
 python3 scripts/agents_pay_admin.py create-instrument --email you@example.com
 ```
 
-The manager ARN and connector ID are read from `agentcore status --json`
-automatically, so run this from your AgentCore project directory. Otherwise pass
+The manager ARN and connector ID are read from `agentcore status --target <target> --json`
+using `AGENTCORE_PROJECT_DIR` and `AGENTCORE_TARGET`. Otherwise pass
 `--manager-arn` and `--connector-id` explicitly.
 
 Add `--network-family SOLANA` for Solana; the default `ETHEREUM` covers Base and
