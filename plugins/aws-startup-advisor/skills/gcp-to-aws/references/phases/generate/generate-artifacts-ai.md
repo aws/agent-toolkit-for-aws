@@ -43,6 +43,8 @@ If any required file is missing: **STOP**. Output: "Missing required artifact: [
 
 **Sparse / IaC-only profile:** If `ai-workload-profile.json` has empty `models[]` or `metadata.profile_source` is `iac_vertex`, use `aws-design-ai.json` for Bedrock targets and example prompts; do **not** fail solely because discovery did not list model IDs.
 
+**AgentCore deployment scripts (Steps 3C and 3D):** Use the official [`@aws/agentcore` CLI](https://github.com/aws/agentcore-cli), which requires Node.js 20.12 or later and npm. The deprecated Python starter toolkit also provides an `agentcore` executable; ensure it does not shadow the npm CLI. Verify each generated command against the installed CLI's `--help` before deployment.
+
 ---
 
 ## Step 0: Determine Artifact Path
@@ -331,7 +333,7 @@ echo ""
 # Step 1: Verify AgentCore CLI is installed
 if ! command -v agentcore &> /dev/null; then
     echo "AgentCore CLI not found. Install with:"
-    echo "  pip install bedrock-agentcore-cli"
+    echo "  npm install -g @aws/agentcore"
     if [ "$EXECUTE" != "--execute" ]; then
         echo "[DRY-RUN] Continuing with remaining steps..."
     else
@@ -569,7 +571,8 @@ echo ""
 
 # Step 1: Verify dependencies
 echo "--- Prerequisites ---"
-run_cmd "pip install strands-agents strands-agents-tools boto3 bedrock-agentcore-cli"
+run_cmd "pip install strands-agents strands-agents-tools boto3"
+run_cmd "npm install -g @aws/agentcore"
 
 # Step 2: Create AgentCore project
 run_cmd "agentcore create --name $PROJECT_NAME"
