@@ -27,9 +27,8 @@ Commands
     new-session       Create a budget-bounded session (ManagementRole, TTY approval)
     preflight         Verify wiring and confirm no secrets are exposed
 
-Secrets are NEVER accepted as arguments here either. Provider credentials go to
-the AgentCore CLI's own interactive wizard (`agentcore add payment-connector`),
-which keeps them out of shell history and out of this process.
+Secrets are NEVER accepted as arguments here either. Provider credentials go
+through `agentcore add credentials payment`, using file or stdin secret inputs.
 """
 
 from __future__ import annotations
@@ -39,6 +38,7 @@ import json
 import os
 import secrets
 import stat
+import subprocess
 import sys
 import tempfile
 from decimal import Decimal, InvalidOperation
@@ -82,6 +82,11 @@ AGENT_NAME = "aws-agents-pay"
 USDC_DECIMALS = 6
 
 
+def project_target() -> str:
+    """The CLI target whose payment resources the operator selected."""
+    return os.environ.get("AGENTCORE_TARGET") or "default"
+
+
 def admin_config_path(explicit: str | None) -> Path:
     """Resolve an operator-selected path for administrative commands only."""
     return Path(explicit or os.environ.get("AGENTS_PAY_CONFIG") or DEFAULT_CONFIG)
@@ -111,8 +116,21 @@ def _find_deployed_state(project_dir: str | Path | None = None) -> Path | None:
     return None
 
 
+def _find_project_root(
+    project_dir: str | Path | None, state_path: Path | None
+) -> Path | None:
+    """Locate the project config from an explicit directory, state file, or cwd."""
+    start = Path(
+        project_dir or os.environ.get("AGENTCORE_PROJECT_DIR") or state_path or Path.cwd()
+    ).expanduser().resolve()
+    return next(
+        (path for path in (start, *start.parents) if (path / "agentcore" / "agentcore.json").is_file()),
+        None,
+    )
+
+
 def discover_deployed(project_dir: str | Path | None = None) -> dict[str, str | None]:
-    """Best-effort read of manager ARN / connector ID from the CLI's deploy record.
+    """Best-effort read of manager ARN / connector ID from the CLI project.
 
     Returns a dict with possibly-None values; callers fall back to flags or env.
     Purely a convenience: nothing security-relevant is decided from this file, and
@@ -121,45 +139,83 @@ def discover_deployed(project_dir: str | Path | None = None) -> dict[str, str | 
     Searches several relative paths so the command works whether you run from the
     project root, inside the agentcore/ directory, or a subdirectory of it.
 
-    CLI 0.20.x writes targets.<target>.resources.payments[]; 0.26.x writes
-    payments as objects keyed by name. Older layouts used a top-level payments[].
-    All three are handled.
+    CLI v1 reports payment identifiers through `agentcore status --json`.
+    Legacy deployed state is used only for v0 projects; migration can leave
+    stale payment identifiers in that file.
     """
     out: dict[str, str | None] = {"manager_arn": None, "connector_id": None, "role_arn": None}
     state_path = _find_deployed_state(project_dir)
+    root = _find_project_root(project_dir, state_path)
+    if root is not None:
+        try:
+            version = json.loads((root / "agentcore" / "agentcore.json").read_text()).get("version")
+        except (OSError, ValueError):
+            version = None
+        if version == 2:
+            return _discover_v1_status(root, state_path)
     if state_path is None:
-        return out
+        return _discover_v1_status(project_dir, None)
     try:
         data = json.loads(state_path.read_text())
         payments = None
         targets = data.get("targets") or {}
-        target = targets.get("default") or (next(iter(targets.values()), {}) if targets else {})
+        target = targets.get(project_target()) or {}
         if isinstance(target, dict):
             payments = (target.get("resources") or {}).get("payments")
         if not payments:
             payments = data.get("payments")
         if not payments:
+            return _discover_v1_status(project_dir, state_path)
+        if not isinstance(payments, (dict, list)):
+            return _discover_v1_status(project_dir, state_path)
+        managers = list(payments.values()) if isinstance(payments, dict) else payments
+        if len(managers) != 1:
             return out
-        # 0.26.x: payments is a dict keyed by name
-        if isinstance(payments, dict):
-            pay = next(iter(payments.values()), {})
-        # 0.20.x and older: payments is a list
-        elif isinstance(payments, list):
-            pay = payments[0] if payments else {}
-        else:
-            return out
+        pay = managers[0]
         connectors = pay.get("connectors") or []
         out["manager_arn"] = pay.get("managerArn")
-        # 0.26.x: connectors may be a dict keyed by name
-        if isinstance(connectors, dict):
-            first_connector = next(iter(connectors.values()), {})
-        elif isinstance(connectors, list):
-            first_connector = connectors[0] if connectors else {}
-        else:
-            first_connector = {}
-        out["connector_id"] = first_connector.get("connectorId") if first_connector else None
+        connectors = list(connectors.values()) if isinstance(connectors, dict) else connectors
+        if len(connectors) == 1:
+            out["connector_id"] = connectors[0].get("connectorId")
         out["role_arn"] = pay.get("processPaymentRoleArn")
     except Exception:  # noqa: BLE001 - convenience only; never fatal
+        return _discover_v1_status(project_dir, state_path)
+    return out
+
+
+def _discover_v1_status(
+    project_dir: str | Path | None, state_path: Path | None
+) -> dict[str, str | None]:
+    """Resolve v1 stack outputs via the CLI's project status JSON."""
+    out: dict[str, str | None] = {"manager_arn": None, "connector_id": None, "role_arn": None}
+    root = _find_project_root(project_dir, state_path)
+    if root is None:
+        return out
+    try:
+        result = subprocess.run(
+            ["agentcore", "status", "--target", project_target(), "--json"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode != 0:
+            return out
+        status = json.loads(result.stdout)
+        managers = [
+            resource for resource in status.get("resources", [])
+            if resource.get("resourceType") == "payment-manager" and resource.get("arn")
+        ]
+        if len(managers) == 1:
+            out["manager_arn"] = managers[0]["arn"]
+            connectors = [
+                child for child in managers[0].get("children", [])
+                if child.get("resourceType") == "payment-connector" and child.get("id")
+            ]
+            if len(connectors) == 1:
+                out["connector_id"] = connectors[0]["id"]
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         pass
     return out
 
@@ -316,6 +372,15 @@ def cmd_init_config(args: argparse.Namespace) -> int:
 
 
     config = load_raw_config(path) if args.force else {"resources": {}, "policy": {}}
+    prior_target = (config.get("resources") or {}).get("target")
+    if prior_target and prior_target != project_target():
+        print(
+            f"Config at {path} belongs to target {prior_target!r}, not {project_target()!r}. "
+            "Use a separate --path for each deployment target.",
+            file=sys.stderr,
+        )
+        return 1
+    config["resources"]["target"] = project_target()
     config["policy"] = {
         "max_per_payment_usd": args.max_per_payment_usd,
         "allowed_networks": [network],
@@ -441,13 +506,15 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
 
     discovered = discover_deployed()
     manager_arn = resolve_manager_arn(args.manager_arn, config_path)
-    connector_id = args.connector_id or os.environ.get("PAYMENT_CONNECTOR_ID") or discovered["connector_id"]
+    connector_id = args.connector_id or os.environ.get("PAYMENT_CONNECTOR_ID")
+    if not connector_id and manager_arn == discovered["manager_arn"]:
+        connector_id = discovered["connector_id"]
 
     if not manager_arn or not connector_id:
         checked = ", ".join(str(p) for p in deployed_state_candidates())
         print(
-            f"Could not find deployed-state.json (checked: {checked}).\n\n"
-            "This file is created by `agentcore deploy`. To resolve:\n"
+            f"Could not discover payment resources from the current project (checked legacy state: {checked}).\n\n"
+            "Deploy the v1 project, then check `agentcore status --json`. To resolve:\n"
             "  \u2022 Run this command from the directory that CONTAINS the agentcore/ folder, OR\n"
             "  \u2022 Run from inside the agentcore/ directory itself, OR\n"
             "  \u2022 Pass --manager-arn and --connector-id explicitly.",
@@ -555,8 +622,8 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         checked = ", ".join(str(p) for p in deployed_state_candidates())
         print(
             f"Could not determine the payment manager ARN.\n\n"
-            f"Searched for deployed-state.json at: {checked}\n\n"
-            "This file is created by `agentcore deploy`. To resolve:\n"
+            f"Checked legacy state paths: {checked}\n\n"
+            "Deploy the v1 project, then check `agentcore status --json`. To resolve:\n"
             "  \u2022 Run this command from the directory that CONTAINS the agentcore/ folder, OR\n"
             "  \u2022 Run from inside the agentcore/ directory itself, OR\n"
             "  \u2022 Pass --manager-arn explicitly, OR\n"
@@ -842,7 +909,7 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     if not manager_arn:
         checked = ", ".join(str(p) for p in deployed_state_candidates(project_dir))
         print(
-            "\nCould not auto-discover payment manager ARN from deployed-state.json.\n"
+            "\nCould not auto-discover payment manager ARN from `agentcore status --json`.\n"
             f"Checked: {checked}"
         )
         manager_arn = _prompt("Payment Manager ARN", "")
@@ -985,18 +1052,15 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     for var in required:
         print(f"[{'ok' if os.environ.get(var) else '--'}]   {var}{'' if os.environ.get(var) else ' not set'}")
 
-    # If the manager ARN is missing but discoverable, hand the operator the exact
-    # line to run rather than making them dig it out of deployed-state.json.
+    # If the manager ARN is missing but discoverable, show the export command.
     if not os.environ.get("PAYMENT_MANAGER_ARN"):
         discovered = discover_deployed()
         if discovered["manager_arn"]:
-            state_path = _find_deployed_state()
-            print(f"\n       Found in {state_path}: run this to fix the above ->")
+            print("\n       Found in project status: run this to fix the above ->")
             print(f"         export PAYMENT_MANAGER_ARN={discovered['manager_arn']}")
         else:
             print(
-                "\n       deployed-state.json not found "
-                f"(checked: {', '.join(str(p) for p in deployed_state_candidates())})."
+                "\n       Payment resources were not found in project status or legacy deploy state."
             )
             print("       Run from the directory that CONTAINS the agentcore/ folder,")
             print("       from inside it, or set the variables by hand.")
@@ -1093,7 +1157,7 @@ def main() -> int:
         "--project-dir",
         default=None,
         help=(
-            "AgentCore project directory used to locate deployed-state.json "
+            "AgentCore project directory used for `agentcore status --json` "
             "(or set AGENTCORE_PROJECT_DIR)"
         ),
     )

@@ -9,7 +9,7 @@ Add, configure, and debug AgentCore Memory — the managed service that lets you
 - Memory recall isn't working as expected
 - You want to share memory across multiple agents
 
-Do NOT use this skill for within-session conversation history. That's handled automatically by the runtime — no configuration needed.
+For within-session conversation history, first check how the agent code retains state. A Runtime session ID routes calls to a session, but custom agent code must retain messages or use a session manager. The CLI's Strands template caches the agent by session ID; the sample below constructs a fresh agent on every call and therefore needs a session manager to retain history.
 
 ## Input
 
@@ -29,6 +29,7 @@ Read `agentcore/agentcore.json`. Look for:
 - The `memories` array — is memory already configured?
 - The `runtimes` array — what agents are in the project and what framework do they use?
 - The project `name` — needed for env var construction
+- The intended target in `agentcore/aws-targets.json` — use the same target for deployment, status, logs, and invocation
 
 **If `agentcore/agentcore.json` does not exist**, check if there's any AgentCore project structure nearby (look for `agentcore/` directory). If none found, proceed with the most helpful answer possible based on what the developer asked — don't block on missing context. If the question is about strategy selection or code patterns, answer it directly. Only ask "which situation are you in?" if the answer genuinely depends on it (e.g., they need CLI commands that differ by setup type).
 
@@ -94,7 +95,7 @@ Which strategy (or combination) do you want?
 Run the CLI command to add memory to the project config:
 
 ```bash
-agentcore add memory --name <MemoryName> --strategies <STRATEGY1,STRATEGY2> --expiry 30
+agentcore add memory --name MyMemory --strategies SEMANTIC,USER_PREFERENCE --event-expiry-duration 30
 ```
 
 This updates `agentcore/agentcore.json`. The memory resource is provisioned when you next run `agentcore deploy` — it takes 2–5 minutes to become active.
@@ -104,12 +105,11 @@ The resulting config entry looks like:
 ```json
 {
   "memories": [{
-    "type": "AgentCoreMemory",
     "name": "MyMemory",
     "eventExpiryDuration": 30,
     "strategies": [
-      {"type": "SEMANTIC"},
-      {"type": "USER_PREFERENCE"}
+      {"type": "SEMANTIC", "namespaceTemplates": ["/users/{actorId}/facts"]},
+      {"type": "USER_PREFERENCE", "namespaceTemplates": ["/users/{actorId}/preferences"]}
     ]
   }]
 }
@@ -132,9 +132,9 @@ Read `app/<AgentName>/main.py` (or the equivalent entrypoint) to detect the fram
 | Google ADK / Claude Agent SDK | BYO — use `MemoryClient` directly | Validate end-to-end before shipping |
 
 > [!WARNING]
-> Always check for the MEMORY_ID env var before initializing memory. Memory is NOT
-> available during `agentcore dev` — the env var is only set after deploy. Code that
-> assumes memory is always available will fail silently in local development.
+> Always check for the MEMORY_ID env var before initializing memory. `agentcore dev`
+> does not inject the deployed Memory ID. Local development can use a deployed Memory
+> if you supply its ID and have AWS access; otherwise run without Memory.
 
 #### Strands — Session Manager pattern (recommended for new projects)
 
@@ -458,7 +458,7 @@ Before shipping a memory integration for ADK or Claude SDK, validate the end-to-
 2. Invoke the agent with facts to remember
 3. Start a new session
 4. Invoke again and verify the agent recalls those facts
-5. Check `agentcore logs --runtime <AgentName> --query "memory" --since 1h --level error` for any memory errors
+5. Check `agentcore logs runtime --name <AgentName> --target <target> --query "memory" --since 1h --level error` for any memory errors
 
 If you build a working pattern, consider contributing it to [`awslabs/agentcore-samples`](https://github.com/awslabs/agentcore-samples) so the next developer doesn't have to figure it out.
 
@@ -467,15 +467,17 @@ If you build a working pattern, consider contributing it to [`awslabs/agentcore-
 Always include this note:
 
 ```
-⚠️  Memory is not available during local development (agentcore dev).
+⚠️  agentcore dev does not inject the deployed Memory ID automatically.
 
-The MEMORY_<NAME>_ID env var is only injected after deploy. The code above
-handles this gracefully — it runs without memory when the env var isn't set.
+The deployed Runtime receives MEMORY_<NAME>_ID automatically. The code above
+runs without Memory when the env var is absent. For a local integration test,
+provide the deployed Memory ID and use local AWS credentials with access to it.
 
-To test memory:
-  agentcore deploy -y
-  agentcore invoke "My name is Alex and I prefer concise answers"
-  agentcore invoke "What do you know about me?"
+To test cross-session memory on the selected target, use two distinct session IDs
+and the same userId (actor ID):
+  agentcore deploy --target <target>
+  agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"My name is Alex and I prefer concise answers","userId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440000
+  agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"What do you know about me?","userId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440001
 
 If using long-term memory (SEMANTIC or USER_PREFERENCE), wait 5–30 seconds
 between the first and second invoke — extraction runs asynchronously after
@@ -523,18 +525,18 @@ Then use the same wiring code from Step 5, reading `MEMORY_ID` from the environm
 If memory was working and stopped, or never worked:
 
 **Agent keeps forgetting things even with memory set up:**
-Most common cause: the memory resource is configured but the code isn't reading from it at session start. Check that your entrypoint calls `get_last_k_turns` (or uses the session manager) before creating the agent, not after. Also verify the `MEMORY_<NAME>_ID` env var is set — it's only injected after deploy, not during `agentcore dev`.
+Most common cause: the memory resource is configured but the code isn't reading from it at session start. Check that your entrypoint calls `get_last_k_turns` (or uses the session manager) before creating the agent, not after. Also verify the `MEMORY_<NAME>_ID` env var is set. The deployed Runtime receives it automatically; `agentcore dev` needs it supplied explicitly.
 
 **Memory not persisting across sessions:**
 
-1. Check that LTM strategies (SEMANTIC, USER_PREFERENCE) are configured — not just SUMMARIZATION
+1. Check that the intended long-term strategy is configured and that the code retrieves from its namespace. SUMMARIZATION is also a long-term strategy, but its retrieval path differs from facts and preferences.
 2. Wait 5–30 seconds after a session ends before starting a new one — extraction is async
-3. Verify the memory resource is ACTIVE: `agentcore status --type memory`
+3. Find the Memory ARN in `agentcore status --target <target> --json`, take the ID after `memory/`, then verify its service status is ACTIVE with `agentcore memory get --id <memory-id> --region <target-region> --json`
 4. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" or "test" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
 
 **Memory not loading at session start:**
 
-1. Verify `MEMORY_<NAME>_ID` env var is set: `agentcore status --type memory --json`
+1. Find the Memory ARN in `agentcore status --target <target> --json` and take the ID after `memory/`, then verify `MEMORY_<NAME>_ID` is set in that target's deployed Runtime environment
 2. Check the actor_id is consistent across sessions — memory is scoped per actor
 3. Confirm the namespace paths in retrieval_config match the namespaces used when writing — the retrieval namespace must exactly match the namespace the strategy extracts into
 4. CLI defaults use paths without trailing slashes (e.g., `/users/{actorId}/facts`). If you customized namespace templates when creating the memory resource, use whatever pattern you chose — consistency between writer and reader is what matters.
@@ -543,7 +545,7 @@ Most common cause: the memory resource is configured but the code isn't reading 
 Memory takes 2–5 minutes to become ACTIVE after `agentcore deploy`. Check status:
 
 ```bash
-agentcore status --type memory
+agentcore memory get --id <memory-id> --region <target-region> --json
 ```
 
 ## S3 delivery / export buckets must be in the same account
@@ -580,7 +582,7 @@ The supported geographies and inference-region mappings change as AgentCore expa
 
 ## Beyond the CLI: memory features that require the API
 
-The CLI's `agentcore add memory` and `agentcore.json` cover strategy selection, expiry, and basic configuration. Some memory capabilities are API/SDK-only — the CLI doesn't expose them. When the developer needs one of these, the graduation path is: create the memory via CLI as usual, deploy, then apply the additional config via boto3 or AWS CLI.
+The v1 `agentcore add memory` command covers strategy selection, event expiry, indexed keys, stream delivery resources, and a KMS key ARN. Use its help before reaching for a direct API call. Resource policies and specialized strategy overrides may still need the API or SDK.
 
 **Resource-based policies** (cross-account access, principal-level restrictions):
 
@@ -588,7 +590,7 @@ The CLI's `agentcore add memory` and `agentcore.json` cover strategy selection, 
 import boto3, json
 
 client = boto3.client("bedrock-agentcore-control")
-memory_id = "<MEMORY_ID>"  # from: agentcore status --type memory --json
+memory_id = "<MEMORY_ID>"  # ID after memory/ in the ARN from agentcore status --json
 
 client.put_memory_resource_policy(
     memoryId=memory_id,

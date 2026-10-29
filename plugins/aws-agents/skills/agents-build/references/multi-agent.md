@@ -27,15 +27,16 @@ Build AgentCore systems where agents delegate work to other agents.
 The specialist is a standard AgentCore agent. Deploy it normally:
 
 ```bash
-agentcore create --name SpecialistAgent --defaults
-# ... add your specialist logic to app/SpecialistAgent/main.py ...
-agentcore deploy -y
+agentcore create --name SpecialistProject --template agent-python-strands
+cd SpecialistProject
+# ... add your specialist logic to app/agent/main.py ...
+agentcore deploy
 ```
 
 Get the specialist's runtime ARN after deploy:
 
 ```bash
-agentcore status --runtime SpecialistAgent --json | jq -r '.runtimes[0].arn'
+agentcore status --json | jq -r '.resources[] | select(.resourceType == "runtime" and .name == "agent") | .arn'
 ```
 
 ### Step 2: Add the specialist as a tool in the orchestrator
@@ -52,7 +53,7 @@ app = BedrockAgentCoreApp()
 
 # Set this env var in your orchestrator's deployment config
 SPECIALIST_ARN = os.getenv("SPECIALIST_AGENT_ARN")
-REGION = os.getenv("AWS_REGION", "us-east-1")
+REGION = os.getenv("SPECIALIST_AGENT_REGION")
 
 def call_specialist(prompt: str, session_id: str = None) -> str:
     """
@@ -192,50 +193,24 @@ For a validated ADK multi-agent pattern, use A2A instead of direct invocation �
 
 ### Step 3: Grant IAM permission
 
-The orchestrator's execution role needs permission to invoke the specialist:
+The orchestrator's execution role needs permission to invoke the specialist. After deploying the specialist, take its exact Runtime ARN from `agentcore status --target <specialist-target> --json` and save this policy as `app/agent/specialist-invoke-policy.json` in the orchestrator project (or under that Runtime's actual `codeLocation`):
 
 ```json
 {
-  "Effect": "Allow",
-  "Action": "bedrock-agentcore:InvokeAgentRuntime",
-  "Resource": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/SpecialistAgent-*"
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "bedrock-agentcore:InvokeAgentRuntime",
+    "Resource": "<specialist-runtime-arn>"
+  }]
 }
 ```
 
-Add this to `agentcore/agentcore.json` under the orchestrator agent's IAM config, or add it manually to the auto-created execution role after deploy.
+Add `"specialist-invoke-policy.json"` to the orchestrator Runtime's `additionalPolicies` array in `agentcore/agentcore.json`. The v1 CLI resolves a `.json` policy path relative to that Runtime's `codeLocation` and attaches it to a CLI-created execution role during deployment. If the Runtime uses an imported `executionRoleArn`, attach the same policy to that role separately. Run `agentcore build` to check the path before deployment.
 
-### Step 4: Pass the specialist ARN at deploy time
+### Step 4: Pass the specialist ARN to the orchestrator
 
-Add the specialist ARN as an environment variable in the orchestrator's deployment:
-
-```bash
-# After deploying the specialist, get its ARN:
-SPECIALIST_ARN=$(agentcore status --runtime SpecialistAgent --json | jq -r '.runtimes[0].arn')
-
-# For local dev, write to .env.local:
-echo "SPECIALIST_AGENT_ARN=$SPECIALIST_ARN" >> agentcore/.env.local
-```
-
-**For the deployed orchestrator**, the specialist ARN needs to be available as an environment variable. The recommended pattern is:
-
-1. **Edit `agentcore/agentcore.json`** — find the orchestrator agent's entry and add the env var to its configuration (the exact field name depends on your CLI version; run `agentcore validate` after editing). In current CLI versions, agent environment variables are typically managed through the deployment config.
-
-2. **Or use CDK overrides** — for teams using the CDK constructs directly, set the env var in the Runtime construct's environment property.
-
-3. **Or write the env var at deploy time** — some teams use a pre-deploy script that generates `agentcore/.env.local` and `agentcore/agentcore.json` updates together:
-
-```bash
-# pre-deploy.sh — run before every orchestrator deploy
-SPECIALIST_ARN=$(agentcore status --runtime SpecialistAgent --json | jq -r '.runtimes[0].arn')
-echo "SPECIALIST_AGENT_ARN=$SPECIALIST_ARN" >> agentcore/.env.local
-
-# Then deploy
-agentcore deploy -y
-```
-
-The CLI does not currently provide a dedicated `--env` flag on `agentcore add agent`. Check `agentcore add agent --help` for the current options in your CLI version.
-
----
+Run `agentcore status --target <specialist-target> --json` in the specialist project and select the deployed Runtime ARN and the top-level `region`. In the orchestrator project, add `{"name":"SPECIALIST_AGENT_ARN","value":"<specialist-runtime-arn>"}` and `{"name":"SPECIALIST_AGENT_REGION","value":"<specialist-region>"}` to that Runtime entry's `envVars` array in `agentcore/agentcore.json`. For local development, set the same variables in `agentcore/.env.local`. These are separate files: `.env.local` does not configure the deployed Runtime. Run `agentcore build`, then `agentcore deploy --target <orchestrator-target>` in the orchestrator project. Do not grant its execution role `bedrock-agentcore:InvokeAgentRuntime` on `*`; scope the permission to the specialist Runtime ARN.
 
 ## Pattern 2: A2A protocol
 
@@ -243,10 +218,10 @@ The specialist exposes the A2A standard — discoverable via an agent card, call
 
 ### Step 1: Build the A2A specialist
 
-Use the `serve_a2a` helper from `bedrock-agentcore` — this matches what the CLI scaffolds via `agentcore create --protocol A2A`.
+Use the `serve_a2a` helper from `bedrock-agentcore` — this matches what the CLI scaffolds via `agentcore create --template a2a-python-strands`.
 
 ```python
-# app/SpecialistA2A/main.py
+# app/agent/main.py
 from strands import Agent, tool
 from strands.multiagent.a2a.executor import StrandsA2AExecutor
 from bedrock_agentcore.runtime import serve_a2a
@@ -260,14 +235,15 @@ def analyze_data(dataset_name: str) -> str:
     return f"Analysis results for {dataset_name}..."
 
 
-agent = Agent(
-    model=load_model(),
-    system_prompt="You are an analysis specialist. Use tools when appropriate.",
-    tools=[analyze_data],
-)
+def create_agent(context_id: str) -> Agent:
+    return Agent(
+        model=load_model(),
+        system_prompt="You are an analysis specialist. Use tools when appropriate.",
+        tools=[analyze_data],
+    )
 
 if __name__ == "__main__":
-    serve_a2a(StrandsA2AExecutor(agent))
+    serve_a2a(StrandsA2AExecutor(agent_factory=create_agent))
 ```
 
 ```
@@ -281,21 +257,33 @@ bedrock-agentcore
 ### Step 2: Deploy the A2A specialist
 
 ```bash
-agentcore create --name SpecialistA2A --protocol A2A
-# The CLI scaffolds app/SpecialistA2A/main.py with the serve_a2a pattern shown above — customize it with your specialist logic
-agentcore deploy -y
+agentcore create --name SpecialistA2A --template a2a-python-strands
+cd SpecialistA2A
+# The CLI scaffolds app/agent/main.py with the serve_a2a pattern shown above — customize it with your specialist logic
+# Configure the specialist Runtime in agentcore/agentcore.json for CUSTOM_JWT
+# with the same OIDC discovery URL and allowed client ID used by the
+# orchestrator's OAuth M2M credential below. For example, set:
+# "authorizerType": "CUSTOM_JWT",
+# "authorizerConfiguration": {"customJwtAuthorizer": {
+#   "discoveryUrl": "https://<YOUR_IDP>/.well-known/openid-configuration",
+#   "allowedClients": ["<CLIENT_ID>"]}}
+# Authorization is passed through by default; no allowlist entry is needed.
+agentcore deploy
 ```
 
-After deploy, get the runtime URL:
+After deploy, get the Runtime ARN and region:
 
 ```bash
-agentcore fetch access --name SpecialistA2A --type agent
+agentcore status --json | jq '{region, runtime: [.resources[] | select(.resourceType == "runtime") | .arn]}'
 ```
+
+`status` does not return a URL. URL-encode the Runtime ARN (including its colons and slashes) and use `https://bedrock-agentcore.<region>.amazonaws.com/runtimes/<encoded-runtime-arn>/invocations/` as `SPECIALIST_A2A_URL`. The same URL must be used for agent-card discovery and JSON-RPC calls.
 
 ### Step 3: Test locally
 
 ```bash
-# Start the A2A server locally (from your project dir)
+# Start the A2A server locally (from your specialist project directory).
+# Run the curl commands below in another terminal while this server is running.
 agentcore dev
 
 # Test the agent card (discovery)
@@ -320,16 +308,17 @@ curl -X POST http://localhost:9000 \
 
 ### Step 4: Call the A2A specialist from the orchestrator
 
-The specialist URL is a non-secret identifier, so pass it via an env var in the orchestrator's deployment config. The bearer token **is** a secret — do **not** stash it in `os.getenv(...)` on the deployed runtime (runtime env vars are not vault-backed). Register an OAuth M2M provider once, then use `@requires_access_token` to fetch a fresh token at call time:
+The specialist URL is a non-secret identifier, so pass it via the orchestrator Runtime's `envVars` array in its project. The bearer token **is** a secret — do **not** stash it in `os.getenv(...)` on the deployed runtime (runtime env vars are not vault-backed). Return to the **orchestrator project root** before registering the OAuth M2M provider; the specialist project cannot provision credentials for a different project's Runtime. Use `@requires_access_token` to fetch a fresh token at call time:
 
 ```bash
-# One-time: register the OAuth provider that issues tokens for the specialist.
-# Omit --client-secret to get an interactive prompt (value goes straight into the credential provider).
-agentcore add credential \
+# From the orchestrator project root: register the OAuth provider that issues
+# tokens for calls to the specialist.
+# The v1 CLI accepts client secrets from file or stdin, never inline values.
+agentcore add credentials oauth \
   --name SpecialistA2A \
-  --type oauth \
   --discovery-url https://<YOUR_IDP>/.well-known/openid-configuration \
   --client-id <CLIENT_ID> \
+  --client-secret file://<LOCAL_SECRET_FILE> \
   --scopes a2a.invoke
 ```
 
@@ -383,29 +372,32 @@ def invoke(payload, context):
     return {"response": result}
 ```
 
-The decorator handles caching and refresh. For local dev, put the OAuth values in `agentcore/.env.local` so `agentcore dev` can resolve the decorator — the deployed runtime reads them from the credential provider instead.
+Add `{"name":"SPECIALIST_A2A_URL","value":"<specialist-runtime-url>"}` to the orchestrator Runtime's `envVars`, then run `agentcore deploy --target <orchestrator-target>` from that project. This first deploy provisions the new credential before building the Runtime; `agentcore build` may fail before that happens. The decorator handles caching and refresh. For local dev, put the OAuth values in the orchestrator project's `agentcore/.env.local` so `agentcore dev` can resolve the decorator — the deployed Runtime reads them from the credential provider instead.
 
 ---
 
 ## Shared memory across agents
 
-Memory is a top-level resource — not nested under a single agent. Multiple agents can share it by reading the same env var.
+Memory is a top-level resource — not nested under a single agent. Multiple agents can share the same Memory ID when their IAM roles can access it.
 
 ### Setup
 
-1. Create one shared memory resource:
+1. Create one shared Memory resource in an owner project and deploy it to the chosen target:
 
 ```bash
 agentcore add memory --name SharedMemory --strategies SEMANTIC,USER_PREFERENCE
+agentcore deploy --target <owner-target>
 ```
 
-1. In each agent's code, read the same env var:
+2. Get the Memory ARN from `agentcore status --target <owner-target> --json` and take its ID after `memory/`. The owner project's Runtime receives `MEMORY_SHAREDMEMORY_ID` automatically. For a Runtime in another project, add `{"name":"MEMORY_SHAREDMEMORY_ID","value":"<deployed-memory-id>"}` to that Runtime's `envVars` in `agentcore/agentcore.json`, grant its execution role the required Memory actions on the deployed Memory ARN using an `additionalPolicies` policy file (or update its imported role), and deploy that project to its intended target. Both Runtimes must use the Memory's region.
+
+3. In each agent's code, read the same env var:
 
 ```python
 MEMORY_ID = os.getenv("MEMORY_SHAREDMEMORY_ID")
 ```
 
-1. Use a consistent `actor_id` scheme — typically the end user's ID — so both agents read and write the same user's memory.
+4. Use a consistent `actor_id` scheme — typically the end user's ID — so both agents read and write the same user's memory.
 
 ### Key consideration
 
@@ -437,7 +429,7 @@ turns = memory_client.get_last_k_turns(
 
 - Verify it's running on port 9000 (not 8080)
 - Check the agent card endpoint returns: `curl http://localhost:9000/.well-known/agent-card.json`
-- Verify your `main.py` uses `serve_a2a(StrandsA2AExecutor(agent))` — the older `A2AServer + FastAPI` pattern is deprecated in favor of this
+- Verify your `main.py` uses `serve_a2a(StrandsA2AExecutor(agent_factory=create_agent))`
 
 **Direct invocation permission denied:**
 
@@ -448,12 +440,12 @@ turns = memory_client.get_last_k_turns(
 **Specialist not found:**
 
 - Verify `SPECIALIST_AGENT_ARN` env var is set correctly
-- Check `agentcore status --runtime SpecialistAgent` shows `deployed` state
+- Check `agentcore status --json` shows `deployed` state
 
 **A2A auth errors:**
 
 - A2A supports SigV4 and OAuth 2.0 — make sure you're using the right auth method
-- Get the correct bearer token: `agentcore fetch access --name SpecialistA2A --type agent`
+- Obtain a bearer token from the configured identity provider; `agentcore status --json` does not issue JWTs
 
 ## Output
 
@@ -466,6 +458,6 @@ turns = memory_client.get_last_k_turns(
 
 - Pattern recommendation matches the developer's latency and interoperability needs
 - Generated code includes correct IAM permissions for agent-to-agent invocation
-- A2A server runs on port 9000 (not 8080) using `serve_a2a(StrandsA2AExecutor(agent))`
+- A2A server runs on port 9000 (not 8080) using `serve_a2a(StrandsA2AExecutor(agent_factory=create_agent))`
 - Agent card is at `/.well-known/agent-card.json` with correct capabilities
 - Shared memory uses consistent `actor_id` scheme across agents

@@ -130,7 +130,7 @@ python3 scripts/agents_pay_admin.py preflight
 ```
 
 Manager ARN and connector ID come from
-`agentcore/.cli/deployed-state.json`; the session ID from `new-session`.
+`agentcore status --json`; the session ID from `new-session`.
 
 ### "bedrock-agentcore with payments support is not installed"
 
