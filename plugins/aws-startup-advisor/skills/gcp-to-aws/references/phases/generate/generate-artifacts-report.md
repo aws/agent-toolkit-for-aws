@@ -248,7 +248,7 @@ Open any JSON file with a text editor or `cat <filename> | python3 -m json.tool`
 
 | Artifact                                                    | Description                                                                       |
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `ai-migration/bedrock_monitoring.tf`                        | Bedrock budget alerts, anomaly detection, inference profiles for cost attribution |
+| `ai-migration/bedrock_monitoring.tf`                        | Bedrock budget alerts and anomaly detection; add profile attribution only when an eligible profile was generated |
 | `ai-migration/STARTUP_PROGRAMS.md` or `STARTUP_PROGRAMS.md` | AWS Activate credit tiers, application URLs, eligibility guidance                 |
 | `ai-migration/setup_bedrock.sh`                             | Bedrock model access setup script                                                 |
 | `ai-migration/test_comparison.py`                           | A/B comparison harness for source vs Bedrock quality                              |
@@ -322,7 +322,8 @@ Full security baseline capabilities. Executive summary shows a teaser; this appe
 | ------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------- | ------------ |
 | Bedrock budget (1.5× projected) | Hard spend alert at 150% of estimated AI costs — fires before month-end | Runaway token spend from buggy retry loops         | GCP Budgets (free, but no per-service scoping) | $0           |
 | Cost anomaly detection          | Daily digest when AI spend deviates from baseline (~24h data lag)       | Gradual cost creep, unexpected model-price changes | None (no GCP per-service anomaly equivalent)   | $0           |
-| Inference profiles (tagged)     | Per-model cost attribution in Cost Explorer                             | Invisible cost distribution across models          | None                                           | $0           |
+
+Append an **Inference profiles (tagged)** row for per-model Cost Explorer attribution only when the actual generated `bedrock_monitoring.tf` contains an enabled `aws_bedrock_inference_profile` resource and its `bedrock_inference_profile_arns` output, and the selected model/API supports that profile. A file's existence, a comment mentioning profiles, or a disabled resource is not evidence of this control. Omit the row for Astra Mantle Chat/Responses and runtime OpenAI Chat/Responses; retain budget and anomaly rows. A supported runtime Converse pack that emits the profile retains the attribution row. Apply this same condition to the artifact description in Appendix E.
 
 These are detective controls, not spend caps. You will know within ~24 hours if something goes wrong — not at invoice time.
 

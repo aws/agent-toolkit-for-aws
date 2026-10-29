@@ -44,6 +44,9 @@ share a generation with a future `Sol`. **GPT-6** carries forward `Sol` and `Lun
 **GPT-6.1 Sol** is a point-release upgrade to GPT-6 Sol (same tier, improved capability, a deeper cache-read
 discount) — not a new tier name (cite [openai.com/index/introducing-gpt-6-1-sol/](https://openai.com/index/introducing-gpt-6-1-sol/)).
 
+GPT-6 Astra is the newest, most capable OpenAI model in this catalog. Sol remains an Active,
+lower-cost reasoning alternative; Astra does not make existing GPT-5.x sources require a model upgrade.
+
 > **Context-window conflict (resolved):** the GPT-5.6 launch blog states 272K for all three variants; all three
 > model cards state 1M. **The model cards are authoritative** — use 1M for GPT-5.6. GPT-5.5 and GPT-5.4 are 272K on
 > both sources. Re-check on refresh; if AWS corrects the blog, the cards still win.
@@ -56,6 +59,31 @@ discount) — not a new tier name (cite [openai.com/index/introducing-gpt-6-1-so
 ---
 
 ## Access Paths — Split by Family
+
+**GPT-6 Astra has two endpoints; regions reverified 2026-09-30:**
+
+| Endpoint          | Reach                         | Model ID                                              | Supported APIs                        |
+| ----------------- | ----------------------------- | ----------------------------------------------------- | ------------------------------------- |
+| `bedrock-mantle`  | Standard in-region, **us-east-1 / us-west-2** | `openai.gpt-6-astra`                                  | Responses, Chat Completions           |
+| `bedrock-runtime` | CRIS only, no in-region form  | `us.openai.gpt-6-astra` / `global.openai.gpt-6-astra` | Responses, Chat Completions, Converse |
+
+Use `/openai/v1` on either endpoint for the OpenAI-compatible APIs. Astra does **not** support
+Invoke or Messages. On runtime, Guardrails and application inference profiles are **Converse-only**;
+server-side tool use is unsupported. Runtime supports non-streaming JSON Schema output (reverified
+2026-10-03): Chat uses `response_format.json_schema`, Responses uses `text.format`, and Converse
+uses `outputConfig.textFormat.type: "json_schema"` with `name` and a JSON-encoded schema string in
+`outputConfig.textFormat.structure.jsonSchema`, plus **`additionalModelRequestFields.text.format.strict=true`**.
+For Chat/Responses set the format type to `json_schema` and include `name`, `schema` and `strict: true`.
+Use an object schema, require every field, set `additionalProperties: false`, validate before calling,
+and check refusal/incomplete responses before parsing. Do not claim streamed JSON Schema support.
+On mantle, server-side tool calling
+is supported, implicit/explicit prompt caching is **Responses-only**, and application inference
+profiles are unsupported. Do not copy GPT-5.6's API or feature matrix onto Astra.
+
+The card specifies **1,050,000 context tokens and 128,000 maximum output tokens**, with text/image
+input and text output. The launch announcement rounds the input context to 1M; use the card's
+exact limits for capacity checks. Browser/computer-use capability does not establish parity with
+OpenAI-hosted tools; probe the application's specific tool flow.
 
 **GPT-5.5 and GPT-5.4 are `bedrock-mantle`-only and in-region only.** Their model cards list a single
 Programmatic Access row (`bedrock-mantle`, Geo/Global "Not supported") and In-Region pricing only.
@@ -137,7 +165,8 @@ including `bedrock-mantle:CreateInference` and `bedrock-mantle:CallWithBearerTok
 authorize mantle calls. On the GPT-5.6 `bedrock-runtime` path the usual `bedrock:InvokeModel*` against the CRIS
 inference-profile ARN applies, as for any other runtime model.
 
-**Reasoning effort:** all five accept `none`, `low`, `medium`, `high`, `xhigh`, `max`. Because these models reason
+**Reasoning effort:** the five GPT-5.x models accept `none`, `low`, `medium`, `high`, `xhigh`, `max`. Astra's card
+does not enumerate these values; verify its accepted settings rather than inheriting the GPT-5.x list. Because these models reason
 before responding, the model's output items (which may include reasoning items) must be passed back in the next
 request for multi-turn and tool-calling flows.
 
@@ -145,7 +174,7 @@ request for multi-turn and tool-calling flows.
 
 ## Regional Availability — Endpoint-Aware
 
-**The mantle in-region matrix** (the only reach for GPT-5.5 / GPT-5.4, and the in-region option for GPT-5.6):
+**The mantle in-region matrix** (the only reach for GPT-5.5 / GPT-5.4, and the in-region option for GPT-6 Astra / GPT-5.6):
 
 | Model         | us-east-1 | us-east-2 | us-west-2 | us-gov-west-1 | us-gov-east-1 |
 | ------------- | --------- | --------- | --------- | ------------- | ------------- |
@@ -161,6 +190,11 @@ request for multi-turn and tool-calling flows.
 
 Terra and Luna reached AWS GovCloud (US-West, US-East) in August 2026 — newer than the rest of this matrix.
 
+**Astra runtime availability:** US Geo CRIS can be called from `us-east-1`, `us-east-2`, `us-west-1`,
+`us-west-2`, and `ca-central-1`. Global CRIS additionally supports `eu-central-1`, `eu-north-1`,
+`eu-west-1`, `eu-west-2`, `eu-west-3`, `ap-northeast-1`, `ap-northeast-2`, `ap-northeast-3`,
+`ap-south-1`, `ap-southeast-1`, `ap-southeast-2`, and `sa-east-1`. No EU/India Geo profile or
+GovCloud region is listed on the Astra card. A Canada caller using US Geo still routes to the US.
 **GPT-6 Astra's mantle reach is us-east-1 and us-west-2; GPT-6 Sol, GPT-6 Luna, and GPT-6.1 Sol are us-east-1
 only.** All four additionally reach broad commercial regions via `bedrock-runtime` CRIS (`us.` / `global.`
 inference profiles), same as GPT-5.6 — a region outside the mantle matrix does not block the same-model path for
@@ -176,13 +210,13 @@ Verify current footprints per model card / `aws___get_regional_availability` (AW
 
 ## Pricing
 
-Read off the model cards, 2026-08-31. All rates per 1M tokens, Standard tier (Priority and Flex are NOT supported
+GPT-5.x rates read off the model cards, 2026-08-31; Astra rates verified 2026-09-09. All rates per 1M tokens, Standard tier (Priority and Flex are NOT supported
 for these models). Sol rates reflect the Aug 21, 2026 reduction (−20% input / −33% output vs launch rates), which
 the AWS What's New announcement lists as promotional through at least Nov 21, 2026. **Pricing now has an
 inference-option dimension:**
 
-- **In-Region and Geo CRIS: 1.10x OpenAI's standard list price** (parity with OpenAI's _data residency_ tier).
-- **Global CRIS: OpenAI's standard list price** — cost parity, available for GPT-5.6 only, and only when the
+- **GPT-5.x In-Region and Geo CRIS: 1.10x OpenAI's standard list price** (parity with OpenAI's _data residency_ tier).
+- **Global CRIS: OpenAI's standard list price** — cost parity for the GPT-5.6 rates verified above, and only when the
   workload has no data-residency constraint.
 
 So the honest cost statement is conditional, not flat: a same-model GPT-5.6 move on Global CRIS is
@@ -220,6 +254,9 @@ Context window is **1.05M tokens** for all four models (confirmed on every model
 context must be priced at this long-context tier. Max output tokens: 128,000 (Astra, Sol, Luna) / 131,072
 (6.1 Sol).
 
+Astra cache-write rates use a **30-minute cache-write** window. Verify the source
+provider rate before claiming savings or parity for the selected context tier.
+
 ### GPT-5.6 — short context (272K)
 
 | Model | In-Region / Geo (in · out) | Global CRIS (in · out) | Cache write / read (In-Region) |
@@ -251,7 +288,10 @@ A workload above 272K context must be priced at the long-context tier.
 > Separately, the **AWS Price List API still carries no GPT-5.x rows** (checked 2026-08-04):
 > a missing or empty price-list result must not be read as "model unavailable."
 
-### Prompt caching — GPT-5.6 and GPT-6 only
+### Prompt caching — GPT-5.6 details
+
+Astra separately lists implicit and explicit caching on mantle Responses, with rates above.
+Its card does not establish the GPT-5.6 minimum-prefix, breakpoint, or quota-exemption rules below.
 
 Listed as a supported feature on the GPT-5.6 Sol/Terra/Luna model cards and on all four GPT-6 model cards (Astra,
 Sol, Luna, 6.1 Sol — confirmed by the cache-write/cache-read columns in the GPT-6 pricing tables above). The
@@ -274,6 +314,9 @@ count against the input-TPM quota**, which compounds the benefit at scale.
 ---
 
 ## Quotas
+
+**Astra runtime:** the model card specifies TPM accounting with **10x output-token burndown**.
+Do not reuse the GPT-5.x mantle quota accounting below for Astra without verifying its quota rules.
 
 Inference on `bedrock-mantle` is governed by **two per-model, per-region quotas: input tokens per minute and output
 tokens per minute. There is no requests-per-minute quota.** Exceeding a TPM quota returns HTTP 429.

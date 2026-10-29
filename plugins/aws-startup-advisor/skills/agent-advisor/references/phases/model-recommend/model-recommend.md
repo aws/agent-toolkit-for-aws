@@ -110,6 +110,10 @@ Sol/Luna/6.1 Sol support all four APIs. Every selected path remains provisional 
 in the target account and region. Azure OpenAI remains an explicit `provider_module_pending`
 generic result.
 
+For Astra, preserve a compatible explicit API preference before the source default.
+Keep Astra selected and require a decision when its path, region or feature evidence
+cannot satisfy the request; do not silently substitute another model.
+
 **OpenRouter/LiteLLM-sourced OpenAI models still use the OpenAI module.** Discover records the
 underlying `provider` (e.g. `openai`) even when the calls transit a gateway — see `discover.md`'s
 gateway-detection rule. Do not treat a gateway-routed source as `unknown` or route it to the
@@ -142,7 +146,7 @@ For Anthropic source paths, scan for migration-sensitive features:
 For OpenAI source paths, scan instead for OpenAI feature codes:
 
 - `tool_or_function_calling`, `structured_output_json`, `streaming`, `image_input_vision`
-- `reasoning`, `sampling_params`, `max_tokens`, `multiple_candidates_n`
+- `reasoning`, `sampling_params`, `max_tokens`, `multiple_candidates_n`, `prompt_caching`
 - `web_search`, `file_search_retrieval`, `files_api`, `vector_stores`, `assistants_threads`
 - `audio_modality`, `embeddings`, `images`, `conversation_state`
 

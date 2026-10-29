@@ -6,6 +6,12 @@ accounts under it. It is a separate operation family from the account-scoped
 Domain, with a different required role, a different deletion operation, and a
 prerequisite that lives in AWS Organizations rather than in Omni.
 
+**Not here yet if the customer already has an account-scoped Domain** and only wants
+a Space somewhere it does not allow (for example another Region under Identity
+Center). Moving to an org Domain is then one option among several, and it starts by
+deleting their Domain. Lay out the options from `spaces-and-domains.md` (Region
+rules) first, and use this file only after they choose the org Domain.
+
 > **Always state these, in any answer drawn from this file:**
 >
 > - Trusted access for `observabilityadmin.amazonaws.com` must be enabled in AWS
@@ -115,7 +121,12 @@ Quotas and scope rules to state up front:
 
 - An org Domain supports Spaces in Regions other than the Domain's own.
 - If the Domain uses **Identity Center**, a Space's Region must also be one the
-  Identity Center instance is replicated to.
+  Identity Center instance is replicated to, with that Region's replication status
+  `ACTIVE`. `aws sso-admin list-regions --instance-arn <idc-instance-arn>` shows each
+  Region and its status; a Region still `ADDING` is rejected the same as one never
+  added. Adding a Region (`aws sso-admin add-region`) changes the organization's
+  Identity Center instance, so it is the customer's call: offer it alongside an
+  already-replicated Region, and do not run it yourself.
 - Not every Region is available for Spaces under a given org Domain. Confirm
   rather than assume, and read the rejection message when one comes back.
 
@@ -600,7 +611,7 @@ error that is not listed.
 | An error stating the data access role could not be assumed, naming the trust policy | The create-time assume check failed | Fix the role's trust policy so the CloudWatch service can assume it, and confirm the `aws:SourceArn` uses the `organization-domain` resource type. Do NOT retry unchanged — it fails identically |
 | `ConflictException` naming a management account that already has a Domain | The management account already has a Domain. This fires whether that Domain is org-scoped or account-scoped — the two are mutually exclusive on one account | Run `list-domains` and read the ARN resource type. If it is `organization-domain`, use it. If it is `domain`, the account-scoped Domain must be deleted before an org Domain can be created. Do NOT retry the create |
 | `ValidationException` naming the Identity Center primary Region | Domain not being created in the instance's primary Region | Create the Domain in the primary Region the message names. `list-instances` on `sso-admin` shows the instances the caller can reach |
-| `ValidationException` that Identity Center is not replicated to a Region | A Space was requested in a Region where the Identity Center instance is not replicated | Either create the Space in a Region where Identity Center is replicated, or have the customer replicate Identity Center to that Region |
+| `ValidationException` that Identity Center is not replicated to a Region | A Space was requested in a Region where the Identity Center instance is not replicated | Nothing about the Domain or the request is wrong. Offer both and let the customer choose: create the Space in a Region already `ACTIVE` in `sso-admin list-regions`, or have the customer add that Region to the instance and retry once it reaches `ACTIVE` (see Region rules) |
 | Error stating Spaces for organization domains must be created in the same Region as the organization domain | The target Region is not available for Spaces under this Domain | Create the Space in the Domain's Region, or ask the customer which Regions are enabled for Spaces in their organization |
 | Error stating cross-account access requires management account or registered delegated administrator | Caller is an ordinary member account | Run the operation from the management account, or register the account as a delegated administrator |
 | A Space appears in the management account instead of the target account | `create-space` was called with the management account's own credentials rather than the vended ones | Delete that Space, re-vend credentials with `get-space-credentials-for-organization`, and call `create-space` with those |

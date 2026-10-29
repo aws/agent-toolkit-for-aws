@@ -119,7 +119,8 @@ def validate_plugin(plugin_dir: Path) -> None:
     print(f"Validating plugin: {name}")
 
     # Claude Code manifest
-    validate_json(plugin_dir / ".claude-plugin" / "plugin.json", ["name"])
+    claude_path = plugin_dir / ".claude-plugin" / "plugin.json"
+    claude = validate_json(claude_path, ["name"])
 
     # Codex manifest
     validate_json(
@@ -138,6 +139,51 @@ def validate_plugin(plugin_dir: Path) -> None:
                     f"Name '{cursor_name}' does not match directory '{name}' "
                     f"in {cursor_path.relative_to(REPO_ROOT)}"
                 )
+
+    # Devin manifest (optional; only the name is required by the Devin spec)
+    devin_path = plugin_dir / ".devin-plugin" / "plugin.json"
+    if devin_path.exists():
+        devin = validate_json(devin_path, ["name"])
+        if devin is not None:
+            devin_rel = devin_path.relative_to(REPO_ROOT)
+            devin_name = devin.get("name")
+            if "name" in devin and (not isinstance(devin_name, str) or not devin_name):
+                error(f"'name' must be a non-empty string in {devin_rel}")
+            elif devin_name and devin_name != name:
+                error(
+                    f"Name '{devin_name}' does not match directory '{name}' "
+                    f"in {devin_rel}"
+                )
+            # Devin reads .devin-plugin/plugin.json in preference to the Claude
+            # manifest, so a version bump that misses it ships stale metadata.
+            if isinstance(claude, dict):
+                claude_rel = claude_path.relative_to(REPO_ROOT)
+                for key in ("name", "version", "description"):
+                    if devin.get(key) != claude.get(key):
+                        detail = "" if key == "description" else f": {devin.get(key)!r} != {claude.get(key)!r}"
+                        error(f"'{key}' in {devin_rel} does not match {claude_rel}{detail}")
+            # Devin rejects the whole plugin when a skills path escapes the
+            # plugin root, so check declared paths stay inside and exist.
+            plugin_root = plugin_dir.resolve()
+            for key in ("skills", "mcpServers"):
+                value = devin.get(key)
+                paths = [value] if isinstance(value, str) else value if isinstance(value, list) else []
+                for rel_path in paths:
+                    if not isinstance(rel_path, str):
+                        error(f"'{key}' entry {rel_path!r} is not a path string in {devin_rel}")
+                        continue
+                    target = (plugin_root / rel_path).resolve()
+                    if (
+                        Path(rel_path).is_absolute()
+                        or ".." in Path(rel_path).parts
+                        or (target != plugin_root and plugin_root not in target.parents)
+                    ):
+                        error(
+                            f"'{key}' path '{rel_path}' must stay inside the "
+                            f"plugin directory in {devin_rel}"
+                        )
+                    elif not target.exists():
+                        error(f"'{key}' path '{rel_path}' does not exist in {devin_rel}")
 
     # MCP config
     mcp_path = plugin_dir / ".mcp.json"

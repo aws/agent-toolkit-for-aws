@@ -280,6 +280,11 @@ def display_name_guess(model_id: str) -> str:
 
 
 def lookup(region: str, model_id: str) -> dict:
+    profile_arn = re.fullmatch(
+        r"arn:aws:bedrock:[^:]+:[0-9]{12}:inference-profile/([^/]+)", model_id
+    )
+    if profile_arn:
+        model_id = profile_arn.group(1)
     if "claude-opus-5" in model_id:
         return _opus55_pricing(region, model_id)
     # Curated static table is the primary source — the Pricing API keys models
@@ -289,8 +294,11 @@ def lookup(region: str, model_id: str) -> dict:
         fb["note"] = ("static pricing table (verified 2026-10-05 against "
                       "aws.amazon.com/bedrock/pricing, the Bedrock model cards' "
                       "Geo/Global inference ID tables, and the vendored pricing cache)")
+        if model_id.endswith("openai.gpt-6-astra"):
+            fb["note"] += ("; Standard tier, <=272K input tokens. For >272K, "
+                           "use 2x input / 1.5x output rates.")
         return fb
-    if is_mantle_gpt(model_id):
+    if is_mantle_gpt(model_id) or re.match(r"^[^.]+\.openai\.gpt-[56]", model_id):
         # Short-circuit: the PriceList API carries no rows for the proprietary GPT
         # models, so a live lookup would burn a round trip and still return nothing —
         # and a generic "unavailable" would read as "this model doesn't exist".

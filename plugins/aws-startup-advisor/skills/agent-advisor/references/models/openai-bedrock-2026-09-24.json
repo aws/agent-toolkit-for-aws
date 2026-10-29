@@ -246,20 +246,136 @@
       "context_window": 1050000,
       "output_token_ceiling": 128000,
       "inference_profiles": {
-        "us": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"],
-        "global": ["us-east-1", "us-east-2", "us-west-1", "us-west-2"]
+        "us": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1"
+        ],
+        "global": [
+          "us-east-1",
+          "us-east-2",
+          "us-west-1",
+          "us-west-2",
+          "ca-central-1",
+          "eu-central-1",
+          "eu-north-1",
+          "eu-west-1",
+          "eu-west-2",
+          "eu-west-3",
+          "ap-northeast-1",
+          "ap-northeast-2",
+          "ap-northeast-3",
+          "ap-south-1",
+          "ap-southeast-1",
+          "ap-southeast-2",
+          "sa-east-1"
+        ]
       },
       "region_availability": {
-        "commercial": ["us-east-1", "us-west-2"],
+        "commercial": [
+          "us-east-1",
+          "us-west-2"
+        ],
         "govcloud": [],
         "evidence": "AWS GPT-6 Astra model card and regional table, retrieved 2026-10-10."
       },
-      "capabilities": ["reasoning", "tool_or_function_calling", "image_input_vision"],
-      "capability_source": "AWS GPT-6 Astra model card, retrieved 2026-10-10: text and image input, tool calling, 1.05M context and 128K output.",
+      "capabilities": [
+        "reasoning",
+        "image_input_vision"
+      ],
+      "capability_source": "AWS model card retrieved 2026-09-09: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Launched 2026-09-08, Active, no scheduled EOL; EOL no sooner than 2027-09-08. Text/image input and text output. Server-side tool calling is listed on mantle; runtime lists response streaming and supports non-streaming JSON Schema output (reverified 2026-10-03) and explicitly excludes server-side tool use. These are documentation claims, not feature-level account probes. Sampling, hosted tools, and reasoning-effort values require verification on the selected API.",
       "paths": {
-        "mantle_openai_responses": {"available": true, "model_id": "openai.gpt-6-astra", "requires_cris": false, "evidence": "AWS model card: Mantle Responses in us-east-1 and us-west-2."},
-        "mantle_openai_chat": {"available": true, "model_id": "openai.gpt-6-astra", "requires_cris": false, "evidence": "AWS model card: Mantle Chat Completions supported."},
-        "runtime_converse": {"available": true, "model_id": "openai.gpt-6-astra", "requires_cris": true, "evidence": "AWS model card: US and Global CRIS support Responses, Chat Completions, and Converse; Invoke is unsupported."}
+        "mantle_openai_responses": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": false,
+          "supported_regions": [
+            "us-east-1",
+            "us-west-2"
+          ],
+          "capabilities": [
+            "reasoning",
+            "image_input_vision",
+            "tool_or_function_calling",
+            "prompt_caching"
+          ],
+          "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Responses supported at /openai/v1/responses; Standard mantle is available in us-east-1 and us-west-2. Server-side tool calling and implicit/explicit Responses caching supported; application inference profiles unsupported."
+        },
+        "mantle_openai_chat": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": false,
+          "supported_regions": [
+            "us-east-1",
+            "us-west-2"
+          ],
+          "capabilities": [
+            "reasoning",
+            "image_input_vision"
+          ],
+          "evidence": "AWS model card 2026-09-30: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Chat Completions supported at /openai/v1/chat/completions in us-east-1 and us-west-2; prompt caching is Responses-only. Tool behavior on Chat Completions remains unprobed."
+        },
+        "runtime_converse": {
+          "available": true,
+          "model_id": "openai.gpt-6-astra",
+          "requires_cris": true,
+          "supported_regions": [
+            "us-east-1",
+            "us-east-2",
+            "us-west-1",
+            "us-west-2",
+            "ca-central-1",
+            "eu-central-1",
+            "eu-north-1",
+            "eu-west-1",
+            "eu-west-2",
+            "eu-west-3",
+            "ap-northeast-1",
+            "ap-northeast-2",
+            "ap-northeast-3",
+            "ap-south-1",
+            "ap-southeast-1",
+            "ap-southeast-2",
+            "sa-east-1"
+          ],
+          "inference_profile_regions": {
+            "us.openai.gpt-6-astra": [
+              "us-east-1",
+              "us-east-2",
+              "us-west-1",
+              "us-west-2",
+              "ca-central-1"
+            ],
+            "global.openai.gpt-6-astra": [
+              "us-east-1",
+              "us-east-2",
+              "us-west-1",
+              "us-west-2",
+              "ca-central-1",
+              "eu-central-1",
+              "eu-north-1",
+              "eu-west-1",
+              "eu-west-2",
+              "eu-west-3",
+              "ap-northeast-1",
+              "ap-northeast-2",
+              "ap-northeast-3",
+              "ap-south-1",
+              "ap-southeast-1",
+              "ap-southeast-2",
+              "sa-east-1"
+            ]
+          },
+          "capabilities": [
+            "reasoning",
+            "image_input_vision",
+            "streaming",
+            "structured_output_json"
+          ],
+          "evidence": "AWS model card, runtime JSON Schema reverified 2026-10-03: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html. Runtime APIs: Responses, Chat Completions, Converse; Invoke and Messages unsupported. US Geo/Global CRIS only, no in-region or EU/India Geo form. Guardrails and application inference profiles are Converse-only. Non-streaming JSON Schema outputs supported: Converse requires outputConfig.textFormat.structure.jsonSchema and additionalModelRequestFields.text.format.strict=true. Streaming structured output and server-side tool use are not evidenced. Runtime TPM accounting uses 10x output-token burndown."
+        }
       }
     },
     "openai_gpt_6_sol": {

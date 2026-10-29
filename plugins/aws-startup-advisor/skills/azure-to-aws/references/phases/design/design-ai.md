@@ -158,8 +158,8 @@ flat rates from `references/vendored/ai/bedrock-pricing-cache.md` throughout the
 do not apply the GPT multiplier. Verify other models' tiers individually.
 
 **Quota risk** (per `references/vendored/ai/bedrock-quotas.md`): high/very_high volume →
-`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× burndown) →
-`"medium"`; else `"low"`. Record on each `bedrock_models[]` entry.
+`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× output burndown) or Astra runtime (10× output burndown) →
+`"medium"`; else `"low"`. Before writing that value, apply the observed on-demand peak rule in `references/vendored/ai/bedrock-quotas.md`, including `azure-openai-metrics-profile.json` when it has an on-demand peak. Unknown `service_tier` is not on-demand. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Record on each `bedrock_models[]` entry. Generate must not keep the earlier monthly decision.
 
 ## Part 1B: Volume-based strategy
 
@@ -204,6 +204,8 @@ Map Azure AI infrastructure to AWS:
 
 ## Part 5: Code migration plan
 
+Preserve `mantle_openai_chat` when the selected API is Chat Completions.
+
 Generate before/after examples per detected `integration.pattern` and `ai_source`. For an
 `azure_openai`/`openai` source with the model on Bedrock, the **Mantle Responses API** is the
 primary path (`migration_path: "mantle_openai_responses"`, `model_change: false`): the app
@@ -230,6 +232,12 @@ surface — `converse` for Astra; `converse` / `chat_completions` / `invoke` (ne
 for 6.1 Sol and the other non-Astra GPT-6/5.6 CRIS models. Do not leave the client on
 `responses` when Guardrails is required.** `Responses` stays the default for a region-only
 CRIS move with no Guardrails need.
+
+An Azure-specific client (`AzureOpenAI`, deployment/API-version configuration) must be adapted
+to the selected Bedrock client; do not claim that setting OPENAI_BASE_URL alone changes that client.
+Keep `model_change: false` only when the exact underlying model is unchanged; opaque Azure
+deployment names need verified model identity, not a guessed GPT family.
+
 Anthropic-SDK sources → boto3 Converse client swap. Record `code_migration.openrouter_path`
 when a router was detected (`same_model_mantle|direct|litellm|keep_openrouter`).
 

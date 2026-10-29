@@ -468,6 +468,53 @@ def test_neutral_fixture_skips_provider_artifacts_and_expected_snapshots(tmp_pat
     assert [p.name for p in va.find_artifacts(tmp_path)] == ["gcp-resource-inventory.json"]
 
 
+@pytest.mark.parametrize("skill", ["gcp-to-aws", "azure-to-aws"])
+@pytest.mark.parametrize("artifact", ["estimation-ai.json", "generation-ai.json"])
+def test_target_only_ai_contracts_do_not_validate_current_skill_outputs(
+    tmp_path: Path, skill: str, artifact: str
+):
+    """The canonical AI estimate/generate schemas are fixture-only until the producer
+    documents adopt their neutral fields and per-source traceability arrays."""
+    source_prefix = "gcp" if skill == "gcp-to-aws" else "azure"
+    if artifact == "estimation-ai.json":
+        current = {
+            "phase": "estimate",
+            "timestamp": "2026-09-08T03:10:00Z",
+            "pricing_source": "cached",
+            "current_costs": {
+                "source": "billing",
+                f"{source_prefix}_monthly_ai_spend": 100.0,
+                "services": [],
+            },
+            "cost_comparison": {
+                f"current_{source_prefix}_monthly": 100.0,
+                "projected_bedrock_monthly": 110.0,
+                "monthly_difference": 10.0,
+                "annual_difference": 120.0,
+                "percent_change": 10.0,
+            },
+        }
+    else:
+        current = {
+            "phase": "generate",
+            "generation_source": "ai",
+            "timestamp": "2026-09-08T04:00:00Z",
+            "migration_plan": {"approach": "provider_adapter", "phases": [], "models_to_migrate": []},
+            "step_by_step_guide": {},
+            "rollback_plan": {"mechanism": "feature_flag", "flag_name": "AI_PROVIDER"},
+            "monitoring": {},
+            "production_readiness_checklist": [],
+            "success_criteria": {},
+            "recommendation": {},
+        }
+
+    run = _write_run(tmp_path, f"{skill}-{artifact}", artifact, current)
+    findings = []
+    manifest = va.load_manifest(PLUGIN_ROOT / "scripts" / "artifact-contracts.json")
+    assert va.validate_run_dir(run, skill, manifest, findings) == 0
+    assert [(finding.code, finding.path) for finding in findings] == [("NO_CONTRACT", "")]
+
+
 def test_injected_off_contract_key_fails(tmp_path: Path):
     """The regression this tool exists for: a producer emits a key its contract never
     documented. Copy a golden run, plant the key, expect exit 1 naming the path."""

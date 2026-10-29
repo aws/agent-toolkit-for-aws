@@ -431,8 +431,11 @@ Nearly every user arriving here has **no Agent Space and has never heard of one*
   chore; a boundary is a control they are being handed
 - Do not ask "which region is your Agent Space in" — work the region out and offer it as a reversible
   default, preferring infrastructure-as-code in the workspace over the CLI default
-- **Create it for them:** `aws devops-agent create-agent-space --name "<name>" --region <region>`. Only
-  `name` is required. The CLI service is `devops-agent`; the endpoint and IAM signing name are `aidevops`
+- **Create it for them:** `aws devops-agent create-agent-space --name "<name>" --region <region>
+  --tags CreatedBy=aws-startup-advisor`. Only `name` is required; the tag records that AWS Startup Advisor
+  created the space (see `references/connecting.md`). Once setup is confirmed, report the new space as that
+  file's "Reporting the new Agent Space" describes. The CLI service is `devops-agent`; the endpoint and IAM
+  signing name are `aidevops`
 - Check `aws devops-agent list-agent-spaces` in **every** supported region first — they may already have
   one, and it may not be in their default region. A failed lookup is unknown, not empty
   (`references/readiness.md`). If regions stay unknown, check the intended region and any locally

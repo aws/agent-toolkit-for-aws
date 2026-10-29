@@ -130,7 +130,7 @@ _CONVERSE_TIER_ORDER = (
 
 def _converse_tier_for_source(source):
     sid = _primary_source_id(source).lower()
-    if "5.6-sol" in sid:
+    if "5.6-sol" in sid or "6-astra" in sid:
         return "anthropic_claude_opus_5_5"
     if "5.6-luna" in sid:
         return "anthropic_claude_haiku_4_5"
@@ -227,6 +227,8 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
         path_config = model["paths"].get(path, {})
         if path_config.get("available") is not True:
             continue
+        if "capabilities" in path_config:
+            model = {**model, "capabilities": path_config["capabilities"]}
         availability = model.get("region_availability")
         if path.startswith("mantle_") and region and region != "unknown" and availability:
             supported_regions = set(availability.get("commercial", []))
@@ -235,6 +237,7 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
                 continue
         if (
             path == "runtime_converse"
+            and not path_config.get("inference_profile_regions")
             and path_config.get("requires_cris")
             and _hard_profile_requirement(requirements or {})
             and _resolve_invocation_model_id(
@@ -358,6 +361,8 @@ def _target_accepts_sampling(target_model):
     target is not an OpenAI model or its version can't be parsed.
     """
     if target_model is None or target_model.get("generation") == "bedrock_native":
+        return None
+    if target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
         return None
     version = _version_tuple(target_model.get("version"))
     if version is None:
@@ -493,6 +498,15 @@ def _reasoning_findings(source, requirements, target_model, path, detected_featu
                     "Verify sampling acceptance for the exact target model and surface.",
                 )
             )
+        elif target_model and target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+            tuning.append(
+                _finding(
+                    "sampling_params_unverified", "[TUNE]",
+                    "Astra's model card does not specify accepted sampling parameters.",
+                    "Probe sampling and reasoning settings on the selected API; do not "
+                    "inherit GPT-5.x parameter acceptance or rejection rules.",
+                )
+            )
     return blocks, tuning, deltas
 
 
@@ -523,7 +537,7 @@ def _chat_to_responses_deltas():
     ]
 
 
-def _feature_findings(detected_features, requirements, path=None):
+def _feature_findings(detected_features, requirements, path=None, target_model=None):
     """Structured output, n, tools, state, and hosted-tool/modality impacts.
 
     Findings are path-aware: Mantle Responses keeps verified capabilities
@@ -536,7 +550,20 @@ def _feature_findings(detected_features, requirements, path=None):
     blocks, tuning, deltas, impacts = [], [], [], []
 
     if "structured_output_json" in detected:
-        if is_responses:
+        if path == "runtime_converse" and (target_model or {}).get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+            deltas.append(
+                _delta(
+                    "structured_output_text_format",
+                    "feature",
+                    "Astra runtime JSON Schema output is documented for non-streaming calls. "
+                    "Set outputConfig.textFormat.type=json_schema and put name plus schema "
+                    "(encoded as a JSON string) in outputConfig.textFormat.structure.jsonSchema. "
+                    "Also set additionalModelRequestFields.text.format.strict=true. Use an "
+                    "object schema with all fields required and additionalProperties=false; "
+                    "validate the schema and check refusal/incomplete responses before parsing.",
+                )
+            )
+        elif is_responses:
             # Verified on Mantle: responses.parse(text_format=Model) returns a typed object.
             deltas.append(
                 _delta(
@@ -557,15 +584,26 @@ def _feature_findings(detected_features, requirements, path=None):
                     "Responses parse() helper is not available.",
                 )
             )
-    if (requirements.get("uses_n") or "multiple_candidates_n" in detected) and not is_chat:
-        deltas.append(
-            _delta(
-                "responses_no_n",
-                "feature",
-                "The Responses API does not support n; request multiple candidates with "
-                "repeated calls.",
+    if requirements.get("uses_n") or "multiple_candidates_n" in detected:
+        if path == "mantle_openai_chat":
+            if target_model and target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+                tuning.append(
+                    _finding(
+                        "multiple_candidates_n_unverified", "[TUNE]",
+                        "Astra Chat Completions support for n has not been verified.",
+                        "Probe n on the selected model and endpoint before preserving it; "
+                        "if unsupported, request multiple candidates with repeated calls.",
+                    )
+                )
+        else:
+            deltas.append(
+                _delta(
+                    "responses_no_n",
+                    "feature",
+                    "The Responses API does not support n; request multiple candidates with "
+                    "repeated calls.",
+                )
             )
-        )
     if "tool_or_function_calling" in detected:
         if is_chat:
             tool_description = (
@@ -580,7 +618,17 @@ def _feature_findings(detected_features, requirements, path=None):
             )
         deltas.append(_delta("tool_result_shape", "feature", tool_description))
     if "conversation_state" in detected or requirements.get("uses_hosted_state"):
-        if is_responses:
+        if target_model and target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+            deltas.append(
+                _delta(
+                    "conversation_state_ownership",
+                    "path",
+                    "Astra's hosted state behavior has not been probed on this API. Verify "
+                    "retention and continuation semantics; use application-owned history "
+                    "until those requirements are confirmed.",
+                )
+            )
+        elif is_responses:
             deltas.append(
                 _delta(
                     "conversation_state_ownership",
@@ -606,7 +654,7 @@ def _feature_findings(detected_features, requirements, path=None):
                 _delta(
                     "conversation_state_ownership",
                     "path",
-                    "A Bedrock-native Converse target has no hosted Responses state; carry "
+                    "This path does not use hosted Responses state; carry "
                     "conversation history in an application-owned store.",
                 )
             )
@@ -698,6 +746,8 @@ def _unsupported_required_capabilities(target_model, detected_features, requirem
             "reasoning",
         }
     )
+    if target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)" and "prompt_caching" in needed:
+        checkable.add("prompt_caching")
     return sorted(checkable - catalog_caps)
 
 
@@ -709,6 +759,8 @@ def _compatibility(detected_features, requirements, path, target_model=None):
     text_features = detected.intersection(
         {"tool_or_function_calling", "structured_output_json", "streaming", "image_input_vision", "reasoning"}
     )
+    if (target_model or {}).get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)" and "prompt_caching" in detected:
+        text_features.add("prompt_caching")
     catalog_caps = set((target_model or {}).get("capabilities") or [])
     native = sorted(text_features.intersection(catalog_caps)) if target_model else []
     unsupported = sorted(text_features - catalog_caps) if target_model else []
@@ -788,13 +840,26 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
 
 
 def _decision_options(catalog, workload, region):
-    """Two-sided option set: Mantle continuity vs runtime Converse governance."""
+    """Two-sided option set: the selected Mantle API vs runtime Converse governance."""
     options = []
-    detected = workload.get("detected_features") or []
+    detected = [feature for feature, status in _feature_assessment(workload).items()
+                if status == "detected"]
+    astra = _same_model_runtime_key(workload["source"]) == "openai_gpt_6_astra"
     mantle_path = _mantle_path(workload["source"], workload["requirements"])
+    if astra:
+        preferred = workload["requirements"].get("preferred_api_path")
+        if preferred in {"mantle_openai_chat", "mantle_openai_responses"}:
+            mantle_path = preferred
+        elif workload["source"].get("api_surface") == "chat_completions":
+            mantle_path = "mantle_openai_chat"
+        # A decision may offer changing an incompatible Chat preference to the
+        # documented Responses caching path; it must not silently select it.
+        needed = set(detected) | set(workload["requirements"].get("critical_features") or [])
+        if "prompt_caching" in needed:
+            mantle_path = _mantle_path(workload["source"], workload["requirements"])
     mantle, _ = _catalog_model_for_path(
         catalog, mantle_path, detected, workload["requirements"],
-        candidate_order=_mantle_candidate_order(catalog, workload["source"]),
+        candidate_order=["openai_gpt_6_astra"] if astra else _mantle_candidate_order(catalog, workload["source"]),
         region=region,
     )
     mantle_requires_region_change = False
@@ -859,9 +924,9 @@ def _decision_options(catalog, workload, region):
                     path_config, invocation_model_id
                 ),
                 "reason": (
-                    "SAME-MODEL governance path: this OpenAI target runs on bedrock-runtime via "
-                    "a CRIS id — Guardrails (Converse API only), invocation logging, and "
-                    "same-model behavior without a family change."
+                    "SAME-MODEL governance path: this OpenAI target runs on bedrock-runtime via a "
+                    "CRIS id — Guardrails (Converse API only) and invocation logging without a "
+                    "model change. Check the model's region/profile matrix and dated prices."
                     if model_key == _same_model_runtime_key(workload["source"])
                     else "Uses Bedrock-native Converse request/response shapes and a "
                     "cross-family model; requires rewriting the OpenAI integration."
@@ -1014,6 +1079,35 @@ def recommend_openai_workload(workload, region, catalog):
                 "evaluated before capability and numeric fallbacks."
             )
 
+    # Astra's new paths must not inherit the older GPT-5.x defaults. Keep this
+    # source on Astra and fail closed when the required path lacks evidence.
+    if _same_model_runtime_key(source) == "openai_gpt_6_astra":
+        candidate_order = ["openai_gpt_6_astra"]
+        preferred = requirements.get("preferred_api_path")
+        if preferred:
+            available = catalog["models"]["openai_gpt_6_astra"]["paths"].get(preferred, {})
+            if (available.get("available") is not True
+                    or runtime_required and preferred != "runtime_converse"
+                    or continuity_required and preferred == "runtime_converse"):
+                return _unresolved(
+                    "The explicit Astra API preference conflicts with the available paths "
+                    "or required API/governance constraints.", [],
+                    _finding(
+                        "preferred_api_path_conflict", "[BLOCKS]",
+                        f"The requested {preferred} path cannot satisfy this workload.",
+                        "Choose a supported API or revise the conflicting requirements, "
+                        "then rerun Model Recommend.",
+                    ), preferred,
+                )
+            path = preferred
+        elif not runtime_required and surface == "chat_completions":
+            path = "mantle_openai_chat"
+        rationale_head = (
+            "Keep GPT-6 Astra on Bedrock using the compatible explicit API preference, "
+            "otherwise the source-compatible API or required runtime Converse path; "
+            "apply Astra's own region and feature evidence."
+        )
+
     # Evidence-driven selection: pick the first candidate on the path whose catalog
     # capabilities cover the required/detected text features (a newer model without
     # feature-level evidence falls back to an older probed one). G02: fail closed
@@ -1071,6 +1165,19 @@ def recommend_openai_workload(workload, region, catalog):
             path,
         )
 
+    needed = set(detected) | set(requirements.get("critical_features") or [])
+    if (model_key == "openai_gpt_6_astra" and path == "runtime_converse"
+            and {"structured_output_json", "streaming"} <= needed):
+        return _unresolved(
+            rationale_head, [],
+            _finding(
+                "structured_output_streaming_unverified", "[BLOCKS]",
+                "Astra runtime JSON Schema output is documented only for non-streaming calls.",
+                "Use non-streaming structured output or separate the streaming workload, "
+                "then update requirements and rerun Model Recommend.",
+            ), path,
+        )
+
     numeric_conflicts = _numeric_requirement_conflict(model, requirements)
     if numeric_conflicts:
         return _unresolved(
@@ -1089,11 +1196,41 @@ def recommend_openai_workload(workload, region, catalog):
     invocation_model_id = _resolve_invocation_model_id(
         path_config["model_id"], path_config["requires_cris"], requirements, model, region
     )
+    regions = path_config.get("supported_regions")
+    profile_regions = path_config.get("inference_profile_regions")
+    if regions is not None and region not in regions:
+        return _unresolved(
+            rationale_head, [],
+            _finding(
+                "model_region_unavailable", "[BLOCKS]",
+                f"{model['display_name']} is not listed for {path} in {region}.",
+                "Choose a supported region or a supported CRIS path with explicit "
+                "data-residency consent, or evaluate a different model.",
+            ), path,
+        )
+    if profile_regions is not None and (invocation_model_id is not None or _hard_profile_requirement(requirements)):
+        profile_key = invocation_model_id
+        if invocation_model_id and invocation_model_id.startswith("arn:"):
+            match = re.fullmatch(
+                r"arn:aws:bedrock:([^:]+):[0-9]{12}:inference-profile/([^/]+)",
+                invocation_model_id,
+            )
+            profile_key = match.group(2) if match and match.group(1) == region else None
+        if region not in profile_regions.get(profile_key, []):
+            return _unresolved(
+                rationale_head, [],
+                _finding(
+                    "inference_profile_unverified", "[BLOCKS]",
+                    f"{invocation_model_id} has no catalog evidence for calls from {region}.",
+                    "Select a cataloged profile available from this region, or verify an "
+                    "application inference profile in the target account before proceeding.",
+                ), path,
+            )
     source_analysis = _source_analysis(source, model)
 
     # --- Findings (target- and path-derived) ---
     r_blocks, r_tuning, r_deltas = _reasoning_findings(source, requirements, model, path, detected)
-    f_blocks, f_tuning, f_deltas, impacts = _feature_findings(detected, requirements, path)
+    f_blocks, f_tuning, f_deltas, impacts = _feature_findings(detected, requirements, path, model)
     blocks = r_blocks + f_blocks
     tuning = r_tuning + f_tuning
     deltas = list(r_deltas)
@@ -1131,12 +1268,33 @@ def recommend_openai_workload(workload, region, catalog):
             _finding(
                 "chat_completions_to_responses_required",
                 "[BLOCKS]",
-                "GPT-5.x on Mantle rejects Chat Completions; the source must reshape to the "
-                "Responses API.",
-                "Apply the request/response/tool/state reshape deltas before cutover; do not "
-                "target mantle_openai_chat for GPT-5.x.",
+                (
+                    "The selected Astra Responses path requires reshaping the Chat source."
+                    if model_key == "openai_gpt_6_astra"
+                    else "GPT-5.x on Mantle rejects Chat Completions; the source must reshape "
+                    "to the Responses API."
+                ),
+                "Apply the request/response/tool/state reshape deltas before cutover.",
             )
         )
+    if path == "mantle_openai_chat" and surface == "responses":
+        deltas.extend([
+            _delta(
+                "responses_to_chat_request", "path",
+                "Map Responses input/instructions to Chat messages/system content and "
+                "verify the selected model's output-budget parameters.",
+            ),
+            _delta(
+                "responses_to_chat_response", "path",
+                "Read choices[0].message.content instead of output_text; preserve Chat "
+                "messages and tool_call_id rather than Responses output items.",
+            ),
+        ])
+        blocks.append(_finding(
+            "responses_to_chat_completions_required", "[BLOCKS]",
+            "The selected Astra Chat path requires reshaping the Responses source.",
+            "Apply the request/response/tool/state mapping before cutover.",
+        ))
     deltas.extend(f_deltas)
 
     if path == "runtime_converse":

@@ -721,6 +721,7 @@ _POOL_LIFECYCLE_KEYS = {
     "claude_opus_5_5": "claude-opus-5-5",
     "claude_sonnet_5": "claude-sonnet-5",
     "claude_haiku_4_5": "claude-haiku-4-5",
+    "openai_gpt_6_astra": "gpt-6-astra",
     "openai_gpt_5_6_sol": "gpt-5.6-sol",
     "openai_gpt_5_6_terra": "gpt-5.6-terra",
     "openai_gpt_5_6_luna": "gpt-5.6-luna",
@@ -781,17 +782,17 @@ def _legacy_or_excluded_rows():
 
 
 def test_drift_mechanism_actually_fires_on_a_known_legacy_model():
-    # Self-proof: the file lists Claude Opus 4.1 as legacy (still in the table).
-    # The matcher MUST see its id fragment — otherwise a 0-match "pass" below
-    # would be vacuous (Active models are simply absent from the legacy table,
-    # so the check only means something if it can actually match a legacy id
-    # when one appears).
+    # Self-proof: the file lists Claude Opus 4.1 as excluded (still in the table,
+    # inside the 90-day zone as of the 2026-10-26 refresh). The matcher MUST see
+    # its id fragment — otherwise a 0-match "pass" below would be vacuous (Active
+    # models are simply absent from the legacy table, so the check only means
+    # something if it can actually match a legacy/excluded id when one appears).
     if not _LIFECYCLE_FILE.exists():
         pytest.xfail("lifecycle file not reachable — drift check skipped")
     bad_rows = _legacy_or_excluded_rows()
     assert any("claude-opus-4-1" in r for r in bad_rows), (
-        "expected Claude Opus 4.1 in a legacy row — lifecycle file format changed; "
-        "the drift matcher may no longer work and needs updating")
+        "expected Claude Opus 4.1 in a legacy/excluded row — lifecycle file format "
+        "changed; the drift matcher may no longer work and needs updating")
 
 
 def test_drift_mechanism_actually_fires_on_a_known_removed_model():
