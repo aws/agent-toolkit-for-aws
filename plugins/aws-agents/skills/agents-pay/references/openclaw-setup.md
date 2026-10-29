@@ -18,8 +18,11 @@ instrument.
 export PAYMENT_USER_ID="my-openclaw-agent"
 ```
 
-Pass `--user-id $PAYMENT_USER_ID` to every admin command, or run `init-config`
-first (which generates and stores one in `~/.agents-pay/config.json` for you).
+For manual setup, pass `--user-id "$PAYMENT_USER_ID"` to `init-config`; later
+commands read the stored ID. For the interactive wizard, enter this ID at its
+User ID prompt. Alternatively, let either flow generate an ID and use that
+same stored ID in the OpenClaw configuration. Exporting `PAYMENT_USER_ID` alone
+does not set the ID used by `init-config` or the wizard.
 
 ## Install
 
@@ -37,17 +40,18 @@ Create an AgentCore project before adding and deploying the payment resources:
 
 ```bash
 npm install -g @aws/agentcore
-PROJECT_NAME=openclaw-payments
-agentcore create --project-name "$PROJECT_NAME" --no-agent
+PROJECT_NAME=OpenclawPayments
+agentcore create --name "$PROJECT_NAME" --template empty
 cd "$PROJECT_NAME"
-agentcore add payment-manager
-agentcore add payment-connector
-agentcore deploy
+agentcore add payment-manager --name MyPayments --no-auto-payment
+agentcore add payment-connector --manager MyPayments --name Coinbase --quick-create
+agentcore build
+agentcore deploy --region <region>
 export AGENTCORE_PROJECT_DIR="$PWD"
+export AGENTCORE_TARGET=default
 ```
 
-Run both `agentcore add` commands without flags so credentials remain in the
-interactive terminal. Keep `AGENTCORE_PROJECT_DIR` set while running the setup
+Quick Create needs no provider secrets. Complete the Coinbase authorization outside the OpenClaw conversation. For manual provider credentials, follow [setup.md](setup.md). Keep `AGENTCORE_PROJECT_DIR` set while running the setup
 wizard from the plugin directory.
 
 ## Quick Setup (Recommended)
@@ -77,26 +81,35 @@ If payment infrastructure or a session does not exist, stop the LLM workflow.
 Open a separate terminal and run the human setup from the bundled skill:
 
 ```bash
+export PAYMENT_USER_ID="my-openclaw-agent"
+export AGENTCORE_PROJECT_DIR="/absolute/path/to/OpenclawPayments"
+export AGENTCORE_TARGET=default
+export AWS_REGION=<region>
 cd ~/.openclaw/extensions/aws-agents-pay/skills/agents-pay
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python scripts/agents_pay_admin.py init-config \
+  --user-id "$PAYMENT_USER_ID" \
   --max-per-payment-usd 0.05 \
   --network eip155:84532 \
   --recipient 0xMerchantWalletAddress
 python scripts/agents_pay_admin.py create-instrument --email you@example.com
+```
+
+Complete delegation and testnet funding for the new instrument, then create a
+short-lived session:
+
+```bash
 python scripts/agents_pay_admin.py new-session \
   --budget 1.00 \
   --expiry-minutes 60
 ```
 
-The two `agentcore add` commands must run without flags so credentials remain in
-the interactive terminal. Do not paste credentials, command output, deployed
+The provisioning commands above use v1 flags. Keep any manual provider credentials in the human terminal and out of the OpenClaw conversation. Do not paste credentials, command output, deployed
 state, or generated identifiers into an LLM conversation.
 
-Complete delegation and testnet funding before creating the session. Then edit
-the OpenClaw config locally in the same terminal or a local editor.
+Edit the OpenClaw config locally in the same terminal or a local editor.
 
 > **Important:** The `userId` below must match the identity used in
 > `create-instrument` and `new-session`. A mismatch means the session cannot
