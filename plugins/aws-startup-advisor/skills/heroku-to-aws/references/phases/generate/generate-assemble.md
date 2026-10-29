@@ -75,9 +75,9 @@ manifests, every service accounted for, no `{{VARIABLE}}` placeholders), then em
 `HANDOFF_OK | phase=generate | artifacts=terraform/,MIGRATION_GUIDE.md,README.md,migration-report.html,validation-report.json`.
 
 The report validator (**required, blocking**) runs in the **main window**, not here — this
-assembler is dispatched to the shell-less `rw` worker along with the fragments (`INTERPRETER.md`
-§ `_exec`), so it cannot run `python3`. `generate.md`'s "Finish Generate in the main window
-(report validation)" step runs
+assembler's `rwx` worker has a shell scoped to the Terraform policy checker
+(`INTERPRETER.md` § `_exec`). `generate.md`'s "Finish Generate in the main window"
+step first runs the shared generated-artifact checker, then runs
 `validate-heroku-migration-report.py` over `migration-report.html` **after this assembler
 returns and before** the read-only `_postconditions` gate; on `REPORT_OK` it stamps
 `report-validation-status.json` (the durable result the gate asserts), and on `REPORT_FAIL` it
@@ -85,6 +85,13 @@ emits `GATE_FAIL` and pastes the validator's `errors[]`. Per `INTERPRETER.md` §
 the gate does **not** edit the HTML, artifacts, or state — it halts. Recovery is a hand-edit of
 `migration-report.html` from the pasted errors + a direct re-run of the validator and re-stamp (or
 a maintainer re-running Generate for a clean rebuild), not this assembler repairing the report.
+
+The generated-artifact checker similarly records its actual verdict in
+`artifact-validation-status.json`. An absent checker, an unsupported output
+shape, or `ARTIFACTS_FAIL`/`ARTIFACTS_ERROR` blocks the main-window handoff.
+Do not fabricate this result or update phase state before the controller has
+finished both checks. Targeted repairs rerun the checker against the saved
+files; they do not erase the original failing report.
 
 The Terraform **policy gate** is not optional, and it is enforced by `generate.md`
 `_postconditions` — a **read-only** gate the interpreter runs in the **main window**
