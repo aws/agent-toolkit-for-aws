@@ -49,17 +49,17 @@ If the header names are fixed by a protocol or external system (A2A requires `A2
     {
       "name": "MyAgent",
       "requestHeaderAllowlist": [
-        "X-Amzn-Bedrock-AgentCore-Runtime-Custom-X-Tenant-Id",
-        "X-Amzn-Bedrock-AgentCore-Runtime-Custom-A2A-Version"
+        "X-Tenant-Id",
+        "A2A-Version"
       ]
     }
   ]
 }
 ```
 
-Then `agentcore deploy`. The `$schema` URL at the top of the file (`https://schema.agentcore.aws.dev/v1/agentcore.json`) gives IDE autocomplete and validation for every field.
+Run `agentcore build` to validate the edited v1 project, then `agentcore deploy`.
 
-**CLI shortcut** — `agentcore add agent --request-header-allowlist "X-Tenant-Id,A2A-Version"` writes the same array. **Important:** the CLI auto-prefixes entries with `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` as they land in `agentcore.json`. If you're editing the JSON by hand, write the prefixed form directly. If you're using the CLI, pass the short name and let the CLI add the prefix.
+**When creating a new Runtime**, `agentcore add runtime --name <name> --language python --request-header-allowlist X-Tenant-Id A2A-Version` writes the allowlist. Edit the existing Runtime entry instead of adding a duplicate. The CLI stores the header names as passed; use the same names in the CLI flag, project JSON, and caller request. The reserved `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` prefix is a separate pass-through option that does not need an allowlist entry.
 
 `Authorization` passes through by default and doesn't need to be in the allowlist.
 
@@ -68,7 +68,7 @@ Then `agentcore deploy`. The `$schema` URL at the top of the file (`https://sche
 - **Maximum 20 headers** in the allowlist (including `Authorization` if you include it explicitly)
 - **Header name length:** up to 256 characters
 - **Header value size:** up to 4 KB per header
-- **Names are case-sensitive** — list them exactly as they'll be sent
+- **Header names are matched case-insensitively.** Keep one consistent spelling in the project and caller examples for readability.
 - **Changes take effect after the next deploy** of the runtime
 
 If you hit the 20-header cap, combine related data into one JSON-encoded header rather than using many separate ones.
@@ -120,12 +120,13 @@ Headers arrive in the runtime's `context` object passed to your invocation handl
 ```python
 @app.entrypoint
 def invoke(payload, context):
-    tenant = context.headers.get("X-Tenant-Id")
-    correlation_id = context.headers.get("X-Correlation-Id")
+    headers = {name.lower(): value for name, value in (context.request_headers or {}).items()}
+    tenant = headers.get("x-tenant-id")
+    correlation_id = headers.get("x-correlation-id")
     # ... use as needed
 ```
 
-Headers that weren't in the allowlist will be absent (not empty string) from the context.
+Headers that weren't in the allowlist will be absent (not empty string) from `context.request_headers`.
 
 ## What won't work
 
@@ -136,7 +137,7 @@ Headers that weren't in the allowlist will be absent (not empty string) from the
 ## Troubleshooting
 
 **"My agent doesn't see the header I'm sending"**
-Check (in order): (1) Is the header in the allowlist? (2) Is the spelling an exact match including case? (3) Did you redeploy the runtime after updating the allowlist? (4) Is the caller actually sending the header — `curl -v` or equivalent network inspection.
+Check (in order): (1) Is the header in the allowlist? (2) Does the name match, ignoring case? (3) Did you redeploy the runtime after updating the allowlist? (4) Is the caller actually sending the header — `curl -v` or equivalent network inspection.
 
 **"I hit the 20-header limit"**
 Consolidate related data into a single JSON-encoded header. For example, instead of `X-Region`, `X-Environment`, `X-Service-Name` as three separate headers, use `X-Context: {"region":"us-west-2","env":"prod","service":"billing"}`.

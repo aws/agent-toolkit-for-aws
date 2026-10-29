@@ -13,6 +13,7 @@ import json
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agents_pay_admin as m
@@ -96,5 +97,147 @@ finally:
         os.environ["PAYMENT_MANAGER_ARN"] = _saved_env_arn
 
 print("resolve_manager_arn: PASSED")
+
+# --- CLI v1 project status ------------------------------------------------
+
+v1_root = Path(d) / "v1-project"
+(v1_root / "agentcore").mkdir(parents=True)
+(v1_root / "agentcore" / "agentcore.json").write_text('{"name":"PayTest","version":2}')
+v1_status = {
+    "projectName": "PayTest",
+    "target": "default",
+    "region": "us-east-1",
+    "resources": [
+        {
+            "resourceType": "payment-manager",
+            "name": "Payments",
+            "deploymentState": "deployed",
+            "arn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/manager-1",
+            "children": [
+                {
+                    "resourceType": "payment-connector",
+                    "name": "Coinbase",
+                    "deploymentState": "deployed",
+                    "id": "connector-1",
+                }
+            ],
+        }
+    ],
+}
+with patch.object(m.subprocess, "run") as run:
+    run.return_value.returncode = 0
+    run.return_value.stdout = json.dumps(v1_status)
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
+    assert found["connector_id"] == "connector-1"
+    run.assert_called_once()
+    assert run.call_args.kwargs["cwd"] == v1_root.resolve()
+
+print("discover_deployed v1: PASSED")
+
+# v1 deployed state exists, but has no payments branch. Discovery must still
+# read status from the project root.
+(v1_root / "agentcore" / ".cli").mkdir()
+(v1_root / "agentcore" / ".cli" / "deployed-state.json").write_text('{"version":2}')
+with patch.object(m.subprocess, "run") as run:
+    run.return_value.returncode = 0
+    run.return_value.stdout = json.dumps(v1_status)
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
+    assert found["connector_id"] == "connector-1"
+    assert run.call_args.kwargs["cwd"] == v1_root.resolve()
+
+print("discover_deployed v1 with state: PASSED")
+
+# Migrated v0 state can retain an outdated payments branch after the v1 project
+# replaces its resources. The v1 status result must take precedence over it.
+(v1_root / "agentcore" / ".cli" / "deployed-state.json").write_text(json.dumps({
+    "targets": {
+        "default": {
+            "resources": {
+                "payments": {
+                    "OldPayments": {
+                        "managerArn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/old",
+                        "connectors": {"OldConnector": {"connectorId": "old-connector"}},
+                    }
+                }
+            }
+        }
+    }
+}))
+with patch.object(m.subprocess, "run") as run:
+    run.return_value.returncode = 0
+    run.return_value.stdout = json.dumps(v1_status)
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
+    assert found["connector_id"] == "connector-1"
+    run.assert_called_once()
+    assert run.call_args.kwargs["cwd"] == v1_root.resolve()
+
+with patch.object(m.subprocess, "run") as run:
+    run.return_value.returncode = 1
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"] is None
+    assert found["connector_id"] is None
+    run.assert_called_once()
+
+with patch.dict(os.environ, {"AGENTCORE_PROJECT_DIR": str(v1_root), "AGENTCORE_TARGET": "default"}):
+    with patch.object(m.subprocess, "run") as run:
+        run.return_value.returncode = 0
+        run.return_value.stdout = json.dumps(v1_status)
+        found = m.discover_deployed()
+        assert found["manager_arn"] == v1_status["resources"][0]["arn"]
+        assert found["connector_id"] == "connector-1"
+        run.assert_called_once()
+
+print("discover_deployed migrated v1 with stale state: PASSED")
+
+# Legacy v0 projects still use their payment entries without calling v1 status.
+(v1_root / "agentcore" / "agentcore.json").write_text('{"name":"PayTest","version":1}')
+with patch.object(m.subprocess, "run") as run:
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"].endswith("payment-manager/old")
+    assert found["connector_id"] == "old-connector"
+    run.assert_not_called()
+(v1_root / "agentcore" / "agentcore.json").write_text('{"name":"PayTest","version":2}')
+
+print("discover_deployed v0 fallback: PASSED")
+
+# Ambiguous project resources must require explicit selection by the operator.
+with patch.object(m.subprocess, "run") as run:
+    run.return_value.returncode = 0
+    run.return_value.stdout = json.dumps({
+        **v1_status,
+        "resources": [
+            *v1_status["resources"],
+            {
+                "resourceType": "payment-manager",
+                "name": "OtherPayments",
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/manager-2",
+                "children": [{"resourceType": "payment-connector", "id": "connector-2"}],
+            },
+        ],
+    })
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"] is None
+    assert found["connector_id"] is None
+
+with patch.object(m.subprocess, "run") as run:
+    run.return_value.returncode = 0
+    run.return_value.stdout = json.dumps({
+        **v1_status,
+        "resources": [{
+            **v1_status["resources"][0],
+            "children": [
+                *v1_status["resources"][0]["children"],
+                {"resourceType": "payment-connector", "id": "connector-2"},
+            ],
+        }],
+    })
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
+    assert found["connector_id"] is None
+
+print("discover_deployed ambiguity: PASSED")
 
 print("ALL RESOURCE RESOLUTION TESTS PASSED")
