@@ -22,7 +22,7 @@ See `@smithy/types` docs for `AssertiveClient` and `UncheckedClient` (skips all 
 import { S3Client } from "@aws-sdk/client-s3";
 import type { NodeJsClient } from "@smithy/types";
 
-const client = new NodeJsClient<S3Client>(new S3Client({}));
+const client = new S3Client({}) as NodeJsClient<S3Client>;
 // Body is now typed as NodeJsRuntimeStreamingBlob (Readable) instead of a union
 ```
 
