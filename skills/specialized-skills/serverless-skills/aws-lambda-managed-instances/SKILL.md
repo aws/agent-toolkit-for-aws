@@ -1,7 +1,7 @@
 ---
 name: aws-lambda-managed-instances
-description: "Evaluates, configures, and migrates workloads to AWS Lambda Managed Instances (LMI). Runs Lambda Event Functions (standard Lambda) on EC2 instances in the user's account while AWS manages provisioning, patching, scaling, routing, and load balancing. Triggers when queries mention Lambda Managed Instances, LMI, capacity providers, multi-concurrent execution environments, EC2-backed Lambda, persistent Lambda instances, PerExecutionEnvironmentMaxConcurrency, CapacityProviderConfig, cold start elimination via dedicated instances, migrating Lambda Event Functions to managed instances, or cost comparison between Lambda Event Functions and LMI with Savings Plans or Reserved Instances. Also covers long-running and asynchronous workloads and the 90-minute (5400s) function timeout for asynchronous and event-source-mapping (SQS, Kinesis, DynamoDB Streams / ESM) invocations, including how to raise the function timeout up to 90 minutes / 5400s and the related duration limits."
-version: 3
+description: "Evaluates, configures, and migrates workloads to AWS Lambda Managed Instances (LMI). Runs Lambda Event Functions (standard Lambda) on EC2 instances in the user's account while AWS manages provisioning, patching, scaling, routing, and load balancing. Triggers when queries mention Lambda Managed Instances, LMI, capacity providers, multi-concurrent execution environments, EC2-backed Lambda, persistent Lambda instances, PerExecutionEnvironmentMaxConcurrency, CapacityProviderConfig, cold start elimination via dedicated instances, SOCI (Seekable OCI) image lazy loading, migrating Lambda Event Functions to managed instances, or cost comparison between Lambda Event Functions and LMI with Savings Plans or Reserved Instances. Also covers long-running and asynchronous workloads and the 90-minute (5400s) function timeout for asynchronous and event-source-mapping (SQS, Kinesis, DynamoDB Streams / ESM) invocations, including how to raise the function timeout up to 90 minutes / 5400s and the related duration limits."
+version: 4
 ---
 
 # AWS Lambda Managed Instances (LMI)
@@ -32,7 +32,7 @@ Read ONLY the single reference file that matches the user's task. Do not preload
 | User need | Action |
 |-----------|--------|
 | Cost comparison, pricing analysis, Savings Plans, Reserved Instances | Read [cost-comparison.md](references/cost-comparison.md) |
-| Instance types, memory sizing, vCPU ratios, scaling tuning, capacity provider config | Read [configuration-guide.md](references/configuration-guide.md) |
+| Instance types, memory sizing, vCPU ratios, scaling tuning, capacity provider config, SOCI lazy loading for large container images | Read [configuration-guide.md](references/configuration-guide.md) |
 | Thread safety, concurrency model, code review checklist, multi-concurrency readiness | Read [thread-safety.md](references/thread-safety.md) |
 | Before/after code examples, runtime-specific migration, connection pooling | Read [migration-patterns.md](references/migration-patterns.md) |
 | IAM roles, VPC setup, CLI commands, SAM template, CDK example | Read [infrastructure-setup.md](references/infrastructure-setup.md) |
@@ -119,6 +119,13 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 - **MaxVCpuCount** (default 400) — set explicitly as a cost ceiling
 - **Shape**: Reduce MinExecutionEnvironments to lower capacity during off-hours (minimum 3 for AZ resiliency)
 
+### Large container images (SOCI lazy loading)
+
+- For container image functions, the image pull is the largest part of the time between publishing a version or scaling out and the first invocation. **Seekable OCI (SOCI)** lets Lambda start the execution environment before the whole image is downloaded and fetch files on demand as the function reads them. The benefit is largest for multi-GB images, such as images that package ML frameworks.
+- **Enable it** by pushing a SOCI index to Amazon ECR next to the image, pointing the function's image URI at the SOCI-indexed tag, and publishing a version. No other function configuration changes. Steps in [configuration-guide.md](references/configuration-guide.md).
+- **Import libraries and read files in init code, not in the handler.** A file first read in the handler is fetched during that invocation and adds to its duration; Lambda does not download the rest of the image in the background.
+- Recommend testing with and without SOCI to compare startup time and invocation duration for the workload.
+
 ### Instance Sizing
 
 - **1 vCPU + 1 GB reserved per instance** for OS overhead (not available to your function)
@@ -177,6 +184,7 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 | Runtimes | Node.js 22+, Java 21+, .NET 8+, Python 3.13+, Rust (provided.al2023) |
 | Instance families | C, M, R (.large and up) |
 | Scaling | Burst headroom equals unused capacity from TargetResourceUtilization; new instances launch within minutes |
+| SOCI lazy loading | Container image functions on LMI only (not Lambda Event Functions on-demand); SOCI Index Manifest v2 only; image index with exactly one OCI image manifest plus the SOCI index (no multi-architecture indexes) |
 
 ## Security Considerations
 
@@ -193,7 +201,7 @@ Review code for concurrency safety. LMI runs multiple invocations concurrently p
 | File | Content |
 |------|---------|
 | [cost-comparison.md](references/cost-comparison.md) | Pricing analysis, break-even calculations, Savings Plans/RI impact |
-| [configuration-guide.md](references/configuration-guide.md) | Instance selection, memory ratios, scaling tuning, capacity provider config |
+| [configuration-guide.md](references/configuration-guide.md) | Instance selection, memory ratios, scaling tuning, capacity provider config, SOCI lazy loading |
 | [thread-safety.md](references/thread-safety.md) | Concurrency model per runtime, code review checklist, Powertools compatibility |
 | [migration-patterns.md](references/migration-patterns.md) | Before/after code by runtime, connection pooling, gradual cutover |
 | [infrastructure-setup.md](references/infrastructure-setup.md) | IAM roles, VPC setup, SAM templates, CLI commands |

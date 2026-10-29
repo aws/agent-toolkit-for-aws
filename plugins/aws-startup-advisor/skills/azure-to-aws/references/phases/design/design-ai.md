@@ -46,6 +46,8 @@ defaults (prefer managed Bedrock, no latency constraint, no budget cap).
 - `"other"` or absent → load `references/design-refs/ai.md` (traditional-ML rubric — Azure AI
   Vision, Document Intelligence, Speech, Language, Translator, Azure ML custom models).
 
+**Haiku 5.5 target compatibility:** Before assessing Claude Haiku 5.5 as a candidate or selecting it, load `references/vendored/ai/ai-anthropic-to-bedrock.md` regardless of `ai_source`. Re-evaluate this load when a priority or feature constraint introduces Haiku 5.5 later in model selection. For a non-Anthropic source, apply only its Haiku 5.5 target contract; keep the source provider guide responsible for SDK and request translation. Carry the applicable target requirements into the code migration plan before writing `aws-design-ai.json`.
+
 **Additional load, independent of `ai_source`:** if any `workloads[]` entry has `capability`
 in {`document_extraction`, `image_analysis`, `speech_transcription`}, ALSO load
 `references/design-refs/ai.md` — a workload's traditional-AI capability is evaluated
