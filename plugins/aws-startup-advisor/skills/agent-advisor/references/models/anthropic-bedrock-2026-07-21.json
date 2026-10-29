@@ -35,7 +35,7 @@
       "constraints": [
         "Newer Claude models generally require a Global or geography-scoped CRIS inference profile",
         "Anthropic-specific request fields may require additionalModelRequestFields",
-        "Native structured-output mechanisms are model and region dependent; forced tool without strict is the portable default",
+        "Native structured-output mechanisms are now supported for all Claude models across bedrock-runtime and bedrock-mantle; forced tool without strict is no longer required as a portable fallback",
         "Availability must be probed in the target account and region"
       ]
     },
@@ -52,7 +52,7 @@
       "constraints": [
         "Uses the Bedrock Anthropic version field rather than the first-party HTTP header",
         "Newer Claude models generally require a Global or geography-scoped CRIS inference profile",
-        "Native structured-output mechanisms are model and region dependent; forced tool without strict is the portable default",
+        "Native structured-output mechanisms are now supported for all Claude models across bedrock-runtime and bedrock-mantle; forced tool without strict is no longer required as a portable fallback",
         "Availability must be probed in the target account and region"
       ]
     }

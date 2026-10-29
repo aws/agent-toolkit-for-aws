@@ -39,7 +39,7 @@ authoritative (a table here would drift). The engine applies these provider-neut
   recommendation acceptance does not prove account invocability.
 - **Keep model identities separate.** Logical model identity, path-specific model ID, and the
   resolved invocation/CRIS ID are distinct fields. Paths differ in SDK, model-ID form, IAM
-  action, structured-output mechanism, errors, and quotas.
+  action, errors, and quotas (structured-output mechanism is now unified for Claude across runtime and mantle per the Oct 2026 announcement).
 
 ## Priority baseline (Q16)
 
