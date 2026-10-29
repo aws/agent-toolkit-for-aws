@@ -61,7 +61,7 @@ explicit `payment_session_id` so budget still comes from a human.
 
 | Component | Trusted? | Holds credentials? | Who runs it |
 |---|---|---|---|
-| Operator at a terminal | Yes — the root of authority | Yes (via the CLI wizard) | Human |
+| Operator at a terminal | Yes — the root of authority | Yes (via the CLI credential flow) | Human |
 | `agents_pay_admin.py` | Yes | Only transiently, from the human | Human |
 | `~/.agents-pay/config.json` | Yes — the authorization record | No | Written by human, read by runtime |
 | `x402_policy.py` | Yes — the decision point | No | In-process, runtime |
@@ -92,7 +92,7 @@ Two design rules apply throughout this skill:
 | `get_payment_session_status` | `payment_session_status()` — agent tool | Unchanged in spirit: read-only, cannot mint budget |
 | Browser payment | `prepare_browser_payment(url)` + `attach_browser_payment(handle, url)` | The model receives an opaque single-use handle; trusted glue redeems it |
 | Create a payment session | `agents_pay_admin.py new-session` — human at a TTY | A runtime that can mint sessions has no cumulative bound |
-| Provision infrastructure | `agentcore` CLI wizard + `agents_pay_admin.py init-config` | Provider secrets never enter tool parameters, and setup does not exist at runtime |
+| Provision infrastructure | `agentcore` CLI credential flow + `agents_pay_admin.py init-config` | Provider secrets never enter tool parameters, and setup does not exist at runtime |
 
 The browser flow is worth stating plainly, because it is the one case where a
 proof must reach a caller: the model receives a handle, never proof bytes. The
@@ -106,7 +106,7 @@ for trusted glue, not for the model's tool set.
 | Control | Enforcement |
 |---|---|
 | Challenge validation | Strict schema, configured scheme and network, exact asset contract, explicit recipient mode, canonical positive amount under `max_per_payment_usd`, and resource/origin checks are enforced before signing. Conflicting `amount` and `maxAmountRequired` aliases are refused; the signer receives one version-canonical amount field. The normal mode requires `payTo` in `allowed_recipients`; the explicit `allow_any_recipient: true` mode delegates beneficiary choice to the publisher. |
-| Secret handling | No script accepts a secret argument. Provider credentials go only to the `agentcore` CLI wizard; signing happens inside AgentCore Payments. `preflight` rejects credential-shaped environment variables. |
+| Secret handling | No script accepts a secret argument. Provider credentials go only through `agentcore add credentials payment` with file or stdin secret inputs; signing happens inside AgentCore Payments. `preflight` rejects credential-shaped environment variables. |
 | Network protection | `assert_public_https_url()` and `assert_public_ip()` require HTTPS and reject loopback, RFC1918, link-local, metadata, multicast, reserved, unspecified, CGNAT, and v4-mapped forms. `_PinnedResolverTransport` connects to the vetted address; redirects are refused and bodies are capped. |
 | Content isolation | Paid bodies are withheld from model-visible output by default. The runtime returns status, content type, byte count, and SHA-256 hash. An operator may opt in to body return by setting `return_body: true` in the config file (OS-account-bound, 0600); when enabled, content is capped at 10 KiB and marked `untrusted: true`. Authorisation never reads content. The OpenClaw plugin (`get_paid_content`) mirrors this: an optional `returnBody: true` plugin-config field (default unset/false, same behaviour as today) opts a single installation in to the same capped, `untrusted`-marked body return — set per operator, not model-controllable. |
 | Idempotency | `derive_client_token()` hashes session, origin, path, network, asset, recipient, and amount. It excludes a publisher nonce so retries reuse the same authorisation. |

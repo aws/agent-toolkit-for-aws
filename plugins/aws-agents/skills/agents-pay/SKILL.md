@@ -20,6 +20,7 @@ metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
+  requires-cli: ">=1.0.0"
 ---
 
 # pay
@@ -130,7 +131,7 @@ path** (the agent). They share resource identifiers and nothing else.
 
 ```
 ADMIN PATH — human only, holds credentials
-  agentcore add payment-manager / payment-connector   (provider secrets via CLI wizard)
+  agentcore add payment-manager / credentials payment / payment-connector
   agents_pay_admin.py init-config                    -> ~/.agents-pay/config.json (0600)
   agents_pay_admin.py new-session                    -> budget-bounded session, typed approval
         |
@@ -217,6 +218,7 @@ files (`../other-skill/...`) can silently break. Everything needed is here.
 ### Step 0: Prerequisites
 
 ```bash
+cd /absolute/path/to/agents-pay
 python3 --version                      # 3.9+
 python3 -m venv .venv
 source .venv/bin/activate
@@ -226,30 +228,51 @@ agentcore --version
 
 `bedrock_agentcore.payments` must be importable. Verify:
 `python -c "from bedrock_agentcore.payments import PaymentManager"`.
+Run the next step from the AgentCore project root; create a project and enter it
+first if needed.
 
 ### Step 1: Provision payment resources — human runs this outside the LLM loop
 
-The agent must NOT run this step; it involves provider credentials. Tell the
-user to open a separate terminal and complete the commands there. Do not ask
-them to paste credentials, command output, deployed state, or generated IDs
-back into chat. Wait only for the user to confirm that setup completed.
+The agent must not handle provider secrets. Ask the human to use the v1 flow in
+[references/setup.md](references/setup.md) from an AgentCore project root. The CLI
+must be v1.0.0 or later (`agentcore --version`). The human may choose Coinbase
+Quick Create without supplying secrets, or manual Coinbase/Stripe provisioning
+with `agentcore add credentials payment` and file-based secret inputs. The v0
+no-flags payment wizard and inline secret flags are not v1 commands.
+
+The minimum Quick Create path is:
 
 ```bash
-npm install -g @aws/agentcore
-agentcore add payment-manager          # NO FLAGS — interactive wizard
-agentcore add payment-connector        # NO FLAGS — interactive wizard
-agentcore deploy                       # interactive deployment
+agentcore add payment-manager --name MyPayments --no-auto-payment
+agentcore add payment-connector --manager MyPayments --name Coinbase --quick-create
+agentcore build
+agentcore deploy --region <region>
+agentcore status --json
 ```
 
-Run both `agentcore add` commands with **no flags** to keep the complete setup
-flow in the human's terminal. In particular, connector secret flags put values
-in shell history and the process list. See
-[`references/setup.md`](references/setup.md) for obtaining Coinbase CDP /
-Stripe Privy credentials and for the split IAM policies.
+If there is no project, first run `agentcore create --name PaymentsProject --template empty`
+and enter it. For a v0 project, commit, review `agentcore migrate`, then apply the
+reviewed plan with `agentcore migrate --yes`. The human completes Coinbase
+Marketplace subscription and authorization outside the agent loop. For manual
+providers, follow the credential steps in the setup reference. `agentcore/.env.local`
+may hold provider secrets until deploy and must remain gitignored and unread by
+the agent.
 
-`agentcore/.env.local` holds provider secrets in plaintext until `deploy`
-uploads them to AgentCore Identity. Ensure `.env.local` is gitignored. **The
-agent must never read that file.**
+For an existing project, choose a target from `agentcore/aws-targets.json` and
+use `agentcore deploy --target <target>` and `agentcore status --target <target> --json`
+in place of the default-target commands above. Before the admin steps, the human
+records the project root and selected target, then runs the bundled script from
+its installed skill directory:
+
+```bash
+export AGENTCORE_PROJECT_DIR="$PWD"
+export AGENTCORE_TARGET=<target>
+export AWS_REGION=<target-region>
+cd /absolute/path/to/agents-pay
+```
+
+Use a separate admin config path for each target. The script is in the skill
+directory, not in the AgentCore project.
 
 ### Step 2: Write the payment policy — human runs this
 
@@ -293,9 +316,7 @@ script, so a look-alike contract cannot be pasted in.
 python3 scripts/agents_pay_admin.py create-instrument --email you@example.com
 ```
 
-The manager ARN and connector ID are read from `agentcore/.cli/deployed-state.json`
-(written by `agentcore deploy`), so nothing needs copying by hand — run it from the
-project directory, or pass `--manager-arn` / `--connector-id`.
+The manager ARN and connector ID are read from `agentcore status --target <target> --json` for a v1 project using `AGENTCORE_PROJECT_DIR` and `AGENTCORE_TARGET`. Otherwise pass `--manager-arn` / `--connector-id`.
 
 It prints the wallet address, the delegation URL, and the `export` lines for the
 runtime. Delegation and funding are then done by the **end user** — see
@@ -450,7 +471,7 @@ decide whether its runtime surface is safe:
 
 | Ask | Safe answer | Why |
 |---|---|---|
-| Does any tool take a wallet secret or provider key as a **parameter**? | No — credentials come from the environment or the `agentcore` wizard | A model-visible secret ends up in transcripts, traces, and logs |
+| Does any tool take a wallet secret or provider key as a **parameter**? | No — credentials come from the environment or the `agentcore` credential flow | A model-visible secret ends up in transcripts, traces, and logs |
 | Can the model call something that **creates a payment session**? | No — session creation is human-only | Otherwise it mints fresh budget when one runs out, and per-session caps bound nothing |
 
 If either answer is wrong, do not use the plugin's tools for payment. Disable the
