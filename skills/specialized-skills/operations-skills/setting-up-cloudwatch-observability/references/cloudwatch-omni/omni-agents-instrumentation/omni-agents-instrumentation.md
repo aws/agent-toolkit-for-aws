@@ -449,6 +449,8 @@ Then verify a trace was captured. HTTP 2xx + non-empty response does NOT mean tr
 
 If ANY check fails → do NOT declare success. Diagnose the root cause (wrong PYTHONPATH, missing package, version mismatch, conflicting instrumentation), fix, and re-invoke.
 
+On **TypeScript ADOT**, a trace that holds only HTTP spans, with no `gen_ai.operation.name` span and zero tokens and no error logged, points first at the framework version: the distro patches a framework only inside the ranges its `SUPPORTED_VERSIONS` declares and does nothing outside them. Run the check in Step 2.3 (TypeScript, step 4) against the installed framework version and bump the framework (or the distro) before suspecting the collector, IAM, or a missing OpenInference registration.
+
 **How to verify traces:** Check `.omni/traces.jsonl` directly after the invocation:
 
 ```bash
@@ -528,6 +530,8 @@ Ask the user:
 Use when the user says "deploy to production", "cloud traces", "what env vars for AWS", or asks how to get traces flowing from a deployed environment (as opposed to the local dev server above).
 
 > **Source of truth:** <https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html>
+
+**How the export authenticates.** Every path below authenticates with AWS credentials, not a bearer or API token: the AgentCore runtime signs and routes on its own, ADOT on Lambda and on other platforms signs with the role the workload runs as, and a CloudWatch agent collector signs with its own role. There is no Omni ingestion token or token header to configure, so do not construct one. If the customer also exports to a third-party backend that does take a token, that token belongs in the process environment or a `.env` file the process loads, and is never pasted into the conversation (the same rule as model-provider API keys in Credential Troubleshooting).
 
 ### AgentCore (managed runtime)
 

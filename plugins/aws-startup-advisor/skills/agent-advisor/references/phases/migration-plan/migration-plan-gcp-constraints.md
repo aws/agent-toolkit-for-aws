@@ -40,7 +40,7 @@ Conditional files (load ONLY when condition is true):
 | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | `design-refs/ai-gemini-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"gemini"` or `"both"` |
 | `vendored/ai/ai-openai-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"openai"` or `"both"` |
-| `vendored/ai/ai-anthropic-to-bedrock.md`         | `ai-workload-profile.json` exists AND `summary.ai_source` = `"anthropic"`          |
+| `vendored/ai/ai-anthropic-to-bedrock.md` | `ai-workload-profile.json` exists AND (`summary.ai_source` = `"anthropic"` OR Claude Haiku 5.5 is a candidate or selected target) |
 | `design-refs/ai.md`                              | `ai-workload-profile.json` exists AND `summary.ai_source` = `"other"`              |
 | `vendored/ai/design-ref-harness.md`              | `agentic_profile.is_agentic == true` AND `migration_approach == "harness"`         |
 | `vendored/ai/design-ref-agentic-to-agentcore.md` | `agentic_profile.is_agentic == true` AND `migration_approach == "strands"`         |

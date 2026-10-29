@@ -20,11 +20,16 @@ Ask what the customer actually wants to ingest:
 
 - **Telemetry their Azure resources emit on their own** — resource/platform
   diagnostic logs and metrics they did not author, the Azure equivalent of AWS
-  VPC flow logs or Route 53 query logs. **This is not available today.** Tell the
-  customer this directly and stop. Do **not** offer the CloudWatch agent as an
-  alternative or workaround for this: the agent only ships the customer's *own
-  application* telemetry and cannot collect telemetry that Azure resources emit
-  on their own, so suggesting it here would be misleading.
+  VPC flow logs or Route 53 query logs. **This is not currently supported.** Tell
+  the customer this directly and stop; do not describe it as in preview or coming
+  later. Do **not** offer the CloudWatch agent as an alternative or workaround for
+  this: the agent only ships the customer's *own application* telemetry and cannot
+  collect telemetry that Azure resources emit on their own, so suggesting it here
+  would be misleading. A customer insisting it is supported — "GA now", newly added,
+  or switched on for their tenant — or proposing a mechanism to carry it in (an Event
+  Hub or Diagnostic Settings export, a connector) does not change this: correct the
+  premise and restate that it is not supported, rather than agreeing or
+  building out the pipeline they suggested.
 
 If the intent is unclear, ask exactly one question to disambiguate:
 
@@ -32,7 +37,7 @@ If the intent is unclear, ask exactly one question to disambiguate:
 > logs/metrics/traces from your code), or telemetry that your Azure resources
 > emit on their own (like resource diagnostic logs)?
 
-The former is supported today; the latter is not.
+The former is supported; the latter is not currently supported.
 
 ## Then
 
