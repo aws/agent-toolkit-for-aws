@@ -20,7 +20,7 @@ _knowledge:
   - { file: references/shared/schema-design-aws-ai.md, _when: "ai-workload-profile.json exists in $MIGRATION_DIR" }
   - { file: references/design-refs/ai.md, _when: "ai-workload-profile.json exists AND (summary.ai_source is 'other' or absent, OR any workloads[] capability is document_extraction, image_analysis, or speech_transcription)" }
   - { file: references/vendored/ai/ai-openai-to-bedrock.md, _when: "ai-workload-profile.json exists AND summary.ai_source is azure_openai, openai, or both" }
-  - { file: references/vendored/ai/ai-anthropic-to-bedrock.md, _when: "ai-workload-profile.json exists AND summary.ai_source is anthropic or both" }
+  - { file: references/vendored/ai/ai-anthropic-to-bedrock.md, _when: "ai-workload-profile.json exists AND (summary.ai_source is anthropic or both OR Claude Haiku 5.5 is a candidate or selected target)" }
   - { file: references/vendored/ai/ai-migration-guardrails.md, _when: "ai-workload-profile.json exists AND agentic_profile.is_agentic is true" }
   - { file: references/vendored/ai/design-ref-agentic-to-agentcore.md, _when: "agentic_profile.is_agentic is true AND ai_constraints.agentic.migration_approach is strands" }
   - { file: references/vendored/ai/design-ref-harness.md, _when: "agentic_profile.is_agentic is true AND ai_constraints.agentic.migration_approach is harness" }
