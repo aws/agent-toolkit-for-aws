@@ -144,24 +144,17 @@ def discover_deployed(project_dir: str | Path | None = None) -> dict[str, str | 
             payments = data.get("payments")
         if not payments:
             return _discover_v1_status(project_dir, state_path)
-        # 0.26.x: payments is a dict keyed by name
-        if isinstance(payments, dict):
-            pay = next(iter(payments.values()), {})
-        # 0.20.x and older: payments is a list
-        elif isinstance(payments, list):
-            pay = payments[0] if payments else {}
-        else:
+        if not isinstance(payments, (dict, list)):
             return _discover_v1_status(project_dir, state_path)
+        managers = list(payments.values()) if isinstance(payments, dict) else payments
+        if len(managers) != 1:
+            return out
+        pay = managers[0]
         connectors = pay.get("connectors") or []
         out["manager_arn"] = pay.get("managerArn")
-        # 0.26.x: connectors may be a dict keyed by name
-        if isinstance(connectors, dict):
-            first_connector = next(iter(connectors.values()), {})
-        elif isinstance(connectors, list):
-            first_connector = connectors[0] if connectors else {}
-        else:
-            first_connector = {}
-        out["connector_id"] = first_connector.get("connectorId") if first_connector else None
+        connectors = list(connectors.values()) if isinstance(connectors, dict) else connectors
+        if len(connectors) == 1:
+            out["connector_id"] = connectors[0].get("connectorId")
         out["role_arn"] = pay.get("processPaymentRoleArn")
     except Exception:  # noqa: BLE001 - convenience only; never fatal
         return _discover_v1_status(project_dir, state_path)
@@ -194,14 +187,18 @@ def _discover_v1_status(
         if result.returncode != 0:
             return out
         status = json.loads(result.stdout)
-        for resource in status.get("resources", []):
-            if resource.get("resourceType") == "payment-manager" and resource.get("arn"):
-                out["manager_arn"] = resource["arn"]
-                for child in resource.get("children", []):
-                    if child.get("resourceType") == "payment-connector" and child.get("id"):
-                        out["connector_id"] = child["id"]
-                        break
-                break
+        managers = [
+            resource for resource in status.get("resources", [])
+            if resource.get("resourceType") == "payment-manager" and resource.get("arn")
+        ]
+        if len(managers) == 1:
+            out["manager_arn"] = managers[0]["arn"]
+            connectors = [
+                child for child in managers[0].get("children", [])
+                if child.get("resourceType") == "payment-connector" and child.get("id")
+            ]
+            if len(connectors) == 1:
+                out["connector_id"] = connectors[0]["id"]
     except (OSError, ValueError, subprocess.TimeoutExpired):
         pass
     return out
@@ -493,7 +490,9 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
 
     discovered = discover_deployed()
     manager_arn = resolve_manager_arn(args.manager_arn, config_path)
-    connector_id = args.connector_id or os.environ.get("PAYMENT_CONNECTOR_ID") or discovered["connector_id"]
+    connector_id = args.connector_id or os.environ.get("PAYMENT_CONNECTOR_ID")
+    if not connector_id and manager_arn == discovered["manager_arn"]:
+        connector_id = discovered["connector_id"]
 
     if not manager_arn or not connector_id:
         checked = ", ".join(str(p) for p in deployed_state_candidates())

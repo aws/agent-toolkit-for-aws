@@ -22,8 +22,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-def _from_deployed_state(target="default"):
-    """Best-effort payment discovery from v1 status, with a v0 state fallback."""
+def _from_deployed_state(target="default", manager_arn=None):
+    """Discover only an unambiguous manager/connector pair for the selected target."""
     if Path("agentcore/agentcore.json").exists():
         try:
             result = subprocess.run(
@@ -34,16 +34,28 @@ def _from_deployed_state(target="default"):
                 check=False,
             )
             if result.returncode == 0:
-                for resource in json.loads(result.stdout).get("resources", []):
-                    if resource.get("resourceType") != "payment-manager" or not resource.get("arn"):
-                        continue
-                    for child in resource.get("children", []):
-                        if child.get("resourceType") == "payment-connector" and child.get("id"):
-                            return resource["arn"], child["id"]
+                managers = [
+                    resource for resource in json.loads(result.stdout).get("resources", [])
+                    if resource.get("resourceType") == "payment-manager"
+                    and resource.get("arn")
+                    and (manager_arn is None or resource["arn"] == manager_arn)
+                ]
+                if len(managers) == 1:
+                    connectors = [
+                        child for child in managers[0].get("children", [])
+                        if child.get("resourceType") == "payment-connector" and child.get("id")
+                    ]
+                    return managers[0]["arn"], connectors[0]["id"] if len(connectors) == 1 else None
+                return None, None
         except (OSError, ValueError, subprocess.TimeoutExpired):
             pass
 
     # Legacy v0 projects recorded payment outputs in deployed state.
+    try:
+        if json.loads(Path("agentcore/agentcore.json").read_text()).get("version") == 2:
+            return None, None
+    except (OSError, ValueError):
+        pass
     path = Path("agentcore/.cli/deployed-state.json")
     if not path.exists():
         return None, None
@@ -58,12 +70,15 @@ def _from_deployed_state(target="default"):
             payments = data.get("payments")  # legacy/top-level fallback
         if not payments:
             return None, None
-        pay = next(iter(payments.values()), {}) if isinstance(payments, dict) else payments[0]
+        managers = list(payments.values()) if isinstance(payments, dict) else payments
+        managers = [pay for pay in managers if manager_arn is None or pay.get("managerArn") == manager_arn]
+        if len(managers) != 1:
+            return None, None
+        pay = managers[0]
         connectors = pay.get("connectors") or []
-        connector = next(iter(connectors.values()), {}) if isinstance(connectors, dict) else (
-            connectors[0] if connectors else {}
-        )
-        return pay.get("managerArn"), connector.get("connectorId")
+        connectors = list(connectors.values()) if isinstance(connectors, dict) else connectors
+        connectors = [connector for connector in connectors if connector.get("connectorId")]
+        return pay.get("managerArn"), connectors[0]["connectorId"] if len(connectors) == 1 else None
     except Exception:
         return None, None
 
@@ -92,11 +107,11 @@ def main():
 
     manager_arn, connector_id = args.manager_arn, args.connector_id
     if not manager_arn or not connector_id:
-        ds_arn, ds_conn = _from_deployed_state(args.target)
+        ds_arn, ds_conn = _from_deployed_state(args.target, manager_arn)
         manager_arn = manager_arn or ds_arn
         connector_id = connector_id or ds_conn
     if not manager_arn or (not args.session_only and not connector_id):
-        sys.exit("Could not resolve the payment manager ARN or required connector ID. Pass "
+        sys.exit("Could not resolve a unique payment manager and connector for this target. Pass "
                  "--manager-arn and, when creating an instrument, --connector-id; or check "
                  "`agentcore status --target <target> --json` in the deployed project.")
 

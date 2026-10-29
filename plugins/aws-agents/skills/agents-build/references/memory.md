@@ -9,7 +9,7 @@ Add, configure, and debug AgentCore Memory — the managed service that lets you
 - Memory recall isn't working as expected
 - You want to share memory across multiple agents
 
-Do NOT use this skill for within-session conversation history. That's handled automatically by the runtime — no configuration needed.
+For within-session conversation history, first check how the agent code retains state. A Runtime session ID routes calls to a session, but custom agent code must retain messages or use a session manager. The CLI's Strands template caches the agent by session ID; the sample below constructs a fresh agent on every call and therefore needs a session manager to retain history.
 
 ## Input
 
@@ -132,9 +132,9 @@ Read `app/<AgentName>/main.py` (or the equivalent entrypoint) to detect the fram
 | Google ADK / Claude Agent SDK | BYO — use `MemoryClient` directly | Validate end-to-end before shipping |
 
 > [!WARNING]
-> Always check for the MEMORY_ID env var before initializing memory. Memory is NOT
-> available during `agentcore dev` — the env var is only set after deploy. Code that
-> assumes memory is always available will fail silently in local development.
+> Always check for the MEMORY_ID env var before initializing memory. `agentcore dev`
+> does not inject the deployed Memory ID. Local development can use a deployed Memory
+> if you supply its ID and have AWS access; otherwise run without Memory.
 
 #### Strands — Session Manager pattern (recommended for new projects)
 
@@ -467,10 +467,11 @@ If you build a working pattern, consider contributing it to [`awslabs/agentcore-
 Always include this note:
 
 ```
-⚠️  Memory is not available during local development (agentcore dev).
+⚠️  agentcore dev does not inject the deployed Memory ID automatically.
 
-The MEMORY_<NAME>_ID env var is only injected after deploy. The code above
-handles this gracefully — it runs without memory when the env var isn't set.
+The deployed Runtime receives MEMORY_<NAME>_ID automatically. The code above
+runs without Memory when the env var is absent. For a local integration test,
+provide the deployed Memory ID and use local AWS credentials with access to it.
 
 To test cross-session memory on the selected target, use two distinct session IDs
 and the same userId (actor ID):
@@ -524,18 +525,18 @@ Then use the same wiring code from Step 5, reading `MEMORY_ID` from the environm
 If memory was working and stopped, or never worked:
 
 **Agent keeps forgetting things even with memory set up:**
-Most common cause: the memory resource is configured but the code isn't reading from it at session start. Check that your entrypoint calls `get_last_k_turns` (or uses the session manager) before creating the agent, not after. Also verify the `MEMORY_<NAME>_ID` env var is set — it's only injected after deploy, not during `agentcore dev`.
+Most common cause: the memory resource is configured but the code isn't reading from it at session start. Check that your entrypoint calls `get_last_k_turns` (or uses the session manager) before creating the agent, not after. Also verify the `MEMORY_<NAME>_ID` env var is set. The deployed Runtime receives it automatically; `agentcore dev` needs it supplied explicitly.
 
 **Memory not persisting across sessions:**
 
 1. Check that the intended long-term strategy is configured and that the code retrieves from its namespace. SUMMARIZATION is also a long-term strategy, but its retrieval path differs from facts and preferences.
 2. Wait 5–30 seconds after a session ends before starting a new one — extraction is async
-3. Find the Memory ID in `agentcore status --target <target> --json`, then verify its service status is ACTIVE with `agentcore memory get --id <memory-id> --region <target-region> --json`
+3. Find the Memory ARN in `agentcore status --target <target> --json`, take the ID after `memory/`, then verify its service status is ACTIVE with `agentcore memory get --id <memory-id> --region <target-region> --json`
 4. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" or "test" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
 
 **Memory not loading at session start:**
 
-1. Find the Memory ID in `agentcore status --target <target> --json`, then verify `MEMORY_<NAME>_ID` is set in that target's deployed Runtime environment
+1. Find the Memory ARN in `agentcore status --target <target> --json` and take the ID after `memory/`, then verify `MEMORY_<NAME>_ID` is set in that target's deployed Runtime environment
 2. Check the actor_id is consistent across sessions — memory is scoped per actor
 3. Confirm the namespace paths in retrieval_config match the namespaces used when writing — the retrieval namespace must exactly match the namespace the strategy extracts into
 4. CLI defaults use paths without trailing slashes (e.g., `/users/{actorId}/facts`). If you customized namespace templates when creating the memory resource, use whatever pattern you chose — consistency between writer and reader is what matters.
@@ -589,7 +590,7 @@ The v1 `agentcore add memory` command covers strategy selection, event expiry, i
 import boto3, json
 
 client = boto3.client("bedrock-agentcore-control")
-memory_id = "<MEMORY_ID>"  # from: agentcore status --json
+memory_id = "<MEMORY_ID>"  # ID after memory/ in the ARN from agentcore status --json
 
 client.put_memory_resource_policy(
     memoryId=memory_id,

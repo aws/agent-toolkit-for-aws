@@ -243,7 +243,7 @@ no-flags payment wizard and inline secret flags are not v1 commands.
 The minimum Quick Create path is:
 
 ```bash
-agentcore add payment-manager --name MyPayments
+agentcore add payment-manager --name MyPayments --no-auto-payment
 agentcore add payment-connector --manager MyPayments --name Coinbase --quick-create
 agentcore build
 agentcore deploy --region <region>

@@ -193,17 +193,20 @@ For a validated ADK multi-agent pattern, use A2A instead of direct invocation â€
 
 ### Step 3: Grant IAM permission
 
-The orchestrator's execution role needs permission to invoke the specialist:
+The orchestrator's execution role needs permission to invoke the specialist. After deploying the specialist, take its exact Runtime ARN from `agentcore status --target <specialist-target> --json` and save this policy as `app/agent/specialist-invoke-policy.json` in the orchestrator project (or under that Runtime's actual `codeLocation`):
 
 ```json
 {
-  "Effect": "Allow",
-  "Action": "bedrock-agentcore:InvokeAgentRuntime",
-  "Resource": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/SpecialistAgent-*"
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "bedrock-agentcore:InvokeAgentRuntime",
+    "Resource": "<specialist-runtime-arn>"
+  }]
 }
 ```
 
-Add this to `agentcore/agentcore.json` under the orchestrator agent's IAM config, or add it manually to the auto-created execution role after deploy.
+Add `"specialist-invoke-policy.json"` to the orchestrator Runtime's `additionalPolicies` array in `agentcore/agentcore.json`. The v1 CLI resolves a `.json` policy path relative to that Runtime's `codeLocation` and attaches it to a CLI-created execution role during deployment. If the Runtime uses an imported `executionRoleArn`, attach the same policy to that role separately. Run `agentcore build` to check the path before deployment.
 
 ### Step 4: Pass the specialist ARN to the orchestrator
 
@@ -264,8 +267,7 @@ cd SpecialistA2A
 # "authorizerConfiguration": {"customJwtAuthorizer": {
 #   "discoveryUrl": "https://<YOUR_IDP>/.well-known/openid-configuration",
 #   "allowedClients": ["<CLIENT_ID>"]}}
-# Also set "requestHeaderAllowlist": ["Authorization"] on this Runtime
-# so the A2A server receives the bearer header.
+# Authorization is passed through by default; no allowlist entry is needed.
 agentcore deploy
 ```
 
@@ -387,7 +389,7 @@ agentcore add memory --name SharedMemory --strategies SEMANTIC,USER_PREFERENCE
 agentcore deploy --target <owner-target>
 ```
 
-2. Get the Memory ID and ARN from `agentcore status --target <owner-target> --json`. The owner project's Runtime receives `MEMORY_SHAREDMEMORY_ID` automatically. For a Runtime in another project, add `{"name":"MEMORY_SHAREDMEMORY_ID","value":"<deployed-memory-id>"}` to that Runtime's `envVars` in `agentcore/agentcore.json`, grant its execution role the required Memory actions on the deployed Memory ARN, and deploy that project to its intended target. Both Runtimes must use the Memory's region.
+2. Get the Memory ARN from `agentcore status --target <owner-target> --json` and take its ID after `memory/`. The owner project's Runtime receives `MEMORY_SHAREDMEMORY_ID` automatically. For a Runtime in another project, add `{"name":"MEMORY_SHAREDMEMORY_ID","value":"<deployed-memory-id>"}` to that Runtime's `envVars` in `agentcore/agentcore.json`, grant its execution role the required Memory actions on the deployed Memory ARN using an `additionalPolicies` policy file (or update its imported role), and deploy that project to its intended target. Both Runtimes must use the Memory's region.
 
 3. In each agent's code, read the same env var:
 

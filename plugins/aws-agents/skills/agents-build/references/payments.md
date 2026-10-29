@@ -25,7 +25,8 @@ For Coinbase, Quick Create is the smallest v1 path. The human completes any requ
 ```bash
 agentcore add payment-manager \
   --name MyPayments \
-  --network-preferences eip155:84532
+  --network-preferences eip155:84532 \
+  --no-auto-payment
 agentcore add payment-connector \
   --manager MyPayments --name Coinbase --quick-create
 ```
@@ -52,6 +53,7 @@ If the project uses Strands or LangGraph, use the framework's native payments in
 **Strands:**
 
 ```python
+import os
 from strands import Agent
 from strands_tools import http_request
 from bedrock_agentcore.payments.integrations.config import AgentCorePaymentsPluginConfig
@@ -77,36 +79,30 @@ The plugin intercepts 402 responses from ANY tool, signs payment, and retries au
 **LangGraph:**
 
 ```python
+import os
 from langchain.agents import create_agent
 from bedrock_agentcore.payments.integrations.langgraph import (
     AgentCorePaymentsConfig,
     AgentCorePaymentsMiddleware,
 )
 
-# Choose ONE of the following configurations
-
-# Option A: explicit session (production)
-  config = AgentCorePaymentsConfig(
-      ...
-      payment_session_id=os.environ["PAYMENT_SESSION_ID"],
-  )
-  
-  # Option B: auto-session (dev/test convenience)
-  config = AgentCorePaymentsConfig(
-      ...
-      auto_session=True,
-      auto_session_budget="5.00",
-      auto_session_expiry_minutes=60,
-  )
-
+config = AgentCorePaymentsConfig(
+    payment_manager_arn=os.environ["PAYMENT_MANAGER_ARN"],
+    user_id=os.environ["PAYMENT_USER_ID"],
+    payment_instrument_id=os.environ["PAYMENT_INSTRUMENT_ID"],
+    payment_session_id=os.environ["PAYMENT_SESSION_ID"],
+    region=os.environ["AWS_REGION"],
+)
 payments = AgentCorePaymentsMiddleware(config)
 
 agent = create_agent(
-    model=model,
+    model=model,  # the LangGraph model already configured in this project
     tools=[],  # middleware auto-registers http_request + payment query tools
     middleware=[payments],
 )
 ```
+
+For a dev/test Runtime that may create sessions, omit `payment_session_id` and set `auto_session=True`, `auto_session_budget="5.00"`, and `auto_session_expiry_minutes=60` on the same config. Its execution role then needs `CreatePaymentSession`; use the explicit session above with the separated production roles.
 
 The middleware wraps ALL tool calls, detects 402 from any response format (no `PAYMENT_REQUIRED:` marker needed), signs payment, and retries. It also auto-registers an `http_request` tool and payment query tools.
 
@@ -154,9 +150,9 @@ Payments are wired with a small local tool, not a framework-specific plugin — 
 
 The agent calls `x402_fetch` instead of a generic HTTP tool; payment is handled inside the tool. (Tell the model, via the system prompt, to use `x402_fetch` for URLs that may require payment.)
 
-### Step 6: Provision the per-user instrument (SDK script — data plane) — agent runs
+### Step 6: Provision the per-user instrument (SDK script — data plane) — human operator runs
 
-The instrument (per-user wallet) and session (budget-bounded spend window) are data-plane resources — the v1 CLI can inspect them with `agentcore payment instrument` and `agentcore payment session`, while creation remains an SDK workflow. Ask the developer for the **user id** and **email** to provision the wallet. Run this skill's [`scripts/setup_payment_user.py`](../scripts/setup_payment_user.py) from the AgentCore project root, using its absolute path so the CLI can find the project. Select the same target used for deployment; the script discovers the manager ARN and connector ID from `agentcore status --target <target> --json`:
+The instrument (per-user wallet) and session (budget-bounded spend window) are data-plane resources — the v1 CLI can inspect them with `agentcore payment instrument` and `agentcore payment session`, while creation remains an SDK workflow. The human operator obtains the **user id** and **email** and runs this skill's [`scripts/setup_payment_user.py`](../scripts/setup_payment_user.py) from the AgentCore project root, using its absolute path so the CLI can find the project. Use the separate ManagementRole described in the `agents-pay` operator guide; do not give its session-creation permission to the payment-capable Runtime. Select the same target used for deployment; the script discovers the manager ARN and connector ID from `agentcore status --target <target> --json`:
 
 ```bash
 python /absolute/path/to/agents-build/scripts/setup_payment_user.py \
@@ -164,6 +160,7 @@ python /absolute/path/to/agents-build/scripts/setup_payment_user.py \
 ```
 
 It creates the instrument (with the email in `linkedAccounts`) and prints its ID, wallet address, and delegation URL for Step 7. Create the time-limited session after delegation and funding in Step 8.
+If the target contains multiple managers or the chosen manager has multiple connectors, pass the intended `--manager-arn` and `--connector-id` explicitly. The script refuses ambiguous discovery.
 
 **LangGraph with `auto_session=True`**: Skip the manual session step below. The middleware creates a session on the first 402. The instrument is still required.
 
@@ -250,9 +247,9 @@ Using the `wallet_address` / `redirect_url` the script printed:
     - **x402 (Base Sepolia)**: send testnet USDC via the Circle faucet (<https://faucet.circle.com/>).
     - **MPP on Tempo Moderato** (StripePrivy instruments only): send the canonical test stablecoin **pathUSD** via the Tempo faucet (<https://tempo.xyz/developers/docs/quickstart/faucet>). AgentCore accepts only the network's canonical token — the faucet's other stablecoins (AlphaUSD/BetaUSD/ThetaUSD) are rejected with `MPP_EVM_NON_CANONICAL_USDC`. For buyer-pays challenges (`buyerPaysGasFees: true`) the wallet also needs native Tempo gas. See [MPP networks, providers, and funding](#mpp-networks-providers-and-funding).
 
-### Step 8: Create a session, then set env vars and test
+### Step 8: Have the human operator create a session, then set env vars and test
 
-After the end user completes delegation and funding, create a bounded session for the **same user ID** without creating another instrument. Use the instrument ID printed in Step 6:
+After the end user completes delegation and funding, the human operator creates a bounded session for the **same user ID** without creating another instrument. Use the instrument ID printed in Step 6:
 
 ```bash
 python /absolute/path/to/agents-build/scripts/setup_payment_user.py \

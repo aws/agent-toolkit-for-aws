@@ -87,7 +87,7 @@ agentcore status --json
 agentcore invoke --harness ResearchHarness --prompt "Hello, what can you do?"
 ```
 
-The editable Harness files are `app/ResearchHarness/harness.yaml` and `system-prompt.md`. The first deploy creates the default target in `agentcore/aws-targets.json` from the effective account and region. `agentcore dev` serves project Runtimes locally; it is not the Harness create step.
+The editable Harness files are `app/ResearchHarness/harness.yaml` and `system-prompt.md`. The first deploy creates the default target in `agentcore/aws-targets.json` from the effective account and region. `agentcore dev` can run a Runtime locally and can deploy or use a Harness in AWS; it does not run a Harness locally.
 
 **AWS CLI / SDK:**
 

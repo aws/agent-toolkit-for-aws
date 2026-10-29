@@ -32,7 +32,30 @@ with tempfile.TemporaryDirectory() as directory:
             assert module._from_deployed_state() == (
                 status["resources"][0]["arn"], "connector-test"
             )
-            run.assert_called_once()
+            assert module._from_deployed_state(manager_arn="arn:other") == (None, None)
+            second_manager = {
+                "resourceType": "payment-manager",
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/other",
+                "children": [{"resourceType": "payment-connector", "id": "other-connector"}],
+            }
+            run.return_value.stdout = json.dumps({
+                "resources": [*status["resources"], second_manager],
+            })
+            assert module._from_deployed_state() == (None, None)
+            assert module._from_deployed_state(manager_arn=second_manager["arn"]) == (
+                second_manager["arn"], "other-connector"
+            )
+            run.return_value.stdout = json.dumps({
+                "resources": [{
+                    **status["resources"][0],
+                    "children": [
+                        *status["resources"][0]["children"],
+                        {"resourceType": "payment-connector", "id": "connector-2"},
+                    ],
+                }],
+            })
+            assert module._from_deployed_state() == (status["resources"][0]["arn"], None)
+            assert run.call_count == 5
     finally:
         os.chdir(original_dir)
 

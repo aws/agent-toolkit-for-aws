@@ -105,15 +105,22 @@ except ClientError as e:
 
 ```python
 import requests
+from urllib.parse import quote
 
-AGENT_URL = "<ENDPOINT_URL>"
+AGENT_URL = (
+    "https://bedrock-agentcore.<REGION>.amazonaws.com/runtimes/"
+    + quote("<AGENT_RUNTIME_ARN>", safe="")
+    + "/invocations"
+)
 JWT_TOKEN = "<TOKEN_FROM_YOUR_IDP>"
+session_id = "550e8400-e29b-41d4-a716-446655440000"  # reuse for later turns
 
 response = requests.post(
     AGENT_URL,
     headers={
         "Authorization": f"Bearer {JWT_TOKEN}",
         "Content-Type": "application/json",
+        "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
     },
     json={"prompt": "Hello, what can you do?"},
     stream=True,
@@ -154,14 +161,16 @@ for await (const chunk of response.response) {
 #### JavaScript/TypeScript (fetch) — JWT auth
 
 ```typescript
-const AGENT_URL = "<ENDPOINT_URL>";
+const AGENT_URL = `https://bedrock-agentcore.<REGION>.amazonaws.com/runtimes/${encodeURIComponent("<AGENT_RUNTIME_ARN>")}/invocations`;
 const JWT_TOKEN = "<TOKEN_FROM_YOUR_IDP>";
+const sessionId = "550e8400-e29b-41d4-a716-446655440000"; // reuse for later turns
 
 const response = await fetch(AGENT_URL, {
   method: "POST",
   headers: {
     Authorization: `Bearer ${JWT_TOKEN}`,
     "Content-Type": "application/json",
+    "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": sessionId,
   },
   body: JSON.stringify({ prompt: "Hello, what can you do?" }),
 });
@@ -179,10 +188,10 @@ while (true) {
 
 Explain how sessions work:
 
-- **`runtimeSessionId`** — pass the same value across multiple calls to maintain conversation context
+- **`runtimeSessionId`** — pass the same value across calls so the Runtime can route them to the same session
 - Generate a unique session ID per user conversation (e.g., UUID)
-- Sessions are server-side — the agent remembers the conversation history for that session ID
-- If you omit the session ID, each call is stateless (no conversation memory)
+- The session ID alone does not save conversation history. Check that the deployed agent keeps history in its process or uses a session or memory manager. The CLI's Strands template caches agents by session ID and wires a memory manager when configured; custom Runtime code must implement its own history handling.
+- If you omit the session ID, the service assigns one for that invocation, so a later call cannot deliberately resume it.
 
 ```python
 import uuid

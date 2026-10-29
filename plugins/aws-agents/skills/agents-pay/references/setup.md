@@ -5,6 +5,7 @@ A human provisions resources and authorizes payment sessions outside the agent R
 ## 0. Install and locate the project
 
 ```bash
+cd /absolute/path/to/agents-pay
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -79,7 +80,7 @@ export AWS_REGION=<target-region>
 cd /absolute/path/to/agents-pay
 ```
 
-Use a separate admin config path for each deployment target. The script uses `AGENTCORE_PROJECT_DIR` and `AGENTCORE_TARGET` for status discovery; if discovery is unavailable, pass `--manager-arn` and `--connector-id` explicitly.
+Use a separate admin config path for each deployment target. The script uses `AGENTCORE_PROJECT_DIR` and `AGENTCORE_TARGET` for status discovery; if discovery is unavailable or the target has multiple managers or connectors, pass the intended `--manager-arn` and `--connector-id` explicitly. Keep these two identifiers from the same manager.
 
 ## 5. IAM: the four-role model
 

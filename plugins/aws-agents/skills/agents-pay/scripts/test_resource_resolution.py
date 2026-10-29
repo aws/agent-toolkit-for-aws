@@ -149,4 +149,41 @@ with patch.object(m.subprocess, "run") as run:
 
 print("discover_deployed v1 with state: PASSED")
 
+# Ambiguous project resources must require explicit selection by the operator.
+with patch.object(m.subprocess, "run") as run:
+    run.return_value.returncode = 0
+    run.return_value.stdout = json.dumps({
+        **v1_status,
+        "resources": [
+            *v1_status["resources"],
+            {
+                "resourceType": "payment-manager",
+                "name": "OtherPayments",
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/manager-2",
+                "children": [{"resourceType": "payment-connector", "id": "connector-2"}],
+            },
+        ],
+    })
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"] is None
+    assert found["connector_id"] is None
+
+with patch.object(m.subprocess, "run") as run:
+    run.return_value.returncode = 0
+    run.return_value.stdout = json.dumps({
+        **v1_status,
+        "resources": [{
+            **v1_status["resources"][0],
+            "children": [
+                *v1_status["resources"][0]["children"],
+                {"resourceType": "payment-connector", "id": "connector-2"},
+            ],
+        }],
+    })
+    found = m.discover_deployed(v1_root)
+    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
+    assert found["connector_id"] is None
+
+print("discover_deployed ambiguity: PASSED")
+
 print("ALL RESOURCE RESOLUTION TESTS PASSED")

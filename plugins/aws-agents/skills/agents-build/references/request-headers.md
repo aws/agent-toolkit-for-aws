@@ -68,7 +68,7 @@ Run `agentcore build` to validate the edited v1 project, then `agentcore deploy`
 - **Maximum 20 headers** in the allowlist (including `Authorization` if you include it explicitly)
 - **Header name length:** up to 256 characters
 - **Header value size:** up to 4 KB per header
-- **Names are case-sensitive** — list them exactly as they'll be sent
+- **Header names are matched case-insensitively.** Keep one consistent spelling in the project and caller examples for readability.
 - **Changes take effect after the next deploy** of the runtime
 
 If you hit the 20-header cap, combine related data into one JSON-encoded header rather than using many separate ones.
@@ -120,12 +120,13 @@ Headers arrive in the runtime's `context` object passed to your invocation handl
 ```python
 @app.entrypoint
 def invoke(payload, context):
-    tenant = context.headers.get("X-Tenant-Id")
-    correlation_id = context.headers.get("X-Correlation-Id")
+    headers = {name.lower(): value for name, value in (context.request_headers or {}).items()}
+    tenant = headers.get("x-tenant-id")
+    correlation_id = headers.get("x-correlation-id")
     # ... use as needed
 ```
 
-Headers that weren't in the allowlist will be absent (not empty string) from the context.
+Headers that weren't in the allowlist will be absent (not empty string) from `context.request_headers`.
 
 ## What won't work
 
@@ -136,7 +137,7 @@ Headers that weren't in the allowlist will be absent (not empty string) from the
 ## Troubleshooting
 
 **"My agent doesn't see the header I'm sending"**
-Check (in order): (1) Is the header in the allowlist? (2) Is the spelling an exact match including case? (3) Did you redeploy the runtime after updating the allowlist? (4) Is the caller actually sending the header — `curl -v` or equivalent network inspection.
+Check (in order): (1) Is the header in the allowlist? (2) Does the name match, ignoring case? (3) Did you redeploy the runtime after updating the allowlist? (4) Is the caller actually sending the header — `curl -v` or equivalent network inspection.
 
 **"I hit the 20-header limit"**
 Consolidate related data into a single JSON-encoded header. For example, instead of `X-Region`, `X-Environment`, `X-Service-Name` as three separate headers, use `X-Context: {"region":"us-west-2","env":"prod","service":"billing"}`.
