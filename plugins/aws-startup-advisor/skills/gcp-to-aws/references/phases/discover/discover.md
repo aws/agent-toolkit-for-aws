@@ -193,9 +193,12 @@ status); a `failed` status means the prior attempt did NOT complete (see
 `discover-openrouter-api.md` Step 2d's retry rule) — resume from Step 2's
 retry path, not Step 3, since there is no `activity.json` to parse yet.
 **`/activity: ok` does NOT mean route straight to Step 3** — before doing
-that, also check the SAME manifest's `/analytics/query` entry (its resume
+that, also check the SAME manifest's classification entry (its resume
 handling is independent of `/activity`'s, per `discover-openrouter-api.md`
-Step 2d): if `/analytics/query` entry's `status` is `"failed"`, there is a
+Step 2d). The classification entry is the `captures[]` item whose `file` is
+`analytics.json`, or the only `/analytics/query` item when `file` is absent
+on an older manifest. `analytics-volume.json` and `analytics-hourly.json` do
+not satisfy this check. If the classification entry's `status` is `"failed"`, there is a
 pending Analytics-only retry — load `discover-openrouter-api.md` and resume
 from its Step 2 retry path for the Analytics row only (reusing the
 already-good `/activity.json`, per that file's own rule), then proceed to
@@ -218,7 +221,7 @@ treats a `failed`/`skipped` Analytics row — `cost_provenance: "unknown"` for e
 the matching `metadata.capture_warnings` entry Step 3 already appends for that case. This does
 not re-ask Step 0 consent (no new request means nothing new to consent to), and it does not
 proceed through Step 2 at all for this manifest. Only when
-the `/analytics/query` entry is already `"ok"` or `"skipped"` does `/activity:
+the classification entry is already `"ok"` or `"skipped"` does `/activity:
 ok` mean execute straight from Step 3 (parse the existing captures) as
 before. The merge SUMS OpenRouter spend with a genuinely
 separate provider's spend (e.g. a Vertex billing CSV, or OpenAI-direct usage that

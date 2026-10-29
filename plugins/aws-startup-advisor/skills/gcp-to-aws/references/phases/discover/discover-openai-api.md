@@ -58,10 +58,12 @@ I can pull your organization's OpenAI cost and usage data directly
 from the OpenAI Admin API. This runs GET requests only, against a
 fixed list of usage/cost endpoints:
 
-  ✓ Captured: daily cost totals by line item and project, token
-    counts per model (completions, embeddings, images, audio), and
-    request counts — scoped to the OpenAI project(s) YOU select as
-    belonging to this application.
+  ✓ Captured: daily cost totals by line item and project; token
+    counts per model (completions, embeddings, images, audio),
+    including cached and cache-write tokens and text/image/audio
+    splits; batch versus service-tier splits; request counts; and
+    the busiest day plus peak tokens per minute — scoped to the
+    OpenAI project(s) YOU select as belonging to this application.
   ✗ Never captured: prompts or completions content, uploaded
     files, API keys, org members, per-user/per-key attribution, or
     data from projects you don't select. No management endpoints.
@@ -192,11 +194,15 @@ exit with no output and tell the user which scope is missing.
 | # | Endpoint (GET, `https://api.openai.com`)      | Query parameters                                                                     | Output file                       |
 | - | --------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------- |
 | 1 | `/v1/organization/costs`                      | `start_time`, `bucket_width=1d`, `group_by=line_item`, `project_ids[]…`, `limit=180` | `costs.json`                      |
-| 2 | `/v1/organization/usage/completions`          | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-completions.json`          |
+| 2 | `/v1/organization/usage/completions`          | `start_time`, `bucket_width=1d`, `group_by=model&group_by=batch&group_by=service_tier`, `project_ids[]…`, `limit=31` | `usage-completions.json` |
 | 3 | `/v1/organization/usage/embeddings`           | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-embeddings.json`           |
 | 4 | `/v1/organization/usage/images`               | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-images.json`               |
 | 5 | `/v1/organization/usage/audio_speeches`       | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-audio-speeches.json`       |
 | 6 | `/v1/organization/usage/audio_transcriptions` | `start_time`, `bucket_width=1d`, `group_by=model`, `project_ids[]…`, `limit=31`      | `usage-audio-transcriptions.json` |
+| 7 | `/v1/organization/usage/completions`          | `start_time`, `bucket_width=1h`, `group_by=model&group_by=batch&group_by=service_tier`, `project_ids[]…`, `limit=168` | `usage-completions-hourly.json` |
+| 8 | `/v1/organization/usage/completions`          | busiest on-demand UTC day only (computed from row 7 before this call): `start_time`/`end_time` spanning that day, `bucket_width=1m`, same `group_by` as row 7, `project_ids[]…`, `limit=1440` | `usage-completions-minute.json` |
+
+Rows 2–6 stay `bucket_width=1d` with `limit=31`. Row 7 is hourly: `bucket_width=1h` caps `limit` at **168** (7 days per page; paginate to cover 30 days). Row 8 is one day of minute buckets: `bucket_width=1m` caps `limit` at **1440**. Do not copy `limit=31` or `limit=180` onto rows 7–8. Run rows 1–7 first. Row 8 runs only after row 7 is parsed: pick the single UTC day with the highest `input_tokens + output_tokens` among hourly rows whose `batch` is false. If row 7 failed or that day cannot be determined, record row 8 `skipped` and keep the hourly peak. If row 8 fails, record `failed` and keep the hourly peak. A failed row 7 or 8 never fails the whole capture.
 
 **2d. Run the script, then delete it.** Record results in
 `$MIGRATION_DIR/openai-capture/manifest.json`:
@@ -226,9 +232,9 @@ Sum across the window (a throwaway extraction script if captures are large):
   month** (extrapolating a few days of spike traffic fabricates a baseline).
   If the org's first non-zero bucket is < 30 days old, set
   `partial_window: true` and report the actual span in `active_days`.
-- **Usage** (rows 2–6): per model — `input_tokens`, `output_tokens` (completions
-  and embeddings; embeddings have no output tokens), `num_model_requests`,
-  images/seconds counts for image/audio endpoints.
+- **Usage** (rows 2–6): one `usage_by_model[]` row per distinct key, not one row per model when the key is wider. Completions key is `(model, batch, service_tier)`. Embeddings, images, and audio key is `model` only, with `batch` and `service_tier` null. Sum `input_tokens`, `output_tokens`, and `num_model_requests` across the daily window. Embeddings have no output tokens. Also keep images/seconds counts for image and audio endpoints.
+  On completions rows, also write the fields the completions response already returns: `input_cached_tokens`, `input_cache_write_tokens`, `input_text_tokens`, `input_image_tokens`, `input_audio_tokens`. **`input_tokens` already includes cached and cache-write tokens.** Do not add those fields on top of `input_tokens`. Write `0` when a field is absent. `batch` is the boolean from `group_by=batch`. `service_tier` is the string from `group_by=service_tier` (`default` when the API omits it).
+  **Peaks.** From row 7, per completions key, across the whole hourly window. `busiest_day` is the UTC day with the largest `input_tokens + output_tokens`, and `day_to_average_ratio` is that day's tokens divided by (window total / `active_days`). Those two fields are not the peak. `peak_input_tokens_per_minute`, `peak_output_tokens_per_minute`, and `peak_requests_per_minute` are each the maximum hour anywhere in the window for that key, divided by 60. A request burst may fall on a different hour than the token burst. `peak_source` is `"hour"` and `peak_window` is `"full_window"`. Row 8 samples only the single busiest on-demand day. For a key that appears in that minute file, keep the full-window hourly rate unless the busiest minute's raw count is higher; only then store the minute count and set `peak_source` to `"minute"` and `peak_window` to `"sampled_day"`. A key absent from the minute file keeps its hourly rate. Never replace a known hourly peak with a lower minute sample from a different day. A model whose busiest hour is 6,000 tokens on a day the minute file did not sample stays at 100 tokens/minute when that minute file only saw 1 token for the key. From rows 3–6 daily buckets only, write the same `peak` object with the per-minute fields null and `peak_source` `"day"`. Never divide the 30-day total by the number of minutes and call it a peak.
 
 Write `$MIGRATION_DIR/openai-usage-profile.json`:
 
@@ -257,9 +263,27 @@ Write `$MIGRATION_DIR/openai-usage-profile.json`:
     {
       "model": "gpt-5.6-terra",
       "endpoint_type": "completions|embeddings|images|audio_speeches|audio_transcriptions",
+      "batch": false,
+      "service_tier": "default",
       "input_tokens": 1300000,
       "output_tokens": 145000,
-      "num_model_requests": 452
+      "input_cached_tokens": 400000,
+      "input_cache_write_tokens": 20000,
+      "input_text_tokens": 880000,
+      "input_image_tokens": 0,
+      "input_audio_tokens": 0,
+      "num_model_requests": 452,
+      "peak": {
+        "busiest_day": "2026-08-12",
+        "day_input_tokens": 80000,
+        "day_output_tokens": 9000,
+        "day_requests": 40,
+        "day_to_average_ratio": 1.8,
+        "peak_input_tokens_per_minute": 1200,
+        "peak_output_tokens_per_minute": 180,
+        "peak_requests_per_minute": 2.5,
+        "peak_source": "minute|hour|day"
+      }
     }
   ]
 }
@@ -270,7 +294,7 @@ only models with non-zero usage. `metadata.capture_warnings` carries every
 `failed`/`skipped` manifest entry (empty array when all rows succeeded) — the
 same convention as live discovery's `live_metadata.capture_warnings` — so
 downstream phases can tell a failed usage category (UNKNOWN volume) from a
-genuinely unused one (zero). Validate: valid JSON, `summary.monthly_cost_usd`
+genuinely unused one (zero). Name the output file in every warning. A warning for `usage-completions-hourly.json`, `usage-completions-minute.json`, `usage-messages-hourly.json`, `usage-messages-minute.json`, or `analytics-hourly.json` means the peak is uncertain. It does not make the daily volume or the daily cost UNKNOWN. Validate: valid JSON, `summary.monthly_cost_usd`
 equals the sum of `costs_by_line_item` (± rounding).
 
 ## Step 4: Merge into the AI Workload Profile (if it exists), Then Clean Up

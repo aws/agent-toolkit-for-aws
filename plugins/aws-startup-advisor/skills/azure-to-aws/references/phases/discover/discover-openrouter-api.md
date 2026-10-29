@@ -85,9 +85,12 @@ creates, changes, or deletes anything:
   ✓ Captured: daily usage per model — request counts, prompt /
     completion / reasoning token counts, and dollar cost — plus your
     credits purchased/used total, and an aggregate BYOK-vs-credits cost
-    split per model (no new content, same aggregate-usage category: how
-    much of each model's spend ran on your own upstream key vs.
-    OpenRouter credits).
+    split per model (how much of each model's spend ran on your own
+    upstream key vs. OpenRouter credits). The same read-only POST also
+    returns, still as aggregates: cached tokens, the BYOK platform fee,
+    BYOK versus total request counts, p95 latency and p95 output
+    tokens/sec, web-search cost, guardrail counts, and an hourly peak.
+    No prompts or per-request content.
   ✗ Never captured: prompts or completions content, API keys, or
     anything from a chat/generation endpoint. No request that creates,
     changes, or deletes anything will run.
@@ -253,6 +256,8 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
 | 2 | `GET /activity`         | daily rows: `date`, `model`, `model_permaslug`, `provider_name`, `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `usage` (USD) — the workhorse. **When `$WORKSPACE_ID` is set (Step 1.5), append `&workspace_id=$WORKSPACE_ID` — this FILTERS the response to that workspace's rows, not just splits them.** | `activity.json` |
 | 3 | `GET /key`              | rate-limit + remaining credit on the calling key (context only; optional — record `skipped` on any error)| `key.json`      |
 | 4 | `POST /analytics/query` | per-model `byok_usage` + `openrouter_usage` over the same 30-day window as `/activity`, for `cost_provenance` classification | `analytics.json` |
+| 5 | `POST /analytics/query` | per-model window aggregate: `tokens_prompt`, `tokens_completion`, `reasoning_tokens`, `cached_tokens`, `byok_fees`, `byok_request_count`, `request_count`, `p95_latency`, `p95_throughput`, `usage_web`, `guardrail_invoked_count`. No `granularity`. Same window and workspace filter as row 4. | `analytics-volume.json` |
+| 6 | `POST /analytics/query` | per-model hourly `tokens_prompt`, `tokens_completion`, `request_count` (`granularity`: `"hour"`) for the peak. Same window and workspace filter as row 4. | `analytics-hourly.json` |
 
 **Notes:**
 
@@ -316,6 +321,22 @@ GET https://openrouter.ai/api/v1/credits  →  credits.json
   UUID, not its display name — same value already captured in Step 1.5). When
   unset, omit `filters` entirely — the call stays account-wide, unchanged from
   today.
+
+- **Rows 5 and 6** are further read-only `POST /analytics/query` calls, same
+  endpoint as row 4, same `time_range` and the same workspace `filters` rule.
+  Do not add `api_key_id`, `user`, or any other per-caller dimension.
+  Row 5 body `metrics` are exactly `tokens_prompt`, `tokens_completion`,
+  `reasoning_tokens`, `cached_tokens`, `byok_fees`, `byok_request_count`,
+  `request_count`, `p95_latency`, `p95_throughput`, `usage_web`,
+  `guardrail_invoked_count`, with `"dimensions": ["model"]` and no
+  `granularity`. Row 6 body `metrics` are exactly `tokens_prompt`,
+  `tokens_completion`, `request_count`, with `"dimensions": ["model"]` and
+  `"granularity": "hour"`. If `metadata.truncated` is true, retry that one
+  call once with `limit` raised to 5000. If it is still truncated, keep the
+  partial file, append a `capture_warnings` line naming the file, and do not
+  treat models absent from the partial result as zero. A truncated row 6
+  must not be used for the peak — fall back to the busiest day in
+  `activity.json` and set `peak_source` to `"day"`.
 
   On a RESUMED invocation of this file (any retry entry point — the `/activity`-failed retry,
   the Analytics-only retry, or the pre-Analytics-manifest compatibility routing in `discover.md`),
@@ -423,19 +444,32 @@ not just manifest presence:** read the existing manifest first.
 - `/activity` entry's `status` is `ok` → proceed to Step 3 as normal (the only
   status where a real capture exists to parse).
 
-**`/analytics/query`'s resume handling is INDEPENDENT of `/activity`'s** — a
-resumed run can have `/activity: ok` and `analytics: failed` simultaneously,
-and must retry only the failed row, never both:
+**Analytics resume is selected by output file, not by the shared endpoint.**
+Three captures POST `/analytics/query`. The classification row is the
+`captures[]` item whose `file` is `analytics.json`. `analytics-volume.json`
+and `analytics-hourly.json` are optional. An older manifest with one
+`/analytics/query` item and no `file` field is the classification row; do not
+invent volume or hourly retries for it. A resumed run can have `/activity: ok`,
+classification `ok`, volume `failed`, and hourly `ok` at once. Retry only the
+failed file. Never treat a later `/analytics/query` row as the classification
+row.
 
-- `/analytics/query` entry's `status` is `failed` → retry ONLY that row on the
+- `/analytics/query` entry's `status` is `failed` → retry ONLY that row when
+  its `file` is `analytics.json` (classification). On the
   next invocation, reusing the manifest's recorded `window_start_utc`/`window_end_utc`
   for the retry's `time_range` (per Step 2c row 4's retry rule above), not a fresh
-  `now`-based timestamp and not a freshly re-derived UTC midnight.
-- `/analytics/query` entry's `status` is `skipped` → leave
-  `cost_provenance: "unknown"` permanently for this run; do not re-ask, do not
-  retry.
-- `/analytics/query` entry's `status` is `ok` → proceed with classification as
-  normal.
+  `now`-based timestamp and not a freshly re-derived UTC midnight. Keep the key
+  file while this retry is pending.
+- Classification `skipped` → leave `cost_provenance: "unknown"` permanently for
+  this run; do not re-ask, do not retry.
+- Classification `ok` → proceed with classification as normal.
+- Optional `analytics-volume.json` or `analytics-hourly.json` `failed` → that
+  file is a terminal omission for this run. Do not retry it. The key is deleted
+  once `/activity` and classification are terminal, so a later resume has no
+  key to repeat the call. Do not block Step 3, classification, or key deletion
+  on an optional file. A failed hourly file leaves the daily Activity totals
+  in place and records a peak-only warning. A failed volume file leaves
+  Activity token totals in place and marks the Analytics volume fields unknown.
 
 Delete the key file once `/activity` reaches a terminal `ok`/`skipped` state
 (per Step 4's cleanup) — never while a retry is still live (a `failed` status
@@ -585,6 +619,26 @@ that still (wrongly) passes the `monthly_cost_usd == sum of rows` self-check.
     writing the profile in this case — `/activity` data is still valid and
     must still be written.
 
+**Volume, fee, latency, and peak (rows 5–6), joined onto the short model id.**
+Analytics `model` is the permaslug. Join to `/activity`'s `model_permaslug`,
+then roll up to the short `usage_by_model[].model` the same way cost
+provenance does. Sum `cached_tokens`, `byok_fees` (write `byok_fees_usd`),
+`byok_request_count`, `usage_web` (write `web_search_cost_usd`), and
+`guardrail_invoked_count` across permaslugs of one short id. Do not overwrite
+`requests` from `/activity`; write the Analytics request count as
+`analytics_request_count`. `cached_tokens` is a subset of prompt tokens — do
+not add it on top of `prompt_tokens`. For `p95_latency_ms`, take the max
+across permaslugs (the slower one). For `p95_throughput_tokens_per_sec`, take
+the min across permaslugs (the slower one). These are observed figures for
+the window, not a customer SLO. **Do not split a mixed model's tokens or
+inference dollars using `byok_request_count` / `request_count`.** That ratio
+may be disclosed; it is not a volume split.
+From row 6, sum hourly tokens across permaslugs of one short id, then write
+`peak` the same way as the OpenAI profile with `peak_source` `"hour"`
+(the maximum hour anywhere in the window, divided by 60). If row 6 is missing or truncated, use the
+busiest day in `activity.json`, null the per-minute fields, and set
+`peak_source` `"day"`.
+
 Write `$MIGRATION_DIR/openrouter-usage-profile.json`. **Note on the example
 below:** `usage_by_model[].model` is the short public id (e.g.
 `"openai/gpt-4.1"`) — the join to Analytics that produced each row's
@@ -621,7 +675,26 @@ into the join logic above.
       "completion_tokens": 145000,
       "reasoning_tokens": 0,
       "monthly_cost_usd": 41.61,
-      "cost_provenance": "no_byok"
+      "cost_provenance": "no_byok",
+      "cached_tokens": 200000,
+      "byok_fees_usd": 0,
+      "byok_request_count": 0,
+      "analytics_request_count": 452,
+      "p95_latency_ms": 840,
+      "p95_throughput_tokens_per_sec": 62,
+      "web_search_cost_usd": 0,
+      "guardrail_invoked_count": 0,
+      "peak": {
+        "busiest_day": "2026-08-12",
+        "day_input_tokens": 80000,
+        "day_output_tokens": 9000,
+        "day_requests": 40,
+        "day_to_average_ratio": 1.8,
+        "peak_input_tokens_per_minute": 55,
+        "peak_output_tokens_per_minute": 6,
+        "peak_requests_per_minute": 0.4,
+        "peak_source": "hour|day"
+      }
     },
     {
       "model": "anthropic/claude-sonnet-4",
@@ -650,7 +723,7 @@ its BYOK-vs-credits split is only partially verified.
 Include only models with non-zero usage. `metadata.capture_warnings` carries every
 `failed`/`skipped` manifest entry (empty array when all rows succeeded) — the same
 convention as the OpenAI usage path — so downstream phases can tell a failed
-capture (UNKNOWN volume) from a genuinely unused one (zero). Validate: valid JSON,
+capture (UNKNOWN volume) from a genuinely unused one (zero). Name the output file in every warning. A warning for `analytics-hourly.json` means the peak is uncertain. It does not make the daily volume or the daily cost UNKNOWN. A failed `analytics.json` still makes classification unknown. A failed `analytics-volume.json` leaves Activity token totals in place and marks the Analytics volume fields unknown. Validate: valid JSON,
 `summary.monthly_cost_usd` equals the sum of `usage_by_model[].monthly_cost_usd`
 (± rounding).
 
@@ -737,13 +810,13 @@ Discover handoff gate.
 
 **Clean up (default, not optional, but gated on BOTH rows being terminal):** before
 deleting anything, confirm the manifest's `/activity` entry is `ok` or `skipped` AND
-the `/analytics/query` entry is `ok` or `skipped` (per Step 2d's resume rules above —
-restated here because this is the one place that actually performs the deletion). If
-`/analytics/query` is still `failed` (a retry is pending), do **NOT** delete the key
-file here — leave it in place, do not proceed with the rest of this Step 4 merge
-either (there is nothing wrong with the merge waiting; `/activity`'s data does not
-go stale), and tell the user: "OpenRouter Analytics classification is still pending a
-retry — keeping the key file until that resolves." Only once both rows are terminal:
+the classification `/analytics/query` entry is `ok` or `skipped` (`file` is
+`analytics.json`, or the sole `/analytics/query` entry when `file` is absent).
+Optional `analytics-volume.json` and `analytics-hourly.json` failures do not keep the key.
+If classification is still `failed`, do **NOT** delete the key file here — tell the user:
+"OpenRouter Analytics classification is still pending a retry — keeping the key file until that resolves."
+Do not proceed with the rest of this Step 4 merge while that retry is pending.
+Only once `/activity` and classification are terminal:
 delete `$MIGRATION_DIR/.openrouter-key-env` now — the key is no longer needed. (This is
 the happy-path cleanup point; a 401/403 on the probe deletes it immediately at
 that point instead, per Step 2b, since a rejected key has nothing left to
