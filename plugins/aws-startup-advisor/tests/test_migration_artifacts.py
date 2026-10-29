@@ -339,14 +339,54 @@ pg_restore "$TARGET_DATABASE_URL"
         report = validator.validate(self.root, require_eb_workflow=True)
         self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
         self.write("terraform/pipeline.tf", 'resource "aws_codepipeline" "deploy" {\n name = "deploy"\n}\n')
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
         report = validator.validate(self.root, require_eb_workflow=True)
-        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK")
+        self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
+
+    def test_selected_github_workflow_cannot_be_satisfied_by_retained_pipeline(self) -> None:
+        text = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-terraform.md").read_text()
+        section = text.split("### `pipeline.tf`", 1)[1]
+        pipeline = section.split("```hcl\n", 1)[1].split("\n```", 1)[0]
+        self.write("terraform/pipeline.tf", pipeline.replace("<app_name>", "main").replace("<process_type>", "web"))
+        for workflow in (
+            None,
+            "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo deploy\n",
+            WORKFLOW.replace("      - name: Deploy\n", "      - name: Deploy\n        if: false\n"),
+            WORKFLOW,
+        ):
+            with self.subTest(workflow=workflow):
+                path = self.root / ".github/workflows/deploy-eb.yml"
+                if workflow is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    self.write(".github/workflows/deploy-eb.yml", workflow)
+                # The caller may explicitly choose CodePipeline, but a retained
+                # pipeline must never substitute for selected GitHub Actions.
+                self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+                report = validator.validate(self.root, require_eb_workflow=True)
+                if workflow == WORKFLOW:
+                    self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
+                else:
+                    self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
+                    result = self.cli("--require-eb-workflow", "--json", "-")
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertEqual(json.loads(result.stdout)["artifact_status"], "ARTIFACTS_FAIL")
 
     def test_no_postgres_no_eb_skips_inapplicable_checks(self) -> None:
         self.write("terraform/main.tf", 'resource "aws_s3_bucket" "test" {\n bucket = "example"\n}\n')
         (self.root / "scripts/migrate-postgres.sh").unlink()
         (self.root / ".github/workflows/deploy-eb.yml").unlink()
         self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+
+    def test_require_eb_flag_is_authoritative_when_environment_is_missing(self) -> None:
+        self.write("terraform/main.tf", 'resource "aws_codepipeline" "deploy" {\n name = "deploy"\n}\n')
+        (self.root / ".github/workflows/deploy-eb.yml").unlink()
+        self.assertEqual(self.report()["artifact_status"], "ARTIFACTS_OK")
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertIn("eb_deploy_missing", {item["rule"] for item in report["findings"]})
+        self.write(".github/workflows/deploy-eb.yml", WORKFLOW)
+        report = validator.validate(self.root, require_eb_workflow=True)
+        self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
 
     def test_security_group_must_be_attached(self) -> None:
         self.write("terraform/main.tf", TERRAFORM.replace(

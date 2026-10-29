@@ -380,23 +380,61 @@ def _eb_database_access(resources: list[Resource], policy: Any, findings: list[F
             ))
             continue
         linked: set[str] = set()
+        opaque_secret = False
+        unverified_secret = False
         for setting in settings:
             name = _string(_attr(setting, "name", policy)) or ""
             if re.search(r"DATABASE|(^|_)DB(_|$)|(^|_)RDS(_|$)", name, re.IGNORECASE):
                 value = _attr(setting, "value", policy) or ""
                 linked.update(re.findall(r"(aws_(?:db_instance|rds_cluster)\.[A-Za-z0-9_-]+)\.", value))
-        targets = [r for r in databases if r.address in linked] if linked else databases
+                if _string(_attr(setting, "namespace", policy)) == (
+                    "aws:elasticbeanstalk:application:environmentsecrets"
+                ):
+                    literal = _string(value)
+                    reference = re.fullmatch(
+                        r"(aws_(?:secretsmanager_secret|ssm_parameter)\.[A-Za-z0-9_-]+)\.arn",
+                        value,
+                    )
+                    if reference:
+                        # The secret's contents may be populated outside Terraform.
+                        # Its ARN alone does not establish which database is used.
+                        if reference.group(1) in by_address:
+                            opaque_secret = True
+                        else:
+                            unverified_secret = True
+                    elif literal and re.fullmatch(
+                        r"arn:[a-z0-9-]+:(?:"
+                        r"secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+"
+                        r"|ssm:[a-z0-9-]+:[0-9]{12}:parameter/[A-Za-z0-9/_+=.@-]+)",
+                        literal,
+                    ):
+                        opaque_secret = True
+                    else:
+                        unverified_secret = True
+        targets = (
+            databases if opaque_secret or not linked
+            else [r for r in databases if r.address in linked]
+        )
         if linked - {r.address for r in databases}:
             findings.append(Finding(
                 environment.file, environment.line, "eb_database_mapping_unverified",
                 f"{environment.address}: a referenced database resource is missing.",
             ))
-        if not linked and len(databases) > 1:
+        if unverified_secret:
+            findings.append(Finding(
+                environment.file, environment.line, "eb_database_mapping_unverified",
+                f"{environment.address}: database secret ARN is missing or cannot be resolved.",
+            ))
+            continue
+        if not linked and len(databases) > 1 and not opaque_secret:
             findings.append(Finding(
                 environment.file, environment.line, "eb_database_mapping_unverified",
                 f"{environment.address}: multiple databases and no explicit database link; verify access manually.",
             ))
             continue
+        # Generated environmentsecrets settings expose only an opaque secret ARN.
+        # Without a database association, prove access to every possible target;
+        # never guess an app-to-database mapping from resource or secret names.
         for database in targets:
             if _instances(database, policy) is None:
                 findings.append(Finding(
@@ -1273,16 +1311,20 @@ def _workflows(
 ) -> None:
     has_eb = any(r.kind == "aws_elastic_beanstalk_environment" for r in resources)
     paths = _files(root, ".github/workflows", (".yml", ".yaml"))
-    # CodePipeline is another supported deployment path.
+    # CodePipeline can satisfy the default deployment check, but a retained
+    # pipeline cannot replace an explicitly selected GitHub Actions workflow.
     has_pipeline = any(
         r.kind == "aws_codepipeline" and _instances(r, policy) is True for r in resources
     )
-    expect_deployment = has_eb and (
-        require_workflow or any(path.stem == "deploy-eb" for path in paths)
+    pipeline_satisfies_requirement = has_pipeline and not require_workflow
+    expect_deployment = require_workflow or (
+        has_eb and any(path.stem == "deploy-eb" for path in paths)
     )
-    if expect_deployment and not paths and not has_pipeline:
+    if expect_deployment and not paths and not pipeline_satisfies_requirement:
         findings.append(Finding(
             ".github/workflows", 0, "eb_deploy_missing",
+            "The selected GitHub Actions deployment requires a generated workflow."
+            if require_workflow else
             "Elastic Beanstalk has neither a generated workflow nor CodePipeline.",
         ))
     found_deployment = False
@@ -1350,7 +1392,7 @@ def _workflows(
                         ))
                     else:
                         found_deployment = True
-    if expect_deployment and paths and not found_deployment and not has_pipeline:
+    if expect_deployment and paths and not found_deployment and not pipeline_satisfies_requirement:
         findings.append(Finding(
             ".github/workflows", 0, "eb_deploy_missing",
             "No active, supported EB deploy action, `eb deploy`, or AWS update-environment "
