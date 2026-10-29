@@ -1,7 +1,9 @@
 """Resolve an AWS account and prepare event-bound STS proofs.
 
 This module does not send telemetry, start login, save credentials or change
-consent. Callers must select account-linked reporting before invoking it.
+consent. setup() is an explicit account check; it does not grant product-action
+authorization. Callers must select account-linked reporting before using
+prepare_report(). The caller owns action-authentication and fallback policy.
 SDK imports and credential resolution happen only on an explicit method call.
 The wire adapter remains separate until the reporting API contract is agreed.
 """

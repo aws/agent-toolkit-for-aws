@@ -1,8 +1,10 @@
 # AWS account reporting helper
 
-This optional component resolves an existing AWS account and prepares signed
+This client component resolves an existing AWS account and prepares signed
 telemetry requests. It does not enable account reporting, change consent, start
-login, or send telemetry. Existing anonymous hooks do not import it.
+login, or send telemetry. The caller decides which actions require
+authentication and whether anonymous reporting is permitted. Existing
+anonymous hooks do not import this component.
 
 The helper implements the proposed v1 proof format. The reporting API must
 validate that format before a caller enables this path.
@@ -25,24 +27,26 @@ This command queries STS and prints only a status or bounded error code.
 It does not print the account, credentials, proof, or profile. Omit `--profile`
 to use the SDK's configured environment and default profile.
 
-Do not run it automatically for anonymous reporting or opt-out. Account setup
-can return the account to an in-process sharing page through `setup()`.
+For telemetry, do not resolve credentials for anonymous reporting or after
+opt-out. A separately requested product action may still require an
+explicit account check under its own authentication policy. `setup()` can
+return the account to an in-process user interface without enabling telemetry.
 
 ## Caller API
 
 Add the enclosing `telemetry` directory to the runtime's module path. The
 sharing adapter owns the persisted choice and the endpoint configuration.
-The two public operations are:
+The public interface is:
 
 | Operation | Input | Output |
 | --- | --- | --- |
 | `AwsAccountReporter(audience, profile_name=None)` | Trusted deployment audience and selected SDK profile | Lazy reporter; construction does not resolve credentials |
-| `reporter.setup()` | No additional input | `AccountIdentity(account_id, partition)` for the local sharing page |
+| `reporter.setup()` | No additional input | `AccountIdentity(account_id, partition)` for an explicit local account check |
 | `reporter.prepare_report(payload, selected_account)` | Complete unsigned request and account from the accepted choice | `PreparedReport` containing canonical payload bytes and signed STS headers |
 | `prepared.request_body()` | No additional input | UTF-8 JSON bytes with the top-level `awsIdentityProof` |
 | `error.as_result()` | A caught `AccountReportingError` | Identity-free `{"status": ..., "reasonCode": ...}` for the adapter |
 
-During account setup:
+For an explicitly requested account check:
 
 ```python
 from auth import AccountReportingError, AwsAccountReporter
@@ -56,13 +60,14 @@ try:
 except AccountReportingError as error:
     result_for_adapter = error.as_result()
 else:
-    # Pass this result only to the local sharing page, never the agent.
+    # Pass this result only to the local user interface, never the agent.
     result_for_page = {"status": "READY", "awsAccountId": account.account_id}
 ```
 
-Only after the user accepts the choice does the sharing adapter atomically
-save the account, selected profile and notice version. The helper does not
-write that preference record.
+This check does not record telemetry consent or authorize a product action.
+For account-linked reporting, only after the user accepts the sharing choice
+does the adapter atomically save the account, selected profile and notice
+version. The helper does not write that preference record.
 
 A later hook or CLI process reconstructs the selection from the validated
 accepted record:
@@ -96,8 +101,9 @@ STS, refresh an SSO session, or run a configured `credential_process`.
 
 The selected account remains fixed when credentials refresh. The reporting
 API must compare it with the account returned by STS. An account mismatch
-requires explicit account setup; it must not silently select a new account
-or downgrade the event to anonymous reporting.
+requires explicit account setup before another account-linked report; the
+helper must not silently select a new account. It does not create an anonymous
+fallback request.
 
 `AccountReportingError.code` contains a bounded diagnostic. Exceptions,
 reporter representations, and prepared-report representations exclude
@@ -112,24 +118,41 @@ Catch `AccountReportingError` around construction, setup, account
 reconstruction and proof preparation. `as_result()` returns the following
 stable categories:
 
-| `reasonCode` | `status` | Adapter action |
+| `reasonCode` | `status` | Meaning for the caller |
 | --- | --- | --- |
-| `CREDENTIALS_UNAVAILABLE`, `SIGN_IN_REQUIRED` | `SIGN_IN_REQUIRED` | Skip this event; offer sign-in on a later interactive invocation |
-| `ACCOUNT_CHANGED`, `ACCOUNT_SELECTION_REQUIRED`, `ACCOUNT_REPORTING_REQUIRED` | `SETUP_REQUIRED` | Require a new explicit sharing/account choice |
-| `INVALID_ACCOUNT`, `INVALID_PROFILE`, `NOTICE_VERSION_REQUIRED` | `SETUP_REQUIRED` | Treat the saved setup as incomplete or invalid |
-| `PYTHON_VERSION_UNSUPPORTED`, `SDK_UNAVAILABLE` | `ERROR` | Report a bounded runtime-availability error |
-| `INVALID_AUDIENCE`, `AMBIGUOUS_PROFILE`, `UNSUPPORTED_PARTITION` | `ERROR` | Correct the deployment or caller configuration |
-| `IDENTITY_UNAVAILABLE`, `IDENTITY_RESPONSE_INVALID` | `ERROR` | Leave setup pending; do not save a successful account |
-| `PAYLOAD_ALREADY_SIGNED`, `PAYLOAD_INVALID`, `PAYLOAD_TOO_LARGE` | `ERROR` | Skip the malformed event |
-| `PROOF_INVALID`, `PROOF_UNAVAILABLE`, `INTERNAL_ERROR` | `ERROR` | Skip the failed preparation |
+| `CREDENTIALS_UNAVAILABLE`, `SIGN_IN_REQUIRED` | `SIGN_IN_REQUIRED` | Credentials are unavailable for this account check or proof attempt |
+| `ACCOUNT_CHANGED`, `ACCOUNT_SELECTION_REQUIRED`, `ACCOUNT_REPORTING_REQUIRED` | `SETUP_REQUIRED` | Account-linked reporting requires a valid explicit account choice |
+| `INVALID_ACCOUNT`, `INVALID_PROFILE`, `NOTICE_VERSION_REQUIRED` | `SETUP_REQUIRED` | The supplied account-reporting setup is incomplete or invalid |
+| `PYTHON_VERSION_UNSUPPORTED`, `SDK_UNAVAILABLE` | `ERROR` | The account helper runtime is unavailable |
+| `INVALID_AUDIENCE`, `AMBIGUOUS_PROFILE`, `UNSUPPORTED_PARTITION` | `ERROR` | The supplied configuration is unsupported or invalid |
+| `IDENTITY_UNAVAILABLE`, `IDENTITY_RESPONSE_INVALID` | `ERROR` | The lookup did not confirm an account |
+| `PAYLOAD_ALREADY_SIGNED`, `PAYLOAD_INVALID`, `PAYLOAD_TOO_LARGE` | `ERROR` | The request cannot be prepared from this payload |
+| `PROOF_INVALID`, `PROOF_UNAVAILABLE`, `INTERNAL_ERROR` | `ERROR` | Proof preparation failed |
 
 Every error result contains only `status` and `reasonCode`. Unknown error
 details are normalized to `INTERNAL_ERROR`. These are local helper outcomes;
-they are not HTTP results from the reporting API. The adapter continues
-migration work on all of them and does not change the event to anonymous mode.
+they are not HTTP results from the reporting API or authorization decisions
+for product actions. The helper does not perform an automatic fallback.
 An STS expired-token response returns `SIGN_IN_REQUIRED` even when the local
 credential source did not provide expiry metadata. STS service and network
 failures remain `ERROR`.
+
+### Calling policy
+
+The caller applies the product's approved authentication and sharing policy.
+A telemetry failure must not, by itself, stop unrelated work. An action that
+requires authentication remains gated until its own authentication and
+authorization requirements are met. A successful account lookup or telemetry
+proof does not, by itself, authorize that action. The report-specific proof
+is not a general-purpose skill or MCP authorization token.
+
+Whether anonymous reporting is offered by default or used as a fallback is
+outside this helper. If the approved policy and applicable user consent permit
+an anonymous report, the caller constructs a separate payload using the
+approved anonymous schema. It must exclude identity fields, the expected
+account, profile, credentials and proof. An anonymous report cannot unlock an
+action that requires authentication. This component does not implement or
+enable such a fallback policy.
 
 ## Proof contract
 

@@ -1,7 +1,8 @@
 # Telemetry
 
-Optional usage data: asking for consent, recording the answer, and emitting
-metrics once the answer is yes. Nothing here is required for any skill to work.
+This directory handles telemetry consent and event reporting. It does not
+decide which product actions require authentication or whether anonymous
+reporting is offered. Those decisions belong to the invoking product's policy.
 
 ## Layout
 
