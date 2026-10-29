@@ -391,8 +391,8 @@ Generate a **manual plan**, not commands claiming per-invocation model overrides
 1. Enter the project created by `deploy_harness.sh`.
 2. Configure the source provider's credential through AgentCore Identity using the current official CLI documentation. Do not embed API keys in the script or command output.
 3. Update `app/<harness_name>/harness.yaml` to the source provider's model configuration and credential reference; run `node "$(npm root -g)/@aws/agentcore/dist/index.js" deploy --region <region>`.
-4. Test with `node "$(npm root -g)/@aws/agentcore/dist/index.js" invoke --harness <harness_name> --prompt "Your test prompt" --region <region>`. Keep using the npm entrypoint for manual commands; the deployment script's shell function does not persist in the caller's shell.
-5. Replace the model configuration with `bedrockModelConfig: {modelId: <target_model_id>}`, deploy again, and repeat the same test prompts. Do not promise session/context preservation across model changes without verifying it.
+4. Generate two distinct UUIDs, `SOURCE_SESSION_ID` and `TARGET_SESSION_ID`, and retain them with the comparison results. Test the source with `node "$(npm root -g)/@aws/agentcore/dist/index.js" invoke --harness <harness_name> --session-id "$SOURCE_SESSION_ID" --prompt "Your test prompt" --region <region>`. Keep using the npm entrypoint for manual commands; the deployment script's shell function does not persist in the caller's shell.
+5. Replace the model configuration with `bedrockModelConfig: {modelId: <target_model_id>}`, deploy again, and replay the identical ordered prompts using `node "$(npm root -g)/@aws/agentcore/dist/index.js" invoke --harness <harness_name> --session-id "$TARGET_SESSION_ID" --prompt "Your test prompt" --region <region>`. **Use separate source/target comparison sessions. Session history is not transferred.** Never reuse the source session ID after the model change; start new application sessions on the chosen target.
 6. Remove the source credential only after the user validates the Bedrock cutover and its rollback plan.
 
 If retaining the filename `incremental_migration.sh`, it must only print these instructions; it must not perform credential operations, deployments, or invocations automatically.
@@ -431,12 +431,6 @@ Docs: https://strandsagents.com
 from strands import Agent, tool
 from strands.models import BedrockModel
 
-# Model configuration
-model = BedrockModel(
-    model_id="{agents[0].model_id}",
-    region_name="{target_region}"
-)
-
 # --- Tool definitions ---
 # Migrate your existing tool functions by adding the @tool decorator.
 # Your tool logic stays the same; Strands handles invocation and result parsing.
@@ -449,6 +443,10 @@ def {tool_name}({params}) -> str:
 
 # --- Agent definitions ---
 def create_{agent_name}():
+    model = BedrockModel(
+        model_id="{model_id}",
+        region_name="{target_region}"
+    )
     return Agent(
         name="{agent_id}",
         model=model,
@@ -472,7 +470,8 @@ def {specialist_agent_id}(query: str) -> str:
 def invoke(prompt: str) -> str:
     orchestrator = Agent(
         name="orchestrator",
-        model=model,
+        model=BedrockModel(model_id="{orchestrator_model_id}", region_name="{target_region}"),
+        system_prompt="""{orchestrator_system_prompt}""",
         tools=[{specialist_tool_1}, {specialist_tool_2}, ...]
     )
     return str(orchestrator(prompt))
@@ -505,7 +504,7 @@ def invoke(prompt: str) -> str:
 
 - **`single_agent`**: Export `def invoke(prompt: str) -> str: return str(create_<generated_agent_name>()(prompt))` alongside the Agent definition (no multi-agent orchestration).
 
-Use actual agent IDs, model IDs, tool names, and system prompts from the design config. Mark TODOs only where implementation details can't be extracted from discovery.
+Use each agent's own ID, model ID, tool names, and system prompt from the design config. For hierarchical orchestration, fill `orchestrator_model_id` and `orchestrator_system_prompt` from the agent whose `role_in_system` is `orchestrator`. Keep model construction inside each factory so later agent definitions cannot change an earlier factory's model. Mark TODOs only where implementation details can't be extracted from discovery.
 
 Export the selected orchestration through `invoke(prompt)` without invoking a model at import time. Construct fresh agents and orchestration state per invocation so unrelated runtime requests do not share conversation history; session persistence requires a separately designed session store. Preserve migrated local tool modules and their dependencies; unresolved tool implementations must be completed before deployment.
 

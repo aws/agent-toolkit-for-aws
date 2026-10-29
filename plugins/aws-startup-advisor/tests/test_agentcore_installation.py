@@ -347,7 +347,7 @@ def test_generated_agent_factory_does_not_share_conversation_state():
         "{agent_name}": "assistant", "{agent_id}": "assistant",
         "{tool_name}": "lookup", "{params}": "query: str",
         "{tool_list}": "lookup", "{system_prompt}": "Help the user",
-        "{agents[0].model_id}": "test-model", "{target_region}": "us-east-1",
+        "{model_id}": "test-model", "{target_region}": "us-east-1",
     }.items():
         code = code.replace(token, value)
     sdk = types.ModuleType("strands")
@@ -372,6 +372,32 @@ def test_generated_agent_factory_does_not_share_conversation_state():
         namespace["create_assistant"]()("first request")
         namespace["create_assistant"]()("second request")
         assert [agent.history for agent in instances] == [["first request"], ["second request"]]
+
+
+def test_generated_factories_keep_their_own_model():
+    import types
+    template = REFERENCE.read_text().split("## Step 3E:", 1)[1].split("```python\n", 1)[1].split("\n```", 1)[0]
+    sdk = types.ModuleType("strands")
+    models = types.ModuleType("strands.models")
+    sdk.Agent = lambda **kwargs: kwargs
+    sdk.tool = lambda function: function
+    models.BedrockModel = lambda **kwargs: kwargs["model_id"]
+    namespace = {"__name__": "generated_agents"}
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setitem(sys.modules, "strands", sdk)
+        patch.setitem(sys.modules, "strands.models", models)
+        for name in ("first", "second"):
+            code = template
+            for token, value in {
+                "{agent_name}": name, "{agent_id}": name, "{model_id}": name + "-model",
+                "{tool_name}": name + "_tool", "{params}": "query: str",
+                "{tool_list}": name + "_tool", "{system_prompt}": "Help the user",
+                "{target_region}": "us-east-1",
+            }.items():
+                code = code.replace(token, value)
+            exec(compile(code, "strands_agents.py", "exec"), namespace)
+        assert namespace["create_first"]()["model"] == "first-model"
+        assert namespace["create_second"]()["model"] == "second-model"
 
 
 @pytest.mark.parametrize("name", ["harness", "strands"])
@@ -426,3 +452,16 @@ def test_incremental_guidance_uses_npm_entrypoint_outside_script_shell():
             command.startswith(f'node "$(npm root -g)/@aws/agentcore/dist/index.js" {verb}')
             for command in commands
         )
+
+
+def test_incremental_guidance_separates_source_and_target_sessions():
+    section = REFERENCE.read_text().split(
+        "**Artifact 3: `ai-migration/incremental_migration.sh`**", 1
+    )[1].split("## Step 3D:", 1)[0]
+    assert '--session-id "$SOURCE_SESSION_ID"' in section
+    assert '--session-id "$TARGET_SESSION_ID"' in section
+    assert "two distinct UUIDs" in section
+    assert "Session history is not transferred" in section
+    canonical = PLUGIN_ROOT / "skills/shared/ai/design-ref-harness.md"
+    assert "Session history is not transferred" in canonical.read_text()
+    assert "against both models on same session" not in canonical.read_text()

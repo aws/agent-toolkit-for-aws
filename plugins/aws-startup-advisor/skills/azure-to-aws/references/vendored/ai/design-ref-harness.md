@@ -19,7 +19,7 @@ Recommend Harness when:
 - Single agent with tools (not complex multi-agent orchestration)
 - OpenAI Assistants API migration (closest 1:1 mapping — Assistants → Harness declarations)
 - Team wants managed runtime, memory, identity, and observability without building it
-- Incremental migration: run existing OpenAI/Gemini models on AgentCore infrastructure, swap to Bedrock per-invocation
+- Incremental migration: compare source-provider and Bedrock models in separate sessions, then start new application sessions on Bedrock
 - Agent tasks run < 8 hours (Harness session limit)
 - Team prefers config-first iteration over code-first
 - Production workload — Harness is GA in all commercial regions with full platform support
@@ -43,7 +43,7 @@ Map discovered elements to Harness configuration:
 
 | Discovered element                                  | Harness config                                                             | Notes                                                               |
 | --------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `bedrock_models[0].aws_model_id`                    | `model` (default)                                                          | Primary Bedrock model from Part 1 model selection                   |
+| `bedrock_models[0].aws_model_id`                    | `model.modelId`, with `model.provider: "bedrock"`                            | CLI input JSON; the CLI writes its native Harness YAML             |
 | `agents[0].role` or system prompt from code         | `systemPrompt`                                                             | Extract from code if possible; placeholder if not                   |
 | Tools with `transport: "mcp"`                       | `tools[]: {"type": "remote_mcp", "config": {"remoteMcp": {"url": "..."}}}` | Direct MCP server connection                                        |
 | Tools with `transport: "api"`                       | `tools[]: {"type": "remote_mcp"}` or `{"type": "agentcore_gateway"}`       | Wrap API as MCP server, or use Gateway for centralized auth         |
@@ -71,27 +71,29 @@ For each tool in tool_manifest[]:
 
 ---
 
-## Incremental Migration via Multi-Model Switching
+## Incremental Migration with Separate Comparison Sessions
 
 If `ai_constraints.agentic.incremental_migration == true`:
 
 ### Phase 0: Deploy on Harness with existing source provider model
 
-1. Store source provider API key in AgentCore Identity token vault
-2. Create Harness with source model as default (e.g., `--model-provider open_ai --model-id gpt-4o`)
+1. Configure the source provider credential through the official npm CLI without embedding the key in generated artifacts.
+2. Set the source model and credential reference in the project's native `app/<name>/harness.yaml`, then deploy. Use the CLI's Gemini configuration for a legacy `source_model_provider: "google"` design.
 3. Deploy and validate: existing behavior preserved on AWS infrastructure
 4. Benefit: AWS observability, security, and scaling — without changing the model yet
 
 ### Phase 1: A/B test with Bedrock model
 
-1. Override `--model-id` per invocation with Bedrock model from design
-2. Compare responses: quality, latency, tool-calling behavior
-3. Run evaluation prompts from `test_comparison.py` against both models on same session
+1. Retain two distinct UUIDs, `SOURCE_SESSION_ID` and `TARGET_SESSION_ID`, with the comparison evidence. Invoke the source using `--session-id "$SOURCE_SESSION_ID"` and `--prompt`.
+2. Update the native Harness YAML to the selected Bedrock model and deploy it before invoking with `--session-id "$TARGET_SESSION_ID"`.
+3. Replay the same ordered prompts independently and compare quality, latency, and tool behavior. **Session history is not transferred.** Do not reuse the source session ID or generate per-invocation model/provider override flags.
+
+For manual commands, call `node "$(npm root -g)/@aws/agentcore/dist/index.js"` so the Python starter toolkit cannot shadow the CLI. Follow the generated manual plan; it does not deploy or invoke automatically.
 
 ### Phase 2: Switch default to Bedrock
 
-1. Update Harness default model to Bedrock model ID
-2. Keep source provider credentials as fallback
+1. Start new application sessions on the deployed Bedrock configuration.
+2. Keep source credentials for a rollback that deploys the source configuration and starts new sessions.
 3. Monitor for 48 hours
 
 ### Phase 3: Remove source provider
