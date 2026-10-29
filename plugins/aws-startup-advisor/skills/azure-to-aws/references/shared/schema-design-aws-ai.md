@@ -106,7 +106,8 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
   `design_blocks[]` rows with `target_aws_service`.
 - **`capability_mapping`** — per capability that is `true` in the profile's
   `integration.capabilities_summary`: `{ parity: "full|partial|none", notes }`.
-- **`code_migration`** — `primary_pattern` (matches profile `integration.pattern`),
+- **`code_migration`** — `migration_path` (the selected API/endpoint path consumed by Generate),
+  `primary_pattern` (matches profile `integration.pattern`),
   `framework`, `files_to_modify[]`, `dependency_changes`, and — when the source is Azure
   OpenAI / OpenAI — `openrouter_path` when a router was detected
   (`same_model_mantle|direct|litellm|keep_openrouter`).
@@ -115,6 +116,7 @@ Traditional-AI capabilities (AWS AI service, not Bedrock): `document_extraction`
 
 ## migration_path vocabulary
 
+`mantle_openai_chat` preserves a selected GPT-6 Chat Completions API on Mantle.
 `mantle_openai_responses` (Azure OpenAI / OpenAI source, model on Bedrock, region carries it —
 keep the SDK, `model_change: false`) · `runtime_openai_cris` (GPT-5.6/GPT-6 same-model move
 served via `bedrock-runtime` CRIS, `us.`/`global.` prefixed, `model_change: false`) · `converse`
@@ -190,6 +192,8 @@ rubric file (`ai.md`, `ai-azure-openai-to-bedrock.md`, or a `vendored/ai/*` ref)
       `price_comparison`.
 - [ ] `honest_assessment` overall is the weakest across `bedrock_models[]`; if
       `recommend_stay`, `honest_assessment_reason` names a non-cost blocker.
+- [ ] Bare proprietary GPT ids use Mantle; runtime Astra uses a supported `us.` / `global.`
+      CRIS id and its caller-region gate. The recorded API and `model_change` match the design.
 - [ ] No `bedrock_models[]` entry pairs **GPT-5.5 or GPT-5.4** with a `converse`/`bedrock-runtime`
       migration path (those two models only — mantle-only, no CRIS). GPT-5.6 and GPT-6 models MAY
       use `migration_path: "runtime_openai_cris"` on `bedrock-runtime` — this is NOT a violation.

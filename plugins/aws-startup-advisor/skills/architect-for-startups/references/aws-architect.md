@@ -6,12 +6,12 @@
 
 | Stage                     | Default Compute                   | Why                                                                                                                                                                          |
 | ------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pre-seed / MVP            | Lambda + API Gateway              | $0 at zero traffic. Ship in hours, not days.                                                                                                                                 |
-| Seed / Early traction     | Lambda OR ECS Fargate             | Fargate if you need WebSockets or >15min processing. ALB setup cost is worth avoiding a forced re-platform later. Lambda function URLs + response streaming cover some gaps. |
+| Pre-seed / MVP            | Lambda Event Functions + API Gateway | $0 at zero traffic. Ship in hours, not days. |
+| Seed / Early traction     | Lambda Event/Web Functions OR ECS Fargate | Event Functions for event-driven work; Web Functions for Node.js HTTP servers (30s default request timeout, 900s maximum). Fargate for WebSockets or >15min processing. |
 | Series A / Steady traffic | ECS Fargate                       | Predictable costs at steady-state; Savings Plans eligible                                                                                                                    |
 | Series B+ / Team has K8s  | EKS only if team already knows it | Never adopt K8s as a startup unless you're hiring K8s engineers                                                                                                              |
 
-**Counterintuitive**: ECS Fargate at seed stage feels heavy, but the ALB + target group + task definition setup is a one-time cost (~1 day). You avoid a forced re-platform when you outgrow Lambda's 15-minute timeout or need persistent connections. For simpler cases, Lambda function URLs with response streaming can bridge the gap without a full container deploy.
+**Counterintuitive**: ECS Fargate at seed stage feels heavy, but the ALB + target group + task definition setup is a one-time cost (~1 day). You avoid a forced re-platform when you outgrow Lambda Event Functions' 15-minute execution timeout or need WebSockets. For Node.js HTTP services, Lambda Web Functions offer a server-style programming model and native response streaming, with a [maximum request duration of 900 seconds](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-revisions.html) (30 seconds by default). Their HTTP endpoint [removes the `Connection` and `Upgrade` headers](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-http.html), so use containers for WebSockets or requests that exceed that limit. For simpler cases, Lambda Event Function URLs with response streaming can bridge the gap without a full container deploy.
 
 ### Database — The Startup Trap
 
@@ -53,7 +53,7 @@ Before finalizing any architecture, ask: "If traffic 10x's, what happens to my b
 
 | Service            | 10x Behavior                                  | Startup Risk                                                                                                           |
 | ------------------ | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Lambda             | 10x invocations = ~10x cost                   | Low risk — linear and predictable                                                                                      |
+| Lambda Event Functions | 10x invocations = ~10x cost               | Low risk — linear and predictable                                                                                      |
 | DynamoDB on-demand | 10x reads/writes = ~10x cost                  | Medium risk — costs scale linearly with reads/writes. Design access patterns early to avoid surprise bills at traction |
 | RDS                | Doesn't auto-scale (unless Aurora Serverless) | Low cost risk, HIGH availability risk                                                                                  |
 | NAT Gateway        | 10x data = 10x data processing charges        | High risk — this is where surprise bills come from                                                                     |

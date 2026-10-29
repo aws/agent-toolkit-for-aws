@@ -107,7 +107,7 @@ Common errors from using the wrong ID format:
 
 Verify the Correct ID format:
 
-- For foundation models: `aws bedrock get-foundation-model --model-identifier``<model-id>```
+- For foundation models: `aws bedrock get-foundation-model --model-identifier <model-id>`
 - For inference profiles: `aws bedrock list-inference-profiles --region <region>` - see [Supported inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html)
 
 ## Prompt Caching

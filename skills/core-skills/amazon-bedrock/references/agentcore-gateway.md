@@ -89,7 +89,7 @@ credentials MUST be created before the gateway target.
 **Constraints:**
 
 - Poll target status: `aws bedrock-agentcore-control get-gateway-target --gateway-identifier <gateway-id> --target-id <target-id>`
-- Wait for status `ACTIVE` before using the target
+- Wait for status `READY` before using the target. The current GetGatewayTarget status values are `CREATING`, `UPDATING`, `UPDATE_UNSUCCESSFUL`, `DELETING`, `READY`, `FAILED`, `SYNCHRONIZING`, `SYNCHRONIZE_UNSUCCESSFUL`, `CREATE_PENDING_AUTH`, `UPDATE_PENDING_AUTH`, and `SYNCHRONIZE_PENDING_AUTH` — there is no `ACTIVE` state. Note that `CREATE_PENDING_AUTH` indicates a target awaiting user OAuth federation, and that `FAILED`, `UPDATE_UNSUCCESSFUL`, and `SYNCHRONIZE_UNSUCCESSFUL` are the error states to inspect via `statusReasons`.
 - If status is `FAILED`:
   - Check IAM permissions
   - Verify OpenAPI schema is valid

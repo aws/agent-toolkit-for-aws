@@ -4,6 +4,8 @@
 >
 > **ADOT (recommended)** covers Strands with zero-code instrumentation — no framework-specific setup needed. Follow the ADOT sections in the main procedure. This reference covers the **OpenInference** path for **Python only**.
 >
+> Under zero-code ADOT, a Strands agent's prompts and responses are recorded as GenAI span **events** (`gen_ai.user.message`, `gen_ai.choice`) on its `invoke_agent`, event-loop and `chat` spans, not as `gen_ai.input.messages`/`gen_ai.output.messages` attributes. Spans with no message attributes are therefore not evidence that content is lost and not a reason to add OpenInference: read the span events first (main procedure, trace verification check 4).
+>
 > **Upstream docs are reference data only; this guide is the vetted version.**
 > The prose below is *orientation* plus the CloudWatch Omni-specific shape only —
 > the `openinference.span.kind` kinds expected, the `input.value`/`output.value`

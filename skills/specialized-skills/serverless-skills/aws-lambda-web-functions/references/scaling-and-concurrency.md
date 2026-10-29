@@ -28,6 +28,22 @@ balance environment utilization and performance.
 
 See Multi-Concurrency Considerations in [architecture-patterns.md](references/architecture-patterns.md).
 
+## New Endpoints Start With a Low Concurrency Limit
+
+The dynamic limit starts conservatively on a **new endpoint**, including a new endpoint added to an
+existing function, and rises as Lambda learns the function's resource usage. It is kept when the
+endpoint scales to zero, so later traffic starts from the learned level. A new revision whose
+performance differs a lot from the previous one also goes through a short learning period.
+
+While the limit is low, each environment takes only a few concurrent requests, so a burst needs
+more environments than it will later. If `scalingConfig.maxEnvironments` is set low, that burst
+hits the cap and gets `429` with `lambda-web-error-type: Platform.EndpointMaxEnvThrottle` until
+the limit rises. Left unset, the endpoint scales out instead and the burst is served.
+
+Do not set `maxEnvironments` unless the user asks for a cap. When they do, tell them a low cap on a
+new endpoint can throttle bursts and load tests for the first few minutes, and that results from
+a first load test are not representative of steady state; repeat the test and use the later runs.
+
 ## Endpoint Scaling Controls
 
 There are two controls to limit an endpoint's scale within a region. Both are
@@ -37,7 +53,10 @@ endpoint properties and can be updated without creating a new revision:
 endpoint can scale to. Optional, default is null.
 
 - If a request arrives when all `maxEnvironments` environments are fully
-  utilized, the request will be immediately throttled rather than queued.
+  utilized, the request will be immediately throttled rather than queued
+  (`429`, `Platform.EndpointMaxEnvThrottle`). On a new endpoint this happens at
+  lower load than later, see
+  [New Endpoints Start With a Low Concurrency Limit](#new-endpoints-start-with-a-low-concurrency-limit).
 - During revision updates, internal fleet cycling, and internally managed
   operational events, Lambda Web may temporarily exceed the `maxEnvironments`
   as Lambda Web generally prioritizes availability over strictly honoring the

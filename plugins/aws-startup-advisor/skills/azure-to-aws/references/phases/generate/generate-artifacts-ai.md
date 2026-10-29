@@ -27,7 +27,7 @@ Read `aws-design-ai.json → ai_architecture.code_migration.migration_path` and
 
 | `migration_path` / framework                                      | Emits (in addition to the always-on set)                                  |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `mantle_openai_responses`                                         | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**       |
+| `mantle_openai_responses` / `mantle_openai_chat`                                         | `ai-migration/migrate_to_mantle.sh` — **skip the provider adapter**       |
 | `runtime_openai_cris`                                              | `ai-migration/migrate_to_mantle.sh` (CRIS variant — `bedrock-runtime` base URL + CRIS id) — skip the provider adapter |
 | `direct` (or absent) or `converse`                                | `ai-migration/provider_adapter.{py,js,go}` — `converse` is a Converse client swap, not a Mantle script |
 | `gpt-oss`                                                         | `ai-migration/provider_adapter.{py,js,go}` targeting gpt-oss via Converse |
@@ -61,7 +61,9 @@ a Converse call against the `bedrock-runtime` CRIS id — rather than defaulting
 `responses.create`. Absent or `"responses"` keeps the Responses surface (the region-only-move
 default).
 
-## Step 1: `provider_adapter.{py,js,go}` (direct / gpt-oss path)
+Adapt Azure-specific client/deployment/API-version settings to the Bedrock client rather than relying on OPENAI_BASE_URL alone.
+
+## Step 1: `provider_adapter.{py,js,go}` (direct / gpt-oss / runtime_openai_cris path)
 
 Feature-flagged on `AI_PROVIDER` (values `azure_openai` | `bedrock` | `shadow`; **default
 `azure_openai`**). Emits methods gated on `integration.capabilities_summary`: `text_generation`→
@@ -150,6 +152,8 @@ is AWS-only and ports from gcp unchanged.
       path emitted the adapter and NO mantle script.
 - [ ] `bedrock_monitoring.tf` present on every path; budget is a computed integer ≥ 10.
 - [ ] No secret VALUE in any emitted file; credentials are env-var references.
+- [ ] Bare proprietary GPT ids use Mantle; Astra runtime calls retain the validated `us.` /
+      `global.` CRIS id. Chat/Responses and runtime artifact selection match the saved design.
 - [ ] No **GPT-5.5 or GPT-5.4** model ID paired with a Converse/`bedrock-runtime` path (those two
       models only — mantle-only, no CRIS). GPT-5.6 and GPT-6 models MAY use
       `migration_path: "runtime_openai_cris"` on `bedrock-runtime` — this is NOT a violation.

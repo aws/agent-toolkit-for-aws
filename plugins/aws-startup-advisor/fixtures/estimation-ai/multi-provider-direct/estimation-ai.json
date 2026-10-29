@@ -1,0 +1,126 @@
+{
+  "phase": "estimate",
+  "timestamp": "2026-09-08T03:10:00Z",
+  "pricing_source": "cached",
+  "accuracy_confidence": "±15-25%",
+  "current_costs": {
+    "source": "mixed",
+    "monthly_ai_spend": 1200.0,
+    "services": ["anthropic_api", "openai_api"]
+  },
+  "token_volume": {
+    "source": "tier_table",
+    "monthly_input_tokens": 60000000,
+    "monthly_output_tokens": 40000000,
+    "ratio": "60/40"
+  },
+  "model_comparison": [
+    {
+      "model": "anthropic.claude-sonnet-4-5-v1:0",
+      "monthly_cost": 1320.0,
+      "vs_current": "+10%",
+      "quality": "high",
+      "capabilities_match": true,
+      "missing_capabilities": []
+    },
+    {
+      "model": "openai.gpt-5.6-terra",
+      "monthly_cost": 660.0,
+      "vs_current": "-12%",
+      "quality": "high",
+      "capabilities_match": true,
+      "missing_capabilities": []
+    }
+  ],
+  "recommended_model": {
+    "model": "anthropic.claude-sonnet-4-5-v1:0",
+    "monthly_cost": 1320.0,
+    "breakdown": {"input": 900.0, "output": 420.0, "embeddings": 0.0},
+    "rationale": "Same-model migration for the Anthropic-sourced workload; current recommended model and provider priority favor Claude."
+  },
+  "backup_model": {
+    "model": "anthropic.claude-haiku-4-5-v1:0",
+    "monthly_cost": 480.0,
+    "rationale": "Lower-cost fallback within the same model family."
+  },
+  "cost_comparison": {
+    "current_source_monthly": 1200.0,
+    "projected_bedrock_monthly": 1980.0,
+    "monthly_difference": 780.0,
+    "annual_difference": 9360.0,
+    "percent_change": 65.0
+  },
+  "migration_cost_considerations": {
+    "categories": [],
+    "complexity_factors": ["integration.pattern = \"direct_sdk\" -> moderate SDK and API pattern changes"],
+    "note": "Human and professional-services one-time migration costs are intentionally excluded from this advisor."
+  },
+  "roi_analysis": {
+    "monthly_cost_delta": 780.0,
+    "annual_cost_delta": 9360.0,
+    "justification": "Combined Anthropic and OpenAI Bedrock costs are higher than current direct-API spend; non-cost benefits justify the move.",
+    "non_cost_benefits": ["IAM/VPC/PrivateLink/KMS/CloudTrail governance", "usage counting toward existing AWS commitments"]
+  },
+  "optimization_opportunities": [
+    {
+      "opportunity": "Prompt caching",
+      "type": "prompt_caching",
+      "target_services": ["Bedrock"],
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "up to 90% on cached input tokens",
+      "commitment": "none",
+      "implementation_effort": "low",
+      "available": "day_1",
+      "description": "Repeated system prompts qualify for cache-read pricing on both Claude and GPT-5.6."
+    },
+    {
+      "opportunity": "Model downsizing / tiering",
+      "type": "model_tiering",
+      "target_services": ["Bedrock"],
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "60-87%",
+      "commitment": "none",
+      "implementation_effort": "low",
+      "available": "day_1",
+      "description": "High-volume, premium model selected; a lower tier may suffice for simple queries."
+    }
+  ],
+  "optimized_projection": {
+    "monthly_with_optimizations": 1400.0,
+    "vs_current": "+17%",
+    "note": "Best-case projection assuming prompt caching and selective model tiering."
+  },
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate to Bedrock",
+    "migrate_if": "Governance, residency, and commitment-counting benefits outweigh the modest cost premium.",
+    "stay_if": "Cost is the only priority and no non-cost driver applies.",
+    "confidence": "high",
+    "rationale": "Both Bedrock targets carry a modest premium over direct-API pricing, offset by governance and ecosystem benefits; both source models are strong_migrate per the design assessment."
+  },
+  "cost_by_source": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "models": [
+        {
+          "model": "claude-3-5-sonnet-20240620",
+          "monthly_cost": 1320.0,
+          "vs_source_percent": 10.0
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "monthly_cost": 660.0,
+          "vs_source_percent": -12.0
+        }
+      ]
+    }
+  ],
+  "services_not_estimated": []
+}

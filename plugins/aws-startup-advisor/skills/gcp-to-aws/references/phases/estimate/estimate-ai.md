@@ -49,6 +49,8 @@ Determine current AI spending from the best available source:
 
 Regardless of which dollar source wins, `usage_by_model[]` from EVERY usage profile that exists (`openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or `anthropic-usage-profile.json`) remains the Part 2 token-volume source — not just whichever profile happened to be readable first. When more than one exists, combine their per-model rows (normalizing OpenRouter's `prompt_tokens`/`completion_tokens` to `input_tokens`/`output_tokens`, and INCLUDING Anthropic's `cache_read_tokens`/`cache_creation_tokens` in the sum — these are additional volume the Admin API reports separately from `input_tokens`, per the Prerequisites note) into one volume figure, the same SUM discipline as their dollar figures above — a token-volume comparison that reads only a subset of profiles while the dollar comparison above already summed all of them understates the workload by exactly the fraction the omitted profile(s) carry (subject to the same `partial_window` exception there, applied per profile).
 
+**Live CLI usage.** When `gcp-publisher-metrics-profile.json` exists, its tokens are Gemini and Vertex publisher usage, including serverless Gemini that has no endpoint. Add its `input_tokens` and `output_tokens` to the Part 2 volume. The profile has no dollar field. A GCP billing CSV stays the dollar source. Do not add a second bill derived from these tokens. `request_type` `shared` is not provisioned quota. `observed_p95_first_token_ms` is the worst hour's p95, not the 30-day percentile and not a latency SLO. `peak.peak_source` `"hour"` means the maximum hour anywhere in the window, divided by 60, not the busiest hour of the busiest day. Say that when you use it as a quota starting point. Design already applied the observed-peak rule in `bedrock-quotas.md`. Do not recompute `quota_risk` from the monthly tier alone. Empty monitoring is not proof the project has no AI. Do not divide the month by the number of minutes and call the result a peak.
+
 **IaC-only profile:** If `metadata.profile_source` is `iac_vertex` or `summary.inferred_from_iac` is true and billing/token data is missing, state explicitly that **current GCP AI spend is unverified** and widen uncertainty bands (use the same multi-tier comparison approach as in case 3).
 
 ---
@@ -101,6 +103,11 @@ family — long context table, Global column) is $135. Bedrock Global CRIS long-
 (parity); Bedrock In-Region/Geo-CRIS long-context ($4.40 input / $16.50 output) is $148.50 — a
 ~10% premium, not the 112% a flat-rate comparison would produce.
 
+**Astra context and inference option:** use its dedicated table in `shared/pricing-cache.md`:
+short-context at up to 272K input tokens, long-context above that boundary, with separate
+In-Region/Geo and Global input/output rates. Do not use a short-context row for a long-context
+workload or apply a Claude-specific surcharge to Astra.
+
 **Comparison table columns:** Model, Bedrock Monthly, vs Source Provider ($ and %), vs Current GCP, Quality, Capabilities Match (checked against `ai_capabilities_required`).
 
 Include source provider pricing from `aws-design-ai.json` → `bedrock_models[].source_provider_price`.
@@ -146,13 +153,22 @@ Do **not** repeat these as "costs" in the user-facing summary.
 
 Present the monthly and annual cost difference between current GCP AI spend and projected Bedrock cost:
 
-- **If the model is unchanged** (`model_change: false`): projected cost is **about 10% higher**, not the same, UNLESS the chosen path is Global CRIS (`migration_path: "runtime_openai_cris"` with a `global.`-prefixed model ID) — Global CRIS is priced at OpenAI's standard list price, i.e. cost PARITY with the source, not a premium. In-Region and Geo CRIS (and any GPT-5.5/GPT-5.4 move, which has no CRIS at all) remain at the 1.10x data-residency-tier premium over OpenAI standard. Quote whichever applies plainly and make the case on non-cost grounds. If any workload exceeds 272K context, price it at the long-context tier (2.0x input / 1.5x output) and show that separately; it can dominate the comparison.
+- **If the model is unchanged** (`model_change: false`): compute the difference from the verified source rate and the selected model's context tier and inference option. Do not impose a fixed premium. A verified $60 source versus $60 Astra Global comparison is 0%; an applicable $60 source versus $66 In-Region/Geo comparison is 10%. If the source rate is unverified, mark the source comparison unavailable and do not infer a percentage from another tier. For Astra inputs above 272K, select its long-context input/output rates for that inference option before calculating totals.
 - **If Bedrock is cheaper**: present monthly and annual savings clearly
 - **If Bedrock is more expensive**: state clearly, justify with non-cost benefits or note "not justified if cost is the only priority"
 
+When both monthly totals are established for the same workload volume, calculate:
+
+```python
+monthly_difference = bedrock_monthly - source_monthly
+percentage_difference = monthly_difference / source_monthly * 100 if source_monthly > 0 else None
+```
+
+A zero source total has no defined percentage comparison; show the dollar difference instead.
+
 Reference `aws-design-ai.json` → `honest_assessment`. If `"recommend_stay"`, present prominently along with `honest_assessment_reason`.
 
-**Non-cost benefits to present:** usage counting toward existing AWS commitments, IAM/VPC/PrivateLink/KMS/CloudTrail governance, in-region processing for data residency, prompt caching (Claude, and GPT-5.6 at 90% off cached input with cached tokens exempt from the input-TPM quota), model flexibility (100+ models), AWS ecosystem (Guardrails, Knowledge Bases, AgentCore), and — for a same-model move — the elimination of behavior-delta and prompt-regression risk.
+**Non-cost benefits to present:** usage counting toward existing AWS commitments, IAM/VPC/PrivateLink/KMS/CloudTrail governance, in-region processing for data residency, prompt caching (Claude, and GPT-5.6 at 90% off cached input with cached tokens exempt from the input-TPM quota), model flexibility (100+ models), AWS ecosystem (Guardrails, Knowledge Bases, AgentCore), and — for a same-model move — reduced model-change risk, while endpoint/API compatibility still requires evaluation.
 
 **Pricing source caveat (all providers):** a `references/vendored/ai/bedrock-pricing-cache.md` cell marked `_unverified_` is **blocking for any quoted Bedrock figure, whatever the provider** — resolve it from the Bedrock pricing page or the model card before the row enters `model_comparison` or the ROI table; never substitute a guess or a same-tier sibling's rate. An `_unverified_` Bedrock cache cell is not evidence the model is unavailable or free — it means the rate was not confirmed when the cache was last updated. See `shared/openai-on-bedrock.md`.
 
@@ -250,7 +266,7 @@ Produce a clear migrate/stay/optimize verdict for the AI workload migration. Thi
 
 | Condition                                                                                                                         | Verdict             | `recommendation.path` |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------- |
-| **Same model on Bedrock** (`model_change: false`) — ~10% higher, short-context; non-cost benefits carry it                        | Migrate with caveat | `migrate_optimized`   |
+| **Same model on Bedrock** (`model_change: false`) — use the verified Part 5 cost delta and applicable non-cost benefits                        | Migrate with caveat | `migrate_optimized`   |
 | Bedrock cheaper AND capabilities match                                                                                            | Migrate             | `migrate_optimized`   |
 | Bedrock more expensive BUT non-cost benefits justify (vendor diversification, Guardrails, multi-model) AND user priority ≠ `cost` | Migrate with caveat | `migrate_optimized`   |
 | Bedrock more expensive AND user priority = `cost` AND no compelling non-cost reason                                               | Stay                | `stay`                |
@@ -274,7 +290,7 @@ Produce a clear migrate/stay/optimize verdict for the AI workload migration. Thi
 
 - MUST emit `recommendation` — never omit. If data is insufficient, set `confidence: "low"` and state why in `rationale`.
 - If `honest_assessment` from `aws-design-ai.json` says `recommend_stay`, `recommendation.path` MUST be `stay` regardless of cost numbers.
-- **A same-model move is a modest cost increase, not parity.** When `bedrock_models[].model_change` is `false`, Bedrock in-region costs ~10% more than OpenAI standard for the same model. Report that figure rather than "no savings identified", and argue the case on commitments, governance, residency, prompt caching, and eliminated behavior-delta risk. A ~10% increase alone should not route to `stay` unless `ai_priority = cost` and no non-cost driver applies; a long-context workload at the 1M tier is a different matter and may legitimately favour staying.
+- **Same-model cost is the computed Part 5 result, not a fixed premium.** The final `recommendation.rationale` must use the selected inference option/context tier and verified source baseline. Report parity, savings or an increase as actually calculated. When the source comparison is unavailable, say so, set confidence appropriately and do not invent a percentage. Apply the decision table to those actual costs and the user's non-cost drivers; the `honest_assessment: recommend_stay` override still takes precedence.
 - For multi-workload runs: if some workloads favor migration and others don't, use `migrate_phased` and list which workloads to migrate vs. keep in `rationale`.
 
 ---

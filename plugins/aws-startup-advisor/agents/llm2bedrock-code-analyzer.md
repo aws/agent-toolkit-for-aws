@@ -256,7 +256,12 @@ If `source_provider ∈ {openai, google, anthropic}` AND `same_model_family == f
 
 For `cohere` or `custom`, set `behavior_deltas: []` and skip this section. Anthropic always loads `references/anthropic-to-bedrock.md`: a version hop needs the selected target's full parameter/thinking/prefill/tool/response checks, and an exact same-model move still needs API/path compatibility checks. Emit `[]` only after those checks find no deltas.
 
-**Exception — OpenAI same-model on mantle.** When `source_provider == openai` AND `same_model_family == true` (every target is a proprietary `openai.gpt-5*` / `openai.gpt-6*` model), do NOT emit `behavior_deltas: []` wholesale. The model is unchanged, so the parameter-surface deltas (temperature range, penalties, stop sequences) genuinely do not apply — but the **API surface** can still change. Read only the "Same-model (mantle) deltas" section of the reference's `openai-to-bedrock.md` and emit those: Chat Completions → Responses, reasoning items round-tripping, endpoint path and credential, and prompt-caching availability. Skipping these would leave a `chat.completions.create` call pointed at a model that does not verifiably accept it.
+**Exception — proprietary OpenAI targets.** For GPT-6 Astra / GPT-5.x, load the
+"Same-vendor GPT endpoint and API deltas" section of the OpenAI reference even when
+`same_model_family == true`. It covers both bare Mantle and supported runtime CRIS forms.
+Model identity does not prove API or parameter parity: preserve the selected Chat/Responses
+surface, verify Astra's unprobed parameters, and keep endpoint/credential deltas. Do not apply
+Claude-specific parameter changes to Astra. A same-vendor version upgrade still requires eval.
 
 1. Read the `behavior-delta-detection` reference at the absolute path given in your
    context block's `behavior-delta-detection reference:` line. Call that file's directory
@@ -377,7 +382,7 @@ Return ONE flat object: the typed fields and `summary` are all top-level sibling
   "source_provider": "openai",
   "source_models": ["gpt-4o"],
   "target_models": ["gpt-4o -> us.anthropic.claude-sonnet-4-6"],
-  "_comment_target_models": "example only — the real mapping comes from the migration plan, never from this illustration. Plans may also map same-provider (e.g. gpt-4o -> openai.gpt-5.6-terra on Bedrock Mantle); note that GPT-5.6 targets are Responses-API-only (no Converse, no us./global. inference profiles), so echo them bare and expect the rewrite to keep the OpenAI SDK surface",
+  "_comment_target_models": "example only — the real mapping comes from the migration plan, never from this illustration. Plans may also map same-provider (e.g. gpt-4o -> openai.gpt-5.6-terra on Bedrock Mantle); preserve the validated endpoint and id form: bare proprietary GPT ids select Mantle; supported GPT-5.6/Astra CRIS ids select runtime; do not add or remove a prefix to change the chosen path",
   "same_model_family": false,
   "bedrock_provider_available": true,
   "prompt_locations": ["app.py:42 : SYSTEM_PROMPT constant"],

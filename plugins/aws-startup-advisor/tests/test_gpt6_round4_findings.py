@@ -111,14 +111,16 @@ def test_gcp_generate_ai_routes_cris_through_bedrock_runtime_not_mantle() -> Non
     assert "not** `bedrock-mantle:*`" in normalized or "not `bedrock-mantle:*`" in normalized.lower()
 
 
-def test_gcp_generate_artifacts_ai_step1m_emits_provider_adapter_stub() -> None:
+def test_gcp_step1m_and_harness_agree_on_adapter_free_paths() -> None:
     text = GCP_GENERATE_ARTIFACTS_AI_MD.read_text(encoding="utf-8")
-    assert "provider_adapter.py" in text and "stub" in text.lower(), (
-        "generate-artifacts-ai.md Step 1M must emit a provider_adapter stub for mantle/CRIS "
-        "paths so Step 2's unconditional `from provider_adapter import get_provider` import "
-        "keeps working"
-    )
-    assert "get_provider" in text
+    step1m = text.split("## Step 1M:", 1)[1].split("## Step 1:", 1)[0]
+    harness = text.split("## Step 2:", 1)[1].split("## Step 3:", 1)[0]
+    assert "do not emit or import a provider-adapter stub" in step1m
+    assert "Mantle / runtime CRIS" in harness
+    assert "do not import `provider_adapter`" in harness
+    assert "from provider_adapter import get_provider" in harness
+    assert "client.responses.create" in harness
+    assert "client.chat.completions.create" in harness
 
 
 # --- Finding 0.3: canonical guide + vendored guardrails name full GPT-6 set ---
@@ -157,7 +159,8 @@ def test_both_estimators_carve_out_global_cris_parity() -> None:
         assert "model_change: false" in text
         assert "Global CRIS" in text, f"{f}: no Global CRIS carve-out near model_change:false rule"
         assert "parity" in normalized.lower()
-        assert "UNLESS" in text, f"{f}: 10% premium must not be stated as unconditional"
+        assert "computed Part 5 result, not a fixed premium" in text
+        assert "source comparison is unavailable" in text
 
 
 # --- Finding 1 (prose): bare GPT-6 recognized by resolver / agents ---
