@@ -293,6 +293,8 @@ Generate strict JSON (no comments) as input to `agentcore add harness`. The CLI 
 
 Populate `tools` from the design as full JSON objects, not comma-separated tool names. Preserve each tool's name, type, and configuration using the [Harness tool schema](https://github.com/aws/agentcore-cli/blob/e2f59dad4bbb124021c0cf59111c4add63a9dbcb/docs/harness-project-configuration.md#tools-and-tool-access): `remote_mcp`/`remoteMcp`, `agentcore_gateway`/`agentCoreGateway`, `agentcore_browser`/`agentCoreBrowser`, `agentcore_code_interpreter`/`agentCoreCodeInterpreter`, and `inline_function`/`inlineFunction`. Do not silently drop tools or deploy unresolved TODOs. Use CLI-valid logical names (letters, numbers, underscores, starting with a letter).
 
+**Project identity (both deployment scripts):** Before first deployment, require the user to choose and confirm a non-reserved `PROJECT_NAME` that is unused by other migrations in the target AWS account and region. Pass it explicitly, for example `PROJECT_NAME=<chosen-name> ./deploy_harness.sh --execute` or `PROJECT_NAME=<chosen-name> ./deploy_strands.sh --execute`; use the same value for dry-run. Do not fill in a shared default. The CLI derives cloud stack identity from project and target names, not the local directory or runtime name. These scripts validate name format, not cloud availability. Preserve the created project and its `agentcore/agentcore.json` for subsequent updates; run the printed update command from that directory without changing its project name. Reusing a different migration's project name can update or remove that migration's resources.
+
 **Artifact 2: `ai-migration/deploy_harness.sh`**
 
 Generate a first-deployment script alongside `harness.json`. Dry-run by default. These commands follow the [AgentCore CLI 1.0.1 command reference](https://github.com/aws/agentcore-cli/blob/e2f59dad4bbb124021c0cf59111c4add63a9dbcb/command.md). Keep arguments separate: prompts and JSON must never be evaluated as shell code. A pre-existing project must be updated from its project directory, not overwritten by this script.
@@ -302,6 +304,14 @@ Generate a first-deployment script alongside `harness.json`. Dry-run by default.
 set -euo pipefail
 
 EXECUTE=${1:-""}
+# Caller-selected cloud identity; never default to a shared project name.
+PROJECT_NAME=$(python3 -c '
+import os, re
+name = os.environ.get("PROJECT_NAME", "")
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,22}", name):
+    raise SystemExit("Set PROJECT_NAME to a migration-specific name: start with a letter, use only letters/digits, maximum 23 characters")
+print(name)
+')
 RUN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REGION="{target_region from preferences.json}"
 
@@ -333,7 +343,6 @@ agentcore() {
     node "$AGENTCORE_ENTRY" "$@"
 }
 CONFIG="$RUN_DIR/harness.json"
-PROJECT_NAME="migration"
 HARNESS_NAME=$(python3 -c '
 import json, re, sys
 name = json.load(open(sys.argv[1]))["name"]
@@ -535,15 +544,22 @@ entrypoint = "main.py"
 
 Generate a first-deployment script. `add runtime` registers a Python HTTP runtime but does not generate its implementation. Copy the generated entrypoint, agent code and manifest into that runtime's directory before deployment. Add explicit copy commands for any additional migrated local modules. Dry-run must not create directories, install packages or call AWS. The SDK serves inside AgentCore's managed runtime; retain AWS IAM invocation authentication and do not publish its container port directly.
 
-Project names allow only letters and digits, start with a letter, and have a 23-character limit; `strands` itself is reserved by the CLI. Use `StrandsMigration` for this first-deployment project. Runtime names allow underscores and have a 48-character limit. Normalize hyphens in the source ID to underscores (for example, `research-agent` becomes `research_agent`), preserve the source ID in the generated agent code, and reject remaining invalid names rather than silently truncating them.
+Project names allow only letters and digits, start with a letter, and have a 23-character limit; `strands` itself is reserved by the CLI. Require the caller-selected `PROJECT_NAME` described below; never derive cloud identity from a fixed template name or the local directory. Runtime names allow underscores and have a 48-character limit. Normalize hyphens in the source ID to underscores (for example, `research-agent` becomes `research_agent`), preserve the source ID in the generated agent code, and reject remaining invalid names rather than silently truncating them.
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
 EXECUTE=${1:-""}
+# Caller-selected cloud identity; never default to a shared project name.
+PROJECT_NAME=$(python3 -c '
+import os, re
+name = os.environ.get("PROJECT_NAME", "")
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,22}", name):
+    raise SystemExit("Set PROJECT_NAME to a migration-specific name: start with a letter, use only letters/digits, maximum 23 characters")
+print(name)
+')
 RUN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-PROJECT_NAME="StrandsMigration"
 SOURCE_AGENT_ID="{agent_id}"
 RUNTIME_NAME=$(python3 -c '
 import re, sys

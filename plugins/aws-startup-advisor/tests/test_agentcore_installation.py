@@ -54,7 +54,7 @@ if args[0] == "create":
     project = cwd / opts["--name"]
     project.mkdir()
     (project / "agentcore").mkdir()
-    (project / "agentcore/agentcore.json").write_text("{}")
+    (project / "agentcore/agentcore.json").write_text(json.dumps({"name": opts["--name"]}))
 else:
     assert (cwd / "agentcore/agentcore.json").is_file(), "Not inside the created project"
     state_file = cwd / "registered.json"
@@ -153,6 +153,7 @@ else:
         "PATH": str(binaries), "COMMAND_LOG": str(log),
         "INSTALL_LOG": str(tmp_path / "installs"),
         "NPM_ROOT": str(npm_root),
+        "PROJECT_NAME": "CustomerA",
     }
 
 
@@ -184,7 +185,7 @@ def test_harness_preserves_json_and_prompt_as_arguments(generated):
     source, config, env = generated
     result = _run(generated, "harness")
     assert result.returncode == 0, result.stderr
-    project = source / "migration"
+    project = source / env["PROJECT_NAME"]
     state = json.loads((project / "registered.json").read_text())["options"]
     assert json.loads(state["--model"]) == config["model"]
     assert json.loads(state["--tools"]) == config["tools"]
@@ -199,7 +200,7 @@ def test_strands_registers_and_deploys_generated_code(generated):
     source, _, env = generated
     result = _run(generated, "strands")
     assert result.returncode == 0, result.stderr
-    project = source / "StrandsMigration"
+    project = source / env["PROJECT_NAME"]
     for name in ("main.py", "strands_agents.py", "pyproject.toml"):
         assert (project / "app/assistant" / name).read_bytes() == (source / name).read_bytes()
     manifest = (source / "pyproject.toml").read_text()
@@ -222,13 +223,26 @@ def test_harness_combined_name_limit(generated, length, accepted):
         assert not Path(env["COMMAND_LOG"]).exists()
 
 
+@pytest.mark.parametrize("harness_length,accepted", [(8, True), (9, False)])
+def test_harness_budget_uses_selected_project_name(generated, harness_length, accepted):
+    source, config, env = generated
+    env["PROJECT_NAME"] = "P" + "x" * 22
+    config["name"] = "a" * harness_length
+    (source / "harness.json").write_text(json.dumps(config))
+    result = _run(generated, "harness")
+    assert (result.returncode == 0) == accepted, result.stderr
+    if not accepted:
+        assert "exceeds 40 characters" in result.stderr
+        assert not Path(env["COMMAND_LOG"]).exists()
+
+
 @pytest.mark.parametrize("generated", ["research-agent", "Research-Agent_2", "a" * 48], indirect=True)
 def test_strands_source_id_maps_to_valid_runtime_name(generated, request):
     source, _, env = generated
     result = _run(generated, "strands")
     assert result.returncode == 0, result.stderr
     runtime_name = request.node.callspec.params["generated"].replace("-", "_")
-    project = source / "StrandsMigration"
+    project = source / env["PROJECT_NAME"]
     state = json.loads((project / "registered.json").read_text())
     assert state["options"]["--name"] == runtime_name
     assert (project / "app" / runtime_name / "main.py").is_file()
@@ -256,6 +270,49 @@ def test_cli_stub_rejects_invalid_or_reserved_project_names(generated, name):
     )
     assert result.returncode != 0
     assert not (source / name).exists()
+
+
+@pytest.mark.parametrize("name", ["harness", "strands"])
+@pytest.mark.parametrize("project_name", [None, "", "bad_name", "9project", "a" * 24])
+def test_project_identity_is_required_and_validated_before_mutation(generated, name, project_name):
+    _, _, env = generated
+    if project_name is None:
+        env.pop("PROJECT_NAME")
+    else:
+        env["PROJECT_NAME"] = project_name
+    result = _run(generated, name)
+    assert result.returncode != 0
+    assert "PROJECT_NAME" in result.stderr
+    assert not Path(env["COMMAND_LOG"]).exists()
+    assert not Path(env["INSTALL_LOG"]).exists()
+
+
+@pytest.mark.parametrize("name", ["harness", "strands"])
+def test_independent_migrations_keep_distinct_project_identities_on_update(generated, name):
+    source, _, env = generated
+    for project_name in ("CustomerA", "CustomerB"):
+        env["PROJECT_NAME"] = project_name
+        result = _run(generated, name)
+        assert result.returncode == 0, result.stderr
+        project = source / project_name
+        assert json.loads((project / "agentcore/agentcore.json").read_text())["name"] == project_name
+        assert str(project) in result.stdout
+    calls = [json.loads(line) for line in Path(env["COMMAND_LOG"]).read_text().splitlines()]
+    assert {call["cwd"] for call in calls if call["args"][0] == "deploy"} == {
+        str(source / "CustomerA"), str(source / "CustomerB")
+    }
+    # A later update runs in the retained project: it must not create a new one
+    # or take its identity from a changed shell variable.
+    env["PROJECT_NAME"] = "UnrelatedProject"
+    result = subprocess.run(
+        [str(Path(env["PATH"]) / "node"),
+         str(Path(env["NPM_ROOT"]) / "@aws/agentcore/dist/index.js"),
+         "deploy", "--region", "us-east-1"],
+        cwd=source / "CustomerA", env=env, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads((source / "CustomerA/agentcore/agentcore.json").read_text())["name"] == "CustomerA"
+    assert not (source / "UnrelatedProject").exists()
 
 
 def test_runtime_entrypoint_invokes_migrated_callable_without_import_inference(generated):
