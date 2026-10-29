@@ -15,7 +15,7 @@ agentcore add harness \
 agentcore add gateway --name <GatewayName> --authorizer-type AWS_IAM
 ```
 
-Adjust invocation limits to the approved plan. A Bedrock Agent's source `foundationModel` may need an inference profile in the target region. Read `app/<HarnessName>/harness.yaml`; it uses `model.bedrockModelConfig.modelId`, not the JSON input shape used by `--model`. Put the mapped instruction in `app/<HarnessName>/system-prompt.md`. If the source idle session TTL matters, set the `lifecycleConfig.idleRuntimeSessionTimeout` field in `harness.yaml` to the mapped value. Keep managed memory configured unless the assessment calls for a different mode.
+Adjust invocation limits to the approved plan. A Bedrock Agent's source `foundationModel` may need an inference profile in the target region. Read `app/<HarnessName>/harness.yaml`; it uses `model.bedrockModelConfig.modelId`, not the JSON input shape used by `--model`. Put the mapped instruction in `app/<HarnessName>/system-prompt.md`. If the source idle session TTL matters, set `environment.agentCoreRuntimeEnvironment.lifecycleConfiguration.idleRuntimeSessionTimeout` in `harness.yaml` to the mapped value. Keep managed memory configured unless the assessment calls for a different mode.
 
 For Code Interpreter, add one tool to the YAML `tools` list:
 

@@ -113,7 +113,7 @@ If the intent is ambiguous, ask the developer which capability they want to add.
 
 For a Strands Runtime, the model is configured in `app/<RuntimeName>/model/load.py` (the `agent-python-strands` template uses `app/agent/model/load.py`). To change it:
 
-1. Open `app/<AgentName>/model/load.py`
+1. Open `app/<RuntimeName>/model/load.py`
 2. Change the `model_id` parameter in the `BedrockModel()` constructor
 
 ```python
@@ -136,7 +136,7 @@ After changing the model:
 - If using `agents-harden`, update the IAM policy to scope to the new model ARN
 - Run `agentcore dev` to test locally, then `agentcore deploy` to update the deployed agent
 
-For a Harness, edit `app/<HarnessName>/harness.yaml` instead, under `model.modelId`, then run `agentcore deploy`. A Runtime model is configured in code.
+For a Bedrock Harness, edit `app/<HarnessName>/harness.yaml` instead, under `model.bedrockModelConfig.modelId`, then run `agentcore build` and `agentcore deploy`. Other Harness model providers use their corresponding model configuration block. A Runtime model is configured in code.
 
 ### Pre-flight: validate any `--name` before generating the CLI command
 
