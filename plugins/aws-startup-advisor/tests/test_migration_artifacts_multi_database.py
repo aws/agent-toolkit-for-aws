@@ -142,7 +142,7 @@ resource "aws_db_instance" "{safe_app}_postgres" {{
 
     def test_direct_setting_does_not_hide_an_opaque_secret_target(self) -> None:
         text = self.fixture()
-        secret = f"""  setting {{
+        database_setting = f"""  setting {{
     namespace = "aws:elasticbeanstalk:application:environmentsecrets"
     name      = "DATABASE_URL"
     value     = "{self.secret_arn("acme-web")}"
@@ -153,7 +153,7 @@ resource "aws_db_instance" "{safe_app}_postgres" {{
     name = "DB_READONLY_URL"
     value = "postgres://${aws_db_instance.acme_web_postgres.endpoint}/app"
   }"""
-        text = text.replace(secret, secret + explicit, 1)
+        text = text.replace(database_setting, database_setting + explicit, 1)
         text = "".join(text.rsplit("    security_groups = [aws_security_group.app.id]", 1))
         failures = self.findings(text)
         self.assertTrue(any(

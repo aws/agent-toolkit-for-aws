@@ -940,13 +940,17 @@ def _environment(lines: list[str], start: int, indent: int) -> dict[str, str]:
 def _workflow_jobs(text: str) -> list[dict[str, Any]]:
     """Read the conventional block-style jobs/steps subset we generate.
 
-    YAML anchors, merge keys, flow-style jobs/steps, and reusable workflows
-    require a real YAML/workflow reviewer and are not silently accepted here.
+    YAML anchors, noncanonical mapping keys, merge keys, flow-style jobs/steps,
+    and reusable workflows require review and are not silently accepted here.
     """
     lines = text.splitlines()
     if any("\t" in line[:len(line) - len(line.lstrip())] for line in lines):
         raise ValueError("Tabs in YAML indentation are unsupported.")
     active = [_yaml_comment(line) for line in lines]
+    for line in active:
+        if line and not line[0].isspace() and line not in {"---", "..."}:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*:(?:\s+.*)?", line):
+                raise ValueError("Noncanonical workflow root keys require review.")
     root_shell: str | None = None
     root_env: dict[str, str] = {}
     env_lines = [i for i, line in enumerate(active) if line.startswith("env:")]
@@ -995,6 +999,7 @@ def _workflow_jobs(text: str) -> list[dict[str, Any]]:
             job = {
                 "name": match.group(1), "steps": [], "text": [], "condition": None,
                 "shell": root_shell, "runner": None, "env": dict(root_env),
+                "has_dependencies": False,
             }
             if any(existing["name"] == job["name"] for existing in jobs):
                 raise ValueError("Duplicate workflow job ID.")
@@ -1007,8 +1012,12 @@ def _workflow_jobs(text: str) -> list[dict[str, Any]]:
             raise ValueError("Workflow content precedes a job.")
         job["text"].append(line)
         if indent == job_indent + 2:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*:(?:\s+.*)?", stripped):
+                raise ValueError("Noncanonical workflow job keys require review.")
             if stripped.startswith("if:"):
                 job["condition"] = _scalar(stripped.partition(":")[2])
+            elif stripped.startswith("needs:"):
+                job["has_dependencies"] = True
             elif stripped.startswith("runs-on:"):
                 job["runner"] = _scalar(stripped.partition(":")[2])
             elif stripped.startswith("defaults:"):
@@ -1221,16 +1230,13 @@ def _direct_commands(
         masked = _shell_mask(line)
         if re.search(r"[&|<>{}()]", masked):
             raise ValueError("Shell grouping, conditions, pipelines, and redirections require review.")
-        lexer = shlex.shlex(line, posix=True, punctuation_chars=";")
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        tokens = list(lexer)
-        parts: list[list[str]] = [[]]
-        for token in tokens:
-            if token == ";":
-                parts.append([])
-            else:
-                parts[-1].append(token)
+        # Split before unquoting so literal ";" arguments remain data.
+        parts: list[list[str]] = []
+        start = 0
+        for separator in re.finditer(";", masked):
+            parts.append(shlex.split(line[start:separator.start()]))
+            start = separator.end()
+        parts.append(shlex.split(line[start:]))
         for command in parts:
             assignments: list[str] = []
             while command and re.fullmatch(r"[A-Za-z_]\w*\+?=.*", command[0]):
@@ -1370,6 +1376,12 @@ def _workflows(
                         ))
                     continue
                 if not deploy_action and not deploy_run:
+                    continue
+                if job["has_dependencies"]:
+                    findings.append(Finding(
+                        relative, step["line"], "workflow_dependency_unverified",
+                        "Deployment depends on other jobs; verify their execution before deployment.",
+                    ))
                     continue
                 if _condition(job["condition"]) is None or _condition(step.get("if")) is None:
                     findings.append(Finding(
