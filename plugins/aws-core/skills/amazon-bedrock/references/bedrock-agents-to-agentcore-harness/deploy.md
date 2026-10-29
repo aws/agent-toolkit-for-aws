@@ -31,7 +31,18 @@ The v1 CLI has no `add tool` command. Do not duplicate the YAML `tools` key. Run
 
 ## Add Gateway targets
 
-An action-group shim is a new Lambda backed Gateway target. Render the source action group into `tools/<shim>/handler.py` using the templates in this skill's `assets/`, with one `toolDefinitions` entry per source function or OpenAPI operation. Store the complete target object in a JSON file and add it through the CLI:
+An action-group shim is a new Lambda backed Gateway target. Render the source action group into `tools/<shim>/handler.py` using the templates in this skill's `assets/`, with one `toolDefinitions` entry per source function or OpenAPI operation. The v1 CDK Python packager also requires a `pyproject.toml` in each shim's `compute.implementation.path`; the empty project and Harness scaffold do not create one under `tools/`. Place this minimal manifest beside each rendered `handler.py`, including KB shims:
+
+```toml
+# tools/<shim>/pyproject.toml
+[project]
+name = "agentcore-migration-shim"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["boto3"]
+```
+
+This Python requirement matches the `PYTHON_3_12` Lambda configuration below. Store the complete target object in a JSON file and add it through the CLI:
 
 ```json
 {

@@ -116,6 +116,19 @@ def _find_deployed_state(project_dir: str | Path | None = None) -> Path | None:
     return None
 
 
+def _find_project_root(
+    project_dir: str | Path | None, state_path: Path | None
+) -> Path | None:
+    """Locate the project config from an explicit directory, state file, or cwd."""
+    start = Path(
+        project_dir or os.environ.get("AGENTCORE_PROJECT_DIR") or state_path or Path.cwd()
+    ).expanduser().resolve()
+    return next(
+        (path for path in (start, *start.parents) if (path / "agentcore" / "agentcore.json").is_file()),
+        None,
+    )
+
+
 def discover_deployed(project_dir: str | Path | None = None) -> dict[str, str | None]:
     """Best-effort read of manager ARN / connector ID from the CLI project.
 
@@ -127,10 +140,19 @@ def discover_deployed(project_dir: str | Path | None = None) -> dict[str, str | 
     project root, inside the agentcore/ directory, or a subdirectory of it.
 
     CLI v1 reports payment identifiers through `agentcore status --json`.
-    The deployed state layouts from v0 are retained as a fallback.
+    Legacy deployed state is used only for v0 projects; migration can leave
+    stale payment identifiers in that file.
     """
     out: dict[str, str | None] = {"manager_arn": None, "connector_id": None, "role_arn": None}
     state_path = _find_deployed_state(project_dir)
+    root = _find_project_root(project_dir, state_path)
+    if root is not None:
+        try:
+            version = json.loads((root / "agentcore" / "agentcore.json").read_text()).get("version")
+        except (OSError, ValueError):
+            version = None
+        if version == 2:
+            return _discover_v1_status(root, state_path)
     if state_path is None:
         return _discover_v1_status(project_dir, None)
     try:
@@ -166,13 +188,7 @@ def _discover_v1_status(
 ) -> dict[str, str | None]:
     """Resolve v1 stack outputs via the CLI's project status JSON."""
     out: dict[str, str | None] = {"manager_arn": None, "connector_id": None, "role_arn": None}
-    start = state_path.resolve() if state_path else Path(
-        project_dir or os.environ.get("AGENTCORE_PROJECT_DIR") or Path.cwd()
-    ).expanduser().resolve()
-    root = next(
-        (path for path in (start, *start.parents) if (path / "agentcore" / "agentcore.json").exists()),
-        None,
-    )
+    root = _find_project_root(project_dir, state_path)
     if root is None:
         return out
     try:
