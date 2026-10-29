@@ -137,7 +137,7 @@ When Harness path is selected, write this to `aws-design-ai.json`:
 
 **Field rules:**
 
-- `harness_config.name` — Derived from first agent's `agent_id`. Use kebab-case.
+- `harness_config.name` — Derive from the first agent's `agent_id`, replacing hyphens with underscores. Start with a letter and use only letters, numbers, and underscores; do not emit kebab-case. For the generated `migration` project and `default` target, use at most 22 characters so the combined deployed Harness name fits the 40-character limit. If the derived name is invalid or too long, request a valid name rather than silently truncating it.
 - `harness_config.model_id` — The Bedrock model ID selected in Part 1 (e.g., `us.anthropic.claude-sonnet-5`)
 - `harness_config.system_prompt` — Extracted from agent code if available; otherwise `"[TODO: Add system prompt from your agent definition]"`
 - `harness_config.tools` — Mapped from `tool_manifest[]` using the tool mapping decision tree above

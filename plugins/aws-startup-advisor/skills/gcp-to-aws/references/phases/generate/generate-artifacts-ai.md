@@ -535,14 +535,23 @@ entrypoint = "main.py"
 
 Generate a first-deployment script. `add runtime` registers a Python HTTP runtime but does not generate its implementation. Copy the generated entrypoint, agent code and manifest into that runtime's directory before deployment. Add explicit copy commands for any additional migrated local modules. Dry-run must not create directories, install packages or call AWS. The SDK serves inside AgentCore's managed runtime; retain AWS IAM invocation authentication and do not publish its container port directly.
 
+Project names allow only letters and digits, start with a letter, and have a 23-character limit; `strands` itself is reserved by the CLI. Use `StrandsMigration` for this first-deployment project. Runtime names allow underscores and have a 48-character limit. Normalize hyphens in the source ID to underscores (for example, `research-agent` becomes `research_agent`), preserve the source ID in the generated agent code, and reject remaining invalid names rather than silently truncating them.
+
 ```bash
 #!/bin/bash
 set -euo pipefail
 
 EXECUTE=${1:-""}
 RUN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-PROJECT_NAME="{agent_id}_strands"
-RUNTIME_NAME="{agent_id}"
+PROJECT_NAME="StrandsMigration"
+SOURCE_AGENT_ID="{agent_id}"
+RUNTIME_NAME=$(python3 -c '
+import re, sys
+name = sys.argv[1].replace("-", "_")
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,47}", name):
+    raise SystemExit("Runtime name must start with a letter, contain only letters, numbers or underscores, and be at most 48 characters")
+print(name)
+' "$SOURCE_AGENT_ID")
 REGION="{target_region}"
 
 run_cmd() {

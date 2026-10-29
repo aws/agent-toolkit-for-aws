@@ -21,7 +21,7 @@ def _script(name: str) -> str:
 # Implements only documented command boundaries, not AWS behavior. In particular,
 # create makes an EMPTY child project, and add runtime creates NO implementation.
 CLI_STUB = r'''
-import json, os, pathlib, sys
+import json, os, pathlib, re, sys
 args = sys.argv[1:]
 cwd = pathlib.Path.cwd()
 with open(os.environ["COMMAND_LOG"], "a") as log:
@@ -39,6 +39,18 @@ def options(tokens, allowed, switches=()):
 
 if args[0] == "create":
     opts = options(args[1:], {"--name", "--skip-git", "--skip-install"}, {"--skip-git", "--skip-install"})
+    # ProjectNameSchema and reserved dependency names at CLI e2f59dad.
+    assert re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,22}", opts["--name"])
+    reserved = """
+    anthropic autogen autogenagentchat autogenext bedrock bedrockagentcore
+    crewai crewaitools googleadk googlegenerativeai langchain langchainanthropic
+    langchainaws langchaingooglegenai langchainmcpadapters langchainopenai
+    langgraph mcp openai openaiagents strands strandsagents strandsagentstools
+    agui aguistrands aguilanggraph aguiadk aguiprotocol vercelai aisdk
+    httpx pytest pytestasyncio pythondotenv tiktoken hatchling setuptools wheel
+    awsopentelemetrydistro boto3 botocore test tests src lib dist build env venv site pip uv
+    """.split()
+    assert opts["--name"].lower() not in reserved
     project = cwd / opts["--name"]
     project.mkdir()
     (project / "agentcore").mkdir()
@@ -55,6 +67,7 @@ else:
         state_file.write_text(json.dumps({"kind": "harness", "options": opts}))
     elif args[:2] == ["add", "runtime"]:
         opts = options(args[2:], {"--name", "--language", "--protocol", "--authorizer-type"})
+        assert re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,47}", opts["--name"])
         assert opts["--authorizer-type"] == "AWS_IAM"
         assert opts["--language"] == "python" and opts.get("--protocol", "HTTP") == "HTTP"
         (cwd / "app" / opts["--name"]).mkdir(parents=True)
@@ -84,7 +97,7 @@ else:
 
 
 @pytest.fixture
-def generated(tmp_path):
+def generated(tmp_path, request):
     source = tmp_path / "artifacts with spaces"
     source.mkdir()
     config = {
@@ -100,7 +113,7 @@ def generated(tmp_path):
         text = _script(name)
         for token, value in {
             "{target_region from preferences.json}": "us-east-1",
-            "{target_region}": "us-east-1", "{agent_id}": "assistant",
+            "{target_region}": "us-east-1", "{agent_id}": getattr(request, "param", "assistant"),
             "{harness_config.name}": "assistant",
             "{harness_config.model_id}": "test-model", "{agent_count}": "1",
         }.items():
@@ -186,7 +199,7 @@ def test_strands_registers_and_deploys_generated_code(generated):
     source, _, env = generated
     result = _run(generated, "strands")
     assert result.returncode == 0, result.stderr
-    project = source / "assistant_strands"
+    project = source / "StrandsMigration"
     for name in ("main.py", "strands_agents.py", "pyproject.toml"):
         assert (project / "app/assistant" / name).read_bytes() == (source / name).read_bytes()
     manifest = (source / "pyproject.toml").read_text()
@@ -207,6 +220,42 @@ def test_harness_combined_name_limit(generated, length, accepted):
     if not accepted:
         assert "exceeds 40 characters" in result.stderr
         assert not Path(env["COMMAND_LOG"]).exists()
+
+
+@pytest.mark.parametrize("generated", ["research-agent", "Research-Agent_2", "a" * 48], indirect=True)
+def test_strands_source_id_maps_to_valid_runtime_name(generated, request):
+    source, _, env = generated
+    result = _run(generated, "strands")
+    assert result.returncode == 0, result.stderr
+    runtime_name = request.node.callspec.params["generated"].replace("-", "_")
+    project = source / "StrandsMigration"
+    state = json.loads((project / "registered.json").read_text())
+    assert state["options"]["--name"] == runtime_name
+    assert (project / "app" / runtime_name / "main.py").is_file()
+    calls = [json.loads(line) for line in Path(env["COMMAND_LOG"]).read_text().splitlines()]
+    assert calls[-1]["args"][calls[-1]["args"].index("--runtime") + 1] == runtime_name
+
+
+@pytest.mark.parametrize("generated", ["", "9agent", "a" * 49, "agent/path"], indirect=True)
+def test_invalid_runtime_name_stops_before_install_or_create(generated):
+    result = _run(generated, "strands")
+    assert result.returncode != 0
+    assert "Runtime name" in result.stderr
+    assert not Path(generated[2]["COMMAND_LOG"]).exists()
+    assert not Path(generated[2]["INSTALL_LOG"]).exists()
+
+
+@pytest.mark.parametrize("name", ["bad_name", "a" * 24, "9project", "strands"])
+def test_cli_stub_rejects_invalid_or_reserved_project_names(generated, name):
+    source, _, env = generated
+    result = subprocess.run(
+        [str(Path(env["PATH"]) / "node"),
+         str(Path(env["NPM_ROOT"]) / "@aws/agentcore/dist/index.js"),
+         "create", "--name", name],
+        cwd=source, env=env, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert not (source / name).exists()
 
 
 def test_runtime_entrypoint_invokes_migrated_callable_without_import_inference(generated):
