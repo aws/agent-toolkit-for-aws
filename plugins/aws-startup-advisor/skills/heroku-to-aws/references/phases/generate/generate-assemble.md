@@ -91,7 +91,7 @@ The generated-artifact checker similarly records its actual verdict in
 shape, or `ARTIFACTS_FAIL`/`ARTIFACTS_ERROR` blocks the main-window handoff.
 Do not fabricate this result or update phase state before the controller has
 finished both checks. Targeted repairs rerun the checker against the saved
-files; they do not erase the original failing report.
+files and replace the verdict only with the actual rerun result.
 
 The Terraform **policy gate** is not optional, and it is enforced by `generate.md`
 `_postconditions` — a **read-only** gate the interpreter runs in the **main window**
