@@ -12,7 +12,7 @@ Add AgentCore Payments to an existing agent. This reference covers the v1 CLI pr
 
 ### Step 0: Check the CLI and project
 
-Require `agentcore --version` at v1.0.0 or later. Read `agentcore/agentcore.json`; a v1 project has `"version": 2` and payment managers in `payments`. A v0 project must be committed and migrated first: review `agentcore migrate`, then apply the reviewed plan with `agentcore migrate --yes`. If there is no project and one is needed, use `agentcore create --name PaymentsProject --template empty`. A Strands Runtime project can instead start with `--template agent-python-strands`.
+Require `agentcore --version` at v1.0 or later. Read `agentcore/agentcore.json`; a v1 project has `"version": 2` and payment managers in `payments`. Read `agentcore/aws-targets.json` and select the deployment target, account, and region for all later commands. A v0 project must be committed and migrated first: review `agentcore migrate`, then apply the reviewed plan with `agentcore migrate --yes`. If there is no project and one is needed, use `agentcore create --name PaymentsProject --template empty`. A Strands Runtime project can instead start with `--template agent-python-strands`.
 
 Choose the Runtime framework by reading its code and `runtimes[]` entry. The CLI does not wire the payment plugin into the Runtime source; Step 5 is still required.
 
@@ -35,12 +35,13 @@ For a manual connector, replace `--quick-create` with `--credential <PaymentCred
 ### Step 3: Build and deploy
 
 ```bash
-agentcore build
-agentcore deploy --region <region>
-agentcore status --json
+agentcore deploy --target <target>
+agentcore status --target <target> --json
 ```
 
-The first deploy creates the default target with the effective AWS account and region. Check the account and region. Coinbase Quick Create reports an authorization URL; the human completes that flow and waits for the connector to become ready. v1 payment identifiers are surfaced by `agentcore status --json`, not the `payments[]` branch of `agentcore/.cli/deployed-state.json`. If an admin script cannot discover them, supply its `--manager-arn` and `--connector-id` flags.
+Run `agentcore build` before deploying a Quick Create connector. For a manual connector referencing a new payment credential, the first build can fail because that credential has no deployed ARN; deploy provisions it before building the stack, then `agentcore build` can run successfully.
+
+If this is a new project with no targets, run `agentcore deploy --region <region>` to create `default`, then use `--target default`. For an existing target, use its account and region; `--region` does not change them. Coinbase Quick Create reports an authorization URL; the human completes that flow and waits for the connector to become ready. v1 payment identifiers are surfaced by `agentcore status --target <target> --json`, not the `payments[]` branch of `agentcore/.cli/deployed-state.json`. If an admin script cannot discover them, supply its `--manager-arn` and `--connector-id` flags.
 
 ### Step 5: Wire the agent
 
@@ -153,17 +154,18 @@ Payments are wired with a small local tool, not a framework-specific plugin — 
 
 The agent calls `x402_fetch` instead of a generic HTTP tool; payment is handled inside the tool. (Tell the model, via the system prompt, to use `x402_fetch` for URLs that may require payment.)
 
-### Step 6: Provision the per-user instrument and session (SDK script — data plane) — agent runs
+### Step 6: Provision the per-user instrument (SDK script — data plane) — agent runs
 
-The instrument (per-user wallet) and session (budget-bounded spend window) are data-plane resources — the v1 CLI can inspect them with `agentcore payment instrument` and `agentcore payment session`, while creation remains an SDK workflow. First ask the developer for the **user id** and **email** to provision the wallet for (if not already collected after Step 3b). Then run the provided script [`scripts/setup_payment_user.py`](../scripts/setup_payment_user.py) once per user. It reads the manager ARN/connector ID from `agentcore status --json` (or accepts `--manager-arn`/`--connector-id`):
+The instrument (per-user wallet) and session (budget-bounded spend window) are data-plane resources — the v1 CLI can inspect them with `agentcore payment instrument` and `agentcore payment session`, while creation remains an SDK workflow. Ask the developer for the **user id** and **email** to provision the wallet. Run this skill's [`scripts/setup_payment_user.py`](../scripts/setup_payment_user.py) from the AgentCore project root, using its absolute path so the CLI can find the project. Select the same target used for deployment; the script discovers the manager ARN and connector ID from `agentcore status --target <target> --json`:
 
 ```bash
-python scripts/setup_payment_user.py --user-id alice --email alice@example.com --budget 5
+python /absolute/path/to/agents-build/scripts/setup_payment_user.py \
+  --user-id alice --email alice@example.com --target <target>
 ```
 
-It creates the instrument (with the email in `linkedAccounts`) and a budget-bounded session, then prints the `export` lines for `PAYMENT_INSTRUMENT_ID` / `PAYMENT_SESSION_ID` / `PAYMENT_USER_ID` (used in Step 8), plus the `wallet_address` and `redirect_url` (used in Step 7). The script is the canonical data-plane path — do not hand-write the SDK calls.
+It creates the instrument (with the email in `linkedAccounts`) and prints its ID, wallet address, and delegation URL for Step 7. Create the time-limited session after delegation and funding in Step 8.
 
-**LangGraph with `auto_session=True`**: If you used Step 5a with LangGraph and set `auto_session=True`, you only need the instrument from this step — skip the session creation. The middleware creates a session automatically on the first 402. You still need to run `setup_payment_user.py` for the instrument (do NOT use the --budget flag as that will create a session).
+**LangGraph with `auto_session=True`**: Skip the manual session step below. The middleware creates a session on the first 402. The instrument is still required.
 
 ### Step 7: Delegation and funding (one-time per wallet) — developer does this
 
@@ -171,7 +173,7 @@ Using the `wallet_address` / `redirect_url` the script printed:
 
 1. **Delegation** — authorize the agent to spend from the wallet.
     - **Coinbase CDP**: the end user visits `redirect_url`, logs in, and grants permissions to `wallet_address`.
-    - **Stripe Privy**: Delegation requires a frontend app where the end user authenticates with Privy and approves the agent as a session signer on their wallets. Use the reference frontend at <https://github.com/privy-io/aws-agentcore-sdk>. The agent automates the mechanical parts (7a, 7c, 7f); the developer handles the two steps that touch secrets or the dashboard (7b, 7d) and the browser approval (7e). No credential is requested twice — 7b reuses what Step 3b already captured:
+    - **Stripe Privy**: Delegation requires a frontend app where the end user authenticates with Privy and approves the agent as a session signer on their wallets. Use the reference frontend at <https://github.com/privy-io/aws-agentcore-sdk>. The agent automates the mechanical parts (7a, 7c, 7f); the developer handles the two steps that touch secrets or the dashboard (7b, 7d) and the browser approval (7e). Configure the frontend for the same Privy app and authorization key used by the manual payment credential in Step 1:
 
       **7a. Clone and install the delegation frontend — agent runs:**
 
@@ -181,56 +183,13 @@ Using the `wallet_address` / `redirect_url` the script printed:
       pnpm install
       ```
 
-      **7b. Configure environment — reuse the Step 3b credentials. The DEVELOPER runs this, not the agent.**
+      **7b. Configure environment. The DEVELOPER runs this, not the agent.**
 
-      **Do not ask the developer to re-provide the Privy credentials.** All three were already captured when the payment connector was created in Step 3b, and the CLI wrote them to `agentcore/.env.local` in the agent project.
+      In the frontend project, copy `.env.example` to `.env.local`. Set `NEXT_PUBLIC_PRIVY_APP_ID` to the App ID used with `agentcore add credentials payment --provider StripePrivy`, `PRIVY_APP_SECRET` to that app's secret, and `NEXT_PUBLIC_PRIVY_SIGNER_ID` to the same authorization ID. Get the values from the original credential inputs or the Privy Dashboard under **Configuration > App settings** and **Wallet infrastructure > Authorization keys**. Set `NEXT_PUBLIC_NETWORK_MODE=testnet` for Base Sepolia or Solana Devnet, or `mainnet` for production. The frontend does not need the authorization private key.
 
-      **The connector's key names are namespaced — match on the suffix, not the full name.** `agentcore add payment-connector` does not write bare `STRIPE_PRIVY_*` keys. It writes one key per secret in the form:
+      Do not copy `agentcore/.env.local` into the frontend. The v1 CLI names entries after the **credential provider name** (`AGENTCORE_CREDENTIAL_<CREDENTIAL_NAME>_<FIELD>`) and encrypts secret values there; a text copy would give the frontend unusable ciphertext. The developer should enter the values directly in the frontend's local configuration without posting them to the agent.
 
-      ```text
-      AGENTCORE_CREDENTIAL_<MANAGER>_<CONNECTOR>_STRIPE_PRIVY_<FIELD>
-      ```
-
-      `<MANAGER>` and `<CONNECTOR>` are the names the developer chose in Step 3b, so the fully-qualified key names are different in every project. Never search for a hardcoded full name — match on the `_STRIPE_PRIVY_<FIELD>` **suffix**:
-
-      | Frontend `.env.local` variable | Suffix to match in `agentcore/.env.local` | Visibility |
-      |----------|--------|------------|
-      | `NEXT_PUBLIC_PRIVY_APP_ID` | `*_STRIPE_PRIVY_APP_ID` | Public (client) |
-      | `PRIVY_APP_SECRET` | `*_STRIPE_PRIVY_APP_SECRET` | Server-only |
-      | `NEXT_PUBLIC_PRIVY_SIGNER_ID` | `*_STRIPE_PRIVY_AUTHORIZATION_ID` | Public (identifier only) |
-      | `NEXT_PUBLIC_NETWORK_MODE` | not a connector credential — set `testnet` for Base Sepolia / Solana Devnet, `mainnet` for production | Public |
-
-      The frontend does **not** need the authorization private key — only the connector signs, so `*_STRIPE_PRIVY_AUTHORIZATION_PRIVATE_KEY` stays where it is.
-
-      `PRIVY_APP_SECRET` is a real secret and `agentcore/.env.local` holds it in plaintext, so the **developer** runs the commands below — the agent must not read that file (same rule as Step 3b).
-
-      First confirm the keys are there. This prints key **names** only, never a value — substitute the absolute path to the agent project:
-
-      ```bash
-      grep -oE '^[^=]*_STRIPE_PRIVY_[A-Z_]+' /absolute/path/to/agent-project/agentcore/.env.local
-      ```
-
-      Expect four lines ending in `_APP_ID`, `_APP_SECRET`, `_AUTHORIZATION_PRIVATE_KEY`, and `_AUTHORIZATION_ID`. If it prints nothing, skip to the dashboard fallback below.
-
-      Then write the frontend's `.env.local`. One command, absolute paths on both sides (relative paths and `cd` are what break here — the two projects are different directories), no values printed:
-
-      ```bash
-      sed -nE 's/^[^=]*_STRIPE_PRIVY_APP_ID=/NEXT_PUBLIC_PRIVY_APP_ID=/p;s/^[^=]*_STRIPE_PRIVY_APP_SECRET=/PRIVY_APP_SECRET=/p;s/^[^=]*_STRIPE_PRIVY_AUTHORIZATION_ID=/NEXT_PUBLIC_PRIVY_SIGNER_ID=/p' /absolute/path/to/agent-project/agentcore/.env.local > /absolute/path/to/agentcore-privy-frontend/.env.local && printf 'NEXT_PUBLIC_NETWORK_MODE=testnet\n' >> /absolute/path/to/agentcore-privy-frontend/.env.local
-      ```
-
-      It writes the file outright, so there is no need to `cp .env.example .env.local` first and no duplicate keys to reason about. Verify by listing the key names — again no values:
-
-      ```bash
-      cut -d= -f1 /absolute/path/to/agentcore-privy-frontend/.env.local
-      ```
-
-      All four of `NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `NEXT_PUBLIC_PRIVY_SIGNER_ID`, `NEXT_PUBLIC_NETWORK_MODE` must be present. Fewer than four means a suffix didn't match — use the fallback rather than a partial file.
-
-      **Dashboard fallback.** If `agentcore/.env.local` is missing or the suffixes don't match — the connector was created on another machine, or the CLI's key format changed — fill in the values by hand instead. `cp .env.example .env.local` in the frontend, then take the App ID and App Secret from the Privy Dashboard under **Configuration > App settings**, and the signer ID from **Wallet infrastructure > Authorization keys**. It must be the **same app and same authorization key** used in Step 3b.
-
-      The `NEXT_PUBLIC_PRIVY_SIGNER_ID` is the Authorization Key ID (looks like `zr17anh9dpiqno1iaref9jpx`) — the same key whose private key went to the payment connector. It is safe to expose publicly (it's an identifier, not a secret).
-
-      > **Important:** Taking these values straight out of `agentcore/.env.local` is what guarantees the frontend uses the same Privy app and authorization key as the connector. If they are set by hand and diverge, delegation succeeds but payments fail with "Wallet policy denied the transaction."
+      The `NEXT_PUBLIC_PRIVY_SIGNER_ID` is the Authorization Key ID for the same key whose private key went to the payment credential. If the app or key IDs differ, delegation can succeed while payments fail.
 
       **7c. Start the frontend — agent runs:**
 
@@ -258,7 +217,7 @@ Using the `wallet_address` / `redirect_url` the script printed:
 
       > **Check what's already in the field first.** Privy's default is permissive — an app with an **empty** allowed-origins list accepts every origin, so delegation works without this step. Adding the first entry switches the app to allowlist-only:
       >
-      > - **Dedicated AgentCore app** (what Step 3b recommends): the list is normally empty and nothing else uses the App ID, so adding `http://localhost:3000` is safe. Remember to also add the deployed origin before going to production, or the hosted frontend will break.
+      > - **Dedicated AgentCore app**: the list is normally empty and nothing else uses the App ID, so adding `http://localhost:3000` is safe. Remember to also add the deployed origin before going to production, or the hosted frontend will break.
       > - **Shared app** with existing entries: append the localhost URL, don't replace the list. Remove it again once delegation testing is done.
 
       **7e. Complete delegation — developer does this in browser:**
@@ -275,12 +234,12 @@ Using the `wallet_address` / `redirect_url` the script printed:
 
       **7f. Verify delegation — agent can validate:**
 
-      After the developer confirms delegation is complete, the agent can verify by calling the same check-signers endpoint the frontend uses:
+      After the developer confirms delegation is complete, the agent can verify by calling the same check-signers endpoint the frontend uses. Obtain the Privy wallet IDs from the authenticated frontend session; the payment instrument ID and wallet address printed in Step 6 are different identifiers:
 
       ```bash
       curl -s -X POST http://localhost:3000/api/check-signers \
         -H "Content-Type: application/json" \
-        -d '{"walletIds": ["<wallet-id-from-step-6>"]}' | python3 -m json.tool
+        -d '{"walletIds": ["<privy-wallet-id>"]}' | python3 -m json.tool
       ```
 
       Expected: `{"connected": true}`. If `false`, the developer needs to repeat step 7e.
@@ -291,12 +250,22 @@ Using the `wallet_address` / `redirect_url` the script printed:
     - **x402 (Base Sepolia)**: send testnet USDC via the Circle faucet (<https://faucet.circle.com/>).
     - **MPP on Tempo Moderato** (StripePrivy instruments only): send the canonical test stablecoin **pathUSD** via the Tempo faucet (<https://tempo.xyz/developers/docs/quickstart/faucet>). AgentCore accepts only the network's canonical token — the faucet's other stablecoins (AlphaUSD/BetaUSD/ThetaUSD) are rejected with `MPP_EVM_NON_CANONICAL_USDC`. For buyer-pays challenges (`buyerPaysGasFees: true`) the wallet also needs native Tempo gas. See [MPP networks, providers, and funding](#mpp-networks-providers-and-funding).
 
-### Step 8: Set env vars and test — agent runs
+### Step 8: Create a session, then set env vars and test
 
-Set the tool's config from the `export` lines the Step 6 script printed — it emits all of them (`PAYMENT_MANAGER_ARN`, `PAYMENT_INSTRUMENT_ID`, `PAYMENT_SESSION_ID`, `PAYMENT_USER_ID`, `AWS_REGION`), so just copy them into the agent's environment:
+After the end user completes delegation and funding, create a bounded session for the **same user ID** without creating another instrument. Use the instrument ID printed in Step 6:
 
 ```bash
-export PAYMENT_MANAGER_ARN=...      # all five printed by setup_payment_user.py
+python /absolute/path/to/agents-build/scripts/setup_payment_user.py \
+  --user-id alice --session-only --instrument-id <instrument-id> \
+  --budget 5 --target <target>
+```
+
+The SDK script prints `PAYMENT_SESSION_ID` and the same instrument ID. With LangGraph `auto_session=True`, skip this command; the middleware creates the session on the first 402.
+
+Set the tool's config from the `export` lines the Step 6 and Step 8 script runs printed (`PAYMENT_MANAGER_ARN`, `PAYMENT_INSTRUMENT_ID`, `PAYMENT_SESSION_ID`, `PAYMENT_USER_ID`, `AWS_REGION`):
+
+```bash
+export PAYMENT_MANAGER_ARN=...
 export PAYMENT_INSTRUMENT_ID=...
 export PAYMENT_SESSION_ID=...
 export PAYMENT_USER_ID=...
@@ -348,7 +317,7 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 
 - The `authorizationUrl` is valid for only **10 minutes** and is **single-use** — this error means it expired, was already used, or was consumed by a link preview before you clicked it.
 - **Link unfurling is the most common cause**: pasting the URL into Slack/Teams/chat (or letting the agent fetch it) fires a preview request that spends the one-time consent session. Share the URL as plain text and open it directly in a browser, once, promptly.
-- Check the connector with `GetPaymentConnector` (e.g. `aws bedrock-agentcore-control get-payment-connector --payment-manager-id <id> --payment-connector-id <id> --region <AWS_REGION>`) and poll until the status is terminal: `READY` = it already succeeded (no action); `AUTHENTICATION_EXPIRED`/`AUTHENTICATION_FAILED` = the consent window lapsed or failed — delete the connector and recreate it via QuickCreate to get a fresh URL; `AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED` = subscribe to "Coinbase Wallets for AgentCore Payments" then recreate (on the CLI deploy path the manager may have rolled back — see Step 4 recovery); `CREATING`/`PENDING_AUTHENTICATION`/`PROVISIONING` = still in progress, keep polling.
+- Check the connector with `GetPaymentConnector` (e.g. `aws bedrock-agentcore-control get-payment-connector --payment-manager-id <id> --payment-connector-id <id> --region <target-region>`) and poll until the status is terminal: `READY` = it already succeeded (no action); `AUTHENTICATION_EXPIRED`/`AUTHENTICATION_FAILED` = the consent window lapsed or failed — delete the connector and recreate it via QuickCreate to get a fresh URL; `AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED` = subscribe to "Coinbase Wallets for AgentCore Payments" then recreate (on the CLI deploy path the manager may have rolled back — inspect the deployment failure first); `CREATING`/`PENDING_AUTHENTICATION`/`PROVISIONING` = still in progress, keep polling.
 
 **Agent sees 402 but does not pay:**
 
@@ -420,7 +389,7 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 
 **MPP on Tempo: `ProcessPayment` fails with "Tempo payments are not supported for Coinbase-managed payment instruments":**
 
-- Tempo requires a **StripePrivy** connector/instrument. Provision the connector with `--provider StripePrivy` (Step 3b) and create the instrument on it — Coinbase-managed instruments cannot pay Tempo at all.
+- Tempo requires a **StripePrivy** connector/instrument. Add a StripePrivy payment credential in Step 1, then create the connector with `--credential <name>` in Step 2 and create the instrument on it — Coinbase-managed instruments cannot pay Tempo at all.
 
 **ProcessPayment fails with "Payment session not found":**
 
@@ -526,9 +495,9 @@ For the generic `x402_fetch` tool (Step 5b), pass `permit2_allowance_limit="..."
 **Stripe Privy: Delegation frontend setup issues:**
 
 - **Login fails, the Privy modal won't open, or the browser console shows an origin/CORS or "not a valid origin for this app" error**: the local origin is not allowlisted. Add the dev server's exact URL under Privy Dashboard > Configuration > App settings > Domains > Allowed origins > Web & mobile web (Step 7d). Privy matches the browser **origin**, so `http://localhost:3000` works but `http://localhost:3000/` (trailing slash) and `http://localhost` (no port) do not. If the dev server moved off port 3000, the allowlisted port must move with it.
-- **"Missing server configuration" from /api/check-signers**: One or more env vars (`NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `NEXT_PUBLIC_PRIVY_SIGNER_ID`) are not set in the frontend's `.env.local`. Map them from the `*_STRIPE_PRIVY_APP_ID` / `*_STRIPE_PRIVY_APP_SECRET` / `*_STRIPE_PRIVY_AUTHORIZATION_ID` keys in `agentcore/.env.local` (Step 7b). Two things make a straight file copy fail: the frontend uses different key names, and the connector's keys are namespaced `AGENTCORE_CREDENTIAL_<MANAGER>_<CONNECTOR>_STRIPE_PRIVY_*` — so grep the suffix, not the bare name. `cut -d= -f1` on the frontend's `.env.local` shows which keys actually landed.
+- **"Missing server configuration" from /api/check-signers**: One or more env vars (`NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `NEXT_PUBLIC_PRIVY_SIGNER_ID`) are not set in the frontend's `.env.local`. Set them from the same Privy app and authorization key used for the payment credential in Step 1, as described in Step 7b. `cut -d= -f1` on the frontend's `.env.local` shows which keys are present without printing their values.
 - **Login fails or no wallets appear**: The Privy app may not have embedded wallets enabled. In Privy Dashboard > Wallet Infrastructure, ensure embedded wallets are configured for the relevant chains (Ethereum/Solana).
-- **"Give access" succeeds but payments still fail with "Wallet policy denied"**: The `NEXT_PUBLIC_PRIVY_SIGNER_ID` in the frontend doesn't match the Authorization ID used in the payment connector (Step 3b). Re-derive it from the `*_STRIPE_PRIVY_AUTHORIZATION_ID` key in `agentcore/.env.local` rather than retyping it from the dashboard.
+- **"Give access" succeeds but payments still fail with "Wallet policy denied"**: The `NEXT_PUBLIC_PRIVY_SIGNER_ID` in the frontend may not match the Authorization ID used by the StripePrivy payment credential. Have the developer compare the IDs against the original credential input or Privy Dashboard, without exposing the secret or authorization private key to the agent.
 - **User logged in with wrong email**: The email must match the one passed to `setup_payment_user.py --email`. If mismatched, the instrument points to a different Privy user's wallets. Log out, log back in with the correct email.
 - **Port conflict**: If the agent's own server is on port 3000, the frontend auto-selects another port. Check the terminal output for the actual URL — and allowlist that port (Step 7d), otherwise login fails.
 
