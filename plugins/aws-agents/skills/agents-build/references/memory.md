@@ -29,6 +29,7 @@ Read `agentcore/agentcore.json`. Look for:
 - The `memories` array — is memory already configured?
 - The `runtimes` array — what agents are in the project and what framework do they use?
 - The project `name` — needed for env var construction
+- The intended target in `agentcore/aws-targets.json` — use the same target for deployment, status, logs, and invocation
 
 **If `agentcore/agentcore.json` does not exist**, check if there's any AgentCore project structure nearby (look for `agentcore/` directory). If none found, proceed with the most helpful answer possible based on what the developer asked — don't block on missing context. If the question is about strategy selection or code patterns, answer it directly. Only ask "which situation are you in?" if the answer genuinely depends on it (e.g., they need CLI commands that differ by setup type).
 
@@ -457,7 +458,7 @@ Before shipping a memory integration for ADK or Claude SDK, validate the end-to-
 2. Invoke the agent with facts to remember
 3. Start a new session
 4. Invoke again and verify the agent recalls those facts
-5. Check `agentcore logs runtime --name <AgentName> --query "memory" --since 1h --level error` for any memory errors
+5. Check `agentcore logs runtime --name <AgentName> --target <target> --query "memory" --since 1h --level error` for any memory errors
 
 If you build a working pattern, consider contributing it to [`awslabs/agentcore-samples`](https://github.com/awslabs/agentcore-samples) so the next developer doesn't have to figure it out.
 
@@ -471,10 +472,11 @@ Always include this note:
 The MEMORY_<NAME>_ID env var is only injected after deploy. The code above
 handles this gracefully — it runs without memory when the env var isn't set.
 
-To test memory:
-  agentcore deploy
-  agentcore invoke --runtime <RuntimeName> --payload '{"prompt":"My name is Alex and I prefer concise answers"}' --session-id 550e8400-e29b-41d4-a716-446655440000
-  agentcore invoke --runtime <RuntimeName> --payload '{"prompt":"What do you know about me?"}' --session-id 550e8400-e29b-41d4-a716-446655440000
+To test cross-session memory on the selected target, use two distinct session IDs
+and the same userId (actor ID):
+  agentcore deploy --target <target>
+  agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"My name is Alex and I prefer concise answers","userId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440000
+  agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"What do you know about me?","userId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440001
 
 If using long-term memory (SEMANTIC or USER_PREFERENCE), wait 5–30 seconds
 between the first and second invoke — extraction runs asynchronously after
@@ -526,14 +528,14 @@ Most common cause: the memory resource is configured but the code isn't reading 
 
 **Memory not persisting across sessions:**
 
-1. Check that LTM strategies (SEMANTIC, USER_PREFERENCE) are configured — not just SUMMARIZATION
+1. Check that the intended long-term strategy is configured and that the code retrieves from its namespace. SUMMARIZATION is also a long-term strategy, but its retrieval path differs from facts and preferences.
 2. Wait 5–30 seconds after a session ends before starting a new one — extraction is async
-3. Find the Memory ID in `agentcore status --json`, then verify its service status is ACTIVE with `agentcore memory get --id <memory-id> --json`
+3. Find the Memory ID in `agentcore status --target <target> --json`, then verify its service status is ACTIVE with `agentcore memory get --id <memory-id> --region <target-region> --json`
 4. Use UUIDs (v4) for session IDs — the platform requires a minimum of 33 characters. Short IDs like "session-1" or "test" cause LTM to fail silently. `agentcore invoke` generates compliant IDs by default.
 
 **Memory not loading at session start:**
 
-1. Find the Memory ID in `agentcore status --json`, then verify `MEMORY_<NAME>_ID` is set in the deployed Runtime environment
+1. Find the Memory ID in `agentcore status --target <target> --json`, then verify `MEMORY_<NAME>_ID` is set in that target's deployed Runtime environment
 2. Check the actor_id is consistent across sessions — memory is scoped per actor
 3. Confirm the namespace paths in retrieval_config match the namespaces used when writing — the retrieval namespace must exactly match the namespace the strategy extracts into
 4. CLI defaults use paths without trailing slashes (e.g., `/users/{actorId}/facts`). If you customized namespace templates when creating the memory resource, use whatever pattern you chose — consistency between writer and reader is what matters.
@@ -542,7 +544,7 @@ Most common cause: the memory resource is configured but the code isn't reading 
 Memory takes 2–5 minutes to become ACTIVE after `agentcore deploy`. Check status:
 
 ```bash
-agentcore memory get --id <memory-id> --json
+agentcore memory get --id <memory-id> --region <target-region> --json
 ```
 
 ## S3 delivery / export buckets must be in the same account
