@@ -32,7 +32,7 @@ For an app calling your agent, use [agents-build integration](../agents-build/re
 
 Run `agentcore --version`; require v1.0.0 or later. If the CLI is older, upgrade with `npm install -g @aws/agentcore@latest` and recheck. Read `agentcore/agentcore.json`. Version 2 is the v1 project format. If it is version 1, commit the project, review `agentcore migrate`, then apply the reviewed plan with `agentcore migrate --yes`.
 
-Locate the project Gateway under `agentCoreGateways` and the Runtime or Harness that will call it. If there is no project, first create one using `agentcore create --name <ProjectName> --template empty`, or work in the user's existing project. Do not create a second project without preserving their current work.
+Locate the project Gateway under `agentCoreGateways` and the Runtime or Harness that will call it. Read `agentcore/aws-targets.json` and choose the deployment target before running status or deploy commands. Carry that target through every subsequent command. If there is no project, first create one using `agentcore create --name <ProjectName> --template empty`, or work in the user's existing project. Do not create a second project without preserving their current work.
 
 ### 2. Choose a target
 
@@ -45,7 +45,7 @@ Locate the project Gateway under `agentCoreGateways` and the Runtime or Harness 
 | Curated Knowledge Base or web search connector | `agentcore add gateway-connector --gateway <gateway> --name <target> --connector <connector>`; add `--knowledge-base <id>` for a Knowledge Base |
 | AWS SDK call using the Runtime's role | Call the AWS SDK directly from agent code |
 
-The v1 shortcut uses `--endpoint` or `--runtime`. The v0 `--type`, `--lambda-arn`, `--schema`, and `--tool-schema-file` flags are gone. For full target configuration, include `name`, `targetType`, and the type's required fields in the JSON file. Do not combine `--target-configuration` with shortcut `--name` or `--outbound-auth` flags; authentication goes inside the JSON object in that form. Run `agentcore add gateway-target --help` and `agentcore build` when adapting a target schema.
+The v1 shortcut uses `--endpoint` or `--runtime`. The v0 `--type`, `--lambda-arn`, `--schema`, and `--tool-schema-file` flags are gone. For full target configuration, include `name`, `targetType`, and the type's required fields in the JSON file. Do not combine `--target-configuration` with shortcut `--name` or `--outbound-auth` flags; authentication goes inside the JSON object in that form. Run `agentcore add gateway-target --help` when adapting a target schema. `agentcore build` validates a target after its referenced credentials have been deployed.
 
 ### 3. Create an authenticated Gateway
 
@@ -126,19 +126,25 @@ Do not add `outboundAuth` to a `lambdaFunctionArn` target: the gateway role invo
 ### 5. Build, deploy, and wire the agent
 
 ```bash
-agentcore build
+# First deployment when aws-targets.json has no entries:
 agentcore deploy --region <region>
-agentcore status --json
+agentcore status --target default --json
+
+# For an existing target instead, use:
+agentcore deploy --target <target>
+agentcore status --target <target> --json
 ```
 
-On the first deploy, the CLI creates the default target using the effective AWS account and region; subsequent deploys can select `--target <name>`. Read the deployed Gateway URL from `agentcore status --json`. The deployed Runtime receives `AGENTCORE_GATEWAY_<UPPERCASE_NAME>_URL`; check the exact name in its generated README or environment. In local `agentcore dev`, this deployed URL is absent unless supplied explicitly. The agent framework still needs MCP client wiring to discover and call the Gateway's tools.
+If the project has no new credential providers, run `agentcore build` before deploying. With a new provider referenced by a Gateway target, the first `agentcore build` can fail because the provider has no deployed ARN yet; `agentcore deploy` provisions the credential before building the stack. Run `agentcore build` after that first deploy.
+
+On the first deploy, the CLI creates the default target using the effective AWS account and region. `--region` does not change an existing target's region. Read the deployed Gateway URL from `agentcore status --target <target> --json`. The deployed Runtime receives `AGENTCORE_GATEWAY_<UPPERCASE_NAME>_URL`; check the exact name in its generated README or environment. In local `agentcore dev`, this deployed URL is absent unless supplied explicitly. The agent framework still needs MCP client wiring to discover and call the Gateway's tools.
 
 A Harness uses a Gateway tool entry in `app/<harness>/harness.yaml`, referencing the deployed Gateway ARN. Its config and a Runtime's MCP client code are different paths; use the one matching the project.
 
 ### 6. Verify and troubleshoot
 
-- Inspect `agentcore status --json` and `agentcore gateway target list --gateway-id <deployed-gateway-id> --json` for deployed resources.
-- For a Runtime error, use `agentcore logs runtime --name <runtime> --since 1h --level error`; for a Harness, use `agentcore logs harness --name <harness> --since 1h --level error`.
+- Inspect `agentcore status --target <target> --json` and `agentcore gateway target list --gateway-id <deployed-gateway-id> --region <target-region> --json` for deployed resources.
+- For a Runtime error, use `agentcore logs runtime --name <runtime> --target <target> --since 1h --level error`; for a Harness, use `agentcore logs harness --name <harness> --target <target> --since 1h --level error`.
 - Compare the target's `outboundAuth` type and credential name with its provider in `agentcore.json`. A Gateway URL alone does not tell you the outbound auth state.
 - For Cedar authorization, load [references/policy.md](references/policy.md).
 

@@ -4,7 +4,7 @@ Use Cedar policy engines to authorize Gateway tool calls. Policies act at the Ga
 
 ## Inspect the project
 
-Read `agentcore/agentcore.json` for `agentCoreGateways`, `policyEngines`, and each Gateway's `policyEngineConfiguration`. For a v0 project (`"version": 1`), commit, review `agentcore migrate`, then apply the reviewed plan with `agentcore migrate --yes` before continuing. Require CLI v1.0.0 or later.
+Read `agentcore/agentcore.json` for `agentCoreGateways`, `policyEngines`, and each Gateway's `policyEngineConfiguration`. Read `agentcore/aws-targets.json`, select the intended deployment target, and use it for every deploy, status, and Gateway command below. For a v0 project (`"version": 1`), commit, review `agentcore migrate`, then apply the reviewed plan with `agentcore migrate --yes` before continuing. Require CLI v1.0.0 or later.
 
 Choose a Gateway and list the tool names and caller identities that should be allowed. When an attached engine enforces decisions, write explicit `permit` policies for desired calls. A matching `forbid` overrides a `permit`.
 
@@ -19,15 +19,15 @@ agentcore add policy-engine \
   --attach-to-gateways MyGateway \
   --attach-mode log-only
 agentcore build
-agentcore deploy --region <region>
-agentcore status --json
+agentcore deploy --target <target>
+agentcore status --target <target> --json
 ```
 
-`--attach-mode` accepts `log-only` or `enforce`; the v0 `LOG_ONLY` and `ENFORCE` flag values are not the v1 spelling. For an existing Gateway with no engine, `agentcore add policy-engine --attach-to-gateways MyGateway` can attach it. To change a Gateway's existing mode, edit its `policyEngineConfiguration` in `agentcore/agentcore.json`, run `agentcore build`, then deploy. `agentcore add gateway` creates a Gateway; it does not update an existing one. Use `--policy-engine-name` and `--policy-engine-mode` when creating a new Gateway around an engine already declared in the project.
+If this is the project's first deployment and `aws-targets.json` is empty, use `agentcore deploy --region <region>` to create `default`, then use `--target default` on later commands. A named target must already be defined in `aws-targets.json`. `--attach-mode` accepts `log-only` or `enforce`; the v0 `LOG_ONLY` and `ENFORCE` flag values are not the v1 spelling. For an existing Gateway with no engine, `agentcore add policy-engine --attach-to-gateways MyGateway` can attach it. To change a Gateway's existing mode, edit its `policyEngineConfiguration` in `agentcore/agentcore.json`, run `agentcore build`, then deploy to the same target. `agentcore add gateway` creates a Gateway; it does not update an existing one. Use `--policy-engine-name` and `--policy-engine-mode` when creating a new Gateway around an engine already declared in the project.
 
 ## Write a Cedar policy
 
-A policy referencing the deployed Gateway ARN requires the first deploy. Obtain that ARN from `agentcore status --json`. Save the Cedar statement to a file, review it, and add it to the project:
+A policy referencing the deployed Gateway ARN requires the first deploy. Obtain that ARN from `agentcore status --target <target> --json`. Save the Cedar statement to a file, review it, and add it to the project:
 
 ```bash
 agentcore add policy \
@@ -37,7 +37,7 @@ agentcore add policy \
   --validation-mode fail-on-any-findings \
   --enforcement-mode log-only
 agentcore build
-agentcore deploy
+agentcore deploy --target <target>
 ```
 
 `--statement` accepts inline text, `file://<path>`, or `-` for stdin. The v0 `--source` and `-g` flags are gone. If the policy checks an output, set `--authorization-phase return-output`; otherwise the CLI infers the phase from the statement. Tool action names use `AgentCore::Action::"TargetName___tool_name"` (three underscores). Confirm the name from the deployed Gateway target and test the intended principal, tool, and arguments.
@@ -48,6 +48,7 @@ For natural language generation, use the Gateway resource command with its deplo
 agentcore gateway policy generate \
   --gateway-id <gateway-id-or-arn> \
   --policy-engine-id <engine-id-or-arn> \
+  --region <target-region> \
   --prompt "Allow the refund tool only for approved operators"
 ```
 
@@ -57,6 +58,6 @@ Review the generated Cedar and save the chosen statement to `policy.cedar`; add 
 
 Start with the Gateway's engine in `log-only` and the policy in `log-only`. Exercise allowed and denied tool calls and inspect policy decisions in the service's policy decision logs. `agentcore logs runtime` and `agentcore logs harness` show agent application logs, not necessarily the Gateway policy decision stream.
 
-After checking the expected decisions, set the Gateway's `policyEngineConfiguration` mode to `ENFORCE` and the desired policy's `enforcementMode` to `ACTIVE` in `agentcore/agentcore.json`, then run `agentcore build` and `agentcore deploy`. Confirm the actual enum values against the v1 project schema and CLI output before editing. Test an allowed call and a denied call against the deployed Gateway.
+After checking the expected decisions, set the Gateway's `policyEngineConfiguration` mode to `ENFORCE` and the desired policy's `enforcementMode` to `ACTIVE` in `agentcore/agentcore.json`, then run `agentcore build` and `agentcore deploy --target <target>`. Confirm the actual enum values against the v1 project schema and CLI output before editing. Test an allowed call and a denied call against the deployed Gateway.
 
 If a call is denied unexpectedly, check the policy's action name, Gateway ARN, principal type, authorization phase, and engine attachment. If every call is denied, check that at least one applicable `permit` is active. Do not solve a denial by changing the Gateway's inbound auth to `NONE`.
