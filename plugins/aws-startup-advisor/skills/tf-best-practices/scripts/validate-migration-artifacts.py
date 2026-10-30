@@ -902,6 +902,8 @@ def _defaults_shell(lines: list[str], start: int, indent: int) -> str | None:
         if depth <= indent:
             break
         value = line.strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*:(?:\s+.*)?", value):
+            raise ValueError("Noncanonical workflow run defaults keys require review.")
         if value.startswith("run:"):
             if value != "run:":
                 raise ValueError("Flow-style workflow run defaults require review.")

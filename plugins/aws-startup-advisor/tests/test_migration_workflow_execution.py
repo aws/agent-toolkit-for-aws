@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import textwrap
 
 import pytest
 
@@ -175,3 +176,59 @@ def test_noncanonical_root_keys_cannot_hide_execution_overrides(migration, prefi
         "    steps:\n      - run: " + DEPLOY + "\n"
     )
     check_workflow(migration, workflow, "ARTIFACTS_FAIL", "workflow_unverified")
+
+
+def workflow_with_defaults(scope, defaults):
+    header = "jobs:\n  deploy:\n"
+    if scope == "workflow":
+        header = "defaults:\n" + textwrap.indent(defaults, "  ") + header
+    else:
+        header += "    defaults:\n" + textwrap.indent(defaults, "      ")
+    return header + (
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n      - run: " + DEPLOY + "\n"
+    )
+
+
+@pytest.mark.parametrize("scope", ["workflow", "job"])
+@pytest.mark.parametrize(
+    "defaults",
+    [
+        '"run":\n  shell: python\n',
+        "'run':\n  shell: python\n",
+        "run :\n  shell: python\n",
+        '"r\\u0075n":\n  shell: python\n',
+        'run:\n  "shell": python\n',
+        "run:\n  'shell': python\n",
+        "run:\n  shell : python\n",
+        'run:\n  "sh\\u0065ll": python\n',
+    ],
+)
+def test_noncanonical_nested_defaults_require_review(migration, scope, defaults):
+    check_workflow(
+        migration, workflow_with_defaults(scope, defaults),
+        "ARTIFACTS_FAIL", "workflow_unverified",
+    )
+
+
+@pytest.mark.parametrize("scope", ["workflow", "job"])
+@pytest.mark.parametrize("shell", ["bash", "sh", "python"])
+def test_canonical_nested_defaults_preserve_shell_selection(migration, scope, shell):
+    defaults = f'run:\n  shell: "{shell}"\n  working-directory: "."\n'
+    check_workflow(
+        migration, workflow_with_defaults(scope, defaults),
+        "ARTIFACTS_FAIL" if shell == "python" else "ARTIFACTS_OK",
+        "workflow_shell_unverified" if shell == "python" else None,
+    )
+
+
+@pytest.mark.parametrize("job_shell", ['  shell: "bash"\n', ""])
+def test_default_shell_precedence_is_preserved(migration, job_shell):
+    workflow = 'defaults:\n  run:\n    shell: python\n' + workflow_with_defaults(
+        "job", "run:\n" + job_shell + '  working-directory: "."\n',
+    )
+    check_workflow(
+        migration, workflow,
+        "ARTIFACTS_OK" if job_shell else "ARTIFACTS_FAIL",
+        None if job_shell else "workflow_shell_unverified",
+    )
