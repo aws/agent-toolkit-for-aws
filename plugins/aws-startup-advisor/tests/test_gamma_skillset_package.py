@@ -117,6 +117,7 @@ def test_packaged_helpers_execute_independently_of_source_tree(packages, skill, 
         helpers.append(scripts / "validate-startup-program-artifacts.py")
     helpers.append(tmp_path / "skills" / "tf-best-practices" / "scripts" / "validate-terraform-policy.py")
     helpers.append(tmp_path / "skills" / "tf-best-practices" / "scripts" / "validate-migration-artifacts.py")
+    helpers.append(tmp_path / "skills" / "tf-best-practices" / "scripts" / "validate-terraform-report.py")
     for helper in helpers:
         result = subprocess.run(
             [sys.executable, str(helper), "--help"],
@@ -253,6 +254,7 @@ def test_existing_output_is_preserved_until_explicit_force(tmp_path):
 @pytest.mark.parametrize("relative", [
     "skills/tf-best-practices/scripts/validate-terraform-policy.py",
     "skills/tf-best-practices/scripts/validate-migration-artifacts.py",
+    "skills/tf-best-practices/scripts/validate-terraform-report.py",
     "skills/tf-best-practices/scripts/rds_windows.py",
     "skills/knowledge-base-for-startups/SKILL.md",
     "scripts/validate-migration-report.py",

@@ -233,10 +233,12 @@ Interpret:
 3 -> cloud_run_monthly_spend: "$500-$1500" — Fixed-cost AWS options attractive (ECS Fargate reserved)
 4 -> cloud_run_monthly_spend: ">$1500" — Strong case for ECS Fargate with Savings Plans
 5 -> (no constraint written)
-6 -> same as default (2)
+6 -> cloud_run_monthly_spend: "unknown" — no confirmed Cloud Run spend
 ```
 
-Default: 2 — `cloud_run_monthly_spend: "$100-$500"`.
+Default when skipped: `cloud_run_monthly_spend: "unknown"`. Preserve an explicit
+"I don't know" with `chosen_by: "user"` in the recap and saved preferences;
+do not substitute a dollar band or interpret unknown as zero.
 
 ---
 
@@ -292,7 +294,7 @@ Default (if skipped/unsure): `{"value": "graviton", "chosen_by": "default"}` whe
   "cloud_run_traffic_pattern":  { "disposition": "DETECTED", "value": "constant-24-7",
                                    "default": "constant-24-7",
                                    "source": "terraform:min_instance_count>0" },
-  "cloud_run_monthly_spend":    { "disposition": "PROPOSED", "value": null, "default": "$100-$500" },
+  "cloud_run_monthly_spend":    { "disposition": "PROPOSED", "value": null, "default": "unknown" },
   "cpu_architecture": { "disposition": "PROPOSED", "value": null, "default": "graviton" }
 },
 "metadata": {

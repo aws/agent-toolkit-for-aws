@@ -616,6 +616,207 @@ def _ecs_database_credentials(
                 ))
 
 
+def _reference_text(expression: str | None, policy: Any) -> str | None:
+    """Read a direct reference or a simple reference-bearing string only."""
+    if expression is None:
+        return None
+    raw = _ungroup_hcl(expression, policy)
+    if raw.startswith('"'):
+        # Only an active interpolation establishes a Terraform relationship.
+        # Literal address-shaped text and Unicode-escaped "${" do not.
+        if not re.fullmatch(r'"\$\{[^{}"]+\}[^"$%]*"', raw):
+            return None
+        raw = _quoted_hcl_string(raw)
+        if raw is None or "$${" in raw or "%{" in raw:
+            return None
+        raw = re.sub(r"\$\{([^{}]+)\}", r"\1", raw)
+    return raw
+
+
+def _secret_identity(expression: str | None, policy: Any) -> str | None:
+    raw = _reference_text(expression, policy)
+    match = re.fullmatch(
+        r"(aws_secretsmanager_secret\.[\w-]+)\.(?:id|arn)", raw or "",
+    )
+    return match.group(1) if match else None
+
+
+def _secret_version_bindings(
+    root: Path, resources: list[Resource], policy: Any,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Resolve local secret-version identities and their literal JSON shapes."""
+    bindings: dict[str, str] = {}
+    documents: dict[str, str] = {}
+    versions = [r for r in resources if r.kind == "aws_secretsmanager_secret_version"]
+    for path in _files(root, "terraform", (".tf",)):
+        text = _read(root, path)
+        depths, codes, _ = policy._lex_hcl(text)
+        for match in re.finditer(
+            r'\bdata\s+"aws_secretsmanager_secret_version"\s+"(?P<name>[^"]+)"\s*\{',
+            text,
+        ):
+            if codes[match.start()] and depths[match.start()] == 0:
+                body, _ = policy._extract_braced_block(text, match.end() - 1)
+                versions.append(Resource(
+                    "data.aws_secretsmanager_secret_version", match.group("name"),
+                    body, path.relative_to(root).as_posix(), 0,
+                ))
+    for version in versions:
+        identity = _secret_identity(_attr(version.body, "secret_id", policy), policy)
+        if identity is None:
+            continue
+        bindings[version.address] = identity
+        value = _attr(version.body, "secret_string", policy)
+        if value is None:
+            continue
+        raw = _ungroup_hcl(value, policy)
+        encoded = re.match(r"jsonencode\s*(?=\()", raw)
+        if encoded:
+            obj = _ungroup_hcl(raw[encoded.end():], policy)
+            if obj.startswith("{") and obj.endswith("}"):
+                documents[identity] = obj
+        else:
+            literal = _string(raw)
+            if literal is not None:
+                try:
+                    decoded = json.loads(literal)
+                except ValueError:
+                    continue
+                if isinstance(decoded, dict):
+                    documents[identity] = json.dumps(decoded)
+    return bindings, documents
+
+
+def _ecs_credential_containers(expression: str, policy: Any) -> list[str]:
+    """Return literal ECS objects with reference expressions left intact."""
+    raw = _ungroup_hcl(expression, policy)
+    encoded = re.match(r"jsonencode\s*(?=\()", raw)
+    if encoded:
+        return _literal_list_objects(_ungroup_hcl(raw[encoded.end():], policy), policy)
+    if raw.startswith("<<"):
+        raw = _heredoc_string(raw)
+    elif raw.startswith('"'):
+        raw = _quoted_hcl_string(raw, json_document=True)
+    if raw is None:
+        return []
+    # JSON literal objects are also valid for the direct-field reader. Do not
+    # inspect templates that splice structure into the container definitions.
+    try:
+        decoded = json.loads(raw)
+    except ValueError:
+        return []
+    return [json.dumps(item) for item in decoded if isinstance(item, dict)] if isinstance(decoded, list) else []
+
+
+def _secret_selection(expression: str | None, policy: Any) -> tuple[str, str | None] | None:
+    raw = _reference_text(expression, policy)
+    match = re.fullmatch(
+        r"(?P<secret>aws_secretsmanager_secret\.[\w-]+)\.arn"
+        r"(?::(?P<key>[^:]*):[^:]*:[^:]*)?", raw or "",
+    )
+    if match:
+        return match.group("secret"), match.group("key") or None
+    match = re.fullmatch(
+        r"(?P<secret>aws_(?:db_instance|rds_cluster)\.[\w-]+)"
+        r"\.master_user_secret\[0\]\.secret_arn"
+        r"(?::(?P<key>[^:]*):[^:]*:[^:]*)?", raw or "",
+    )
+    return (match.group("secret"), match.group("key") or None) if match else None
+
+
+def _database_password_binding(
+    database: Resource, bindings: dict[str, str], policy: Any,
+) -> tuple[str, str] | None:
+    if _attr(database.body, "manage_master_user_password", policy) == "true":
+        return database.address, "password"
+    attr = "password" if database.kind == "aws_db_instance" else "master_password"
+    raw = _attr(database.body, attr, policy)
+    if raw is None:
+        return None
+    match = re.fullmatch(
+        r'jsondecode\s*\((.*)\)\s*(?:\[\s*("(?:\\.|[^"\\])*")\s*\]|\.([\w-]+))',
+        _ungroup_hcl(raw, policy), re.DOTALL,
+    )
+    if match:
+        version = re.fullmatch(
+            r'((?:data\.)?aws_secretsmanager_secret_version\.[\w-]+)\.secret_string',
+            _ungroup_hcl(match.group(1), policy),
+        )
+        key = match.group(3)
+        if match.group(2):
+            dynamic_tokens: list[str] = []
+            literal = _literal_template_text(
+                match.group(2)[1:-1], policy, dynamic_tokens=dynamic_tokens,
+            )
+            if literal is not None and not dynamic_tokens:
+                key = _quoted_hcl_string(f'"{literal}"')
+        if version and version.group(1) in bindings and key is not None:
+            return bindings[version.group(1)], key
+    return None
+
+
+def _database_credential_wiring(
+    root: Path, resources: list[Resource], policy: Any, findings: list[Finding],
+) -> None:
+    databases = {r.address: r for r in resources if r.kind in {"aws_db_instance", "aws_rds_cluster"}}
+    for database in databases.values():
+        if database.kind == "aws_db_instance" and _attr(database.body, "master_password", policy) is not None:
+            findings.append(Finding(
+                database.file, database.line, "rds_instance_password_argument",
+                f"{database.address}: master_password is unsupported on aws_db_instance; "
+                "use password or manage_master_user_password.",
+            ))
+    bindings, documents = _secret_version_bindings(root, resources, policy)
+    for task in resources:
+        if task.kind != "aws_ecs_task_definition":
+            continue
+        expression = _attr(task.body, "container_definitions", policy)
+        if expression is None:
+            continue
+        for container in _ecs_credential_containers(expression, policy):
+            environment = {
+                _literal_object_string(item, "name", policy): _object_field(item, "value", policy)
+                for item in _literal_list_objects(_object_field(container, "environment", policy) or "[]", policy)
+            }
+            secret_entries = _literal_list_objects(
+                _object_field(container, "secrets", policy) or "[]", policy,
+            )
+            for entry in secret_entries:
+                if _literal_object_string(entry, "name", policy) not in {"DB_PASSWORD", "DATABASE_PASSWORD", "PGPASSWORD"}:
+                    continue
+                selected = _secret_selection(_object_field(entry, "valueFrom", policy), policy)
+                if selected is None:
+                    continue
+                identity, key = selected
+                document = documents.get(identity)
+                if document is not None and key is None:
+                    findings.append(Finding(
+                        task.file, task.line, "ecs_database_secret_json_key",
+                        f"{task.address}: a scalar database password receives an entire JSON secret; "
+                        "select its password field with the ECS JSON-key suffix.",
+                    ))
+                elif document is not None and _object_field(document, key, policy) is None:
+                    findings.append(Finding(
+                        task.file, task.line, "ecs_database_secret_json_key",
+                        f"{task.address}: selected database credential key is absent from the local JSON secret.",
+                    ))
+                elif identity in databases and key != "password":
+                    findings.append(Finding(
+                        task.file, task.line, "ecs_database_secret_json_key",
+                        f"{task.address}: select password from the RDS-managed JSON credential secret.",
+                    ))
+                host = _reference_text(environment.get("DB_HOST") or environment.get("PGHOST"), policy)
+                linked = re.fullmatch(r"(aws_(?:db_instance|rds_cluster)\.[\w-]+)\.(?:address|endpoint)", host or "")
+                if linked and linked.group(1) in databases:
+                    expected = _database_password_binding(databases[linked.group(1)], bindings, policy)
+                    if expected is not None and selected != expected:
+                        findings.append(Finding(
+                            task.file, task.line, "ecs_database_credential_mismatch",
+                            f"{task.address}: database host and password select different credentials; "
+                            "use the target database's exact secret and JSON key.",
+                        ))
+
+
 def _rds_windows(resources: list[Resource], policy: Any, windows: Any, findings: list[Finding]) -> None:
     for resource in resources:
         if resource.kind not in {"aws_db_instance", "aws_rds_cluster"}:
@@ -1759,6 +1960,7 @@ def validate(
     resources = _resources(root, policy, findings)
     try:
         _ecs_database_credentials(resources, policy, findings)
+        _database_credential_wiring(root, resources, policy, findings)
         _rds_windows(resources, policy, windows, findings)
         _eb_database_access(resources, policy, findings)
         _postgres(root, resources, policy, findings, require_postgres_script)
@@ -1774,6 +1976,7 @@ def validate(
         "checks_run": [
             "postgres_verify", "eb_database_access", "workflow_deploy", "rds_windows",
             "ecs_database_credentials",
+            "database_credential_wiring",
         ],
         "scope": [
             "supported PostgreSQL verification control flow and Bash syntax",
@@ -1781,10 +1984,12 @@ def validate(
             "GitHub Actions step IDs and presence of an EB deployment operation",
             "literal RDS backup and maintenance window overlap",
             "placeholder passwords in literal ECS DATABASE_URL environment entries",
+            "RDS instance password arguments and locally resolvable ECS database secret selections",
         ],
         "limitations": [
             "Static checks do not prove deployment success or arbitrary Bash safety.",
             "Dynamic container definitions and secret retrieval code are not evaluated.",
+            "Secret-version freshness and effective IAM permissions are not evaluated.",
             "Unsupported shapes require review; Terraform validation and policy checks remain separate gates.",
         ],
         "findings": [asdict(finding) for finding in sorted(set(findings))],

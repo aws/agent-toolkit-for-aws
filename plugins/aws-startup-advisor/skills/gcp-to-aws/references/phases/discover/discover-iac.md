@@ -50,6 +50,14 @@ Sensitive key patterns to redact (case-insensitive): `password`, `passwd`, `secr
    - `raw_hcl` (raw HCL text for this resource, needed for Step 4)
    - `depends_on` (array of addresses this resource depends on)
 
+   **Preserve relationship evidence:** You MUST retain authored relationship fields
+   in `config`, including their original nested path and Terraform expression:
+   subnet `network`, SQL `settings.ip_configuration.private_network`, and Cloud Run
+   `template.spec.service_account_name` (v1) / `template.service_account` (v2).
+   Normalized sizing keys supplement these fields; they do not replace them.
+   Keep expressions as strings and continue applying Step 0 secret redaction.
+   An edge alone is insufficient because downstream phases also read `config`.
+
    **Cloud SQL normalization (`google_sql_database_instance`)** — Clarify auto-resolves Q6/Q12/Q13/Q13b from these fields, so write them with canonical names at the top level of `config`:
    - `config.disk_size_gb` — from Terraform `settings.disk_size` (attribute name in HCL is `disk_size`; normalize to `disk_size_gb`). Omit when not set in Terraform — do not guess.
    - `config.disk_autoresize` — from Terraform `settings.disk_autoresize`, ONLY when the attribute is explicitly present in HCL. Omit when absent — do not write the provider default (`true`); absence is not an authored choice.
@@ -144,7 +152,11 @@ For small projects, skip the full clustering pipeline. Instead:
      Terraform reference expressions (e.g., `google_cloud_run_v2_service.X.name` referenced
      in a service account → that SA serves that Cloud Run service)
    - Edge type: `serves` for all edges (skip typed-edge classification)
-   - If no reference found, attach to the nearest PRIMARY resource by file proximity
+   - Check incoming as well as outgoing references: a Cloud Run service can name
+     a service account without the service account naming the service.
+   - If no reference is found, keep the secondary in a standalone support cluster.
+     You MUST NOT infer dependency or network membership from file proximity,
+     common region, or a service-account binding because none proves connectivity.
 
 3. **Create clusters** using simple grouping:
    - **Networking cluster:** All `google_compute_network`, `google_compute_subnetwork`,
@@ -153,6 +165,10 @@ For small projects, skip the full clustering pipeline. Instead:
    - **Per-primary clusters:** Each PRIMARY resource + its SECONDARY `serves` dependents → 1 cluster
    - `google_project_service` resources → attach to the cluster of the service they enable
    - Naming: `{category}_{type}_{region}_{sequence}` (same convention as full clustering)
+   - Set `network` only from an explicit authored network/subnet/VPC-connector
+     reference that resolves to the networking cluster; otherwise set it to `null`.
+     In particular, Cloud Run with only a service-account binding has `network: null`.
+     Add cluster `dependencies` only when an explicit cross-cluster reference exists.
 
 4. **Set depth:** Networking cluster = depth 0. All other clusters = depth 1. (No Kahn's algorithm needed.)
 
@@ -284,7 +300,10 @@ Include top-level `creation_order` array:
 2. Confirm `$MIGRATION_DIR/gcp-resource-clusters.json` exists and is valid JSON
 3. Verify all resource addresses in inventory appear in exactly one cluster
 4. Verify all cluster IDs match resource cluster_id assignments
-5. Report to user: "Wrote gcp-resource-inventory.json (X resources) and gcp-resource-clusters.json (Y clusters)"
+5. Verify authored relationship fields survived in `config` and every non-null
+   cluster `network` has source evidence. For simplified discovery, verify every
+   edge has `relationship_type: "serves"`. Correct failures before advancing.
+6. Report to user: "Wrote gcp-resource-inventory.json (X resources) and gcp-resource-clusters.json (Y clusters)"
 
 ### 7d: Optional — Write `ai-workload-profile.json` (Vertex-strong Terraform only)
 

@@ -104,8 +104,19 @@ Determine the current GCP monthly infrastructure costs. Use the best available s
      GCP list rates — not a bill. Excludes usage-based services (Cloud Run,
      bandwidth, storage volume), sustained-use/committed-use discounts, and
      credits; your invoice may differ materially."
-3. **`preferences.json` → `gcp_monthly_spend`** — User-provided monthly spend from clarification.
-4. **Ask the user** — If none of the above are available, ask: "I need your current GCP monthly spend to produce a meaningful cost comparison. What is your approximate GCP monthly infrastructure cost?" Use the user's answer. If the user declines or is unsure, present AWS costs without a GCP comparison and note: "GCP baseline unavailable — AWS costs shown without comparison."
+3. **`preferences.json` → `design_constraints.gcp_monthly_spend.value`** —
+   User-provided monthly spend from clarification, only when it is a confirmed
+   numeric amount or spend band. `"unknown"` is not zero or a default band; skip
+   it as a baseline source. Apply the same rule to `cloud_run_monthly_spend`.
+4. **Ask the user** — If none of the above are available and the user has not
+   already answered unknown, ask: "I need your current GCP monthly spend to
+   produce a meaningful cost comparison. What is your approximate GCP monthly
+   infrastructure cost?" Use the user's answer. If the user declines, is unsure,
+   or already said unknown, set `current_costs.source: "unavailable"` and
+   `current_costs.gcp_monthly: null`, `current_costs.gcp_annual: null`. Set baseline,
+   difference, savings, and percentage comparison values to null, not zero.
+   Present AWS costs without a GCP comparison and note:
+   "GCP baseline unavailable — AWS costs shown without comparison."
 
 Present the GCP baseline as a total and per-service breakdown, noting which source was used.
 
@@ -135,9 +146,24 @@ This ensures the comparison is GCP list price vs. AWS on-demand (both uncommitte
 
 ## Part 2: Calculate Projected AWS Costs
 
-**Security baseline coverage (always required):** Add a `security_baseline` entry to `projected_costs.breakdown` with `service: "AWS Security Baseline (Tier 1)"`, low/mid/high estimates of $3/$15/$30 per month, `accuracy: "±25%"`, and a `components` sub-object breaking down CloudTrail S3 storage (~$1.50/mo mid), GuardDuty (~~$13/mo mid after free trial), AWS Budgets ($0), and the free controls. If `preferences.json` → `design_constraints.compliance.value` (the canonical location Clarify writes — NOT a top-level `compliance` key, which Clarify never writes) contains any of `soc2`, `pci`, `hipaa`, `fedramp` (treat absent / `none` / `unknown` as empty), also add a sibling `security_baseline_compliance` entry with low/mid/high estimates of $3/$14/$25 per month, `accuracy: "±25%"`, `emission_reason` field citing the declared compliance values, and a `components` sub-object breaking down AWS Config (~$6/mo mid continuous), Config S3 storage (~~ $0.50/mo mid), Security Hub + FSBP (~$7/mo mid after free trial), and extra standards (free). Per-unit rates are grounded in the AWS Pricing API for us-east-1 as of 2026-05-04 (Config pricing effective 2025-09-01, Security Hub effective 2026-03-01). Cite source as `references/shared/pricing-cache.md § Security Baseline`. Both line items are added as flat additives to each tier total (Premium/Balanced/Optimized) rather than being tier-dependent.
+**Security baseline coverage (always required):** Add a `security_baseline` entry to `projected_costs.breakdown` with `service: "AWS Security Baseline (Tier 1)"`, low/mid/high estimates of $3/$14.50/$30 per month (mid rounds to $15 for whole-dollar display), `accuracy: "±25%"`, and a `components` sub-object breaking down CloudTrail S3 storage (~$1.50/mo mid), GuardDuty (~~$13/mo mid after free trial), AWS Budgets ($0), and the free controls. If `preferences.json` → `design_constraints.compliance.value` (the canonical location Clarify writes — NOT a top-level `compliance` key, which Clarify never writes) contains any of `soc2`, `pci`, `hipaa`, `fedramp` (treat absent / `none` / `unknown` as empty), also add a sibling `security_baseline_compliance` entry with low/mid/high estimates of $3/$13.50/$25 per month (mid rounds to $14 for display), `accuracy: "±25%"`, `emission_reason` field citing the declared compliance values, and a `components` sub-object breaking down AWS Config (~$6/mo mid continuous), Config S3 storage (~~ $0.50/mo mid), Security Hub + FSBP (~$7/mo mid after free trial), and extra standards (free). Per-unit rates are grounded in the AWS Pricing API for us-east-1 as of 2026-05-04 (Config pricing effective 2025-09-01, Security Hub effective 2026-03-01). Cite source as `references/shared/pricing-cache.md § Security Baseline`. Both line items use the same `mid` as flat additives to each tier total (Premium/Balanced/Optimized). Low/high values describe uncertainty, not purchasable tiers: never turn them into scenario savings or premiums.
 
 For each service in `aws-design.json`, calculate monthly cost using rates from `pricing-cache.md`. Track `pricing_source` per service.
+
+You MUST price the complete selected capacity. For Fargate this is
+`desired_count × (vCPU_per_task × vCPU_rate + memory_GiB_per_task × memory_rate) × hours`.
+Two subnets do not substitute for two tasks. Preserve the Design count and
+per-task size, including an application HA requirement retained during a
+database-only workshop edit. If a rate is derived from another cached SKU, mark
+the line item's `pricing_source: "estimated"` and list it in
+`pricing_source.services_by_source.estimated`; it is not a direct cached quote.
+
+For every line item, store its rate/quantity arithmetic in `calculation` and use
+the calculated amount as `monthly`. Recompute component sums and tier totals
+with a local script before writing the artifact; round only for display. Facts
+read from source belong in `decision_basis.measured`; inferred provider defaults
+and pricing approximations belong in `decision_basis.assumed`. An inventory rate
+card is an estimate, never a measured bill.
 
 **Secret Manager coverage (mandatory):** If any mapped resource has `gcp_type` of `google_secret_manager_secret` or `google_secret_manager_secret_version`, ensure an `aws_service` entry for **Secrets Manager** is present in the estimate breakdown. Do not collapse this into a generic "supporting" line item.
 
@@ -400,6 +426,12 @@ Set `billing_data_available: true` in the output `migration_cost_considerations`
 
 ### IF billing data is NOT available but the inventory carries database/disk sizes:
 
+You MUST identify the actual source field for each size. A rate-card default
+used for a recurring-cost illustration is not a discovered provisioned disk.
+Do not describe the user's logical database-data estimate as an authored
+provisioned-disk cap. If neither billing nor an actual provisioned/source size is
+available, use the unavailable branch below.
+
 Provisioned sizes are an UPPER BOUND on one-time migration egress (actual data
 ≤ provisioned; #149's sizing caveat applies). Present a bounded estimate, never
 a point figure:
@@ -431,6 +463,18 @@ Set `migration_cost_considerations` to:
 ```
 
 In the user-facing summary, when billing data is missing, state: "GCP data transfer egress estimates require billing data. Provide a billing export and re-run discovery to see vendor egress projections."
+
+### Artifact placement
+
+You MUST use the exact keys in `references/shared/schema-estimate-infra.md`.
+Keep calculation and pricing provenance on their cost line items; baseline
+warnings in `cost_comparison.not_comparable_warning`; financial summary text in
+`financial_summary.recommendation`. Do not create parallel aliases such as
+`recommendation_summary`. Reuse the recommendation block's conclusion when
+summarizing it, rather than generating an independent verdict. Before marking
+Estimate complete, check the saved artifact against the canonical schema and
+correct any mismatches. Independent repository acceptance enforces this contract;
+do not assume repository-only validation tools are installed in the skill runtime.
 
 ---
 

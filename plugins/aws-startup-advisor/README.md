@@ -123,6 +123,17 @@ and node-group wiring still need separate review.
 This is a local, bounded acceptance check. It does not change ATX job status,
 support AI/billing-only routes, or prove deployment and data-migration success.
 
+For GCP workshop runs, acceptance also checks scenario identities, snapshot
+paths, and saved inventory/design/preference fingerprints. Generate and
+acceptance share the v2 Terraform-report contract. The generated-artifact
+checker catches unsupported RDS instance password arguments and resolvable
+local ECS secret-selection mismatches.
+
+The PostgreSQL script examples support a full offline copy with writers frozen
+and a tested data verifier. Online replication and final delta synchronization
+require a separate implementation. A missing verifier or unsupported transfer
+must remain on HOLD in the generated guide and report.
+
 ## Startup Architecture Advice
 
 The `architect-for-startups` skill answers "what should we build on AWS?" for a workload that is not an AI agent, the way a Startup Solutions Architect would: it establishes the company's stage, team size, runway, and credit position first, then recommends the smallest architecture that clears the bar, and names what to revisit at the next stage.

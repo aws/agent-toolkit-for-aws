@@ -18,7 +18,10 @@ _produces:
 
 After all sub-discoveries complete, assemble `heroku-resource-inventory.json` in `$MIGRATION_DIR/`.
 
-**Schema reference**: `shared/schema-discover-heroku.md` — consult for complete field definitions, per-type config schemas, and validation checklist.
+**Schema reference**: `references/shared/schema-discover-heroku.md`, resolved from
+the skill root (`SKILL_BASE`) — you MUST read it for complete field definitions,
+per-type config schemas, and the validation checklist. If the read fails, correct
+the path and retry before assembly; do not continue with an unread schema.
 
 ## Assembly Rules
 
@@ -27,7 +30,8 @@ After all sub-discoveries complete, assemble `heroku-resource-inventory.json` in
 3. Resources grouped by `heroku_app` field. Unassociable resources (spaces, pipelines) get `heroku_app: "unassociated"`.
 4. Include `metadata` section: `discovery_timestamp`, `total_apps_discovered`, `discovery_sources`, `confidence`.
 5. Include `apps[]` section with per-app entries containing:
-   - `app_name`, `app_id`, `discovery_status` (success/discovery_failed), `failure_reason`
+   - `app_name`, `app_id` (actual UUID, or `null` when unavailable from Terraform),
+     `discovery_status` (success/discovery_failed), `failure_reason`
    - `region`, `stack` (source values, or null when unavailable; retain the stack name after deriving the generation)
    - `heroku_generation` (cedar/fir/unknown), `generation_action` (always `detect_only`), `generation_diagnostics` (array of diagnostic reasons)
    - `space` (Private Space name or null)
@@ -35,6 +39,10 @@ After all sub-discoveries complete, assemble `heroku-resource-inventory.json` in
 6. Include `billing_profile` section (if billing data available, with `available`, `total_monthly_cost`, `currency`, `billing_period`, `line_items`).
 7. Include `terraform_metadata` section only when `.tf` files with `heroku_*` resources were actually FOUND (the terraform fragment always runs but may exit empty — an empty run contributes no section and no `"terraform"` discovery source).
 8. Include `live_metadata` section (if the live fragment ran, with `found`, `captured_at`, `apps_captured`, `apps_failed`, `capture_warnings`, `limitations` — and `drift` per the Merge & Drift Rules below).
+9. Retain each Terraform `heroku_app` as its `app:{app_name}` resource row with
+   source provenance, as well as its `apps[]` metadata entry. These are two views
+   of one app, not two apps; `total_apps_discovered` counts unique `apps[].app_name`.
+   App rows carry metadata and do not create an additional compute cost.
 
 ## Merge & Drift Rules (when BOTH terraform and live fragments contributed)
 

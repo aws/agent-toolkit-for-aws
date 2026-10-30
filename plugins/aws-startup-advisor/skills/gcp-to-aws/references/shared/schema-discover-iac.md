@@ -305,9 +305,19 @@ Resources grouped into logical clusters for migration with full dependency graph
 - `gcp_region` — GCP region for this cluster
 - `primary_resources` — GCP resources that map independently
 - `secondary_resources` — GCP resources that support primary resources
-- `network` — Which VPC cluster this cluster belongs to (cluster ID reference, or null if networking cluster itself)
+- `network` — VPC cluster supported by an explicit network/subnet/VPC-connector
+  reference; `null` for networking clusters and resources with no evidenced VPC
+  attachment. Same region or service-account identity does not imply attachment.
 - `creation_order_depth` — Depth level in topological sort (0 = foundational)
 - `must_migrate_together` — Boolean indicating if cluster is an atomic deployment unit
 - `dependencies` — Other cluster IDs this cluster depends on (derived from cross-cluster Primary->Primary edges)
 - `edges` — Typed relationships between resources with structured evidence
 - `creation_order` — Global ordering of clusters by depth level (for migration sequencing)
+
+Authored relationship fields remain in inventory `config` at their original
+paths, including subnet `network`, SQL `settings.ip_configuration.private_network`,
+and Cloud Run `template.spec.service_account_name` / `template.service_account`.
+Keep the source expression string even when an edge also records it.
+When `metadata.clustering_mode` is `"simplified"` or `"simplified_live"`, edges use
+`relationship_type: "serves"`; typed-edge values in the examples above apply to the
+full IaC strategy.

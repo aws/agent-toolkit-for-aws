@@ -212,6 +212,10 @@ Terraform resources often reference each other (e.g., `heroku_addon.postgres.app
    - If reference is to a variable or external data source → record as `"unresolved:{reference}"` and set `heroku_app` to `"unassociated"`.
 3. If `app_id` is a literal string (UUID or app name) → use directly.
 
+For `apps[].app_id`, retain a real UUID only when it is supplied by state or a
+successful live capture. An unresolved `heroku_app.<name>.id` reference does not
+reveal the UUID: write `null`, never a fabricated UUID or `tf-*` placeholder.
+
 ### 1e. Parse Error Handling
 
 If a `.tf` file contains syntax that prevents extraction (malformed HCL, incomplete blocks):

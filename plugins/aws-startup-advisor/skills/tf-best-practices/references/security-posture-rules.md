@@ -215,10 +215,13 @@ them at authoring time alongside the gate-enforced rules above.
 2. **Backups enabled** (`backup_retention_period` > 0).
 3. Emit a **DB subnet group + parameter group + security group**; place the instance in
    **private subnets**.
-4. **Never** set the master password from a plaintext variable
-   (`master_password = var.database_master_password` is forbidden — it lands in `terraform.tfvars`
-   and state in plaintext). Instead generate it into Secrets Manager and reference it via a data
-   source:
+4. **Never** put a database password in a committed variable default or tfvars file.
+   Prefer `manage_master_user_password = true` on the RDS instance/cluster when the
+   application can consume its managed Secrets Manager secret. Otherwise generate
+   and store the credential as below. A generated password and a Secrets Manager
+   data source still put the secret value in Terraform state: protect the state
+   backend and its access; do not describe this pattern as keeping passwords out
+   of state.
 
    ```hcl
    resource "random_password" "db_master" {
@@ -240,9 +243,25 @@ them at authoring time alongside the gate-enforced rules above.
      depends_on = [aws_secretsmanager_secret_version.db_master]
    }
 
-   # on the instance/cluster:
+   # On aws_db_instance (RDS PostgreSQL/MySQL):
+   #   password = jsondecode(data.aws_secretsmanager_secret_version.db_master.secret_string)["password"]
+   # On aws_rds_cluster (Aurora):
    #   master_password = jsondecode(data.aws_secretsmanager_secret_version.db_master.secret_string)["password"]
+   # Never emit master_password on aws_db_instance: the provider rejects it.
    ```
+
+5. **Match the application secret to the database credential.** When ECS injects
+   a JSON Secrets Manager value into a scalar `DB_PASSWORD`, select its password
+   key: `valueFrom = "${aws_secretsmanager_secret.db_master.arn}:password::"`.
+   For an RDS-managed credential use
+   `"${aws_db_instance.database.master_user_secret[0].secret_arn}:password::"`.
+   The bare ARN injects the entire JSON document, not its password field. Keep
+   the task execution role's `secretsmanager:GetSecretValue` permission scoped to
+   that same secret (and `kms:Decrypt` to its customer-managed key when used).
+   The host, port, database name, username, and secret must all describe the
+   same database resource; never infer the relationship from similar labels.
+   Fargate Linux JSON-key injection requires platform version `1.4.0` or later
+   (or `LATEST`).
 
 ## S3 — bucket hardening
 

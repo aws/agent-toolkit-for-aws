@@ -42,6 +42,8 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
       "heroku_app": "my-web-app",
       "config": {},
       "source": "terraform|live|live+terraform",
+      "tf_file": "heroku.tf",
+      "tf_resource_name": "web",
       "unmanaged_by_terraform": false,
       "not_found_live": false
     }
@@ -75,7 +77,7 @@ Per-app metadata entries. One entry per discovered Heroku app.
 | Field                    | Type           | Required | Description                                                                                               |
 | ------------------------ | -------------- | -------- | --------------------------------------------------------------------------------------------------------- |
 | `app_name`               | string         | ✅       | Heroku app name                                                                                           |
-| `app_id`                 | string (UUID)  | ✅       | Heroku app UUID                                                                                           |
+| `app_id`                 | string (UUID) \| null | ✅ | Actual Heroku app UUID; `null` when Terraform has no captured UUID. Never fabricate an ID or use a `tf-*` placeholder. |
 | `region`                 | string \| null | ✅       | Source Heroku region, preserved verbatim when available; `null` when not captured or authored             |
 | `stack`                  | string \| null | ✅       | Source stack name, preserved even after deriving `heroku_generation`; `null` when unavailable             |
 | `heroku_generation`      | string         | ✅       | `"cedar"`, `"fir"`, or `"unknown"`                                                                        |
@@ -101,12 +103,14 @@ Flat array of all discovered resources. **No nesting, no clustering.**
 | Field                    | Type    | Required | Description                                                                                 |
 | ------------------------ | ------- | -------- | ------------------------------------------------------------------------------------------- |
 | `resource_id`            | string  | ✅       | Unique identifier (format below)                                                            |
-| `resource_type`          | string  | ✅       | One of: `"formation"`, `"addon"`, `"space"`, `"pipeline"`, `"domain"`, `"config"`           |
+| `resource_type`          | string  | ✅       | One of: `"app"`, `"formation"`, `"addon"`, `"space"`, `"pipeline"`, `"domain"`, `"config"` |
 | `heroku_app`             | string  | ✅       | App name this resource belongs to, or `"unassociated"`                                      |
 | `config`                 | object  | ✅       | Type-specific configuration (see per-type schemas below)                                    |
 | `source`                 | string  | ❌       | Discovery provenance: `"terraform"`, `"live"`, or `"live+terraform"` (merged)               |
 | `unmanaged_by_terraform` | boolean | ❌       | Set `true` when live discovery found the resource but Terraform does not manage it (drift)  |
 | `not_found_live`         | boolean | ❌       | Set `true` when Terraform declares the resource but live discovery did not find it deployed |
+| `tf_file`               | string | ❌       | Workspace-relative Terraform source file; retain when merging live and Terraform rows |
+| `tf_resource_name`      | string | ❌       | Terraform local resource name; source provenance, not a live identifier |
 
 ### `billing_profile` (OPTIONAL — present when billing data available)
 
@@ -156,6 +160,7 @@ Deterministic ID format per resource type:
 
 | Resource Type | ID Format                                              | Example                                                                |
 | ------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `app`         | `app:{app_name}`                                         | `app:my-web-app`                                                         |
 | `formation`   | `formation:{app_name}:{process_type}`                  | `formation:my-web-app:web`                                             |
 | `addon`       | `addon:{app_name}:{addon_service}:{plan}:{addon_name}` | `addon:my-web-app:heroku-postgresql:standard-0:postgresql-cubed-12345` |
 | `space`       | `space:{space_name}`                                   | `space:my-private-space`                                               |
@@ -176,6 +181,28 @@ the HCL `name` attribute / `tf_resource_name` fallback (Terraform).
 ---
 
 ## Per-Type Config Schemas
+
+### `app` config
+
+Terraform app blocks produce a metadata resource row in addition to `apps[]`.
+This preserves the source resource and its provenance; count unique apps from
+`apps[]` and do not price this row as another compute service. Copy region and
+stack into `apps[]` too, so readers do not need to reconstruct app metadata.
+
+```json
+{
+  "app_name": "my-web-app",
+  "region": "us",
+  "stack": "heroku-22",
+  "space": null,
+  "organization": "my-org",
+  "buildpacks": ["heroku/nodejs"],
+  "acm_enabled": true
+}
+```
+
+Only include optional configuration when authored or captured; use `null` for an
+unavailable region/stack rather than inventing a provider default.
 
 ### `formation` config
 
@@ -203,6 +230,7 @@ the HCL `name` attribute / `tf_resource_name` fallback (Terraform).
   "plan": "standard-0",
   "provider": "heroku",
   "addon_name": "postgresql-cubed-12345",
+  "addon_name_source": "tf_resource_name_fallback",
   "connection_pooling": true,
   "ha_enabled": false,
   "encryption_in_transit": true,

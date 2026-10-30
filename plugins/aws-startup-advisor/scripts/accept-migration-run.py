@@ -307,6 +307,112 @@ def discovery_facts(inventory: dict[str, Any], skill: str) -> dict[str, Any]:
     })
 
 
+def _same_json_value(left: Any, right: Any) -> bool:
+    """Compare JSON values without treating booleans as numeric quantities."""
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return left == right
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            _same_json_value(value, right[key]) for key, value in left.items()
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _same_json_value(a, b) for a, b in zip(left, right)
+        )
+    return left == right
+
+
+def scenario_consistency(root: Path) -> dict[str, Any]:
+    """Verify GCP workshop references and hashes without modifying snapshots."""
+    errors: list[str] = []
+    try:
+        index = read_object(root / "scenarios/index.json")
+    except (OSError, ValueError):
+        return check("scenario_snapshots", "FAIL", ["Invalid scenario index"])
+    entries = index.get("scenarios")
+    if not isinstance(entries, list):
+        return check("scenario_snapshots", "FAIL", ["scenarios must be an array"])
+    ids = [entry.get("scenario_id") for entry in entries if isinstance(entry, dict)]
+    if (len(ids) != len(entries) or any(not isinstance(value, str) for value in ids)
+            or len({value for value in ids if isinstance(value, str)}) != len(ids)):
+        errors.append("Scenario IDs must be unique strings")
+    if index.get("max_scenarios") != 5 or len(entries) > 5:
+        errors.append("The scenario index must declare and respect the five-scenario limit")
+    for field in ("baseline_scenario_id", "active_scenario_id"):
+        if not isinstance(index.get(field), str) or index[field] not in ids:
+            errors.append(f"{field} must identify a listed scenario")
+    inventory = root / "gcp-resource-inventory.json"
+    if (not inventory.is_file() or index.get("inventory_fingerprint") !=
+            hashlib.sha256(inventory.read_bytes()).hexdigest()):
+        errors.append("inventory_fingerprint must match the frozen inventory bytes")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        sid = entry.get("scenario_id")
+        if not isinstance(sid, str) or re.fullmatch(r"scenario-\d{3}", sid) is None:
+            errors.append("Scenario IDs must use scenario-NNN")
+            continue
+        manifest_path = f"scenarios/{sid}.json"
+        if entry.get("manifest") != manifest_path:
+            errors.append(f"{sid}: index manifest must be {manifest_path}")
+        try:
+            manifest = read_object(root / manifest_path)
+        except (OSError, ValueError):
+            errors.append(f"{sid}: manifest is missing or invalid")
+            continue
+        if manifest.get("scenario_id") != sid:
+            errors.append(f"{sid}: manifest ID differs from index")
+        paths = manifest.get("paths")
+        paths = paths if isinstance(paths, dict) else {}
+        for key, suffix, fingerprint in (
+            ("preferences", "preferences.json", "preferences_fingerprint"),
+            ("aws_design", "aws-design.json", "aws_design_fingerprint"),
+            ("estimation_infra", "estimation-infra.json", None),
+        ):
+            expected = f"scenarios/{sid}.{suffix}"
+            snapshot = root / expected
+            if paths.get(key) != expected:
+                errors.append(f"{sid}: {key} must reference its own complete snapshot")
+            if not snapshot.is_file() or snapshot.stat().st_size == 0:
+                errors.append(f"{sid}: {key} snapshot is missing or empty")
+            else:
+                try:
+                    read_object(snapshot)
+                except (OSError, ValueError):
+                    errors.append(f"{sid}: {key} snapshot must be a valid JSON object")
+                if fingerprint and fingerprint in manifest:
+                    if manifest[fingerprint] != hashlib.sha256(snapshot.read_bytes()).hexdigest():
+                        errors.append(f"{sid}: {fingerprint} differs from saved bytes")
+    active = index.get("active_scenario_id")
+    if isinstance(active, str) and re.fullmatch(r"scenario-\d{3}", active):
+        for filename in ("preferences.json", "aws-design.json", "estimation-infra.json"):
+            try:
+                current = read_object(root / filename)
+                saved = read_object(root / "scenarios" / f"{active}.{filename}")
+            except (OSError, ValueError):
+                errors.append(f"Active {filename} or its snapshot is missing or invalid")
+                continue
+            if filename == "preferences.json":
+                workshop = current.get("workshop")
+                if not isinstance(workshop, dict) or workshop.get("active_scenario_id") != active:
+                    errors.append("preferences.workshop.active_scenario_id must match the index")
+                # Selection changes these fields, not semantic notes or knobs.
+                for document in (current, saved):
+                    if isinstance(document.get("workshop"), dict):
+                        for field in ("active", "last_sheet_at", "active_scenario_id"):
+                            document["workshop"].pop(field, None)
+                        if not document["workshop"]:
+                            document.pop("workshop")
+            # JSON types matter: Python otherwise treats True as equal to 1.
+            if not _same_json_value(current, saved):
+                errors.append(f"Active {filename} differs from the selected scenario snapshot")
+    return check("scenario_snapshots", "FAIL" if errors else "PASS", errors)
+
+
 def lifecycle(state: dict[str, Any]) -> tuple[str, list[str]]:
     """The documented decision-only terminal is complete with Generate pending."""
     errors = []
@@ -338,57 +444,9 @@ def lifecycle(state: dict[str, Any]) -> tuple[str, list[str]]:
 
 
 def validation_report_errors(value: dict[str, Any]) -> list[str]:
-    """Check the existing runtime v2 envelope, without trusting its verdict."""
-    errors = []
-    if value.get("$schema") != "validation-report/v2":
-        errors.append("$schema must be validation-report/v2")
-    status = value.get("status")
-    if not isinstance(status, str) or status not in {
-        "passed", "passed_degraded_offline", "skipped_user_continue",
-        "skipped_user_abort", "policy_failed",
-    }:
-        errors.append("status is outside the runtime contract")
-    if value.get("policy_status") != "POLICY_OK":
-        errors.append("Completed infrastructure requires policy_status POLICY_OK")
-    if not isinstance(status, str) or status not in {"passed", "passed_degraded_offline", "skipped_user_continue"}:
-        errors.append("status does not permit infrastructure completion")
-    if type(value.get("attempts")) is not int or value["attempts"] < 0:
-        errors.append("attempts must be a nonnegative integer")
-    for name in ("errors_found", "errors_fixed", "policy_violations"):
-        if not isinstance(value.get(name), list):
-            errors.append(f"{name} must be an array")
-            continue
-        for index, item in enumerate(value[name]):
-            prefix = f"{name}[{index}]"
-            if not isinstance(item, dict):
-                errors.append(f"{prefix} must be an object")
-                continue
-            for field in ("file", "summary"):
-                if not isinstance(item.get(field), str):
-                    errors.append(f"{prefix}.{field} must be a string")
-            if type(item.get("line")) is not int or item["line"] < 0:
-                errors.append(f"{prefix}.line must be a nonnegative integer")
-            if item.get("severity") not in ("error", "warning"):
-                errors.append(f"{prefix}.severity must be error or warning")
-            if name == "errors_found" and isinstance(item.get("summary"), str) and len(item["summary"]) > 200:
-                errors.append(f"{prefix}.summary exceeds 200 characters")
-            if name == "errors_fixed" and (type(item.get("attempt")) is not int or item["attempt"] < 1):
-                errors.append(f"{prefix}.attempt must be a positive integer")
-    if value.get("policy_violations") != []:
-        errors.append("POLICY_OK requires empty policy_violations")
-    if type(value.get("offline_fallback_used")) is not bool or (
-        value["offline_fallback_used"] != (status == "passed_degraded_offline")
-    ):
-        errors.append("offline_fallback_used must match passed_degraded_offline")
-    if not isinstance(value.get("terraform_version"), str):
-        errors.append("terraform_version must be a string")
-    try:
-        stamp = datetime.fromisoformat(value["timestamp"].replace("Z", "+00:00"))
-        if stamp.utcoffset() != timezone.utc.utcoffset(stamp):
-            raise ValueError("not UTC")
-    except (KeyError, TypeError, AttributeError, ValueError):
-        errors.append("timestamp must be an ISO 8601 UTC timestamp")
-    return errors
+    """Use the same completion contract as the Generate-time report gate."""
+    report = load_module("_accept_runtime_report", TF_SCRIPTS / "validate-terraform-report.py")
+    return report.validation_report_errors(value)
 
 
 def command(args: list[str], cwd: Path, env: dict[str, str], timeout: int = 180) -> dict[str, Any]:
@@ -581,6 +639,8 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
     checks.append(check("required_json_objects", "FAIL" if errors else "PASS", errors))
     if inventory in documents:
         checks.append(discovery_facts(documents[inventory], skill))
+    if skill == "gcp-to-aws" and (root / "scenarios/index.json").exists():
+        checks.append(scenario_consistency(root))
     other_routes = [name for name in ("aws-design-ai.json", "aws-design-billing.json",
                                      "estimation-ai.json", "estimation-billing.json") if (root / name).exists()]
     if other_routes:
@@ -656,7 +716,7 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
         SCRIPTS / "artifact-contracts.json", SCRIPTS / "validate-migration-report.py",
         PLUGIN / "skills/heroku-to-aws/scripts/validate-heroku-migration-report.py",
         TF_SCRIPTS / "validate-terraform-policy.py", TF_SCRIPTS / "validate-migration-artifacts.py",
-        TF_SCRIPTS / "rds_windows.py",
+        TF_SCRIPTS / "rds_windows.py", TF_SCRIPTS / "validate-terraform-report.py",
         *(PLUGIN / "skills").rglob("schema-*.md"),
         *(PLUGIN / "skills/shared").rglob("*.schema.json"),
         *(SCRIPTS / "contracts").glob("*.json"),

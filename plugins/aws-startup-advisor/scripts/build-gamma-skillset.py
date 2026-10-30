@@ -50,6 +50,7 @@ REQUIRED_FILES = {
     "tf-best-practices": (
         "scripts/validate-terraform-policy.py",
         "scripts/validate-migration-artifacts.py",
+        "scripts/validate-terraform-report.py",
         "scripts/rds_windows.py",
         "references/terraform-validation.md",
     ),

@@ -204,7 +204,7 @@ Verify both stages are complete:
    - If `estimation-ai.json` exists -> require `generation-ai.json`
    - If `estimation-billing.json` exists -> require `generation-billing.json`
 2. **Stage 2 route gates (fail closed)**:
-   - If infra artifact route is active (`generation-infra.json` AND `aws-design.json`) -> require `terraform/`, `scripts/`, and `validation-report.json` (with `status` in `{passed, passed_degraded_offline, skipped_user_continue}` AND `policy_status` == `POLICY_OK`, unless the user chose skip/abort on a policy failure)
+   - If infra artifact route is active (`generation-infra.json` AND `aws-design.json`) -> require `terraform/`, `scripts/`, and `validation-report.json`. Run `python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/validate-terraform-report.py" "$MIGRATION_DIR/validation-report.json"` and require exit 0. This verifies the complete v2 record, including its permitted completion status and `POLICY_OK`; a partial report with only those two fields is insufficient. A skipped or aborted policy failure does not authorize infrastructure completion.
    - For that same infra route, require `artifact-validation-status.json` to be valid JSON with `artifact_status` exactly `ARTIFACTS_OK`. Missing, failed, or unexecuted checks block completion.
    - If AI artifact route is active (`generation-ai.json` AND `aws-design-ai.json`) -> require `ai-migration/`
    - If billing artifact route is active (`generation-billing.json` AND `aws-design-billing.json`) -> require `terraform/skeleton.tf`
@@ -250,7 +250,7 @@ After the structured block, include:
 
 1. **Plans generated** — List all `generation-*.json` files produced
 2. **Artifacts generated** — List all directories and files created (terraform/, scripts/, ai-migration/, MIGRATION_GUIDE.md, README.md). Include `migration-report.html` only if it exists.
-3. **Validation status** — If `$MIGRATION_DIR/validation-report.json` exists, report its `status` field (`passed`, `passed_degraded_offline`, or `skipped_user_continue`). If `status == "passed_degraded_offline"`, add: "Provider registry was unreachable; `terraform validate` was skipped. Re-run `terraform init && terraform validate` from a network-connected shell to complete validation." Also report `policy_status` (`POLICY_OK`/`POLICY_FAIL`) — the tf-best-practices policy gate runs regardless of the offline path and must report `POLICY_OK` before infra Generate completes (see `generate-artifacts-infra.md` Step 6).
+3. **Validation status** — If `$MIGRATION_DIR/validation-report.json` exists, report its actual `status` and `policy_status`. For `passed_degraded_offline`, describe the recorded `terraform init` network failure and the skipped validation. For `skipped_user_continue`, describe the actual failed or unavailable check and the user's choice. A broken CLI shim is not a registry outage. State that Terraform validation remains unverified until the skipped checks run successfully. The policy gate must report `POLICY_OK` before infrastructure Generate completes (see `generate-artifacts-infra.md` Step 6).
 4. **Key timelines** — Highlight migration timeline from the generation plans
 5. **Key risks** — Highlight top risks from the generation plans
 6. **TODO markers** — Note any TODO markers in generated artifacts that require manual attention
