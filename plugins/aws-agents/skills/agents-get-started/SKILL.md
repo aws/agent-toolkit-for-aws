@@ -2,12 +2,13 @@
 name: agents-get-started
 description: >
   Use when a developer wants to create a new agent project or get started
-  with AgentCore. Handles framework selection, project scaffolding, first
-  deploy, and first invocation. Triggers on: "build an agent", "create an
-  agent", "get started", "new project", "agentcore create", "which
-  framework", "Strands vs LangGraph", "hello world agent", "first agent",
-  "create MCP server", "host MCP server", "agentcore dev", "dev server",
-  "what port", "local development".
+  with AgentCore. Handles the Harness vs Runtime choice, template
+  selection, project scaffolding, first deploy, and first invocation.
+  Triggers on: "build an agent", "create an agent", "get started", "new
+  project", "agentcore create", "which template", "which framework",
+  "Strands vs LangGraph", "harness or runtime", "hello world agent",
+  "first agent", "create MCP server", "host MCP server", "agentcore dev",
+  "dev server", "what port", "local development".
   Not for adding capabilities to existing projects — use agents-build
   or agents-connect. Strands vs LangGraph in a migration context routes
   to agents-build, not here. Connecting to an existing MCP server routes
@@ -17,7 +18,7 @@ metadata:
   type: skill
   version: "1.0.0"
   author: aws-agentcore
-  requires-cli: ">=0.9.0"
+  requires-cli: ">=1.0.0"
 ---
 
 # get-started
@@ -28,7 +29,7 @@ Walk a developer from zero to a running agent on AWS.
 
 - Developer wants to build an agent on AWS and doesn't know where to start
 - Developer wants to create a new AgentCore project
-- Developer is choosing between frameworks (Strands, LangGraph, GoogleADK, OpenAI Agents)
+- Developer is choosing between a Harness (config-defined agent) and a Runtime (their own code), or between templates (Strands, LangChain, Vercel AI SDK, FastMCP, ...)
 - Developer just ran `agentcore create` and wants to know what to do next
 
 Do NOT use for:
@@ -41,10 +42,10 @@ Do NOT use for:
 
 `$ARGUMENTS` can be:
 
-- A framework preference: "using LangGraph", "with Strands"
-- A protocol: "MCP server", "A2A"
+- A framework or language preference: "using LangChain", "with Strands", "in TypeScript"
+- A protocol: "MCP server", "A2A", "AG-UI"
 - A description of what the agent should do: "a customer support agent"
-- Empty — the skill will guide framework selection
+- Empty — the skill will guide the Harness vs Runtime and template choice
 
 ## Process
 
@@ -54,195 +55,250 @@ Do NOT use for:
 agentcore --version
 ```
 
-This skill requires v0.9.0 or later.
+This skill requires v1.0.0 or later.
 
 If the version is older:
-> Your AgentCore CLI is out of date (found vX.Y.Z, need v0.9.0+).
+> Your AgentCore CLI is out of date (found vX.Y.Z, need v1.0.0+).
 
-Offer to run the update: `agentcore update`. After the update completes, re-check the version to confirm it's ≥0.9.0 before continuing. Preserve any context the developer already provided (framework preference, project name, what they want to build) so they don't have to repeat themselves.
+Offer to run the update: `npm install -g @aws/agentcore@latest` (or `agentcore update`). After the update completes, re-check the version to confirm it's ≥1.0.0 before continuing. Preserve any context the developer already provided (template preference, project name, what they want to build) so they don't have to repeat themselves.
 
 If `agentcore` is not found:
-> The AgentCore CLI isn't installed. Run `npm install -g @aws/agentcore` (requires Node.js 20+).
+> The AgentCore CLI isn't installed. Run `npm install -g @aws/agentcore` (requires Node.js 20.12+; Python templates also need [`uv`](https://docs.astral.sh/uv/getting-started/installation/)).
 > If you're having trouble with installation, I can run the `agents-debug` skill (which loads [`references/doctor.md`](../agents-debug/references/doctor.md)) to diagnose your environment.
+
+If the Python-based Bedrock AgentCore Starter Toolkit is installed, it also provides an `agentcore` command — have the developer uninstall it so the right CLI runs.
 
 ### Step 1: Determine intent — exploring or ready to create?
 
-Before jumping into framework selection, figure out where the developer is:
+Before jumping into template selection, figure out where the developer is:
 
-**Ask the developer:** "Are you exploring options (comparing frameworks, understanding what AgentCore does) or ready to create a project?"
+**Ask the developer:** "Are you exploring options (Harness vs Runtime, comparing frameworks, understanding what AgentCore does) or ready to create a project?"
 
-- **Exploring** → Go to Step 2 (framework comparison). Present the options, answer questions, and wait. Do not construct a `create` command until they signal they're ready.
-- **Ready to create** → Skip to Step 3 (create the project). If they already specified a framework, skip Step 2 entirely.
-- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory. If found, read it and skip to Step 5 (what to do next). Don't re-scaffold.
+- **Exploring** → Go to Step 2. Present the options, answer questions, and wait. Do not construct a `create` command until they signal they're ready.
+- **Ready to create** → Skip to Step 3 (create the project). If they already said Harness, or named a template or framework, skip Step 2 entirely.
+- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has `"version": 1`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 If the developer's intent is clear from `$ARGUMENTS` (e.g., "create a Strands agent called MyBot"), skip straight to Step 3.
 
-### Step 2: Framework selection
+### Step 2: Harness or Runtime, then a template
 
-**Check conversation context first.** If the developer already discussed frameworks earlier in this conversation (e.g., from a previous skill invocation), don't re-present the full table. Summarize what was discussed and ask if they've decided, or if anything changed.
+**Check conversation context first.** If the developer already discussed this earlier in the conversation (e.g., from a previous skill invocation), don't re-present everything. Summarize what was discussed and ask if they've decided, or if anything changed.
 
-If this is the first time discussing frameworks, present the options:
+#### Harness vs Runtime
 
-**Supported frameworks (CLI-scaffolded, Python):**
+A v1 project can hold either kind of agent, or both:
 
-| Framework | CLI value | Best for |
+- A **Harness** is a managed agent you configure in YAML — model, system prompt, tools, skills, memory — and AgentCore runs for you. No agent code to write.
+- A **Runtime** is agent code you own, scaffolded from a template (or brought yourself) and hosted on AgentCore Runtime.
+
+| Choose a Harness when... | Choose a Runtime when... |
+|---|---|
+| A model + prompt + tools (MCP, gateways, built-in shell/file tools) + skills covers what the agent needs | You need custom orchestration logic in code, or a specific framework (Strands, LangChain/LangGraph, Vercel AI SDK, your own) |
+| You want the shortest path to a deployed agent | You want a local dev loop — `agentcore dev` runs Runtime code on your machine; a Harness only runs in AWS |
+| | You're serving MCP, A2A, or AG-UI, or building an execution environment for Bedrock Managed Agents |
+| | You're deploying to a China region (`cn-north-1`, `cn-northwest-1`) — Harnesses aren't available there |
+
+**Default recommendation** (when the developer says "no preference" or "you pick"): start with a **Harness**. It's what the interactive `agentcore create` wizard selects by default and what the CLI's quick start leads with. If they outgrow it, `agentcore export harness --name <HarnessName>` converts it into a Runtime with Strands code they own (see Step 7).
+
+Recommend a **Runtime** instead as soon as any right-hand row applies, or when the developer already has agent code.
+
+#### Runtime templates
+
+If the developer chose a Runtime, pick a template. These are the values for `--template`:
+
+| Template | Language | Best for |
 |---|---|---|
-| Strands | `Strands` | AWS-native, simplest path, best AgentCore integration |
-| LangGraph | `LangChain_LangGraph` | Complex graph-based workflows, existing LangChain investment |
-| Google ADK | `GoogleADK` | Teams already using Google's agent toolkit |
-| OpenAI Agents | `OpenAIAgents` | Teams already using OpenAI's agent SDK |
+| `agent-python-strands` | Python | AWS-native, simplest code path, best AgentCore integration. Includes AgentCore Memory wiring |
+| `agent-python-strands-container` | Python | Same as above, built as a container image (custom system dependencies) |
+| `agent-python-langchain` | Python | LangChain/LangGraph agents, existing LangChain investment |
+| `agent-typescript-strands` | TypeScript | Strands in TypeScript, includes AgentCore Memory wiring |
+| `agent-typescript-vercel` | TypeScript | Teams using the Vercel AI SDK |
+| `a2a-python-strands` | Python | Agent-to-agent (A2A protocol) |
+| `agui-python-strands` | Python | Agents behind an AG-UI frontend |
+| `mcp-python-fastmcp` | Python | Hosting an MCP server (tools only, no agent loop) |
+| `agent-python-minimal` | Python | Minimal project, no agent framework — bring your own |
+| `environment-python-bma` | Python | Execution environment for Bedrock Managed Agents |
+| `empty` | — | Empty project (the default when `--template` is omitted); add a Harness or Runtime afterwards |
 
-**Ask the developer to choose.** Present the options and wait for their selection. Don't assume a default unless they explicitly say they have no preference.
-
-> **Note on naming:** The CLI flag value is the exact string to pass to `--framework`. In prose use the shorter names.
-
-**Default recommendation** (only when the developer says "no preference" or "you pick"): Strands — AWS-native framework with the tightest AgentCore integration and the most samples/docs.
+`agentcore create --help` always lists the current set. Ask the developer to choose; don't assume a template unless they say they have no preference, in which case use `agent-python-strands` (or `agent-typescript-strands` if they want TypeScript).
 
 **Key decision points to surface:**
 
-- "Do you have existing agent code in LangGraph or OpenAI Agents?" → use that framework
-- "Do you need complex graph-based workflows with conditional branching?" → LangGraph
-- "Starting fresh with no preference?" → Strands
+- "Do you have existing agent code in LangChain/LangGraph?" → `agent-python-langchain`
+- "Do you work in TypeScript?" → `agent-typescript-strands` or `agent-typescript-vercel`
+- "Are you exposing tools to other agents rather than building an agent?" → `mcp-python-fastmcp`
+- "Starting fresh with no preference?" → a Harness, or `agent-python-strands` if they want code
 
 #### Framework not listed?
 
-If the developer asks about a framework not in the table above, handle it:
+If the developer asks about a framework that has no template, handle it:
 
 | They ask about | What to say |
 |---|---|
-| **CrewAI, AutoGen, Semantic Kernel** | Not scaffolded by the CLI, but you can use them via the BYO Container path (below). AgentCore Runtime is framework-agnostic — any code that implements the HTTP contract works. |
-| **Anthropic SDK / Claude Agent SDK** | This is a model SDK, not an agent framework. You can use it inside any framework (Strands, LangGraph, etc.) or standalone. For standalone use, wrap it in a container with the Runtime contract. |
-| **Claude Code / Cursor / Copilot** | These are IDE tools, not agent frameworks. They're where you *write* agent code, not what you deploy. Pick a framework from the table above for the agent itself. |
-| **LangChain (without LangGraph)** | LangChain is a library, LangGraph is the agent framework built on it. The CLI scaffolds LangGraph. If you're using plain LangChain chains, the BYO Container path works. |
-| **Custom / homegrown framework** | BYO Container path — see below. |
+| **Google ADK, OpenAI Agents SDK, CrewAI, AutoGen, Semantic Kernel** | No template for these, but AgentCore Runtime is framework-agnostic — use the BYO path below (or start from `agent-python-minimal` and add the framework's dependency). |
+| **Anthropic SDK / Claude Agent SDK** | This is a model SDK, not an agent framework. You can use it inside any framework (Strands, LangChain, etc.) or standalone via the BYO path. |
+| **Claude Code / Cursor / Copilot** | These are IDE tools, not agent frameworks. They're where you *write* agent code, not what you deploy. Pick a Harness or a template for the agent itself. |
+| **LangGraph** | Use `agent-python-langchain` — LangChain's agent API runs on LangGraph. |
+| **Custom / homegrown framework** | BYO path — see below. |
 
-**BYO Container path (any framework, any language):**
+**BYO path (any framework, any language):**
 
-For frameworks or languages not scaffolded by the CLI, AgentCore Runtime accepts any container that implements the HTTP contract (`POST /invocations`, `GET /ping`). The workflow:
+`agentcore add runtime` registers a Runtime for code you write yourself. It doesn't generate code: it creates `app/<RuntimeName>/` with a `README.md` and an `AGENTS.md` describing what the code must provide for the chosen protocol, and registers the Runtime in `agentcore.json`.
 
-1. `agentcore create --name <ProjectName> --defaults` to scaffold the project structure
-2. `agentcore add agent --type byo --build Container --language <Language> --code-location <path>` to register your code
-3. Write a `Dockerfile` that builds and runs your agent
-4. `agentcore deploy` handles ECR push, CDK infra, and runtime creation
+1. `agentcore create --name <ProjectName>` to scaffold an empty project
+2. `cd <ProjectName>` then `agentcore add runtime --name <RuntimeName> --language python` (or `--language typescript`; add `--protocol MCP|A2A|AGUI` if not HTTP)
+3. Write your code in `app/<RuntimeName>/` following its `README.md`. For Python: `main.py` + `pyproject.toml`; for TypeScript: `main.ts` + `package.json`
+4. Optional: add a file named `Dockerfile` to that folder — the next `agentcore dev`, `build`, or `deploy` switches the Runtime to a container build and says so
+5. `agentcore deploy`
 
 **Language-specific notes:**
 
 | Language | Recommended path |
 |---|---|
-| Java (Spring Boot) | [Spring AI SDK for AgentCore](https://aws.amazon.com/blogs/machine-learning/spring-ai-sdk-for-amazon-bedrock-agentcore-is-now-generally-available) — handles the Runtime contract, SSE streaming, and health checks. Use `--language Other --build Container`. |
-| JavaScript / TypeScript | Implement the Runtime contract in Express/Fastify/etc. Use `--language TypeScript --build Container`. |
-| Go, Rust, .NET, other | Implement the Runtime HTTP contract. Use `--language Other --build Container`. |
+| Python | CodeZip (no Dockerfile) unless you need packages without ARM64 Linux wheels or system packages |
+| TypeScript | First-class: `agent-typescript-strands`, `agent-typescript-vercel`, or `agentcore add runtime --name <Name> --language typescript` |
+| Java (Spring Boot) | [Spring AI SDK for AgentCore](https://aws.amazon.com/blogs/machine-learning/spring-ai-sdk-for-amazon-bedrock-agentcore-is-now-generally-available) handles the Runtime contract. Register with `agentcore add runtime` and provide a `Dockerfile` (container build) |
+| Go, Rust, .NET, other | Implement the Runtime HTTP contract (`POST /invocations`, `GET /ping` on port 8080, ARM64 Linux) and provide a `Dockerfile` |
 
-The rest of this skill (deploy, status, logs, invoke) applies once the container builds correctly.
+`--language` only accepts `python` or `typescript`; for other languages the `Dockerfile` decides the build. Container images are built on ARM64 in AWS CodeBuild during deploy, so local Docker is only needed to run a container Runtime with `agentcore dev` (Docker, Podman, or Finch).
 
 #### Framework vs. model provider — a common confusion
 
-The framework is how your agent orchestrates (Strands, LangGraph, etc.). The model provider is which LLM it calls (Bedrock, Anthropic, OpenAI, Gemini). These are independent choices:
+The framework is how your agent orchestrates (Strands, LangChain, etc.). The model provider is which LLM it calls (Bedrock, Anthropic, OpenAI, Gemini, ...). These are independent choices.
 
-- Strands + Bedrock (default) — AWS-native everything
-- Strands + Anthropic — Strands orchestration, direct Anthropic API for the model
-- LangGraph + Bedrock — LangGraph orchestration, Bedrock for the model
-- OpenAI Agents + OpenAI — OpenAI everything
+- `agentcore create --name <ProjectName> --template <name>` always scaffolds the template's default provider (Amazon Bedrock for the model-backed templates).
+- To pick another provider for a Strands template (`agent-python-strands` and `-container`, `a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`), run `agentcore create` with no flags: the wizard asks for the provider (Bedrock, Anthropic, OpenAI, an OpenAI-compatible endpoint, Gemini, or LiteLLM — Python only), the model ID, and an API-key file. The wizard needs a TTY, so ask the developer to run `agentcore create` in their own terminal rather than running it from your shell.
+- A Harness picks its model with `agentcore add harness --name <HarnessName> --model '<JSON>'` or in `harness.yaml` (Bedrock, OpenAI, Gemini, or a LiteLLM gateway).
 
 If the developer says "I want to use Claude" they mean the model provider (Bedrock or Anthropic), not the framework. If they say "I want to use LangGraph" they mean the framework.
 
 ### Step 3: Create the project
 
-Build the `agentcore create` command based on the developer's choices.
+Build the commands based on the developer's choices.
 
-**Before constructing the command — validate the project name.** The CLI fails late: if the name is invalid, you'll see the error *after* walking through prompts or building the full command. Save the round-trip and check these rules up front. Reject the name and ask for a new one if any rule fails:
+**Before constructing the command — validate the project name.** Check these rules up front (they're the CLI's own validator) and reject the name and ask for a new one if any rule fails:
 
-- **Length ≤ 23 characters** (this is shorter than most developers assume — `MyCustomerSupportAgent` is 22 chars and fits; `CustomerSupportChatbot` is 22 and fits; `MyCustomerSupportBotApp` is 23 and just fits; `MyCustomerSupportChatBot` is 24 and **fails**)
+- **Length ≤ 23 characters** (`MyCustomerSupportAgent` is 22 and fits; `MyCustomerSupportBotApp` is 23 and just fits; `MyCustomerSupportChatBot` is 24 and **fails**)
 - **Alphanumeric only** — no hyphens, underscores, dots, or spaces
 - **Must start with a letter**
+- **Not a reserved package name** — the CLI rejects names that clash with a dependency it installs; if that happens, pick a more specific name
 
-Say the count back out loud when close to the limit: "That name is 24 characters — the CLI caps project names at 23. Want to shorten it to `<suggestion>`?" Do not run the command with an invalid name on the assumption that the CLI error message will be clear — it isn't always, and the developer's mental model will be wrong for subsequent commands.
+Say the count back out loud when close to the limit: "That name is 24 characters — the CLI caps project names at 23. Want to shorten it to `<suggestion>`?"
 
-**Construct the command, then present it for confirmation before the developer runs it.** Show the full command with all flags and explain what each choice means. Wait for the developer to confirm or adjust before proceeding.
+Harness and Runtime names follow a different rule: start with a letter, then letters, digits, or underscores (Harness ≤ 40 characters, Runtime ≤ 48). The deployed name also includes the project and target names (`<project>_<target>_<name>`), and that combination must fit the same limit (40 for a Harness, 48 for a Runtime) — keep project, target, and agent names short.
+
+**Construct the command, then present it for confirmation before the developer runs it.** Show the full commands and explain what each choice means. Wait for the developer to confirm or adjust before proceeding. Exception: if the request already names everything the command needs (a valid project name and the template, or "a Harness"), treat it as the confirmation — show the command you're running and run it.
 
 Example presentation:
 
-> Here's the command I'd recommend based on what you've told me:
+> Here's what I'd recommend based on what you've told me:
 >
 > ```bash
-> agentcore create --name MyAgent --framework Strands --model-provider Bedrock --build CodeZip --memory none
+> agentcore create --name MyAgent --template agent-python-strands
 > ```
 >
-> This creates a Strands agent using Bedrock models, deployed as a code zip (no Docker needed). Memory can be added later.
+> This creates a Python Strands agent using Bedrock models, deployed as a code zip (no Docker needed), with AgentCore Memory already wired in.
 >
 > Want to run this, or change anything?
 
-Do NOT execute the command automatically — present it and wait.
+Otherwise, do NOT execute the command automatically — present it and wait.
 
-**Minimal (defaults — Strands, Bedrock, CodeZip, no memory):**
-
-```bash
-agentcore create --name <ProjectName> --defaults
-```
-
-**With specific options:**
+**Harness project:**
 
 ```bash
-agentcore create \
-  --name <ProjectName> \
-  --framework <Framework> \
-  --model-provider Bedrock \
-  --build CodeZip \
-  --memory none
+agentcore create --name <ProjectName>
+cd <ProjectName>
+agentcore add harness --name <HarnessName> --system-prompt "You are a helpful assistant."
 ```
 
-**Flag reference:**
+`add harness` defaults to a Bedrock model and managed memory. Common options: `--model '<JSON>'` (e.g. `'{"provider":"bedrock","modelId":"<model-id>"}'`), `--tools '<JSON>'`, `--skills '<JSON>'`, `--memory '<JSON>'`, `--max-iterations`, `--timeout-seconds`. See `agentcore add harness --help`; the YAML it writes is documented in the CLI's harness project configuration guide.
+
+**Runtime project from a template:**
+
+```bash
+agentcore create --name <ProjectName> --template <Template>
+```
+
+**Flag reference (`agentcore create`):**
 
 | Flag | Values | Default |
 |---|---|---|
-| `--name` | alphanumeric, max 23 chars | prompted |
-| `--framework` | `Strands`, `LangChain_LangGraph`, `GoogleADK`, `OpenAIAgents` | prompted |
-| `--protocol` | `HTTP`, `MCP`, `A2A` | `HTTP` |
-| `--build` | `CodeZip`, `Container` | `CodeZip` |
-| `--model-provider` | `Bedrock`, `Anthropic`, `OpenAI`, `Gemini` | prompted |
-| `--memory` | `none`, `shortTerm`, `longAndShortTerm` | prompted |
-| `--network-mode` | `PUBLIC`, `VPC` | `PUBLIC` |
-| `--dry-run` | — | preview without creating |
+| `--name` | alphanumeric, starts with a letter, max 23 chars | required |
+| `--template` | see the template table in Step 2 | `empty` |
+| `--skip-install` | — | installs dependencies (`npm install` for the CDK app, `uv sync` / `npm install` for the agent) |
+| `--skip-git` | — | initializes a git repository |
+
+There are no `--framework`, `--model-provider`, `--build`, `--memory`, `--protocol`, or `--network-mode` flags on `create` in v1. The template decides the framework, protocol, and build; memory, gateways, and other resources are added with `agentcore add ...`; network mode is set per Runtime (`agentcore add runtime --name <Name> --language python --network-mode VPC --network-config '<JSON>'`) or per Harness (`--network-mode` / `--network-config` on `agentcore add harness`).
 
 **Guidance on choices:**
 
-- **Protocol:** Use `HTTP` unless the developer specifically needs MCP tool serving or A2A agent-to-agent communication
-- **Build:** Use `CodeZip` unless the developer needs custom system dependencies (CodeZip is faster to deploy and doesn't require Docker locally)
-- **Model provider:** Use `Bedrock` unless the developer has a specific reason for another provider (Bedrock doesn't require managing API keys)
-- **Memory:** Start with `none` — memory can be added later via `agents-build` (loads [`references/memory.md`](../agents-build/references/memory.md)) when the developer needs it
+- **Protocol:** stay on HTTP templates unless the developer specifically needs MCP tool serving (`mcp-python-fastmcp`), agent-to-agent (`a2a-python-strands`), or an AG-UI frontend (`agui-python-strands`)
+- **Build:** prefer CodeZip templates; pick `agent-python-strands-container` (or add a `Dockerfile` later) only for custom system dependencies
+- **Model provider:** use Bedrock unless the developer has a specific reason for another provider (Bedrock doesn't require managing API keys)
+- **Bedrock model IDs:** use an inference-profile ID — `global.<model>` (the templates' default, e.g. `global.anthropic.claude-sonnet-5-5`) or a geographic one like `us.<model>` — not a bare foundation-model ID (`anthropic.claude-...`). In us-east-1, for example, every current Claude model supports only `INFERENCE_PROFILE` invocation, so a bare ID deploys fine and then fails at invoke time (check a region with `aws bedrock list-foundation-models --region <REGION> --by-provider anthropic --query 'modelSummaries[].[modelId,inferenceTypesSupported]'`). This applies to the model in a Runtime's `model/load.py` / `load.ts` and to `modelId` in `--model` / `harness.yaml`.
+- **Memory:** the Strands templates already include a memory (`agentMemory`). Other templates and Harnesses can add or change memory later via `agents-build` (loads [`references/memory.md`](../agents-build/references/memory.md))
+
+Run `agentcore create` outside any existing project — project commands find the project by walking up from the current directory.
+
+`create` runs `git init` but makes no commit. Check that `.gitignore` lists `agentcore/.cache/` (add it if not — it holds 100+ MB of staged dependencies after a build), then make an initial commit (`git add -A && git commit -m "Initial project"`) so later rollbacks have a baseline.
 
 ### Step 4: Explain what was created
 
 After the project exists, read `agentcore/agentcore.json` and the generated code to explain the project structure.
 
-The layout below reflects CLI v0.9.x. If the CLI version is different, run `tree <ProjectName>/ -L 3` to see the actual generated structure and explain from there.
+The layout below reflects CLI v1.0.0. If the CLI version is different, run `tree <ProjectName>/ -L 3 -a -I node_modules` to see the actual generated structure and explain from there.
+
+**Runtime project (`--template agent-python-strands`):**
+
+```
+<ProjectName>/
+├── .gitignore
+├── agentcore/
+│   ├── agentcore.json      ← Project spec ("version": 2): runtimes, harnesses, memories, gateways, ...
+│   ├── aws-targets.json    ← Deployment targets (starts as []; filled on first deploy)
+│   ├── .env.local          ← Local-only env vars and API keys for `agentcore dev` (gitignored)
+│   ├── .cli/               ← CLI state (deployed-state.json, local traces); appears after the first dev or deploy
+│   ├── .cache/             ← CodeZip dependency staging (after the first build/deploy; gitignore it)
+│   └── cdk/                ← Vended CDK app (bin/cdk.ts, lib/cdk-stack.ts) — yours to extend
+└── app/
+    └── agent/               ← The template's Runtime is always named `agent`
+        ├── main.py          ← Your agent code — this is where you build
+        ├── model/load.py    ← Model provider setup
+        ├── memory/session.py← AgentCore Memory session manager
+        ├── parse.py         ← Payload parsing (prompt / messages / actorId)
+        ├── pyproject.toml   ← Python dependencies
+        ├── uv.lock          ← Locked dependency versions (from `uv sync`; commit it)
+        ├── .venv/           ← Local virtualenv (from `uv sync`; gitignored)
+        ├── .gitignore
+        └── README.md
+```
+
+The generated `agentcore.json` entry lists only `name`, `build`, `modelProvider`, `entrypoint`, `codeLocation`, `runtimeVersion`, and `protocol`. Keys it leaves out take their defaults: `networkMode` is `PUBLIC`, inbound auth (`authorizerType`) is `AWS_IAM`, and the lifecycle is 900 s idle / 28800 s max. `agents-harden` covers changing them.
+
+TypeScript templates have `main.ts`, `model/load.ts`, `package.json`, and `tsconfig.json` instead.
+
+**Harness project (`create` + `add harness`):**
 
 ```
 <ProjectName>/
 ├── agentcore/
-│   ├── agentcore.json      ← Project config (agents, resources)
-│   ├── aws-targets.json    ← AWS account + region
-│   ├── .env.local          ← Local environment variables (gitignored)
-│   └── cdk/                ← CDK infrastructure (auto-managed, don't edit)
+│   ├── agentcore.json      ← Registers the harness: { "name": "<HarnessName>", "path": "app/<HarnessName>" }
+│   ├── aws-targets.json
+│   └── cdk/
 └── app/
-    └── <AgentName>/
-        ├── main.py          ← Your agent code — this is where you build
-        ├── mcp_client/      ← Pre-wired example MCP client (see note below)
-        └── pyproject.toml   ← Python dependencies
+    └── <HarnessName>/
+        ├── harness.yaml     ← Model, tools, skills, memory, limits, environment
+        └── system-prompt.md ← The agent's instructions
 ```
 
 **Key files to highlight:**
 
-- `app/<AgentName>/main.py` — the agent's entry point. This is where the developer adds tools, system prompts, and logic.
-- `agentcore/agentcore.json` — the project config. Resources are added here via `agentcore add` commands.
-- `agentcore/.env.local` — local environment variables. After deploy, resource IDs are written here for local dev.
+- `app/agent/main.py` (Runtime) or `app/<HarnessName>/harness.yaml` + `system-prompt.md` (Harness) — where the developer builds. Edit, then `agentcore deploy`; a local edit doesn't change an already deployed Harness.
+- `agentcore/agentcore.json` — the project spec. Resources are added here via `agentcore add` commands. `agentcore dev`, `build`, and `deploy` also update a Runtime's `build`, `runtimeVersion`, and `entrypoint` from the code and print what changed.
+- `agentcore/.env.local` — local environment variables for `agentcore dev`. Keep secrets here, not in `app/` (everything in a CodeZip Runtime's folder is uploaded).
+- `agentcore/cdk/lib/cdk-stack.ts` — where to add your own AWS resources (tables, buckets) and grant your agents access.
 
-**Heads-up on the scaffolded MCP client.** `main.py` imports `get_streamable_http_mcp_client()` from `mcp_client/client.py` and appends it to `tools`. In a fresh project, this client points at a public example MCP endpoint — so `agentcore dev` works immediately. Two things to flag:
-
-1. **It will become a silent no-op if you repoint it at a gateway that isn't deployed yet.** The common path is to swap the example endpoint for `os.getenv("AGENTCORE_GATEWAY_<NAME>_URL")`. That env var is only populated after `agentcore deploy`. If the developer repoints and runs `agentcore dev` before deploying, `get_streamable_http_mcp_client()` returns a client with a `None` URL and the agent starts with zero MCP tools — no error, no warning. See the "Local dev gap" section in `agents-connect` for the guard pattern: `if not GATEWAY_URL: tools = []`.
-2. **If the developer doesn't need MCP tools at all**, remove the `mcp_clients` list and the loop that appends it to `tools`. The scaffold includes it as a convenience, not a requirement.
-
-The reference client code in `agents-connect` (Path A) shows the correct pattern for gateway-backed MCP clients once deploy has run.
+**Heads-up on resource environment variables.** Resources you add are passed to a deployed Runtime as environment variables: `MEMORY_<NAME>_ID` / `MEMORY_<NAME>_ARN` for memories and `AGENTCORE_GATEWAY_<NAME>_URL` for gateways (names upper-cased, other non-alphanumeric characters become `_`). The Strands template's `memory/session.py` reads `MEMORY_AGENTMEMORY_ID` and returns no session manager when it's unset — which it is under `agentcore dev` unless you put it in `agentcore/.env.local`. So locally the agent runs without long-term memory, with no error. Code you add for gateways should handle the same case; see the "Local dev gap" section in `agents-connect` for the guard pattern.
 
 ### Step 5: Local development
 
@@ -250,23 +306,39 @@ The reference client code in `agents-connect` (Path A) shows the correct pattern
 agentcore dev
 ```
 
-This starts a local dev server. The developer can interact with their agent immediately.
+What it does depends on the agent type:
 
-**Port the dev server binds to** (important if you're scripting `curl` calls or testing from another process):
+- **Runtime:** runs every Runtime in the project locally (CodeZip with `uv run` / Node, container builds with Docker, Podman, or Finch), streams their output, and collects traces locally. Default mode is `headless`; `--mode browser` opens the Agent Inspector web UI.
+- **Harness:** a Harness can't run locally. `agentcore dev` **deploys** the project to AWS (same as `agentcore deploy`, honoring `--target` and `--yes`) and then prints invoke guidance; with `--mode browser` it opens the Agent Inspector against the deployed Harness. `--skip-deploy` reuses what's already deployed. Before running `agentcore dev` on a Harness project, tell the developer it will deploy to their AWS account and wait for them to confirm — or skip to Step 6.
+- A project with both Runtimes and Harnesses needs `--agent <name>` to choose.
+
+**Ports** (important if you're scripting `curl` calls or testing from another process):
 
 | Protocol | Default port |
 |---|---|
 | HTTP | `8080` |
+| AG-UI | `8080` |
 | MCP | `8000` |
 | A2A | `9000` |
+| Agent Inspector UI (`--mode browser`) | `8081` (`--ui-port` to change) |
 
-The CLI prints the bound port and URL on startup — always read the actual value from the CLI output rather than hardcoding. **If the default port is already in use**, the CLI auto-increments (e.g., 8080 → 8081 → 8082), so a second dev session or a lingering process from a previous run can shift your port without warning. Use `agentcore dev --port <N>` to pin it, or grep `ps` / check the CLI banner if invocations start failing with connection-refused or exit-code-7 errors.
+**If the default port is already in use**, the CLI moves to the next free port (8080 → 8081 → ...), so a second dev session or a lingering process can shift your port. Read the actual port from the CLI output rather than hardcoding. `agentcore dev --port <N>` pins it (only with a single Runtime — add `--agent <name>` otherwise); a pinned port that's taken fails with a "Port N is already in use" error instead of moving. `--no-traces` turns off local trace collection.
+
+Invoke the local server from another terminal:
+
+```bash
+agentcore invoke --runtime agent --local --payload '{"prompt": "Hello"}'
+```
+
+The streaming templates answer with server-sent events, and `invoke` prints them raw — one `data: {"event": {...}}` line per chunk (the reply text is in the `contentBlockDelta` events), followed by a `status=200 ...` summary line. That's expected, not an error.
+
+**Stop the dev server** with Ctrl+C in the terminal running `agentcore dev`; it stops every Runtime it started and the local trace collector. If you started it from a non-interactive shell, send it SIGINT: `kill -INT $(pgrep -f '^node .*agentcore dev')`. Don't use `pkill -f agentcore`, which can match and kill the calling shell.
 
 **Important limitations to mention:**
 
-- Memory is not available in `agentcore dev` — it requires a deploy
-- Gateway URLs are not available locally — they require a deploy
-- The local server uses the model provider configured in the project
+- Memory and gateway environment variables are only injected into the deployed Runtime — locally, code that guards on them (like the template's memory module) runs without them
+- API keys for non-Bedrock model providers live in `agentcore/.env.local` for local dev and are provisioned as AgentCore Identity credentials on deploy. `agentcore dev` sets `LOCAL_DEV=1` so code can tell the two apart
+- `environment-python-bma` Runtimes don't support local dev
 
 ### Step 6: First deploy
 
@@ -278,23 +350,34 @@ agentcore deploy
 
 This will:
 
-1. Show a preview of AWS resources to be created
-2. Ask for confirmation
-3. Build and deploy via CDK
+1. On first deploy, create the `default` target in `agentcore/aws-targets.json` from the active AWS account (via STS) and the CLI's region (`--region`, then `AWS_REGION` / `AWS_DEFAULT_REGION`, then the active profile, then `us-east-1`)
+2. Provision credential providers, synthesize the CDK app, and bootstrap CDK in the account/region if needed
+3. Deploy the stack (container images are built in AWS CodeBuild)
 
-**First deploy takes 3-5 minutes.** Subsequent deploys are faster.
+There's no preview or confirmation step on a normal deploy. To check the build locally first, run `agentcore build` (see `agents-deploy`). **First deploy usually takes a few minutes.** Subsequent deploys are faster.
 
 After deploy, show them how to invoke:
 
 ```bash
-agentcore invoke "Hello, what can you do?"
+# Runtime
+agentcore invoke --runtime agent --payload '{"prompt": "Hello, what can you do?"}'
+
+# Harness
+agentcore invoke --harness <HarnessName> --prompt "Hello, what can you do?"
 ```
 
-And how to check status:
+What the output looks like:
+
+- **Runtime:** the same raw SSE `data:` lines as the local invoke above.
+- **Harness:** a JSON object with `sessionId`, `stopReason`, `usage`, `latencyMs`, and a `transcript` array (your prompt, then the assistant's reply and any tool calls).
+
+Pass `--session-id <id>` to continue a conversation. And how to check status:
 
 ```bash
 agentcore status
 ```
+
+`status` reports `deploymentState` (`deployed` / `local-only`), not health — a Runtime that crashes on startup still shows `deployed`. If an invoke fails, use `agents-debug`.
 
 ### Step 7: What's next
 
@@ -302,14 +385,15 @@ Based on what the developer said they want to build, suggest the logical next sk
 
 | Developer intent | Next skill | Command hint |
 |---|---|---|
-| "How do I call it from my app?" | `agents-build` | `agentcore fetch access` |
-| "I want it to remember things" | `agents-build` | `agentcore add memory` |
-| "I want it to call external APIs" | `agents-connect` | `agentcore add gateway` |
-| "I want to restrict what it can do" | `agents-connect` | `agentcore add policy-engine` |
-| "I want to measure quality" | `agents-optimize` | `agentcore add evaluator` |
+| "How do I call it from my app?" | `agents-build` | `agentcore status --json` (deployed ARNs for the SDK) |
+| "I want it to remember things" | `agents-build` | `agentcore add memory --name <Name>` |
+| "I want it to call external APIs" | `agents-connect` | `agentcore add gateway --name <Name>` |
+| "I want to restrict what it can do" | `agents-connect` | `agentcore add policy-engine --name <Name>` |
+| "I want to measure quality" | `agents-optimize` | `agentcore add evaluator llm-as-a-judge --name <Name> --level SESSION --model <ModelId> --instructions file://judge.md --rating-scale 1-5-quality` |
 | "I want to go to production" | `agents-harden` | production readiness checklist |
-| "I want multiple agents working together" | `agents-build` | `agentcore create --protocol A2A` |
-| "I need it in a VPC" | `agents-build` | `agentcore create --network-mode VPC` |
+| "I want multiple agents working together" | `agents-build` | `agentcore add runtime --name <Name> --language python --protocol A2A` |
+| "I need it in a VPC" | `agents-build` | `--network-mode VPC --network-config '<JSON>'` on `add runtime` / `add harness` |
+| "My Harness needs custom code" | `agents-build` | `agentcore export harness --name <HarnessName>` (converts it to a Runtime with Strands Harness SDK code) |
 
 Don't overwhelm — suggest one or two next steps based on what the developer actually asked for.
 
@@ -326,13 +410,13 @@ More examples can be added to this skill's references directory as common patter
 ## Output
 
 - A clear path from "I want to build an agent" to a running deployed agent
-- The `agentcore create` command tailored to their choices
+- A Harness vs Runtime recommendation and the `agentcore create` (+ `agentcore add harness`) commands tailored to their choices
 - An explanation of the generated project structure
 - Concrete next steps based on their intent
 
 ## Quality criteria
 
-- The `agentcore create` command uses only valid flags from CLI v0.9.1
-- Framework recommendation is based on the developer's context, not a generic default
+- Every `agentcore` command uses only flags that exist in CLI v1 (`agentcore <command> --help`)
+- The Harness vs Runtime and template recommendation is based on the developer's context, not a generic default
 - The developer understands what each generated file does
 - Next steps are specific to what the developer wants to build, not a generic list of all features

@@ -1,336 +1,63 @@
-# policy
+# Gateway policies in AgentCore CLI v1
 
-Control what your AgentCore agent can do — restrict tool calls, enforce business rules, and protect sensitive operations.
+Use Cedar policy engines to authorize Gateway tool calls. Policies act at the Gateway boundary; they do not replace Runtime or Harness inbound authentication, and Bedrock Guardrails are a different feature.
 
-## When to use
+## Inspect the project
 
-- You want to restrict which tools your agent can call
-- You want to enforce business rules (e.g., refunds only under $500)
-- You want role-based access control on agent actions
-- You want an emergency kill switch for specific tools
-- A policy is denying requests you expect to allow (or allowing what you expect to deny)
+Read `agentcore/agentcore.json` for `agentCoreGateways`, `policyEngines`, and each Gateway's `policyEngineConfiguration`. Read `agentcore/aws-targets.json`, select the intended deployment target, and use it for every deploy, status, and Gateway command below. For a v0 project (`"version": 1`), commit, review `agentcore migrate`, then apply the reviewed plan with `agentcore migrate --yes` before continuing. Require CLI v1.0.0 or later.
 
-## Input
+Choose a Gateway and list the tool names and caller identities that should be allowed. When an attached engine enforces decisions, write explicit `permit` policies for desired calls. A matching `forbid` overrides a `permit`.
 
-`$ARGUMENTS` is optional:
+## Create and attach an engine
 
-```
-/policy                     # interactive — asks what you want to restrict
-/policy generate            # generate Cedar from natural language
-/policy debug               # diagnose why a policy is allowing/denying
-/policy emergency           # generate an emergency shutdown policy
-```
-
-## How AgentCore policy works
-
-AgentCore Policy enforces Cedar-based authorization rules at the **gateway boundary** — before any tool call reaches its target. Every tool call is evaluated against your policies in real time.
-
-**Default behavior:** Without a policy engine attached to your gateway, all tool calls are allowed. Once you attach a policy engine, the default is **deny** — you must write explicit `permit` policies for everything you want to allow.
-
-**Key concepts:**
-
-- **Policy engine** — the container for your policies, attached to a gateway
-- **Policy** — a Cedar rule that permits or forbids specific actions
-- **`forbid` overrides `permit`** — if any forbid policy matches, the action is denied regardless of permit policies
-
----
-
-## Process
-
-### Step 1: Read the project
-
-Read `agentcore/agentcore.json` to understand:
-
-- What gateways exist (in the `agentCoreGateways` array)
-- Whether a policy engine is already configured (in the `policyEngines` array)
-
-### Step 2: Understand the goal
-
-Ask (or infer from `$ARGUMENTS`):
-
-> "What do you want to control?
->
-> 1. Restrict a tool based on input values (e.g., amount < $500)
-> 2. Role-based access (only certain users can call certain tools)
-> 3. Block a specific tool entirely
-> 4. Emergency shutdown — disable all tools immediately
-> 5. Debug why a policy is allowing or denying unexpectedly"
-
----
-
-## Path A: Set up a policy engine
-
-### Step A1: Create the policy engine
+For a new Gateway and engine, add the Gateway with an explicit inbound authorizer, then add the engine and attach in log-only mode:
 
 ```bash
-# Create and attach to an existing gateway
+agentcore add gateway --name MyGateway --authorizer-type AWS_IAM
 agentcore add policy-engine \
   --name MyPolicyEngine \
   --attach-to-gateways MyGateway \
-  --attach-mode LOG_ONLY
+  --attach-mode log-only
+agentcore build
+agentcore deploy --target <target>
+agentcore status --target <target> --json
 ```
 
-**Start with `LOG_ONLY` mode** — policies are evaluated and logged but not enforced. This lets you verify your policies work correctly before enabling enforcement.
+If this is the project's first deployment and `aws-targets.json` is empty, use `agentcore deploy --region <region>` to create `default`, then use `--target default` on later commands. A named target must already be defined in `aws-targets.json`. `--attach-mode` accepts `log-only` or `enforce`; the v0 `LOG_ONLY` and `ENFORCE` flag values are not the v1 spelling. For an existing Gateway with no engine, `agentcore add policy-engine --attach-to-gateways MyGateway` can attach it. To change a Gateway's existing mode, edit its `policyEngineConfiguration` in `agentcore/agentcore.json`, run `agentcore build`, then deploy to the same target. `agentcore add gateway` creates a Gateway; it does not update an existing one. Use `--policy-engine-name` and `--policy-engine-mode` when creating a new Gateway around an engine already declared in the project.
 
-Switch to `ENFORCE` when ready:
+## Write a Cedar policy
 
-```bash
-# Update an existing gateway
-agentcore add gateway \
-  --name MyGateway \
-  --policy-engine MyPolicyEngine \
-  --policy-engine-mode ENFORCE
-```
-
-(The same `--policy-engine` and `--policy-engine-mode` flags work at gateway creation time too.)
-
-### Step A2: Deploy to activate
+A policy referencing the deployed Gateway ARN requires the first deploy. Obtain that ARN from `agentcore status --target <target> --json`. Save the Cedar statement to a file, review it, and add it to the project:
 
 ```bash
-agentcore deploy -y
-```
-
----
-
-## Path B: Write Cedar policies
-
-> [!WARNING]
-> Cedar policies that reference a specific gateway ARN in the `resource` field require
-> the gateway to be deployed first. You cannot add a policy with a gateway ARN before
-> the gateway exists in AWS.
->
-> Two-phase deployment:
->
-> 1. Deploy the gateway first: `agentcore deploy -y`
-> 2. Get the gateway ARN: `agentcore status --type gateway --json`
-> 3. Add the policy with the real ARN, then deploy again
->
-> The `-g` / `--generate` flag also requires a deployed gateway — it calls an AWS API
-> that needs the gateway ARN to convert natural language into Cedar. If you run
-> `-g` before deploying the gateway, it will fail.
-
-### Option 1: Natural language generation (easiest)
-
-**Requires the gateway to be deployed first** — the CLI calls an API that needs the gateway ARN.
-
-```bash
-# Deploy the gateway first
-agentcore deploy -y
-
-# Then generate the policy (--gateway tells the CLI which deployed gateway to use)
 agentcore add policy \
+  --engine MyPolicyEngine \
   --name refund_policy \
-  --engine MyPolicyEngine \
-  -g "Allow users with the refund-agent role to process refunds when the amount is less than 500" \
-  --gateway MyGateway
+  --statement file://policy.cedar \
+  --validation-mode fail-on-any-findings \
+  --enforcement-mode log-only
+agentcore build
+agentcore deploy --target <target>
 ```
 
-The CLI generates Cedar from your description, resolves the gateway ARN automatically, and validates the result. Review the generated policy before deploying.
+`--statement` accepts inline text, `file://<path>`, or `-` for stdin. The v0 `--source` and `-g` flags are gone. If the policy checks an output, set `--authorization-phase return-output`; otherwise the CLI infers the phase from the statement. Tool action names use `AgentCore::Action::"TargetName___tool_name"` (three underscores). Confirm the name from the deployed Gateway target and test the intended principal, tool, and arguments.
 
-**Policy name rules:** letters, numbers, underscores only — **no hyphens**. `refund-policy` fails; `refund_policy` works.
-
-### Option 2: Write Cedar directly
-
-Save to a `.cedar` file and register. If the policy references a gateway ARN in the `resource` field, you need the ARN from a prior deploy:
+For natural language generation, use the Gateway resource command with its deployed ID or ARN:
 
 ```bash
-# Get the gateway ARN after deploying
-agentcore status --type gateway --json | jq -r '.gateways[0].arn'
-
-# Update your .cedar file with the real ARN, then add the policy
-agentcore add policy \
-  --name refund_policy \
-  --engine MyPolicyEngine \
-  --source policy.cedar
+agentcore gateway policy generate \
+  --gateway-id <gateway-id-or-arn> \
+  --policy-engine-id <engine-id-or-arn> \
+  --region <target-region> \
+  --prompt "Allow the refund tool only for approved operators"
 ```
 
-### Cedar syntax reference
+Review the generated Cedar and save the chosen statement to `policy.cedar`; add it with `agentcore add policy --statement file://policy.cedar`. Generation does not create the project policy for you.
 
-**Action name format:** `AgentCore::Action::"TargetName___tool_name"` — three underscores between target name and tool name. This is the most common Cedar mistake.
+## Test and enforce
 
-```cedar
-// TargetName is the gateway target name (from agentcore add gateway-target --name)
-// tool_name is the tool name within that target
-AgentCore::Action::"RefundTarget___process_refund"
-//                              ^^^
-//                         three underscores
-```
+Start with the Gateway's engine in `log-only` and the policy in `log-only`. Exercise allowed and denied tool calls and inspect policy decisions in the service's policy decision logs. `agentcore logs runtime` and `agentcore logs harness` show agent application logs, not necessarily the Gateway policy decision stream.
 
-**Principal types:**
+After checking the expected decisions, set the Gateway's `policyEngineConfiguration` mode to `ENFORCE` and the desired policy's `enforcementMode` to `ACTIVE` in `agentcore/agentcore.json`, then run `agentcore build` and `agentcore deploy --target <target>`. Confirm the actual enum values against the v1 project schema and CLI output before editing. Test an allowed call and a denied call against the deployed Gateway.
 
-- `AgentCore::OAuthUser` — authenticated user via OAuth/JWT
-- `AgentCore::IamEntity` — IAM-authenticated caller (when gateway uses AWS_IAM auth). The `id` attribute contains the full IAM ARN.
-
-**Resource format:**
-
-```cedar
-AgentCore::Gateway::"arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:gateway/<GATEWAY_ID>"
-```
-
-Get your gateway ARN: `agentcore status --type gateway --json | jq -r '.gateways[0].arn'`
-
-### Common policy patterns
-
-**Amount-based restriction:**
-
-```cedar
-permit(
-  principal is AgentCore::OAuthUser,
-  action == AgentCore::Action::"RefundTarget___process_refund",
-  resource == AgentCore::Gateway::"arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/my-gateway-id"
-)
-when {
-  principal.hasTag("role") &&
-  principal.getTag("role") == "refund-agent" &&
-  context.input.amount < 500
-};
-```
-
-**Role-based access (OAuth user):**
-
-```cedar
-permit(
-  principal is AgentCore::OAuthUser,
-  action == AgentCore::Action::"AdminTarget___delete_record",
-  resource == AgentCore::Gateway::"arn:..."
-)
-when {
-  principal.hasTag("role") &&
-  ["admin", "superuser"].contains(principal.getTag("role"))
-};
-```
-
-**Account-based access (IAM entity):**
-
-```cedar
-permit(
-  principal is AgentCore::IamEntity,
-  action == AgentCore::Action::"AdminTarget___delete_record",
-  resource == AgentCore::Gateway::"arn:..."
-)
-when {
-  principal.id like "arn:aws:iam::123456789012:*"
-};
-```
-
-**Block a specific tool entirely:**
-
-```cedar
-forbid(
-  principal,
-  action == AgentCore::Action::"PaymentTarget___transfer_funds",
-  resource == AgentCore::Gateway::"arn:..."
-);
-```
-
-**Emergency shutdown — disable all tools:**
-
-```cedar
-forbid(principal, action, resource);
-```
-
-**Required field validation:**
-
-```cedar
-forbid(
-  principal is AgentCore::OAuthUser,
-  action == AgentCore::Action::"InsuranceTarget___file_claim",
-  resource == AgentCore::Gateway::"arn:..."
-)
-unless {
-  context.input has description &&
-  context.input has priority
-};
-```
-
-### Critical Cedar rules
-
-**Always use `hasTag()` before `getTag()`:**
-
-```cedar
-// ❌ Wrong — throws error if tag doesn't exist
-when { principal.getTag("role") == "admin" }
-
-// ✅ Correct — check existence first
-when {
-  principal.hasTag("role") &&
-  principal.getTag("role") == "admin"
-}
-```
-
-**Default deny:** Once a policy engine is attached in ENFORCE mode, everything is denied unless a `permit` policy matches. Write explicit permits for every action you want to allow.
-
-**`forbid` always wins:** A `forbid` policy overrides any `permit` policy. Use this for emergency shutdowns and hard blocks.
-
----
-
-## Path C: Test policies before enforcing
-
-### LOG_ONLY mode
-
-In LOG_ONLY mode, all requests are allowed but policy decisions are logged to CloudWatch. Use this to verify your policies before switching to ENFORCE.
-
-```bash
-# Check policy decision logs
-agentcore logs --runtime MyAgent --since 1h --query "policy"
-```
-
-Look for log entries showing `ALLOW` or `DENY` decisions for each tool call.
-
-### Validate policy syntax
-
-```bash
-agentcore add policy \
-  --name test_policy \
-  --engine MyPolicyEngine \
-  --source policy.cedar \
-  --validation-mode FAIL_ON_ANY_FINDINGS
-```
-
-If the Cedar syntax is invalid, the CLI returns a validation error before creating the policy.
-
-### Switch to ENFORCE
-
-Once LOG_ONLY results look correct:
-
-```bash
-# Update gateway to enforce mode
-agentcore add gateway \
-  --name MyGateway \
-  --policy-engine MyPolicyEngine \
-  --policy-engine-mode ENFORCE
-agentcore deploy -y
-```
-
----
-
-## Path D: Debug policy failures
-
-**"Access denied" on a tool call you expect to allow:**
-
-1. Check that a `permit` policy exists for this action — remember, default is deny
-2. Verify the action name format: `TargetName___tool_name` (three underscores)
-3. Verify the resource ARN matches your gateway's actual ARN
-4. Check that `hasTag()` is used before `getTag()` in conditions
-5. Check LOG_ONLY logs to see what the policy engine is evaluating
-
-```bash
-# Check recent policy decisions
-agentcore logs --runtime MyAgent --since 1h --query "policy"
-agentcore status --type policy-engine
-```
-
-**"Everything is being denied" after attaching a policy engine:**
-You attached a policy engine but haven't written any `permit` policies yet. The default is deny. Write at least one `permit` policy for the actions you want to allow.
-
-**Policy name validation error:**
-Policy names must match `^[A-Za-z][A-Za-z0-9_]*$` — letters, numbers, underscores only, starts with a letter. No hyphens.
-
----
-
-## Output
-
-- CLI commands to create the policy engine and policies
-- Cedar policy file for the requested use case
-- LOG_ONLY testing workflow before enforcement
-- Debugging guidance for policy failures
+If a call is denied unexpectedly, check the policy's action name, Gateway ARN, principal type, authorization phase, and engine attachment. If every call is denied, check that at least one applicable `permit` is active. Do not solve a denial by changing the Gateway's inbound auth to `NONE`.
