@@ -405,6 +405,17 @@ def _literal_template_text(
 ) -> str | None:
     # Keep literal text around interpolations, but never inspect their
     # unevaluated expressions as URL text. Template directives remain dynamic.
+    collision_source = value
+    if dynamic_tokens is not None:
+        # Marker names are ASCII. Include escaped ASCII in the collision pool
+        # because HCL string decoding happens after marker insertion.
+        def decoded_ascii(match: re.Match[str]) -> str:
+            codepoint = int(match.group(0)[2:], 16)
+            return chr(codepoint) if codepoint < 128 else match.group(0)
+
+        collision_source = re.sub(
+            r"\\(?:u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})", decoded_ascii, value,
+        )
     output: list[str] = []
     i = 0
     while i < len(value):
@@ -426,7 +437,7 @@ def _literal_template_text(
             token = "%{dynamic}" if directive else "<interpolation>"
             if dynamic_tokens is not None:
                 marker = f"__ecs_template_{len(dynamic_tokens)}__"
-                while marker in value:
+                while marker in value or marker in collision_source:
                     marker += "_"
                 token = f"%{{{marker}}}" if directive else marker
                 dynamic_tokens.append(token)

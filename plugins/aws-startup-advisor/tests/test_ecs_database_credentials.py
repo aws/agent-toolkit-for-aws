@@ -435,6 +435,23 @@ def test_malformed_literal_json_is_not_mistaken_for_dynamic_structure(tmp_path, 
     assert report["findings"][0]["rule"] == "artifact_shape_unverified"
 
 
+@pytest.mark.parametrize("marker", [
+    "__ecs_template_0__",
+    r"__ecs_template_\u0030__",
+    r"__ecs_template_\U00000030__",
+    r"\u005f\u005fecs_template_0__",
+])
+def test_decoded_literal_text_cannot_impersonate_a_dynamic_marker(tmp_path, marker):
+    document = (
+        '[{"environment":[{"name":"DATABASE_URL",'
+        '"value":"postgres://${local.user}:PLACEHOLDER@db/orders"}]} LITERAL_MARKER]'
+    )
+    expression = json.dumps(document).replace("LITERAL_MARKER", marker)
+    report = check(tmp_path, expression)
+    assert report["artifact_status"] == "ARTIFACTS_FAIL"
+    assert report["findings"][0]["rule"] == "artifact_shape_unverified"
+
+
 @pytest.mark.parametrize("assignment", ["=", ":"])
 @pytest.mark.parametrize(
     "body,rejected",
