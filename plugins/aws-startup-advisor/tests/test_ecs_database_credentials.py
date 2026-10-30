@@ -67,12 +67,41 @@ def test_function_spacing_and_comments_do_not_hide_placeholder(tmp_path, opener)
     assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_FAIL"
 
 
+@pytest.mark.parametrize(
+    "environment,name,value",
+    [
+        ('"environment"', "name", "value"),
+        ("environment", '"name"', '"value"'),
+        ('"environment"', '"name"', '"value"'),
+    ],
+)
+@pytest.mark.parametrize("assignment", ["=", ":"])
+def test_quoted_hcl_keys_have_the_same_credential_check(tmp_path, environment, name, value, assignment):
+    expression = (
+        f"jsonencode([{{{environment} {assignment} [{{{name} {assignment} \"DATABASE_URL\", "
+        f'{value} {assignment} "postgres://app:PLACEHOLDER@db/orders"}}]}}])'
+    )
+    report = check(tmp_path, expression)
+    assert report["artifact_status"] == "ARTIFACTS_FAIL"
+    assert any(item["rule"] == "ecs_database_password_placeholder" for item in report["findings"])
+
+
 def test_secret_reference_and_non_password_placeholder_do_not_false_positive(tmp_path):
     expression = '''jsonencode([{
       secrets = [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.db.arn }]
       environment = [{ name = "DATABASE_URL", value = "postgres://app:${var.password}@PLACEHOLDER/orders" }]
       dockerLabels = { name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders" }
       # environment = [{ name = "DATABASE_URL", value = "postgres://app:REDACTED@db/orders" }]
+    }])'''
+    assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
+
+
+def test_quoted_keys_in_strings_and_comments_are_not_environment_entries(tmp_path):
+    expression = '''jsonencode([{
+      "environment" = [{"name" = "DATABASE_URL", "value" = "postgres://app:${var.password}@db/orders"}]
+      dockerLabels = { "name" = "DATABASE_URL", "value" = "postgres://app:PLACEHOLDER@db/orders" }
+      # "environment" = [{"name" = "DATABASE_URL", "value" = "postgres://app:REDACTED@db/orders"}]
+      command = ["echo", "\\"environment\\" = [{\\"name\\" = \\"DATABASE_URL\\", \\"value\\" = \\"postgres://app:REDACTED@db/orders\\"}]"]
     }])'''
     assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
 

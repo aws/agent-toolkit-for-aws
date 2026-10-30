@@ -51,12 +51,16 @@ def decision_run(parent: Path) -> Path:
 
 
 def execution_run(parent: Path) -> Path:
-    root = decision_run(parent)
+    return execution_artifacts(decision_run(parent), gcp=True)
+
+
+def execution_artifacts(root: Path, *, gcp: bool) -> Path:
     state = json.loads((root / ".phase-status.json").read_text())
     state["run_mode"] = "decide_and_execute"
     state["phases"]["generate"] = "completed"
     write_json(root / ".phase-status.json", state)
-    write_json(root / "generation-infra.json", {"phase": "generate"})
+    if gcp:
+        write_json(root / "generation-infra.json", {"phase": "generate"})
     write_json(root / "validation-report.json", {
         "$schema": "validation-report/v2", "status": "passed", "policy_status": "POLICY_OK",
         "attempts": 0, "errors_found": [], "errors_fixed": [], "policy_violations": [],
@@ -108,6 +112,35 @@ def heroku_decision_run(parent: Path) -> Path:
     return root
 
 
+def heroku_execution_run(parent: Path) -> Path:
+    """Minimal compute-only pack with Heroku's required output names."""
+    root = execution_artifacts(heroku_decision_run(parent), gcp=False)
+    write_json(root / "aws-design.json", {"phase": "design", "services": [
+        {"aws_service": "Fargate", "source_resource_id": "formation:example:web"},
+    ]})
+    main = root / "terraform/main.tf"
+    main.write_text(main.read_text().replace(
+        'resource "aws_s3_bucket" "assets" {\n  bucket = "example-migration-bucket"\n}',
+        'resource "aws_ecs_cluster" "example" {\n  name = "example-migration"\n}',
+    ))
+    for name in ("baseline.tf", "variables.tf", "outputs.tf", "security.tf",
+                 ".gitignore", "terraform.tfvars.example"):
+        (root / "terraform" / name).write_text("# Minimal acceptance fixture.\n")
+    write_json(root / "generation-warnings.json", {"warnings": []})
+    write_json(root / "report-validation-status.json", {"report_status": "REPORT_OK"})
+    html = (root / "decision-report.html").read_text().replace("decision-cta", "next-steps")
+    html = html.replace("This decision report was generated without execution artifacts; the full migration report replaces it if you proceed.",
+                        "The execution pack contains Terraform and migration guidance.")
+    html = html.replace("</footer>", """</footer>
+<section id="cost-optimization"><h2>Cost optimization</h2>
+<table><caption>Compute commitment options</caption>
+<thead><tr><th scope="col">Option</th><th scope="col">Action</th></tr></thead>
+<tbody><tr><td>Compute Savings Plan</td><td>Review usage before a one-year commitment.</td></tr></tbody>
+</table></section>""")
+    (root / "migration-report.html").write_text(html)
+    return root
+
+
 def by_name(report: dict, name: str) -> dict:
     return next(item for item in report["checks"] if item["name"] == name)
 
@@ -118,6 +151,71 @@ class AcceptanceTests(unittest.TestCase):
             report = acceptance.accept(heroku_decision_run(Path(temp)), "heroku-to-aws")
             self.assertEqual("PASS", report["verdict"], report["checks"])
             self.assertEqual("decision", report["scope"])
+
+    def test_heroku_execution_uses_its_own_producer_artifacts_without_postgres(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_execution_run(Path(temp))
+            self.assertFalse((root / "generation-infra.json").exists())
+            self.assertFalse((root / "scripts/migrate-postgres.sh").exists())
+            report = acceptance.accept(root, "heroku-to-aws")
+            self.assertEqual("UNVERIFIED", report["verdict"], report["checks"])
+            self.assertEqual("PASS", by_name(report, "required_outputs")["status"])
+            self.assertEqual("PASS", by_name(report, "generated_artifacts")["status"])
+            self.assertEqual("PASS", by_name(report, "rendered_report")["status"])
+            self.assertEqual(["terraform"], [item["name"] for item in report["checks"]
+                                             if item["status"] != "PASS"])
+
+    def test_gcp_execution_still_requires_generation_plan(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = execution_run(Path(temp))
+            (root / "generation-infra.json").unlink()
+            report = acceptance.accept(root, "gcp-to-aws")
+            self.assertIn("generation-infra.json", by_name(report, "required_outputs")["detail"])
+
+    def test_heroku_postgres_design_requires_its_script(self):
+        for service in (
+            {"aws_service": "RDS PostgreSQL"},
+            {"aws_service": "Aurora PostgreSQL"},
+            {"aws_service": "RDS", "aws_config": {"engine": "postgres"}},
+            {"aws_service": "Aurora", "aws_config": {"engine": "aurora-postgresql"}},
+        ):
+            with self.subTest(service=service), tempfile.TemporaryDirectory() as temp:
+                root = heroku_execution_run(Path(temp))
+                write_json(root / "aws-design.json", {"services": [service]})
+                report = acceptance.accept(root, "heroku-to-aws")
+                result = by_name(report, "generated_artifacts")
+                self.assertEqual("FAIL", result["status"])
+                self.assertIn("postgres_script_missing", [item["rule"] for item in result["detail"]["findings"]])
+
+    def test_non_postgres_designs_do_not_require_a_postgres_script(self):
+        for service in (
+            {"aws_service": "Fargate"},
+            {"aws_service": "ElastiCache Redis"},
+            {"aws_service": "RDS MySQL"},
+            {"aws_service": "RDS", "aws_config": {"engine": "mysql"}},
+            {"aws_service": "Aurora", "aws_config": {"engine": "aurora-mysql"}},
+        ):
+            with self.subTest(service=service), tempfile.TemporaryDirectory() as temp:
+                root = heroku_execution_run(Path(temp))
+                write_json(root / "aws-design.json", {"services": [service]})
+                result = by_name(acceptance.accept(root, "heroku-to-aws"), "generated_artifacts")
+                self.assertNotIn("postgres_script_missing", [item["rule"] for item in result["detail"]["findings"]])
+
+    def test_matching_owner_passes_wrong_owner_fails_and_absent_owner_is_unverified(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = decision_run(Path(temp))
+            state = json.loads((root / ".phase-status.json").read_text())
+            self.assertEqual("PASS", by_name(acceptance.accept(root, "gcp-to-aws"), "owning_skill")["status"])
+            state["owning_skill"] = "HEROKU_TO_AWS"
+            write_json(root / ".phase-status.json", state)
+            report = acceptance.accept(root, "gcp-to-aws")
+            self.assertEqual("FAIL", report["verdict"])
+            self.assertEqual("FAIL", by_name(report, "owning_skill")["status"])
+            del state["owning_skill"]
+            write_json(root / ".phase-status.json", state)
+            report = acceptance.accept(root, "gcp-to-aws")
+            self.assertEqual("UNVERIFIED", report["verdict"], report["checks"])
+            self.assertEqual("UNVERIFIED", by_name(report, "owning_skill")["status"])
 
     def test_heroku_design_must_parse_even_without_a_published_contract(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -169,6 +267,27 @@ class AcceptanceTests(unittest.TestCase):
         ):
             with self.subTest(inventory=inventory):
                 self.assertEqual("PASS", acceptance.discovery_facts(inventory, "gcp-to-aws")["status"])
+
+    def test_live_only_profile_exemption_and_mixed_iac_obligation(self):
+        live = {"type": "google_cloud_run_service", "name": "live", "source": "live"}
+        merged = {"type": "google_cloud_run_service", "name": "merged", "source": "live+terraform"}
+        for inventory in (
+            {"metadata": {"discovery_sources": ["live"]},
+             "resources": [{"type": "google_cloud_run_service", "name": "live"}]},
+            {"metadata": {"discovery_sources": ["live", "terraform"]}, "resources": [live]},
+        ):
+            with self.subTest(inventory=inventory):
+                self.assertEqual("PASS", acceptance.discovery_facts(inventory, "gcp-to-aws")["status"])
+        inventory = {"metadata": {"discovery_sources": ["live", "terraform"]}, "resources": [live, merged]}
+        self.assertEqual("FAIL", acceptance.discovery_facts(inventory, "gcp-to-aws")["status"])
+        inventory["graviton_profile"] = [{
+            "service_name": "merged", "source": "iac", "tier": "unknown",
+            "target_architecture": "arm64", "signals": [], "caveats": [],
+        }]
+        self.assertEqual("PASS", acceptance.discovery_facts(inventory, "gcp-to-aws")["status"])
+        inventory["metadata"]["discovery_sources"] = ["live"]
+        inventory["graviton_profile"] = []
+        self.assertEqual("FAIL", acceptance.discovery_facts(inventory, "gcp-to-aws")["status"])
 
     def test_heroku_eb_requires_workflow_only_for_selected_or_default_github(self):
         for method in (None, "github_actions", "manual", "codepipeline"):

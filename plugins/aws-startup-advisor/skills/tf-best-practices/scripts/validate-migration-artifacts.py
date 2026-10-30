@@ -318,8 +318,10 @@ def _inline_database_urls(expression: str, policy: Any) -> list[str]:
         return []
     _, codes, _ = policy._lex_hcl(raw)
     values: list[str] = []
-    for match in re.finditer(r"\benvironment\s*=\s*\[", raw):
-        if not codes[match.start()]:
+    for match in re.finditer(
+        r'(?:\benvironment\b|"environment")\s*(?P<delimiter>[:=])\s*\[', raw,
+    ):
+        if not codes[match.start("delimiter")]:
             continue
         start = match.end() - 1
         depth = 0
@@ -339,15 +341,21 @@ def _inline_database_urls(expression: str, policy: Any) -> list[str]:
                 continue
             entry, _ = policy._extract_braced_block(body, i)
             fields = {}
+            entry_depths, entry_codes, _ = policy._lex_hcl(entry)
             for key in ("name", "value"):
-                field = policy._first_own_attr(
-                    entry, rf'\b{key}\s*=\s*("(?:\\.|[^"\\])*")',
+                pattern = (
+                    rf'(?:\b{key}\b|"{key}")\s*(?P<delimiter>[:=])\s*'
+                    r'(?P<literal>"(?:\\.|[^"\\])*")'
                 )
-                if field:
+                for field in re.finditer(pattern, entry):
+                    delimiter = field.start("delimiter")
+                    if not entry_codes[delimiter] or entry_depths[delimiter] != 1:
+                        continue
                     try:
-                        fields[key] = json.loads(field.group(1))
+                        fields[key] = json.loads(field.group("literal"))
                     except ValueError:
                         pass
+                    break
             if fields.get("name") == "DATABASE_URL" and isinstance(fields.get("value"), str):
                 values.append(fields["value"])
     return values

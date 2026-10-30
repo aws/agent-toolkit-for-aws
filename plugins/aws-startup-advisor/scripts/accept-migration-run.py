@@ -97,6 +97,25 @@ def requires_eb_workflow(design: dict[str, Any], preferences: dict[str, Any], re
     return has_eb and method not in ("manual", "codepipeline")
 
 
+def requires_postgres_script(design: dict[str, Any], report_tools: Any) -> bool:
+    # Keep the named-service predicate and engine-qualified RDS/Aurora designs.
+    if any("rds postgresql" in service.casefold() or "aurora postgresql" in service.casefold()
+           for service in report_tools._iter_aws_services(design)):
+        return True
+    services = design.get("services") or []
+    for service in services if isinstance(services, list) else []:
+        if not isinstance(service, dict):
+            continue
+        label = service.get("aws_service")
+        config = service.get("aws_config") or {}
+        engine = config.get("engine") if isinstance(config, dict) else None
+        if isinstance(label, str) and isinstance(engine, str) and (
+            "rds" in label.casefold() or "aurora" in label.casefold()
+        ) and engine.casefold() in {"postgres", "postgresql", "aurora-postgresql"}:
+            return True
+    return False
+
+
 def discovery_facts(inventory: dict[str, Any], skill: str) -> dict[str, Any]:
     """Check narrow producer obligations not encoded as required shape keys."""
     if skill == "heroku-to-aws":
@@ -114,10 +133,9 @@ def discovery_facts(inventory: dict[str, Any], skill: str) -> dict[str, Any]:
         })
     metadata = inventory.get("metadata") or {}
     sources = metadata.get("discovery_sources") if isinstance(metadata, dict) else None
-    if sources == ["billing"]:
-        return check("discovery_facts", "PASS", {
-            "note": "Billing-only profiles are not emitted by the current producer.",
-        })
+    non_iac_only = isinstance(sources, list) and bool(sources) and all(
+        source in ("live", "billing") for source in sources
+    )
     profiles = inventory.get("graviton_profile")
     profile_fields = {"service_name", "tier", "target_architecture", "signals", "caveats", "source"}
     profile_names = {
@@ -134,7 +152,8 @@ def discovery_facts(inventory: dict[str, Any], skill: str) -> dict[str, Any]:
             continue
         if resource["type"] not in IAC_COMPUTE_TYPES:
             continue
-        if resource.get("source") == "billing":
+        source = resource.get("source")
+        if source in ("live", "billing") or (source is None and non_iac_only):
             continue
         config = resource.get("config") or {}
         names = {name for name in (resource.get("name"), resource.get("address"),
@@ -144,7 +163,7 @@ def discovery_facts(inventory: dict[str, Any], skill: str) -> dict[str, Any]:
             missing.append(resource.get("address") or resource.get("name") or resource["type"])
     return check("discovery_facts", "FAIL" if missing else "PASS", {
         "compute_missing_graviton_profile": missing,
-        "note": "Matches IaC compute by logical name, address or config.name; app_code profiles are retained.",
+        "note": "Matches IaC compute by name, address or config.name; live-only/billing-only profiles are not required.",
     })
 
 
@@ -375,6 +394,14 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
     lifecycle_status = ("FAIL" if any(not item.startswith("UNVERIFIED:") for item in errors) else
                         "UNVERIFIED" if errors else "PASS")
     checks.append(check("lifecycle", lifecycle_status, errors))
+    owner = state.get("owning_skill")
+    expected_owner = skill.upper().replace("-", "_")
+    checks.append(check(
+        "owning_skill",
+        "UNVERIFIED" if "owning_skill" not in state else "PASS" if owner == expected_owner else "FAIL",
+        {"expected": expected_owner, "actual": owner,
+         "note": "An absent legacy owner cannot establish the requested skill scope."},
+    ))
     manifest = contracts.load_manifest(contracts.DEFAULT_MANIFEST)
     findings: list[Any] = []
     count = contracts.validate_run_dir(root, skill, manifest, findings)
@@ -390,9 +417,11 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
     if route == "decision":
         names.extend(["DECISION.md", "decision-report.html"])
     elif route == "execution":
-        names.extend(["generation-infra.json", "MIGRATION_GUIDE.md", "README.md",
+        names.extend(["MIGRATION_GUIDE.md", "README.md",
                       "validation-report.json", "artifact-validation-status.json"])
-        if skill == "heroku-to-aws":
+        if skill == "gcp-to-aws":
+            names.append("generation-infra.json")
+        else:
             names.extend(["migration-report.html", "report-validation-status.json", "generation-warnings.json",
                           "terraform/main.tf", "terraform/baseline.tf", "terraform/variables.tf",
                           "terraform/outputs.tf", "terraform/security.tf", "terraform/.gitignore",
@@ -448,13 +477,15 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
                                 [asdict(item) for item in violations]))
             checks.append(terraform_checks(root, terraform, policy))
         require_workflow = False
+        require_postgres = False
         if skill == "heroku-to-aws":
             report_tools = load_module("_accept_report_tools", SCRIPTS / "validate-migration-report.py")
+            require_postgres = requires_postgres_script(documents.get("aws-design.json", {}), report_tools)
             require_workflow = requires_eb_workflow(
                 documents.get("aws-design.json", {}), documents.get("preferences.json", {}), report_tools,
             )
         artifact_result = artifacts.validate(
-            root, require_postgres_script=skill == "heroku-to-aws",
+            root, require_postgres_script=require_postgres,
             require_eb_workflow=require_workflow,
         )
         checks.append(check("generated_artifacts",
