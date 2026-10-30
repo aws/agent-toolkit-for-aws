@@ -9,7 +9,7 @@ Surface these as awareness with tradeoffs when the user is committed to a single
 - If the customer needs HIPAA/SOC/FedRAMP, governance, multi-agent A2A, code export, or
   multi-model → AgentCore wins regardless.
 
-## Bedrock Managed Agents (OpenAI-committed)
+## Bedrock Managed Agents (OpenAI-committed) — now in Public Preview (Oct 2026)
 
 - Now officially announced in preview (Sep 2026) in `us-east-1`, `us-west-2`, and `us-east-2` ([AWS announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/bedrock-managed-agents-preview/)).
 - Built on a customized OpenAI Agents API, AWS-native, with IAM roles per agent, durable sessions, MCP tool support, and CloudTrail logging of supported API activity ([AWS announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/bedrock-managed-agents-preview/)).
