@@ -88,7 +88,10 @@ resource "aws_s3_bucket" "assets" {
 }
 ''')
     (root / "scripts").mkdir()
-    (root / "scripts/verify.sh").write_text("#!/usr/bin/env bash\nset -euo pipefail\n")
+    scripts = (("01-validate-prerequisites.sh", "02-migrate-data.sh", "05-validate-migration.sh")
+               if gcp else ("verify.sh",))
+    for name in scripts:
+        (root / "scripts" / name).write_text("#!/usr/bin/env bash\nset -euo pipefail\n")
     return root
 
 
@@ -162,6 +165,156 @@ def by_name(report: dict, name: str) -> dict:
 
 
 class AcceptanceTests(unittest.TestCase):
+    def test_gcp_readme_does_not_substitute_for_required_scripts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = execution_run(Path(temp))
+            for path in (root / "scripts").glob("*.sh"):
+                path.unlink()
+            (root / "scripts/README.md").write_text("# Scripts pending\n")
+            report = acceptance.accept(root, "gcp-to-aws")
+            self.assertEqual("FAIL", report["verdict"])
+            self.assertEqual([
+                "scripts/01-validate-prerequisites.sh",
+                "scripts/02-migrate-data.sh",
+                "scripts/05-validate-migration.sh",
+            ], by_name(report, "required_outputs")["detail"])
+
+    def test_gcp_always_required_scripts_must_be_nonempty(self):
+        for name in ("01-validate-prerequisites.sh", "05-validate-migration.sh"):
+            for empty in (False, True):
+                with self.subTest(name=name, empty=empty), tempfile.TemporaryDirectory() as temp:
+                    root = execution_run(Path(temp))
+                    path = root / "scripts" / name
+                    if empty:
+                        path.write_text("")
+                    else:
+                        path.unlink()
+                    report = acceptance.accept(root, "gcp-to-aws")
+                    self.assertEqual("FAIL", report["verdict"])
+                    self.assertIn(f"scripts/{name}", by_name(report, "required_outputs")["detail"])
+
+    def test_gcp_script_requirements_follow_current_design_categories(self):
+        cases = (
+            ({"aws_service": "S3"}, "02-migrate-data.sh"),
+            ({"aws_service": "Amazon Aurora"}, "02-migrate-data.sh"),
+            ({"gcp_type": "google_firestore_database"}, "02-migrate-data.sh"),
+            ({"gcp_type": "google_bigquery_dataset"}, "02-migrate-data.sh"),
+            ({"aws_service": "Deferred — specialist engagement"}, "02-migrate-data.sh"),
+            ({"aws_service": "AWS Fargate"}, "03-migrate-containers.sh"),
+            ({"aws_service": "Elastic Beanstalk"}, "03-migrate-containers.sh"),
+            ({"gcp_type": "google_cloud_run_v2_service"}, "03-migrate-containers.sh"),
+            ({"gcp_type": "google_container_cluster"}, "03-migrate-containers.sh"),
+            ({"aws_service": "AWS Secrets Manager"}, "04-migrate-secrets.sh"),
+            ({"gcp_type": "google_secret_manager_secret"}, "04-migrate-secrets.sh"),
+        )
+        for resource, name in cases:
+            for layout in ("clusters", "services"):
+                with self.subTest(resource=resource, layout=layout), tempfile.TemporaryDirectory() as temp:
+                    root = execution_run(Path(temp))
+                    design = ({"clusters": [{"resources": [resource]}]} if layout == "clusters"
+                              else {"services": [resource]})
+                    write_json(root / "aws-design.json", design)
+                    path = root / "scripts" / name
+                    path.unlink(missing_ok=True)
+                    report = acceptance.accept(root, "gcp-to-aws")
+                    self.assertEqual("FAIL", report["verdict"])
+                    self.assertIn(f"scripts/{name}", by_name(report, "required_outputs")["detail"])
+                    path.write_text("#!/usr/bin/env bash\nset -euo pipefail\n")
+                    report = acceptance.accept(root, "gcp-to-aws")
+                    self.assertEqual("PASS", by_name(report, "required_outputs")["status"])
+
+    def test_gcp_mixed_design_rejects_each_missing_or_empty_script(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = execution_run(Path(temp))
+            write_json(root / "aws-design.json", {"clusters": [{"resources": [
+                {"aws_service": "S3"}, {"aws_service": "ECS"},
+                {"gcp_type": "google_secret_manager_secret"},
+            ]}]})
+            for name in ("03-migrate-containers.sh", "04-migrate-secrets.sh"):
+                (root / "scripts" / name).write_text("#!/usr/bin/env bash\nset -euo pipefail\n")
+            self.assertEqual("PASS", by_name(
+                acceptance.accept(root, "gcp-to-aws"), "required_outputs")["status"])
+            for path in sorted((root / "scripts").glob("*.sh")):
+                original = path.read_bytes()
+                for empty in (False, True):
+                    with self.subTest(script=path.name, empty=empty):
+                        if empty:
+                            path.write_text("")
+                        else:
+                            path.unlink()
+                        report = acceptance.accept(root, "gcp-to-aws")
+                        self.assertEqual("FAIL", report["verdict"])
+                        self.assertEqual([f"scripts/{path.name}"],
+                                         by_name(report, "required_outputs")["detail"])
+                path.write_bytes(original)
+
+    def test_gcp_unrelated_design_and_decision_do_not_require_optional_scripts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = execution_run(Path(temp))
+            write_json(root / "aws-design.json", {
+                "services": [{"aws_service": "Amazon VPC", "aws_config": {"aws_service": "S3"}}],
+                "metadata": {"example": {"aws_service": "EKS"}},
+            })
+            (root / "scripts/02-migrate-data.sh").unlink()
+            report = acceptance.accept(root, "gcp-to-aws")
+            self.assertEqual("PASS", by_name(report, "required_outputs")["status"])
+        with tempfile.TemporaryDirectory() as temp:
+            root = decision_run(Path(temp))
+            write_json(root / "aws-design.json", {"services": [
+                {"aws_service": "S3"}, {"aws_service": "EKS"}, {"aws_service": "Secrets Manager"},
+            ]})
+            report = acceptance.accept(root, "gcp-to-aws")
+            self.assertEqual("PASS", report["verdict"], report["checks"])
+            self.assertFalse((root / "scripts").exists())
+
+    def test_checker_hashes_include_every_loaded_contract_document(self):
+        original_read_text = Path.read_text
+        for skill, fixture in (("gcp-to-aws", decision_run), ("heroku-to-aws", heroku_decision_run)):
+            with self.subTest(skill=skill), tempfile.TemporaryDirectory() as temp:
+                root = fixture(Path(temp))
+                reads = set()
+
+                def record_read(path, *args, **kwargs):
+                    resolved = path.resolve()
+                    if resolved.is_relative_to(PLUGIN) and resolved.suffix in (".md", ".json"):
+                        reads.add(resolved)
+                    return original_read_text(path, *args, **kwargs)
+
+                with patch.object(Path, "read_text", record_read):
+                    report = acceptance.accept(root, skill)
+                self.assertEqual("PASS", report["verdict"], report["checks"])
+                if skill == "heroku-to-aws":
+                    self.assertIn(
+                        PLUGIN / "skills/heroku-to-aws/references/phases/clarify/clarify-assemble.md",
+                        reads,
+                    )
+                self.assertTrue(reads)
+                for path in reads:
+                    self.assertEqual(
+                        acceptance.hashlib.sha256(path.read_bytes()).hexdigest(),
+                        report["checker_sha256"].get(str(path.relative_to(PLUGIN))),
+                        str(path),
+                    )
+
+    def test_execution_acceptance_rejects_equivalent_literal_passwords(self):
+        containers = json.dumps([{"environment": [
+            {"name": "DATABASE_URL", "value": "postgres://app:PLACEHOLDER@db/orders"},
+        ]}])
+        for expression in (f"<<JSON\n{containers}\nJSON", f"(jsonencode({containers}))"):
+            with self.subTest(expression=expression), tempfile.TemporaryDirectory() as temp:
+                root = execution_run(Path(temp))
+                with (root / "terraform/main.tf").open("a") as stream:
+                    stream.write(
+                        'resource "aws_ecs_task_definition" "api" {\n'
+                        f"  container_definitions = {expression}\n}}\n")
+                report = acceptance.accept(root, "gcp-to-aws")
+                self.assertEqual("FAIL", report["verdict"])
+                artifact_check = by_name(report, "generated_artifacts")
+                self.assertEqual("FAIL", artifact_check["status"])
+                self.assertIn("ecs_database_password_placeholder", [
+                    item["rule"] for item in artifact_check["detail"]["findings"]
+                ])
+
     def test_heroku_decision_pack_passes_real_validators(self):
         with tempfile.TemporaryDirectory() as temp:
             report = acceptance.accept(heroku_decision_run(Path(temp)), "heroku-to-aws")

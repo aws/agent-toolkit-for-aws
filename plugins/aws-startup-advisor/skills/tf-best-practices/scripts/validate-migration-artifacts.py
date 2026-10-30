@@ -283,17 +283,141 @@ def _resources(root: Path, policy: Any, findings: list[Finding]) -> list[Resourc
     return resources
 
 
+def _ungroup_hcl(expression: str, policy: Any) -> str:
+    """Remove only parentheses that enclose the entire expression."""
+    raw = _uncomment_hcl(expression, policy).strip()
+    _, codes, _ = policy._lex_hcl(raw)
+    stack: list[int] = []
+    pairs: dict[int, int] = {}
+    for i, char in enumerate(raw):
+        if not codes[i]:
+            continue
+        if char == "(":
+            stack.append(i)
+        elif char == ")" and stack:
+            pairs[stack.pop()] = i
+    start, end = 0, len(raw)
+    while start < end and pairs.get(start) == end - 1:
+        start += 1
+        end -= 1
+        while start < end and raw[start].isspace():
+            start += 1
+        while end > start and raw[end - 1].isspace():
+            end -= 1
+    return raw[start:end]
+
+
+def _heredoc_json(expression: str) -> str:
+    """Read a standalone JSON heredoc without interpreting HCL templates."""
+    lines = expression.splitlines()
+    opener = re.fullmatch(r"<<(-?)\s*([A-Za-z_][A-Za-z0-9_]*)\s*", lines[0])
+    if opener and len(lines) >= 2:
+        terminator = lines[-1].strip() if opener.group(1) else lines[-1].rstrip()
+        if terminator == opener.group(2):
+            # JSON whitespace is insignificant, including <<- indentation.
+            return "\n".join(lines[1:-1])
+    raise ValueError("Literal ECS container definitions heredoc could not be parsed.")
+
+
+def _object_field(body: str, name: str, policy: Any) -> str | None:
+    """Read one direct object field expression without evaluating it."""
+    body = _uncomment_hcl(body, policy)
+    depths, codes, _ = policy._lex_hcl(body)
+    pattern = (
+        rf'(?:(?<![\w-]){re.escape(name)}(?![\w-])|"{re.escape(name)}")'
+        r"\s*(?P<delimiter>[:=])\s*"
+    )
+    for match in re.finditer(pattern, body):
+        delimiter = match.start("delimiter")
+        if not codes[delimiter] or depths[delimiter] != 1:
+            continue
+        start = match.end()
+        bracket = paren = 0
+        end = len(body)
+        for i in range(start, len(body)):
+            if not codes[i]:
+                continue
+            char = body[i]
+            if depths[i] == 1 and bracket == 0 and paren == 0 and char in ",\n}":
+                end = i
+                break
+            bracket += (char == "[") - (char == "]")
+            paren += (char == "(") - (char == ")")
+        return _ungroup_hcl(body[start:end], policy)
+    return None
+
+
+def _literal_object_string(body: str, name: str, policy: Any) -> str | None:
+    try:
+        value = json.loads(_object_field(body, name, policy) or "")
+    except (ValueError, TypeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _literal_list_objects(expression: str, policy: Any) -> list[str]:
+    """Read direct object items in a literal list, allowing only grouping."""
+    raw = _ungroup_hcl(expression, policy)
+    if not raw.startswith("[") or not raw.endswith("]"):
+        return []
+    depths, codes, _ = policy._lex_hcl(raw)
+    start = 1
+    bracket = paren = 0
+    items: list[str] = []
+    for i in range(1, len(raw)):
+        if not codes[i]:
+            continue
+        char = raw[i]
+        if depths[i] == 0 and bracket == 0 and paren == 0:
+            if char == "]":
+                if i != len(raw) - 1:
+                    return []
+                items.append(raw[start:i])
+                break
+            if char == ",":
+                items.append(raw[start:i])
+                start = i + 1
+        bracket += (char == "[") - (char == "]")
+        paren += (char == "(") - (char == ")")
+    else:
+        return []
+    objects: list[str] = []
+    for item in items:
+        item = _ungroup_hcl(item, policy)
+        if item.startswith("{"):
+            block, end = policy._extract_braced_block(item, 0)
+            if end == len(item):
+                objects.append(block)
+    return objects
+
+
 def _inline_database_urls(expression: str, policy: Any) -> list[str]:
     """Read literal ECS environment entries; do not evaluate Terraform."""
-    raw = expression.strip()
-    encoded = re.match(r"jsonencode\s*\(", raw)
-    if encoded and raw.endswith(")"):
-        raw = raw[encoded.end():-1].strip()
+    raw = _ungroup_hcl(expression, policy)
+    encoded = re.match(r"jsonencode\s*(?=\()", raw)
+    if encoded:
+        argument = raw[encoded.end():].strip()
+        ungrouped = _ungroup_hcl(argument, policy)
+        # A call followed by another operation is not a literal definition.
+        if ungrouped == argument:
+            return []
+        raw = ungrouped
+    heredoc = raw.startswith("<<")
+    if heredoc:
+        raw = _heredoc_json(raw)
+    literal_string = raw.startswith('"')
     try:
         decoded = json.loads(raw)
         if isinstance(decoded, str):
-            decoded = json.loads(decoded)
+            raw = decoded
+            decoded = json.loads(raw)
     except (ValueError, TypeError):
+        if heredoc or literal_string:
+            # Entire template expressions remain dynamic. A literal JSON
+            # document that cannot be inspected must not receive a pass.
+            if re.fullmatch(r"\s*(?:\$\{.*\}|%\{.*)\s*", raw, re.DOTALL):
+                return []
+            raise ValueError("Literal ECS container definitions JSON could not be parsed.") from None
         decoded = None
     if isinstance(decoded, list):
         values = []
@@ -316,48 +440,16 @@ def _inline_database_urls(expression: str, policy: Any) -> list[str]:
     # so labels, comments and nested objects cannot masquerade as credentials.
     if not encoded:
         return []
-    _, codes, _ = policy._lex_hcl(raw)
     values: list[str] = []
-    for match in re.finditer(
-        r'(?:\benvironment\b|"environment")\s*(?P<delimiter>[:=])\s*\[', raw,
-    ):
-        if not codes[match.start("delimiter")]:
+    for container in _literal_list_objects(raw, policy):
+        environment = _object_field(container, "environment", policy)
+        if environment is None:
             continue
-        start = match.end() - 1
-        depth = 0
-        end = None
-        for i in range(start, len(raw)):
-            if codes[i]:
-                depth += (raw[i] == "[") - (raw[i] == "]")
-                if depth == 0:
-                    end = i
-                    break
-        if end is None:
-            continue
-        body = raw[start + 1:end]
-        braces, body_codes, _ = policy._lex_hcl(body)
-        for i, char in enumerate(body):
-            if char != "{" or not body_codes[i] or braces[i] != 0:
-                continue
-            entry, _ = policy._extract_braced_block(body, i)
-            fields = {}
-            entry_depths, entry_codes, _ = policy._lex_hcl(entry)
-            for key in ("name", "value"):
-                pattern = (
-                    rf'(?:\b{key}\b|"{key}")\s*(?P<delimiter>[:=])\s*'
-                    r'(?P<literal>"(?:\\.|[^"\\])*")'
-                )
-                for field in re.finditer(pattern, entry):
-                    delimiter = field.start("delimiter")
-                    if not entry_codes[delimiter] or entry_depths[delimiter] != 1:
-                        continue
-                    try:
-                        fields[key] = json.loads(field.group("literal"))
-                    except ValueError:
-                        pass
-                    break
-            if fields.get("name") == "DATABASE_URL" and isinstance(fields.get("value"), str):
-                values.append(fields["value"])
+        for entry in _literal_list_objects(environment, policy):
+            if _literal_object_string(entry, "name", policy) == "DATABASE_URL":
+                value = _literal_object_string(entry, "value", policy)
+                if value is not None:
+                    values.append(value)
     return values
 
 

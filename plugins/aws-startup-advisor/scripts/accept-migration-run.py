@@ -88,6 +88,71 @@ def required_json(root: Path, names: list[str]) -> tuple[dict[str, dict[str, Any
     return values, errors
 
 
+def gcp_required_scripts(design: dict[str, Any]) -> list[str]:
+    """Match the resource-category rules in generate-artifacts-scripts.md."""
+    resources: list[tuple[str, str]] = []
+    # Canonical designs use clusters[].resources[]; older packs use services[].
+    groups = [design.get("services", [])]
+    clusters = design.get("clusters", [])
+    if isinstance(clusters, list):
+        groups.extend(cluster.get("resources", []) for cluster in clusters if isinstance(cluster, dict))
+    for group in groups:
+        if not isinstance(group, list):
+            continue
+        for resource in group:
+            if not isinstance(resource, dict):
+                continue
+            service = resource.get("aws_service")
+            source = resource.get("gcp_type")
+            resources.append((
+                service.casefold() if isinstance(service, str) else "",
+                source.casefold() if isinstance(source, str) else "",
+            ))
+    has_data = any(
+        any(name in service for name in ("rds", "aurora", "dynamodb", "elasticache", "redshift"))
+        or source.startswith(("google_sql_", "google_firestore_", "google_bigtable_", "google_redis_",
+                              "google_bigquery_"))
+        or service in {"s3", "deferred — specialist engagement"}
+        or source == "google_storage_bucket"
+        for service, source in resources
+    )
+    has_containers = any(
+        any(name in service for name in ("fargate", "ecs", "eks", "elastic beanstalk"))
+        or source.startswith(("google_cloud_run_", "google_container_cluster"))
+        for service, source in resources
+    )
+    has_secrets = any(
+        "secrets manager" in service or source.startswith("google_secret_manager_")
+        for service, source in resources
+    )
+    names = ["scripts/01-validate-prerequisites.sh"]
+    if has_data:
+        names.append("scripts/02-migrate-data.sh")
+    if has_containers:
+        names.append("scripts/03-migrate-containers.sh")
+    if has_secrets:
+        names.append("scripts/04-migrate-secrets.sh")
+    names.append("scripts/05-validate-migration.sh")
+    return names
+
+
+def contract_source_paths(manifest: dict[str, Any], skill: str) -> set[Path]:
+    """Include manifest-selected contract documents, regardless of filename."""
+    specs = {name: spec for name, spec in manifest.get("shared", {}).items()
+             if not spec.get("fixture_only")}
+    specs.update(manifest.get("skills", {}).get(skill, {}))
+    pending = list(specs.values())
+    paths: set[Path] = set()
+    while pending:
+        spec = pending.pop()
+        for key in ("shape", "json_schema"):
+            if isinstance(spec.get(key), str):
+                paths.add(PLUGIN / spec[key])
+        pending.extend(spec.get("extra_shapes", []))
+        pending.extend(spec.get("route_shapes", []))
+    return paths
+
+
 def requires_eb_workflow(design: dict[str, Any], preferences: dict[str, Any], report_tools: Any) -> bool:
     has_eb = any("beanstalk" in service.casefold()
                  for service in report_tools._iter_aws_services(design))
@@ -493,13 +558,15 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
                           "terraform/main.tf", "terraform/baseline.tf", "terraform/variables.tf",
                           "terraform/outputs.tf", "terraform/security.tf", "terraform/.gitignore",
                           "terraform/terraform.tfvars.example"])
+    documents, errors = required_json(root, names)
+    if route == "execution" and skill == "gcp-to-aws":
+        names.extend(gcp_required_scripts(documents.get("aws-design.json", {})))
     missing = required_files(root, names)
     if route == "execution":
         for directory in ("terraform", "scripts") if skill == "gcp-to-aws" else ("terraform",):
             if not (root / directory).is_dir() or not any((root / directory).iterdir()):
                 missing.append(directory + "/")
     checks.append(check("required_outputs", "FAIL" if missing else "PASS", missing))
-    documents, errors = required_json(root, names)
     checks.append(check("required_json_objects", "FAIL" if errors else "PASS", errors))
     if inventory in documents:
         checks.append(discovery_facts(documents[inventory], skill))
@@ -582,6 +649,7 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
         *(PLUGIN / "skills").rglob("schema-*.md"),
         *(PLUGIN / "skills/shared").rglob("*.schema.json"),
         *(SCRIPTS / "contracts").glob("*.json"),
+        *contract_source_paths(manifest, skill),
     }
     source_hashes = {str(path.relative_to(PLUGIN)): hashlib.sha256(path.read_bytes()).hexdigest()
                      for path in sorted(source_paths)}

@@ -58,6 +58,147 @@ def test_jsonencode_json_object_is_checked(tmp_path):
     assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_FAIL"
 
 
+@pytest.mark.parametrize(
+    "representation",
+    [
+        "quoted-json",
+        "heredoc",
+        "indented-heredoc",
+        "parenthesized-heredoc",
+        "jsonencode",
+        "parenthesized-jsonencode",
+        "nested-jsonencode",
+        "nested-argument",
+        "commented-groups",
+    ],
+)
+@pytest.mark.parametrize("password", ["PLACEHOLDER", "real-test-credential"])
+def test_literal_representations_have_the_same_verdict(tmp_path, representation, password):
+    url = f"postgres://app:{password}@db/orders"
+    containers = [{"environment": [{"name": "DATABASE_URL", "value": url}]}]
+    document = json.dumps(containers)
+    hcl = '[{environment = [{name = "DATABASE_URL", value = ' + json.dumps(url) + "}]}]"
+    expressions = {
+        "quoted-json": json.dumps(document),
+        "heredoc": f"<<JSON\n{document}\nJSON",
+        "indented-heredoc": f"<<-JSON\n    {document}\n    JSON",
+        "parenthesized-heredoc": f"((<<JSON\n{document}\nJSON\n))",
+        "jsonencode": f"jsonencode({hcl})",
+        "parenthesized-jsonencode": f"(jsonencode({hcl}))",
+        "nested-jsonencode": f"((( jsonencode({hcl}) )))",
+        "nested-argument": f"jsonencode( (( {hcl} )) )",
+        "commented-groups": f"( /* before */ (jsonencode( /* argument */ ({hcl}) )) /* after */ ) ",
+    }
+    report = check(tmp_path, expressions[representation])
+    expected = "ARTIFACTS_FAIL" if password == "PLACEHOLDER" else "ARTIFACTS_OK"
+    assert report["artifact_status"] == expected, report
+    if password == "PLACEHOLDER":
+        assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+    assert url not in json.dumps(report)
+
+
+@pytest.mark.parametrize("opener,terminator", [("<<JSON", "JSON"), ("<<-JSON", "    JSON")])
+def test_heredoc_secret_reference_and_other_fields_do_not_false_positive(tmp_path, opener, terminator):
+    document = json.dumps([{
+        "secrets": [{"name": "DATABASE_URL", "valueFrom": "${aws_secretsmanager_secret.db.arn}"}],
+        "environment": [{"name": "DATABASE_URL", "value": "postgres://app:${var.password}@PLACEHOLDER/orders"}],
+        "dockerLabels": {"name": "DATABASE_URL", "value": "postgres://app:REDACTED@db/orders"},
+        "command": ['echo environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders"}]'],
+    }])
+    report = check(tmp_path, f"{opener}\n{document}\n{terminator}")
+    assert report["artifact_status"] == "ARTIFACTS_OK", report
+
+
+@pytest.mark.parametrize("name_groups", [0, 1, 3])
+@pytest.mark.parametrize("value_groups", [0, 1, 3])
+def test_grouped_literal_fields_are_checked(tmp_path, name_groups, value_groups):
+    name = "(" * name_groups + '"DATABASE_URL"' + ")" * name_groups
+    value = (
+        "(" * value_groups + '"postgres://app:PLACEHOLDER@db/orders"' + ")" * value_groups
+    )
+    expression = (
+        'jsonencode([{environment = [{'
+        f'name = {name}, value = /* before */ {value} /* after */'
+        '}]}])'
+    )
+    report = check(tmp_path, expression)
+    assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+
+
+@pytest.mark.parametrize("groups", [1, 3])
+@pytest.mark.parametrize("password", ["PLACEHOLDER", "real-test-credential"])
+def test_grouped_environment_lists_and_objects_are_checked(tmp_path, groups, password):
+    entry = '({name = ("DATABASE_URL"), value = ("postgres://app:' + password + '@db/orders")})'
+    environment = "(" * groups + f"[{entry}]" + ")" * groups
+    expression = f"jsonencode([({{environment = {environment}}})])"
+    report = check(tmp_path, expression)
+    expected = "ARTIFACTS_FAIL" if password == "PLACEHOLDER" else "ARTIFACTS_OK"
+    assert report["artifact_status"] == expected, report
+    if password == "PLACEHOLDER":
+        assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "jsonencode([{environment = (var.environment)}])",
+        'jsonencode([{environment = ([{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders"}] == [] ? local.primary : local.backup)}])',
+        'jsonencode([{dockerLabels = {environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders"}]}}])',
+        'jsonencode([{other-environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders"}]}])',
+    ],
+)
+def test_only_direct_literal_environment_lists_are_checked(tmp_path, expression):
+    assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        (
+            '("DATABASE_URL" == var.field ? "OTHER" : "ELSE")',
+            '"postgres://app:PLACEHOLDER@db/orders"',
+        ),
+        (
+            '"DATABASE_URL"',
+            '("postgres://app:PLACEHOLDER@db/orders" == var.url ? var.secret_url : var.fallback_url)',
+        ),
+        ('("DATABASE_URL")', 'format("postgres://app:%s@db/orders", var.password)'),
+    ],
+)
+def test_dynamic_fields_do_not_match_a_literal_prefix(tmp_path, name, value):
+    expression = f"jsonencode([{{environment = [{{name = {name}, value = {value}}}]}}])"
+    assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "local.container_definitions",
+        "((local.container_definitions))",
+        "(jsonencode(var.containers))",
+        "jsonencode([for container in var.containers : container])",
+        '"${local.container_definitions}"',
+        "<<JSON\n${jsonencode(var.containers)}\nJSON",
+    ],
+)
+def test_dynamic_container_definitions_remain_outside_literal_check(tmp_path, expression):
+    assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        '<<JSON\n[{"environment":[{"name":"DATABASE_URL","value":"postgres://app:PLACEHOLDER@db/orders"}]}\nJSON',
+        json.dumps('[{"environment":'),
+    ],
+)
+def test_unparseable_literal_json_is_unverified_without_leaking_values(tmp_path, expression):
+    report = check(tmp_path, expression)
+    assert report["artifact_status"] == "ARTIFACTS_FAIL"
+    assert report["findings"][0]["rule"] == "artifact_shape_unverified"
+    assert "PLACEHOLDER" not in json.dumps(report)
+
+
 @pytest.mark.parametrize("opener", ["jsonencode (", "jsonencode /* renderer note */ ("])
 def test_function_spacing_and_comments_do_not_hide_placeholder(tmp_path, opener):
     expression = (

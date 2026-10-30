@@ -96,6 +96,7 @@ python3 scripts/accept-migration-run.py \
 The input directory stays unchanged; the output must be a new file outside it.
 Exit `0` means `PASS`, `1` means `FAIL`, and `2` means `UNVERIFIED`. The JSON
 includes the input and checker hashes, findings, and actual command results.
+Checker hashes include the contract documents selected by the artifact manifest.
 A decision-only pass covers the decision pack, including its rendered report;
 it does not approve retained Terraform from an earlier execution run.
 
@@ -107,6 +108,10 @@ official HashiCorp AWS provider, with a separate Terraform CLI configuration
 and no inherited cloud credentials. Modules, other providers, nested or JSON
 configurations, and filesystem-reading functions need separate review and
 remain `UNVERIFIED`. No plan, apply, migration script or telemetry runs.
+
+For GCP execution packs, missing or empty prerequisite and validation scripts
+fail acceptance. Data, container, and secrets scripts are also required when the
+current design contains the corresponding resource categories.
 
 For Heroku execution packs, missing Redis scripts, selected Elastic Beanstalk
 deployment files, or required EKS files and resources fail acceptance. EKS packs
