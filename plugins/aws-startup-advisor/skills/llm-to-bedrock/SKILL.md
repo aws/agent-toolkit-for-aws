@@ -133,7 +133,12 @@ which is exactly why Phase A no longer uses it.)
 
 ## Step 1 — Collect source code path
 
-If `$ARGUMENTS` contains a path, use it as `$REPO`. Otherwise use **AskUserQuestion**:
+First inspect any `handoff-summary.md` path in `$ARGUMENTS`. If the file's first line is exactly
+`initiated_by: AGENT_ADVISOR`, set `$INVOCATION_ORIGIN=AGENT_ADVISOR`; this durable marker is
+how the Fresh-only offer in A1 distinguishes an agent-advisor delegation. Do not treat the
+handoff-summary file itself as `$REPO`.
+
+If `$ARGUMENTS` contains another path, use it as `$REPO`. Otherwise use **AskUserQuestion**:
 "Where is your source code? Enter a local path or GitHub URL."
 
 If a GitHub URL, `git clone` it to a temp dir; use that path as `$REPO`.
@@ -504,37 +509,87 @@ Tell the user, before starting:
 
 Then, in order:
 
-1. **Resolve `$MIGRATION_DIR`.** Check for an existing `.migration/` directory at `$REPO`
-   exactly as `$ASSESS_BASE/references/phases/discover/discover.md` Step 0 describes (list
-   existing runs and offer Resume/Fresh/Cancel if any exist; otherwise create
-   `$REPO/.migration/<MMDD-HHMM>/` with the current timestamp and set `$MIGRATION_DIR` to it).
-   **A directory that exists but has no `.phase-status.json` yet is NOT an existing run** —
-   treat it as fresh and skip discover.md's Resume/Fresh/Cancel prompt for it (same exception
-   `agent-advisor`'s `migration-plan.md` Phase A documents for its own inline gcp-to-aws
-   delegation). This matters here because llm-to-bedrock does not pre-create `$MIGRATION_DIR`
-   before this step — but a run interrupted after this step creates the directory and before
-   discover.md's Step 0 writes `.phase-status.json` would otherwise leave exactly this
-   directory (present, but state-less) for a later resume, and discover.md's Resume branch
-   would then try to read a `.phase-status.json` that doesn't exist.
-2. **Read and execute** `$ASSESS_BASE/references/phases/discover/discover.md` in full, exactly
-   as written, including its own Step 0 state-file initialization (skip Step 0 if resuming —
-   `$MIGRATION_DIR` already has a `.phase-status.json`) and its Step 1 sub-discovery gates
-   (1a–1e). Those gates already key off what's actually present in `$REPO` — IaC discovery
-   only runs if Terraform files exist there, billing discovery only if billing exports exist,
-   and so on; you do not need to steer it. `discover.md`'s own usage-API consent/capture
-   actions (OpenAI, OpenRouter, and — for azure-to-aws — Anthropic) will offer the matching
-   Admin-API usage discovery when applicable; accepting any of them gives Estimate real spend
-   and token volumes without manual exports. (Anthropic's Admin key has NO selectable scopes —
-   it is all-or-nothing; the old sentence's "Usage set to Read" phrasing was already wrong for
-   OpenAI's own key in a narrower way worth not perpetuating into this generalized sentence —
-   note this as an adjacent, pre-existing inaccuracy fixed at its source rather than carried
-   forward.)
+1. **Resolve `$MIGRATION_DIR`.** Check `$REPO/.migration/` exactly as
+   `$ASSESS_BASE/references/phases/discover/discover.md` Step 0 describes. Treat either of
+   these as an existing interrupted run and include it in the Resume/Fresh/Cancel choices:
+   a directory with `.phase-status.json`, or a stateless directory carrying
+   `.llm-upfront-credits-offered`. The latter means an earlier attempt reserved its offer and
+   was interrupted before delegated Discover initialized provider state.
 
-   When Discover's Step 0 writes the run's `.phase-status.json`, it must record
+   A **Resume** choice must set `$MIGRATION_DIR` to the selected existing directory unchanged.
+   If it is stateless but marked, continue into delegated Discover's provider initialization
+   in that same directory; do not allocate a current-minute replacement. An explicit
+   **Fresh** choice must allocate a genuinely unused `$REPO/.migration/<MMDD-HHMM>/`
+   directory, adding a collision suffix when needed. With no existing runs, allocate the same
+   unused fresh path. Never classify a marked stateless directory as Fresh merely because
+   `.phase-status.json` is absent.
+
+   **Fresh-only upfront migration-credit offer (standalone full migrations only):** after
+   step 1 selects or allocates **Fresh**, atomically reserve this run's one-time offer before
+   rendering it:
+
+   ```bash
+   if (set -o noclobber; : > "$MIGRATION_DIR/.llm-upfront-credits-offered") 2>/dev/null; then
+     echo OFFER_FIRST_ATTEMPT
+   else
+     echo OFFER_ALREADY_RECORDED
+   fi
+   ```
+
+   Exclusive `noclobber` creation is the durable interruption marker. Only when it prints
+   `OFFER_FIRST_ATTEMPT` **and** `$INVOCATION_ORIGIN` is not `AGENT_ADVISOR`, read
+   `references/vendored/migration/upfront-credits-llm.md` and render it verbatim once before
+   delegated Discover scans anything. `OFFER_ALREADY_RECORDED` means a prior attempt reached
+   this boundary, including a state-less directory left by interruption before provider state
+   initialization, so do not render again. Do not render when step 1 selects **Resume**, during
+   A2 re-entry, in access-only mode, or when the durable handoff marker identified
+   agent-advisor delegation. The delegated provider's `initiated_by: LLM_TO_BEDROCK`
+   suppression remains in force, so it does not render the separate infrastructure/mixed
+   notice.
+
+   After this offer decision, initialize provider state in the already selected
+   `$MIGRATION_DIR` if `.phase-status.json` is absent. This applies both to a marked-stateless
+   **Resume** and to a newly allocated **Fresh** run, and to either `$ASSESS_SKILL` choice
+   (`gcp-to-aws` or `azure-to-aws`):
+
+   - Do not run the provider's resume/Fresh selection or timestamp-directory allocation again.
+     Keep `$MIGRATION_DIR` unchanged and create `.migration/.gitignore` if needed using the
+     provider's normal exact content.
+   - Perform only the state-creation portion of that provider's initialization in this selected
+     directory: mint one fresh UUID, set `migration_id` to the selected directory name,
+     `owning_skill` to `GCP_TO_AWS` or `AZURE_TO_AWS` to match `$ASSESS_SKILL`,
+     `initiated_by` to `LLM_TO_BEDROCK`, `current_phase` to `discover`, and `discover` to
+     `in_progress`; seed every other phase declared by that provider as `pending`, and set the
+     current ISO 8601 `last_updated`.
+   - Validate the resulting `.phase-status.json` against the selected provider's vendored
+     `state/phase-status.schema.json` and confirm it exists in the selected directory before
+     continuing. Never create provider state in another path.
+
+2. **Read and execute** `$ASSESS_BASE/references/phases/discover/discover.md` in full, exactly
+   as written, including its own Step 0 state-file initialization except for path selection and
+   state creation already completed above. Treat the preinitialized state as the selected
+   delegated run: keep `$MIGRATION_DIR` unchanged, skip the provider's resume/Fresh prompt and
+   timestamp-directory allocation, and let its idempotent initialization reuse the existing
+   envelope. On an ordinary Resume that already had `.phase-status.json`, skip Step 0 as before.
+   Continue with its Step 1 sub-discovery gates (1a–1e). Those gates already key off what's
+   actually present in `$REPO` — IaC discovery only runs if Terraform files exist there,
+   billing discovery only if billing exports exist, and so on; you do not need to steer it.
+   `discover.md`'s own usage-API consent/capture actions (OpenAI, OpenRouter, and — for
+   azure-to-aws — Anthropic) will offer the matching Admin-API usage discovery when applicable;
+   accepting any of them gives Estimate real spend and token volumes without manual exports.
+   (Anthropic's Admin key has NO selectable scopes — it is all-or-nothing; the old sentence's
+   "Usage set to Read" phrasing was already wrong for OpenAI's own key in a narrower way worth
+   not perpetuating into this generalized sentence — note this as an adjacent, pre-existing
+   inaccuracy fixed at its source rather than carried forward.)
+
+   When Discover initializes the run's `.phase-status.json`, it must record
    `"initiated_by": "LLM_TO_BEDROCK"` beside `owning_skill` (which is set to whichever of
    `GCP_TO_AWS` / `AZURE_TO_AWS` actually ran — i.e. `$ASSESS_SKILL`'s own identifier — per
-   `discover.md`'s own instruction for a run started by another skill): this run was started
-   by llm-to-bedrock, and that is how telemetry attributes it.
+   `discover.md`'s own instruction for a run started by another skill) **before** the provider
+   evaluates its infrastructure/mixed migration-credit notice suppression. GCP writes this
+   field in Discover Step 0 and then evaluates the notice; Azure's special early `_init`
+   explicitly writes it before evaluating the notice. This run was started by llm-to-bedrock,
+   and that is how telemetry attributes it.
 
    On `HANDOFF_OK`: at least one of `ai-workload-profile.json`, `gcp-resource-inventory.json`
    / `azure-resource-inventory.json`, or `billing-profile.json` is present in
@@ -556,10 +611,12 @@ Then, in order:
    (or simply stopping at the decision pack) is enough; you never read anything `generate.md`
    would produce (Terraform, `MIGRATION_GUIDE.md`, `migration-report.html`).
 
-Each file above manages `$MIGRATION_DIR/.phase-status.json` itself, per its own protocol —
-do not write to that file yourself, other than the `initiated_by` field named in step 2 above.
-If any file's own `_postconditions`/handoff checks fail (`GATE_FAIL`), stop and show the user
-exactly what that file reported; do not patch an artifact to force a gate to pass.
+After A1's explicit preinitialization above, each provider file manages
+`$MIGRATION_DIR/.phase-status.json` itself per its own protocol. Outside that one state-creation
+exception, do not write the file yourself; the only wrapper-level field addition allowed on an
+already initialized envelope is the `initiated_by` field named in step 2 above. If any file's
+own `_postconditions`/handoff checks fail (`GATE_FAIL`), stop and show the user exactly what
+that file reported; do not patch an artifact to force a gate to pass.
 
 ### A2 — Confirm Assess is complete
 
