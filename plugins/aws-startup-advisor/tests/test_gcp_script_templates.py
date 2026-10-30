@@ -38,6 +38,23 @@ def database_script() -> str:
     )
 
 
+def inventory_script(*targets: str) -> str:
+    """Select the documented resource-specific blocks for an emitted script."""
+    template = block("# Post-migration validation")
+    preamble = template.split("# --- Include ONLY", 1)[0]
+    footer = template[template.index('if [ "$failures" -gt 0 ]; then'):]
+    sections = {
+        match.group(1): match.group(0)
+        for match in re.finditer(
+            r"# --- Include ONLY if (.+?) present ---\n.*?"
+            r"(?=# --- Include ONLY|if \[ \"\$failures\" -gt 0 \]; then)",
+            template,
+            re.DOTALL,
+        )
+    }
+    return preamble + "".join(sections[target] for target in targets) + footer
+
+
 @pytest.fixture
 def runner(tmp_path):
     tools = tmp_path / "tools"
@@ -48,7 +65,10 @@ import json, os, pathlib, sys
 name = pathlib.Path(sys.argv[0]).name
 with open(os.environ["CALLS"], "a") as output:
     output.write(json.dumps([name, *sys.argv[1:]]) + "\\n")
-if os.environ.get("STUB_FAIL") == name:
+if os.environ.get("STUB_FAIL") == name or (
+    name == "aws" and len(sys.argv) > 1
+    and os.environ.get("STUB_FAIL_SERVICE") == sys.argv[1]
+):
     sys.exit(7)
 print("1" if name == "psql" else "stub-result")
 """
@@ -169,6 +189,7 @@ def test_inventory_checks_preserve_failures_and_resolve_script_relative_paths(ru
     result, calls, script = runner(
         block("# Post-migration validation"),
         S3_BUCKET="example-assets",
+        EKS_CLUSTER_NAME="generated-eks",
         STUB_FAIL=failing_tool,
     )
     assert result.returncode == 1
@@ -179,7 +200,55 @@ def test_inventory_checks_preserve_failures_and_resolve_script_relative_paths(ru
 
 
 def test_successful_inventory_probes_do_not_claim_application_validation(runner):
-    result, calls, _ = runner(block("# Post-migration validation"), S3_BUCKET="example-assets")
+    result, calls, _ = runner(
+        block("# Post-migration validation"),
+        S3_BUCKET="example-assets",
+        EKS_CLUSTER_NAME="generated-eks",
+    )
     assert result.returncode == 0, result.stderr
     assert calls
     assert "does not establish application health or data integrity" in result.stdout
+
+
+def test_eks_only_inventory_uses_eks_and_the_generated_cluster_name(runner):
+    result, calls, _ = runner(
+        inventory_script("EKS"),
+        EKS_CLUSTER_NAME="actual-generated-cluster",
+        PROJECT_NAME="different-project-name",
+        STUB_FAIL_SERVICE="ecs",
+    )
+    assert result.returncode == 0, result.stderr
+    aws_calls = [call for call in calls if call[0] == "aws"]
+    assert len(aws_calls) == 1
+    assert aws_calls[0][:3] == ["aws", "eks", "describe-cluster"]
+    assert aws_calls[0][aws_calls[0].index("--name") + 1] == "actual-generated-cluster"
+
+
+def test_eks_api_failure_still_blocks_inventory_validation(runner):
+    result, calls, _ = runner(
+        inventory_script("EKS"),
+        EKS_CLUSTER_NAME="generated-eks",
+        STUB_FAIL_SERVICE="eks",
+    )
+    assert result.returncode == 1
+    assert "FAILED: aws eks" in result.stderr
+
+
+def test_eks_requires_a_cluster_name_instead_of_guessing_from_project(runner):
+    result, calls, _ = runner(inventory_script("EKS"), PROJECT_NAME="unrelated")
+    assert result.returncode == 1
+    assert "set EKS_CLUSTER_NAME" in result.stderr
+    assert not [call for call in calls if call[0] == "aws"]
+
+
+def test_ecs_only_and_mixed_inventory_select_the_matching_service_apis(runner):
+    result, calls, _ = runner(
+        inventory_script("Fargate/ECS"), STUB_FAIL_SERVICE="eks",
+    )
+    assert result.returncode == 0, result.stderr
+    assert [call[1] for call in calls if call[0] == "aws"] == ["ecs"]
+    result, calls, _ = runner(
+        inventory_script("Fargate/ECS", "EKS"), EKS_CLUSTER_NAME="generated-eks",
+    )
+    assert result.returncode == 0, result.stderr
+    assert [call[1] for call in calls if call[0] == "aws"] == ["ecs", "eks"]

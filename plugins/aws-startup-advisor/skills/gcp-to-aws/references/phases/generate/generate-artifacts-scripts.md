@@ -482,6 +482,10 @@ fi
 
 Post-migration validation script. **Always generated**, but adapt checks based on which resource
 categories were detected in Step 1. Only include validation sections for resources that exist.
+Keep ECS/Fargate and EKS checks separate. For each EKS cluster, populate its
+`EKS_CLUSTER_NAME` default from the matching design entry when the name is known.
+If Terraform computes the name, require that name as an input from the generated
+output; do not assume that the project name is the EKS cluster name.
 
 ```bash
 #!/usr/bin/env bash
@@ -507,10 +511,21 @@ echo "=== Migration Inventory Checks ==="
 echo "--- Terraform Resources ---"
 check terraform -chdir="$MIGRATION_DIR/terraform" state list
 
-# --- Include ONLY if Fargate/ECS/EKS present ---
+# --- Include ONLY if Fargate/ECS present ---
 # Check ECS services
 echo "--- ECS Services ---"
 check aws ecs list-services --cluster "${PROJECT_NAME:-gcp-migration}" --query 'serviceArns' --output table
+
+# --- Include ONLY if EKS present ---
+# Set the default to this cluster's aws_config.cluster_name when known.
+EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
+echo "--- EKS Cluster ---"
+if [ -n "$EKS_CLUSTER_NAME" ]; then
+  check aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --query 'cluster.{Name:name,Status:status}' --output table
+else
+  echo "FAILED: set EKS_CLUSTER_NAME to the generated cluster name." >&2
+  failures=$((failures + 1))
+fi
 
 # --- Include ONLY if Elastic Beanstalk present ---
 echo "--- Elastic Beanstalk Environments ---"

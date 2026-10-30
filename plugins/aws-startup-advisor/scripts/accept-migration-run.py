@@ -116,6 +116,73 @@ def requires_postgres_script(design: dict[str, Any], report_tools: Any) -> bool:
     return False
 
 
+def heroku_conditional_outputs(
+    root: Path, design: dict[str, Any], preferences: dict[str, Any],
+    report_tools: Any, policy: Any,
+) -> dict[str, Any]:
+    """Enforce Generate's selected output floor, not deployment correctness."""
+    services = {service.casefold() for service in report_tools._iter_aws_services(design)}
+    names = []
+    errors = []
+    limitations = []
+    if "elasticache redis" in services:
+        names.append("scripts/migrate-redis.sh")
+    if any("beanstalk" in service for service in services):
+        names.append("terraform/beanstalk.tf")
+        constraints = preferences.get("design_constraints") or {}
+        row = constraints.get("eb_deploy_method") if isinstance(constraints, dict) else None
+        method = row.get("value") if isinstance(row, dict) else None
+        if method in (None, "github_actions"):
+            names.append(".github/workflows/deploy-eb.yml")
+        elif method == "codepipeline":
+            names.append("terraform/pipeline.tf")
+        elif method != "manual":
+            limitations.append("Unknown Elastic Beanstalk deployment method")
+    if "eks" in services or "eks_cluster" in design:
+        names.extend(["terraform/eks.tf", "kubernetes/namespace.yaml"])
+        deployments = [path for path in (root / "kubernetes").glob("*-deployment.yaml")
+                       if path.is_file() and path.stat().st_size]
+        if not deployments:
+            errors.append("kubernetes/*-deployment.yaml: no nonempty deployment manifest")
+        eks_file = root / "terraform/eks.tf"
+        if eks_file.is_file():
+            text = eks_file.read_text(encoding="utf-8")
+            types = {
+                resource_type for resource_type in (
+                    "aws_eks_cluster", "aws_eks_node_group", "aws_launch_template",
+                    "aws_autoscaling_group", "aws_security_group",
+                ) if policy._extract_blocks(text, resource_type)
+            }
+            if "aws_eks_cluster" not in types:
+                errors.append("terraform/eks.tf: missing aws_eks_cluster resource")
+            cluster = design.get("eks_cluster")
+            node_type = cluster.get("node_group_type") if isinstance(cluster, dict) else None
+            if node_type == "managed":
+                if "aws_eks_node_group" not in types:
+                    errors.append("terraform/eks.tf: missing managed aws_eks_node_group resource")
+            elif node_type == "self-managed":
+                missing = {"aws_launch_template", "aws_autoscaling_group",
+                           "aws_security_group"} - types
+                if missing:
+                    errors.append("terraform/eks.tf: missing self-managed resources: " +
+                                  ", ".join(sorted(missing)))
+            elif not ({"aws_eks_node_group"} <= types or {
+                "aws_launch_template", "aws_autoscaling_group", "aws_security_group",
+            } <= types):
+                errors.append("terraform/eks.tf: missing node group resources")
+        # File/resource presence cannot establish manifest kinds, per-formation
+        # coverage or node-group wiring. Do not turn that limited check into PASS.
+        limitations.append(
+            "EKS Kubernetes manifests and node-group wiring require separate review; "
+            "only the documented file and resource presence was checked."
+        )
+    missing = required_files(root, names)
+    return check("conditional_outputs", "FAIL" if missing or errors else
+                 "UNVERIFIED" if limitations else "PASS", {
+                     "missing": missing, "errors": errors, "limitations": limitations,
+                 })
+
+
 def discovery_facts(inventory: dict[str, Any], skill: str) -> dict[str, Any]:
     """Check narrow producer obligations not encoded as required shape keys."""
     if skill == "heroku-to-aws":
@@ -480,6 +547,10 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
         require_postgres = False
         if skill == "heroku-to-aws":
             report_tools = load_module("_accept_report_tools", SCRIPTS / "validate-migration-report.py")
+            checks.append(heroku_conditional_outputs(
+                root, documents.get("aws-design.json", {}), documents.get("preferences.json", {}),
+                report_tools, policy,
+            ))
             require_postgres = requires_postgres_script(documents.get("aws-design.json", {}), report_tools)
             require_workflow = requires_eb_workflow(
                 documents.get("aws-design.json", {}), documents.get("preferences.json", {}), report_tools,

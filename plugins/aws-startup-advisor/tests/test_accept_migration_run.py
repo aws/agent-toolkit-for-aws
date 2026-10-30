@@ -141,6 +141,22 @@ def heroku_execution_run(parent: Path) -> Path:
     return root
 
 
+def eks_outputs(root: Path, node_type: str) -> None:
+    """Use the producer's managed/self-managed resource and manifest names."""
+    nodes = ('resource "aws_eks_node_group" "general" {}\n' if node_type == "managed" else
+             'resource "aws_launch_template" "eks_nodes" {\n'
+             '  metadata_options { http_tokens = "required" }\n}\n'
+             'resource "aws_autoscaling_group" "eks_nodes" {}\n'
+             'resource "aws_security_group" "eks_nodes" {}\n')
+    (root / "terraform/eks.tf").write_text('resource "aws_eks_cluster" "main" {}\n' + nodes)
+    (root / "kubernetes").mkdir()
+    (root / "kubernetes/namespace.yaml").write_text(
+        "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: example\n")
+    (root / "kubernetes/example-web-deployment.yaml").write_text(
+        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n"
+        "  name: web\n  namespace: example\nspec:\n  replicas: 1\n")
+
+
 def by_name(report: dict, name: str) -> dict:
     return next(item for item in report["checks"] if item["name"] == name)
 
@@ -200,6 +216,159 @@ class AcceptanceTests(unittest.TestCase):
                 write_json(root / "aws-design.json", {"services": [service]})
                 result = by_name(acceptance.accept(root, "heroku-to-aws"), "generated_artifacts")
                 self.assertNotIn("postgres_script_missing", [item["rule"] for item in result["detail"]["findings"]])
+
+    def test_heroku_eks_missing_conditional_artifacts_cannot_pass(self):
+        for design in (
+            {"services": [{"aws_service": "EKS"}]},
+            {"services": [], "eks_cluster": {"node_group_type": "managed"}},
+        ):
+            with self.subTest(design=design), tempfile.TemporaryDirectory() as temp:
+                root = heroku_execution_run(Path(temp))
+                write_json(root / "aws-design.json", design)
+                report = acceptance.accept(root, "heroku-to-aws")
+                result = by_name(report, "conditional_outputs")
+                self.assertEqual("FAIL", report["verdict"])
+                self.assertEqual("FAIL", result["status"])
+                self.assertEqual(["terraform/eks.tf", "kubernetes/namespace.yaml"],
+                                 result["detail"]["missing"])
+                self.assertTrue(any("*-deployment.yaml" in item
+                                    for item in result["detail"]["errors"]))
+
+    def test_heroku_eks_present_files_do_not_prove_resources_or_manifests(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_execution_run(Path(temp))
+            write_json(root / "aws-design.json", {
+                "services": [{"aws_service": "EKS"}],
+                "eks_cluster": {"node_group_type": "managed"},
+            })
+            eks_outputs(root, "managed")
+            (root / "terraform/eks.tf").write_text(
+                '# resource "aws_eks_cluster" "main" {}\n'
+                '/* resource "aws_eks_node_group" "general" {} */\n')
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertEqual("FAIL", result["status"])
+            self.assertEqual([], result["detail"]["missing"])
+            self.assertTrue(any("aws_eks_cluster" in item for item in result["detail"]["errors"]))
+            self.assertTrue(any("aws_eks_node_group" in item for item in result["detail"]["errors"]))
+            (root / "kubernetes/namespace.yaml").write_text("")
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertIn("kubernetes/namespace.yaml", result["detail"]["missing"])
+
+    def test_heroku_eks_managed_and_self_managed_outputs_remain_unverified(self):
+        for node_type in ("managed", "self-managed"):
+            with self.subTest(node_type=node_type), tempfile.TemporaryDirectory() as temp:
+                root = heroku_execution_run(Path(temp))
+                write_json(root / "aws-design.json", {
+                    "services": [{"service_id": "eks:example:web", "aws_service": "EKS",
+                                  "source_resource_id": "formation:example:web",
+                                  "heroku_app": "example",
+                                  "aws_config": {"namespace": "example", "deployment_name": "web",
+                                                 "process_type": "web", "node_group_type": node_type}}],
+                    "eks_cluster": {"cluster_name": "heroku-migration-cluster",
+                                    "node_group_type": node_type},
+                })
+                eks_outputs(root, node_type)
+                before = acceptance.file_hashes(root)
+                report = acceptance.accept(root, "heroku-to-aws")
+                result = by_name(report, "conditional_outputs")
+                self.assertEqual("UNVERIFIED", result["status"], result)
+                self.assertEqual([], result["detail"]["missing"])
+                self.assertEqual([], result["detail"]["errors"])
+                self.assertEqual("UNVERIFIED", report["verdict"], report["checks"])
+                self.assertEqual(before, acceptance.file_hashes(root))
+
+    def test_heroku_eks_node_group_must_match_selected_type(self):
+        for selected, emitted in (("managed", "self-managed"), ("self-managed", "managed")):
+            with self.subTest(selected=selected), tempfile.TemporaryDirectory() as temp:
+                root = heroku_execution_run(Path(temp))
+                write_json(root / "aws-design.json", {
+                    "services": [{"aws_service": "EKS"}],
+                    "eks_cluster": {"node_group_type": selected},
+                })
+                eks_outputs(root, emitted)
+                result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+                self.assertEqual("FAIL", result["status"], result)
+                self.assertTrue(result["detail"]["errors"])
+
+    def test_heroku_redis_requires_nonempty_script_and_accepts_producer_template(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_execution_run(Path(temp))
+            write_json(root / "aws-design.json", {
+                "services": [{"aws_service": "ElastiCache Redis"}],
+            })
+            path = root / "scripts/migrate-redis.sh"
+            for exists in (False, True):
+                if exists:
+                    path.write_text("")
+                result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+                self.assertEqual("FAIL", result["status"])
+                self.assertEqual(["scripts/migrate-redis.sh"], result["detail"]["missing"])
+            docs = (PLUGIN / "skills/heroku-to-aws/references/phases/generate/generate-docs.md").read_text()
+            section = docs.split("Write to `$MIGRATION_DIR/scripts/migrate-redis.sh`:", 1)[1]
+            path.write_text(section.split("```bash\n", 1)[1].split("\n```", 1)[0] + "\n")
+            report = acceptance.accept(root, "heroku-to-aws")
+            self.assertEqual("PASS", by_name(report, "conditional_outputs")["status"])
+            self.assertEqual("PASS", by_name(report, "shell_syntax")["status"])
+
+    def test_heroku_beanstalk_requires_selected_deploy_artifacts(self):
+        for method, artifact in ((None, ".github/workflows/deploy-eb.yml"),
+                                 ("github_actions", ".github/workflows/deploy-eb.yml"),
+                                 ("codepipeline", "terraform/pipeline.tf"), ("manual", None)):
+            with self.subTest(method=method), tempfile.TemporaryDirectory() as temp:
+                root = heroku_execution_run(Path(temp))
+                write_json(root / "aws-design.json", {"services": [{"aws_service": "Elastic Beanstalk"}]})
+                preferences = {"design_constraints": {}}
+                if method:
+                    preferences["design_constraints"]["eb_deploy_method"] = {"value": method}
+                write_json(root / "preferences.json", preferences)
+                result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+                expected = ["terraform/beanstalk.tf"] + ([artifact] if artifact else [])
+                self.assertEqual(expected, result["detail"]["missing"])
+                (root / "terraform/beanstalk.tf").write_text(
+                    'resource "aws_elastic_beanstalk_application" "example" { name = "example" }\n'
+                    'resource "aws_elastic_beanstalk_environment" "example_worker" {\n'
+                    '  name = "example-worker"\n'
+                    '  application = aws_elastic_beanstalk_application.example.name\n'
+                    '}\n')
+                if artifact:
+                    path = root / artifact
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(
+                        'resource "aws_codepipeline" "example_deploy" { name = "example" }\n'
+                        if method == "codepipeline" else
+                        "name: Deploy\non: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n"
+                        "    steps:\n      - uses: einaregilsson/beanstalk-deploy@v22\n")
+                report = acceptance.accept(root, "heroku-to-aws")
+                result = by_name(report, "conditional_outputs")
+                self.assertEqual("PASS", result["status"], result)
+                self.assertEqual("PASS", by_name(report, "generated_artifacts")["status"])
+                self.assertEqual("UNVERIFIED", report["verdict"], report["checks"])
+                self.assertFalse((root / "terraform/pipeline.tf").exists() and
+                                 (root / ".github/workflows/deploy-eb.yml").exists())
+
+    def test_unknown_eb_method_is_unverified_and_non_eb_design_is_unaffected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_execution_run(Path(temp))
+            write_json(root / "preferences.json", {
+                "design_constraints": {"eb_deploy_method": {"value": "other"}},
+            })
+            self.assertEqual("PASS", by_name(
+                acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")["status"])
+            write_json(root / "aws-design.json", {"services": [{"aws_service": "Elastic Beanstalk"}]})
+            (root / "terraform/beanstalk.tf").write_text("# Present\n")
+            result = by_name(acceptance.accept(root, "heroku-to-aws"), "conditional_outputs")
+            self.assertEqual("UNVERIFIED", result["status"])
+
+    def test_heroku_decision_does_not_require_execution_outputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = heroku_decision_run(Path(temp))
+            write_json(root / "aws-design.json", {
+                "services": [{"aws_service": "EKS"}, {"aws_service": "ElastiCache Redis"},
+                             {"aws_service": "Elastic Beanstalk"}],
+            })
+            report = acceptance.accept(root, "heroku-to-aws")
+            self.assertEqual("PASS", report["verdict"], report["checks"])
+            self.assertNotIn("conditional_outputs", [item["name"] for item in report["checks"]])
 
     def test_matching_owner_passes_wrong_owner_fails_and_absent_owner_is_unverified(self):
         with tempfile.TemporaryDirectory() as temp:

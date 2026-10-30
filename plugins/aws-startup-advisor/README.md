@@ -108,6 +108,11 @@ and no inherited cloud credentials. Modules, other providers, nested or JSON
 configurations, and filesystem-reading functions need separate review and
 remain `UNVERIFIED`. No plan, apply, migration script or telemetry runs.
 
+For Heroku execution packs, missing Redis scripts, selected Elastic Beanstalk
+deployment files, or required EKS files and resources fail acceptance. EKS packs
+remain `UNVERIFIED` even when these outputs exist because Kubernetes manifests
+and node-group wiring still need separate review.
+
 This is a local, bounded acceptance check. It does not change ATX job status,
 support AI/billing-only routes, or prove deployment and data-migration success.
 
