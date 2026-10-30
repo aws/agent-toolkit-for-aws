@@ -126,10 +126,11 @@ expires in 60 days, nothing needs storing.
       "command": "uvx",
       "timeout": 120000,
       "args": [
-        "mcp-proxy-for-aws@latest",
+        "mcp-proxy-for-aws==1.7.0",
         "https://connect.aidevops.{region}.api.aws/mcp",
         "--service", "aidevops",
-        "--region", "{region}"
+        "--region", "{region}",
+        "--profile", "{profile}"
       ]
     }
   }
@@ -140,9 +141,14 @@ Requires `uvx` (Python) on the machine — check with `uvx --version` before rec
 is missing, either install `uv` or fall back to a bearer token. Do not silently write a config that cannot
 run.
 
-**On `@latest`:** this is AWS's published configuration, reproduced as documented. It means the proxy code
-executed on the machine can change without notice. If the user's environment has a policy on unpinned
-dependencies, pin a known version instead — the endpoint and arguments are unchanged.
+**The version is pinned.** AWS's published configuration uses `mcp-proxy-for-aws@latest`, which lets the
+proxy code run on the machine change without notice. Pin a known release instead, and move it on
+deliberately; the endpoint and arguments are the same.
+
+**`--profile` is the AWS profile the CLI checks used** (DETECT). Without it the proxy uses whatever default
+credentials the editor's process has — an editor opened from the dock does not see `AWS_PROFILE` from a
+shell — which can be another AWS account's, or expired. Leave it out only when the credentials come from
+environment variables rather than a profile.
 
 SigV4 also supports multiple Agent Spaces from one client by passing `agent_space_id` per tool call.
 
@@ -242,7 +248,7 @@ aws iam create-role --role-name DevOpsAgentRole-AgentSpace \
 aws iam attach-role-policy --role-name DevOpsAgentRole-AgentSpace \
   --policy-arn arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy
 
-# inline: lets the agent create the Resource Explorer service-linked role
+# inline: lets the agent create the Resource Explorer service-linked role (slr.json below)
 aws iam put-role-policy --role-name DevOpsAgentRole-AgentSpace \
   --policy-name AllowCreateServiceLinkedRoles --policy-document file://slr.json
 
@@ -253,6 +259,25 @@ aws devops-agent associate-service --agent-space-id <AGENT_SPACE_ID> \
 ```
 
 `--service-id` is the literal string **`aws`**. A successful association returns `status: "valid"`.
+
+`slr.json`, the inline permission, as AWS's CLI onboarding guide gives it. It allows creating only the
+Resource Explorer service-linked role, in this AWS account:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCreateServiceLinkedRoles",
+      "Effect": "Allow",
+      "Action": ["iam:CreateServiceLinkedRole"],
+      "Resource": [
+        "arn:aws:iam::<ACCOUNT_ID>:role/aws-service-role/resource-explorer-2.amazonaws.com/AWSServiceRoleForResourceExplorer"
+      ]
+    }
+  ]
+}
+```
 
 **None of this runs before the Yes** — the access part of the combined notice (SKILL.md Phase 2.5 and
 CONFIRM) is what the user approved. The role grants an AWS service read access across the account, plus
@@ -282,9 +307,16 @@ Not run: `chat` or `investigate`, because those bill.
 
 ## Verify before declaring success
 
-Make one authenticated call that starts no agent work — MCP `tools/list`, or `tools/call
-list_agent_spaces` — and confirm a real response. Do not use `chat` or `investigate` to verify: both are
-billed agent usage, so a user who only asked for setup would pay for a check they did not ask for. Run
+Make one authenticated call that starts no agent work — MCP `tools/call list_agent_spaces` — and confirm
+a real response that shows the right space:
+
+- **SigV4:** the endpoint is per Region. When its Region is the Region of the space you created or found,
+  the response lists that space; if it does not, the proxy is signed in to another AWS account, so fix
+  `--profile`. A space in a different Region is a Region mismatch: point the endpoint at the space's Region.
+- **Bearer token:** the token belongs to one space, and there may be no local credentials to compare with.
+  A real response listing the token's space is the check.
+
+Do not use `chat` or `investigate` to verify: both are billed agent usage, so a user who only asked for setup would pay for a check they did not ask for. Run
 those only for an operational request. Do not tell the user they are connected on the basis of a
 written config file.
 
