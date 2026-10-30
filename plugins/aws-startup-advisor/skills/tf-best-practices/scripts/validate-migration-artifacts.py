@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only checks for generated Heroku migration artifacts.
+"""Read-only checks for generated migration infrastructure and scripts.
 
 This is a bounded static checker, not a Terraform, YAML, or Bash interpreter.
 Unknown security-group expressions and unrecognised PostgreSQL scripts fail
@@ -281,6 +281,97 @@ def _resources(root: Path, policy: Any, findings: list[Finding]) -> list[Resourc
             if instances is not False:
                 resources.append(resource)
     return resources
+
+
+def _inline_database_urls(expression: str, policy: Any) -> list[str]:
+    """Read literal ECS environment entries; do not evaluate Terraform."""
+    raw = expression.strip()
+    encoded = re.match(r"jsonencode\s*\(", raw)
+    if encoded and raw.endswith(")"):
+        raw = raw[encoded.end():-1].strip()
+    try:
+        decoded = json.loads(raw)
+        if isinstance(decoded, str):
+            decoded = json.loads(decoded)
+    except (ValueError, TypeError):
+        decoded = None
+    if isinstance(decoded, list):
+        values = []
+        for container in decoded:
+            if not isinstance(container, dict):
+                continue
+            environment = container.get("environment", [])
+            if not isinstance(environment, list):
+                raise ValueError("Literal ECS environment must be an array.")
+            values.extend(
+                entry["value"]
+                for entry in environment
+                if isinstance(entry, dict) and entry.get("name") == "DATABASE_URL"
+                and isinstance(entry.get("value"), str)
+            )
+        return values
+
+    # The other supported form is jsonencode([{ environment = [{ name = ...,
+    # value = ... }] }]). Limit scanning to direct objects in environment lists,
+    # so labels, comments and nested objects cannot masquerade as credentials.
+    if not encoded:
+        return []
+    _, codes, _ = policy._lex_hcl(raw)
+    values: list[str] = []
+    for match in re.finditer(r"\benvironment\s*=\s*\[", raw):
+        if not codes[match.start()]:
+            continue
+        start = match.end() - 1
+        depth = 0
+        end = None
+        for i in range(start, len(raw)):
+            if codes[i]:
+                depth += (raw[i] == "[") - (raw[i] == "]")
+                if depth == 0:
+                    end = i
+                    break
+        if end is None:
+            continue
+        body = raw[start + 1:end]
+        braces, body_codes, _ = policy._lex_hcl(body)
+        for i, char in enumerate(body):
+            if char != "{" or not body_codes[i] or braces[i] != 0:
+                continue
+            entry, _ = policy._extract_braced_block(body, i)
+            fields = {}
+            for key in ("name", "value"):
+                field = policy._first_own_attr(
+                    entry, rf'\b{key}\s*=\s*("(?:\\.|[^"\\])*")',
+                )
+                if field:
+                    try:
+                        fields[key] = json.loads(field.group(1))
+                    except ValueError:
+                        pass
+            if fields.get("name") == "DATABASE_URL" and isinstance(fields.get("value"), str):
+                values.append(fields["value"])
+    return values
+
+
+def _ecs_database_credentials(
+    resources: list[Resource], policy: Any, findings: list[Finding],
+) -> None:
+    for resource in resources:
+        if resource.kind != "aws_ecs_task_definition":
+            continue
+        expression = _attr(resource.body, "container_definitions", policy)
+        if expression is None:
+            continue
+        for value in _inline_database_urls(expression, policy):
+            if re.search(
+                r"://[^@\s]*:(?:PLACEHOLDER|REDACTED|CHANGE_ME|REPLACE_ME)@",
+                value, re.IGNORECASE,
+            ):
+                findings.append(Finding(
+                    resource.file, resource.line, "ecs_database_password_placeholder",
+                    f"{resource.address}: DATABASE_URL contains a placeholder password; "
+                    "wire the actual database credential through a secret reference.",
+                ))
 
 
 def _rds_windows(resources: list[Resource], policy: Any, windows: Any, findings: list[Finding]) -> None:
@@ -1425,6 +1516,7 @@ def validate(
     findings: list[Finding] = []
     resources = _resources(root, policy, findings)
     try:
+        _ecs_database_credentials(resources, policy, findings)
         _rds_windows(resources, policy, windows, findings)
         _eb_database_access(resources, policy, findings)
         _postgres(root, resources, policy, findings, require_postgres_script)
@@ -1437,15 +1529,20 @@ def validate(
         "producer": "validate-migration-artifacts",
         "artifact_status": status,
         "verdict": status,
-        "checks_run": ["postgres_verify", "eb_database_access", "workflow_deploy", "rds_windows"],
+        "checks_run": [
+            "postgres_verify", "eb_database_access", "workflow_deploy", "rds_windows",
+            "ecs_database_credentials",
+        ],
         "scope": [
             "supported PostgreSQL verification control flow and Bash syntax",
             "explicit Elastic Beanstalk to RDS security-group references",
             "GitHub Actions step IDs and presence of an EB deployment operation",
             "literal RDS backup and maintenance window overlap",
+            "placeholder passwords in literal ECS DATABASE_URL environment entries",
         ],
         "limitations": [
             "Static checks do not prove deployment success or arbitrary Bash safety.",
+            "Dynamic container definitions and secret retrieval code are not evaluated.",
             "Unsupported shapes require review; Terraform validation and policy checks remain separate gates.",
         ],
         "findings": [asdict(finding) for finding in sorted(set(findings))],

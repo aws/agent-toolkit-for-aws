@@ -28,6 +28,7 @@ After all sub-discoveries complete, assemble `heroku-resource-inventory.json` in
 4. Include `metadata` section: `discovery_timestamp`, `total_apps_discovered`, `discovery_sources`, `confidence`.
 5. Include `apps[]` section with per-app entries containing:
    - `app_name`, `app_id`, `discovery_status` (success/discovery_failed), `failure_reason`
+   - `region`, `stack` (source values, or null when unavailable; retain the stack name after deriving the generation)
    - `heroku_generation` (cedar/fir/unknown), `generation_action` (always `detect_only`), `generation_diagnostics` (array of diagnostic reasons)
    - `space` (Private Space name or null)
    - `procfile_parse_warning`, `app_json_parse_warning` (per-app parse warnings or null)
@@ -92,8 +93,15 @@ differently per discovery method (see `schema-discover-heroku.md`).
    the Terraform contribution — this is the expected complement, not a conflict. Do
    NOT set `not_found_live` on them and do NOT count them in
    `resources_terraform_only`.
-5. **Apps section:** live `apps[]` entries win (they carry the real `app_id` UUID);
-   merge in Terraform-only apps with `not_found_live: true`.
+5. **Apps section:** merge by `app_name`, keeping the real live `app_id` UUID.
+   For `region` and `stack`, use a non-null live value when captured; otherwise
+   preserve the Terraform/app.json value. A missing or failed live capture must
+   not erase known source facts. If both sources provide different non-null
+   values, keep the live value and record a `config_conflicts[]` entry with
+   `resource_id: "app:{app_name}"`, `field: "region"` or `"stack"`, and both
+   source values. Use `null` only if neither source provides the field; do not
+   invent a region or stack from the generation. Merge in Terraform-only apps
+   with `not_found_live: true`.
 6. **Drift summary:** set `live_metadata.drift` to
    `{ "resources_live_only": N, "resources_terraform_only": M, "config_conflicts": [...] }`,
    plus `"ambiguous_addon_groups": [...]` (per Rule 1b) whenever any group was

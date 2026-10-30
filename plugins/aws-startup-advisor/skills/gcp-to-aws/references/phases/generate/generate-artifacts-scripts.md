@@ -65,13 +65,16 @@ $MIGRATION_DIR/
 - Scripts are numbered for execution order
 - Scripts use `set -euo pipefail` for safety
 - Scripts log all actions to `$MIGRATION_DIR/logs/`
+- Preserve supplied environment variables with `${NAME:-}` instead of assigning empty strings over them. Do not print passwords or full database connection URIs.
+- Resolve paths from the script's directory. Do not change the caller's working directory and then reuse a relative migration path.
+- A source write freeze must stop application writes while keeping database reads available. Do not use Cloud SQL `--activation-policy=NEVER` for a write freeze: it stops the instance and prevents the subsequent copy from connecting.
 - **Fail fast on unset fill-ins at `--execute`:** every script that reads user-supplied env vars (`SOURCE_HOST`, `TARGET_DB_PASSWORD`, `ALB_DNS`, …) checks them at the top of the execute path and exits listing ALL missing ones at once — never fails midway on the first empty var after work has started. Dry-run mode runs without them (printing which are unset). Pattern (adjust the `for v in …` list to match **this** script's required env vars — it is a template, not a universal constant):
 
   ```bash
   if [ "$DRY_RUN" = false ]; then
     missing=()
     # Adjust the list below to match this script's required env vars
-    for v in SOURCE_HOST TARGET_HOST TARGET_DB_PASSWORD; do
+    for v in SOURCE_HOST TARGET_HOST SOURCE_DB_PASSWORD TARGET_DB_PASSWORD DATABASE_NAME; do
       [ -z "${!v:-}" ] && missing+=("$v")
     done
     if [ ${#missing[@]} -gt 0 ]; then
@@ -109,7 +112,12 @@ set -euo pipefail
 # Usage: ./02-migrate-data.sh [--execute]
 
 DRY_RUN=true
-[[ "${1:-}" == "--execute" ]] && DRY_RUN=false
+[ "$#" -le 1 ] || { echo "Usage: $0 [--execute]" >&2; exit 2; }
+case "${1:-}" in
+  "") ;;
+  --execute) DRY_RUN=false ;;
+  *) echo "Usage: $0 [--execute]" >&2; exit 2 ;;
+esac
 echo "Mode: $([ "$DRY_RUN" = true ] && echo 'DRY RUN' || echo 'EXECUTE')"
 ```
 
@@ -133,13 +141,13 @@ Record any override in the script header comment (`# db_size source: terraform d
 
 ```bash
 # Allocated disk is an upper bound, not a measurement — check actual data size first.
-if [ -n "$SOURCE_HOST" ] && [ -n "${SOURCE_DB_PASSWORD:-}" ]; then
-  ACTUAL_GB=$(PGPASSWORD="$SOURCE_DB_PASSWORD" psql -h "$SOURCE_HOST" -U postgres -d "$DATABASE_NAME" -At \
+if [ "$DRY_RUN" = false ] && [ -n "$SOURCE_HOST" ] && [ -n "${SOURCE_DB_PASSWORD:-}" ]; then
+  ACTUAL_GB=$(PGPASSWORD="$SOURCE_DB_PASSWORD" psql -X --no-password -v ON_ERROR_STOP=1 -h "$SOURCE_HOST" -U postgres -d "$DATABASE_NAME" -At \
     -c "SELECT ceil(pg_database_size(current_database()) / 1024.0^3)")
   echo "Actual database size: ${ACTUAL_GB} GB (this script was generated for the [band] band)"
 else
   ACTUAL_GB=""
-  echo "SKIP: actual-size check needs SOURCE_HOST and SOURCE_DB_PASSWORD set."
+  echo "SKIP: actual-size check runs in execute mode with source credentials."
 fi
 ```
 
@@ -167,9 +175,9 @@ Generate the script with conditional branches based on `db_size`:
 
 echo "=== Database Migration: Cloud SQL → RDS ==="
 
-SOURCE_HOST="" # TODO: Set Cloud SQL IP
-TARGET_HOST="" # From terraform output database_endpoint
-DATABASE_NAME="" # TODO: Set database name
+SOURCE_HOST="${SOURCE_HOST:-}" # Set to the Cloud SQL IP
+TARGET_HOST="${TARGET_HOST:-}" # From terraform output database_endpoint
+DATABASE_NAME="${DATABASE_NAME:-}" # Set to the database name
 ```
 
 Then emit ONE of the following tool-specific blocks based on `db_size`:
@@ -183,14 +191,18 @@ if [ "$DRY_RUN" = true ]; then
   echo "[DRY RUN] Would import to RDS using pg_restore: $TARGET_HOST"
 else
   echo "Exporting from Cloud SQL with pg_dump..."
-  PGPASSWORD="$SOURCE_DB_PASSWORD" pg_dump \
+  DUMP_FILE=$(mktemp "${TMPDIR:-/tmp}/gcp-migration.XXXXXX")
+  chmod 600 "$DUMP_FILE"
+  trap 'rm -f "$DUMP_FILE"' EXIT
+  PGPASSWORD="$SOURCE_DB_PASSWORD" pg_dump --no-password \
     -h "$SOURCE_HOST" -U postgres -d "$DATABASE_NAME" \
-    -Fc -f /tmp/migration_dump.pgc
+    -Fc -f "$DUMP_FILE"
   echo "Importing to RDS with pg_restore..."
-  PGPASSWORD="$TARGET_DB_PASSWORD" pg_restore \
+  PGPASSWORD="$TARGET_DB_PASSWORD" pg_restore --no-password --exit-on-error \
     -h "$TARGET_HOST" -U postgres -d "$DATABASE_NAME" \
-    -Fc /tmp/migration_dump.pgc
-  rm -f /tmp/migration_dump.pgc
+    -Fc "$DUMP_FILE"
+  rm -f "$DUMP_FILE"
+  trap - EXIT
 fi
 ```
 
@@ -305,10 +317,22 @@ set -euo pipefail
 # Usage: ./03-migrate-containers.sh [--execute]
 
 DRY_RUN=true
-[[ "${1:-}" == "--execute" ]] && DRY_RUN=false
+[ "$#" -le 1 ] || { echo "Usage: $0 [--execute]" >&2; exit 2; }
+case "${1:-}" in
+  "") ;;
+  --execute) DRY_RUN=false ;;
+  *) echo "Usage: $0 [--execute]" >&2; exit 2 ;;
+esac
 
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-AWS_REGION="us-east-1"  # From preferences.json target_region
+AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-}"
+AWS_REGION="${AWS_REGION:-us-east-1}" # Default from preferences.json target_region
+if [ -z "$AWS_ACCOUNT_ID" ]; then
+  if [ "$DRY_RUN" = true ]; then
+    AWS_ACCOUNT_ID="<AWS_ACCOUNT_ID>"
+  else
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+  fi
+fi
 ```
 
 ECR image migration — GCR/Artifact Registry → ECR (**include ONLY if Fargate/ECS/EKS present**):
@@ -382,10 +406,14 @@ Verification (always emitted; each line only reports on the sections you include
 echo "=== Verification ==="
 # Include the next two lines only if the ECR section was emitted:
 echo "Listing ECR repositories (Fargate/ECS/EKS)..."
-aws ecr describe-repositories --region "$AWS_REGION" --query 'repositories[].repositoryName' --output table 2>/dev/null || echo "No ECR repositories (expected if EB-only)"
+if [ "$DRY_RUN" = false ]; then
+  aws ecr describe-repositories --region "$AWS_REGION" --query 'repositories[].repositoryName' --output table
+fi
 # Include the next two lines only if the EB section was emitted:
 echo "Listing Elastic Beanstalk environments..."
-aws elasticbeanstalk describe-environments --region "$AWS_REGION" --query 'Environments[].{Env:EnvironmentName,Status:Status,Health:Health}' --output table 2>/dev/null || echo "No EB environments"
+if [ "$DRY_RUN" = false ]; then
+  aws elasticbeanstalk describe-environments --region "$AWS_REGION" --query 'Environments[].{Env:EnvironmentName,Status:Status,Health:Health}' --output table
+fi
 ```
 
 ### 04-migrate-secrets.sh — IF has_secrets
@@ -402,7 +430,12 @@ set -euo pipefail
 # Usage: ./04-migrate-secrets.sh [--execute]
 
 DRY_RUN=true
-[[ "${1:-}" == "--execute" ]] && DRY_RUN=false
+[ "$#" -le 1 ] || { echo "Usage: $0 [--execute]" >&2; exit 2; }
+case "${1:-}" in
+  "") ;;
+  --execute) DRY_RUN=false ;;
+  *) echo "Usage: $0 [--execute]" >&2; exit 2 ;;
+esac
 
 # TODO: List secrets to migrate
 SECRETS=(
@@ -440,7 +473,9 @@ done
 
 # Verification
 echo "=== Verification ==="
-aws secretsmanager list-secrets --query 'SecretList[].Name' --output table
+if [ "$DRY_RUN" = false ]; then
+  aws secretsmanager list-secrets --query 'SecretList[].Name' --output table
+fi
 ```
 
 ### 05-validate-migration.sh
@@ -455,42 +490,58 @@ set -euo pipefail
 # Post-migration validation
 # Usage: ./05-validate-migration.sh
 
-echo "=== Migration Validation ==="
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MIGRATION_DIR=$(dirname "$SCRIPT_DIR")
+failures=0
+check() {
+  if "$@"; then
+    return 0
+  else
+    echo "FAILED: $1 $2" >&2
+    failures=$((failures + 1))
+  fi
+}
+echo "=== Migration Inventory Checks ==="
 
 # Check Terraform state (always included)
 echo "--- Terraform Resources ---"
-cd terraform/
-terraform state list | wc -l
-echo "resources in Terraform state"
+check terraform -chdir="$MIGRATION_DIR/terraform" state list
 
 # --- Include ONLY if Fargate/ECS/EKS present ---
 # Check ECS services
 echo "--- ECS Services ---"
-aws ecs list-services --cluster "${PROJECT_NAME:-gcp-migration}" --query 'serviceArns' --output table 2>/dev/null || echo "No ECS cluster found"
+check aws ecs list-services --cluster "${PROJECT_NAME:-gcp-migration}" --query 'serviceArns' --output table
 
 # --- Include ONLY if Elastic Beanstalk present ---
 echo "--- Elastic Beanstalk Environments ---"
-aws elasticbeanstalk describe-environments --query 'Environments[].{Env:EnvironmentName,Status:Status,Health:Health}' --output table 2>/dev/null || echo "No EB environments found"
+check aws elasticbeanstalk describe-environments --query 'Environments[].{Env:EnvironmentName,Status:Status,Health:Health}' --output table
 
 # --- Include ONLY if has_databases ---
 # Check RDS instances
 echo "--- RDS Instances ---"
-aws rds describe-db-instances --query 'DBInstances[].{ID:DBInstanceIdentifier,Status:DBInstanceStatus,Endpoint:Endpoint.Address}' --output table 2>/dev/null || echo "No RDS instances found"
+check aws rds describe-db-instances --query 'DBInstances[].{ID:DBInstanceIdentifier,Status:DBInstanceStatus,Endpoint:Endpoint.Address}' --output table
 
 # --- Include ONLY if has_storage ---
 # Check S3 buckets
 echo "--- S3 Buckets ---"
-aws s3 ls | grep "${PROJECT_NAME:-gcp-migration}" || echo "No matching S3 buckets found"
+if [ -n "${S3_BUCKET:-}" ]; then
+  check aws s3api head-bucket --bucket "$S3_BUCKET"
+else
+  echo "FAILED: set S3_BUCKET to the generated bucket name." >&2
+  failures=$((failures + 1))
+fi
 
 # --- Include ONLY if has_secrets ---
 # Check secrets
 echo "--- Secrets Manager ---"
-aws secretsmanager list-secrets --query 'SecretList[].Name' --output table 2>/dev/null || echo "No secrets found"
+check aws secretsmanager list-secrets --query 'SecretList[].Name' --output table
 
-echo "=== Validation Complete ==="
-echo "Review the output above. All resources should show healthy status."
-echo "TODO: Run application-level health checks"
-echo "TODO: Compare performance metrics against GCP baseline"
+if [ "$failures" -gt 0 ]; then
+  echo "Inventory checks failed: $failures. Do not proceed to cutover." >&2
+  exit 1
+fi
+echo "Inventory commands succeeded. This does not establish application health or data integrity."
+echo "Before cutover, run application-level health checks and compare source/target data."
 ```
 
 ## Step 3: Self-Check

@@ -332,7 +332,7 @@ Validation:
 
 ## Observability Entry in `projected_costs.breakdown`
 
-When Part 2B of `estimate-infra.md` produces an observability cost, it is included as an entry in `projected_costs.breakdown[]` with this shape:
+When Part 2B of `estimate-infra.md` produces an observability cost, write this shape at `projected_costs.breakdown.observability`. `projected_costs.breakdown` is a keyed object, never an array:
 
 ```json
 {
@@ -446,7 +446,7 @@ Present in `estimation-infra.json` only when `preferences.json` → `design_cons
 - `current_costs.gcp_monthly` matches billing-profile.json total (if used) or is a reasonable estimate
 - `projected_costs` has all three tiers (premium, balanced, optimized)
 - **Tier semantics:** Three totals are **scenario $** only (same design); **Balanced** matches generated Terraform baseline — see **Cost tiers** section above; user-facing labels must use the subtitles there (also `estimate-infra.md` Present Summary / `generate-artifacts-report.md`)
-- `projected_costs.breakdown` covers compute, database, storage, networking, supporting services, observability, and the security baseline (always a `security_baseline` entry, plus `security_baseline_compliance` when a gating compliance framework is declared)
+- `projected_costs.breakdown` is a keyed object covering compute, database, storage, networking, supporting services, observability, and the security baseline (always a `security_baseline` entry, plus `security_baseline_compliance` when a gating compliance framework is declared); never emit an array
 - Every service in `aws-design.json` is represented in the cost breakdown
 - `projected_costs.breakdown` observability entry (when present) REPLACES any CloudWatch/log/metric costs in the "Supporting" row — never double-count
 - `cost_comparison` shows all three options with monthly and annual differences

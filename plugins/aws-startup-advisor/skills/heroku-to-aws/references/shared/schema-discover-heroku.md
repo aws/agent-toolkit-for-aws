@@ -23,6 +23,8 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
     {
       "app_name": "my-web-app",
       "app_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "region": "us",
+      "stack": "heroku-22",
       "heroku_generation": "cedar|fir|unknown",
       "generation_action": "detect_only",
       "generation_diagnostics": [],
@@ -74,6 +76,8 @@ Per-app metadata entries. One entry per discovered Heroku app.
 | ------------------------ | -------------- | -------- | --------------------------------------------------------------------------------------------------------- |
 | `app_name`               | string         | ✅       | Heroku app name                                                                                           |
 | `app_id`                 | string (UUID)  | ✅       | Heroku app UUID                                                                                           |
+| `region`                 | string \| null | ✅       | Source Heroku region, preserved verbatim when available; `null` when not captured or authored             |
+| `stack`                  | string \| null | ✅       | Source stack name, preserved even after deriving `heroku_generation`; `null` when unavailable             |
 | `heroku_generation`      | string         | ✅       | `"cedar"`, `"fir"`, or `"unknown"`                                                                        |
 | `generation_action`      | string         | ✅       | Always `"detect_only"` in v1                                                                              |
 | `generation_diagnostics` | string[]       | ✅       | Diagnostic reasons (empty array if resolved cleanly; contains `"generation_unresolved"` on timeout/error) |
@@ -82,6 +86,13 @@ Per-app metadata entries. One entry per discovered Heroku app.
 | `failure_reason`         | string \| null | ✅       | Error description when `discovery_status` is `"discovery_failed"`, otherwise `null`                       |
 | `procfile_parse_warning` | string \| null | ✅       | Warning text if Procfile parsing failed, otherwise `null`                                                 |
 | `app_json_parse_warning` | string \| null | ✅       | Warning text if app.json parsing failed, otherwise `null`                                                 |
+
+`region` and `stack` are source facts, not migration preferences. Do not convert
+`"us"` into an AWS region or replace `"heroku-22"` with the derived `"cedar"`
+generation. Terraform, app.json, and successful live captures may supply these
+values; missing or failed captures must not erase a value from another source.
+For older inventories that predate these fields, readers must tolerate their
+absence and treat them as unknown. New Discover outputs must include both keys.
 
 ### `resources[]` (REQUIRED)
 
@@ -356,6 +367,8 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
     {
       "app_name": "my-web-app",
       "app_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "region": "us",
+      "stack": "heroku-22",
       "heroku_generation": "cedar",
       "generation_action": "detect_only",
       "generation_diagnostics": [],
@@ -368,6 +381,8 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
     {
       "app_name": "my-worker-app",
       "app_id": "fedcba98-7654-3210-fedc-ba9876543210",
+      "region": "virginia",
+      "stack": null,
       "heroku_generation": "fir",
       "generation_action": "detect_only",
       "generation_diagnostics": [],
@@ -501,7 +516,7 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
 4. ✅ `metadata.discovery_sources` is a non-empty array
 5. ✅ `metadata.confidence` is `"full"` or `"reduced"`
 6. ✅ Every entry in `resources[]` has: `resource_id`, `resource_type`, `heroku_app`, `config`
-7. ✅ Every entry in `apps[]` has: `app_name`, `heroku_generation`, `generation_action`, `discovery_status`
+7. ✅ Every entry in `apps[]` has: `app_name`, `region`, `stack`, `heroku_generation`, `generation_action`, `discovery_status`; known source `region` and `stack` values are preserved, and unavailable values are `null`
 8. ✅ No forbidden clustering fields present anywhere in the document
 9. ✅ If Terraform discovery ran → resources include Terraform-sourced entries
 10. ✅ If Terraform had parse errors → `metadata.confidence` is `"reduced"`

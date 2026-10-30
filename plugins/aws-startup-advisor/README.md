@@ -78,6 +78,39 @@ To add a check, define a task in this file and add it to `tasks.ci.depends`; the
 
 The Startup advisor workflow runs on pull requests that change this plugin, the root `mise.toml`, or `.github/workflows/startup-advisor.yml`. It also supports manual runs.
 
+### Independently accept a migration run
+
+From `plugins/aws-startup-advisor` in a repository checkout, use the local
+acceptance checker after a GCP or Heroku infrastructure run. It
+re-runs the contract, report, Terraform policy and generated-artifact checks
+instead of trusting a job's `Completed` label or its saved `PASS` reports.
+Python 3.10 or newer is required.
+
+```sh
+python3 scripts/accept-migration-run.py \
+  --run-dir /path/to/.migration/1030-1400 \
+  --skill gcp-to-aws \
+  --output /path/to/review/acceptance.json
+```
+
+The input directory stays unchanged; the output must be a new file outside it.
+Exit `0` means `PASS`, `1` means `FAIL`, and `2` means `UNVERIFIED`. The JSON
+includes the input and checker hashes, findings, and actual command results.
+A decision-only pass covers the decision pack, including its rendered report;
+it does not approve retained Terraform from an earlier execution run.
+
+Execution packs remain `UNVERIFIED` until Terraform checks actually run.
+After reviewing the generated configuration, add
+`--terraform /absolute/path/to/terraform` to allow `fmt`, `init -backend=false`
+and `validate` in a temporary copy. This downloads and executes only the
+official HashiCorp AWS provider, with a separate Terraform CLI configuration
+and no inherited cloud credentials. Modules, other providers, nested or JSON
+configurations, and filesystem-reading functions need separate review and
+remain `UNVERIFIED`. No plan, apply, migration script or telemetry runs.
+
+This is a local, bounded acceptance check. It does not change ATX job status,
+support AI/billing-only routes, or prove deployment and data-migration success.
+
 ## Startup Architecture Advice
 
 The `architect-for-startups` skill answers "what should we build on AWS?" for a workload that is not an AI agent, the way a Startup Solutions Architect would: it establishes the company's stage, team size, runway, and credit position first, then recommends the smallest architecture that clears the bar, and names what to revisit at the next stage.
