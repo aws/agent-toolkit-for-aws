@@ -1,0 +1,8 @@
+[project]
+name = "startup-advisor-account-reporting"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "botocore[crt]>=1.43.120,<2",
+    "rfc8785>=0.1.4,<1",
+]
