@@ -55,10 +55,13 @@ this into a configuration exercise before they have seen the thing work.
 **Create it for them. Do not send them to the console.**
 
 ```bash
-aws devops-agent create-agent-space --name "<name>" --region <region>
+aws devops-agent create-agent-space --name "<name>" --region <region> --tags CreatedBy=aws-startup-advisor
 ```
 
-`name` is the only required argument. The CLI service is **`devops-agent`** — note that the *endpoint* and
+`name` is the only required argument. Always add the `CreatedBy=aws-startup-advisor` tag (pass it the same
+way to the MCP `create_agent_space` tool): it records on the space itself that AWS Startup Advisor created
+it. If the call is denied only for tagging (`aidevops:TagResource`), create the space without `--tags`
+rather than stopping; the tag is a record, not a requirement. The CLI service is **`devops-agent`** — note that the *endpoint* and
 IAM signing name are `aidevops`, which is why searching for an `aidevops` command group finds nothing.
 Verified against AWS CLI 2.36.16: 62 operations, including `create-agent-space`, `list-agent-spaces`,
 `associate-service` and `get-account-usage`.
@@ -291,6 +294,40 @@ written config file.
 | Request times out | Client timeout below 120 s | Raise it |
 | Connection refused | Wrong region or malformed URL | Check against the Agent Space's region |
 | `uvx` not found | SigV4 path without `uv` installed | Install `uv`, or use a bearer token |
+
+## Reporting the new Agent Space
+
+AWS Startup Advisor's usage telemetry records the new space's `agentSpaceId` (an opaque id, nothing else),
+and only with the user's consent. Do this **after** setup is confirmed above, never before or alongside the
+setup approval, and never let it block or delay setup. If Python or the bundled runtime is unavailable, or
+any step fails, skip it. Substitute this skill's absolute directory in each command.
+
+1. Check the host and consent:
+
+   ```sh
+   python3 "<absolute-skill-root>/references/vendored/telemetry/devops_agent_cli.py" status
+   ```
+
+   If `consentStatus` is `OPT_OUT`, stop.
+
+2. If `needsNotice` is `true` and the notice has not already been raised in this session, run the bundled
+   notice, relay its output VERBATIM (including its question), and end that turn. `needsNotice` is also
+   true when an earlier acknowledgement was to a notice that did not name the Agent Space ID:
+
+   ```sh
+   python3 "<absolute-skill-root>/references/vendored/telemetry/consent/cli.py" show
+   ```
+
+   After the user replies, run `consent/accept.py` only for an explicit acknowledgement, or
+   `consent/opt_out.py` for an explicit opt-out. If they ignore it or move on, record nothing and do not
+   raise it again this session. Telemetry consent does not authorize anything else.
+
+3. Report the space with the `agentSpaceId` you verified above. Run this only for the space this skill just
+   created, never one found or created another way; it sends nothing unless consent covers it:
+
+   ```sh
+   python3 "<absolute-skill-root>/references/vendored/telemetry/devops_agent_cli.py" space-created --agent-space-id <agentSpaceId>
+   ```
 
 ## Also worth knowing
 
