@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "render_cli_version": "2.30.0",
+  "categories": {
+    "version": {"argv": ["--version"], "shape": "version_text"},
+    "auth_whoami": {"argv": ["whoami", "--output", "json"], "shape": "direct_object"},
+    "workspace_current": {"argv": ["workspace", "current", "--output", "json"], "shape": "direct_object"},
+    "workspaces_list": {"argv": ["workspaces", "--output", "json"], "shape": "array"},
+    "projects_list": {"argv": ["projects", "--output", "json"], "shape": "nullable_array"},
+    "environments_list": {"argv": ["environments", "{resource_id}", "--output", "json"], "shape": "array"},
+    "services_list": {"argv": ["services", "--output", "json"], "shape": "nullable_wrapper_array"},
+    "service_get": {"argv": ["services", "get", "{resource_id}", "--output", "json"], "shape": "nullable_direct_object"},
+    "service_instances": {"argv": ["services", "instances", "{resource_id}", "--output", "json"], "shape": "array"},
+    "deploys_list": {"argv": ["deploys", "list", "{resource_id}", "--output", "json"], "shape": "array"},
+    "postgres_list": {"argv": ["postgres", "list", "--output", "json"], "shape": "data_array"},
+    "postgres_get": {"argv": ["postgres", "get", "{resource_id}", "--output", "json"], "shape": "data_nullable_object"},
+    "keyvalues_list": {"argv": ["keyvalues", "list", "--output", "json"], "shape": "data_array"},
+    "keyvalue_get": {"argv": ["keyvalues", "get", "{resource_id}", "--output", "json"], "shape": "data_nullable_object"},
+    "workflows_list": {"argv": ["workflows", "list", "--output", "json"], "shape": "nullable_wrapper_array"},
+    "workflow_versions_list": {"argv": ["workflows", "versions", "list", "{resource_id}", "--output", "json"], "shape": "nullable_array"},
+    "workflow_tasks_list": {"argv": ["workflows", "tasks", "list", "{resource_id}", "--output", "json"], "shape": "nullable_array"},
+    "workflow_task_runs_list": {"argv": ["workflows", "tasks", "runs", "list", "--task", "{resource_id}", "--output", "json"], "shape": "nullable_array"},
+    "workflow_task_run_show": {"argv": ["workflows", "tasks", "runs", "show", "{resource_id}", "--output", "json"], "shape": "nullable_direct_object"},
+    "jobs_list": {"argv": ["jobs", "list", "{resource_id}", "--output", "json"], "shape": "array"},
+    "blueprint_validate": {"argv": ["blueprints", "validate", "{blueprint}", "--workspace", "{workspace_id}", "--confirm", "--output", "json"], "shape": "blueprint_validation"},
+    "log_metadata": {"argv": ["logs", "--resources", "{resource_id}", "--start", "{start}", "--end", "{end}", "--limit", "{limit}", "--direction", "backward", "--output", "json"], "shape": "json_stream_metadata"}
+  },
+  "forbidden_verbs": ["create", "update", "delete", "deploy", "restart", "clone", "trigger", "login", "ssh", "psql", "pgcli", "kv-cli"]
+}

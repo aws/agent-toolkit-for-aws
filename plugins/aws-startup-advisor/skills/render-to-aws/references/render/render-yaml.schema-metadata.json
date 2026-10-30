@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "source_url": "https://render.com/schema/render.yaml.json",
+  "retrieved_at": "2026-10-21",
+  "sha256": "8a3fb8da6b4f55fe686fbefa790e011d3dd7895f013f355953c572a21ab6494a",
+  "media_type": "application/schema+json",
+  "structural_validation_order": "before_normalization",
+  "semantic_validation": "separate_consent_gate_bound_to_source_digest"
+}

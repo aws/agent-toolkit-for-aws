@@ -1,3 +1,10 @@
+# Tools beyond the root mise.toml. The root config is inherited (node, python, gitleaks, uv);
+# terraform is plugin-only because tests/render_pipeline_harness.py runs `terraform fmt`,
+# `init -backend=false` and `validate` against each generated migration pack and fails
+# closed if the binary is absent. Pinned exactly so CI and local runs validate identically.
+[tools]
+terraform = "1.15.2"
+
 [tasks."lint:artifacts"]
 description = "Validate aws-startup-advisor fixture artifacts against their published schema contracts"
 run = "python3 scripts/validate-artifacts.py --fixtures"
@@ -32,7 +39,7 @@ run = "uv run --no-project python scripts/model-id-lint.py"
 
 [tasks.test]
 description = "Run plugin contract tests"
-run = "uv run --no-project --with pytest python -m pytest tests -q"
+run = "uv run --no-project --with pytest --with 'jsonschema==4.23.0' --with 'PyYAML==6.0.2' python -m pytest tests -q"
 
 [tasks."test:telemetry"]
 description = "Run Startup Advisor telemetry tests"

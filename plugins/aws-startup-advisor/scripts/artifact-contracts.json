@@ -3,7 +3,8 @@
   "fixture_prefixes": {
     "gcp-": "gcp-to-aws",
     "heroku-": "heroku-to-aws",
-    "azure-": "azure-to-aws"
+    "azure-": "azure-to-aws",
+    "render-": "render-to-aws"
   },
   "shared": {
     ".phase-status.json": {
@@ -348,6 +349,30 @@
       "scenarios/scenario-NNN.estimation-infra.json": {
         "json_schema": "skills/shared/estimate/estimation-infra.schema.json",
         "_alias_why": "Workshop baseline capture copies estimation-infra.json to scenarios/scenario-NNN.estimation-infra.json. The active file's contract is this JSON Schema."
+      }
+    },
+    "render-to-aws": {
+      "render-resource-inventory.json": {
+        "json_schema": "skills/render-to-aws/references/shared/schema-render-resource-inventory.json"
+      },
+      "render-resource-clusters.json": {
+        "json_schema": "skills/render-to-aws/references/shared/schema-render-resource-clusters.json"
+      },
+      "render-ai-discovery.json": {
+        "json_schema": "skills/render-to-aws/references/shared/schema-render-ai-discovery.json"
+      },
+      "preferences.json": {
+        "json_schema": "skills/render-to-aws/references/shared/schema-render-preferences.json"
+      },
+      "aws-design.json": {
+        "json_schema": "skills/render-to-aws/references/shared/schema-render-aws-design.json"
+      },
+      "estimation-infra.json": {
+        "json_schema": "skills/shared/estimate/estimation-infra.schema.json"
+      },
+      "generation-warnings.json": {
+        "json_schema": "skills/render-to-aws/references/shared/schema-generation-warnings.json",
+        "_coverage_why": "validation-report.json, billing, REST-projection and live-capture manifest schemas under skills/render-to-aws/references/shared/ use `if`/`then`/`else`, which this validator's Draft-07 subset rejects at load time (SCHEMA_PARSE). They stay covered by tests/test_render_fixture_contracts.py and the skill's own scripts until the subset grows. ai-workload-profile.json is covered by the `shared` row."
       }
     }
   }

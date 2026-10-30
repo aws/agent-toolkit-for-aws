@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "cases": [
+    {"id": "postgres-missing-compatibility", "selector": "data.postgresql", "missing": ["database.extensions", "database.logical_replication_privileges"], "expected": "clarify_required", "forbidden_output": "Amazon RDS for PostgreSQL or Amazon Aurora PostgreSQL"},
+    {"id": "disk-missing-semantics", "selector": "storage.persistent_disk", "missing": ["storage.access_semantics", "storage.sharing_and_clients"], "expected": "clarify_required", "forbidden_output": "Amazon EFS or Amazon EBS or Amazon S3"},
+    {"id": "workflow-missing-state-needs", "selector": "workflow.orchestrator", "missing": ["workflow.orchestration_shape", "workflow.history_and_delivery"], "expected": "clarify_required", "forbidden_output": "Lambda durable functions or Step Functions"},
+    {"id": "workflow-task-missing-duration", "selector": "workflow.task", "missing": ["workflow.task_duration", "workflow.task_resources"], "expected": "clarify_required", "forbidden_output": "Lambda or ECS or Batch"},
+    {"id": "worker-missing-shape", "selector": "compute.worker", "missing": ["worker.execution_shape"], "expected": "clarify_required", "forbidden_output": "service or task"},
+    {"id": "cron-missing-duration", "selector": "compute.cron", "missing": ["cron.duration", "cron.resource_fit"], "expected": "clarify_required", "forbidden_output": "Lambda or RunTask"},
+    {"id": "ai-target-fabrication", "selector": "ai.execution", "missing": [], "expected": "deferred_shared_ai_engine", "forbidden_fields": ["aws_service", "model", "price", "adapter", "terraform"]}
+  ]
+}

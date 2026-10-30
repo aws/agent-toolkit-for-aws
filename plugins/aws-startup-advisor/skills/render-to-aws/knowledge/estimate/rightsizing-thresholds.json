@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "minimum_lookback_days": 7,
+  "minimum_expected_sample_coverage": 0.8,
+  "allowed_resolutions_seconds": [30, 60, 300, 3600],
+  "require_points_outcome": true,
+  "require_instance_lifecycle_alignment": true,
+  "replacement_instances_are_concurrent": false,
+  "interpolate_idle_gaps_as_zero": false,
+  "downsize_limits": {
+    "maximum_cpu_p95_fraction": 0.4,
+    "maximum_memory_p95_fraction": 0.6,
+    "maximum_memory_peak_fraction_before_headroom": 0.75,
+    "minimum_capacity_units": 1,
+    "require_all_metrics": ["cpu", "memory", "memory_limit"]
+  },
+  "memory_headroom_multipliers": {
+    "default": 1.25,
+    "ai_model_client_or_streaming": 1.35,
+    "rag_or_retrieval_cache": 1.4,
+    "agent_browser_or_tool_process": 1.5
+  },
+  "insufficient_evidence": {"confidence": "inferred", "right_sized_equals_capacity_preserving": true, "downsize_allowed": false}
+}

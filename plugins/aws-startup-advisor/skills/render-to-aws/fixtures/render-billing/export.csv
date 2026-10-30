@@ -1,0 +1,3 @@
+line_id,period_start,period_end,currency,amount,amount_basis,service_id,plan_id,quantity,unit
+line-web,2026-09-01,2026-10-01,USD,25.50,subtotal_before_tax,srv-safe-web,starter,1,service-month
+line-worker,2026-09-01,2026-10-01,USD,30.25,subtotal_before_tax,srv-safe-worker,starter,1,service-month

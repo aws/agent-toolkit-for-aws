@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:awslabs:startups:render-rest-projections:1.0",
+  "title": "Sanitized Render REST capture envelope",
+  "type": "object",
+  "required": ["schema_version", "transport", "category", "captured_at", "attempt_id", "workspace_id", "consent_digest", "ownership_index_digest", "status", "page_count", "raw_shapes", "request", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "transport": {"const": "render_rest_v1"},
+    "category": {"type": "string"},
+    "captured_at": {"type": "string", "format": "date-time", "pattern": "Z$", "maxLength": 32},
+    "attempt_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": "string"},
+    "consent_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "ownership_index_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "status": {"enum": ["ok", "successful_empty", "unavailable_plan", "invalid_query", "absent", "unsupported_for_type"]},
+    "page_count": {"type": "integer", "minimum": 1, "maximum": 20},
+    "raw_shapes": {"type": "array", "items": {"enum": ["array", "object", "null", "cursor_array", "metric_series", "http_400", "http_404"]}},
+    "request": {
+      "type": "object",
+      "required": ["resource_id", "start", "end", "resolution_seconds", "event_type", "limit"],
+      "additionalProperties": false,
+      "properties": {
+        "resource_id": {"type": ["string", "null"]},
+        "start": {"type": ["string", "null"], "format": "date-time"},
+        "end": {"type": ["string", "null"], "format": "date-time"},
+        "resolution_seconds": {"type": ["integer", "null"], "enum": [null, 30, 60, 300, 3600]},
+        "event_type": {"type": ["string", "null"]},
+        "limit": {"type": ["integer", "null"], "minimum": 1, "maximum": 100}
+      }
+    },
+    "data": {"type": "array", "maxItems": 10000, "items": {"type": "object"}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"category": {"const": "service_events"}}},
+      "then": {"properties": {"data": {"items": {"$ref": "#/$defs/event"}}}}
+    },
+    {
+      "if": {"properties": {"category": {"const": "build_sources_list"}}},
+      "then": {"properties": {"data": {"items": {"$ref": "#/$defs/buildSource"}}}}
+    },
+    {
+      "if": {"properties": {"category": {"pattern": "^metric_"}}},
+      "then": {"properties": {"data": {"items": {"$ref": "#/$defs/metric"}}}}
+    }
+  ],
+  "$defs": {
+    "event": {
+      "type": "object", "required": ["id", "resourceId", "type", "timestamp"], "additionalProperties": false,
+      "properties": {"id": {"type": "string"}, "resourceId": {"type": "string"}, "type": {"type": "string"}, "timestamp": {"type": "string", "format": "date-time"}, "statusCode": {"type": "integer"}}
+    },
+    "buildSource": {
+      "type": "object", "required": ["id", "name", "ownerId", "repo", "branch", "serviceIds"], "additionalProperties": false,
+      "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "ownerId": {"type": "string"}, "repo": {"type": "string"}, "branch": {"type": "string"}, "commit": {"type": "string"}, "artifact": {"type": "object", "required": ["id", "digest"], "additionalProperties": false, "properties": {"id": {"type": "string"}, "digest": {"type": "string"}}}, "buildCommand": {"type": "string"}, "serviceIds": {"type": "array", "items": {"type": "string"}}, "environmentIds": {"type": "array", "items": {"type": "string"}}, "buildEnvVarNames": {"type": "array", "items": {"type": "string"}}, "runtimeEnvVarNames": {"type": "array", "items": {"type": "string"}}}
+    },
+    "metric": {
+      "type": "object", "required": ["labels", "unit", "values"], "additionalProperties": false,
+      "properties": {"labels": {"type": "array", "items": {"type": "object", "required": ["field", "value"], "additionalProperties": false, "properties": {"field": {"type": "string"}, "value": {"type": "string"}}}}, "unit": {"type": "string"}, "values": {"type": "array", "items": {"type": "object", "required": ["timestamp", "value"], "additionalProperties": false, "properties": {"timestamp": {"type": "string", "format": "date-time"}, "value": {"type": "number"}}}}}
+    }
+  }
+}

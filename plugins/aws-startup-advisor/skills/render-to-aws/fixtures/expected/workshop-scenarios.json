@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "inventory_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseline_scenario_id": "scenario-001",
+  "active_scenario_id": "scenario-002",
+  "next_ordinal": 3,
+  "scenarios": [
+    {
+      "scenario_id": "scenario-001", "label": "Baseline", "created_at": "2026-10-21T12:00:00Z", "inventory_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "preferences_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "design_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "estimate_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "preferences_subset": {}, "selected_target_changes": [],
+      "estimation_summary": {"capacity_preserving_known_cost_monthly_usd": 352.0, "capacity_preserving_is_floor": true, "capacity_preserving_unpriced_count": 1, "right_sized_known_cost_monthly_usd": 290.0, "right_sized_is_floor": true, "right_sized_unpriced_count": 1, "delta_monthly_usd": -62.0, "complexity_tier": "large", "pricing_source": "cached", "region_note": null, "recommendation_outcome": "migrate_phased", "calculator_url": null}
+    },
+    {
+      "scenario_id": "scenario-002", "label": "Graviton where compatible", "created_at": "2026-10-21T12:01:00Z", "inventory_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "preferences_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "design_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555", "estimate_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666", "preferences_subset": {"global.cpu_architecture": "arm64"}, "selected_target_changes": [],
+      "estimation_summary": {"capacity_preserving_known_cost_monthly_usd": 340.0, "capacity_preserving_is_floor": true, "capacity_preserving_unpriced_count": 1, "right_sized_known_cost_monthly_usd": 278.0, "right_sized_is_floor": true, "right_sized_unpriced_count": 1, "delta_monthly_usd": -62.0, "complexity_tier": "large", "pricing_source": "cached", "region_note": null, "recommendation_outcome": "migrate_phased", "calculator_url": null}
+    }
+  ],
+  "state_after_exit": {"current_phase": "estimate", "workshop": "completed", "run_mode_present": false, "return_to": "decision_gate", "generated_files_deleted": false}
+}

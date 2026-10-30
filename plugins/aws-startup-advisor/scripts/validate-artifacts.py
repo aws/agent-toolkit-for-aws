@@ -1170,7 +1170,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     mode.add_argument("--self-check", action="store_true", help="parse every contract document only")
     mode.add_argument("--fixtures", action="store_true", help="validate the fixture goldens")
     mode.add_argument("--run-dir", type=Path, help="a .migration/<run> directory to validate")
-    ap.add_argument("--skill", choices=["gcp-to-aws", "heroku-to-aws", "azure-to-aws"],
+    ap.add_argument("--skill", choices=["gcp-to-aws", "heroku-to-aws", "azure-to-aws", "render-to-aws"],
                     help="required with --run-dir")
     ap.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     ap.add_argument("--baseline", type=Path, default=None,

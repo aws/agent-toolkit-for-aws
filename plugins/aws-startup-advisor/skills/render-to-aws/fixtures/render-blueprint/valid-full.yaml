@@ -1,0 +1,157 @@
+version: "1"
+previews:
+  generation: manual
+  expireAfterDays: 7
+buildSources:
+  - name: shared-build
+    git:
+      repo: https://github.com/example/example
+      branch: main
+      runtime: docker
+      buildCommand: docker build .
+databases:
+  - name: root-db
+    plan: starter
+    region: virginia
+    postgresMajorVersion: "18"
+envVarGroups:
+  - name: root-shared
+    envVars:
+      - key: PUBLIC_MODE
+        value: production
+services:
+  - type: web
+    name: root-api
+    runtime: python
+    repo: https://github.com/example/shared-app
+    region: virginia
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    domains:
+      - api.example.test
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: root-db
+          property: connectionString
+      - fromGroup: root-shared
+      - key: WORKER_HOST
+        fromService:
+          type: worker
+          name: root-worker
+          property: host
+      - key: CACHE_URL
+        fromService:
+          type: keyvalue
+          name: root-cache
+          property: connectionString
+      - key: PRIVATE_HOST
+        fromService:
+          type: pserv
+          name: root-private
+          property: host
+      - key: API_TOKEN
+        value: super-secret-literal
+  - type: worker
+    name: root-worker
+    runtime: python
+    repo: https://github.com/example/shared-app
+    region: virginia
+    plan: starter
+    startCommand: python worker.py
+  - type: pserv
+    name: root-private
+    runtime: docker
+    region: virginia
+    plan: starter
+    dockerCommand: ./private
+    disk:
+      name: private-data
+      mountPath: /var/data
+      sizeGB: 5
+  - type: cron
+    name: root-cron
+    runtime: python
+    region: virginia
+    plan: starter
+    schedule: "0 * * * *"
+    startCommand: python cron.py
+  - type: workflow
+    name: root-workflow
+    runtime: node
+    region: oregon
+    startCommand: npm start
+  - type: keyvalue
+    name: root-cache
+    region: virginia
+    plan: 3g
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: "off"
+  - type: web
+    name: root-static
+    runtime: static
+    buildCommand: npm run build
+    staticPublishPath: dist
+  - type: web
+    name: promoted-api
+    buildSource: shared-build
+    region: virginia
+    plan: starter
+projects:
+  - name: storefront
+    buildSources:
+      - name: project-build
+        image:
+          url: docker.io/library/nginx:1.27.5-alpine
+    environments:
+      - name: production
+        networking:
+          isolation: enabled
+        permissions:
+          protection: enabled
+        databases:
+          - name: project-db
+            plan: starter
+            region: virginia
+        envVarGroups:
+          - name: project-shared
+            envVars: []
+        services:
+          - type: web
+            name: project-promoted-api
+            buildSource: project-build
+            region: virginia
+            plan: starter
+          - type: web
+            name: project-api
+            runtime: go
+            region: virginia
+            plan: starter
+            startCommand: ./server
+            envVars:
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: project-db
+                  property: connectionString
+      - name: staging
+        services:
+          - type: web
+            name: project-static
+            runtime: static
+            buildCommand: npm run build
+            staticPublishPath: dist
+ungrouped:
+  buildSources:
+    - name: ungrouped-build
+      image:
+        url: docker.io/library/alpine:3.21
+  services:
+    - type: worker
+      name: ungrouped-worker
+      runtime: image
+      image:
+        url: docker.io/library/alpine:3.21
+      region: ohio
+      plan: starter

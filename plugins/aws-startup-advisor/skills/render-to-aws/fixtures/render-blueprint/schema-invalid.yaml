@@ -1,0 +1,6 @@
+version: "1"
+services:
+  - type: web
+    name: invalid-service
+    runtime: unsupported-runtime
+    unknownAccountingField: true

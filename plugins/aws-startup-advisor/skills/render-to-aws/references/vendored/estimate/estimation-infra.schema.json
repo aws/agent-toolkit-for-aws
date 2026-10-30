@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:awslabs:startups:migration-to-aws:estimate:estimation-infra",
+  "$comment": "The $id URN uses 'migration-to-aws' as a stable schema namespace identity — it is NOT a plugin name or skill invocation prefix. Do not rename it when the schema moves between plugins.",
+  "title": "estimation-infra.json",
+  "description": "Schema for the infrastructure cost-estimate artifact produced by a migration skill's estimate phase. projected_costs carries three pricing SCENARIOS (premium/balanced/optimized) for the same design — not three Terraform roots. Source-cloud baseline fields live under current_costs and are source-agnostic here (a skill records its own source monthly/annual). Cost FORMULAS and tier semantics are the estimate phase's prose, not this schema.",
+  "type": "object",
+  "required": ["phase", "pricing_source", "projected_costs", "complexity_tier", "recommendation"],
+  "properties": {
+    "phase": { "const": "estimate" },
+    "design_source": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "pricing_source": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["cached", "cached_stale", "cached_fallback", "unavailable"] },
+        "message": { "type": "string" },
+        "fallback_staleness": { "type": "object" },
+        "services_by_source": {
+          "type": "object",
+          "description": "Buckets services by how their rate was obtained. Pricing is cache-only, so there is no live bucket: 'cached' came from the pricing cache, 'fallback' from a stale cache entry, 'estimated' from a rate the cost engine itself states verbatim.",
+          "properties": {
+            "cached": { "type": "array", "items": { "type": "string" } },
+            "fallback": { "type": "array", "items": { "type": "string" } },
+            "estimated": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "services_with_missing_fallback": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "accuracy_confidence": { "type": "string" },
+    "current_costs": {
+      "type": "object",
+      "description": "The source-platform baseline. 'source' names how it was derived; the monthly/annual totals and breakdown are the skill's source-platform spend (a skill may use source-specific key names such as heroku_monthly).",
+      "required": ["source"],
+      "properties": {
+        "source": { "type": "string" },
+        "baseline_note": { "type": ["string", "null"] },
+        "breakdown": { "type": "object" }
+      }
+    },
+    "projected_costs": {
+      "type": "object",
+      "required": ["aws_monthly_premium", "aws_monthly_balanced", "aws_monthly_optimized"],
+      "properties": {
+        "aws_monthly_premium": { "type": "number" },
+        "aws_monthly_balanced": { "type": "number" },
+        "aws_monthly_optimized": { "type": "number" },
+        "aws_annual_optimized": { "type": "number" },
+        "breakdown": { "type": "object" }
+      }
+    },
+    "cost_comparison": { "type": "object" },
+    "migration_cost_considerations": { "type": "object" },
+    "roi_analysis": { "type": "object" },
+    "optimization_opportunities": { "type": "array" },
+    "complexity_tier": { "type": "string", "enum": ["small", "medium", "large"] },
+    "complexity_inputs": { "type": "object" },
+    "financial_summary": { "type": "object" },
+    "recommendation": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "enum": ["migrate_optimized", "migrate_phased", "stay"] },
+        "migrate_if": { "type": "array" },
+        "stay_if": { "type": "array" }
+      }
+    },
+    "workshop": {
+      "type": "object",
+      "description": "Optional what-if workshop metadata. Omitted when workshop unused.",
+      "properties": {
+        "scenario_id": { "type": ["string", "null"] },
+        "region_note": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
