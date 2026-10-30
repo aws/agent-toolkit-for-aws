@@ -32,6 +32,14 @@ IAC_COMPUTE_TYPES = {
     "google_compute_instance", "google_cloud_run_service", "google_cloud_run_v2_service",
     "google_container_cluster", "google_app_engine_application",
 }
+GCP_CORE_TERRAFORM = (
+    "terraform/main.tf", "terraform/variables.tf", "terraform/outputs.tf",
+    "terraform/baseline.tf", "terraform/README.md",
+)
+GCP_DOMAIN_TERRAFORM = (
+    "terraform/vpc.tf", "terraform/security.tf", "terraform/storage.tf",
+    "terraform/database.tf", "terraform/compute.tf", "terraform/monitoring.tf",
+)
 
 
 def load_module(name: str, path: Path) -> Any:
@@ -552,7 +560,7 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
         names.extend(["MIGRATION_GUIDE.md", "README.md",
                       "validation-report.json", "artifact-validation-status.json"])
         if skill == "gcp-to-aws":
-            names.append("generation-infra.json")
+            names.extend(["generation-infra.json", *GCP_CORE_TERRAFORM])
         else:
             names.extend(["migration-report.html", "report-validation-status.json", "generation-warnings.json",
                           "terraform/main.tf", "terraform/baseline.tf", "terraform/variables.tf",
@@ -563,6 +571,9 @@ def accept(root: Path, skill: str, terraform: Path | None = None) -> dict[str, A
         names.extend(gcp_required_scripts(documents.get("aws-design.json", {})))
     missing = required_files(root, names)
     if route == "execution":
+        if (skill == "gcp-to-aws"
+                and len(required_files(root, list(GCP_DOMAIN_TERRAFORM))) == len(GCP_DOMAIN_TERRAFORM)):
+            missing.append("terraform/<domain>.tf (one nonempty vpc/security/storage/database/compute/monitoring file)")
         for directory in ("terraform", "scripts") if skill == "gcp-to-aws" else ("terraform",):
             if not (root / directory).is_dir() or not any((root / directory).iterdir()):
                 missing.append(directory + "/")

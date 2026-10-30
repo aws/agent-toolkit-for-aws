@@ -291,6 +291,110 @@ URL
     assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
 
 
+@pytest.mark.parametrize(
+    "representation",
+    ["quoted-field", "heredoc-field", "jsonencode-json", "quoted-json", "heredoc-json"],
+)
+@pytest.mark.parametrize(
+    "value,rejected",
+    [
+        ("postgres://app:PLACEHOLDER@db/orders", True),
+        ("postgres://app:real-test-password@db/orders", False),
+        (
+            "%{if false}postgres://app:PLACEHOLDER@db/orders"
+            "%{else}postgres://app:real-test-password@db/orders%{endif}",
+            False,
+        ),
+        (
+            "%%{if false}postgres://app:PLACEHOLDER@db/orders"
+            "%%{else}postgres://app:real-test-password@db/orders%%{endif}",
+            True,
+        ),
+        ("postgres://app:PLACEHOLDER@${local.host}/orders", True),
+        ("postgres://app:PLACEHOLDER@db/$${schema}", True),
+    ],
+)
+def test_template_boundaries_match_across_literal_representations(tmp_path, representation, value, rejected):
+    containers = [{"environment": [{"name": "DATABASE_URL", "value": value}]}]
+    document = json.dumps(containers)
+    expressions = {
+        "quoted-field": 'jsonencode([{environment=[{name="DATABASE_URL",value=' + json.dumps(value) + "}]}])",
+        "heredoc-field": 'jsonencode([{environment=[{name="DATABASE_URL",value=<<URL\n' + value + "\nURL\n}]}])",
+        "jsonencode-json": "jsonencode(" + document + ")",
+        "quoted-json": json.dumps(document),
+        "heredoc-json": "<<JSON\n" + document + "\nJSON",
+    }
+    report = check(tmp_path, expressions[representation])
+    expected = "ARTIFACTS_FAIL" if rejected else "ARTIFACTS_OK"
+    assert report["artifact_status"] == expected, report
+    if rejected:
+        assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+
+
+@pytest.mark.parametrize("representation", ["jsonencode-json", "quoted-json", "heredoc-json"])
+def test_dynamic_json_value_does_not_hide_a_separate_literal_placeholder(tmp_path, representation):
+    document = json.dumps([{"environment": [
+        {
+            "name": "DATABASE_URL",
+            "value": "%{if false}postgres://app:PLACEHOLDER@unused/orders%{else}safe%{endif}",
+        },
+        {"name": "DATABASE_URL", "value": "postgres://app:PLACEHOLDER@db/orders"},
+    ]}])
+    expressions = {
+        "jsonencode-json": "jsonencode(" + document + ")",
+        "quoted-json": json.dumps(document),
+        "heredoc-json": "<<JSON\n" + document + "\nJSON",
+    }
+    report = check(tmp_path, expressions[representation])
+    assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+
+
+@pytest.mark.parametrize(
+    "representation",
+    ["quoted-field", "heredoc-field", "jsonencode-json", "quoted-json", "heredoc-json"],
+)
+@pytest.mark.parametrize("escaped", [False, True])
+def test_interpolation_source_is_ignored_but_escaped_source_is_literal(tmp_path, representation, escaped):
+    interpolation = (
+        '${false ? "postgres://app:PLACEHOLDER@db/orders"'
+        ' : "postgres://app:real-test-password@db/orders"}'
+    )
+    value = "$" + interpolation if escaped else interpolation
+    document = json.dumps([{"environment": [{"name": "DATABASE_URL", "value": "VALUE"}]}])
+    if escaped:
+        quoted = json.dumps(value)
+        json_document = document.replace('"VALUE"', quoted)
+        outer_json = json.dumps(json_document)
+    else:
+        # Quotes in an active HCL interpolation belong to its expression.
+        quoted = '"' + value + '"'
+        json_document = document.replace("VALUE", value)
+        outer_json = json.dumps(document).replace("VALUE", value)
+    expressions = {
+        "quoted-field": 'jsonencode([{environment=[{name="DATABASE_URL",value=' + quoted + "}]}])",
+        "heredoc-field": 'jsonencode([{environment=[{name="DATABASE_URL",value=<<URL\n' + value + "\nURL\n}]}])",
+        "jsonencode-json": "jsonencode(" + json_document + ")",
+        "quoted-json": outer_json,
+        "heredoc-json": "<<JSON\n" + json_document + "\nJSON",
+    }
+    report = check(tmp_path, expressions[representation])
+    expected = "ARTIFACTS_FAIL" if escaped else "ARTIFACTS_OK"
+    assert report["artifact_status"] == expected, report
+
+
+@pytest.mark.parametrize("escape", [r"\u0025", r"\U00000025"])
+@pytest.mark.parametrize("representation", ["quoted-field", "quoted-json"])
+def test_unicode_introduced_marker_is_literal_data(tmp_path, escape, representation):
+    value = escape + "{if false}postgres://app:PLACEHOLDER@db/orders"
+    if representation == "quoted-field":
+        expression = 'jsonencode([{environment=[{name="DATABASE_URL",value="' + value + '"}]}])'
+    else:
+        document = json.dumps([{"environment": [{"name": "DATABASE_URL", "value": "MARKER{if false}postgres://app:PLACEHOLDER@db/orders"}]}])
+        expression = json.dumps(document).replace("MARKER", escape)
+    report = check(tmp_path, expression)
+    assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+
+
 @pytest.mark.parametrize("opener", ["jsonencode (", "jsonencode /* renderer note */ ("])
 def test_function_spacing_and_comments_do_not_hide_placeholder(tmp_path, opener):
     expression = (

@@ -83,10 +83,22 @@ def execution_artifacts(root: Path, *, gcp: bool) -> Path:
 provider "aws" {
   region = "us-east-1"
 }
-resource "aws_s3_bucket" "assets" {
+''')
+    bucket = '''resource "aws_s3_bucket" "assets" {
   bucket = "example-migration-bucket"
 }
-''')
+'''
+    if gcp:
+        (terraform / "storage.tf").write_text(bucket)
+        (terraform / "variables.tf").write_text(
+            'variable "aws_region" {\n  type = string\n  default = "us-east-1"\n}\n')
+        (terraform / "outputs.tf").write_text(
+            'output "bucket_name" {\n  value = aws_s3_bucket.assets.bucket\n}\n')
+        (terraform / "baseline.tf").write_text("# Minimal acceptance fixture.\n")
+        (terraform / "README.md").write_text("# Terraform test fixture\n")
+    else:
+        with (terraform / "main.tf").open("a") as stream:
+            stream.write(bucket)
     (root / "scripts").mkdir()
     scripts = (("01-validate-prerequisites.sh", "02-migrate-data.sh", "05-validate-migration.sh")
                if gcp else ("verify.sh",))
@@ -165,6 +177,36 @@ def by_name(report: dict, name: str) -> dict:
 
 
 class AcceptanceTests(unittest.TestCase):
+    def test_gcp_core_terraform_outputs_must_exist_and_be_nonempty(self):
+        for name in (
+            "terraform/main.tf", "terraform/variables.tf", "terraform/outputs.tf",
+            "terraform/baseline.tf", "terraform/README.md",
+        ):
+            for empty in (False, True):
+                with self.subTest(name=name, empty=empty), tempfile.TemporaryDirectory() as temp:
+                    root = execution_run(Path(temp))
+                    if empty:
+                        (root / name).write_text("")
+                    else:
+                        (root / name).unlink()
+                    report = acceptance.accept(root, "gcp-to-aws")
+                    self.assertEqual("FAIL", report["verdict"])
+                    self.assertIn(name, by_name(report, "required_outputs")["detail"])
+
+    def test_gcp_requires_a_nonempty_named_domain_file(self):
+        for empty in (False, True):
+            with self.subTest(empty=empty), tempfile.TemporaryDirectory() as temp:
+                root = execution_run(Path(temp))
+                if empty:
+                    (root / "terraform/storage.tf").write_text("")
+                else:
+                    (root / "terraform/storage.tf").unlink()
+                (root / "terraform/extra.tf").write_text("# Not a generated domain file.\n")
+                report = acceptance.accept(root, "gcp-to-aws")
+                self.assertEqual("FAIL", report["verdict"])
+                self.assertTrue(any("<domain>.tf" in name
+                                    for name in by_name(report, "required_outputs")["detail"]))
+
     def test_gcp_readme_does_not_substitute_for_required_scripts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = execution_run(Path(temp))

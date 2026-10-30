@@ -109,9 +109,11 @@ and no inherited cloud credentials. Modules, other providers, nested or JSON
 configurations, and filesystem-reading functions need separate review and
 remain `UNVERIFIED`. No plan, apply, migration script or telemetry runs.
 
-For GCP execution packs, missing or empty prerequisite and validation scripts
-fail acceptance. Data, container, and secrets scripts are also required when the
-current design contains the corresponding resource categories.
+For GCP execution packs, the Terraform floor includes `main.tf`, `variables.tf`,
+`outputs.tf`, `baseline.tf`, its `README.md`, and a nonempty domain file.
+Missing or empty prerequisite and validation scripts also fail acceptance.
+Data, container, and secrets scripts are required when the current design
+contains the corresponding resource categories.
 
 For Heroku execution packs, missing Redis scripts, selected Elastic Beanstalk
 deployment files, or required EKS files and resources fail acceptance. EKS packs

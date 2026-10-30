@@ -335,16 +335,22 @@ def _heredoc_string(expression: str) -> str:
     return "".join(content)
 
 
-def _quoted_hcl_string(expression: str) -> str | None:
+def _quoted_hcl_string(expression: str, *, json_document: bool = False) -> str | None:
     """Decode a quoted HCL literal, including its long Unicode escape form."""
     def unicode_escape(match: re.Match[str]) -> str:
         token = match.group(0)
+        if json_document and re.fullmatch(r"\\(?:u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})", token):
+            codepoint = int(token[2:], 16)
+            if codepoint in (ord("$"), ord("%")):
+                # Keep escaped template introducers escaped until the inner
+                # JSON parse, after its source template boundary is checked.
+                return rf"\\u{codepoint:04x}"
         if token.startswith("\\U"):
             return json.dumps(chr(int(token[2:], 16)))[1:-1]
         return token
 
     try:
-        normalized = re.sub(r"\\(?:U[0-9a-fA-F]{8}|.)", unicode_escape, expression)
+        normalized = re.sub(r"\\(?:U[0-9a-fA-F]{8}|u[0-9a-fA-F]{4}|.)", unicode_escape, expression)
         value = json.loads(normalized)
     except (ValueError, TypeError):
         return None
@@ -391,24 +397,19 @@ def _object_field(body: str, name: str, policy: Any) -> str | None:
     return None
 
 
-def _literal_object_string(body: str, name: str, policy: Any) -> str | None:
-    expression = _object_field(body, name, policy)
-    if expression is None:
-        return None
-    if not expression.startswith("<<"):
-        return _quoted_hcl_string(expression)
-    value = _heredoc_string(expression)
+def _literal_template_text(value: str, policy: Any, *, json_source: bool = False) -> str | None:
     # Keep literal text around interpolations, but never inspect their
     # unevaluated expressions as URL text. Template directives remain dynamic.
     output: list[str] = []
     i = 0
     while i < len(value):
         if value.startswith(("$${", "%%{"), i):
-            output.append(value[i + 1:i + 3])
+            output.append(value[i:i + 3] if json_source else value[i + 1:i + 3])
             i += 3
-        elif value.startswith("%{", i):
-            return None
-        elif value.startswith("${", i):
+        elif value.startswith(("${", "%{"), i):
+            directive = value.startswith("%{", i)
+            if directive and not json_source:
+                return None
             expression = value[i + 2:]
             depths, codes, _ = policy._lex_hcl(expression)
             end = next(
@@ -417,12 +418,35 @@ def _literal_object_string(body: str, name: str, policy: Any) -> str | None:
             )
             if end is None:
                 return None
-            output.append("<interpolation>")
+            output.append("%{dynamic}" if directive else "<interpolation>")
             i += end + 3
         else:
             output.append(value[i])
             i += 1
     return "".join(output)
+
+
+def _literal_object_string(body: str, name: str, policy: Any) -> str | None:
+    expression = _object_field(body, name, policy)
+    if expression is None:
+        return None
+    if expression.startswith("<<"):
+        return _literal_template_text(_heredoc_string(expression), policy)
+    if not (expression.startswith('"') and expression.endswith('"')):
+        return None
+    # Template syntax is recognized before string escapes are decoded.
+    # An escaped marker is literal even if decoding introduces "${" or "%{".
+    literal = _literal_template_text(expression[1:-1], policy)
+    return _quoted_hcl_string(f'"{literal}"') if literal is not None else None
+
+
+def _json_template_strings(document: str, policy: Any) -> str:
+    """Mask each JSON string's template once, retaining other literal fields."""
+    def literal(match: re.Match[str]) -> str:
+        value = _literal_template_text(match.group(0)[1:-1], policy)
+        return f'"{value}"' if value is not None else '"<template>"'
+
+    return re.sub(r'"(?:\\.|[^"\\])*"', literal, document)
 
 
 def _literal_list_objects(expression: str, policy: Any) -> list[str]:
@@ -477,15 +501,28 @@ def _inline_database_urls(expression: str, policy: Any) -> list[str]:
         raw = _heredoc_string(raw)
     literal_string = raw.startswith('"')
     try:
+        if not encoded and (literal_string or heredoc):
+            source = raw[1:-1] if literal_string else raw
+            template = _literal_template_text(source, policy, json_source=True)
+            if template is None:
+                return []
+            if template.strip() == "<interpolation>" and source.lstrip().startswith("${"):
+                return []
+            raw = _quoted_hcl_string(f'"{template}"', json_document=True) if literal_string else template
+            if raw is None:
+                raise ValueError("Invalid quoted container definition.")
+        elif literal_string:
+            raw = _quoted_hcl_string(raw, json_document=not encoded)
+            if raw is None:
+                raise ValueError("Invalid quoted container definition.")
+        if not encoded:
+            raw = _json_template_strings(raw, policy)
         decoded = json.loads(raw)
-        if isinstance(decoded, str):
-            raw = decoded
-            decoded = json.loads(raw)
     except (ValueError, TypeError):
         if heredoc or literal_string:
             # Entire template expressions remain dynamic. A literal JSON
             # document that cannot be inspected must not receive a pass.
-            if re.fullmatch(r"\s*(?:\$\{.*\}|%\{.*)\s*", raw, re.DOTALL):
+            if raw and re.fullmatch(r"\s*(?:\$\{.*\}|%\{.*)\s*", raw, re.DOTALL):
                 return []
             raise ValueError("Literal ECS container definitions JSON could not be parsed.") from None
         decoded = None
@@ -503,7 +540,10 @@ def _inline_database_urls(expression: str, policy: Any) -> list[str]:
                 if isinstance(entry, dict) and entry.get("name") == "DATABASE_URL"
                 and isinstance(entry.get("value"), str)
             )
-        return values
+        # jsonencode arguments are HCL expressions. Their original quoted
+        # tokens retain the distinction between escapes and template syntax.
+        if not encoded:
+            return values
 
     # The other supported form is jsonencode([{ environment = [{ name = ...,
     # value = ... }] }]). Limit scanning to direct objects in environment lists,
