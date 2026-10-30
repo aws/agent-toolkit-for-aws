@@ -358,10 +358,11 @@ def _quoted_hcl_string(expression: str, *, json_document: bool = False) -> str |
 
 
 def _object_field(body: str, name: str, policy: Any) -> str | None:
-    """Read one direct object field expression without evaluating it."""
+    """Read the last direct object field expression without evaluating it."""
     body = _uncomment_hcl(body, policy)
     depths, codes, _ = policy._lex_hcl(body)
     pattern = r'(?P<key>"(?:\\.|[^"\\])*"|(?<![\w-])[A-Za-z_][\w-]*)\s*(?P<delimiter>[:=])\s*'
+    result = None
     for match in re.finditer(pattern, body):
         delimiter = match.start("delimiter")
         if not codes[delimiter] or depths[delimiter] != 1:
@@ -381,7 +382,8 @@ def _object_field(body: str, name: str, policy: Any) -> str | None:
         start = match.end()
         if body.startswith("<<", start):
             _, _, end = _heredoc_parts(body[start:])
-            return _ungroup_hcl(body[start:start + end], policy)
+            result = _ungroup_hcl(body[start:start + end], policy)
+            continue
         bracket = paren = 0
         end = len(body)
         for i in range(start, len(body)):
@@ -393,11 +395,14 @@ def _object_field(body: str, name: str, policy: Any) -> str | None:
                 break
             bracket += (char == "[") - (char == "]")
             paren += (char == "(") - (char == ")")
-        return _ungroup_hcl(body[start:end], policy)
-    return None
+        result = _ungroup_hcl(body[start:end], policy)
+    return result
 
 
-def _literal_template_text(value: str, policy: Any, *, json_source: bool = False) -> str | None:
+def _literal_template_text(
+    value: str, policy: Any, *, json_source: bool = False,
+    dynamic_tokens: list[str] | None = None,
+) -> str | None:
     # Keep literal text around interpolations, but never inspect their
     # unevaluated expressions as URL text. Template directives remain dynamic.
     output: list[str] = []
@@ -418,7 +423,14 @@ def _literal_template_text(value: str, policy: Any, *, json_source: bool = False
             )
             if end is None:
                 return None
-            output.append("%{dynamic}" if directive else "<interpolation>")
+            token = "%{dynamic}" if directive else "<interpolation>"
+            if dynamic_tokens is not None:
+                marker = f"__ecs_template_{len(dynamic_tokens)}__"
+                while marker in value:
+                    marker += "_"
+                token = f"%{{{marker}}}" if directive else marker
+                dynamic_tokens.append(token)
+            output.append(token)
             i += end + 3
         else:
             output.append(value[i])
@@ -447,6 +459,12 @@ def _json_template_strings(document: str, policy: Any) -> str:
         return f'"{value}"' if value is not None else '"<template>"'
 
     return re.sub(r'"(?:\\.|[^"\\])*"', literal, document)
+
+
+def _has_dynamic_json_structure(document: str, dynamic_tokens: list[str]) -> bool:
+    """Find active template replacements outside JSON string tokens."""
+    outside_strings = re.sub(r'"(?:\\.|[^"\\])*"', "", document)
+    return any(token in outside_strings for token in dynamic_tokens)
 
 
 def _literal_list_objects(expression: str, policy: Any) -> list[str]:
@@ -500,13 +518,14 @@ def _inline_database_urls(expression: str, policy: Any) -> list[str]:
     if heredoc:
         raw = _heredoc_string(raw)
     literal_string = raw.startswith('"')
+    dynamic_tokens: list[str] = []
     try:
         if not encoded and (literal_string or heredoc):
             source = raw[1:-1] if literal_string else raw
-            template = _literal_template_text(source, policy, json_source=True)
+            template = _literal_template_text(
+                source, policy, json_source=True, dynamic_tokens=dynamic_tokens,
+            )
             if template is None:
-                return []
-            if template.strip() == "<interpolation>" and source.lstrip().startswith("${"):
                 return []
             raw = _quoted_hcl_string(f'"{template}"', json_document=True) if literal_string else template
             if raw is None:
@@ -516,6 +535,8 @@ def _inline_database_urls(expression: str, policy: Any) -> list[str]:
             if raw is None:
                 raise ValueError("Invalid quoted container definition.")
         if not encoded:
+            if _has_dynamic_json_structure(raw, dynamic_tokens):
+                return []
             raw = _json_template_strings(raw, policy)
         decoded = json.loads(raw)
     except (ValueError, TypeError):

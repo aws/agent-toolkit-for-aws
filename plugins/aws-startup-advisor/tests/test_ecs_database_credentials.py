@@ -395,6 +395,76 @@ def test_unicode_introduced_marker_is_literal_data(tmp_path, escape, representat
     assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
 
 
+@pytest.mark.parametrize(
+    "expression",
+    [
+        '''<<JSON
+[${jsonencode({name="api",environment=[{name="DATABASE_URL",value="postgres://app:real-test-password@db/orders"}]})}]
+JSON''',
+        '''"[${jsonencode({name="api",environment=[]})}]"''',
+        '''<<JSON
+[%{ for name in ["api"] }{"name":"${name}","environment":[]}%{ endfor }]
+JSON''',
+        '''<<JSON
+[%{ for index, name in ["api", "worker"] ~}
+${index > 0 ? "," : ""}{"name":"${name}","environment":[]}
+%{ endfor ~}]
+JSON''',
+        '''<<JSON
+[{"name":"api","environment":${jsonencode([{name="DATABASE_URL",value="postgres://app:real-test-password@db/orders"}])}}]
+JSON''',
+        '''<<JSON
+${jsonencode([{name="api",environment=[]}])}
+JSON''',
+    ],
+)
+def test_dynamic_json_structure_remains_outside_literal_check(tmp_path, expression):
+    assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        '[{"environment": []} __ecs_template_0__]',
+        '[{"environment": [{"name":"DATABASE_URL","value":"postgres://app:${local.password}@db/orders"}]} BROKEN]',
+    ],
+)
+def test_malformed_literal_json_is_not_mistaken_for_dynamic_structure(tmp_path, document):
+    report = check(tmp_path, "<<JSON\n" + document + "\nJSON")
+    assert report["artifact_status"] == "ARTIFACTS_FAIL"
+    assert report["findings"][0]["rule"] == "artifact_shape_unverified"
+
+
+@pytest.mark.parametrize("assignment", ["=", ":"])
+@pytest.mark.parametrize(
+    "body,rejected",
+    [
+        ('environment = [{name = "OTHER", name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders"}]', True),
+        ('environment = [{name = "DATABASE_URL", name = "OTHER", value = "postgres://app:PLACEHOLDER@db/orders"}]', False),
+        ('environment = [{name = "DATABASE_URL", value = "safe", value = "postgres://app:PLACEHOLDER@db/orders"}]', True),
+        ('environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders", value = "safe"}]', False),
+        ('environment = [], environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders"}]', True),
+        ('environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders"}], environment = []', False),
+        ('environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders", value = local.safe_url}]', False),
+        ('environment = [{name = "DATABASE_URL", name = local.field_name, value = "postgres://app:PLACEHOLDER@db/orders"}]', False),
+        ('environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders"}], environment = local.environment', False),
+        ('environment = [{name = "DATABASE_URL", value = local.safe_url, value = "postgres://app:PLACEHOLDER@db/orders"}]', True),
+        (r'environment = [{name = "DATABASE_URL", value = "safe", "v\u0061lue" = "postgres://app:PLACEHOLDER@db/orders"}]', True),
+        (r'environment = [{name = "DATABASE_URL", value = "postgres://app:PLACEHOLDER@db/orders", "v\u0061lue" = "safe"}]', False),
+    ],
+)
+def test_last_direct_object_key_matches_terraform_semantics(tmp_path, assignment, body, rejected):
+    expression = "jsonencode([{" + body.replace(" = ", f" {assignment} ") + "}])"
+    if assignment == ":":
+        for key in ("environment", "name", "value"):
+            expression = expression.replace(f"{key} :", f'"{key}" :')
+    report = check(tmp_path, expression)
+    expected = "ARTIFACTS_FAIL" if rejected else "ARTIFACTS_OK"
+    assert report["artifact_status"] == expected, report
+    if rejected:
+        assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+
+
 @pytest.mark.parametrize("opener", ["jsonencode (", "jsonencode /* renderer note */ ("])
 def test_function_spacing_and_comments_do_not_hide_placeholder(tmp_path, opener):
     expression = (
