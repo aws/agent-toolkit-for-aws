@@ -125,7 +125,7 @@ DETECT ──▶ already connected? ──▶ OPERATE
 | DETECT | Find out what already exists (read-only, best effort) | Connection state known, or known to be uncertain |
 | ASSESS | Work out which half of the product fits, if either | User's stage and workload state are known |
 | DISCLOSE | Prepare the cost part of the notice: trial, Activate credits, rate, extra charges, how to stop | Cost part prepared |
-| ACCESS | Prepare the access part: what the role can do, and how to revoke it | Access part prepared |
+| ACCESS | Check the sign-in can do setup (read-only), then prepare the access part: what the role can do, and how to revoke it | Access part prepared, or the user has what they need to get the permissions |
 | CONFIRM | Show both parts as one message and ask one Yes/No | **The user said Yes** |
 | SET UP | Create the Agent Space and monitoring role | A workspace exists in the right region |
 | CONNECT | Create the connection | MCP server reachable, a test call succeeds |
@@ -355,6 +355,17 @@ separately, after setup — see Phase 4.5.
 Prepare the access part of the combined notice; **do not create the role yet.** It is created in SET UP,
 only after the Yes.
 
+**Check the sign-in can do setup first** — read-only, before the question, so nobody approves a setup
+their sign-in cannot finish. Follow "Can this sign-in do setup?" in
+[`references/readiness.md`](references/readiness.md):
+
+- **Everything allowed, or the check cannot run** → no extra step. Continue as below; a denial during SET
+  UP is handled there.
+- **Something is missing** → say so first, in plain English: what their sign-in cannot do and that only
+  setup needs it. Then follow that file's fix: grant the setup-only policy with another sign-in that has
+  IAM rights, or hand them the note for their AWS administrator. Never offer administrator access as the
+  fix. If they have no way to get the permissions now, stop here and ask nothing about setup.
+
 This is where AWS DevOps Agent gets access across their AWS account. It is the largest permission in the
 whole flow, so it is never granted without the Yes.
 
@@ -407,6 +418,10 @@ credit balance, whose money it is), but keep every part:
   issue directly instead.
 - **Anything else, or no answer** → no setup writes. Clarify only if needed.
 
+If the setup-only policy is granted as part of setup, the access part says so in one more sentence — which
+sign-in it is added to, that it allows only the setup steps, and that it can be removed afterwards — and
+the Yes covers it. Without that Yes, add nothing to their permissions.
+
 If the account that signs in after Yes is not the one the user approved, confirm the target before
 writing anything.
 
@@ -416,10 +431,12 @@ writing anything.
 question for this AWS account. A cost notice alone, an earlier unrelated request, or a lack of objection
 does not count. Without that Yes, make no setup writes.
 
-**Check the identity can create the role first** — the permission check in
-[`references/readiness.md`](references/readiness.md). If it cannot, that is a real blocker, unlike a
-billing lookup: say which action was denied and give the forwardable version for whoever holds IAM
-rights.
+The permission check ran in ACCESS. If permissions were added or an administrator did part of setup since,
+check again before the first write, as "Checking again after a fix" in
+[`references/readiness.md`](references/readiness.md) describes: find out read-only what is already done,
+then check only the steps left. If the check cannot run, continue. If a setup call is denied, stop: say
+which action was denied, and go back to the fix in "Can this sign-in do setup?" in the same file. Once it
+is fixed, continue from the step that failed; do not repeat the steps that worked.
 
 Nearly every user arriving here has **no Agent Space and has never heard of one**. Plan for that.
 

@@ -331,4 +331,6 @@ Output to user:
 
 Ship note: this reaches customers only after the import page and the ImportPlan API are both live in production.
 
+**BigQuery follow-up:** after the summary and the web-handoff block (when shown), apply `SKILL.md` Workflow Execution step 10 last. It does nothing when BigQuery was not detected.
+
 _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FAIL`, never from inner workshop reprices._
