@@ -486,6 +486,10 @@ Keep ECS/Fargate and EKS checks separate. For each EKS cluster, populate its
 `EKS_CLUSTER_NAME` default from the matching design entry when the name is known.
 If Terraform computes the name, require that name as an input from the generated
 output; do not assume that the project name is the EKS cluster name.
+You MUST set the generated `AWS_REGION` default from
+`preferences.json` → `design_constraints.target_region.value` and pass it
+explicitly to each regional AWS inventory command. The caller's default region
+may differ from the migration's target region.
 
 ```bash
 #!/usr/bin/env bash
@@ -496,6 +500,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MIGRATION_DIR=$(dirname "$SCRIPT_DIR")
+AWS_REGION="${AWS_REGION:-us-east-1}" # Replace the default with the selected target region.
 failures=0
 check() {
   if "$@"; then
@@ -514,14 +519,14 @@ check terraform -chdir="$MIGRATION_DIR/terraform" state list
 # --- Include ONLY if Fargate/ECS present ---
 # Check ECS services
 echo "--- ECS Services ---"
-check aws ecs list-services --cluster "${PROJECT_NAME:-gcp-migration}" --query 'serviceArns' --output table
+check aws ecs list-services --region "$AWS_REGION" --cluster "${PROJECT_NAME:-gcp-migration}" --query 'serviceArns' --output table
 
 # --- Include ONLY if EKS present ---
 # Set the default to this cluster's aws_config.cluster_name when known.
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 echo "--- EKS Cluster ---"
 if [ -n "$EKS_CLUSTER_NAME" ]; then
-  check aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --query 'cluster.{Name:name,Status:status}' --output table
+  check aws eks describe-cluster --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME" --query 'cluster.{Name:name,Status:status}' --output table
 else
   echo "FAILED: set EKS_CLUSTER_NAME to the generated cluster name." >&2
   failures=$((failures + 1))
@@ -529,18 +534,18 @@ fi
 
 # --- Include ONLY if Elastic Beanstalk present ---
 echo "--- Elastic Beanstalk Environments ---"
-check aws elasticbeanstalk describe-environments --query 'Environments[].{Env:EnvironmentName,Status:Status,Health:Health}' --output table
+check aws elasticbeanstalk describe-environments --region "$AWS_REGION" --query 'Environments[].{Env:EnvironmentName,Status:Status,Health:Health}' --output table
 
 # --- Include ONLY if has_databases ---
 # Check RDS instances
 echo "--- RDS Instances ---"
-check aws rds describe-db-instances --query 'DBInstances[].{ID:DBInstanceIdentifier,Status:DBInstanceStatus,Endpoint:Endpoint.Address}' --output table
+check aws rds describe-db-instances --region "$AWS_REGION" --query 'DBInstances[].{ID:DBInstanceIdentifier,Status:DBInstanceStatus,Endpoint:Endpoint.Address}' --output table
 
 # --- Include ONLY if has_storage ---
 # Check S3 buckets
 echo "--- S3 Buckets ---"
 if [ -n "${S3_BUCKET:-}" ]; then
-  check aws s3api head-bucket --bucket "$S3_BUCKET"
+  check aws s3api head-bucket --region "$AWS_REGION" --bucket "$S3_BUCKET"
 else
   echo "FAILED: set S3_BUCKET to the generated bucket name." >&2
   failures=$((failures + 1))
@@ -549,7 +554,7 @@ fi
 # --- Include ONLY if has_secrets ---
 # Check secrets
 echo "--- Secrets Manager ---"
-check aws secretsmanager list-secrets --query 'SecretList[].Name' --output table
+check aws secretsmanager list-secrets --region "$AWS_REGION" --query 'SecretList[].Name' --output table
 
 if [ "$failures" -gt 0 ]; then
   echo "Inventory checks failed: $failures. Do not proceed to cutover." >&2

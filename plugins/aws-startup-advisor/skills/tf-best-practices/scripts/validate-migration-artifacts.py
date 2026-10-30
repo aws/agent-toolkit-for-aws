@@ -307,31 +307,75 @@ def _ungroup_hcl(expression: str, policy: Any) -> str:
     return raw[start:end]
 
 
-def _heredoc_json(expression: str) -> str:
-    """Read a standalone JSON heredoc without interpreting HCL templates."""
-    lines = expression.splitlines()
-    opener = re.fullmatch(r"<<(-?)\s*([A-Za-z_][A-Za-z0-9_]*)\s*", lines[0])
+def _heredoc_parts(expression: str) -> tuple[bool, list[str], int]:
+    """Locate the first heredoc terminator without consuming a later field."""
+    lines = expression.splitlines(keepends=True)
+    opener = re.fullmatch(r"<<(-?)\s*([A-Za-z_][A-Za-z0-9_]*)\s*", lines[0].rstrip("\r\n"))
     if opener and len(lines) >= 2:
-        terminator = lines[-1].strip() if opener.group(1) else lines[-1].rstrip()
-        if terminator == opener.group(2):
-            # JSON whitespace is insignificant, including <<- indentation.
-            return "\n".join(lines[1:-1])
-    raise ValueError("Literal ECS container definitions heredoc could not be parsed.")
+        end = len(lines[0])
+        for index, line in enumerate(lines[1:], 1):
+            end += len(line)
+            terminator = line.strip() if opener.group(1) else line.rstrip()
+            if terminator == opener.group(2):
+                return bool(opener.group(1)), lines[1:index], end
+    raise ValueError("Literal ECS heredoc string could not be parsed.")
+
+
+def _heredoc_string(expression: str) -> str:
+    """Read a heredoc, preserving its newline and optional indentation trim."""
+    indented, content, end = _heredoc_parts(expression)
+    if expression[end:].strip():
+        raise ValueError("Literal ECS heredoc string could not be parsed.")
+    if indented:
+        indentation = min(
+            (len(line) - len(line.lstrip(" \t")) for line in content if line.strip()),
+            default=0,
+        )
+        content = [line[indentation:] if line.strip() else line for line in content]
+    return "".join(content)
+
+
+def _quoted_hcl_string(expression: str) -> str | None:
+    """Decode a quoted HCL literal, including its long Unicode escape form."""
+    def unicode_escape(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if token.startswith("\\U"):
+            return json.dumps(chr(int(token[2:], 16)))[1:-1]
+        return token
+
+    try:
+        normalized = re.sub(r"\\(?:U[0-9a-fA-F]{8}|.)", unicode_escape, expression)
+        value = json.loads(normalized)
+    except (ValueError, TypeError):
+        return None
+    return value if isinstance(value, str) else None
 
 
 def _object_field(body: str, name: str, policy: Any) -> str | None:
     """Read one direct object field expression without evaluating it."""
     body = _uncomment_hcl(body, policy)
     depths, codes, _ = policy._lex_hcl(body)
-    pattern = (
-        rf'(?:(?<![\w-]){re.escape(name)}(?![\w-])|"{re.escape(name)}")'
-        r"\s*(?P<delimiter>[:=])\s*"
-    )
+    pattern = r'(?P<key>"(?:\\.|[^"\\])*"|(?<![\w-])[A-Za-z_][\w-]*)\s*(?P<delimiter>[:=])\s*'
     for match in re.finditer(pattern, body):
         delimiter = match.start("delimiter")
         if not codes[delimiter] or depths[delimiter] != 1:
             continue
+        key = match.group("key")
+        if key.startswith('"'):
+            start = match.start("key")
+            # A key's opening quote follows code. Quotes inside a string,
+            # interpolation or heredoc are not object-key tokens.
+            if start and not codes[start - 1]:
+                continue
+            key = _quoted_hcl_string(key)
+        elif not codes[match.start("key")]:
+            continue
+        if key != name:
+            continue
         start = match.end()
+        if body.startswith("<<", start):
+            _, _, end = _heredoc_parts(body[start:])
+            return _ungroup_hcl(body[start:start + end], policy)
         bracket = paren = 0
         end = len(body)
         for i in range(start, len(body)):
@@ -348,11 +392,37 @@ def _object_field(body: str, name: str, policy: Any) -> str | None:
 
 
 def _literal_object_string(body: str, name: str, policy: Any) -> str | None:
-    try:
-        value = json.loads(_object_field(body, name, policy) or "")
-    except (ValueError, TypeError):
+    expression = _object_field(body, name, policy)
+    if expression is None:
         return None
-    return value if isinstance(value, str) else None
+    if not expression.startswith("<<"):
+        return _quoted_hcl_string(expression)
+    value = _heredoc_string(expression)
+    # Keep literal text around interpolations, but never inspect their
+    # unevaluated expressions as URL text. Template directives remain dynamic.
+    output: list[str] = []
+    i = 0
+    while i < len(value):
+        if value.startswith(("$${", "%%{"), i):
+            output.append(value[i + 1:i + 3])
+            i += 3
+        elif value.startswith("%{", i):
+            return None
+        elif value.startswith("${", i):
+            expression = value[i + 2:]
+            depths, codes, _ = policy._lex_hcl(expression)
+            end = next(
+                (j for j, char in enumerate(expression) if char == "}" and codes[j] and depths[j] == 0),
+                None,
+            )
+            if end is None:
+                return None
+            output.append("<interpolation>")
+            i += end + 3
+        else:
+            output.append(value[i])
+            i += 1
+    return "".join(output)
 
 
 def _literal_list_objects(expression: str, policy: Any) -> list[str]:
@@ -404,7 +474,7 @@ def _inline_database_urls(expression: str, policy: Any) -> list[str]:
         raw = ungrouped
     heredoc = raw.startswith("<<")
     if heredoc:
-        raw = _heredoc_json(raw)
+        raw = _heredoc_string(raw)
     literal_string = raw.startswith('"')
     try:
         decoded = json.loads(raw)

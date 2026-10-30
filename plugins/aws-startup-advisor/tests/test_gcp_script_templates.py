@@ -70,6 +70,14 @@ if os.environ.get("STUB_FAIL") == name or (
     and os.environ.get("STUB_FAIL_SERVICE") == sys.argv[1]
 ):
     sys.exit(7)
+expected_region = os.environ.get("EXPECTED_AWS_REGION")
+if name == "aws" and expected_region:
+    actual_region = (
+        sys.argv[sys.argv.index("--region") + 1] if "--region" in sys.argv
+        else os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION"))
+    )
+    if actual_region != expected_region:
+        sys.exit(9)
 print("1" if name == "psql" else "stub-result")
 """
     for name in ("aws", "gcloud", "docker", "psql", "pg_dump", "pg_restore", "terraform"):
@@ -232,6 +240,39 @@ def test_eks_api_failure_still_blocks_inventory_validation(runner):
     )
     assert result.returncode == 1
     assert "FAILED: aws eks" in result.stderr
+
+
+@pytest.mark.parametrize("target_region", ["us-west-2", "eu-west-1"])
+def test_eks_inventory_uses_generated_target_region_over_caller_default(runner, target_region):
+    script = inventory_script("EKS").replace(
+        "${AWS_REGION:-us-east-1}", "${AWS_REGION:-" + target_region + "}",
+    )
+    result, calls, _ = runner(
+        script,
+        EKS_CLUSTER_NAME="generated-eks",
+        AWS_DEFAULT_REGION="us-east-1",
+        EXPECTED_AWS_REGION=target_region,
+    )
+    assert result.returncode == 0, result.stderr
+    aws_call = next(call for call in calls if call[0] == "aws")
+    assert aws_call[aws_call.index("--region") + 1] == target_region
+
+
+def test_all_inventory_commands_use_the_selected_region(runner):
+    result, calls, _ = runner(
+        block("# Post-migration validation"),
+        S3_BUCKET="example-assets",
+        EKS_CLUSTER_NAME="generated-eks",
+        AWS_REGION="us-west-2",
+        AWS_DEFAULT_REGION="us-east-1",
+        EXPECTED_AWS_REGION="us-west-2",
+    )
+    assert result.returncode == 0, result.stderr
+    aws_calls = [call for call in calls if call[0] == "aws"]
+    assert {call[1] for call in aws_calls} == {
+        "ecs", "eks", "elasticbeanstalk", "rds", "s3api", "secretsmanager",
+    }
+    assert all(call[call.index("--region") + 1] == "us-west-2" for call in aws_calls)
 
 
 def test_eks_requires_a_cluster_name_instead_of_guessing_from_project(runner):

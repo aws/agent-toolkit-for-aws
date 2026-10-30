@@ -199,6 +199,98 @@ def test_unparseable_literal_json_is_unverified_without_leaking_values(tmp_path,
     assert "PLACEHOLDER" not in json.dumps(report)
 
 
+@pytest.mark.parametrize("assignment", ["=", ":"])
+@pytest.mark.parametrize(
+    "environment,name,value",
+    [
+        (r'"environm\u0065nt"', "name", "value"),
+        ("environment", r'"n\u0061me"', "value"),
+        ("environment", "name", r'"v\u0061lue"'),
+        (r'"environm\U00000065nt"', "name", "value"),
+        ("environment", r'"n\U00000061me"', "value"),
+        ("environment", "name", r'"v\U00000061lue"'),
+    ],
+)
+def test_escaped_quoted_keys_are_decoded_before_matching(tmp_path, environment, name, value, assignment):
+    expression = (
+        f"jsonencode([{{{environment} {assignment} [{{{name} {assignment} \"DATABASE_URL\", "
+        f'{value} {assignment} "postgres://app:PLACEHOLDER@db/orders"}}]}}])'
+    )
+    report = check(tmp_path, expression)
+    assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+
+
+def test_escaped_key_text_inside_strings_comments_and_nested_objects_is_ignored(tmp_path):
+    fake_entry = r'{"n\u0061me"="DATABASE_URL","v\u0061lue"="postgres://app:PLACEHOLDER@db/orders"}'
+    fake_environment = r'"environm\u0065nt"=[' + fake_entry + "]"
+    expression = (
+        "jsonencode([{"
+        + 'environment = [{name = "OTHER", value = "safe"}]\n'
+        + "command = [" + json.dumps(fake_environment) + "]\n"
+        + "# " + fake_environment + "\n"
+        + "dockerLabels = {" + fake_environment + "}\n"
+        + "}])"
+    )
+    assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
+
+
+@pytest.mark.parametrize(
+    "heredoc,expected",
+    [
+        ("<<URL\npostgres://app:PLACEHOLDER@db/orders\nURL", "postgres://app:PLACEHOLDER@db/orders\n"),
+        ("<<-URL\n    postgres://app:PLACEHOLDER@db/orders\n  URL", "postgres://app:PLACEHOLDER@db/orders\n"),
+        ("<<-URL\n\tpostgres://app:PLACEHOLDER@db/orders\n\tURL", "postgres://app:PLACEHOLDER@db/orders\n"),
+        (
+            "<<-URL\n    postgres://app:PLACEHOLDER@db/orders\n  \n      more\n  URL",
+            "postgres://app:PLACEHOLDER@db/orders\n  \n  more\n",
+        ),
+        (
+            "<<-URL\n    postgres://app:PLACEHOLDER@db/$${schema}\n    URL",
+            "postgres://app:PLACEHOLDER@db/${schema}\n",
+        ),
+    ],
+)
+def test_literal_heredoc_values_preserve_terraform_string_semantics(tmp_path, heredoc, expected):
+    expression = 'jsonencode([{environment=[{name="DATABASE_URL",value=' + heredoc + "\n}]}])"
+    policy, _ = validator._dependencies()
+    assert validator._inline_database_urls(expression, policy) == [expected]
+    report = check(tmp_path, expression)
+    assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+    assert expected not in json.dumps(report)
+
+
+def test_heredoc_name_keeps_terminal_newline_and_does_not_match_database_url(tmp_path):
+    expression = '''jsonencode([{environment=[{
+      name=<<NAME
+DATABASE_URL
+NAME
+      value="postgres://app:PLACEHOLDER@db/orders"
+    }]}])'''
+    assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "${var.database_url}",
+        '${var.use_placeholder ? "postgres://app:PLACEHOLDER@db/orders" : var.database_url}',
+        '%{if var.use_placeholder}postgres://app:PLACEHOLDER@db/orders%{endif}',
+    ],
+)
+def test_dynamic_heredoc_values_are_not_evaluated(tmp_path, value):
+    expression = 'jsonencode([{environment=[{name="DATABASE_URL",value=<<URL\n' + value + "\nURL\n}]}])"
+    assert check(tmp_path, expression)["artifact_status"] == "ARTIFACTS_OK"
+
+
+def test_heredoc_literal_password_is_checked_with_interpolated_user_and_host(tmp_path):
+    expression = '''jsonencode([{environment=[{name="DATABASE_URL",value=<<URL
+postgres://${var.user}:PLACEHOLDER@${aws_db_instance.db.endpoint}/orders
+URL
+}]}])'''
+    report = check(tmp_path, expression)
+    assert [item["rule"] for item in report["findings"]] == ["ecs_database_password_placeholder"]
+
+
 @pytest.mark.parametrize("opener", ["jsonencode (", "jsonencode /* renderer note */ ("])
 def test_function_spacing_and_comments_do_not_hide_placeholder(tmp_path, opener):
     expression = (
