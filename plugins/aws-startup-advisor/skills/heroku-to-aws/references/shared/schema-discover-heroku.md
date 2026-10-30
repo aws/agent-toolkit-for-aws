@@ -23,6 +23,8 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
     {
       "app_name": "my-web-app",
       "app_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "region": "us",
+      "stack": "heroku-22",
       "heroku_generation": "cedar|fir|unknown",
       "generation_action": "detect_only",
       "generation_diagnostics": [],
@@ -40,6 +42,8 @@ Complete inventory of discovered Heroku resources. Uses a **flat resource model*
       "heroku_app": "my-web-app",
       "config": {},
       "source": "terraform|live|live+terraform",
+      "tf_file": "heroku.tf",
+      "tf_resource_name": "web",
       "unmanaged_by_terraform": false,
       "not_found_live": false
     }
@@ -73,7 +77,9 @@ Per-app metadata entries. One entry per discovered Heroku app.
 | Field                    | Type           | Required | Description                                                                                               |
 | ------------------------ | -------------- | -------- | --------------------------------------------------------------------------------------------------------- |
 | `app_name`               | string         | ✅       | Heroku app name                                                                                           |
-| `app_id`                 | string (UUID)  | ✅       | Heroku app UUID                                                                                           |
+| `app_id`                 | string (UUID) \| null | ✅ | Actual Heroku app UUID; `null` when Terraform has no captured UUID. Never fabricate an ID or use a `tf-*` placeholder. |
+| `region`                 | string \| null | ✅       | Source Heroku region, preserved verbatim when available; `null` when not captured or authored             |
+| `stack`                  | string \| null | ✅       | Source stack name, preserved even after deriving `heroku_generation`; `null` when unavailable             |
 | `heroku_generation`      | string         | ✅       | `"cedar"`, `"fir"`, or `"unknown"`                                                                        |
 | `generation_action`      | string         | ✅       | Always `"detect_only"` in v1                                                                              |
 | `generation_diagnostics` | string[]       | ✅       | Diagnostic reasons (empty array if resolved cleanly; contains `"generation_unresolved"` on timeout/error) |
@@ -83,6 +89,13 @@ Per-app metadata entries. One entry per discovered Heroku app.
 | `procfile_parse_warning` | string \| null | ✅       | Warning text if Procfile parsing failed, otherwise `null`                                                 |
 | `app_json_parse_warning` | string \| null | ✅       | Warning text if app.json parsing failed, otherwise `null`                                                 |
 
+`region` and `stack` are source facts, not migration preferences. Do not convert
+`"us"` into an AWS region or replace `"heroku-22"` with the derived `"cedar"`
+generation. Terraform, app.json, and successful live captures may supply these
+values; missing or failed captures must not erase a value from another source.
+For older inventories that predate these fields, readers must tolerate their
+absence and treat them as unknown. New Discover outputs must include both keys.
+
 ### `resources[]` (REQUIRED)
 
 Flat array of all discovered resources. **No nesting, no clustering.**
@@ -90,12 +103,14 @@ Flat array of all discovered resources. **No nesting, no clustering.**
 | Field                    | Type    | Required | Description                                                                                 |
 | ------------------------ | ------- | -------- | ------------------------------------------------------------------------------------------- |
 | `resource_id`            | string  | ✅       | Unique identifier (format below)                                                            |
-| `resource_type`          | string  | ✅       | One of: `"formation"`, `"addon"`, `"space"`, `"pipeline"`, `"domain"`, `"config"`           |
+| `resource_type`          | string  | ✅       | One of: `"app"`, `"formation"`, `"addon"`, `"space"`, `"pipeline"`, `"domain"`, `"config"` |
 | `heroku_app`             | string  | ✅       | App name this resource belongs to, or `"unassociated"`                                      |
 | `config`                 | object  | ✅       | Type-specific configuration (see per-type schemas below)                                    |
 | `source`                 | string  | ❌       | Discovery provenance: `"terraform"`, `"live"`, or `"live+terraform"` (merged)               |
 | `unmanaged_by_terraform` | boolean | ❌       | Set `true` when live discovery found the resource but Terraform does not manage it (drift)  |
 | `not_found_live`         | boolean | ❌       | Set `true` when Terraform declares the resource but live discovery did not find it deployed |
+| `tf_file`               | string | ❌       | Workspace-relative Terraform source file; retain when merging live and Terraform rows |
+| `tf_resource_name`      | string | ❌       | Terraform local resource name; source provenance, not a live identifier |
 
 ### `billing_profile` (OPTIONAL — present when billing data available)
 
@@ -145,6 +160,7 @@ Deterministic ID format per resource type:
 
 | Resource Type | ID Format                                              | Example                                                                |
 | ------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `app`         | `app:{app_name}`                                         | `app:my-web-app`                                                         |
 | `formation`   | `formation:{app_name}:{process_type}`                  | `formation:my-web-app:web`                                             |
 | `addon`       | `addon:{app_name}:{addon_service}:{plan}:{addon_name}` | `addon:my-web-app:heroku-postgresql:standard-0:postgresql-cubed-12345` |
 | `space`       | `space:{space_name}`                                   | `space:my-private-space`                                               |
@@ -165,6 +181,28 @@ the HCL `name` attribute / `tf_resource_name` fallback (Terraform).
 ---
 
 ## Per-Type Config Schemas
+
+### `app` config
+
+Terraform app blocks produce a metadata resource row in addition to `apps[]`.
+This preserves the source resource and its provenance; count unique apps from
+`apps[]` and do not price this row as another compute service. Copy region and
+stack into `apps[]` too, so readers do not need to reconstruct app metadata.
+
+```json
+{
+  "app_name": "my-web-app",
+  "region": "us",
+  "stack": "heroku-22",
+  "space": null,
+  "organization": "my-org",
+  "buildpacks": ["heroku/nodejs"],
+  "acm_enabled": true
+}
+```
+
+Only include optional configuration when authored or captured; use `null` for an
+unavailable region/stack rather than inventing a provider default.
 
 ### `formation` config
 
@@ -192,6 +230,7 @@ the HCL `name` attribute / `tf_resource_name` fallback (Terraform).
   "plan": "standard-0",
   "provider": "heroku",
   "addon_name": "postgresql-cubed-12345",
+  "addon_name_source": "tf_resource_name_fallback",
   "connection_pooling": true,
   "ha_enabled": false,
   "encryption_in_transit": true,
@@ -356,6 +395,8 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
     {
       "app_name": "my-web-app",
       "app_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "region": "us",
+      "stack": "heroku-22",
       "heroku_generation": "cedar",
       "generation_action": "detect_only",
       "generation_diagnostics": [],
@@ -368,6 +409,8 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
     {
       "app_name": "my-worker-app",
       "app_id": "fedcba98-7654-3210-fedc-ba9876543210",
+      "region": "virginia",
+      "stack": null,
       "heroku_generation": "fir",
       "generation_action": "detect_only",
       "generation_diagnostics": [],
@@ -501,7 +544,7 @@ The following fields MUST NOT appear anywhere in `heroku-resource-inventory.json
 4. ✅ `metadata.discovery_sources` is a non-empty array
 5. ✅ `metadata.confidence` is `"full"` or `"reduced"`
 6. ✅ Every entry in `resources[]` has: `resource_id`, `resource_type`, `heroku_app`, `config`
-7. ✅ Every entry in `apps[]` has: `app_name`, `heroku_generation`, `generation_action`, `discovery_status`
+7. ✅ Every entry in `apps[]` has: `app_name`, `region`, `stack`, `heroku_generation`, `generation_action`, `discovery_status`; known source `region` and `stack` values are preserved, and unavailable values are `null`
 8. ✅ No forbidden clustering fields present anywhere in the document
 9. ✅ If Terraform discovery ran → resources include Terraform-sourced entries
 10. ✅ If Terraform had parse errors → `metadata.confidence` is `"reduced"`

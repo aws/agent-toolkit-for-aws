@@ -127,7 +127,7 @@ class MigrationArtifactsTests(unittest.TestCase):
     def test_complete_valid_fixture_passes(self) -> None:
         report = self.report()
         self.assertEqual(report["artifact_status"], "ARTIFACTS_OK", report)
-        self.assertEqual(len(report["checks_run"]), 4)
+        self.assertIn("ecs_database_credentials", report["checks_run"])
 
     def test_canonical_template_verification_is_accepted(self) -> None:
         self.write("scripts/migrate-postgres.sh", canonical_script())

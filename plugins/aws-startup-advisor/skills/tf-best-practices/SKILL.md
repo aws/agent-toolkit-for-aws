@@ -100,6 +100,11 @@ The full protocol — including offline-fallback behavior and how the policy ver
 descriptive: the **caller** owns the fmt/init/validate execution, the fix-and-retry loop, and
 the report write; this unit contributes only the read-only policy stage + verdict shape.
 
+Before infrastructure completion, the caller must run
+`scripts/validate-terraform-report.py` on the saved `validation-report.json` and
+require exit 0. The checker enforces the shared v2 completion contract. Its
+`RUNTIME_REPORT_OK` result does not establish that Terraform ran or passed.
+
 ### Exit codes → caller action
 
 | Exit | stdout        | Meaning            | Caller does                                                                     |

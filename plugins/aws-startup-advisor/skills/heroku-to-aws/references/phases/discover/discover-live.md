@@ -32,8 +32,9 @@ For each app in `apps.json` that is in the manifest's `apps_selected`:
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `name`        | `app_name`                                                                                                                      |
 | `id`          | `app_id` (real UUID — live discovery always has this)                                                                           |
+| `region.name` | `region` (preserve the source Heroku region name; use `null` if unavailable)                                                     |
 | `space.name`  | `space` (or `null`)                                                                                                             |
-| `stack.name`  | feeds `heroku_generation`: `heroku-20`/`heroku-22`/`heroku-24` → `"cedar"`; contains `fir` or `cnb` → `"fir"`; else `"unknown"` |
+| `stack.name`  | `stack` (preserve the source name, or `null`); also feeds `heroku_generation`: `heroku-20`/`heroku-22`/`heroku-24` → `"cedar"`; contains `fir` or `cnb` → `"fir"`; else `"unknown"` |
 
 Set `generation_action: "detect_only"`, `discovery_status: "success"`. An app whose
 per-app captures all failed (manifest `failed`) gets `discovery_status:

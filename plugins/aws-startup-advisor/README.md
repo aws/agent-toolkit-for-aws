@@ -78,6 +78,62 @@ To add a check, define a task in this file and add it to `tasks.ci.depends`; the
 
 The Startup advisor workflow runs on pull requests that change this plugin, the root `mise.toml`, or `.github/workflows/startup-advisor.yml`. It also supports manual runs.
 
+### Independently accept a migration run
+
+From `plugins/aws-startup-advisor` in a repository checkout, use the local
+acceptance checker after a GCP or Heroku infrastructure run. It
+re-runs the contract, report, Terraform policy and generated-artifact checks
+instead of trusting a job's `Completed` label or its saved `PASS` reports.
+Python 3.10 or newer is required.
+
+```sh
+python3 scripts/accept-migration-run.py \
+  --run-dir /path/to/.migration/1030-1400 \
+  --skill gcp-to-aws \
+  --output /path/to/review/acceptance.json
+```
+
+The input directory stays unchanged; the output must be a new file outside it.
+Exit `0` means `PASS`, `1` means `FAIL`, and `2` means `UNVERIFIED`. The JSON
+includes the input and checker hashes, findings, and actual command results.
+Checker hashes include the contract documents selected by the artifact manifest.
+A decision-only pass covers the decision pack, including its rendered report;
+it does not approve retained Terraform from an earlier execution run.
+
+Execution packs remain `UNVERIFIED` until Terraform checks actually run.
+After reviewing the generated configuration, add
+`--terraform /absolute/path/to/terraform` to allow `fmt`, `init -backend=false`
+and `validate` in a temporary copy. This downloads and executes only the
+official HashiCorp AWS provider, with a separate Terraform CLI configuration
+and no inherited cloud credentials. Modules, other providers, nested or JSON
+configurations, and filesystem-reading functions need separate review and
+remain `UNVERIFIED`. No plan, apply, migration script or telemetry runs.
+
+For GCP execution packs, the Terraform floor includes `main.tf`, `variables.tf`,
+`outputs.tf`, `baseline.tf`, its `README.md`, and a nonempty domain file.
+Missing or empty prerequisite and validation scripts also fail acceptance.
+Data, container, and secrets scripts are required when the current design
+contains the corresponding resource categories.
+
+For Heroku execution packs, missing Redis scripts, selected Elastic Beanstalk
+deployment files, or required EKS files and resources fail acceptance. EKS packs
+remain `UNVERIFIED` even when these outputs exist because Kubernetes manifests
+and node-group wiring still need separate review.
+
+This is a local, bounded acceptance check. It does not change ATX job status,
+support AI/billing-only routes, or prove deployment and data-migration success.
+
+For GCP workshop runs, acceptance also checks scenario identities, snapshot
+paths, and saved inventory/design/preference fingerprints. Generate and
+acceptance share the v2 Terraform-report contract. The generated-artifact
+checker catches unsupported RDS instance password arguments and resolvable
+local ECS secret-selection mismatches.
+
+The PostgreSQL script examples support a full offline copy with writers frozen
+and a tested data verifier. Online replication and final delta synchronization
+require a separate implementation. A missing verifier or unsupported transfer
+must remain on HOLD in the generated guide and report.
+
 ## Startup Architecture Advice
 
 The `architect-for-startups` skill answers "what should we build on AWS?" for a workload that is not an AI agent, the way a Startup Solutions Architect would: it establishes the company's stage, team size, runway, and credit position first, then recommends the smallest architecture that clears the bar, and names what to revisit at the next stage.

@@ -137,6 +137,20 @@ For each mapped AWS service, verify:
 
 ## Step 4: Write Design Output
 
+**Capacity and availability:** You MUST preserve explicit application replica
+requirements separately from database availability. For Fargate, write the
+per-task `cpu` and `memory` and an integer `aws_config.desired_count`. An explicit
+application requirement to run across two AZs needs at least two running tasks,
+not merely two subnets. Do not divide the requested per-task CPU across replicas.
+When count is unknown, label the chosen count as an assumption in `rationale`.
+Estimate and Generate consume this same count.
+
+On a workshop refresh, you MUST update every explanation affected by the edited
+knob, including `rationale`, `rubric_applied`, warnings and recommendation notes.
+For example, changing RDS to `multi_az: false` must remove claims that the selected
+database is Multi-AZ. A database-only edit must not change an explicitly retained
+application replica requirement.
+
 **File 1: `aws-design.json`**
 
 ```json
@@ -159,11 +173,12 @@ For each mapped AWS service, verify:
           "aws_config": {
             "cpu": "0.5",
             "memory": "1024",
+            "desired_count": 1,
             "region": "us-east-1"
           },
           "confidence": "inferred",
           "human_expertise_required": false,
-          "rationale": "Rubric: Compute Engine → Fargate (example — not a Direct Mapping row; Cloud Run/Compute Engine use Pass 2)",
+          "rationale": "Rubric: Compute Engine → Fargate (this Compute Engine example uses Pass 2; Cloud Run follows its Direct Mappings row)",
           "rubric_applied": [
             "Eliminators: PASS",
             "Operational Model: Managed Fargate",
