@@ -1715,7 +1715,7 @@ check_prerequisites() {
 
 test_source_connection() {
   log "Testing source database connection..."
-  PGPASSWORD="$SOURCE_DB_PASSWORD" psql \
+  PGPASSWORD="$SOURCE_DB_PASSWORD" psql -X \
     -h "$SOURCE_DB_HOST" -p "$SOURCE_DB_PORT" \
     -U "$SOURCE_DB_USER" -d "$SOURCE_DB_NAME" \
     -c "SELECT 1;" >/dev/null 2>&1 || { log "ERROR: Cannot connect to source database"; exit 1; }
@@ -1724,7 +1724,7 @@ test_source_connection() {
 
 test_target_connection() {
   log "Testing target database connection..."
-  PGPASSWORD="$TARGET_DB_PASSWORD" psql \
+  PGPASSWORD="$TARGET_DB_PASSWORD" psql -X \
     -h "$TARGET_DB_HOST" -p "$TARGET_DB_PORT" \
     -U "$TARGET_DB_USER" -d "$TARGET_DB_NAME" \
     -c "SELECT 1;" >/dev/null 2>&1 || { log "ERROR: Cannot connect to target database"; exit 1; }
@@ -1770,7 +1770,7 @@ PER_TABLE_SQL="SELECT schemaname || '.' || relname, n_live_tup FROM pg_stat_user
 # string, diff equal, and a false success.
 psql_tables() {
   local label="$1" host="$2" port="$3" user="$4" pass="$5" db="$6" out
-  if ! out=$(PGPASSWORD="$pass" psql \
+  if ! out=$(PGPASSWORD="$pass" psql -X \
       -h "$host" -p "$port" -U "$user" -d "$db" \
       -At -v ON_ERROR_STOP=1 -c "$PER_TABLE_SQL"); then
     # stderr: this function's stdout is captured by the caller, so a log on stdout
