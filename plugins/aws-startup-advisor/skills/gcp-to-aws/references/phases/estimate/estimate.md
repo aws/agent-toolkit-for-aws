@@ -299,6 +299,8 @@ commit." Suggest at most one.
 
      Ship note: this reaches customers only after the import page and the
      ImportPlan API are both live in production.
+  6. **BigQuery follow-up:** apply `SKILL.md` Workflow Execution step 10 last. It does
+     nothing when BigQuery was not detected.
 - **B** → Load `references/phases/workshop/workshop.md`. Keep
   `current_phase: estimate`; set `phases.workshop` → `"in_progress"`. On
   workshop exit, **return to this gate** (options A and C; the workshop's
