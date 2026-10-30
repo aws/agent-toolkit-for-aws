@@ -55,7 +55,7 @@ Build a generation manifest: read all resources from `aws-design.json` clusters,
 
 > `baseline.tf` is always emitted. It is NOT driven by `aws-design.json` clusters — the resources are workload-independent account controls. The compliance-conditional subset (Config + Security Hub) is emitted within the same file when `design_constraints.compliance.value` contains soc2/pci/hipaa/fedramp. The `aws_budgets_budget` resource reads `estimation-infra.json` to set its `limit_amount`. See Step 1.5 below. Users who want to skip the baseline can delete `terraform/baseline.tf` before `terraform apply`.
 
-**BigQuery / specialist-deferred:** If `aws_service` is **`Deferred — specialist engagement`**, **do not** generate Terraform for that resource (no Glue, Athena, Redshift, or EMR modules from the plugin). Optionally add **`terraform/README-BIGQUERY-DEFERRED.md`** with a short checklist: engage **AWS account team** and/or **data analytics migration partner** before implementing analytics infrastructure.
+**BigQuery / specialist-deferred:** If `aws_service` is **`Deferred — specialist engagement`**, **do not** generate Terraform for that resource (no Glue, Athena, Redshift, or EMR modules from the plugin). Optionally add **`terraform/README-BIGQUERY-DEFERRED.md`** with the checklist in `references/shared/bq-assess-next-step.md` → Terraform note: first assess BigQuery with `bq-assess`, then engage the **AWS account team** and/or a **data analytics migration partner** for what it does not cover, before implementing analytics infrastructure.
 
 ## Step 1: Generate main.tf
 

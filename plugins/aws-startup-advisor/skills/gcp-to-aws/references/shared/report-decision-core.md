@@ -92,6 +92,8 @@ Generate-only facts. Add `exec-share` to the TOC only when rendered.
 
 > ⚠️ **Specialist engagement required:** [service name] does not have an automated AWS mapping from this plugin. Engage your AWS account team and/or a data analytics migration partner to evaluate the best AWS analytics path. This does **not** block phased migration of other services; exclude [service name] from the combined estimated AWS monthly run rate until the target architecture is defined.
 
+When the deferred service is BigQuery, render the bq-assess `.callout-info` box directly under this callout, per `references/shared/bq-assess-next-step.md` → Report callout. Never block or delay the report on it.
+
 **Startup credits callout (decision summary / verdict):**
 
 | `startup_program_status.value` | Verdict / metric copy                                                                                                                                                                                                                                |
@@ -158,7 +160,7 @@ Source: `estimation-infra.json`, `estimation-ai.json`
 - Table with columns: GCP Service, AWS Service, **How we chose this**
 - **How we chose this** values: use `design-refs/fast-path.md` → **User-facing vocabulary** — **Standard pairing** (`deterministic`), **Tailored to your setup** (`inferred`), **Estimated from billing only** (`billing_inferred`). Show the **bold phrase** in the table; JSON value optional in a tooltip or footnote for technical readers only.
 - One row per mapped service
-- If any service has `human_expertise_required: true`, mark it with a warning indicator and footnote: "Specialist guidance recommended — contact your AWS account team"
+- If any service has `human_expertise_required: true`, mark it with a warning indicator and footnote: "Specialist guidance recommended — contact your AWS account team". For BigQuery, end the footnote with: "and see the BigQuery next step above."
 - Source: design artifact
 
 **Section 2b — Architecture diagram (`exec-architecture`, REQUIRED when `aws-design.json` clusters exist):**

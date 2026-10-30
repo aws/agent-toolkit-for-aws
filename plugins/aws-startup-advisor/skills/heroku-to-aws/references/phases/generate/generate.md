@@ -50,6 +50,8 @@ _preconditions:
     _on_failure: _unrecoverable
   - _assert: "preferences.json metadata.questions_deferred_to_generate is absent or an empty array — every Generate-time question Clarify defaulted (Q4 maintenance window, Q6c DB migration method, Q12d EB deploy method) was asked at the Decision gate's 'Confirm execution choices' step (estimate-assemble.md). A non-empty array means MIGRATION_GUIDE.md / Terraform is about to be written against an answer the user never gave; return to that step."
     _on_failure: _halt_and_inform
+  - _assert: "When the design contains RDS PostgreSQL or Aurora PostgreSQL, rds-windows.json exists with the validated backup_window and maintenance_window prepared from current confirmed preferences by the main-window Decision gate. If absent or invalid, return to that gate before dispatch; the worker must not compute these using its policy-only shell."
+    _on_failure: _halt_and_inform
 _postconditions:
   - _check_file_exists: [terraform/main.tf, terraform/baseline.tf, terraform/variables.tf, terraform/outputs.tf, terraform/security.tf, terraform/.gitignore, terraform/terraform.tfvars.example, MIGRATION_GUIDE.md, README.md, migration-report.html, generation-warnings.json, validation-report.json]
     _on_failure: _halt_and_inform
@@ -74,6 +76,8 @@ _postconditions:
   - _assert: "migration-report.html has decision-summary, exec-costs, cost-optimization, next-steps, and draft-for-review footer; if scenarios/index.json has ≥2 scenarios, also what-if-scenarios"
     _on_failure: _halt_and_inform
   - _assert: "report-validation-status.json exists and its report_status is 'REPORT_OK', stamped by the main-window 'Finish Generate' report-validation step (described below, run BEFORE this gate); a REPORT_FAIL, a missing/not_run stamp (validator could not run), or a missing file blocks completion. This gate is READ-ONLY: do not run the validator or edit the report/stamp here."
+    _on_failure: _halt_and_inform
+  - _assert: "artifact-validation-status.json exists, validates as JSON, and has artifact_status 'ARTIFACTS_OK' from the main-window generated-artifact checker. ARTIFACTS_FAIL, ARTIFACTS_ERROR, a missing checker, or a missing report blocks completion; never substitute a prose review or a fabricated success stamp."
     _on_failure: _halt_and_inform
   - _assert: "if Postgres is in the design, scripts/migrate-postgres.sh exists; if Redis is in the design, scripts/migrate-redis.sh exists"
     _on_failure: _halt_and_inform
@@ -114,6 +118,8 @@ Transform the design + estimate into migration artifacts in `$MIGRATION_DIR/`: a
 policy-gate verdict the assembler produces after all fragments — it runs the
 tf-best-practices policy checker against the final `terraform/` directory, and
 the read-only completion gate then reads that verdict).
+For a PostgreSQL design, include the main-window-prepared `rds-windows.json`
+path in the worker's input-artifact list alongside the existing phase inputs.
 Terraform for each Elastic Beanstalk web service
 is intentionally incomplete until the customer supplies that app's required
 application port and health check path. Non-web Elastic Beanstalk services do not
@@ -154,21 +160,45 @@ returns. Design/estimate decisions stay final.
 
 ---
 
-## Finish Generate in the main window (report validation) — BEFORE the gate
+## Finish Generate in the main window — BEFORE the gate
 
-This is **leftover Generate work**, not a gate check: the dispatched `_exec._agent: rw` worker
-that assembled the report has no shell (`INTERPRETER.md` § capability tiers — `rw` excludes Bash),
-so it could not run the report validator. The interpreter finishes that work in the MAIN window
-(the only place with a shell), **after the worker returns and before running `_postconditions`**.
+This is **leftover Generate work**, before the read-only gate. The dispatched
+`_exec._agent: rwx` worker has a shell scoped to the Terraform policy checker;
+the interpreter runs the additional checks in the MAIN window **after the worker
+returns and before `_postconditions`**.
 
-1. Run the report validator (**required, blocking**):
+1. Run the read-only generated-artifact checker (**required, blocking**):
+
+   ```bash
+   python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/validate-migration-artifacts.py" \
+     "$MIGRATION_DIR" --json "$MIGRATION_DIR/artifact-validation-status.json"
+   ```
+
+   Add `--require-postgres-script` when the design includes PostgreSQL.
+   Add `--require-eb-workflow` when the design includes Elastic Beanstalk and
+   `preferences.design_constraints.eb_deploy_method.value` is `github_actions`
+   or absent. Do not require a GitHub workflow for `codepipeline` or `manual`.
+
+   The checker reads the final files without executing migration scripts. Its
+   bounded checks cover PostgreSQL verification control flow, EB/database
+   security-group wiring, GitHub Actions references/deployment steps, and
+   literal RDS time-window conflicts. They complement, not replace, Terraform
+   validation and the policy checker.
+
+   Only exit `0` with `artifact_status: "ARTIFACTS_OK"` permits continuation.
+   On exit `1` or `2`, report the actual findings/error and stop with `GATE_FAIL`;
+   do not mark Generate complete. An unsupported shape requires review, not an
+   assumed pass. The checker output is already the report; do not rewrite it as
+   a success summary.
+
+2. Run the report validator (**required, blocking**):
 
    ```
    python3 "<SKILL_BASE>/scripts/validate-heroku-migration-report.py" \
      "$MIGRATION_DIR/migration-report.html" --migration-dir "$MIGRATION_DIR"
    ```
 
-2. `REPORT_OK` → **stamp the durable result** so the gate reads an artifact, not conversation
+3. `REPORT_OK` → **stamp the durable result** so the gate reads an artifact, not conversation
    memory: write `$MIGRATION_DIR/report-validation-status.json` as
    `{"report_status": "REPORT_OK"}`, then continue to the gate. `REPORT_FAIL` → write
    `{"report_status": "REPORT_FAIL", "errors": [ … ]}` and **emit `GATE_FAIL`, pasting the
@@ -176,7 +206,7 @@ so it could not run the report validator. The interpreter finishes that work in 
    empty `cost-optimization`, a banned `badge-verdict-*` pill class, a `<th>` without `scope`,
    missing `<html lang>`, etc.). This step does **not** edit the HTML.
 
-3. If the validator cannot run at all (no shell on the host), do **not** write
+4. If the validator cannot run at all (no shell on the host), do **not** write
    `report_status: "REPORT_OK"` — leave the stamp absent (or `not_run`) so the gate fails closed.
 
 Then the `_postconditions` gate runs (read-only): the section-id `_assert` plus the
