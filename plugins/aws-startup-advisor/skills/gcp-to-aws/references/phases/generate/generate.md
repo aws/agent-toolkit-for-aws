@@ -172,6 +172,27 @@ Produces: `migration-report.html`
 
 After writing `migration-report.html`, run `shared/validate-migration-report.md` (automated script). `REPORT_OK` means the decision-core content checks passed, not that the section IDs alone were present — the HTML must still have been rendered from `references/shared/report-decision-core.md`. Branch on the shell exit code per that doc's table — `0` (`REPORT_OK`), `1` (`REPORT_FAIL`: remove or rename incomplete HTML and warn the user — do not present a stub report as complete), or anything else (validator did not run, e.g. `python3` missing — tell the user validation was skipped, do not treat it as pass or fail).
 
+### Final infrastructure artifact checks
+
+When the infrastructure artifact route is active, run the shared read-only
+checker after all Terraform, script, and documentation producers finish:
+
+```bash
+python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/validate-migration-artifacts.py" \
+  "$MIGRATION_DIR" --json "$MIGRATION_DIR/artifact-validation-status.json"
+```
+
+This checker adds bounded cross-file checks, including literal RDS backup and
+maintenance-window conflicts. It does not replace Terraform validation or the
+`POLICY_OK` requirement, and it does not execute migration scripts. The
+Heroku-specific `--require-postgres-script` flag does not apply to this route:
+GCP uses its own migration-script naming and execution contract.
+
+Only exit `0` with `artifact_status: "ARTIFACTS_OK"` permits the completion
+check. On exit `1` or `2`, surface the findings/error and stop with `GATE_FAIL`;
+a missing checker or unsupported shape is not a pass. The checker output is
+already the report; do not rewrite it as a success summary.
+
 ## Phase Completion
 
 Load `shared/handoff-gates.md`. **Re-read from disk** before checking.
@@ -184,6 +205,7 @@ Verify both stages are complete:
    - If `estimation-billing.json` exists -> require `generation-billing.json`
 2. **Stage 2 route gates (fail closed)**:
    - If infra artifact route is active (`generation-infra.json` AND `aws-design.json`) -> require `terraform/`, `scripts/`, and `validation-report.json` (with `status` in `{passed, passed_degraded_offline, skipped_user_continue}` AND `policy_status` == `POLICY_OK`, unless the user chose skip/abort on a policy failure)
+   - For that same infra route, require `artifact-validation-status.json` to be valid JSON with `artifact_status` exactly `ARTIFACTS_OK`. Missing, failed, or unexecuted checks block completion.
    - If AI artifact route is active (`generation-ai.json` AND `aws-design-ai.json`) -> require `ai-migration/`
    - If billing artifact route is active (`generation-billing.json` AND `aws-design-billing.json`) -> require `terraform/skeleton.tf`
 3. **Documentation gate (always)**:
@@ -308,5 +330,7 @@ Output to user:
 > - Migration paths: AI agent, AWS expert, or AWS Partner
 
 Ship note: this reaches customers only after the import page and the ImportPlan API are both live in production.
+
+**BigQuery follow-up:** after the summary and the web-handoff block (when shown), apply `SKILL.md` Workflow Execution step 10 last. It does nothing when BigQuery was not detected.
 
 _Breadcrumbs are emitted only after outer-run `HANDOFF_OK` — never on `GATE_FAIL`, never from inner workshop reprices._

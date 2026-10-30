@@ -206,6 +206,17 @@ continue:
 > BI cutover planning, engage your **AWS account team** and/or a **data analytics migration
 > partner** to assess query patterns, data volumes, ETL/ELT, and downstream consumers.
 > Design will mark these resources as **`Deferred — specialist engagement`**.
+>
+> **After this run — `bq-assess`:** an open-source AWS sample can assess the BigQuery side
+> read-only: per-table data-movement effort and SQL-rewrite scores, a query-engine
+> recommendation (Amazon Athena or Amazon Redshift Serverless) from the observed workload, and
+> a BigQuery-vs-AWS cost comparison. It covers the query-pattern and data-volume part of the
+> specialist review above. Your plan will include it as the BigQuery next step.
+
+The `bq-assess` lines are **informational only**: do **not** add a BigQuery question, wait
+for an answer, or invoke `bq-assess` during this run's phases. The offer is made once, at the
+end of the run (`SKILL.md` Workflow Execution step 10), and never gates Clarify, Design,
+Estimate, or Generate.
 
 ### Essentials Batches
 
@@ -376,12 +387,12 @@ Otherwise, apply Category E defaults (`ha_upgrade: false`, `right_sizing: false`
 | GPT-5.4 Mini/Nano migration              | Q19 = GPT-5.4 Mini or Nano                                                         | Nova Lite/Micro — 87-94% cheaper on Bedrock                                                     |
 | GPT-4 Turbo migration                    | Q19 = GPT-4 Turbo                                                                  | Claude Sonnet 5 — 80% cheaper on input                                                          |
 | o-series migration                       | Q19 = o-series                                                                     | Claude Sonnet 5 with extended thinking                                                          |
-| High-volume cost-critical AI             | Q18 = High + cost critical                                                         | Nova Micro or Haiku 4.5 + provisioned throughput                                                |
+| High-volume cost-critical AI             | Q18 = High + cost critical                                                         | Nova Micro or Haiku 5.5; verify on-demand quotas, price tier, and measured throughput                                                |
 | Reasoning/agent workload                 | Q17 = Extended thinking                                                            | Claude Sonnet 5 extended thinking; Opus 4.6 for hardest                                         |
 | Speech-to-speech AI                      | Q17 = Real-time speech                                                             | Nova 2 Sonic                                                                                    |
 | RAG workload                             | Q17 = RAG optimization                                                             | Bedrock Knowledge Bases + Titan Embeddings                                                      |
 | Vision workload                          | Q20 = Vision required                                                              | Claude Sonnet 5 (multimodal)                                                                    |
-| Latency-critical AI                      | Q21 = Critical                                                                     | Haiku 4.5 or Nova Micro + streaming                                                             |
+| Latency-critical AI                      | Q21 = Critical                                                                     | Haiku 5.5 or Nova Micro + streaming                                                             |
 | Complex reasoning tasks                  | Q22 = Complex                                                                      | Claude Sonnet 5; Opus 4.6 for hardest                                                           |
 
 ## Step 5: Assemble and Write preferences.json

@@ -43,10 +43,11 @@ To get the resolved endpoint for a specific operation:
 
 ```js
 import { getEndpointFromInstructions } from "@smithy/middleware-endpoint";
+const client = new S3Client({ region: "us-west-2" });
 const endpoint = await getEndpointFromInstructions(
   { Bucket, Key },
   GetObjectCommand,
-  { region: "us-west-2", useDualstackEndpoint: false, useFipsEndpoint: false }
+  client.config // needs the resolved client config (endpointProvider etc.), not plain values
 );
 console.log(endpoint.url.toString());
 ```
