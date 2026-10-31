@@ -7,6 +7,14 @@ on:
       - "plugins/aws-startup-advisor/**"
       - "mise.toml"
       - ".github/workflows/startup-advisor.yml"
+      - ".github/PULL_REQUEST_TEMPLATE/startup-advisor.md"
+      - ".github/scripts/startup-advisor-pr-checklist*"
+      - ".github/scripts/package*.json"
+  pull_request_target:
+    branches: [main]
+    paths:
+      - "plugins/aws-startup-advisor/**"
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
 permissions:
@@ -14,6 +22,7 @@ permissions:
 
 jobs:
   startup-advisor:
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -23,3 +32,41 @@ jobs:
           working_directory: plugins/aws-startup-advisor
       - name: Run startup advisor checks
         run: mise -C plugins/aws-startup-advisor run ci
+
+  checklist-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install checklist dependencies
+        run: npm ci --prefix .github/scripts --ignore-scripts --no-audit --no-fund
+      - run: node --test .github/scripts/startup-advisor-pr-checklist.test.cjs
+
+  author-checklist:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: startup-advisor-checklist-${{ github.event_name }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      # Use only trusted base-branch code with this token, including for fork PRs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install trusted checklist dependencies
+        run: npm ci --prefix .github/scripts --ignore-scripts --no-audit --no-fund
+      - name: Check confirmations and update the author reminder
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .github/scripts/startup-advisor-pr-checklist.cjs "$GITHUB_REPOSITORY" "$PR_NUMBER" "$PR_HEAD_SHA"
