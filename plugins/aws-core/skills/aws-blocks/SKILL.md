@@ -62,26 +62,22 @@ cd my-app
 
 ## Development Workflow
 
-After scaffolding, refer to **node_modules/@aws-blocks/blocks/README.md** for the complete development workflow including:
+After scaffolding, read the docs bundled in **node_modules/@aws-blocks/blocks/docs/** (if they are elsewhere, locate them with `node -p "require('path').dirname(require.resolve('@aws-blocks/blocks/docs/README.md'))"`). These are the authoritative docs for your installed version:
 
-- Core concepts (Architecture, Building Block selection)
-- Project structure and Scope organization
-- Error handling patterns
-- Schema validation
-- Local development
-- Best practices and common mistakes
-- Deployment IAM role setup and security guidance
+- `README.md` — core concepts, Building Block selection and catalog, local development and deploying, testing, best practices, common mistakes, security considerations and IAM hardening
+- `core/README.md` — `Scope`, `ApiNamespace`, typed errors (`ApiError`), `RawRoute`, CORS configuration and the IAM permissions boundary
+- `TROUBLESHOOTING.md` — wire protocol and `curl`-level debugging
 
-When implementing a specific Building Block, read its package README for the detailed API reference (e.g., `node_modules/@aws-blocks/bb-kv-store/README.md`). These are the authoritative docs for your installed version.
+When implementing a specific Building Block, read its package docs in `docs/<package folder>/` (for example `docs/bb-kv-store/README.md`, `docs/core/README.md`): `README.md` for its API reference, plus `API.md` and `DESIGN.md` where present.
 
 ## Security Considerations
 
 - Use `await auth.requireAuth(context)` in every method that shouldn't be public — ApiNamespace methods are **unauthenticated by default**
-- Use `new AppSetting(scope, id, { secret: true })` for API keys and credentials — never hardcode or use `.env` files
+- Use `new Secret(scope, id)` for API keys and credentials; `new AppSetting(scope, id, { secret: true })` is a free, encrypted fallback only for a low-value secret. Never hardcode secret values or pass them to a deployed app through plaintext environment variables
 - Always attach a schema to KVStore/AppSetting that accepts user data — the RPC layer validates structure but not business logic
 - Do not add broad `*` IAM policies — each Building Block already grants least-privilege scoped to its own resources
 - Never change `blockPublicAccess` on FileBucket — serve public files through CloudFront instead
-- Configure `CORS_ALLOWED_ORIGINS` explicitly for production — avoid wildcards
+- Configure `defaults.allowedOrigins` explicitly for production — avoid wildcards
 - For cross-domain deployments, pass `crossDomain: true` to auth constructors (enables `SameSite=None; Secure; Partitioned`)
 - Enable `monitoring: { enabled: true, snsTopicArn: '...' }` on Hosting for production alerts
 - Add WAF and API Gateway throttling via CDK for public-facing apps — not included by default
