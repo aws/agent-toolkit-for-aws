@@ -26,7 +26,7 @@ Every agent step multiplies cost: tool selection reasoning + tool execution + re
 
 **Startup rule of thumb:**
 
-- < $500/month LLM spend → Never use agents. Use `InvokeModel` with structured prompts.
+- < $500/month LLM spend → Never use agents. Use `InvokeModel` with structured prompts, optionally through AgentCore Gateway if multi-provider governance or fallback is needed even at small scale.
 - $500-5K/month → One simple agent max. Router + specialist only if you have genuinely distinct domains.
 - $5K+/month → Agent architecture justified if you have evidence single-call can't do the job.
 
