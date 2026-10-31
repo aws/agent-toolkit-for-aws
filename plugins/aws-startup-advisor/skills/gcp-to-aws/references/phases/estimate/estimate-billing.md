@@ -2,6 +2,11 @@
 
 > Loaded by estimate.md when aws-design-billing.json exists and aws-design.json does NOT exist.
 
+Before pricing, follow `references/vendored/estimate/cost-export-inputs.md` for
+`estimation-billing.json`. Retain the input snapshot and only known selected-row
+context in `export_inputs`. Billing ratios and mapped service names do not supply
+missing AWS configuration, usage, pricing-region or upfront evidence.
+
 **Execute ALL steps in order. Do not skip or optimize.**
 
 **Known limitations:** Cost inference from billing SKU details (tighter ranges), historical trend projection, and AWS Cost Calculator integration are not yet supported.

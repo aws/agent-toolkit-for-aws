@@ -67,6 +67,64 @@
         "stay_if": { "type": "array" }
       }
     },
+    "export_inputs": {
+      "type": "object",
+      "description": "Optional Estimate-retained evidence from cost-export-inputs.md. Structure only: the emitter verifies input digests, selected amounts, scenario binding, resource pointers and import bounds before attaching any context. Omit when unavailable; never infer or reprice.",
+      "required": ["snapshot", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "snapshot": {
+          "type": "object",
+          "required": ["version", "runId", "owningSkill", "files"],
+          "additionalProperties": false,
+          "properties": {
+            "version": { "type": "integer", "const": 1 },
+            "runId": { "type": "string" },
+            "owningSkill": { "type": "string" },
+            "files": {
+              "type": "object",
+              "description": "Input file names map to captured digests, or null when an optional input is absent.",
+              "additionalProperties": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "rows": {
+          "type": "object",
+          "description": "Selected amount JSON Pointers map to retained row evidence.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["monthlyCost", "estimateInput"],
+            "additionalProperties": false,
+            "properties": {
+              "monthlyCost": { "type": "number" },
+              "estimateInput": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "regionCode": { "type": "string" },
+                  "upfrontCost": { "type": "string" },
+                  "pricingBasis": { "type": "string" },
+                  "configurationSummary": { "type": "string" },
+                  "description": { "type": "string" },
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "estimateFile": { "type": "string" },
+                      "costPointer": { "type": "string" },
+                      "scenarioId": { "type": "string" },
+                      "resourceIds": { "type": "array", "items": { "type": "string" } }
+                    }
+                  }
+                }
+              },
+              "resourceIdPointers": { "type": "array", "items": { "type": "string" } },
+              "configurationPointers": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
     "workshop": {
       "type": "object",
       "description": "Optional what-if workshop metadata. Omitted when workshop unused.",

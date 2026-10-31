@@ -156,3 +156,65 @@ def test_heroku_skill_writer_matches_plugin_copy() -> None:
         "heroku skill emit-plan-json.py has drifted from the plugin-level copy; "
         "re-copy plugins/aws-startup-advisor/scripts/emit-plan-json.py"
     )
+
+
+def test_infra_row_sources_survive_duplicate_labels_and_filtered_rows() -> None:
+    """Display labels cannot bind context to a cost row. Preserve the source key
+    and the selected amount, without substituting a cheaper alternative."""
+    module = _load_writer_module()
+    projected = {"breakdown": {
+        "total": 30,
+        "run:web": {"service": "ECS Fargate", "monthly": 10, "mid": 1},
+        "excluded": {"monthly": 70, "excluded_from_total": True},
+        "run:worker": {"service": "ECS Fargate", "mid": 20},
+        "invalid_primary": {"monthly": None, "mid": 99},
+        "free_control": 0,
+    }}
+    original = json.loads(json.dumps(projected))
+    rows = module._service_rows(projected)
+    assert [(key, field) for key, field, _ in rows] == [
+        ("run:web", "monthly"), ("run:worker", "mid"), ("free_control", None),
+    ]
+    assert [item["monthlyCost"] for _, _, item in rows] == [10, 20, 0]
+    assert [item["serviceName"] for _, _, item in rows] == [
+        "ECS Fargate", "ECS Fargate", "free_control",
+    ]
+    assert module._service_items(projected) == [item for _, _, item in rows]
+    assert projected == original
+
+
+def test_billing_row_sources_keep_original_indices() -> None:
+    """Filtering must not shift source indices or collapse duplicate targets."""
+    module = _load_writer_module()
+    projection = {"services": [
+        {"aws_target": "Total", "aws_mid": 40},
+        {"aws_target": "Amazon S3", "aws_mid": 10, "unknowns": ["storage class"]},
+        {"aws_target": "Amazon S3", "aws_mid": None},
+        {"aws_target": "Amazon S3", "aws_mid": 30},
+    ]}
+    rows = module._billing_service_rows(projection)
+    assert [index for index, _ in rows] == [1, 3]
+    assert [item["monthlyCost"] for _, item in rows] == [10, 30]
+    assert module._billing_service_items(projection) == [item for _, item in rows]
+    assert all(set(item) == {"serviceName", "monthlyCost", "classification"} for _, item in rows)
+
+
+def test_workshop_export_keeps_balanced_rows_without_inventing_context(tmp_path: Path) -> None:
+    """Use the captured workshop amounts with synthetic valid run attribution.
+    The optimized recommendation does not change the export's BALANCED basis."""
+    golden = PLUGIN_ROOT / "fixtures" / "heroku-workshop" / "after-arm64-reprice"
+    run = tmp_path / "run"
+    shutil.copytree(golden, run)
+    status_path = run / ".phase-status.json"
+    status = json.loads(status_path.read_text())
+    status.update(owning_skill="HEROKU_TO_AWS", run_id="8c1e4f2a-3b6d-4a7e-9f10-5d2c8b7a6e41")
+    status_path.write_text(json.dumps(status))
+    data = _emit(run)
+    assert data["schemaVersion"] == 1
+    assert data["cost"]["awsMonthlyBasis"] == "BALANCED"
+    assert data["cost"]["awsMonthly"] == 88
+    assert data["cost"]["awsServiceItems"] == [
+        {"serviceName": "Elastic Beanstalk", "monthlyCost": 43, "classification": "INFRASTRUCTURE"},
+        {"serviceName": "RDS PostgreSQL", "monthlyCost": 45, "classification": "INFRASTRUCTURE"},
+    ]
+    assert set(data["cost"]) == {"awsMonthly", "awsMonthlyBasis", "accuracy", "awsServiceItems"}
