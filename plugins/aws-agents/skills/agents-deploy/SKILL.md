@@ -327,6 +327,8 @@ Fix: Request a quota increase in the AWS console → Service Quotas → Amazon B
 
 ### Step B3: After fixing, re-run
 
+Re-run the same deploy command, preserving `--target <target>` if the failed deployment used a named target.
+
 ```bash
 agentcore deploy
 ```
