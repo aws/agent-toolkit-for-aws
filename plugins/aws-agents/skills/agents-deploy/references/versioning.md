@@ -93,7 +93,7 @@ This is useful for:
 
 If a deploy breaks something, either move the endpoint back or redeploy known-good code.
 
-**Option 1: point the endpoint at an older version (no rebuild).**
+**Option 1: point the endpoint at an older version.**
 
 Runtime — there's no CLI command to move an endpoint; edit `runtimes[].endpoints.prod.version` in `agentcore/agentcore.json` (by hand or with `jq`) and deploy:
 
@@ -104,6 +104,8 @@ agentcore deploy
 ```
 
 The same edit with a newer version rolls forward.
+
+This reuses an existing Runtime version, but `agentcore deploy` still runs the project build and deployment workflow. A CodeZip build can resolve dependencies again, so pin dependencies before using this procedure.
 
 Harness:
 
@@ -120,7 +122,7 @@ agentcore deploy
 
 This creates a *new* version with the old code, and `DEFAULT` moves to it. It's the only rollback for callers that use `DEFAULT`.
 
-Option 1 is faster — just a pointer swap. Option 2 is cleaner because your code matches what's running. Don't use `agentcore harness update` to change a Harness that a project manages: the next `agentcore deploy` re-applies `harness.yaml`. Edit the YAML and deploy instead.
+Option 1 reuses an existing version without restoring old source. Option 2 creates a new version whose source matches the working tree. Don't use `agentcore harness update` to change a Harness that a project manages: the next `agentcore deploy` re-applies `harness.yaml`. Edit the YAML and deploy instead.
 
 ## Canary deployment
 
