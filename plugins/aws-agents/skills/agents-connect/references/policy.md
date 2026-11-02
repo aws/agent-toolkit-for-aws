@@ -40,6 +40,8 @@ agentcore build
 agentcore deploy --target <target>
 ```
 
+`fail-on-any-findings` stops deployment if policy validation finds any issue, including an overly permissive policy. Add appropriate conditions to the policy before deploying.
+
 `--statement` accepts inline text, `file://<path>`, or `-` for stdin. The v0 `--source` and `-g` flags are gone. If the policy checks an output, set `--authorization-phase return-output`; otherwise the CLI infers the phase from the statement. Tool action names use `AgentCore::Action::"TargetName___tool_name"` (three underscores). Confirm the name from the deployed Gateway target and test the intended principal, tool, and arguments.
 
 For natural language generation, use the Gateway resource command with its deployed ID or ARN:
