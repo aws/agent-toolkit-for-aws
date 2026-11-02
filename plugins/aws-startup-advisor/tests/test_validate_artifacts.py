@@ -749,8 +749,10 @@ def test_gcp_estimate_extensions_bind_to_their_object_keys(tmp_path: Path):
     schema types breakdown as an object), so a complete estimate failed with UNKNOWN_KEY."""
     doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-estimate-infra.md"
     est = json.loads((PLUGIN_ROOT / "fixtures/gcp-decision-gate/after-decide-complete/estimation-infra.json").read_text())
-    sec_blocks = [b for b in va.extract_blocks(doc) if va._heading_matches(b.heading, "Security Baseline Entries in")]
-    assert len(sec_blocks) == 2, "manifest anchors @L373/@L390 expect two Security Baseline blocks"
+    sec_blocks = [
+        next(b for b in va.extract_blocks(doc) if va._heading_matches(b.heading, heading))
+        for heading in ("Security Baseline entry", "Compliance Baseline entry")
+    ]
     est["projected_costs"]["scenario_deltas"] = _doc_example(doc, "Cost tiers")["scenario_deltas"]
     est["projected_costs"]["breakdown"] = {
         "compute": {"service": "Fargate", "monthly": 71},
@@ -1340,7 +1342,10 @@ def test_gcp_estimate_snapshots_use_the_active_estimate_shape(tmp_path: Path):
     pricing bucket failed on estimation-infra.json and passed on the snapshot copy."""
     est = json.loads((PLUGIN_ROOT / "fixtures/gcp-decision-gate/after-decide-complete/estimation-infra.json").read_text())
     doc = PLUGIN_ROOT / "skills/gcp-to-aws/references/shared/schema-estimate-infra.md"
-    sec_blocks = [b for b in va.extract_blocks(doc) if va._heading_matches(b.heading, "Security Baseline Entries in")]
+    sec_blocks = [
+        next(b for b in va.extract_blocks(doc) if va._heading_matches(b.heading, heading))
+        for heading in ("Security Baseline entry", "Compliance Baseline entry")
+    ]
     est["projected_costs"]["scenario_deltas"] = _doc_example(doc, "Cost tiers")["scenario_deltas"]
     est["projected_costs"]["breakdown"] = {
         "compute": {"service": "Fargate", "monthly": 71},

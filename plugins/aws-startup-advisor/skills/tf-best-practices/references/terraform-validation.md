@@ -121,6 +121,18 @@ Write the report to the single canonical path the caller pins, e.g.
 directory (a bare dir invites a missing-slash `<ts>validation-report.json` sibling) — per
 the schema below.
 
+Before returning a completed infrastructure result, run the shared report
+contract gate:
+
+```bash
+python3 "<tf-best-practices>/scripts/validate-terraform-report.py" "$MIGRATION_DIR/validation-report.json"
+```
+
+Require `RUNTIME_REPORT_OK` and exit 0. On failure, correct the report from
+the actual command receipts; do not invent a version, successful check, or
+diagnostic to satisfy the schema. This gate validates the recorded fields,
+not the execution of Terraform. Keep the execution receipts separately.
+
 ## Offline Detection
 
 ```
@@ -153,6 +165,9 @@ END FUNCTION
 - **Match semantics**: first-match-wins; full-stderr scan.
 - **Empty stderr**: treat as non-network failure so the retry loop runs (prevents silent
   offline-fallback when terraform fails for an unrelated reason with no stderr).
+- **CLI failure**: a missing executable, invalid shim, or failed `terraform version`
+  is not a provider-network outage. Use the retry/skip/abort flow and record the
+  actual failure; do not assign `passed_degraded_offline`.
 
 ## Report Schema (v2)
 

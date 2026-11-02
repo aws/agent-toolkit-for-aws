@@ -1,5 +1,5 @@
 {
-  "_what_this_is": "Maps each migration artifact (by file name, fnmatch glob) to the contract document that defines it. Read by scripts/validate-artifacts.py. 'fixture_only' keeps a target contract available to neutral fixtures and self-checking without applying it to current named-skill runs. 'shape' points at a markdown document whose JSON/JSONC example block IS the contract; 'root_heading' selects which block (exact or word-boundary prefix match on the heading text, backticks ignored — 'graviton' matches '`graviton` block …' but not '`graviton_profile` …'); 'sections' maps sub-section headings to the key path they refine when the heading's own backticked token is not the path; 'json_schema' points at a real JSON Schema. Both may be present — the schema is authoritative where it speaks, the shape catches keys the schema leaves open.",
+  "_what_this_is": "Maps each migration artifact (by file name, fnmatch glob) to the contract document that defines it. Read by scripts/validate-artifacts.py. 'fixture_only' keeps a target contract available to neutral fixtures and self-checking without applying it to current named-skill runs. 'shape' points at a markdown document whose JSON/JSONC example block IS the contract; 'root_heading' selects which block (exact or word-boundary prefix match on the heading text, backticks ignored \u2014 'graviton' matches '`graviton` block \u2026' but not '`graviton_profile` \u2026'); 'sections' maps sub-section headings to the key path they refine when the heading's own backticked token is not the path; 'json_schema' points at a real JSON Schema. Both may be present \u2014 the schema is authoritative where it speaks, the shape catches keys the schema leaves open.",
   "fixture_prefixes": {
     "gcp-": "gcp-to-aws",
     "heroku-": "heroku-to-aws",
@@ -95,11 +95,11 @@
         "sections": {
           "Cost tiers": "projected_costs.scenario_deltas",
           "Observability Entry in": "projected_costs.breakdown.observability",
-          "@L373": "projected_costs.breakdown.security_baseline",
-          "@L390": "projected_costs.breakdown.security_baseline_compliance",
-          "architecture_comparison": "architecture_comparison"
+          "architecture_comparison": "architecture_comparison",
+          "Security Baseline entry": "projected_costs.breakdown.security_baseline",
+          "Compliance Baseline entry": "projected_costs.breakdown.security_baseline_compliance"
         },
-        "_sections_why": "`projected_costs.breakdown` is a keyed object (shared estimation-infra.schema.json; emit-plan-json.py and validate-migration-report.py read it by key), so the Observability / Security Baseline sections document the named `observability`, `security_baseline` and `security_baseline_compliance` members — not items of an array. The two Security Baseline blocks share one heading, so line anchors tell them apart (the first is `security_baseline`, the second — with `emission_reason` — is `security_baseline_compliance`). 'Cost tiers' carries the `scenario_deltas` block that estimate-infra.md requires alongside the three tiers."
+        "_sections_why": "Named section headings bind the observability and baseline examples to their keyed breakdown members. Active and scenario estimates use the same shape; heading changes do not depend on line numbers."
       },
       "scenarios/scenario-NNN.preferences.json": {
         "shape": "skills/gcp-to-aws/references/shared/schema-preferences.md",
@@ -124,11 +124,31 @@
         "sections": {
           "Cost tiers": "projected_costs.scenario_deltas",
           "Observability Entry in": "projected_costs.breakdown.observability",
-          "@L373": "projected_costs.breakdown.security_baseline",
-          "@L390": "projected_costs.breakdown.security_baseline_compliance",
-          "architecture_comparison": "architecture_comparison"
+          "architecture_comparison": "architecture_comparison",
+          "Security Baseline entry": "projected_costs.breakdown.security_baseline",
+          "Compliance Baseline entry": "projected_costs.breakdown.security_baseline_compliance"
         },
-        "_sections_why": "Workshop baseline capture copies the active estimation-infra.json into scenarios/scenario-NNN.estimation-infra.json. The snapshot is the same artifact, so it uses the same Markdown shape, root heading, and section refinements — not the JSON Schema alone."
+        "_sections_why": "Named section headings bind the observability and baseline examples to their keyed breakdown members. Active and scenario estimates use the same shape; heading changes do not depend on line numbers."
+      },
+      "scenarios/index.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-workshop-scenarios.md",
+        "root_heading": "scenarios/index.json",
+        "ignore_headings": [
+          "preferences.json",
+          "scenarios/scenario-NNN.json"
+        ]
+      },
+      "scenarios/scenario-NNN.json": {
+        "shape": "skills/gcp-to-aws/references/shared/schema-workshop-scenarios.md",
+        "root_heading": "scenarios/scenario-NNN.json",
+        "ignore_headings": [
+          "preferences.json",
+          "scenarios/index.json"
+        ],
+        "open_paths": [
+          "preferences_subset"
+        ],
+        "_open_paths_why": "Edited preference paths vary by the supported workshop knobs; the scenario manifest links complete typed preference snapshots."
       }
     },
     "heroku-to-aws": {
@@ -144,7 +164,7 @@
         "sections": {
           "Complete Example": ""
         },
-        "_sections_why": "'Complete Example' is a full artifact; merging it into the root makes keys it shows (resources[].source, unmanaged_by_terraform, …) part of the contract."
+        "_sections_why": "'Complete Example' is a full artifact; merging it into the root makes keys it shows (resources[].source, unmanaged_by_terraform, \u2026) part of the contract."
       },
       "preferences.json": {
         "shape": "skills/heroku-to-aws/references/phases/clarify/clarify-assemble.md",
@@ -242,7 +262,7 @@
           "default_basis",
           "deferred_to_generate"
         ],
-        "_allowed_anywhere_why": "schema-preferences.md defines these as row annotations usable on any row (§ 'The justification key is source' — REQUIRED on DETECTED; reason on N/A rows; context on ESSENTIAL rows; unanswered/blocks_phase/conflict per clarify-assemble.md § clarify_status; default_basis/deferred_to_generate per Q-D2). They are documented as a vocabulary, not per row, so the example block cannot list them on every row.",
+        "_allowed_anywhere_why": "schema-preferences.md defines these as row annotations usable on any row (\u00a7 'The justification key is source' \u2014 REQUIRED on DETECTED; reason on N/A rows; context on ESSENTIAL rows; unanswered/blocks_phase/conflict per clarify-assemble.md \u00a7 clarify_status; default_basis/deferred_to_generate per Q-D2). They are documented as a vocabulary, not per row, so the example block cannot list them on every row.",
         "extra_shapes": [
           {
             "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
@@ -292,7 +312,7 @@
             "shape": "skills/azure-to-aws/references/shared/schema-graviton.md",
             "heading": "graviton block",
             "path": "services[].graviton",
-            "_heading_why": "schema-graviton.md has both '`graviton_profile` (emitted by Discover…)' and '`graviton` block (added to each compute service…)'. Heading matches end on a word boundary so 'graviton' alone no longer selects graviton_profile, but the full 'graviton block' names the design section explicitly."
+            "_heading_why": "schema-graviton.md has both '`graviton_profile` (emitted by Discover\u2026)' and '`graviton` block (added to each compute service\u2026)'. Heading matches end on a word boundary so 'graviton' alone no longer selects graviton_profile, but the full 'graviton block' names the design section explicitly."
           }
         ]
       },
