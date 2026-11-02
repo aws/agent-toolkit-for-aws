@@ -9,7 +9,8 @@ Runtimes and Harnesses are versioned by AgentCore: each change you deploy create
 - The `DEFAULT` endpoint always follows the latest version. Callers that don't pass a qualifier use `DEFAULT`.
 - Named endpoints (e.g. `prod`, `staging`) point at a specific version and only move when you move them. Point production callers at a named endpoint so you can roll back with a pointer swap.
 - Old versions remain available for endpoints to point at.
-- Local dev (`agentcore dev`) always runs the current code — no version concept.
+- Runtime local development (`agentcore dev`) runs the current code locally, so Runtime versions and endpoints do not apply.
+- A Harness cannot run locally. `agentcore dev` normally deploys it, so normal Harness versioning applies. `agentcore dev --skip-deploy` instead uses the version already deployed and does not apply local changes.
 
 ## Finding the IDs
 
