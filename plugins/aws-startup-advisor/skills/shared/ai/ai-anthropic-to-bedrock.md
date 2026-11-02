@@ -6,8 +6,11 @@
 > `references/vendored/ai/ai-anthropic-to-bedrock.md` and kept byte-identical by
 > `shared:check`; edit HERE, then run `shared:sync`.
 >
-> Loaded by `design-ai.md` when `ai_source == "anthropic"`.
-> The user is already on Claude via the Anthropic SDK. Migration is a client swap only.
+> Loaded by `design-ai.md` for an Anthropic source, or when Claude Haiku 5.5 is a candidate or selected target.
+> For a non-Anthropic source, only the Haiku 5.5 target contract below applies;
+> use the source provider guide for SDK and request translation. Steps 1–7 and
+> the Anthropic client-swap checklist apply only to Anthropic-source migrations.
+> For an Anthropic source, the user is already on Claude via the Anthropic SDK. Migration is a client swap only.
 > Mapping an older Claude version to a newer target is a model change. Validate
 > request controls and output behavior before cutover.
 
@@ -20,7 +23,7 @@
 | `claude-opus-4-*` / `claude-opus-5-5*` | `global.anthropic.claude-opus-5-5` (Global) / `us.` `eu.` `au.` `jp.` Geo profiles | Premium  | Global $4/$20; commercial Geo/Mantle $4.40/$22; GovCloud $4.80/$24 |
 | `claude-sonnet-5-*`                    | `anthropic.claude-sonnet-5`                                                        | Flagship | $2 / $10 (Global); $2.20 / $11 (Geo)†                              |
 | `claude-sonnet-4-*`                    | `anthropic.claude-sonnet-5`                                                        | Flagship | $2 / $10 (Global); $2.20 / $11 (Geo)†                              |
-| `claude-haiku-4-*`                     | `anthropic.claude-haiku-4-5-20251001-v1:0`                                         | Fast     | $1 / $5                                                            |
+| `claude-haiku-4-*` / `claude-haiku-5-5*` | `anthropic.claude-haiku-5-5` (select a supported runtime inference profile below) | Fast | Global $0.10/$0.50 up to 100K prompt tokens; $0.50/$2.50 above 100K |
 
 † Claude Sonnet 5 is $2 / $10 (Global) and $2.20 / $11 (Geo, `us.`-prefixed) per 1M tokens — the June 30, 2026 launch rate became the standard price on Sep 1, 2026 (the scheduled $3 / $15 increase was cancelled; see `references/vendored/ai/bedrock-pricing-cache.md`). Prefer the `us.` inference-profile prefix for on-demand invoke. Sonnet 4.6 (`anthropic.claude-sonnet-4-6`) remains Active if the customer must stay on the 4.6 SKU.
 
@@ -28,7 +31,7 @@ Claude Sonnet 5.5 facts (verified 2026-10-26 against its [Bedrock model card](ht
 
 Older Claude models — Claude 3.5 Haiku, Claude 3 Sonnet, Claude 3.5 Sonnet (v1/v2), Claude 3 Haiku, and Claude 3.7 Sonnet — are past EOL or within the 90-day exclusion window. Do **not** recommend them as migration targets. See `references/vendored/ai/ai-model-lifecycle.md` for authoritative status (recomputed each run).
 
-**Recommendation:** Default new Bedrock targets to **Claude Sonnet 5** (flagship) / **Claude Opus 5.5** (demanding reasoning; 20% lower standard input/output token prices than Opus 5; [Anthropic reports improved token efficiency](https://claude.com/blog/what-a-task-costs-on-opus-5-5), with actual usage varying by task and effort setting) / **Claude Haiku 4.5** (cost/speed). Converse API call shape is identical across generations. Do **not** default to Claude Fable 5 (frontier / Mythos-class pricing — opt-in only).
+**Recommendation:** Default new Bedrock targets to **Claude Sonnet 5** (flagship) / **Claude Opus 5.5** (demanding reasoning; 20% lower standard input/output token prices than Opus 5; [Anthropic reports improved token efficiency](https://claude.com/blog/what-a-task-costs-on-opus-5-5), with actual usage varying by task and effort setting) / **Claude Haiku 5.5** (cost/speed). The Converse envelope is shared, but model-specific request controls and compatibility differ; apply the target contract below before changing models. Do **not** default to Claude Fable 5 (frontier / Mythos-class pricing — opt-in only).
 
 ---
 
@@ -135,3 +138,18 @@ choice or prompted JSON with application schema validation and a bounded retry p
 return an explicit failure if validation cannot be satisfied. If a model-enforced
 schema guarantee is mandatory, select another verified compatible target explicitly.
 Do not substitute Opus 4.8 as an automatic fallback.
+
+## Haiku 5.5 target contract (verified 2026-10-27)
+
+The [AWS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html) lists `anthropic.claude-haiku-5-5` as Active, with **1M context** and **128K maximum output**. On `bedrock-runtime`, select a supported `us.`, `eu.`, `au.`, `jp.`, or `global.` inference profile from the model card's source-region matrix; the bare ID has no in-region runtime endpoint. Global requires permission to route worldwide. `bedrock-mantle` uses the bare ID only in its listed regions. Verify the selected model/profile in the actual account before cutover.
+
+Follow the [Haiku 5.5 migration guide](https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide):
+
+- Omit `temperature`, `top_p`, and `top_k` (including Converse `temperature`/`topP`). Replace manual `thinking: {"type": "enabled", "budget_tokens": N}` with adaptive thinking; control depth with `output_config.effort`. For Converse, pass model-specific controls through `additionalModelRequestFields`. Adaptive thinking defaults to medium effort; reserve output headroom for thinking as well as answer tokens.
+- End messages with a user turn; assistant prefill is rejected even with thinking disabled. Select text blocks by type, preserve signed thinking/tool blocks in tool loops, and handle truncation/refusal explicitly. Haiku 5.5 accepts forced tool choice, but the response then begins with the tool call without a thinking block; do not inherit Opus 5.5's forced-tool restriction.
+- Keep replayed conversations append-only and use the account that produced their thinking blocks (or a linked account). Changes to earlier system/tools/messages can invalidate signatures. For Bedrock computer use, replace `computer_20250124` with `computer_20251124` and its `computer-use-2025-11-24` beta header.
+- Recount target tokens: the newer tokenizer produces approximately 30% more tokens for the same text than Haiku 4.5, and image tokenization also changes. Re-evaluate output limits, retained thinking history, and costs rather than carrying forward source token counts.
+- Apply the **100K prompt boundary**, including cache reads/writes, independently of the 1M context limit. Above 100K, higher input/output/cache rates apply to the whole request. Use the selected Global/Geo rates in `references/vendored/ai/bedrock-pricing-cache.md`; unknown request sizes require both tier scenarios, not a single savings claim.
+- The Bedrock model card lists Standard as the supported service tier; do not assume Batch, Priority, Flex, Reserved, or provisioned capacity from another model's support. Tune effort, stream, verify quotas, and measure first-token/end-to-end latency on representative requests. A model's speed ranking is not a latency guarantee.
+
+Keep Haiku 4.5 as an explicit alternative when a workload must retain its existing behavior and cannot yet satisfy the migration checks; use its own model/profile and prices. These are migration-guide recommendations. The separate `agent-advisor` executable catalogs remain curated independently and are not upgraded by editing this guide.

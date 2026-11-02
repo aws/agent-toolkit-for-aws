@@ -100,6 +100,11 @@ The full protocol — including offline-fallback behavior and how the policy ver
 descriptive: the **caller** owns the fmt/init/validate execution, the fix-and-retry loop, and
 the report write; this unit contributes only the read-only policy stage + verdict shape.
 
+Before infrastructure completion, the caller must run
+`scripts/validate-terraform-report.py` on the saved `validation-report.json` and
+require exit 0. The checker enforces the shared v2 completion contract. Its
+`RUNTIME_REPORT_OK` result does not establish that Terraform ran or passed.
+
 ### Exit codes → caller action
 
 | Exit | stdout        | Meaning            | Caller does                                                                     |
@@ -132,6 +137,38 @@ Each `violations[]` entry is **actionable evidence** — `file` + `line` + `fix_
 caller exactly what to edit. The caller applies the edit; this unit only reports.
 
 ## Policy rules enforced today
+
+### Companion checks for migration artifacts
+
+Migration callers can also run the shared read-only
+`scripts/validate-migration-artifacts.py` against their complete migration
+directory:
+
+```bash
+python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/validate-migration-artifacts.py" \
+  "$MIGRATION_DIR" --json "$MIGRATION_DIR/artifact-validation-status.json"
+```
+
+This produces `ARTIFACTS_OK`, `ARTIFACTS_FAIL`, or `ARTIFACTS_ERROR`, separately
+from the Terraform policy verdict. The caller must inspect the real exit code
+and report; it must not synthesize success. Supported checks cover PostgreSQL
+verification control flow, EB/database security-group wiring, GitHub Actions
+step references and deployment operations, and literal RDS time windows.
+Unsupported structures require review. This is not a general Bash safety proof,
+provider validation, or proof that a deployment succeeds.
+
+Heroku callers add `--require-postgres-script` when PostgreSQL is in the design,
+and `--require-eb-workflow` when GitHub Actions is the selected EB deployment
+method. Other callers must not impose those Heroku-specific requirements.
+The checker never executes a generated migration script or changes input files
+or phase state; only the explicit JSON report path may be written.
+
+For RDS/Aurora generation, `scripts/rds_windows.py` resolves independent daily
+backup and weekly maintenance windows from caller preferences. It rejects
+invalid or explicitly conflicting choices rather than silently changing them.
+Callers use its actual JSON values when authoring Terraform.
+
+### Terraform policy rules
 
 Every rule is **fail-open on ambiguity** — it fires only on unambiguous, in-block literal
 evidence, so a valid stack is never falsely blocked (a `POLICY_FAIL` is a hard completion gate
