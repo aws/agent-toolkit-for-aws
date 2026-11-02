@@ -239,6 +239,21 @@ authorizerConfiguration:
 
 To test a JWT-protected runtime from the CLI: `agentcore invoke --runtime MyAgent --bearer-token <JWT> --payload '{"prompt": "hi"}'`.
 
+In the current v1 CLI, a rejected Bearer token exits with status 1 without printing the
+service's HTTP status or response body. The newest
+`~/.agentcore/logs/output-*.log` records the `httpStatusCode`, but not the body. Until
+the CLI reports the response, use an equivalent unsigned HTTPS request to inspect both:
+
+```bash
+curl --fail-with-body -i \
+  -X POST \
+  "https://bedrock-agentcore.<REGION>.amazonaws.com/runtimes/<RUNTIME_ID>/invocations?accountId=<ACCOUNT_ID>&qualifier=DEFAULT" \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -H "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: $(uuidgen)" \
+  -d '{"prompt":"hi"}'
+```
+
 > [!WARNING]
 > Never leave a gateway on `authorizerType: "NONE"` in production — it's the gateway
 > default when the field is omitted. It allows unauthenticated access: anyone with the
@@ -256,7 +271,7 @@ This is the most common JWT misconfiguration. The right choice depends on what's
 - Token has an `aud` claim → configure **`allowedAudience`** on the runtime
 - Token has both → use `allowedAudience`. The `aud` claim is the standard OIDC audience field; use that as the primary check.
 
-If you pick the wrong one, invocations return 403 even with a valid token — the runtime is validating against a claim the token doesn't have.
+If you pick the wrong one, the runtime rejects the token with HTTP 401 — the token does not satisfy the configured claim validation.
 
 ### Issuer ↔ discovery URL prefix requirement
 
@@ -273,14 +288,17 @@ Fix options:
 
 ### Debugging JWT auth failures
 
-When invocations fail with 403, narrow down which check is failing.
+Start with the HTTP status and exception type:
 
-**`Authorization method mismatch`** — the runtime's auth type and the request's auth type don't match. Two cases:
+**HTTP 403 `AccessDeniedException`: `Authorization method mismatch`** — the runtime's
+auth type and the request's auth type don't match. Two cases:
 
 - The runtime is configured for `AWS_IAM` (or no authorizer) but the caller is sending a Bearer token → reconfigure the runtime for `CUSTOM_JWT`, or have the caller use SigV4.
 - The runtime is configured for `CUSTOM_JWT` but the caller's request is being SigV4-signed → likely the SDK or environment is injecting SigV4 headers alongside the Bearer token. Check for `X-Amz-Date`, `X-Amz-Security-Token`, or `Authorization: AWS4-HMAC-SHA256` in the outbound request. Remove the SigV4 path and send only the Bearer token.
 
-**`Invalid inbound token`** (or similar) — the token was rejected by the JWT validator. Walk through these in order:
+**HTTP 401 `UnrecognizedClientException`** — the JWT validator rejected the token.
+Messages include `Invalid inbound token` and `Token has expired`. Walk through these in
+order:
 
 1. **Issuer ↔ discovery URL prefix** (above) — verify the token's `iss` claim matches the discovery URL's origin
 2. **`allowedClients` vs `allowedAudience`** — is the runtime configured for the right claim for your token format?
