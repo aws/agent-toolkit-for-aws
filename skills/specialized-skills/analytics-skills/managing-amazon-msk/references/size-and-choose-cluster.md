@@ -33,6 +33,8 @@ reporting a wrong broker count.
 
 Flag reference:
 
+- `--region` — region to price against. Default `us-east-1`. Any region works with `--pricing-source api` or `auto`; only `us-east-1` works with `--pricing-source static`.
+- `--pricing-source auto|api|static` — where prices come from. Default `auto` (live rates when credentials are available, embedded `us-east-1` snapshot otherwise). Pass `api` to require live rates and fail loudly without them. Leave it alone otherwise.
 - `--discount-pct N` — apply a Private Pricing Agreement (PPA) or Enterprise Discount Program (EDP) discount of N percent uniformly to every cost dimension (brokers, storage, Tiered Storage, PST, Express data-in, cross-AZ). Default 0, meaning public on-demand pricing. Broker counts and bottlenecks are unaffected. See "Pricing considerations" below.
 - `--broker-classes standard|express|standard,express` — which broker classes to size and report. Default is both. Pass `express` to suppress Standard sizing and Standard recommendations entirely — use this when the customer has already chosen Express or is migrating to Express, so Standard numbers do not appear in the output at all. Pass `standard,express` when the customer asks for a comparison.
 - `--broker-quota N` — change the per-cluster broker quota used to pick a "recommended" instance per class. Default is 60 (the MSK Provisioned default soft quota). The script picks the cheapest instance per class whose broker count fits within the quota.
@@ -49,7 +51,9 @@ Include this whenever you report cost figures from a default run:
 
 Ask for the discount percentage whenever the customer mentions a PPA, EDP, or other negotiated rates, then re-run with `--discount-pct N` and report the discounted figures. Do not guess a discount, and do not apply one the customer did not state. The discount changes cost only — broker counts and bottlenecks are identical.
 
-All figures are us-east-1. Other Regions differ; see the [Amazon MSK pricing page](https://aws.amazon.com/msk/pricing/).
+Figures default to `us-east-1`. Pass `--region` for anything else; rates differ per Region. See the [Amazon MSK pricing page](https://aws.amazon.com/msk/pricing/).
+
+With AWS credentials the script fetches live rates for any Region. Without them it falls back to an embedded `us-east-1` snapshot, and the "Sizing inputs" block reports `pricing source: static` — when it does, tell the customer the rates are a snapshot with that capture date, not confirmed current pricing. Pricing a non-`us-east-1` Region needs credentials; the script errors rather than quoting `us-east-1` rates for another Region.
 
 The narrative steps below explain what the script computes and when each constraint dominates. Use them to interpret the script's output, **never as a substitute for running the script**.
 

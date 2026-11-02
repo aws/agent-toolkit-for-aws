@@ -17,6 +17,7 @@ SDK access, and what to do when the CLI reports the service as unsupported.
 ## Contents
 
 - [Dependency / blast-radius question — facts you MUST surface](#dependency--blast-radius-question--facts-you-must-surface)
+- [Check permissions to access the Context Graph](#check-permissions-to-access-the-context-graph)
 - [What the context graph is](#what-the-context-graph-is)
 - [GetContextGraph API](#getcontextgraph-api)
 - [Reading the graph](#reading-the-graph)
@@ -64,12 +65,49 @@ deliverable IS the explanation below, stated in the answer text, whether or not
   so query for slow or erroring spans along exactly that path to establish which hop
   originates the latency or error.
 - **Use `GetContextGraph`, never X-Ray `GetServiceGraph`.** The Omni topology operation is
-  `GetContextGraph`; if the CLI/SDK errors with an unknown `cloudwatch-omni` service, that
-  is a client-version issue (upgrade botocore/AWS CLI), not a reason to switch products.
+  `GetContextGraph`; if a too-old **AWS CLI** rejects the `cloudwatchomni` command (invalid
+  choice), or **boto3/botocore** raises `UnknownServiceError` for the `cloudwatch-omni`
+  service, that is a client-version issue (upgrade botocore/AWS CLI), not a reason to
+  switch products.
 
 The detailed traversal procedure, direction definitions, and symptom-vs-cause ranking are
 in [Reading the graph](#reading-the-graph) and
 [Using the graph in an investigation](#using-the-graph-in-an-investigation) below.
+
+---
+
+## Check permissions to access the Context Graph
+
+Before you can read the graph, the caller must be able to reach `GetContextGraph` and be
+authorized for it. Three distinct failures refuse the call, they look alike, and each has a
+different fix — read the error, not the symptom. This is the one place these are stated; the
+[GetContextGraph API](#getcontextgraph-api) Errors list and the [Gotchas](#gotchas) point
+back here.
+
+- **403 `AccessDeniedException` — an authorization result.** The operation is reachable,
+  but the caller is not allowed: the access grant or IAM policy is missing
+  `cloudwatch:GetContextGraph`, or — when the Space has a customer-managed KMS key
+  configured — the caller was denied `kms:Decrypt` / `kms:GenerateDataKey` on that key, or
+  the key policy does not allow the encryption context. A key that is merely *disabled* is
+  **not** this cause. Fix the grant, the IAM action, or the key policy; changing the request
+  does not help. AccessDenied here is **never** an "intelligence not enabled" signal —
+  `GetContextGraph` reads topology, which is not behind the Omni Intelligence enablement gate.
+- **404 `UnknownOperationException` — a reachability gate.** The operation is not available
+  to this account, so the server rejects it as if it did not exist. `GetContextGraph` is a
+  public operation, so a server-side 404 is about this account's access to the service, not a
+  malformed request. Do **not** retry or reshape the call; verify the account's current access
+  to CloudWatch Omni instead of assuming a fixed launch state.
+- **A local "unknown service" / invalid-choice error — neither of the above.** The client
+  does not carry the operation: a too-old **AWS CLI** rejects the `cloudwatchomni` command
+  (invalid choice), or **boto3/botocore** raises `UnknownServiceError` for the
+  `cloudwatch-omni` service. This happens **locally**, before any request is sent, so it is
+  neither an authorization result nor a reachability gate. Upgrade the AWS CLI / botocore,
+  and never substitute X-Ray `GetServiceGraph`.
+
+The one-line reading: a **404 is a reachability gate** (the operation is not available to
+this account), a **403 is an authorization result** (it is available, you are not allowed),
+and a local error never reached the service at all. Do not report a 404 as a permissions
+problem, or a 403 as "intelligence not enabled".
 
 ---
 
@@ -280,9 +318,13 @@ graph element to the exact telemetry behind it:
 ### Errors
 
 `ValidationException` (bad range, `endTime` before `startTime`, out-of-range
-`depth`/`maxResults`), `AccessDeniedException` (missing `cloudwatch:GetContextGraph`,
-or the account is not enabled for Omni Intelligence), `ThrottlingException`
-(retryable), `InternalServerException`.
+`depth`/`maxResults`), `ThrottlingException` (retryable), `InternalServerException`.
+
+The three ways the call is *refused* — a 403 `AccessDeniedException` (an authorization
+result, including the customer-KMS case), a 404 `UnknownOperationException` (the service is
+not allowlisted for the account), and a local too-old-client error — are covered once, with
+their fixes, in [Check permissions to access the Context Graph](#check-permissions-to-access-the-context-graph);
+see that section rather than restating them here.
 
 ### CLI form
 
@@ -423,11 +465,12 @@ The graph localizes; queries confirm. Alternate between them, spending the cheap
 call (graph) before the expensive one (telemetry scan).
 
 1. **Start from the symptom.** An alert firing ([alerts.md](alerts.md)) names a
-   query and a Space; a CloudWatch Omni Intelligence insight or anomaly in the console
-   names the affected service(s), severity, and time; a user names a service. Any of
-   these gives you a service name, a Region, and a time window. Listing insights and
-   anomalies is not part of the public API today — read them in the console, then
-   carry the affected service names into the graph call.
+   query and a Space; a CloudWatch Omni Intelligence insight or anomaly names the affected
+   service(s), severity, and time; a user names a service. Any of these gives you a service
+   name, a Region, and a time window. Reading Omni's insights and observations is a separate
+   surface from the topology this file covers — `ListInsights` / `ListObservations`, not
+   `GetContextGraph` — so do not assume the graph call returns them; see
+   [intelligence.md](intelligence.md). Then carry the affected nodes into the graph call.
 
 2. **Fetch the neighborhood.** `get-context-graph` with `nodeFilters.name`,
    `depth: 1`, `includeMetadata: true`, and a window of roughly the incident ± 15
@@ -494,9 +537,14 @@ call (graph) before the expensive one (telemetry scan).
   nothing is instrumented, or telemetry is not reaching this Space yet (see the
   setup order in [concepts.md](concepts.md) — instrumentation started before a
   Space exists delivers nowhere you can see).
-- **`AccessDeniedException` on an otherwise-correct call** means either the
-  principal lacks `cloudwatch:GetContextGraph` or the account is not enabled for
-  Omni Intelligence. Neither is fixed by changing the request.
+- **Access refused? Read the error, not the symptom.** A 403 `AccessDeniedException` (an
+  authorization result, including the customer-KMS case), a 404 `UnknownOperationException`
+  (the operation is not available to this account), and a local "unknown
+  service" / invalid-choice error (a too-old client, failing locally before any request is
+  sent — see also [programmatic-access.md](programmatic-access.md)) are three distinct
+  failures with three distinct fixes, covered in
+  [Check permissions to access the Context Graph](#check-permissions-to-access-the-context-graph).
+  Never fall back to X-Ray `GetServiceGraph`.
 - **Edges can point at nodes that are not on this page.** Edges are nested under
   their `from` node and pagination is by node, so a `to` may reference a `nodeId`
   you have not received yet — or one past your `depth`. Collect every page (or let

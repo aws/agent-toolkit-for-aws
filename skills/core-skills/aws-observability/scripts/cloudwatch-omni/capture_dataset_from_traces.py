@@ -4,11 +4,18 @@
 Bundled skill helper (retrieved via the skill's supplementary-file mechanism and run
 with the agent's shell) for Section 5, Step B "build a dataset from traces". For each
 trace it queries spans from CloudWatch Omni (traces.default) via Omni SQL, reshapes
-them into one AGENTCORE_EVALUATION_PREDEFINED_V1 example (root-span COALESCE for
-input/output, ordered TOOL-name trajectory with adjacent dupes collapsed,
+them into one example (root-span COALESCE for the input, last-finishing AGENT span for the
+expected response, ordered TOOL-name trajectory with adjacent dupes collapsed,
 scenario_id/metadata provenance), validates it, and writes the batch into a NEW dataset
 (--mode create) or an EXISTING one (--mode add). Prints a compact JSON receipt only —
 raw spans never leave this process (kept out of the model's context).
+
+--mode create always creates an AGENTCORE_EVALUATION_PREDEFINED_V1 dataset. --mode add
+first reads the target dataset's immutable schemaType with get-dataset and renders the
+examples in the shape that schema declares — PREDEFINED (nested `turns`) or
+THIRD_PARTY_EVALUATION_V1 (flat `input`/`expected_output`, what the console writes for a
+dataset created from traces). The two shapes are not interchangeable and validation is
+all-or-nothing, so a dataset declaring any other schema is refused by name instead.
 
 Requires boto3 + caller AWS credentials with cloudwatch-omni (Omni SQL query) +
 bedrock-agentcore-control (dataset write). The caller must have an access grant on the
@@ -44,7 +51,13 @@ from botocore.exceptions import BotoCoreError, ClientError
 # dead (non-str skipped) or inject a raw serialized-array blob as the turn text.
 INPUT_KEYS = ("input.value", "gen_ai.input_value")
 OUTPUT_KEYS = ("output.value", "gen_ai.output_value")
-SCHEMA_TYPE = "AGENTCORE_EVALUATION_PREDEFINED_V1"
+PREDEFINED_SCHEMA = "AGENTCORE_EVALUATION_PREDEFINED_V1"
+THIRD_PARTY_SCHEMA = "THIRD_PARTY_EVALUATION_V1"
+# --mode create always creates a PREDEFINED dataset; --mode add renders into whichever of
+# these two the target dataset declares. Any other schemaType (e.g. the SIMULATED one, which
+# needs an author-written actor_profile.goal) cannot be derived from a trace at all.
+CREATE_SCHEMA_TYPE = PREDEFINED_SCHEMA
+ADD_SCHEMAS = (PREDEFINED_SCHEMA, THIRD_PARTY_SCHEMA)
 MAX_TRACES = 25  # single write batch; excess is reported, never silently dropped
 SPAN_ROW_LIMIT = 1000  # fetch LIMIT+1 (1001) so an exactly-full result is detectable as truncated
 # Service limits (bedrock-agentcore-control datasets): each example must serialize to <= 1 MB
@@ -75,8 +88,8 @@ def _attr_text(span, keys):
     return None
 
 
-def _scan(spans, keys, reverse=False):
-    for s in reversed(spans) if reverse else spans:
+def _scan(spans, keys):
+    for s in spans:
         t = _attr_text(s, keys)
         if t:
             return t
@@ -85,6 +98,37 @@ def _scan(spans, keys, reverse=False):
 
 def _root(spans):
     return next((s for s in spans if not s.get("parentSpanId")), spans[0] if spans else None)
+
+
+def _nano_key(v):
+    """Sort key for a nanosecond timestamp string: compare by magnitude, not lexically."""
+    return (len(v), v) if isinstance(v, str) else (0, "")
+
+
+def _final_output(spans):
+    """The trace's final answer: output of the last-FINISHING AGENT span.
+
+    Ranking on *end* time, not start time, is the point: the span that produced the answer is
+    the outermost one, which starts early and finishes last. Ordering by start time instead
+    picks the innermost leaf the framework happened to invoke last — on a LangGraph trace that
+    is the conditional-edge node (`should_continue`), whose output is the routing token
+    `__end__`, and the helper would store that 7-character token as ground truth for every
+    example.
+
+    AGENT kind is preferred over the root span because the root is so often neither: on an
+    HTTP-served agent it is the `POST` span, which carries no output at all, and on a trace
+    whose spans are all parented the root fallback is the earliest graph span, whose output is
+    the whole accumulated graph state rather than the answer. When the root *is* the agent span
+    it also ends last among AGENT spans, so it is still selected. Falls back to the root, then
+    to the last-finishing span of any kind, for frameworks that emit no span kind.
+    """
+    by_end = sorted(spans, key=lambda s: _nano_key(s.get("end")))
+    agents = [s for s in by_end if _span_kind(s) == "AGENT"]
+    for s in reversed(agents):
+        t = _attr_text(s, OUTPUT_KEYS)
+        if t:
+            return t
+    return _attr_text(_root(spans), OUTPUT_KEYS) or _scan(list(reversed(by_end)), OUTPUT_KEYS)
 
 
 def _collapse_adjacent(items):
@@ -101,10 +145,10 @@ def _span_kind(s):
 
 
 def to_example(trace_id, spans, partial=False):
-    spans = sorted(spans, key=lambda s: s.get("ts") or "")  # start-time order
+    spans = sorted(spans, key=lambda s: _nano_key(s.get("ts")))  # start-time order
     root = _root(spans)
     turn = {"input": _attr_text(root, INPUT_KEYS) or _scan(spans, INPUT_KEYS) or ""}
-    out = _attr_text(root, OUTPUT_KEYS) or _scan(spans, OUTPUT_KEYS, reverse=True)
+    out = _final_output(spans)
     if out:
         turn["expected_response"] = out
     session_id = next(
@@ -132,14 +176,46 @@ def to_example(trace_id, spans, partial=False):
     return example
 
 
-def invalid(example):
-    """Return an error string if the example fails the PREDEFINED gate, else None."""
-    turns = example.get("turns")
-    if not turns:
-        return "no turns"
-    val = turns[0].get("input")
+def to_third_party(example):
+    """Re-render a PREDEFINED example in the THIRD_PARTY_EVALUATION_V1 shape.
+
+    That schema is flat: the turn's `input` sits at the top level (the service rejects the
+    whole batch with "Required field 'input' is missing from example content" when it is
+    nested in `turns`) and the ground-truth response is `expected_output`. `scenario_id`,
+    `metadata` and `expected_trajectory` carry over unchanged — the same shape the console
+    writes when it builds a dataset from traces. Trace-derived examples are always
+    single-turn, so the flattening is lossless.
+    """
+    turn = (example.get("turns") or [{}])[0]
+    flat = {"input": turn.get("input"), "scenario_id": example.get("scenario_id")}
+    if turn.get("expected_response"):
+        flat["expected_output"] = turn["expected_response"]
+    if example.get("metadata"):
+        flat["metadata"] = example["metadata"]
+    if example.get("expected_trajectory"):
+        flat["expected_trajectory"] = example["expected_trajectory"]
+    return flat
+
+
+def invalid(example, schema_type=PREDEFINED_SCHEMA):
+    """Return an error string if the example fails this schema's gate, else None.
+
+    Each schema keeps the input in a different place, so the gate has to know which one the
+    example was rendered for: PREDEFINED nests it under `turns[0].input`, THIRD_PARTY keeps it
+    top-level. The service only checks that the field is *present* on a third-party dataset —
+    an empty input is a useless example either way, so reject it here.
+    """
+    if schema_type == THIRD_PARTY_SCHEMA:
+        val = example.get("input")
+        missing_input = "missing a non-empty input"
+    else:
+        turns = example.get("turns")
+        if not turns:
+            return "no turns"
+        val = turns[0].get("input")
+        missing_input = "turn 1 missing a non-empty input"
     if not ((isinstance(val, str) and val.strip()) or (isinstance(val, dict) and val)):
-        return "turn 1 missing a non-empty input"
+        return missing_input
     # The service rejects the WHOLE batch if any single example exceeds 1 MB serialized.
     size = len(json.dumps(example, default=str).encode("utf-8"))
     if size > MAX_EXAMPLE_BYTES:
@@ -159,7 +235,7 @@ def fetch_spans_by_trace(omni, trace_ids, window_days):
     """
     quoted = ", ".join("'%s'" % t for t in trace_ids)  # ids are validated hex — safe to interpolate
     sql = (
-        "SELECT traceId, spanId, parentSpanId, startTimeUnixNano, "
+        "SELECT traceId, spanId, parentSpanId, startTimeUnixNano, endTimeUnixNano, "
         "attributes['openinference.span.kind'] AS oi_span_kind, "
         "attributes['aws.genai.span_kind'] AS aws_genai_span_kind, "
         "attributes['tool.name'] AS tool_name, "
@@ -270,6 +346,8 @@ def fetch_spans_by_trace(omni, trace_ids, window_days):
                 "spanId": row.get("spanId"),
                 "parentSpanId": row.get("parentSpanId") or None,
                 "ts": row.get("startTimeUnixNano"),
+                # end time ranks the final-answer span (_final_output); start time cannot
+                "end": row.get("endTimeUnixNano"),
                 "attributes": attrs,
             }
         )
@@ -292,15 +370,35 @@ def _resolve_dataset_id(ctl, id_or_name):
             _die({"error": "dataset %r not found" % id_or_name})
 
 
-def _count_examples(ctl, dataset_id):
-    """Current example count of the dataset DRAFT (get_dataset.exampleCount), or None if unknown.
-    Best-effort: a failed lookup must not block the write -- the service enforces the cap anyway."""
+def _dataset_schema_and_count(ctl, dataset_id):
+    """Read the target dataset's declared schemaType and its DRAFT example count.
+
+    The schemaType read is NOT best-effort: it is fixed at creation, immutable, and decides
+    where the example's input goes, so building examples without it is a guess that rejects the
+    whole batch whenever it is wrong (validation is all-or-nothing). Refuse the write, naming
+    the schema, rather than guess. The count stays tolerant of a missing or odd value -- the
+    service enforces the 1000-example cap anyway.
+    """
     try:
         resp = ctl.get_dataset(datasetId=dataset_id)
-    except (BotoCoreError, ClientError):
-        return None
+    except (BotoCoreError, ClientError) as e:
+        _die({
+            "error": "get_dataset failed for %s: %s. --mode add must read the dataset's "
+            "schemaType before building examples (it decides the example shape, and the wrong "
+            "shape rejects the whole batch), so this lookup cannot be skipped -- grant "
+            "bedrock-agentcore-control GetDataset on this dataset and re-run." % (dataset_id, e)
+        })
+    schema = resp.get("schemaType")
+    if schema not in ADD_SCHEMAS:
+        _die({
+            "error": "dataset %s declares schemaType %r; this helper can only build %s examples "
+            "from traces. Add to a dataset declaring one of those, or create a new one with "
+            "--mode create (which creates %s)."
+            % (dataset_id, schema, " or ".join(ADD_SCHEMAS), CREATE_SCHEMA_TYPE),
+            "schemaType": schema,
+        })
     count = resp.get("exampleCount")
-    return count if isinstance(count, int) else None
+    return schema, (count if isinstance(count, int) else None)
 
 
 def main():
@@ -365,6 +463,14 @@ def main():
     omni = session.client("cloudwatchomni")
     ctl = session.client("bedrock-agentcore-control")
 
+    # Resolve the target dataset's immutable schemaType BEFORE the (minutes-long) span query:
+    # it decides the shape every example is built in, and a dataset declaring a schema this
+    # helper cannot render should fail before any Omni work is paid for.
+    schema_type, existing, dsid = CREATE_SCHEMA_TYPE, None, None
+    if args.mode == "add":
+        dsid = _resolve_dataset_id(ctl, args.dataset_id or args.dataset_name)
+        schema_type, existing = _dataset_schema_and_count(ctl, dsid)
+
     by_trace, truncated, boundary = fetch_spans_by_trace(omni, uniq, args.window_days)
     if truncated:
         notes.append(
@@ -395,7 +501,9 @@ def main():
         # Only the boundary trace can be mid-cut; every lower-sorted trace is complete.
         partial = truncated and boundary is not None and tid == boundary
         example = to_example(tid, spans, partial=partial)
-        err = invalid(example)
+        if schema_type == THIRD_PARTY_SCHEMA:
+            example = to_third_party(example)
+        err = invalid(example, schema_type)
         if err:
             conversion_errors.append({"traceId": tid, "error": err})
             continue
@@ -408,7 +516,7 @@ def main():
     if args.mode == "create":
         kwargs = {
             "datasetName": args.dataset_name,
-            "schemaType": SCHEMA_TYPE,
+            "schemaType": CREATE_SCHEMA_TYPE,
             "source": source,
             "clientToken": str(uuid4()),
         }
@@ -422,11 +530,10 @@ def main():
             "mode": "create",
             "datasetId": resp.get("datasetId"),
             "status": resp.get("status"),
+            "schemaType": schema_type,
             "examplesWritten": len(examples),
         }
     else:
-        dsid = _resolve_dataset_id(ctl, args.dataset_id or args.dataset_name)
-        existing = _count_examples(ctl, dsid)
         if existing is not None and existing + len(examples) > MAX_DATASET_EXAMPLES:
             _die({
                 "error": "dataset %s already holds %d examples; adding %d would exceed the service cap of %d "
@@ -440,6 +547,7 @@ def main():
             _die(
                 {
                     "error": "add_dataset_examples failed: %s" % e,
+                    "schemaType": schema_type,  # the shape the examples were built in
                     "conversionErrors": conversion_errors,
                 }
             )
@@ -447,6 +555,7 @@ def main():
         receipt = {
             "mode": "add",
             "datasetId": dsid,
+            "schemaType": schema_type,
             "examplesWritten": len(example_ids) or len(examples),
             "exampleIds": example_ids,
         }

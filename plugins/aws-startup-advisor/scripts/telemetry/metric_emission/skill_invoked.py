@@ -105,13 +105,17 @@ def skill_name(argv, payload):
 def skill_id(name):
     """Map a host's skill name onto a PluginSkillId, or None if it is not ours.
 
-    Handles the qualified form, `aws-startup-advisor:gcp-to-aws`. An unrecognized
-    qualifier is not a reason to drop the event — hosts qualify differently and
-    undocumentedly — but an unrecognized name is.
+    Accept bare names and this plugin's qualified names. A same-named skill
+    owned by another plugin must not count as Startup Advisor usage.
     """
     if not isinstance(name, str):
         return None
-    return SKILL_IDS.get(name.strip().rsplit(":", 1)[-1].strip().lower())
+    name = name.strip().lower()
+    if ":" in name:
+        qualifier, name = name.split(":", 1)
+        if qualifier.strip() != "aws-startup-advisor":
+            return None
+    return SKILL_IDS.get(name.strip())
 
 
 def main(argv, stdin=None):

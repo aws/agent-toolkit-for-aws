@@ -1,14 +1,43 @@
 import argparse
+import json
 import math
+import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from datetime import date
+from typing import Dict, List, Optional, Tuple
 
-# NOTE: Pricing Region - ALL PRICING IN THIS FILE IS BASED ON us-east-1 (N. Virginia) RATES.
-# Costs in other regions will differ. For another region, replace the relevant constants and per-instance
-# `price_per_hr` values with that region's published pricing
-# (see https://aws.amazon.com/msk/pricing/ and https://aws.amazon.com/ec2/pricing/).
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
 
-PRICING_REGION = "us-east-1"
+    _BOTO3_IMPORT_ERROR: Optional[str] = None
+except ImportError as _exc:  # pragma: no cover - exercised only in offline environments
+    boto3 = None
+    _BOTO3_IMPORT_ERROR = str(_exc)
+
+    class _Boto3Missing(Exception):
+        """Placeholder so the `except` clauses below stay valid without botocore."""
+
+    BotoCoreError = ClientError = _Boto3Missing
+
+# NOTE: Pricing Source - there are two interchangeable pricing pathways, selected with
+# --pricing-source:
+#
+#   api    - broker, storage, and data-transfer prices are fetched live from the AWS Pricing
+#            API (boto3 `pricing` client's GetProducts) for whichever region is passed via
+#            --region. Requires boto3 plus credentials with the `pricing:GetProducts`
+#            permission. Accurate for every region, and never stale.
+#   static - prices come from the STATIC_PRICING_* tables embedded below. Requires no
+#            credentials, no network, and not even boto3, but covers only
+#            STATIC_PRICING_REGION and goes stale whenever AWS changes a rate.
+#   auto   - (default) try `api`, fall back to `static` with a warning when the Pricing API
+#            is unreachable or unauthorized.
+#
+# The Price List API itself is only served from the us-east-1 (or ap-south-1) endpoint
+# regardless of the target region — the target region is selected via a
+# `regionCode`/`fromRegionCode` filter on the request, not the client's region. See
+# fetch_pricing() below. Broker capacity specs (EBS/NIC throughput, partition limits) are
+# NOT exposed by the Pricing API and remain hardcoded in INSTANCE_SPECS.
 
 # NOTE: Unit Convention - All throughput is in **MiB/s**, all storage is in **GiB**
 # Conversions use the binary factor 1024 (e.g., MiB/s × 3600 / 1024 → GiB/h).
@@ -20,17 +49,20 @@ PRICING_REGION = "us-east-1"
 # strings, and explain output use the precise unit names.
 
 # NOTE: Instance Specifications
+# These are physical broker capacity limits, not pricing — the AWS Pricing API does not
+# expose EBS/NIC throughput caps or partition limits, so they stay hardcoded here. On-demand
+# instance price (USD/hr) is fetched live per-region by fetch_pricing() instead of stored here.
+#
 # Standard (M5 / M7g):
 #   ebs_throughput_mbs     – maximum provisionable EBS volume throughput per broker (MiB/s);
 #                            also used as the documented PST cap for the instance
 #   network_throughput_mbs – NIC bandwidth available to the broker (MiB/s)
 #   rec_partitions         – recommended max partitions per broker (leaders + followers)
 #   max_partitions         – hard max partitions per broker
-#   price_per_hr           – on-demand instance price (USD/hr)
 #
 # Express (M7g):
 #   ingress_mbs    – max producer throughput per broker (MiB/s); used directly
-#   rec_partitions, max_partitions, price_per_hr as above
+#   rec_partitions, max_partitions as above
 
 INSTANCE_SPECS = {
     "kafka.m5.large": {
@@ -38,147 +70,125 @@ INSTANCE_SPECS = {
         "network_throughput_mbs": 96,
         "rec_partitions": 1000,
         "max_partitions": 1500,
-        "price_per_hr": 0.21,
     },
     "kafka.m5.xlarge": {
         "ebs_throughput_mbs": 144.0,
         "network_throughput_mbs": 160,
         "rec_partitions": 1000,
         "max_partitions": 1500,
-        "price_per_hr": 0.42,
     },
     "kafka.m5.2xlarge": {
         "ebs_throughput_mbs": 250.0,
         "network_throughput_mbs": 320,
         "rec_partitions": 2000,
         "max_partitions": 3000,
-        "price_per_hr": 0.84,
     },
     "kafka.m5.4xlarge": {
         "ebs_throughput_mbs": 593.75,
         "network_throughput_mbs": 640,
         "rec_partitions": 4000,
         "max_partitions": 6000,
-        "price_per_hr": 1.68,
     },
     "kafka.m5.8xlarge": {
         "ebs_throughput_mbs": 850.0,
         "network_throughput_mbs": 1280,
         "rec_partitions": 4000,
         "max_partitions": 6000,
-        "price_per_hr": 3.36,
     },
     "kafka.m5.12xlarge": {
         "ebs_throughput_mbs": 1000.0,
         "network_throughput_mbs": 1536,
         "rec_partitions": 4000,
         "max_partitions": 6000,
-        "price_per_hr": 5.04,
     },
     "kafka.m5.16xlarge": {
         "ebs_throughput_mbs": 1000.0,
         "network_throughput_mbs": 2560,
         "rec_partitions": 4000,
         "max_partitions": 6000,
-        "price_per_hr": 6.72,
     },
     "kafka.m5.24xlarge": {
         "ebs_throughput_mbs": 1000.0,
         "network_throughput_mbs": 3200,
         "rec_partitions": 4000,
         "max_partitions": 4000,
-        "price_per_hr": 10.08,
     },
     "kafka.m7g.large": {
         "ebs_throughput_mbs": 78.75,
         "network_throughput_mbs": 117,
         "rec_partitions": 1000,
         "max_partitions": 1500,
-        "price_per_hr": 0.204,
     },
     "kafka.m7g.xlarge": {
         "ebs_throughput_mbs": 156.25,
         "network_throughput_mbs": 234,
         "rec_partitions": 1000,
         "max_partitions": 1500,
-        "price_per_hr": 0.408,
     },
     "kafka.m7g.2xlarge": {
         "ebs_throughput_mbs": 312.5,
         "network_throughput_mbs": 469,
         "rec_partitions": 2000,
         "max_partitions": 3000,
-        "price_per_hr": 0.816,
     },
     "kafka.m7g.4xlarge": {
         "ebs_throughput_mbs": 625.0,
         "network_throughput_mbs": 937,
         "rec_partitions": 4000,
         "max_partitions": 6000,
-        "price_per_hr": 1.632,
     },
     "kafka.m7g.8xlarge": {
         "ebs_throughput_mbs": 1000.0,
         "network_throughput_mbs": 1875,
         "rec_partitions": 4000,
         "max_partitions": 6000,
-        "price_per_hr": 3.264,
     },
     "kafka.m7g.12xlarge": {
         "ebs_throughput_mbs": 1000.0,
         "network_throughput_mbs": 2812,
         "rec_partitions": 4000,
         "max_partitions": 6000,
-        "price_per_hr": 4.896,
     },
     "kafka.m7g.16xlarge": {
         "ebs_throughput_mbs": 1000.0,
         "network_throughput_mbs": 3750,
         "rec_partitions": 4000,
         "max_partitions": 6000,
-        "price_per_hr": 6.528,
     },
     "kafka.m7g.large (Express)": {
         "ingress_mbs": 15.625,
         "rec_partitions": 1000,
         "max_partitions": 1500,
-        "price_per_hr": 0.408,
     },
     "kafka.m7g.xlarge (Express)": {
         "ingress_mbs": 31.25,
         "rec_partitions": 1000,
         "max_partitions": 2000,
-        "price_per_hr": 0.816,
     },
     "kafka.m7g.2xlarge (Express)": {
         "ingress_mbs": 62.5,
         "rec_partitions": 2500,
         "max_partitions": 4000,
-        "price_per_hr": 1.632,
     },
     "kafka.m7g.4xlarge (Express)": {
         "ingress_mbs": 125.0,
         "rec_partitions": 6000,
         "max_partitions": 8000,
-        "price_per_hr": 3.264,
     },
     "kafka.m7g.8xlarge (Express)": {
         "ingress_mbs": 250.0,
         "rec_partitions": 12000,
         "max_partitions": 16000,
-        "price_per_hr": 6.528,
     },
     "kafka.m7g.12xlarge (Express)": {
         "ingress_mbs": 375.0,
         "rec_partitions": 16000,
         "max_partitions": 24000,
-        "price_per_hr": 9.792,
     },
     "kafka.m7g.16xlarge (Express)": {
         "ingress_mbs": 500.0,
         "rec_partitions": 20000,
         "max_partitions": 32000,
-        "price_per_hr": 13.056,
     },
 }
 
@@ -194,13 +204,6 @@ PST_ELIGIBLE = {
     "kafka.m7g.16xlarge",
     "kafka.m5.24xlarge",
 }
-
-# Cost constants for sizing dimensions in us-east-1
-EBS_COST_PER_GB_MONTH = 0.10
-TIERED_STORAGE_COST_PER_GB_MONTH = 0.023
-EXPRESS_DATA_IN_PER_GB = 0.01
-CROSS_AZ_COST_PER_GB = 0.02
-PST_COST_PER_MBS_MONTH = 0.08
 
 
 def discount_multiplier(discount_pct: float) -> float:
@@ -321,6 +324,449 @@ class SizingInputs:
                 )
 
 
+# Published on https://aws.amazon.com/ec2/pricing/on-demand/ for virtually every commercial
+# region, even where the Price List API doesn't publish a distinct IntraRegion SKU (see
+# fetch_pricing()'s cross-AZ fallback).
+FALLBACK_CROSS_AZ_COST_PER_GB_ONE_WAY = 0.01
+
+
+@dataclass
+class Pricing:
+    """Pricing for one region, from either pricing pathway.
+
+    Built by fetch_pricing() (live AWS Pricing API) or static_pricing() (embedded table).
+    `source` records which, so the output can label figures honestly.
+
+    broker_price_per_hr is keyed by INSTANCE_SPECS instance type (e.g. "kafka.m5.large",
+    "kafka.m7g.large (Express)"). Instance types with no pricing available in the region
+    are omitted from the dict and excluded from sizing.
+    """
+
+    region: str
+    broker_price_per_hr: Dict[str, float] = field(default_factory=dict)
+    ebs_cost_per_gb_month: float = 0.0
+    tiered_storage_cost_per_gb_month: float = 0.0
+    express_storage_cost_per_gb_month: float = 0.0
+    express_data_in_per_gb: float = 0.0
+    cross_az_cost_per_gb: float = 0.0
+    pst_cost_per_mbs_month: float = 0.0
+    source: str = "api"
+
+
+# ─── Pricing Errors ───────────────────────────────────────────────────────────
+
+
+class PricingError(RuntimeError):
+    """Base class for every pricing-resolution failure."""
+
+
+class PricingUnavailableError(PricingError):
+    """The Pricing API pathway as a whole is unusable.
+
+    Raised for missing/expired credentials, a missing `pricing:GetProducts` permission,
+    throttling, an unreachable endpoint, or boto3 not being installed. These are the
+    conditions `--pricing-source auto` recovers from by falling back to static pricing.
+    """
+
+
+class PricingDimensionError(PricingError):
+    """The Pricing API works, but one specific price could not be resolved.
+
+    Raised when a filter combination returns no products, or a product carries no
+    OnDemand price dimension. Distinct from PricingUnavailableError so that a
+    credentials failure can never be mistaken for a genuinely unpublished SKU — see
+    fetch_pricing()'s cross-AZ handler, which recovers from this error only.
+    """
+
+
+# ─── Static (credential-free) Pricing ─────────────────────────────────────────
+
+# Embedded public on-demand rates used by `--pricing-source static` and by the `auto`
+# fallback. This pathway needs no credentials, no network access, and no boto3, which makes
+# the script usable in offline, air-gapped, and evaluation environments — but the rates are
+# a point-in-time snapshot of ONE region and go stale whenever AWS republishes a price.
+#
+# Captured from the AWS Price List API (GetProducts) on the date below and cross-checked
+# against the worked examples on https://aws.amazon.com/msk/pricing/. To refresh, run with
+# `--pricing-source api --emit-static-pricing` and paste the output back over these tables.
+STATIC_PRICING_REGION = "us-east-1"
+STATIC_PRICING_CAPTURED = "2026-10-05"
+
+STATIC_BROKER_PRICE_PER_HR = {
+    "kafka.m5.large": 0.21,
+    "kafka.m5.xlarge": 0.42,
+    "kafka.m5.2xlarge": 0.84,
+    "kafka.m5.4xlarge": 1.68,
+    "kafka.m5.8xlarge": 3.36,
+    "kafka.m5.12xlarge": 5.04,
+    "kafka.m5.16xlarge": 6.73,
+    "kafka.m5.24xlarge": 10.08,
+    "kafka.m7g.large": 0.204,
+    "kafka.m7g.xlarge": 0.408,
+    "kafka.m7g.2xlarge": 0.816,
+    "kafka.m7g.4xlarge": 1.632,
+    "kafka.m7g.8xlarge": 3.264,
+    "kafka.m7g.12xlarge": 4.896,
+    "kafka.m7g.16xlarge": 6.528,
+    "kafka.m7g.large (Express)": 0.408,
+    "kafka.m7g.xlarge (Express)": 0.816,
+    "kafka.m7g.2xlarge (Express)": 1.632,
+    "kafka.m7g.4xlarge (Express)": 3.264,
+    "kafka.m7g.8xlarge (Express)": 6.528,
+    "kafka.m7g.12xlarge (Express)": 9.792,
+    "kafka.m7g.16xlarge (Express)": 13.056,
+}
+
+# Shared (non-per-instance) dimensions. cross_az_cost_per_gb is already doubled, because
+# EC2 Regional data transfer bills both the sending and the receiving side of an AZ
+# boundary — see the note in fetch_pricing().
+STATIC_SHARED_PRICING = {
+    "ebs_cost_per_gb_month": 0.10,
+    "tiered_storage_cost_per_gb_month": 0.06,
+    "express_storage_cost_per_gb_month": 0.10,
+    "express_data_in_per_gb": 0.01,
+    "cross_az_cost_per_gb": FALLBACK_CROSS_AZ_COST_PER_GB_ONE_WAY * 2,
+    "pst_cost_per_mbs_month": 0.08,
+}
+
+
+def _assert_static_region(region: str) -> None:
+    """Refuse to price a region the embedded table does not actually cover.
+
+    Silently applying STATIC_PRICING_REGION rates to another region would produce
+    confidently wrong dollar figures, and this script's output is reported to customers
+    verbatim, so this is a hard error rather than a warning.
+    """
+    if region != STATIC_PRICING_REGION:
+        raise PricingError(
+            f"static pricing covers only {STATIC_PRICING_REGION}, but --region {region} "
+            f"was requested. {region} rates differ, so reusing {STATIC_PRICING_REGION} "
+            "figures would be wrong. Re-run with --pricing-source api (requires AWS "
+            "credentials with pricing:GetProducts), or size against "
+            f"--region {STATIC_PRICING_REGION}."
+        )
+
+
+def static_pricing(region: str, broker_classes: List[str]) -> Pricing:
+    """Build a Pricing object from the embedded tables, with no AWS calls whatsoever."""
+    _assert_static_region(region)
+
+    selected_groups = {cls for group in broker_classes for cls in BROKER_CLASS_GROUPS[group]}
+    need_standard = bool({"m5_standard", "m7g_standard"} & selected_groups)
+    need_express = "express" in selected_groups
+
+    broker_price_per_hr: Dict[str, float] = {}
+    for instance_type in INSTANCE_SPECS:
+        cls = _classify(instance_type)
+        if cls == "express" and not need_express:
+            continue
+        if cls in ("m5_standard", "m7g_standard") and not need_standard:
+            continue
+        price = STATIC_BROKER_PRICE_PER_HR.get(instance_type)
+        if price is None:
+            print(
+                f"WARNING: no static pricing recorded for {instance_type}; "
+                "excluding from sizing",
+                file=sys.stderr,
+            )
+            continue
+        broker_price_per_hr[instance_type] = price
+
+    shared = dict(STATIC_SHARED_PRICING)
+    # Zero out the dimensions the selected broker classes cannot incur, mirroring
+    # fetch_pricing() so both pathways yield identical Pricing shapes.
+    if not need_standard:
+        shared["ebs_cost_per_gb_month"] = 0.0
+        shared["tiered_storage_cost_per_gb_month"] = 0.0
+        shared["pst_cost_per_mbs_month"] = 0.0
+    if not need_express:
+        shared["express_storage_cost_per_gb_month"] = 0.0
+        shared["express_data_in_per_gb"] = 0.0
+
+    return Pricing(
+        region=region,
+        broker_price_per_hr=broker_price_per_hr,
+        source="static",
+        **shared,
+    )
+
+
+# ─── AWS Pricing API Lookups ───────────────────────────────────────────────────
+
+
+def _compute_family(instance_type: str) -> str:
+    """Map an INSTANCE_SPECS key to the Pricing API's `computeFamily` attribute.
+
+    "kafka.m5.large" -> "m5.large"; "kafka.m7g.large (Express)" -> "express.m7g.large".
+    """
+    suffix = " (Express)"
+    if instance_type.endswith(suffix):
+        base = instance_type[: -len(suffix)]
+        if base.startswith("kafka."):
+            base = base[len("kafka.") :]
+        return f"express.{base}"
+    if instance_type.startswith("kafka."):
+        return instance_type[len("kafka.") :]
+    return instance_type
+
+
+_pricing_client = None
+
+# ClientError codes that mean "this caller cannot use the Pricing API", as opposed to
+# "this particular price does not exist". These make the whole api pathway unusable and so
+# trigger the `auto` fallback to static pricing.
+_UNAVAILABLE_ERROR_CODES = frozenset(
+    {
+        "AccessDenied",
+        "AccessDeniedException",
+        "UnauthorizedOperation",
+        "UnrecognizedClientException",
+        "InvalidClientTokenId",
+        "InvalidSignatureException",
+        "ExpiredToken",
+        "ExpiredTokenException",
+        "RequestExpired",
+        "ThrottlingException",
+        "Throttling",
+        "TooManyRequestsException",
+        "ServiceUnavailable",
+        "InternalFailure",
+    }
+)
+
+
+def _get_pricing_client():
+    global _pricing_client
+    if boto3 is None:
+        raise PricingUnavailableError(
+            f"boto3 is not installed ({_BOTO3_IMPORT_ERROR}), so live pricing cannot be "
+            "fetched. Install boto3, or re-run with --pricing-source static to use the "
+            f"embedded {STATIC_PRICING_REGION} rates."
+        )
+    if _pricing_client is None:
+        _pricing_client = boto3.client("pricing", region_name="us-east-1")
+    return _pricing_client
+
+
+def _get_products(service_code: str, filters: List[Tuple[str, str]]) -> List[dict]:
+    """Call the Pricing API's GetProducts and return the parsed product list.
+
+    Requires boto3 and credentials with the `pricing:GetProducts` permission. The
+    Price List API is only served from the us-east-1 (or ap-south-1) endpoint
+    regardless of which region's prices are being requested — the target region
+    is selected via a `regionCode`/`fromRegionCode` filter, not the client region.
+
+    Raises PricingUnavailableError when the API is unusable (credentials, permissions,
+    throttling, connectivity) and PricingDimensionError for anything else, so callers
+    can tell a broken pathway apart from an unpublished SKU.
+    """
+    client = _get_pricing_client()
+    api_filters = [
+        {"Type": "TERM_MATCH", "Field": field_name, "Value": value} for field_name, value in filters
+    ]
+    try:
+        products: List[dict] = []
+        paginator = client.get_paginator("get_products")
+        for page in paginator.paginate(ServiceCode=service_code, Filters=api_filters):
+            products += [json.loads(item) for item in page["PriceList"]]
+        return products
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        detail = (
+            f"Pricing API GetProducts failed for service={service_code} "
+            f"filters={filters}: {exc}"
+        )
+        if code in _UNAVAILABLE_ERROR_CODES:
+            raise PricingUnavailableError(detail) from exc
+        raise PricingDimensionError(detail) from exc
+    except BotoCoreError as exc:
+        # botocore-level failures are always transport/credential problems — a SKU that
+        # does not exist comes back as an empty PriceList, not an exception.
+        raise PricingUnavailableError(
+            f"Pricing API GetProducts failed for service={service_code} "
+            f"filters={filters}: {exc}"
+        ) from exc
+
+
+def _price_per_unit_usd(product: dict) -> float:
+    for term in product.get("terms", {}).get("OnDemand", {}).values():
+        for dim in term.get("priceDimensions", {}).values():
+            return float(dim["pricePerUnit"]["USD"])
+    sku = product.get("product", {}).get("sku", "unknown")
+    raise PricingDimensionError(f"no OnDemand priceDimensions found in pricing product (sku={sku})")
+
+
+def _fetch_single_price(service_code: str, filters: List[Tuple[str, str]], context: str) -> float:
+    products = _get_products(service_code, filters)
+    if not products:
+        raise PricingDimensionError(
+            f"No pricing found for {context} (service={service_code}, filters={filters}). "
+            "Check that the region and dimension are correct/available."
+        )
+    return _price_per_unit_usd(products[0])
+
+
+def fetch_pricing(region: str, broker_classes: List[str]) -> Pricing:
+    """Fetch live on-demand pricing for *region*, scoped to the selected broker classes.
+
+    Broker prices are fetched in a single `aws pricing get-products` call per region
+    (filtered only by regionCode + operation=RunBroker) and matched locally by
+    computeFamily, rather than one call per instance type.
+    """
+    selected_groups = {cls for group in broker_classes for cls in BROKER_CLASS_GROUPS[group]}
+    need_standard = bool({"m5_standard", "m7g_standard"} & selected_groups)
+    need_express = "express" in selected_groups
+
+    broker_price_per_hr: Dict[str, float] = {}
+    if need_standard or need_express:
+        broker_products = _get_products(
+            "AmazonMSK", [("regionCode", region), ("operation", "RunBroker")]
+        )
+        price_by_compute_family = {
+            attrs["computeFamily"]: _price_per_unit_usd(p)
+            for p in broker_products
+            if (attrs := p["product"]["attributes"]).get("computeFamily")
+        }
+        for instance_type in INSTANCE_SPECS:
+            cls = _classify(instance_type)
+            if cls == "express" and not need_express:
+                continue
+            if cls in ("m5_standard", "m7g_standard") and not need_standard:
+                continue
+            compute_family = _compute_family(instance_type)
+            if compute_family in price_by_compute_family:
+                broker_price_per_hr[instance_type] = price_by_compute_family[compute_family]
+            else:
+                print(
+                    f"WARNING: no {region} pricing found for {instance_type} "
+                    f"(computeFamily={compute_family}); excluding from sizing",
+                    file=sys.stderr,
+                )
+
+    ebs_cost = tiered_cost = pst_cost = 0.0
+    express_storage_cost = express_data_in = 0.0
+    if need_standard:
+        ebs_cost = _fetch_single_price(
+            "AmazonMSK",
+            [("regionCode", region), ("operation", "RunVolume"), ("storageFamily", "GP2")],
+            context="EBS (GP2) storage",
+        )
+        tiered_cost = _fetch_single_price(
+            "AmazonMSK",
+            [
+                ("regionCode", region),
+                ("operation", "TieredStorage"),
+                ("storageFamily", "Tiered storage"),
+            ],
+            context="Tiered Storage",
+        )
+        pst_cost = _fetch_single_price(
+            "AmazonMSK",
+            [("regionCode", region), ("operation", "RunVolume"), ("storageFamily", "General")],
+            context="Provisioned Storage Throughput",
+        )
+    if need_express:
+        express_storage_cost = _fetch_single_price(
+            "AmazonMSK",
+            [
+                ("regionCode", region),
+                ("operation", "Storage"),
+                ("storageFamily", "Express storage"),
+            ],
+            context="Express storage",
+        )
+        express_data_in = _fetch_single_price(
+            "AmazonMSK",
+            [("regionCode", region), ("operation", "Data-In")],
+            context="Express data-in",
+        )
+
+    # EC2 "Regional" data transfer is billed per-GB on both the sending and receiving
+    # side of an AZ boundary, so one GB crossing AZs costs 2x the published one-way rate.
+    try:
+        cross_az_one_way = _fetch_single_price(
+            "AmazonEC2",
+            [
+                ("productFamily", "Data Transfer"),
+                ("fromRegionCode", region),
+                ("transferType", "IntraRegion"),
+            ],
+            context="cross-AZ data transfer",
+        )
+    except PricingDimensionError:
+        # Catch only PricingDimensionError, never PricingUnavailableError: a credentials or
+        # permissions failure must not be silently reported as the published $0.01/GB rate.
+        #
+        # The Price List API only publishes a distinct IntraRegion (cross-AZ) SKU for a
+        # handful of legacy regions (us-east-1, us-west-1/2, eu-west-1, eu-central-1,
+        # ap-northeast-1/2, ap-southeast-1/2, sa-east-1, us-gov-west-1); every other region
+        # is missing this SKU entirely even though AWS's public pricing page documents the
+        # same $0.01/GB one-way rate everywhere. Fall back to that published rate rather than
+        # failing the whole run.
+        print(
+            f"WARNING: no {region} cross-AZ data-transfer pricing published via the Pricing "
+            f"API; falling back to the standard ${FALLBACK_CROSS_AZ_COST_PER_GB_ONE_WAY:g}/GB "
+            "one-way rate documented at https://aws.amazon.com/ec2/pricing/on-demand/",
+            file=sys.stderr,
+        )
+        cross_az_one_way = FALLBACK_CROSS_AZ_COST_PER_GB_ONE_WAY
+
+    return Pricing(
+        region=region,
+        broker_price_per_hr=broker_price_per_hr,
+        ebs_cost_per_gb_month=ebs_cost,
+        tiered_storage_cost_per_gb_month=tiered_cost,
+        express_storage_cost_per_gb_month=express_storage_cost,
+        express_data_in_per_gb=express_data_in,
+        cross_az_cost_per_gb=cross_az_one_way * 2,
+        pst_cost_per_mbs_month=pst_cost,
+        source="api",
+    )
+
+
+PRICING_SOURCES = ("auto", "api", "static")
+
+
+def resolve_pricing(region: str, broker_classes: List[str], pricing_source: str) -> Pricing:
+    """Return pricing for *region* using the requested pathway.
+
+    "api" and "static" force one pathway. "auto" prefers the live API and falls back to the
+    embedded table only when the API pathway is unusable (no credentials, no
+    pricing:GetProducts, no boto3, no connectivity) — never when the API answered but a
+    specific SKU was missing, which is a real data problem the static table cannot fix.
+    """
+    if pricing_source not in PRICING_SOURCES:
+        raise PricingError(
+            f"unknown pricing source {pricing_source!r}; choose from: "
+            f"{', '.join(PRICING_SOURCES)}"
+        )
+
+    if pricing_source == "static":
+        return static_pricing(region, broker_classes)
+    if pricing_source == "api":
+        return fetch_pricing(region, broker_classes)
+
+    try:
+        return fetch_pricing(region, broker_classes)
+    except PricingUnavailableError as exc:
+        if region != STATIC_PRICING_REGION:
+            raise PricingError(
+                f"{exc}\n\nFalling back to static pricing is not possible for "
+                f"--region {region}: the embedded table covers only "
+                f"{STATIC_PRICING_REGION}. Supply AWS credentials with "
+                f"pricing:GetProducts to price {region}, or size against "
+                f"--region {STATIC_PRICING_REGION} with --pricing-source static."
+            ) from exc
+        print(
+            f"WARNING: the AWS Pricing API is unavailable ({exc}).\n"
+            f"WARNING: falling back to embedded {STATIC_PRICING_REGION} pricing captured on "
+            f"{STATIC_PRICING_CAPTURED}; rates may be stale. Re-run with "
+            "--pricing-source api once credentials are available to confirm.",
+            file=sys.stderr,
+        )
+        return static_pricing(region, broker_classes)
+
+
 @dataclass
 class BottleneckDetail:
     """Per-constraint detail for a sizing result."""
@@ -360,7 +806,7 @@ def _brokers_for(demand: float, per_broker_capacity: float) -> int:
 
 
 def calculate_standard_sizing(
-    inputs: SizingInputs, discount_pct: float = 0.0
+    inputs: SizingInputs, pricing: Pricing, discount_pct: float = 0.0
 ) -> List[SizingResult]:
     """Calculate sizing for all Standard (M5 / M7g) instance types."""
     discount = discount_multiplier(discount_pct)
@@ -390,8 +836,8 @@ def calculate_standard_sizing(
     else:
         ts_gb = 0.0
 
-    monthly_ebs_cost = ebs_gb * EBS_COST_PER_GB_MONTH * discount
-    monthly_ts_cost = ts_gb * TIERED_STORAGE_COST_PER_GB_MONTH * discount
+    monthly_ebs_cost = ebs_gb * pricing.ebs_cost_per_gb_month * discount
+    monthly_ts_cost = ts_gb * pricing.tiered_storage_cost_per_gb_month * discount
 
     pst_mbs_per_broker = inputs.pst_per_broker_mbs or 0.0
 
@@ -399,7 +845,7 @@ def calculate_standard_sizing(
     if not inputs.rack_affined_consumers:
         cross_az_mbs += inputs.avg_data_out_mbs * (NUM_AZS - 1) / NUM_AZS
     cross_az_gb_mo = cross_az_mbs * 3600 * HOURS_PER_MONTH / 1024
-    monthly_cross_az_cost = cross_az_gb_mo * CROSS_AZ_COST_PER_GB * discount
+    monthly_cross_az_cost = cross_az_gb_mo * pricing.cross_az_cost_per_gb * discount
 
     fan_out = inputs.peak_data_out_mbs / inputs.peak_data_in_mbs
     network_factor = fan_out * AZ_SCALE_FACTOR + network_base
@@ -408,6 +854,9 @@ def calculate_standard_sizing(
 
     for instance_type, specs in INSTANCE_SPECS.items():
         if "Express" in instance_type:
+            continue
+        price_per_hr = pricing.broker_price_per_hr.get(instance_type)
+        if price_per_hr is None:
             continue
 
         util = inputs.utilization_standard
@@ -471,11 +920,13 @@ def calculate_standard_sizing(
         broker_count = max(d.brokers_needed for d in details.values())
         bottleneck = max(details, key=lambda k: details[k].brokers_needed)
 
-        monthly_broker_cost = broker_count * specs["price_per_hr"] * HOURS_PER_MONTH * discount
+        monthly_broker_cost = broker_count * price_per_hr * HOURS_PER_MONTH * discount
 
         if pst_mbs_per_broker > 0 and instance_type in PST_ELIGIBLE:
             effective_pst_mbs = min(pst_mbs_per_broker, specs["ebs_throughput_mbs"])
-            monthly_pst_cost = broker_count * effective_pst_mbs * PST_COST_PER_MBS_MONTH * discount
+            monthly_pst_cost = (
+                broker_count * effective_pst_mbs * pricing.pst_cost_per_mbs_month * discount
+            )
         else:
             monthly_pst_cost = 0.0
 
@@ -506,7 +957,9 @@ def calculate_standard_sizing(
     return results
 
 
-def calculate_express_sizing(inputs: SizingInputs, discount_pct: float = 0.0) -> List[SizingResult]:
+def calculate_express_sizing(
+    inputs: SizingInputs, pricing: Pricing, discount_pct: float = 0.0
+) -> List[SizingResult]:
     """Calculate sizing for all Express (M7g) instance types."""
     discount = discount_multiplier(discount_pct)
     results = []
@@ -515,18 +968,23 @@ def calculate_express_sizing(inputs: SizingInputs, discount_pct: float = 0.0) ->
     if not inputs.rack_affined_consumers:
         cross_az_mbs += inputs.avg_data_out_mbs * (NUM_AZS - 1) / NUM_AZS
     cross_az_gb_mo = cross_az_mbs * 3600 * HOURS_PER_MONTH / 1024
-    monthly_cross_az_cost = cross_az_gb_mo * CROSS_AZ_COST_PER_GB * discount
+    monthly_cross_az_cost = cross_az_gb_mo * pricing.cross_az_cost_per_gb * discount
 
     data_in_gb_mo = inputs.avg_data_in_mbs * 3600 * HOURS_PER_MONTH / 1024
-    monthly_data_in_cost = data_in_gb_mo * EXPRESS_DATA_IN_PER_GB * discount
+    monthly_data_in_cost = data_in_gb_mo * pricing.express_data_in_per_gb * discount
 
     express_storage_gb = inputs.avg_data_in_mbs * inputs.retention_hours * 3600 / 1024
-    monthly_express_storage_cost = express_storage_gb * EBS_COST_PER_GB_MONTH * discount
+    monthly_express_storage_cost = (
+        express_storage_gb * pricing.express_storage_cost_per_gb_month * discount
+    )
 
     partition_key = "max_partitions" if inputs.use_max_partitions else "rec_partitions"
 
     for instance_type, specs in INSTANCE_SPECS.items():
         if "Express" not in instance_type:
+            continue
+        price_per_hr = pricing.broker_price_per_hr.get(instance_type)
+        if price_per_hr is None:
             continue
 
         util = inputs.utilization_express
@@ -565,7 +1023,7 @@ def calculate_express_sizing(inputs: SizingInputs, discount_pct: float = 0.0) ->
         broker_count = max(d.brokers_needed for d in details.values())
         bottleneck = max(details, key=lambda k: details[k].brokers_needed)
 
-        monthly_broker_cost = broker_count * specs["price_per_hr"] * HOURS_PER_MONTH * discount
+        monthly_broker_cost = broker_count * price_per_hr * HOURS_PER_MONTH * discount
 
         results.append(
             SizingResult(
@@ -704,7 +1162,11 @@ def _shared_subtotal(shared: Dict[str, tuple]) -> float:
 
 
 def _format_inputs_block(
-    inputs: SizingInputs, results: List[SizingResult], discount_pct: float
+    inputs: SizingInputs,
+    results: List[SizingResult],
+    discount_pct: float,
+    region: str,
+    pricing_source: str = "api",
 ) -> str:
     """Echo every setting that shaped the numbers below. Printed once."""
     present = {name for r in results for name in r.bottleneck_details}
@@ -793,10 +1255,22 @@ def _format_inputs_block(
             "pricing",
             f"-{discount_pct:g}%" if discount_pct else "list",
             (
-                f"{PRICING_REGION} on-demand with a {discount_pct:g}% negotiated discount "
+                f"{region} on-demand with a {discount_pct:g}% negotiated discount "
                 "applied to every cost dimension"
                 if discount_pct
-                else f"{PRICING_REGION} public on-demand, no negotiated discount applied"
+                else f"{region} public on-demand, no negotiated discount applied"
+            ),
+        )
+    )
+    rows.append(
+        (
+            "pricing source",
+            pricing_source,
+            (
+                f"embedded {STATIC_PRICING_REGION} rates captured "
+                f"{STATIC_PRICING_CAPTURED}; no live lookup, may be stale"
+                if pricing_source == "static"
+                else f"live AWS Pricing API lookup for {region}"
             ),
         )
     )
@@ -881,35 +1355,50 @@ def _print_recommendations(
 def _parse_args():
     p = argparse.ArgumentParser(
         description=(
-            "MSK broker sizing calculator. "
-            f"NOTE: all cost figures use {PRICING_REGION} on-demand pricing; "
-            "other regions will differ."
+            "MSK broker sizing calculator. Cost figures are fetched live from the AWS "
+            "Pricing API for the requested --region."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument(
-        "--avg-data-in-mbs", type=float, required=True, help="Average producer throughput (MiB/s)"
+        "--region",
+        default="us-east-1",
+        help="AWS region to price against; broker/storage/data-transfer pricing is looked up live via the AWS Pricing API",
     )
     p.add_argument(
-        "--peak-data-in-mbs", type=float, required=True, help="Peak producer throughput (MiB/s)"
+        "--pricing-source",
+        choices=PRICING_SOURCES,
+        default="auto",
+        help=(
+            "where prices come from. 'api' queries the AWS Pricing API live (needs "
+            "credentials with pricing:GetProducts; works for any region). 'static' uses the "
+            f"rates embedded in this script (no credentials or network needed, "
+            f"{STATIC_PRICING_REGION} only, captured {STATIC_PRICING_CAPTURED}). 'auto' "
+            "tries the API and falls back to static with a warning"
+        ),
     )
     p.add_argument(
-        "--avg-data-out-mbs", type=float, required=True, help="Average consumer throughput (MiB/s)"
+        "--emit-static-pricing",
+        action="store_true",
+        help=(
+            "print the resolved prices as Python literals for pasting into this script's "
+            f"STATIC_* tables, then exit. Use with --pricing-source api --region "
+            f"{STATIC_PRICING_REGION} to refresh the embedded snapshot"
+        ),
     )
-    p.add_argument(
-        "--peak-data-out-mbs", type=float, required=True, help="Peak consumer throughput (MiB/s)"
-    )
-    p.add_argument(
-        "--num-partitions", type=int, required=True, help="Total partitions including replicas"
-    )
+    # These describe the workload and are required for sizing, but not for
+    # --emit-static-pricing, which only refreshes price tables. They are therefore declared
+    # optional here and enforced in _parse_args() below.
+    p.add_argument("--avg-data-in-mbs", type=float, help="Average producer throughput (MiB/s)")
+    p.add_argument("--peak-data-in-mbs", type=float, help="Peak producer throughput (MiB/s)")
+    p.add_argument("--avg-data-out-mbs", type=float, help="Average consumer throughput (MiB/s)")
+    p.add_argument("--peak-data-out-mbs", type=float, help="Peak consumer throughput (MiB/s)")
+    p.add_argument("--num-partitions", type=int, help="Total partitions including replicas")
     p.add_argument("--replication-factor", type=int, default=3, help="Kafka replication factor")
-    p.add_argument(
-        "--retention-hours", type=int, required=True, help="Total data retention (hours)"
-    )
+    p.add_argument("--retention-hours", type=int, help="Total data retention (hours)")
     p.add_argument(
         "--primary-retention-hours",
         type=int,
-        required=True,
         help="Primary (EBS) retention (hours); remainder goes to Tiered Storage",
     )
     p.add_argument(
@@ -961,7 +1450,30 @@ def _parse_args():
         default=DEFAULT_BROKER_QUOTA,
         help="Per-cluster broker quota used to pick a 'recommended' instance per class (default 60 for KRaft clusters, 30 for Zookeeper, can be increased via AWS Support case)",
     )
-    return p.parse_args()
+    args = p.parse_args()
+
+    if not args.emit_static_pricing:
+        missing = [
+            "--" + name.replace("_", "-")
+            for name in _REQUIRED_WORKLOAD_ARGS
+            if getattr(args, name) is None
+        ]
+        if missing:
+            p.error("the following arguments are required: " + ", ".join(missing))
+
+    return args
+
+
+# Required for sizing, but not for --emit-static-pricing. Enforced in _parse_args().
+_REQUIRED_WORKLOAD_ARGS = (
+    "avg_data_in_mbs",
+    "peak_data_in_mbs",
+    "avg_data_out_mbs",
+    "peak_data_out_mbs",
+    "num_partitions",
+    "retention_hours",
+    "primary_retention_hours",
+)
 
 
 def parse_discount_pct(value: str) -> float:
@@ -977,11 +1489,23 @@ def parse_discount_pct(value: str) -> float:
     return pct
 
 
-def _format_pricing_banner(discount_pct: float) -> str:
+def _pricing_provenance(source: str) -> str:
+    """One sentence naming where the printed prices came from, for the output banner."""
+    if source == "static":
+        return (
+            "from rates embedded in this script, captured on "
+            f"{STATIC_PRICING_CAPTURED} (NOT fetched live, and possibly stale — re-run with\n"
+            "--pricing-source api to confirm against current published pricing)"
+        )
+    return "fetched live via the AWS Pricing API"
+
+
+def _format_pricing_banner(discount_pct: float, region: str, source: str = "api") -> str:
+    provenance = _pricing_provenance(source)
     if discount_pct == 0:
         return (
-            f"\nNOTE: all cost figures below use {PRICING_REGION} public on-demand pricing; "
-            "other regions will differ.\n"
+            f"\nNOTE: all cost figures below use {region} public on-demand pricing,\n"
+            f"{provenance}; other regions will differ.\n"
             "If your organization has a Private Pricing Agreement (PPA), Enterprise Discount\n"
             "Program (EDP), or other negotiated pricing, your actual costs will differ. Contact\n"
             "your AWS account team for pricing that reflects your agreements, then re-run with\n"
@@ -989,9 +1513,38 @@ def _format_pricing_banner(discount_pct: float) -> str:
         )
     return (
         f"\nNOTE: cost figures below apply a {discount_pct:g}% negotiated discount to every cost\n"
-        f"dimension, based on {PRICING_REGION} on-demand pricing. Confirm the discount against\n"
-        "your agreement with your AWS account team before sharing these figures."
+        f"dimension, based on {region} on-demand pricing {provenance}.\n"
+        "Confirm the discount against your agreement with your AWS account team before sharing\n"
+        "these figures."
     )
+
+
+def format_static_pricing_literals(pricing: Pricing) -> str:
+    """Render *pricing* as Python literals for refreshing the STATIC_* tables."""
+    lines = [
+        f'STATIC_PRICING_REGION = "{pricing.region}"',
+        f'STATIC_PRICING_CAPTURED = "{date.today().isoformat()}"',
+        "",
+        "STATIC_BROKER_PRICE_PER_HR = {",
+    ]
+    for instance_type in INSTANCE_SPECS:
+        price = pricing.broker_price_per_hr.get(instance_type)
+        if price is not None:
+            lines.append(f'    "{instance_type}": {price:g},')
+    lines += [
+        "}",
+        "",
+        "STATIC_SHARED_PRICING = {",
+        f'    "ebs_cost_per_gb_month": {pricing.ebs_cost_per_gb_month:g},',
+        f'    "tiered_storage_cost_per_gb_month": {pricing.tiered_storage_cost_per_gb_month:g},',
+        f'    "express_storage_cost_per_gb_month": '
+        f"{pricing.express_storage_cost_per_gb_month:g},",
+        f'    "express_data_in_per_gb": {pricing.express_data_in_per_gb:g},',
+        f'    "cross_az_cost_per_gb": {pricing.cross_az_cost_per_gb:g},',
+        f'    "pst_cost_per_mbs_month": {pricing.pst_cost_per_mbs_month:g},',
+        "}",
+    ]
+    return "\n".join(lines)
 
 
 def _inputs_from_args(a) -> SizingInputs:
@@ -1014,23 +1567,42 @@ def _inputs_from_args(a) -> SizingInputs:
 
 if __name__ == "__main__":
     args = _parse_args()
+    broker_classes = args.broker_classes
+
+    try:
+        pricing = resolve_pricing(args.region, broker_classes, args.pricing_source)
+    except PricingError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.emit_static_pricing:
+        print(format_static_pricing_literals(pricing))
+        sys.exit(0)
+
     inputs = _inputs_from_args(args)
     partition_mode = "maximum" if inputs.use_max_partitions else "recommended"
 
-    broker_classes = args.broker_classes
     standard_results = (
-        calculate_standard_sizing(inputs, args.discount_pct) if "standard" in broker_classes else []
+        calculate_standard_sizing(inputs, pricing, args.discount_pct)
+        if "standard" in broker_classes
+        else []
     )
     express_results = (
-        calculate_express_sizing(inputs, args.discount_pct) if "express" in broker_classes else []
+        calculate_express_sizing(inputs, pricing, args.discount_pct)
+        if "express" in broker_classes
+        else []
     )
     all_results = standard_results + express_results
 
-    print(_format_pricing_banner(args.discount_pct))
+    print(_format_pricing_banner(args.discount_pct, args.region, pricing.source))
 
     if all_results:
         print("\n=== Sizing inputs ===")
-        print(_format_inputs_block(inputs, all_results, args.discount_pct))
+        print(
+            _format_inputs_block(
+                inputs, all_results, args.discount_pct, args.region, pricing.source
+            )
+        )
 
     section_suffix = f"using {partition_mode} partition limits per broker"
 

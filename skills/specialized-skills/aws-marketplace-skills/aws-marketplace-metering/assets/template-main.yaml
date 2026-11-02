@@ -1764,7 +1764,7 @@ Resources:
                 "title": "BatchMeterUsage exceptions by type (request-level, usage NOT billed)",
                 "region": "${AWS::Region}", "period": 3600, "view": "timeSeries",
                 "metrics": [
-                  [ { "expression": "SELECT SUM(BatchMeterUsageException) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}' GROUP BY Exception ORDER BY SUM() DESC", "label": "by exception", "id": "x1", "period": 3600 } ]
+                  [ { "expression": "SELECT SUM(BatchMeterUsageException) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}' GROUP BY \"Exception\" ORDER BY SUM() DESC", "label": "by exception", "id": "x1", "period": 3600 } ]
                 ],
                 "yAxis": {"left": {"min": 0}}
               }
@@ -1818,7 +1818,7 @@ Resources:
                 "title": "BatchMeterUsage exceptions by type (request-level, usage NOT billed)",
                 "region": "${AWS::Region}", "period": 3600, "view": "timeSeries",
                 "metrics": [
-                  [ { "expression": "SELECT SUM(BatchMeterUsageException) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}' GROUP BY Exception ORDER BY SUM() DESC", "label": "by exception", "id": "x1", "period": 3600 } ]
+                  [ { "expression": "SELECT SUM(BatchMeterUsageException) FROM \"AwsMarketplace/Metering\" WHERE ProductCode = '${ProductCode}' GROUP BY \"Exception\" ORDER BY SUM() DESC", "label": "by exception", "id": "x1", "period": 3600 } ]
                 ],
                 "yAxis": {"left": {"min": 0}}
               }

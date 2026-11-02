@@ -1,6 +1,6 @@
 # Instrument an Application with ADOT (CloudWatch Application Observability)
 
-Instrument an application that is **not yet instrumented** so it emits OpenTelemetry traces and metrics, using the AWS Distro for OpenTelemetry (ADOT) auto-instrumentation SDKs. This is plain OTel instrumentation — the ADOT SDK is wired into the workload and exports over OTLP to the SDK's default endpoint.
+Instrument an application that is **not yet instrumented** so it emits OpenTelemetry traces and metrics, using the AWS Distro for OpenTelemetry (ADOT) auto-instrumentation SDKs. This is plain OTel instrumentation — the ADOT SDK is wired into the workload and exports over OTLP, to the SDK's default endpoint unless the Scope table below calls for a collector or an existing destination.
 
 **Before you start:** confirm a Space exists in the target Region. `list-spaces` is account-global (the `--region` flag only selects the endpoint; the response lists every Space in the account, each with its own `region`), so filter to the Region rather than trusting a non-empty list: `aws cloudwatchomni list-spaces --region <region> --query "items[?region=='<region>']"`. If that filtered list is empty, stop and run `../spaces-and-domains.md` first — instrumentation started before a Space exists appears to succeed while delivering telemetry nowhere the customer can see.
 
@@ -8,20 +8,28 @@ Instrument an application that is **not yet instrumented** so it emits OpenTelem
 
 ## Scope
 
-The default job is **instrumentation only** — getting the ADOT SDK loaded into the running workload and emitting telemetry. Standing up a destination is a separate, optional second step.
+The job is always **instrumentation** — getting the ADOT SDK loaded into the running workload and emitting telemetry. Whether it also includes a **destination** (a collector the SDK exports to) depends on what the user said and what already exists:
+
+| The request | Do |
+|---|---|
+| Says a destination already exists or isn't part of this change, or asks for instrumentation only | Instrumentation only |
+| Asks for a destination, or says nothing receives its telemetry yet | Instrumentation, then a collector via [collector.md](collector.md) |
+| Says neither — for example "set up tracing on this service so we can see it in our Space" | Check the files you were given for an existing destination (below). Found → instrumentation only, pointed at it. None → the answer includes the collector changes from [collector.md](collector.md) alongside the instrumentation, in the same diff — not offered as a later step, since without one the telemetry the user asked for never arrives |
+
+**What counts as an existing destination:** a collector container, sidecar, Deployment, or DaemonSet (`cloudwatch-agent`, `aws-otel-collector`, `otelcol-contrib`, `otel-collector`); a CloudWatch Agent installed in UserData or a launch template with an `opentelemetry` receiver in its config; or `OTEL_EXPORTER_OTLP_ENDPOINT` already set on the workload. A CloudWatch Agent configured only for Application Signals (port 4316) is not one — it has no OTLP receiver for this path. When you add a collector because none was found, say which files you checked, and that the collector step can be dropped if one already runs outside them (a cluster-wide collector on EKS, an agent baked into an AMI).
+
+**Pointing the SDK at the destination.** The SDK falls back to its spec defaults (`http://localhost:4318` for OTLP/HTTP, `http://localhost:4317` for OTLP/gRPC). **Which of the two applies depends on the SDK:** the Java agent defaults to OTLP/gRPC on 4317, while the Python, Node.js and .NET distros default to OTLP/HTTP on 4318. A collector on the same host or in the same task that listens on that port needs no endpoint setting; set `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_PROTOCOL` if it differs) only to reach one elsewhere, and only to an address the files show. Never invent an endpoint.
 
 | In scope | Out of scope |
 |---|---|
 | Installing / injecting the ADOT auto-instrumentation SDK | Application Signals, ServiceEvents, Dynamic Instrumentation |
 | Setting the standard OTel SDK environment variables | Application Signals wiring of any kind: the `amazon-cloudwatch-observability` EKS add-on, the CloudWatch Agent's `application_signals` config sections, and port 4316 |
-| Service name and resource attributes | Standing up the telemetry destination (deploying a collector — see [collector.md](collector.md)) |
-| **Optional, only if the user asks for a destination:** deploying a collector — the CloudWatch Agent by default — and pointing the app at it, see [collector.md](collector.md) | |
+| Service name and resource attributes | |
+| A collector — the CloudWatch Agent by default, or upstream `otelcol-contrib` when the user will not run the agent — when the table above calls for one, see [collector.md](collector.md) | |
 
-**Where telemetry goes is deliberately not configured here.** The SDK falls back to its spec defaults (`http://localhost:4318` for OTLP/HTTP, `http://localhost:4317` for OTLP/gRPC). **Which of the two applies depends on the SDK:** the Java agent defaults to OTLP/gRPC on 4317, while the Python, Node.js and .NET distros default to OTLP/HTTP on 4318. Instrumentation is complete without a destination, and you must never invent an endpoint.
+The collector exports straight to CloudWatch's own per-signal OTLP endpoints, with upstream `otelcol-contrib` as the backup. `../data-forwarding-and-centralization.md` is not an alternative here — it accepts no telemetry over OTLP, it forwards what is *already* in CloudWatch log groups into a Dataset.
 
-When the user does need one, **deploy a collector.** Use [collector.md](collector.md) and its platform guides to put a collector on EC2, ECS, or EKS and wire the app to it — the **CloudWatch Agent** by default, with upstream `otelcol-contrib` as the backup. The collector exports straight to CloudWatch's own per-signal OTLP endpoints. `../data-forwarding-and-centralization.md` is not an alternative here — it accepts no telemetry over OTLP, it forwards what is *already* in CloudWatch log groups into a Dataset.
-
-Do not start down this path unprompted — instrumentation alone is a complete answer to "instrument my app".
+**Lambda is outside this check:** the ADOT layer exports to the function's own X-Ray receiver (see "IAM follows the destination" below), so a Lambda change never adds a collector.
 
 ## Do NOT add these
 
@@ -69,7 +77,7 @@ If the workload is an **AI agent** built on a framework (LangChain, LangGraph, S
 | **EKS** | [eks-python.md](eks-python.md) | [eks-nodejs.md](eks-nodejs.md) | [eks-java.md](eks-java.md) | [eks-dotnet.md](eks-dotnet.md) |
 | **Lambda** | [lambda-python.md](lambda-python.md) | [lambda-nodejs.md](lambda-nodejs.md) | [lambda-java.md](lambda-java.md) | [lambda-dotnet.md](lambda-dotnet.md) |
 
-Only if the user also needs a destination, continue to [collector.md](collector.md) — it is language-agnostic and covers EC2, ECS, and EKS. Lambda is excluded: there is nowhere to run a collector in it, and its layer already exports to the execution environment's X-Ray receiver.
+When the [Scope](#scope) table calls for a collector, continue to [collector.md](collector.md) — it is language-agnostic and covers EC2, ECS, and EKS. Lambda is excluded: there is nowhere to run a collector in it, and its layer already exports to the execution environment's X-Ray receiver.
 
 ## How the SDK gets in
 
@@ -82,13 +90,13 @@ The mechanism differs by platform, but on ECS and EKS it is the same idea — an
 | **EC2** | Install in userdata; env vars on the process / systemd unit | No |
 | **Lambda** | ADOT Lambda layer + `AWS_LAMBDA_EXEC_WRAPPER` | No |
 
-For instrumentation alone, no cluster-level components are installed on EKS — no add-on and no operator; injection is written directly into the Deployment manifest. (If the user also asks for a destination, [collector.md](collector.md) deploys the CloudWatch Agent by Helm, which necessarily brings its operator. That is expected there, and is not the `amazon-cloudwatch-observability` add-on.)
+For instrumentation alone, no cluster-level components are installed on EKS — no add-on and no operator; injection is written directly into the Deployment manifest. (When the [Scope](#scope) table calls for a collector, [collector.md](collector.md) deploys the CloudWatch Agent by Helm, which necessarily brings its operator. That is expected there, and is not the `amazon-cloudwatch-observability` add-on.)
 
 Lambda is the odd one out: the execution environment supplies an X-Ray receiver that the layer exports to, so unlike the other three platforms its export path is already wired. That is why the Lambda guides look different and why `OTEL_AWS_APPLICATION_SIGNALS_ENABLED=false` is set explicitly there.
 
 ## Verifying without a receiver
 
-Because no endpoint is configured, the SDK exports to `localhost:4318` where nothing is listening. **OTLP connection errors in the logs after instrumenting are expected and are not a failure** — they mean the SDK loaded and is trying to export. Tell the user the errors will clear once a receiver exists.
+When the change is instrumentation only and no destination exists yet, the SDK exports to its default local endpoint (`localhost:4318`, or `localhost:4317` for Java) where nothing is listening. **OTLP connection errors in the logs after instrumenting are expected and are not a failure** — they mean the SDK loaded and is trying to export. Tell the user the errors will clear once a receiver exists.
 
 **Do not rely on "the SDK announces itself" as the check — it only works for Java.** What a working deployment actually logs, by language:
 
@@ -145,6 +153,13 @@ Either way the exporter must reach a destination that delivers into the account'
 Dataset in a Region with a Space; an SDK left at its `localhost` default records the
 metric and delivers it nowhere.
 
+**On Lambda, neither path is wired.** The layer's export goes to the execution
+environment's X-Ray receiver, which takes traces, not metrics, and there is nowhere in
+the function to run a collector. This reference has no verified configuration that sends
+a custom OTLP metric from a function to the OTLP metrics endpoint, so say that plainly:
+give the rule above, and do not present the layer as already exporting the metric or
+invent exporter variables for it.
+
 **What does not work, and why customers try it:** the CloudWatch `PutMetricData` API
 and Embedded Metric Format (EMF) log lines are the familiar CloudWatch ways to publish
 a custom metric — and they produce a **CloudWatch metric** in a CloudWatch namespace,
@@ -162,6 +177,12 @@ through the OTLP endpoint stays OTel-native.)
   Omni. If the customer already publishes that way, the answer is to emit the metric
   through the OTel SDK (or a collector) as well — not to look for a setting that
   makes the CloudWatch metric appear.
+- When the customer already publishes a custom metric with EMF or `PutMetricData`, you
+  MUST also rule out, by name, the two mechanisms they will expect to pick it up. The
+  dataset integration copies log and trace records out of CloudWatch Logs and has no
+  metric path; OTel enrichment is limited to the metrics AWS services publish about
+  their own resources. A customer with either one switched on otherwise assumes it
+  covers their own metric as well.
 - You MUST NOT invent a metric namespace, a CloudWatch-side setting, or an exporter
   option for this. OTLP metrics have no CloudWatch namespace; the SDK's standard
   `OTEL_EXPORTER_OTLP_*` variables and the resource attributes from Step 3 are the
@@ -178,7 +199,7 @@ through the OTLP endpoint stays OTel-native.)
 
 ## Step 4: Review
 
-Summarize the changes grouped by file, state the platform and language, and list the environment variables that will reach the application at runtime. Note explicitly that **no exporter endpoint was configured** and that telemetry will go to the SDK default until a receiver is set up — and point the user to the two paths in [Scope](#scope). If a collector was deployed, state the endpoint the app now exports to and where the collector forwards it. Present the changes for review; do not deploy.
+Summarize the changes grouped by file, state the platform and language, and list the environment variables that will reach the application at runtime. State where telemetry now goes, per the branch of the [Scope](#scope) table you followed: for instrumentation only with no destination, say explicitly that **no exporter endpoint was configured** and telemetry goes to the SDK default until a receiver is set up; for an existing destination, name it; if a collector was added, state the endpoint the app now exports to and where the collector forwards it. Present the changes for review; do not deploy.
 
 ## Component versions
 
@@ -195,5 +216,5 @@ Use the latest published ADOT auto-instrumentation version for the language unle
 
 - Only IaC, Dockerfiles, CI/CD workflows, dependency files, and deployment manifests — never application source code.
 - Do not deploy. Stage the changes and let the user review and apply them.
-- Do not configure an OTLP endpoint, collector, or agent unless the user asked for a destination. If they did, use [collector.md](collector.md), where the CloudWatch Agent is the primary collector.
+- Configure an OTLP endpoint, collector, or agent only where the [Scope](#scope) table calls for one — the user asked for a destination, or the request left delivery open and the files show none. Use [collector.md](collector.md), where the CloudWatch Agent is the primary collector.
 - Do not add Application Signals, ServiceEvents, or Dynamic Instrumentation configuration.

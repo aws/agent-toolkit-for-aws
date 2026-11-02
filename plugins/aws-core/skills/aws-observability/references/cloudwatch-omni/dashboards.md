@@ -132,6 +132,10 @@ not a re-paste of every detail.
   scalar aggregate reads `1`. This is not specific to `COUNT(*)`, and making the aggregate
   the only/first selected column is exactly what triggers it. Put a scalar KPI in a
   `table` panel (§4, "Visualizations", "`number` tile trap").
+- **The grid's two units, whenever you lay panels out.** `x` and `w` are grid columns
+  (`x` 0-59, `w` 1-60, `x + w` at most 60); `y` and `h` are pixels (`y` measured from the
+  top, `h` roughly 100-2000 or `'auto'`, never `vh` or `%`). The column count is fixed at
+  60 and is not a field (§5, "The two-unit rule").
 - **The save boundary — where the API is loud vs silent.** SILENT (saves HTTP 200,
   fails only at render): an unknown key INSIDE `config` is stored, round-trips on read,
   and is silently ignored; and a cross-field `x + w > 60` overflow blanks the whole
@@ -235,6 +239,30 @@ through the service's control plane.
   Find the offending trace with a span query per
   [sql-logs-traces.md](query/sql-logs-traces.md) and pin its `traceId` in that
   panel's `source.params.traceConfig`.
+- **AI agents (one agent or a fleet).** Use the agent panels for health: an
+  `agent-kpi-strip` across the top, a `recent-error-traces-table`, and an
+  `agent-health-table` for a fleet, plus a `spans` panel with `lens: "agent"` for
+  drill-down. To focus on one agent, set `agentName` on the strip, the error-traces
+  table and the `spans` panel; leave it off them to cover the fleet. The
+  `agent-health-table` has no scoping key and always lists every agent, so include it
+  for a fleet view and do not describe it as scoped (section 4, "agent-kpi-strip / …"). Add `explore` panels for the
+  figures those panels do not chart: latency from `durationNano` and token usage from
+  the token-count span attributes in `traces.default`
+  ([trace-exploration.md](query/trace-exploration.md)), and quality from the evaluation
+  records in `logs.default` ([agent-evaluation.md](agent-evaluation.md)), **one series or
+  panel per evaluator**. Never average different evaluators into one quality number:
+  they score different properties on different scales. Telemetry carries token
+  **counts**, not prices, so label any cost panel as an estimate and convert to money
+  only with per-token pricing the customer supplies. When the ask also names an
+  application service the agent calls, give that service its own RED panels scoped to
+  it, next to the agent-scoped ones. If its own metrics cannot be confirmed, derive
+  those panels from its spans in `traces.default` rather than leaving the service out.
+  **Agent telemetry can be sensitive.** Span input/output attributes and evaluation
+  records hold real conversations, which can include personal data or credentials, and
+  everyone with read access to the Space sees the dashboard. Chart aggregates (counts,
+  latency, token totals, scores); do not put prompt or response text on a panel. Before
+  building it, recommend that the customer encrypt the log groups behind these records
+  at rest with a KMS key (`aws logs associate-kms-key`).
 - **Multi-service overview (a fleet or whole space).** One compact row per service
   — a `number` KPI plus a small `line` — under a `divider` per service, or a single
   wide `table` ranking all services by health. Prefer a `table` or `topk(...)` over
@@ -325,6 +353,10 @@ never chart a counter as a raw value.
   `queryString` — no `` `@timestamp` `` bound, no `NOW() - INTERVAL`, no PromQL
   range that pins an absolute time. The panel (or dashboard) `scope` drives the
   time range; a hard-coded window fights the time picker and freezes the panel.
+  A PromQL **range selector** such as `[5m]` inside `sum_over_time(...)` or `rate(...)`
+  is not a time window: it is how far back each plotted point looks, it does not
+  decide which period the panel shows, and delta Sums and counters need it. Keep it,
+  and match `step` to it (below).
   (This is the one place a dashboard query differs from an interactive one, which
   *requires* a time bound — so don't copy an interactive query verbatim.)
 - **An empty series is often correct.** A signal that only exists under a specific
@@ -515,6 +547,24 @@ picks up the dashboard's time range.
 An absent or unrecognised selector falls back to its default. Everything else —
 service/operation/status/duration/trace-id filters, camera, node selection, rail
 state — is per-user console state, not saved.
+
+#### agent-kpi-strip / recent-error-traces-table / agent-health-table
+
+The agent-observability panels. Each follows the dashboard's time range and reads best
+at full width. Their configs differ:
+
+```jsonc
+{ "type": "agent-kpi-strip",           "config": { "agentName": "…" } }  // one agent; omit the key for every agent
+{ "type": "recent-error-traces-table", "config": { "agentName": "…" } }  // same scoping
+{ "type": "agent-health-table",        "config": {} }                   // no config keys at all
+```
+
+`agentName` is the only key the first two publish, and `agent-health-table` publishes
+none; any other key is stored and ignored. To scope a dashboard to one agent, set the
+same `agentName` on `agent-kpi-strip`, `recent-error-traces-table`, and a `spans` panel with
+`lens: "agent"`; `agent-health-table` stays fleet-wide. For agent
+latency, token usage, or evaluation scores, add `explore` panels (see the agent recipe in
+section 2).
 
 #### dashboards-list
 
@@ -791,6 +841,8 @@ monotonically-increasing `y` values are fine.
 | `dashboard` (nested system dashboard) | `'auto'` (always full width, `x: 0, w: 60`) |
 | `markdown` runbook | `'auto'` (pair with `variant: 'transparent'`) |
 | `application-map` / `spans` | full width, tall (~`480`) |
+| `agent-kpi-strip` | full width, ~`120` |
+| `recent-error-traces-table` / `agent-health-table` | full width, ~`360` |
 
 ### Layout shortcuts
 
@@ -1153,8 +1205,9 @@ re-sequence `y`.
 Serverless function — RED-shaped; scope `cloudwatch.aws/lambda` by `FunctionName`. The vended
 Lambda counters (`Invocations`, `Errors`, `Throttles`) are **delta Sums**, so every count panel
 uses `sum_over_time(...[5m])`; `rate()` on them renders `NaN` (see promql-metrics.md section 4).
-`Duration` is a gauge with no percentile label; the error-rate tile is the derived
-`Errors / Invocations`.
+`Duration` arrives as a delta exponential histogram, so read it with `histogram_avg(…)` for the
+average or `histogram_quantile(0.99, …)` for a true p99; a bare selector folds the buckets
+instead of returning milliseconds. The error-rate tile is the derived `Errors / Invocations`.
 
 **CORE (~8 panels — the default build):**
 
@@ -1166,7 +1219,7 @@ uses `sum_over_time(...[5m])`; `rate()` on them renders `NaN` (see promql-metric
 | Concurrency | `number` | `max({__name__="ConcurrentExecutions", …, FunctionName="<fn>"})` | `{x:45,y:0,w:15,h:120}` |
 | Invocations over time | `line` | `sum by (FunctionName) (sum_over_time({__name__="Invocations", …, FunctionName="<fn>"}[5m]))` | `{x:0,y:120,w:30,h:320}` |
 | Errors over time | `line` | `sum by (FunctionName) (sum_over_time({__name__="Errors", …, FunctionName="<fn>"}[5m]))` | `{x:30,y:120,w:30,h:320}` |
-| Duration (ms) | `line` | `{__name__="Duration", …, FunctionName="<fn>"}` | `{x:0,y:440,w:60,h:320}` |
+| Duration (ms) | `line` | `histogram_avg({__name__="Duration", …, FunctionName="<fn>"})`, plus `histogram_quantile(0.99, …)` for p99 | `{x:0,y:440,w:60,h:320}` |
 | Recent errors | `table` (SQL) | scope to `/aws/lambda/<fn>` with a grounded log-group filter; `queryLanguage:'sql'` | `{x:0,y:760,w:60,h:360}` |
 
 **Optional depth (follow-up):** Throttles `line`; Concurrent executions `line`;

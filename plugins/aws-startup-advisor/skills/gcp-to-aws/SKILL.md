@@ -19,7 +19,7 @@ requires it; unavailable or declined telemetry never blocks this skill.
 - **Dev sizing unless specified**: Default to development-tier capacity (e.g., db.t4g.micro, single AZ). Upgrade only on user direction.
 - **No human one-time migration costs**: Do not present human labor, professional services, or people-time work as dollar estimates or "one-time migration cost" budget categories. Vendor charges grounded in data (for example GCP data transfer egress in the infra estimate when billing exists) are allowed.
 - **Multi-signal approach**: Design phase adapts based on available inputs — live gcloud discovery and/or Terraform IaC for infrastructure, billing data for service mapping, and app code for AI workload detection. When live and IaC both run, live is authoritative for current state and disagreements surface as drift, never silently resolved.
-- **BigQuery / `google_bigquery_*`**: The skill **does not** recommend a specific AWS analytics or warehouse service. During **Clarify**, if discovery shows BigQuery (IaC `google_bigquery_*` and/or billing rows for BigQuery), you **must** surface the specialist advisory **before** Design (see `references/phases/clarify/clarify.md`). Design output uses **`Deferred — specialist engagement`**; keep directing the user to their **AWS account team** and/or a **data analytics migration partner** through Design, Estimate, and docs (see `references/phases/design/design-infra.md` BigQuery specialist gate).
+- **BigQuery / `google_bigquery_*`**: The skill **does not** recommend a specific AWS analytics or warehouse service. During **Clarify**, if discovery shows BigQuery (IaC `google_bigquery_*` and/or billing rows for BigQuery), you **must** surface the specialist advisory **before** Design (see `references/phases/clarify/clarify.md`). Design output uses **`Deferred — specialist engagement`**; keep directing the user to their **AWS account team** and/or a **data analytics migration partner** through Design, Estimate, and docs (see `references/phases/design/design-infra.md` BigQuery specialist gate). Point them at `bq-assess` as a read-only first step, per `references/shared/bq-assess-next-step.md`.
 
 ---
 
@@ -45,13 +45,14 @@ Each phase loads reference files on demand. To keep per-turn context manageable 
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `design-refs/ai-gemini-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"gemini"` or `"both"`                                                                                                                                                                                                                                                                                                                                                                                     |
 | `vendored/ai/ai-openai-to-bedrock.md`            | `ai-workload-profile.json` exists AND `summary.ai_source` = `"openai"` or `"both"`                                                                                                                                                                                                                                                                                                                                                                                     |
-| `vendored/ai/ai-anthropic-to-bedrock.md`         | `ai-workload-profile.json` exists AND `summary.ai_source` = `"anthropic"`                                                                                                                                                                                                                                                                                                                                                                                              |
+| `vendored/ai/ai-anthropic-to-bedrock.md` | `ai-workload-profile.json` exists AND (`summary.ai_source` = `"anthropic"` OR Claude Haiku 5.5 is a candidate or selected target) |
 | `design-refs/ai.md`                              | `ai-workload-profile.json` exists AND `summary.ai_source` = `"other"`                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `design-refs/elastic-beanstalk.md`               | `google_app_engine_application` in inventory (optionally with `compute_model == "managed_platform"` in preferences) **and `compute` ≠ `"eks"`**. Supplementary reference for EB configuration detail (platforms, IAM, VPC, deployment policies). Does not replace `compute.md` — both may be needed in mixed projects. Skip when no App Engine is in inventory (even if `compute_model` is set), or when `compute: "eks"` (Q5 = multi-cloud) routed App Engine to EKS. |
 | `vendored/ai/design-ref-harness.md`              | `agentic_profile.is_agentic == true` AND `ai_constraints.agentic.migration_approach == "harness"`                                                                                                                                                                                                                                                                                                                                                                      |
 | `vendored/ai/design-ref-agentic-to-agentcore.md` | `agentic_profile.is_agentic == true` AND `ai_constraints.agentic.migration_approach == "strands"`                                                                                                                                                                                                                                                                                                                                                                      |
 | `shared/retarget-gotchas.md`                     | `agentic_profile.is_agentic == true` AND `ai_constraints.agentic.migration_approach == "retarget"`                                                                                                                                                                                                                                                                                                                                                                     |
 | `shared/graviton.md`                             | Compute, DB, or cache in inventory OR `graviton_profile` present (Design/Estimate/Generate)                                                                                                                                                                                                                                                                                                                                                                            |
+| `shared/bq-assess-next-step.md`                  | BigQuery detected (`bigquery_present` true, or a BigQuery resource marked `Deferred — specialist engagement`): the end-of-run offer (Workflow Execution step 10) and the BigQuery callouts in the reports, `MIGRATION_GUIDE.md`, the Terraform note, and the migration script                                                                                                                                                                                          |
 
 When adding new reference files, verify the phase's total loaded instructions remain under budget. If a new file would exceed ~800 lines when combined with other loaded refs, split it or make it conditional.
 
@@ -216,10 +217,9 @@ Use **read-merge-write** updates for `.phase-status.json`:
 3. Keep prior completed phases unchanged.
 4. Set `current_phase` to the next deterministic phase — or `complete` after Generate, **or** after Estimate when the user chose Decision-gate **A** (`run_mode: "decide"`; Generate stays pending).
 5. Write the full file in the same turn as your final phase work message.
-6. Reconcile the saved state in `cli` reporting mode per
-   `references/vendored/telemetry/PROTOCOL.md` before advancing or returning,
-   including sidebar updates and decision-only or executed completion. In `hook`
-   mode, leave reporting to the host hooks.
+6. Reconcile the saved state with the explicit project root per
+   `references/vendored/telemetry/PROTOCOL.md` in both reporting modes before
+   advancing or returning, including sidebar updates and each completion.
 
 Example — after completing the Clarify phase, write `$MIGRATION_DIR/.phase-status.json` with:
 
@@ -266,7 +266,7 @@ Replace `MMDD-HHMM` with the actual migration ID, generate the `last_updated` IS
 
 - Provides `aws___search_documentation`, `aws___read_documentation`, `aws___list_regions`, `aws___get_regional_availability`, `aws___retrieve_skill` tools
 - Used during Design for regional availability checks and documentation lookups.
-- Primary pricing source: `references/shared/pricing-cache.md` (cached 2026 rates, ±5-10% for infrastructure, ±15-25% for AI models). Pricing is cache-only — no live pricing MCP.
+- Primary pricing sources: `references/shared/pricing-cache.md` (cached 2026 infrastructure and source-provider rates, ±5-10%) and `references/vendored/ai/bedrock-pricing-cache.md` (provider-neutral Bedrock rates, ±15-25%). Pricing is cache-only — no live pricing MCP.
 
 ---
 
@@ -348,16 +348,19 @@ gcp-to-aws/
 │       ├── schema-estimate-infra.md            # estimation-infra.json schema (loaded by estimate-infra.md at write time)
 │       ├── handoff-gates.md                    # Fail-closed phase handoff protocol (GATE_FAIL / HANDOFF_OK)
 │       ├── report-decision-core.md             # Executive-summary renderer spec (decision + full modes; loaded by estimate.md gate A and generate-artifacts-report.md)
+│       ├── bq-assess-next-step.md              # bq-assess next step: commands, existing-report check, per-surface text (conditional load)
 │       ├── validate-artifacts.md               # Pre-report validation (Generate Step 0; read-only)
 │       ├── validate-migration-report.md          # Post-write HTML completeness (Generate Step 4; also decision-report.html via --mode decision)
 │       ├── migration-complexity.md             # Complexity tier definitions (small/medium/large) for timeline scaling
-│       ├── pricing-cache.md                    # Cached AWS + source provider pricing (±5-25%, primary source)
+│       ├── pricing-cache.md                    # Cached AWS infrastructure + source provider pricing
+│       ├── gcp-infra-pricing-cache.md          # Cached source-side GCP infrastructure pricing
 │       ├── graviton.md                         # Graviton/ARM64 tiers, mapping, per-phase rules (conditional load)
 │       └── schema-graviton.md                  # graviton_profile + cpu_architecture + architecture_comparison schemas
 │
 └── references/vendored/                        # byte-synced copies of skills/shared/ — DO NOT EDIT
     ├── workshop/workshop-invariants.md         # cross-skill what-if workshop contract
     └── ai/                                     # plugin-neutral, source-cloud-agnostic AI content
+        ├── bedrock-pricing-cache.md            # Canonical provider-neutral Bedrock model + service rates
         ├── ai-model-lifecycle.md               # Bedrock Active/Legacy/EOL registry + 90-day exclusion rule
         ├── ai-migration-guardrails.md          # shared constraints for every agentic migration path
         ├── bedrock-quotas.md                   # Bedrock TPM/RPM quota awareness, burndown rates, capacity planning
@@ -372,7 +375,7 @@ gcp-to-aws/
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No GCP sources found (no `.tf`, no app code, no billing data) | Offer live gcloud discovery per `discover.md` Step 1d. Only if declined or unavailable: Stop. Output: "No GCP sources detected. Provide at least one source type (Terraform files, application code, or billing exports), or re-run and accept live discovery." |
 | `.phase-status.json` missing phase gate                       | Stop. Output: "Cannot enter Phase X: Phase Y-1 not completed. Start from Phase Y or resume Phase Y-1."                                                                                                                                                          |
-| Service not in pricing cache                                  | Display user warning about ±5-25% accuracy. Use `pricing-cache.md`. Set `pricing_source: "unavailable"` for that service in the applicable `estimation-*.json` file.                                                                                            |
+| Service not in applicable pricing cache                       | Display the applicable accuracy warning: ±5-10% for infrastructure/source-provider rates or ±15-25% for Bedrock rates. Use the corresponding cache and set `pricing_source: "unavailable"` for that service in the applicable `estimation-*.json` file.                                      |
 | User skips questions or says "use defaults for the rest"      | Apply documented defaults for all remaining questions (essential questions and any unconfirmed sheet rows in wizard mode; current and subsequent batches in full mode). Q2/Q3 defaults add a report caveat. Phase 2 completes either way.                       |
 | `aws-design.json` missing required clusters                   | Stop Phase 4. Output: "Re-run Phase 3 to generate missing cluster designs."                                                                                                                                                                                     |
 
@@ -393,8 +396,8 @@ When invoked, the agent **MUST follow this exact sequence**:
 1. **Load phase status**: Read `.phase-status.json` from `.migration/*/`.
    - If missing: Initialize for Phase 1 (Discover)
    - If exists: Determine current phase using deterministic rules in **State Machine**.
-     After selecting and validating the run, reconcile in `cli` reporting mode
-     per `references/vendored/telemetry/PROTOCOL.md`; skip the CLI in `hook` mode.
+     After selecting and validating the run, reconcile with the explicit project
+     root per `references/vendored/telemetry/PROTOCOL.md` in both reporting modes.
 
 2. **Determine phase to execute**:
    - If `current_phase` exists: execute that phase.
@@ -442,6 +445,26 @@ When invoked, the agent **MUST follow this exact sequence**:
    - **After Generate**: No feedback offer. If `phases.feedback` is still `"pending"`, use the Phase Status Update Protocol to set it to `"completed"` (user had two chances and chose to defer/skip).
 
 9. **Display summary**: Show user what was accomplished, highlight next phase, or confirm migration completion.
+
+10. **BigQuery follow-up (end of run only)**: When the run has just finished (the gate-A
+    closing sequence in `references/phases/estimate/estimate.md`, or the Summary in
+    `references/phases/generate/generate.md`, each including its web-handoff block when shown)
+    and BigQuery was detected (`preferences.json` →
+    `metadata.inventory_clarifications.bigquery_present: true`, or a BigQuery resource marked
+    `Deferred — specialist engagement` in the design artifact), load
+    `references/shared/bq-assess-next-step.md` and run its existing report check. If it finds a
+    usable report, skip this step: the reports already link it. Otherwise present that file's
+    end-of-run offer once, as the last thing in the run.
+
+    - Make it the only question in its message. If the closing message already asks something
+      (the gate-A feedback short form), ask in the next turn, once that answer is handled.
+    - **A** → If the `bq-assess` skill is available in this session, hand off to it; it runs its
+      own preflight (project ID, credentials, consent). Otherwise show that file's commands for
+      the user's host: the plugin install in Claude Code (restart the session if the skill does
+      not appear), or pip and the CLI elsewhere.
+    - **B**, or no answer → nothing further; do not ask again in this run.
+    - This step writes no artifacts, does not change `.phase-status.json`, and never blocks
+      completion.
 
 **Critical constraint**: Agent must strictly adhere to the reference file's workflow. If unable to complete a step, stop and report the exact step that failed.
 

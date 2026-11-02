@@ -148,6 +148,7 @@ def _make_session(counters, *, tool_spans=1, session_id=None, eval_mode="ok", ra
                 return {"status": "Complete", "rows": rows}
             # span fetch query
             counters["fetch"] = counters.get("fetch", 0) + 1
+            counters.setdefault("span_sql", []).append(sql)
             return {"status": "Complete", "rows": _make_omni_rows(docs)}
 
         def stop_telemetry_query_session(self, **k):
@@ -192,7 +193,7 @@ def _run(mod, **kw):
     ns = mod.argparse.Namespace(
         trace_id=None, trace_ids=None, session_id=None, evaluator_id=None, evaluator_ids=None,
         level="TRACE", region="us-east-1", window_days=30, no_writeback=True,
-        retention_days=30, kms_key_id=None, include_explanations=False)
+        retention_days=30, kms_key_id=None, include_explanations=False, service_name=None)
     for k, v in kw.items():
         setattr(ns, k, v)
     out = io.StringIO()
@@ -301,11 +302,21 @@ def test_real_error_propagated():
           "AccessDenied" in blob or "cloudwatchomni" in blob)
 
 
+def test_service_name_filter():
+    c = {}
+    mod = _load(lambda: _make_session(c))
+    _run(mod, trace_id="aa", service_name="orchestrator")
+    check("service name: span fetch filtered to that service",
+          "resource['attributes']['service.name'] = 'orchestrator'" in c["span_sql"][0])
+    r = _run(mod, trace_id="aa", service_name="x' OR '1'='1")
+    check("service name: unsafe value rejected", "invalid service name" in r.get("error", ""))
+
+
 def main():
     for fn in [test_single_trace_back_compat, test_matrix_fetch_once, test_ground_truth_gating,
                test_caps, test_evaluate_call_budget, test_pairs_scored_excludes_errors,
                test_traces_scored_honesty_under_budget, test_session_dedup,
-               test_real_error_propagated]:
+               test_real_error_propagated, test_service_name_filter]:
         fn()
     passed = sum(1 for _, ok in RESULTS if ok)
     print("\n%d/%d passed" % (passed, len(RESULTS)))

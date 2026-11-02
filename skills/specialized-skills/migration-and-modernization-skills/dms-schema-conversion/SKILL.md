@@ -1,7 +1,7 @@
 ---
 name: dms-schema-conversion
 description: "Handles the full DMS Schema Conversion lifecycle including creating migration projects, converting database schemas to a target engine, running compatibility assessments, navigating metadata trees, exporting converted DDL to S3, applying schema changes to a target database, and converting SQL statements between database engines. Applies when migrating database schemas between heterogeneous engines using AWS DMS Schema Conversion."
-version: 3
+version: 4
 ---
 
 # DMS Schema Conversion
@@ -41,6 +41,7 @@ Before starting, check that AWS CLI commands can be executed.
 - You MUST verify that AWS CLI commands can be run (via MCP server tools or directly via shell)
 - You MUST inform the customer if no execution method is available and ask whether to proceed
 - You MUST ask the customer which AWS region to use — do NOT attempt to infer it from the STS response (it does not contain a region field). If the customer is unsure, suggest checking the `AWS_DEFAULT_REGION` environment variable or the `--region` flag they are using.
+- You MUST set the `AWS_EXECUTION_ENV` environment variable to `AWSMCP-DMSSchemaConversion-Skill` before running any AWS CLI command in this skill, so that calls made during this agentic workflow are attributable in the CloudTrail `userAgent` field. The AWS CLI and botocore append this value to the request User-Agent as `exec-env/AWSMCP-DMSSchemaConversion-Skill`. Set it once for the session (`export AWS_EXECUTION_ENV=AWSMCP-DMSSchemaConversion-Skill`) or prefix each command (`AWS_EXECUTION_ENV=AWSMCP-DMSSchemaConversion-Skill aws dms ...`). The value is a best-effort attribution marker only — it is not an access control, and it MUST contain no spaces so it stays a single User-Agent token.
 
 ---
 

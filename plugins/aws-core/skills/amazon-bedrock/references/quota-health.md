@@ -1,6 +1,6 @@
 # Bedrock Quota Health Check
 
-Monitor and manage Bedrock model quotas to prevent throttling. Bedrock enforces two quota types per model per region: requests per minute (RPM) and tokens per minute (TPM).
+Monitor and manage Bedrock model quotas to prevent throttling. Bedrock enforces per-model, per-region token quotas (TPM/TPD); some models also have a requests-per-minute (RPM) quota, but not all (e.g., Claude Opus 4.7/4.8 have no RPM quota and are governed solely by token-based quotas).
 
 ## Table of Contents
 
@@ -12,7 +12,7 @@ Monitor and manage Bedrock model quotas to prevent throttling. Bedrock enforces 
 
 ## How Quota Reservation Works
 
-Bedrock reserves TPM quota at request start based on: `InputTokens + CacheWriteInputTokens + CacheReadInputTokens + maxTokens`. If `maxTokens` is unset, it defaults to the model's maximum (up to 64K–128K), reserving far more quota than needed.
+Bedrock reserves TPM quota at request start based on: `Total input tokens + maxTokens` (i.e., `InputTokenCount + CacheWriteInputTokens + maxTokens`). If `maxTokens` is unset, it defaults to the model's maximum (up to 64K–128K), reserving far more quota than needed.
 
 **Example (Claude Sonnet, 2M TPM quota):**
 
@@ -21,14 +21,14 @@ Bedrock reserves TPM quota at request start based on: `InputTokens + CacheWriteI
 
 This is the most common cause of unexpected `ThrottlingException`. Always set `maxTokens` explicitly.
 
-Cache read tokens are included in the initial reservation but released at settlement — prompt caching effectively increases your usable TPM capacity.
+Cache read tokens (`CacheReadInputTokens`) are NOT counted toward your TPM quota at all — they don't contribute to the reservation calculation. Prompt caching therefore effectively increases your usable TPM capacity. At settlement, consumption is `InputTokenCount + CacheWriteInputTokens + (OutputTokenCount × burndown rate)`.
 
 ## Audit Workflow
 
 ### 1. Check Current Quotas
 
 ```bash
-aws service-quotas list-service-quotas --service-code bedrock --region <REGION> --profile <PROFILE> --query "Quotas[?starts_with(QuotaName, 'Invoke')].{Name:QuotaName, Value:Value}" --output table
+aws service-quotas list-service-quotas --service-code bedrock --region <REGION> --profile <PROFILE> --query "Quotas[?contains(QuotaName, 'tokens per minute')].{Name:QuotaName, Value:Value}" --output table
 ```
 
 ### 2. Check Recent Usage vs Limits
@@ -51,7 +51,7 @@ Key metrics in the `AWS/Bedrock` namespace (dimension: `ModelId`):
 
 | Metric | What It Tells You |
 |--------|------------------|
-| `InvocationCount` | RPM usage — compare against RPM quota |
+| `Invocations` | RPM usage — compare against RPM quota |
 | `InvocationThrottles` | Throttled requests — any value > 0 needs attention |
 | `InputTokenCount` | Input token consumption per request |
 | `OutputTokenCount` | Actual output tokens — use to right-size `maxTokens` |

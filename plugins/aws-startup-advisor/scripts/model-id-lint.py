@@ -54,7 +54,7 @@ EXTS = {".md", ".py", ".json", ".ts", ".tf", ".sh", ".template", ".html"}
 # canonical shared path (below), so only canonical paths are listed.
 CATALOG_ALLOWLIST = {
     "skills/shared/ai/ai-model-lifecycle.md",
-    "skills/gcp-to-aws/references/shared/pricing-cache.md",
+    "skills/shared/ai/bedrock-pricing-cache.md",
     "skills/azure-to-aws/references/shared/pricing-cache.md",
 }
 
@@ -132,7 +132,7 @@ def load_banned_ids(plugin: Path) -> tuple[list[tuple[str, re.Pattern]], list[st
     # 1) Legacy/EOL table rows whose Status cell is **excluded**.
     #    Read IDs from the Model ID column (2nd cell) ONLY — not the whole row.
     #    The Active Replacement column also holds a model ID; scanning the whole
-    #    row would ban the replacement (e.g. `stability.stable-image-core-v1:0`
+    #    row would ban the replacement (e.g. `stability.stable-image-core-v1:1`
     #    in the Nova Canvas row), which is an Active model that legitimately
     #    appears as a target elsewhere.
     for line in text.splitlines():

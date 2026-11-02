@@ -1,1 +1,2 @@
-boto3>=1.35.0
+# LicenseArn-based (Concurrent Agreements) metering requires boto3 >= 1.42.58.
+boto3>=1.42.58

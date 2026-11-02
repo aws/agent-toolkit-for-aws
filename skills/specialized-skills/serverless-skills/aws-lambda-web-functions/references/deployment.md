@@ -161,6 +161,12 @@ zip -r function.zip index.js package.json node_modules/ public/ \
 
 Include: `index.js`, package.json, node_modules/, public/. See Service Limits in [SKILL.md](SKILL.md) for the package size cap.
 
+**Package the AWS SDK.** The Web Functions runtime does not include the AWS SDK, so package the
+`@aws-sdk/*` clients your code imports like any other dependency: list them in `dependencies` (the
+`npm ci --omit=dev` step removes `devDependencies`), or bundle them. Do not mark them external
+(`externalModules: ['@aws-sdk/*']`, `--external:@aws-sdk/*`), which is common for Event Functions.
+A missing client fails the import at startup and every request returns 502.
+
 **If you have a build step** (esbuild for JSX or TypeScript), build *before* pruning. `npm ci --omit=dev` deletes the bundler along with the other devDependencies, so a later `npm run build` fails with `esbuild: command not found`:
 
 ```bash

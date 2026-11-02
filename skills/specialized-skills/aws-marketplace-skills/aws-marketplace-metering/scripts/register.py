@@ -48,7 +48,7 @@ MAX_FIELD_VALUE_LENGTH = int(os.environ.get("MAX_FIELD_VALUE_LENGTH", "512"))
 
 
 def _mask(value):
-    """Mask a sensitive identifier for logging (ILER-R1a): keep only the last 4 chars.
+    """Mask a sensitive identifier for logging: keep only the last 4 chars.
     Buyer account IDs / license ARNs are sensitive and MUST NOT be logged in full."""
     if not value:
         return "<none>"
@@ -57,7 +57,12 @@ def _mask(value):
 
 
 def _stamp(update_expr, values):
-    """Append createdAt(once)/updatedAt audit stamps to a SET UpdateExpression (createdAt once, updatedAt every write)."""
+    """Append createdAt(once)/updatedAt audit stamps to a SET UpdateExpression.
+
+    The stamps are SET assignments, so callers MUST stamp while the expression is still a pure
+    SET clause and append any ADD/REMOVE/DELETE clause AFTERWARDS — appending the stamps after an
+    ADD clause corrupts the expression (DynamoDB rejects ``... ADD s :r, createdAt = ...``).
+    """
     from datetime import datetime, timezone
 
     values = dict(values)
@@ -198,13 +203,15 @@ def handler(event, context):
     # registeredRegions is a DynamoDB String Set (SS). `ADD` on a set is atomic and idempotent
     # (a no-op if the region is already present), so concurrent/retried registrations for the
     # same buyer + region can never duplicate an entry — no read-then-write, no get_item.
+    # Stamp the SET clause FIRST, then append the ADD clause (audit stamps are SET assignments
+    # and must not land after an ADD).
     update_expr = "SET productCode = :pc"
     values = {":pc": product_code}
+    update_expr, values = _stamp(update_expr, values)
     if INVOCATION_REGION:
         update_expr += " ADD registeredRegions :region"
         values[":region"] = {INVOCATION_REGION}  # Python set -> DynamoDB String Set
 
-    update_expr, values = _stamp(update_expr, values)
     subscribers_table.update_item(
         Key={"licenseArn": license_arn, "customerAWSAccountId": customer_aws_account_id},
         UpdateExpression=update_expr,

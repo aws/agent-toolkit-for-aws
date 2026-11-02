@@ -2,7 +2,7 @@
   "mcpServers": {
     "aws-devops-agent": {
       "type": "http",
-      "url": "https://connect.aidevops.${DEVOPS_AGENT_REGION:-us-east-1}.api.aws/mcp",
+      "url": "https://connect.aidevops.us-east-1.api.aws/mcp",
       "headers": {
         "Authorization": "Bearer ${DEVOPS_AGENT_TOKEN}"
       },

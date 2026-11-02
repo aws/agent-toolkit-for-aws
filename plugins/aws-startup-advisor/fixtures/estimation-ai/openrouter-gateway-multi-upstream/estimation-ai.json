@@ -1,0 +1,139 @@
+{
+  "phase": "estimate",
+  "timestamp": "2026-09-08T03:10:00Z",
+  "pricing_source": "cached",
+  "accuracy_confidence": "±15-25%",
+  "current_costs": {
+    "source": "mixed",
+    "monthly_ai_spend": 2400.0,
+    "services": ["openrouter"]
+  },
+  "token_volume": {
+    "source": "tier_table",
+    "monthly_input_tokens": 600000000,
+    "monthly_output_tokens": 400000000,
+    "ratio": "60/40"
+  },
+  "model_comparison": [
+    {
+      "model": "anthropic.claude-sonnet-4-5-v1:0",
+      "monthly_cost": 13200.0,
+      "vs_current": "favorable",
+      "quality": "high",
+      "capabilities_match": true,
+      "missing_capabilities": []
+    },
+    {
+      "model": "anthropic.claude-haiku-4-5-v1:0",
+      "monthly_cost": 1100.0,
+      "vs_current": "favorable",
+      "quality": "high",
+      "capabilities_match": true,
+      "missing_capabilities": []
+    },
+    {
+      "model": "openai.gpt-5.6-terra",
+      "monthly_cost": 8800.0,
+      "vs_current": "mixed",
+      "quality": "high",
+      "capabilities_match": true,
+      "missing_capabilities": []
+    }
+  ],
+  "recommended_model": {
+    "model": "anthropic.claude-sonnet-4-5-v1:0",
+    "monthly_cost": 13200.0,
+    "breakdown": {"input": 9000.0, "output": 4200.0, "embeddings": 0.0},
+    "rationale": "Primary chat tier routed through OpenRouter to Claude Sonnet; same-family Bedrock target is favorable vs. router pricing."
+  },
+  "backup_model": {
+    "model": "anthropic.claude-haiku-4-5-v1:0",
+    "monthly_cost": 1100.0,
+    "rationale": "Low-cost tier backup within the same model family."
+  },
+  "cost_comparison": {
+    "current_source_monthly": 2400.0,
+    "projected_bedrock_monthly": 23100.0,
+    "monthly_difference": 20700.0,
+    "annual_difference": 248400.0,
+    "percent_change": 862.5
+  },
+  "migration_cost_considerations": {
+    "categories": [],
+    "complexity_factors": ["integration.pattern = \"framework\" -> lower integration touch surface", "summary.total_models_detected > 3 -> multi-model coordination"],
+    "note": "Human and professional-services one-time migration costs are intentionally excluded from this advisor."
+  },
+  "roi_analysis": {
+    "monthly_cost_delta": 20700.0,
+    "annual_cost_delta": 248400.0,
+    "justification": "Direct per-model Bedrock pricing is favorable vs. the router's blended markup once volume is normalized across all three upstream models.",
+    "non_cost_benefits": ["model flexibility (100+ models)", "AWS ecosystem (Guardrails, Knowledge Bases, AgentCore)"]
+  },
+  "optimization_opportunities": [
+    {
+      "opportunity": "Multi-model tiered routing",
+      "type": "multi_model_routing",
+      "target_services": ["Bedrock"],
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "60-87%",
+      "commitment": "none",
+      "implementation_effort": "low",
+      "available": "day_1",
+      "description": "High-volume workload with a 3-tier routing strategy already recorded in the design artifact."
+    },
+    {
+      "opportunity": "Intelligent Prompt Routing",
+      "type": "intelligent_prompt_routing",
+      "target_services": ["Bedrock"],
+      "potential_savings_monthly": null,
+      "potential_savings_percent": "up to 30%",
+      "commitment": "none",
+      "implementation_effort": "low",
+      "available": "after_2_weeks_production_traffic",
+      "description": "Anthropic family router is available for the Claude Sonnet/Haiku tiers once production traffic has run for 2+ weeks."
+    }
+  ],
+  "optimized_projection": {
+    "monthly_with_optimizations": 15000.0,
+    "vs_current": "favorable",
+    "note": "Best-case projection assuming multi-model tiered routing is fully adopted."
+  },
+  "recommendation": {
+    "path": "migrate_optimized",
+    "path_label": "Migrate to Bedrock",
+    "migrate_if": "Direct per-model Bedrock pricing beats the router's blended markup at this volume.",
+    "stay_if": "Router flexibility across many providers is a higher priority than per-model cost.",
+    "confidence": "high",
+    "rationale": "All three router upstreams land on favorable or mixed Bedrock pricing, and the design assessment is strong_migrate across the board."
+  },
+  "cost_by_source": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "models": [
+        {
+          "model": "claude-3-5-sonnet-20240620",
+          "monthly_cost": 13200.0,
+          "vs_source_percent": null
+        },
+        {
+          "model": "claude-3-haiku-20240307",
+          "monthly_cost": 1100.0,
+          "vs_source_percent": null
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "monthly_cost": 8800.0,
+          "vs_source_percent": null
+        }
+      ]
+    }
+  ],
+  "services_not_estimated": []
+}

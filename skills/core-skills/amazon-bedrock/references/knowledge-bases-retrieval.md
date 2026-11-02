@@ -21,7 +21,7 @@ Three APIs — agents pick the wrong one. Use this table:
 
 Most common pattern: `aws bedrock-agent-runtime retrieve-and-generate --input '{"text":"<query>"}' --retrieve-and-generate-configuration '{"type":"KNOWLEDGE_BASE","knowledgeBaseConfiguration":{"knowledgeBaseId":"<kb-id>","modelArn":"<model-arn>"}}'`
 
-**Input limit**: The `--input` text field has a maximum of 1000 characters. Exceeding this causes a `ValidationException`. For longer queries, truncate or summarize before sending.
+**Input limit**: The `--input` text field has a maximum of 20,000 characters. Exceeding this causes a `ValidationException`. For longer queries, truncate or summarize before sending.
 
 ## Metadata Filtering Syntax
 
@@ -115,6 +115,10 @@ For `RetrieveAndGenerate` only:
 ## Security Considerations
 
 These are retrieval-specific security controls. For general Bedrock security, see the parent skill's Security Considerations section.
+
+### When the agent runs the read for the customer
+
+`Retrieve`, `RetrieveAndGenerate`, `GetDocumentContent`, or `s3:GetObject` on a corpus document returns document text. When you run it on the customer's behalf, two things follow: the text lands in this conversation and its logs, and the call runs under your role rather than an end user's, so the document-level ACLs and metadata filters the application enforces per user do not apply. Before any such read, ask the customer for an explicit yes to that read and give both reasons. A specific request ("show me the full text of the top document"), a query string, a Region or a general "go ahead" is not that yes; ask once and wait. Configuration reads (`get-*` / `list-*`, object listings with sizes) return no document text and need no yes. Rule: [safety-and-iam](references/bedrock-kb-migration/safety-and-iam.md) → "Content-returning reads".
 
 ### Sensitive data in retrieved chunks
 

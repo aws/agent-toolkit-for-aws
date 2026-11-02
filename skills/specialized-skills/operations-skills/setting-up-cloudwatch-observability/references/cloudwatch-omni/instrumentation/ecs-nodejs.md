@@ -2,7 +2,7 @@
 
 Wire the ADOT Node.js auto-instrumentation SDK into an ECS task definition (Fargate or EC2 launch type). An init container copies the SDK into a shared volume at task startup, so the application image is not rebuilt and the application source is not touched.
 
-Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Deploying a collector is a separate, optional step — [collector-ecs.md](collector-ecs.md).
+Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Whether to also deploy a collector is decided by the Scope table in [instrumentation.md](instrumentation.md) — [collector-ecs.md](collector-ecs.md).
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ Read [instrumentation.md](instrumentation.md) first — it defines what is out o
 **Do NOT:**
 
 - Add a CloudWatch Agent sidecar container, or any collector sidecar — **unless you are also deploying a collector** ([collector-ecs.md](collector-ecs.md)), where the CloudWatch Agent sidecar is the primary collector
-- Set `OTEL_EXPORTER_OTLP_*` — leave the SDK's default endpoint in place — **unless you are also deploying a collector** ([collector-ecs.md](collector-ecs.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately
+- Set `OTEL_EXPORTER_OTLP_*` — leave the SDK's default endpoint in place — **unless you are also deploying a collector** ([collector-ecs.md](collector-ecs.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately, or to reach an existing destination the files show elsewhere ([instrumentation.md](instrumentation.md), Scope)
 - Set `OTEL_AWS_APPLICATION_SIGNALS_*`, `OTEL_AWS_SERVICE_EVENTS_*`, or `OTEL_AWS_DYNAMIC_INSTRUMENTATION_*`
 - Add `CloudWatchAgentServerPolicy` or `AWSXRayDaemonWriteAccess` to the task role — **unless you are also deploying a collector** ([collector-ecs.md](collector-ecs.md)), which requires `CloudWatchAgentServerPolicy` on the **task** role
 - Run `cdk deploy`, `terraform apply`, or `aws ecs update-service` automatically
@@ -167,6 +167,8 @@ aws ecs describe-tasks --cluster <cluster> --tasks <task-arn> \
 Then check the application container's CloudWatch Logs for the literal string `AWS Distro of OpenTelemetry automatic instrumentation started successfully` — **not** a bare `-i opentelemetry`, which also matches the benign `@aws/aws-distro-opentelemetry-instrumentation-vercel-ai Failed to register VercelAISpanProcessor` line a healthy start always emits. Until a receiver exists at the default OTLP endpoint, exporter connection errors are expected — that is the next step, not a failure of instrumentation.
 
 ## Completion
+
+This summary is for an instrumentation-only change with no destination. When the Scope table in [instrumentation.md](instrumentation.md) calls for a collector, include the collector changes from [collector-ecs.md](collector-ecs.md) in the same answer; when the SDK was pointed at an existing destination, say which one. Either way, rewrite every destination part of the summary to match what was done: the **Not changed** clause about collectors, sidecars, and IAM, and the next step about telemetry having nowhere to go.
 
 **Tell the user:**
 

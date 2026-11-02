@@ -1,3 +1,86 @@
+# Credentials & IAM — Prerequisite setup (do this FIRST, one time, before running the skill)
+
+> **FIRST-TIME SELLERS START HERE.** Before the skill can deploy anything, TWO IAM artifacts
+> must exist in the seller's AWS account — this is a **one-time prerequisite** the skill does
+> NOT create for you (bootstrapping IAM for yourself would be a privilege-escalation path), and
+> deployment **fails closed** without them. Walk the seller through these in order; it takes a
+> few minutes and is done once per account.
+>
+> 1. **`awsmp-metering-boundary`** — a *permissions boundary* (a managed policy) that CAPS what
+>    any `awsmp-*` role can ever do. **Must exist BEFORE the deployer role**, because the
+>    deployer's `iam:CreateRole` is gated on it — a missing/misnamed boundary ⇒ `AccessDenied`.
+> 2. **`MarketplaceMeteringDeployer`** — the *least-privilege deployer role* the skill ASSUMES
+>    to create the `awsmp-*` stacks. It has a **conditioned** trust policy (never open `:root`).
+>
+> **Who runs this:** an administrator / IAM-capable principal in the SELLER's account runs the
+> four commands below ONCE (they need `iam:CreatePolicy`/`iam:CreateRole`/`iam:PutRolePolicy`).
+> This is distinct from the ephemeral credentials used to run the skill (next section): after
+> the role exists, the skill is run by ASSUMING `MarketplaceMeteringDeployer` (or via SSO into an
+> equivalent). The seller does NOT hand the skill long-lived keys.
+
+## Step-by-step (copy-paste; replace the `<...>` placeholders)
+
+```bash
+# ── 0. Choose names/values (the boundary name is referenced in THREE places — keep them equal) ──
+BOUNDARY_NAME=awsmp-metering-boundary          # must equal the deployer condition AND the
+                                               # PermissionsBoundaryName template parameter
+ROLE_NAME=MarketplaceMeteringDeployer
+EXTERNAL_ID=<CHOOSE-A-SECRET-EXTERNAL-ID>      # shared secret the caller presents on AssumeRole
+CALLER_PRINCIPAL=<arn-of-the-principal-that-will-assume-the-role>   # e.g. your SSO/role ARN
+
+# ── 1. Write the two policy documents to disk ──
+#    boundary.json  = the permissions-boundary policy (full JSON is in
+#                     "A boundary that caps the generated Lambda roles ..." below — copy it)
+#    policy.json    = the deployer permissions policy (full JSON is in
+#                     "Full IAM policy for MarketplaceMeteringDeployer role" below — copy it)
+
+# ── 2. Create the permissions boundary FIRST (a boundary MUST be a managed policy) ──
+aws iam create-policy --policy-name "$BOUNDARY_NAME" --policy-document file://boundary.json
+
+# ── 3. Create the deployer role with a CONDITIONED trust policy (NOT open :root) ──
+#    DEFAULT below = headless-agent caller: role-ARN principal + sts:ExternalId, NO MFA.
+aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document "{
+  \"Version\": \"2012-10-17\",
+  \"Statement\": [{
+    \"Effect\": \"Allow\",
+    \"Principal\": {\"AWS\": \"$CALLER_PRINCIPAL\"},
+    \"Action\": \"sts:AssumeRole\",
+    \"Condition\": {\"StringEquals\": {\"sts:ExternalId\": \"$EXTERNAL_ID\"}}
+  }]
+}"
+# (Human operator instead of a headless agent? You MAY additionally require MFA by adding
+#  "Bool": {"aws:MultiFactorAuthPresent": "true"} to the Condition — human-only variant.)
+
+# ── 4. Attach the deployer permissions policy to the role ──
+aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name DeployPolicy \
+  --policy-document file://policy.json
+```
+
+> **Why the ORDER matters:** the deployer policy's `iam:CreateRole` is conditioned on
+> `iam:PermissionsBoundary = arn:aws:iam::*:policy/awsmp-metering-boundary`. If the boundary does
+> not exist (or is named differently) when the first deploy runs, SAM's attempt to create the
+> Lambda execution roles is **denied** and the stack rolls back. Create the boundary (step 2)
+> BEFORE the role (step 3), keep the boundary NAME identical across the deployer condition, this
+> `create-policy`, and the `PermissionsBoundaryName` template parameter (default
+> `awsmp-metering-boundary`), and `deploy.sh` will pass its pre-flight check.
+>
+> **Verify the prerequisite is in place before running the skill:**
+>
+> ```bash
+> aws iam get-policy --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/awsmp-metering-boundary   # boundary exists
+> aws iam get-role   --role-name MarketplaceMeteringDeployer                                 # deployer role exists
+> ```
+>
+> Both must return successfully. THEN configure the ephemeral credentials below (assume the
+> deployer role, or SSO) and run `aws sts get-caller-identity` to confirm the correct seller
+> account before the skill does anything.
+
+The full policy JSONs referenced above (`boundary.json` and `policy.json`) are later in this
+document: the deployer `policy.json` under **"Full IAM policy for MarketplaceMeteringDeployer
+role"**, and `boundary.json` under **"A boundary that caps the generated Lambda roles ..."**.
+
+---
+
 > **Credentials MUST be ephemeral-first.** Prefer, in order: (1) IAM Identity
 > Center / SSO, then (2) `aws sts assume-role` session credentials (which include
 > `AWS_SESSION_TOKEN`). Do NOT ask the seller to provide, paste, or export long-lived IAM
@@ -5,7 +88,7 @@
 > seller configure one of the ephemeral paths in their own environment. **Never log or echo
 > credential values.**
 
-#### Option A: IAM Identity Center (SSO) — recommended, default
+### Option A: IAM Identity Center (SSO) — recommended, default
 
 ```bash
 aws configure sso
@@ -14,7 +97,7 @@ aws sso login
 export AWS_PROFILE=marketplace-seller
 ```
 
-#### Option B: STS assume-role (ephemeral session credentials)
+### Option B: STS assume-role (ephemeral session credentials)
 
 Create a dedicated deployer role (see policy below) and assume it — the session includes
 `AWS_SESSION_TOKEN` and expires automatically:
@@ -26,7 +109,7 @@ aws sts assume-role \
 # export the returned AccessKeyId / SecretAccessKey / SessionToken
 ```
 
-#### Option C (last resort only): short-lived environment-variable credentials
+### Option C (last resort only): short-lived environment-variable credentials
 
 ```bash
 # ⚠️ LAST RESORT — prefer SSO (A) or sts assume-role (B) above.
@@ -46,7 +129,7 @@ aws sts get-caller-identity
 
 Confirm the output shows the correct seller account ID. **Do not proceed until this succeeds.** These same credentials will be used for all subsequent operations: Catalog API validation, stack deployment, and integration testing.
 
-#### Required IAM Permissions
+### Required IAM Permissions
 
 If the seller asks "what permissions do I need?", provide the policy below. Otherwise, proceed with whatever credentials they provide — if a permission is missing, the error will indicate exactly which action is needed.
 
@@ -56,6 +139,8 @@ If the seller asks "what permissions do I need?", provide the policy below. Othe
 > **Tag-authorization principle (why the policy is split into Create / Manage / Read buckets):** Tags supplied at creation are authorized with `aws:RequestTag`, **never** `aws:ResourceTag` — on a create the resource does not exist yet, so it has no tags and an `aws:ResourceTag/*` condition is always false, denying the create. Services that attach tags/targets/sub-resources in a **separate call after** the parent resource is created — **CloudFormation, API Gateway, EventBridge** — cannot be `aws:ResourceTag`-gated for their create/rollback lifecycle at all (gating them also wedges rollback in `DELETE_FAILED`/`ROLLBACK_FAILED`). Only services CloudFormation tags **atomically at creation** (Lambda, DynamoDB, IAM roles) can keep `aws:ResourceTag/ManagedBy` on their non-create operations. Read actions (`Get*`/`Describe*`/`List*`/`Query`/`Scan`/`apigateway:GET`) are also **never** tag-gated, because CloudFormation issues describe/GET waiters during creation (e.g. `dynamodb:DescribeTable` waiting for `ACTIVE`, `lambda:GetFunction`) against a just-created, not-yet-tagged resource.
 >
 > Buckets: **Create** — no condition, name-scoped `awsmp-*`. **Manage** — `aws:ResourceTag/ManagedBy` for mutations of existing resources. **Read** — no condition, name-scoped. **Special** — `iam:PassRole` scoped by `iam:PassedToService`; unconditioned `aws-marketplace` catalog read.
+>
+> **This policy supports BOTH the SAM change-set deploy flow and non-SAM direct-`UpdateStack` tooling.** `sam deploy` (the packaged `deploy.sh`) drives CloudFormation through `CreateChangeSet`/`ExecuteChangeSet`. The policy ALSO grants `cloudformation:UpdateStack` **un-conditioned** on `stack/awsmp-*` (in the **Create** bucket alongside `CreateStack`/`DeleteStack`), so a seller who instead wraps these templates in non-SAM CloudFormation tooling that calls `UpdateStack` directly — e.g. Terraform's `aws_cloudformation_stack` — works OUT OF THE BOX: both the initial create and subsequent stack UPDATEs succeed. `UpdateStack` is NOT tag-gated (a non-SAM tool's stack would not carry the skill's `ManagedBy` tag, which would otherwise deny the update), but it stays strictly scoped to `stack/awsmp-*` — it does not broaden the resource scope. **Stack deletion:** `cloudformation:DeleteStack` is likewise name-scoped to `stack/awsmp-*` (for SAM rolled-back cleanup); routine teardown is still a deliberate action you perform after reviewing the `DeletionPolicy: Retain` resources (usage/subscriber tables, log groups) that intentionally survive a stack delete.
 
 ```json
 {
@@ -66,6 +151,7 @@ If the seller asks "what permissions do I need?", provide the policy below. Othe
             "Effect": "Allow",
             "Action": [
                 "cloudformation:CreateStack",
+                "cloudformation:UpdateStack",
                 "cloudformation:DeleteStack",
                 "cloudformation:CreateChangeSet",
                 "cloudformation:DescribeChangeSet",
@@ -87,39 +173,6 @@ If the seller asks "what permissions do I need?", provide the policy below. Othe
                 "cloudformation:CreateChangeSet"
             ],
             "Resource": "arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31"
-        },
-        {
-            "Sid": "CloudFormationManage",
-            "Effect": "Allow",
-            "Action": [
-                "cloudformation:UpdateStack",
-                "cloudformation:DeleteStack"
-            ],
-            "Resource": "arn:aws:cloudformation:*:*:stack/awsmp-*/*",
-            "Condition": {
-                "StringEquals": {
-                    "aws:ResourceTag/ManagedBy": "marketplace-metering-skill"
-                }
-            }
-        },
-        {
-            "Sid": "CloudFormationEventsStack",
-            "Effect": "Allow",
-            "Action": [
-                "cloudformation:CreateStack",
-                "cloudformation:UpdateStack",
-                "cloudformation:DeleteStack",
-                "cloudformation:DescribeStacks",
-                "cloudformation:DescribeStackEvents",
-                "cloudformation:GetTemplate",
-                "cloudformation:ListStackResources",
-                "cloudformation:GetTemplateSummary",
-                "cloudformation:CreateChangeSet",
-                "cloudformation:DescribeChangeSet",
-                "cloudformation:ExecuteChangeSet",
-                "cloudformation:DeleteChangeSet"
-            ],
-            "Resource": "arn:aws:cloudformation:*:*:stack/awsmp-events-stack/*"
         },
         {
             "Sid": "S3DeploymentArtifacts",
@@ -672,10 +725,29 @@ aws iam put-role-policy --role-name MarketplaceMeteringDeployer --policy-name De
 >                     ]
 >                 }
 >             }
+>         },
+>         {
+>             "Sid": "DenyTamperingWithOwnGuardrails",
+>             "Effect": "Deny",
+>             "Action": "iam:*",
+>             "Resource": [
+>                 "arn:aws:iam::*:policy/awsmp-metering-boundary",
+>                 "arn:aws:iam::*:role/MarketplaceMeteringDeployer",
+>                 "arn:aws:iam::*:policy/MarketplaceMeteringDeployer*"
+>             ]
 >         }
 >     ]
 > }
 > ```
+>
+> The final `DenyTamperingWithOwnGuardrails` statement is **defense in depth** (Issue-3 guardrail
+> immutability): an explicit `Deny` on `iam:*` against the boundary policy ARN and the
+> `MarketplaceMeteringDeployer` role/policy ARNs. A boundary'd role (and any boundary'd principal)
+> therefore CANNOT create a new boundary version, detach/weaken the boundary, or attach/modify the
+> deployer role's policies — even if some other attached policy would otherwise allow it (an
+> explicit `Deny` always wins). This complements the skill's MANDATORY response rule (SKILL.md) that
+> refuses in-session requests to weaken these guardrails, so the protection does not rely on the
+> prompt alone.
 >
 > Note: the boundary does NOT grant permissions — it caps them. The role's own inline
 > policy still governs effective access; the boundary just ensures a self-created `awsmp-*`

@@ -206,6 +206,17 @@ continue:
 > BI cutover planning, engage your **AWS account team** and/or a **data analytics migration
 > partner** to assess query patterns, data volumes, ETL/ELT, and downstream consumers.
 > Design will mark these resources as **`Deferred — specialist engagement`**.
+>
+> **After this run — `bq-assess`:** an open-source AWS sample can assess the BigQuery side
+> read-only: per-table data-movement effort and SQL-rewrite scores, a query-engine
+> recommendation (Amazon Athena or Amazon Redshift Serverless) from the observed workload, and
+> a BigQuery-vs-AWS cost comparison. It covers the query-pattern and data-volume part of the
+> specialist review above. Your plan will include it as the BigQuery next step.
+
+The `bq-assess` lines are **informational only**: do **not** add a BigQuery question, wait
+for an answer, or invoke `bq-assess` during this run's phases. The offer is made once, at the
+end of the run (`SKILL.md` Workflow Execution step 10), and never gates Clarify, Design,
+Estimate, or Generate.
 
 ### Essentials Batches
 
@@ -376,7 +387,7 @@ Otherwise, apply Category E defaults (`ha_upgrade: false`, `right_sizing: false`
 | GPT-5.4 Mini/Nano migration              | Q19 = GPT-5.4 Mini or Nano                                                         | Nova Lite/Micro — 87-94% cheaper on Bedrock                                                     |
 | GPT-4 Turbo migration                    | Q19 = GPT-4 Turbo                                                                  | Claude Sonnet 5 — 80% cheaper on input                                                          |
 | o-series migration                       | Q19 = o-series                                                                     | Claude Sonnet 5 with extended thinking                                                          |
-| High-volume cost-critical AI             | Q18 = High + cost critical                                                         | Nova Micro or Haiku 5.5 + provisioned throughput                                                |
+| High-volume cost-critical AI             | Q18 = High + cost critical                                                         | Nova Micro or Haiku 5.5; verify on-demand quotas, price tier, and measured throughput                                                |
 | Reasoning/agent workload                 | Q17 = Extended thinking                                                            | Claude Sonnet 5 extended thinking; Opus 4.6 for hardest                                         |
 | Speech-to-speech AI                      | Q17 = Real-time speech                                                             | Nova 2 Sonic                                                                                    |
 | RAG workload                             | Q17 = RAG optimization                                                             | Bedrock Knowledge Bases + Titan Embeddings                                                      |
@@ -605,9 +616,13 @@ Full schema and constraint catalog: `references/shared/schema-preferences.md`.
    selected answer, or the catalog template in `schema-preferences.md` with `[value]`
    substituted.
 4. `chosen_by` values: `"user"` (explicitly answered or corrected on the sheet), `"default"`
-   (documented default applied — includes sheet-confirmed defaults and "I don't know"
-   answers), `"extracted"` (inferred from inventory), `"derived"` (computed from combination
-   of answers + detected capabilities).
+   (documented default applied, including sheet-confirmed defaults), `"extracted"`
+   (inferred from inventory), `"derived"` (computed from combination of answers +
+   detected capabilities). For Q3, Q3.5, and Q11, an explicit "I don't know"
+   is a user answer: retain `value: "unknown"` with `chosen_by: "user"` in both
+   the recap and saved preferences. If these questions are skipped, their
+   documented default is `"unknown"` with `chosen_by: "default"`; never invent
+   a monetary band or assume no commitments.
 5. **`source` field on constraints:** Every constraint with `chosen_by: "extracted"` or
    `chosen_by: "default"` MUST include a `source` field. Extracted: raw provenance signal
    (prefix `terraform:`, `billing:`, `code:`, `inventory:`, `ai-profile:`, or artifact
@@ -650,8 +665,8 @@ skips, "use defaults for the rest", and the fast paths.
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Q1 — Location              | 1 (single region)                                                                                                 | `target_region`: closest AWS region to GCP region                                                                                                                                                    |
 | Q2 — Compliance            | unknown (unconfirmed)                                                                                             | `compliance: ["unknown"]` — treated as no-constraint for service selection; report caveat _(essential — defaulted only via "use defaults for the rest")_                                             |
-| Q3 — GCP spend             | 2 ($1K–$5K)                                                                                                       | `gcp_monthly_spend: "$1K-$5K"` _(essential when no billing — same caveat rule as Q2)_                                                                                                                |
-| Q3.5 — GCP CUDs            | 5 (none)                                                                                                          | `cud_status: "none"` _(essential when it fires — billing shows CUDs, so only defaulted via "use defaults for the rest")_                                                                             |
+| Q3 — GCP spend             | unknown                                                                                                            | `gcp_monthly_spend: "unknown"` — no confirmed spend baseline                                                                                                                                       |
+| Q3.5 — GCP CUDs            | unknown                                                                                                            | `cud_status: "unknown"` — commitment status is unconfirmed                                                                                                                                        |
 | Q4 — Funding stage         | _(skip in IDE mode)_                                                                                              | no constraint                                                                                                                                                                                        |
 | Q5 — Multi-cloud           | 2 (AWS-only)                                                                                                      | no constraint                                                                                                                                                                                        |
 | Q6 — Availability          | 2 (significant) — GCP-specific default; see `references/vendored/clarify/clarify-availability.md` § 2             | `availability: "multi-az"`                                                                                                                                                                           |
@@ -664,7 +679,7 @@ skips, "use defaults for the rest", and the fast paths.
 | Q8 — K8s sentiment         | 3 (Fargate)                                                                                                       | `kubernetes: "ecs-fargate"`                                                                                                                                                                          |
 | Q9 — WebSocket             | 2 (no)                                                                                                            | no constraint                                                                                                                                                                                        |
 | Q10 — Cloud Run traffic    | 3 (24/7)                                                                                                          | `cloud_run_traffic_pattern: "constant-24-7"`                                                                                                                                                         |
-| Q11 — Cloud Run spend      | 2 ($100–$500)                                                                                                     | `cloud_run_monthly_spend: "$100-$500"`                                                                                                                                                               |
+| Q11 — Cloud Run spend      | unknown                                                                                                            | `cloud_run_monthly_spend: "unknown"` — no confirmed Cloud Run spend                                                                                                                                 |
 | Q11b — CPU architecture    | 1 (Graviton)                                                                                                      | `cpu_architecture: "graviton"` (or `"mixed"` if any service is incompatible; `"x86"` if no compatible compute) — usually auto-defaulted without asking; see `clarify-compute.md` Q11b decision table |
 | Q12 — DB traffic           | 1 (steady)                                                                                                        | `database_traffic: "steady"`                                                                                                                                                                         |
 | Q13 — DB I/O               | 2 (medium)                                                                                                        | `db_io_workload: "medium"`                                                                                                                                                                           |
@@ -713,6 +728,9 @@ Before handing off to Design:
 - [ ] If compute resources are present, `design_constraints.cpu_architecture` is set to
       `graviton`, `x86`, or `mixed` per the Q11b decision table
 - [ ] Only keys with non-null values are present in `design_constraints`
+- [ ] Explicit unknown answers for Q3/Q3.5/Q11 remain `value: "unknown"` with
+      `chosen_by: "user"`; skipped facts remain unknown rather than monetary
+      estimates or a claim of no commitments
 - [ ] Every entry in `design_constraints` and `ai_constraints` has `value` and `chosen_by`
       fields
 - [ ] Config gap answers recorded in `metadata.inventory_clarifications` (billing mode only)

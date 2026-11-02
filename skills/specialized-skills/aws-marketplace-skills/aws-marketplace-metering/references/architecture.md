@@ -144,6 +144,39 @@ metering Subscription Lambda. References:
 - [Managing SaaS subscription events with Amazon EventBridge](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html)
 - [When a SaaS subscription ends / is cancelled](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-subscriptions.html)
 
+### Deprovisioning — the seller's own tenant-teardown workflow
+
+The deployed pipeline handles the metering side of deprovisioning automatically — on `License
+Deprovisioned` it flushes the license's remaining usage within the ~1-hour window (bypassing
+`MeteringLockHours`) and the events-stack `deprovision-cleanup` Lambda finalizes
+`subscriptionStatus = inactive` once `deprovisioningExpiry` passes. But **tearing down the
+seller's OWN tenant** (revoking the buyer's access, releasing per-tenant resources, CRM/billing
+updates) is the SELLER's application responsibility — the skill does not own the tenant model
+(mapping `licenseArn`/`customerAWSAccountId` → the seller's internal tenant ID is the seller's,
+see the tenant-mapping note above). There are TWO supported ways for the seller to react, and
+the seller may choose either or both:
+
+1. **Listen to the Marketplace deprovisioning EventBridge event DIRECTLY.** Add your OWN
+   EventBridge rule in `us-east-1` matching `source: "aws.agreement-marketplace"` /
+   `detail-type: "License Deprovisioned"` (and/or `"Purchase Agreement Ended"`), routed to your
+   own target (Lambda/SQS/Step Functions) that begins tenant teardown. This is INDEPENDENT of
+   the metering Subscription Lambda — add your own rule/target; **do NOT** bolt teardown logic
+   onto the metering path (same pattern as the `Purchase Agreement Created` use cases above).
+   *Trade-off:* reacts fastest, closest to the source (can act before the flush window even
+   matters), but you own event-shape handling and idempotency.
+2. **Consume the subscribers-table DynamoDB Stream.** The events stack ENABLES a DynamoDB Stream
+   (`NEW_AND_OLD_IMAGES`) on the PII-free `us-east-1` subscribers table and publishes its ARN as
+   the `SubscribersTableStreamArn` stack output; attach your OWN consumer (a Lambda event source
+   mapping, Kinesis adapter, etc.) and react when a row transitions to
+   `subscriptionStatus = deprovisioning` (and later `inactive`). *Trade-off:* you react to the
+   ALREADY-RECONCILED, de-duplicated, region-collapsed state the Subscription Lambda maintains
+   (simpler, no event-shape parsing), but it is one hop behind the raw event. Natural when your
+   tenant model is already keyed off the subscriber record.
+
+Choose based on how time-critical your teardown is relative to the ~1-hour flush window. Either
+way the metering flush/finalization is already handled by the deployed pipeline — these hooks
+drive only the seller's SaaS-side actions.
+
 > **Key insight:** The subscribers table lives in `us-east-1` alongside EventBridge. When the metering region is a different region, the register Lambda and the metering pipeline (discoverer/submitter) read it cross-region. **If the seller's metering region is also `us-east-1`, the events stack and main stack are both in `us-east-1` and everything is single-region — no cross-region reads at all.** us-east-1 is a fully supported metering region for `BatchMeterUsage`.
 >
 > **Multi-region sellers:** Each metering region gets its own main stack (usage table + Lambdas). All regions share the single subscribers table in `us-east-1`. Deploy the events stack once (us-east-1), then deploy the main stack to each metering region — which MAY include us-east-1 itself.

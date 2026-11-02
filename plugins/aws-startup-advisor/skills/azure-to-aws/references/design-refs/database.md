@@ -124,9 +124,10 @@ The remaining criteria, in order, and both are usually quiet for databases:
   `knowledge/design/flexible-server-rds-sizing.json`, `confidence: inferred`. SKILL.md's
   `db.t4g.micro`-class posture applies — but note **`db.t4g` is Graviton**, and for RDS
   SQL Server it is not available: use `db.t3` there (`graviton.md`'s escape path).
-- **P95 available** → bands + aggressiveness slider from
-  `knowledge/estimate/rightsizing-thresholds.json`, `confidence: measured`, citing the
-  evidence.
+- **Eligible P95 available** → only when `metric_error: false`, `sample_count > 0`, and
+  numeric `window_days >= min_window_days`; then apply bands + aggressiveness and stamp
+  `confidence: measured`, citing the evidence. A positively sampled P95 of zero is valid.
+  Error, empty-success, short-window, and unknown-window rows fall back to inferred.
 - **Storage** — carry `storage_mb` across as allocated GiB and keep the source's growth
   headroom. Do not right-size storage down from utilization: shrinking allocated storage
   is not an online operation on RDS, so a too-small guess is expensive to undo.

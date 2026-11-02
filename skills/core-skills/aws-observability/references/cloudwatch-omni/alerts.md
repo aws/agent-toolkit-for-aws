@@ -7,9 +7,10 @@ per API operation.
 On an Omni-enabled account "alert" and "alarm" both mean the Omni alert resource
 described here — a separate resource from a CloudWatch alarm, with its own API.
 
-Alert operations are part of the `cloudwatch-omni` service (`aws cloudwatchomni
-<operation>`) and are signed with the SigV4 signing name **`cloudwatch`** — see
-[programmatic-access.md](programmatic-access.md).
+Alert operations belong to the **`cloudwatchomni`** service — `aws cloudwatchomni
+<operation>`, `boto3.client("cloudwatchomni")` — and are signed with the SigV4 signing
+name **`cloudwatch`**. The client name carries no hyphen; `cloudwatch-omni` is only the
+endpoint prefix. See [programmatic-access.md](programmatic-access.md).
 
 Two rules hold across every operation:
 
@@ -322,7 +323,11 @@ has stopped, `CRITICAL` is the meaningful treatment.
 An alert may carry **`notificationRules`** — **0 to 5** rules. Notifications are
 optional: an alert with none is valid and simply reports state. The whole list is
 gated by **`notificationsEnabled`** (defaults to `true`), which is the switch to
-mute an alert without changing what it watches or deleting it.
+mute an alert without changing what it watches or deleting it. A muted alert
+(`notificationStatus: DISABLED`) is still evaluated on schedule and still moves
+between states; only the notifications are suppressed. So "what is firing that
+nobody heard about" is `ListAlerts` with `stateValue` `["WARNING", "CRITICAL"]` and
+`notificationsEnabled: false` together, and the fix is to unmute, not to re-create.
 
 Each rule pairs a **trigger** with a **target**:
 
@@ -358,10 +363,25 @@ Each rule pairs a **trigger** with a **target**:
     alert, cross-account allowed, FIFO topics not allowed). `metadata` **must be
     empty** — any entry is rejected with
     `notificationRules[N].target.metadata must be empty for type=SNS`.
+    Recommend encrypting the topic with a KMS key (SSE-KMS). The topic's resource
+    policy grants `cloudwatch.amazonaws.com` `sns:Publish`; the key's key policy
+    additionally grants that principal `kms:GenerateDataKey*` and `kms:Decrypt`,
+    keeping the account's existing key administration access. Scope both grants with
+    condition keys, `aws:SourceAccount` set to the alert's account and `aws:SourceArn`
+    matching `arn:<partition>:cloudwatch:<region>:<account-id>:alert/*` (or a single
+    alert's ARN), so that alerts in other accounts cannot publish through them. Send a
+    test notification after adding the conditions: a condition the delivery does not
+    meet blocks it as silently as a missing grant. Limit subscribers to
+    people allowed to see the alert's data: each message carries the alert name, its
+    state and the breaching values, which can reveal what the query watches (see the
+    note after this list).
   - **`slack`** — `arn` is the ARN of the account's connected Slack integration
     (`arn:aws:cloudwatch:<region>:<account>:integration/<id>`, in the caller's own
     account and Region, from `ListIntegrations`). `metadata` **must carry a non-blank
     `channel` and nothing else** (Step 5b).
+    The message posts the alert name, its state and the breaching values into the
+    channel, so recommend a channel whose members are limited to people allowed to
+    see that data.
 
 For SNS delivery, the topic's own resource policy must allow the
 `cloudwatch.amazonaws.com` principal to call `sns:Publish`; that is the customer's
@@ -490,8 +510,9 @@ bullet. Surface what fits the request rather than reciting every bullet.
   is never inferred from the expression); the expression carries its own relative range
   selector such as `[5m]` because the alert supplies no evaluation window and re-runs the
   query every evaluation; it has NO `ORDER BY` and NO `LIMIT` (those are SQL log/trace
-  clause rules); a gauge (CPU %, latency, queue depth) is read with `avg`/`max`, never
-  `rate()`; and the comparison stays OUT of the expression — no PromQL comparison operator
+  clause rules); the metric is read for its instrument type, never with `rate()` on a
+  gauge or a delta metric (see "Windowing a metric alert" below); and the comparison
+  stays OUT of the expression — no PromQL comparison operator
   — because the threshold is a separate condition field. Write the candidate expression
   itself (a placeholder for a not-yet-grounded metric name is fine) — describing the query
   in prose is not the query, and the user cannot confirm what was not written.
@@ -520,6 +541,12 @@ Step 1 — which data set and language the query uses.
 Do **not** try to decide here what the exact metric or field name is — you cannot
 know that from the ask. Names are a *product of grounding* in Step 1.
 
+**A traced service's request error rate: prefer the span metrics.** `traces.span.metrics.calls`
+split by `"status.code"` is already aggregated, so a PromQL alert on it stays cheap at
+any traffic level, where SQL re-scans raw rows every evaluation. Use SQL when the error
+is defined by log content, the service is not traced, or the breakdown is by a
+non-label attribute such as tenant.
+
 If the ask contains **several** alerts ("alerts for 5xx, p99 latency, and error rate
 on checkout"), that is one alert **per condition** — read
 [Handling several alerts at once](#handling-several-alerts-at-once) first, then run
@@ -542,9 +569,28 @@ into an alert. An alert on a field that does not exist is silently dead — it s
 - **A log or trace condition MUST be SQL.**
 - Histogram percentiles (p90/p95/p99) are a **metric**, so they take the PromQL
   route — `histogram_quantile(0.99, rate(<metric>[5m]))` on the **base metric name**
-  (no `_bucket`, no `by (le)`: Omni stores histograms in exponential form and
-  exposes no `_bucket{le=…}` series, so a `_bucket`/`by (le)` query returns
-  **empty** and the alert never fires).
+  of a cumulative OTLP histogram, and `histogram_quantile(0.99,
+  sum_over_time(<metric>[5m]))` on an enriched vended one (no `_bucket`, no `by (le)`:
+  Omni stores histograms in exponential form and exposes no `_bucket{le=…}` series, so
+  a `_bucket`/`by (le)` query returns **empty** and the alert never fires).
+
+**Windowing a metric alert.** The `[5m]` window has to sit where the instrument type
+allows a range vector ([query/promql-metrics.md](query/promql-metrics.md), section 3):
+
+| Instrument (from the series' `__type__` / `__temporality__`) | Alert expression |
+|---|---|
+| Gauge | `avg_over_time(<sel>[5m])`, `max_over_time(<sel>[5m])` |
+| Sum, cumulative | `rate(<sel>[5m])`, `increase(<sel>[5m])` |
+| Sum, delta (enriched vended counts: `Invocations`, `Errors`, `NetworkIn`) | `sum_over_time(<sel>[5m])` |
+| ExponentialHistogram, delta (enriched vended statistic sets: EC2 `CPUUtilization`, Lambda `Duration`) | the window goes inside `sum_over_time`, and the histogram function wraps it: `histogram_avg(sum_over_time(<sel>[5m]))` (average), `histogram_quantile(1, sum_over_time(<sel>[5m]))` (maximum), `histogram_quantile(0.99, sum_over_time(<sel>[5m]))` (p99) |
+| Histogram, cumulative (OTLP) | `histogram_quantile(0.99, rate(<sel>[5m]))` |
+
+`histogram_avg(<sel>[5m])` and `max(<sel>[5m])` fail to parse (a range vector where an
+instant vector is expected), a windowless `histogram_avg(<sel>)` leaves the alert with no
+window of its own, and a bare `avg()` / `max()` over a histogram returns a merged
+histogram or nothing rather than a number. `rate()` over a delta metric reads wrong or
+drops series.
+
 - **Disambiguate the percentile's source.** A percentile of a *stored/published metric*
   (a histogram metric) → **PromQL** `histogram_quantile(...)` on the base metric name
   (above). A percentile computed *from raw trace or log rows* ("p99 … from my trace
@@ -605,7 +651,13 @@ style issue:
   - **`ORDER BY <the value> DESC` and a `LIMIT`** are required so the evaluated row
     is the current, worst one — ascending + `LIMIT` would evaluate the *oldest* row
     in the window (stale data). Default `LIMIT 500` as a safety net; the preferred
-    shape returns one row. **This `LIMIT`/`ORDER BY` habit is `FIELD_VALUE`-only —
+    shape returns one row. For a **per-entity alert** (`GROUP BY` tenant, host,
+    endpoint, so every breaching entity is its own contributor) the same
+    `ORDER BY <alias> DESC` puts the worst entities first, and the `LIMIT` then only
+    caps how many of them are evaluated: the alert still fires when the worst one
+    breaches, but an entity past the cap is never counted as a contributor. Size the
+    `LIMIT` to cover every entity the user wants reported (the default 500 usually
+    does), and never shrink it to `LIMIT 1` when they asked for per-entity results. **This `LIMIT`/`ORDER BY` habit is `FIELD_VALUE`-only —
     carrying either into a `COUNT_OF_RESULTS` query is a silent bug (a `LIMIT` caps the
     count so a "more than N" alert can never fire; `ORDER BY` cannot change a row
     count). See the `COUNT_OF_RESULTS` bullet below.**
@@ -922,7 +974,7 @@ Resolve the profile **before** confirming, so the confirmation can name it.
 **Propose; let the user decide.** Restate the parts they are agreeing to — the
 **name**, what the query measures (quote the exact query text; do not paraphrase),
 the **query `language`** and its **relative window** and **aggregation** (for PromQL:
-`PROMQL`, the `[5m]` range, `avg`/`max` for a gauge), the **threshold with its unit**,
+`PROMQL`, the `[5m]` range and where it sits for the instrument type), the **threshold with its unit**,
 the **comparator**, the **evaluation interval** and **no-data treatment**, and the
 **access profile** the alert will run under —
 e.g. "…and I'll run it under profile `alert-profile`, which grants this data and
@@ -1109,13 +1161,29 @@ the query — it is `criticalThreshold=2` with `thresholdMode=FIELD_VALUE`, in s
 matching the series' unit. The percentile comes from `histogram_quantile` over the
 **base metric name** — no `_bucket`, no `by (le)`.
 
+**An enriched vended metric — a delta histogram, so the window sits inside
+`sum_over_time`.** "Page me when any instance's peak CPU goes over 90%."
+
+```promql
+histogram_quantile(1, sum by (InstanceId) (sum_over_time({__name__="CPUUtilization", "@instrumentation.@name"="cloudwatch.aws/ec2"}[5m])))
+```
+
+`language=PROMQL`. Enriched `CPUUtilization` is a delta exponential histogram, so the
+`[5m]` window is the argument of `sum_over_time` and `histogram_quantile(1, …)` reads the
+5-minute maximum per instance (`histogram_avg(…)` for the average). `90` is
+`criticalThreshold=90` in percent with `comparator=GT`, outside the expression.
+
 ### Common gotchas
 
 - Suggesting a threshold for a custom metric or a log condition. Ask; never invent.
 - Writing a **metric** alert as SQL. Metrics are PromQL only.
+- A metric alert expression with no range window, or with the window in a spot that
+  does not parse (`histogram_avg(<sel>[5m])`). See "Windowing a metric alert".
 - A histogram percentile written over `_bucket` / `by (le)` series — empty in Omni,
-  so the alert never fires. Use `histogram_quantile(…, rate(<metric>[5m]))` on the
-  base metric name.
+  so the alert never fires. Use `histogram_quantile(…)` on the base metric name, with
+  the window wrapper the instrument type takes (`rate()` for a cumulative OTLP
+  histogram, `sum_over_time()` for an enriched vended delta histogram); see "Windowing a
+  metric alert".
 - A `LIMIT` on a `COUNT_OF_RESULTS` alert — it caps the row count, so a "more than
   N" alert can never fire. Omit `LIMIT` (or use `COUNT(*)` + `FIELD_VALUE`).
 - An `intervalSeconds` outside the accepted set, or a pending/recovery duration that
@@ -1305,7 +1373,8 @@ call, and muting is offered whenever that is what the user actually wants.
   "stop it messaging me" rather than "get rid of it".
 - **`DeleteAlert` is idempotent.** Deleting an alert that is already gone succeeds
   without error, so a success does **not** prove you deleted the alert you meant.
-  Confirm the target up front by `alertId` rather than checking after.
+  Confirm the target up front by `alertId`, and list those ids again after the deletes
+  (Step 3) to show they are gone.
 - **There is no batch delete.** "Delete these four" is one confirmation covering all
   four, then one `DeleteAlert` call per alert. Report each result separately.
 - **Never create a replacement**, and **never report a deletion that did not
@@ -1351,7 +1420,12 @@ aws cloudwatchomni delete-alert --region us-east-1 \
 One call per confirmed `alertId`. If a call fails, relay why (no permission, service
 rejected it) and fix that specific problem rather than retrying; the alerts whose
 calls succeeded are gone — retry only the ones that failed, never the whole list.
-Report the alerts you deleted by name, and any that were not deleted.
+Then call `ListAlerts` with `filterCriteria.ids` set to the deleted `alertId`s
+(up to 50 per call): because a delete of a missing alert also returns success, an
+empty result here is what shows those alerts are really gone. Re-listing by name or
+prefix instead can return a surviving alert that shares the name and read as a
+failed delete. Report the alerts you deleted by name, and
+any that were not deleted.
 
 ---
 

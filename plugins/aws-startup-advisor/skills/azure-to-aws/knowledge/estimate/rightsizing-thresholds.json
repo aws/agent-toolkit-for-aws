@@ -1,6 +1,6 @@
 {
   "_what_this_is": "P95 utilization bands and the aggressiveness slider, used by the 'Right-Sizing' section of every design-refs rubric and by the Estimate phase's right-sized total.",
-  "_precondition": "This file is only reachable when OBSERVED utilization exists -- an RDfA 31-day rollup or az monitor metrics list. With no metrics, a rubric states the table default from its own sizing table and stamps confidence 'inferred'. Never apply these bands to a declared SKU: a SKU is what was bought, not what is used.",
+  "_precondition": "This file is reachable only for a metric with metric_error false, sample_count greater than zero, and a known window_days value at least confidence_rules.min_window_days. Unknown windows and zero-sample rows are traceability only and fall back to inferred. A sampled p95 of zero remains valid. Never apply these bands to a declared SKU.",
   "_provenance": "The band boundaries and slider values are the product owner's chosen defaults (plan section 0), not measurements. They are tunable constants and this file is the only place they may be changed.",
 
   "p95_bands": [
@@ -37,7 +37,7 @@
   "confidence_rules": {
     "min_window_days": 14,
     "_why": "Below roughly 14 days the window can sit entirely inside a quiet period. Size from it, but keep confidence 'inferred' rather than 'measured', and say why -- a workload sized for a trough it will leave is worse than one sized from its SKU.",
-    "measured_requires": "A window of at least min_window_days AND the evidence cited on the services[] entry. Both, per design.md's postcondition that every 'measured' entry cites its utilization evidence.",
+    "measured_requires": "metric_error == false AND sample_count > 0 AND numeric window_days >= min_window_days AND evidence cited on the services[] entry. Null/unknown window_days fails closed to inferred. p95 may be zero when sample_count is positive.",
     "reservation_baseline": "A resource showing $0 in consumption data is RESERVED, not free. Price the baseline at the RI-equivalent rate and record the substitution. Never at literal $0."
   },
 

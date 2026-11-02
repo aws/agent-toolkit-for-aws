@@ -5,6 +5,8 @@
 - Agent Registry (Preview)
 - Evaluations Service
 
+> **Upcoming namespace migration**: The registry namespace is migrating from `bedrock-agentcore` to `agent-registry`. This will require updates to your endpoints, IAM policies, SDK, and CLI usage. Check the latest AWS documentation for the migration date and status.
+
 ## Agent Registry (Preview)
 
 Catalog, discover, and govern AI agents and tools across an organization.
@@ -18,13 +20,13 @@ The key non-obvious behavior — two modes:
 | **Auto-approve** | Records become discoverable immediately | Development environments (isolated accounts only) |
 | **Manual approval** | Records require explicit approval before discovery | Production environments |
 
-Status transitions: `PENDING` → `APPROVED` → `ACTIVE` (or `REJECTED`)
+Status transitions: `DRAFT` → `PENDING_APPROVAL` → `APPROVED` (`REJECTED` reachable from `PENDING_APPROVAL`; `DEPRECATED` is the terminal state)
 
-**Common failure**: Record stuck in `PENDING` — governance workflow is set to manual approval but no one has approved. Check governance configuration or switch to auto-approve for dev.
+**Common failure**: Record stuck in `PENDING_APPROVAL` — governance workflow is set to manual approval but no one has approved. Check governance configuration or switch to auto-approve for dev.
 
 ### Registering Resources
 
-Resource types: MCP servers, A2A agents, agent skills, custom types.
+Resource types: MCP servers, Agents (A2A agent card), agent skills, custom types.
 
 **Constraints:**
 
@@ -60,9 +62,20 @@ Evaluation Setup:
 
 | Evaluator | What It Measures |
 |-----------|-----------------|
-| `Builtin.Helpfulness` | Does the response help the user? |
+| `Builtin.GoalSuccessRate` | Does the agent achieve the user's goal? |
+| `Builtin.Coherence` | Is the response logically consistent? |
+| `Builtin.Conciseness` | Is the response appropriately brief? |
+| `Builtin.ContextRelevance` | Is the retrieved context relevant to the query? |
+| `Builtin.Correctness` | Is the response factually correct? |
 | `Builtin.Faithfulness` | Is the response grounded in provided context? |
 | `Builtin.Harmfulness` | Does the response contain harmful content? |
+| `Builtin.Helpfulness` | Does the response help the user? |
+| `Builtin.InstructionFollowing` | Does the response follow the given instructions? |
+| `Builtin.Refusal` | Does the response inappropriately refuse a valid request? |
+| `Builtin.ResponseRelevance` | Is the response relevant to the query? |
+| `Builtin.Stereotyping` | Does the response contain stereotyping? |
+| `Builtin.ToolParameterAccuracy` | Are tool call parameters accurate? |
+| `Builtin.ToolSelectionAccuracy` | Is the correct tool selected? |
 
 Refer to the latest AWS documentation on AgentCore Evaluations built-in evaluators for the full current list.
 
@@ -74,7 +87,7 @@ Define your own evaluation criteria:
 - Scoring scale: numeric (1-5) or binary (pass/fail)
 - Custom prompt template: the LLM-as-a-Judge prompt
 
-Create custom evaluators: `aws bedrock-agentcore-control create-evaluator --evaluator-name <name> --level <TOOL_CALL|TRACE|SESSION> --evaluator-config '{"llmAsAJudge":{"instructions":"<criteria>","ratingScale":{"numerical":[{"value":1,"description":"Poor"},{"value":5,"description":"Excellent"}]}}}'`
+Create custom evaluators: `aws bedrock-agentcore-control create-evaluator --evaluator-name <name> --level <TOOL_CALL|TRACE|SESSION> --evaluator-config '{"llmAsAJudge":{"instructions":"<criteria>","ratingScale":{"numerical":[{"value":1,"label":"Poor","definition":"..."},{"value":5,"label":"Excellent","definition":"..."}]}}}'`
 
 ### Online vs On-Demand Evaluation
 

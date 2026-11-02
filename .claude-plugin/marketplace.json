@@ -122,7 +122,7 @@
       ],
       "name": "aws-core",
       "source": "./plugins/aws-core",
-      "version": "1.1.0"
+      "version": "1.2.0"
     },
     {
       "category": "cloud",
@@ -173,7 +173,7 @@
     },
     {
       "category": "cloud",
-      "description": "Data lake, analytics, and ETL workflows with S3 Tables, AWS Glue, and Athena. Covers managed Iceberg tables on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, and vector storage and semantic search on Amazon S3 Vectors.",
+      "description": "Data lake, analytics, search, streaming, ETL, and orchestration workflows with S3 Tables, AWS Glue, Athena, Amazon Redshift, Amazon OpenSearch Service, Amazon MSK, Amazon Managed Service for Apache Flink, Amazon MWAA, and Amazon SageMaker Catalog. Covers managed Iceberg tables on S3 Tables, ingestion from JDBC databases (Oracle, SQL Server, PostgreSQL, MySQL, RDS), Amazon Redshift, Snowflake, BigQuery, and DynamoDB, AWS Glue Data Catalog inventory and asset discovery, federated Athena queries, vector storage and semantic search on Amazon S3 Vectors, Amazon OpenSearch Service and Serverless (migration from Solr/Elasticsearch, provisioning, vector/semantic/hybrid search, log analytics, trace analytics), Amazon MSK Provisioned with Standard and Express brokers (cluster sizing, performance and consumer lag troubleshooting, topic management, MSK Replicator for disaster recovery and active-active replication, and Streaming Tables delivery to S3 Tables), migrating self-managed Apache Kafka to MSK Express, Apache Flink application development on Amazon Managed Service for Apache Flink, and Amazon MWAA Provisioned and MWAA Serverless (authoring, testing, and debugging DAGs and workflows, and Airflow version upgrades for provisioned environments), and Amazon SageMaker Catalog and AWS Glue Data Catalog curation (business descriptions, glossaries, metadata forms, publishing, and safe asset retirement) with subscription-based access requests, approvals, audits, and revocations.",
       "keywords": [
         "aws",
         "amazon",
@@ -204,11 +204,30 @@
         "rag",
         "embeddings",
         "vector-database",
-        "aurora"
+        "aurora",
+        "streaming",
+        "stream-processing",
+        "msk",
+        "amazon-msk",
+        "managed-streaming-for-apache-kafka",
+        "kafka",
+        "apache-kafka",
+        "kafka-migration",
+        "msk-replicator",
+        "streaming-tables",
+        "flink",
+        "apache-flink",
+        "managed-service-for-apache-flink",
+        "sagemaker-catalog",
+        "datazone",
+        "data-governance",
+        "business-glossary",
+        "metadata-forms",
+        "data-access"
       ],
       "name": "aws-data-analytics",
       "source": "./plugins/aws-data-analytics",
-      "version": "1.0.0"
+      "version": "1.5.0"
     },
     {
       "category": "cloud",
@@ -257,7 +276,7 @@
     },
     {
       "category": "cloud",
-      "description": "Personalized AWS guidance built on patterns from 350,000+ startups—architecture, cost, security, and migration, from day-one account setup to production-ready infrastructure. Migrate to AWS from Azure, GCP, or Heroku—including your entire AI stack: Azure OpenAI/OpenAI/Gemini/Anthropic SDK rewrites to Amazon Bedrock, agentic systems (LangChain, CrewAI, AutoGen) to AWS-native runtimes, and Temporal workers. Operate what you run with AWS DevOps Agent—incident investigation and release-readiness review, with the cost shown before anything is enabled. Includes AWS Activate credits eligibility and 60+ exclusive startup offers. Built by AWS Startup Solutions Architects, with multi-account, multi-region support.",
+      "description": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, and investigate production incidents. It also answers your AWS Activate credits eligibility questions and finds startup offers you can use.",
       "keywords": [
         "aws",
         "startups",

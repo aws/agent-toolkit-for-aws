@@ -2,7 +2,7 @@
 
 Wire the ADOT .NET auto-instrumentation SDK into an ECS task definition (Fargate or EC2 launch type). An init container copies the SDK into a shared volume at task startup, so the application image is not rebuilt and the application source is not touched.
 
-Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Deploying a collector is a separate, optional step — [collector-ecs.md](collector-ecs.md).
+Read [instrumentation.md](instrumentation.md) first — it defines what is out of scope (OTLP endpoints, Application Signals). Whether to also deploy a collector is decided by the Scope table in [instrumentation.md](instrumentation.md) — [collector-ecs.md](collector-ecs.md).
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Read [instrumentation.md](instrumentation.md) first — it defines what is out o
 **Do NOT:**
 
 - Add a CloudWatch Agent sidecar container, or any collector sidecar — **unless you are also deploying a collector** ([collector-ecs.md](collector-ecs.md)), where the CloudWatch Agent sidecar is the primary collector
-- Set `OTEL_EXPORTER_OTLP_*` — leave the SDK's default endpoint in place — **unless you are also deploying a collector** ([collector-ecs.md](collector-ecs.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately
+- Set `OTEL_EXPORTER_OTLP_*` — leave the SDK's default endpoint in place — **unless you are also deploying a collector** ([collector-ecs.md](collector-ecs.md)), which sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` deliberately, or to reach an existing destination the files show elsewhere ([instrumentation.md](instrumentation.md), Scope)
 - Set `OTEL_AWS_APPLICATION_SIGNALS_*`, `OTEL_AWS_SERVICE_EVENTS_*`, or `OTEL_AWS_DYNAMIC_INSTRUMENTATION_*`
 - Add `CloudWatchAgentServerPolicy` or `AWSXRayDaemonWriteAccess` to the task role — **unless you are also deploying a collector** ([collector-ecs.md](collector-ecs.md)), which requires `CloudWatchAgentServerPolicy` on the **task** role
 - Run `cdk deploy`, `terraform apply`, or `aws ecs update-service` automatically
@@ -125,7 +125,7 @@ mainContainer.addMountPoints({
 `CORECLR_PROFILER_PATH` depends on **two** things, and none of this guide's other checks catch getting it wrong — a bad path means the profiler silently does not attach:
 
 - **Architecture**, from the task: `linux-x64` for X86_64, `linux-arm64` for ARM64 (Graviton). Check `runtimePlatform.cpuArchitecture`; Fargate defaults to X86_64 when it is unset.
-- **libc, from the application's base image** — not the task. `linux-<arch>` for glibc bases (`mcr.microsoft.com/dotnet/aspnet:*`, Debian, Ubuntu); **`linux-musl-<arch>` for Alpine bases.**
+- **libc, from the application's base image** — not the task. `linux-<arch>` for glibc bases (the default `mcr.microsoft.com/dotnet/aspnet:<version>` tags, Debian, Ubuntu); **`linux-musl-<arch>` for Alpine bases, including any `-alpine` tag of those images.**
 
 The amd64 image ships `linux-x64` **and** `linux-musl-x64`, and no `linux-arm64` — so on X86_64 the choice is entirely about the image's libc. If you are unsure, list what the image actually shipped rather than inferring it.
 
@@ -258,6 +258,8 @@ Until a receiver exists at the default OTLP endpoint, exporter connection errors
 is the next step, not a failure of instrumentation.
 
 ## Completion
+
+This summary is for an instrumentation-only change with no destination. When the Scope table in [instrumentation.md](instrumentation.md) calls for a collector, include the collector changes from [collector-ecs.md](collector-ecs.md) in the same answer; when the SDK was pointed at an existing destination, say which one. Either way, rewrite every destination part of the summary to match what was done: the **Not changed** clause about collectors, sidecars, and IAM, and the next step about telemetry having nowhere to go.
 
 **Tell the user:**
 

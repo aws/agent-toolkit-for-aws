@@ -17,7 +17,7 @@
   },
 
   "user_node_pools": {
-    "rule": "One AKS node pool becomes one EKS managed node group. node_count -> desired size; min_count/max_count -> the node group's scaling config.",
+    "rule": "One AKS node pool becomes one EKS managed node group. node_count -> desired size; normalized min_count/max_count -> scaling config. Discover normalizes a fixed pool's RDfA 0/0 sentinels to min == desired == max, while preserving a real autoscaled minimum of zero. Reject any result where min > desired or desired > max.",
     "instance_size": "Resolve vm_size through vm-ec2-sizing.json. Record sizing_provenance from THAT lookup, not from this file.",
     "spot": "An AKS pool with priority Spot maps to a managed node group with capacityType SPOT. Carry it across -- dropping it turns a deliberately cheap pool into an on-demand line item and can double the cluster's cost in the estimate.",
     "taints_and_labels": "node_taints and node_labels carry across verbatim. A GPU pool's taint is what keeps general workloads off it; losing it is a correctness change, not a cosmetic one.",

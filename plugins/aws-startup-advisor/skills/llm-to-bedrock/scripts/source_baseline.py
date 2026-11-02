@@ -23,10 +23,14 @@ the output JSONL.
 from __future__ import annotations
 
 import json
+import base64
 import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+from image_input import data_url, mime_type
 
 # Requests intentionally use provider defaults for temperature/top_p — the
 # golden dataset doesn't record per-request sampling params, and the same
@@ -51,11 +55,16 @@ def load_env_file(path: str) -> dict[str, str]:
     return pairs
 
 
-def build_openai_request(model: str, system: str, user_text: str) -> tuple[str, dict, dict]:
+def build_openai_request(model: str, system: str, user_text: str,
+                         image_path=None, raw=None) -> tuple[str, dict, dict]:
+    content = user_text if not image_path else [
+        {"type": "text", "text": user_text},
+        {"type": "image_url", "image_url": {"url": data_url(image_path, raw), "detail": "auto"}},
+    ]
     body = {
         "model": model,
         "messages": ([{"role": "system", "content": system}] if system else [])
-        + [{"role": "user", "content": user_text}],
+        + [{"role": "user", "content": content}],
         # gpt-5.x rejects max_tokens (HTTP 400 unsupported_parameter) and
         # requires max_completion_tokens. The newer name is accepted by all
         # current models, so it is sent unconditionally.
@@ -68,11 +77,17 @@ def build_openai_request(model: str, system: str, user_text: str) -> tuple[str, 
     return "https://api.openai.com/v1/chat/completions", headers, body
 
 
-def build_anthropic_request(model: str, system: str, user_text: str) -> tuple[str, dict, dict]:
+def build_anthropic_request(model: str, system: str, user_text: str,
+                            image_path=None, raw=None) -> tuple[str, dict, dict]:
+    content = user_text if not image_path else [
+        {"type": "image", "source": {"type": "base64", "media_type": mime_type(image_path),
+                                    "data": base64.b64encode(raw).decode()}},
+        {"type": "text", "text": user_text},
+    ]
     body = {
         "model": model,
         "max_tokens": MAX_TOKENS,
-        "messages": [{"role": "user", "content": user_text}],
+        "messages": [{"role": "user", "content": content}],
     }
     if system:
         body["system"] = system
@@ -84,9 +99,14 @@ def build_anthropic_request(model: str, system: str, user_text: str) -> tuple[st
     return "https://api.anthropic.com/v1/messages", headers, body
 
 
-def build_gemini_request(model: str, system: str, user_text: str) -> tuple[str, dict, dict]:
+def build_gemini_request(model: str, system: str, user_text: str,
+                         image_path=None, raw=None) -> tuple[str, dict, dict]:
+    parts = [{"text": user_text}]
+    if image_path:
+        parts.append({"inlineData": {"mimeType": mime_type(image_path),
+                                     "data": base64.b64encode(raw).decode()}})
     body = {
-        "contents": [{"parts": [{"text": user_text}]}],
+        "contents": [{"parts": parts}],
         "generationConfig": {"maxOutputTokens": MAX_TOKENS},
     }
     if system:
@@ -154,6 +174,15 @@ def redact(text: str, secrets) -> str:
     return text
 
 
+def extract_anthropic_text(response: dict) -> str:
+    """Read visible text without treating thinking blocks as the answer."""
+    text = "".join(block["text"] for block in response["content"] if block.get("type") == "text")
+    stop_reason = response.get("stop_reason", "unknown")
+    if not text or stop_reason in ("max_tokens", "model_context_window_exceeded", "refusal", "tool_use"):
+        raise ValueError(f"No complete Anthropic text response (stop_reason={stop_reason})")
+    return text
+
+
 PROVIDERS = {
     # env key → (request builder, response-text extractor)
     "OPENAI_API_KEY": (
@@ -162,7 +191,7 @@ PROVIDERS = {
     ),
     "ANTHROPIC_API_KEY": (
         build_anthropic_request,
-        lambda d: d["content"][0]["text"],
+        extract_anthropic_text,
     ),
     "GEMINI_API_KEY": (
         build_gemini_request,
@@ -251,7 +280,11 @@ def main() -> int:
 
     for p in prompts:
         try:
-            url, headers, body = build(model, p.get("system_prompt") or "", p["user_prompt"])
+            image_path = p.get("image_path")
+            raw = Path(image_path).read_bytes() if image_path else None
+            url, headers, body = build(
+                model, p.get("system_prompt") or "", p["user_prompt"], image_path, raw
+            )
             out = extract(_send(url, headers, body))
             results.append({"id": p["id"], "source_response": out, "status": "live"})
         except urllib.error.HTTPError as e:

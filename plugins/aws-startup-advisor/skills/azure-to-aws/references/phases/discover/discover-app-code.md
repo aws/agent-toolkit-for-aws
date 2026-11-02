@@ -190,11 +190,14 @@ values, only key presence), and the boolean `capabilities_summary` map. `## Step
 (only if agentic): per tool `name`, `file`, `line`, `transport` (`function`/`api`/`mcp`/`unknown`),
 `auth_hint` (`none`/`api_key`/`oauth`/`iam`/`unknown`), `used_by_agents[]`.
 
-## Step 7: Supporting infrastructure (only if IaC ran)
+## Step 7: Supporting infrastructure
 
-Extract Azure AI infra: `azurerm_cognitive_account`, `azurerm_cognitive_deployment`,
-`azurerm_machine_learning_workspace`, `azurerm_search_service`, plus managed identities / Key Vault
-entries referenced by AI code. `{ address, type, file, config }`. `infrastructure: []` when no IaC.
+When IaC ran, extract Azure AI infra: `azurerm_cognitive_account`,
+`azurerm_cognitive_deployment`, `azurerm_machine_learning_workspace`,
+`azurerm_search_service`, plus managed identities / Key Vault entries referenced by AI
+code. `{ address, type, file, config }`. Preserve any pre-existing live/RDfA
+infrastructure contribution for assembler reconciliation; use `infrastructure: []` only
+when no infrastructure producer contributed.
 
 ## Step 8: Contribute ai-workload-profile.json
 
@@ -208,17 +211,16 @@ Build the profile per `references/shared/schema-discover-ai.md`. **`ai_source`:*
   no LLM SDK.
 
 **`profile_source`:** `application_code` (fresh from code), `iac_cognitive` (pre-existing
-infrastructure-inferred profile — IaC and/or live `az`, see `schema-discover-ai.md` §
-profile_source), or `merged` (infrastructure signal + code — code wins on
-field-level conflict; union `infrastructure[]` by each entry's own key, per
-`schema-discover-ai.md` § infrastructure[]; set `sources_analyzed.terraform` /
-`.live` / `.application_code` each to true iff at least one qualifying resource
-came from that source — OR across the whole profile, never exclusive).
+infrastructure-inferred profile — IaC, live `az`, and/or RDfA), or `merged`
+(infrastructure signal + code — code wins on field-level conflict; reconcile
+`infrastructure[]` by exact `azure_id`, then by IaC address when no id exists). Set
+`sources_analyzed.terraform`, `.live`, `.rdfa`, and `.application_code` independently by
+OR-ing across the whole profile; never mislabel RDfA as live.
 
 **CRITICAL field names** (exact): `model_id`, `service`, `detected_via`, `capabilities_used`,
 `usage_context`, `pattern`, `gateway_type`, `capabilities_summary`, `ai_source`. The field is
 `service`, never `azure_service`. Conditional sections: `current_costs` only if billing ran;
-`infrastructure: []` if no IaC; `agentic_profile`/`tool_manifest` only if `is_agentic`.
+`infrastructure: []` if no infrastructure producer contributed; `agentic_profile`/`tool_manifest` only if `is_agentic`.
 
 The assembler (`discover-assemble.md`) writes the file; do not update `.phase-status.json` here.
 

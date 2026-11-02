@@ -1,6 +1,16 @@
 # Connecting to AWS DevOps Agent over MCP
 
-Run this **only after** the DISCLOSE cost notice has been given.
+Run this **only after** the user has said Yes to the combined cost-and-access question (SKILL.md, CONFIRM).
+
+**Mandatory prerequisite:** the user has explicitly answered Yes to the single combined cost-and-account-access
+approval for the intended AWS account. A cost notice alone, a previous unrelated request, or a lack of
+objection does not satisfy this requirement. If approval is missing, do not perform setup writes.
+
+**Standard monitoring setup only.** Do not enable the Agent Space's Directed Actions preference
+(`elevatedActionsEnabled`), create or register an elevated remediation role (`agentElevatedRoleArn`),
+attach `AIDevOpsAgentActionsPolicy`, or broaden the monitoring role. New spaces keep Directed Actions at
+the AWS default (disabled); a reused space keeps whatever it already has. If the account in use is not the
+one the user approved, confirm the target before writing.
 
 ## Assume they are starting from nothing
 
@@ -45,10 +55,13 @@ this into a configuration exercise before they have seen the thing work.
 **Create it for them. Do not send them to the console.**
 
 ```bash
-aws devops-agent create-agent-space --name "<name>" --region <region>
+aws devops-agent create-agent-space --name "<name>" --region <region> --tags CreatedBy=aws-startup-advisor
 ```
 
-`name` is the only required argument. The CLI service is **`devops-agent`** — note that the *endpoint* and
+`name` is the only required argument. Always add the `CreatedBy=aws-startup-advisor` tag (pass it the same
+way to the MCP `create_agent_space` tool): it records on the space itself that AWS Startup Advisor created
+it. If the call is denied only for tagging (`aidevops:TagResource`), create the space without `--tags`
+rather than stopping; the tag is a record, not a requirement. The CLI service is **`devops-agent`** — note that the *endpoint* and
 IAM signing name are `aidevops`, which is why searching for an `aidevops` command group finds nothing.
 Verified against AWS CLI 2.36.16: 62 operations, including `create-agent-space`, `list-agent-spaces`,
 `associate-service` and `get-account-usage`.
@@ -113,10 +126,11 @@ expires in 60 days, nothing needs storing.
       "command": "uvx",
       "timeout": 120000,
       "args": [
-        "mcp-proxy-for-aws@latest",
+        "mcp-proxy-for-aws==1.7.0",
         "https://connect.aidevops.{region}.api.aws/mcp",
         "--service", "aidevops",
-        "--region", "{region}"
+        "--region", "{region}",
+        "--profile", "{profile}"
       ]
     }
   }
@@ -127,9 +141,14 @@ Requires `uvx` (Python) on the machine — check with `uvx --version` before rec
 is missing, either install `uv` or fall back to a bearer token. Do not silently write a config that cannot
 run.
 
-**On `@latest`:** this is AWS's published configuration, reproduced as documented. It means the proxy code
-executed on the machine can change without notice. If the user's environment has a policy on unpinned
-dependencies, pin a known version instead — the endpoint and arguments are unchanged.
+**The version is pinned.** AWS's published configuration uses `mcp-proxy-for-aws@latest`, which lets the
+proxy code run on the machine change without notice. Pin a known release instead, and move it on
+deliberately; the endpoint and arguments are the same.
+
+**`--profile` is the AWS profile the CLI checks used** (DETECT). Without it the proxy uses whatever default
+credentials the editor's process has — an editor opened from the dock does not see `AWS_PROFILE` from a
+shell — which can be another AWS account's, or expired. Leave it out only when the credentials come from
+environment variables rather than a profile.
 
 SigV4 also supports multiple Agent Spaces from one client by passing `agent_space_id` per tool call.
 
@@ -229,7 +248,7 @@ aws iam create-role --role-name DevOpsAgentRole-AgentSpace \
 aws iam attach-role-policy --role-name DevOpsAgentRole-AgentSpace \
   --policy-arn arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy
 
-# inline: lets the agent create the Resource Explorer service-linked role
+# inline: lets the agent create the Resource Explorer service-linked role (slr.json below)
 aws iam put-role-policy --role-name DevOpsAgentRole-AgentSpace \
   --policy-name AllowCreateServiceLinkedRoles --policy-document file://slr.json
 
@@ -241,10 +260,29 @@ aws devops-agent associate-service --agent-space-id <AGENT_SPACE_ID> \
 
 `--service-id` is the literal string **`aws`**. A successful association returns `status: "valid"`.
 
-**Give the ACCESS notice before any of this** — SKILL.md Phase 2.5. It grants an AWS service read access
-across the account, which is the broadest permission in the flow and the one the founder is least likely
-to have thought about. Lead with what it lets the agent see, not with the words "IAM role", and give them
-the revocation path in the same breath.
+`slr.json`, the inline permission, as AWS's CLI onboarding guide gives it. It allows creating only the
+Resource Explorer service-linked role, in this AWS account:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCreateServiceLinkedRoles",
+      "Effect": "Allow",
+      "Action": ["iam:CreateServiceLinkedRole"],
+      "Resource": [
+        "arn:aws:iam::<ACCOUNT_ID>:role/aws-service-role/resource-explorer-2.amazonaws.com/AWSServiceRoleForResourceExplorer"
+      ]
+    }
+  ]
+}
+```
+
+**None of this runs before the Yes** — the access part of the combined notice (SKILL.md Phase 2.5 and
+CONFIRM) is what the user approved. The role grants an AWS service read access across the account, plus
+starting CloudTrail queries and creating AWS Support cases — the broadest permission in the flow and the
+one the founder is least likely to have thought about.
 
 This is also where onboarding effort actually sits — not the Agent Space, which is a single call.
 
@@ -269,8 +307,18 @@ Not run: `chat` or `investigate`, because those bill.
 
 ## Verify before declaring success
 
-Make one cheap call — a `chat` request, not an `investigate` — and confirm a real response. Do not tell
-the user they are connected on the basis of a written config file.
+Make one authenticated call that starts no agent work — MCP `tools/call list_agent_spaces` — and confirm
+a real response that shows the right space:
+
+- **SigV4:** the endpoint is per Region. When its Region is the Region of the space you created or found,
+  the response lists that space; if it does not, the proxy is signed in to another AWS account, so fix
+  `--profile`. A space in a different Region is a Region mismatch: point the endpoint at the space's Region.
+- **Bearer token:** the token belongs to one space, and there may be no local credentials to compare with.
+  A real response listing the token's space is the check.
+
+Do not use `chat` or `investigate` to verify: both are billed agent usage, so a user who only asked for setup would pay for a check they did not ask for. Run
+those only for an operational request. Do not tell the user they are connected on the basis of a
+written config file.
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -278,6 +326,40 @@ the user they are connected on the basis of a written config file.
 | Request times out | Client timeout below 120 s | Raise it |
 | Connection refused | Wrong region or malformed URL | Check against the Agent Space's region |
 | `uvx` not found | SigV4 path without `uv` installed | Install `uv`, or use a bearer token |
+
+## Reporting the new Agent Space
+
+AWS Startup Advisor's usage telemetry records the new space's `agentSpaceId` (an opaque id, nothing else),
+and only with the user's consent. Do this **after** setup is confirmed above, never before or alongside the
+setup approval, and never let it block or delay setup. If Python or the bundled runtime is unavailable, or
+any step fails, skip it. Substitute this skill's absolute directory in each command.
+
+1. Check the host and consent:
+
+   ```sh
+   python3 "<absolute-skill-root>/references/vendored/telemetry/devops_agent_cli.py" status
+   ```
+
+   If `consentStatus` is `OPT_OUT`, stop.
+
+2. If `needsNotice` is `true` and the notice has not already been raised in this session, run the bundled
+   notice, relay its output VERBATIM (including its question), and end that turn. `needsNotice` is also
+   true when an earlier acknowledgement was to a notice that did not name the Agent Space ID:
+
+   ```sh
+   python3 "<absolute-skill-root>/references/vendored/telemetry/consent/cli.py" show
+   ```
+
+   After the user replies, run `consent/accept.py` only for an explicit acknowledgement, or
+   `consent/opt_out.py` for an explicit opt-out. If they ignore it or move on, record nothing and do not
+   raise it again this session. Telemetry consent does not authorize anything else.
+
+3. Report the space with the `agentSpaceId` you verified above. Run this only for the space this skill just
+   created, never one found or created another way; it sends nothing unless consent covers it:
+
+   ```sh
+   python3 "<absolute-skill-root>/references/vendored/telemetry/devops_agent_cli.py" space-created --agent-space-id <agentSpaceId>
+   ```
 
 ## Also worth knowing
 

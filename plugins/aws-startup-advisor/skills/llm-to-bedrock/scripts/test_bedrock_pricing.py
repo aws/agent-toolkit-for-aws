@@ -1,5 +1,46 @@
 # test_bedrock_pricing.py
 import bedrock_pricing as bp
+import pytest
+
+
+@pytest.mark.parametrize("model_id,inp,out", [
+    ("openai.gpt-6-astra", 0.011, 0.055),
+    ("us.openai.gpt-6-astra", 0.011, 0.055),
+    ("global.openai.gpt-6-astra", 0.010, 0.050),
+])
+def test_astra_rates_resolve_without_live_pricing(model_id, inp, out, monkeypatch):
+    import boto3
+
+    def no_live_pricing(*args, **kwargs):
+        raise AssertionError("Astra pricing must use the dated static table")
+
+    monkeypatch.setattr(boto3, "client", no_live_pricing)
+    result = bp.lookup("us-west-2", model_id)
+    assert result["available"]
+    assert result["input_per_1k_usd"] == inp
+    assert result["output_per_1k_usd"] == out
+    assert "<=272K" in result["note"]
+    assert "2x input / 1.5x output" in result["note"]
+    assert "static pricing table" in result["note"]
+
+
+@pytest.mark.parametrize("model_id", [
+    "openai.gpt-6", "openai.gpt-6-astra-pro", "openai.gpt-6-astra-v1:0",
+    "us.openai.gpt-6", "global.openai.gpt-6-astra-v1:0",
+    "in.openai.gpt-6-astra", "eu.openai.gpt-6-astra",
+])
+def test_astra_unknown_ids_never_inherit_another_rate(model_id, monkeypatch):
+    import boto3
+
+    def no_live_pricing(*args, **kwargs):
+        raise AssertionError("Unknown proprietary GPT ids must fail closed")
+
+    monkeypatch.setattr(boto3, "client", no_live_pricing)
+    assert bp._static_fallback(model_id) is None
+    result = bp.lookup("us-west-2", model_id)
+    assert result["available"] is False
+    assert result["input_per_1k_usd"] is None
+    assert result["output_per_1k_usd"] is None
 
 def test_parse_price_dimensions_extracts_per_1k_token_rates():
     # Pure parser over a Pricing API PriceList JSON fragment.
@@ -31,8 +72,7 @@ def test_static_fallback_returns_known_model():
 
 def test_static_fallback_opus_4_8_rate_is_5_and_25_per_1m():
     """Opus 4.8's bare/Global rate is $5/$25 per 1M tokens (0.005/0.025 per 1K), NOT
-    Opus 4.1's legacy $15/$75 — see skills/gcp-to-aws/references/shared/pricing-cache.md
-    and skills/azure-to-aws/references/shared/pricing-cache.md
+    Opus 4.1's legacy $15/$75 — see skills/shared/ai/bedrock-pricing-cache.md
     for the source rates. The Geo (`us.`) inference-profile id carries a ~10% price
     premium over Global/base ($5.50/$27.50, i.e. 0.0055/0.0275 per 1K) per the Bedrock
     model card and AWS's documented Geo-vs-Global cross-Region inference pricing gap —
@@ -216,6 +256,16 @@ def test_mantle_gpt_detection_excludes_gpt_oss():
     assert bp.is_mantle_gpt("anthropic.claude-sonnet-4-6") is False
 
 
+def test_mantle_gpt_detection_includes_bare_gpt6():
+    # Finding 1: bare GPT-6 ids must be recognized by the same detector that
+    # routes GPT-5.x to the curated static table / mantle path.
+    assert bp.is_mantle_gpt("openai.gpt-6-astra") is True
+    assert bp.is_mantle_gpt("openai.gpt-6-sol") is True
+    assert bp.is_mantle_gpt("openai.gpt-6-luna") is True
+    assert bp.is_mantle_gpt("openai.gpt-6.1-sol") is True
+    assert bp.is_mantle_gpt("openai.gpt-oss-120b-1:0") is False
+
+
 def test_mantle_gpt_verified_rates_come_from_static_table():
     # Short-context (272K) in-region rates off the Bedrock pricing page OpenAI tab.
     # NOT OpenAI's standard list price: Bedrock in-region is at parity with OpenAI's
@@ -270,6 +320,42 @@ def test_all_five_proprietary_gpt_models_are_priced():
         v = bp.lookup("us-east-1", mid)
         assert v["available"] is True, mid
         assert v["input_per_1k_usd"] > 0 and v["output_per_1k_usd"] > 0, mid
+
+
+def test_all_four_gpt6_models_are_priced():
+    # Finding 4: GPT-6's bare ids previously had zero STATIC_FALLBACK entries, so
+    # they fell through to the live Pricing API (which never carries OpenAI rows)
+    # and resolved to unavailable despite being a GA, priced model.
+    for mid in ("openai.gpt-6-astra", "openai.gpt-6-sol", "openai.gpt-6-luna", "openai.gpt-6.1-sol"):
+        v = bp.lookup("us-east-1", mid)
+        assert v["available"] is True, mid
+        assert v["input_per_1k_usd"] > 0 and v["output_per_1k_usd"] > 0, mid
+
+
+def test_gpt6_cris_forms_priced_at_correct_option():
+    # Same inference-option shape as GPT-5.6: us. (Geo) carries the 1.10x
+    # data-residency premium; global. is OpenAI's standard list price (parity).
+    standard = {
+        "gpt-6-astra": (0.010, 0.050),
+        "gpt-6-sol": (0.0020, 0.010),
+        "gpt-6-luna": (0.00010, 0.00050),
+        "gpt-6.1-sol": (0.0020, 0.010),
+    }
+    for mid, entry in bp.STATIC_FALLBACK.items():
+        if "openai.gpt-6" not in mid:
+            continue
+        base = mid.split("openai.")[1]
+        si, so = standard[base]
+        factor = 1.0 if mid.startswith("global.") else 1.10
+        assert abs(entry["input_per_1k_usd"] / si - factor) < 1e-6, mid
+        assert abs(entry["output_per_1k_usd"] / so - factor) < 1e-6, mid
+
+
+def test_gpt6_cris_forms_never_partial_match():
+    # No in.-prefixed GPT-6 CRIS form is in the table (not published) — a probe for
+    # one must resolve to unavailable, never partial-match a sibling entry.
+    assert bp._static_fallback("in.openai.gpt-6-sol") is None
+    assert bp._static_fallback("in.openai.gpt-6.1-sol") is None
 
 
 def test_mantle_gpt_never_prefix_matches_a_different_tier():

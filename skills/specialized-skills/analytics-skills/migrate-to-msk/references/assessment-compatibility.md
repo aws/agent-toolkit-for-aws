@@ -207,9 +207,11 @@ opportunities:
 `migrate-to-msk-skill-artifacts/<cluster_name>/msk_sizing_pricing.md`
 
 Verify the per-cluster broker quota before provisioning: **60 brokers with KRaft,
-30 with ZooKeeper** (adjustable via Service Quotas). Cost figures use us-east-1
-on-demand pricing — see the [Amazon MSK pricing page](https://aws.amazon.com/msk/pricing/)
-for other Regions.
+30 with ZooKeeper** (adjustable via Service Quotas). Cost figures use public
+on-demand pricing for the Region you sized against — see the
+[Amazon MSK pricing page](https://aws.amazon.com/msk/pricing/). State the Region and,
+when the sizing run reported a `static` pricing source, say the rates came from the
+script's embedded snapshot rather than a live lookup.
 
 ### Artifacts produced
 

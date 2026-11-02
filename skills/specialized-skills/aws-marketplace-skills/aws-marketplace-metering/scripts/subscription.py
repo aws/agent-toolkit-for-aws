@@ -31,7 +31,13 @@ def _mask(value):
 
 
 def _stamp(update_expr, values):
-    """Append createdAt(once)/updatedAt audit stamps to a SET UpdateExpression (createdAt once, updatedAt every write)."""
+    """Append createdAt(once)/updatedAt audit stamps to a SET UpdateExpression.
+
+    The stamps are SET assignments, so callers MUST stamp while the expression is still a pure
+    SET clause and append any ADD/REMOVE/DELETE clause AFTERWARDS — appending the stamps after an
+    ADD clause corrupts the expression (DynamoDB rejects ``... ADD s :r, createdAt = ...``). All
+    callers here pass pure-SET expressions. (Events-stack twin of register.py's ``_stamp``.)
+    """
     values = dict(values)
     values[":now"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return (

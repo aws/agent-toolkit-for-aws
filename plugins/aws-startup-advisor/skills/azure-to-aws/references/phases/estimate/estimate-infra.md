@@ -111,15 +111,20 @@ as much as its value. Use the best available source; first match wins.
 | Rung | Source                                                                    | `current_costs.source`     | Reachable today?                             |
 | ---- | ------------------------------------------------------------------------- | -------------------------- | -------------------------------------------- |
 | 1    | An Azure Cost Management export the customer supplied                     | `"cost_management_export"` | **No** — needs the billing source (deferred) |
-| 2    | Consumption data from an RDfA report                                      | `"consumption_data"`       | **No** — needs RDfA (deferred)               |
+| 2    | Consumption data from an RDfA report                                      | `"consumption_data"`       | **Partial** — RDfA's own CSV is usage-quantity-only (`discover-rdfa.md` § Step 4), never cost; this rung stays unreachable for a dollar baseline until a future PR lands consumption parsing AND this skill ships an Azure rate card. |
 | 3    | `preferences.baseline.azure_monthly_spend`, when the user stated a figure | `"user_stated"`            | **Yes**                                      |
 | 4    | Derived from discovered SKUs against an Azure rate card                   | `"derived_from_skus"`      | **No** — this skill ships no Azure rate card |
 | 5    | No baseline                                                               | `"unavailable"`            | —                                            |
 
+`config.measured_utilization` (`discover-rdfa.md` § Step 3, this PR) feeds
+right-sizing confidence in Part 2B below, not the Part 1 baseline above — the two
+are different consumers of RDfA, and this PR lands only the right-sizing one.
+
 **Say plainly which rungs are reachable.** On a Terraform-only estate — every
-estate today — rungs 1, 2 and 4 cannot fire: the first two need a discovery
-source that is not built, and rung 4 needs Azure rates this skill does not ship.
-So the baseline is the user's stated figure, or nothing. Do not report rung 4 as
+estate today — rungs 1, 2 and 4 cannot fire for a dollar baseline: rung 1 needs a
+discovery source that is not built, rung 2's own CSV carries no dollar signal at
+all (see above), and rung 4 needs Azure rates this skill does not ship. So the
+baseline is the user's stated figure, or nothing. Do not report rung 4 as
 attempted; there is nothing to attempt it against.
 
 Record the rung on the artifact, and never present a derived figure as an
@@ -171,12 +176,12 @@ rather than omitting the key, so its emptiness is visible to a reader.
 
 ### Metrics lookback affects confidence, not just precision
 
-When a metrics window does exist, read its actual length from the report metadata
-rather than assuming 31 days. Below `confidence_rules.min_window_days` in
-`knowledge/estimate/rightsizing-thresholds.json`, hold right-sizing confidence at
-`inferred` and say why: a P95 over a short window can sit entirely inside a quiet
-period, and a workload sized for a trough it will leave is worse than one sized
-from its SKU.
+When metrics exist, evaluate each row: `metric_error` must be false, `sample_count` must
+be positive, and `window_days` must be numeric and meet
+`confidence_rules.min_window_days`. Error/empty rows and null/unknown windows are
+traceability, not measured sizing evidence; fall back to `inferred` and say why. Current
+RDfA exports omit query bounds, so never replace null with
+`rdfa_metadata.lookback_days`. A P95 of zero remains eligible when positively sampled.
 
 ---
 

@@ -60,8 +60,10 @@ A resource with an AWS target.
   label auditable: without it, "this came from a table" is an unverifiable claim, and an
   improvised target labelled `deterministic` is indistinguishable from a real one.
 - **`rationale` is customer-facing.** State why this target, not what the table says.
-- A `measured` entry must cite the utilization evidence inside `rationale` or
-  `aws_config`.
+- A `measured` entry must cite utilization evidence inside `rationale` or `aws_config`,
+  including `metric_error: false`, `sample_count > 0`, and a numeric `window_days` meeting
+  `confidence_rules.min_window_days`. Unknown windows and zero-sample rows cannot support
+  measured confidence; a sampled P95 of zero can.
 
 ## `clusters[]`
 
@@ -207,7 +209,7 @@ type, instance class, node count, shard count, capacity unit, or volume type. On
 | Value         | Means                                                                                                                                                             |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `table`       | Looked up in a `knowledge/design/*.json` or `knowledge/estimate/*.json` table. The row exists and its two sides justify each other                                |
-| `measured`    | Derived from observed utilization via `knowledge/estimate/rightsizing-thresholds.json`. Requires the evidence cited on the entry, per `design.md`'s postcondition |
+| `measured`    | Derived from an eligible observed metric via `rightsizing-thresholds.json`: no error, positive samples, known sufficient window, and evidence cited |
 | `user_stated` | The customer gave the size in Clarify or a workshop                                                                                                               |
 | `model_prior` | **No table row covered it.** The number came from the model's own knowledge                                                                                       |
 

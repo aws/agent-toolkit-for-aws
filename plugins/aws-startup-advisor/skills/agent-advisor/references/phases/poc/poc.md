@@ -461,7 +461,7 @@ calls the recommended Bedrock model and answers the AgentCore entrypoint contrac
 **Code-path branch (per unit):** read
 `design.json.units[<unit-id>].model_recommendation.api_path`. For `mantle_messages`, generate an
 `AnthropicBedrockMantle` Messages client. For `runtime_converse`, use the boto3 Converse
-template. For `runtime_invoke`, use boto3 InvokeModel with the provider-native body. Future
+template. For `runtime_invoke`, use boto3 InvokeModel with the provider-native body. The
 `mantle_openai_chat` and `mantle_openai_responses` paths use their matching OpenAI-compatible
 clients. Never branch on one run-wide `migration_path` string.
 
@@ -495,7 +495,11 @@ def run_prompt(prompt: str) -> str:
         system=[{"text": SYSTEM_PROMPT}],
         messages=[{"role": "user", "content": [{"text": prompt}]}],
     )
-    return resp["output"]["message"]["content"][0]["text"]
+    text = "".join(block["text"] for block in resp["output"]["message"]["content"] if "text" in block)
+    stop_reason = resp.get("stopReason", "unknown")
+    if not text or stop_reason in ("max_tokens", "model_context_window_exceeded", "guardrail_intervened", "content_filtered", "refusal", "tool_use"):
+        raise ValueError(f"No complete text response (stopReason={stop_reason})")
+    return text
 
 
 class Handler(BaseHTTPRequestHandler):

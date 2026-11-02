@@ -73,15 +73,29 @@ def test_usage_api_sections_no_longer_under_pre_dispatch_heading() -> None:
         )
 
 
-def test_init_paragraph_no_longer_claims_already_done_by_pre_dispatch() -> None:
+def test_shared_init_precedes_both_pre_dispatch_source_actions() -> None:
     text = DISCOVER_FILE.read_text(encoding="utf-8")
-    run_phase_idx = text.index("## Step: Run the phase")
-    output_files_idx = text.index("## Output Files")
-    run_phase_section = text[run_phase_idx:output_files_idx]
 
-    assert "already\n   done" not in run_phase_section and "**already\n   done**" not in run_phase_section, (
-        "the _init paragraph in 'Step: Run the phase' still claims _init was "
-        "already done by the pre-dispatch action — that claim is only true "
-        "while usage-API capture precedes _init's normal position, which is "
-        "no longer the case now that usage-API capture runs after assembly"
+    init_idx = text.index("### Shared Step 0 — initialize the run")
+    rdfa_idx = text.index("### RDfA detection, guidance, and preparation")
+    live_idx = text.index("## Pre-dispatch main-window action (live `az` consent + capture)")
+    assert init_idx < rdfa_idx < live_idx
+
+    pre_dispatch_idx = text.index("## Pre-dispatch main-window actions")
+    before_init = text[pre_dispatch_idx:init_idx]
+    assert "$MIGRATION_DIR/rdfa-cache" not in before_init, (
+        "RDfA cache access is documented before the shared run initialization"
     )
+
+
+def test_shared_init_selects_or_terminates_run_before_pre_actions() -> None:
+    text = DISCOVER_FILE.read_text(encoding="utf-8")
+    init_idx = text.index("### Shared Step 0 — initialize the run")
+    rdfa_idx = text.index("### RDfA detection, guidance, and preparation")
+    init_section = text[init_idx:rdfa_idx]
+
+    assert "Resolve resume-vs-fresh" in init_section
+    assert "on a fresh run" in init_section
+    assert "cancellation" in init_section
+    assert "without running either action" in init_section
+    assert "idempotent\nconfirmation" in init_section

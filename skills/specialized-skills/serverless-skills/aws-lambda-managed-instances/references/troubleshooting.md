@@ -14,6 +14,9 @@
 | Unexpected 500 errors | Unhandled concurrent access to shared state | Add thread-safe patterns from migration-patterns.md |
 | CloudWatch logs missing | VPC egress not configured | Add NAT Gateway or CloudWatch Logs VPC endpoint |
 | High costs despite low traffic | Minimum 3 instances always running | Evaluate if Lambda Event Functions are more cost-effective |
+| Slow scale-out or version publish with a large container image | Full image pull on each new instance | Add a SOCI index and point the image URI at the SOCI-indexed tag (configuration-guide.md) |
+| SOCI index pushed but startup unchanged | Image URI still points at the original tag, the index is SOCI v1, or the image index is multi-architecture | Use the SOCI-indexed tag, rebuild the index as v2 (`nerdctl image convert --soci`), push a single-architecture image index, then publish a new version |
+| First invocations slower after enabling SOCI | Handler reads libraries or files for the first time, so they are fetched during the invocation | Move imports and file reads into init code |
 
 ## Debugging Steps
 

@@ -9,11 +9,12 @@ decision or a provisional limitation rather than inventing a comparative order.
 
 import re
 
+import anthropic_model_recommendation
 
 # --- Source model-family detection (ported from the reference compatibility matrix) ---
-# Reasoning generation: gpt-5 / gpt5 / gpt-5.4 / openai.gpt-5.4, and o1/o3/o4.
+# Reasoning generation: gpt-5 / gpt-6 variants and o1/o3/o4.
 _REASONING_PATTERNS = (
-    re.compile(r"(?i)(^|[^a-z0-9])gpt[-_ ]?5(\.\d+)?([^0-9]|$)"),
+    re.compile(r"(?i)(^|[^a-z0-9])gpt[-_ ]?[56](\.\d+)?([^0-9]|$)"),
     re.compile(r"(?i)(^|[^a-z0-9])o[134](-mini|-pro|-preview)?([^a-z0-9]|$)"),
 )
 # Legacy generation: gpt-4*, gpt-3.5 / gpt-35.
@@ -116,59 +117,103 @@ _HOSTED_TOOL_IMPACTS = {
 
 # Converse tier map: a governance workload keeps its capability tier when moving
 # from the (Mantle-only) GPT-5.x family to Claude on runtime Converse.
-#   GPT-5.6 Sol (frontier)      -> Claude Opus 4.8
+#   GPT-5.6 Sol (frontier)      -> Claude Opus 5.5
 #   GPT-5.6 Terra / 5.5 / 5.4   -> Claude Sonnet 5 (also the default tier)
 #   GPT-5.6 Luna (fast/low-cost)-> Claude Haiku 4.5
 _CONVERSE_TIER_DEFAULT = "anthropic_claude_sonnet_5"
 _CONVERSE_TIER_ORDER = (
     "anthropic_claude_sonnet_5",
-    "anthropic_claude_opus_4_8",
+    "anthropic_claude_opus_5_5",
     "anthropic_claude_haiku_4_5",
 )
 
 
 def _converse_tier_for_source(source):
     sid = _primary_source_id(source).lower()
-    if "5.6-sol" in sid:
-        return "anthropic_claude_opus_4_8"
+    if "5.6-sol" in sid or "6-astra" in sid:
+        return "anthropic_claude_opus_5_5"
     if "5.6-luna" in sid:
         return "anthropic_claude_haiku_4_5"
     # 5.6-terra, 5.5, 5.4, legacy, and unknown sources all map to the balanced tier.
     return _CONVERSE_TIER_DEFAULT
 
 
-def _same_model_runtime_key(source):
-    """GPT-5.6 sources have a SAME-MODEL runtime_converse path via CRIS (verified
-    2026-08-21) — governance requirements no longer force a family switch for
-    them. Returns the catalog key, or None for every other source (5.5/5.4 and
-    legacy have no runtime path, so their Converse candidates stay Claude)."""
-    sid = _primary_source_id(source).lower()
-    for marker, key in (("5.6-sol", "openai_gpt_5_6_sol"),
-                        ("5.6-terra", "openai_gpt_5_6_terra"),
-                        ("5.6-luna", "openai_gpt_5_6_luna")):
-        if marker in sid:
-            return key
+_SOURCE_MODEL_KEYS = {
+    "gpt-5.6-sol": "openai_gpt_5_6_sol",
+    "gpt-5.6-terra": "openai_gpt_5_6_terra",
+    "gpt-5.6-luna": "openai_gpt_5_6_luna",
+    "gpt-6-astra": "openai_gpt_6_astra",
+    "gpt-6-sol": "openai_gpt_6_sol",
+    "gpt-6-luna": "openai_gpt_6_luna",
+    "gpt-6.1-sol": "openai_gpt_6_1_sol",
+}
+
+
+def _same_model_catalog_key(source):
+    """Return the exact catalog key for a recognized source model identity."""
+    sid = re.sub(r"[_ ]", "-", _primary_source_id(source).lower())
+    for identity in sorted(_SOURCE_MODEL_KEYS, key=len, reverse=True):
+        if re.search(rf"(?<![a-z0-9]){re.escape(identity)}(?![a-z0-9])", sid):
+            return _SOURCE_MODEL_KEYS[identity]
     return None
 
 
-def _converse_candidate_order(source):
-    tier = _converse_tier_for_source(source)
+def _same_model_runtime_key(source):
+    """Return the exact source model when it has a runtime_converse path."""
+    return _same_model_catalog_key(source)
+
+
+def _converse_candidate_order(source, requirements=None):
+    tier = (
+        "anthropic_claude_opus_5_5"
+        if (requirements or {}).get("priority") == "quality"
+        else _converse_tier_for_source(source)
+    )
     order = [tier] + [k for k in _CONVERSE_TIER_ORDER if k != tier]
     same = _same_model_runtime_key(source)
     if same:
         # Same model outranks any cross-family tier: keeping the model removes
-        # prompt-adaptation and behavior-delta risk entirely, and on Global CRIS
-        # it is also the cost-parity option.
+        # prompt-adaptation and behavior-delta risk entirely.
         order.insert(0, same)
     return order
 
 
+def _mantle_path(source, requirements):
+    same = _same_model_catalog_key(source)
+    if (
+        source.get("api_surface") == "chat_completions"
+        and _api_continuity(requirements) in {"required", "preferred"}
+        and same is not None
+        and same.startswith("openai_gpt_6")
+    ):
+        return "mantle_openai_chat"
+    return "mantle_openai_responses"
+
+
+def _mantle_candidate_order(catalog, source):
+    same = _same_model_catalog_key(source)
+    keys = list(catalog["models"])
+    return ([same] if same else []) + [key for key in keys if key != same]
+
+
+def _hard_profile_requirement(requirements):
+    """Whether runtime selection must prove a specific CRIS profile is callable."""
+    residency = requirements.get("data_residency")
+    return bool(
+        requirements.get("inference_profile_id")
+        or residency == "global_allowed"
+        or (residency == "geo_required" and requirements.get("cris_geography"))
+    )
+
+
 def _catalog_model_for_path(catalog, path, detected_features=None, requirements=None,
-                            candidate_order=None):
+                            candidate_order=None, region=None):
     """Pick the first available catalog model for `path` whose capability evidence
     covers the required/detected text features (evidence-driven fallback: a newer
     model without feature-level evidence is skipped in favor of an older probed
-    one). When no candidate covers them, return the first available model together
+    one). Mantle candidates with cataloged region availability are skipped outside
+    that footprint; runtime Converse availability remains governed by CRIS resolution.
+    When no candidate covers the requirements, return the first available model together
     with its unmet-capability list so the caller can fail closed. Deterministic:
     iterates `candidate_order` when given (e.g. the Converse tier map), else
     catalog key order."""
@@ -182,6 +227,25 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
         path_config = model["paths"].get(path, {})
         if path_config.get("available") is not True:
             continue
+        if "capabilities" in path_config:
+            model = {**model, "capabilities": path_config["capabilities"]}
+        availability = model.get("region_availability")
+        if path.startswith("mantle_") and region and region != "unknown" and availability:
+            supported_regions = set(availability.get("commercial", []))
+            supported_regions.update(availability.get("govcloud", []))
+            if region not in supported_regions:
+                continue
+        if (
+            path == "runtime_converse"
+            and not path_config.get("inference_profile_regions")
+            and path_config.get("requires_cris")
+            and _hard_profile_requirement(requirements or {})
+            and _resolve_invocation_model_id(
+                path_config["model_id"], True, requirements or {}, model, region
+            )
+            is None
+        ):
+            continue
         unmet = _unsupported_required_capabilities(
             model, detected_features, requirements or {}
         )
@@ -193,7 +257,11 @@ def _catalog_model_for_path(catalog, path, detected_features=None, requirements=
     return first, first_unmet
 
 
-def _resolve_invocation_model_id(model_id, requires_cris, requirements):
+def _resolve_invocation_model_id(model_id, requires_cris, requirements, model=None, region=None):
+    if (model or {}).get("inference_profiles"):
+        return anthropic_model_recommendation._resolve_invocation_model_id(
+            model_id, requires_cris, requirements, model, region
+        )
     if not requires_cris:
         return model_id
     explicit = requirements.get("inference_profile_id")
@@ -229,7 +297,7 @@ def _runtime_required(requirements):
     )
 
 
-def _model_identity(model_key, model, path_config):
+def _model_identity(model_key, model, path_config, invocation_model_id=None):
     return {
         "model_key": model_key,
         "display_name": model["display_name"],
@@ -238,7 +306,9 @@ def _model_identity(model_key, model, path_config):
         "context_window": model["context_window"],
         "output_token_ceiling": model["output_token_ceiling"],
         "path_model_id": path_config["model_id"],
-        "requires_cris": path_config["requires_cris"],
+        "requires_cris": anthropic_model_recommendation._invocation_requires_cris(
+            path_config, invocation_model_id
+        ),
     }
 
 
@@ -292,6 +362,8 @@ def _target_accepts_sampling(target_model):
     """
     if target_model is None or target_model.get("generation") == "bedrock_native":
         return None
+    if target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+        return None
     version = _version_tuple(target_model.get("version"))
     if version is None:
         return None
@@ -334,7 +406,7 @@ def _source_analysis(source, target_model=None):
     }
 
 
-def _reasoning_findings(source, requirements, target_model, path):
+def _reasoning_findings(source, requirements, target_model, path, detected_features=()):
     """Version- and surface-specific parameter findings, derived from the SELECTED
     target model and path — never from the source id, and never Anthropic's blanket
     sampling-removal rule."""
@@ -367,7 +439,22 @@ def _reasoning_findings(source, requirements, target_model, path):
         )
 
     # Sampling acceptance is a property of the TARGET model and the selected path.
-    if path == "runtime_converse":
+    if target_model and target_model.get("sampling_parameters_supported") is False:
+        remediation = (
+            "Remove temperature/top_p/top_k from requests to this target; do not rescale them "
+            "or disable thinking. Route user-visible controls through the existing "
+            "parameter_removed confirmation before changing them."
+        )
+        finding = _finding(
+            "sampling_parameters_removed",
+            "[BLOCKS]" if "sampling_params" in detected_features else "[TUNE]",
+            f"{target_name} does not support sampling controls with its required thinking mode.",
+            remediation,
+        )
+        (blocks if finding["tag"] == "[BLOCKS]" else tuning).append(finding)
+        if "sampling_params" in detected_features:
+            deltas.append(_delta("sampling_parameters_removed", "feature", remediation))
+    elif path == "runtime_converse":
         tuning.append(
             _finding(
                 "sampling_via_converse",
@@ -411,6 +498,15 @@ def _reasoning_findings(source, requirements, target_model, path):
                     "Verify sampling acceptance for the exact target model and surface.",
                 )
             )
+        elif target_model and target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+            tuning.append(
+                _finding(
+                    "sampling_params_unverified", "[TUNE]",
+                    "Astra's model card does not specify accepted sampling parameters.",
+                    "Probe sampling and reasoning settings on the selected API; do not "
+                    "inherit GPT-5.x parameter acceptance or rejection rules.",
+                )
+            )
     return blocks, tuning, deltas
 
 
@@ -441,7 +537,7 @@ def _chat_to_responses_deltas():
     ]
 
 
-def _feature_findings(detected_features, requirements, path=None):
+def _feature_findings(detected_features, requirements, path=None, target_model=None):
     """Structured output, n, tools, state, and hosted-tool/modality impacts.
 
     Findings are path-aware: Mantle Responses keeps verified capabilities
@@ -449,11 +545,25 @@ def _feature_findings(detected_features, requirements, path=None):
     Bedrock-native Converse target does not."""
     detected = set(detected_features or [])
     detected.update(requirements.get("critical_features") or [])
-    is_mantle = path == "mantle_openai_responses"
+    is_responses = path == "mantle_openai_responses"
+    is_chat = path == "mantle_openai_chat"
     blocks, tuning, deltas, impacts = [], [], [], []
 
     if "structured_output_json" in detected:
-        if is_mantle:
+        if path == "runtime_converse" and (target_model or {}).get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+            deltas.append(
+                _delta(
+                    "structured_output_text_format",
+                    "feature",
+                    "Astra runtime JSON Schema output is documented for non-streaming calls. "
+                    "Set outputConfig.textFormat.type=json_schema and put name plus schema "
+                    "(encoded as a JSON string) in outputConfig.textFormat.structure.jsonSchema. "
+                    "Also set additionalModelRequestFields.text.format.strict=true. Use an "
+                    "object schema with all fields required and additionalProperties=false; "
+                    "validate the schema and check refusal/incomplete responses before parsing.",
+                )
+            )
+        elif is_responses:
             # Verified on Mantle: responses.parse(text_format=Model) returns a typed object.
             deltas.append(
                 _delta(
@@ -469,30 +579,56 @@ def _feature_findings(detected_features, requirements, path=None):
                 _delta(
                     "structured_output_text_format",
                     "feature",
-                    "For a Bedrock-native Converse target, enforce the schema via tool-use or "
-                    "prompt + validation; the OpenAI parse() helper is not the selected path.",
+                    "For the selected non-Responses path, enforce the schema through that "
+                    "path's supported request shape plus application validation; the OpenAI "
+                    "Responses parse() helper is not available.",
                 )
             )
     if requirements.get("uses_n") or "multiple_candidates_n" in detected:
-        deltas.append(
-            _delta(
-                "responses_no_n",
-                "feature",
-                "The Responses API does not support n; request multiple candidates with "
-                "repeated calls.",
+        if path == "mantle_openai_chat":
+            if target_model and target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+                tuning.append(
+                    _finding(
+                        "multiple_candidates_n_unverified", "[TUNE]",
+                        "Astra Chat Completions support for n has not been verified.",
+                        "Probe n on the selected model and endpoint before preserving it; "
+                        "if unsupported, request multiple candidates with repeated calls.",
+                    )
+                )
+        else:
+            deltas.append(
+                _delta(
+                    "responses_no_n",
+                    "feature",
+                    "The Responses API does not support n; request multiple candidates with "
+                    "repeated calls.",
+                )
             )
-        )
     if "tool_or_function_calling" in detected:
-        deltas.append(
-            _delta(
-                "tool_result_shape",
-                "feature",
-                "Tool calls continue via function_call_output on Responses; the application "
-                "executes the tool.",
+        if is_chat:
+            tool_description = (
+                "On Mantle Chat Completions, preserve assistant tool_calls and continue each "
+                "result as a role: tool message with the matching tool_call_id; the "
+                "application executes the tool."
             )
-        )
+        else:
+            tool_description = (
+                "Tool calls continue via function_call_output on Responses; the application "
+                "executes the tool."
+            )
+        deltas.append(_delta("tool_result_shape", "feature", tool_description))
     if "conversation_state" in detected or requirements.get("uses_hosted_state"):
-        if is_mantle:
+        if target_model and target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)":
+            deltas.append(
+                _delta(
+                    "conversation_state_ownership",
+                    "path",
+                    "Astra's hosted state behavior has not been probed on this API. Verify "
+                    "retention and continuation semantics; use application-owned history "
+                    "until those requirements are confirmed.",
+                )
+            )
+        elif is_responses:
             deltas.append(
                 _delta(
                     "conversation_state_ownership",
@@ -503,12 +639,22 @@ def _feature_findings(detected_features, requirements, path=None):
                     "verification questions, not a lost capability.",
                 )
             )
+        elif is_chat:
+            deltas.append(
+                _delta(
+                    "conversation_state_ownership",
+                    "path",
+                    "Mantle Chat Completions uses application-owned message history; replay "
+                    "the prior user, assistant, tool-call, and tool-result messages on each "
+                    "request.",
+                )
+            )
         else:
             deltas.append(
                 _delta(
                     "conversation_state_ownership",
                     "path",
-                    "A Bedrock-native Converse target has no hosted Responses state; carry "
+                    "This path does not use hosted Responses state; carry "
                     "conversation history in an application-owned store.",
                 )
             )
@@ -600,6 +746,8 @@ def _unsupported_required_capabilities(target_model, detected_features, requirem
             "reasoning",
         }
     )
+    if target_model.get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)" and "prompt_caching" in needed:
+        checkable.add("prompt_caching")
     return sorted(checkable - catalog_caps)
 
 
@@ -611,6 +759,8 @@ def _compatibility(detected_features, requirements, path, target_model=None):
     text_features = detected.intersection(
         {"tool_or_function_calling", "structured_output_json", "streaming", "image_input_vision", "reasoning"}
     )
+    if (target_model or {}).get("display_name") == "OpenAI GPT-6 Astra (on Bedrock)" and "prompt_caching" in detected:
+        text_features.add("prompt_caching")
     catalog_caps = set((target_model or {}).get("capabilities") or [])
     native = sorted(text_features.intersection(catalog_caps)) if target_model else []
     unsupported = sorted(text_features - catalog_caps) if target_model else []
@@ -649,7 +799,8 @@ def _evaluation(detected_features, requirements):
     return {"mode": "trajectory" if trajectory else "prompt", "gates": gates}
 
 
-def _verification(region, catalog, path, requires_cris, invocation_model_id, selected):
+def _verification(region, catalog, path, requires_cris, invocation_model_id, selected,
+                  model=None, requirements=None):
     if not selected:
         return {
             "region": region,
@@ -662,6 +813,9 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
                 "Resolve the model/path decision before running an availability probe."
             ],
         }
+    requires_cris = requires_cris and invocation_model_id != (model or {}).get(
+        "paths", {}
+    ).get(path, {}).get("model_id")
     checks = [
         "Probe the selected model through the selected API path in the target account and region.",
         "Verify path-specific IAM, model access, and quota before code rewrite or POC generation.",
@@ -678,53 +832,104 @@ def _verification(region, catalog, path, requires_cris, invocation_model_id, sel
         "availability_claim": "provisional",
         "invocation_model_id": invocation_model_id,
         "required_checks": checks,
+        **anthropic_model_recommendation._profile_verification(
+            (model or {}).get("paths", {}).get(path, {}).get("model_id"),
+            requires_cris, model, region, requirements,
+        ),
     }
 
 
 def _decision_options(catalog, workload, region):
-    """Two-sided option set: Mantle Responses continuity vs runtime Converse governance."""
+    """Two-sided option set: the selected Mantle API vs runtime Converse governance."""
     options = []
-    detected = workload.get("detected_features") or []
+    detected = [feature for feature, status in _feature_assessment(workload).items()
+                if status == "detected"]
+    astra = _same_model_runtime_key(workload["source"]) == "openai_gpt_6_astra"
+    mantle_path = _mantle_path(workload["source"], workload["requirements"])
+    if astra:
+        preferred = workload["requirements"].get("preferred_api_path")
+        if preferred in {"mantle_openai_chat", "mantle_openai_responses"}:
+            mantle_path = preferred
+        elif workload["source"].get("api_surface") == "chat_completions":
+            mantle_path = "mantle_openai_chat"
+        # A decision may offer changing an incompatible Chat preference to the
+        # documented Responses caching path; it must not silently select it.
+        needed = set(detected) | set(workload["requirements"].get("critical_features") or [])
+        if "prompt_caching" in needed:
+            mantle_path = _mantle_path(workload["source"], workload["requirements"])
     mantle, _ = _catalog_model_for_path(
-        catalog, "mantle_openai_responses", detected, workload["requirements"]
+        catalog, mantle_path, detected, workload["requirements"],
+        candidate_order=["openai_gpt_6_astra"] if astra else _mantle_candidate_order(catalog, workload["source"]),
+        region=region,
     )
+    mantle_requires_region_change = False
+    if mantle is None and region != "unknown":
+        mantle, _ = _catalog_model_for_path(
+            catalog, mantle_path, detected, workload["requirements"],
+            candidate_order=_mantle_candidate_order(catalog, workload["source"]),
+            region="unknown",
+        )
+        mantle_requires_region_change = mantle is not None
     if mantle:
         model_key, model, path_config = mantle
+        reason = (
+            "Preserves the OpenAI SDK and Chat Completions surface; gives up "
+            "runtime-only Bedrock governance."
+            if mantle_path == "mantle_openai_chat"
+            else "Preserves the OpenAI SDK and Responses surface; gives up "
+            "runtime-only Bedrock governance."
+        )
+        if mantle_requires_region_change:
+            availability = model.get("region_availability") or {}
+            supported_regions = sorted(
+                set(availability.get("commercial", []))
+                | set(availability.get("govcloud", []))
+            )
+            region_label = ", ".join(supported_regions) or "a catalog-supported region"
+            reason += (
+                f" Requires changing from {region} to a catalog-supported Mantle region "
+                f"({region_label})."
+            )
         options.append(
             {
                 "model_key": model_key,
                 "model": path_config["model_id"],
-                "api_path": "mantle_openai_responses",
+                "api_path": mantle_path,
                 "invocation_model_id": _resolve_invocation_model_id(
-                    path_config["model_id"], path_config["requires_cris"], workload["requirements"]
+                    path_config["model_id"], path_config["requires_cris"], workload["requirements"],
+                    model, region,
                 ),
                 "requires_cris": path_config["requires_cris"],
-                "reason": "Preserves the OpenAI SDK and Responses surface; gives up runtime-only "
-                "Bedrock governance.",
+                "reason": reason,
             }
         )
     runtime, _ = _catalog_model_for_path(
         catalog, "runtime_converse", detected, workload["requirements"],
-        candidate_order=_converse_candidate_order(workload["source"]),
+        candidate_order=_converse_candidate_order(workload["source"], workload["requirements"]),
+        region=region,
     )
     if runtime:
         model_key, model, path_config = runtime
+        invocation_model_id = _resolve_invocation_model_id(
+            path_config["model_id"], path_config["requires_cris"], workload["requirements"],
+            model, region,
+        )
         options.append(
             {
                 "model_key": model_key,
                 "model": path_config["model_id"],
                 "api_path": "runtime_converse",
-                "invocation_model_id": _resolve_invocation_model_id(
-                    path_config["model_id"], path_config["requires_cris"], workload["requirements"]
+                "invocation_model_id": invocation_model_id,
+                "requires_cris": anthropic_model_recommendation._invocation_requires_cris(
+                    path_config, invocation_model_id
                 ),
-                "requires_cris": path_config["requires_cris"],
                 "reason": (
-                    "SAME-MODEL governance path: this GPT-5.6 target runs on bedrock-runtime via a "
-                    "CRIS id — Guardrails (Converse API only), invocation logging, and cost parity "
-                    "on Global CRIS (1.10x on Geo/In-Region pricing), without a model change."
+                    "SAME-MODEL governance path: this OpenAI target runs on bedrock-runtime via a "
+                    "CRIS id — Guardrails (Converse API only) and invocation logging without a "
+                    "model change. Check the model's region/profile matrix and dated prices."
                     if model_key == _same_model_runtime_key(workload["source"])
-                    else "Uses Bedrock-native Converse request/response shapes and a Bedrock-native "
-                    "model; requires rewriting the OpenAI integration."
+                    else "Uses Bedrock-native Converse request/response shapes and a "
+                    "cross-family model; requires rewriting the OpenAI integration."
                 ),
             }
         )
@@ -757,7 +962,9 @@ def recommend_openai_workload(workload, region, catalog):
 
     unknown_required = _unknown_required_features(feature_assessment, requirements)
 
-    def _unresolved(reason_head, reasons, block, path_for_compat):
+    def _unresolved(
+        reason_head, reasons, block, path_for_compat, decision_options=None
+    ):
         # Shared decision_required assembly (no target selected).
         rec = _base(workload, "decision_required")
         rec.update(
@@ -768,7 +975,11 @@ def recommend_openai_workload(workload, region, catalog):
                 "model_identity": None,
                 "api_path": None,
                 "invocation_model_id": None,
-                "decision_options": _decision_options(catalog, workload, region),
+                "decision_options": (
+                    _decision_options(catalog, workload, region)
+                    if decision_options is None
+                    else decision_options
+                ),
                 "alternatives": [],
                 "rationale": [reason_head] + reasons,
                 "blocks": [block],
@@ -819,8 +1030,9 @@ def recommend_openai_workload(workload, region, catalog):
             "Required OpenAI API continuity conflicts with a runtime-only Bedrock "
             "governance requirement.",
             [
-                "Mantle preserves the OpenAI SDK/Responses surface; runtime Converse provides "
-                "Bedrock-native governance with a Bedrock-native model."
+                "Mantle preserves the OpenAI SDK and the supported source API surface; runtime "
+                "Converse provides Bedrock-native governance and keeps an exact same-model "
+                "runtime candidate when the catalog provides one."
             ],
             _finding(
                 "model_path_decision_required",
@@ -834,31 +1046,66 @@ def recommend_openai_workload(workload, region, catalog):
         )
 
     # --- Select a path ---
-    candidate_order = None
     if runtime_required:
         path = "runtime_converse"
-        candidate_order = _converse_candidate_order(source)
+        candidate_order = _converse_candidate_order(source, requirements)
         same = _same_model_runtime_key(source)
         if same:
             rationale_head = (
                 "Bedrock governance or multi-model requirements select runtime Converse; "
                 f"the source model itself ({catalog['models'][same]['display_name']}) runs "
-                "there via a CRIS id (verified 2026-08-21), so the same-model candidate "
-                "leads, with the Claude tier as the cross-family fallback."
+                "there via a CRIS id, so the same-model candidate leads, with the Claude "
+                "tier as the cross-family fallback."
             )
         else:
             tier = _converse_tier_for_source(source)
             rationale_head = (
                 "Bedrock governance or multi-model requirements select runtime Converse; "
                 f"the source tier maps to {catalog['models'][tier]['display_name']} "
-                "(capability-evidence fallback across Claude tiers). GPT-5.5/5.4 sources "
-                "have no runtime path, so governance implies this family switch."
+                "(capability-evidence fallback across Claude tiers). Sources without an "
+                "exact runtime catalog identity require this family switch."
             )
     else:
-        path = "mantle_openai_responses"
+        path = _mantle_path(source, requirements)
+        candidate_order = _mantle_candidate_order(catalog, source)
+        if path == "mantle_openai_chat":
+            rationale_head = (
+                "GPT-6 Chat Completions API continuity requires an in-region Mantle Chat "
+                "Completions model."
+            )
+        else:
+            rationale_head = (
+                "OpenAI source lands on Mantle Responses, with the exact source model "
+                "evaluated before capability and numeric fallbacks."
+            )
+
+    # Astra's new paths must not inherit the older GPT-5.x defaults. Keep this
+    # source on Astra and fail closed when the required path lacks evidence.
+    if _same_model_runtime_key(source) == "openai_gpt_6_astra":
+        candidate_order = ["openai_gpt_6_astra"]
+        preferred = requirements.get("preferred_api_path")
+        if preferred:
+            available = catalog["models"]["openai_gpt_6_astra"]["paths"].get(preferred, {})
+            if (available.get("available") is not True
+                    or runtime_required and preferred != "runtime_converse"
+                    or continuity_required and preferred == "runtime_converse"):
+                return _unresolved(
+                    "The explicit Astra API preference conflicts with the available paths "
+                    "or required API/governance constraints.", [],
+                    _finding(
+                        "preferred_api_path_conflict", "[BLOCKS]",
+                        f"The requested {preferred} path cannot satisfy this workload.",
+                        "Choose a supported API or revise the conflicting requirements, "
+                        "then rerun Model Recommend.",
+                    ), preferred,
+                )
+            path = preferred
+        elif not runtime_required and surface == "chat_completions":
+            path = "mantle_openai_chat"
         rationale_head = (
-            "OpenAI source with API continuity lands on Mantle Responses (GPT-5.x is "
-            "Responses-only on Mantle)."
+            "Keep GPT-6 Astra on Bedrock using the compatible explicit API preference, "
+            "otherwise the source-compatible API or required runtime Converse path; "
+            "apply Astra's own region and feature evidence."
         )
 
     # Evidence-driven selection: pick the first candidate on the path whose catalog
@@ -866,11 +1113,40 @@ def recommend_openai_workload(workload, region, catalog):
     # feature-level evidence falls back to an older probed one). G02: fail closed
     # only when NO candidate on the path has the evidence.
     catalog_hit, unsupported = _catalog_model_for_path(
-        catalog, path, detected, requirements, candidate_order=candidate_order
+        catalog, path, detected, requirements, candidate_order=candidate_order,
+        region=region,
     )
     if not catalog_hit:
+        if path.startswith("mantle_"):
+            return _unresolved(
+                rationale_head,
+                [
+                    f"The catalog has no {path} candidate available in {region}; "
+                    "select another region or migration path."
+                ],
+                _finding(
+                    "mantle_region_unavailable",
+                    "[BLOCKS]",
+                    f"No in-region {path} model is available in {region}.",
+                    "Choose a region in the selected model's Mantle footprint, choose "
+                    "runtime Converse, or update the continuity requirement, then rerun "
+                    "Model Recommend.",
+                ),
+                path,
+            )
         raise ValueError(f"catalog has no available model for path {path}")
     model_key, model, path_config = catalog_hit
+    if path == "mantle_openai_chat":
+        if model_key == _same_model_catalog_key(source):
+            rationale_head = (
+                "GPT-6 Chat Completions source with API continuity lands on the exact "
+                "same model through Mantle Chat Completions."
+            )
+        else:
+            rationale_head = (
+                f"The exact source model is unavailable in {region}; "
+                f"{model['display_name']} is the in-region Mantle Chat Completions fallback."
+            )
     if unsupported:
         return _unresolved(
             rationale_head,
@@ -889,6 +1165,19 @@ def recommend_openai_workload(workload, region, catalog):
             path,
         )
 
+    needed = set(detected) | set(requirements.get("critical_features") or [])
+    if (model_key == "openai_gpt_6_astra" and path == "runtime_converse"
+            and {"structured_output_json", "streaming"} <= needed):
+        return _unresolved(
+            rationale_head, [],
+            _finding(
+                "structured_output_streaming_unverified", "[BLOCKS]",
+                "Astra runtime JSON Schema output is documented only for non-streaming calls.",
+                "Use non-streaming structured output or separate the streaming workload, "
+                "then update requirements and rerun Model Recommend.",
+            ), path,
+        )
+
     numeric_conflicts = _numeric_requirement_conflict(model, requirements)
     if numeric_conflicts:
         return _unresolved(
@@ -905,16 +1194,56 @@ def recommend_openai_workload(workload, region, catalog):
         )
 
     invocation_model_id = _resolve_invocation_model_id(
-        path_config["model_id"], path_config["requires_cris"], requirements
+        path_config["model_id"], path_config["requires_cris"], requirements, model, region
     )
+    regions = path_config.get("supported_regions")
+    profile_regions = path_config.get("inference_profile_regions")
+    if regions is not None and region not in regions:
+        return _unresolved(
+            rationale_head, [],
+            _finding(
+                "model_region_unavailable", "[BLOCKS]",
+                f"{model['display_name']} is not listed for {path} in {region}.",
+                "Choose a supported region or a supported CRIS path with explicit "
+                "data-residency consent, or evaluate a different model.",
+            ), path,
+        )
+    if profile_regions is not None and (invocation_model_id is not None or _hard_profile_requirement(requirements)):
+        profile_key = invocation_model_id
+        if invocation_model_id and invocation_model_id.startswith("arn:"):
+            match = re.fullmatch(
+                r"arn:aws:bedrock:([^:]+):[0-9]{12}:inference-profile/([^/]+)",
+                invocation_model_id,
+            )
+            profile_key = match.group(2) if match and match.group(1) == region else None
+        if region not in profile_regions.get(profile_key, []):
+            return _unresolved(
+                rationale_head, [],
+                _finding(
+                    "inference_profile_unverified", "[BLOCKS]",
+                    f"{invocation_model_id} has no catalog evidence for calls from {region}.",
+                    "Select a cataloged profile available from this region, or verify an "
+                    "application inference profile in the target account before proceeding.",
+                ), path,
+            )
     source_analysis = _source_analysis(source, model)
 
     # --- Findings (target- and path-derived) ---
-    r_blocks, r_tuning, r_deltas = _reasoning_findings(source, requirements, model, path)
-    f_blocks, f_tuning, f_deltas, impacts = _feature_findings(detected, requirements, path)
+    r_blocks, r_tuning, r_deltas = _reasoning_findings(source, requirements, model, path, detected)
+    f_blocks, f_tuning, f_deltas, impacts = _feature_findings(detected, requirements, path, model)
     blocks = r_blocks + f_blocks
     tuning = r_tuning + f_tuning
     deltas = list(r_deltas)
+    if model.get("adaptive_thinking_only"):
+        finding = _finding(
+            "adaptive_thinking_required",
+            "[BLOCKS]" if requirements.get("thinking_enabled") is False else "[TUNE]",
+            "Opus 5.5 always uses adaptive thinking and does not support disabled thinking, manual budgets, or forced any/tool choice.",
+            "Set output_config.effort as needed (default medium), and size max_tokens "
+            "for thinking plus response text. Use auto/none tool choice; a hard forced-tool "
+            "requirement needs a verified compatible target. Verify billed usage on the workload.",
+        )
+        (blocks if finding["tag"] == "[BLOCKS]" else tuning).append(finding)
 
     if path == "runtime_converse" and path_config["requires_cris"] and invocation_model_id is None:
         # GPT-5.6 on bedrock-runtime is CRIS-only — there is no in-region invocation
@@ -939,21 +1268,49 @@ def recommend_openai_workload(workload, region, catalog):
             _finding(
                 "chat_completions_to_responses_required",
                 "[BLOCKS]",
-                "GPT-5.x on Mantle rejects Chat Completions; the source must reshape to the "
-                "Responses API.",
-                "Apply the request/response/tool/state reshape deltas before cutover; do not "
-                "target mantle_openai_chat for GPT-5.x.",
+                (
+                    "The selected Astra Responses path requires reshaping the Chat source."
+                    if model_key == "openai_gpt_6_astra"
+                    else "GPT-5.x on Mantle rejects Chat Completions; the source must reshape "
+                    "to the Responses API."
+                ),
+                "Apply the request/response/tool/state reshape deltas before cutover.",
             )
         )
+    if path == "mantle_openai_chat" and surface == "responses":
+        deltas.extend([
+            _delta(
+                "responses_to_chat_request", "path",
+                "Map Responses input/instructions to Chat messages/system content and "
+                "verify the selected model's output-budget parameters.",
+            ),
+            _delta(
+                "responses_to_chat_response", "path",
+                "Read choices[0].message.content instead of output_text; preserve Chat "
+                "messages and tool_call_id rather than Responses output items.",
+            ),
+        ])
+        blocks.append(_finding(
+            "responses_to_chat_completions_required", "[BLOCKS]",
+            "The selected Astra Chat path requires reshaping the Responses source.",
+            "Apply the request/response/tool/state mapping before cutover.",
+        ))
     deltas.extend(f_deltas)
 
     if path == "runtime_converse":
+        same_model = model_key == _same_model_runtime_key(source)
         deltas.append(
             _delta(
                 "openai_sdk_to_converse",
                 "path",
-                "The OpenAI SDK integration is rewritten to boto3 bedrock-runtime Converse with a "
-                "Bedrock-native model; streaming moves to ConverseStream event shapes.",
+                "The OpenAI SDK integration is rewritten to boto3 bedrock-runtime Converse; "
+                + (
+                    "the selected OpenAI model identity is preserved, while streaming moves "
+                    "to ConverseStream event shapes."
+                    if same_model
+                    else "the selected model also changes families, and streaming moves to "
+                    "ConverseStream event shapes."
+                ),
             )
         )
 
@@ -969,7 +1326,7 @@ def recommend_openai_workload(workload, region, catalog):
             "source_analysis": source_analysis,
             "feature_assessment": feature_assessment,
             "primary_model": path_config["model_id"],
-            "model_identity": _model_identity(model_key, model, path_config),
+            "model_identity": _model_identity(model_key, model, path_config, invocation_model_id),
             "api_path": path,
             "invocation_model_id": invocation_model_id,
             "decision_options": [],
@@ -987,7 +1344,8 @@ def recommend_openai_workload(workload, region, catalog):
                 "gate": "Compare source and target on the golden set before percentage rollout.",
             },
             "verification": _verification(
-                region, catalog, path, path_config["requires_cris"], invocation_model_id, selected=True
+                region, catalog, path, path_config["requires_cris"], invocation_model_id,
+                selected=True, model=model, requirements=requirements,
             ),
         }
     )

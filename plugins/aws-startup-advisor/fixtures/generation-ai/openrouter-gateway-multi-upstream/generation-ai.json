@@ -1,0 +1,78 @@
+{
+  "phase": "generate",
+  "generation_source": "ai",
+  "timestamp": "2026-09-08T04:00:00Z",
+  "migration_plan": {
+    "duration_drivers": ["multiple models (adapter + evaluation per model)", "custom inference pipeline"],
+    "approach": "gateway_config_swap",
+    "phases": [
+      {"name": "Phase 1", "sequence": 1, "activities": ["Replace OpenRouter SDK call sites with per-provider Bedrock clients"]},
+      {"name": "Phase 2", "sequence": 2, "activities": ["Deploy to staging", "run A/B comparison per tier"]},
+      {"name": "Phase 3", "sequence": 3, "activities": ["Gradual rollout per tier", "monitor", "disable router after 48h stable"]}
+    ],
+    "models_to_migrate": ["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307", "gpt-4o"]
+  },
+  "step_by_step_guide": {
+    "languages": ["python"],
+    "primary_pattern": "framework",
+    "files_to_modify": ["src/ai/router_client.py"],
+    "dependency_changes": "Replace the OpenRouter SDK call sites with per-provider Bedrock clients (boto3 Converse for Anthropic, Mantle Responses for OpenAI)."
+  },
+  "rollback_plan": {
+    "mechanism": "feature_flag",
+    "flag_name": "AI_PROVIDER",
+    "default_value": "openrouter",
+    "rollback_time": "instant",
+    "triggers": ["quality below threshold", "P95 latency > 2x baseline", "error rate > 1% for 5 min", "cost per request > 3x source"]
+  },
+  "monitoring": {
+    "dashboards": ["Request volume by provider", "latency comparison (P50/P95/P99)", "error rates", "token usage", "cost tracking", "quality scores"],
+    "alerting_rules": [
+      {"severity": "Critical", "condition": "Error rate > 5% for 2 min", "action": "auto-rollback"},
+      {"severity": "Medium", "condition": "Daily cost > 2x projected", "action": "notify finance channel"}
+    ]
+  },
+  "production_readiness_checklist": [
+    "Bedrock model access enabled for all three tiers",
+    "IAM role with bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream",
+    "Provider adapters deployed and tested in staging for each tier",
+    "A/B test with >= 100 representative prompts per tier",
+    "Rollback procedure documented and tested"
+  ],
+  "success_criteria": {
+    "quality": {"category": "Quality", "criteria": "Response quality", "target": ">= 90% of source baseline"},
+    "latency": {"category": "Latency", "criteria": "P95", "target": "Within 2x of source"},
+    "cost": {"category": "Cost", "criteria": "Monthly", "target": "Within 20% of estimation-ai.json"}
+  },
+  "recommendation": {
+    "approach": "Replace the OpenRouter gateway with direct per-provider Bedrock clients, keeping the existing 3-tier routing strategy.",
+    "confidence": "high",
+    "key_risks": ["multi-upstream gateway replacement touches three models across two providers simultaneously"]
+  },
+  "artifacts_by_source": [
+    {
+      "provider": "anthropic",
+      "source_service": "anthropic_api",
+      "models": [
+        {
+          "model": "claude-3-5-sonnet-20240620",
+          "generated_files": ["src/ai/router_client.py"]
+        },
+        {
+          "model": "claude-3-haiku-20240307",
+          "generated_files": ["src/ai/router_client.py"]
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "source_service": "openai_api",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "generated_files": ["src/ai/router_client.py"]
+        }
+      ]
+    }
+  ]
+}

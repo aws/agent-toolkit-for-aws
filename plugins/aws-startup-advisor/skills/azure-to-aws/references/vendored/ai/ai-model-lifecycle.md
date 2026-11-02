@@ -13,7 +13,7 @@
 
 <!-- freshness-contract: enforced by plugins/aws-startup-advisor/tools/model-staleness.py -->
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-10-26
 
 **Staleness window:** 45 days
 
@@ -47,6 +47,10 @@ The notice period a model gets depends on when it launched:
 
 ## Selection Rules
 
+### Rule 0: Capability constraints first
+
+Before applying tier or priority selection, check the Capability Constraints table below: a candidate that lacks a capability the workload requires (forced tool choice, image or audio input, image output, structured outputs, or a sufficient context window) is not eligible regardless of price or tier.
+
 ### Rule 1: Active models only for new migrations
 
 **New migrations must target Active models only.** Do not recommend a Legacy or EOL model as the primary selection for any new migration, even if it is cheaper.
@@ -73,22 +77,64 @@ On each run, compute `days_to_eol = EOL date − today` for every model in the L
 
 ---
 
-## Legacy / EOL Models (as of October 5, 2026)
+## GPT-6 Astra — Active (verified September 9, 2026)
 
-For models launched before 2026-09-07, the [legacy lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative. For models launched on or after that date, the model card and the runtime `modelLifecycle.status` field are authoritative — they will not appear in the table below. The table captures pre-policy-change models referenced elsewhere in this plugin. **Recompute the Status column on each run** using `days_to_eol = EOL date − today`.
+The [Astra model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html)
+lists launch **September 8, 2026**, lifecycle **Active**, and no scheduled EOL date. Its EOL is
+**no sooner than September 8, 2027**, with a Legacy period of at least six months. The earliest
+possible EOL is not an announced retirement date. Existing GPT-5.x entries are not superseded.
+See `openai-on-bedrock.md` for access paths, regions, and pricing.
 
-| Model              | Model ID                                  | EOL Date   | Days to EOL | Status       | Active Replacement      |
-| ------------------ | ----------------------------------------- | ---------- | ----------- | ------------ | ----------------------- |
-| Claude Sonnet 4    | `anthropic.claude-sonnet-4-20250514-v1:0` | 2026-10-14 | 9           | **excluded** | Claude Sonnet 5 / 4.6   |
-| Jamba 1.5 Large    | `ai21.jamba-1-5-large-v1:0`               | 2026-11-26 | 52          | **excluded** | —                       |
-| Jamba 1.5 Mini     | `ai21.jamba-1-5-mini-v1:0`                | 2026-11-26 | 52          | **excluded** | —                       |
-| Marengo Embed v2.7 | `twelvelabs.marengo-embed-2-7-v1:0`       | 2026-11-30 | 56          | **excluded** | Marengo Embed 3.0       |
-| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0` | 2027-01-08 | 95          | legacy       | Claude Opus 4.8 / 4.6   |
+## Capability Constraints (verified October 26, 2026)
 
-**Notes (as of Oct 5, 2026):** Claude Sonnet 4, Jamba 1.5 Large / Mini, and Marengo Embed v2.7 are inside the 90-day exclusion zone (`excluded`, not `legacy`) — they must not appear in recommendation or comparison tables. Jamba 1.5 Large / Mini are also in public extended access, so provider pricing may increase. Claude Opus 4.1 is the only row still outside the exclusion zone (95 days; it enters the zone on 2026-10-10). Nova Canvas v1 and Nova Reel v1 passed their 2026-09-30 EOL date and moved to Removed.
+Per-model facts read from each Bedrock model card on 2026-10-26 (Model Details, Input/Output Modalities, and the `bedrock-runtime` Features table). `yes` / `no` reflect what the card states; `_unverified_` means the card does not state it (same convention as the `_unverified_` batch cells in `bedrock-pricing-cache.md`). Values are facts only — they say nothing about which model a skill should pick; that is decided by the consuming skill's Clarify answers and design rules.
 
-**Removed (past EOL as of Oct 5, 2026):**
+| Model             | Model ID                                   | Lifecycle                                                                     | Context window | Max output | Forced `tool_choice` (`any` / named tool) | Image input | Image output | Audio input | Structured outputs | Source                                                                                                                                 |
+| ----------------- | ------------------------------------------ | ----------------------------------------------------------------------------- | -------------- | ---------- | ----------------------------------------- | ----------- | ------------ | ----------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Sonnet 5.5 | `anthropic.claude-sonnet-5-5` ¹            | Active (launched 2026-09-28; EOL no sooner than 2027-09-28)                   | 1M             | 128K       | no (`auto` / `none` only)                 | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html), verified 2026-10-26   |
+| Claude Sonnet 5   | `anthropic.claude-sonnet-5` ²              | Active (launched 2026-06-30; EOL no sooner than 2027-06-30)                   | 1M             | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html), verified 2026-10-26     |
+| Claude Haiku 4.5  | `anthropic.claude-haiku-4-5-20251001-v1:0` ³ | Active (launched 2025-10-16; card: EOL no sooner than 2026-10-16, Model EOL date N/A) ⁷ | 200K           | 64K        | _unverified_ ⁶                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html), verified 2026-10-26    |
+| Claude Haiku 5.5  | `anthropic.claude-haiku-5-5`               | Active (launched 2026-10-07; EOL no sooner than 2027-10-07)                   | 1M             | 128K       | _unverified_ ⁶                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html), verified 2026-10-26    |
+| Claude Opus 5.5   | `anthropic.claude-opus-5-5`                | Active (launched 2026-09-22; EOL no sooner than 2027-09-22)                   | 1M             | 128K       | no (`auto` / `none` only)                 | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html), verified 2026-10-26     |
+| Nova Pro          | `amazon.nova-pro-v1:0`                     | Active (launched 2024-12-05) ⁷                                                | 300K           | 10K        | _unverified_ ⁵                            | yes         | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-pro.html), verified 2026-10-26               |
+| Nova Lite         | `amazon.nova-lite-v1:0`                    | Active (launched 2024-12-05) ⁷                                                | 300K           | 10K        | yes ⁸                                     | yes         | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-lite.html), verified 2026-10-26              |
+| Nova Micro        | `amazon.nova-micro-v1:0`                   | Active (launched 2024-12-05) ⁷                                                | 128K           | 10K        | yes ⁸                                     | no          | no           | no          | no                 | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html), verified 2026-10-26             |
+| GPT-6 Luna        | `openai.gpt-6-luna` ⁴                      | Active (launched 2026-09-22; EOL no sooner than 2027-09-22)                   | 1.05M ⁹        | 128K       | _unverified_ ⁵                            | yes         | no           | no          | yes                | [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html), verified 2026-10-26             |
 
+Table notes (all from the cited cards unless stated):
+
+1. Sonnet 5.5 inference profiles on `bedrock-runtime`: Geo `us.` / `eu.` / `au.`, Global `global.`; the bare ID is also the `bedrock-mantle` ID.
+2. Sonnet 5 inference profiles: Geo `us.` / `eu.` / `au.` / `in.`, Global `global.`.
+3. Haiku 4.5 on `bedrock-runtime` requires a Geo (`us.` / `eu.` / `au.` / `jp.` / `in.`) or Global (`global.`) inference-profile prefix on this dated ID — the card states the bare ID is not supported for on-demand throughput there; `bedrock-mantle` uses `anthropic.claude-haiku-4-5`.
+4. GPT-6 Luna on `bedrock-runtime` requires `us.openai.gpt-6-luna` or `global.openai.gpt-6-luna`; the bare ID is the `bedrock-mantle` ID. Converse accepts `text` and `image` user content blocks only (no `document`).
+5. The card's `bedrock-runtime` Features table has no client-side tool calling entry, so forced `tool_choice` is not stated either way.
+6. The card lists client-side tool calling without the `auto` / `none`-only restriction that the Sonnet 5.5 and Opus 5.5 cards carry, but does not state `any` / named-tool support explicitly.
+7. Launched before 2026-09-07, so the pre-policy-change [lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative; none of these models appears in its table as of 2026-10-26 (the Haiku 4.5 card's "EOL no sooner than" date has passed, but the card still reads Active with no EOL date set).
+8. Card lists client-side tool calling, and the Converse [`ToolChoice`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolChoice.html) reference states the `tool` (named-tool) member is supported by Amazon Nova models.
+9. 1,050,000-token window; the card prices requests above 272K input tokens at long-context rates (see `bedrock-pricing-cache.md`).
+
+## Legacy / EOL Models (as of October 26, 2026)
+
+For models launched before 2026-09-07, the [legacy lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) is authoritative. For models launched on or after that date, the model card and the runtime `modelLifecycle.status` field are authoritative — they will not appear in the table below. The table captures pre-policy-change models referenced elsewhere in this plugin (plus Claude Sonnet 4.5, which the legacy page lists with a dated ID). **Recompute the Status column on each run** using `days_to_eol = EOL date − today`.
+
+| Model              | Model ID                                    | EOL Date   | Days to EOL | Status       | Active Replacement                                      |
+| ------------------ | ------------------------------------------- | ---------- | ----------- | ------------ | ------------------------------------------------------- |
+| Jamba 1.5 Large    | `ai21.jamba-1-5-large-v1:0`                 | 2026-11-26 | 31          | **excluded** | —                                                       |
+| Jamba 1.5 Mini     | `ai21.jamba-1-5-mini-v1:0`                  | 2026-11-26 | 31          | **excluded** | —                                                       |
+| Marengo Embed v2.7 | `twelvelabs.marengo-embed-2-7-v1:0`         | 2026-11-30 | 35          | **excluded** | Marengo Embed 3.0 (Active outside `ap-northeast-2`; verify target region) |
+| Claude Opus 4.1    | `anthropic.claude-opus-4-1-20250805-v1:0`   | 2027-01-08 | 74          | **excluded** | Claude Opus 5.5; Opus 4.6 for Batch                     |
+| Llama 4 Maverick   | `meta.llama4-maverick-17b-instruct-v1:0`    | 2027-03-30 | 155         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
+| Llama 4 Scout      | `meta.llama4-scout-17b-instruct-v1:0`       | 2027-03-30 | 155         | legacy       | Nova Micro / Nova Lite; Claude Haiku 4.5                |
+| Llama 3.3 70B      | `meta.llama3-3-70b-instruct-v1:0`           | 2027-03-30 | 155         | legacy       | Nova Lite / Nova Pro; Claude Haiku 4.5 / Sonnet 5       |
+| DeepSeek-R1        | `deepseek.r1-v1:0`                          | 2027-03-30 | 155         | legacy       | Claude Opus 5.5 / Nova 2 Pro (reasoning)                |
+| DeepSeek-V3.1      | `deepseek.v3-v1:0` / `deepseek.v3.1`        | 2027-03-30 | 155         | legacy       | DeepSeek V3.2 (`deepseek.v3.2`); else gpt-oss-120b / Sonnet 5 |
+| Claude Sonnet 4.5  | `anthropic.claude-sonnet-4-5-20250929-v1:0` | 2027-04-08 | 164         | legacy       | Claude Sonnet 5 / Sonnet 4.6                            |
+
+**Notes (as of Oct 26, 2026):** Verified against the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html). **Exclusion zone:** Jamba 1.5 Large / Mini, Marengo Embed v2.7, and Claude Opus 4.1 — omit from recommendation and comparison tables. Jamba is in public extended access (pricing may rise). **New Legacy rows this refresh** (still >90 days — annotate, never primary when an Active alternative exists): Llama 4 Maverick / Scout, Llama 3.3 70B, DeepSeek-R1 / V3.1, Claude Sonnet 4.5. Mapping guides that still list Llama 4 or DeepSeek-R1 under "Best Bedrock Match" must prefer the Active Replacement column above for new migrations. Marengo Embed 3.0 remains the Active replacement for Marengo Embed v2.7 in supported non-Seoul Regions (including the skills' default `us-east-1`); its [model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-twelvelabs-marengo-embed-3-0.html) states **“Legacy in ap-northeast-2; Active in other Regions,”** and the [legacy lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html) lists the March 22, 2027 EOL only for `ap-northeast-2`. Do not treat Marengo 3.0 as globally Legacy — limit the Legacy/EOL warning to Seoul and verify the migration's target region before recommending it. TwelveLabs Pegasus is also Legacy on the AWS page (EOL 2027-03-22) but is not a recommendation default in this plugin, so it stays out of the table. Claude Sonnet 4 reached EOL on 2026-10-14 and moved to Removed.
+
+**Removed (past EOL as of Oct 26, 2026):**
+
+- Claude Sonnet 4 (`anthropic.claude-sonnet-4-20250514-v1:0`) — EOL 2026-10-14 (replacement: Claude Sonnet 5 / 4.6)
 - Nova Canvas v1 (`amazon.nova-canvas-v1:0`) — EOL 2026-09-30 (replacement: Stability AI; see the image-generation note)
 - Nova Reel v1 (`amazon.nova-reel-v1:0` / `amazon.nova-reel-v1:1`) — EOL 2026-09-30 (no Active replacement in this registry)
 - Titan Image Generator v2 (`amazon.titan-image-generator-v2:0`) — EOL 2026-06-30
@@ -102,7 +148,7 @@ For models launched before 2026-09-07, the [legacy lifecycle table](https://docs
 - Nova Premier v1 (`amazon.nova-premier-v1:0`) — EOL 2026-09-14 (replacement: Nova 2 Pro)
 - Nova Sonic v1 (`amazon.nova-sonic-v1:0`) — EOL 2026-09-14 (replacement: Nova 2 Sonic)
 
-> **AWS page lag:** As of Sep 21, 2026, the legacy lifecycle page still lists rows whose published EOL date has already passed (Command R / R+ among them), even though the same page states that past-EOL rows are dropped. This file treats the **EOL date as authoritative** and keeps those models in Removed rather than the live table, so users already on them still see a warning. Never recommend or invoke a model listed in Removed.
+> **AWS page lag:** The legacy lifecycle page may still list region-specific rows whose published EOL date has already passed in other Regions, or retain past-EOL models in the live table briefly. This file treats the **EOL date as authoritative** for the Regions this plugin estimates against and keeps past-EOL models in Removed rather than the live table, so users already on them still see a warning. Never recommend or invoke a model listed in Removed.
 
 **Status key:** `excluded` = ≤90 days to EOL, must not appear in any recommendation. `legacy` = >90 days to EOL, annotate but do not recommend as primary.
 
@@ -110,9 +156,9 @@ For models launched before 2026-09-07, the [legacy lifecycle table](https://docs
 
 | Model                      | Model ID                            | Pricing       | Tier     | Use case                              |
 | -------------------------- | ----------------------------------- | ------------- | -------- | ------------------------------------- |
-| Stable Image Ultra         | `stability.stable-image-ultra-v1:0` | ~$0.08/image  | premium  | Photorealistic, high-end visuals      |
+| Stable Image Ultra         | `stability.stable-image-ultra-v1:1` | ~$0.08/image  | premium  | Photorealistic, high-end visuals      |
 | Stable Diffusion 3.5 Large | `stability.sd3-5-large-v1:0`        | ~$0.065/image | flagship | High volume creative assets           |
-| Stable Image Core          | `stability.stable-image-core-v1:0`  | ~$0.04/image  | fast     | Rapid, affordable generation at scale |
+| Stable Image Core          | `stability.stable-image-core-v1:1`  | ~$0.04/image  | fast     | Rapid, affordable generation at scale |
 
 When `image_generation` capability is detected:
 
@@ -144,7 +190,7 @@ When building the model comparison table:
 - **Active**: no restrictions.
 - **Restricted** (`restricted (…)` in the pricing-cache Status column): never `recommended_model` or `backup_model`, never a default in a mapping guide. Include in `model_comparison` only when the user explicitly asks about frontier / Covered Models, annotated with the access requirement.
 
-### Pricing Cache (`pricing-cache.md`)
+### Pricing Cache (`bedrock-pricing-cache.md`)
 
 The multi-provider quick reference table includes a `Status` column:
 
@@ -157,7 +203,7 @@ The multi-provider quick reference table includes a `Status` column:
 
 When refreshing the cache, recompute `days_to_eol` and refresh the `active` / `legacy` / `excluded` values from the [model lifecycle page](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html). **Preserve an existing `restricted (…)` value** — that page publishes only active / legacy / EOL and does not track access gating, so it can never produce `restricted`; change or remove a `restricted` value only when the model card's access requirement itself changed (data-retention mode, gated preview status).
 
-### Mapping Guides (`ai-openai-to-bedrock.md`, `ai-anthropic-to-bedrock.md`, `ai-gemini-to-bedrock.md`, and any source-cloud-specific guide the consuming skill ships)
+### Mapping Guides (`ai-openai-to-bedrock.md`, `ai-anthropic-to-bedrock.md`, `ai-gemini-to-bedrock.md`, the gateway guide `ai-openrouter-to-bedrock.md`, and any source-cloud-specific guide the consuming skill ships)
 
 - "Best Bedrock Match" columns must only contain Active models.
 - Exclusion-zone models must not appear in any recommendation row.
@@ -172,6 +218,6 @@ When refreshing the cache, recompute `days_to_eol` and refresh the `active` / `l
 
 **Newer models are not covered by the table.** A model launched on or after 2026-09-07 will never appear in the Legacy/EOL table above, and its absence is not evidence that it is Active. When a candidate is not in the table, verify it by calling `GetFoundationModel` (or `ListFoundationModels`) and reading `modelLifecycle.status`: `LEGACY` and `EOL` are never valid targets for a new migration. If the model is Legacy, read its model card for the actual EOL date and whether the Legacy period is 6 months or 45 days. If neither the API nor the card is reachable, treat the model's lifecycle as **unverified** and say so in the output rather than inferring `active` from a `Status` column in a pricing cache.
 
-**Periodic table refresh:** When the table itself needs updating (new models added, EOL dates changed by AWS, or past-EOL rows to remove), update this file and `pricing-cache.md` together. Edit the canonical `skills/shared/ai/ai-model-lifecycle.md`, then copy it over every vendored copy in the same change so they stay byte-identical. Bump the **Last updated** line at the top of this file. `plugins/aws-startup-advisor/tools/model-staleness.py` fails when a vendored copy has drifted or the freshness contract is missing/malformed. CI runs that check with `--strict` only for pull requests that touch `plugins/aws-startup-advisor/`, so a snapshot past the 45-day staleness window fails those pull requests.
+**Periodic table refresh:** When the table itself needs updating (new models added, EOL dates changed by AWS, or past-EOL rows to remove), update this file and `bedrock-pricing-cache.md` together. Edit the canonical files under `skills/shared/ai/`, then copy them over every vendored copy in the same change so they stay byte-identical. Bump the **Last updated** line at the top of this file. `plugins/aws-startup-advisor/tools/model-staleness.py` fails when a vendored copy has drifted or the freshness contract is missing/malformed. CI runs that check with `--strict` only for pull requests that touch `plugins/aws-startup-advisor/`, so a snapshot past the 45-day staleness window fails those pull requests.
 
 **Past-EOL rows:** Once `days_to_eol ≤ 0`, move the model out of the live table into **Removed**, and grep this plugin's skill trees for the model ID to catch any remaining reference to it as a target. Keep the Removed entry long enough that users already on the model still get a warning.

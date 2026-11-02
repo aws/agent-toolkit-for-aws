@@ -1,5 +1,9 @@
 # Lambda — Startup-Specific Guidance
 
+**Scope:** Unless a row explicitly names Web Functions, the pricing, tuning, language, and ARM64 guidance below describes **Lambda Event Functions**, the existing event-invocation model.
+
+[Lambda Web Functions](https://docs.aws.amazon.com/lambda/latest/dg/web-functions.html) run Node.js HTTP servers directly and support native response streaming. Their [request timeout](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-revisions.html) defaults to 30 seconds and is configurable up to 900 seconds. They have their own deployment configuration and pricing; do not apply Event Function cost estimates or tuning settings to them. Check current runtime and Region availability before choosing them.
+
 ## When Lambda is the Right Default for Startups
 
 **Pre-seed to Series A**: Lambda should be your default compute unless you have a reason not to use it.
@@ -34,9 +38,13 @@
 | ---------------------------------------------------------------- | ------------------------------------------------- |
 | Monthly Lambda bill > $500 with predictable traffic              | Evaluate ECS Fargate — likely 40-60% cheaper      |
 | P99 latency >2s due to cold starts on critical path              | Add Provisioned Concurrency OR move to containers |
-| Functions exceeding 15-min timeout                               | Move to ECS tasks or Step Functions               |
+| Event Function invocations exceeding 15-min execution timeout     | Move to ECS tasks or split the work with Step Functions |
 | Team spending >20% of time on Lambda packaging/deployment issues | Consider containers for developer experience      |
-| Need WebSockets, long-lived connections, or >6MB response bodies | Lambda is architecturally wrong — use containers  |
+| Node.js HTTP server or streaming responses within the request timeout | Consider Web Functions (30s default, 900s maximum); no WebSocket upgrades or guaranteed process lifetime |
+| WebSockets, HTTP requests exceeding 900s, or a guaranteed long-running process | Use containers; an HTTP-server programming model does not remove these limits |
+| Response bodies larger than 6MB | Evaluate [Event Function response streaming](https://docs.aws.amazon.com/lambda/latest/dg/configuration-response-streaming.html), which supports up to 200MB; check its runtime, Region, and invocation-path constraints before selecting it |
+
+Web Function endpoints [remove `Connection` and `Upgrade` headers](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-http.html). Their [execution environments can be removed at any time](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-env-lifecycle.html); reuse across requests is not a lifetime guarantee.
 
 ## Credits-Specific Guidance
 

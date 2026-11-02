@@ -2,7 +2,9 @@
 
 ## When to Choose ECS (vs Lambda or EKS)
 
-**Choose ECS when**: You've outgrown Lambda ($300-500+/month Lambda bill with steady traffic), need long-running processes, WebSockets, or >6MB responses, but don't have a platform team to run Kubernetes.
+**Choose ECS when**: You've outgrown Lambda ($300-500+/month Lambda bill with steady traffic), need long-running processes or WebSockets, but don't have a platform team to run Kubernetes.
+
+Response size above 6MB alone does not require ECS. First evaluate [Lambda response-streaming options](lambda.md#when-to-graduate-from-lambda) and their payload, runtime, Region, and invocation-path constraints.
 
 **The startup sweet spot**: ECS Fargate is the "right-sized" container platform for teams of 1-15 engineers. It gives you containers without the Kubernetes learning curve, tax, or operational burden.
 

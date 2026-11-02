@@ -250,6 +250,7 @@ RUN_CONTEXT = {
     "max_golden_cases": 200, "assess_design_sha256": "e" * 64,
     "report_date_suffix": "2026-06-10",
     "schema_version": 1, "plugin_version": "1.0.1",
+    "evaluation_contract_version": vr.EVALUATION_CONTRACT_VERSION,
 }
 
 
@@ -258,6 +259,52 @@ def test_run_context_identical_matches(tmp_path, capsys):
     c = write(tmp_path, "current.json", RUN_CONTEXT)
     assert vr.main(["--check-run-context", s, "--current", c]) == 0
     assert "RUN_CONTEXT=match" in capsys.readouterr().out
+
+
+def test_legacy_evaluation_contract_invalidates_even_when_caller_omits_version(tmp_path, capsys):
+    legacy = {k: v for k, v in RUN_CONTEXT.items() if k != "evaluation_contract_version"}
+    saved = write(tmp_path, "saved.json", legacy)
+    current = write(tmp_path, "current.json", legacy)
+    assert vr.main(["--check-run-context", saved, "--current", current]) == 1
+    assert "MISMATCH $.evaluation_contract_version" in capsys.readouterr().out
+    current = write(tmp_path, "current.json", RUN_CONTEXT)
+    assert vr.main(["--check-run-context", saved, "--current", current]) == 1
+    saved = write(tmp_path, "saved.json", RUN_CONTEXT)
+    assert vr.main(["--check-run-context", saved, "--current", current]) == 0
+
+
+def test_text_only_comparative_contract_cannot_reuse_image_results(tmp_path, capsys):
+    previous = {**RUN_CONTEXT, "evaluation_contract_version": 2}
+    saved = write(tmp_path, "saved.json", previous)
+    current = write(tmp_path, "current.json", RUN_CONTEXT)
+    assert vr.main(["--check-run-context", saved, "--current", current]) == 1
+    assert 'evaluation_contract_version saved=2 current=3' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("source,target", [
+    ("claude-opus-4-6", "us.anthropic.claude-opus-4-8"),
+    ("claude-opus-4-8", "global.anthropic.claude-opus-5-5"),
+    ("claude-opus-latest", "global.anthropic.claude-opus-5-5"),
+])
+def test_cached_provider_only_identity_is_rejected_before_reuse(tmp_path, capsys, source, target):
+    data = copy.deepcopy(GOLDEN_ANALYSIS)
+    data.update(source_provider="anthropic", source_models=[source],
+                target_models=[f"{source} -> {target}"], same_model_family=True)
+    assert vr.main(["--schema", "analysis", write(tmp_path, "analysis.json", data)]) == 1
+    assert "$.same_model_family: true requires" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("provider,source,target", [
+    ("anthropic", "claude-opus-5-5", "global.anthropic.claude-opus-5-5"),
+    ("openai", "gpt-5.5", "openai.gpt-5.5"),
+])
+def test_valid_same_identity_and_pending_api_delta_remain_eligible(tmp_path, provider, source, target):
+    data = copy.deepcopy(GOLDEN_ANALYSIS)
+    data.update(source_provider=provider, source_models=[source],
+                target_models=[f"{source} -> {target}"], same_model_family=True,
+                behavior_deltas=[{"delta_type": "api-shape", "location": "app.py:10",
+                                  "user_visible": True, "resolution_kind": "ux_choice"}])
+    assert vr.main(["--schema", "analysis", write(tmp_path, "analysis.json", data)]) == 0
 
 
 MUTATIONS = {

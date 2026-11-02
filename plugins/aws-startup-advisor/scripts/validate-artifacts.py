@@ -1019,9 +1019,17 @@ def _admit_schema_properties(node: Node, schema: Any, source: str) -> None:
             _admit_schema_properties(node.keys[k], sub, source)
 
 
-def build_contracts(manifest: Dict[str, Any], skill: Optional[str], findings: List[Finding]) -> List[Contract]:
+def build_contracts(
+    manifest: Dict[str, Any],
+    skill: Optional[str],
+    findings: List[Finding],
+    include_fixture_only: bool = False,
+) -> List[Contract]:
     specs: Dict[str, Any] = {}
-    specs.update(manifest.get("shared", {}))
+    for glob_, spec in manifest.get("shared", {}).items():
+        if skill is not None and spec.get("fixture_only") and not include_fixture_only:
+            continue
+        specs[glob_] = spec
     if skill is not None:
         specs.update(manifest.get("skills", {}).get(skill, {}))
     contracts: List[Contract] = []
@@ -1178,7 +1186,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.self_check:
         for skill in manifest.get("skills", {}):
-            build_contracts(manifest, skill, findings)
+            build_contracts(manifest, skill, findings, include_fixture_only=True)
     elif args.fixtures:
         fixtures_root = PLUGIN_ROOT / "fixtures"
         for d in sorted(p for p in fixtures_root.iterdir() if p.is_dir()):

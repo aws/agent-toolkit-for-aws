@@ -36,9 +36,9 @@ Most serverless models are automatically available without manual enablement. Us
 **Access control**: Use IAM policies (`bedrock:InvokeModel` scoped to specific resource ARNs) and SCPs to control which models can be used. Use `bedrock:ListFoundationModels` for listing models and `bedrock:GetFoundationModel` for getting details about a specific model. The IAM Resource ARN format depends on the model ID type:
 
 - Inference profile ID → `arn:aws:bedrock:<region>:<account-id>:inference-profile/<profile-id>`
-- Base model ID → `arn:aws:bedrock:<region>::foundation-model/``<model-id>```
+- Base model ID → `arn:aws:bedrock:<region>::foundation-model/<model-id>`
 - These are different ARN formats and are not interchangeable. See [Bedrock IAM resource types](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrock.html#amazonbedrock-resources-for-iam-policies)
-- For least-privilege policies scoped to specific inference profiles, you MUST include BOTH the inference profile ARN (`arn:aws:bedrock:<region>:<account-id>:inference-profile/<profile-id>`) AND the foundation model ARN with a wildcard region (`arn:aws:bedrock:*::foundation-model/<model-id>`), because the request may be routed to any region in the profile -- otherwise `bedrock:InvokeModel` calls fail with `AccessDeniedException`. See [Prerequisites for inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html)
+- For least-privilege policies scoped to specific inference profiles, you MUST include BOTH the inference profile ARN (`arn:aws:bedrock:<region>:<account-id>:inference-profile/<profile-id>`) AND the foundation model ARN with a wildcard region (`arn:aws:bedrock:*::foundation-model/<model-id>`), because the request may be routed to any region in the profile — otherwise `bedrock:InvokeModel` calls fail with `AccessDeniedException`. See [Prerequisites for inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-prereq.html)
 
 **INVALID_PAYMENT_INSTRUMENT error:**
 Some AWS accounts (especially Organizations with European billing/SEPA) get this error when subscribing to Marketplace models. This is an account billing issue, not a Bedrock issue.
@@ -55,7 +55,7 @@ Quick defaults (verify current availability — new models are added frequently,
 
 - **General purpose / reasoning**: Claude Sonnet
 - **Fast + cheap**: Claude Haiku or Nova Micro
-- **Open-source / fine-tuning**: Llama
+- **Open-source / fine-tuning on Bedrock**: Llama. For fine-tuning or hosting an open-weight model on SageMaker, use the `aws-ai-ml` skill.
 - **Multilingual**: Cohere Command or Claude
 - **Code generation**: Claude Sonnet or Llama
 
@@ -66,9 +66,9 @@ Decision framework — choose based on:
 | Reasoning depth | Claude Opus/Sonnet for complex tasks, Haiku/Nova for simple |
 | Cost sensitivity | Nova Micro or Haiku for lowest cost; batch inference for discounted bulk processing |
 | Multimodal needs | Nova Pro/Lite for text + image + video; Claude Sonnet for text + image |
-| Open-source requirement | Llama (fine-tuning available) |
+| Open-source requirement | Llama (Bedrock fine-tuning available). For other open-weight models, use SageMaker JumpStart through the `aws-ai-ml` skill |
 | Latency sensitivity | Haiku or Nova Micro for fastest inference |
-| Context window | Check: `aws bedrock get-foundation-model --model-identifier``<model-id>``` |
+| Context window | Check: `aws bedrock get-foundation-model --model-identifier <model-id>` |
 
 ## Embedding Models for Knowledge Bases
 

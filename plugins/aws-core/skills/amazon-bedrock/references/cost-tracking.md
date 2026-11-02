@@ -80,9 +80,11 @@ Key metrics for cost monitoring (namespace `AWS/Bedrock`, dimension `ModelId`):
 |--------|------------|
 | `InputTokenCount` | Input token spend (charged per token) |
 | `OutputTokenCount` | Output token spend (higher per-token rate) |
-| `InvocationCount` | Request volume |
-| `CacheReadInputTokens` | Tokens served from cache (90% cheaper than standard input) |
-| `CacheWriteInputTokens` | Cache write tokens (25% surcharge over standard input) |
+| `Invocations` | Request volume |
+| `CacheReadInputTokens` | Tokens served from cache (billed at a reduced rate; see pricing page) |
+| `CacheWriteInputTokens` | Cache write tokens (may be billed above the standard input rate; see pricing page) |
+
+Exact cache read and write rates are model-dependent — consult the [Amazon Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/) for the specific figures for your model.
 
 ### Cost Analysis Script
 
