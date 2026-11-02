@@ -10,10 +10,12 @@ invokes the original by ARN, and unwraps the response. The original is left
 untouched, so the source agent keeps working.
 
 Do NOT zip or `create-function` this yourself. Place this handler at
-tools/<shim>/handler.py, hand-add a `targetType:"lambda"` code target to
-agentcore.json pointing at it, and let `agentcore deploy` build the Lambda. All
-config ({{TOKEN}}s below) is baked in at render time — the code target has no
-environment-variable support. See references/deploy.md "How shims are deployed".
+tools/<shim>/handler.py, create the target configuration described in
+references/deploy.md "Add Gateway targets", and run `agentcore add gateway-target`
+with `--gateway <GatewayName>` and `--target-configuration file://<target>.json`.
+Let `agentcore deploy` build the Lambda. All config
+({{TOKEN}}s below) is baked in at render time — the code target has no
+environment-variable support.
 """
 # <<< RENDER: delete this whole block after substituting the tokens below.
 #   {{ORIGINAL_LAMBDA_ARN}}  - the source action-group Lambda ARN
@@ -137,8 +139,8 @@ def lambda_handler(event, context):
     except _lambda.exceptions.ClientError as e:
         # AccessDenied here means the SOURCE Lambda's resource policy does not yet
         # allow this shim role to invoke it. This is a source-side grant the builder
-        # must add (see references/deploy.md "Source-side prerequisites") — the
-        # migration must NOT add-permission on the source itself.
+        # must add (see references/deploy.md "Source permissions and verification")
+        # — the migration must NOT add-permission on the source itself.
         if e.response.get("Error", {}).get("Code") in ("AccessDeniedException", "AccessDenied"):
             raise RuntimeError(
                 f"Denied invoking original Lambda {_ORIGINAL_ARN}. The builder must grant "

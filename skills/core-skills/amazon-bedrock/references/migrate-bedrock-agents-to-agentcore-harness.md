@@ -92,7 +92,7 @@ Completion criterion: `agentcore build` and both `agentcore deploy` runs succeed
 ## What this migration can not do
 
 - Modify or delete the source Bedrock Agent.
-- Modify the source Lambda's resource policy. If a shim invocation fails with `AccessDenied`, stop and ask the builder to grant the shim role `lambda:InvokeFunction` on the source (deploy.md "Source-side prerequisites") — never run `add-permission` on the source itself.
+- Modify the source Lambda's resource policy. If a shim invocation fails with `AccessDenied`, stop and ask the builder to grant the shim role `lambda:InvokeFunction` on the source (see [Source permissions and verification](bedrock-agents-to-agentcore-harness/deploy.md#source-permissions-and-verification)) — never run `add-permission` on the source itself.
 - Migrate KB vector stores / data sources — the new agent calls into the existing KB.
 - Migrate conversation history or end-user authentication.
 - Bypass the AgentCore CLI for infrastructure the CLI owns.
