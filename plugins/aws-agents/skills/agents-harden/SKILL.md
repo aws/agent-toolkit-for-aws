@@ -47,7 +47,7 @@ No arguments required. The skill reads your project config and produces a checkl
 
 Run `agentcore --version`. This skill requires v1.0.0 or later. If the version is older, tell the developer to run `npm install -g @aws/agentcore@latest` (or `agentcore update`) before proceeding.
 
-If `agentcore/agentcore.json` has `"version": 1`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Migrate first so the fixes below can be applied. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
+If `agentcore/agentcore.json` has `"version": 1`, it's a v0 project: the v1 CLI can deploy it but can't add or remove resources. Migrate first so the fixes below can be applied. Commit first: review `git status --short`, stage only the expected project files with `git add -- <paths>`, inspect `git diff --cached`, and then commit. Never use `git add -A` when secret files or trace exports may be present. Migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 ### Step 1: Read the project
 

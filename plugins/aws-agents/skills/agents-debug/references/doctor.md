@@ -55,7 +55,7 @@ agentcore update
 
 `agentcore update --check` reports whether an update is available without installing it.
 
-**If the project was created by CLI v0** (`agentcore/agentcore.json` has `"version": 1`): v1 runs it in compatibility mode and blocks `add`/`remove`/`build`/`export`. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
+**If the project was created by CLI v0** (`agentcore/agentcore.json` has `"version": 1`): v1 runs it in compatibility mode and blocks `add`/`remove`/`build`/`export`. Commit first: review `git status --short`, stage only the expected project files with `git add -- <paths>`, inspect `git diff --cached`, and then commit. Never use `git add -A` when secret files or trace exports may be present. Migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 **If old Starter Toolkit is installed** (Python-based `agentcore` command):
 

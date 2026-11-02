@@ -76,7 +76,7 @@ Before jumping into template selection, figure out where the developer is:
 
 - **Exploring** → Go to Step 2. Present the options, answer questions, and wait. Do not construct a `create` command until they signal they're ready.
 - **Ready to create** → Skip to Step 3 (create the project). If they already said Harness, or named a template or framework, skip Step 2 entirely.
-- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has `"version": 1`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Commit first (`git add -A && git commit`): migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
+- **Already has a project** → Look for `agentcore/agentcore.json` in the current directory (or a parent). If found, read it and skip to Step 5 (local development). Don't re-scaffold. If the file has `"version": 1`, it's a v0 project: v1 runs it in compatibility mode and blocks most changes. Commit first: review `git status --short`, stage only the expected project files with `git add -- <paths>`, inspect `git diff --cached`, and then commit. Never use `git add -A` when secret files or trace exports may be present. Migrate refuses a dirty git tree even to print the plan, and a fresh v0 project starts dirty. Then run `agentcore migrate` to print the plan (nothing changes), show it to the developer, and only after they approve run `agentcore migrate --yes` (`--target <name>` if deployed to several). In an agent's non-TTY shell it never prompts.
 
 If the developer's intent is clear from `$ARGUMENTS` (e.g., "create a Strands agent called MyBot"), skip straight to Step 3.
 
@@ -240,7 +240,7 @@ There are no `--framework`, `--model-provider`, `--build`, `--memory`, `--protoc
 
 Run `agentcore create` outside any existing project — project commands find the project by walking up from the current directory.
 
-`create` runs `git init` but makes no commit. Check that `.gitignore` lists `agentcore/.cache/` (add it if not — it holds 100+ MB of staged dependencies after a build), then make an initial commit (`git add -A && git commit -m "Initial project"`) so later rollbacks have a baseline.
+`create` runs `git init` but makes no commit. Check that `.gitignore` lists `agentcore/.cache/` (add it if not — it holds 100+ MB of staged dependencies after a build). Review `git status --short`, stage only the expected project files with `git add -- <paths>`, inspect `git diff --cached`, and then run `git commit -m "Initial project"` so later rollbacks have a baseline. Never use `git add -A` when secret files or trace exports may be present.
 
 ### Step 4: Explain what was created
 
