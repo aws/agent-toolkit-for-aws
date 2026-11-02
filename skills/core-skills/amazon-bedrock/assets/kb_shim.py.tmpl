@@ -68,7 +68,8 @@ def lambda_handler(event, context):
     # Returns KB passage text + source location verbatim. If the KB holds
     # sensitive data (PII, financial records), review what it returns and redact
     # or filter fields here before returning, and keep this Lambda's CloudWatch
-    # log group KMS-encrypted (see references/deploy.md) — do not log full passages.
+    # log group KMS-encrypted (see references/deploy.md
+    # "Source permissions and verification") — do not log full passages.
     results = [
         {
             "text": r.get("content", {}).get("text", ""),
