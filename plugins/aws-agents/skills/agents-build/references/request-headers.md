@@ -12,34 +12,17 @@ Pass custom HTTP headers from the caller through to your agent's invocation code
 
 ## The default: most headers are stripped
 
-AgentCore Runtime strips all incoming headers from the request before it reaches your agent code **except**:
+AgentCore Runtime does not forward arbitrary caller-supplied headers to your agent code. Add each header that your code needs to the runtime's request header allowlist.
 
-- `Authorization` — always passed through
-- Any header matching `X-Amzn-Bedrock-AgentCore-Runtime-Custom-*` — this is the reserved prefix for custom headers
+- Custom headers can use ordinary permitted names such as `X-Tenant-Id`, `traceparent`, or `Idempotency-Key`.
+- Headers matching the legacy `X-Amzn-Bedrock-AgentCore-Runtime-Custom-*` prefix remain supported, but the prefix is not a substitute for configuration. Include the complete prefixed header name in the allowlist.
+- `Authorization` is forwarded only when the Runtime uses a custom JWT authorizer and `Authorization` is included in the allowlist.
 
-Anything else — `X-Tenant-Id`, `X-Correlation-Id`, `traceparent`, `A2A-Version`, `Idempotency-Key`, whatever — will not appear in your invocation context unless you explicitly add it to the runtime's request header allowlist.
+This is an intentional security boundary and the most common reason a header sent by a caller is absent from the invocation context.
 
-This is an intentional security boundary: the runtime doesn't forward arbitrary caller-supplied headers by default. It's also the #1 reason developers ask "why can't my agent see the header I'm sending?"
+## Add headers to the request header allowlist
 
-## Two ways to pass custom data
-
-### Option 1: Use the reserved prefix
-
-Rename headers at the caller to use the `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` prefix. These pass through without any runtime configuration change.
-
-```
-# Caller sends:
-X-Amzn-Bedrock-AgentCore-Runtime-Custom-Tenant-Id: acme-corp
-X-Amzn-Bedrock-AgentCore-Runtime-Custom-Correlation-Id: 8b2e3d...
-
-# Agent code sees the same headers in the invocation context
-```
-
-This is the simplest option for headers you control end-to-end (your app, your agent).
-
-### Option 2: Add headers to the request header allowlist
-
-If the header names are fixed by a protocol or external system (A2A requires `A2A-Version` and `A2A-Extensions`; OpenTelemetry uses `traceparent` and `baggage`; some APIs use `Idempotency-Key`), you can't rename them. Configure the runtime to allow them explicitly.
+Configure every custom header that your agent code needs to receive. This includes names fixed by a protocol or external system: A2A uses `A2A-Version` and `A2A-Extensions`, OpenTelemetry uses `traceparent` and `baggage`, and some APIs use `Idempotency-Key`.
 
 **Edit `agentcore/agentcore.json`** and add `requestHeaderAllowlist` to the runtime entry:
 
@@ -59,9 +42,9 @@ If the header names are fixed by a protocol or external system (A2A requires `A2
 
 Run `agentcore build` to validate the edited v1 project, then `agentcore deploy`.
 
-**When creating a new Runtime**, `agentcore add runtime --name <name> --language python --request-header-allowlist X-Tenant-Id A2A-Version` writes the allowlist. Edit the existing Runtime entry instead of adding a duplicate. The CLI stores the header names as passed; use the same names in the CLI flag, project JSON, and caller request. The reserved `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` prefix is a separate pass-through option that does not need an allowlist entry.
+**When creating a new Runtime**, `agentcore add runtime --name <name> --language python --request-header-allowlist X-Tenant-Id A2A-Version` writes the allowlist. Edit the existing Runtime entry instead of adding a duplicate. The CLI stores the header names as passed; use the same names in the CLI flag, project JSON, and caller request. If you use the legacy `X-Amzn-Bedrock-AgentCore-Runtime-Custom-*` prefix, add the complete prefixed header name to the allowlist.
 
-`Authorization` passes through by default and doesn't need to be in the allowlist.
+To forward `Authorization`, configure the Runtime with `CUSTOM_JWT`, include `Authorization` in the allowlist, and invoke it with `agentcore invoke --bearer-token <token>`. IAM-authenticated Runtime requests do not expose their SigV4 `Authorization` header to agent code.
 
 ### Constraints
 
