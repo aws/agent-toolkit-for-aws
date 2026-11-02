@@ -356,6 +356,8 @@ This will:
 
 There's no preview or confirmation step on a normal deploy. To check the build locally first, run `agentcore build` (see `agents-deploy`). **First deploy usually takes a few minutes.** Subsequent deploys are faster.
 
+When the developer is finished with the project, route them to `agents-deploy` → [Removing resources and tearing down](../agents-deploy/SKILL.md#removing-resources-and-tearing-down). Runtime log groups survive stack deletion and require separate cleanup through that workflow.
+
 After deploy, show them how to invoke:
 
 ```bash
@@ -394,6 +396,7 @@ Based on what the developer said they want to build, suggest the logical next sk
 | "I want multiple agents working together" | `agents-build` | `agentcore add runtime --name <Name> --language python --protocol A2A` |
 | "I need it in a VPC" | `agents-build` | `--network-mode VPC --network-config '<JSON>'` on `add runtime` / `add harness` |
 | "My Harness needs custom code" | `agents-build` | `agentcore export harness --name <HarnessName>` (converts it to a Runtime with Strands Harness SDK code) |
+| "I'm done and want to tear it down" | `agents-deploy` | follow the target-specific [teardown workflow](../agents-deploy/SKILL.md#removing-resources-and-tearing-down) |
 
 Don't overwhelm — suggest one or two next steps based on what the developer actually asked for.
 
