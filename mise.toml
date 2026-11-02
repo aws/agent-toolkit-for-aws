@@ -31,9 +31,17 @@ run = "uv run --with jsonschema --with pyyaml python tools/validate_spec.py"
 description = "Run tests for the repo validation tools"
 run = "python3 -m unittest discover -s tools/tests -v"
 
+[tasks."test:payment-scripts"]
+description = "Run payment skill script tests"
+run = """
+uv run --with pytest python -m pytest \
+  plugins/aws-agents/skills/agents-build/scripts/test_setup_payment_user.py \
+  plugins/aws-agents/skills/agents-pay/scripts/test_resource_resolution.py
+"""
+
 [tasks.validate]
 description = "Run all validation"
-depends = ["lint:manifests", "lint:skill-parity", "lint:spec", "test:tools"]
+depends = ["lint:manifests", "lint:skill-parity", "lint:spec", "test:tools", "test:payment-scripts"]
 
 [tasks.security]
 description = "Run security scans"

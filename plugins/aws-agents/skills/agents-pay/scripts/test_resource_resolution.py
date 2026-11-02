@@ -1,243 +1,243 @@
-"""Regression tests for config.json-first resource resolution in agents_pay_admin.py.
+"""Tests for config-first payment resource resolution."""
 
-Covers resolve_region() and resolve_manager_arn(): both must prefer an explicit
---flag, then the environment, then whatever init-config / create-instrument
-already persisted into config.json's resources section, before falling back
-further (boto3's own resolution for region; deployed-state.json for the
-manager ARN). Neither should silently ignore a value the tool itself wrote to
-config.json, and region must never fall back to a hardcoded default that
-overrides a value the operator (or boto3) actually has.
-"""
-import sys
 import json
-import tempfile
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import agents_pay_admin as m
-
-d = tempfile.mkdtemp()
+import agents_pay_admin as module
 
 
-def _write_config(name: str, resources: dict) -> Path:
-    p = Path(d) / name
-    p.write_text(json.dumps({"resources": resources, "policy": {}}))
-    return p
-
-
-# --- resolve_region() ---------------------------------------------------
-
-cfg = _write_config("region-config.json", {"region": "us-east-1"})
-
-_saved_region = os.environ.pop("AWS_REGION", None)
-_saved_default_region = os.environ.pop("AWS_DEFAULT_REGION", None)
-try:
-    assert m.resolve_region("eu-west-1", cfg) == "eu-west-1", "flag should win"
-
-    os.environ["AWS_REGION"] = "ap-southeast-2"
-    assert m.resolve_region(None, cfg) == "ap-southeast-2", "env should win over config"
-    del os.environ["AWS_REGION"]
-
-    assert m.resolve_region(None, cfg) == "us-east-1", (
-        "config region should be used, not hardcoded us-west-2"
-    )
-
-    empty_cfg = _write_config("region-empty.json", {})
-    assert m.resolve_region(None, empty_cfg) is None, (
-        "should fall through to None, not us-west-2"
-    )
-finally:
-    if _saved_region is not None:
-        os.environ["AWS_REGION"] = _saved_region
-    if _saved_default_region is not None:
-        os.environ["AWS_DEFAULT_REGION"] = _saved_default_region
-
-print("resolve_region: PASSED")
-
-# --- resolve_manager_arn() ------------------------------------------------
-
-arn_cfg = _write_config(
-    "arn-config.json",
-    {"payment_manager_arn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/config-saved"},
+MANAGER_ARN = (
+    "arn:aws:bedrock-agentcore:us-east-1:"
+    "111111111111:payment-manager/manager-1"
 )
 
-_saved_env_arn = os.environ.pop("PAYMENT_MANAGER_ARN", None)
-try:
-    # 1. explicit flag wins over everything
-    assert m.resolve_manager_arn("arn:flag", arn_cfg) == "arn:flag", "flag should win"
 
-    # 2. env wins over config
-    os.environ["PAYMENT_MANAGER_ARN"] = "arn:env"
-    assert m.resolve_manager_arn(None, arn_cfg) == "arn:env", "env should win over config"
-    del os.environ["PAYMENT_MANAGER_ARN"]
+def _write_config(root: Path, name: str, resources: dict) -> Path:
+    path = root / name
+    path.write_text(json.dumps({"resources": resources, "policy": {}}))
+    return path
 
-    # 3. config.json wins when no flag/env — this is the regression case: a
-    # manager ARN persisted by a previous create-instrument/init-config run
-    # must be found even when re-running from a directory with no
-    # deployed-state.json in reach.
-    assert m.resolve_manager_arn(None, arn_cfg) == (
-        "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/config-saved"
-    ), "config.json's payment_manager_arn must not be ignored"
 
-    # 4. nothing set anywhere -> None (discover_deployed() finds nothing in
-    # this tempdir, since there's no deployed-state.json here)
-    empty_arn_cfg = _write_config("arn-empty.json", {})
-    cwd = os.getcwd()
-    os.chdir(d)
-    try:
-        assert m.resolve_manager_arn(None, empty_arn_cfg) is None, (
-            "should fall through to None when nothing is configured or discoverable"
-        )
-    finally:
-        os.chdir(cwd)
-finally:
-    if _saved_env_arn is not None:
-        os.environ["PAYMENT_MANAGER_ARN"] = _saved_env_arn
+def _write_v1_project(root: Path) -> Path:
+    project = root / "v1-project"
+    (project / "agentcore").mkdir(parents=True)
+    (project / "agentcore" / "agentcore.json").write_text(
+        '{"name":"PayTest","version":2}'
+    )
+    return project
 
-print("resolve_manager_arn: PASSED")
 
-# --- CLI v1 project status ------------------------------------------------
-
-v1_root = Path(d) / "v1-project"
-(v1_root / "agentcore").mkdir(parents=True)
-(v1_root / "agentcore" / "agentcore.json").write_text('{"name":"PayTest","version":2}')
-v1_status = {
-    "projectName": "PayTest",
-    "target": "default",
-    "region": "us-east-1",
-    "resources": [
-        {
-            "resourceType": "payment-manager",
-            "name": "Payments",
+def _v1_status(children=None, resources=None):
+    payment_manager = {
+        "resourceType": "payment-manager",
+        "name": "Payments",
+        "deploymentState": "deployed",
+        "arn": MANAGER_ARN,
+        "children": children or [{
+            "resourceType": "payment-connector",
+            "name": "Coinbase",
             "deploymentState": "deployed",
-            "arn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/manager-1",
-            "children": [
-                {
-                    "resourceType": "payment-connector",
-                    "name": "Coinbase",
-                    "deploymentState": "deployed",
-                    "id": "connector-1",
-                }
-            ],
-        }
-    ],
-}
-with patch.object(m.subprocess, "run") as run:
-    run.return_value.returncode = 0
-    run.return_value.stdout = json.dumps(v1_status)
-    found = m.discover_deployed(v1_root)
-    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
-    assert found["connector_id"] == "connector-1"
-    run.assert_called_once()
-    assert run.call_args.kwargs["cwd"] == v1_root.resolve()
+            "id": "connector-1",
+        }],
+    }
+    return {
+        "projectName": "PayTest",
+        "target": "default",
+        "region": "us-east-1",
+        "resources": resources or [payment_manager],
+    }
 
-print("discover_deployed v1: PASSED")
 
-# v1 deployed state exists, but has no payments branch. Discovery must still
-# read status from the project root.
-(v1_root / "agentcore" / ".cli").mkdir()
-(v1_root / "agentcore" / ".cli" / "deployed-state.json").write_text('{"version":2}')
-with patch.object(m.subprocess, "run") as run:
-    run.return_value.returncode = 0
-    run.return_value.stdout = json.dumps(v1_status)
-    found = m.discover_deployed(v1_root)
-    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
-    assert found["connector_id"] == "connector-1"
-    assert run.call_args.kwargs["cwd"] == v1_root.resolve()
+def test_resolve_region_precedence(tmp_path, monkeypatch):
+    config = _write_config(tmp_path, "region.json", {"region": "us-east-1"})
+    monkeypatch.delenv("AWS_REGION", raising=False)
+    monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
 
-print("discover_deployed v1 with state: PASSED")
+    assert module.resolve_region("eu-west-1", config) == "eu-west-1"
 
-# Migrated v0 state can retain an outdated payments branch after the v1 project
-# replaces its resources. The v1 status result must take precedence over it.
-(v1_root / "agentcore" / ".cli" / "deployed-state.json").write_text(json.dumps({
-    "targets": {
-        "default": {
-            "resources": {
-                "payments": {
-                    "OldPayments": {
-                        "managerArn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/old",
-                        "connectors": {"OldConnector": {"connectorId": "old-connector"}},
+    monkeypatch.setenv("AWS_REGION", "ap-southeast-2")
+    assert module.resolve_region(None, config) == "ap-southeast-2"
+
+    monkeypatch.delenv("AWS_REGION")
+    assert module.resolve_region(None, config) == "us-east-1"
+    empty_config = _write_config(tmp_path, "empty-region.json", {})
+    assert module.resolve_region(None, empty_config) is None
+
+
+def test_resolve_manager_arn_precedence(tmp_path, monkeypatch):
+    configured_arn = (
+        "arn:aws:bedrock-agentcore:us-east-1:"
+        "111111111111:payment-manager/config-saved"
+    )
+    config = _write_config(
+        tmp_path,
+        "manager.json",
+        {"payment_manager_arn": configured_arn},
+    )
+    monkeypatch.delenv("PAYMENT_MANAGER_ARN", raising=False)
+
+    assert module.resolve_manager_arn("arn:flag", config) == "arn:flag"
+
+    monkeypatch.setenv("PAYMENT_MANAGER_ARN", "arn:env")
+    assert module.resolve_manager_arn(None, config) == "arn:env"
+
+    monkeypatch.delenv("PAYMENT_MANAGER_ARN")
+    assert module.resolve_manager_arn(None, config) == configured_arn
+
+    empty_config = _write_config(tmp_path, "empty-manager.json", {})
+    monkeypatch.chdir(tmp_path)
+    assert module.resolve_manager_arn(None, empty_config) is None
+
+
+def test_v1_discovery_uses_project_status_instead_of_stale_state(tmp_path):
+    project = _write_v1_project(tmp_path)
+    state_dir = project / "agentcore" / ".cli"
+    state_dir.mkdir()
+    (state_dir / "deployed-state.json").write_text(json.dumps({
+        "targets": {
+            "default": {
+                "resources": {
+                    "payments": {
+                        "OldPayments": {
+                            "managerArn": (
+                                "arn:aws:bedrock-agentcore:us-east-1:"
+                                "111111111111:payment-manager/old"
+                            ),
+                            "connectors": {
+                                "OldConnector": {"connectorId": "old-connector"}
+                            },
+                        }
                     }
                 }
             }
         }
-    }
-}))
-with patch.object(m.subprocess, "run") as run:
-    run.return_value.returncode = 0
-    run.return_value.stdout = json.dumps(v1_status)
-    found = m.discover_deployed(v1_root)
-    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
+    }))
+
+    with patch.object(module.subprocess, "run") as run:
+        run.return_value.returncode = 0
+        run.return_value.stdout = json.dumps(_v1_status())
+        found = module.discover_deployed(project)
+
+    assert found["manager_arn"] == MANAGER_ARN
+    assert found["connector_id"] == "connector-1"
+    assert run.call_args.kwargs["cwd"] == project.resolve()
+
+
+def test_v1_discovery_honors_project_directory_environment(tmp_path, monkeypatch):
+    project = _write_v1_project(tmp_path)
+    monkeypatch.setenv("AGENTCORE_PROJECT_DIR", str(project))
+    monkeypatch.setenv("AGENTCORE_TARGET", "default")
+
+    with patch.object(module.subprocess, "run") as run:
+        run.return_value.returncode = 0
+        run.return_value.stdout = json.dumps(_v1_status())
+        found = module.discover_deployed()
+
+    assert found["manager_arn"] == MANAGER_ARN
     assert found["connector_id"] == "connector-1"
     run.assert_called_once()
-    assert run.call_args.kwargs["cwd"] == v1_root.resolve()
 
-with patch.object(m.subprocess, "run") as run:
-    run.return_value.returncode = 1
-    found = m.discover_deployed(v1_root)
+
+def test_v1_discovery_returns_empty_when_status_fails(tmp_path):
+    project = _write_v1_project(tmp_path)
+
+    with patch.object(module.subprocess, "run") as run:
+        run.return_value.returncode = 1
+        found = module.discover_deployed(project)
+
     assert found["manager_arn"] is None
     assert found["connector_id"] is None
     run.assert_called_once()
 
-with patch.dict(os.environ, {"AGENTCORE_PROJECT_DIR": str(v1_root), "AGENTCORE_TARGET": "default"}):
-    with patch.object(m.subprocess, "run") as run:
-        run.return_value.returncode = 0
-        run.return_value.stdout = json.dumps(v1_status)
-        found = m.discover_deployed()
-        assert found["manager_arn"] == v1_status["resources"][0]["arn"]
-        assert found["connector_id"] == "connector-1"
-        run.assert_called_once()
 
-print("discover_deployed migrated v1 with stale state: PASSED")
+def test_v0_discovery_uses_legacy_deployed_state(tmp_path):
+    project = _write_v1_project(tmp_path)
+    (project / "agentcore" / "agentcore.json").write_text(
+        '{"name":"PayTest","version":1}'
+    )
+    state_dir = project / "agentcore" / ".cli"
+    state_dir.mkdir()
+    (state_dir / "deployed-state.json").write_text(json.dumps({
+        "targets": {
+            "default": {
+                "resources": {
+                    "payments": {
+                        "OldPayments": {
+                            "managerArn": (
+                                "arn:aws:bedrock-agentcore:us-east-1:"
+                                "111111111111:payment-manager/old"
+                            ),
+                            "connectors": {
+                                "OldConnector": {"connectorId": "old-connector"}
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    }))
 
-# Legacy v0 projects still use their payment entries without calling v1 status.
-(v1_root / "agentcore" / "agentcore.json").write_text('{"name":"PayTest","version":1}')
-with patch.object(m.subprocess, "run") as run:
-    found = m.discover_deployed(v1_root)
+    with patch.object(module.subprocess, "run") as run:
+        found = module.discover_deployed(project)
+
     assert found["manager_arn"].endswith("payment-manager/old")
     assert found["connector_id"] == "old-connector"
     run.assert_not_called()
-(v1_root / "agentcore" / "agentcore.json").write_text('{"name":"PayTest","version":2}')
 
-print("discover_deployed v0 fallback: PASSED")
 
-# Ambiguous project resources must require explicit selection by the operator.
-with patch.object(m.subprocess, "run") as run:
-    run.return_value.returncode = 0
-    run.return_value.stdout = json.dumps({
-        **v1_status,
-        "resources": [
-            *v1_status["resources"],
-            {
-                "resourceType": "payment-manager",
-                "name": "OtherPayments",
-                "arn": "arn:aws:bedrock-agentcore:us-east-1:111111111111:payment-manager/manager-2",
-                "children": [{"resourceType": "payment-connector", "id": "connector-2"}],
-            },
-        ],
-    })
-    found = m.discover_deployed(v1_root)
-    assert found["manager_arn"] is None
-    assert found["connector_id"] is None
-
-with patch.object(m.subprocess, "run") as run:
-    run.return_value.returncode = 0
-    run.return_value.stdout = json.dumps({
-        **v1_status,
-        "resources": [{
-            **v1_status["resources"][0],
-            "children": [
-                *v1_status["resources"][0]["children"],
+@pytest.mark.parametrize(
+    ("children", "extra_resources", "expected_manager", "expected_connector"),
+    [
+        (
+            [
+                {"resourceType": "payment-connector", "id": "connector-1"},
                 {"resourceType": "payment-connector", "id": "connector-2"},
             ],
-        }],
-    })
-    found = m.discover_deployed(v1_root)
-    assert found["manager_arn"] == v1_status["resources"][0]["arn"]
-    assert found["connector_id"] is None
+            [],
+            MANAGER_ARN,
+            None,
+        ),
+        (
+            None,
+            [{
+                "resourceType": "payment-manager",
+                "name": "OtherPayments",
+                "arn": (
+                    "arn:aws:bedrock-agentcore:us-east-1:"
+                    "111111111111:payment-manager/manager-2"
+                ),
+                "children": [{
+                    "resourceType": "payment-connector",
+                    "id": "connector-2",
+                }],
+            }],
+            None,
+            None,
+        ),
+    ],
+)
+def test_v1_discovery_rejects_ambiguous_resources(
+    tmp_path,
+    children,
+    extra_resources,
+    expected_manager,
+    expected_connector,
+):
+    project = _write_v1_project(tmp_path)
+    status = _v1_status(children=children)
+    status["resources"].extend(extra_resources)
 
-print("discover_deployed ambiguity: PASSED")
+    with patch.object(module.subprocess, "run") as run:
+        run.return_value.returncode = 0
+        run.return_value.stdout = json.dumps(status)
+        found = module.discover_deployed(project)
 
-print("ALL RESOURCE RESOLUTION TESTS PASSED")
+    assert found["manager_arn"] == expected_manager
+    assert found["connector_id"] == expected_connector
