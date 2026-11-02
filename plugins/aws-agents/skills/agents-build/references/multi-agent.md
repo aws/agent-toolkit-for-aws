@@ -389,15 +389,15 @@ agentcore add memory --name SharedMemory --strategies SEMANTIC,USER_PREFERENCE
 agentcore deploy --target <owner-target>
 ```
 
-2. Get the Memory ARN from `agentcore status --target <owner-target> --json` and take its ID after `memory/`. The owner project's Runtime receives `MEMORY_SHAREDMEMORY_ID` automatically. For a Runtime in another project, add `{"name":"MEMORY_SHAREDMEMORY_ID","value":"<deployed-memory-id>"}` to that Runtime's `envVars` in `agentcore/agentcore.json`, grant its execution role the required Memory actions on the deployed Memory ARN using an `additionalPolicies` policy file (or update its imported role), and deploy that project to its intended target. Both Runtimes must use the Memory's region.
+1. Get the Memory ARN from `agentcore status --target <owner-target> --json` and take its ID after `memory/`. The owner project's Runtime receives `MEMORY_SHAREDMEMORY_ID` automatically. For a Runtime in another project, add `{"name":"MEMORY_SHAREDMEMORY_ID","value":"<deployed-memory-id>"}` to that Runtime's `envVars` in `agentcore/agentcore.json`, grant its execution role the required Memory actions on the deployed Memory ARN using an `additionalPolicies` policy file (or update its imported role), and deploy that project to its intended target. Both Runtimes must use the Memory's region.
 
-3. In each agent's code, read the same env var:
+1. In each agent's code, read the same env var:
 
 ```python
 MEMORY_ID = os.getenv("MEMORY_SHAREDMEMORY_ID")
 ```
 
-4. Use a consistent `actor_id` scheme — typically the end user's ID — so both agents read and write the same user's memory.
+1. Use a consistent `actor_id` scheme — typically the end user's ID — so both agents read and write the same user's memory.
 
 ### Key consideration
 
