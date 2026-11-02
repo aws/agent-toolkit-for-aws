@@ -1,11 +1,12 @@
 # Local vs. Deployed — What Works Where
 
-AgentCore has a local dev server (`agentcore dev`) and a deployed runtime. They don't have feature parity. This reference tells you what works where so generated code and troubleshooting handle both environments correctly.
+AgentCore Runtime has a local dev server (`agentcore dev`) and a deployed environment. They don't have feature parity. A Harness cannot run locally: `agentcore dev` normally deploys it and opens the Agent Inspector, while `agentcore dev --skip-deploy` uses the version already deployed and does not apply local changes.
 
 ## Quick reference
 
-| Feature | `agentcore dev` (local) | Deployed runtime |
+| Feature | `agentcore dev` (local) | Deployed AgentCore |
 |---|---|---|
+| Harness execution | ❌ no local execution; deploys unless `--skip-deploy` is used | ✅ deployments use immutable Harness versions |
 | Agent invocation | ✅ via curl on localhost:8080 | ✅ via `invoke_agent_runtime` or HTTPS |
 | Framework model calls | ✅ if Bedrock creds are available | ✅ |
 | Python/JS function tools (framework-native) | ✅ | ✅ |
