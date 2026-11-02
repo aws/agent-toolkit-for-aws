@@ -42,7 +42,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install checklist dependencies
-        run: npm ci --prefix .github/scripts --ignore-scripts --no-audit --no-fund
+        run: npm ci --prefix .github/scripts --ignore-scripts --no-fund
       - run: node --test .github/scripts/startup-advisor-pr-checklist.test.cjs
 
   author-checklist:
@@ -63,7 +63,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install trusted checklist dependencies
-        run: npm ci --prefix .github/scripts --ignore-scripts --no-audit --no-fund
+        run: npm ci --prefix .github/scripts --ignore-scripts --no-fund
       - name: Check confirmations and update the author reminder
         env:
           GH_TOKEN: ${{ github.token }}
