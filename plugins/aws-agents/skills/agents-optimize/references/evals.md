@@ -695,7 +695,7 @@ The `components.json` shape for a bundle and how the agent reads the active bund
 
 ### `add evaluator` / `add online-eval` fails on an existing project
 
-- If `agentcore/agentcore.json` has `"version": 1`, it's a v0 project and `add` is blocked in compatibility mode. Commit first (`git add -A && git commit`): migrate refuses a dirty tree even to print the plan. Then run `agentcore migrate` to print the plan, show it to the developer, and only after they approve run `agentcore migrate --yes`.
+- If `agentcore/agentcore.json` has `"version": 1`, it's a v0 project and `add` is blocked in compatibility mode. Commit first: review `git status --short`, stage only the expected project files with `git add -- <paths>`, inspect `git diff --cached`, and then commit. Never use `git add -A` when secret files or trace exports may be present. Migrate refuses a dirty tree even to print the plan. Then run `agentcore migrate` to print the plan, show it to the developer, and only after they approve run `agentcore migrate --yes`.
 
 ## Cross-region inference (data residency)
 
