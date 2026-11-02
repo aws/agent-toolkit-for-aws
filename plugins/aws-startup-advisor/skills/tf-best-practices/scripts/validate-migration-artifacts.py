@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only checks for generated Heroku migration artifacts.
+"""Read-only checks for generated migration infrastructure and scripts.
 
 This is a bounded static checker, not a Terraform, YAML, or Bash interpreter.
 Unknown security-group expressions and unrecognised PostgreSQL scripts fail
@@ -281,6 +281,540 @@ def _resources(root: Path, policy: Any, findings: list[Finding]) -> list[Resourc
             if instances is not False:
                 resources.append(resource)
     return resources
+
+
+def _ungroup_hcl(expression: str, policy: Any) -> str:
+    """Remove only parentheses that enclose the entire expression."""
+    raw = _uncomment_hcl(expression, policy).strip()
+    _, codes, _ = policy._lex_hcl(raw)
+    stack: list[int] = []
+    pairs: dict[int, int] = {}
+    for i, char in enumerate(raw):
+        if not codes[i]:
+            continue
+        if char == "(":
+            stack.append(i)
+        elif char == ")" and stack:
+            pairs[stack.pop()] = i
+    start, end = 0, len(raw)
+    while start < end and pairs.get(start) == end - 1:
+        start += 1
+        end -= 1
+        while start < end and raw[start].isspace():
+            start += 1
+        while end > start and raw[end - 1].isspace():
+            end -= 1
+    return raw[start:end]
+
+
+def _heredoc_parts(expression: str) -> tuple[bool, list[str], int]:
+    """Locate the first heredoc terminator without consuming a later field."""
+    lines = expression.splitlines(keepends=True)
+    opener = re.fullmatch(r"<<(-?)\s*([A-Za-z_][A-Za-z0-9_]*)\s*", lines[0].rstrip("\r\n"))
+    if opener and len(lines) >= 2:
+        end = len(lines[0])
+        for index, line in enumerate(lines[1:], 1):
+            end += len(line)
+            terminator = line.strip() if opener.group(1) else line.rstrip()
+            if terminator == opener.group(2):
+                return bool(opener.group(1)), lines[1:index], end
+    raise ValueError("Literal ECS heredoc string could not be parsed.")
+
+
+def _heredoc_string(expression: str) -> str:
+    """Read a heredoc, preserving its newline and optional indentation trim."""
+    indented, content, end = _heredoc_parts(expression)
+    if expression[end:].strip():
+        raise ValueError("Literal ECS heredoc string could not be parsed.")
+    if indented:
+        indentation = min(
+            (len(line) - len(line.lstrip(" \t")) for line in content if line.strip()),
+            default=0,
+        )
+        content = [line[indentation:] if line.strip() else line for line in content]
+    return "".join(content)
+
+
+def _quoted_hcl_string(expression: str, *, json_document: bool = False) -> str | None:
+    """Decode a quoted HCL literal, including its long Unicode escape form."""
+    def unicode_escape(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if json_document and re.fullmatch(r"\\(?:u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})", token):
+            codepoint = int(token[2:], 16)
+            if codepoint in (ord("$"), ord("%")):
+                # Keep escaped template introducers escaped until the inner
+                # JSON parse, after its source template boundary is checked.
+                return rf"\\u{codepoint:04x}"
+        if token.startswith("\\U"):
+            return json.dumps(chr(int(token[2:], 16)))[1:-1]
+        return token
+
+    try:
+        normalized = re.sub(r"\\(?:U[0-9a-fA-F]{8}|u[0-9a-fA-F]{4}|.)", unicode_escape, expression)
+        value = json.loads(normalized)
+    except (ValueError, TypeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _object_field(body: str, name: str, policy: Any) -> str | None:
+    """Read the last direct object field expression without evaluating it."""
+    body = _uncomment_hcl(body, policy)
+    depths, codes, _ = policy._lex_hcl(body)
+    pattern = r'(?P<key>"(?:\\.|[^"\\])*"|(?<![\w-])[A-Za-z_][\w-]*)\s*(?P<delimiter>[:=])\s*'
+    result = None
+    for match in re.finditer(pattern, body):
+        delimiter = match.start("delimiter")
+        if not codes[delimiter] or depths[delimiter] != 1:
+            continue
+        key = match.group("key")
+        if key.startswith('"'):
+            start = match.start("key")
+            # A key's opening quote follows code. Quotes inside a string,
+            # interpolation or heredoc are not object-key tokens.
+            if start and not codes[start - 1]:
+                continue
+            key = _quoted_hcl_string(key)
+        elif not codes[match.start("key")]:
+            continue
+        if key != name:
+            continue
+        start = match.end()
+        if body.startswith("<<", start):
+            _, _, end = _heredoc_parts(body[start:])
+            result = _ungroup_hcl(body[start:start + end], policy)
+            continue
+        bracket = paren = 0
+        end = len(body)
+        for i in range(start, len(body)):
+            if not codes[i]:
+                continue
+            char = body[i]
+            if depths[i] == 1 and bracket == 0 and paren == 0 and char in ",\n}":
+                end = i
+                break
+            bracket += (char == "[") - (char == "]")
+            paren += (char == "(") - (char == ")")
+        result = _ungroup_hcl(body[start:end], policy)
+    return result
+
+
+def _literal_template_text(
+    value: str, policy: Any, *, json_source: bool = False,
+    dynamic_tokens: list[str] | None = None,
+) -> str | None:
+    # Keep literal text around interpolations, but never inspect their
+    # unevaluated expressions as URL text. Template directives remain dynamic.
+    collision_source = value
+    if dynamic_tokens is not None:
+        # Marker names are ASCII. Include escaped ASCII in the collision pool
+        # because HCL string decoding happens after marker insertion.
+        def decoded_ascii(match: re.Match[str]) -> str:
+            codepoint = int(match.group(0)[2:], 16)
+            return chr(codepoint) if codepoint < 128 else match.group(0)
+
+        collision_source = re.sub(
+            r"\\(?:u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})", decoded_ascii, value,
+        )
+    output: list[str] = []
+    i = 0
+    while i < len(value):
+        if value.startswith(("$${", "%%{"), i):
+            output.append(value[i:i + 3] if json_source else value[i + 1:i + 3])
+            i += 3
+        elif value.startswith(("${", "%{"), i):
+            directive = value.startswith("%{", i)
+            if directive and not json_source:
+                return None
+            expression = value[i + 2:]
+            depths, codes, _ = policy._lex_hcl(expression)
+            end = next(
+                (j for j, char in enumerate(expression) if char == "}" and codes[j] and depths[j] == 0),
+                None,
+            )
+            if end is None:
+                return None
+            token = "%{dynamic}" if directive else "<interpolation>"
+            if dynamic_tokens is not None:
+                marker = f"__ecs_template_{len(dynamic_tokens)}__"
+                while marker in value or marker in collision_source:
+                    marker += "_"
+                token = f"%{{{marker}}}" if directive else marker
+                dynamic_tokens.append(token)
+            output.append(token)
+            i += end + 3
+        else:
+            output.append(value[i])
+            i += 1
+    return "".join(output)
+
+
+def _literal_object_string(body: str, name: str, policy: Any) -> str | None:
+    expression = _object_field(body, name, policy)
+    if expression is None:
+        return None
+    if expression.startswith("<<"):
+        return _literal_template_text(_heredoc_string(expression), policy)
+    if not (expression.startswith('"') and expression.endswith('"')):
+        return None
+    # Template syntax is recognized before string escapes are decoded.
+    # An escaped marker is literal even if decoding introduces "${" or "%{".
+    literal = _literal_template_text(expression[1:-1], policy)
+    return _quoted_hcl_string(f'"{literal}"') if literal is not None else None
+
+
+def _json_template_strings(document: str, policy: Any) -> str:
+    """Mask each JSON string's template once, retaining other literal fields."""
+    def literal(match: re.Match[str]) -> str:
+        value = _literal_template_text(match.group(0)[1:-1], policy)
+        return f'"{value}"' if value is not None else '"<template>"'
+
+    return re.sub(r'"(?:\\.|[^"\\])*"', literal, document)
+
+
+def _has_dynamic_json_structure(document: str, dynamic_tokens: list[str]) -> bool:
+    """Find active template replacements outside JSON string tokens."""
+    outside_strings = re.sub(r'"(?:\\.|[^"\\])*"', "", document)
+    return any(token in outside_strings for token in dynamic_tokens)
+
+
+def _literal_list_objects(expression: str, policy: Any) -> list[str]:
+    """Read direct object items in a literal list, allowing only grouping."""
+    raw = _ungroup_hcl(expression, policy)
+    if not raw.startswith("[") or not raw.endswith("]"):
+        return []
+    depths, codes, _ = policy._lex_hcl(raw)
+    start = 1
+    bracket = paren = 0
+    items: list[str] = []
+    for i in range(1, len(raw)):
+        if not codes[i]:
+            continue
+        char = raw[i]
+        if depths[i] == 0 and bracket == 0 and paren == 0:
+            if char == "]":
+                if i != len(raw) - 1:
+                    return []
+                items.append(raw[start:i])
+                break
+            if char == ",":
+                items.append(raw[start:i])
+                start = i + 1
+        bracket += (char == "[") - (char == "]")
+        paren += (char == "(") - (char == ")")
+    else:
+        return []
+    objects: list[str] = []
+    for item in items:
+        item = _ungroup_hcl(item, policy)
+        if item.startswith("{"):
+            block, end = policy._extract_braced_block(item, 0)
+            if end == len(item):
+                objects.append(block)
+    return objects
+
+
+def _inline_database_urls(expression: str, policy: Any) -> list[str]:
+    """Read literal ECS environment entries; do not evaluate Terraform."""
+    raw = _ungroup_hcl(expression, policy)
+    encoded = re.match(r"jsonencode\s*(?=\()", raw)
+    if encoded:
+        argument = raw[encoded.end():].strip()
+        ungrouped = _ungroup_hcl(argument, policy)
+        # A call followed by another operation is not a literal definition.
+        if ungrouped == argument:
+            return []
+        raw = ungrouped
+    heredoc = raw.startswith("<<")
+    if heredoc:
+        raw = _heredoc_string(raw)
+    literal_string = raw.startswith('"')
+    dynamic_tokens: list[str] = []
+    try:
+        if not encoded and (literal_string or heredoc):
+            source = raw[1:-1] if literal_string else raw
+            template = _literal_template_text(
+                source, policy, json_source=True, dynamic_tokens=dynamic_tokens,
+            )
+            if template is None:
+                return []
+            raw = _quoted_hcl_string(f'"{template}"', json_document=True) if literal_string else template
+            if raw is None:
+                raise ValueError("Invalid quoted container definition.")
+        elif literal_string:
+            raw = _quoted_hcl_string(raw, json_document=not encoded)
+            if raw is None:
+                raise ValueError("Invalid quoted container definition.")
+        if not encoded:
+            if _has_dynamic_json_structure(raw, dynamic_tokens):
+                return []
+            raw = _json_template_strings(raw, policy)
+        decoded = json.loads(raw)
+    except (ValueError, TypeError):
+        if heredoc or literal_string:
+            # Entire template expressions remain dynamic. A literal JSON
+            # document that cannot be inspected must not receive a pass.
+            if raw and re.fullmatch(r"\s*(?:\$\{.*\}|%\{.*)\s*", raw, re.DOTALL):
+                return []
+            raise ValueError("Literal ECS container definitions JSON could not be parsed.") from None
+        decoded = None
+    if isinstance(decoded, list):
+        values = []
+        for container in decoded:
+            if not isinstance(container, dict):
+                continue
+            environment = container.get("environment", [])
+            if not isinstance(environment, list):
+                raise ValueError("Literal ECS environment must be an array.")
+            values.extend(
+                entry["value"]
+                for entry in environment
+                if isinstance(entry, dict) and entry.get("name") == "DATABASE_URL"
+                and isinstance(entry.get("value"), str)
+            )
+        # jsonencode arguments are HCL expressions. Their original quoted
+        # tokens retain the distinction between escapes and template syntax.
+        if not encoded:
+            return values
+
+    # The other supported form is jsonencode([{ environment = [{ name = ...,
+    # value = ... }] }]). Limit scanning to direct objects in environment lists,
+    # so labels, comments and nested objects cannot masquerade as credentials.
+    if not encoded:
+        return []
+    values: list[str] = []
+    for container in _literal_list_objects(raw, policy):
+        environment = _object_field(container, "environment", policy)
+        if environment is None:
+            continue
+        for entry in _literal_list_objects(environment, policy):
+            if _literal_object_string(entry, "name", policy) == "DATABASE_URL":
+                value = _literal_object_string(entry, "value", policy)
+                if value is not None:
+                    values.append(value)
+    return values
+
+
+def _ecs_database_credentials(
+    resources: list[Resource], policy: Any, findings: list[Finding],
+) -> None:
+    for resource in resources:
+        if resource.kind != "aws_ecs_task_definition":
+            continue
+        expression = _attr(resource.body, "container_definitions", policy)
+        if expression is None:
+            continue
+        for value in _inline_database_urls(expression, policy):
+            if re.search(
+                r"://[^@\s]*:(?:PLACEHOLDER|REDACTED|CHANGE_ME|REPLACE_ME)@",
+                value, re.IGNORECASE,
+            ):
+                findings.append(Finding(
+                    resource.file, resource.line, "ecs_database_password_placeholder",
+                    f"{resource.address}: DATABASE_URL contains a placeholder password; "
+                    "wire the actual database credential through a secret reference.",
+                ))
+
+
+def _reference_text(expression: str | None, policy: Any) -> str | None:
+    """Read a direct reference or a simple reference-bearing string only."""
+    if expression is None:
+        return None
+    raw = _ungroup_hcl(expression, policy)
+    if raw.startswith('"'):
+        # Only an active interpolation establishes a Terraform relationship.
+        # Literal address-shaped text and Unicode-escaped "${" do not.
+        if not re.fullmatch(r'"\$\{[^{}"]+\}[^"$%]*"', raw):
+            return None
+        raw = _quoted_hcl_string(raw)
+        if raw is None or "$${" in raw or "%{" in raw:
+            return None
+        raw = re.sub(r"\$\{([^{}]+)\}", r"\1", raw)
+    return raw
+
+
+def _secret_identity(expression: str | None, policy: Any) -> str | None:
+    raw = _reference_text(expression, policy)
+    match = re.fullmatch(
+        r"(aws_secretsmanager_secret\.[\w-]+)\.(?:id|arn)", raw or "",
+    )
+    return match.group(1) if match else None
+
+
+def _secret_version_bindings(
+    root: Path, resources: list[Resource], policy: Any,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Resolve local secret-version identities and their literal JSON shapes."""
+    bindings: dict[str, str] = {}
+    documents: dict[str, str] = {}
+    versions = [r for r in resources if r.kind == "aws_secretsmanager_secret_version"]
+    for path in _files(root, "terraform", (".tf",)):
+        text = _read(root, path)
+        depths, codes, _ = policy._lex_hcl(text)
+        for match in re.finditer(
+            r'\bdata\s+"aws_secretsmanager_secret_version"\s+"(?P<name>[^"]+)"\s*\{',
+            text,
+        ):
+            if codes[match.start()] and depths[match.start()] == 0:
+                body, _ = policy._extract_braced_block(text, match.end() - 1)
+                versions.append(Resource(
+                    "data.aws_secretsmanager_secret_version", match.group("name"),
+                    body, path.relative_to(root).as_posix(), 0,
+                ))
+    for version in versions:
+        identity = _secret_identity(_attr(version.body, "secret_id", policy), policy)
+        if identity is None:
+            continue
+        bindings[version.address] = identity
+        value = _attr(version.body, "secret_string", policy)
+        if value is None:
+            continue
+        raw = _ungroup_hcl(value, policy)
+        encoded = re.match(r"jsonencode\s*(?=\()", raw)
+        if encoded:
+            obj = _ungroup_hcl(raw[encoded.end():], policy)
+            if obj.startswith("{") and obj.endswith("}"):
+                documents[identity] = obj
+        else:
+            literal = _string(raw)
+            if literal is not None:
+                try:
+                    decoded = json.loads(literal)
+                except ValueError:
+                    continue
+                if isinstance(decoded, dict):
+                    documents[identity] = json.dumps(decoded)
+    return bindings, documents
+
+
+def _ecs_credential_containers(expression: str, policy: Any) -> list[str]:
+    """Return literal ECS objects with reference expressions left intact."""
+    raw = _ungroup_hcl(expression, policy)
+    encoded = re.match(r"jsonencode\s*(?=\()", raw)
+    if encoded:
+        return _literal_list_objects(_ungroup_hcl(raw[encoded.end():], policy), policy)
+    if raw.startswith("<<"):
+        raw = _heredoc_string(raw)
+    elif raw.startswith('"'):
+        raw = _quoted_hcl_string(raw, json_document=True)
+    if raw is None:
+        return []
+    # JSON literal objects are also valid for the direct-field reader. Do not
+    # inspect templates that splice structure into the container definitions.
+    try:
+        decoded = json.loads(raw)
+    except ValueError:
+        return []
+    return [json.dumps(item) for item in decoded if isinstance(item, dict)] if isinstance(decoded, list) else []
+
+
+def _secret_selection(expression: str | None, policy: Any) -> tuple[str, str | None] | None:
+    raw = _reference_text(expression, policy)
+    match = re.fullmatch(
+        r"(?P<secret>aws_secretsmanager_secret\.[\w-]+)\.arn"
+        r"(?::(?P<key>[^:]*):[^:]*:[^:]*)?", raw or "",
+    )
+    if match:
+        return match.group("secret"), match.group("key") or None
+    match = re.fullmatch(
+        r"(?P<secret>aws_(?:db_instance|rds_cluster)\.[\w-]+)"
+        r"\.master_user_secret\[0\]\.secret_arn"
+        r"(?::(?P<key>[^:]*):[^:]*:[^:]*)?", raw or "",
+    )
+    return (match.group("secret"), match.group("key") or None) if match else None
+
+
+def _database_password_binding(
+    database: Resource, bindings: dict[str, str], policy: Any,
+) -> tuple[str, str] | None:
+    if _attr(database.body, "manage_master_user_password", policy) == "true":
+        return database.address, "password"
+    attr = "password" if database.kind == "aws_db_instance" else "master_password"
+    raw = _attr(database.body, attr, policy)
+    if raw is None:
+        return None
+    match = re.fullmatch(
+        r'jsondecode\s*\((.*)\)\s*(?:\[\s*("(?:\\.|[^"\\])*")\s*\]|\.([\w-]+))',
+        _ungroup_hcl(raw, policy), re.DOTALL,
+    )
+    if match:
+        version = re.fullmatch(
+            r'((?:data\.)?aws_secretsmanager_secret_version\.[\w-]+)\.secret_string',
+            _ungroup_hcl(match.group(1), policy),
+        )
+        key = match.group(3)
+        if match.group(2):
+            dynamic_tokens: list[str] = []
+            literal = _literal_template_text(
+                match.group(2)[1:-1], policy, dynamic_tokens=dynamic_tokens,
+            )
+            if literal is not None and not dynamic_tokens:
+                key = _quoted_hcl_string(f'"{literal}"')
+        if version and version.group(1) in bindings and key is not None:
+            return bindings[version.group(1)], key
+    return None
+
+
+def _database_credential_wiring(
+    root: Path, resources: list[Resource], policy: Any, findings: list[Finding],
+) -> None:
+    databases = {r.address: r for r in resources if r.kind in {"aws_db_instance", "aws_rds_cluster"}}
+    for database in databases.values():
+        if database.kind == "aws_db_instance" and _attr(database.body, "master_password", policy) is not None:
+            findings.append(Finding(
+                database.file, database.line, "rds_instance_password_argument",
+                f"{database.address}: master_password is unsupported on aws_db_instance; "
+                "use password or manage_master_user_password.",
+            ))
+    bindings, documents = _secret_version_bindings(root, resources, policy)
+    for task in resources:
+        if task.kind != "aws_ecs_task_definition":
+            continue
+        expression = _attr(task.body, "container_definitions", policy)
+        if expression is None:
+            continue
+        for container in _ecs_credential_containers(expression, policy):
+            environment = {
+                _literal_object_string(item, "name", policy): _object_field(item, "value", policy)
+                for item in _literal_list_objects(_object_field(container, "environment", policy) or "[]", policy)
+            }
+            secret_entries = _literal_list_objects(
+                _object_field(container, "secrets", policy) or "[]", policy,
+            )
+            for entry in secret_entries:
+                if _literal_object_string(entry, "name", policy) not in {"DB_PASSWORD", "DATABASE_PASSWORD", "PGPASSWORD"}:
+                    continue
+                selected = _secret_selection(_object_field(entry, "valueFrom", policy), policy)
+                if selected is None:
+                    continue
+                identity, key = selected
+                document = documents.get(identity)
+                if document is not None and key is None:
+                    findings.append(Finding(
+                        task.file, task.line, "ecs_database_secret_json_key",
+                        f"{task.address}: a scalar database password receives an entire JSON secret; "
+                        "select its password field with the ECS JSON-key suffix.",
+                    ))
+                elif document is not None and _object_field(document, key, policy) is None:
+                    findings.append(Finding(
+                        task.file, task.line, "ecs_database_secret_json_key",
+                        f"{task.address}: selected database credential key is absent from the local JSON secret.",
+                    ))
+                elif identity in databases and key != "password":
+                    findings.append(Finding(
+                        task.file, task.line, "ecs_database_secret_json_key",
+                        f"{task.address}: select password from the RDS-managed JSON credential secret.",
+                    ))
+                host = _reference_text(environment.get("DB_HOST") or environment.get("PGHOST"), policy)
+                linked = re.fullmatch(r"(aws_(?:db_instance|rds_cluster)\.[\w-]+)\.(?:address|endpoint)", host or "")
+                if linked and linked.group(1) in databases:
+                    expected = _database_password_binding(databases[linked.group(1)], bindings, policy)
+                    if expected is not None and selected != expected:
+                        findings.append(Finding(
+                            task.file, task.line, "ecs_database_credential_mismatch",
+                            f"{task.address}: database host and password select different credentials; "
+                            "use the target database's exact secret and JSON key.",
+                        ))
 
 
 def _rds_windows(resources: list[Resource], policy: Any, windows: Any, findings: list[Finding]) -> None:
@@ -1425,6 +1959,8 @@ def validate(
     findings: list[Finding] = []
     resources = _resources(root, policy, findings)
     try:
+        _ecs_database_credentials(resources, policy, findings)
+        _database_credential_wiring(root, resources, policy, findings)
         _rds_windows(resources, policy, windows, findings)
         _eb_database_access(resources, policy, findings)
         _postgres(root, resources, policy, findings, require_postgres_script)
@@ -1437,15 +1973,23 @@ def validate(
         "producer": "validate-migration-artifacts",
         "artifact_status": status,
         "verdict": status,
-        "checks_run": ["postgres_verify", "eb_database_access", "workflow_deploy", "rds_windows"],
+        "checks_run": [
+            "postgres_verify", "eb_database_access", "workflow_deploy", "rds_windows",
+            "ecs_database_credentials",
+            "database_credential_wiring",
+        ],
         "scope": [
             "supported PostgreSQL verification control flow and Bash syntax",
             "explicit Elastic Beanstalk to RDS security-group references",
             "GitHub Actions step IDs and presence of an EB deployment operation",
             "literal RDS backup and maintenance window overlap",
+            "placeholder passwords in literal ECS DATABASE_URL environment entries",
+            "RDS instance password arguments and locally resolvable ECS database secret selections",
         ],
         "limitations": [
             "Static checks do not prove deployment success or arbitrary Bash safety.",
+            "Dynamic container definitions and secret retrieval code are not evaluated.",
+            "Secret-version freshness and effective IAM permissions are not evaluated.",
             "Unsupported shapes require review; Terraform validation and policy checks remain separate gates.",
         ],
         "findings": [asdict(finding) for finding in sorted(set(findings))],

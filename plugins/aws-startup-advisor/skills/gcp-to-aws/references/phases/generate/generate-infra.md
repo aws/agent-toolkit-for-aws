@@ -15,6 +15,28 @@ Read the following artifacts from `$MIGRATION_DIR/`:
 
 If any required file is missing: **STOP**. Output: "Missing required artifact: [filename]. Complete the prior phase that produces it."
 
+### Data-transfer and rollback capabilities
+
+Before writing a data-migration or cutover stage, match each proposed action to
+the generated scripts and the user's confirmed recovery requirements.
+
+- The supplied PostgreSQL example is an offline full-copy workflow. Both source
+  and target application writers must remain frozen from before that copy until
+  the data-verification gate passes and cutover is authorized.
+- An online, blue-green, or final-delta plan requires a separately implemented
+  and tested replication mechanism with an actual catch-up check. A second full
+  copy is not a delta sync. If that mechanism is absent, mark the online cutover
+  **HOLD**; do not invent a `--final-sync` flag or claim replication is active.
+- Set the data gate from the selected mechanism: completed copy plus successful
+  integrity verification for offline transfer; measured catch-up plus integrity
+  verification for replication. Resource inventory alone proves neither.
+- Do not infer acceptance of lost writes from workload size or write frequency.
+  Before target writes start, record the user's approved recovery point and
+  the tested way to preserve or reconcile target-side writes on rollback.
+  If either is absent, keep post-cutover rollback and write enablement on HOLD.
+- Resolve resource identities from the generated Terraform outputs. Do not
+  substitute example cluster, service, database, or DNS names into commands.
+
 ## Part 1: Migration Timeline
 
 > **Before building the timeline, load `references/shared/migration-complexity.md` and classify the migration tier using inputs from `aws-design.json`, `gcp-resource-clusters.json`, `estimation-infra.json`, and `preferences.json`.**
@@ -95,21 +117,22 @@ Standard phased plan. Apply the data-migration skip rule below.
 **If no data migration is needed, drop that stage: Cutover
 and Validation move up in sequence. Note the dropped stage as a duration driver.**
 
-- **Databases**: Set up continuous replication (Cloud SQL to RDS/Aurora)
-  - Initial full snapshot transfer
-  - Enable ongoing replication (DMS or native replication)
-  - Validate data integrity (row counts, checksums)
+- **Databases**: Use the confirmed offline-copy or separately tested replication
+  path. For offline transfer, freeze writers on both sides before the full copy.
+  Require successful row/checksum verification before cutover.
 - **Object storage**: Sync GCS buckets to S3
   - Use AWS DataSync or `gsutil`/`aws s3 sync` for bulk transfer
   - Enable ongoing sync for new objects
 - **Secrets**: Migrate secrets from Secret Manager to AWS Secrets Manager
-- Establish dual-write pattern for production data
+- Add dual-write only when the application implements it and conflict handling
+  has been tested. Otherwise omit it; the presence of two databases is not dual-write.
 
 #### Stage 5: Cutover
 
 - Pre-cutover validation:
   - All clusters deployed and healthy on AWS
-  - Data replication lag < 1 second
+  - Selected transfer's data gate passed; if replication is used, measured lag
+    meets the approved threshold
   - All integration tests passing
   - Rollback procedures tested
 - Execute cutover per `preferences.json` cutover_strategy:
@@ -159,15 +182,15 @@ and Validation move up in sequence. Note the dropped stage as a duration driver.
 
 Extended for large data volumes and complex replication topologies.
 
-- **Databases**: Set up continuous replication (Cloud SQL to RDS/Aurora)
-  - Initial full snapshot transfer
-  - Enable ongoing replication (DMS or native replication)
-  - Validate data integrity (row counts, checksums)
+- **Databases**: Use the confirmed offline-copy or separately tested replication
+  path. For offline transfer, freeze writers on both sides before the full copy.
+  Require successful row/checksum verification before cutover.
 - **Object storage**: Sync GCS buckets to S3
   - Use AWS DataSync or `gsutil`/`aws s3 sync` for bulk transfer
   - Enable ongoing sync for new objects
 - **Secrets**: Migrate secrets from Secret Manager to AWS Secrets Manager
-- Establish dual-write pattern for production data
+- Add dual-write only when the application implements it and conflict handling
+  has been tested. Otherwise omit it.
 
 #### Stage 5: Cutover
 
@@ -199,7 +222,7 @@ For each risk, assess:
 
 | Risk                             | Probability | Impact   | Mitigation                                                                                      |
 | -------------------------------- | ----------- | -------- | ----------------------------------------------------------------------------------------------- |
-| Data loss during migration       | low         | critical | Dual-write for 2 weeks before cutover; full backup before migration; checksums on all transfers |
+| Data loss during migration       | low         | critical | Freeze writers for offline copy or verify the implemented replication path; back up and validate data; require an approved rollback write policy |
 | Performance regression on AWS    | medium      | high     | PoC testing before deployment; load testing before cutover; performance baseline comparison     |
 | Extended downtime during cutover | medium      | high     | Practice cutover in staging; automate DNS switch; rollback procedure on standby                 |
 | Cost overrun vs estimates        | medium      | medium   | Set billing alerts at 80% and 100% of projected; weekly cost review                             |
@@ -259,24 +282,25 @@ Initiate rollback if ANY of:
 | Infrastructure (5-7) | Tear down AWS clusters; GCP still primary          | < 2 hours    |
 | Data Migration (8-9) | Stop replication; GCP data is authoritative        | < 30 minutes |
 | Cutover (10-11)      | Reverse DNS to GCP; resume GCP traffic             | < 1 hour     |
-| Post-Cutover (12+)   | Manual restore from backup; GCP resources archived | 2-4 hours    |
+| Post-Cutover (12+)   | Preserve/reconcile target writes using the approved, tested rollback procedure; otherwise HOLD | Measured in rollback drill |
 
 ### Rollback Procedure (Pre-DNS Cutover)
 
-1. Pause dual-write replication
-2. Reverse DNS records (AWS to GCP endpoints)
-3. Verify GCP services receiving traffic
-4. Shut down AWS workloads (keep for 1 week as standby)
-5. Monitor GCP for 24 hours
-6. Post-mortem: document what triggered rollback
+1. Keep target application writes disabled; stop the selected transfer safely.
+2. Verify the source remains authoritative and its data gate passes.
+3. Restore source traffic using the actual generated service and DNS identities.
+4. Resume source writers only after validation; preserve AWS data and logs.
+5. Monitor GCP and document what triggered rollback.
 
 ### Rollback Procedure (Post-DNS Cutover)
 
-1. If within 48 hours: Reverse DNS, resume GCP from replicated state
-2. If beyond 48 hours: Restore GCP from backup (2-4 hour RTO)
-3. Validate data integrity after restore
-4. Resume GCP operations
-5. Post-mortem and reassess migration approach
+1. Freeze target writers and preserve a recovery copy before changing traffic.
+2. Run the approved reverse-sync, replay, or reconciliation procedure. Do not
+   assume an old source or backup contains writes accepted after cutover.
+3. Verify the recovered source against the agreed recovery point and integrity
+   checks. If no tested recovery procedure exists, remain on HOLD.
+4. Restore traffic and source writers only after the recovery gate passes.
+5. Record actual recovery time and reassess the migration approach.
 
 ## Part 5: Team and Roles
 
@@ -307,7 +331,7 @@ Each phase gate requires explicit approval before proceeding.
 | G1   | Setup → PoC                  | VPC online, IAM configured, connectivity verified               | Fix infrastructure issues |
 | G2   | PoC → Full Deploy            | PoC cluster healthy, latency acceptable, costs tracking         | Reassess architecture     |
 | G3   | Full Deploy → Data Migration | All clusters deployed, integration tests passing                | Debug failing clusters    |
-| G4   | Data Migration → Cutover     | Replication lag < 1s, data integrity confirmed, rollback tested | Fix replication issues    |
+| G4   | Data Migration → Cutover     | Selected transfer completed/caught up, data integrity confirmed, rollback tested | Fix transfer or verification issues |
 | G5   | Cutover → Validation         | DNS switched, traffic flowing, error rate < 0.1%                | Execute rollback          |
 | G6   | Validation → Cleanup         | 1 week stable operation, costs within 15% of estimate           | Extend monitoring period  |
 
@@ -344,10 +368,10 @@ Each phase gate requires explicit approval before proceeding.
 ```
 START: All clusters deployed?
   NO → Continue infrastructure deployment
-  YES → Data replication active?
-    NO → Start data migration
-    YES → Replication lag < 1 second?
-      NO → Wait for replication to catch up
+    YES → Selected data transfer implemented?
+      NO → HOLD and implement the approved transfer
+      YES → Offline copy complete or replication caught up?
+        NO → Keep writers frozen as required and complete transfer
       YES → All integration tests passing?
         NO → Fix failing tests
         YES → Rollback procedure tested?
@@ -435,7 +459,7 @@ Generate `generation-infra.json` in `$MIGRATION_DIR/` with the following schema:
       "category": "data_loss",
       "probability": "low",
       "impact": "critical",
-      "mitigation": "Dual-write for 2 weeks; full backup before cutover; checksum validation",
+      "mitigation": "Use the approved transfer with writer controls, backup, integrity verification, and tested recovery of post-cutover writes",
       "phase_affected": "Data Migration"
     }
   ],
@@ -462,8 +486,8 @@ Generate `generation-infra.json` in `$MIGRATION_DIR/` with the following schema:
       "Cost overrun > 50%"
     ],
     "pre_cutover_rto": "< 1 hour",
-    "post_cutover_rto": "2-4 hours",
-    "rollback_window": "Reversible until 48 hours post-DNS cutover"
+    "post_cutover_rto": "To be measured in the approved rollback drill",
+    "rollback_window": "HOLD until the recovery point and target-write recovery procedure are approved and tested"
   },
   "go_no_go_criteria": [
     {
