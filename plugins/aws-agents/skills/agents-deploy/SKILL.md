@@ -393,7 +393,7 @@ agentcore remove runtime-endpoint --name <Name> --runtime <Runtime>
 agentcore deploy                                               # applies the removal to AWS
 ```
 
-`remove` only edits the project; the next `agentcore deploy` deletes the resource from the target. Code under `app/` is left in place.
+`remove` edits the shared project configuration. `agentcore deploy` applies the removal only to the default target. To remove the resource from every target, run `agentcore deploy --target <target>` separately for each target listed in `agentcore/aws-targets.json`. Code under `app/` is left in place.
 
 To delete everything deployed to a target, work through these steps in order. Repeat for each target with `--target <name>` (and `--region` on the `harness` / `aws` commands if the target isn't in your default region).
 
