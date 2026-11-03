@@ -203,6 +203,8 @@ agentcore eval ondemand evaluate \
 
 Add `--endpoint <qualifier>` to score a non-`DEFAULT` Runtime endpoint. `--ground-truth` takes `EvaluationReferenceInput[]` JSON — run `agentcore eval ondemand evaluate --help` for the exact shape.
 
+On-demand evaluation is all-or-nothing. If any session in the selection has no spans from a supported framework (typically a failed or rejected invoke), the whole command exits 1 with `Provided input has no spans with supported scope` and prints no results, even for the good sessions. Pass `--session-ids` for sessions you know succeeded, or use `batch-evaluation evaluate` (below) for windows that may include failed invocations; it scores the rest and reports the failed sessions.
+
 For large windows, run the same evaluation service-side instead. It's asynchronous, returns a job ID, and the job's results persist in the service:
 
 ```bash
@@ -226,7 +228,7 @@ On-demand output is JSON: `sessionsRequested`, `sessionsEvaluated`, and a `resul
 - **0.6–0.8** — Acceptable. Worth monitoring but not urgent.
 - **Below 0.6** — Investigate. Read the `explanation` and check recent traces for patterns.
 
-`sessionsEvaluated` lower than `sessionsRequested` means some sessions produced no result (for example, a TRACE-level evaluator on a session with no traces).
+`sessionsEvaluated` lower than `sessionsRequested` means some sessions produced no result (for example, a TRACE-level evaluator on a session with no traces). `sessionsRequested` counts only the sessions found in CloudWatch: `--session-ids` that weren't found don't fail the command and are only reported in `~/.agentcore/logs/`, so compare `sessionsEvaluated` with the number of IDs you passed.
 
 There's no local eval history in v1 — save the JSON yourself (`... > eval-$(date +%F).json`) or use batch evaluations, which you can list and re-read with `agentcore eval batch-evaluation list --json` / `get`.
 
@@ -328,26 +330,47 @@ THRESHOLD="0.7"
 # e.g. agentcore invoke --runtime <RuntimeName> --session-id "$SESSION_ID" --payload '...'
 # (session IDs are 33-100 characters; a UUID plus a prefix works).
 SESSION_IDS="${SESSION_IDS:?set SESSION_IDS to the space-separated session IDs your tests used}"
+read -ra session_ids <<< "$SESSION_IDS"
 
 echo "Running quality gate eval..."
-# shellcheck disable=SC2086  # split SESSION_IDS into separate arguments
+# Also fails if any session has no supported-scope spans (e.g. from a failed invoke):
+# one such session aborts the whole run.
 result=$(agentcore eval ondemand evaluate --json \
   --agent "$RUNTIME_ID" \
   --evaluators "$EVALUATOR" \
-  --session-ids $SESSION_IDS) || { echo "⚠️  Eval failed or found none of the test sessions. Did the tests use these session IDs, and have their traces landed?" >&2; exit 1; }
+  --session-ids "${session_ids[@]}") || { echo "⚠️  Eval failed or found none of the test sessions. Did the tests use these session IDs, did every invoke succeed, and have their traces landed?" >&2; exit 1; }
+expected=${#session_ids[@]}
 # Dataset regression gate (instead of the above):
 # result=$(agentcore eval ondemand simulate \
 #   --runtime-id "$RUNTIME_ID" \
 #   --dataset ./evals/regression.jsonl \
 #   --payload-template '{"prompt":"{input}"}' \
 #   --evaluators "$EVALUATOR") || { echo "⚠️  Dataset replay failed" >&2; exit 1; }
+# failed=$(echo "$result" | jq '.examplesFailed')
+# if [ "$failed" -gt 0 ]; then echo "❌ $failed dataset example(s) failed to invoke" >&2; exit 1; fi
+# expected=$(echo "$result" | jq '.examplesInvoked')
+
+# Missing sessions don't fail the command: sessionsRequested counts only the
+# sessions it found. Compare against the sessions the gate expected.
+evaluated=$(echo "$result" | jq '.sessionsEvaluated')
+if [ "$evaluated" -lt "$expected" ]; then
+  echo "❌ Only $evaluated of $expected session(s) were evaluated. Missing sessions are listed in ~/.agentcore/logs/." >&2
+  exit 1
+fi
 
 # A result that failed to evaluate carries errorCode/errorMessage and no value.
 # Fail on those instead of dropping them, or errors would look like a pass.
-errors=$(echo "$result" | jq '[.results[] | select(.errorCode != null or .value == null)] | length')
+errors=$(echo "$result" | jq '[.results[] | select(.errorCode != null)] | length')
 if [ "$errors" -gt 0 ]; then
   echo "❌ $errors evaluation(s) errored:" >&2
-  echo "$result" | jq -r '.results[] | select(.errorCode != null or .value == null) | "  \(.evaluatorId): \(.errorCode // "no value") \(.errorMessage // "")"' >&2
+  echo "$result" | jq -r '.results[] | select(.errorCode != null) | "  \(.evaluatorId): \(.errorCode) \(.errorMessage // "")"' >&2
+  exit 1
+fi
+
+# Categorical evaluators (e.g. a pass-fail rating scale) return a label with value null.
+nonnumeric=$(echo "$result" | jq '[.results[] | select(.value == null)] | length')
+if [ "$nonnumeric" -gt 0 ]; then
+  echo "❌ $EVALUATOR returned $nonnumeric result(s) with no numeric value. This gate needs a numerical evaluator; gate categorical ones on .label." >&2
   exit 1
 fi
 
@@ -367,9 +390,11 @@ fi
 echo "✅ Quality gate PASSED"
 ```
 
-**Note:** Traces take **30–90 seconds** after an invocation to become readable, and the same ingestion step unlocks both trace reads and eval queries. For the recent-traffic gate, invoke the agent as part of your integration tests with known `--session-id` values (pass the same IDs to the gate as `SESSION_IDS`), then poll `agentcore traces runtime list --json` until the test sessions appear (as in Step 2's example) before running the gate — don't rely on a short fixed `sleep`. The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000).
+**Note:** Traces take **30–90 seconds** after an invocation to become readable, and the same ingestion step unlocks both trace reads and eval queries. For the recent-traffic gate, invoke the agent as part of your integration tests with known `--session-id` values (pass the same IDs to the gate as `SESSION_IDS`), then poll `agentcore runtime traces list --id "$RUNTIME_ID" --since 10m --json` until every test session appears in `.traces[].sessionId` before running the gate — don't rely on a short fixed `sleep`. (`agentcore traces runtime list`, used in Step 2, needs a project checkout.) The `simulate` commands wait for ingestion themselves (`--ingestion-wait-ms`, default 180000).
 
 The gate needs no project checkout — every command above takes the deployed Runtime ID, so pass it to CI as a variable.
+
+For a categorical evaluator, replace the numeric checks with a label check, for example `jq '[.results[] | select(.label != "Pass")] | length'` must be `0`.
 
 ---
 
@@ -666,12 +691,18 @@ The `components.json` shape for a bundle and how the agent reads the active bund
 
 ### "No telemetry found for agent" / no results
 
-- Wait 30–90 seconds after invoking the agent — that's how long traces take to reach CloudWatch (there's no separate eval-indexing step beyond that). Poll `agentcore traces runtime list` until the session appears; its session ID can show as `-` at first
+- Wait 30–90 seconds after invoking the agent — that's how long traces take to reach CloudWatch (there's no separate eval-indexing step beyond that). Poll `agentcore traces runtime list` (in a project) or `agentcore runtime traces list --id <RUNTIME_ID>` (anywhere) until the session appears; its session ID can show as `-` at first
 - For online-eval results, also wait for the session timeout: a session is only scored after it has been idle for `sessionTimeoutMinutes` (see Path B, Step B4)
 - Confirm you passed the deployed Runtime or harness **ID**, not the project name
 - Confirm the sessions came from the deployed agent — `agentcore dev` runs never reach CloudWatch
 - Check that the runtime wasn't deployed with `"instrumentation": { "enableOtel": false }` and that Transaction Search is enabled (see Step 2)
 - Widen the window: `--lookback-days 14` or `--lookback-days 30`
+
+### "Provided input has no spans with supported scope"
+
+- At least one selected session has no spans from a supported agent framework, usually because the invoke failed before the agent ran (for example, a bad payload). `ondemand evaluate` stops at that session and returns no results for any session.
+- Find the session with `agentcore runtime traces list --id <RUNTIME_ID> --json` (it has only a few spans), then re-run with `--session-ids` for the good sessions, or run the window with `agentcore eval batch-evaluation evaluate`, which completes with errors and scores the rest.
+- If every session fails this way, check that the agent uses a supported framework with OpenTelemetry instrumentation enabled (see Step 2).
 
 ### "specify a session source"
 

@@ -167,7 +167,19 @@ aws iam simulate-principal-policy \
   --resource-arns "arn:aws:bedrock:*::foundation-model/*"
 ```
 
-**Third cause:** Cross-region inference profile requires model access in all regions.
+**Third cause:** The model ID is wrong, stale, or not offered in the Runtime's region. The error is `ValidationException ... The provided model identifier is invalid`, and enabling model access does not fix it. Find the ID in the model loader (for example `app/<name>/model/load.py`) or in `app/<name>/harness.yaml`, then check it in the deployed region:
+
+```bash
+# Inference profile IDs (us., eu., apac., global. prefixes)
+aws bedrock get-inference-profile --inference-profile-identifier <model-id> --region <region>
+# Bare model IDs, or to see what the region offers
+aws bedrock list-foundation-models --region <region> --query 'modelSummaries[].modelId'
+aws bedrock list-inference-profiles --region <region> --query 'inferenceProfileSummaries[].inferenceProfileId'
+```
+
+`ResourceNotFoundException` from `get-inference-profile` means that profile doesn't exist in that region. Fix the ID, then run `agentcore deploy` again.
+
+**Fourth cause:** Cross-region inference profile requires model access in all regions.
 
 Model IDs starting with a geographic prefix are cross-region inference profiles that route requests within that geography:
 
@@ -224,10 +236,9 @@ aws logs tail /aws/lambda/<function-name> --since 1h
 ```
 
 **Policy denial:**
-If a policy engine is attached, check policy decision logs:
+If a policy engine is attached in `ENFORCE`, a denied `tools/call` returns JSON-RPC error `-32002` ("Tool Execution Denied"). Runtime logs do not contain Gateway policy decisions, and the CLI configures no Gateway decision log; read the `AWS/Bedrock-AgentCore` `AllowDecisions`/`DenyDecisions` CloudWatch metrics as described in [`agents-connect/references/policy.md`](../agents-connect/references/policy.md) "Test and enforce". Check the attached engine and its policies:
 
 ```bash
-agentcore logs runtime --name <RuntimeName> --since 1h --query "policy"
 # Policy engines appear in status with their policies nested under "children"
 agentcore status --json | jq '.resources[] | select(.resourceType=="policy-engine")'
 ```
@@ -249,7 +260,7 @@ The trace shows the model's reasoning steps, tool calls made, and the final resp
 - Is the system prompt providing the right context?
 
 **Step 2:** Check if memory is involved:
-If the agent should be using memory context but isn't, see the "Symptom: Memory not persisting" section later in this skill, or load [`references/doctor.md`](references/doctor.md) if this is an environment issue.
+If the agent should be using memory context but isn't, see the "Symptom: Memory not working" section later in this skill, or load [`references/doctor.md`](references/doctor.md) if this is an environment issue.
 
 **Step 3:** Common causes:
 
@@ -442,7 +453,8 @@ For a **harness**, `agentcore dev` deploys the harness (unless `--skip-deploy`) 
 
 | Target type (`targetType` in `agentCoreGateways[].targets[]`) | Valid `outboundAuth.type` |
 |---|---|
-| `lambda` / `lambdaFunctionArn` | `NONE` or `OAUTH`; omitted → gateway IAM role |
+| `lambda` | `NONE` or `OAUTH`; omitted → gateway IAM role |
+| `lambdaFunctionArn` | omit it (gateway IAM role); the CLI rejects `outboundAuth` here |
 | `mcpServer` | `NONE` or `OAUTH` |
 | `openApiSchema` | `OAUTH` or `API_KEY` (required) |
 | `apiGateway` | `NONE` or `API_KEY`; omitted → gateway IAM role |
@@ -451,7 +463,7 @@ For a **harness**, `agentcore dev` deploys the harness (unless `--skip-deploy`) 
 | `connector` | omit it (gateway IAM role) |
 | `passthrough` | `GATEWAY_IAM_ROLE`, `OAUTH`, or `JWT_PASSTHROUGH` (required) |
 
-On `agentcore add gateway-target`, `--outbound-auth none` writes `NONE`, `oauth` writes `OAUTH`, and `api-key` writes `API_KEY` (both need `--credential-name`); leaving the flag off omits `outboundAuth`.
+On the `agentcore add gateway-target` shortcut forms (`--endpoint` creates `mcpServer`, `--runtime` creates `httpRuntime`), `--outbound-auth none` writes `NONE` and `oauth` writes `OAUTH` (with `--credential-name`); leaving the flag off omits `outboundAuth`. `--help` also lists `api-key`, but both shortcut types reject it. Set `API_KEY` only in a `--target-configuration` JSON file for an `openApiSchema` or `apiGateway` target.
 
 Check what's configured in `agentcore/agentcore.json` under `agentCoreGateways[].targets[]`, or on the deployed side with `agentcore gateway target list --gateway-id <GatewayId> --json`.
 
@@ -671,17 +683,19 @@ This makes the runtime sample every trace regardless of the parent context's sam
 
 ### Also check: invoking with the endpoint ARN instead of the agent ARN
 
-If traces show only a single top-level `AgentCore.Runtime.Invoke` span with no child spans, check the ARN your caller is using. The invoke target should be the agent runtime ARN:
+If traces show only a single top-level `AgentCore.Runtime.Invoke` span with no child spans, check the ARN your caller is using. The invoke target should be the agent runtime ARN (copy it from `agentcore status --json`; hyphens in the target name become `_`):
 
 ```
-arn:aws:bedrock-agentcore:<region>:<account>:runtime/<runtime-name>
+arn:aws:bedrock-agentcore:<region>:<account>:runtime/<project>_<target>_<runtime>-<id>
 ```
 
 Not the endpoint ARN:
 
 ```
-arn:aws:bedrock-agentcore:<region>:<account>:runtime/<runtime-name>/runtime-endpoint/DEFAULT
+arn:aws:bedrock-agentcore:<region>:<account>:runtime/<project>_<target>_<runtime>-<id>/runtime-endpoint/DEFAULT
 ```
+
+The deployed Runtime name is not the logical name in `agentcore.json`; copy the exact runtime ARN from `agentcore status --target <target> --json`.
 
 Invoking with the endpoint ARN can bypass the full trace instrumentation path. This is a subtle trap — both ARNs produce successful responses, but only the agent ARN produces complete traces.
 
@@ -773,8 +787,8 @@ Once you've identified the root cause, hand off to the skill that owns the fix:
 | Multi-agent delegation not working | `agents-build` | Load [`references/multi-agent.md`](../agents-build/references/multi-agent.md) |
 | Custom request headers not reaching agent code | `agents-build` | Load [`references/request-headers.md`](../agents-build/references/request-headers.md) |
 | Cross-account invocation from an app in another account | `agents-build` | Load [`references/integrate.md`](../agents-build/references/integrate.md) (cross-account section) |
-| Gateway auth misconfigured (401, wrong auth type) | `agents-connect` | Gateway auth matrix |
-| Gateway target type question (Lambda vs OpenAPI vs MCP vs API Gateway) | `agents-connect` | "What Gateway is and isn't" section |
+| Gateway auth misconfigured (401, wrong auth type) | `agents-connect` | Steps 3, "Create an authenticated Gateway", and 4, "Configure outbound authentication" |
+| Gateway target type question (Lambda vs OpenAPI vs MCP vs API Gateway) | `agents-connect` | Step 2, "Choose a target" |
 | Policy denying unexpectedly (Cedar, access denied on tool) | `agents-connect` | Load [`references/policy.md`](../agents-connect/references/policy.md) |
 | Observability not set up (no logs, no traces appearing) | `agents-optimize` | Load [`references/observability.md`](../agents-optimize/references/observability.md) |
 | Cold start / initialization too slow | `agents-harden` | Initialization time section |

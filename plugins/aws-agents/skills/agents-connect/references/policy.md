@@ -23,7 +23,7 @@ agentcore deploy --target <target>
 agentcore status --target <target> --json
 ```
 
-If this is the project's first deployment and `aws-targets.json` is empty, use `agentcore deploy --region <region>` to create `default`, then use `--target default` on later commands. A named target must already be defined in `aws-targets.json`. `--attach-mode` accepts `log-only` or `enforce`; the v0 `LOG_ONLY` and `ENFORCE` flag values are not the v1 spelling. For an existing Gateway with no engine, `agentcore add policy-engine --attach-to-gateways MyGateway` can attach it. To change a Gateway's existing mode, edit its `policyEngineConfiguration` in `agentcore/agentcore.json`, run `agentcore build`, then deploy to the same target. `agentcore add gateway` creates a Gateway; it does not update an existing one. Use `--policy-engine-name` and `--policy-engine-mode` when creating a new Gateway around an engine already declared in the project.
+If this is the project's first deployment and `aws-targets.json` is empty, use `agentcore deploy --region <region>` to create `default`, then use `--target default` on later commands. A named target must already be defined in `aws-targets.json`. `--attach-mode` accepts `log-only` or `enforce`; the v0 `LOG_ONLY` and `ENFORCE` flag values are not the v1 spelling. For an existing Gateway with no engine, `agentcore add policy-engine --name MyPolicyEngine --attach-to-gateways MyGateway --attach-mode log-only` can attach it. Without `--attach-mode`, v1 attaches in `ENFORCE`; an engine with no `permit` then denies every tool call. To change a Gateway's existing mode, edit its `policyEngineConfiguration` in `agentcore/agentcore.json`, run `agentcore build`, then deploy to the same target. `agentcore add gateway` creates a Gateway; it does not update an existing one. Use `--policy-engine-name` and `--policy-engine-mode` when creating a new Gateway around an engine already declared in the project.
 
 ## Write a Cedar policy
 
@@ -58,7 +58,20 @@ Review the generated Cedar and save the chosen statement to `policy.cedar`; add 
 
 ## Test and enforce
 
-Start with the Gateway's engine in `log-only` and the policy in `log-only`. Exercise allowed and denied tool calls and inspect policy decisions in the service's policy decision logs. `agentcore logs runtime` and `agentcore logs harness` show agent application logs, not necessarily the Gateway policy decision stream.
+Start with the Gateway's engine in `log-only` and the policy in `log-only`. Exercise allowed and denied tool calls, then read the decisions from CloudWatch metrics in the `AWS/Bedrock-AgentCore` namespace. The CLI does not configure Gateway log delivery, so there is no policy decision log group by default. In log-only mode, `AllowDecisions` and `DenyDecisions` carry the dimension `Mode=LOG_ONLY` along with `TargetResource` (the Gateway ID), `OperationName`, and optionally `ToolName` and `PolicyEngine`. `LogOnlyMatches` and `LogOnlyDecisionFlips` are the corresponding metrics for policies in log-only enforcement mode.
+
+```bash
+aws cloudwatch list-metrics --namespace AWS/Bedrock-AgentCore \
+  --dimensions Name=TargetResource,Value=<gateway-id> Name=Mode,Value=LOG_ONLY \
+  --region <target-region>
+aws cloudwatch get-metric-statistics --namespace AWS/Bedrock-AgentCore \
+  --metric-name DenyDecisions \
+  --dimensions Name=TargetResource,Value=<gateway-id> Name=OperationName,Value=AuthorizeAction Name=Mode,Value=LOG_ONLY \
+  --start-time <start-iso8601> --end-time <end-iso8601> --period 3600 --statistics Sum \
+  --region <target-region>
+```
+
+CloudWatch matches the exact dimension set, so copy the dimensions from `list-metrics`. For per-request detail, enable tracing on the Gateway (the CLI does not) and read the policy spans. Alternatively, test in `ENFORCE` on a non-production target: a denied `tools/call` returns JSON-RPC error `-32002` ("Tool Execution Denied"), and `agentcore invoke --gateway` still exits 0, so read the response body. `agentcore logs runtime` and `agentcore logs harness` show agent application logs, not Gateway policy decisions.
 
 After checking the expected decisions, set the Gateway's `policyEngineConfiguration` mode to `ENFORCE` and the desired policy's `enforcementMode` to `ACTIVE` in `agentcore/agentcore.json`, then run `agentcore build` and `agentcore deploy --target <target>`. Confirm the actual enum values against the v1 project schema and CLI output before editing. Test an allowed call and a denied call against the deployed Gateway.
 

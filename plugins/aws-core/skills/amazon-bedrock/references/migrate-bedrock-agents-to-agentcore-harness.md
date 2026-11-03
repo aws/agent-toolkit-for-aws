@@ -29,7 +29,7 @@ Establish the migration runs against the account, region, and CLI the user inten
 
 1. Confirm the **CLI** is present and current per [bedrock-agents-to-agentcore-harness/cli.md](bedrock-agents-to-agentcore-harness/cli.md). Stop if it is missing or a required command/flag is absent.
 2. Resolve AWS credentials and run `aws sts get-caller-identity`. **Echo the account id, caller ARN, and resolved region back to the user and ask them to confirm or correct** before proceeding. Never assume the default profile is the right one.
-3. Confirm the **source agent's region** here (if the user supplied one, confirm rather than re-ask). The harness must deploy there — but the CLI defaults elsewhere, so you set it explicitly before the first deploy (Phase 6; see deploy.md's region trap).
+3. Confirm the **source agent's region** here (if the user supplied one, confirm rather than re-ask). The harness must deploy there — but the CLI defaults elsewhere, so you set it explicitly before the first deploy (Phase 6; see [First deploy and Gateway ARN](bedrock-agents-to-agentcore-harness/deploy.md#first-deploy-and-gateway-arn): run the first deploy with `agentcore deploy --region <source-region>`).
 
 Completion criterion: the user has confirmed `(account, region)` and the CLI passed its checks.
 
@@ -47,7 +47,7 @@ Snapshot the agent into one manifest (`./out/source-agent.json`) — via the bun
 
 Read the manifest and present a **concise, human-readable inventory** — a scannable list or small table (model; action groups by name + type; KBs + type; guardrail; memory; collaboration), not a prose paragraph.
 
-Also capture the source's **security posture** so the migration can preserve it (see [bedrock-agents-to-agentcore-harness/deploy.md](bedrock-agents-to-agentcore-harness/deploy.md)): its **inbound invocation posture** (which principals hold `bedrock-agent-runtime:InvokeAgent`, plus any resource-based policy on the agent) and its `idleSessionTTLInSeconds`. These set the bar Phase 6 must match, not loosen.
+Also capture the source's **security posture** so the migration can preserve it (see [bedrock-agents-to-agentcore-harness/deploy.md](bedrock-agents-to-agentcore-harness/deploy.md)): its **inbound invocation posture** (which principals hold `bedrock:InvokeAgent` on the agent alias ARN, plus any resource-based policy on the agent) and its `idleSessionTTLInSeconds`. These set the bar Phase 6 must match, not loosen.
 
 Completion criterion: manifest written and inventory presented.
 

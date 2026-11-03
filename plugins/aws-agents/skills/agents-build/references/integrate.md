@@ -263,10 +263,15 @@ Create an IAM role that trusts the caller account and has permission to invoke t
   "Statement": [{
     "Effect": "Allow",
     "Action": "bedrock-agentcore:InvokeAgentRuntime",
-    "Resource": "arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<RUNTIME_NAME>-*"
+    "Resource": [
+      "<AGENT_RUNTIME_ARN>",
+      "<AGENT_RUNTIME_ARN>/runtime-endpoint/*"
+    ]
   }]
 }
 ```
+
+Take `<AGENT_RUNTIME_ARN>` from `agentcore status --target <target> --json` in the agent's project (the `arn` of the `runtime` resource). The deployed Runtime name is `<project>_<target>_<runtime>-<id>` (hyphens in the target name become `_`), not the logical runtime name in `agentcore.json`. The call is authorized on the endpoint ARN (`.../runtime-endpoint/DEFAULT`), so include both entries. To survive a Runtime being replaced (new `<id>`), use `arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<project>_<target>_<runtime>-*` instead, which also matches the endpoint ARNs.
 
 Scope the `Principal` in the trust policy as narrowly as possible (a specific role ARN in the caller account rather than `:root` for anything beyond proof-of-concept). Use an `ExternalId` to prevent the confused deputy problem.
 
@@ -295,7 +300,7 @@ agentcore = boto3.client(
 )
 
 response = agentcore.invoke_agent_runtime(
-    agentRuntimeArn="arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<RUNTIME_NAME>",
+    agentRuntimeArn="<AGENT_RUNTIME_ARN>",  # exact ARN from agentcore status --json
     qualifier="DEFAULT",
     payload=json.dumps({"prompt": "hello"}).encode(),
     runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",
@@ -328,6 +333,7 @@ When it's the wrong tool:
 **IAM permission required:** `bedrock-agentcore:InvokeAgentRuntimeCommand` on the runtime ARN. This is a **separate** action from `InvokeAgentRuntime` — scope it explicitly to the callers who need it.
 
 ```python
+import sys
 import boto3
 
 client = boto3.client("bedrock-agentcore", region_name="<REGION>")
@@ -336,13 +342,21 @@ response = client.invoke_agent_runtime_command(
     agentRuntimeArn="<AGENT_RUNTIME_ARN>",
     qualifier="DEFAULT",
     runtimeSessionId="550e8400-e29b-41d4-a716-446655440000",   # must be an existing session
-    command="ls -la /tmp && cat /tmp/status.json",
+    body={"command": "ls -la /tmp && cat /tmp/status.json", "timeout": 60},
 )
 
-# Output streams back over HTTP/2 on response["response"]
-for chunk in response["response"].iter_chunks():
-    print(chunk.decode(), end="", flush=True)
+# Output streams back as events on response["stream"]
+for event in response["stream"]:
+    chunk = event.get("chunk", {})
+    if "contentDelta" in chunk:
+        delta = chunk["contentDelta"]
+        print(delta.get("stdout", ""), end="", flush=True)
+        print(delta.get("stderr", ""), end="", file=sys.stderr, flush=True)
+    elif "contentStop" in chunk:
+        print(f"\nexit code: {chunk['contentStop'].get('exitCode')}")
 ```
+
+For a one-off command or an interactive shell from your terminal, the CLI wraps the same API: `agentcore runtime exec --id <runtime-id> --session-id <session-id> --command "ls -la /tmp"` and `agentcore runtime shell --id <runtime-id> --session-id <session-id>`. The Runtime ID is the part of the Runtime ARN after `runtime/`.
 
 **Session must exist.** `InvokeAgentRuntimeCommand` attaches to a running session; it won't create one. If the session has expired or never existed, the call fails. Invoke the agent first (to start the session), then use the session ID for subsequent command calls.
 
@@ -363,11 +377,11 @@ for chunk in response["response"].iter_chunks():
 {
   "Effect": "Allow",
   "Action": "bedrock-agentcore:InvokeAgentRuntimeCommand",
-  "Resource": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/<RUNTIME_NAME>-*"
+  "Resource": "arn:aws:bedrock-agentcore:<REGION>:<YOUR_ACCOUNT_ID>:runtime/<project>_<target>_<runtime>-*"
 }
 ```
 
-Keep this in a separate IAM policy from the one that grants `InvokeAgentRuntime`. Attach it only to roles that explicitly need to run commands inside agent sessions.
+The deployed Runtime name is `<project>_<target>_<runtime>-<id>`; check the exact ARN with `agentcore status --target <target> --json`. Keep this in a separate IAM policy from the one that grants `InvokeAgentRuntime`. Attach it only to roles that explicitly need to run commands inside agent sessions.
 
 **Command injection:** The code example above uses a hardcoded command string — intentionally. If your real usage constructs commands from user-supplied input, validate before passing: reject strings containing `&&`, `;`, `$(...)`, backticks, `|`, or other shell metacharacters. Passing unsanitized user input to `InvokeAgentRuntimeCommand` is a direct code execution vulnerability.
 
