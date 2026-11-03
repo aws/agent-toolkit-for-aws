@@ -224,10 +224,9 @@ aws logs tail /aws/lambda/<function-name> --since 1h
 ```
 
 **Policy denial:**
-If a policy engine is attached, check policy decision logs:
+If a policy engine is attached in `ENFORCE`, a denied `tools/call` returns JSON-RPC error `-32002` ("Tool Execution Denied"). Runtime logs do not contain Gateway policy decisions, and the CLI configures no Gateway decision log; read the `AWS/Bedrock-AgentCore` `AllowDecisions`/`DenyDecisions` CloudWatch metrics as described in [`agents-connect/references/policy.md`](../agents-connect/references/policy.md) "Test and enforce". Check the attached engine and its policies:
 
 ```bash
-agentcore logs runtime --name <RuntimeName> --since 1h --query "policy"
 # Policy engines appear in status with their policies nested under "children"
 agentcore status --json | jq '.resources[] | select(.resourceType=="policy-engine")'
 ```
