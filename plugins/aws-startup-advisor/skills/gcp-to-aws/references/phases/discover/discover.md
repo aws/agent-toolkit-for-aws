@@ -19,7 +19,9 @@ Multiple artifacts can be produced in a single run — they are not mutually exc
 
 0. **Orientation (fresh runs only):** When this is a new migration (no existing `.migration/` runs, or the user chooses Fresh below), open your first response with this block — before any scanning output. Skip it entirely when resuming an existing run (the breadcrumb in the resume message covers position).
 
-   > **Here's how this works.** Six phases: I scan your Terraform, app code, or billing data; confirm a few assumptions with you; then design the AWS architecture, price it, and generate everything. Your part is small — most answers come from your own files; you'll typically confirm one summary sheet and answer 2–7 questions. At the end you get a migrate-or-stay recommendation with costs, Terraform for the in-scope workloads, and step-by-step migration scripts. You can stop at any point — progress is saved and I'll resume where you left off.
+   > **Before you send or upload files:** Terraform is optional. I can inventory your live GCP project through your authenticated `gcloud` CLI using read-only commands, scan Terraform and application code already in your workspace, or use a billing export. If OpenAI, OpenRouter, or Anthropic is in scope, I can also offer consent-gated provider API discovery for aggregate cost and token usage; source code is still needed to identify call sites and migration behavior. I can combine sources to catch resources outside Terraform and report drift.
+   >
+   > **Here's how the migration works.** Six phases: discover, confirm assumptions, design the AWS architecture, price it, optionally generate artifacts, and collect feedback. Your part is small: you will typically confirm one summary sheet and answer 2–7 questions. At the end you get a migrate-or-stay recommendation with costs, Terraform for in-scope workloads when you choose generation, and step-by-step migration scripts. You can stop at any point; progress is saved and I will resume where you left off.
 
    Do not pad it, restate it later, or block on it — continue directly into discovery in the same turn.
 
@@ -162,7 +164,7 @@ holds; otherwise skip silently:
 
 - `ai-workload-profile.json` exists with `summary.ai_source` of `openai` or
   `both`
-- No billing files were found in 1c AND the user mentions OpenAI usage/spend
+- No billing files were found in 1c AND either the user's migration request names direct OpenAI or the user mentions OpenAI usage/spend
 
 The sub-file's Step 0 consent gate is the single consent point for this source
 — do not pre-ask here (loading the file only presents the gate; declining `[B]`
@@ -180,7 +182,7 @@ condition holds; otherwise skip silently:
 
 - the app-code scan detected an OpenRouter transport (`gateway_type: llm_router`
   with an `openrouter.ai` base URL / `OPENROUTER_API_KEY`)
-- No billing files were found in 1c AND the user mentions OpenRouter usage/spend
+- No billing files were found in 1c AND either the user's migration request names OpenRouter or the user mentions OpenRouter usage/spend
 
 The sub-file's Step 0 consent gate is the single consent point for this source
 — do not pre-ask here; declining `[B]` exits cleanly and must not be re-asked
@@ -236,8 +238,7 @@ condition holds; otherwise skip silently:
 
 - `ai-workload-profile.json` exists with `summary.ai_source` of `anthropic`
   or `both`
-- No billing files were found in 1c AND the user mentions Anthropic/Claude
-  usage or spend
+- No billing files were found in 1c AND either the user's migration request names direct Anthropic/Claude API use or the user mentions Anthropic/Claude usage or spend
 
 The sub-file's Step 0 consent gate is the single consent point for this
 source — do not pre-ask here (loading the file only presents the gate;

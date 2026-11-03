@@ -113,5 +113,5 @@ They are NOT deployable without manual configuration.
 TODO markers: [N] items requiring manual configuration
 Unmapped services: [N] services need manual AWS target assignment
 
-Recommendation: Provide Terraform files and re-run discovery for deployable configurations.
+Recommendation: Run live `gcloud` discovery or provide Terraform files and re-run discovery for deployable configurations.
 ```
