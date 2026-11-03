@@ -359,3 +359,121 @@ def test_run_fixture_uses_only_catalog_keys_with_matching_question_ids() -> None
                 assert row["source"] == f"default:{row['question_id']}", key
             if row["chosen_by"] == "extracted":
                 assert row["source"].startswith("ai-profile:"), key
+
+
+# --------------------------------------------------------------------------- gateway rows pair each model with its observed family
+
+def _two_family_profile(gateway_families: list[dict]) -> dict:
+    return {
+        "schema_version": "1.0",
+        "ai_sources": [{
+            "provider": "openai", "source_service": "openai_api", "model_families": ["gpt", "o_series"],
+            "model_evidence": "observed", "models": ["gpt-4o", "o3"],
+            "model_observations": [
+                {"normalized_model": "gpt-4o", "raw_model": "openai/gpt-4o", "model_family": "gpt",
+                 "evidence": [{"provenance": "usage_api", "confidence": "high"}]},
+                {"normalized_model": "o3", "raw_model": "openai/o3", "model_family": "o_series",
+                 "evidence": [{"provenance": "usage_api", "confidence": "high"}]},
+            ],
+        }],
+        "gateways": [{
+            "product": "openrouter", "type": "llm_router", "upstream_evidence": "observed",
+            "upstreams": [{"provider": "openai", "source_service": "openai_api", "model_families": gateway_families}],
+        }],
+    }
+
+
+def _row(family: str, models: list[str]) -> dict:
+    return {"family": family, "model_evidence": "observed", "models": models}
+
+
+def test_correctly_paired_two_family_gateway_is_accepted() -> None:
+    profile = _two_family_profile([_row("gpt", ["gpt-4o"]), _row("o_series", ["o3"])])
+    assert BMA_VALIDATOR.validate_profile(profile)["ok"] is True
+
+
+@pytest.mark.parametrize("rows", [
+    [_row("gpt", ["o3"]), _row("o_series", ["gpt-4o"])],
+    [_row("gpt", ["gpt-4o", "o3"]), _row("o_series", ["gpt-4o", "o3"])],
+], ids=["swapped", "duplicated"])
+def test_gateway_rows_that_misplace_a_model_are_rejected(rows: list[dict]) -> None:
+    assert _rejection(_two_family_profile(rows)) == "upstream_models_mismatch"
+
+
+# --------------------------------------------------------------------------- Clarify takes extracted answers only from the profile
+
+def test_only_q5_can_be_skipped_and_only_through_the_validator_summary() -> None:
+    skippable = [qid for qid, body in BMA_QUESTIONS.items() if "_Skip when:_" in body]
+    assert skippable == ["Q5"]
+    assert "models_extractable: true" in BMA_QUESTIONS["Q5"]
+    for qid in ("Q1", "Q6", "Q7"):
+        assert "_Never skipped:_" in BMA_QUESTIONS[qid], qid
+
+
+def test_clarify_never_reads_project_files_or_usage_profiles() -> None:
+    text = BMA_CLARIFY.read_text(encoding="utf-8")
+    for forbidden in ("usage-profile.json", "scan IaC", "application code is available", "requirements.txt", "imports"):
+        assert forbidden not in text, forbidden
+
+
+def test_extracted_answers_must_cite_the_profile() -> None:
+    schema = BMA_PREFERENCES_SCHEMA.read_text(encoding="utf-8")
+    assert 'Required when `chosen_by` is `"extracted"` (prefix `ai-profile:`)' in schema
+    for section in ("design_constraints", "ai_constraints", "startup_constraints"):
+        for key, row in _load(RUN_FIXTURE / "preferences.json").get(section, {}).items():
+            if row["chosen_by"] == "extracted":
+                assert row["source"].startswith("ai-profile:"), key
+
+
+# --------------------------------------------------------------------------- the assumption sheet obeys the Q5 gate
+
+def _sheet() -> str:
+    text = BMA_CLARIFY.read_text(encoding="utf-8")
+    return text[text.index("## Step 1.75"):text.index("## Step 2")]
+
+
+def test_sheet_shows_models_only_when_extractable_and_lists_all_of_them() -> None:
+    sheet = _sheet()
+    assert "only when the validator summary reports `models_extractable: true`, and list every observed model" in sheet
+    assert "ask Q5 in Batch 1" in sheet
+
+
+def test_sheet_volume_assumption_matches_q7_default() -> None:
+    assert "| Usage volume | Medium" in _sheet()
+    assert 'Default: 2 → `"medium"`' in BMA_QUESTIONS["Q7"]
+
+
+def test_run_fixture_q5_matches_its_profile_evidence() -> None:
+    summary = BMA_VALIDATOR.validate_profile(_load(RUN_FIXTURE / "ai-workload-profile.json"))
+    preferences = _load(RUN_FIXTURE / "preferences.json")
+    baseline = preferences["ai_constraints"]["ai_model_baseline"]
+    observed = {m["model"] for s in summary["ai_sources"] for m in s["models"]}
+    assert set(baseline["value"]) == observed
+    if summary["models_extractable"]:
+        assert baseline["chosen_by"] == "extracted"
+    else:
+        assert baseline["chosen_by"] != "extracted"
+        assert "Q5" in preferences["metadata"]["questions_asked"]
+        assert "Q5" not in preferences["metadata"]["questions_extracted"]
+
+
+# --------------------------------------------------------------------------- restarts never reuse a stale draft
+
+def _step0() -> str:
+    text = BMA_CLARIFY.read_text(encoding="utf-8")
+    return text[text.index("## Step 0"):text.index("## Step 1:")]
+
+
+def test_fresh_restart_deletes_both_preference_files() -> None:
+    assert "- If 2: delete `preferences.json` and `preferences-draft.json` (if present), continue to Step 1." in _step0()
+
+
+def test_reusing_final_preferences_discards_a_leftover_draft() -> None:
+    assert "- If 1: delete `preferences-draft.json` if it exists, then skip to Step 4" in _step0()
+
+
+def test_assembly_merges_into_a_draft_only_when_it_was_resumed() -> None:
+    text = BMA_CLARIFY.read_text(encoding="utf-8")
+    step3 = text[text.index("## Step 3"):text.index("## Step 4")]
+    assert "If `preferences-draft.json` exists and was resumed in Step 0 Case 2, use it as the base" in step3
+    assert "- If 1: load the draft, skip Batch 1 in Step 2, present Batch 2 directly." in _step0()

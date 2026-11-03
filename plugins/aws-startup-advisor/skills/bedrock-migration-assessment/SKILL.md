@@ -1,6 +1,6 @@
 ---
 name: bedrock-migration-assessment
-description: "Source-cloud-neutral intake and requirements step for migrating AI/LLM workloads to Amazon Bedrock. Use when the user already has a provider-neutral ai-workload-profile.json (schema_version 1.0 with ai_sources[] and gateways[]), for example one written by render-to-aws, and wants to validate it and answer the AI migration questions. It accepts OpenAI (direct or Azure OpenAI), Anthropic, Google/Gemini, and OpenRouter-gateway profiles and needs no infrastructure skill installed. This release stops after Clarify and does not scan code, design, estimate, or generate artifacts. For a full AI migration from source code use llm-to-bedrock; for infrastructure migrations use gcp-to-aws, azure-to-aws, or heroku-to-aws."
+description: "Source-cloud-neutral intake and requirements step for migrating AI/LLM workloads to Amazon Bedrock. Use when the user already has a provider-neutral ai-workload-profile.json (schema_version 1.0 with ai_sources[] and gateways[]) that already matches this contract, and wants to validate it and answer the AI migration questions. It accepts OpenAI (direct or Azure OpenAI), Anthropic, Google/Gemini, and OpenRouter-gateway profiles and needs no infrastructure skill installed. This release stops after Clarify and does not scan code, design, estimate, or generate artifacts. For a full AI migration from source code use llm-to-bedrock; for infrastructure migrations use gcp-to-aws, azure-to-aws, or heroku-to-aws."
 ---
 
 # Bedrock Migration Assessment

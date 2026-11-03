@@ -4,9 +4,9 @@
     "clarify_mode": "full",
     "timestamp": "2026-10-30T18:00:00Z",
     "discovery_artifacts": ["ai-workload-profile.json"],
-    "questions_asked": ["Q1", "Q1.5", "Q2", "Q4", "Q6", "Q8", "Q9", "Q10", "Q11"],
+    "questions_asked": ["Q1", "Q1.5", "Q2", "Q4", "Q5", "Q6", "Q8", "Q9", "Q10", "Q11"],
     "questions_defaulted": ["Q3", "Q7"],
-    "questions_extracted": ["Q5"]
+    "questions_extracted": []
   },
   "design_constraints": {
     "target_region": {
@@ -27,7 +27,7 @@
     "ai_framework": {
       "value": ["llm_router"],
       "chosen_by": "user",
-      "prompt": "I detected an LLM router/gateway (openrouter in ai-workload-profile.json gateways[]).",
+      "prompt": "Your AI profile shows calls through openrouter.",
       "design_consequence": "Add Bedrock as provider in gateway config; no app code changes; verify SigV4 auth",
       "question_id": "Q1"
     },
@@ -54,12 +54,11 @@
       "question_id": "Q4"
     },
     "ai_model_baseline": {
-      "value": ["claude-3-5-sonnet-20240620", "gemini-1.5-pro", "gpt-4o"],
-      "chosen_by": "extracted",
-      "prompt": "Detected: claude-3-5-sonnet-20240620, gemini-1.5-pro, gpt-4o (high confidence)",
+      "value": ["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307", "gemini-1.5-pro", "gpt-4o"],
+      "chosen_by": "user",
+      "prompt": "Current model in use?",
       "design_consequence": "These models are the quality/latency baseline for Bedrock comparison",
-      "question_id": "Q5",
-      "source": "ai-profile:ai_sources[].models"
+      "question_id": "Q5"
     },
     "ai_vision": {
       "value": "text-only",

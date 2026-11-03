@@ -15,7 +15,7 @@ Every key in `design_constraints`, `ai_constraints`, and `startup_constraints` (
 | `prompt`             | string | yes      | Question shown to the user, or a short detection label when skipped                                                                                                      |
 | `design_consequence` | string | yes      | One sentence: how this choice shaped the AWS design, estimate, or plan                                                                                                   |
 | `question_id`        | string | no       | AI-only catalog ID (`Q1`–`Q11`, `Q1.5`) when mapped; omit for derived values                                                                                             |
-| `source`             | string | no       | Raw provenance signal. Required when `chosen_by` is `"extracted"` (prefix `ai-profile:` or an artifact filename) or `"default"` (`"default:<Qid>"`). Omit for `"user"` and `"derived"`. |
+| `source`             | string | no       | Raw provenance signal. Required when `chosen_by` is `"extracted"` (prefix `ai-profile:`) or `"default"` (`"default:<Qid>"`). Omit for `"user"` and `"derived"`. |
 
 **Do not write null values.** Omit keys that produce no constraint.
 

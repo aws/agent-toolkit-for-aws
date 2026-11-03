@@ -2,7 +2,7 @@
 
 **Standalone flow** — Used when ONLY `ai-workload-profile.json` exists (no infrastructure or billing artifacts). Infrastructure stays where it runs today; only AI/LLM calls move to AWS Bedrock.
 
-**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. The profile carries no framework, capability, or integration-pattern fields, so the questions that depend on them are asked, not extracted.
+**Input contract.** The only profile this flow reads is the provider-neutral `ai-workload-profile.json` (`schema_version`, `ai_sources[]`, `gateways[]`), already accepted by `scripts/validate-ai-profile.py`. Use that script's JSON summary for every detected value below. The profile carries no framework, capability, or integration-pattern fields, so the questions that depend on them are asked, not extracted. Do not scan application code or IaC, and do not read usage-profile files or any other file: only the validator summary can supply an extracted answer.
 
 Produces the same `preferences.json` output but with `design_constraints` limited to region and compliance, `startup_constraints` populated, and `ai_constraints` fully populated. Questions are presented in **two progressive batches** with an intermediate save — partial answers persist across sessions.
 
@@ -19,8 +19,8 @@ Check `$MIGRATION_DIR/` for existing state:
 > 1. Re-use these preferences and skip questions
 > 2. Start fresh and re-answer all questions
 
-- If 1: skip to Step 3 (Validation), proceed with existing file.
-- If 2: delete `preferences.json`, continue to Step 1.
+- If 1: delete `preferences-draft.json` if it exists, then skip to Step 4 with the existing `preferences.json`.
+- If 2: delete `preferences.json` and `preferences-draft.json` (if present), continue to Step 1.
 
 **Case 2 — Draft preferences exist** (`preferences-draft.json` present, no `preferences.json`):
 
@@ -63,12 +63,12 @@ Before asking anything, present what discovery already answered and what will be
 **Detected from your AI profile:**
 | Setting | Value | Source |
 | ------- | ----- | ------ |
-| Primary model | [e.g. gpt-4o] | ai-workload-profile.json (confidence [high/medium/low]) |
+| Models | [every observed model, e.g. gpt-4o, claude-3-haiku] | ai-workload-profile.json |
 
 **Will be assumed unless you correct them:**
 | Setting | Assumed value | Consequence |
 | ------- | ------------- | ----------- |
-| Usage volume | Low | On-demand pricing, no provisioned-throughput analysis |
+| Usage volume | Medium (1–10M tokens) | On-demand with prompt caching analysis |
 | Response speed | Important (<2s) | Sonnet-class + streaming |
 | Task complexity | Moderate | Sonnet-class model |
 
@@ -77,6 +77,8 @@ Reply "looks good" to continue to the remaining questions, correct any line
 ```
 
 Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` (detected rows) or `"default"` (assumed rows, sheet-confirmed), and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. Rows with no detection signal stay in the batches as normal questions.
+
+Show the **Models** row under "Detected" only when the validator summary reports `models_extractable: true`, and list every observed model. If it is `false`, leave the row out of the sheet and ask Q5 in Batch 1 with the detected models as the suggested answer; a user who confirms them records `chosen_by: "user"`.
 
 ---
 
@@ -100,39 +102,17 @@ Let's start with your AI strategy and current setup.
 
 ## Q1 — AI framework or orchestration layer (select all that apply)
 
-**Auto-detect signals** — scan IaC and application code before asking:
+_Never skipped:_ the neutral profile records gateways but not frameworks, so it cannot resolve this question alone. When the validator summary lists a gateway, present the confirm card below with option 2 as the detected value and the gateway product as the evidence. Otherwise present the full question.
 
-- No AI framework imports, raw HTTP calls to OpenAI/Gemini endpoints → 1
-- LiteLLM imports or config files → 2
-- OpenRouter base URL in code/config → 2
-- PortKey, Helicone, Martian SDK imports → 2
-- Kong AI Gateway, Apigee AI config files → 2
-- Custom proxy class wrapping the AI client → 2
-- LangChain/LangGraph imports → 3
-- LangChain/LlamaIndex with provider-agnostic model config → 3
-- CrewAI imports, `Crew` and `Agent` class definitions → 4
-- AutoGen imports, `ConversableAgent` patterns → 4
-- Custom multi-agent loop with dispatcher logic → 4
-- OpenAI Agents SDK / Swarm imports → 5
-- Custom while-loop agent with tool-call parsing → 5
-- `mcp.server` / `mcp.client` imports, MCP config JSON files → 6
-- A2A protocol config or SDK imports → 6
-- Vapi, Bland.ai, Retell SDK imports → 7
-- Nova Sonic / Nova 2 Sonic or Whisper integration in code → 7
+**Gateway confirm card:**
 
-Auto-detect: No framework → 1, LiteLLM/OpenRouter/Kong/Apigee → 2, LangChain/LangGraph → 3, CrewAI/AutoGen → 4, OpenAI Agents SDK → 5, MCP/A2A → 6, Vapi/Bland.ai/Retell → 7.
-
-_Never skipped:_ the neutral profile records gateways but not frameworks, so it cannot resolve this question alone. Use the signals above when application code is available, and treat a non-empty `gateways[]` as a detected option 2 with the gateway product as evidence. Present the confirm card below for any detection; otherwise present the full question.
-
-**Partial detection — confirm, don't re-ask (preferred over the full taxonomy):** When detection produced signals but not full resolution (e.g. one framework import found alongside unexplained raw HTTP calls), present a confirm card instead of the full option list:
-
-> I detected **[framework, e.g. LangChain]** ([evidence, e.g. `langchain` in requirements.txt]) — plus some direct API calls I couldn't attribute.
+> Your AI profile shows calls through **[gateway product, e.g. openrouter]**.
 >
-> 1. **That's right** — LangChain plus some direct calls
+> 1. **That's right** — the gateway is how our app reaches the models
 > 2. **Edit** — show me all framework options
-> 3. **Just [detected framework]** — the direct calls are part of it
+> 3. **Gateway plus a framework** — show me all framework options with the gateway selected
 
-Accept → record detected value(s) with `chosen_by: "user"` (confirmed). Edit → fall through to the full question below. Only present the full taxonomy cold when detection found **no** signals at all.
+Accept → record `["llm_router"]` with `chosen_by: "user"`. Edit or option 3 → fall through to the full question below, with option 2 preselected for option 3.
 
 > 1\) No framework — direct API calls | 2\) LLM router/gateway | 3\) LangChain / LangGraph | 4\) Multi-agent framework | 5\) OpenAI Agents SDK | 6\) MCP/A2A | 7\) Voice platform
 
@@ -314,7 +294,7 @@ Interpret → `ai_vision`. Default: 1 → no constraint.
 
 ## Q7 — Monthly AI usage volume
 
-**Auto-resolve (skip the question):** If `openai-usage-profile.json`, `openrouter-usage-profile.json`, and/or `anthropic-usage-profile.json` exists with non-zero usage, compute total monthly tokens = the SUM across every full-window profile of Σ `usage_by_model[].input_tokens + output_tokens` — for `openrouter-usage-profile.json` that means `prompt_tokens + completion_tokens` (its field names differ from the OpenAI profile's; normalize before summing rather than reading a missing `input_tokens` key as zero) — Anthropic's `usage_by_model[]` already uses `input_tokens`/`output_tokens` (no normalization needed for those two), but ALSO carries `cache_read_tokens`/`cache_creation_tokens`, which MUST be added into this sum (these are additional token pools the Admin API reports separately — `input_tokens` is populated from `uncached_input_tokens`, which excludes cached tokens by definition — omitting the cache fields understates volume rather than avoiding double-counting) — map to the tiers below (< 1M → `"low"`, 1–10M → `"medium"`, 10–100M → `"high"`, > 100M → `"very_high"`), record the extraction (`chosen_by: "extracted"`, `source` naming whichever profile(s) contributed — `"openai-usage-profile:usage_by_model"`, `"openrouter-usage-profile:usage_by_model"`, and/or `"anthropic-usage-profile:usage_by_model"`), and tell the user: "Resolved from your usage data: [N tokens/month → tier]" (name the source(s): OpenAI, OpenRouter, Anthropic, or any combination). Ask Q7 if EVERY existing profile is absent, or if `partial_window` makes every existing profile's volume unreliable (a full-window profile still resolves the question even if a different, partial-window profile also exists — sum only the full-window profiles' tokens in that case). Batch and spillover rows still count in this monthly sum.
+_Never skipped:_ usage-profile files are outside this skill's input contract, so always ask.
 
 > 1\) < 1M tokens | 2\) 1–10M | 3\) 10–100M | 4\) > 100M | 5\) Don't know
 
@@ -404,7 +384,7 @@ After the user responds to Batch 2, interpret all Batch 2 answers and proceed to
 
 ## Step 3: Assemble and Write preferences.json
 
-Assemble all interpreted answers from both batches into the final file. If `preferences-draft.json` exists, use it as the base — merge in Batch 2 answers, remove draft-specific metadata fields (`draft`, `batches_completed`, `batches_remaining`), and set `metadata.timestamp` to the current time.
+Assemble all interpreted answers from both batches into the final file. If `preferences-draft.json` exists and was resumed in Step 0 Case 2, use it as the base — merge in Batch 2 answers, remove draft-specific metadata fields (`draft`, `batches_completed`, `batches_remaining`), and set `metadata.timestamp` to the current time.
 
 Write `$MIGRATION_DIR/preferences.json`:
 

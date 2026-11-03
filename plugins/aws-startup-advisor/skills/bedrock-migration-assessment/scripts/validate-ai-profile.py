@@ -151,19 +151,22 @@ def _check_semantics(profile: dict) -> None:
                     "upstream_family_mismatch",
                     f"{gateway['product']}: {key[0]}/{key[1]} families {sorted(families)} must match {sorted(source['model_families'])}",
                 )
-            models: set[str] = set()
+            models_by_family: dict[str, set[str]] = {}
+            for item in source["model_observations"]:
+                models_by_family.setdefault(item["model_family"], set()).add(item["normalized_model"])
             for family in upstream["model_families"]:
                 if family["model_evidence"] != source["model_evidence"]:
                     raise ProfileRejected(
                         "upstream_family_mismatch",
                         f"{gateway['product']}: {key[0]}/{key[1]} family {family['family']} evidence differs from the source",
                     )
-                models.update(family["models"])
-            if models != set(source["models"]):
-                raise ProfileRejected(
-                    "upstream_models_mismatch",
-                    f"{gateway['product']}: {key[0]}/{key[1]} models {sorted(models)} must match {sorted(source['models'])}",
-                )
+                expected = models_by_family.get(family["family"], set())
+                if set(family["models"]) != expected:
+                    raise ProfileRejected(
+                        "upstream_models_mismatch",
+                        f"{gateway['product']}: {key[0]}/{key[1]} family {family['family']} lists {sorted(family['models'])}, "
+                        f"but the source observes {sorted(expected)} in that family",
+                    )
 
 
 def _summary(profile: dict) -> dict:
