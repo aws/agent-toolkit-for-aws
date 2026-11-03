@@ -338,7 +338,20 @@ The endpoint points at a Runtime version this target doesn't have. Endpoint vers
 
 **Memory stuck in CREATING:**
 
-This is unusual — normal provisioning takes a few minutes. Check `agentcore status` and `agentcore memory get --id <MEMORY_ID>`. If stuck, try removing and re-adding the memory resource (`agentcore remove memory --name <Name>`, deploy, then `agentcore add memory --name <Name>` and deploy again).
+This is unusual — normal provisioning takes a few minutes. Check `agentcore status` and `agentcore memory get --id <MEMORY_ID>`. If stuck, remove the memory, deploy, then restore it and deploy again. Removing and deploying deletes the Memory in AWS with all its stored events and long-term records, and the re-created Memory gets a new ID — confirm with the developer first.
+
+Back up the full `memories[]` entry before removing it; `agentcore add memory --name <Name>` alone drops the strategies, expiry, encryption key, and other settings:
+
+```bash
+jq '.memories[] | select(.name=="<Name>")' agentcore/agentcore.json > memory-backup.json
+agentcore remove memory --name <Name>
+agentcore deploy
+jq --slurpfile m memory-backup.json '.memories += $m' agentcore/agentcore.json > agentcore/agentcore.json.tmp \
+  && mv agentcore/agentcore.json.tmp agentcore/agentcore.json
+agentcore deploy
+```
+
+If `agentcore.json` is committed, `git checkout agentcore/agentcore.json` restores the entry instead of the second `jq`.
 
 **Service quota exceeded:**
 
