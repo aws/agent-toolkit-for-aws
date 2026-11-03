@@ -155,7 +155,7 @@ REGION = os.getenv("AWS_REGION", "us-east-1")
 
 @app.entrypoint
 def invoke(payload, context):
-    actor_id = payload.get("userId", "default-user")
+    actor_id = payload.get("actorId", "default")
     session_id = getattr(context, "session_id", "default-session")
 
     session_manager = None
@@ -284,7 +284,7 @@ checkpointer = AgentCoreMemorySaver(MEMORY_ID, region_name=REGION) if MEMORY_ID 
 
 @app.entrypoint
 async def invoke(payload, context):
-    actor_id = payload.get("userId", "default-user")
+    actor_id = payload.get("actorId", "default")
     session_id = getattr(context, "session_id", "default-session")
 
     graph = create_react_agent(
@@ -431,7 +431,7 @@ def _build_memory_tools(actor_id: str, session_id: str):
 
 @app.entrypoint
 async def invoke(payload, context):
-    actor_id = payload.get("userId", "default-user")
+    actor_id = payload.get("actorId", "default")
     session_id = getattr(context, "session_id", "default-session")
 
     agent = Agent(
@@ -474,10 +474,14 @@ runs without Memory when the env var is absent. For a local integration test,
 provide the deployed Memory ID and use local AWS credentials with access to it.
 
 To test cross-session memory on the selected target, use two distinct session IDs
-and the same userId (actor ID):
+and the same actorId in the payload:
   agentcore deploy --target <target>
-  agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"My name is Alex and I prefer concise answers","userId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440000
-  agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"What do you know about me?","userId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440001
+  agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"My name is Alex and I prefer concise answers","actorId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440000
+  agentcore invoke --target <target> --runtime <RuntimeName> --payload '{"prompt":"What do you know about me?","actorId":"alex"}' --session-id 550e8400-e29b-41d4-a716-446655440001
+
+The Strands templates read the actor from payload "actorId" and fall back to
+the shared actor "default", so callers that omit it all share one actor's memory.
+`agentcore invoke --user-id` does not set the actor in the v1 templates.
 
 If using long-term memory (SEMANTIC or USER_PREFERENCE), wait 5–30 seconds
 between the first and second invoke — extraction runs asynchronously after
@@ -537,7 +541,7 @@ Most common cause: the memory resource is configured but the code isn't reading 
 **Memory not loading at session start:**
 
 1. Find the Memory ARN in `agentcore status --target <target> --json` and take the ID after `memory/`, then verify `MEMORY_<NAME>_ID` is set in that target's deployed Runtime environment
-2. Check the actor_id is consistent across sessions — memory is scoped per actor
+2. Check the actor_id is consistent across sessions — memory is scoped per actor. The Strands templates read payload `actorId` (default `default`); `agentcore invoke --user-id` does not set it
 3. Confirm the namespace paths in retrieval_config match the namespaces used when writing — the retrieval namespace must exactly match the namespace the strategy extracts into
 4. CLI defaults use paths without trailing slashes (e.g., `/users/{actorId}/facts`). If you customized namespace templates when creating the memory resource, use whatever pattern you chose — consistency between writer and reader is what matters.
 
