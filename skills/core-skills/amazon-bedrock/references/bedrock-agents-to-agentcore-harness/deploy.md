@@ -65,7 +65,7 @@ This Python requirement matches the `PYTHON_3_12` Lambda configuration below. St
 agentcore add gateway-target --gateway <GatewayName> --target-configuration file://action-group-target.json
 ```
 
-Use a scoped `bedrock-agent-runtime:Retrieve` policy on the source Knowledge Base ARN for a KB shim. For a Knowledge Base with default retrieval behavior that the managed connector supports, use `agentcore add gateway-connector --gateway <GatewayName> --name <TargetName> --connector bedrock-knowledge-bases --knowledge-base <KB_ID>` instead. `lambdaFunctionArn` targets point at an existing Lambda; use `lambda` with `compute` for a shim the project builds. Do not put secret values or unsupported `environment` keys into target configuration. Run `agentcore build` to catch schema errors.
+Use a scoped `bedrock:Retrieve` policy on the source Knowledge Base ARN for a KB shim. (IAM has no `bedrock-agent-runtime` service prefix; that is only the API client name.) For a Knowledge Base with default retrieval behavior that the managed connector supports, use `agentcore add gateway-connector --gateway <GatewayName> --name <TargetName> --connector bedrock-knowledge-bases --knowledge-base <KB_ID>` instead. `lambdaFunctionArn` targets point at an existing Lambda; use `lambda` with `compute` for a shim the project builds. Do not put secret values or unsupported `environment` keys into target configuration. Run `agentcore build` to catch schema errors.
 
 ## First deploy and Gateway ARN
 

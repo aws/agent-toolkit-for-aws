@@ -140,7 +140,7 @@ Install: `pip install bedrock-agentcore nova-act boto3`
 
 The `browser_session` context manager handles start/stop. Do not leak sessions — always use the context manager or wrap raw `BrowserClient` calls in try/finally.
 
-**Credential handling:** the Nova Act API key is a secret. If this is running inside an AgentCore Runtime agent, register it as a credential (`agentcore add credentials api-key --name NovaAct --api-key file://<secret-file>`) and retrieve it with `@requires_api_key(provider_name="NovaAct")`. Do not put it in runtime env vars. See `agents-connect` Path D.
+**Credential handling:** the Nova Act API key is a secret. If this is running inside an AgentCore Runtime agent, register it as a credential (`agentcore add credentials api-key --name NovaAct --api-key file://<secret-file>`) and retrieve it with `@requires_api_key(provider_name="NovaAct")`. Do not put it in runtime env vars. See `agents-connect` step 4, "Configure outbound authentication".
 
 ## Path C — Playwright for scripted automation
 
