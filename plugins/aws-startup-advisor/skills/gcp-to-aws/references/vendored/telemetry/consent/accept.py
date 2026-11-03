@@ -8,6 +8,10 @@ it in their own words. Nothing here can verify that, which is why accept and
 opt-out are two scripts rather than one script with a flag: the agent's action is
 unambiguous in the transcript and a host can permission-gate them separately.
 
+Explicitly selects anonymous reporting under the existing usage-data notice.
+It cannot select account reporting. It clears any pending or accepted account
+selection so old credentials cannot leak into an anonymous request.
+
 Writes {"installId": "<uuid>", "consentStatus": "ACCEPTED"}, minting the install ID
 on first write and preserving any existing one. Exits non-zero and explains itself
 if the write fails, so a failure is never silently taken as consent.
@@ -30,12 +34,12 @@ import record  # noqa: E402
 
 def main():
     try:
-        written = record.write_state(record.ACCEPTED)
+        written = record.write_anonymous()
     except OSError as exc:
         print(
             "Could not record your choice at %s: %s\n"
-            "Nothing was saved, so no usage data will be collected. The notice "
-            "will be shown again next session." % (record.state_path(), exc),
+            "No new sharing choice was saved. Your previous sharing choice "
+            "is unchanged." % (record.state_path(), exc),
             file=sys.stderr,
         )
         return 1

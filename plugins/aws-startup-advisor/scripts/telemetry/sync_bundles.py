@@ -16,7 +16,19 @@ from pathlib import Path
 TELEMETRY = Path(__file__).resolve().parent
 PLUGIN = TELEMETRY.parents[1]
 MIGRATION_SKILLS = ("azure-to-aws", "gcp-to-aws", "heroku-to-aws", "llm-to-bedrock")
-RUNTIME_FILES = (
+SHARING_FILES = (
+    "sharing/README.md",
+    "sharing/__init__.py",
+    "sharing/policy.py",
+    "sharing/policy.json",
+    "sharing/credentials.py",
+    "sharing/worker.py",
+    "sharing/ui.py",
+    "sharing/browser.py",
+    "sharing/page.html",
+    "sharing/page.js",
+)
+RUNTIME_FILES = SHARING_FILES + (
     "cli.py",
     "PROTOCOL.md",
     "auth/__init__.py",
@@ -36,7 +48,14 @@ RUNTIME_FILES = (
 )
 # operate-on-aws reports only the Agent Space it creates, so it carries the consent
 # exchange and the client, not the migration emitter.
-OPERATE_FILES = (
+OPERATE_FILES = SHARING_FILES + (
+    "cli.py",
+    "auth/__init__.py",
+    "auth/aws_account.py",
+    "auth/identity.py",
+    "auth/pyproject.toml",
+    "auth/uv.lock",
+    "auth/README.md",
     "devops_agent_cli.py",
     "consent/record.py",
     "consent/notice.py",

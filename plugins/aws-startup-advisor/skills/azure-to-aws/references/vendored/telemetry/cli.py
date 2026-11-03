@@ -22,9 +22,13 @@ def main(argv):
     # Imports can fail when a standalone bundle is incomplete. Keep them inside
     # the guarded invocation so optional telemetry still exits without blocking.
     import client
-    import migration
     import record
 
+    if argv in (["sharing"], ["sharing", "--change"], ["sharing-status"]):
+        from sharing import ui
+        result = ui.status_result() if argv == ["sharing-status"] else ui.open_sharing(change="--change" in argv)
+        print(json.dumps(result))
+        return 0
     if argv == ["status"]:
         print(json.dumps({
             "source": client.detect_source(),
@@ -36,8 +40,9 @@ def main(argv):
     if argv == ["reconcile"] or (
         len(argv) == 3 and argv[:2] == ["reconcile", "--project-root"]
     ):
+        import migration
         return migration.main(["--reconcile", "--via", "cli", *argv[1:]])
-    print("usage: cli.py {status|reconcile [--project-root /absolute/project]}", file=sys.stderr)
+    print("usage: cli.py {status|sharing-status|sharing [--change]|reconcile [--project-root /absolute/project]}", file=sys.stderr)
     return 2
 
 

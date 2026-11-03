@@ -6,6 +6,7 @@
 The command the notice names, and the only way to opt out — there is no
 environment variable, because the record file is the single source of truth.
 Writes {"installId": "<uuid>", "consentStatus": "OPT_OUT"}.
+The shared atomic writer clears the account, profile, mode, and pending setup.
 
 Recording the opt-out is also what stops the session-start hook raising the notice
 again, so it has to be written down as deliberately as an acknowledgement. An
@@ -32,9 +33,9 @@ def main():
     except OSError as exc:
         print(
             "Could not record your choice at %s: %s\n"
-            "No usage data will be collected either way — the plugin only emits "
-            "when an acknowledged record exists. But because nothing was saved, "
-            "the notice will be shown again next session." % (record.state_path(), exc),
+            "Your previous sharing choice is unchanged. Sharing may continue "
+            "until opt-out is saved. Retry this command, or edit consentStatus "
+            "to OPT_OUT in that file." % (record.state_path(), exc),
             file=sys.stderr,
         )
         return 1

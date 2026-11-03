@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""SessionStart hook: ask the agent to collect consent, once, ever.
+"""SessionStart hook: offer the shared page when local setup needs attention.
 
     python3 scripts/telemetry/consent/session_start.py
 
-Silent if a valid record exists, which is every session after the first. If none
-exists it prints one instruction that the host injects into the agent's context,
-telling the agent to run `cli.py show`, relay the output verbatim, and record the
-answer.
+Silent for a usable accepted choice or saved opt-out. Missing, pending, invalid,
+renewal-required and account-recovery choices produce an instruction to open the
+local sharing page at the next interactive skill invocation. The hook itself
+does not open a browser, resolve credentials, or change the preference.
 
 Only one of the three parts is trustworthy, which is the design:
 
@@ -39,7 +39,20 @@ CONSENT_DIR = Path(__file__).resolve().parent
 # usually not on PATH on Windows — the model would run it and the notice would
 # never be recorded.
 INSTRUCTION = """\
-[AWS Startup Advisor] This user has not yet been shown the usage-data notice.
+[AWS Startup Advisor] The local sharing choices need attention.
+
+At the next interactive Startup Advisor invocation, first run:
+  {py} "{telemetry}/cli.py" sharing
+
+This opens the local three-choice sharing page. The user selects account-linked
+sharing, anonymous sharing, or no sharing there. Its output contains only the
+reporting mode and bounded status. Never inspect account IDs, credentials, proofs,
+or the page URL. Continue the requested work after the page returns; telemetry
+errors do not authorize or block product actions. Do not repeat a saved opt-out.
+Run sharing --change only when the user asks to change their sharing choice.
+
+Only if the page reports BROWSER_UNAVAILABLE, use the existing anonymous notice
+exchange below. This fallback cannot select AWS account sharing.
 
 The first time in this session that a request would use an AWS Startup Advisor
 skill, stop before doing that work and run this exchange instead:
@@ -77,7 +90,7 @@ notice tells the user they may edit it themselves instead.
 
 
 def build_message():
-    return INSTRUCTION.format(consent=CONSENT_DIR, py=record.INTERPRETER)
+    return INSTRUCTION.format(consent=CONSENT_DIR, telemetry=CONSENT_DIR.parent, py=record.INTERPRETER)
 
 
 def main():
@@ -86,7 +99,9 @@ def main():
     # pipe open never sends the EOF that read() waits for, the host kills the hook
     # at its timeout, and the notice silently never appears.
 
-    if record.consent_status() is not None:
+    sys.path.insert(0, str(CONSENT_DIR.parent))
+    from sharing.ui import status_result
+    if status_result()["status"] in ("READY", "SKIPPED"):
         return 0  # already answered, accepted or opted out — stay quiet
 
     print(build_message(), end="")
