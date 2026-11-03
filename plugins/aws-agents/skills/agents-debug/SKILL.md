@@ -441,7 +441,8 @@ For a **harness**, `agentcore dev` deploys the harness (unless `--skip-deploy`) 
 
 | Target type (`targetType` in `agentCoreGateways[].targets[]`) | Valid `outboundAuth.type` |
 |---|---|
-| `lambda` / `lambdaFunctionArn` | `NONE` or `OAUTH`; omitted → gateway IAM role |
+| `lambda` | `NONE` or `OAUTH`; omitted → gateway IAM role |
+| `lambdaFunctionArn` | omit it (gateway IAM role); the CLI rejects `outboundAuth` here |
 | `mcpServer` | `NONE` or `OAUTH` |
 | `openApiSchema` | `OAUTH` or `API_KEY` (required) |
 | `apiGateway` | `NONE` or `API_KEY`; omitted → gateway IAM role |
@@ -450,7 +451,7 @@ For a **harness**, `agentcore dev` deploys the harness (unless `--skip-deploy`) 
 | `connector` | omit it (gateway IAM role) |
 | `passthrough` | `GATEWAY_IAM_ROLE`, `OAUTH`, or `JWT_PASSTHROUGH` (required) |
 
-On `agentcore add gateway-target`, `--outbound-auth none` writes `NONE`, `oauth` writes `OAUTH`, and `api-key` writes `API_KEY` (both need `--credential-name`); leaving the flag off omits `outboundAuth`.
+On the `agentcore add gateway-target` shortcut forms (`--endpoint` creates `mcpServer`, `--runtime` creates `httpRuntime`), `--outbound-auth none` writes `NONE` and `oauth` writes `OAUTH` (with `--credential-name`); leaving the flag off omits `outboundAuth`. `--help` also lists `api-key`, but both shortcut types reject it. Set `API_KEY` only in a `--target-configuration` JSON file for an `openApiSchema` or `apiGateway` target.
 
 Check what's configured in `agentcore/agentcore.json` under `agentCoreGateways[].targets[]`, or on the deployed side with `agentcore gateway target list --gateway-id <GatewayId> --json`.
 
