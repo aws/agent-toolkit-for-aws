@@ -1,6 +1,6 @@
 ---
 name: gcp-to-aws
-description: "Migrate workloads from Google Cloud Platform to AWS — plus AI and agentic workloads from any provider. Triggers on: migrate from GCP, GCP to AWS, move off Google Cloud, migrate Terraform to AWS, migrate Cloud SQL to RDS, migrate GKE to EKS, migrate Cloud Run to Fargate, migrate App Engine to Elastic Beanstalk, migrate from OpenAI to Bedrock, move off OpenAI, switch from ChatGPT API to AWS, migrate from Gemini to Bedrock, migrate LangChain to Bedrock, migrate LangGraph to AWS, migrate agentic workloads to AWS, move AI workloads to AWS, migrate my AI app to AWS. Runs a 6-phase process: discover GCP resources from Terraform, app code, or billing exports, then clarify, design, estimate costs, generate artifacts, and collect feedback. Clarify must finish before Design, Estimate, or Generate. Do not use for: Azure migrations (see azure-to-aws), on-premises migrations, AWS-to-GCP reverse migration, general AWS architecture advice without migration intent, or GCP-to-GCP refactoring."
+description: "Migrate GCP workloads to AWS, including AI and agentic workloads from any provider. Triggers on: migrate from GCP, GCP to AWS, move off Google Cloud, Cloud SQL to RDS, GKE to EKS, Cloud Run to Fargate, App Engine to Elastic Beanstalk, or OpenAI/Gemini/agentic workloads to Bedrock. Discovery uses the authenticated read-only `gcloud` CLI, Terraform, app code, or billing exports, with optional consent-gated OpenAI, OpenRouter, and Anthropic usage APIs. Terraform is optional. Runs Discover, Clarify, Design, Estimate, Generate, and Feedback; Clarify gates later phases. Do not use for Azure migrations (see azure-to-aws), reverse migrations, general AWS architecture without migration intent, or GCP-to-GCP refactoring."
 ---
 
 # GCP-to-AWS Migration Skill
@@ -83,6 +83,10 @@ User must provide at least one GCP source:
 - **Application code**: Source files with GCP SDK or AI framework imports
 - **Billing data**: GCP billing/cost/usage export files (CSV or JSON)
 - **OpenAI usage API** (supplement, for AI workloads on OpenAI): an OpenAI **Admin** API key with **Usage** set to **Read** (API scope `api.usage.read`) — read-only, consent-gated capture of real cost and token usage (see `references/phases/discover/discover-openai-api.md`); replaces manual billing CSV exports for OpenAI spend. Not a standalone source: usage data supplies spend and volumes but not integration or capability detail, so AI migration design still requires application code (or another source above)
+- **OpenRouter usage API** (supplement, for OpenRouter-fronted workloads): an OpenRouter **provisioning/management key** — consent-gated capture of aggregate cost and per-model usage (see `references/phases/discover/discover-openrouter-api.md`)
+- **Anthropic usage API** (supplement, for direct Claude API workloads): an Anthropic **Admin API key** — read-only, consent-gated capture of aggregate cost and per-model usage (see `references/phases/discover/discover-anthropic-api.md`). Anthropic does not currently offer a usage-only Admin-key scope; the capture uses only the two allowlisted usage/cost GET endpoints
+
+Provider usage data is supplementary rather than a standalone migration source: it measures spend and volume, but application code is still needed to identify call sites, capabilities, and migration behavior.
 
 If no Terraform is found (even when app code or billing files exist — they cannot produce an infrastructure inventory), offer live discovery per `discover.md` Step 1d; stop only when nothing will produce any artifact. Live discovery covers infrastructure only — AI/agentic workload detection still requires application code.
 

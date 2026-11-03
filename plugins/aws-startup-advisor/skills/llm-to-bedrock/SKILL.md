@@ -1,6 +1,6 @@
 ---
 name: llm-to-bedrock
-description: "Use when the user wants to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge git branch. Also has an access-only mode for checking or enabling Bedrock model access for specific models (e.g. 'request access to Claude on Bedrock', 'which models do I turn on') with no code migration — it checks each model and walks the right access step, then stops. Not for agent runtime selection or agent migration planning (use agent-advisor), nor standalone cost estimates or infra-only migration. The full migration REQUIRES gcp-to-aws OR azure-to-aws installed alongside this skill (gcp-to-aws preferred when both are present); access-only mode needs neither."
+description: "Use when the user wants to migrate code that calls OpenAI, Gemini/Google AI, or the Anthropic API to Amazon Bedrock — a pure model/SDK rewrite. End-to-end: assesses the codebase, optionally captures aggregate OpenAI, OpenRouter, or Anthropic cost and token usage through consent-gated provider APIs, rewrites SDK calls, evaluates output quality against Bedrock, and delivers a ready-to-merge git branch. Also has an access-only mode for checking or enabling Bedrock model access for specific models (e.g. 'request access to Claude on Bedrock', 'which models do I turn on') with no code migration — it checks each model and walks the right access step, then stops. Not for agent runtime selection or agent migration planning (use agent-advisor), nor standalone cost estimates or infra-only migration. The full migration REQUIRES gcp-to-aws OR azure-to-aws installed alongside this skill (gcp-to-aws preferred when both are present); access-only mode needs neither."
 ---
 
 # Migrate to Bedrock (Assess + Execute)
@@ -132,6 +132,17 @@ which is exactly why Phase A no longer uses it.)
 ---
 
 ## Step 1 — Collect source code path
+
+Before using a path from `$ARGUMENTS` or asking for one, tell the user once:
+
+> I need your source repository to identify call sites, capabilities, and migration
+> behavior. You do not need to export provider usage reports manually: for direct
+> OpenAI, OpenRouter, and direct Anthropic workloads, the assessment can also offer
+> consent-gated provider API discovery for aggregate cost and token usage. The
+> provider-specific consent screen appears before any API call.
+
+Then continue immediately. This notice advertises the optional capability; it is not
+consent and does not replace any provider-specific consent gate.
 
 If `$ARGUMENTS` contains a path, use it as `$REPO`. Otherwise use **AskUserQuestion**:
 "Where is your source code? Enter a local path or GitHub URL."
