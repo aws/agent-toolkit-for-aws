@@ -242,6 +242,8 @@ no-flags payment wizard and inline secret flags are not v1 commands.
 
 The minimum Quick Create path is:
 
+Before running it, the human must activate the **Coinbase Wallets for AgentCore Payments** AWS Marketplace subscription in the deployment account. Without an active subscription, connector creation fails during deploy and the CloudFormation stack rolls back. Coinbase authorization follows the successful deploy.
+
 ```bash
 agentcore add payment-manager --name MyPayments --no-auto-payment
 agentcore add payment-connector --manager MyPayments --name Coinbase --quick-create
@@ -253,7 +255,7 @@ agentcore status --json
 If there is no project, first run `agentcore create --name PaymentsProject --template empty`
 and enter it. For a v0 project, commit, review `agentcore migrate`, then apply the
 reviewed plan with `agentcore migrate --yes`. The human completes Coinbase
-Marketplace subscription and authorization outside the agent loop. For manual
+authorization outside the agent loop. For manual
 providers, follow the credential steps in the setup reference. `agentcore/.env.local`
 may hold provider secrets until deploy and must remain gitignored and unread by
 the agent.
