@@ -1,0 +1,83 @@
+{
+  "format": "startup-advisor-account-reporting-v1",
+  "vectors": [
+    {
+      "name": "design-object-order",
+      "request": {
+        "b": 1,
+        "a": "x"
+      },
+      "canonicalWithoutProof": "{\"a\":\"x\",\"b\":1}",
+      "sha256": "cdab067e9f3beb32d1252cfd63e492592fecbf591b0d08cadb24bb17f3864246"
+    },
+    {
+      "name": "numbers",
+      "request": {
+        "n": [
+          1.0,
+          -0.0,
+          1e+30,
+          1e-07,
+          1e-06,
+          4.5
+        ]
+      },
+      "canonicalWithoutProof": "{\"n\":[1,0,1e+30,1e-7,0.000001,4.5]}",
+      "sha256": "c4db1038f019270ca0fd6776945f9cfc4b40027a8a291e2405357d7947a936c3"
+    },
+    {
+      "name": "unicode-key-order",
+      "request": {
+        "�": 4,
+        "😀": 3,
+        "€": 2,
+        "a": 1
+      },
+      "canonicalWithoutProof": "{\"a\":1,\"€\":2,\"😀\":3,\"�\":4}",
+      "sha256": "ceb9414e4a645e04612374a51c6fff7bbc74c4769a6177dccce3005e523d2cbc"
+    },
+    {
+      "name": "missing",
+      "request": {
+        "a": 1
+      },
+      "canonicalWithoutProof": "{\"a\":1}",
+      "sha256": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"
+    },
+    {
+      "name": "null",
+      "request": {
+        "a": 1,
+        "b": null
+      },
+      "canonicalWithoutProof": "{\"a\":1,\"b\":null}",
+      "sha256": "46e0ff59f6164548317489fbea1133a48f7a83c325c3535e44559c9619afb76b"
+    },
+    {
+      "name": "request-with-proof-excluded",
+      "request": {
+        "reportingMode": "AWS_ACCOUNT",
+        "expectedAwsAccountId": "123456789012",
+        "noticeVersion": 3,
+        "occurredAt": 1793188800000,
+        "pluginVersion": "2.0.3",
+        "source": "CODEX",
+        "installId": "00000000-0000-4000-8000-000000000001",
+        "pluginTelemetryEvent": {
+          "skillInvoked": {
+            "skill": "GCP_TO_AWS",
+            "eventName": "SKILL_INVOKED"
+          }
+        },
+        "awsIdentityProof": {
+          "version": 1,
+          "headers": {
+            "authorization": "fixture-placeholder"
+          }
+        }
+      },
+      "canonicalWithoutProof": "{\"expectedAwsAccountId\":\"123456789012\",\"installId\":\"00000000-0000-4000-8000-000000000001\",\"noticeVersion\":3,\"occurredAt\":1793188800000,\"pluginTelemetryEvent\":{\"skillInvoked\":{\"eventName\":\"SKILL_INVOKED\",\"skill\":\"GCP_TO_AWS\"}},\"pluginVersion\":\"2.0.3\",\"reportingMode\":\"AWS_ACCOUNT\",\"source\":\"CODEX\"}",
+      "sha256": "36a416ba54c3bf41ec1468ed435db96b57be40cf0bda25fdf037989ca8fc5a5d"
+    }
+  ]
+}
