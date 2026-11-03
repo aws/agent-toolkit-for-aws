@@ -10,9 +10,9 @@ description: >
   edge token validation; and observing traffic with standard and real-time logs. Applicable when the
   customer wants to put CloudFront in front of content, choose pricing, lock an origin, restrict who
   can view content, or analyze logs. Not applicable for the Route 53 DNS side of a CloudFront custom
-  domain or failover between distributions (see the route53-cloudfront skill), or for pure-Route 53
+  domain or failover between distributions, or for pure-Route 53
   DNS work (see the route53 skill).
-version: 1
+version: 2
 ---
 
 # Amazon CloudFront
@@ -61,12 +61,12 @@ where the customer's application runs.
 - **Custom domain certificate vs Route 53 DNS cutover.** Requesting and validating the ACM
   certificate and adding the alternate domain name is the managing-certificates reference here.
   Pointing the domain's DNS at the distribution, including the zone apex alias and any failover, is
-  Route 53 work owned by the separate `route53-cloudfront` skill.
+  Route 53 DNS work (see the `route53` skill).
 
 ## Cross-service work
 
 Pointing a custom domain's DNS at a CloudFront distribution, or failing over between distributions
-with Route 53 records, is cross-service work owned by the separate `route53-cloudfront` skill. Use
+with Route 53 records, is cross-service work spanning CloudFront and Route 53. Use
 this skill for the CloudFront-side configuration only.
 
 ## Additional Resources
