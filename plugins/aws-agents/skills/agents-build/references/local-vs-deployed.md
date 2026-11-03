@@ -14,20 +14,20 @@ AgentCore Runtime has a local dev server (`agentcore dev`) and a deployed enviro
 | Memory | Not injected locally; can use a deployed Memory if its ID and AWS access are supplied | ✅ `MEMORY_<NAME>_ID` injected |
 | Gateway | Not injected locally; can call a deployed Gateway if its URL and auth are supplied | ✅ `AGENTCORE_GATEWAY_<NAME>_URL` injected |
 | Cedar policy evaluation | ❌ policies only enforced at gateway | ✅ |
-| Traces (X-Ray) | ✅ `agentcore dev` emits OTEL to CloudWatch by default; disable with `--no-traces` | ✅ auto-enabled |
-| CloudWatch logs | ✅ via ADOT / OTEL wiring (same path as traces) | ✅ if using `logging` module + OTEL |
+| Traces (X-Ray) | Local OTEL collector stores traces under `agentcore/.cli/traces/`; disable with `--no-traces` | ✅ auto-enabled |
+| CloudWatch logs | ❌ local Runtime output stays local | ✅ runtime stdout/stderr and structured OTEL logs |
 | **Evaluator *definition*** (`agentcore add evaluator`, writing the instructions/code) | ✅ — writes to `agentcore.json`; custom code is unit-testable locally | ✅ |
-| **`agentcore eval ondemand`** (on-demand eval over traces) | ✅ — operates on CloudWatch spans; local-dev spans land there if OTEL is on (default) | ✅ |
+| **`agentcore eval ondemand`** (on-demand eval over traces) | ❌ local traces are not sent to CloudWatch by `agentcore dev` | ✅ uses CloudWatch spans after ingestion |
 | **`Evaluate` API with hand-constructed spans** (boto3) | ✅ — no runtime needed at all; submit `SessionSpans` directly | ✅ |
 | **Dataset runner** (`OnDemandEvaluationDatasetRunner`) | ❌ invokes an AgentCore Runtime agent in its pipeline | ✅ |
 | **Online eval monitoring** (`agentcore add online-eval`) | ❌ ingests traces continuously from deployed runtime | ✅ |
-| Observability dashboards | ✅ once Transaction Search is on and local spans are flowing | ✅ in CloudWatch console |
+| Observability dashboards | ❌ local traces do not appear in CloudWatch | ✅ in CloudWatch console after ingestion |
 | VPC networking | ❌ local always has internet | ✅ subject to `networkMode: VPC` |
 | Inbound auth (AWS_IAM, CUSTOM_JWT) | ❌ no auth required locally | ✅ enforced on every request |
 
 ## Implications for generated code
 
-**Always guard features that aren't available locally:**
+**Guard optional integrations when their environment variables are absent:**
 
 ```python
 # Memory pattern
@@ -65,7 +65,7 @@ To test memory, Gateway, and policies with the deployed agent's identity, use th
 
 ## Common "works locally, fails deployed" causes
 
-- Missing `MEMORY_<NAME>_ID` guard — code crashes because the env var is unexpectedly present
+- Missing `MEMORY_<NAME>_ID` guard — code crashes locally because the deployed-only env var is absent
 - Hardcoded localhost URLs for gateway — replace with `AGENTCORE_GATEWAY_<NAME>_URL`
 - IAM permissions that work for your dev credentials but not the execution role
 - Region mismatch between `aws configure` (used locally) and `aws-targets.json` (used in deploy)
