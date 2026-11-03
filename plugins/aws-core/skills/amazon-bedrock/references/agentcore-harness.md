@@ -170,6 +170,9 @@ The optional fields are typed shapes, not loose key/values — use the exact mem
   "apiFormat": "converse_stream",                      // converse_stream | responses | chat_completions
   "additionalParams": {}                               // optional: provider-specific params passed through unchanged
 }}
+// v1 project harness.yaml / `agentcore add harness --model`: additionalParams is
+// lite_llm-only; the CLI rejects it for bedrock, open_ai, and gemini even though
+// the CreateHarness API accepts it on every variant.
 
 // systemPrompt: list of content blocks (NOT a bare string)
 "systemPrompt": [ { "text": "You are a helpful assistant." } ]
