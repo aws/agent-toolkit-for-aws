@@ -90,9 +90,38 @@ Include only subsections for scripts that were generated:
 
 Database Migration subsection (only if `scripts/02-migrate-data.sh` exists) with numbered steps:
 
-1. Run prerequisites check: `./scripts/01-validate-prerequisites.sh`
-1. Execute data migration (dry run first): `./scripts/02-migrate-data.sh` then `./scripts/02-migrate-data.sh --execute`
-1. Validate data integrity: `./scripts/05-validate-migration.sh`
+1. Run the local prerequisite preview: `./scripts/01-validate-prerequisites.sh`; then run `./scripts/01-validate-prerequisites.sh --execute` for the documented read-only cloud checks.
+1. Complete the database connection and verification checklist below. Preview with `./scripts/02-migrate-data.sh`; this preview MUST NOT connect to the source or target.
+1. For the supported offline PostgreSQL path, stop **all application writers** on both sides using a stack-specific, reviewed mechanism while retaining database reads. Confirm the freeze before setting `SOURCE_WRITES_FROZEN=yes` and `TARGET_WRITES_FROZEN=yes`. Run `./scripts/02-migrate-data.sh --execute` only while that freeze remains in force through verification.
+1. The script's `DATA_VERIFIER` must compare source/target table inventories, exact row counts, deterministic content checksums and required sequence/application invariants, and return nonzero on mismatch or incomplete coverage. If the schema is unavailable and no complete verifier can be produced, state **HOLD: data migration and cutover await a reviewed verifier** in the guide, README, HTML report and generation plan. Label this work unfinished; do not claim ready-to-migrate status merely because Terraform or artifact checks pass. Do not substitute a TODO, an inventory listing, or a successful row-count comparison for this gate.
+1. Run `./scripts/05-validate-migration.sh` for its documented AWS **inventory** checks. A zero exit code does not establish data integrity or application health. Complete independent application smoke tests before changing traffic.
+
+**Database connection checklist (PostgreSQL path):** document every execute input by its
+exact name: `SOURCE_HOST`, `SOURCE_PORT`, `SOURCE_DB_USER`, `SOURCE_DB_PASSWORD`,
+`TARGET_HOST`, `TARGET_PORT`, `TARGET_DB_USER`, `TARGET_DB_PASSWORD`, `DATABASE_NAME`,
+`DATA_VERIFIER`, `SOURCE_WRITES_FROZEN`, and `TARGET_WRITES_FROZEN`. Mark any generated
+default explicitly. Include a concrete source/target retrieval method and a credential-safe
+input method (for example, `read -r -s`), without writing credentials into the guide,
+Terraform outputs or shell history. Passwords containing `:`, `@`, `/`, `%`, apostrophes
+or backslashes are supported through the script's escaped libpq password file; do not
+concatenate them into connection URIs.
+
+For `TARGET_HOST`, reference the exact generated Terraform output whose value is an
+address; document the separate numeric port output. If the artifacts expose only
+`rds_endpoint` containing `hostname:port`, add address/port outputs to Terraform before
+publishing the guide. Do not pass an endpoint-with-port to `psql -h`, invent a
+`database_endpoint` output, or guess by splitting arbitrary endpoint strings. Use
+`psql -X --no-password -v ON_ERROR_STOP=1 -h "$TARGET_HOST" -p "$TARGET_PORT"`
+for any documented psql command, with the explicit database and user arguments.
+
+**No implicit online migration:** `pg_dump`/`pg_restore` and the emitted `pgcopydb copy db`
+perform a single copy while writers are frozen. The parser rejects `--final-sync`;
+never publish a command using that flag or describe a second full copy as a delta.
+If the required outage is unacceptable, mark **HOLD: online/CDC migration requires a
+separately implemented and validated workflow**. Document its source privileges,
+replication configuration, catch-up/lag evidence, cutover and rollback only when the
+corresponding runnable artifacts exist. Keep large, unknown-size and unsupported
+database engines on HOLD until their source/target-specific workflow is reviewed.
 
 Container Image Migration (only if `scripts/03-migrate-containers.sh` exists): `./scripts/03-migrate-containers.sh` (dry run, then `--execute`)
 
@@ -141,7 +170,7 @@ Generate the following section:
 **Cutover section** with subsections:
 
 - Pre-Cutover Checklist (from generation plan)
-- Execute Cutover (DNS switch, traffic migration, monitoring)
+- Execute Cutover (DNS switch, traffic migration, monitoring) only after the selected copy/replication workflow and its actual data/application gates passed; keep source writers stopped until traffic and the target are verified, and do not re-enable both sides as independent primaries
 - Post-Cutover Monitoring (24-48 hour watch, then 30-day monitoring)
 
 **Validation and Cleanup section** with subsections:
@@ -175,14 +204,14 @@ If the command fails with dependency errors, investigate the listed resources be
 | Container image pull fails                               | ECR authentication                                  | Run `aws ecr get-login-password`                                                                                           |
 | Bedrock InvokeModel fails                                | Model access not enabled                            | Enable in AWS Console                                                                                                      |
 | High latency after migration                             | Suboptimal instance sizing                          | Review CloudWatch metrics and right-size                                                                                   |
-| `validation-report.json` shows `passed_degraded_offline` | Provider registry was unreachable when Generate ran | From a network-connected shell, run `cd terraform/ && terraform init && terraform validate` to complete the skipped checks |
+| `validation-report.json` shows `passed_degraded_offline` | Read the recorded command, exit status and stderr; possible causes include a missing/broken Terraform CLI, provider download failure, or unavailable network | Repair the recorded cause, then run the skipped `terraform fmt -check`, `terraform init -backend=false`, and `terraform validate` checks. Keep deployment on hold until each passes; do not relabel a CLI failure as a registry failure |
 
 Rollback Procedure subsection (from generation plan). A one-line "rollback via DNS" note is NOT sufficient — cutover is the highest-stress, lowest-judgment moment of the migration, and this subsection is the runbook the reader executes at 2am. It MUST contain:
 
 1. **Triggers — when to pull it:** concrete criteria, not vibes (e.g., "error rate > X% for 10 minutes on the validation checks in `05-validate-migration.sh`", "data validation row counts diverge", "p99 latency > 2x GCP baseline after 30 minutes"). State who decides if the team is more than one person.
-2. **Steps — exact commands:** the literal DNS change to restore (record, old value, new value, TTL implications given the cutover TTL), what to stop on the AWS side, and how to confirm traffic is back on GCP.
-3. **The data question — answer it explicitly:** rows written to the AWS database after cutover do NOT exist in Cloud SQL. State the chosen posture for this stack: (a) brief write-freeze before rollback + export the delta, (b) accept loss of the post-cutover window (viable for low-write apps — say so if Q12 said `steady`/low), or (c) reverse sync required (name the tool). Never leave this implicit — a DNS rollback with unresolved writes silently loses customer data.
-4. **RTO:** how long the rollback takes end-to-end, dominated by DNS TTL.
+2. **Steps — exact commands:** the literal DNS change to restore (record, old value, new value, TTL implications given the cutover TTL), what to stop on the AWS side, and how to confirm traffic is back on GCP. Derive every cluster, service, environment and database identity from the actual Terraform resources/outputs. For example, read the emitted ECS cluster/service outputs rather than synthesizing `${project_name}-cluster`. If the identity or DNS provider is unresolved, show an explicit HOLD instead of a runnable guessed command. Preserve both databases and backups during rollback; stopping application writers is not permission to delete data.
+3. **The data question — obtain an explicit decision:** rows written to the AWS database after cutover do NOT exist in Cloud SQL unless reverse replication is actually implemented. Default to **HOLD: preserve AWS writes; post-cutover rollback requires a confirmed reconciliation plan**. Offer (a) a write-freeze plus a reviewed, executable delta export/import with conflict handling, (b) loss of the explicitly bounded post-cutover window only with the user's informed acceptance recorded in preferences, or (c) a tested reverse-sync workflow. A tool name, low/steady traffic, or an inferred small database does not establish this decision or an implemented delta path. Before reverting traffic after target writes, freeze target application writers and reconcile/verify the data or obtain that explicit loss acceptance. Do not invent consent, claim automatic rollback is lossless, or resume stale source writers.
+4. **RTO:** separate DNS propagation from application restart and data reconciliation. If reconciliation is not implemented and measured, state its duration is unknown; do not claim the whole rollback is bounded by DNS TTL.
 
 ### Footer
 
@@ -376,7 +405,8 @@ After generating documentation, verify:
 1. **Fill-in checklist is complete**: row 0 is the `cp terraform.tfvars.example terraform.tfvars` step, every placeholder (`TODO`, `ACCOUNT_ID`, `<...>`, `example.com`) present in generated artifacts appears in the Fill-in checklist table, and every row's "Where to get it" cell contains a concrete command, console path, or artifact reference
 1. **Cost figures match**: Values in README.md match estimation artifacts
 1. **Timeline matches**: Week counts match generation plan artifacts
-1. **Rollback instructions match**: Rollback Procedure subsection contains all four contract elements from above — (1) triggers with concrete criteria tied to `05-validate-migration.sh` checks, (2) exact DNS/restore commands with TTL implications, (3) an explicit post-cutover-writes data posture (write-freeze + delta / accepted loss / reverse sync by name), and (4) RTO — and those steps match the generation plan. A one-line "rollback via DNS" fails this check.
+1. **Rollback instructions match**: Rollback Procedure subsection contains all four contract elements from above — (1) concrete measured triggers, (2) exact DNS/restore commands and actual generated identities with TTL implications, (3) an explicitly confirmed post-cutover-writes decision backed by the required executable reconciliation path or a HOLD, and (4) RTO with unresolved reconciliation time labelled unknown — and those steps match the generation plan. A one-line "rollback via DNS" or inferred acceptance of data loss fails this check.
+1. **Verification claims match execution**: every documented flag is accepted by the corresponding script, data-integrity claims reference an implemented verifier, inventory-only checks are labelled inventory, and unsupported online/CDC or unresolved rollback paths remain HOLD. All PostgreSQL examples use `psql -X` and separate hostname/port inputs.
 
 ## Phase Completion
 
