@@ -25,7 +25,7 @@ The Browser tool is a **managed Chrome instance**, one per session, running in a
 | **Nova Act** | You want an LLM to decide the next action at each step ("click the search box, type X, press enter"). Best for open-ended tasks. |
 | **Playwright** | Deterministic scripted automation. Best when you know the exact steps — login flows, scraping a known page structure. |
 
-If you're adding browsing to a Strands agent, use `AgentCoreBrowser` and skip the framework decision — it wraps Nova Act under the hood and fits the agent-tool mental model.
+If you're adding browsing to a Strands agent, use `AgentCoreBrowser` and skip the framework decision. It drives the managed browser through Playwright over CDP; it does not wrap Nova Act.
 
 If you're not using Strands, pick between Nova Act (reasoning-driven) and Playwright (script-driven) based on whether the task is open-ended or well-defined.
 
@@ -89,7 +89,7 @@ result = agent("Find the release date of the latest AgentCore SDK on GitHub.")
 print(result.message["content"][0]["text"])
 ```
 
-Install: `pip install bedrock-agentcore strands-agents strands-agents-tools`
+Install: `pip install bedrock-agentcore strands-agents "strands-agents-tools[agent_core_browser]"`. Add the same extra to a v1 Runtime project's `pyproject.toml` dependencies before deploying.
 
 The agent decides when to use the browser, opens sessions on demand, and cleans them up. Under the hood, `AgentCoreBrowser` uses the AWS-managed `aws.browser.v1` resource — no resource creation needed.
 
@@ -140,7 +140,7 @@ Install: `pip install bedrock-agentcore nova-act boto3`
 
 The `browser_session` context manager handles start/stop. Do not leak sessions — always use the context manager or wrap raw `BrowserClient` calls in try/finally.
 
-**Credential handling:** the Nova Act API key is a secret. If this is running inside an AgentCore Runtime agent, register it as a credential (`agentcore add credentials api-key --name NovaAct --api-key file://<secret-file>`) and retrieve it with `@requires_api_key(provider_name="NovaAct")`. Do not put it in runtime env vars. See `agents-connect` step 4, "Configure outbound authentication".
+**Credential handling:** the Nova Act API key is a secret. If this is running inside an AgentCore Runtime agent, register it with `agentcore add credentials api-key --name NovaAct --api-key file://<secret-file>`. The CLI injects `CREDENTIAL_NOVAACT_NAME` with the deployed, target-scoped provider name. Pass `os.environ["CREDENTIAL_NOVAACT_NAME"]` as `provider_name` to `@requires_api_key`; the bare name `NovaAct` is not the deployed provider name. Do not put the key itself in runtime env vars. See `agents-connect` step 4, "Configure outbound authentication".
 
 ## Path C — Playwright for scripted automation
 
