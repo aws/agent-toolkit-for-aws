@@ -271,8 +271,10 @@ export AWS_REGION=<target-region>
 cd /absolute/path/to/agents-pay
 ```
 
-Use a separate admin config path for each target. The script is in the skill
-directory, not in the AgentCore project.
+The runtime reads only `~<os-user>/.agents-pay/config.json` of the OS account it
+runs as; it ignores `--path` and `AGENTS_PAY_CONFIG`. Use one OS account (or an
+isolated runtime) per target, or re-run `init-config --force` when switching
+targets. The script is in the skill directory, not in the AgentCore project.
 
 ### Step 2: Write the payment policy — human runs this
 
