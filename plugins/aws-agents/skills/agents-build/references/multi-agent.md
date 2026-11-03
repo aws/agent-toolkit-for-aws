@@ -188,15 +188,15 @@ agent = Agent(
 
 @app.entrypoint
 async def invoke(payload, context):
-    user_id = payload.get("user_id", "default_user")
+    actor_id = payload.get("actorId", "default")
     session_id = getattr(context, "session_id", "default_session")
     session_service = InMemorySessionService()
     session = await session_service.create_session(
-        app_name="orchestrator", user_id=user_id, session_id=session_id
+        app_name="orchestrator", user_id=actor_id, session_id=session_id
     )
     runner = Runner(agent=agent, app_name="orchestrator", session_service=session_service)
     content = types.Content(role="user", parts=[types.Part(text=payload["prompt"])])
-    async for event in runner.run_async(user_id=user_id, session_id=session.id, new_message=content):
+    async for event in runner.run_async(user_id=actor_id, session_id=session.id, new_message=content):
         if event.is_final_response():
             return {"response": event.content.parts[0].text}
 ```
@@ -411,7 +411,7 @@ agentcore deploy --target <owner-target>
 MEMORY_ID = os.getenv("MEMORY_SHAREDMEMORY_ID")
 ```
 
-1. Use a consistent `actor_id` scheme — typically the end user's ID — so both agents read and write the same user's memory.
+1. Use a consistent `actor_id` scheme — typically the end user's ID — so both agents read and write the same user's memory. The CLI's Strands templates read it from the payload's `actorId` field and fall back to the shared actor `default`; `agentcore invoke --user-id` does not set it.
 
 ### Key consideration
 
@@ -421,7 +421,7 @@ When multiple agents share memory, they share the same namespace. Use namespaced
 # Orchestrator writes to /orchestrator/ namespace
 memory_client.create_event(
     memory_id=MEMORY_ID,
-    actor_id=user_id,
+    actor_id=actor_id,  # payload["actorId"], the same value in both agents
     session_id=session_id,
     messages=[("User asked about X", "user")],
 )
@@ -429,7 +429,7 @@ memory_client.create_event(
 # Specialist reads from all namespaces
 turns = memory_client.get_last_k_turns(
     memory_id=MEMORY_ID,
-    actor_id=user_id,
+    actor_id=actor_id,
     session_id=session_id,
     k=5,
 )
