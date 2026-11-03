@@ -71,11 +71,27 @@ def call_specialist(prompt: str, session_id: str = None) -> str:
         kwargs["runtimeSessionId"] = session_id
 
     response = client.invoke_agent_runtime(**kwargs)
-    # response["response"] is a StreamingBody — read, then parse JSON
-    body = response["response"].read()
-    result = json.loads(body.decode() if isinstance(body, bytes) else body)
+    # response["response"] is a StreamingBody — read it fully
+    body = response["response"].read().decode()
+    # The CLI templates stream Server-Sent Events: join the text deltas
+    if response.get("contentType", "").startswith("text/event-stream"):
+        text = []
+        for line in body.splitlines():
+            if not line.startswith("data: "):
+                continue
+            event = json.loads(line[len("data: "):])
+            if isinstance(event, dict):
+                if "error" in event:
+                    raise RuntimeError(event["error"])
+                delta = event.get("event", {}).get("contentBlockDelta", {}).get("delta", {})
+                text.append(delta.get("text", ""))
+        return "".join(text)
+    # A specialist whose entrypoint returns a dict responds with JSON
+    result = json.loads(body)
     return result.get("response", result.get("result", str(result)))
 ```
+
+The `agent-python-strands` template's entrypoint yields Strands events, so the specialist responds with `text/event-stream` and the code above joins the streamed text. If you change the specialist's entrypoint to `return {"response": ...}` instead, it responds with JSON and the last branch handles it.
 
 Passing `"DEFAULT"` as the qualifier calls the live version. To pin to a specific version (staging pin, canary, or rollback), pass a numeric version string instead — see [`agents-deploy/references/versioning.md`](../../agents-deploy/references/versioning.md) for the full workflow.
 
@@ -174,15 +190,15 @@ agent = Agent(
 
 @app.entrypoint
 async def invoke(payload, context):
-    user_id = payload.get("user_id", "default_user")
+    actor_id = payload.get("actorId", "default")
     session_id = getattr(context, "session_id", "default_session")
     session_service = InMemorySessionService()
     session = await session_service.create_session(
-        app_name="orchestrator", user_id=user_id, session_id=session_id
+        app_name="orchestrator", user_id=actor_id, session_id=session_id
     )
     runner = Runner(agent=agent, app_name="orchestrator", session_service=session_service)
     content = types.Content(role="user", parts=[types.Part(text=payload["prompt"])])
-    async for event in runner.run_async(user_id=user_id, session_id=session.id, new_message=content):
+    async for event in runner.run_async(user_id=actor_id, session_id=session.id, new_message=content):
         if event.is_final_response():
             return {"response": event.content.parts[0].text}
 ```
@@ -201,10 +217,15 @@ The orchestrator's execution role needs permission to invoke the specialist. Aft
   "Statement": [{
     "Effect": "Allow",
     "Action": "bedrock-agentcore:InvokeAgentRuntime",
-    "Resource": "<specialist-runtime-arn>"
+    "Resource": [
+      "<specialist-runtime-arn>",
+      "<specialist-runtime-arn>/runtime-endpoint/*"
+    ]
   }]
 }
 ```
+
+The call is authorized on the endpoint ARN (`<specialist-runtime-arn>/runtime-endpoint/DEFAULT` for the `DEFAULT` qualifier), so the runtime ARN alone returns `AccessDeniedException`.
 
 Add `"specialist-invoke-policy.json"` to the orchestrator Runtime's `additionalPolicies` array in `agentcore/agentcore.json`. The v1 CLI resolves a `.json` policy path relative to that Runtime's `codeLocation` and attaches it to a CLI-created execution role during deployment. If the Runtime uses an imported `executionRoleArn`, attach the same policy to that role separately. Run `agentcore build` to check the path before deployment.
 
@@ -361,8 +382,14 @@ async def call_a2a_specialist(message: str, *, access_token: str) -> str:
         )
 
         async for event in client.send_message(msg):
-            if hasattr(event, "parts"):
-                return " ".join(p.text for p in event.parts if hasattr(p, "text"))
+            # a2a-sdk 0.3 yields a Message, or a (Task, update) tuple for task responses
+            if isinstance(event, Message):
+                parts = event.parts
+            else:
+                task, _update = event
+                parts = [p for artifact in task.artifacts or [] for p in artifact.parts]
+            # Part wraps the concrete part type; the text is on p.root
+            return " ".join(p.root.text for p in parts if isinstance(p.root, TextPart))
     return ""
 
 # Use in your orchestrator's entrypoint:
@@ -397,7 +424,7 @@ agentcore deploy --target <owner-target>
 MEMORY_ID = os.getenv("MEMORY_SHAREDMEMORY_ID")
 ```
 
-1. Use a consistent `actor_id` scheme — typically the end user's ID — so both agents read and write the same user's memory.
+1. Use a consistent `actor_id` scheme — typically the end user's ID — so both agents read and write the same user's memory. The CLI's Strands templates read it from the payload's `actorId` field and fall back to the shared actor `default`; `agentcore invoke --user-id` does not set it.
 
 ### Key consideration
 
@@ -407,7 +434,7 @@ When multiple agents share memory, they share the same namespace. Use namespaced
 # Orchestrator writes to /orchestrator/ namespace
 memory_client.create_event(
     memory_id=MEMORY_ID,
-    actor_id=user_id,
+    actor_id=actor_id,  # payload["actorId"], the same value in both agents
     session_id=session_id,
     messages=[("User asked about X", "user")],
 )
@@ -415,7 +442,7 @@ memory_client.create_event(
 # Specialist reads from all namespaces
 turns = memory_client.get_last_k_turns(
     memory_id=MEMORY_ID,
-    actor_id=user_id,
+    actor_id=actor_id,
     session_id=session_id,
     k=5,
 )
@@ -434,7 +461,7 @@ turns = memory_client.get_last_k_turns(
 **Direct invocation permission denied:**
 
 - Check the orchestrator's execution role has `bedrock-agentcore:InvokeAgentRuntime`
-- Verify the resource ARN pattern matches the specialist's ARN
+- Verify the policy covers both the specialist's Runtime ARN and `<specialist-runtime-arn>/runtime-endpoint/*`; the denial message names the endpoint ARN
 - IAM changes take ~30 seconds to propagate
 
 **Specialist not found:**

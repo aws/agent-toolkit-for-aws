@@ -1,6 +1,6 @@
 # Component mapping
 
-Map each source component to its harness target. **Mirror** behavior, not Bedrock structure. Adapt the `.tmpl` templates in the skill's `assets/` directory: substitute every `{{TOKEN}}`, and delete every marker block — `# <<< RENDER … # <<< /RENDER` (token docs) and `# <<< OPTIONAL: … # <<< /OPTIONAL` (features that don't apply). After rendering, no `{{`, `}}`, or `<<<` may remain — that grep is the verification gate, and it must come back clean.
+Map each source component to its harness target. **Mirror** behavior, not Bedrock structure. Adapt the `.tmpl` templates in the skill's `assets/` directory: substitute every `{{TOKEN}}`, and delete every marker block — `# <<< RENDER … # <<< /RENDER` (token docs) and `# <<< OPTIONAL: … # <<< /OPTIONAL` (features that don't apply). After rendering, no `{{UPPER_CASE}}` token or `<<<` marker may remain. The verification gate is `grep -nE '\{\{[A-Z_]+\}\}|<<<' <rendered-file>`, and it must come back clean. (Do not grep for bare `{{` or `}}`: rendered Python and JSON legitimately contain closing braces such as `}}}`.)
 
 The `.tmpl` files are not for any template engine; they are guidance for you (the LLM) on how to fill them in.
 
@@ -21,7 +21,7 @@ Reproduce the source action group's schema faithfully into the tool-schema file 
 
 **Decide by `knowledgeBaseConfiguration.type` FIRST — the native Gateway connector accepts ONLY a `MANAGED` Bedrock KB.**
 
-- **Any non-`MANAGED` type (`VECTOR`, `KENDRA`, `SQL`)** → **always the KB shim.** The connector cannot accept these at all, so type alone decides and retrieval config is irrelevant. Use the **KB shim** ([kb_shim.py.tmpl](../../assets/kb_shim.py.tmpl)): add a **`targetType: "lambda"` code target** with `agentcore add gateway-target --gateway <GatewayName> --target-configuration file://<target>.json` as described in [Add Gateway targets](deploy.md#add-gateway-targets). The shim calls `bedrock-agent-runtime:Retrieve` and returns MCP-shaped passages.
+- **Any non-`MANAGED` type (`VECTOR`, `KENDRA`, `SQL`)** → **always the KB shim.** The connector cannot accept these at all, so type alone decides and retrieval config is irrelevant. Use the **KB shim** ([kb_shim.py.tmpl](../../assets/kb_shim.py.tmpl)): add a **`targetType: "lambda"` code target** with `agentcore add gateway-target --gateway <GatewayName> --target-configuration file://<target>.json` as described in [Add Gateway targets](deploy.md#add-gateway-targets). The shim calls the `bedrock-agent-runtime` `Retrieve` API (IAM action `bedrock:Retrieve`) and returns MCP-shaped passages.
 - **`MANAGED`** → then (and only then) check the **retrieval config on the KB association** (`knowledgeBaseConfigurations[].retrievalConfiguration`: reranker, metadata filter, hybrid/search-type override, top-k):
   - **default** retrieval config → native Gateway connector: `agentcore add gateway-connector --gateway <gateway-name> --name <target-name> --connector bedrock-knowledge-bases --knowledge-base <id>`.
   - **non-default** retrieval config → the **KB shim** (the connector uses a fixed retrieval contract and would silently drop the custom config), reproducing that config from the manifest's KB association.
