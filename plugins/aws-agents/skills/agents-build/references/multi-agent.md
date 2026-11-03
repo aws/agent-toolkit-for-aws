@@ -81,6 +81,8 @@ def call_specialist(prompt: str, session_id: str = None) -> str:
                 continue
             event = json.loads(line[len("data: "):])
             if isinstance(event, dict):
+                if "error" in event:
+                    raise RuntimeError(event["error"])
                 delta = event.get("event", {}).get("contentBlockDelta", {}).get("delta", {})
                 text.append(delta.get("text", ""))
         return "".join(text)

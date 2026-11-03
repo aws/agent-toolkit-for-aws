@@ -683,7 +683,7 @@ This makes the runtime sample every trace regardless of the parent context's sam
 
 ### Also check: invoking with the endpoint ARN instead of the agent ARN
 
-If traces show only a single top-level `AgentCore.Runtime.Invoke` span with no child spans, check the ARN your caller is using. The invoke target should be the agent runtime ARN:
+If traces show only a single top-level `AgentCore.Runtime.Invoke` span with no child spans, check the ARN your caller is using. The invoke target should be the agent runtime ARN (copy it from `agentcore status --json`; hyphens in the target name become `_`):
 
 ```
 arn:aws:bedrock-agentcore:<region>:<account>:runtime/<project>_<target>_<runtime>-<id>

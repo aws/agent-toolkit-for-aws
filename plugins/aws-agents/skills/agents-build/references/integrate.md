@@ -271,7 +271,7 @@ Create an IAM role that trusts the caller account and has permission to invoke t
 }
 ```
 
-Take `<AGENT_RUNTIME_ARN>` from `agentcore status --target <target> --json` in the agent's project (the `arn` of the `runtime` resource). The deployed Runtime name is `<project>_<target>_<runtime>-<id>`, not the logical runtime name in `agentcore.json`. The call is authorized on the endpoint ARN (`.../runtime-endpoint/DEFAULT`), so include both entries. To survive a Runtime being replaced (new `<id>`), use `arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<project>_<target>_<runtime>-*` instead, which also matches the endpoint ARNs.
+Take `<AGENT_RUNTIME_ARN>` from `agentcore status --target <target> --json` in the agent's project (the `arn` of the `runtime` resource). The deployed Runtime name is `<project>_<target>_<runtime>-<id>` (hyphens in the target name become `_`), not the logical runtime name in `agentcore.json`. The call is authorized on the endpoint ARN (`.../runtime-endpoint/DEFAULT`), so include both entries. To survive a Runtime being replaced (new `<id>`), use `arn:aws:bedrock-agentcore:<REGION>:<AGENT_ACCOUNT_ID>:runtime/<project>_<target>_<runtime>-*` instead, which also matches the endpoint ARNs.
 
 Scope the `Principal` in the trust policy as narrowly as possible (a specific role ARN in the caller account rather than `:root` for anything beyond proof-of-concept). Use an `ExternalId` to prevent the confused deputy problem.
 
