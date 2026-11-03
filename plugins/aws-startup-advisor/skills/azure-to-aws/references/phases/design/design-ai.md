@@ -160,8 +160,8 @@ flat rates from `references/vendored/ai/bedrock-pricing-cache.md` throughout the
 do not apply the GPT multiplier. Verify other models' tiers individually.
 
 **Quota risk** (per `references/vendored/ai/bedrock-quotas.md`): high/very_high volume →
-`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude (5× output burndown) or Astra runtime (10× output burndown) →
-`"medium"`; else `"low"`. Before writing that value, apply the observed on-demand peak rule in `references/vendored/ai/bedrock-quotas.md`, including `azure-openai-metrics-profile.json` when it has an on-demand peak. Unknown `service_tier` is not on-demand. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Record on each `bedrock_models[]` entry. Generate must not keep the earlier monthly decision.
+`quota_risk: "high"` + a pre-migration quota-increase flag; medium + Claude on bedrock-runtime or Astra runtime (10× output burndown) →
+`"medium"`; else `"low"`. Before writing that value, apply **Observed on-demand peak** in `references/vendored/ai/bedrock-quotas.md`, including `azure-openai-metrics-profile.json` when it has an on-demand peak. Unknown `service_tier` is not on-demand. A `"low"` monthly tier stays `"low"` only when no usable on-demand peak exceeds that rule. A monthly `"low"` with a weighted peak above 200,000 TPM becomes `"high"`. Batch rows are excluded. Profiles without peak fields keep the monthly result. Record on each `bedrock_models[]` entry and on `ai_architecture.quota_risk`. Generate reads the value written here and must not keep the earlier monthly decision.
 
 ## Part 1B: Volume-based strategy
 

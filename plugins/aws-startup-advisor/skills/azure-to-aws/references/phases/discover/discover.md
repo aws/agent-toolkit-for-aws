@@ -319,11 +319,13 @@ only maps prepared JSON.
      `failed`/`skipped` Analytics row — `cost_provenance: "unknown"` for every model, with the
      matching `capture_warnings` entry. Do NOT re-offer Step 0 consent (no new request, nothing new
      to consent to) and do NOT enter Step 2 for this manifest.
-   - **Manifest exists, `/activity` entry `"ok"`, `/analytics/query` entry `"failed"`** → a
+   - **Manifest exists, `/activity` entry `"ok"`, `/analytics/query` entry `"failed"`** when that entry's `file` is `analytics.json` (or `file` is absent) → a
      pending Analytics-only retry — do NOT re-offer consent; resume
      `discover-openrouter-api.md` from its Step 2 Analytics-only retry path (reusing the
-     already-good `/activity.json`, per that file's own independent-resume rule for
-     `/analytics/query`), then proceed to Step 3 once Analytics reaches a terminal state.
+     already-good `/activity.json`). The classification entry is the `captures[]` item
+     whose `file` is `analytics.json`, or the only `/analytics/query` item when `file`
+     is absent. A failed `analytics-volume.json` or `analytics-hourly.json` is not this
+     case. Proceed to Step 3 once classification reaches a terminal state.
    - **Manifest exists, `/activity` entry `"ok"`, `/analytics/query` entry `"ok"` or
      `"skipped"`, and `openrouter-usage-profile.json` exists** → a prior attempt fully
      completed; keep today's behavior for this case — re-offer `discover-openrouter-api.md`'s
