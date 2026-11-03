@@ -192,9 +192,22 @@ The AWS guide is emphatic about the combination to avoid:
 Verify after deploy:
 
 ```bash
-aws iam get-role-policy --role-name <ProcessPaymentRole> --policy-name <Policy> \
-  | grep -c CreatePaymentSession        # must be 0
+ROLE_ARN=$(aws bedrock-agentcore-control get-agent-runtime \
+  --agent-runtime-id <runtime-id> --query roleArn --output text) || ROLE_ARN=LOOKUP_FAILED
+decision=$(aws iam simulate-principal-policy --policy-source-arn "$ROLE_ARN" \
+  --action-names bedrock-agentcore:CreatePaymentSession \
+  --resource-arns <payment-manager-arn> \
+  --query 'EvaluationResults[0].EvalDecision' --output text) || decision=LOOKUP_FAILED
+echo "$decision"   # PASS only on implicitDeny or explicitDeny; anything else is a FAIL
 ```
+
+This checks the Runtime execution role (the role the agent actually runs as) and
+fails closed: a lookup error prints `LOOKUP_FAILED`, never a pass. With the CLI's
+default wiring, `agentcore deploy` grants the Runtime execution role both
+`CreatePaymentSession` and `ProcessPayment` on the payment manager, so a default
+deploy prints `allowed`. The role split above does not hold until you block it,
+for example with an explicit `Deny` on `bedrock-agentcore:CreatePaymentSession`
+attached to that role. Re-run the check after every deploy.
 
 A runtime `AccessDeniedException` on `CreatePaymentSession` is **the control
 working**. Do not "fix" it by granting the permission.
