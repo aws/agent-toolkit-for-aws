@@ -155,7 +155,11 @@ volume rather than avoiding a double-count). Skip a profile whose
 is partial. Map the combined total to tiers (`<1M`→low, `1–10M`→medium, `10–100M`→high,
 `>100M`→very_high), record the extraction (`chosen_by: "extracted"`, `source` naming whichever
 profile(s) contributed), and tell the user: "Resolved from your usage data: [N tokens/month →
-tier]." → `ai_token_volume`. Default `"medium"`. **Q8 — Response speed** (critical /
+tier]." → `ai_token_volume`. Also add a full-window
+`azure-openai-metrics-profile.json` (`input_tokens + output_tokens` only; do not
+add `cache_write_tokens`). A `partial_window` metrics profile is not monthly
+volume. Batch and spillover rows still count in the monthly sum. Name the
+source `azure-openai-metrics-profile:usage_by_model`. Default `"medium"`. **Q8 — Response speed** (critical /
 important / flexible). → `ai_latency`. Default `"important"`. **Q9 — Task complexity** (simple /
 moderate / complex). → `ai_complexity`. Default `"moderate"`. **Q10 — Specialized features**
 (function calling / ultra-long-context / extended-thinking / prompt-caching / RAG / agentic /

@@ -311,7 +311,7 @@ the reported schema, so it reads as a missing field. Add `OUTER` and the identic
 
 `TABLESAMPLE` reduces the amount of data scanned by sampling a table reference. It is placed immediately after a table reference in the `FROM` clause.
 
-**Syntax:** `TABLESAMPLE (<p> PERCENT)` — only the `PERCENT` unit is supported, and `p` must satisfy `0 < p <= 100`.
+**Syntax:** `TABLESAMPLE (<p> PERCENT)`, where `p` must satisfy `0 < p <= 100`. An extended form adds `MAX_VOLUME` and `BIAS` (below).
 
 ```sql
 SELECT * FROM "logs.default" TABLESAMPLE (10 PERCENT)
@@ -342,13 +342,44 @@ field the two tables actually share (`traceId`), not a placeholder `id`.
 
 - Combining with `EXPLAIN (ANALYZE_FIELDS)`.
 - A percentage outside `(0, 100]`.
-- `ROWS` or no unit — `PERCENT` is the only supported unit.
+- `ROWS`, or a quantity with no unit at all — `PERCENT` and `MAX_VOLUME` are the only units.
 - A sampling method name such as `BERNOULLI` / `SYSTEM`.
 - `REPEATABLE` / `SEED` — sampling is deterministic and cannot be seeded.
 - `BUCKET`.
 - A non-numeric percentage.
 - `TABLESAMPLE` in an unsupported position — a `SELECT`-list scalar subquery, a `HAVING` subquery, or a `JOIN ... ON` subquery. It **is** allowed on `FROM` relations, `WHERE` subqueries, derived tables, and `UNION` branches.
 - Conflicting percentages on the same table occurrence.
+
+#### MAX_VOLUME and BIAS — bounding a scan by bytes
+
+Arguments are order-independent and each is optional, so a budget can stand alone — an omitted
+percentage means `100`, an omitted bias means `SPREAD`:
+
+```sql
+SELECT `@timestamp`, `@record`
+FROM "logs.default" TABLESAMPLE (100 PERCENT, 10G MAX_VOLUME, BIAS SPREAD)
+WHERE `@timestamp` BETWEEN NOW() - INTERVAL '1 HOUR' AND NOW()
+```
+
+| Argument | Meaning |
+|----------|---------|
+| `<n> MAX_VOLUME` | Ceiling on declared uncompressed bytes selected. Units `K` / `M` / `G` / `T`, optional `B`, base 1024; a bare number is bytes |
+| `BIAS EARLIEST` / `BIAS LATEST` | Keep the earliest / latest part of the range at full time resolution |
+| `BIAS SPREAD` | Keep the whole range and widen the stride instead (default) |
+
+- **The budget is not the reported scan size.** It caps the declared uncompressed bytes of the
+  *selected input*, counted before pruning; reported bytes scanned counts resolved files after
+  pruning. The two are different quantities, so reported scan size can land either side of the
+  budget. Never tell the user a budget means they will scan exactly, or at most, that much.
+- **Recent data is not sampled.** Data still served from the ingest tier is scanned in full
+  regardless of the sampling clause, and it counts toward reported bytes scanned.
+- **Takes the tighter of the two bounds.** Given a percentage and a budget together, each is
+  evaluated against the full candidate set and whichever selects fewer bytes is applied.
+- **Manifest-granular.** Whole manifests are selected or skipped, so a budget is never met
+  exactly. On skewed data it binds coarsely, and a budget below the smallest manifest can
+  select nothing at all and reports `BELOW_MINIMUM_GRANULARITY`. Widen the budget or narrow
+  the time range.
+- Binds per table occurrence, exactly like the percentage form.
 
 ---
 
@@ -537,7 +568,7 @@ ORDER BY `@timestamp` DESC
 LIMIT 100
 ```
 
-Only `PERCENT` is supported (`0 < p <= 100`), and `TABLESAMPLE` is unavailable on `metrics.` tables.
+`p` must satisfy `0 < p <= 100`, and `TABLESAMPLE` is unavailable on `metrics.` tables. An extended form can also bound a scan by bytes with `MAX_VOLUME` / `BIAS`.
 
 ### Filter on a Discovered Field
 
@@ -660,6 +691,10 @@ erroring, so an empty result should prompt schema discovery (`ListTelemetryField
 > the `` `@timestamp` `` window is mandatory; the service is
 > `resource['attributes']['service.name']`; and an empty result under the permissive schema
 > means "check the field names", not "nothing failed".
+
+For whole traces — fetching one by id, its span tree and time breakdown, failure analysis,
+AI-agent span attributes, and finding traces by their spans — see
+[trace-exploration.md](trace-exploration.md).
 
 ### Reading a span or trace you already have (pasted, or passed as UI context)
 
@@ -851,7 +886,7 @@ ORDER BY `@timestamp` ASC
 7. **Types match ingested values** — fields retain the type they were ingested with. When values are ingested as strings, use `TRY_CAST` to convert them to numeric types (`BIGINT`, `DOUBLE`, `INT`, `DECIMAL`) before arithmetic or comparison. `TRY_CAST` returns NULL if the conversion is not possible.
 8. **Field names are never guaranteed** — the schema depends entirely on what was ingested. Only the `@`-prefixed [system fields](#3-system-fields) are guaranteed. Always confirm any other field with `EXPLAIN (ANALYZE_FIELDS)` before relying on it.
 9. **No DDL/DML** — `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, `DROP` are all blocked. Only `SELECT` is supported.
-10. **`TABLESAMPLE` is approximate** — it returns an approximate sample rather than an exact `p%` of rows, is repeatable for the same query and time range, supports the `PERCENT` unit only (`0 < p <= 100`), and is unavailable on `metrics.` tables.
+10. **`TABLESAMPLE` is approximate** — it returns an approximate sample rather than an exact `p%` of rows, is repeatable for the same query and time range, supports `PERCENT` (`0 < p <= 100`) plus the `MAX_VOLUME` / `BIAS` arguments, and is unavailable on `metrics.` tables.
 
 ### Performance Tips
 

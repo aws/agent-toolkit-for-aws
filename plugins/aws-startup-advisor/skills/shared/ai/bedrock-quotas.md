@@ -56,6 +56,27 @@ Apply during Design phase after model selection. Uses `ai_token_volume` from `pr
 
 Include `quota_risk` in `aws-design-ai.json` → `ai_architecture`.
 
+**Observed on-demand peak.** After the monthly table, read the on-demand peak
+from whichever profile actually has it: `openai-usage-profile.json`,
+`anthropic-usage-profile.json`, `openrouter-usage-profile.json`,
+`azure-openai-metrics-profile.json`, or `gcp-publisher-metrics-profile.json`.
+Resolve the selected target model and endpoint before comparing. On
+`bedrock-mantle`, input and output quotas are separate, so do not fold them
+into one weighted TPM. On `bedrock-runtime`, weighted peak TPM is peak input
+plus peak output times the output burndown: 15 for Claude 4.8; 10 for Opus
+5.5, Sonnet 5, Opus 5, Fable 5.1, GPT-5.6 Sol, GPT-5.6 Terra, GPT-5.6 Luna,
+and GPT-6 Astra; 5 for other Claude models; 1 otherwise. GPT-5.6 Terra at
+1,000 input and 25,000 output tokens per minute is 251,000, which is high.
+Compare that runtime number with 200,000 TPM, the Claude example in this file. Above
+200,000, `quota_risk` is `"high"` even when the monthly tier is low or medium.
+Above 50,000 when the monthly table said `"low"`, raise it to `"medium"`.
+Exclude batch and spillover rows, and any row whose `service_tier` is
+`"unknown"`. A profile with no usable peak keeps the monthly table. Record
+`quota_risk_basis` `"observed_on_demand_peak"` when the peak raised the result,
+otherwise `"monthly_volume"`. Generate reads the value Design wrote. It does
+not keep an earlier monthly decision. These thresholds are instruction
+thresholds from this file's example, not a live account quota.
+
 ---
 
 ## `max_tokens` Reservation Trap

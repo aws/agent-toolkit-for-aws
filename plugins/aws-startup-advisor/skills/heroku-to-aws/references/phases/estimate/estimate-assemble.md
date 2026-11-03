@@ -333,9 +333,28 @@ includes EB). Ask them now, in one batch, using each question's catalog text fro
 Q6c). Write each answer to its field, set `sources.<field>` to `"user"`
 (`chosen_by: "user"` on `eb_deploy_method`), move the IDs to
 `metadata.questions_asked`, empty `metadata.questions_deferred_to_generate`, and
-only then set `run_mode`. Skip this step when the array is empty or absent.
+only then set `run_mode`. Skip the question batch when the array is empty or
+absent, but still perform the database preparation below.
 `generate.md` must not load while it is non-empty — that is the one way a
 runbook gets written against an answer the user never gave.
+
+**Prepare database windows in the main window, before Generate dispatch.**
+When the selected design contains RDS PostgreSQL or Aurora PostgreSQL, run:
+
+```bash
+python3 "$PLUGIN_ROOT/skills/tf-best-practices/scripts/rds_windows.py" \
+  --preferences "$MIGRATION_DIR/preferences.json" \
+  > "$MIGRATION_DIR/rds-windows.json"
+```
+
+Require exit `0` and re-read the JSON result. The helper validates independent
+daily backup and weekly maintenance ranges, fills only unspecified windows,
+and rejects explicit conflicts. On failure, stop and ask the customer to
+resolve the preference; do not set Generate in progress. Recompute this file
+after any execution-choice change, including a decide-complete resume.
+Pass its path with the other input artifacts when dispatching Generate.
+This preparation runs in the main window because the worker's shell remains
+restricted to the Terraform policy checker.
 
 **Choice handling:**
 
@@ -479,7 +498,7 @@ DECISION.md). Want to generate the Terraform and migration scripts now?
 ```
 
 - **A** → **Run "Confirm execution choices" (§ Post-Estimate: Decision Gate)
-  first** if `metadata.questions_deferred_to_generate` is non-empty. Then set
+  first**, including database-window preparation even if no questions remain. Then set
   `run_mode: "decide_and_execute"` and `current_phase` → `"generate"` **before**
   loading `generate.md`. Continue to Generate.
 - **B** → Leave state unchanged; end the turn.

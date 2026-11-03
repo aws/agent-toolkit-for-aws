@@ -212,6 +212,10 @@ Terraform resources often reference each other (e.g., `heroku_addon.postgres.app
    - If reference is to a variable or external data source → record as `"unresolved:{reference}"` and set `heroku_app` to `"unassociated"`.
 3. If `app_id` is a literal string (UUID or app name) → use directly.
 
+For `apps[].app_id`, retain a real UUID only when it is supplied by state or a
+successful live capture. An unresolved `heroku_app.<name>.id` reference does not
+reveal the UUID: write `null`, never a fabricated UUID or `tf-*` placeholder.
+
 ### 1e. Parse Error Handling
 
 If a `.tf` file contains syntax that prevents extraction (malformed HCL, incomplete blocks):
@@ -495,6 +499,10 @@ Search for `app.json` at workspace root or in subdirectories.
 
 For each `heroku_app` resource:
 
+- Preserve the Terraform `region` and `stack` values in `apps[].region` and
+  `apps[].stack`. If Terraform omits `stack`, use a supplied app.json stack;
+  otherwise write `null`. Do not discard the stack after deriving the generation,
+  and do not invent a missing region.
 - If `stack` attribute is present in Terraform OR app.json:
   - Stack containing `heroku-20`, `heroku-22`, `heroku-24` → `heroku_generation: "cedar"`
   - Stack containing `fir` or `cnb` → `heroku_generation: "fir"`
@@ -509,6 +517,8 @@ The phase assembler (`discover-assemble.md`) owns the inventory's STRUCTURE (whi
 sections exist and their field lists). This fragment contributes the following
 terraform-specific content and rules:
 
+- **Apps:** one `apps[]` entry per `heroku_app`, including the source `region`
+  and `stack` values (or `null` when unavailable) alongside the generation.
 - **Resources:** all Terraform-sourced entries go into `resources[]` as the
   primary inventory data; Procfile/app.json supplements them (adds `command`,
   buildpacks, declared add-ons). When Procfile was available, formation entries

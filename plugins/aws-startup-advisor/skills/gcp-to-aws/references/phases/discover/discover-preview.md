@@ -123,21 +123,23 @@ record the choice in `key_decisions_ahead` instead of silently selecting Nova. A
 | Source model pattern                                    | Bedrock equivalent                             | Bedrock model ID                                                       |
 | ------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
 | `gpt-4o`, `gpt-4.1`, `gpt-5`/`5.1`/`5.2`                | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
-| `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.*-mini`           | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
+| `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.*-mini`           | Claude Haiku 5.5                               | `anthropic.claude-haiku-5-5`                             |
 | `gpt-3.5-turbo`, `gpt-4.1-nano`, `gpt-5.*-nano`         | Amazon Nova Micro                              | `amazon.nova-micro-v1:0`                                               |
 | `gpt-*-pro` (GPT-5.x Pro), `o1-pro`, `o3-pro`           | GPT-6 Astra; Sol for lower cost; or Nova 2 Pro | `openai.gpt-6-astra` / `openai.gpt-5.6-sol` / `amazon.nova-2-pro-v1:0` |
 | `o3`, `o4-mini`, reasoning models                       | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
 | `gemini-2.5-pro`, `gemini-3.*-pro`                      | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
-| `gemini-2.5-flash`, `gemini-2.0-flash`                  | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
+| `gemini-2.5-flash`, `gemini-2.0-flash`                  | Claude Haiku 5.5                               | `anthropic.claude-haiku-5-5`                             |
 | `gemini-2.0-flash-lite`                                 | Amazon Nova Lite                               | `amazon.nova-lite-v1:0`                                                |
 | `claude-3-5-sonnet`, `claude-sonnet-*`                  | Claude Sonnet 5                                | `anthropic.claude-sonnet-5`                                            |
-| `claude-3-5-haiku`, `claude-haiku-*`                    | Claude Haiku 4.5                               | `anthropic.claude-haiku-4-5-20251001-v1:0`                             |
+| `claude-3-5-haiku`, `claude-haiku-*`                    | Claude Haiku 5.5                               | `anthropic.claude-haiku-5-5`                             |
 | `claude-3-opus`, `claude-opus-*`                        | Claude Opus 4.6                                | `anthropic.claude-opus-4-6-v1`                                         |
 | `text-embedding-*`, `*-embedding-*`                     | Amazon Titan Embeddings v2                     | `amazon.titan-embed-text-v2:0`                                         |
-| `dall-e-*`, `gpt-image-*`, `imagen-*`, image generation | Stability AI — Stable Image Core               | `stability.stable-image-core-v1:0`                                     |
+| `dall-e-*`, `gpt-image-*`, `imagen-*`, image generation | Stability AI — Stable Image Core               | `stability.stable-image-core-v1:1`                                     |
 | `whisper-*`, speech-to-text                             | Amazon Transcribe                              | (non-token service — note separately)                                  |
 | `tts-*`, text-to-speech                                 | Amazon Polly                                   | (non-token service — note separately)                                  |
 | Unknown / other                                         | Amazon Nova Pro                                | `amazon.nova-pro-v1:0`                                                 |
+
+**Haiku 5.5 preview:** The table names the base model. Resolve the supported runtime Geo/Global inference profile for the intended source region and residency requirement before quoting a price. Use its ≤100K or >100K prompt tier from the canonical cache; the 1M context window is not the pricing boundary. If the target profile or per-request size is still unknown, retain Haiku 4.5 as the provisional preview target with its own profile/rates and add a Haiku 5.5 profile/tier assessment to `key_decisions_ahead`. Do not fill a single 5.5 price or direction by assuming the cheapest tier. Design must apply the Haiku 5.5 target contract in `references/vendored/ai/ai-anthropic-to-bedrock.md` before selecting it.
 
 For each mapped model pair, record `source_model`, `bedrock_equivalent`, both per-token
 prices, and `cost_direction` (`"higher"`, `"lower"`, or `"comparable"` — Bedrock relative

@@ -20,7 +20,11 @@ natively via the CloudWatch metrics OTLP endpoint and need no forwarding.
 > - **Logs and traces forward; metrics do not.** Customer OTel metrics land in the
 >   Dataset natively; AWS-vended CloudWatch metrics arrive through OTel enrichment
 >   (`aws observabilityadmin start-telemetry-enrichment`, then
->   `aws cloudwatch start-otel-enrichment`) instead.
+>   `aws cloudwatch start-otel-enrichment`) instead. Enrichment is opt-in per account
+>   and per Region: enabling it in one Region leaves every other Region's vended
+>   metrics out of Omni, so name each Region it must be repeated in. A custom metric published with
+>   EMF or `PutMetricData` takes neither route; it reaches Omni only when emitted over
+>   OTLP (`references/cloudwatch-omni/instrumentation/instrumentation.md`, Custom metrics).
 > - **Enabling Omni from the console already creates the integration and its
 >   execution role**, which is why you check before creating.
 > - The first-ever integration in an account and Region triggers a **one-time import

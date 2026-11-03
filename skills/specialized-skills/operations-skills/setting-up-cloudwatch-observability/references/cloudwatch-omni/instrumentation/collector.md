@@ -55,10 +55,12 @@ Three things that are easy to get wrong:
   prerequisite for Omni generally, not just for this endpoint — Omni only understands
   OpenTelemetry, and Transaction Search is what routes incoming spans into the `aws/spans`
   CloudWatch Logs group that Omni reads. Without it the traces endpoint rejects spans. It is an
-  account-level, per-Region change: the user enables it with
-  `aws xray update-trace-segment-destination --destination CloudWatchLogs --region <region>` (which
-  also requires a CloudWatch Logs resource policy letting `xray.amazonaws.com` call
-  `logs:PutLogEvents` on `aws/spans`). That resource policy grants a service principal, so it
+  account-level, per-Region change, and the user enables it in two steps, in this order:
+  (1) a CloudWatch Logs resource policy letting `xray.amazonaws.com` call `logs:PutLogEvents` on
+  `aws/spans`, then (2)
+  `aws xray update-trace-segment-destination --destination CloudWatchLogs --region <region>`, which
+  needs that policy to already exist. Metrics arriving while spans do not is the usual symptom of
+  this step being skipped. That resource policy grants a service principal, so it
   MUST carry the confused-deputy conditions the Transaction Search documentation shows:
   `aws:SourceAccount` equal to the account and `aws:SourceArn` matched with `ArnLike` against
   `arn:aws:xray:<region>:<account-id>:*` — never a bare grant to the principal. Tell the user
@@ -340,10 +342,14 @@ the collector's log stream instead: it dumps its generated pipelines at startup 
 
 Everything above establishes that the collector is healthy, which is this guide's job. Confirming the
 data landed is a **query** task and belongs to the **aws-observability** skill — route there rather
-than reproducing query recipes here. Two facts a reader needs in order to look in the right place:
+than reproducing query recipes here. Three facts a reader needs in order to look in the right place:
 
 - **Traces** land in the CloudWatch Logs group **`aws/spans`** (via Transaction Search), not in the
   CloudWatch X-Ray traces view. In the console that is CloudWatch → Transaction Search.
+- **In the Space,** logs and spans are queryable as `logs.default` and `traces.default` only once a
+  dataset integration copies their log groups (including `aws/spans`) into the Dataset; see
+  [data-forwarding-and-centralization.md](../data-forwarding-and-centralization.md). Check that
+  one exists before reading an empty `traces.default` as a collector failure.
 - **Metrics** land in CloudWatch's **Metrics V2** store and are **not** visible to `list-metrics` or
   `get-metric-statistics`, which only see V1. They are queried with PromQL over
   `https://monitoring.<region>.amazonaws.com`.
