@@ -82,6 +82,15 @@ Requires Node.js 20.12 or later (the package's `engines.node` is `>=20.12.0`). I
 
 `npm` is also required: `agentcore create` runs `npm install` for the project's CDK app (unless `--skip-install`), deploy runs the CDK app, and TypeScript runtimes install and run with npm. A missing tool shows up as `'npm' was not found on your PATH. Install Node.js: https://nodejs.org/`.
 
+**If `agentcore create` fails during `npm install` with `E401`:** check `npm config get registry`. A private registry may reject the CDK dependency. The CLI leaves the scaffolded directory after an install failure, so a second `agentcore create --name <ProjectName>` in the same parent directory fails on files such as `.gitignore`. Inspect the partial directory for any work you need to keep. If it contains only the failed scaffold, remove it and retry with the public npm registry scoped to this command:
+
+```bash
+rm -rf -- <ProjectName>  # only after confirming there is no work to preserve
+npm_config_registry=https://registry.npmjs.org/ agentcore create --name <ProjectName> --template <Template>
+```
+
+If the directory contains work to keep, install the missing dependencies there instead of deleting it. Avoid changing the user's global npm registry setting.
+
 ### Check 3: uv (Python package manager)
 
 ```bash

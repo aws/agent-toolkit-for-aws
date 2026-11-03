@@ -87,6 +87,27 @@ def project_target() -> str:
     return os.environ.get("AGENTCORE_TARGET") or "default"
 
 
+def config_matches_target(path: Path) -> bool:
+    """Refuse to reuse a payment manager saved for another deployment target."""
+    resources = load_raw_config(path).get("resources") or {}
+    saved = resources.get("target")
+    if saved and saved != project_target():
+        print(
+            f"Config at {path} belongs to target {saved!r}, not {project_target()!r}. "
+            "Use a separate --path for each deployment target.",
+            file=sys.stderr,
+        )
+        return False
+    if not saved and resources.get("payment_manager_arn") and project_target() != "default":
+        print(
+            f"Config at {path} has a payment manager ARN but no target. "
+            "Use a target-specific --path and run setup for the selected target.",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def admin_config_path(explicit: str | None) -> Path:
     """Resolve an operator-selected path for administrative commands only."""
     return Path(explicit or os.environ.get("AGENTS_PAY_CONFIG") or DEFAULT_CONFIG)
@@ -479,6 +500,9 @@ def cmd_show_config(args: argparse.Namespace) -> int:
 
 def cmd_create_instrument(args: argparse.Namespace) -> int:
     """Create the per-user wallet and print the delegation and funding steps."""
+    config_path = admin_config_path(args.path)
+    if not config_matches_target(config_path):
+        return 1
     try:
         from bedrock_agentcore.payments import PaymentManager
     except ImportError:
@@ -490,7 +514,6 @@ def cmd_create_instrument(args: argparse.Namespace) -> int:
         )
         return 1
 
-    config_path = admin_config_path(args.path)
     region = resolve_region(args.region, config_path)
 
     if not _check_aws_credentials(region):
@@ -591,6 +614,9 @@ def cmd_new_session(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    config_path = admin_config_path(args.path)
+    if not config_matches_target(config_path):
+        return 1
 
     try:
         from bedrock_agentcore.payments import PaymentManager
@@ -603,7 +629,6 @@ def cmd_new_session(args: argparse.Namespace) -> int:
         )
         return 1
 
-    config_path = admin_config_path(args.path)
     region = resolve_region(args.region, config_path)
 
     if not _check_aws_credentials(region):
@@ -757,6 +782,9 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     if not sys.stdin.isatty():
         print("setup-openclaw requires an interactive terminal.", file=sys.stderr)
         return 1
+    config_path = admin_config_path(args.path)
+    if not config_matches_target(config_path):
+        return 1
     project_dir = (
         Path(args.project_dir).expanduser().resolve()
         if args.project_dir
@@ -885,10 +913,10 @@ def cmd_setup_openclaw(args: argparse.Namespace) -> int:
     return_body = return_body_answer.strip().lower() not in ("n", "no", "false", "0")
 
     # --- Write config ---
-    config_path = admin_config_path(args.path)
     config: dict = {"resources": {}, "policy": {}}
     config["resources"]["user_id"] = user_id
     config["resources"]["region"] = region
+    config["resources"]["target"] = project_target()
     config["policy"] = {
         "max_per_payment_usd": format(max_usd, "f"),
         "allowed_networks": [network],
