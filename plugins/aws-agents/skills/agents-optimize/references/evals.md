@@ -203,6 +203,8 @@ agentcore eval ondemand evaluate \
 
 Add `--endpoint <qualifier>` to score a non-`DEFAULT` Runtime endpoint. `--ground-truth` takes `EvaluationReferenceInput[]` JSON — run `agentcore eval ondemand evaluate --help` for the exact shape.
 
+On-demand evaluation is all-or-nothing. If any session in the selection has no spans from a supported framework (typically a failed or rejected invoke), the whole command exits 1 with `Provided input has no spans with supported scope` and prints no results, even for the good sessions. Pass `--session-ids` for sessions you know succeeded, or use `batch-evaluation evaluate` (below) for windows that may include failed invocations; it scores the rest and reports the failed sessions.
+
 For large windows, run the same evaluation service-side instead. It's asynchronous, returns a job ID, and the job's results persist in the service:
 
 ```bash
@@ -695,6 +697,12 @@ The `components.json` shape for a bundle and how the agent reads the active bund
 - Confirm the sessions came from the deployed agent — `agentcore dev` runs never reach CloudWatch
 - Check that the runtime wasn't deployed with `"instrumentation": { "enableOtel": false }` and that Transaction Search is enabled (see Step 2)
 - Widen the window: `--lookback-days 14` or `--lookback-days 30`
+
+### "Provided input has no spans with supported scope"
+
+- At least one selected session has no spans from a supported agent framework, usually because the invoke failed before the agent ran (for example, a bad payload). `ondemand evaluate` stops at that session and returns no results for any session.
+- Find the session with `agentcore runtime traces list --id <RUNTIME_ID> --json` (it has only a few spans), then re-run with `--session-ids` for the good sessions, or run the window with `agentcore eval batch-evaluation evaluate`, which completes with errors and scores the rest.
+- If every session fails this way, check that the agent uses a supported framework with OpenTelemetry instrumentation enabled (see Step 2).
 
 ### "specify a session source"
 
