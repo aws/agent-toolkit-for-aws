@@ -215,10 +215,15 @@ The orchestrator's execution role needs permission to invoke the specialist. Aft
   "Statement": [{
     "Effect": "Allow",
     "Action": "bedrock-agentcore:InvokeAgentRuntime",
-    "Resource": "<specialist-runtime-arn>"
+    "Resource": [
+      "<specialist-runtime-arn>",
+      "<specialist-runtime-arn>/runtime-endpoint/*"
+    ]
   }]
 }
 ```
+
+The call is authorized on the endpoint ARN (`<specialist-runtime-arn>/runtime-endpoint/DEFAULT` for the `DEFAULT` qualifier), so the runtime ARN alone returns `AccessDeniedException`.
 
 Add `"specialist-invoke-policy.json"` to the orchestrator Runtime's `additionalPolicies` array in `agentcore/agentcore.json`. The v1 CLI resolves a `.json` policy path relative to that Runtime's `codeLocation` and attaches it to a CLI-created execution role during deployment. If the Runtime uses an imported `executionRoleArn`, attach the same policy to that role separately. Run `agentcore build` to check the path before deployment.
 
@@ -448,7 +453,7 @@ turns = memory_client.get_last_k_turns(
 **Direct invocation permission denied:**
 
 - Check the orchestrator's execution role has `bedrock-agentcore:InvokeAgentRuntime`
-- Verify the resource ARN pattern matches the specialist's ARN
+- Verify the policy covers both the specialist's Runtime ARN and `<specialist-runtime-arn>/runtime-endpoint/*`; the denial message names the endpoint ARN
 - IAM changes take ~30 seconds to propagate
 
 **Specialist not found:**
