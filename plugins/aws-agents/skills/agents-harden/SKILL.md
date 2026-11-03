@@ -446,8 +446,8 @@ For each hit, decide:
 
 | Hit looks like | Action |
 |---|---|
-| Calls an external REST API the agent treats as a tool | Front as a Gateway target (`agentcore add gateway-target --gateway <GatewayName> --target-configuration file://target.json` with `targetType` `openApiSchema` or `apiGateway`). Load [`agents-connect/SKILL.md`](../agents-connect/SKILL.md) Path C. |
-| Calls an MCP server directly | Front as a Gateway target (`agentcore add gateway-target --gateway <GatewayName> --name <TargetName> --endpoint https://...`). Load [`agents-connect/SKILL.md`](../agents-connect/SKILL.md) Path A. |
+| Calls an external REST API the agent treats as a tool | Front as a Gateway target (`agentcore add gateway-target --gateway <GatewayName> --target-configuration file://target.json` with `targetType` `openApiSchema` or `apiGateway`). Load [`agents-connect/SKILL.md`](../agents-connect/SKILL.md) steps 2, "Choose a target", and 4, "Configure outbound authentication". |
+| Calls an MCP server directly | Front as a Gateway target (`agentcore add gateway-target --gateway <GatewayName> --name <TargetName> --endpoint https://...`). Load [`agents-connect/SKILL.md`](../agents-connect/SKILL.md) steps 2, "Choose a target", and 4, "Configure outbound authentication". |
 | Calls an AWS service (S3, DynamoDB, etc.) — not appropriate to match this row, should be `boto3` | Migrate from `requests`/`httpx` to the `boto3` client, using the runtime's execution role for IAM. No credential needed. |
 | Calls a streaming service (SSE-with-live-output, WebSocket, WebRTC) | OK to keep direct — Gateway doesn't front these yet. Confirm any auth uses `@requires_*`, not `os.getenv`. |
 | Calls another agent via A2A | OK to keep direct — A2A is HTTP-by-design. Confirm it uses `@requires_access_token` for the bearer token. |

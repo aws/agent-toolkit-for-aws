@@ -297,13 +297,13 @@ Fix: add the missing file, or follow the CLI's message to switch the build type 
 
 Images are built natively on ARM64 in AWS CodeBuild. Check the base image supports `linux/arm64`, the app listens on `0.0.0.0` on its protocol's port (8080 HTTP/AG-UI, 8000 MCP, 9000 A2A), and `uv.lock` is committed if the Dockerfile runs `uv sync --frozen`. In VPC mode, `networkConfig.vpcId` is required for container builds.
 
-**Model access denied during invoke after deploy:**
+**Invalid model ID during invoke after deploy:**
 
 ```
 ValidationException: The provided model identifier is invalid
 ```
 
-Fix: Enable the model in the Bedrock console → Model access in the target region, and make sure the model ID in code (Runtime) or `harness.yaml` (Harness) matches an enabled model or inference profile.
+The model ID or inference profile in code (Runtime: `app/<name>/model/load.py` or `load.ts`) or `harness.yaml` (Harness) is mistyped, stale, or not offered in the target's region. This is not a model-access problem (missing access returns `AccessDeniedException`). Fix: check the ID with the [Check 3](#check-3-verify-bedrock-model-access) commands against the target's region, correct it, and run `agentcore deploy` again. See `agents-debug` for other model errors.
 
 **Empty project:**
 
@@ -313,9 +313,45 @@ Project '…' declares no resources to deploy, so deploying to target '…' woul
 
 Fix: if the teardown is intended, re-run with `--yes`. Otherwise restore the resources (e.g. `git checkout agentcore/agentcore.json`).
 
+**Stack rolled back (`NoStack`):**
+
+```
+Error: ❌  AgentCore-<project>-<target> failed: NoStack: CloudFormationStack object does not hold a stack
+```
+
+The CLI hides the failing resource. Read it from the stack events:
+
+```bash
+aws cloudformation describe-stack-events --stack-name AgentCore-<project>-<target> \
+  --query 'StackEvents[?contains(ResourceStatus,`FAILED`)].[LogicalResourceId,ResourceStatusReason]' --output text
+```
+
+Fix the cause it names, then run `agentcore deploy` again (with the same `--target`); the deploy replaces the rolled-back stack.
+
+**Runtime endpoint not found on a new target:**
+
+```
+ApplicationRuntime<Name>RuntimeEndpoint<endpoint>…  Resource handler returned message: "Agent with agentId: <project>_<target>_<name>-… not found (Service: BedrockAgentCoreControl, Status Code: 404 ...)"
+```
+
+The endpoint points at a Runtime version this target doesn't have. Endpoint versions in `agentcore.json` apply to every target, but a target's first deploy creates only version 1. Fix: set that Runtime's `endpoints.<name>.version` to `1`, deploy the target, then restore the other targets' versions in the file before you deploy them again. Only point an endpoint at a version that exists on every target you deploy (`agentcore runtime version list --id <RUNTIME_ID> --region <region>`; see [versioning.md → Staging targets](references/versioning.md#staging-targets)).
+
 **Memory stuck in CREATING:**
 
-This is unusual — normal provisioning takes a few minutes. Check `agentcore status` and `agentcore memory get --id <MEMORY_ID>`. If stuck, try removing and re-adding the memory resource (`agentcore remove memory --name <Name>`, deploy, then `agentcore add memory --name <Name>` and deploy again).
+This is unusual — normal provisioning takes a few minutes. Check `agentcore status` and `agentcore memory get --id <MEMORY_ID>`. If stuck, remove the memory, deploy, then restore it and deploy again. Removing and deploying deletes the Memory in AWS with all its stored events and long-term records, and the re-created Memory gets a new ID — confirm with the developer first.
+
+Back up the full `memories[]` entry before removing it; `agentcore add memory --name <Name>` alone drops the strategies, expiry, encryption key, and other settings:
+
+```bash
+jq '.memories[] | select(.name=="<Name>")' agentcore/agentcore.json > memory-backup.json
+agentcore remove memory --name <Name>
+agentcore deploy
+jq --slurpfile m memory-backup.json '.memories += $m' agentcore/agentcore.json > agentcore/agentcore.json.tmp \
+  && mv agentcore/agentcore.json.tmp agentcore/agentcore.json
+agentcore deploy
+```
+
+If `agentcore.json` is committed, `git checkout agentcore/agentcore.json` restores the entry instead of the second `jq`.
 
 **Service quota exceeded:**
 
@@ -376,6 +412,8 @@ agentcore deploy --target production
 ```
 
 Each target gets its own stack (`AgentCore-<project>-<target>`) and its own copies of every resource. `status`, `invoke`, `logs`, and `traces` take the same `--target` flag.
+
+Runtime endpoint versions in `agentcore.json` are shared by every target, but each target has its own version history (a new target has only version 1). Before the first deploy to a new target, point its Runtime endpoints at version 1, or add endpoints only after every target has the version — see [versioning.md → Staging targets](references/versioning.md#staging-targets).
 
 ## Extending the CDK app
 

@@ -214,9 +214,22 @@ Also confirm the runtime role really lacks session-write permission, since
 `auto_session=True` needs it:
 
 ```bash
-aws iam get-role-policy --role-name <ProcessPaymentRole> --policy-name <Policy> \
-  | grep -c CreatePaymentSession        # must be 0
+ROLE_ARN=$(aws bedrock-agentcore-control get-agent-runtime \
+  --agent-runtime-id <runtime-id> --query roleArn --output text) || ROLE_ARN=LOOKUP_FAILED
+decision=$(aws iam simulate-principal-policy --policy-source-arn "$ROLE_ARN" \
+  --action-names bedrock-agentcore:CreatePaymentSession \
+  --resource-arns <payment-manager-arn> \
+  --query 'EvaluationResults[0].EvalDecision' --output text) || decision=LOOKUP_FAILED
+echo "$decision"   # PASS only on implicitDeny or explicitDeny; anything else is a FAIL
 ```
+
+This checks the Runtime execution role (the role the agent actually runs as) and
+fails closed: a lookup error prints `LOOKUP_FAILED`, never a pass. With the CLI's
+default wiring, `agentcore deploy` grants the Runtime execution role both
+`CreatePaymentSession` and `ProcessPayment` on the payment manager, so a default
+deploy prints `allowed`. The role split above does not hold until you block it,
+for example with an explicit `Deny` on `bedrock-agentcore:CreatePaymentSession`
+attached to that role. Re-run the check after every deploy.
 
 ### Provider-specific errors
 
@@ -285,6 +298,8 @@ happens.
 python3 scripts/test_x402_policy.py                  # all must pass
 python3 scripts/agents_pay_admin.py show-config      # 0600, owned by you
 python3 scripts/agents_pay_admin.py preflight        # wiring + no stray secrets
-aws iam get-role-policy --role-name <RuntimeRole> --policy-name <P> \
-  | grep -c CreatePaymentSession                     # must be 0
 ```
+
+Then run the Runtime execution role check from
+[A payment went through that the policy should have refused](#a-payment-went-through-that-the-policy-should-have-refused);
+it must print `implicitDeny` or `explicitDeny`.

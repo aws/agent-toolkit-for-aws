@@ -664,7 +664,7 @@ For testing, start with **Base Sepolia** (network: `ETHEREUM`, chain: `BASE_SEPO
 
 - CLI is installed via `npm install -g @aws/agentcore`, not pip
 - Control plane (credential provider, manager, connector) is provisioned via the CLI; the manager non-interactively. For a Coinbase connector, **Quick Create (`--quick-create`, no secrets) is offered first**; manual secret entry is the alternative and the only path for Stripe (Privy). Only the connector step involves the developer — QuickCreate: browser authorization; Manual: entering secrets
-- The `agentcore:onboarding-source: agent-toolkit-skill` tag is added to `agentcore/agentcore.json` (Step 3a) before deploy — this is mandatory, so the provisioned resources are attributable to this skill
+- The `agentcore:onboarding-source: agent-toolkit-skill` tag is added to `agentcore/agentcore.json` (Step 2) before deploy — this is mandatory, so the provisioned resources are attributable to this skill
 - Data plane (instrument, session) is created via the SDK script, not hand-written code
 - If the project is Strands or LangGraph, the native integration (Step 5a) is offered first as the simpler path
 - The generic tool path (Step 5b) is used only for other frameworks or when the developer explicitly wants manual control

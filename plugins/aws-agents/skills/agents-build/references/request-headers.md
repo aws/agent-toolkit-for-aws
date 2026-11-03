@@ -114,7 +114,7 @@ Headers that weren't in the allowlist will be absent (not empty string) from `co
 ## What won't work
 
 - **Sending headers without configuring the allowlist** — anything outside the default pass-through set is silently dropped. Your agent code won't see the header, and there's no error. Check the runtime's `requestHeaderConfiguration` if a header you expect to see isn't arriving.
-- **Using this for secrets** — 4 KB values and the allowlist configuration are designed for metadata, not credentials. Use the AgentCore Identity credential provider for API keys, OAuth tokens, and secrets. See `agents-connect` Path D.
+- **Using this for secrets** — 4 KB values and the allowlist configuration are designed for metadata, not credentials. Use the AgentCore Identity credential provider for API keys, OAuth tokens, and secrets. See `agents-connect` step 4, "Configure outbound authentication".
 - **Dynamic headers** — the allowlist is static runtime configuration. You can't vary it per-request.
 
 ## Troubleshooting

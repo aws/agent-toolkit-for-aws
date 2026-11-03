@@ -58,7 +58,7 @@ else:
 To test memory, Gateway, and policies with the deployed agent's identity, use this loop:
 
 1. **Local:** `agentcore dev` to verify the agent's code structure, framework wiring, system prompt, and any in-code logic
-2. **Deploy to a staging target:** define `staging` with its account and region in `agentcore/aws-targets.json` first, then run `agentcore deploy --target staging` to test with real memory, gateway, and policies. Named targets are not created automatically.
+2. **Deploy to a staging target:** define `staging` with its account and region in `agentcore/aws-targets.json` first, then run `agentcore deploy --target staging` to test with real memory, gateway, and policies. Named targets are not created automatically. If the Runtime has named endpoints pinned past version 1, the first staging deploy rolls back, because endpoint versions in `agentcore.json` apply to every target and a new target only has version 1; see `agents-deploy/references/versioning.md`.
 3. **Production:** only after staging validation
 
 `agentcore dev` can call deployed Memory or Gateway resources when you configure them explicitly, but it runs under local credentials and does not reproduce the deployed Runtime's IAM identity.

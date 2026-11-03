@@ -376,7 +376,8 @@ def cmd_init_config(args: argparse.Namespace) -> int:
     if prior_target and prior_target != project_target():
         print(
             f"Config at {path} belongs to target {prior_target!r}, not {project_target()!r}. "
-            "Use a separate --path for each deployment target.",
+            "The runtime reads only the default path, so move this config aside and run "
+            "init-config again, or use a separate OS account for each deployment target.",
             file=sys.stderr,
         )
         return 1

@@ -165,7 +165,9 @@ agentcore deploy --target staging
 agentcore deploy --target production
 ```
 
-Each target gets its own stack and its own Runtimes and Harnesses — versions and endpoints are separate per target. Use `--target` on `status`, `invoke`, `logs`, and `traces` to work with a specific one.
+Each target gets its own stack and its own Runtimes and Harnesses, so each target has its own version history, and version numbers drift between targets (`3` on `default` and `3` on `staging` can be different builds). Use `--target` on `status`, `invoke`, `logs`, and `traces` to work with a specific one.
+
+Runtime endpoints are the exception: `runtimes[].endpoints.<name>.version` in `agentcore.json` has no per-target override, so every target deploys the same version number. A new target starts with only version 1, so an endpoint pinned to version 2 or later makes its first deploy roll back (`RuntimeEndpoint` fails with `Agent with agentId: ... not found`, 404 — see `agents-deploy` → Path B). Before deploying a new target, set its endpoints to version 1 (or add endpoints only after every target has that version), deploy, then restore the versions in the file before you deploy the other targets. Only point an endpoint at a version that exists on every target you deploy; check each target with `agentcore runtime version list --id <RUNTIME_ID> --region <region>`. A rollback edit (Option 1 above) also moves the endpoint on every target the next time each one deploys.
 
 ## Cross-references
 

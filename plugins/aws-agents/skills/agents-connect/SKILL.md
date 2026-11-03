@@ -137,7 +137,38 @@ agentcore status --target <target> --json
 
 If the project has no new credential providers, run `agentcore build` before deploying. With a new provider referenced by a Gateway target, the first `agentcore build` can fail because the provider has no deployed ARN yet; `agentcore deploy` provisions the credential before building the stack. Run `agentcore build` after that first deploy.
 
-On the first deploy, the CLI creates the default target using the effective AWS account and region. `--region` does not change an existing target's region. `agentcore status --target <target> --json` reports the deployed Gateway ARN, but not its URL. Take the Gateway ID after `gateway/` in that ARN and run `agentcore gateway get --id <gateway-id> --region <target-region> --json`; its `gatewayUrl` is the MCP URL. The deployed Runtime receives `AGENTCORE_GATEWAY_<UPPERCASE_NAME>_URL`; check the exact name in its generated README or environment. In local `agentcore dev`, this deployed URL is absent unless supplied explicitly. The agent framework still needs MCP client wiring to discover and call the Gateway's tools.
+On the first deploy, the CLI creates the default target using the effective AWS account and region. `--region` does not change an existing target's region. `agentcore status --target <target> --json` reports the deployed Gateway ARN, but not its URL. Take the Gateway ID after `gateway/` in that ARN and run `agentcore gateway get --id <gateway-id> --region <target-region> --json` to read its `gatewayUrl`. The deployed Runtime receives the same value as `AGENTCORE_GATEWAY_<UPPERCASE_NAME>_URL`; check the exact name in its generated README or environment. A Gateway created with `--protocol-type MCP` has a URL that already ends in `/mcp`. The default Gateway (`protocolType: "None"`) has a bare origin: append `/mcp` for an MCP client, or calls return `UnknownOperationException`. In local `agentcore dev`, this deployed URL is absent unless supplied explicitly, so guard for it.
+
+The agent framework still needs MCP client wiring to discover and call the Gateway's tools. For a Strands Runtime calling an `AWS_IAM` Gateway, sign requests with SigV4 through `mcp-proxy-for-aws` (`uv add mcp-proxy-for-aws` in the agent directory):
+
+```python
+import os
+from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
+from strands.tools.mcp import MCPClient
+
+gateway_url = os.environ.get("AGENTCORE_GATEWAY_MYGATEWAY_URL")
+if gateway_url:  # unset under agentcore dev unless added to agentcore/.env.local
+    gateway_url = gateway_url.rstrip("/")
+    if not gateway_url.endswith("/mcp"):
+        gateway_url += "/mcp"  # default protocolType "None" Gateway
+    tools.append(MCPClient(lambda: aws_iam_streamablehttp_client(
+        endpoint=gateway_url,
+        aws_service="bedrock-agentcore",
+        aws_region=os.environ.get("AWS_REGION"),
+    )))
+```
+
+For a `CUSTOM_JWT` Gateway, send the caller's access token as a bearer header instead:
+
+```python
+from mcp.client.streamable_http import streamablehttp_client
+
+tools.append(MCPClient(lambda: streamablehttp_client(
+    gateway_url, headers={"Authorization": f"Bearer {access_token}"},
+)))
+```
+
+`tools` is the list the Strands template passes to `Agent(tools=tools)`. To list a default Gateway's tools before wiring the agent, run `agentcore invoke --gateway MyGateway --target <target> --path /mcp --payload '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`.
 
 A Harness uses a Gateway tool entry in `app/<harness>/harness.yaml`, referencing the deployed Gateway ARN. Its config and a Runtime's MCP client code are different paths; use the one matching the project.
 
