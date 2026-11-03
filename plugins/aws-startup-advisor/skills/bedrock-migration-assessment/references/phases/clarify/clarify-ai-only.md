@@ -39,7 +39,7 @@ Check `$MIGRATION_DIR/` for existing state:
 ## Step 1: Present AI Detection Summary
 
 > **AI-Only Migration Detected**
-> Your project has AI workloads but no infrastructure artifacts (Terraform, billing). I'll focus on migrating your AI/LLM calls to AWS Bedrock while your infrastructure stays where it runs today.
+> This release migrates AI calls only. Infrastructure stays where it runs.
 >
 > **AI sources:** [one line per `ai_sources[]` entry: `provider` via `source_service`, plus "through [gateway product]" for each name in `via_gateways`]
 > **Models detected:** [each source's `models[].model`, with `raw_model` when it differs; "not observed" when `model_evidence` is `not_observed`]
@@ -55,7 +55,7 @@ The fast path is gated on `migration-preview.json`, which this skill does not pr
 
 ## Step 1.75: Mini Assumption Sheet (before Batch 1)
 
-Before asking anything, present what discovery already answered and what will be assumed, as a compact confirm-or-edit sheet (sheet first, questions after the user responds):
+Before asking anything, present what the profile already answered as a compact confirm-or-edit sheet (sheet first, questions after the user responds). If the sheet has no rows, skip this step:
 
 ```
 ### AI migration assumptions — confirm or correct
@@ -65,18 +65,11 @@ Before asking anything, present what discovery already answered and what will be
 | ------- | ----- | ------ |
 | Models | [every observed model, e.g. gpt-4o, claude-3-haiku] | ai-workload-profile.json |
 
-**Will be assumed unless you correct them:**
-| Setting | Assumed value | Consequence |
-| ------- | ------------- | ----------- |
-| Usage volume | Medium (1–10M tokens) | On-demand with prompt caching analysis |
-| Response speed | Important (<2s) | Sonnet-class + streaming |
-| Task complexity | Moderate | Sonnet-class model |
-
 Reply "looks good" to continue to the remaining questions, correct any line
 ("model: gemini-2.5-pro"), or describe the issue in plain words.
 ```
 
-Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` (detected rows) or `"default"` (assumed rows, sheet-confirmed), and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. Rows with no detection signal stay in the batches as normal questions.
+Questions resolved on this sheet are **not** re-asked in the batches below; record them with `chosen_by: "extracted"` and skip their entries in Batch 1/2. Rows the user corrects become `chosen_by: "user"`. The sheet never assumes a value: every question without a detected row stays in the batches, and only "use defaults for the rest" applies defaults.
 
 Show the **Models** row under "Detected" only when the validator summary reports `models_extractable: true`, and list every observed model. If it is `false`, leave the row out of the sheet and ask Q5 in Batch 1 with the detected models as the suggested answer; a user who confirms them records `chosen_by: "user"`.
 
@@ -268,7 +261,7 @@ After the user responds to Batch 1:
 ```
 Got it — your AI strategy preferences are saved.
 
-Last section — 6 questions about your technical requirements, then we're ready to design.
+Last section — 6 questions about your technical requirements, then your answers are saved.
 You can answer each, skip individual ones, or say "use defaults for the rest."
 
 --- Technical Requirements ---
@@ -294,7 +287,7 @@ Interpret → `ai_vision`. Default: 1 → no constraint.
 
 ## Q7 — Monthly AI usage volume
 
-_Never skipped:_ usage-profile files are outside this skill's input contract, so always ask.
+_Never skipped:_ do not fill this from a usage-profile file or from the assumption sheet. Ask it unless the user says "use defaults for the rest".
 
 > 1\) < 1M tokens | 2\) 1–10M | 3\) 10–100M | 4\) > 100M | 5\) Don't know
 

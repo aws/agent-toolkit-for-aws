@@ -4,8 +4,8 @@
     "clarify_mode": "full",
     "timestamp": "2026-10-30T18:00:00Z",
     "discovery_artifacts": ["ai-workload-profile.json"],
-    "questions_asked": ["Q1", "Q1.5", "Q2", "Q4", "Q5", "Q6", "Q8", "Q9", "Q10", "Q11"],
-    "questions_defaulted": ["Q3", "Q7"],
+    "questions_asked": ["Q1", "Q1.5", "Q2", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11"],
+    "questions_defaulted": ["Q3"],
     "questions_extracted": []
   },
   "design_constraints": {
@@ -69,11 +69,10 @@
     },
     "ai_token_volume": {
       "value": "medium",
-      "chosen_by": "default",
-      "prompt": "Monthly AI usage volume (default applied)",
+      "chosen_by": "user",
+      "prompt": "Monthly AI usage volume",
       "design_consequence": "On-demand with prompt caching analysis",
-      "question_id": "Q7",
-      "source": "default:Q7"
+      "question_id": "Q7"
     },
     "ai_latency": {
       "value": "important",

@@ -438,9 +438,39 @@ def test_sheet_shows_models_only_when_extractable_and_lists_all_of_them() -> Non
     assert "ask Q5 in Batch 1" in sheet
 
 
-def test_sheet_volume_assumption_matches_q7_default() -> None:
-    assert "| Usage volume | Medium" in _sheet()
-    assert 'Default: 2 → `"medium"`' in BMA_QUESTIONS["Q7"]
+SHEET_ROW_QUESTIONS = {"Models": "Q5", "Usage volume": "Q7", "Response speed": "Q8", "Task complexity": "Q9"}
+
+
+def _sheet_rows() -> set[str]:
+    return set(re.findall(r"^\| (Models|Usage volume|Response speed|Task complexity) \|", _sheet(), flags=re.M))
+
+
+def test_sheet_never_assumes_a_value() -> None:
+    assert "Will be assumed" not in _sheet()
+    assert _sheet_rows() == {"Models"}
+
+
+def test_sheet_rows_and_asked_questions_are_disjoint_in_the_run_fixture() -> None:
+    metadata = _load(RUN_FIXTURE / "preferences.json")["metadata"]
+    asked = set(metadata["questions_asked"])
+    resolved_on_sheet = set(metadata["questions_extracted"]) | {
+        qid for qid in metadata["questions_defaulted"] if qid in SHEET_ROW_QUESTIONS.values()
+    }
+    assert not asked & resolved_on_sheet
+    assert not asked & set(metadata["questions_defaulted"])
+    assert "Q7" in asked
+
+
+def test_q7_is_asked_unless_the_user_takes_defaults() -> None:
+    q7 = BMA_QUESTIONS["Q7"]
+    assert "do not fill this from a usage-profile file or from the assumption sheet" in q7
+    assert 'Ask it unless the user says "use defaults for the rest"' in q7
+
+
+def test_clarify_makes_no_infrastructure_or_design_claims() -> None:
+    text = BMA_CLARIFY.read_text(encoding="utf-8")
+    assert "no infrastructure artifacts" not in text
+    assert "ready to design" not in text
 
 
 def test_run_fixture_q5_matches_its_profile_evidence() -> None:
