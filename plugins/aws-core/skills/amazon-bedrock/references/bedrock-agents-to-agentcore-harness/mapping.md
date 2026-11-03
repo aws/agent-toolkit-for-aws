@@ -1,6 +1,6 @@
 # Component mapping
 
-Map each source component to its harness target. **Mirror** behavior, not Bedrock structure. Adapt the `.tmpl` templates in the skill's `assets/` directory: substitute every `{{TOKEN}}`, and delete every marker block — `# <<< RENDER … # <<< /RENDER` (token docs) and `# <<< OPTIONAL: … # <<< /OPTIONAL` (features that don't apply). After rendering, no `{{`, `}}`, or `<<<` may remain — that grep is the verification gate, and it must come back clean.
+Map each source component to its harness target. **Mirror** behavior, not Bedrock structure. Adapt the `.tmpl` templates in the skill's `assets/` directory: substitute every `{{TOKEN}}`, and delete every marker block — `# <<< RENDER … # <<< /RENDER` (token docs) and `# <<< OPTIONAL: … # <<< /OPTIONAL` (features that don't apply). After rendering, no `{{UPPER_CASE}}` token or `<<<` marker may remain. The verification gate is `grep -nE '\{\{[A-Z_]+\}\}|<<<' <rendered-file>`, and it must come back clean. (Do not grep for bare `{{` or `}}`: rendered Python and JSON legitimately contain closing braces such as `}}}`.)
 
 The `.tmpl` files are not for any template engine; they are guidance for you (the LLM) on how to fill them in.
 
