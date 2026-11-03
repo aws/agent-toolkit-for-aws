@@ -89,7 +89,7 @@ Bedrock Standard prices (USD per 1M tokens):
 
 Cache-write prices use a 30-minute retention window. Above 272K input tokens, the full request uses the
 long-context rates. For OpenAI/Azure source costs, use measured spend or verified source-provider rates.
-If the estimator's canonical cache lacks this model, follow its pricing fallback.
+Use `references/vendored/ai/bedrock-pricing-cache.md` for the estimator's Bedrock rates.
 
 **GPT-6 Astra has two endpoints; regions reverified 2026-09-30:**
 
@@ -147,18 +147,18 @@ Constraints that still break naive assumptions:
 ### GPT-6 family: Ultrafast tier
 
 GPT-6 Astra and GPT-6.1 Sol support a new **Ultrafast** service tier (`service_tier: "ultrafast"`) at 6x Standard
-pricing, in addition to Standard — confirmed on both model cards' "Service Tiers" sections. GPT-6 Sol and GPT-6
-Luna's model cards list only Standard. **None of the four GPT-6 models support Priority, Flex, or Reserved** —
+pricing, in addition to Standard — confirmed on both model cards' "Service Tiers" sections. GPT-6 Sol, GPT-6
+Luna, and GPT-6.1 Terra's model cards list only Standard. **None of the five GPT-6 models support Priority, Flex, or Reserved** —
 same as the GPT-5.6 family. This supersedes the blanket "Priority and Flex are not supported for these models"
 line elsewhere in this file for the GPT-6 family specifically: treat tier support as per-model, not blanket, going
 forward.
 
 GPT-6 Astra's `bedrock-mantle` endpoint is available in **both us-east-1 and us-west-2** (Standard in both;
-Ultrafast in us-east-1 only). GPT-6 Sol, GPT-6 Luna, and GPT-6.1 Sol's `bedrock-mantle` is **us-east-1 only**. All
-four additionally reach a broad set of commercial regions via `bedrock-runtime` CRIS (`us.` / `global.` prefixes),
-matching the GPT-5.6 CRIS-breadth pattern. API support is NOT uniform across the four: GPT-6 Sol,
-GPT-6 Luna, and GPT-6.1 Sol support `Responses`, `Chat Completions`, `Converse`, AND `Invoke` on
-`bedrock-runtime` (Invoke is NOT available on `bedrock-mantle` for any of the four — mantle supports
+Ultrafast in us-east-1 only). GPT-6 Sol, GPT-6 Luna, GPT-6.1 Sol, and GPT-6.1 Terra's `bedrock-mantle` is **us-east-1 only**. All
+five additionally reach a broad set of commercial regions via `bedrock-runtime` CRIS (`us.` / `global.` prefixes),
+matching the GPT-5.6 CRIS-breadth pattern. API support is NOT uniform across the five: GPT-6 Sol,
+GPT-6 Luna, GPT-6.1 Sol, and GPT-6.1 Terra support `Responses`, `Chat Completions`, `Converse`, AND `Invoke` on
+`bedrock-runtime` (Invoke is NOT available on `bedrock-mantle` for any of the five — mantle supports
 only `Responses` and `Chat Completions` across the whole GPT-6/5.6 family). **GPT-6 Astra does NOT
 support `Invoke` on either endpoint** — Astra's `bedrock-runtime` surface is `Responses`, `Chat
 Completions`, and `Converse` only, and its `bedrock-mantle` surface is `Responses` and `Chat
@@ -227,8 +227,8 @@ GPT-5.6 Terra and Luna reached AWS GovCloud (US-West, US-East) in August 2026 �
 `eu-west-1`, `eu-west-2`, `eu-west-3`, `ap-northeast-1`, `ap-northeast-2`, `ap-northeast-3`,
 `ap-south-1`, `ap-southeast-1`, `ap-southeast-2`, and `sa-east-1`. No EU/India Geo profile or
 GovCloud region is listed on the Astra card. A Canada caller using US Geo still routes to the US.
-**GPT-6 Astra's mantle reach is us-east-1 and us-west-2; GPT-6 Sol, GPT-6 Luna, and GPT-6.1 Sol are us-east-1
-only.** All four additionally reach broad commercial regions via `bedrock-runtime` CRIS (`us.` / `global.`
+**GPT-6 Astra's mantle reach is us-east-1 and us-west-2; GPT-6 Sol, GPT-6 Luna, GPT-6.1 Sol, and GPT-6.1 Terra are us-east-1
+only.** All five additionally reach broad commercial regions via `bedrock-runtime` CRIS (`us.` / `global.`
 inference profiles), same as GPT-5.6 — a region outside the mantle matrix does not block the same-model path for
 any GPT-6 model, it just means using the runtime endpoint with a CRIS id.
 
@@ -322,11 +322,13 @@ A workload above 272K context must be priced at the long-context tier.
 
 ### Prompt caching — GPT-5.6 details
 
+For GPT-6.1 Terra, use its dedicated price table above and its model card's API-specific caching rules; do not inherit the GPT-5.6 prefix, breakpoint, or quota-exemption rules.
+
 Astra separately lists implicit and explicit caching on mantle Responses, with rates above.
 Its card does not establish the GPT-5.6 minimum-prefix, breakpoint, or quota-exemption rules below.
 
-Listed as a supported feature on the GPT-5.6 Sol/Terra/Luna model cards and on all four GPT-6 model cards (Astra,
-Sol, Luna, 6.1 Sol — confirmed by the cache-write/cache-read columns in the GPT-6 pricing tables above). The
+Listed as a supported feature on the GPT-5.6 Sol/Terra/Luna model cards and on all five GPT-6 model cards (Astra,
+Sol, Luna, 6.1 Sol, 6.1 Terra — confirmed by the cache-write/cache-read columns in the GPT-6 pricing tables above). The
 GPT-5.5 and GPT-5.4 cards list client-side tool calling in that slot instead and do **not** list prompt caching.
 Do not assume caching on 5.5/5.4.
 
