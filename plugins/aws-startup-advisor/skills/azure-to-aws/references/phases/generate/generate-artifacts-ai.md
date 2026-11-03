@@ -98,7 +98,8 @@ Harness (`migration_approach == harness`): `harness.json`, `deploy_harness.sh`,
 `incremental_migration.sh` (only if `harness_config.incremental_migration`). Strands
 (`== strands`): `strands_agents.py`, `deploy_strands.sh`, `bridge_retarget.py` (only if
 `strands_config.bridge_phase`). Both port from gcp unchanged (AgentCore is the target, agnostic of
-source cloud).
+source cloud). Include the GCP Strands runtime's generated `ai-migration/main.py` and
+`ai-migration/pyproject.toml`; register and populate the runtime before deployment, as in that template.
 
 ## Step 3D: eval artifacts (opt-in)
 

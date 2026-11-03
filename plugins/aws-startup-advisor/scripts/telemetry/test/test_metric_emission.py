@@ -46,6 +46,9 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 # Imported by skills, not a skill: it has no SKILL.md and cannot be invoked.
 NOT_A_SKILL = {"shared"}
 
+# Skills PluginSkillId has no member for yet; reporting one would 400 the whole request.
+NOT_YET_MODELLED = {"bedrock-migration-assessment"}
+
 
 def accept(home):
     """An accepted record on disk, and its install ID."""
@@ -73,11 +76,16 @@ class TestSkillIdMap:
         on_disk = {
             path.name
             for path in SKILLS_DIR.iterdir()
-            if path.is_dir() and path.name not in NOT_A_SKILL
+            if path.is_dir() and path.name not in NOT_A_SKILL | NOT_YET_MODELLED
         }
         # The map is an allowlist, so a new skill is invisible until added here,
         # and a renamed directory stops being counted silently.
         assert set(skill_invoked.SKILL_IDS) == on_disk
+
+    def test_unmodelled_skills_exist_and_are_not_reported(self):
+        for name in NOT_YET_MODELLED:
+            assert (SKILLS_DIR / name / "SKILL.md").is_file()
+            assert name not in skill_invoked.SKILL_IDS
 
     def test_the_client_agrees_with_the_model(self):
         assert set(client.PLUGIN_SKILL_IDS) == MODELLED_SKILL_IDS

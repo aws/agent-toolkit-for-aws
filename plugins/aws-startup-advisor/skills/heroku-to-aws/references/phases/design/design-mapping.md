@@ -78,6 +78,10 @@ Resolve once before mapping formations:
 
 Process each resource in `heroku-resource-inventory.json`.resources[] in **input order**. For each resource, determine its `resource_type` and route to the appropriate mapping logic below.
 
+For `resource_type == "app"`, retain the app's region, stack, and source
+provenance as context only. Its formations/add-ons are mapped below; do not emit
+another compute resource or charge for the metadata row.
+
 **Processing order is deterministic**: first resource in → first mapping out. No reordering, no multi-pass.
 
 ---

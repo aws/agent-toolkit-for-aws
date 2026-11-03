@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "migration_type": "ai-only",
+    "clarify_mode": "full",
+    "timestamp": "2026-10-30T18:00:00Z",
+    "discovery_artifacts": ["ai-workload-profile.json"],
+    "questions_asked": ["Q1", "Q1.5", "Q2", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11"],
+    "questions_defaulted": ["Q3"],
+    "questions_extracted": []
+  },
+  "design_constraints": {
+    "target_region": {
+      "value": "us-east-1",
+      "chosen_by": "derived",
+      "prompt": "Derived from cross-cloud answer: latency-acceptable → region by cost (us-east-1)",
+      "design_consequence": "Bedrock resources deploy in us-east-1; model availability is checked for this region"
+    },
+    "compliance": {
+      "value": ["soc2"],
+      "chosen_by": "user",
+      "prompt": "Even with infrastructure staying where it is, your prompts and completions will be processed on AWS. Compliance requirements determine which Bedrock regions, models, and configurations are available.",
+      "design_consequence": "CloudTrail on Bedrock API calls; encryption at rest for Knowledge Bases and logs",
+      "question_id": "Q1.5"
+    }
+  },
+  "ai_constraints": {
+    "ai_framework": {
+      "value": ["llm_router"],
+      "chosen_by": "user",
+      "prompt": "Your AI profile shows calls through openrouter.",
+      "design_consequence": "Add Bedrock as provider in gateway config; no app code changes; verify SigV4 auth",
+      "question_id": "Q1"
+    },
+    "ai_priority": {
+      "value": "balanced",
+      "chosen_by": "user",
+      "prompt": "What matters most for your AI application?",
+      "design_consequence": "Claude Sonnet 5",
+      "question_id": "Q2"
+    },
+    "ai_monthly_spend": {
+      "value": "$500-$2K",
+      "chosen_by": "default",
+      "prompt": "Monthly AI spend on OpenAI or Gemini? (default applied)",
+      "design_consequence": "$500-$2K band sets token volume and model tier assumptions",
+      "question_id": "Q3",
+      "source": "default:Q3"
+    },
+    "cross_cloud": {
+      "value": "latency-acceptable",
+      "chosen_by": "user",
+      "prompt": "Cross-cloud API call concerns",
+      "design_consequence": "Standard endpoint; region by cost",
+      "question_id": "Q4"
+    },
+    "ai_model_baseline": {
+      "value": ["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307", "gemini-1.5-pro", "gpt-4o"],
+      "chosen_by": "user",
+      "prompt": "Current model in use?",
+      "design_consequence": "These models are the quality/latency baseline for Bedrock comparison",
+      "question_id": "Q5"
+    },
+    "ai_vision": {
+      "value": "text-only",
+      "chosen_by": "user",
+      "prompt": "What input types must the model accept: text only, images (vision), or audio/video?",
+      "design_consequence": "Full model catalog",
+      "question_id": "Q6"
+    },
+    "ai_token_volume": {
+      "value": "medium",
+      "chosen_by": "user",
+      "prompt": "Monthly AI usage volume",
+      "design_consequence": "On-demand with prompt caching analysis",
+      "question_id": "Q7"
+    },
+    "ai_latency": {
+      "value": "important",
+      "chosen_by": "user",
+      "prompt": "Response speed importance",
+      "design_consequence": "Sonnet 5 with streaming; standard on-demand",
+      "question_id": "Q8"
+    },
+    "ai_complexity": {
+      "value": "moderate",
+      "chosen_by": "user",
+      "prompt": "AI task complexity",
+      "design_consequence": "Sonnet 5 recommended; Haiku may suffice with prompt engineering",
+      "question_id": "Q9"
+    },
+    "ai_critical_feature": {
+      "value": "none",
+      "chosen_by": "user",
+      "prompt": "Specialized features needed",
+      "design_consequence": "Default recommendation from Q2 priority stands",
+      "question_id": "Q10"
+    }
+  },
+  "startup_constraints": {
+    "startup_program_status": {
+      "value": "eligible_founders",
+      "chosen_by": "user",
+      "prompt": "AWS Activate credits offset Bedrock costs during and after migration — including Claude, Llama, and Nova models. Eligible startups can get $5K–$200K depending on funding stage.",
+      "design_consequence": "Flag AWS Activate Founders (up to $5,000, self-service)",
+      "question_id": "Q11"
+    }
+  }
+}

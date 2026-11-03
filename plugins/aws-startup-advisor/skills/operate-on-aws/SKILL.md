@@ -125,7 +125,7 @@ DETECT ──▶ already connected? ──▶ OPERATE
 | DETECT | Find out what already exists (read-only, best effort) | Connection state known, or known to be uncertain |
 | ASSESS | Work out which half of the product fits, if either | User's stage and workload state are known |
 | DISCLOSE | Prepare the cost part of the notice: trial, Activate credits, rate, extra charges, how to stop | Cost part prepared |
-| ACCESS | Prepare the access part: what the role can do, and how to revoke it | Access part prepared |
+| ACCESS | Check the sign-in can do setup (read-only), then prepare the access part: what the role can do, and how to revoke it | Access part prepared, or the user has what they need to get the permissions |
 | CONFIRM | Show both parts as one message and ask one Yes/No | **The user said Yes** |
 | SET UP | Create the Agent Space and monitoring role | A workspace exists in the right region |
 | CONNECT | Create the connection | MCP server reachable, a test call succeeds |
@@ -164,15 +164,29 @@ been paying attention.
    [`references/readiness.md`](references/readiness.md). A region whose lookup fails is unknown, not
    empty: never conclude there is no space from a failed lookup. But an incomplete lookup does **not**
    hold back the approval question; resolve it before creating anything (Phase 3).
+   For a space you find, check that an AWS account is connected to it:
+   `aws devops-agent list-associations --agent-space-id <id> --region <region>` lists an `aws`
+   association. A setup that was interrupted leaves a space with none, and that space can see nothing.
 3. **Is an AWS DevOps Agent MCP server already registered?** Look in the agent's MCP configuration for a
    server pointing at `connect.aidevops.*`.
-4. **Does it actually work?** One call that starts no agent work — `tools/list` or `list_agent_spaces`,
-   never `chat` or `investigate` — not just the presence of a config file.
+4. **Does it actually work, against the right space?** One call that starts no agent work —
+   `list_agent_spaces`, never `chat` or `investigate` — not just the presence of a config file. What it
+   must show depends on how the server signs in (`references/connecting.md`, "Verify before declaring
+   success"):
+   - **SigV4:** when the server's Region is the Region of the space step 2 found, the response lists that
+     space. If it does not, the server is signed in to a different AWS account (often expired or default
+     credentials the editor picked up): say that in one line and fix the profile it uses. A space in another
+     Region is not missing — the endpoint is per Region; that is a Region mismatch, not a wrong account.
+   - **Bearer token:** there may be no local credentials, so step 2 may have found nothing to compare. A real
+     response that lists the token's space is enough.
+
+   Never act on a space in the wrong account.
 
 | What you find | What to do |
 |---|---|
 | Registered and responding | **Go straight to OPERATE.** Do not re-disclose cost — they already decided and are already paying. Do not re-run setup. |
 | Registered but failing | **Repair, do not re-onboard.** Usually an expired token or a region mismatch. See the troubleshooting table in `connecting.md`. |
+| An Agent Space with no AWS account connected | **An unfinished setup.** Do not say it is connected, and do not create another space. Offer to finish it: create the access role if it is missing, then connect the AWS account as the primary account (`references/connecting.md`). That creates a role and starts billing, so it still needs the notice and the Yes at CONFIRM. It is not a new space, so do not report one. |
 | An Agent Space in another region | **Use it, and say where.** Do not create a second one — except for release review, which needs a space in `us-east-1` during preview. Explain that and let them decide. |
 | The `aws-agents-for-devsecops` plugin is installed (an MCP server named `aws-devops-agent`) | Use its connection. Do not build a second one alongside it. See below — that plugin does not disclose cost. |
 | Nothing found | Continue to ASSESS. |
@@ -222,7 +236,8 @@ account, so they are evidence rather than inference:
 
 | Alert firing | Tells you |
 |---|---|
-| `scalability.no-cloudwatch-alarms` | **The strongest signal there is.** Running compute, nothing watching it — this is the no-ops-team case, observed |
+| `scalability.no-cloudwatch-alarms` with compute alerts or running compute | **The strongest signal there is.** Running compute, nothing watching it — this is the no-ops-team case, observed |
+| `scalability.no-cloudwatch-alarms` alone | No alarms and no dashboards, which an empty account also has. Not evidence of a live workload on its own |
 | `scalability.lambda-throttled` | Production pain happening right now |
 | `scalability.rds-no-backups`, `dynamodb-no-pitr` | A production datastore |
 | `scalability.asg-health-check`, `route53-failover`, `cost.idle-load-balancer` | Live services |
@@ -313,7 +328,8 @@ obvious, and it makes a better first impression than an interrupted wizard.
 Prepare four things for the combined notice. Be specific; do not round the numbers away. Nothing is
 shown or created yet — the notice goes out at CONFIRM, together with the access part.
 
-**1. What it costs.**
+**1. What it costs.** Write approximate amounts with "about", never "~": some chats render text between two
+tildes as strikethrough, which makes a price look withdrawn.
 
 - $0.0083 per agent-second — about **$29.88 per agent-hour**
 - One investigation runs 5–8 minutes, so roughly **$2.50–$4.00**
@@ -354,6 +370,17 @@ separately, after setup — see Phase 4.5.
 
 Prepare the access part of the combined notice; **do not create the role yet.** It is created in SET UP,
 only after the Yes.
+
+**Check the sign-in can do setup first** — read-only, before the question, so nobody approves a setup
+their sign-in cannot finish. Follow "Can this sign-in do setup?" in
+[`references/readiness.md`](references/readiness.md):
+
+- **Everything allowed, or the check cannot run** → no extra step. Continue as below; a denial during SET
+  UP is handled there.
+- **Something is missing** → say so first, in plain English: what their sign-in cannot do and that only
+  setup needs it. Then follow that file's fix: grant the setup-only policy with another sign-in that has
+  IAM rights, or hand them the note for their AWS administrator. Never offer administrator access as the
+  fix. If they have no way to get the permissions now, stop here and ask nothing about setup.
 
 This is where AWS DevOps Agent gets access across their AWS account. It is the largest permission in the
 whole flow, so it is never granted without the Yes.
@@ -407,6 +434,10 @@ credit balance, whose money it is), but keep every part:
   issue directly instead.
 - **Anything else, or no answer** → no setup writes. Clarify only if needed.
 
+If the setup-only policy is granted as part of setup, the access part says so in one more sentence — which
+sign-in it is added to, that it allows only the setup steps, and that it can be removed afterwards — and
+the Yes covers it. Without that Yes, add nothing to their permissions.
+
 If the account that signs in after Yes is not the one the user approved, confirm the target before
 writing anything.
 
@@ -416,10 +447,12 @@ writing anything.
 question for this AWS account. A cost notice alone, an earlier unrelated request, or a lack of objection
 does not count. Without that Yes, make no setup writes.
 
-**Check the identity can create the role first** — the permission check in
-[`references/readiness.md`](references/readiness.md). If it cannot, that is a real blocker, unlike a
-billing lookup: say which action was denied and give the forwardable version for whoever holds IAM
-rights.
+The permission check ran in ACCESS. If permissions were added or an administrator did part of setup since,
+check again before the first write, as "Checking again after a fix" in
+[`references/readiness.md`](references/readiness.md) describes: find out read-only what is already done,
+then check only the steps left. If the check cannot run, continue. If a setup call is denied, stop: say
+which action was denied, and go back to the fix in "Can this sign-in do setup?" in the same file. Once it
+is fixed, continue from the step that failed; do not repeat the steps that worked.
 
 Nearly every user arriving here has **no Agent Space and has never heard of one**. Plan for that.
 
@@ -511,8 +544,10 @@ The server exposes 34 tools. The three that matter, and the shape it tells you t
 - **A question** → `chat`. One call, handles most things. Do not reach for `create_chat` / `send_message`
   unless you need a multi-turn session.
 - **Investigate** → `investigate` with the symptom, affected service and time window. It is **async**:
-  poll `get_task(task_id)` every 30–45 s until `status=COMPLETED`, then `list_journal_records(execution_id)`
-  for the findings. Expect 5–8 minutes. Report the reasoning, not just the verdict.
+  poll `get_task(task_id)` every 30–45 s while it is still running (see `references/operating-calls.md`
+  for which statuses mean that). On `COMPLETED`, read `list_journal_records(execution_id)`
+  for the findings. Any other final status (`FAILED`, `TIMED_OUT`, `CANCELED` and the rest) ends the wait:
+  say which, and do not report findings. Expect 5–8 minutes. Report the reasoning, not just the verdict.
 - **Review a PR** → `create_release_readiness_review(content={...})` with the PR details, poll `get_task`,
   then `get_release_readiness_report(execution_id)`. Returns BLOCK / Proceed with Caution / Safe to
   Release. Repository connection is a separate step — see
@@ -520,6 +555,11 @@ The server exposes 34 tools. The three that matter, and the shape it tells you t
 
 Also available: `list_recommendations` / `get_recommendation` for proposed mitigations, `start_evaluation`
 against `list_goals`, and `create_release_testing_job` for UI/API test runs.
+
+Use these calls, or their AWS CLI equivalents in
+[`references/operating-calls.md`](references/operating-calls.md) when the MCP tools are not loaded. Do not
+search for other APIs, and never fall back to the editor's or coding agent's own investigation features:
+they are not AWS DevOps Agent.
 
 - Always surface the proposed fix for approval. Never apply one.
 - **Do only what the user asked.** A Yes to setup is not a request to run an investigation, chat, or
@@ -546,6 +586,7 @@ and remind them how to pause.
 | `references/checking-credits.md` | Reading credit balance and coverage; the failure modes |
 | `references/connecting.md` | MCP setup, both auth paths, verification |
 | `references/stopping.md` | Pause, stop, cancel a running investigation |
+| `references/operating-calls.md` | The exact MCP and AWS CLI calls for each operation |
 | `references/release-review.md` | Release review: the optional offer, repo connection, testing flags, code handling |
 | `references/incident-runbook-serverless.md` | Lambda/ECS + Bedrock incident walkthrough |
 

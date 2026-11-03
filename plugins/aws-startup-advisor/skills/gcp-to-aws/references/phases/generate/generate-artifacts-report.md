@@ -278,13 +278,29 @@ Do not lower text contrast: assumption rows must retain the same WCAG AA
 contrast floor as every other table row, including on alternating row
 backgrounds.
 
-**Critical-default caveats (required when present):** If any of the following constraints have `chosen_by: "default"` AND the corresponding question ID appears in `metadata.questions_defaulted`:
+**Critical-default caveats (required when present):** For a defaulted constraint
+whose question ID appears in `metadata.questions_defaulted`, render the matching
+caveat below. The unknown/missing-spend and unknown-compliance rules also apply
+regardless of `chosen_by` or question metadata:
 
 - `compliance` (Q2): render a warning callout: _"⚠️ Compliance was not explicitly confirmed. The security baseline assumes no regulatory requirements. If SOC 2, PCI, HIPAA, or FedRAMP applies, re-run Clarify or manually add controls."_ **Also fire this callout whenever `compliance.value` contains `"unknown"`** (regardless of `chosen_by` — covers both "I don't know" answers and defaulted runs). `"unknown"` never triggers the Section 4 compliance-controls note or any compliance-specific architecture.
-- `gcp_monthly_spend` (Q3): render a warning callout: _"⚠️ GCP spend was not confirmed by the user. Cost comparison uses the default band ($1K–$5K). Actual spend may differ — verify against your GCP billing console."_
+- `gcp_monthly_spend` (Q3): when its value is `"unknown"` or the key is absent,
+  render: _"GCP spend is unconfirmed. No spend band has been assumed. The report
+  shows AWS costs; a full cost comparison is unavailable until a confirmed
+  source baseline is provided."_ Show this for explicit user answers as well
+  as skipped/defaulted questions. A separately calculated inventory estimate
+  remains labelled as incomplete standing charges, not confirmed spend.
 - `availability` (Q6): render a warning callout: _"⚠️ Database availability was assumed (Multi-AZ) — the user never confirmed it. This assumption roughly doubles the database line vs single-AZ. Confirm the availability requirement (or compare a single-AZ scenario in the what-if workshop) before treating the database estimate as final."_
 
 Place these callouts at the top of Appendix F, before the table, so they're immediately visible.
+
+The same missing-baseline rule applies to `cloud_run_monthly_spend` (Q11):
+unknown never means zero or `$100–$500`. Preserve `"unknown"` in the configuration
+table. When `current_costs.source` is `"unavailable"` or its amount is null,
+render source cost, savings, percentage changes, and ROI comparisons as
+**Unavailable**, not `$0`, and do not manufacture a budget to fill metric cards.
+Use the estimate's baseline source and caveat consistently in the executive
+summary and cost appendix.
 
 **Sort order:** user-answered rows first, then extracted, then default, then derived.
 

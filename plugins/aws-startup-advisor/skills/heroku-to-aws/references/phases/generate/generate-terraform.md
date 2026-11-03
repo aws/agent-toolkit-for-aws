@@ -1700,6 +1700,32 @@ resource "aws_iam_role_policy" "codepipeline_policy_<app_name>" {
 
 For each service in `aws-design.json` where `aws_service` is "RDS PostgreSQL" or "Aurora PostgreSQL":
 
+### Resolve RDS windows before writing resources
+
+The main-window Decision gate runs `rds_windows.py` from the installed
+`tf-best-practices` skill against the confirmed preferences before dispatch.
+This worker MUST read its saved `$MIGRATION_DIR/rds-windows.json` and use
+those values for both RDS and Aurora. Do not execute the helper here: the
+worker shell remains scoped to the Terraform policy checker.
+
+A daily backup range and a weekly maintenance range have different formats
+and MUST NOT both be populated from the same maintenance preference.
+
+The helper preserves explicit UTC ranges, rejects invalid or overlapping
+windows, and fills absent windows with deterministic non-overlapping
+30-minute windows. `global.backup_window`, when supplied, must use
+`hh:mm-hh:mm`; an explicit `global.maintenance_window` must use
+`ddd:hh:mm-ddd:hh:mm`. Existing maintenance choices with `day` and `hour_utc`
+select the first permitted day (Tuesday for Tuesday-Thursday, Saturday for
+Saturday-Sunday). `"flexible"` or an absent maintenance preference defaults
+to Sunday 04:00-04:30 UTC; an absent backup preference prefers 03:00-03:30 UTC
+and moves only when needed to avoid maintenance. These defaults are not a
+customer-specific off-peak recommendation.
+
+If the saved result is missing or invalid, you MUST stop database generation
+and return to the main-window Decision gate to resolve it. You MUST NOT
+silently change an explicit window or continue with unvalidated placeholders.
+
 ### DB Subnet Group (always needed for database services)
 
 ```hcl
@@ -1746,8 +1772,8 @@ resource "aws_db_instance" "<app_sanitized>_postgres" {
   # {{ENDIF}}
 
   backup_retention_period = 7
-  backup_window           = "<preferences.json.global.maintenance_window formatted>"
-  maintenance_window      = "<preferences.json.global.maintenance_window formatted>"
+  backup_window           = "<rds-windows.json.backup_window>"
+  maintenance_window      = "<rds-windows.json.maintenance_window>"
 
   skip_final_snapshot       = false
   final_snapshot_identifier = "${var.project_name}-${var.environment}-postgres-final"
@@ -1833,9 +1859,10 @@ resource "aws_rds_cluster" "<app_sanitized>_aurora" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.database.id]
 
-  backup_retention_period = 7
-  preferred_backup_window = "<preferences.json.global.maintenance_window formatted>"
-  storage_encrypted       = true
+  backup_retention_period      = 7
+  preferred_backup_window      = "<rds-windows.json.backup_window>"
+  preferred_maintenance_window = "<rds-windows.json.maintenance_window>"
+  storage_encrypted            = true
 
   skip_final_snapshot       = false
   final_snapshot_identifier = "${var.project_name}-${var.environment}-aurora-final"

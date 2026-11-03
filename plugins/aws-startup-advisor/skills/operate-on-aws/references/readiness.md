@@ -137,10 +137,11 @@ At R2, say what you cannot see rather than what they must do:
 > "I can't see an AWS account from here, so I can't show you your own numbers — but I can tell you what
 > this costs and whether it fits."
 
-## R4 is not enough — can they *create the role*?
+## Can this sign-in do setup?
 
 The R0–R5 ladder answers "do they have working credentials". Setup needs a second question the ladder does
-not ask: **can this identity create an IAM role?** The two come apart constantly.
+not ask: **can this sign-in do every setup step?** The two come apart constantly. Ask it in ACCESS, before
+the setup question, and never fail halfway through setup with a half-created role.
 
 | Sign-in | Typically | Why |
 |---|---|---|
@@ -149,7 +150,21 @@ not ask: **can this identity create an IAM role?** The two come apart constantly
 | `role_arn` assume-role profile | depends | inherits the target role's policy |
 | `credential_process` | depends | whatever the external process returns |
 
-Check before promising, rather than failing halfway through setup with a half-created role.
+### What setup needs
+
+These are the calls SET UP and CONNECT make (`references/connecting.md`), and nothing else:
+
+| Step | Actions |
+|---|---|
+| Create the access role and its one inline permission | `iam:CreateRole`, `iam:GetRole`, `iam:PutRolePolicy` |
+| Attach `AIDevOpsAgentAccessPolicy` to it | `iam:AttachRolePolicy` |
+| Let DevOps Agent use the role | `iam:PassRole` |
+| DevOps Agent's own service-linked role, created with the first Agent Space | `iam:CreateServiceLinkedRole` |
+| Find and create the Agent Space, and connect the AWS account | `aidevops:ListAgentSpaces`, `aidevops:GetAgentSpace`, `aidevops:CreateAgentSpace`, `aidevops:AssociateService`, `aidevops:ListAssociations` |
+| Tag the space as created by AWS Startup Advisor (optional: without it the space is created untagged) | `aidevops:TagResource` |
+| Read back what is already done, when checking again after a fix | `iam:ListAttachedRolePolicies`, `iam:GetRolePolicy`, `aidevops:ListTagsForResource` |
+
+### Check, read-only
 
 **The caller ARN must be normalised first.** `SimulatePrincipalPolicy` takes an *IAM* ARN, and
 `get-caller-identity` returns an *STS session* ARN for anyone using SSO or assume-role — which is exactly
@@ -163,25 +178,76 @@ ACCT=$(aws sts get-caller-identity --query Account --output text)
 # arn:aws:sts::<acct>:assumed-role/<RoleName>/<session>  ->  arn:aws:iam::<acct>:role/<RoleName>
 PRINCIPAL=$(printf '%s' "$CALLER" | sed -E "s#arn:aws:sts::[0-9]+:assumed-role/([^/]+)/.*#arn:aws:iam::${ACCT}:role/\1#")
 
+# The values the setup-only policy's conditions test (below). Pass all three on both IAM calls: without
+# them a sign-in that has that policy still reads as implicitDeny, and the simulator lists any key a policy
+# tests but the call left out as missing, even for an action the key does not apply to.
+CTX=(
+  ContextKeyName=iam:PolicyARN,ContextKeyValues=arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy,ContextKeyType=string
+  ContextKeyName=iam:PassedToService,ContextKeyValues=aidevops.amazonaws.com,ContextKeyType=string
+  ContextKeyName=iam:AWSServiceName,ContextKeyValues=aidevops.amazonaws.com,ContextKeyType=string
+)
+Q='EvaluationResults[].{Action:EvalActionName,Decision:EvalDecision,Missing:MissingContextValues}'
+
+# The Region setup will use, and the space: its id once it exists, otherwise any space in this account
+# and Region (a policy that names specific spaces then reads as implicitDeny: unknown, not denied).
+REGION="<region>"
+SPACE="arn:aws:aidevops:${REGION}:${ACCT}:agentspace/${SPACE_ID:-*}"
+
+# Separate calls, so each action is checked against the resource it really touches.
 aws iam simulate-principal-policy --policy-source-arn "$PRINCIPAL" \
-  --action-names iam:CreateRole iam:AttachRolePolicy aidevops:CreateAgentSpace \
-  --query 'EvaluationResults[].{Action:EvalActionName,Decision:EvalDecision}' --output table
+  --action-names iam:CreateRole iam:GetRole iam:PutRolePolicy iam:AttachRolePolicy iam:PassRole \
+  --resource-arns "arn:aws:iam::${ACCT}:role/DevOpsAgentRole-AgentSpace" \
+  --context-entries "${CTX[@]}" --query "$Q" --output json
+
+aws iam simulate-principal-policy --policy-source-arn "$PRINCIPAL" \
+  --action-names iam:CreateServiceLinkedRole \
+  --resource-arns "arn:aws:iam::${ACCT}:role/aws-service-role/aidevops.amazonaws.com/AWSServiceRoleForAIDevOps" \
+  --context-entries "${CTX[@]}" --query "$Q" --output json
+
+aws iam simulate-principal-policy --policy-source-arn "$PRINCIPAL" \
+  --action-names aidevops:ListAgentSpaces aidevops:CreateAgentSpace \
+  --query "$Q" --output json
+
+aws iam simulate-principal-policy --policy-source-arn "$PRINCIPAL" \
+  --action-names aidevops:GetAgentSpace aidevops:TagResource aidevops:AssociateService aidevops:ListAssociations \
+  --resource-arns "$SPACE" --query "$Q" --output json
 ```
 
-Observed output for a scoped permission set with `aidevops:*` but no IAM write:
+Observed for a scoped permission set with `aidevops:*` but no IAM write (trimmed):
 
 ```
-|  iam:CreateRole            |  implicitDeny  |
-|  iam:AttachRolePolicy      |  implicitDeny  |
-|  aidevops:CreateAgentSpace |  allowed       |
+iam:CreateRole              implicitDeny
+iam:AttachRolePolicy        implicitDeny
+aidevops:CreateAgentSpace   allowed
 ```
 
 That is the diagnosis to act on: **they can use DevOps Agent, they just cannot do the one-time IAM
 setup.** Those are different problems with different fixes, and conflating them sends a founder to the
 wrong place.
 
-**Attempt-and-handle is the reliable fallback**, and often the only option — many scoped identities cannot
-call `SimulatePrincipalPolicy` either. The denial is unambiguous and names the action and resource:
+- **Every action `allowed`** → nothing to tell them. Continue to the setup question.
+- **`implicitDeny` with a `Missing` key that starts with `aws:`, `iam:` or `aidevops:`** → unknown for
+  that action, not denied: one of their own policies tests a condition this check cannot supply (for example
+  `aws:MultiFactorAuthPresent`). Treat it like a check that cannot run. Ignore missing keys for other
+  services: AWS's `ReadOnlyAccess` tests `s3express:SessionMode`, which lists it as missing on every result
+  without affecting these actions.
+- **A space action (`GetAgentSpace`, `AssociateService`, `ListAssociations`) not `allowed` before the space
+  exists** → unknown: the check could only name any space, and their policy may name the one setup creates.
+  Handle a denial when it happens (below).
+- **`aidevops:TagResource` not `allowed`** → nothing to tell them: tagging is optional, and setup creates the
+  space without the tag (`references/connecting.md`). Never stop or ask for permissions over it.
+- **The check itself is denied** (many scoped sign-ins cannot call `SimulatePrincipalPolicy`) → that is
+  unknown, not a failure. Continue, and handle a denial when it happens (below).
+- **Anything else** (`explicitDeny`, or `implicitDeny` with no such key missing) → tell them, in plain English,
+  before the setup question:
+
+> "Your AWS sign-in can't finish DevOps Agent setup: it isn't allowed to create the access role
+> DevOps Agent uses. Only setup needs this, once."
+
+Name what is missing in words first, then the action names. Never report a generic "permissions problem".
+
+**Attempt-and-handle is the reliable fallback** when the check cannot run. The denial is unambiguous and
+names the action and resource:
 
 ```
 An error occurred (AccessDenied) when calling the CreateRole operation:
@@ -189,21 +255,133 @@ User: arn:aws:sts::<acct>:assumed-role/<Role>/<session> is not authorized to
 perform: iam:CreateRole on resource: arn:aws:iam::<acct>:role/DevOpsAgentRole-AgentSpace
 ```
 
-Parse the action out of that and say which one was denied. Never report a generic "permissions problem".
+Parse the action out of that, say which one was denied, and offer the same fix.
 
-### What to say when they cannot create the role
+### The fix: a setup-only policy, not administrator access
 
-Do **not** route them to the console — a console cannot grant permissions the identity does not have.
-Give them something forwardable instead:
+Grant exactly the actions above, scoped to the roles setup creates and the one managed policy it attaches.
+Never suggest `AdministratorAccess`, `IAMFullAccess` or a wildcard to get past a denial.
 
-> "Your credentials are fine — you just don't have IAM write access on this account, which is normal on
-> an Identity Center permission set. Someone with IAM rights needs to create one role, once. Send them
-> this: role name `DevOpsAgentRole-AgentSpace`, the trust policy in `connecting.md`, and the managed
-> policy `arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy`. It takes about two minutes. Once it exists,
-> send me the role ARN and I'll do the rest — you already have the permissions for that part."
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateTheDevOpsAgentRole",
+      "Effect": "Allow",
+      "Action": ["iam:CreateRole", "iam:GetRole", "iam:PutRolePolicy"],
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/DevOpsAgentRole-*"
+    },
+    {
+      "Sid": "ReadBackTheDevOpsAgentRole",
+      "Effect": "Allow",
+      "Action": ["iam:ListAttachedRolePolicies", "iam:GetRolePolicy"],
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/DevOpsAgentRole-*"
+    },
+    {
+      "Sid": "AttachOnlyTheDevOpsAgentPolicy",
+      "Effect": "Allow",
+      "Action": "iam:AttachRolePolicy",
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/DevOpsAgentRole-*",
+      "Condition": { "ArnEquals": { "iam:PolicyARN": "arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy" } }
+    },
+    {
+      "Sid": "PassTheRoleToDevOpsAgent",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/DevOpsAgentRole-*",
+      "Condition": { "StringEquals": { "iam:PassedToService": "aidevops.amazonaws.com" } }
+    },
+    {
+      "Sid": "DevOpsAgentServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": { "StringEquals": { "iam:AWSServiceName": "aidevops.amazonaws.com" } }
+    },
+    {
+      "Sid": "SetUpDevOpsAgent",
+      "Effect": "Allow",
+      "Action": [
+        "aidevops:ListAgentSpaces", "aidevops:GetAgentSpace", "aidevops:CreateAgentSpace",
+        "aidevops:TagResource", "aidevops:AssociateService", "aidevops:ListAssociations",
+        "aidevops:ListTagsForResource"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
 
-That last clause matters and is verified: a scoped identity with `aidevops:*` can create the Agent Space
-and associate the account. Only the IAM role needs someone else.
+Who can add it depends on the sign-in, and **nothing is added without the user's explicit Yes** — the
+setup question covers it when it is part of setup (SKILL.md CONFIRM):
+
+- **They have another sign-in with IAM rights for this AWS account** (an admin profile, often the person
+  who opened the account): add it with that profile as an inline policy named
+  `AWSStartupAdvisorDevOpsAgentSetup`, on the IAM user (`put-user-policy`) or role (`put-role-policy`) the
+  normal sign-in uses. Then run the check again with the normal sign-in.
+- **IAM Identity Center** (`AWSReservedSSO_*` roles): the role cannot be edited directly. The policy goes
+  into the permission set as an inline policy, by someone who manages Identity Center. That is the
+  administrator note below.
+- **No one at hand with IAM rights**: give them the administrator note and stop. Do not ask the setup
+  question until the check passes.
+
+The policy is only for setup. Once setup is done they can remove it; using DevOps Agent afterwards does not
+need it.
+
+### The note for their AWS administrator
+
+Do **not** route them to the console — a console cannot grant permissions the sign-in does not have. Give
+them this to send, filled in, with the policy above:
+
+> "I'm setting up AWS DevOps Agent in AWS account `<ACCOUNT_ID>` for incident investigation. My sign-in
+> `<CALLER ARN>` can't create the access role it needs. Could you add the attached setup-only policy to it
+> (for IAM Identity Center, as an inline policy on my permission set)? It allows only the setup steps:
+> creating the `DevOpsAgentRole-*` role with AWS's `AIDevOpsAgentAccessPolicy`, and creating the DevOps
+> Agent workspace. It isn't administrator access, and it can be removed once setup is done."
+
+If they would rather the administrator create the role, offer the shorter alternative: role name
+`DevOpsAgentRole-AgentSpace`, the trust policy and the inline `AllowCreateServiceLinkedRoles` permission in
+`connecting.md`, and the managed policy `arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy` — about two
+minutes. Ask them to also let the normal
+sign-in read the role (`iam:GetRole`, `iam:ListAttachedRolePolicies` and `iam:GetRolePolicy` on
+`DevOpsAgentRole-*`), so the check can confirm it is complete. Once it exists, they send you the role ARN and
+you do the rest. That is verified: a scoped sign-in with `aidevops:*` can create the Agent
+Space and connect the AWS account. Only the IAM role needs someone else.
+
+### Checking again after a fix
+
+When they come back, check again before the first write. Do not rerun the whole check: an administrator
+may have done part of setup, and a sign-in that is not allowed to repeat a finished step would fail it for
+nothing. First find out what is already done, read-only:
+
+| Already done? | Read-only check | If done, drop |
+|---|---|---|
+| The access role exists | `aws iam get-role --role-name DevOpsAgentRole-AgentSpace` | `iam:CreateRole` |
+| `AIDevOpsAgentAccessPolicy` is attached | `aws iam list-attached-role-policies --role-name DevOpsAgentRole-AgentSpace` | `iam:AttachRolePolicy` |
+| The inline permission is there | `aws iam get-role-policy --role-name DevOpsAgentRole-AgentSpace --policy-name AllowCreateServiceLinkedRoles` | `iam:PutRolePolicy` |
+| The service-linked role exists | `aws iam get-role --role-name AWSServiceRoleForAIDevOps` | `iam:CreateServiceLinkedRole` |
+| The Agent Space exists | `aws devops-agent list-agent-spaces --region <region>`: the one tagged `CreatedBy=aws-startup-advisor` (`list-tags-for-resource`), or the one they already had | `aidevops:CreateAgentSpace`, `aidevops:TagResource` |
+| The AWS account is connected | `aws devops-agent list-associations --agent-space-id <id> --region <region>` shows an `aws` association | `aidevops:AssociateService`, `iam:PassRole` |
+
+A read that is denied or fails is unknown. For the role's two policies, settle it before checking, because
+a sign-in that cannot read them usually cannot write them either, and would be told to fix a role that is
+already complete:
+
+1. If a sign-in with IAM rights is at hand (the administrator profile that made the fix), run the same read
+   with it and use what it shows.
+2. If the administrator created the role themselves (the shorter alternative above) and said it has the
+   managed policy and the inline permission, count both as done.
+3. Otherwise keep the step. A policy that is really missing still needs setup.
+
+Then run the check above with only the actions for the steps left, and `SPACE_ID` set to the space's id once
+it exists. If an administrator created the role with the managed policy, that is `iam:PassRole` and the
+`aidevops` actions still to do, not `iam:CreateRole` or `iam:AttachRolePolicy`. Tagging is never a step left:
+a space that exists untagged stays untagged.
+
+The same rules apply. If `SimulatePrincipalPolicy` itself is denied, that is unknown: continue, and stop
+only on an actual `AccessDenied` from a setup call. Continue from the first step not done; never repeat
+one that is.
 
 ## R2 in the IDE: Startup Advisor sign-in is a real credential path
 
