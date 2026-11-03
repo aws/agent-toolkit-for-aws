@@ -167,7 +167,19 @@ aws iam simulate-principal-policy \
   --resource-arns "arn:aws:bedrock:*::foundation-model/*"
 ```
 
-**Third cause:** Cross-region inference profile requires model access in all regions.
+**Third cause:** The model ID is wrong, stale, or not offered in the Runtime's region. The error is `ValidationException ... The provided model identifier is invalid`, and enabling model access does not fix it. Find the ID in the model loader (for example `app/<name>/model/load.py`) or in `app/<name>/harness.yaml`, then check it in the deployed region:
+
+```bash
+# Inference profile IDs (us., eu., apac., global. prefixes)
+aws bedrock get-inference-profile --inference-profile-identifier <model-id> --region <region>
+# Bare model IDs, or to see what the region offers
+aws bedrock list-foundation-models --region <region> --query 'modelSummaries[].modelId'
+aws bedrock list-inference-profiles --region <region> --query 'inferenceProfileSummaries[].inferenceProfileId'
+```
+
+`ResourceNotFoundException` from `get-inference-profile` means that profile doesn't exist in that region. Fix the ID, then run `agentcore deploy` again.
+
+**Fourth cause:** Cross-region inference profile requires model access in all regions.
 
 Model IDs starting with a geographic prefix are cross-region inference profiles that route requests within that geography:
 
